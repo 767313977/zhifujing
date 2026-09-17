@@ -47,6 +47,23 @@ class MarketOverview(BaseModel):
     sentiment: SentimentOut | None
 
 
+class IndexSeries(BaseModel):
+    """一条指数序列。各数组与 IndexHistory.dates 一一对应，缺失为 null。"""
+
+    code: str
+    name: str | None
+    close: list[float | None]
+    pct_chg: list[float | None]
+    amount: list[float | None]
+
+
+class IndexHistory(BaseModel):
+    """指数历史序列，按日期升序对齐，直接喂给图表。"""
+
+    dates: list[date]
+    series: list[IndexSeries]
+
+
 # --------------------------------------------------------------- 涨停板三池
 
 

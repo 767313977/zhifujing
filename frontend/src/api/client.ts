@@ -1,6 +1,7 @@
 import type {
   AdminStatus,
   CollectResult,
+  IndexHistory,
   LimitPool,
   LhbItem,
   MarketOverview,
@@ -38,6 +39,9 @@ export const api = {
     request<Sentiment[]>(`/market/sentiment?days=${days}`),
 
   dates: () => request<string[]>('/market/dates'),
+
+  indexHistory: (days = 120) =>
+    request<IndexHistory>(`/market/index-history?days=${days}`),
 
   limitPool: (type: PoolType, date?: string | null) =>
     request<LimitPool>(

@@ -32,6 +32,20 @@ export interface MarketOverview {
   sentiment: Sentiment | null
 }
 
+/** 指数历史序列。各数组与 IndexHistory.dates 一一对应，缺失为 null。 */
+export interface IndexSeries {
+  code: string
+  name: string | null
+  close: (number | null)[]
+  pct_chg: (number | null)[]
+  amount: (number | null)[]
+}
+
+export interface IndexHistory {
+  dates: string[]
+  series: IndexSeries[]
+}
+
 export type PoolType = 'up' | 'down' | 'broken'
 
 export interface LimitStock {

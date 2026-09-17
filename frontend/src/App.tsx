@@ -1,14 +1,10 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import Placeholder from './pages/Placeholder'
+import SentimentPage from './pages/Sentiment'
 
 /** 已规划但尚未实现的页面，先占住路由，导航不会失效。 */
 const UPCOMING = [
-  {
-    path: '/sentiment',
-    title: '情绪周期',
-    desc: '近 60 日涨停数、封板率、炸板率、连板高度走势，叠加指数曲线判断冰点与高潮',
-  },
   {
     path: '/sectors',
     title: '板块题材',
@@ -41,6 +37,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/sentiment" element={<SentimentPage />} />
         {UPCOMING.map((item) => (
           <Route
             key={item.path}
