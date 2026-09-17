@@ -21,7 +21,7 @@ import urllib3
 
 from app.config import Settings, get_settings
 from app.sources.base import TokenBucket, chunked, retry_call
-from app.sources.markdown_table import parse_tables
+from app.sources.markdown_table import parse_tables, to_int
 
 logger = logging.getLogger(__name__)
 
@@ -332,9 +332,33 @@ class IfindClient:
         rows = [row for table in parse_tables(answer) for row in table]
         return answer, rows
 
-    def search_stocks(self, query: str) -> tuple[str, list[dict]]:
-        """智能选股。这是找票的主入口。"""
-        return self._nl("stock", "search_stocks", {"query": query})
+    def search_stocks(self, query: str) -> dict:
+        """智能选股。这是找票的主入口。
+
+        返回结构里的元信息文字极易误读，两处都已实测确认：
+
+        - `selectedSecuritiesCount` 是**匹配总数**，不是返回条数。
+          实测「市值大于100亿的股票」该值为 1801，而 markdown 表格只给出 100 行。
+        - `dataTotalVolume` 是**数据格子数**（行数 × 列数），根本不是匹配数。
+          实测 9 行 5 列 = 45、4 行 5 列 = 20，完全吻合。
+
+        表格上限 100 行，超出会静默截断，且回答里的提示文案是固定模板
+        （写着「只返回前1000行结果」但实际是 100 行），**不能拿文案判断**。
+        判断是否被截断只能用 `matched > returned`。
+        """
+        _, inner = _extract(self.call("stock", "search_stocks", {"query": query}))
+        answer = inner.get("answer") or ""
+        tables = parse_tables(answer)
+        rows = [row for table in tables for row in table]
+        matched = to_int(inner.get("selectedSecuritiesCount"))
+        return {
+            "answer": answer,
+            "rows": rows,
+            "columns": list(rows[0].keys()) if rows else [],
+            "matched": matched,
+            "returned": len(rows),
+            "truncated": matched is not None and matched > len(rows),
+        }
 
     def stock_performance(self, query: str) -> tuple[str, list[dict]]:
         """个股日频历史行情与技术指标。返回结果含非交易日，需按交易日历过滤。"""

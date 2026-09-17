@@ -6,8 +6,11 @@ import type {
   LhbItem,
   MarketOverview,
   PoolType,
+  Preset,
   PromotionSeries,
+  ScreenRun,
   Sentiment,
+  WatchlistItem,
 } from './types'
 
 const BASE = '/api'
@@ -53,6 +56,35 @@ export const api = {
 
   promotion: (days = 15) =>
     request<PromotionSeries>(`/limit/promotion?days=${days}`),
+
+  runScreen: (query: string) =>
+    request<ScreenRun>(`/screener/run?query=${encodeURIComponent(query)}`, {
+      method: 'POST',
+    }),
+
+  presets: () => request<Preset[]>('/screener/presets'),
+
+  savePreset: (name: string, query: string) =>
+    request<Preset>('/screener/presets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, query }),
+    }),
+
+  deletePreset: (id: number) =>
+    request<{ ok: boolean }>(`/screener/presets/${id}`, { method: 'DELETE' }),
+
+  watchlist: () => request<WatchlistItem[]>('/watchlist'),
+
+  addWatchlist: (code: string, name?: string) =>
+    request<WatchlistItem>('/watchlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, name }),
+    }),
+
+  removeWatchlist: (code: string) =>
+    request<{ ok: boolean }>(`/watchlist/${code}`, { method: 'DELETE' }),
 
   adminStatus: () => request<AdminStatus>('/admin/status'),
 

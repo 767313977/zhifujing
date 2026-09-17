@@ -171,3 +171,56 @@ class AdminStatus(BaseModel):
     latest_lhb_date: date | None
     data_days: int
     recent_logs: list[CollectLogOut]
+
+
+# -------------------------------------------------------------------- 选股器
+
+
+class ScreenRunOut(BaseModel):
+    """自然语言选股结果。
+
+    列是动态的 —— iFinD 按提问内容决定返回哪些指标，且列名自带日期
+    （如 `总市值[20260917]`），所以不能写死表头。
+    """
+
+    query: str
+    columns: list[str]
+    rows: list[dict[str, str]]
+    # 匹配总数
+    matched: int | None
+    # 表格实际给出的行数（上限 100）
+    returned: int
+    # matched > returned 即为被截断，必须让用户看到
+    truncated: bool
+    answer: str
+    cost_seconds: float
+
+
+class PresetIn(BaseModel):
+    name: str
+    query: str
+
+
+class PresetOut(ApiModel):
+    id: int
+    name: str
+    kind: str
+    conditions: dict
+    created_at: datetime
+
+
+# -------------------------------------------------------------------- 自选股
+
+
+class WatchlistIn(BaseModel):
+    code: str
+    name: str | None = None
+    note: str | None = None
+
+
+class WatchlistOut(ApiModel):
+    code: str
+    name: str | None
+    tags: list[str] | None
+    note: str | None
+    added_at: datetime
