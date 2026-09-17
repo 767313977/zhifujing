@@ -13,7 +13,7 @@ import logging
 import time
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -64,6 +64,19 @@ AMOUNT_SYMBOLS = ("000001.SH", "399001.SZ")
 # index_data 单次请求的日期跨度上限（自然语言接口，区间过大容易被截断）
 INDEX_BACKFILL_CHUNK_DAYS = 120
 
+# 三池的数据源都只保留最近 15 个**交易日**。
+# 实测（2026-09-17 往回数）：第 15 个交易日 2026-08-28 仍有数据，
+# 再往前一天 2026-08-27 三个池全部返回空表。
+#
+# 这个坑很隐蔽：东财只对跌停/炸板做了 30「自然日」的校验（超出直接抛错），
+# 而**涨停池不做任何校验**，超期只是返回空表 —— 空表与「当天真的 0 家涨停」
+# 在代码里完全无法区分。所以必须自己按交易日判断窗口，
+# 否则会把大量没有数据的日期记成 0 家涨停，让情绪曲线撒谎。
+POOL_HISTORY_TRADING_DAYS = 15
+POOL_TYPES = ("up", "down", "broken")
+# 龙虎榜区间批量取的分片跨度（接口 pageSize=5000，约 1 个月不至于超页）
+LHB_BACKFILL_CHUNK_DAYS = 30
+
 
 def _upsert(session: Session, model, rows: list[dict]) -> int:
     """按主键 upsert，保证重复采集幂等。"""
@@ -83,6 +96,15 @@ def _require_today(trade_date: date, what: str) -> None:
             f"{what} 依赖 iFinD 高频行情接口（仅当日），"
             f"请求日期 {trade_date} 非今日；历史行情需改用 index_data 等日频接口"
         )
+
+
+def _pool_cutoff(recent_trade_dates: list[date]) -> date | None:
+    """三池能取到数据的最早交易日。
+
+    `recent_trade_dates` 需按**降序**传入（最近的在前），取前 N 个里的最小值。
+    """
+    window = recent_trade_dates[:POOL_HISTORY_TRADING_DAYS]
+    return min(window) if window else None
 
 
 def _parse_ymd(value: object) -> date | None:
@@ -309,14 +331,76 @@ class DailyCollector:
         with session_scope() as session:
             return _upsert(session, IndexDaily, rows)
 
-    def collect_limit_pool(self, trade_date: date) -> int:
-        rows = (
-            _limit_up_rows(trade_date, self.ak.limit_up_pool(trade_date))
-            + _limit_down_rows(trade_date, self.ak.limit_down_pool(trade_date))
-            + _broken_rows(trade_date, self.ak.broken_pool(trade_date))
-        )
+    def _pool_window_cutoff(self) -> date | None:
+        """三池数据源能取到数据的最早交易日。"""
         with session_scope() as session:
-            return _upsert(session, LimitPool, rows)
+            recent = list(
+                session.scalars(
+                    select(TradeCalendar.trade_date)
+                    .where(TradeCalendar.trade_date <= date.today())
+                    .order_by(TradeCalendar.trade_date.desc())
+                    .limit(POOL_HISTORY_TRADING_DAYS)
+                )
+            )
+        return _pool_cutoff(recent)
+
+    def collect_limit_pool(self, trade_date: date) -> int:
+        """采集涨停 / 跌停 / 炸板三池。
+
+        每个池单独记一条日志（`pool_up` / `pool_down` / `pool_broken`），
+        因为情绪指标必须区分「该池当日真的 0 家」与「该池当日取不到数」：
+        前者是 0，后者必须是 None。超出数据源窗口的池记为 `skipped`。
+
+        只有三池全部失败才抛错，让上层 `_step` 记成失败；部分失败不阻塞。
+        """
+        jobs = (
+            ("up", "涨停池", self.ak.limit_up_pool, _limit_up_rows),
+            ("down", "跌停池", self.ak.limit_down_pool, _limit_down_rows),
+            ("broken", "炸板池", self.ak.broken_pool, _broken_rows),
+        )
+        cutoff = self._pool_window_cutoff()
+        written = 0
+        failures: list[str] = []
+
+        for pool_type, label, fetch, to_rows in jobs:
+            task = f"pool_{pool_type}"
+            started = time.monotonic()
+
+            # 超期必须自己判断：涨停池超期不报错只返回空表，会被误读成 0 家
+            if cutoff is not None and trade_date < cutoff:
+                message = (
+                    f"数据源只保留最近 {POOL_HISTORY_TRADING_DAYS} 个交易日"
+                    f"（{cutoff} 起），该日期已超出窗口，本池无数据"
+                )
+                logger.info("跳过 %s %s：%s", label, trade_date, message)
+                self._log(trade_date, task, "skipped", 0, message, 0.0)
+                continue
+
+            try:
+                records = fetch(trade_date)
+                rows = to_rows(trade_date, records)
+            except Exception as exc:  # noqa: BLE001 - 单池失败不阻塞其他池
+                message = f"{type(exc).__name__}: {exc}"
+                logger.warning("采集 %s %s 失败: %s", label, trade_date, exc)
+                self._log(
+                    trade_date, task, "failed", 0, message,
+                    round(time.monotonic() - started, 2),
+                )
+                failures.append(f"{label}({message})")
+                continue
+
+            with session_scope() as session:
+                count = _upsert(session, LimitPool, rows)
+            written += count
+            self._log(
+                trade_date, task, "ok", count, None,
+                round(time.monotonic() - started, 2),
+            )
+
+        # 只有三池**全部真失败**才算这一步失败；全部超期跳过不算失败
+        if len(failures) == len(jobs):
+            raise RuntimeError(f"{trade_date} 三池全部采集失败: {'; '.join(failures)}")
+        return written
 
     def collect_lhb(self, trade_date: date) -> int:
         rows = _lhb_rows(trade_date, self.ak.lhb(trade_date))
@@ -331,26 +415,56 @@ class DailyCollector:
         - history=False（当日采集）：全量计算
         - history=True（历史回补）：这两项留空，其余指标来自可按日期取数的
           akshare 涨停三池与指数表，仍然是可信的
+
+        家数取值严格依赖三池的采集状态：某池当日 `pool_*` 日志不是 ok
+        （失败或超出数据源窗口），对应计数写 None 而非 0 ——
+        0 会被读成「当天没有跌停」，与事实相反。
         """
         if not history:
             _require_today(trade_date, "情绪指标")
+
         with session_scope() as session:
+            # 只认每个池**最新**一条日志：同一日期可能被采集多次，
+            # 旧日志里残留的 ok 会让已超期的池被误判为有数据。
+            latest_ids = (
+                select(func.max(CollectLog.id))
+                .where(
+                    CollectLog.trade_date == trade_date,
+                    CollectLog.task.in_([f"pool_{name}" for name in POOL_TYPES]),
+                )
+                .group_by(CollectLog.task)
+            )
+            ok_pools = {
+                task.removeprefix("pool_")
+                for task, status in session.execute(
+                    select(CollectLog.task, CollectLog.status).where(
+                        CollectLog.id.in_(latest_ids)
+                    )
+                )
+                if status == "ok"
+            }
             pools = session.execute(
                 select(LimitPool.pool_type, LimitPool.consecutive).where(
                     LimitPool.trade_date == trade_date
                 )
             ).all()
-            amounts = session.execute(
-                select(IndexDaily.amount).where(
-                    IndexDaily.trade_date == trade_date,
-                    IndexDaily.code.in_(AMOUNT_SYMBOLS),
-                )
-            ).scalars().all()
+            amounts = (
+                session.scalars(
+                    select(IndexDaily.amount).where(
+                        IndexDaily.trade_date == trade_date,
+                        IndexDaily.code.in_(AMOUNT_SYMBOLS),
+                    )
+                ).all()
+            )
 
-        counts = {"up": 0, "down": 0, "broken": 0}
+        counts: dict[str, int | None] = {
+            pool_type: (0 if pool_type in ok_pools else None)
+            for pool_type in POOL_TYPES
+        }
         consecutive: list[int] = []
         for pool_type, value in pools:
-            counts[pool_type] = counts.get(pool_type, 0) + 1
+            if counts.get(pool_type) is not None:
+                counts[pool_type] += 1  # type: ignore[operator]
             if pool_type == "up" and value:
                 consecutive.append(int(value))
 
@@ -413,6 +527,28 @@ class DailyCollector:
 
     # -------------------------------------------------------------------- 编排
 
+    def _log(
+        self,
+        trade_date: date | None,
+        task: str,
+        status: str,
+        rows: int,
+        message: str | None,
+        cost: float,
+    ) -> None:
+        """写一条采集日志。status 取值：ok / failed / skipped。"""
+        with session_scope() as session:
+            session.add(
+                CollectLog(
+                    trade_date=trade_date,
+                    task=task,
+                    status=status,
+                    rows=rows,
+                    message=message,
+                    cost_seconds=cost,
+                )
+            )
+
     def _step(self, trade_date: date | None, name: str, fn) -> dict:
         started = time.monotonic()
         status, row_count, message = "ok", 0, None
@@ -425,17 +561,7 @@ class DailyCollector:
 
         cost = round(time.monotonic() - started, 2)
         logger.info("采集 %-10s [%s] rows=%s cost=%.2fs", name, status, row_count, cost)
-        with session_scope() as session:
-            session.add(
-                CollectLog(
-                    trade_date=trade_date,
-                    task=name,
-                    status=status,
-                    rows=row_count,
-                    message=message,
-                    cost_seconds=cost,
-                )
-            )
+        self._log(trade_date, name, status, row_count, message, cost)
         return {"status": status, "rows": row_count, "cost": cost, "message": message}
 
     def _trade_dates(self, start: date, end: date) -> list[date]:
@@ -510,17 +636,24 @@ class DailyCollector:
     def backfill(self, start: date, end: date | None = None) -> dict:
         """回补历史数据：指数行情 + 涨停三池 + 龙虎榜 + 情绪指标。
 
-        可回补：指数日线（走 iFinD `index_data`）、涨停/跌停/炸板数、封板率、
-        炸板率、最高连板、两市成交额。
+        可回补：指数日线（走 iFinD `index_data`）、涨停数、跌停数、炸板数、
+        封板率、炸板率、最高连板、两市成交额、龙虎榜。
+
+        窗口受限：跌停池与炸板池的数据源只保留最近 30 个自然日，
+        更早的日期这两个指标会记 None（不是 0），详见 `POOL_HISTORY_DAYS`。
 
         无法回补：涨跌家数（乐咕乐股仅返回当日）、打板效应（依赖当日实时涨幅）、
-        当日涨跌家数明细（iFinD 两种接口对同一指数同一天给出的数值不一致）。
+        指数涨跌家数（iFinD 两种接口对同一指数同一天给出的数值不一致）。
         """
         end = end or self.latest_trade_date()
 
         # 指数必须最先补：历史情绪的「两市成交额」取自指数表，顺序反了就取不到
         index_step = self._step(
             None, "index_history", lambda: self.backfill_index(start, end)
+        )
+        # 龙虎榜接口原生支持区间查询，一次取一个月，不必逐日调用
+        lhb_step = self._step(
+            None, "lhb_history", lambda: self.backfill_lhb(start, end)
         )
 
         days = []
@@ -531,7 +664,6 @@ class DailyCollector:
                     "limit_pool": self._step(
                         target, "limit_pool", lambda t=target: self.collect_limit_pool(t)
                     ),
-                    "lhb": self._step(target, "lhb", lambda t=target: self.collect_lhb(t)),
                     "sentiment": self._step(
                         target,
                         "sentiment",
@@ -539,7 +671,22 @@ class DailyCollector:
                     ),
                 }
             )
-        return {"index_history": index_step, "days": days}
+        return {"index_history": index_step, "lhb_history": lhb_step, "days": days}
+
+    def backfill_lhb(self, start: date, end: date) -> int:
+        """按区间回补龙虎榜。每行自带上榜日，按日期分片写入。"""
+        # 交易日集合用于剔除接口可能返回的非交易日行
+        trade_dates = set(self._trade_dates(start, end))
+        written = 0
+        for chunk_start, chunk_end in _date_chunks(start, end, LHB_BACKFILL_CHUNK_DAYS):
+            records = self.ak.lhb_range(chunk_start, chunk_end)
+            rows = _lhb_rows(chunk_start, records)
+            fresh = [row for row in rows if row["trade_date"] in trade_dates]
+            if not fresh:
+                continue
+            with session_scope() as session:
+                written += _upsert(session, Lhb, fresh)
+        return written
 
     def run(self, trade_date: date | None = None) -> dict:
         """执行一次完整采集，返回各步骤摘要。"""

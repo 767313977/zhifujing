@@ -59,7 +59,7 @@ def backfill(
     result = _build_collector().backfill(start, end)
     days = result["days"]
 
-    steps = [result["index_history"]]
+    steps = [result["index_history"], result["lhb_history"]]
     for day in days:
         steps.extend(value for value in day.values() if isinstance(value, dict))
     failed = [step for step in steps if step.get("status") != "ok"]
@@ -67,6 +67,7 @@ def backfill(
     return {
         "days": len(days),
         "index_history": result["index_history"],
+        "lhb_history": result["lhb_history"],
         "total_steps": len(steps),
         "failed_steps": len(failed),
         "failures": [

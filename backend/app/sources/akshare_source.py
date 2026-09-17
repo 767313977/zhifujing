@@ -128,6 +128,19 @@ class AkshareSource:
         )
         return _records(df)
 
+    def lhb_range(self, start: date, end: date) -> list[dict]:
+        """龙虎榜按日期区间批量取。
+
+        该接口走 datacenter-web.eastmoney.com（与涨停池的 push2ex 不是同一集群），
+        且原生支持区间查询，回补时一次取多天比逐日调用省大量请求。
+        每行自带「上榜日」，调用方按它分组即可。
+        """
+        df = self._call(
+            lambda: ak.stock_lhb_detail_em(start_date=_ymd(start), end_date=_ymd(end)),
+            f"akshare 龙虎榜 {start}~{end}",
+        )
+        return _records(df)
+
     # -------------------------------------------------------------- 市场宽度
 
     def market_activity(self) -> dict:
