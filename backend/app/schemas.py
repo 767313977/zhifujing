@@ -241,9 +241,62 @@ class WatchlistIn(BaseModel):
     note: str | None = None
 
 
-class WatchlistOut(ApiModel):
+class WatchlistRow(BaseModel):
+    """自选股一行。
+
+    行情来自本地缓存的日线（stock_daily），不是实时行情 —— 页面因此
+    不需要联网，打开即读。没有缓存的股票这几项为 null。
+    """
+
     code: str
     name: str | None
     tags: list[str] | None
     note: str | None
     added_at: datetime
+    latest_date: date | None
+    close: float | None
+    pct_chg: float | None
+
+
+# ------------------------------------------------------------------ 个股详情
+
+
+class StockDailyRow(ApiModel):
+    trade_date: date
+    open: float | None
+    high: float | None
+    low: float | None
+    close: float | None
+    pct_chg: float | None
+    volume: float | None
+    amount: float | None
+
+
+class StockProfile(BaseModel):
+    code: str
+    name: str | None
+    in_watchlist: bool
+    note: str | None
+    latest: StockDailyRow | None
+    # 本地缓存的日线覆盖
+    day_count: int
+    first_date: date | None
+    last_date: date | None
+    # 该股历史上过涨停池的日期，便于和复盘关联
+    limit_up_dates: list[date]
+    lhb_count: int
+
+
+# ------------------------------------------------------------------ 复盘笔记
+
+
+class NoteIn(BaseModel):
+    market_view: str | None = None
+    next_plan: str | None = None
+
+
+class NoteOut(ApiModel):
+    trade_date: date
+    market_view: str | None
+    next_plan: str | None
+    updated_at: datetime | None

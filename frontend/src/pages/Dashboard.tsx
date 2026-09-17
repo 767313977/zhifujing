@@ -7,6 +7,7 @@ import LadderBoard from '../components/LadderBoard'
 import Layout from '../components/Layout'
 import LhbTable from '../components/LhbTable'
 import LimitTable from '../components/LimitTable'
+import NotePanel from '../components/NotePanel'
 import SentimentPanel from '../components/SentimentPanel'
 
 interface DashboardData {
@@ -140,6 +141,8 @@ export default function Dashboard() {
           <LimitTable type="broken" stocks={data.broken.stocks} delay={320} />
 
           <LhbTable items={data.lhb} delay={360} />
+
+          <NotePanel tradeDate={data.overview.trade_date} delay={420} />
         </div>
       ) : (
         !error && (

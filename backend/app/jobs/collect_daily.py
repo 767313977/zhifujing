@@ -27,11 +27,14 @@ from app.models import (
     Lhb,
     LimitPool,
     MarketSentiment,
+    StockBasic,
+    StockDaily,
     TradeCalendar,
+    Watchlist,
 )
 from app.services.sentiment import build_sentiment
 from app.sources.akshare_source import AkshareSource
-from app.sources.ifind import IfindClient, to_ths_symbol
+from app.sources.ifind import IfindClient, from_ths_symbol, to_ths_symbol
 from app.sources.markdown_table import pick_float, pick_int, pick_text, to_float, to_int
 
 logger = logging.getLogger(__name__)
@@ -79,6 +82,15 @@ POOL_HISTORY_TRADING_DAYS = 15
 POOL_TYPES = ("up", "down", "broken")
 # 龙虎榜区间批量取的分片跨度（接口 pageSize=5000，约 1 个月不至于超页）
 LHB_BACKFILL_CHUNK_DAYS = 30
+
+# 个股日线单次请求的跨度（日历日）。实测 90 天完整、200 天会被抽样截断成
+# 100 行并丢掉 69 个交易日。留余量取 70，且每块后校验完整性 ——
+# 比硬编码一个猜出来的阈值更稳。
+STOCK_CHUNK_DAYS = 70
+# 首次同步回看的交易日数
+STOCK_FULL_DAYS = 250
+# 每日同步只回看最近几天，够覆盖当日即可
+STOCK_DAILY_DAYS = 10
 
 
 class CollectionBusy(RuntimeError):
@@ -286,6 +298,35 @@ def _lhb_rows(trade_date: date, records: list[dict]) -> list[dict]:
     ]
 
 
+def _stock_rows(records: list[dict], trade_dates: set[date]) -> list[dict]:
+    """把个股日频结果转成 StockDaily 行。
+
+    iFinD 返回的是**日历日**（含周末），非交易日值为空，必须按交易日历过滤，
+    否则 K 线上会多出一堆空点。
+    """
+    rows: list[dict] = []
+    for record in records:
+        day = _parse_ymd(pick_text(record, "日期"))
+        code = pick_text(record, "证券代码")
+        if day is None or not code or day not in trade_dates:
+            continue
+        rows.append(
+            {
+                "trade_date": day,
+                "code": from_ths_symbol(code),
+                "name": pick_text(record, "证券简称"),
+                "open": pick_float(record, "开盘价"),
+                "high": pick_float(record, "最高价"),
+                "low": pick_float(record, "最低价"),
+                "close": pick_float(record, "收盘价"),
+                "volume": pick_float(record, "成交量"),
+                "amount": pick_float(record, "成交额"),
+                "pct_chg": pick_float(record, "涨跌幅"),
+            }
+        )
+    return rows
+
+
 class DailyCollector:
     """日线采集器。"""
 
@@ -462,6 +503,68 @@ class DailyCollector:
         rows = _lhb_rows(trade_date, self.ak.lhb(trade_date))
         with session_scope() as session:
             return _upsert(session, Lhb, rows)
+
+    # ------------------------------------------------------------ 个股日线
+
+    def sync_stock(self, code: str, days: int = STOCK_FULL_DAYS) -> int:
+        """把某只个股的日线同步进 stock_daily。
+
+        本站不做全市场落库（会触发东财频控），只有自选股与看过的个股会缓存到本地，
+        所以这里的量级很小。
+
+        分块请求并在每块后校验完整性：iFinD 的区间过大会**抽样丢弃**而不是
+        砍掉末尾，漏掉的交易日会让 K 线出现静默空洞，必须主动报警。
+        """
+        code = str(code).strip().zfill(6)
+        end = self.latest_trade_date()
+        # 交易日 → 日历日按 1.5 倍粗算，多取一些无妨（交易日历会过滤掉多余的）
+        start = end - timedelta(days=int(days * 1.5))
+        trade_dates = set(self._trade_dates(start, end))
+        if not trade_dates:
+            return 0
+
+        symbol = to_ths_symbol(code)
+        written = 0
+        for chunk_start, chunk_end in _date_chunks(start, end, STOCK_CHUNK_DAYS):
+            records = self.ifind.stock_history(symbol, chunk_start, chunk_end)
+            rows = _stock_rows(records, trade_dates) if records else []
+            expected = {d for d in trade_dates if chunk_start <= d <= chunk_end}
+            missing = expected - {row["trade_date"] for row in rows}
+            if missing:
+                logger.warning(
+                    "%s 在 %s~%s 缺 %d 个交易日，疑似被抽样截断",
+                    code,
+                    chunk_start,
+                    chunk_end,
+                    len(missing),
+                )
+            if not rows:
+                continue
+            with session_scope() as session:
+                written += _upsert(session, StockDaily, rows)
+                # 顺手把名称记进 stock_basic，自选股列表才能显示中文名
+                name = next((r["name"] for r in rows if r["name"]), None)
+                if name:
+                    _upsert(session, StockBasic, [{"code": code, "name": name}])
+        return written
+
+    def sync_watchlist(self, days: int = STOCK_DAILY_DAYS) -> int:
+        """同步自选股近期日线，是每日采集的一部分。
+
+        默认只回看最近几天：当日采集只需要覆盖最新交易日，不必每次拉全程。
+        """
+        with session_scope() as session:
+            codes = list(session.scalars(select(Watchlist.code)))
+        if not codes:
+            return 0
+
+        written = 0
+        for code in codes:
+            try:
+                written += self.sync_stock(code, days=days)
+            except Exception as exc:  # noqa: BLE001 - 单只失败不影响其它自选股
+                logger.warning("同步自选股 %s 失败: %s", code, exc)
+        return written
 
     def collect_sentiment(self, trade_date: date, *, history: bool = False) -> int:
         """汇总当日情绪指标。
@@ -755,6 +858,8 @@ class DailyCollector:
             target, "limit_pool", lambda: self.collect_limit_pool(target)
         )
         steps["lhb"] = self._step(target, "lhb", lambda: self.collect_lhb(target))
+        # 自选股日线：每天跟着刷新，否则自选股页显示的还是上次看的价格
+        steps["watchlist"] = self._step(target, "watchlist", self.sync_watchlist)
         # 情绪依赖涨停池与指数，放最后
         steps["sentiment"] = self._step(
             target, "sentiment", lambda: self.collect_sentiment(target)

@@ -1,5 +1,9 @@
-import { BarChart, LineChart } from 'echarts/charts'
-import type { BarSeriesOption, LineSeriesOption } from 'echarts/charts'
+import { BarChart, CandlestickChart, LineChart } from 'echarts/charts'
+import type {
+  BarSeriesOption,
+  CandlestickSeriesOption,
+  LineSeriesOption,
+} from 'echarts/charts'
 import {
   GridComponent,
   LegendComponent,
@@ -17,6 +21,7 @@ import { useEffect, useRef } from 'react'
 // 按需注册：直接 import 'echarts' 会把整包（600+ 模块）打进产物
 echarts.use([
   BarChart,
+  CandlestickChart,
   LineChart,
   GridComponent,
   LegendComponent,
@@ -26,6 +31,7 @@ echarts.use([
 
 export type ChartOption = echarts.ComposeOption<
   | BarSeriesOption
+  | CandlestickSeriesOption
   | LineSeriesOption
   | GridComponentOption
   | LegendComponentOption

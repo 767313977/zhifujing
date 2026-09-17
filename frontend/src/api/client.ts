@@ -8,9 +8,13 @@ import type {
   PoolType,
   Preset,
   PromotionSeries,
+  ReviewNote,
   ScreenRun,
   Sentiment,
+  StockDailyRow,
+  StockProfile,
   WatchlistItem,
+  WatchlistRow,
 } from './types'
 
 const BASE = '/api'
@@ -74,7 +78,7 @@ export const api = {
   deletePreset: (id: number) =>
     request<{ ok: boolean }>(`/screener/presets/${id}`, { method: 'DELETE' }),
 
-  watchlist: () => request<WatchlistItem[]>('/watchlist'),
+  watchlist: () => request<WatchlistRow[]>('/watchlist'),
 
   addWatchlist: (code: string, name?: string) =>
     request<WatchlistItem>('/watchlist', {
@@ -85,6 +89,33 @@ export const api = {
 
   removeWatchlist: (code: string) =>
     request<{ ok: boolean }>(`/watchlist/${code}`, { method: 'DELETE' }),
+
+  updateWatchlistNote: (code: string, note: string) =>
+    request<WatchlistRow>(`/watchlist/${code}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, note }),
+    }),
+
+  syncWatchlist: (days = 250) =>
+    request<{ rows: number }>(`/watchlist/sync?days=${days}`, { method: 'POST' }),
+
+  stockProfile: (code: string) => request<StockProfile>(`/stock/${code}`),
+
+  stockDaily: (code: string, days = 120) =>
+    request<StockDailyRow[]>(`/stock/${code}/daily?days=${days}`),
+
+  syncStock: (code: string, days = 250) =>
+    request<{ rows: number }>(`/stock/${code}/sync?days=${days}`, { method: 'POST' }),
+
+  note: (date: string) => request<ReviewNote>(`/note/${date}`),
+
+  saveNote: (date: string, marketView: string, nextPlan: string) =>
+    request<ReviewNote>(`/note/${date}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ market_view: marketView, next_plan: nextPlan }),
+    }),
 
   adminStatus: () => request<AdminStatus>('/admin/status'),
 

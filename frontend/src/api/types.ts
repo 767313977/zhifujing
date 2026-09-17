@@ -182,6 +182,46 @@ export interface WatchlistItem {
   added_at: string
 }
 
+/** 自选股一行。行情来自本地缓存的日线，没有缓存时为 null。 */
+export interface WatchlistRow extends WatchlistItem {
+  latest_date: string | null
+  close: number | null
+  pct_chg: number | null
+}
+
+export interface StockDailyRow {
+  trade_date: string
+  open: number | null
+  high: number | null
+  low: number | null
+  close: number | null
+  pct_chg: number | null
+  volume: number | null
+  amount: number | null
+}
+
+export interface StockProfile {
+  code: string
+  name: string | null
+  in_watchlist: boolean
+  note: string | null
+  latest: StockDailyRow | null
+  /** 本地缓存的日线覆盖 */
+  day_count: number
+  first_date: string | null
+  last_date: string | null
+  /** 该股历史上过涨停池的日期 */
+  limit_up_dates: string[]
+  lhb_count: number
+}
+
+export interface ReviewNote {
+  trade_date: string
+  market_view: string | null
+  next_plan: string | null
+  updated_at: string | null
+}
+
 export interface CollectStepResult {
   status: string
   rows: number

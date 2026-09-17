@@ -14,6 +14,7 @@
 import json
 import logging
 import threading
+from datetime import date, timedelta
 from typing import Any
 
 import requests
@@ -60,6 +61,15 @@ def to_ths_symbol(code: str) -> str:
 def from_ths_symbol(symbol: str) -> str:
     """同花顺代码转 6 位裸代码，如 600519.SH → 600519。"""
     return str(symbol).strip().split(".")[0].zfill(6)
+
+
+def normalize_code(raw: str) -> str:
+    """把 600519 / 600519.SH / sh600519 等写法统一成 6 位数字。
+
+    用户在选股结果、K 线页、手工输入等场景给出的写法不一，统一抽数字即可。
+    不在这里做长度校验 —— 那是调用方的业务判断。
+    """
+    return "".join(ch for ch in (raw or "") if ch.isdigit())
 
 
 class IfindError(RuntimeError):
@@ -363,6 +373,27 @@ class IfindClient:
     def stock_performance(self, query: str) -> tuple[str, list[dict]]:
         """个股日频历史行情与技术指标。返回结果含非交易日，需按交易日历过滤。"""
         return self._nl("stock", "get_stock_performance", {"query": query})
+
+    def stock_history(self, symbol: str, start: date, end: date) -> list[dict]:
+        """个股日频 OHLCV。这是唯一能取历史行情的方式（高频接口只给当日）。
+
+        实测三个坑，调用方都要处理：
+
+        1. **返回的是日历日**，含周末。实测「近10个交易日」返回 15 行，
+           其中夹着周六周日，且非交易日的值为空。必须按交易日历过滤。
+        2. **区间过大时不是「砍掉末尾」而是抽样丢弃**。实测请求 200 个日历日
+           被压成 100 行，且 139 个交易日里缺了 69 个、散布在整个区间上 ——
+           画出来是带静默空洞的 K 线，肉眼根本看不出来。
+           实测 90 个日历日以内完整，故调用方必须分块并逐块校验完整性。
+        3. **列顺序不稳定**：同一个问法两次调用返回的列序都不同
+           （收盘价一次在中间、一次在开头），只能按列名取值，不能按位置。
+        """
+        query = (
+            f"{symbol} 从{start.isoformat()}到{end.isoformat()}"
+            f"每个交易日的开盘价、最高价、最低价、收盘价、成交量、成交额、涨跌幅"
+        )
+        _, rows = self._nl("stock", "get_stock_performance", {"query": query})
+        return rows
 
     def index_data(self, query: str) -> tuple[str, list[dict]]:
         """指数行情、技术指标与估值指标。"""
