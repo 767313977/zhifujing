@@ -5,8 +5,9 @@ __pycache__/
 *.egg-info/
 
 # 数据（本地生成，不入库）
+# *.db-* 覆盖 SQLite WAL 模式的边车文件 .db-wal / .db-shm / .db-journal
 backend/data/*.db
-backend/data/*.db-journal
+backend/data/*.db-*
 *.log
 
 # 前端
