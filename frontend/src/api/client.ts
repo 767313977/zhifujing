@@ -6,6 +6,7 @@ import type {
   LhbItem,
   MarketOverview,
   PoolType,
+  PromotionSeries,
   Sentiment,
 } from './types'
 
@@ -49,6 +50,9 @@ export const api = {
     ),
 
   lhb: (date?: string | null) => request<LhbItem[]>(withDate('/lhb', date)),
+
+  promotion: (days = 15) =>
+    request<PromotionSeries>(`/limit/promotion?days=${days}`),
 
   adminStatus: () => request<AdminStatus>('/admin/status'),
 

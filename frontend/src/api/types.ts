@@ -80,6 +80,26 @@ export interface LimitPool {
   stocks: LimitStock[]
 }
 
+/** 某一档连板的晋级情况。各数组与 PromotionSeries.dates 一一对应。 */
+export interface PromotionLevel {
+  level: number
+  label: string
+  /** 昨日该档的股票数 */
+  counts: number[]
+  /** 其中今日晋级到下一档的数量 */
+  promoted: number[]
+  /** 晋级率（百分比），昨日该档无票时为 null */
+  rates: (number | null)[]
+}
+
+export interface PromotionSeries {
+  dates: string[]
+  levels: PromotionLevel[]
+  overall_counts: number[]
+  overall_promoted: number[]
+  overall_rates: (number | null)[]
+}
+
 export interface LhbItem {
   trade_date: string
   code: string

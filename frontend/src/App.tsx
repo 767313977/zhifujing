@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
+import LimitReview from './pages/LimitReview'
 import Placeholder from './pages/Placeholder'
 import SentimentPage from './pages/Sentiment'
 
@@ -9,11 +10,6 @@ const UPCOMING = [
     path: '/sectors',
     title: '板块题材',
     desc: '板块排行、板块内个股、板块历史强度',
-  },
-  {
-    path: '/limit-up',
-    title: '涨停复盘',
-    desc: '按连板高度分层，标注所属题材',
   },
   {
     path: '/screener',
@@ -38,6 +34,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/sentiment" element={<SentimentPage />} />
+        <Route path="/limit-up" element={<LimitReview />} />
         {UPCOMING.map((item) => (
           <Route
             key={item.path}

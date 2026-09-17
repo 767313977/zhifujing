@@ -9,11 +9,28 @@ from sqlalchemy.orm import Session
 from app.api.deps import resolve_trade_date
 from app.db import get_db
 from app.models import Lhb, LimitPool
-from app.schemas import LadderLevel, LhbOut, LimitPoolOut, LimitStock
+from app.schemas import (
+    LadderLevel,
+    LhbOut,
+    LimitPoolOut,
+    LimitStock,
+    PromotionLevel,
+    PromotionSeries,
+)
 
 router = APIRouter(prefix="/api", tags=["复盘"])
 
 POOL_TYPES = {"up", "down", "broken"}
+
+# 晋级率展示的档位：1进2 / 2进3 / 3进4 / 4进5
+PROMOTION_LEVELS = (1, 2, 3, 4)
+
+
+def _rate(promoted: int, total: int) -> float | None:
+    """昨日该档无票时返回 None，而不是 0 —— 0 会被读成「全军覆没」。"""
+    if total == 0:
+        return None
+    return round(promoted / total * 100, 1)
 
 
 def _build_ladder(rows: list[LimitPool]) -> list[LadderLevel]:
@@ -76,3 +93,84 @@ def lhb_list(
         )
     )
     return [LhbOut.model_validate(row) for row in rows]
+
+
+@router.get("/limit/promotion", response_model=PromotionSeries)
+def promotion(
+    days: int = Query(15, ge=2, le=60, description="返回最近 N 个交易日的晋级率"),
+    session: Session = Depends(get_db),
+) -> PromotionSeries:
+    """连板晋级率：昨日 N 板股今日晋级到 (N+1) 板的比例。
+
+    这是打板复盘的核心指标 —— 它衡量「昨天的高度能不能被今天接住」。
+    晋级率同步走高说明资金愿意接力，快速回落说明高位股开始被抛弃。
+
+    注意：算某天的晋级率需要**它前一日**的涨停池作基数，所以 N 天的池子
+    只能得出 N-1 天的晋级率。窗口内最早那天只当基数、不出现在结果里，
+    这样不会因为「前一日无数据」而算出一堆假的 0%。
+    """
+    recent = list(
+        session.scalars(
+            select(LimitPool.trade_date)
+            .distinct()
+            .where(LimitPool.pool_type == "up")
+            .order_by(LimitPool.trade_date.desc())
+            .limit(days + 1)
+        )
+    )
+    if len(recent) < 2:
+        return PromotionSeries(
+            dates=[], levels=[], overall_counts=[], overall_promoted=[], overall_rates=[]
+        )
+
+    dates = sorted(recent)
+    rows = session.execute(
+        select(LimitPool.trade_date, LimitPool.code, LimitPool.consecutive).where(
+            LimitPool.trade_date.in_(dates), LimitPool.pool_type == "up"
+        )
+    ).all()
+
+    # {日期: {代码: 连板数}}，连板数为空时按首板处理
+    pools: dict[date, dict[str, int]] = {day: {} for day in dates}
+    for day, code, consecutive in rows:
+        pools[day][code] = consecutive or 1
+
+    levels: list[PromotionLevel] = []
+    for level in PROMOTION_LEVELS:
+        counts: list[int] = []
+        promoted: list[int] = []
+        rates: list[float | None] = []
+        for index in range(1, len(dates)):
+            previous, today = pools[dates[index - 1]], pools[dates[index]]
+            base = [code for code, value in previous.items() if value == level]
+            hit = sum(1 for code in base if today.get(code) == level + 1)
+            counts.append(len(base))
+            promoted.append(hit)
+            rates.append(_rate(hit, len(base)))
+        levels.append(
+            PromotionLevel(
+                level=level,
+                label=f"{level}进{level + 1}",
+                counts=counts,
+                promoted=promoted,
+                rates=rates,
+            )
+        )
+
+    overall_counts: list[int] = []
+    overall_promoted: list[int] = []
+    overall_rates: list[float | None] = []
+    for index in range(1, len(dates)):
+        previous, today = pools[dates[index - 1]], pools[dates[index]]
+        hit = sum(1 for code, value in previous.items() if today.get(code) == value + 1)
+        overall_counts.append(len(previous))
+        overall_promoted.append(hit)
+        overall_rates.append(_rate(hit, len(previous)))
+
+    return PromotionSeries(
+        dates=dates[1:],
+        levels=levels,
+        overall_counts=overall_counts,
+        overall_promoted=overall_promoted,
+        overall_rates=overall_rates,
+    )

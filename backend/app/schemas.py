@@ -101,6 +101,29 @@ class LimitPoolOut(BaseModel):
     stocks: list[LimitStock]
 
 
+class PromotionLevel(BaseModel):
+    """某一档连板的晋级情况。各数组与 PromotionSeries.dates 一一对应。"""
+
+    level: int
+    label: str
+    # 昨日该档的股票数
+    counts: list[int]
+    # 其中今日晋级到下一档的数量
+    promoted: list[int]
+    # 晋级率（百分比），昨日该档无票时为 null
+    rates: list[float | None]
+
+
+class PromotionSeries(BaseModel):
+    """连板晋级率序列。打板复盘的核心指标。"""
+
+    dates: list[date]
+    levels: list[PromotionLevel]
+    overall_counts: list[int]
+    overall_promoted: list[int]
+    overall_rates: list[float | None]
+
+
 # ------------------------------------------------------------------ 龙虎榜
 
 
