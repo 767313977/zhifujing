@@ -4,6 +4,7 @@ import LimitReview from './pages/LimitReview'
 import Placeholder from './pages/Placeholder'
 import Screener from './pages/Screener'
 import SentimentPage from './pages/Sentiment'
+import Settings from './pages/Settings'
 
 /** 已规划但尚未实现的页面，先占住路由，导航不会失效。 */
 const UPCOMING = [
@@ -17,11 +18,6 @@ const UPCOMING = [
     title: '自选股',
     desc: '自选池、每日表现、复盘笔记',
   },
-  {
-    path: '/settings',
-    title: '数据管理',
-    desc: '采集状态、手动补数、采集日志',
-  },
 ]
 
 export default function App() {
@@ -32,6 +28,7 @@ export default function App() {
         <Route path="/sentiment" element={<SentimentPage />} />
         <Route path="/limit-up" element={<LimitReview />} />
         <Route path="/screener" element={<Screener />} />
+        <Route path="/settings" element={<Settings />} />
         {UPCOMING.map((item) => (
           <Route
             key={item.path}

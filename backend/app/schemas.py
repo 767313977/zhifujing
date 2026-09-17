@@ -165,11 +165,34 @@ class CollectLogOut(ApiModel):
     created_at: datetime
 
 
+class SchedulerStatus(BaseModel):
+    """定时采集任务状态。"""
+
+    enabled: bool
+    running: bool
+    collect_time: str
+    catchup_on_start: bool
+    next_run_time: str | None
+    last_run: str | None
+    last_result: dict | None
+
+
+class TableCoverage(BaseModel):
+    """单张表的覆盖情况。各表能回补的范围不同，必须分别展示。"""
+
+    label: str
+    days: int
+    latest: date | None
+
+
 class AdminStatus(BaseModel):
     latest_sentiment_date: date | None
     latest_limit_pool_date: date | None
     latest_lhb_date: date | None
+    latest_index_date: date | None
     data_days: int
+    coverage: list[TableCoverage]
+    scheduler: SchedulerStatus
     recent_logs: list[CollectLogOut]
 
 

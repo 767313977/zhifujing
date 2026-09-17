@@ -10,7 +10,10 @@
 """
 
 import logging
+import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date, timedelta
 
 from sqlalchemy import func, select
@@ -76,6 +79,33 @@ POOL_HISTORY_TRADING_DAYS = 15
 POOL_TYPES = ("up", "down", "broken")
 # 龙虎榜区间批量取的分片跨度（接口 pageSize=5000，约 1 个月不至于超页）
 LHB_BACKFILL_CHUNK_DAYS = 30
+
+
+class CollectionBusy(RuntimeError):
+    """已有采集任务在运行。"""
+
+
+# 采集互斥锁：定时任务、手动采集、以及用户连点按钮都可能同时触发。
+# 每个 DailyCollector 实例各有自己的令牌桶，两个采集器并发跑等于实际请求
+# 速率翻倍，会直接触发 iFinD 429，所以整个采集过程必须串行。
+_collect_lock = threading.Lock()
+
+
+@contextmanager
+def collect_guard(who: str = "采集") -> Iterator[None]:
+    """采集互斥。
+
+    拿不到锁说明已有任务在跑，**直接抛错而不是排队等待** ——
+    排队会让调用方以为卡住了，不如明确告诉他稍后再试。
+    """
+    if not _collect_lock.acquire(blocking=False):
+        raise CollectionBusy("已有采集任务在运行，请等它结束再试")
+    logger.info("%s 取得采集锁", who)
+    try:
+        yield
+    finally:
+        _collect_lock.release()
+        logger.info("%s 释放采集锁", who)
 
 
 def _upsert(session: Session, model, rows: list[dict]) -> int:
@@ -288,6 +318,32 @@ class DailyCollector:
         if found is None:
             raise RuntimeError("无法确定最近交易日，交易日历为空")
         return found
+
+    def is_trade_day(self, day: date) -> bool:
+        """该日期是否交易日。定时任务靠它跳过周末与节假日。
+
+        交易日历没数据时保守返回 False，避免在非交易日白跑一遍采集。
+        """
+        with session_scope() as session:
+            count = session.scalar(
+                select(func.count())
+                .select_from(TradeCalendar)
+                .where(TradeCalendar.trade_date == day)
+            )
+        return bool(count)
+
+    def has_collected(self, day: date) -> bool:
+        """该日是否已有情绪数据，即是否完成过一次完整采集。
+
+        只看情绪表：它是采集流程的最后一步，有它说明前面几步都跑过了。
+        """
+        with session_scope() as session:
+            count = session.scalar(
+                select(func.count())
+                .select_from(MarketSentiment)
+                .where(MarketSentiment.trade_date == day)
+            )
+        return bool(count)
 
     # -------------------------------------------------------------------- 步骤
 

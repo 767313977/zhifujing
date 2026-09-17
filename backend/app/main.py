@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import admin, limit, market, screener, watchlist
 from app.config import ROOT, get_settings
 from app.db import init_db
+from app.jobs.scheduler import start_scheduler, stop_scheduler
 
 settings = get_settings()
 
@@ -32,7 +33,14 @@ async def lifespan(_app: FastAPI):
         logger.warning("未配置 IFIND_AUTH_TOKEN，iFinD 相关采集将失败")
     if not FRONTEND_DIST.exists():
         logger.warning("未找到前端构建产物 %s，开发期请另起 Vite", FRONTEND_DIST)
-    yield
+
+    # 定时采集随服务一起启停。注意本服务必须单 worker 运行，
+    # 多 worker 会各自拉起一个调度器、同一时刻重复采集。
+    start_scheduler()
+    try:
+        yield
+    finally:
+        stop_scheduler()
 
 
 app = FastAPI(title="复盘选股", version="0.2.0", lifespan=lifespan)

@@ -25,6 +25,12 @@
   --color-down: #00b96b;
   --color-accent: #ffb020;
 
+  /* 语义色。**不能复用 up / down** —— 那两个表达的是行情涨跌（红涨绿跌），
+     拿 down（绿）去表示「失败」会读成完全相反的意思。
+     这里只是恰好与 up/down 同色，但语义分开后未来可以各自调整。 */
+  --color-danger: #ff4d4f;
+  --color-ok: #00b96b;
+
   --font-mono:
     'Cascadia Mono', 'Cascadia Code', Consolas, 'DejaVu Sans Mono', ui-monospace,
     monospace;

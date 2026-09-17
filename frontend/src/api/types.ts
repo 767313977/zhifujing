@@ -123,11 +123,31 @@ export interface CollectLog {
   created_at: string
 }
 
+export interface SchedulerStatus {
+  enabled: boolean
+  running: boolean
+  collect_time: string
+  catchup_on_start: boolean
+  next_run_time: string | null
+  last_run: string | null
+  last_result: Record<string, unknown> | null
+}
+
+/** 单张表的覆盖情况。各表能回补的范围不同，必须分别看。 */
+export interface TableCoverage {
+  label: string
+  days: number
+  latest: string | null
+}
+
 export interface AdminStatus {
   latest_sentiment_date: string | null
   latest_limit_pool_date: string | null
   latest_lhb_date: string | null
+  latest_index_date: string | null
   data_days: number
+  coverage: TableCoverage[]
+  scheduler: SchedulerStatus
   recent_logs: CollectLog[]
 }
 

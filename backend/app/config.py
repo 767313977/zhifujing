@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     # iFinD 单次 symbols 上限，超出会被服务端静默丢弃
     ifind_max_symbols: int = 10
 
+    # --- 定时采集 ---
+    # 交易日收盘后的采集时刻。15:05 是为了等收盘数据稳定。
+    scheduler_enabled: bool = True
+    collect_hour: int = 15
+    collect_minute: int = 5
+    # 本机不常开，启动时若已过采集时刻且当日无数据，补采一次
+    catchup_on_start: bool = True
+
 
 @lru_cache
 def get_settings() -> Settings:

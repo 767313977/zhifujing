@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { AdminStatus, LhbItem, LimitPool, MarketOverview } from '../api/types'
+import Alert from '../components/Alert'
 import IndexStrip from '../components/IndexStrip'
 import LadderBoard from '../components/LadderBoard'
 import Layout from '../components/Layout'
@@ -107,9 +108,7 @@ export default function Dashboard() {
   return (
     <Layout toolbar={toolbar}>
       {error && (
-        <div className="rise mb-4 border border-down/40 bg-down/5 px-4 py-3 text-[13px] text-down">
-          {error}
-        </div>
+        <Alert onClose={() => setError(null)}>{error}</Alert>
       )}
 
       {loading && !data ? (

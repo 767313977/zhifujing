@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
 import type { IndexHistory, IndexSeries, Sentiment } from '../api/types'
+import Alert from '../components/Alert'
 import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
 import Layout from '../components/Layout'
@@ -268,9 +269,7 @@ export default function SentimentPage() {
   return (
     <Layout toolbar={toolbar}>
       {error && (
-        <div className="rise mb-4 border border-down/40 bg-down/5 px-4 py-3 text-[13px] text-down">
-          {error}
-        </div>
+        <Alert onClose={() => setError(null)}>{error}</Alert>
       )}
 
       <div className="space-y-4">

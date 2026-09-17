@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { Preset, ScreenRun } from '../api/types'
+import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import { fmtAmount } from '../lib/format'
@@ -161,15 +162,9 @@ export default function Screener() {
   return (
     <Layout toolbar={toolbar}>
       {error && (
-        <div className="rise mb-4 flex items-start gap-2.5 border border-down/40 bg-down/5 px-4 py-3 text-[13px] text-down">
-          <span>{error}</span>
-        </div>
+        <Alert onClose={() => setError(null)}>{error}</Alert>
       )}
-      {notice && (
-        <div className="rise mb-4 border border-accent/30 bg-accent/[0.04] px-4 py-2.5 text-[12px] text-fg-muted">
-          {notice}
-        </div>
-      )}
+      {notice && <Alert tone="accent" onClose={() => setNotice(null)}>{notice}</Alert>}
 
       <div className="space-y-4">
         <Panel
@@ -266,7 +261,7 @@ export default function Screener() {
                       await api.deletePreset(preset.id)
                       reloadPresets()
                     }}
-                    className="shrink-0 border border-line px-2.5 py-1 text-[11px] text-fg-dim transition-colors hover:border-down/50 hover:text-down"
+                    className="shrink-0 border border-line px-2.5 py-1 text-[11px] text-fg-dim transition-colors hover:border-danger/50 hover:text-danger"
                   >
                     删除
                   </button>
