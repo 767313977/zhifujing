@@ -11,7 +11,7 @@
 
 import logging
 import time
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -29,12 +29,20 @@ from app.models import (
 from app.services.sentiment import build_sentiment
 from app.sources.akshare_source import AkshareSource
 from app.sources.ifind import IfindClient, to_ths_symbol
-from app.sources.markdown_table import pick_float, pick_int, pick_text, to_int
+from app.sources.markdown_table import pick_float, pick_int, pick_text, to_float, to_int
 
 logger = logging.getLogger(__name__)
 
 # 复盘用核心指数。iFinD 对无法识别的代码会**静默丢弃**，采集后必须校验返回行数。
-INDEX_SYMBOLS = ["000001.SH", "399001.SZ", "399006.SZ", "000688.SH", "000852.SH"]
+# 回补时要按中文名提问（自然语言接口对简称更稳），落库仍用带后缀的代码。
+INDEX_NAMES: dict[str, str] = {
+    "000001.SH": "上证指数",
+    "399001.SZ": "深证成指",
+    "399006.SZ": "创业板指",
+    "000688.SH": "科创50",
+    "000852.SH": "中证1000",
+}
+INDEX_SYMBOLS = list(INDEX_NAMES)
 INDEX_INDICATORS = [
     "最新价",
     "涨跌幅",
@@ -44,8 +52,17 @@ INDEX_INDICATORS = [
     "涨停家数",
     "跌停家数",
 ]
+# iFinD 对同一指数可能返回不同交易所的代码：中证1000 既有 000852.SH 也有
+# 399852.SZ（实测两者收盘价与涨跌幅完全一致），且同一次回补的不同日期区间
+# 还可能返回不同的那个。不归一会造成同一指数出现两套代码的重复序列。
+INDEX_CODE_ALIASES = {
+    "399852.SZ": "000852.SH",
+}
 # 沪深两市成交额 = 上证指数 + 深证成指
 AMOUNT_SYMBOLS = ("000001.SH", "399001.SZ")
+
+# index_data 单次请求的日期跨度上限（自然语言接口，区间过大容易被截断）
+INDEX_BACKFILL_CHUNK_DAYS = 120
 
 
 def _upsert(session: Session, model, rows: list[dict]) -> int:
@@ -66,6 +83,78 @@ def _require_today(trade_date: date, what: str) -> None:
             f"{what} 依赖 iFinD 高频行情接口（仅当日），"
             f"请求日期 {trade_date} 非今日；历史行情需改用 index_data 等日频接口"
         )
+
+
+def _parse_ymd(value: object) -> date | None:
+    """iFinD 日期是 20260917 这种紧凑写法。"""
+    text = str(value or "").strip().replace("-", "")
+    if len(text) != 8 or not text.isdigit():
+        return None
+    return date(int(text[:4]), int(text[4:6]), int(text[6:8]))
+
+
+def _date_chunks(start: date, end: date, span_days: int) -> list[tuple[date, date]]:
+    """把日期区间切成若干段，避免自然语言接口单次区间过大被截断。"""
+    chunks: list[tuple[date, date]] = []
+    cursor = start
+    while cursor <= end:
+        chunk_end = min(cursor + timedelta(days=span_days - 1), end)
+        chunks.append((cursor, chunk_end))
+        cursor = chunk_end + timedelta(days=1)
+    return chunks
+
+
+def _single_day_amount(row: dict) -> float | None:
+    """取单日成交额。
+
+    **不能对「成交」做模糊匹配**：iFinD 在未显式指定指标时会自动生成
+    「N日成交额」，那是滚动累计值（实测约为单日的 5 倍），列名里带「N日」。
+    这里显式排除，避免把累计值当成单日值入库。
+    """
+    for column, value in row.items():
+        if "成交" in column and "N日" not in column:
+            return to_float(value)
+    return None
+
+
+def _canonical_index_code(code: str) -> str:
+    """把 iFinD 返回的指数代码归一成同一指数唯一代码。"""
+    normalized = code.strip().upper()
+    return INDEX_CODE_ALIASES.get(normalized, normalized)
+
+
+def _index_nl_rows(records: list[dict], trade_dates: set[date]) -> list[dict]:
+    """把 index_data 的自然语言结果转成 IndexDaily 行。
+
+    三道过滤：
+    1. iFinD 的区间查询会返回**非交易日**，其涨跌幅为空、收盘价为前值填充，
+       必须按交易日历剔除，否则会污染曲线
+    2. 指数代码归一（同一指数可能返回沪/深两套代码）
+    3. 涨跌家数不回补 —— 同一指数同一天，index_data 与 index_highfreq_quotes
+       给出的数值不同（实测上证 0917：991 vs 1062），混用会破坏序列一致性
+    """
+    rows: list[dict] = []
+    for record in records:
+        day = _parse_ymd(pick_text(record, "日期"))
+        raw_code = pick_text(record, "证券代码")
+        if day is None or not raw_code or day not in trade_dates:
+            continue
+        rows.append(
+            {
+                "trade_date": day,
+                "code": _canonical_index_code(raw_code),
+                "name": pick_text(record, "证券简称"),
+                "close": pick_float(record, "收盘价"),
+                "pct_chg": pick_float(record, "涨跌幅"),
+                "amount": _single_day_amount(record),
+                # 历史涨跌家数口径不一致，留空而非填错值
+                "up_count": None,
+                "down_count": None,
+                "limit_up_count": None,
+                "limit_down_count": None,
+            }
+        )
+    return rows
 
 
 def _base(trade_date: date, record: dict, pool_type: str) -> dict:
@@ -369,19 +458,74 @@ class DailyCollector:
             dates = _query()
         return dates
 
-    def backfill(self, start: date, end: date | None = None) -> list[dict]:
-        """回补涨停三池、龙虎榜与情绪指标（情绪周期曲线需要历史数据）。
+    def backfill_index(self, start: date, end: date | None = None) -> int:
+        """用 iFinD `index_data` 回补指数历史。
 
-        可回补：涨停/跌停/炸板数、封板率、炸板率、最高连板 —— 来自按日期取数的
-        akshare 三池，是情绪周期最核心的指标。
-
-        无法回补：指数快照（iFinD 高频接口仅当日）、涨跌家数（乐咕仅当日）、
-        打板效应（依赖当日实时涨幅）。历史情绪表里这三项会留空。
+        `index_highfreq_quotes` 只能取当日快照，历史必须走自然语言接口 `index_data`。
+        逐指数分别提问：自然语言接口对多主体的解析不如结构化接口稳。
         """
         end = end or self.latest_trade_date()
-        results = []
+        trade_dates = set(self._trade_dates(start, end))
+        if not trade_dates:
+            return 0
+
+        # 已有数据的日期跳过。这里必须跳过而非覆盖：upd 写入的行带
+        # up_count 等 None，覆盖会把当日由高频接口取到的涨跌家数抹掉。
+        with session_scope() as session:
+            existing = {
+                (row.trade_date, row.code)
+                for row in session.scalars(
+                    select(IndexDaily).where(
+                        IndexDaily.trade_date >= start,
+                        IndexDaily.trade_date <= end,
+                    )
+                )
+            }
+
+        written = 0
+        for symbol, name in INDEX_NAMES.items():
+            rows: list[dict] = []
+            for chunk_start, chunk_end in _date_chunks(
+                start, end, INDEX_BACKFILL_CHUNK_DAYS
+            ):
+                _, records = self.ifind.index_data(
+                    f"{name} 从{chunk_start.isoformat()}到{chunk_end.isoformat()}"
+                    f"每个交易日的收盘价、涨跌幅、成交额"
+                )
+                rows.extend(_index_nl_rows(records, trade_dates))
+                if symbol not in {row["code"] for row in rows}:
+                    # iFinD 对识别不出的主体静默丢弃，不校验会以为补全了
+                    logger.warning("回补指数 %s 未返回任何数据，请检查主体名称", name)
+
+            fresh = [
+                row for row in rows if (row["trade_date"], row["code"]) not in existing
+            ]
+            if not fresh:
+                continue
+            with session_scope() as session:
+                written += _upsert(session, IndexDaily, fresh)
+            logger.info("回补指数 %-8s %d 行", name, len(fresh))
+        return written
+
+    def backfill(self, start: date, end: date | None = None) -> dict:
+        """回补历史数据：指数行情 + 涨停三池 + 龙虎榜 + 情绪指标。
+
+        可回补：指数日线（走 iFinD `index_data`）、涨停/跌停/炸板数、封板率、
+        炸板率、最高连板、两市成交额。
+
+        无法回补：涨跌家数（乐咕乐股仅返回当日）、打板效应（依赖当日实时涨幅）、
+        当日涨跌家数明细（iFinD 两种接口对同一指数同一天给出的数值不一致）。
+        """
+        end = end or self.latest_trade_date()
+
+        # 指数必须最先补：历史情绪的「两市成交额」取自指数表，顺序反了就取不到
+        index_step = self._step(
+            None, "index_history", lambda: self.backfill_index(start, end)
+        )
+
+        days = []
         for target in self._trade_dates(start, end):
-            results.append(
+            days.append(
                 {
                     "trade_date": target.isoformat(),
                     "limit_pool": self._step(
@@ -395,7 +539,7 @@ class DailyCollector:
                     ),
                 }
             )
-        return results
+        return {"index_history": index_step, "days": days}
 
     def run(self, trade_date: date | None = None) -> dict:
         """执行一次完整采集，返回各步骤摘要。"""

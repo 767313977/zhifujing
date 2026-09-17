@@ -51,15 +51,29 @@ def backfill(
     start: date = Query(..., description="起始日期"),
     end: date | None = Query(None, description="结束日期，缺省取最近交易日"),
 ) -> dict:
-    """历史回补涨停三池、龙虎榜与情绪指标。
+    """历史回补：指数行情 + 涨停三池 + 龙虎榜 + 情绪指标。
 
-    指数快照与涨跌家数无法回补（数据源只提供当日值），详见设计文档 4.1。
+    指数走 iFinD 日频接口按日期回补。涨跌家数与打板效应因数据源只提供当日值
+    而留空，详见设计文档 4.1。
     """
-    days = _build_collector().backfill(start, end)
-    failed = sum(
-        1
-        for day in days
-        for step in day.values()
-        if isinstance(step, dict) and step.get("status") != "ok"
-    )
-    return {"days": len(days), "failed_steps": failed, "detail": days}
+    result = _build_collector().backfill(start, end)
+    days = result["days"]
+
+    steps = [result["index_history"]]
+    for day in days:
+        steps.extend(value for value in day.values() if isinstance(value, dict))
+    failed = [step for step in steps if step.get("status") != "ok"]
+
+    return {
+        "days": len(days),
+        "index_history": result["index_history"],
+        "total_steps": len(steps),
+        "failed_steps": len(failed),
+        "failures": [
+            {"trade_date": day["trade_date"], "task": name, **step}
+            for day in days
+            for name, step in day.items()
+            if isinstance(step, dict) and step.get("status") != "ok"
+        ],
+        "detail": days,
+    }
