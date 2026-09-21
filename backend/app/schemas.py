@@ -127,6 +127,11 @@ class LimitStock(ApiModel):
     open_times: int | None
     consecutive: int | None
     industry: str | None
+    # 开盘啦**精选板块**名，来自涨停天梯的落库结果（`stock_concept`）。
+    # 与 `industry` 是两个口径：industry 是 iFinD 的同花顺行业（「半导体」），
+    # 这个是开盘啦 App 那张天梯的口径（「芯片」）。`stock_concept` 只覆盖涨停股，
+    # 非涨停池的票恒为 None —— 不知道就留空，不拿 industry 顶上（混口径比空着更糟）。
+    board: str | None = None
 
 
 class LadderLevel(BaseModel):

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
 from app.db import get_db
-from app.models import Lhb, LimitPool
+from app.models import Lhb, LimitPool, StockConcept
 from app.schemas import (
     LadderLevel,
     LhbOut,
@@ -37,7 +37,36 @@ def _rate(promoted: int, total: int) -> float | None:
     return round(promoted / total * 100, 1)
 
 
-def _build_ladder(rows: list[LimitPool]) -> list[LadderLevel]:
+def _boards(session: Session, trade_date: date) -> dict[str, str]:
+    """当日每只涨停股的**开盘啦精选板块**名（涨停天梯的落库结果）。
+
+    梯队上的分类标签原本用的是 `limit_pool.industry`，那是 iFinD 的**同花顺行业**
+    （半导体 / 家居用品 / 铁路公路），与开盘啦 App 那张天梯不是一个口径 ——
+    同一只票会给出完全不同的词（博通集成：半导体 vs 芯片；三羊马：铁路公路 vs
+    智能驾驶）。短线看的是后者，所以改成读这张表。
+
+    只覆盖涨停股，且实测每只票恰好一个板块（09-21：101 只各 1 条，涨停池 103 只
+    里有 2 只没归到板块）。**没归到的不编**，留空。
+    """
+    return dict(
+        session.execute(
+            select(StockConcept.code, StockConcept.concept).where(
+                StockConcept.trade_date == trade_date
+            )
+        ).all()
+    )
+
+
+def _to_stock(row: LimitPool, boards: dict[str, str]) -> LimitStock:
+    """开盘啦板块名不在 `LimitPool` 里（那张表是东财口径），校验后再补进去。"""
+    return LimitStock.model_validate(row).model_copy(
+        update={"board": boards.get(row.code)}
+    )
+
+
+def _build_ladder(
+    rows: list[LimitPool], boards: dict[str, str]
+) -> list[LadderLevel]:
     """按连板高度分层，高度从高到低。"""
     buckets: dict[int, list[LimitPool]] = {}
     for row in rows:
@@ -46,7 +75,7 @@ def _build_ladder(rows: list[LimitPool]) -> list[LadderLevel]:
         LadderLevel(
             consecutive=level,
             count=len(items),
-            stocks=[LimitStock.model_validate(item) for item in items],
+            stocks=[_to_stock(item, boards) for item in items],
         )
         for level, items in sorted(buckets.items(), reverse=True)
     ]
@@ -74,13 +103,16 @@ def limit_pool(
             )
         )
     )
+    # 只要涨停池查开盘啦板块归属 —— `stock_concept` 就是涨停天梯的落库结果，
+    # 跌停 / 炸板池本来就没有对应数据
+    boards = _boards(session, trade_date) if pool_type == "up" else {}
     return LimitPoolOut(
         trade_date=trade_date,
         pool_type=pool_type,
         total=len(rows),
         # 梯队只对涨停有意义：跌停是「连续跌停」、炸板池没有连板数
-        ladder=_build_ladder(rows) if pool_type == "up" else None,
-        stocks=[LimitStock.model_validate(row) for row in rows],
+        ladder=_build_ladder(rows, boards) if pool_type == "up" else None,
+        stocks=[_to_stock(row, boards) for row in rows],
     )
 
 
