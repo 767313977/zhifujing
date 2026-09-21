@@ -14,9 +14,13 @@ from app.schemas import (
     LhbOut,
     LimitPoolOut,
     LimitStock,
+    LimitStockTheme,
+    LimitThemeItem,
+    LimitThemes,
     PromotionLevel,
     PromotionSeries,
 )
+from app.services.themes import limit_up_themes
 
 router = APIRouter(prefix="/api", tags=["复盘"])
 
@@ -93,6 +97,31 @@ def lhb_list(
         )
     )
     return [LhbOut.model_validate(row) for row in rows]
+
+
+@router.get("/limit/themes", response_model=LimitThemes)
+def limit_themes(
+    trade_date: date = Depends(resolve_trade_date),
+    session: Session = Depends(get_db),
+) -> LimitThemes:
+    """涨停股的题材归属：哪些题材聚了最多涨停股，以及每只票挂的题材。
+
+    聚合口径见 `app.services.themes.limit_up_themes`（板块页与飞书简报共用一份）。
+    """
+    clusters, by_stock = limit_up_themes(session, trade_date)
+    return LimitThemes(
+        trade_date=trade_date,
+        clusters=[
+            LimitThemeItem(
+                concept=item.concept, count=item.count, pct_chg=item.pct_chg
+            )
+            for item in clusters
+        ],
+        stocks=[
+            LimitStockTheme(code=code, themes=themes)
+            for code, themes in by_stock.items()
+        ],
+    )
 
 
 @router.get("/limit/promotion", response_model=PromotionSeries)

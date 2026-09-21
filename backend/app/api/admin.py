@@ -10,14 +10,25 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
 from app.jobs.scheduler import get_scheduler
-from app.models import CollectLog, IndexDaily, Lhb, LimitPool, MarketSentiment
+from app.models import (
+    CollectLog,
+    IndexDaily,
+    Lhb,
+    LimitPool,
+    MarketSentiment,
+    SectorDaily,
+    StockConcept,
+    StockDaily,
+)
 from app.schemas import (
     AdminStatus,
     CollectLogOut,
     CollectResult,
+    IfindQuota,
     SchedulerStatus,
     TableCoverage,
 )
+from app.services.usage import quota_status
 from app.sources.ifind import IfindError
 
 logger = logging.getLogger(__name__)
@@ -74,10 +85,14 @@ def status(session: Session = Depends(get_db)) -> AdminStatus:
             _coverage(session, IndexDaily, "指数日线"),
             _coverage(session, LimitPool, "涨停三池"),
             _coverage(session, Lhb, "龙虎榜"),
+            _coverage(session, SectorDaily, "板块行情"),
+            _coverage(session, StockConcept, "涨停题材"),
+            _coverage(session, StockDaily, "个股日线"),
             _coverage(session, MarketSentiment, "情绪指标"),
         ],
         scheduler=SchedulerStatus.model_validate(scheduler_status),
         recent_logs=[CollectLogOut.model_validate(log) for log in logs],
+        ifind_quota=IfindQuota.model_validate(quota_status()),
     )
 
 
