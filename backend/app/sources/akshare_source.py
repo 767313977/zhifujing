@@ -141,6 +141,45 @@ class AkshareSource:
         )
         return _records(df)
 
+    def lhb_institutions_range(self, start: date, end: date) -> list[dict]:
+        """龙虎榜机构买卖每日统计。**只有区间版**：单日就是 `start == end`。
+
+        与 `lhb()` 的区别：那个是**全部**席位的汇总（游资、散户都算在内），
+        这个只算机构；数据源也不同（这个是 datacenter 的统计口径）。
+
+        接口原生支持区间、由 akshare 自己翻页 —— 实测**整年一次调用**
+        返回 12,481 行 / 252 个日期、约 22 秒，逐日调用要 250 次，
+        所以补历史和不补的价格差不多。每行自带 `上榜日期`，写库按它分日期。
+
+        **无数据返回空表而不是报错**：东财对空结果返回 `result: null`，
+        akshare 却直接取 `data_json["result"]["pages"]`，于是抛 TypeError
+        （`'NoneType' object is not subscriptable`）。非交易日、以及交易日但
+        无机构上榜，都会走到这条路径 —— 那是「没有」，不是取数失败，
+        不该让整段补采中断。
+        """
+        try:
+            df = self._call(
+                lambda: ak.stock_lhb_jgmmtj_em(
+                    start_date=_ymd(start), end_date=_ymd(end)
+                ),
+                f"akshare 龙虎榜机构统计 {start}~{end}",
+            )
+        except TypeError as exc:
+            logger.info("龙虎榜机构统计 %s~%s 无数据: %s", start, end, exc)
+            return []
+        return _records(df)
+
+    # -------------------------------------------------------------- 资金面
+
+    def etf_spot(self) -> list[dict]:
+        """ETF 实时快照，含**最新份额**。
+
+        一次返回全市场约 1600 只（请求次数与只数无关，恒定 1 次），
+        所以调用方不必按代码分批。
+        """
+        df = self._call(ak.fund_etf_spot_em, "akshare ETF 快照")
+        return _records(df)
+
     # -------------------------------------------------------------- 市场宽度
 
     def market_activity(self) -> dict:

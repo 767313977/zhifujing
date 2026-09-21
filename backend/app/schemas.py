@@ -22,6 +22,15 @@ class IndexQuote(ApiModel):
     down_count: int | None
     limit_up_count: int | None
     limit_down_count: int | None
+    # --- 以下由本地算法补上（`services/index_tech.py`，不落库）---
+    ma5: float | None = None
+    ma20: float | None = None
+    above_ma5: bool | None = None
+    above_ma20: bool | None = None
+    # 今日成交额 / 前 5 日均额。>1.1 放量、<0.9 缩量
+    vol_ratio: float | None = None
+    # 量价配合标签：放量上涨 / 缩量下跌 / 平量横盘 …
+    vol_price: str | None = None
 
 
 # --------------------------------------------------------------------- 情绪
@@ -37,14 +46,50 @@ class SentimentOut(ApiModel):
     max_consecutive: int | None
     up_count: int | None
     down_count: int | None
+    # 全市场口径的涨跌超 5% 家数（只有当日值）
+    up5_count: int | None
+    down5_count: int | None
     total_amount: float | None
     yesterday_limit_today_avg: float | None
+
+
+class DivergenceOut(BaseModel):
+    """指数与个股广度是否背离（当日）。
+
+    `level` 供前端上色：`weight_pull`（权重拉抬）/ `theme_active`（题材活跃）/
+    `aligned`（同向）。判据与阈值写在 `services/index_tech.py` 里，
+    `detail` 把依据数字（指数涨跌幅、涨跌家数）带出来，结论不自成黑盒。
+    """
+
+    level: str
+    title: str
+    detail: str
+
+
+class TurnoverSeries(BaseModel):
+    """两市成交额的近期序列，只给复盘页的柱状图用。
+
+    不复用 `SentimentOut` 列表：这里要的是「**截至所选交易日**」的那一段
+    （翻到历史日期时不能把之后的日子也画出来），且只要图表用得上的三个数组。
+    """
+
+    dates: list[date]
+    # 上证指数 + 深证成指 成交额（元）。**缺数的日子必须是 null**，
+    # 不能补 0 —— 图上留空隙与「当天真的没成交」是两件事
+    amounts: list[float | None]
+    # 当日**上证指数**涨跌幅，只用来给柱子定红绿（红=涨、绿=跌），与 amounts 等长。
+    # 注意它跟成交额自己涨跌无关：这是 K 线副图的老惯例，让柱子同时说「量价配合」
+    pct_chg: list[float | None]
 
 
 class MarketOverview(BaseModel):
     trade_date: date
     indexes: list[IndexQuote]
     sentiment: SentimentOut | None
+    # 背离判断。历史日期没有涨跌家数（数据源只给当日），这里是 null
+    divergence: DivergenceOut | None = None
+    # 成交额柱状图的尾巴（截至 trade_date），没有情绪数据时为 null
+    turnover: TurnoverSeries | None = None
 
 
 class IndexSeries(BaseModel):
@@ -140,6 +185,212 @@ class LhbOut(ApiModel):
     interpretation: str | None
 
 
+# -------------------------------------------------------------------- 板块
+
+
+class SectorQuote(BaseModel):
+    """板块排行里的一行。精选与行业一套结构，没有的字段留 null。
+
+    ⚠️ 换开盘红之后**只有 4 个字段真的有值**：名称 / 涨跌幅 / 成交额 / 强度。
+    净流入、涨跌家数、领涨股、成分股数在它的板块行里没有可反解的对应列，
+    一律是 null（见 `sources/kaipanhong.py` 顶部）—— 本就没有的字段不能给 0。
+    """
+
+    code: str
+    name: str
+    taxonomy: str
+    # 开盘啦的强度值，也是它 App 里板块榜的排序依据。**量纲不可跨口径比**
+    strength: float | None
+    pct_chg: float | None
+    # 由已落库的历史复利算出，历史不够 N 个交易日时为 null
+    pct_chg_5d: float | None
+    amount: float | None
+    net_inflow: float | None
+    up_count: int | None
+    down_count: int | None
+    member_count: int | None
+    leader_name: str | None
+    leader_pct_chg: float | None
+    # 当日涨停家数。走「个股 → 精选板块」归属聚合，只有精选口径有；
+    # 行业为 null（涨停天梯只给精选板块的归属）
+    limit_up_count: int | None
+
+
+class SectorRanking(BaseModel):
+    trade_date: date
+    taxonomy: str
+    total: int
+    # 当日无涨跌幅（数据源还没更新）的板块数，用来提示数据不完整
+    missing: int
+    # 当日取自 iFinD 兜底口径（成分股加权平均）的板块数。同花顺概念指数
+    # 当天拿不到，这些行的数字与同花顺官网可能差 0.5~2 个百分点，次日会订正。
+    estimated: int
+    boards: list[SectorQuote]
+
+
+class SectorSeries(BaseModel):
+    """单个板块的日线序列，用于板块详情走势图。"""
+
+    code: str
+    name: str
+    taxonomy: str
+    dates: list[date]
+    pct_chg: list[float | None]
+    amount: list[float | None]
+
+
+class SectorCompareSeries(BaseModel):
+    """对比图里的一条线。values 是以 base 为起点复利出来的净值，非真实指数点位。"""
+
+    code: str
+    name: str
+    taxonomy: str
+    values: list[float | None]
+
+
+class SectorCompare(BaseModel):
+    dates: list[date]
+    # 归一化基准，各条线都从它起步，所以纵轴只能看相对强弱
+    base: float
+    series: list[SectorCompareSeries]
+
+
+class SectorMemberItem(BaseModel):
+    code: str
+    name: str | None
+    close: float | None
+    pct_chg: float | None
+    amount: float | None
+    turnover: float | None
+    # 当日连板数；没涨停时为 null（不是 0，0 会被读成「首板」）
+    consecutive: int | None
+
+
+class SectorMembers(BaseModel):
+    trade_date: date
+    sector_code: str
+    sector_name: str
+    taxonomy: str
+    # 成分股数。开盘红一次给全量，所以就是取到几只
+    member_count: int | None
+    # 旧字段：iFinD 选股接口有 100 行上限，换开盘红之后不再有，恒为 false。
+    # 保留是为了不动前端类型（前端仍拿它决定要不要显示「只显示前 100 只」的提示）
+    truncated: bool
+    # 取不到成分股时的原因，能取到就是 null。当日必然取不到 —— 开盘红的成分股
+    # 接口只服务历史日期，页面要如实说明，不能显示成「该板块没有成分股」
+    note: str | None = None
+    members: list[SectorMemberItem]
+
+
+class SectorHeatItem(BaseModel):
+    """板块热力里的一格。只带一眼要看的信息，不带全套字段。"""
+
+    code: str
+    name: str
+    pct_chg: float | None
+    amount: float | None
+    limit_up_count: int | None
+
+
+class SectorHeatGroup(BaseModel):
+    taxonomy: str
+    total: int
+    rising: int
+    falling: int
+    average: float | None
+    leaders: list[SectorHeatItem]
+    laggards: list[SectorHeatItem]
+
+
+class SectorHeat(BaseModel):
+    """首页「板块热力」：精选与行业各一组强弱概览。"""
+
+    trade_date: date
+    # 字段名从 concept 改成 selected：口径换成了开盘红的「精选板块」，
+    # 继续叫 concept 会让「概念」这个已经不存在的东西留在接口里
+    selected: SectorHeatGroup
+    industry: SectorHeatGroup
+
+
+class RotationCell(BaseModel):
+    """轮动矩阵里的一格：某天排名第 N 的板块。
+
+    `value` 是**排序所依据的那个指标**（量能=成交额、强度=涨跌幅），
+    `pct_chg` 另外带上，因为按成交额排序时格子里的数字也该按涨跌上色。
+    """
+
+    code: str
+    name: str
+    value: float | None
+    pct_chg: float | None
+
+
+class RotationLeader(BaseModel):
+    """当天该板块的领涨个股（矩阵里「领涨」那一行的一只）。
+
+    ⚠️ 口径是「该板块**当日的涨停股**」，来自开盘红的涨停天梯（`stock_concept`），
+    **不是**开盘啦那种「当日涨幅前 5 名」。后者的精确做法只有逐个板块调成分股接口
+    （`ZhiShuStockList_W8`），20 列就是 20 次按需请求、首次要约 7 秒 ——
+    为一行次级信息不值当。涨停股对短线也更直接，而且是零额外请求（数据已在库里）。
+    """
+
+    code: str
+    name: str | None
+    # 当日连板数。1 = 首板；拿不到（不在涨停池里）时是 null
+    consecutive: int | None
+
+
+class RotationColumn(BaseModel):
+    """一列 = 一个交易日，格子按指标从高到低排。"""
+
+    trade_date: date
+    cells: list[RotationCell]
+    # 「领涨」行：当天**第 1 名板块**的涨停股，按连板数降序。没有涨停股就是空列表
+    leaders: list[RotationLeader] = []
+
+
+class SectorRotation(BaseModel):
+    """板块轮动矩阵：每列一天、每行当天的第 N 名。
+
+    列是**从新到旧**排的（最新在最左）—— 盯盘时先看当天，再往左回溯。
+    """
+
+    taxonomy: str
+    metric: str
+    metric_label: str
+    top: int
+    columns: list[RotationColumn]
+
+
+# ------------------------------------------------------------------ 涨停题材
+
+
+class LimitThemeItem(BaseModel):
+    """一个题材（概念板块）当日聚集了多少只涨停股。"""
+
+    concept: str
+    count: int
+    pct_chg: float | None
+
+
+class LimitStockTheme(BaseModel):
+    """单只涨停股挂的题材。按板块当日涨跌幅降序，最热的排前面。
+
+    返回**全部**题材，展示时再截断 —— 前端要按这个列表做题材筛选，
+    截断了就会出现「标签写着 10 只涨停、点进去只剩 1 只」。
+    """
+
+    code: str
+    themes: list[str]
+
+
+class LimitThemes(BaseModel):
+    trade_date: date
+    # 至少 MIN_CLUSTER 只涨停股共同挂着的题材，按涨停家数降序
+    clusters: list[LimitThemeItem]
+    stocks: list[LimitStockTheme]
+
+
 # --------------------------------------------------------------- 数据管理
 
 
@@ -185,6 +436,43 @@ class TableCoverage(BaseModel):
     latest: date | None
 
 
+class IfindToolUsage(BaseModel):
+    server: str
+    tool: str
+    calls: int
+
+
+class IfindQuota(BaseModel):
+    """iFinD 调用配额视图。
+
+    额度是**账号级**的 —— 定时采集、形态选股、手工补数共用一个池子，
+    所以这个视图不属于任何单一链路，单独给一块。
+
+    计量窗口是**订阅周期**不是自然月：iFinD 后台「计量区间」是
+    2026-09-17 ~ 2026-10-17 这种滚动窗口，起止都落在订阅日（见
+    IFIND_CYCLE_START_DAY），所以字段一律用 cycle 而不是 month。
+    """
+
+    # 当前计量周期的起止日（含）。跨月，所以两个都要给前端
+    cycle_start: date
+    cycle_end: date
+    monthly_quota: int
+    cycle_calls: int
+    cycle_remaining: int
+    today_calls: int
+    cycle_trade_days_passed: int
+    cycle_trade_days_total: int
+    # 计量从哪天开始。晚于周期起点时，cycle_calls 只是本周期**有记录以来**的消耗
+    counting_since: date | None
+    # 外推实际用到的样本交易日数
+    sampled_trade_days: int
+    # 按样本期的日均用量外推到整周期。样本不足（<3 个交易日）时为 None
+    projected_cycle_calls: int | None
+    # 已用比例，用于页面变色与配额守卫
+    usage_ratio: float | None
+    by_tool: list[IfindToolUsage]
+
+
 class AdminStatus(BaseModel):
     latest_sentiment_date: date | None
     latest_limit_pool_date: date | None
@@ -194,6 +482,7 @@ class AdminStatus(BaseModel):
     coverage: list[TableCoverage]
     scheduler: SchedulerStatus
     recent_logs: list[CollectLogOut]
+    ifind_quota: IfindQuota
 
 
 # -------------------------------------------------------------------- 选股器
@@ -287,6 +576,27 @@ class StockProfile(BaseModel):
     lhb_count: int
 
 
+class StockThemeItem(BaseModel):
+    """个股挂的一个题材，附带该板块最近一个交易日的表现。
+
+    板块表现取自 `sector_daily` 的最新交易日 —— 个股题材本身不是按日的快照，
+    所以只能给「最近一个交易日」的板块涨跌幅，不能声称是某天的。
+    """
+
+    concept: str
+    # 能对上板块表时给板块代码；对不上（如「沪深300样本股」）为 null
+    board_code: str | None
+    pct_chg: float | None
+
+
+class StockThemes(BaseModel):
+    code: str
+    name: str | None
+    # 上面的板块涨跌幅对应的交易日
+    board_date: date | None
+    themes: list[StockThemeItem]
+
+
 # ------------------------------------------------------------------ 复盘笔记
 
 
@@ -300,3 +610,177 @@ class NoteOut(ApiModel):
     market_view: str | None
     next_plan: str | None
     updated_at: datetime | None
+
+
+# ------------------------------------------------------------------ 形态选股
+
+
+class PatternMeta(BaseModel):
+    """形态清单的一项，给前端做分组筛选。"""
+
+    key: str
+    name: str
+    group: str
+
+
+class PatternHitItem(BaseModel):
+    """一只票命中的某一个形态。"""
+
+    pattern: str
+    pattern_name: str
+    group: str
+    score: float
+    # 突破价 / 支撑价等关键位，用于在 K 线图上画线
+    key_levels: dict
+    # 平台振幅、放量倍数等明细，用于解释「凭什么说它命中了」
+    detail: dict
+
+
+class PatternStockOut(BaseModel):
+    """一只票的形态命中汇总 —— 列表页一行。
+
+    一只票可能同时命中多个形态（如既创 120 日新高又回踩不破），归并成一行、
+    多个标签。`score` 取其中最高分，作为排序依据。
+
+    `avg_amount` / `total_mv` 来自**股票池**（`stock_universe`），是这只票的
+    **属性**而不是信号当天的快照，所以从池子实时取、不冗余存进 `pattern_hit` ——
+    池子外的票（日均成交额跌到门槛以下）这两项为 null。
+    `close` / `pct_chg` / `amount` 相反，是逐日快照，必须随命中记录一起存下来。
+    """
+
+    code: str
+    name: str | None
+    trade_date: date
+    close: float | None
+    pct_chg: float | None
+    amount: float | None
+    # 近 20 日日均成交额（元），判断「这个突破能不能承接我的仓位」
+    avg_amount: float | None
+    # 总市值（元），判断「是题材小票还是权重」
+    total_mv: float | None
+    score: float
+    patterns: list[PatternHitItem]
+
+
+class PatternCount(BaseModel):
+    pattern: str
+    pattern_name: str
+    group: str
+    # 命中该形态的股票数
+    stocks: int
+
+
+class PatternSummary(BaseModel):
+    """某日的形态命中概况，给首页面板与飞书简报用。"""
+
+    trade_date: date | None
+    total_hits: int
+    total_stocks: int
+    by_pattern: list[PatternCount]
+
+
+# ------------------------------------------------------------------ 资金面
+
+
+class MarginSnapshot(BaseModel):
+    """单个市场的两融快照，**单位元**。"""
+
+    financing_balance: float | None  # 融资余额
+    financing_buy: float | None  # 融资买入额
+    securities_balance: float | None  # 融券余额
+
+
+class FundFlowOverview(BaseModel):
+    """资金面总览（当日）。所有金额单位：元。"""
+
+    trade_date: date
+    sh: MarginSnapshot | None
+    sz: MarginSnapshot | None
+    # 两市合计。**两市都有数时才给** —— 深市常比沪市晚一天（实测），
+    # 只有一个市场时相加会把「待披露」误报成「归零」
+    financing_total: float | None
+    financing_buy_total: float | None
+    # 与上一交易日相比的融资余额变化（同口径，两边齐全才算）
+    financing_change: float | None
+    # 沪深股通**成交总额**。⚠️ 官方 2024-08 起不再披露买卖方向，
+    # 所以这里没有「净流入」—— 只有活跃度
+    hsgt_turnover: float | None
+    hsgt_turnover_prev: float | None
+    # 龙虎榜机构席位净买额合计（按代码去重后相加）
+    institution_net: float | None
+    institution_count: int
+    # ETF 净申赎估算（份额变化 × 收盘价）。缺上一日数据时为 None
+    etf_net_inflow: float | None
+
+
+class FundsSeries(BaseModel):
+    """两融与北向成交额的走势。"""
+
+    dates: list[date]
+    financing_balance: list[float | None]
+    financing_buy: list[float | None]
+    hsgt_turnover: list[float | None]
+    # 该日两市数据是否齐全。不齐的日子上面两个序列是 None，
+    # 前端据此断开曲线，而不是画成 0
+    financing_complete: list[bool]
+
+
+class EtfFlowItem(BaseModel):
+    code: str
+    name: str | None
+    close: float | None
+    pct_chg: float | None
+    amount: float | None  # 成交额（元）
+    shares: float | None  # 当日份额（份）
+    share_delta: float | None  # 份额变化（份），正数 = 净申购
+    net_inflow: float | None  # 净申赎估算（元）
+
+
+class EtfFlowBoard(BaseModel):
+    trade_date: date
+    prev_date: date | None = None
+    has_prev: bool
+    items: list[EtfFlowItem]
+
+
+class EtfIndustryItem(BaseModel):
+    """一个行业 / 主题分类下的 ETF 汇总。
+
+    **没有合计份额变化**：份额单位是「份」，不同 ETF 每份净值差几个数量级，
+    相加出来的数字没有任何含义。能加的是金额 —— 净申赎与成交额。
+    """
+
+    category: str
+    fund_count: int
+    net_inflow: float | None  # 该分类净申赎合计（元）
+    amount: float | None  # 该分类成交额合计（元）
+    pct_chg: float | None  # 成交额加权平均涨跌幅
+    # 该分类下的 ETF 明细，只给前几只（按净申赎降序），全量交给「按单只」视图
+    funds: list[EtfFlowItem]
+
+
+class EtfIndustryBoard(BaseModel):
+    trade_date: date
+    prev_date: date | None = None
+    has_prev: bool
+    items: list[EtfIndustryItem]
+
+
+class InstitutionItem(BaseModel):
+    code: str
+    name: str | None
+    close: float | None
+    pct_chg: float | None
+    buy_count: int | None
+    sell_count: int | None
+    buy_amount: float | None
+    sell_amount: float | None
+    net_amount: float | None
+    reason: str | None
+
+
+class InstitutionBoard(BaseModel):
+    trade_date: date
+    items: list[InstitutionItem]
+    # 去重后的股票数（原始行数会因「多条上榜原因」更多）
+    total: int

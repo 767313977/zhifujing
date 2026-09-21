@@ -11,8 +11,11 @@
 - 高频行情工具返回结构化 `tables`；自然语言工具返回 `answer`（Markdown 表格）
 """
 
+import csv
+import io
 import json
 import logging
+import re
 import threading
 from datetime import date, timedelta
 from typing import Any
@@ -21,8 +24,9 @@ import requests
 import urllib3
 
 from app.config import Settings, get_settings
+from app.services.usage import record_call
 from app.sources.base import TokenBucket, chunked, retry_call
-from app.sources.markdown_table import parse_tables, to_int
+from app.sources.markdown_table import parse_tables, to_int, to_text
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +87,28 @@ class IfindRateLimitError(IfindError):
 # iFinD 限流时 HTTP 状态码仍是 200，错误藏在工具结果文本里，只能按文本识别
 _RATE_LIMIT_MARKERS = ("请求过于频繁", "status: 429")
 
+# 结果超出表格上限（100 行）时，iFinD 会在回答里附一个**全量** CSV 下载链接。
+# 走 o.thsi.cn，不受 5 req/s 限制，也不计 tools/call 配额。
+#
+# ⚠️ **但 CSV 不是每个工具都给**。`search_stocks`（选股）一直给；
+# `get_stock_performance`（批量行情）在 2026-09-21 起不给了 ——
+# 那天起它任何超过 100 行的请求都只回一张抽样表，回答末尾写
+# 「数据被截断，目前无生成csv权限」。**抽样表看起来和完整数据一模一样**
+# （同样的列名、同样的数值格式、日期也对），只有这句话能区分 ——
+# 所以批量行情只能按「结果 ≤100 行」的形状去问，见 `jobs/collect_kline.py`。
+_CSV_URL = re.compile(r"https?://\S+?\.csv")
+
+# 表格只给了抽样数据的两种情况，都在回答正文里留一句话。
+# 真正的问题是**上面那句「无生成csv权限」的文案是新出现的** ——
+# 旧代码只认「数据过大」，于是 2026-09-21 那天起批量行情一直静默退回抽样表，
+# 连续几天把残缺数据写进库而没有任何告警。凡是要解析这类回答的地方，
+# 都必须把这里当成白名单来用，宁可多认一种文案。
+_OVERSIZED_MARKERS = ("数据过大", "数据被截断")
+
+# 结果集 CSV 的下载超时。实测 50 只 × 48 天约 2400 行不到 1 秒，
+# 但首次建库时单次可能上万行，给足余量
+CSV_TIMEOUT = 180.0
+
 
 def _content_text(response: dict) -> str:
     """取出 MCP 响应的内容文本。"""
@@ -99,6 +125,14 @@ def _content_text(response: dict) -> str:
 
 def _is_rate_limited(text: str) -> bool:
     return any(marker in text for marker in _RATE_LIMIT_MARKERS)
+
+
+# 2026-09-21：几个只服务板块链路的成员被删掉了 —— `sector_data` / `sector_quotes`
+# （概念板块当日兜底）、`board_members`（成分股名单）、`stock_themes`（个股 →
+# 同花顺概念）以及配套的 `THEME_COLUMN` / `_pick_stock_code` / `_split_concepts`。
+# 板块分类整体换成开盘红之后它们没有任何调用方了（见设计文档 8.32）。
+# 这里留一条记录而不是静默删除：那些注释里记着 iFinD 的问句坑（「同花顺」前缀是噪音、
+# 返回行标签是反的、100 行上限），将来若还要用 iFinD 问板块，值得先回来翻一眼。
 
 
 def _parse_body(text: str) -> Any:
@@ -133,7 +167,16 @@ def _extract(response: dict) -> tuple[dict, dict]:
 
     inner = outer.get("data")
     if isinstance(inner, str):
-        inner = json.loads(inner) if inner.strip() else {}
+        text = inner.strip()
+        if not text:
+            inner = {}
+        else:
+            try:
+                inner = json.loads(text)
+            except json.JSONDecodeError:
+                # 有些工具的 data 直接就是 Markdown 正文而不是嵌套 JSON
+                # （实测 get_stock_summary），此时把它当成 answer
+                inner = {"answer": text}
     return outer, inner or {}
 
 
@@ -242,6 +285,12 @@ class IfindClient:
             }
             try:
                 response, body = self._post(server, payload)
+                # 一次 _post 就是一次真实发出、可能被计费的 tools/call。
+                # 计数点必须在这里（_do 之内、retry_call 之内）而不是 call() 外层：
+                # 外层只数到「一次调用」，把重试全漏掉，而重试同样在花配额。
+                # 漏记会让配额守卫低估用量，低估是危险的方向。
+                # 计量是数据源层的唯一一处例外：它必须与真实请求同生共死。
+                record_call(server, tool)
                 if response.status_code == 429:
                     raise IfindRateLimitError(f"iFinD HTTP 429: {response.text[:120]}")
                 if isinstance(body, dict) and "error" in body:
@@ -395,17 +444,66 @@ class IfindClient:
         _, rows = self._nl("stock", "get_stock_performance", {"query": query})
         return rows
 
+    def search_stocks_full(self, query: str) -> tuple[int | None, list[dict]]:
+        """选股结果的**全量**行，配合 `matched` 一起返回。
+
+        表格只给 100 行，CSV 上限 1000 行 —— 全 A 有 5569 只，所以调用方
+        必须按代码前缀分段，保证每段都落在 1000 行以内，并用 `matched`
+        校验该段确实拿全了（拿到 1000 行而 matched 更大，说明这段没取完）。
+        """
+        result = self.search_stocks(query)
+        return result["matched"], self._prefer_csv(result["answer"], result["rows"])
+
+    def _prefer_csv(self, answer: str, fallback: list[dict]) -> list[dict]:
+        """结果集优先取 CSV 全量，CSV 不可用时退回表格。
+
+        退回的那张表**可能是抽样过的 100 行**，所以调用方必须拿 `matched` 与
+        `len(rows)` 对账。这里先把「为什么没有 CSV」打进日志 ——
+        否则对账报错时，还要再猜一遍原因。
+        """
+        match = _CSV_URL.search(answer or "")
+        if not match:
+            if any(mark in (answer or "") for mark in _OVERSIZED_MARKERS):
+                logger.warning("iFinD 未提供 CSV（结果被截断），退回表格：可能只有 100 行")
+            return fallback
+        rows = self._download_csv(match.group(0))
+        if rows:
+            return rows
+        logger.warning("下载 iFinD 结果 CSV 失败，退回表格（可能被 100 行截断）")
+        return fallback
+
+    def _download_csv(self, url: str) -> list[dict]:
+        """下载结果集 CSV。
+
+        不占用 tools/call 配额（走 o.thsi.cn 这个静态资源域名），
+        所以它既不受 5 req/s 限速，也**不计入调用次数**。
+        """
+        try:
+            response = requests.get(url, verify=False, timeout=CSV_TIMEOUT)
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            logger.warning("下载 iFinD 结果 CSV 失败：%s", exc)
+            return []
+        # 用 utf-8-sig：iFinD 的 CSV 带 BOM，第一列名会是 "\ufeff股票代码"，
+        # 不解掉的话按列名取值全部落空
+        text = response.content.decode("utf-8-sig", errors="replace")
+        return [dict(row) for row in csv.DictReader(io.StringIO(text))]
+
     def index_data(self, query: str) -> tuple[str, list[dict]]:
         """指数行情、技术指标与估值指标。"""
         return self._nl("index", "index_data", {"query": query})
 
-    def sector_data(self, query: str) -> tuple[str, list[dict]]:
-        """板块行情、成分股指标。
+    def edb_data(self, query: str) -> tuple[str, list[dict]]:
+        """宏观 / 行业经济指标（EDB）。两融、北向成交额等市场级数据从这里取。
 
-        注意：板块代码体系混用（中信行业分类 / 同花顺行业类），
-        query 里应显式指明分类，否则跨日不可比。
+        问句里要写**同花顺的原始指标名**（如「上交所:融资买入额」），
+        否则模糊匹配会给出别的指标 —— 实测问「融资余额」会返回工商银行的
+        个股融资余额，而不是市场总额。
+
+        返回的 Markdown 表格里列名带单位后缀（形如
+        `上交所:融资买入额（单位：亿元）`），取值时按列名前缀匹配更稳。
         """
-        return self._nl("index", "sector_data", {"query": query})
+        return self._nl("edb", "get_edb_data", {"query": query})
 
     def stock_summary(self, query: str) -> tuple[str, list[dict]]:
         return self._nl("stock", "get_stock_summary", {"query": query})

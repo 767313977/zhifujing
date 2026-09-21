@@ -41,6 +41,8 @@ def build_sentiment(
     up_count: int | None,
     down_count: int | None,
     total_amount: float | None,
+    up5_count: int | None = None,
+    down5_count: int | None = None,
     yesterday_limit_today_avg: float | None = None,
 ) -> dict:
     """汇总当日情绪指标，返回可直接写入 MarketSentiment 的字段字典。
@@ -60,6 +62,8 @@ def build_sentiment(
         "max_consecutive": max(consecutive_list) if consecutive_list else None,
         "up_count": up_count,
         "down_count": down_count,
+        "up5_count": up5_count,
+        "down5_count": down5_count,
         "total_amount": total_amount,
         "yesterday_limit_today_avg": yesterday_limit_today_avg,
     }
