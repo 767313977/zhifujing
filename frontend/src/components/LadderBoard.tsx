@@ -29,7 +29,10 @@ function StockChip({ stock }: { stock: LimitStock }) {
   const reopened = (stock.open_times ?? 0) > 0
   const title = [
     `${stock.name} ${stock.code}`,
-    stock.industry ? `行业 ${stock.industry}` : null,
+    // chip 上只放得下一个标签，所以显示开盘啦精选板块；同花顺行业移到 tooltip
+    // 里留着 —— 两个口径的措辞不同（芯片 vs 半导体），都看得到比只看一个好
+    stock.board ? `开盘啦板块 ${stock.board}` : null,
+    stock.industry ? `同花顺行业 ${stock.industry}` : null,
     `首次封板 ${fmtSealTime(stock.first_seal_time)}`,
     `最后封板 ${fmtSealTime(stock.last_seal_time)}`,
     `开板 ${stock.open_times ?? 0} 次`,
@@ -48,8 +51,8 @@ function StockChip({ stock }: { stock: LimitStock }) {
       className="inline-flex cursor-pointer items-baseline gap-1.5 border border-line-soft bg-ink-850 px-1.5 py-[3px] text-[12px] hover:border-line hover:bg-ink-700"
     >
       <span className="text-fg">{stock.name ?? stock.code}</span>
-      {stock.industry && (
-        <span className="text-[10px] text-fg-dim">{stock.industry}</span>
+      {stock.board && (
+        <span className="text-[10px] text-fg-dim">{stock.board}</span>
       )}
       {/* 开板过的标记出来：同样的板高，含金量不同 */}
       {reopened && (

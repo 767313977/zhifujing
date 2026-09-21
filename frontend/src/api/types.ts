@@ -94,7 +94,10 @@ export interface LimitStock {
   last_seal_time: string | null
   open_times: number | null
   consecutive: number | null
+  /** iFinD 的**同花顺行业**（半导体）。梯队 chip 上不再显示它，只在 tooltip 里留着。 */
   industry: string | null
+  /** **开盘啦精选板块**（芯片），涨停天梯口径 —— 梯队 chip 上显示的是这个。 */
+  board: string | null
 }
 
 export interface LadderLevel {
