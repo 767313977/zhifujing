@@ -11,8 +11,6 @@ import SortTh from './SortTh'
 interface LimitTableProps {
   type: PoolType
   stocks: LimitStock[]
-  /** 代码 → 题材名（只对涨停池有）。给了就在名称下方补一行题材标注 */
-  themes?: Record<string, string[]>
   delay?: number
   /** 首屏取数期间为真。不加这个的话，空列表会被显示成「当日无数据」 */
   loading?: boolean
@@ -46,11 +44,7 @@ const TITLES: Record<PoolType, string> = {
  * `hasBoard` 由调用方按数据判：涨停天梯只覆盖涨停股，跌停 / 炸板池拿不到板块归属，
  * 那种情况下不给「开盘啦板块」列。
  */
-function buildColumns(
-  type: PoolType,
-  themes?: Record<string, string[]>,
-  hasBoard = false,
-): Column[] {
+function buildColumns(type: PoolType, hasBoard = false): Column[] {
   const columns: Column[] = [
     {
       key: 'code',
@@ -71,42 +65,19 @@ function buildColumns(
     },
     {
       key: 'name',
-      label: themes ? '名称 / 题材' : '名称',
+      label: '名称',
       align: 'left',
-      render: (s) => {
-        const items = themes?.[s.code] ?? []
-        return (
-          <>
-            <Link
-              to={`/stock/${s.code}`}
-              className="text-fg transition-colors hover:text-accent"
-            >
-              {s.name ?? '—'}
-            </Link>
-            {/* 题材标签放名称下方而不是单开一列：它跟着「题材共振」的筛选走
-                （筛中的题材会被顶到最前），跟名称贴在一起才读得通。
-                （「开盘啦板块」是个例外，单开了一列 —— 一只票恰好一个值、
-                还要能点表头排序，塞在名称下方看不出那是个排序字段）
-
-                ⚠️ 这里原来写的是「再加一列会在 1280~1500px 这些常用宽度上把表挤
-                出横向滚动」。加了「开盘啦板块」列之后实测 1280 与 1440 两档都
-                **没有**横向滚动（见设计文档 8.36），那个理由是错的，别再引用。 */}
-            {themes && items.length > 0 && (
-              <div className="mt-0.5 flex flex-wrap gap-1">
-                {items.map((theme) => (
-                  // 题材标签留在链接外：它们只是标注，点上去不该跳走
-                  <span
-                    key={theme}
-                    className="border border-line px-1 text-[10px] leading-[15px] text-fg-dim"
-                  >
-                    {theme}
-                  </span>
-                ))}
-              </div>
-            )}
-          </>
-        )
-      },
+      // 名称下面曾经挂过一层「题材标签」。开盘啦板块单开成列之后就撤了 ——
+      // `stock_concept` 里每只票恰好一个板块，标签和那一列是同一个词，
+      // 摆两遍只是重复（撤掉时的实测见设计文档 8.36.1）。
+      render: (s) => (
+        <Link
+          to={`/stock/${s.code}`}
+          className="text-fg transition-colors hover:text-accent"
+        >
+          {s.name ?? '—'}
+        </Link>
+      ),
       sortValue: (s) => s.name,
     },
     {
@@ -255,13 +226,11 @@ function buildSpecs(columns: Column[]): SortSpecs<LimitStock> {
 export default function LimitTable({
   type,
   stocks,
-  themes,
   delay = 280,
   loading = false,
 }: LimitTableProps) {
   const columns = buildColumns(
     type,
-    themes,
     stocks.some((stock) => stock.board),
   )
   // 首屏不排（key 为 null），保持后端顺序：涨停池的默认顺序本身有意义

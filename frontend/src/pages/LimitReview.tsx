@@ -25,9 +25,6 @@ const TIME_BUCKETS: { label: string; from: number; to: number }[] = [
 /** 晋级率只展示样本量足够的档位；4进5 及以上每日基数常只有 1-3 只，会 0/100 反复跳。 */
 const CHART_LEVELS = [1, 2, 3]
 
-/** 涨停明细里每只票最多标几个题材。后端给全量，截断只在这里做。 */
-const THEMES_SHOWN = 3
-
 export default function LimitReview() {
   const [date, setDate] = useState<string | null>(null)
   const [dates, setDates] = useState<string[]>([])
@@ -92,21 +89,7 @@ export default function LimitReview() {
     return map
   }, [themes])
 
-  /** 代码 → 要展示的题材（截断到 THEMES_SHOWN），喂给涨停明细表在名称下方补标注。 */
-  const themeMap = useMemo(() => {
-    const map: Record<string, string[]> = {}
-    for (const [code, list] of Object.entries(themeIndex)) {
-      // 筛选中时把被筛的题材顶到最前，否则会出现「按储能筛出来的票，
-      // 标签里却看不到储能」（它排在更热的题材之后，被截断掉了）
-      const ordered = themeFilter
-        ? [themeFilter, ...list.filter((theme) => theme !== themeFilter)]
-        : list
-      map[code] = ordered.slice(0, THEMES_SHOWN)
-    }
-    return map
-  }, [themeIndex, themeFilter])
-
-  /** 筛选后要展示的涨停股。用全量题材归属判断，与标签上的家数同口径。 */
+  /** 筛选后要展示的涨停股。用全量题材归属判断，与题材共振面板上的家数同口径。 */
   const visibleStocks = useMemo(() => {
     if (!themeFilter) return stocks
     return stocks.filter((stock) => themeIndex[stock.code]?.includes(themeFilter))
@@ -401,14 +384,7 @@ export default function LimitReview() {
           </Panel>
         </div>
 
-        <LimitTable
-          type="up"
-          stocks={visibleStocks}
-          // 没有题材数据（早于题材采集上线的交易日）时不给，表头保持「名称」
-          themes={themes ? themeMap : undefined}
-          loading={loading}
-          delay={240}
-        />
+        <LimitTable type="up" stocks={visibleStocks} loading={loading} delay={240} />
         <LimitTable
           type="broken"
           stocks={broken?.stocks ?? []}
