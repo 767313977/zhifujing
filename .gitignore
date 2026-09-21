@@ -21,6 +21,13 @@ frontend/.vite/
 .DS_Store
 Thumbs.db
 
+# 部署产物。**必须排除**：包里含 .env（iFinD 密钥、飞书 webhook 地址）
+# 和一份数据库快照，提交上去等于把密钥和持仓笔记一起公开。
+dist-deploy/
+
 # 环境变量
 .env
 .env.local
+
+# 一键部署脚本（含服务器 SSH 密码，绝不能提交）
+push.ps1
