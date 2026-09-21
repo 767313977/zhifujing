@@ -1,6 +1,6 @@
 """收盘后数据采集。
 
-触发时机：交易日 15:05 之后（收盘数据已稳定），也支持手动补数。
+触发时机：交易日 18:00（收盘数据已稳定、龙虎榜也已发布），也支持手动补数。
 
 设计要点：
 - 每步独立事务、独立日志，**单步失败不阻塞后续步骤**
@@ -17,10 +17,9 @@ from contextlib import contextmanager
 from datetime import date, timedelta
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.db import session_scope
+from app.db import session_scope, upsert
 from app.models import (
     CollectLog,
     IndexDaily,
@@ -32,7 +31,9 @@ from app.models import (
     TradeCalendar,
     Watchlist,
 )
+from app.jobs import collect_funds
 from app.services.sentiment import build_sentiment
+from app.services.usage import QuotaLevel, quota_level
 from app.sources.akshare_source import AkshareSource
 from app.sources.ifind import IfindClient, from_ths_symbol, to_ths_symbol
 from app.sources.markdown_table import pick_float, pick_int, pick_text, to_float, to_int
@@ -47,6 +48,7 @@ INDEX_NAMES: dict[str, str] = {
     "399006.SZ": "创业板指",
     "000688.SH": "科创50",
     "000852.SH": "中证1000",
+    "899050.BJ": "北证50",
 }
 INDEX_SYMBOLS = list(INDEX_NAMES)
 INDEX_INDICATORS = [
@@ -67,8 +69,15 @@ INDEX_CODE_ALIASES = {
 # 沪深两市成交额 = 上证指数 + 深证成指
 AMOUNT_SYMBOLS = ("000001.SH", "399001.SZ")
 
-# index_data 单次请求的日期跨度上限（自然语言接口，区间过大容易被截断）
-INDEX_BACKFILL_CHUNK_DAYS = 120
+# index_data 单次请求的日期跨度上限。
+#
+# ⚠️ **这个接口每次最多返回 100 行**（含周末这类非交易日），所以区间跨度超过
+# 约 100 个自然日就必然被抽样截断 —— 而且**看不出来**：返回的行数正好是 100，
+# 日期也连续，只有跟交易日历对一遍才知道少了天。实测：
+#   119 个自然日 → 正好 100 行（2025-09-08 ~ 2026-01-05 的 41 个交易日就这么丢的）
+#   60 个自然日  → 61 行，完整
+# 取 60 留足余量：一个月多花几次调用，换「不静默丢数据」。
+INDEX_BACKFILL_CHUNK_DAYS = 60
 
 # 三池的数据源都只保留最近 15 个**交易日**。
 # 实测（2026-09-17 往回数）：第 15 个交易日 2026-08-28 仍有数据，
@@ -118,13 +127,6 @@ def collect_guard(who: str = "采集") -> Iterator[None]:
     finally:
         _collect_lock.release()
         logger.info("%s 释放采集锁", who)
-
-
-def _upsert(session: Session, model, rows: list[dict]) -> int:
-    """按主键 upsert，保证重复采集幂等。"""
-    for row in rows:
-        session.merge(model(**row))
-    return len(rows)
 
 
 def _require_today(trade_date: date, what: str) -> None:
@@ -280,9 +282,21 @@ def _broken_rows(trade_date: date, records: list[dict]) -> list[dict]:
 
 
 def _lhb_rows(trade_date: date, records: list[dict]) -> list[dict]:
+    def _day(value: object) -> date:
+        # 上榜日从 akshare 来是字符串（"2026-09-18"）或 pandas Timestamp，
+        # 必须归一化成 date —— 否则 backfill_lhb 里「date 集合」与字符串比较
+        # 恒不相等，整批行被静默丢弃，回补龙虎榜「看着成功、实际一行没写」。
+        text = str(value or "").strip()
+        if text:
+            try:
+                return date.fromisoformat(text[:10])
+            except ValueError:
+                pass
+        return trade_date
+
     return [
         {
-            "trade_date": r.get("上榜日") or trade_date,
+            "trade_date": _day(r.get("上榜日")),
             "code": str(r["代码"]).zfill(6),
             # 同一股票可能因多条上榜原因重复出现，所以 reason 进主键
             "reason": str(r.get("上榜原因") or "未知"),
@@ -391,7 +405,7 @@ class DailyCollector:
     def collect_calendar(self) -> int:
         dates = self.ak.trade_calendar()
         with session_scope() as session:
-            return _upsert(session, TradeCalendar, [{"trade_date": d} for d in dates])
+            return upsert(session, TradeCalendar, [{"trade_date": d} for d in dates])
 
     def collect_index(self, trade_date: date) -> int:
         _require_today(trade_date, "指数快照")
@@ -414,7 +428,10 @@ class DailyCollector:
             rows.append(
                 {
                     "trade_date": trade_date,
-                    "code": code,
+                    # 与回补路径（_index_nl_rows）一致：归一成同一指数唯一代码。
+                    # 漏归一化的话，实时接口返回别名代码（如中证1000 的 399852.SZ）
+                    # 就会在库里出现同一指数两套代码的两条序列
+                    "code": _canonical_index_code(code),
                     "name": pick_text(record, "证券简称"),
                     "close": pick_float(record, "最新价", "收盘价"),
                     "pct_chg": pick_float(record, "涨跌幅"),
@@ -426,7 +443,7 @@ class DailyCollector:
                 }
             )
         with session_scope() as session:
-            return _upsert(session, IndexDaily, rows)
+            return upsert(session, IndexDaily, rows)
 
     def _pool_window_cutoff(self) -> date | None:
         """三池数据源能取到数据的最早交易日。"""
@@ -487,7 +504,7 @@ class DailyCollector:
                 continue
 
             with session_scope() as session:
-                count = _upsert(session, LimitPool, rows)
+                count = upsert(session, LimitPool, rows)
             written += count
             self._log(
                 trade_date, task, "ok", count, None,
@@ -502,7 +519,30 @@ class DailyCollector:
     def collect_lhb(self, trade_date: date) -> int:
         rows = _lhb_rows(trade_date, self.ak.lhb(trade_date))
         with session_scope() as session:
-            return _upsert(session, Lhb, rows)
+            return upsert(session, Lhb, rows)
+
+    def collect_themes(self, trade_date: date) -> int:
+        """涨停股的板块归属（「题材 × 涨停」联动的桥）。
+
+        来源是开盘红的涨停天梯，它自己就带「所属板块」，所以**不再依赖涨停池**
+        的代码去逐只问 —— 但仍排在涨停池之后，为的是能跟涨停池的家数对账。
+        延迟导入避免 collect_daily 与 collect_themes 循环引用。
+        """
+        from app.jobs.collect_themes import ThemeCollector
+
+        return ThemeCollector(self.settings).collect(trade_date)
+
+    def collect_sectors(self, trade_date: date) -> int:
+        """板块行情（开盘红口径）。
+
+        只有一步：开盘红的板块排行接口一次给全某个口径当天的所有板块，
+        精选与行业各拉一次即可 —— 旧版「指数补历史 + 一览表覆盖当日 + iFinD
+        给概念兜底」的三步顺序在这里没有对应物，因为没有第二个来源了。
+        延迟导入避免 collect_daily 与 collect_sectors 循环引用。
+        """
+        from app.jobs.collect_sectors import SectorCollector
+
+        return SectorCollector(self.settings).collect_day(trade_date)
 
     # ------------------------------------------------------------ 个股日线
 
@@ -541,11 +581,11 @@ class DailyCollector:
             if not rows:
                 continue
             with session_scope() as session:
-                written += _upsert(session, StockDaily, rows)
+                written += upsert(session, StockDaily, rows)
                 # 顺手把名称记进 stock_basic，自选股列表才能显示中文名
                 name = next((r["name"] for r in rows if r["name"]), None)
                 if name:
-                    _upsert(session, StockBasic, [{"code": code, "name": name}])
+                    upsert(session, StockBasic, [{"code": code, "name": name}])
         return written
 
     def sync_watchlist(self, days: int = STOCK_DAILY_DAYS) -> int:
@@ -628,6 +668,10 @@ class DailyCollector:
                 consecutive.append(int(value))
 
         activity = {} if history else self.ak.market_activity()
+        # 涨跌超 5% 的家数：乐咕那份宽度没有分档，只能问 iFinD 选股（每次 1 问，
+        # 取 `matched` 当计数——实测「涨幅大于5%的A股股票」matched=550）。
+        # 与涨跌家数一样**只有当日值**，所以 history=True 时留空
+        up5_count, down5_count = (None, None) if history else self._five_percent_counts(trade_date)
         amount_values = [a for a in amounts if a]
         payload = build_sentiment(
             trade_date,
@@ -638,13 +682,36 @@ class DailyCollector:
             # 涨跌家数取乐咕乐股全市场宽度；iFinD 只对上证指数有效
             up_count=to_int(activity.get("上涨")),
             down_count=to_int(activity.get("下跌")),
+            up5_count=up5_count,
+            down5_count=down5_count,
             total_amount=sum(amount_values) if amount_values else None,
             yesterday_limit_today_avg=None if history else self._yesterday_limit_effect(trade_date),
         )
         with session_scope() as session:
-            return _upsert(session, MarketSentiment, [payload])
+            return upsert(session, MarketSentiment, [payload])
 
     # ------------------------------------------------------------------ 衍生值
+
+    def _five_percent_counts(self, trade_date: date) -> tuple[int | None, int | None]:
+        """涨超 5% / 跌超 5% 的**全市场**家数（涨的含涨停）。
+
+        为什么不用本地 `stock_daily` 数：它只有池子（成交额 ≥ 1 亿的 3032 只，
+        占全市场约一半只数），而涨停股实测有 37% 在池外 —— 拿池子算会系统性
+        低估，和旁边的「涨跌家数」（全市场口径）放在一起还会显得自相矛盾。
+
+        两问各 1 次调用，取 `matched`（匹配总数）而不是返回行数：表格只给 100 行，
+        `matched` 才是真的家数。任一问失败就都记 None —— 只写一半会让人以为
+        「那天跌超 5% 的只有 0 只」。
+        """
+        _require_today(trade_date, "涨跌超5%家数")
+        day = f"{trade_date.year}年{trade_date.month}月{trade_date.day}日"
+        try:
+            up = self.ifind.search_stocks(f"{day}涨幅大于5%的A股股票")["matched"]
+            down = self.ifind.search_stocks(f"{day}跌幅大于5%的A股股票")["matched"]
+        except Exception as exc:  # noqa: BLE001 - 情绪采集不该因为这两问整轮失败
+            logger.warning("涨跌超5%家数取数失败：%s", exc)
+            return None, None
+        return up, down
 
     def _yesterday_limit_effect(self, trade_date: date) -> float | None:
         """昨日涨停股今日均涨幅 —— 打板赚钱效应。
@@ -683,6 +750,29 @@ class DailyCollector:
         if not values:
             return None
         return round(sum(values) / len(values), 2)
+
+    # ---------------------------------------------------------------- 资金面
+
+    def collect_margin(self, trade_date: date) -> int:
+        """两融：融资余额 / 融资买入额 / 融券余额（iFinD EDB，1 次调用）。"""
+        return collect_funds.collect_margin(self.ifind, trade_date)
+
+    def collect_hsgt(self, trade_date: date) -> int:
+        """沪深股通成交额（iFinD EDB，1 次调用）。"""
+        return collect_funds.collect_hsgt(self.ifind, trade_date)
+
+    def collect_etf(self) -> int:
+        """ETF 份额与行情快照（akshare，零配额）。
+
+        **不接受目标日期**：落库日期由行情源自带的「数据日期」决定 ——
+        盘前/凌晨/周末取到的都是上一交易日的快照，按「今天」写会造出假数据点。
+        详见 `collect_funds.collect_etf`。
+        """
+        return collect_funds.collect_etf(self.ak)
+
+    def collect_lhb_institution(self, trade_date: date) -> int:
+        """龙虎榜机构席位统计（akshare，零配额）。"""
+        return collect_funds.collect_lhb_institutions(self.ak, trade_date)
 
     # -------------------------------------------------------------------- 编排
 
@@ -770,17 +860,41 @@ class DailyCollector:
         written = 0
         for symbol, name in INDEX_NAMES.items():
             rows: list[dict] = []
+            asked = False
             for chunk_start, chunk_end in _date_chunks(
                 start, end, INDEX_BACKFILL_CHUNK_DAYS
             ):
+                expected = {d for d in trade_dates if chunk_start <= d <= chunk_end}
+                # 这一块的交易日全在库里就**不必问**：去重发生在取数之后，
+                # 不先跳的话「重复跑不浪费配额」是假的 —— 照样会问一遍才发现
+                # 一行都用不上（6 个指数 × 每块 1 次）
+                if expected and all((d, symbol) in existing for d in expected):
+                    continue
                 _, records = self.ifind.index_data(
                     f"{name} 从{chunk_start.isoformat()}到{chunk_end.isoformat()}"
                     f"每个交易日的收盘价、涨跌幅、成交额"
                 )
-                rows.extend(_index_nl_rows(records, trade_dates))
-                if symbol not in {row["code"] for row in rows}:
-                    # iFinD 对识别不出的主体静默丢弃，不校验会以为补全了
-                    logger.warning("回补指数 %s 未返回任何数据，请检查主体名称", name)
+                asked = True
+                chunk_rows = _index_nl_rows(records, trade_dates)
+                rows.extend(chunk_rows)
+                # 逐块对账：接口每次只给 100 行，区间超了会**抽样截断**，
+                # 而返回的行看起来完全正常 —— 只有跟交易日历比才知道少了天
+                missing = expected - {row["trade_date"] for row in chunk_rows}
+                if missing:
+                    logger.warning(
+                        "回补指数 %s %s~%s 缺 %d 个交易日（接口 100 行上限导致的抽样？）",
+                        name,
+                        chunk_start,
+                        chunk_end,
+                        len(missing),
+                    )
+
+            if not asked:
+                continue
+            if not rows:
+                # iFinD 对识别不出的主体静默丢弃，不校验会以为补全了
+                logger.warning("回补指数 %s 未返回任何数据，请检查主体名称", name)
+                continue
 
             fresh = [
                 row for row in rows if (row["trade_date"], row["code"]) not in existing
@@ -788,7 +902,7 @@ class DailyCollector:
             if not fresh:
                 continue
             with session_scope() as session:
-                written += _upsert(session, IndexDaily, fresh)
+                written += upsert(session, IndexDaily, fresh)
             logger.info("回补指数 %-8s %d 行", name, len(fresh))
         return written
 
@@ -844,7 +958,7 @@ class DailyCollector:
             if not fresh:
                 continue
             with session_scope() as session:
-                written += _upsert(session, Lhb, fresh)
+                written += upsert(session, Lhb, fresh)
         return written
 
     def run(self, trade_date: date | None = None) -> dict:
@@ -853,13 +967,40 @@ class DailyCollector:
         steps["calendar"] = self._step(None, "calendar", self.collect_calendar)
 
         target = trade_date or self.latest_trade_date()
+
+        # 配额让路的第三档：只保留复盘主线。指数、涨停三池、情绪是「当天不看就
+        # 永远看不到」的数据 —— 三池的数据源只留 15 个交易日，漏了就补不回来。
+        # 而题材、板块、自选股日线都能在配额恢复后重采，所以先停它们。
+        core_only = quota_level(settings=self.settings) >= QuotaLevel.CORE_ONLY
+        if core_only:
+            logger.warning("配额已达 95%，本次只采指数 / 涨停三池 / 情绪主线")
+
         steps["index"] = self._step(target, "index", lambda: self.collect_index(target))
         steps["limit_pool"] = self._step(
             target, "limit_pool", lambda: self.collect_limit_pool(target)
         )
+        # 龙虎榜走 akshare，不占 iFinD 配额，任何档位都照采
         steps["lhb"] = self._step(target, "lhb", lambda: self.collect_lhb(target))
-        # 自选股日线：每天跟着刷新，否则自选股页显示的还是上次看的价格
-        steps["watchlist"] = self._step(target, "watchlist", self.sync_watchlist)
+        # ETF 份额与龙虎榜机构席位同样走 akshare（零配额），任何档位都采
+        steps["etf"] = self._step(target, "etf", self.collect_etf)
+        steps["lhb_institution"] = self._step(
+            target, "lhb_institution", lambda: self.collect_lhb_institution(target)
+        )
+        if not core_only:
+            # 涨停题材：开盘红涨停天梯给每只涨停股带所属板块
+            steps["themes"] = self._step(target, "themes", lambda: self.collect_themes(target))
+            # 板块行情（开盘红口径）
+            steps["sectors"] = self._step(
+                target, "sectors", lambda: self.collect_sectors(target)
+            )
+            # 自选股日线：每天跟着刷新，否则自选股页显示的还是上次看的价格
+            steps["watchlist"] = self._step(target, "watchlist", self.sync_watchlist)
+            # 资金面（两融、北向成交额）：EDB 有长历史，配额紧张时可以让路 ——
+            # 与涨停三池不同，漏掉一天下次还能补回来
+            steps["margin"] = self._step(
+                target, "margin", lambda: self.collect_margin(target)
+            )
+            steps["hsgt"] = self._step(target, "hsgt", lambda: self.collect_hsgt(target))
         # 情绪依赖涨停池与指数，放最后
         steps["sentiment"] = self._step(
             target, "sentiment", lambda: self.collect_sentiment(target)
