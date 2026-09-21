@@ -12,13 +12,19 @@ export const CHART = {
   ink: '#0c0f13',
 } as const
 
-/** 多序列配色：不用红绿（那两个颜色在本站有涨跌含义），改用中性区分度高的色相。 */
+/**
+ * 多序列配色：不用红绿（那两个颜色在本站有涨跌含义），改用中性区分度高的色相。
+ * 个数必须 ≥ 后端 `COMPARE_LIMIT`（8），否则第 9 条线会绕回去和第一条同色。
+ */
 export const SERIES_PALETTE = [
   '#ffb020', // 金
   '#5b9dff', // 蓝
   '#c084fc', // 紫
   '#40c4c4', // 青
   '#f472b6', // 粉
+  '#818cf8', // 靛
+  '#38bdf8', // 天蓝
+  '#94a3b8', // 灰蓝
 ]
 
 const MONO = 'Cascadia Mono, Consolas, monospace'

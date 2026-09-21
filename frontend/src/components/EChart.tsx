@@ -7,11 +7,13 @@ import type {
 import {
   GridComponent,
   LegendComponent,
+  MarkLineComponent,
   TooltipComponent,
 } from 'echarts/components'
 import type {
   GridComponentOption,
   LegendComponentOption,
+  MarkLineComponentOption,
   TooltipComponentOption,
 } from 'echarts/components'
 import * as echarts from 'echarts/core'
@@ -25,6 +27,10 @@ echarts.use([
   LineChart,
   GridComponent,
   LegendComponent,
+  // MarkLine 是形态选股的关键位虚线（突破位/支撑位）用的。
+  // 漏注册时 ECharts **静默忽略** markLine，不报错也不打 warning ——
+  // 图表照常渲染，只是那条线永远不出现，靠肉眼看图很难发现是漏了配置
+  MarkLineComponent,
   TooltipComponent,
   CanvasRenderer,
 ])
@@ -35,6 +41,7 @@ export type ChartOption = echarts.ComposeOption<
   | LineSeriesOption
   | GridComponentOption
   | LegendComponentOption
+  | MarkLineComponentOption
   | TooltipComponentOption
 >
 

@@ -158,6 +158,50 @@
   .grid-table tbody tr:hover td {
     background-color: var(--color-ink-850);
   }
+
+  /* 可排序表头。onClick 挂在 th 上（见 SortTh），整格都是热区 ——
+     只让内层 button 可点的话，「窄按钮 + 宽单元格」会在两侧留下几十像素
+     的死区（文字两三个字、单元格却有 120px 宽），点了没反应。
+     内层 button 只负责键盘可达与承载样式。 */
+  th.sortable {
+    cursor: pointer;
+  }
+  .sort-th {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    /* button 在部分浏览器里是默认箭头，这里显式给手型，
+       否则悬停在列头文字上时指针会从手型变回箭头，看着像不可点 */
+    cursor: pointer;
+    /* 连点时不要选中表头文字 */
+    user-select: none;
+    /* 继承 th 的字号与字距，否则 button 会退回浏览器的默认字体 */
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+  }
+  th.sortable:hover .sort-th,
+  th.sortable.is-sorted .sort-th {
+    color: var(--color-fg);
+  }
+  /* 未排序时指示器只在悬停出现 —— 常驻的话每个列头都挂个箭头，
+     表头会变成一排噪音，反而看不出当前排的是哪一列 */
+  .sort-th-mark {
+    font-size: 0.5rem;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  th.sortable:hover .sort-th-mark {
+    opacity: 0.55;
+  }
+  th.sortable.is-sorted .sort-th-mark {
+    opacity: 1;
+    color: var(--color-accent);
+  }
 }
 
 @layer utilities {

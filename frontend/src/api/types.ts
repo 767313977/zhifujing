@@ -10,6 +10,15 @@ export interface IndexQuote {
   down_count: number | null
   limit_up_count: number | null
   limit_down_count: number | null
+  /** 5 日 / 20 日均线与「站上还是跌破」，后端按本地日线现算 */
+  ma5: number | null
+  ma20: number | null
+  above_ma5: boolean | null
+  above_ma20: boolean | null
+  /** 今日成交额 / 前 5 日均额。>1.1 放量、<0.9 缩量 */
+  vol_ratio: number | null
+  /** 量价配合标签：放量上涨 / 缩量下跌 / 平量横盘 … */
+  vol_price: string | null
 }
 
 export interface Sentiment {
@@ -22,14 +31,37 @@ export interface Sentiment {
   max_consecutive: number | null
   up_count: number | null
   down_count: number | null
+  /** 全市场口径的涨跌超 5% 家数（只有当日值） */
+  up5_count: number | null
+  down5_count: number | null
   total_amount: number | null
   yesterday_limit_today_avg: number | null
+}
+
+/** 指数与个股广度是否背离。level 决定配色，detail 是判据里的原始数字 */
+export interface Divergence {
+  level: 'weight_pull' | 'theme_active' | 'aligned'
+  title: string
+  detail: string
+}
+
+/** 两市成交额的近期序列，给情绪面板的柱状图。三个数组一一对应。 */
+export interface TurnoverSeries {
+  dates: string[]
+  /** 上证指数 + 深证成指 成交额（元）。缺数的日子为 null，图上留空隙而非画成 0 */
+  amounts: (number | null)[]
+  /** 当日上证指数涨跌幅，只决定柱子的红绿（红=涨、绿=跌），与成交额自身涨跌无关 */
+  pct_chg: (number | null)[]
 }
 
 export interface MarketOverview {
   trade_date: string
   indexes: IndexQuote[]
   sentiment: Sentiment | null
+  /** 历史日期没有涨跌家数（数据源只给当日），这里是 null */
+  divergence: Divergence | null
+  /** 截至 trade_date 的近 30 个交易日成交额 */
+  turnover: TurnoverSeries | null
 }
 
 /** 指数历史序列。各数组与 IndexHistory.dates 一一对应，缺失为 null。 */
@@ -113,6 +145,173 @@ export interface LhbItem {
   interpretation: string | null
 }
 
+/** 板块分类口径。开盘红的「精选板块」是它自家的分类，不是传统一级行业 */
+export type SectorTaxonomy = 'kph_selected' | 'kph_industry'
+
+export interface SectorQuote {
+  code: string
+  name: string
+  taxonomy: string
+  /** 开盘啦的强度值（板块榜的排序依据）。量纲不可跨口径比 */
+  strength: number | null
+  pct_chg: number | null
+  pct_chg_5d: number | null
+  amount: number | null
+  net_inflow: number | null
+  up_count: number | null
+  down_count: number | null
+  member_count: number | null
+  leader_name: string | null
+  leader_pct_chg: number | null
+  /** 当日涨停家数。只有精选板块有（来自涨停天梯，行业口径没有归属，为 null） */
+  limit_up_count: number | null
+}
+
+export interface SectorRanking {
+  trade_date: string
+  taxonomy: string
+  total: number
+  missing: number
+  estimated: number
+  boards: SectorQuote[]
+}
+
+export interface SectorSeries {
+  code: string
+  name: string
+  taxonomy: string
+  dates: string[]
+  pct_chg: (number | null)[]
+  amount: (number | null)[]
+}
+
+export interface SectorCompareSeries {
+  code: string
+  name: string
+  taxonomy: string
+  /** 以 base 为起点复利出的净值，不是真实指数点位，只能看相对强弱 */
+  values: (number | null)[]
+}
+
+export interface SectorCompare {
+  dates: string[]
+  base: number
+  series: SectorCompareSeries[]
+}
+
+export interface SectorMemberItem {
+  code: string
+  name: string | null
+  close: number | null
+  pct_chg: number | null
+  amount: number | null
+  turnover: number | null
+  /** 当日连板数，没涨停为 null */
+  consecutive: number | null
+}
+
+export interface SectorMembers {
+  trade_date: string
+  sector_code: string
+  sector_name: string
+  taxonomy: string
+  member_count: number | null
+  /** 旧字段：iFinD 的 100 行上限，换开盘红后恒为 false */
+  truncated: boolean
+  /** 取不到成分股的原因；能取到就是 null。当日必然取不到（数据源只给历史日期） */
+  note: string | null
+  members: SectorMemberItem[]
+}
+
+export interface SectorHeatItem {
+  code: string
+  name: string
+  pct_chg: number | null
+  amount: number | null
+  limit_up_count: number | null
+}
+
+export interface SectorHeatGroup {
+  taxonomy: string
+  total: number
+  rising: number
+  falling: number
+  average: number | null
+  leaders: SectorHeatItem[]
+  laggards: SectorHeatItem[]
+}
+
+export interface SectorHeat {
+  trade_date: string
+  selected: SectorHeatGroup
+  industry: SectorHeatGroup
+}
+
+/**
+ * 轮动矩阵的排序指标。
+ *
+ * `strength` 是开盘啦的**强度值** —— 它 App 里那张板块榜就是按这个排的，想对齐就得用它；
+ * `pct_chg`（涨幅）与它不是一回事，`amount`（成交额）排出来又是另一张榜（芯片永远第一）。
+ * 注意强度的量纲**不可跨口径比**：精选极值上万、行业一千出头。
+ */
+export type RotationMetric = 'strength' | 'pct_chg' | 'amount'
+
+export interface RotationCell {
+  code: string
+  name: string
+  /** 排序所依据的指标值：metric=strength 时是强度、amount 时是成交额（元）、pct_chg 时是涨跌幅（%） */
+  value: number | null
+  pct_chg: number | null
+}
+
+/**
+ * 「领涨」行的一只：当天榜首板块的涨停股。
+ *
+ * ⚠️ 口径是**该板块当日的涨停股**（来自开盘红涨停天梯），**不是**「当日涨幅前 5 名」
+ * —— 后者要逐个板块调成分股接口，20 列就是 20 次按需请求，为一行次级信息不值当。
+ */
+export interface RotationLeader {
+  code: string
+  name: string | null
+  /** 当日连板数，1 = 首板；不在涨停池里时为 null */
+  consecutive: number | null
+}
+
+export interface RotationColumn {
+  trade_date: string
+  /** 当天的前 N 名，已按指标降序 */
+  cells: RotationCell[]
+  /** 当天第 1 名板块的涨停股，按连板数降序；那天没有涨停股就是空数组 */
+  leaders: RotationLeader[]
+}
+
+export interface SectorRotation {
+  taxonomy: string
+  metric: RotationMetric
+  metric_label: string
+  top: number
+  /** 一列一个交易日，**从新到旧** */
+  columns: RotationColumn[]
+}
+
+export interface LimitThemeItem {
+  concept: string
+  count: number
+  pct_chg: number | null
+}
+
+export interface LimitStockTheme {
+  code: string
+  /** 该股所属的开盘红精选板块（当日涨停天梯口径），按板块当日涨跌幅降序。展示时再截断 */
+  themes: string[]
+}
+
+export interface LimitThemes {
+  trade_date: string
+  clusters: LimitThemeItem[]
+  stocks: LimitStockTheme[]
+}
+
 export interface CollectLog {
   trade_date: string | null
   task: string
@@ -140,6 +339,91 @@ export interface TableCoverage {
   latest: string | null
 }
 
+export interface IfindToolUsage {
+  server: string
+  tool: string
+  calls: number
+}
+
+/**
+ * iFinD 调用配额。额度是**账号级**的，采集、形态选股、手工补数共用，
+ * 所以它不属于任何单一链路，单独一块。
+ */
+export interface IfindQuota {
+  /** 计量周期的起止日（含）。iFinD 按订阅周期滚动计量，不是自然月 */
+  cycle_start: string
+  cycle_end: string
+  monthly_quota: number
+  cycle_calls: number
+  cycle_remaining: number
+  today_calls: number
+  cycle_trade_days_passed: number
+  cycle_trade_days_total: number
+  /** 计量从哪天开始。晚于周期起点时，cycle_calls 只是本周期有记录以来的消耗 */
+  counting_since: string | null
+  /** 外推实际用到的样本交易日数 */
+  sampled_trade_days: number
+  /** 按样本期日均外推到整周期，样本不足（<3 个交易日）时为 null */
+  projected_cycle_calls: number | null
+  usage_ratio: number | null
+  by_tool: IfindToolUsage[]
+}
+
+export interface PatternMeta {
+  key: string
+  name: string
+  /** 趋势 / 突破 / 量价 / 几何 */
+  group: string
+}
+
+export interface PatternHitItem {
+  pattern: string
+  pattern_name: string
+  group: string
+  score: number
+  /** 突破价 / 支撑价等关键位，用于在 K 线图上画线 */
+  key_levels: Record<string, number>
+  /** 平台振幅、放量倍数等明细，用于解释「凭什么说它命中了」 */
+  detail: Record<string, number | string>
+}
+
+/**
+ * 一只票的形态命中汇总 —— 列表一行。
+ * 一只票可能同时命中多个形态，归并成一行多标签，`score` 取其中最高分。
+ *
+ * `avg_amount` / `total_mv` 来自股票池，是**股票属性**、不是信号当天的快照；
+ * 跌出池子的票这两项为 null。
+ */
+export interface PatternStock {
+  code: string
+  name: string | null
+  trade_date: string
+  close: number | null
+  pct_chg: number | null
+  /** 信号当天的成交额 */
+  amount: number | null
+  /** 近 20 日日均成交额 */
+  avg_amount: number | null
+  /** 总市值 */
+  total_mv: number | null
+  score: number
+  patterns: PatternHitItem[]
+}
+
+export interface PatternCount {
+  pattern: string
+  pattern_name: string
+  group: string
+  stocks: number
+}
+
+export interface PatternSummary {
+  trade_date: string | null
+  total_hits: number
+  total_stocks: number
+  by_pattern: PatternCount[]
+}
+
 export interface AdminStatus {
   latest_sentiment_date: string | null
   latest_limit_pool_date: string | null
@@ -149,6 +433,7 @@ export interface AdminStatus {
   coverage: TableCoverage[]
   scheduler: SchedulerStatus
   recent_logs: CollectLog[]
+  ifind_quota: IfindQuota
 }
 
 /** 自然语言选股结果。列由 iFinD 按提问内容动态决定，不能写死表头。 */
@@ -200,6 +485,30 @@ export interface StockDailyRow {
   amount: number | null
 }
 
+/**
+ * 后端能聚合的 K 线周期。
+ *
+ * 周/月是**本地日线重采样**出来的（同一张 `stock_daily`，不额外取数），
+ * 所以它们与日线是同一口径（不复权 / 前复权由调用方选）。
+ */
+export type KPeriod = 'day' | 'week' | 'month'
+
+export interface StockThemeItem {
+  concept: string
+  /** 能对上板块表时有板块代码；「沪深300样本股」这类为 null */
+  board_code: string | null
+  /** 板块最近一个交易日的涨跌幅 */
+  pct_chg: number | null
+}
+
+export interface StockThemes {
+  code: string
+  name: string | null
+  /** 上面的板块涨跌幅对应的交易日 */
+  board_date: string | null
+  themes: StockThemeItem[]
+}
+
 export interface StockProfile {
   code: string
   name: string | null
@@ -232,4 +541,116 @@ export interface CollectStepResult {
 export interface CollectResult {
   trade_date: string
   steps: Record<string, CollectStepResult>
+}
+
+/** 单个市场的两融快照。金额单位与下面所有资金面字段一样，统一是「元」。 */
+export interface MarginSnapshot {
+  /** 融资余额 */
+  financing_balance: number | null
+  /** 融资买入额 */
+  financing_buy: number | null
+  /** 融券余额 */
+  securities_balance: number | null
+}
+
+export interface FundFlowOverview {
+  trade_date: string
+  sh: MarginSnapshot | null
+  sz: MarginSnapshot | null
+  /** 两市融资余额合计。深市当日未披露时为 null —— 不是 0 */
+  financing_total: number | null
+  financing_buy_total: number | null
+  /** 与上一交易日的融资余额变化（同口径，两市都齐才算得出来） */
+  financing_change: number | null
+  /** 沪深股通**成交总额**（不是净流入：官方 2024-08 起已停披露买卖方向） */
+  hsgt_turnover: number | null
+  hsgt_turnover_prev: number | null
+  /** 龙虎榜机构席位净买额合计（按代码去重后相加） */
+  institution_net: number | null
+  /** 上机构榜的股票数 */
+  institution_count: number
+  /** ETF 净申赎估算；没有上一交易日数据时为 null */
+  etf_net_inflow: number | null
+}
+
+/** 资金面走势。数组与 dates 一一对应，缺失为 null（图上必须断开，不能画成 0）。 */
+export interface FundsSeries {
+  dates: string[]
+  financing_balance: (number | null)[]
+  financing_buy: (number | null)[]
+  hsgt_turnover: (number | null)[]
+  /** 该日两市两融数据是否齐全 */
+  financing_complete: boolean[]
+}
+
+export type EtfFlowOrder = 'inflow' | 'outflow' | 'amount'
+
+export interface EtfFlowItem {
+  code: string
+  name: string | null
+  close: number | null
+  pct_chg: number | null
+  /** 成交额（元） */
+  amount: number | null
+  /** 当日份额（份） */
+  shares: number | null
+  /** 份额变化（份），正数 = 净申购 */
+  share_delta: number | null
+  /** 净申赎估算（元），正数 = 净申购 */
+  net_inflow: number | null
+}
+
+export interface EtfFlowBoard {
+  trade_date: string
+  prev_date: string | null
+  /** false = 还没有上一交易日数据（首次采集），此时 items 必然为空 */
+  has_prev: boolean
+  items: EtfFlowItem[]
+}
+
+/** ETF 榜的两个视角：按行业汇总 / 按单只明细 */
+export type EtfGroup = 'industry' | 'fund'
+
+export interface EtfIndustryItem {
+  /** 分类名。来自后端词典（ETF 名称关键词），没有数据源直接给 ETF 的行业归属 */
+  category: string
+  fund_count: number
+  /** 该分类净申赎合计（元）。份额不可加（不同 ETF 每份净值差几个数量级），所以只加金额 */
+  net_inflow: number | null
+  /** 该分类成交额合计（元） */
+  amount: number | null
+  /** 成交额加权平均涨跌幅 */
+  pct_chg: number | null
+  /** 该分类下的 ETF 明细，后端只给前几只（看全量用「按单只」） */
+  funds: EtfFlowItem[]
+}
+
+export interface EtfIndustryBoard {
+  trade_date: string
+  prev_date: string | null
+  has_prev: boolean
+  items: EtfIndustryItem[]
+}
+
+export type InstitutionOrder = 'net' | 'buy' | 'sell'
+
+export interface InstitutionItem {
+  code: string
+  name: string | null
+  close: number | null
+  pct_chg: number | null
+  /** 买方 / 卖方机构家数 */
+  buy_count: number | null
+  sell_count: number | null
+  buy_amount: number | null
+  sell_amount: number | null
+  net_amount: number | null
+  reason: string | null
+}
+
+export interface InstitutionBoard {
+  trade_date: string
+  items: InstitutionItem[]
+  /** 去重后的股票数（原始行数会因「多条上榜原因」更多） */
+  total: number
 }

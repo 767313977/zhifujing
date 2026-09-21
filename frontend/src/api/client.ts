@@ -1,19 +1,39 @@
 import type {
   AdminStatus,
   CollectResult,
+  EtfFlowBoard,
+  EtfFlowOrder,
+  EtfIndustryBoard,
+  FundFlowOverview,
+  FundsSeries,
   IndexHistory,
+  InstitutionBoard,
+  InstitutionOrder,
+  KPeriod,
   LimitPool,
+  LimitThemes,
   LhbItem,
   MarketOverview,
   PoolType,
+  PatternMeta,
+  PatternStock,
+  PatternSummary,
   Preset,
   PromotionSeries,
   ReviewNote,
+  RotationMetric,
   ScreenRun,
+  SectorCompare,
+  SectorHeat,
+  SectorMembers,
+  SectorRanking,
+  SectorRotation,
+  SectorSeries,
+  SectorTaxonomy,
   Sentiment,
   StockDailyRow,
   StockProfile,
-  WatchlistItem,
+  StockThemes,
   WatchlistRow,
 } from './types'
 
@@ -36,7 +56,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function withDate(path: string, date?: string | null): string {
-  return date ? `${path}?date=${date}` : path
+  if (!date) return path
+  // 路径自带查询串时要用 & 接，否则第二个参数会被并进前一个参数值里
+  return `${path}${path.includes('?') ? '&' : '?'}date=${date}`
 }
 
 export const api = {
@@ -46,7 +68,8 @@ export const api = {
   sentimentSeries: (days = 60) =>
     request<Sentiment[]>(`/market/sentiment?days=${days}`),
 
-  dates: () => request<string[]>('/market/dates'),
+  // 上限 250（后端 le=250）。不传就只有 60 天，日期下拉能往回翻多远全看这个值
+  dates: (days = 250) => request<string[]>(`/market/dates?days=${days}`),
 
   indexHistory: (days = 120) =>
     request<IndexHistory>(`/market/index-history?days=${days}`),
@@ -57,6 +80,47 @@ export const api = {
     ),
 
   lhb: (date?: string | null) => request<LhbItem[]>(withDate('/lhb', date)),
+
+  sectorRanking: (taxonomy: SectorTaxonomy, date?: string | null) =>
+    request<SectorRanking>(
+      withDate(`/sectors/ranking?taxonomy=${taxonomy}`, date),
+    ),
+
+  sectorSeries: (code: string, days = 30, date?: string | null) =>
+    request<SectorSeries>(
+      withDate(`/sectors/series?code=${encodeURIComponent(code)}&days=${days}`, date),
+    ),
+
+  sectorCompare: (codes: string[], days = 30, date?: string | null) =>
+    request<SectorCompare>(
+      withDate(
+        `/sectors/compare?codes=${encodeURIComponent(codes.join(','))}&days=${days}`,
+        date,
+      ),
+    ),
+
+  sectorMembers: (code: string, date?: string | null) =>
+    request<SectorMembers>(
+      withDate(`/sectors/members?code=${encodeURIComponent(code)}`, date),
+    ),
+
+  sectorHeat: (date?: string | null) => request<SectorHeat>(withDate('/sectors/heat', date)),
+
+  sectorRotation: (
+    taxonomy: SectorTaxonomy,
+    options: { days: number; top: number; metric: RotationMetric },
+    date?: string | null,
+  ) =>
+    request<SectorRotation>(
+      withDate(
+        `/sectors/rotation?taxonomy=${taxonomy}&days=${options.days}` +
+          `&top=${options.top}&metric=${options.metric}`,
+        date,
+      ),
+    ),
+
+  limitThemes: (date?: string | null) =>
+    request<LimitThemes>(withDate('/limit/themes', date)),
 
   promotion: (days = 15) =>
     request<PromotionSeries>(`/limit/promotion?days=${days}`),
@@ -81,7 +145,9 @@ export const api = {
   watchlist: () => request<WatchlistRow[]>('/watchlist'),
 
   addWatchlist: (code: string, name?: string) =>
-    request<WatchlistItem>('/watchlist', {
+    // 后端 POST /watchlist 返回的是完整 WatchlistRow（含 latest_date/close/pct_chg），
+    // 不是只有基础字段的 WatchlistItem —— 类型写错会在将来读返回值时给错结论
+    request<WatchlistRow>('/watchlist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, name }),
@@ -102,8 +168,35 @@ export const api = {
 
   stockProfile: (code: string) => request<StockProfile>(`/stock/${code}`),
 
-  stockDaily: (code: string, days = 120) =>
-    request<StockDailyRow[]>(`/stock/${code}/daily?days=${days}`),
+  /**
+   * 个股 K 线。
+   *
+   * `period` 只影响**后端怎么聚合**（周/月是本地日线重采样出来的，不额外取数）；
+   * `days` 是「取多少根日线来聚合」—— 周/月要看长周期，所以要传得比日线大得多。
+   */
+  stockDaily: (
+    code: string,
+    options: { days?: number; adjust?: boolean; period?: KPeriod } = {},
+  ) => {
+    const { days = 120, adjust = false, period = 'day' } = options
+    return request<StockDailyRow[]>(
+      `/stock/${code}/daily?days=${days}&period=${period}${adjust ? '&adjust=1' : ''}`,
+    )
+  },
+
+  stockThemes: (code: string) => request<StockThemes>(`/stock/${code}/themes`),
+
+  // --- 形态选股 ---
+  patternCatalog: () => request<PatternMeta[]>('/patterns/catalog'),
+
+  patternHits: (date?: string | null, minScore = 0, limit = 500) =>
+    request<PatternStock[]>(
+      withDate(`/patterns/hits?min_score=${minScore}&limit=${limit}`, date),
+    ),
+
+  patternSummary: (date?: string | null) => request<PatternSummary>(
+    withDate('/patterns/summary', date),
+  ),
 
   syncStock: (code: string, days = 250) =>
     request<{ rows: number }>(`/stock/${code}/sync?days=${days}`, { method: 'POST' }),
@@ -127,4 +220,23 @@ export const api = {
       `/admin/backfill?start=${start}${end ? `&end=${end}` : ''}`,
       { method: 'POST' },
     ),
+
+  // --- 资金面 ---
+  fundsOverview: (date?: string | null) =>
+    request<FundFlowOverview>(withDate('/funds/overview', date)),
+
+  fundsSeries: (days = 60, date?: string | null) =>
+    request<FundsSeries>(withDate(`/funds/series?days=${days}`, date)),
+
+  fundsEtf: (order: EtfFlowOrder = 'inflow', limit = 30, date?: string | null) =>
+    request<EtfFlowBoard>(withDate(`/funds/etf?limit=${limit}&order=${order}`, date)),
+
+  fundsEtfIndustry: (order: EtfFlowOrder = 'inflow', limit = 30, date?: string | null) =>
+    request<EtfIndustryBoard>(withDate(`/funds/etf-industry?limit=${limit}&order=${order}`, date)),
+
+  fundsInstitutions: (
+    order: InstitutionOrder = 'net',
+    limit = 30,
+    date?: string | null,
+  ) => request<InstitutionBoard>(withDate(`/funds/institutions?limit=${limit}&order=${order}`, date)),
 }
