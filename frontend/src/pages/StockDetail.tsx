@@ -1,77 +1,134 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { StockDailyRow, StockProfile } from '../api/types'
+import type { StockProfile, StockThemes } from '../api/types'
 import Alert from '../components/Alert'
-import EChart from '../components/EChart'
-import type { ChartOption } from '../components/EChart'
+import KLineChart from '../components/KLineChart'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
-import { AXIS_LABEL, CHART, SPLIT_LINE, TOOLTIP } from '../lib/chart'
-import { fmtAmount, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
+import Segmented from '../components/Segmented'
+import { fmtAmount, fmtNum, fmtPct, toneOf } from '../lib/format'
+import { K_VIEWS, useKLine } from '../lib/klinePeriod'
+import { alreadySynced, markSynced, readStockList } from '../lib/stockNav'
 
-const MA_WINDOWS = [5, 10, 20]
-const MA_COLORS = ['#ffb020', '#5b9dff', '#c084fc']
+/**
+ * 少于这么多根 K 就认为「历史不全」，打开时补一次。
+ *
+ * 不能只看 `day_count === 0`：池子是按流动性筛的，而**池外的票（不少涨停股都在
+ * 池外）是逐日攒起来的** —— 它们库里有几根 K，但画不出均线和形态，
+ * 正好被 `=== 0` 这条判据漏掉。
+ */
+const NEED_BARS = 120
 
-/** 移动平均。窗口不足或含空值时给 null，ECharts 会自然断线。 */
-function movingAverage(values: (number | null)[], window: number): (number | null)[] {
-  return values.map((_, index) => {
-    if (index + 1 < window) return null
-    const slice = values.slice(index + 1 - window, index + 1)
-    if (slice.some((value) => value == null)) return null
-    const sum = slice.reduce<number>((acc, value) => acc + (value as number), 0)
-    return Number((sum / window).toFixed(2))
-  })
+/** K 线面板的标题按周期变 */
+const VIEW_LABEL: Record<string, string> = {
+  day: '日 K',
+  week: '周 K',
+  month: '月 K',
+}
+
+const VIEW_UNIT: Record<string, string> = {
+  day: '不复权真实价，红涨绿跌',
+  week: '不复权真实价 · 由日线按 ISO 周聚合',
+  month: '不复权真实价 · 由日线按月聚合',
 }
 
 export default function StockDetail() {
   const { code = '' } = useParams<{ code: string }>()
   const [profile, setProfile] = useState<StockProfile | null>(null)
-  const [daily, setDaily] = useState<StockDailyRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [themes, setThemes] = useState<StockThemes | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  // 周期、取数、按需补历史都在这个 hook 里（与形态页共用一套）
+  const kline = useKLine(code)
+  const { reload: reloadKline } = kline
 
-  const load = useCallback(
-    async (target: string) => {
-      const [p, rows] = await Promise.all([
-        api.stockProfile(target),
-        api.stockDaily(target, 250),
-      ])
-      setProfile(p)
-      setDaily(rows)
-      return p
-    },
-    [],
-  )
+  const navigate = useNavigate()
+  /**
+   * 上一次是从哪份列表点进来的（形态命中 / 自选 / 板块成分股…）。
+   * 挂载时读一次就够：详情页自己不会改写它，切股票也只是在同一份列表里位移。
+   */
+  const [codes] = useState(() => readStockList())
+  const index = codes.indexOf(code)
+  const prev = index > 0 ? codes[index - 1] : null
+  const next = index >= 0 && index < codes.length - 1 ? codes[index + 1] : null
+
+  const load = useCallback(async (target: string) => {
+    // 题材要现取，可能失败（比如首次打开、本地还没名称），不该拖垮整页
+    const [p, themeData] = await Promise.all([
+      api.stockProfile(target),
+      api.stockThemes(target).catch(() => null),
+    ])
+    setProfile(p)
+    setThemes(themeData)
+    return p
+  }, [])
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
     setError(null)
     ;(async () => {
       try {
         const p = await load(code)
-        // 本地没有缓存说明是第一次看这只票，自动拉一次，之后走缓存
-        if (!cancelled && p.day_count === 0) {
+        // 本地没有缓存、或历史明显不全时自动补一次，之后走缓存。
+        // alreadySynced 兜住「本来就短」的票，免得每次打开都再补一遍
+        if (!cancelled && p.day_count < NEED_BARS && !alreadySynced(code)) {
           setSyncing(true)
           await api.syncStock(code, 250)
-          if (!cancelled) await load(code)
+          // 标记放在**成功之后**：采集正忙（409）或 iFinD 出错时这次补采是白跑的，
+          // 提前标记会让本会话内再打开这只票也不再重试 —— 表现就是「点进去没日K、
+          // 刷新也没用」，只能关掉标签页重开。失败就让它下次打开再试一次
+          markSynced(code)
+          if (!cancelled) {
+            await load(code)
+            // 图的数据在 hook 里，得让它重取一次，否则补完还是空的
+            reloadKline()
+          }
         }
       } catch (err) {
         if (!cancelled) setError((err as Error).message)
       } finally {
-        if (!cancelled) {
-          setLoading(false)
-          setSyncing(false)
-        }
+        if (!cancelled) setSyncing(false)
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [code, load])
+  }, [code, load, reloadKline])
+
+  /**
+   * ← → 翻上/下一只。
+   *
+   * `index < 0` 表示没有列表上下文（比如直接输 URL 打开），这时完全不接管
+   * 方向键 —— 按了不该有任何反应。
+   */
+  useEffect(() => {
+    if (index < 0) return
+    const onKey = (event: KeyboardEvent) => {
+      const el = event.target as HTMLElement | null
+      // 焦点在输入框 / 下拉里时不劫持方向键：详情页目前没有输入框，
+      // 但这类「后来才加的元素」最容易忽略，事后又最难查
+      if (
+        el &&
+        (el.tagName === 'INPUT' ||
+          el.tagName === 'TEXTAREA' ||
+          el.tagName === 'SELECT' ||
+          el.isContentEditable)
+      ) {
+        return
+      }
+      const target =
+        event.key === 'ArrowLeft' ? prev : event.key === 'ArrowRight' ? next : null
+      if (!target) return
+      event.preventDefault()
+      navigate(`/stock/${target}`)
+      // 换票后回到顶部：否则会停在上只票看到一半的位置，看着却是另一只票的内容
+      window.scrollTo({ top: 0 })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [index, prev, next, navigate])
 
   const toggleWatch = useCallback(async () => {
     if (!profile) return
@@ -89,115 +146,16 @@ export default function StockDetail() {
     }
   }, [profile, load])
 
-  const klineOption = useMemo<ChartOption>(() => {
-    if (daily.length === 0) return {}
-    const dates = daily.map((row) => fmtShortDate(row.trade_date))
-    const closes = daily.map((row) => row.close)
-    // ECharts 蜡烛图的数据顺序是 [开, 收, 低, 高]
-    const candles = daily.map((row) => [row.open, row.close, row.low, row.high])
-    const volumes = daily.map((row) => ({
-      value: row.volume,
-      // 成交量柱跟随当日涨跌染色；涨跌幅缺失时用收盘价与开盘价比较
-      itemStyle: {
-        color:
-          (row.pct_chg ?? (row.close ?? 0) - (row.open ?? 0)) >= 0
-            ? 'rgba(255,77,79,0.55)'
-            : 'rgba(0,185,107,0.55)',
-      },
-    }))
-
-    return {
-      grid: [
-        { left: 8, right: 14, top: 34, height: '56%', containLabel: true },
-        { left: 8, right: 14, top: '76%', height: '16%', containLabel: true },
-      ],
-      legend: {
-        top: 2,
-        left: 8,
-        icon: 'rect',
-        itemWidth: 10,
-        itemHeight: 10,
-        itemGap: 14,
-        textStyle: { color: CHART.fgMuted, fontSize: 11 },
-        data: [...MA_WINDOWS.map((w) => `MA${w}`), '成交量'],
-      },
-      tooltip: { ...TOOLTIP, trigger: 'axis', axisPointer: { type: 'cross' } },
-      axisPointer: { link: [{ xAxisIndex: 'all' }] },
-      xAxis: [
-        {
-          type: 'category',
-          data: dates,
-          gridIndex: 0,
-          axisLabel: { ...AXIS_LABEL, interval: Math.max(0, Math.floor(dates.length / 8)) },
-          axisLine: { lineStyle: { color: CHART.line } },
-          axisTick: { show: false },
-        },
-        {
-          type: 'category',
-          data: dates,
-          gridIndex: 1,
-          axisLabel: { show: false },
-          axisLine: { lineStyle: { color: CHART.line } },
-          axisTick: { show: false },
-        },
-      ],
-      yAxis: [
-        {
-          scale: true,
-          gridIndex: 0,
-          axisLabel: AXIS_LABEL,
-          splitLine: SPLIT_LINE,
-          axisLine: { show: false },
-        },
-        {
-          gridIndex: 1,
-          axisLabel: { ...AXIS_LABEL, fontSize: 10 },
-          splitLine: { show: false },
-          axisLine: { show: false },
-        },
-      ],
-      series: [
-        {
-          type: 'candlestick' as const,
-          name: 'K线',
-          data: candles,
-          xAxisIndex: 0,
-          yAxisIndex: 0,
-          itemStyle: {
-            // ECharts 默认是欧美惯例（绿涨红跌），必须覆盖成 A 股的红涨绿跌：
-            // color = 阳线（收 ≥ 开），color0 = 阴线
-            color: CHART.up,
-            color0: CHART.down,
-            borderColor: CHART.up,
-            borderColor0: CHART.down,
-          },
-        },
-        ...MA_WINDOWS.map((window, index) => ({
-          type: 'line' as const,
-          name: `MA${window}`,
-          data: movingAverage(closes, window),
-          xAxisIndex: 0,
-          yAxisIndex: 0,
-          smooth: true,
-          symbol: 'none' as const,
-          lineStyle: { width: 1.2, color: MA_COLORS[index] },
-          itemStyle: { color: MA_COLORS[index] },
-        })),
-        {
-          type: 'bar' as const,
-          name: '成交量',
-          data: volumes,
-          xAxisIndex: 1,
-          yAxisIndex: 1,
-          barMaxWidth: 8,
-        },
-      ],
-    }
-  }, [daily])
-
   const latest = profile?.latest
   const toolbar = (
     <>
+      {/* 从列表点进来才有这份上下文；直接输 URL 打开时不显示，
+          免得给出一个「按了没反应」的提示 */}
+      {codes.length > 1 && index >= 0 && (
+        <span className="num hidden text-[11px] text-fg-dim md:inline">
+          ← → 切换 · {index + 1} / {codes.length}
+        </span>
+      )}
       {syncing && (
         <span className="num pulse-soft text-[11px] text-accent">同步中…</span>
       )}
@@ -262,27 +220,83 @@ export default function StockDetail() {
         </Panel>
 
         <Panel
-          title="日 K 线"
+          title="所属题材"
           meta={
             <span className="num">
-              近 {daily.length} 个交易日 · 前复权未做，红涨绿跌
+              {themes && themes.themes.length > 0
+                ? `${themes.themes.length} 个板块 · 板块涨跌幅为 ${
+                    themes.board_date ?? '—'
+                  }`
+                : '开盘红精选板块'}
+            </span>
+          }
+          delay={70}
+        >
+          {syncing ? (
+            <div className="px-4 py-6 text-center text-[12px] text-fg-dim">
+              同步日线后再取题材…
+            </div>
+          ) : themes && themes.themes.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5 px-4 py-3">
+              {themes.themes.map((theme) => (
+                <span
+                  key={theme.concept}
+                  className={[
+                    'flex items-baseline gap-1.5 border px-2 py-1 text-[11px]',
+                    theme.board_code
+                      ? 'border-line-soft bg-ink-850'
+                      : // 对不上板块表的是历史遗留的旧口径名字，弱化显示
+                        'border-line-soft/60 text-fg-dim',
+                  ].join(' ')}
+                >
+                  <span className={theme.board_code ? 'text-fg' : ''}>{theme.concept}</span>
+                  {theme.pct_chg != null && (
+                    <span className={`num ${toneOf(theme.pct_chg)}`}>
+                      {fmtPct(theme.pct_chg)}
+                    </span>
+                  )}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="px-4 py-6 text-center text-[12px] text-fg-dim">
+              该股近期没有涨停过。板块归属来自开盘红的涨停天梯，只覆盖涨停股 ——
+              非涨停个股没有可用的归属接口，所以这里如实留空
+            </div>
+          )}
+        </Panel>
+
+        <Panel
+          title={`${VIEW_LABEL[kline.view]} 线`}
+          meta={
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="num">
+                {kline.loading || kline.syncing
+                  ? '取数中…'
+                  : `${kline.bars.length} 根 · ${VIEW_UNIT[kline.view]}`}
+              </span>
+              <Segmented value={kline.view} items={K_VIEWS} onChange={kline.setView} />
             </span>
           }
           delay={80}
         >
-          {loading || syncing ? (
+          {kline.loading || syncing ? (
             <div className="flex h-[420px] items-center justify-center text-[13px] text-fg-dim">
               <span className="pulse-soft">
-                {syncing ? '首次打开，正在同步日线…' : '加载中…'}
+                {kline.syncing ? '正在补 2 年历史（周/月 K 要的长周期）…' : '加载中…'}
               </span>
             </div>
-          ) : daily.length === 0 ? (
+          ) : kline.error ? (
+            <div className="px-4 py-10 text-center text-[13px] text-danger">
+              {kline.error}
+            </div>
+          ) : kline.bars.length === 0 ? (
             <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
-              本地没有该股的日线，可点右上角「加入自选」后同步
+              没有取到该股的日线 —— 同步失败（比如采集正忙）或该股当日无行情，稍后刷新重试
             </div>
           ) : (
             <div className="px-2 pt-2">
-              <EChart option={klineOption} height={420} />
+              <KLineChart bars={kline.bars} height={420} />
             </div>
           )}
         </Panel>

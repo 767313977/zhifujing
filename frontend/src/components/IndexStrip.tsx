@@ -13,6 +13,24 @@ function toneColor(value: number | null | undefined): string {
 }
 
 /**
+ * 均线得失的一小格：`MA5 上` / `MA20 下`。
+ *
+ * **把「上/下」写进文字**，而不是只靠颜色区分：同一格里已经有当日涨跌在染色，
+ * 再让颜色承担第二种含义，就会出现「红色到底指涨还是指站上均线」的歧义。
+ * 颜色只做强化，文字自己就能读懂。
+ */
+function MaTag({ window, above }: { window: number; above: boolean | null }) {
+  if (above == null) {
+    return <span className="num text-fg-dim">MA{window} —</span>
+  }
+  return (
+    <span className={`num ${above ? 'text-up' : 'text-down'}`}>
+      MA{window} {above ? '上' : '下'}
+    </span>
+  )
+}
+
+/**
  * 指数条：核心指数并排，靠发丝线分隔而非卡片间距。
  * 左侧 2px 色条是唯一的方向提示，避免整块染色的噪音。
  *
@@ -29,7 +47,7 @@ export default function IndexStrip({ indexes, tradeDate }: IndexStripProps) {
   }
 
   return (
-    <div className="panel rise grid grid-cols-2 overflow-hidden md:grid-cols-3 xl:grid-cols-5">
+    <div className="panel rise grid grid-cols-2 overflow-hidden md:grid-cols-3 xl:grid-cols-6">
       {indexes.map((item, i) => (
         <div
           key={item.code}
@@ -68,6 +86,27 @@ export default function IndexStrip({ indexes, tradeDate }: IndexStripProps) {
             ) : (
               // 中证1000 等指数的涨跌家数 iFinD 返回 null，如实留空而非填 0
               <span className="text-fg-dim">家数 n/a</span>
+            )}
+          </div>
+
+          {/* 均线得失与量价配合：这一行是「今天这根怎么走出来的」 */}
+          <div className="num mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]">
+            <MaTag window={5} above={item.above_ma5} />
+            <MaTag window={20} above={item.above_ma20} />
+            {item.vol_price ? (
+              <span
+                className={`border border-line-soft px-1 ${toneOf(item.pct_chg)}`}
+                // 量比的数值放在 tooltip：格子窄，写「放量上涨 1.42」会挤掉均线
+                title={
+                  item.vol_ratio != null
+                    ? `量比 ${item.vol_ratio.toFixed(2)}（今日成交额 / 前 5 日均额）`
+                    : undefined
+                }
+              >
+                {item.vol_price}
+              </span>
+            ) : (
+              <span className="text-fg-dim">量价 n/a</span>
             )}
           </div>
         </div>

@@ -4,7 +4,11 @@ import type { Preset, ScreenRun } from '../api/types'
 import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
+import SortTh from '../components/SortTh'
+import StockLink from '../components/StockLink'
 import { fmtAmount } from '../lib/format'
+import { useSort } from '../lib/sort'
+import type { SortSpecs } from '../lib/sort'
 
 /** 示例条件：自然语言选股的能力边界不直观，给几个能直接用的例子最省事。 */
 const EXAMPLES = [
@@ -16,6 +20,43 @@ const EXAMPLES = [
 
 /** 文本列左对齐，数值列右对齐。 */
 const TEXT_COLUMNS = ['代码', '简称', '名称', '行业', '分类']
+
+/**
+ * 「代码」「名称」两列要能点进个股页看日K，其余列是纯数据。
+ *
+ * 列名由 iFinD 按提问内容给出，实测有 `股票代码 / 证券代码 / 股票简称 /
+ * 证券简称` 几种写法，所以按后缀匹配而不是写死整名。
+ */
+function isCodeColumn(name: string): boolean {
+  return name.endsWith('代码')
+}
+
+function isNameColumn(name: string): boolean {
+  return name.endsWith('简称') || name === '名称'
+}
+
+function isTextColumn(name: string): boolean {
+  return TEXT_COLUMNS.some((token) => name.includes(token))
+}
+
+/**
+ * 动态列的排序口径。列由 iFinD 按提问内容决定，所以只能现构造。
+ *
+ * iFinD 的值一律是字符串（还有 `2.2530271027878E11` 这种科学计数法），
+ * 所以**能解析成数字的按数字排，否则按文字排**。同一列里混着数字与文字时
+ * `sortRows` 会退化成字符串比较 —— 不会崩，只是那几行按字典序排。
+ */
+function buildSpecs(columns: string[]): SortSpecs<Record<string, string>> {
+  const specs: SortSpecs<Record<string, string>> = {}
+  for (const column of columns) {
+    const text = isTextColumn(splitColumn(column).name)
+    specs[column] = {
+      value: (row) => toNumber(row[column]) ?? row[column],
+      first: text ? 'asc' : 'desc',
+    }
+  }
+  return specs
+}
 
 function splitColumn(column: string): { name: string; note?: string } {
   // iFinD 的列名自带日期，如「总市值[20260917]」，拆出来单独弱化显示
@@ -226,12 +267,20 @@ export default function Screener() {
           </div>
         </Panel>
 
-        {presets.length > 0 && (
-          <Panel
-            title="保存的条件"
-            meta={<span className="num">{presets.length} 条 · 同名保存会覆盖</span>}
-            delay={80}
-          >
+        <Panel
+          title="保存的条件"
+          meta={
+            <span className="num">
+              {presets.length > 0 ? `${presets.length} 条 · 同名保存会覆盖` : '—'}
+            </span>
+          }
+          delay={80}
+        >
+          {presets.length === 0 ? (
+            <div className="px-4 py-6 text-center text-[12px] text-fg-dim">
+              还没有保存的条件。写一条问句，点上面的「保存条件」就能一键复用
+            </div>
+          ) : (
             <div className="divide-y divide-line-soft">
               {presets.map((preset) => (
                 <div key={preset.id} className="flex items-center gap-3 px-4 py-2.5">
@@ -258,8 +307,14 @@ export default function Screener() {
                   <button
                     type="button"
                     onClick={async () => {
-                      await api.deletePreset(preset.id)
-                      reloadPresets()
+                      // 删除失败必须说出来：静默失败会让人以为删掉了，下次刷新它
+                      // 又冒出来；而且不 catch 会抛出一个没人接的 promise
+                      try {
+                        await api.deletePreset(preset.id)
+                        reloadPresets()
+                      } catch (err) {
+                        setError((err as Error).message)
+                      }
                     }}
                     className="shrink-0 border border-line px-2.5 py-1 text-[11px] text-fg-dim transition-colors hover:border-danger/50 hover:text-danger"
                   >
@@ -268,8 +323,8 @@ export default function Screener() {
                 </div>
               ))}
             </div>
-          </Panel>
-        )}
+          )}
+        </Panel>
 
         <Panel
           title="选股结果"
@@ -330,82 +385,129 @@ export default function Screener() {
               )}
 
               {result.rows.length === 0 ? (
-                <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
-                  没有符合条件的股票，试试放宽条件
-                </div>
+                <>
+                  <div className="px-4 py-6 text-center text-[13px] text-fg-dim">
+                    没有符合条件的股票，试试放宽条件
+                  </div>
+                  {/* **只在没结果时才展示数据源的回答**。成功时它是一整张结果表的
+                      markdown 复本（实测 4279 字，与下面的表格逐行重复），只有
+                      「0 只」时它才是有价值的那段：它会区分「条件太严」与
+                      「这句话压根没被解析出来（有歧义）」。限高 + 可滚 */}
+                  {result.answer && (
+                    <div className="max-h-40 overflow-auto border-t border-line-soft bg-ink-850/40 px-4 py-2.5">
+                      <div className="mb-1 text-[11px] tracking-[0.1em] text-fg-dim">
+                        数据源的回答
+                      </div>
+                      <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-fg-muted">
+                        {result.answer}
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
-                <div className="max-h-[560px] overflow-auto">
-                  <table className="grid-table">
-                    <thead>
-                      <tr>
-                        {result.columns.map((column) => {
-                          const { name, note } = splitColumn(column)
-                          return (
-                            <th
-                              key={column}
-                              className={
-                                TEXT_COLUMNS.some((token) => name.includes(token))
-                                  ? '!text-left'
-                                  : undefined
-                              }
-                            >
-                              {/* 表头底色本身就是 fg-dim，所以列名要提亮一档
-                                  才能和后面的日期拉开对比 */}
-                              <span className="text-fg-muted">{name}</span>
-                              {note && <span className="ml-1">{note}</span>}
-                            </th>
-                          )
-                        })}
-                        <th>操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {result.rows.map((row, index) => {
-                        const code = (row['股票代码'] ?? row['证券代码'] ?? '').trim()
-                        const shortCode = code.replace(/\..*$/, '')
-                        const name = row['股票简称'] ?? row['证券简称'] ?? shortCode
-                        const isWatched = watched.has(shortCode)
-                        return (
-                          <tr key={`${code}-${index}`}>
-                            {result.columns.map((column) => {
-                              const { name: columnName } = splitColumn(column)
-                              const cell = formatCell(column, row[column])
-                              return (
-                                <td
-                                  key={column}
-                                  className={
-                                    TEXT_COLUMNS.some((token) => columnName.includes(token))
-                                      ? '!text-left'
-                                      : undefined
-                                  }
-                                >
-                                  <span className={`num ${cell.tone ?? 'text-fg'}`}>
-                                    {cell.text}
-                                  </span>
-                                </td>
-                              )
-                            })}
-                            <td>
-                              <button
-                                type="button"
-                                disabled={isWatched || !shortCode}
-                                onClick={() => void addToWatchlist(code, name)}
-                                className="num border border-line px-2 py-[2px] text-[11px] text-fg-muted transition-colors hover:border-accent/50 hover:text-accent disabled:cursor-default disabled:border-line-soft disabled:text-fg-dim"
-                              >
-                                {isWatched ? '已在自选' : '＋自选'}
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <ResultTable result={result} watched={watched} onAdd={addToWatchlist} />
               )}
             </>
           )}
         </Panel>
       </div>
     </Layout>
+  )
+}
+
+/**
+ * 选股结果表。
+ *
+ * 单独抽出来是为了能调 `useSort` —— 结果为空/未选股时上面那块是条件渲染的，
+ * hook 不能写在条件分支里。
+ */
+function ResultTable({
+  result,
+  watched,
+  onAdd,
+}: {
+  result: ScreenRun
+  watched: Set<string>
+  onAdd: (code: string, name: string) => void
+}) {
+  // 首屏不排，保持数据源给的顺序（通常已经是有意义的排名）；点列头才排。
+  // ⚠️ 表格最多 100 行，排的只是这 100 行 —— 截断提示就在上方
+  const [sort, shown] = useSort(result.rows, buildSpecs(result.columns), { key: null })
+
+  return (
+    <div className="max-h-[560px] overflow-auto">
+      <table className="grid-table">
+        <thead>
+          <tr>
+            {result.columns.map((column) => {
+              const { name, note } = splitColumn(column)
+              return (
+                <SortTh
+                  key={column}
+                  {...sort}
+                  sortKey={column}
+                  align={isTextColumn(name) ? 'left' : undefined}
+                >
+                  {/* 表头底色本身就是 fg-dim，所以列名要提亮一档
+                      才能和后面的日期拉开对比 */}
+                  <span className="text-fg-muted">{name}</span>
+                  {note && <span className="ml-1">{note}</span>}
+                </SortTh>
+              )
+            })}
+            {/* 「操作」列没有可比的值，保持普通表头 */}
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((row, index) => {
+            const code = (row['股票代码'] ?? row['证券代码'] ?? '').trim()
+            const shortCode = code.replace(/\..*$/, '')
+            const name = row['股票简称'] ?? row['证券简称'] ?? shortCode
+            const isWatched = watched.has(shortCode)
+            return (
+              <tr key={`${code}-${index}`}>
+                {result.columns.map((column) => {
+                  const { name: columnName } = splitColumn(column)
+                  const cell = formatCell(column, row[column])
+                  // 代码 / 名称两列跳个股页。shortCode 为空（数据源没给代码）时
+                  // 退回纯文本，免得点出一个 /stock/ 的空路径
+                  const linkable =
+                    shortCode !== '' &&
+                    (isCodeColumn(columnName) || isNameColumn(columnName))
+                  return (
+                    <td
+                      key={column}
+                      className={isTextColumn(columnName) ? '!text-left' : undefined}
+                    >
+                      {linkable ? (
+                        <StockLink
+                          code={shortCode}
+                          className={`num ${cell.tone ?? 'text-fg'}`}
+                        >
+                          {cell.text}
+                        </StockLink>
+                      ) : (
+                        <span className={`num ${cell.tone ?? 'text-fg'}`}>{cell.text}</span>
+                      )}
+                    </td>
+                  )
+                })}
+                <td>
+                  <button
+                    type="button"
+                    disabled={isWatched || !shortCode}
+                    onClick={() => onAdd(code, name)}
+                    className="num border border-line px-2 py-[2px] text-[11px] text-fg-muted transition-colors hover:border-accent/50 hover:text-accent disabled:cursor-default disabled:border-line-soft disabled:text-fg-dim"
+                  >
+                    {isWatched ? '已在自选' : '＋自选'}
+                  </button>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }

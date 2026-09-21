@@ -1,11 +1,14 @@
 import type { LadderLevel, LimitStock } from '../api/types'
 import { fmtSealTime } from '../lib/format'
 import Panel from './Panel'
+import StockLink from './StockLink'
 
 interface LadderBoardProps {
   ladder: LadderLevel[]
   total: number
   delay?: number
+  /** 首屏取数期间为真。不加这个的话，空梯队会被显示成「当日无涨停」 */
+  loading?: boolean
 }
 
 /** 梯队越高越醒目：5 板以上用金色强调，这是市场的「高度」。 */
@@ -37,9 +40,12 @@ function StockChip({ stock }: { stock: LimitStock }) {
     .join(' · ')
 
   return (
-    <span
+    /* chip 本身就是入口：整块可点，进个股页看日K。
+       tooltip 挂在链接上，鼠标停在 chip 上照样能看到封板细节 */
+    <StockLink
+      code={stock.code}
       title={title}
-      className="inline-flex cursor-default items-baseline gap-1.5 border border-line-soft bg-ink-850 px-1.5 py-[3px] text-[12px] transition-colors hover:border-line hover:bg-ink-700"
+      className="inline-flex cursor-pointer items-baseline gap-1.5 border border-line-soft bg-ink-850 px-1.5 py-[3px] text-[12px] hover:border-line hover:bg-ink-700"
     >
       <span className="text-fg">{stock.name ?? stock.code}</span>
       {stock.industry && (
@@ -54,7 +60,7 @@ function StockChip({ stock }: { stock: LimitStock }) {
           ↩{stock.open_times}
         </span>
       )}
-    </span>
+    </StockLink>
   )
 }
 
@@ -65,7 +71,20 @@ function StockChip({ stock }: { stock: LimitStock }) {
  * 家数条宽度按最大家数归一 —— 多板高标少、首板多，形状自然收缩成塔，
  * 一眼就能判断市场是「有高度没厚度」还是「高低都有」。
  */
-export default function LadderBoard({ ladder, total, delay = 200 }: LadderBoardProps) {
+export default function LadderBoard({
+  ladder,
+  total,
+  delay = 200,
+  loading = false,
+}: LadderBoardProps) {
+  if (loading) {
+    return (
+      <Panel title="涨停梯队" delay={delay}>
+        <div className="px-4 py-8 text-center text-[13px] text-fg-dim">加载中…</div>
+      </Panel>
+    )
+  }
+
   if (ladder.length === 0) {
     return (
       <Panel title="涨停梯队" delay={delay}>

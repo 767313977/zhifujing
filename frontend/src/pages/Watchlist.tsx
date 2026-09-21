@@ -5,7 +5,20 @@ import type { WatchlistRow } from '../api/types'
 import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
+import SortTh from '../components/SortTh'
 import { fmtNum, fmtPct, toneOf } from '../lib/format'
+import { useSort } from '../lib/sort'
+import type { SortSpecs } from '../lib/sort'
+import { rememberStockList } from '../lib/stockNav'
+
+const WATCH_SORTS: SortSpecs<WatchlistRow> = {
+  code: { value: (row) => row.code, first: 'asc' },
+  name: { value: (row) => row.name, first: 'asc' },
+  // `2026-09-18` 定长写法，按字符串排等价于按日期排
+  latest_date: { value: (row) => row.latest_date, first: 'asc' },
+  close: { value: (row) => row.close },
+  pct_chg: { value: (row) => row.pct_chg },
+}
 
 export default function WatchlistPage() {
   const [rows, setRows] = useState<WatchlistRow[]>([])
@@ -71,6 +84,8 @@ export default function WatchlistPage() {
   }, [reload])
 
   const missing = rows.filter((row) => row.close == null).length
+  // 首屏不排，保持后端顺序（按代码）；点列头才排
+  const [sort, shown] = useSort(rows, WATCH_SORTS, { key: null })
 
   const toolbar = (
     <>
@@ -144,18 +159,25 @@ export default function WatchlistPage() {
               <table className="grid-table">
                 <thead>
                   <tr>
-                    <th className="!text-left">代码</th>
-                    <th className="!text-left">名称</th>
-                    <th>最新日期</th>
-                    <th>收盘价</th>
-                    <th>涨跌幅</th>
+                    <SortTh sortKey="code" align="left" {...sort}>代码</SortTh>
+                    <SortTh sortKey="name" align="left" {...sort}>名称</SortTh>
+                    <SortTh sortKey="latest_date" {...sort}>最新日期</SortTh>
+                    <SortTh sortKey="close" {...sort}>收盘价</SortTh>
+                    <SortTh sortKey="pct_chg" {...sort}>涨跌幅</SortTh>
+                    {/* 备注与操作没有可比的值，保持普通表头 */}
                     <th className="!text-left">备注</th>
                     <th>操作</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.code}>
+                  {shown.map((row) => (
+                    <tr
+                      key={row.code}
+                      onClick={() => {
+                        // 点行时把当前自选列表存下，个股页就能 ← → 前后翻
+                        rememberStockList(shown.map((item) => item.code))
+                      }}
+                    >
                       <td className="!text-left">
                         <Link
                           to={`/stock/${row.code}`}

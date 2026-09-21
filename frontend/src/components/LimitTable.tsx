@@ -1,12 +1,21 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import type { LimitStock, PoolType } from '../api/types'
 import { fmtAmount, fmtInt, fmtNum, fmtPct, fmtSealTime, toneOf } from '../lib/format'
+import { useSort } from '../lib/sort'
+import type { SortSpecs, SortValue } from '../lib/sort'
+import { rememberStockList } from '../lib/stockNav'
 import Panel from './Panel'
+import SortTh from './SortTh'
 
 interface LimitTableProps {
   type: PoolType
   stocks: LimitStock[]
+  /** 代码 → 题材名（只对涨停池有）。给了就在名称下方补一行题材标注 */
+  themes?: Record<string, string[]>
   delay?: number
+  /** 首屏取数期间为真。不加这个的话，空列表会被显示成「当日无数据」 */
+  loading?: boolean
 }
 
 interface Column {
@@ -15,6 +24,13 @@ interface Column {
   /** 默认右对齐（数值列）；文字列显式左对齐 */
   align?: 'left' | 'right'
   render: (stock: LimitStock) => ReactNode
+  /**
+   * 取这一列的排序值。不给 = 这列没有可比值、表头不可点。
+   *
+   * 直接复用列的 `key` 当排序字段名，不再另起一套 key ——
+   * 两套名字最容易出现「点 A 列排的是 B 列」。
+   */
+  sortValue?: (stock: LimitStock) => SortValue
 }
 
 const TITLES: Record<PoolType, string> = {
@@ -27,25 +43,65 @@ const TITLES: Record<PoolType, string> = {
  * 三池的列不完全一样（跌停池是「封单资金/连续跌停/末封」，炸板池没有封板资金），
  * 这里按类型装配列，而不是硬套同一套表头。
  */
-function buildColumns(type: PoolType): Column[] {
+function buildColumns(type: PoolType, themes?: Record<string, string[]>): Column[] {
   const columns: Column[] = [
     {
       key: 'code',
       label: '代码',
       align: 'left',
-      render: (s) => <span className="num text-fg-muted">{s.code}</span>,
+      // 代码和名称都是跳个股页（看日 K）的入口。为什么不把整行做成链接：
+      // 行上已经有 onClick（记列表、供个股页 ← → 翻），再让 tr 也导航就会
+      // 和 Link 各推一次历史 —— 退回来要按两下。Patterns 页记过这个坑。
+      render: (s) => (
+        <Link
+          to={`/stock/${s.code}`}
+          className="num text-fg-muted transition-colors hover:text-accent"
+        >
+          {s.code}
+        </Link>
+      ),
+      sortValue: (s) => s.code,
     },
     {
       key: 'name',
-      label: '名称',
+      label: themes ? '名称 / 题材' : '名称',
       align: 'left',
-      render: (s) => <span className="text-fg">{s.name ?? '—'}</span>,
+      render: (s) => {
+        const items = themes?.[s.code] ?? []
+        return (
+          <>
+            <Link
+              to={`/stock/${s.code}`}
+              className="text-fg transition-colors hover:text-accent"
+            >
+              {s.name ?? '—'}
+            </Link>
+            {/* 题材放名称下方而不是单开一列：涨停明细已有 11 列，
+                再加一列会在 1280~1500px 这些常用宽度上把表挤溢出 */}
+            {themes && items.length > 0 && (
+              <div className="mt-0.5 flex flex-wrap gap-1">
+                {items.map((theme) => (
+                  // 题材标签留在链接外：它们只是标注，点上去不该跳走
+                  <span
+                    key={theme}
+                    className="border border-line px-1 text-[10px] leading-[15px] text-fg-dim"
+                  >
+                    {theme}
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
+        )
+      },
+      sortValue: (s) => s.name,
     },
     {
       key: 'industry',
       label: '行业',
       align: 'left',
       render: (s) => <span className="text-[11px] text-fg-dim">{s.industry ?? '—'}</span>,
+      sortValue: (s) => s.industry,
     },
     {
       key: 'pct',
@@ -53,8 +109,14 @@ function buildColumns(type: PoolType): Column[] {
       render: (s) => (
         <span className={`num ${toneOf(s.pct_chg)}`}>{fmtPct(s.pct_chg)}</span>
       ),
+      sortValue: (s) => s.pct_chg,
     },
-    { key: 'price', label: '最新价', render: (s) => <span className="num">{fmtNum(s.price, 2)}</span> },
+    {
+      key: 'price',
+      label: '最新价',
+      render: (s) => <span className="num">{fmtNum(s.price, 2)}</span>,
+      sortValue: (s) => s.price,
+    },
   ]
 
   if (type === 'up') {
@@ -66,6 +128,7 @@ function buildColumns(type: PoolType): Column[] {
           {fmtInt(s.consecutive)}
         </span>
       ),
+      sortValue: (s) => s.consecutive,
     })
   }
 
@@ -74,6 +137,7 @@ function buildColumns(type: PoolType): Column[] {
       key: 'seal_amount',
       label: type === 'up' ? '封板资金' : '封单资金',
       render: (s) => <span className="num">{fmtAmount(s.seal_amount)}</span>,
+      sortValue: (s) => s.seal_amount,
     })
   }
 
@@ -82,17 +146,21 @@ function buildColumns(type: PoolType): Column[] {
       key: 'continuous',
       label: '连续跌停',
       render: (s) => <span className="num text-down">{fmtInt(s.consecutive)}</span>,
+      sortValue: (s) => s.consecutive,
     })
     columns.push({
       key: 'last_seal',
       label: '末封',
       render: (s) => <span className="num text-fg-muted">{fmtSealTime(s.last_seal_time)}</span>,
+      // 封板时间是 `09:31:00` 这种定长写法，按字符串排就等价于按时间排
+      sortValue: (s) => s.last_seal_time,
     })
   } else {
     columns.push({
       key: 'first_seal',
       label: '首封',
       render: (s) => <span className="num text-fg-muted">{fmtSealTime(s.first_seal_time)}</span>,
+      sortValue: (s) => s.first_seal_time,
     })
   }
 
@@ -104,36 +172,81 @@ function buildColumns(type: PoolType): Column[] {
         {fmtInt(s.open_times)}
       </span>
     ),
+    sortValue: (s) => s.open_times,
   })
   columns.push({
     key: 'turnover',
     label: '换手率',
     render: (s) => <span className="num">{fmtNum(s.turnover, 2, '%')}</span>,
+    sortValue: (s) => s.turnover,
   })
   columns.push({
     key: 'amount',
     label: '成交额',
     render: (s) => <span className="num text-fg-muted">{fmtAmount(s.amount)}</span>,
+    sortValue: (s) => s.amount,
   })
   columns.push({
     key: 'float_mv',
     label: '流通市值',
-    render: (s) => <span className="num text-fg-muted">{fmtAmount(s.float_mv)}</span>,
+    render: (s) => (
+      // 总市值放悬停里而不是单开一列：涨停明细本来就有 12 列，
+      // 再加一列在 1280~1500px 这些常用宽度上会挤到必须横向滚。
+      // 打板主要看流通盘（决定封板难度），总市值只是「大票还是小票」的旁证
+      <span
+        className="num text-fg-muted"
+        title={s.total_mv != null ? `总市值 ${fmtAmount(s.total_mv)}` : undefined}
+      >
+        {fmtAmount(s.float_mv)}
+      </span>
+    ),
+    sortValue: (s) => s.float_mv,
   })
 
   return columns
 }
 
-export default function LimitTable({ type, stocks, delay = 280 }: LimitTableProps) {
-  const columns = buildColumns(type)
+/** 把列定义里的 sortValue 收集成排序口径。左对齐的按升序起手（代码、名称、行业） */
+function buildSpecs(columns: Column[]): SortSpecs<LimitStock> {
+  const specs: SortSpecs<LimitStock> = {}
+  for (const column of columns) {
+    if (column.sortValue) {
+      specs[column.key] = {
+        value: column.sortValue,
+        first: column.align === 'left' ? 'asc' : 'desc',
+      }
+    }
+  }
+  return specs
+}
+
+export default function LimitTable({
+  type,
+  stocks,
+  themes,
+  delay = 280,
+  loading = false,
+}: LimitTableProps) {
+  const columns = buildColumns(type, themes)
+  // 首屏不排（key 为 null），保持后端顺序：涨停池的默认顺序本身有意义
+  const [sort, shown] = useSort(stocks, buildSpecs(columns), { key: null })
 
   return (
     <Panel
       title={TITLES[type]}
-      meta={<span className="num">{stocks.length} 只</span>}
+      meta={
+        <span className="num">
+          {loading ? '加载中…' : `${stocks.length} 只`}
+          {!loading && stocks.length > 0 && (
+            <span className="ml-2 text-fg-dim">点名称看日 K · 点列头排序</span>
+          )}
+        </span>
+      }
       delay={delay}
     >
-      {stocks.length === 0 ? (
+      {loading ? (
+        <div className="px-4 py-8 text-center text-[13px] text-fg-dim">加载中…</div>
+      ) : stocks.length === 0 ? (
         <div className="px-4 py-8 text-center text-[13px] text-fg-dim">当日无数据</div>
       ) : (
         <div className="max-h-[440px] overflow-auto">
@@ -141,13 +254,25 @@ export default function LimitTable({ type, stocks, delay = 280 }: LimitTableProp
             <thead>
               <tr>
                 {columns.map((column) => (
-                  <th key={column.key}>{column.label}</th>
+                  <SortTh
+                    key={column.key}
+                    {...sort}
+                    sortKey={column.sortValue ? column.key : undefined}
+                    align={column.align}
+                  >
+                    {column.label}
+                  </SortTh>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {stocks.map((stock) => (
-                <tr key={stock.code}>
+              {shown.map((stock) => (
+                <tr
+                  key={stock.code}
+                  // 只记列表、不导航：跳转交给名称/代码那个 Link。
+                  // 点击会从 Link 冒泡上来，所以点名称时这里也会执行
+                  onClick={() => rememberStockList(shown.map((item) => item.code))}
+                >
                   {columns.map((column) => (
                     <td
                       key={column.key}

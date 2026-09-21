@@ -45,7 +45,11 @@ function axisTooltip(params: unknown): string {
   const rows = items.map((item) => {
     const text =
       item.seriesName === '两市成交额'
-        ? fmtAmount(item.value)
+        ? // ECharts 对空值点传给 formatter 的是 '-' 而不是 null，必须按类型判断，
+          // 否则 fmtAmount('-') 里 Math.abs 得 NaN、最后 .toFixed 抛异常
+          typeof item.value === 'number'
+          ? fmtAmount(item.value)
+          : '—'
         : item.value == null
           ? '—'
           : String(item.value)
@@ -307,7 +311,9 @@ export default function SentimentPage() {
         </div>
 
         <Panel title="情绪指标" meta={<span className="num">{rangeLabel(emotionDates)}</span>} delay={120}>
-          {sentiment.length === 0 ? (
+          {loading ? (
+            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+          ) : sentiment.length === 0 ? (
             <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
               暂无情绪数据，请先在「今日复盘」执行采集
             </div>
@@ -319,7 +325,9 @@ export default function SentimentPage() {
         </Panel>
 
         <Panel title="连板高度" meta={<span className="num">市场高度 · 最高连板数</span>} delay={180}>
-          {sentiment.length === 0 ? (
+          {loading ? (
+            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+          ) : sentiment.length === 0 ? (
             <div className="px-4 py-10 text-center text-[13px] text-fg-dim">暂无数据</div>
           ) : (
             <div className="px-2 pt-2">

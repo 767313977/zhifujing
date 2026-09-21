@@ -39,8 +39,12 @@ export default function NotePanel({ tradeDate, delay = 420 }: NotePanelProps) {
     }
   }, [tradeDate])
 
+  // 加载失败时 saved 保持 null，此时「有内容」就允许保存 —— 否则首次加载一失败，
+  // dirty 恒为 false，保存按钮永远禁用，用户当天没法写笔记（除非刷新重来）
   const dirty =
-    saved !== null && (marketView !== saved.marketView || nextPlan !== saved.nextPlan)
+    saved === null
+      ? marketView !== '' || nextPlan !== ''
+      : marketView !== saved.marketView || nextPlan !== saved.nextPlan
 
   const save = async () => {
     setSaving(true)

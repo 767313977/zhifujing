@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
-import type { LimitPool, PromotionSeries } from '../api/types'
+import type { LimitPool, LimitThemes, PromotionSeries } from '../api/types'
 import Alert from '../components/Alert'
 import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
@@ -25,12 +25,19 @@ const TIME_BUCKETS: { label: string; from: number; to: number }[] = [
 /** 晋级率只展示样本量足够的档位；4进5 及以上每日基数常只有 1-3 只，会 0/100 反复跳。 */
 const CHART_LEVELS = [1, 2, 3]
 
+/** 涨停明细里每只票最多标几个题材。后端给全量，截断只在这里做。 */
+const THEMES_SHOWN = 3
+
 export default function LimitReview() {
   const [date, setDate] = useState<string | null>(null)
   const [dates, setDates] = useState<string[]>([])
   const [pool, setPool] = useState<LimitPool | null>(null)
   const [broken, setBroken] = useState<LimitPool | null>(null)
   const [promotion, setPromotion] = useState<PromotionSeries | null>(null)
+  const [promotionError, setPromotionError] = useState<string | null>(null)
+  const [themes, setThemes] = useState<LimitThemes | null>(null)
+  // 点题材标签筛选涨停明细，null 表示不筛
+  const [themeFilter, setThemeFilter] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -39,22 +46,31 @@ export default function LimitReview() {
     api
       .promotion(15)
       .then(setPromotion)
-      .catch(() => setPromotion(null))
+      .catch((err: Error) => {
+        // 「取数失败」与「样本不够」是两件事。都落进下面那句「需要至少 2 个
+        // 交易日的涨停池」的话，接口报错会被读成「数据还在攒，再等两天」
+        setPromotion(null)
+        setPromotionError(err.message)
+      })
   }, [])
 
   const load = useCallback(async (target: string | null) => {
     setLoading(true)
     setError(null)
+    setThemeFilter(null)
     try {
-      const [up, brokenPool] = await Promise.all([
+      const [up, brokenPool, themeData] = await Promise.all([
         api.limitPool('up', target),
         api.limitPool('broken', target),
+        api.limitThemes(target).catch(() => null),
       ])
       setPool(up)
       setBroken(brokenPool)
+      setThemes(themeData)
     } catch (err) {
       setPool(null)
       setBroken(null)
+      setThemes(null)
       setError((err as Error).message)
     } finally {
       setLoading(false)
@@ -66,6 +82,35 @@ export default function LimitReview() {
   }, [date, load])
 
   const stocks = useMemo(() => pool?.stocks ?? [], [pool])
+
+  /** 代码 → 全部题材（筛选与统计用，不截断）。 */
+  const themeIndex = useMemo(() => {
+    const map: Record<string, string[]> = {}
+    for (const item of themes?.stocks ?? []) {
+      map[item.code] = item.themes
+    }
+    return map
+  }, [themes])
+
+  /** 代码 → 要展示的题材（截断到 THEMES_SHOWN），喂给涨停明细表在名称下方补标注。 */
+  const themeMap = useMemo(() => {
+    const map: Record<string, string[]> = {}
+    for (const [code, list] of Object.entries(themeIndex)) {
+      // 筛选中时把被筛的题材顶到最前，否则会出现「按储能筛出来的票，
+      // 标签里却看不到储能」（它排在更热的题材之后，被截断掉了）
+      const ordered = themeFilter
+        ? [themeFilter, ...list.filter((theme) => theme !== themeFilter)]
+        : list
+      map[code] = ordered.slice(0, THEMES_SHOWN)
+    }
+    return map
+  }, [themeIndex, themeFilter])
+
+  /** 筛选后要展示的涨停股。用全量题材归属判断，与标签上的家数同口径。 */
+  const visibleStocks = useMemo(() => {
+    if (!themeFilter) return stocks
+    return stocks.filter((stock) => themeIndex[stock.code]?.includes(themeFilter))
+  }, [stocks, themeFilter, themeIndex])
 
   /** 首封时间分桶计数。 */
   const timeDistribution = useMemo(() => {
@@ -195,7 +240,8 @@ export default function LimitReview() {
         className="num border border-line bg-ink-900 px-2 py-[3px] text-[12px] text-fg outline-none focus:border-fg-dim"
       >
         <option value="">最新</option>
-        {dates.map((item) => (
+        {/* 倒序渲染：最近的排最上面。原先是升序，展开后要一路滚到底才够得着昨天 */}
+        {[...dates].reverse().map((item) => (
           <option key={item} value={item}>
             {item}
           </option>
@@ -217,7 +263,9 @@ export default function LimitReview() {
             <span className="num">
               {promotion && promotion.dates.length > 0
                 ? `${fmtShortDate(promotion.dates[0])} ~ ${fmtShortDate(promotion.dates.at(-1)!)} · ${promotion.dates.length} 个交易日`
-                : '暂无数据'}
+                : promotionError
+                  ? '取数失败'
+                  : '暂无数据'}
               <span className="ml-3 text-fg-dim">
                 昨日 N 板股今日晋级 N+1 板的比例 · 样本不足的高档位已略去
               </span>
@@ -225,7 +273,11 @@ export default function LimitReview() {
           }
           delay={40}
         >
-          {promotion && promotion.dates.length > 0 ? (
+          {promotionError ? (
+            <div className="px-4 py-10 text-center text-[13px] text-danger">
+              {promotionError}
+            </div>
+          ) : promotion && promotion.dates.length > 0 ? (
             <>
               <div className="flex flex-wrap items-stretch gap-px border-b border-line-soft bg-line-soft">
                 <Stat label="最新一日整体晋级率" value={fmtPct(latestOverall, 1)} tone={toneOf(latestOverall)} />
@@ -251,12 +303,72 @@ export default function LimitReview() {
         <LadderBoard
           ladder={pool?.ladder ?? []}
           total={pool?.total ?? 0}
+          loading={loading}
           delay={100}
         />
 
+        <Panel
+          title="今日题材共振"
+          meta={
+            <span className="num">
+              {themeFilter
+                ? `已筛选「${themeFilter}」，点「全部」清除`
+                : `${themes?.clusters.length ?? 0} 个题材有 3 只以上涨停`}
+            </span>
+          }
+          delay={130}
+        >
+          {loading ? (
+            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+          ) : themes && themes.clusters.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5 px-3 py-3">
+              <button
+                type="button"
+                onClick={() => setThemeFilter(null)}
+                className={[
+                  'border px-2 py-[3px] text-[12px] transition-colors',
+                  themeFilter === null
+                    ? 'border-accent/50 text-accent'
+                    : 'border-line text-fg-muted hover:text-fg',
+                ].join(' ')}
+              >
+                全部 {stocks.length}
+              </button>
+              {themes.clusters.map((item) => (
+                <button
+                  key={item.concept}
+                  type="button"
+                  onClick={() =>
+                    setThemeFilter(item.concept === themeFilter ? null : item.concept)
+                  }
+                  className={[
+                    'flex items-baseline gap-1.5 border px-2 py-[3px] text-[12px] transition-colors',
+                    item.concept === themeFilter
+                      ? 'border-accent/50 text-accent'
+                      : 'border-line text-fg-muted hover:text-fg',
+                  ].join(' ')}
+                  title={`${item.concept} 今日有 ${item.count} 只涨停`}
+                >
+                  <span>{item.concept}</span>
+                  <span className="num text-[11px] text-fg">{item.count}</span>
+                  <span className={`num text-[10px] ${toneOf(item.pct_chg)}`}>
+                    {fmtPct(item.pct_chg)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+              该交易日没有题材数据（涨停题材随每日采集开始累积）
+            </div>
+          )}
+        </Panel>
+
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <Panel title="首封时间分布" meta={<span className="num">首封越早，资金越坚决</span>} delay={160}>
-            {stocks.length === 0 ? (
+            {loading ? (
+              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+            ) : stocks.length === 0 ? (
               <div className="px-4 py-10 text-center text-[13px] text-fg-dim">暂无数据</div>
             ) : (
               <div className="px-2 pt-2">
@@ -270,7 +382,9 @@ export default function LimitReview() {
             meta={<span className="num">口径为涨停板池的所属行业，上游截断为 4 字</span>}
             delay={200}
           >
-            {industryRanking.length === 0 ? (
+            {loading ? (
+              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+            ) : industryRanking.length === 0 ? (
               <div className="px-4 py-10 text-center text-[13px] text-fg-dim">暂无数据</div>
             ) : (
               <IndustryBars items={industryRanking} total={stocks.length} />
@@ -278,8 +392,20 @@ export default function LimitReview() {
           </Panel>
         </div>
 
-        <LimitTable type="up" stocks={stocks} delay={240} />
-        <LimitTable type="broken" stocks={broken?.stocks ?? []} delay={280} />
+        <LimitTable
+          type="up"
+          stocks={visibleStocks}
+          // 没有题材数据（早于题材采集上线的交易日）时不给，表头保持「名称」
+          themes={themes ? themeMap : undefined}
+          loading={loading}
+          delay={240}
+        />
+        <LimitTable
+          type="broken"
+          stocks={broken?.stocks ?? []}
+          loading={loading}
+          delay={280}
+        />
       </div>
     </Layout>
   )
