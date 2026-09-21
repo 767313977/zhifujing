@@ -42,8 +42,15 @@ const TITLES: Record<PoolType, string> = {
 /**
  * 三池的列不完全一样（跌停池是「封单资金/连续跌停/末封」，炸板池没有封板资金），
  * 这里按类型装配列，而不是硬套同一套表头。
+ *
+ * `hasBoard` 由调用方按数据判：涨停天梯只覆盖涨停股，跌停 / 炸板池拿不到板块归属，
+ * 那种情况下不给「开盘啦板块」列。
  */
-function buildColumns(type: PoolType, themes?: Record<string, string[]>): Column[] {
+function buildColumns(
+  type: PoolType,
+  themes?: Record<string, string[]>,
+  hasBoard = false,
+): Column[] {
   const columns: Column[] = [
     {
       key: 'code',
@@ -76,8 +83,14 @@ function buildColumns(type: PoolType, themes?: Record<string, string[]>): Column
             >
               {s.name ?? '—'}
             </Link>
-            {/* 题材放名称下方而不是单开一列：涨停明细已有 11 列，
-                再加一列会在 1280~1500px 这些常用宽度上把表挤溢出 */}
+            {/* 题材标签放名称下方而不是单开一列：它跟着「题材共振」的筛选走
+                （筛中的题材会被顶到最前），跟名称贴在一起才读得通。
+                （「开盘啦板块」是个例外，单开了一列 —— 一只票恰好一个值、
+                还要能点表头排序，塞在名称下方看不出那是个排序字段）
+
+                ⚠️ 这里原来写的是「再加一列会在 1280~1500px 这些常用宽度上把表挤
+                出横向滚动」。加了「开盘啦板块」列之后实测 1280 与 1440 两档都
+                **没有**横向滚动（见设计文档 8.36），那个理由是错的，别再引用。 */}
             {themes && items.length > 0 && (
               <div className="mt-0.5 flex flex-wrap gap-1">
                 {items.map((theme) => (
@@ -103,6 +116,25 @@ function buildColumns(type: PoolType, themes?: Record<string, string[]>): Column
       render: (s) => <span className="text-[11px] text-fg-dim">{s.industry ?? '—'}</span>,
       sortValue: (s) => s.industry,
     },
+    /* 「开盘啦板块」与「行业」并存而不是替换：后者是 iFinD 的同花顺行业（公司做什么
+       生意），前者是开盘啦精选板块（今天为什么涨停），两个问题不一样，都留着。
+
+       **只在真有数据时给这一列**：它的来源是涨停天梯（只覆盖涨停股），跌停池与炸板池
+       恒为空，留一整列「—」只是噪音 —— 与「没有题材数据时不给『名称 / 题材』表头」
+       同一个做法。 */
+    ...(hasBoard
+      ? [
+          {
+            key: 'board',
+            label: '开盘啦板块',
+            align: 'left' as const,
+            render: (s: LimitStock) => (
+              <span className="text-[11px] text-fg-dim">{s.board ?? '—'}</span>
+            ),
+            sortValue: (s: LimitStock) => s.board,
+          },
+        ]
+      : []),
     {
       key: 'pct',
       label: '涨跌幅',
@@ -227,7 +259,11 @@ export default function LimitTable({
   delay = 280,
   loading = false,
 }: LimitTableProps) {
-  const columns = buildColumns(type, themes)
+  const columns = buildColumns(
+    type,
+    themes,
+    stocks.some((stock) => stock.board),
+  )
   // 首屏不排（key 为 null），保持后端顺序：涨停池的默认顺序本身有意义
   const [sort, shown] = useSort(stocks, buildSpecs(columns), { key: null })
 

@@ -126,12 +126,21 @@ export default function LimitReview() {
     return counts
   }, [stocks])
 
-  /** 按所属行业聚合涨停家数。注意行业名被上游截断为 4 个字。 */
-  const industryRanking = useMemo(() => {
+  /**
+   * 按所属**开盘啦精选板块**聚合涨停家数。
+   *
+   * 原来用的是同花顺行业（`industry`），答的是「公司做什么生意」；这张图要看的是
+   * 「资金在哪个方向抱团」，所以跟着梯队一起换成开盘啦口径（见设计文档 8.36）。
+   * 顺带少了「行业名被上游截断成 4 字」那个毛病。
+   *
+   * 没归到板块的票跳掉不计（09-21 是 103 只里的 2 只），百分比因此对全池算，
+   * 不会凑成 100%。
+   */
+  const boardRanking = useMemo(() => {
     const map = new Map<string, number>()
     for (const stock of stocks) {
-      if (!stock.industry) continue
-      map.set(stock.industry, (map.get(stock.industry) ?? 0) + 1)
+      if (!stock.board) continue
+      map.set(stock.board, (map.get(stock.board) ?? 0) + 1)
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12)
   }, [stocks])
@@ -378,16 +387,16 @@ export default function LimitReview() {
           </Panel>
 
           <Panel
-            title="涨停行业分布"
-            meta={<span className="num">口径为涨停板池的所属行业，上游截断为 4 字</span>}
+            title="涨停板块分布"
+            meta={<span className="num">按开盘啦精选板块，未归到板块的不计入</span>}
             delay={200}
           >
             {loading ? (
               <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
-            ) : industryRanking.length === 0 ? (
+            ) : boardRanking.length === 0 ? (
               <div className="px-4 py-10 text-center text-[13px] text-fg-dim">暂无数据</div>
             ) : (
-              <IndustryBars items={industryRanking} total={stocks.length} />
+              <BoardBars items={boardRanking} total={stocks.length} />
             )}
           </Panel>
         </div>
@@ -435,8 +444,8 @@ function Stat({
   )
 }
 
-/** 行业分布用横向条形列表而非图表：名称较长，图表轴上放不下。 */
-function IndustryBars({ items, total }: { items: [string, number][]; total: number }) {
+/** 板块分布用横向条形列表而非图表：名称较长，图表轴上放不下。 */
+function BoardBars({ items, total }: { items: [string, number][]; total: number }) {
   const max = Math.max(...items.map(([, count]) => count), 1)
   return (
     // 高度要容得下全部 12 行，否则最后一行会被裁掉半截
