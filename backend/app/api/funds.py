@@ -19,9 +19,14 @@ from app.models import (
     HsgtDaily,
     LhbInstitution,
     MarginDaily,
+    StockBasic,
+    StockDaily,
+    StockDde,
     TradeCalendar,
 )
 from app.schemas import (
+    DdeBoard,
+    DdeItem,
     EtfFlowBoard,
     EtfFlowItem,
     EtfIndustryBoard,
@@ -269,19 +274,17 @@ def series(
     )
 
 
-def _etf_data_date(session: Session, target: date) -> date:
-    """ETF 份额的**实际数据日期**：从请求日往前找最近一天有份额的。
+def _latest_data_date(session: Session, column, target: date) -> date:
+    """某张表里**最近有数据的日期**：从请求日往前找。
 
-    为什么不直接用请求日：ETF 份额只有当日快照、而且常在 **T+1** 才更新，
-    所以「最新交易日」那天通常是空的（实测 09-22 请求 → 空，数据落在 09-21）。
-    按请求日直接查，页面上表现为「打开就是空白」，很容易被当成功能坏了。
+    ETF 份额与 DDE 都用它，原因一样：数据的落库日期由来源决定、通常**比请求日早**
+    （ETF 份额 T+1 才更新；DDE 的扫描数据也是当天收盘后才逐步发布），
+    按请求日直接查就会「打开就是空白」，很容易被当成功能坏了。
 
     回落到最近有数据的一天，**并把实际日期返回给前端显示** —— 否则面板展示的
     是前一天的数、而页面顶部写着今天，对着看会误读。
     """
-    latest = session.scalar(
-        select(func.max(EtfShare.trade_date)).where(EtfShare.trade_date <= target)
-    )
+    latest = session.scalar(select(func.max(column)).where(column <= target))
     return latest or target
 
 
@@ -298,7 +301,7 @@ def _etf_flows(
     has_prev=True + 空列表，前端于是把「没得比」显示成「今天没人申赎」，
     那是两个相反的结论。
     """
-    target = _etf_data_date(session, target)
+    target = _latest_data_date(session, EtfShare.trade_date, target)
     prev = _prev_trade_date(session, target)
     if prev is None:
         return target, None, [], False
@@ -473,3 +476,69 @@ def institutions(
         items.sort(key=lambda item: item.net_amount or 0, reverse=True)
 
     return InstitutionBoard(trade_date=target, items=items[:limit], total=len(items))
+
+
+# DDE 榜的条数上限。当天全市场扫描的实际覆盖是两三千只，给到 200 已经够看
+# 「最强的那些」；再大只是把响应撑肥（这个榜是按值排序的，不是全量清单）
+DDE_LIMIT_MAX = 200
+
+
+@router.get("/dde", response_model=DdeBoard)
+def dde_board(
+    target: date = Depends(resolve_trade_date),
+    limit: int = Query(30, ge=5, le=DDE_LIMIT_MAX),
+    order: str = Query("inflow", pattern="^(inflow|outflow)$"),
+    session: Session = Depends(get_db),
+) -> DdeBoard:
+    """个股 5日DDE 排名。**零额外配额** —— 数据来自每天采集链末尾的全市场扫描。
+
+    扫描那边一次抓全市场（`jobs/scan_dde`，一天 14 次调用），这里只是把它读出来；
+    打开这个页面不再花任何配额，也不用新增采集步骤。
+
+    三点如实交代：
+
+    1. `trade_date` 返回**实际数据日**（从请求日往前找最近有 DDE 的那天）——
+       扫描数据同样在收盘后才逐步发布，按请求日直接查会是空白；
+    2. `total` 是当天**有 DDE 的票数**（覆盖度），不是全市场只数；
+    3. 涨跌幅与收盘价取自日线，而日线只覆盖「流动性池 + 池外涨停」，池外那部分票
+       这两列**留空**（面板显示「—」）—— 不用 0 顶替，「0%」与「没有数据」是两件事。
+
+    口径：这里的 `dde` 就是个股页那一栏的 5日DDE（同一张表，实测两条路径完全一致）。
+    """
+    day = _latest_data_date(session, StockDde.trade_date, target)
+    rows = list(
+        session.scalars(
+            select(StockDde).where(StockDde.trade_date == day, StockDde.dde.is_not(None))
+        )
+    )
+    if not rows:
+        return DdeBoard(trade_date=day, items=[], total=0)
+
+    # 当天日线一次性读成映射。**不要用 IN(两千多个代码) 去查** —— SQLite 的绑定
+    # 参数个数有上限（老版本 999），两千多个代码会直接把查询打挂
+    quotes = {
+        row.code: row
+        for row in session.scalars(select(StockDaily).where(StockDaily.trade_date == day))
+    }
+    # 名字兜底：池外的票没有日线，用基础信息表补名字，免得榜上只剩代码
+    basics = {
+        code: name
+        for code, name in session.execute(select(StockBasic.code, StockBasic.name))
+    }
+
+    items = [
+        DdeItem(
+            code=row.code,
+            name=(quotes[row.code].name if row.code in quotes else None)
+            or basics.get(row.code),
+            close=quotes[row.code].close if row.code in quotes else None,
+            pct_chg=quotes[row.code].pct_chg if row.code in quotes else None,
+            dde=row.dde,
+        )
+        for row in rows
+    ]
+    if order == "outflow":
+        items.sort(key=lambda item: item.dde or 0)
+    else:
+        items.sort(key=lambda item: item.dde or 0, reverse=True)
+    return DdeBoard(trade_date=day, items=items[:limit], total=len(items))

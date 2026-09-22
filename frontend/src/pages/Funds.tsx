@@ -2,6 +2,9 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api } from '../api/client'
 import type {
+  DdeBoard,
+  DdeItem,
+  DdeOrder,
   EtfFlowBoard,
   EtfFlowItem,
   EtfFlowOrder,
@@ -31,7 +34,7 @@ import {
   SPLIT_LINE,
   TOOLTIP,
 } from '../lib/chart'
-import { fmtAmount, fmtInt, fmtPct, fmtShortDate, toneOf } from '../lib/format'
+import { fmtAmount, fmtInt, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
 import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'
 
@@ -65,6 +68,23 @@ const INSTITUTION_ORDERS: { key: InstitutionOrder; label: string }[] = [
   { key: 'buy', label: '买入额' },
   { key: 'sell', label: '卖出额' },
 ]
+
+const DDE_ORDERS: { key: DdeOrder; label: string }[] = [
+  { key: 'inflow', label: '流入前列' },
+  { key: 'outflow', label: '流出前列' },
+]
+
+/** DDE 榜的排序口径。
+ *
+ *  DDE 这一栏**不给「数值大小」之外的选项**：它本身就是 iFinD 的 5日资金指标，
+ *  再按「净流入额」排会与它高度重合。 */
+const DDE_SORTS: SortSpecs<DdeItem> = {
+  code: { value: (item) => item.code, first: 'asc' },
+  name: { value: (item) => item.name, first: 'asc' },
+  pct_chg: { value: (item) => item.pct_chg },
+  close: { value: (item) => item.close },
+  dde: { value: (item) => item.dde },
+}
 
 /** ETF 单只榜的排序口径 */
 const ETF_FLOW_SORTS: SortSpecs<EtfFlowItem> = {
@@ -107,6 +127,23 @@ function signedAmount(value: number | null | undefined): string {
   return `${value > 0 ? '+' : ''}${fmtAmount(value)}`
 }
 
+/**
+ * 「面板的数据日 ≠ 页面日期」时要标出来的日期，否则为 null。
+ *
+ * ETF 份额与 DDE 的落库日期都由来源决定、通常**比请求日早**（份额 T+1 才更新、
+ * DDE 收盘后才逐步发布），所以后端会回落到最近有数据的一天并把实际日期返回。
+ * 只回落不标注会出现「面板展示的是前一天的数、页面顶部写着今天」——
+ * 那比空白更容易误读，所以两处都要标。
+ */
+function staleDateNotice(
+  dataDate: string | null | undefined,
+  pageDate: string | null | undefined,
+  loading: boolean,
+): string | null {
+  if (loading || !dataDate || !pageDate || dataDate === pageDate) return null
+  return dataDate
+}
+
 /** 区间说明：`09-01 ~ 09-19 · 14 个交易日` */
 function rangeLabel(dates: string[]): string {
   if (dates.length === 0) return '暂无数据'
@@ -129,6 +166,9 @@ export default function Funds() {
   const [instOrder, setInstOrder] = useState<InstitutionOrder>('net')
   const [institutions, setInstitutions] = useState<InstitutionBoard | null>(null)
   const [instLoading, setInstLoading] = useState(true)
+  const [ddeOrder, setDdeOrder] = useState<DdeOrder>('inflow')
+  const [dde, setDde] = useState<DdeBoard | null>(null)
+  const [ddeLoading, setDdeLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   // 日期下拉的候选来自交易日历（与其它页共用一个接口），不写死天数
@@ -231,6 +271,26 @@ export default function Funds() {
     }
   }, [instOrder, date])
 
+  useEffect(() => {
+    let stale = false
+    setDdeLoading(true)
+    setDde(null)
+    api
+      .fundsDde(ddeOrder, BOARD_LIMIT, date)
+      .then((data) => {
+        if (!stale) setDde(data)
+      })
+      .catch((err: Error) => {
+        if (!stale) setError(err.message)
+      })
+      .finally(() => {
+        if (!stale) setDdeLoading(false)
+      })
+    return () => {
+      stale = true
+    }
+  }, [ddeOrder, date])
+
   const marginOption = useMemo<ChartOption>(
     () => (series && series.dates.length > 0 ? buildMarginOption(series) : {}),
     [series],
@@ -266,11 +326,13 @@ export default function Funds() {
   // ETF 份额常在 T+1 才更新，后端会回落到「最近有份额的那一天」，所以榜上的数据日
   // 可能比页面顶部选的日期早一天 —— 这本身正常，但必须标出来，
   // 否则两个日期对着看会把前一天的申赎当成今天的
-  const etfTradeDate = etfBoard?.trade_date ?? null
-  const etfDateNotice =
-    !etfLoading && etfTradeDate && etfTradeDate !== (overview?.trade_date ?? date)
-      ? etfTradeDate
-      : null
+  const etfDateNotice = staleDateNotice(
+    etfBoard?.trade_date,
+    overview?.trade_date ?? date,
+    etfLoading,
+  )
+  // DDE 同理：扫描数据也是收盘后才齐，后端同样回落到最近有数据的一天
+  const ddeDateNotice = staleDateNotice(dde?.trade_date, overview?.trade_date ?? date, ddeLoading)
 
   const toolbar = (
     <>
@@ -475,6 +537,41 @@ export default function Funds() {
             <InstitutionTable items={institutions.items} />
           ) : (
             <div className="px-4 py-10 text-center text-[13px] text-fg-dim">当日无数据</div>
+          )}
+        </Panel>
+
+        {/* ---- DDE 排名 ---- */}
+        <Panel
+          title="DDE 排名"
+          meta={
+            <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+              <Toggle options={DDE_ORDERS} value={ddeOrder} onChange={setDdeOrder} />
+              {/* 扫描数据收盘后才齐、后端会回落到最近有数据的一天 —— 如实标出来 */}
+              {ddeDateNotice && (
+                <span className="num text-fg-dim">数据日期 {ddeDateNotice}</span>
+              )}
+              <span className="num">
+                {ddeLoading ? '加载中…' : `${dde?.total ?? 0} 只 · 点列头排序`}
+              </span>
+            </span>
+          }
+          delay={240}
+        >
+          {ddeLoading ? (
+            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+          ) : dde && dde.items.length > 0 ? (
+            <>
+              <div className="border-b border-line-soft px-3 py-1.5 text-[12px] text-fg-dim">
+                5日DDE = iFinD 区间dde大单净额，与个股页那一栏是同一个数 ·
+                数据来自每天采集链末尾的全市场扫描，打开页面不花配额 ·
+                涨跌幅与收盘价取日线，池外的票显示为「—」
+              </div>
+              <DdeTable items={dde.items} />
+            </>
+          ) : (
+            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+              还没有 DDE 数据：它由每天的采集链在收盘后扫描全市场写入；当天扫描若还没跑到，明天再看
+            </div>
           )}
         </Panel>
       </div>
@@ -704,6 +801,59 @@ function EtfIndustryTable({ items }: { items: EtfIndustryItem[] }) {
               </Fragment>
             )
           })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function DdeTable({ items }: { items: DdeItem[] }) {
+  // 首屏不排，保持后端顺序（已按当前口径排序）；点列头才排 —— 与其它榜一致
+  const [sort, shown] = useSort(items, DDE_SORTS, { key: null })
+
+  return (
+    <div className="max-h-[440px] overflow-auto">
+      <table className="grid-table">
+        <thead>
+          <tr>
+            <SortTh sortKey="code" {...sort}>代码</SortTh>
+            <SortTh sortKey="name" align="left" {...sort}>名称</SortTh>
+            <SortTh sortKey="pct_chg" {...sort}>涨跌幅</SortTh>
+            <SortTh sortKey="close" {...sort}>收盘价</SortTh>
+            <SortTh sortKey="dde" {...sort} title="5 日区间 dde 大单净额">5日DDE</SortTh>
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((item) => (
+            <tr
+              key={item.code}
+              title={[
+                `${item.name ?? ''} ${item.code}`,
+                `5日DDE ${signedAmount(item.dde)}`,
+                item.pct_chg === null ? null : `涨跌幅 ${fmtPct(item.pct_chg)}`,
+              ]
+                .filter(Boolean)
+                .join('\n')}
+            >
+              <td>
+                <StockLink code={item.code} className="num text-fg-muted">
+                  {item.code}
+                </StockLink>
+              </td>
+              <td className="!text-left">
+                <StockLink code={item.code}>{item.name ?? item.code}</StockLink>
+              </td>
+              <td>
+                <span className={`num ${toneOf(item.pct_chg)}`}>{fmtPct(item.pct_chg)}</span>
+              </td>
+              <td>
+                <span className="num text-fg-muted">{fmtNum(item.close, 2)}</span>
+              </td>
+              <td>
+                <span className={`num ${toneOf(item.dde)}`}>{signedAmount(item.dde)}</span>
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

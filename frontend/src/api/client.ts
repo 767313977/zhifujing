@@ -1,6 +1,8 @@
 import type {
   AdminStatus,
   CollectResult,
+  DdeBoard,
+  DdeOrder,
   EtfFlowBoard,
   FundFlowHistoryOut,
   FundFlowTaxonomy,
@@ -301,4 +303,8 @@ export const api = {
     limit = 30,
     date?: string | null,
   ) => request<InstitutionBoard>(withDate(`/funds/institutions?limit=${limit}&order=${order}`, date)),
+
+  // DDE 榜。数据来自每天采集链末尾的全市场扫描，打开页面不花任何配额
+  fundsDde: (order: DdeOrder = 'inflow', limit = 30, date?: string | null) =>
+    request<DdeBoard>(withDate(`/funds/dde?limit=${limit}&order=${order}`, date)),
 }

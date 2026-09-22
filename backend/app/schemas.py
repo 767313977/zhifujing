@@ -890,3 +890,22 @@ class InstitutionBoard(BaseModel):
     items: list[InstitutionItem]
     # 去重后的股票数（原始行数会因「多条上榜原因」更多）
     total: int
+
+
+class DdeItem(BaseModel):
+    code: str
+    name: str | None
+    # 收盘价与涨跌幅来自日线（`stock_daily`）。它只覆盖「流动性池 + 池外涨停」，
+    # 所以池外那部分票这两列是空 —— 空的照实显示「—」，不要用 0 顶替
+    close: float | None
+    pct_chg: float | None
+    # 5日DDE（元）。与个股页那一栏是**同一个数**（同一张表、同一口径，实测一致）
+    dde: float | None
+
+
+class DdeBoard(BaseModel):
+    trade_date: date
+    items: list[DdeItem]
+    # 当天**有 DDE 的票数**，不是全市场只数 —— 来源在收盘后逐步发布，
+    # 当天 18 点前后大约只覆盖七成（见设计文档 8.44/8.46）
+    total: int

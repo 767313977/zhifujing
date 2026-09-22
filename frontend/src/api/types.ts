@@ -734,3 +734,22 @@ export interface InstitutionBoard {
   /** 去重后的股票数（原始行数会因「多条上榜原因」更多） */
   total: number
 }
+
+export type DdeOrder = 'inflow' | 'outflow'
+
+export interface DdeItem {
+  code: string
+  name: string | null
+  /** 收盘价与涨跌幅来自日线；池外的票没有日线，这两列为 null */
+  close: number | null
+  pct_chg: number | null
+  /** 5日DDE（元）。与个股页那一栏是同一个数（同一张表、同一口径） */
+  dde: number | null
+}
+
+export interface DdeBoard {
+  trade_date: string
+  items: DdeItem[]
+  /** 当天**有 DDE 的票数**（覆盖度），不是全市场只数 */
+  total: number
+}
