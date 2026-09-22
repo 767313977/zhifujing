@@ -4,9 +4,10 @@
 市场级数据，彼此独立、失败互不影响；而且数据源分两类（iFinD EDB 与 akshare），
 分开能让「哪块坏了」在采集日志里一眼看到。
 
-配额成本：两融 1 次 + 北向 1 次 = **每天 2 次 iFinD 调用**。
+配额成本：两融 1 次 + 北向 1 次 + ETF 约 20 次 = **每天约 22 次 iFinD 调用**。
 EDB 按区间返回，但区间不能开太大（见 EDB_CHUNK_DAYS），
 所以回补一年的历史是 3 段 × 2 项 = 6 次，仍然很便宜。
+（ETF 那 20 次是 2026-09-22 换源之后才有的，原委见 `collect_etf`。）
 """
 
 import logging
@@ -16,10 +17,20 @@ from app.db import session_scope, upsert, upsert_fill, upsert_many
 from app.models import EtfCategory, EtfShare, HsgtDaily, LhbInstitution, MarginDaily
 from app.services.etf_category import classify
 from app.sources.akshare_source import AkshareSource
-from app.sources.ifind import IfindClient
-from app.sources.markdown_table import to_float, to_int
+from app.sources.ifind import IfindClient, normalize_code
+from app.sources.markdown_table import pick_float, pick_text, to_float, to_int
 
 logger = logging.getLogger(__name__)
+
+# iFinD 基金工具的**单批只数**。实测 80 只 + 四个指标一次问能全给（80 行都对得上），
+# 而 **100 只会整批返回 0 行、且不带任何提示**（不是截断，是空）—— 所以这个数不能
+# 拍脑袋上调；真要调，先把 100 那档的坑复现一遍。`_fetch_etf_quotes` 里另有一层
+# 「整批为空就拆半重试」的自愈。
+ETF_BATCH = 80
+
+# 一批里问的指标。**四个是实测的上限**：再多问两个就只剩一张表、份额整列消失
+# （见 `IfindClient.fund_profile` 的说明）。
+ETF_METRICS = "基金份额、收盘价、成交额、涨跌幅"
 
 # 每次采集回看的日历天数。覆盖周末 + 最长节假日（8 天）后仍有大量余量 ——
 # 这样某天采集失败，下一次会自然把缺的补上，不必单独写回补逻辑。
@@ -187,10 +198,61 @@ def collect_hsgt(ifind: IfindClient, end: date, days: int = EDB_LOOKBACK_DAYS) -
         return upsert_fill(session, HsgtDaily, records)
 
 
-def collect_etf(ak: AkshareSource) -> int:
-    """ETF 份额与行情快照。全市场约 1600 只，**不占 iFinD 配额**。
+def _batched(items: list[str], size: int) -> list[list[str]]:
+    """把代码切成固定大小的批。"""
+    return [items[index : index + size] for index in range(0, len(items), size)]
 
-    **落库日期取数据源自带的「数据日期」，不接受调用方指定。** ETF 份额只有
+
+def _fetch_etf_quotes(
+    ifind: IfindClient, codes: list[str]
+) -> tuple[dict[str, dict], int]:
+    """分批取 ETF 的份额与行情，返回（`{6 位代码: 原始行}`, 调用次数）。
+
+    批内一条都没回来时**拆半重试**：来源批量过大时是「整批静默返回空」而不是报错
+    （100 只那档实测就是如此），拆半是最省事的自愈方式，日志里也留得下痕迹。
+    """
+    found: dict[str, dict] = {}
+    queue = _batched(codes, ETF_BATCH)
+    calls = 0
+    while queue:
+        batch = queue.pop(0)
+        _, rows = ifind.fund_profile("、".join(batch) + f" 的 {ETF_METRICS}")
+        calls += 1
+        if not rows:
+            if len(batch) > 1:
+                half = len(batch) // 2
+                logger.warning(
+                    "iFinD 基金批次 %d 只返回空（可能超单批上限），拆成 %d+%d 重试",
+                    len(batch),
+                    half,
+                    len(batch) - half,
+                )
+                queue[0:0] = [batch[:half], batch[half:]]
+            else:
+                logger.warning("iFinD 连单只基金 %s 都没返回", batch[0])
+            continue
+        for row in rows:
+            code = normalize_code(pick_text(row, "证券代码") or "")
+            if code:
+                found[code] = row
+    return found, calls
+
+
+def collect_etf(ak: AkshareSource, ifind: IfindClient) -> int:
+    """ETF 份额与行情：**清单/日期取自同花顺，份额与行情取自 iFinD**。
+
+    **为什么换源（2026-09-22）**：原来用 akshare 的东财 ETF 快照
+    （`fund_etf_spot_em` → `push2delay.eastmoney.com`），而那一系从**本机与云端
+    都连不上**（实测 HTTP 000、0.05 秒即断；同域名的 `push2ex` 正常）——
+    于是这一项在云端一直**静默失效**：`collect_log` 里只有一行 `[failed]`，
+    页面上只表现为 ETF 面板空白。换源之后不再依赖东财。
+
+    分工的理由：**同花顺**能一次给全市场代码清单与「最新-交易日」（1725 行、
+    零配额），但它是净值口径、**没有份额**；**iFinD** 有份额与行情，却一次只能
+    问几十只、列不全 1600 只。所以清单与日期用同花顺，份额/收盘价/涨跌幅/成交额
+    按批问 iFinD（80 只一批，约 20 次调用）。
+
+    **落库日期取同花顺自带的「最新-交易日」，不接受调用方指定。** ETF 份额只有
     当日快照，而这份快照是哪一天的数据由行情源决定：盘前、凌晨、周末、节假日
     取到的都是**上一个交易日**的收盘快照，份额本身也常在 T+1 才更新。
     若按「今天」落库，凌晨采集就会把昨天的份额写到今天，凭空造出一个
@@ -200,20 +262,40 @@ def collect_etf(ak: AkshareSource) -> int:
     顺带刷新 `etf_category`：分类来自名称关键词（见 services/etf_category），
     每次采集都重算一遍，词典改了第二天自然生效。
     """
-    rows = ak.etf_spot()
+    meta: dict[str, dict] = {}
+    for row in ak.etf_list_ths():
+        code = normalize_code(pick_text(row, "基金代码") or "")
+        if not code:
+            continue
+        meta[code] = {
+            "name": pick_text(row, "基金名称"),
+            "date": _day(pick_text(row, "最新-交易日")),
+        }
+    if not meta:
+        logger.warning("同花顺 ETF 列表为空，本次不写份额")
+        return 0
+
+    quotes, calls = _fetch_etf_quotes(ifind, list(meta))
+
     records: list[dict] = []
     categories: list[dict] = []
     unknown_date = 0
-    for row in rows:
-        code = str(row.get("代码") or "").strip()
-        if not code:
-            continue
-        code = code.zfill(6)
-        name = row.get("名称")
-        # 分类与日期无关，先写好 —— 数据日期缺失不该连带把分类一起丢掉
-        categories.append({"code": code, "name": name, "category": classify(name)})
+    missing_quote = 0
+    for code, info in meta.items():
+        # 分类与日期、行情都无关，先写好 —— 别让缺数据连带把分类一起丢掉
+        categories.append(
+            {"code": code, "name": info["name"], "category": classify(info["name"])}
+        )
 
-        day = _day(row.get("数据日期"))
+        raw = quotes.get(code)
+        if raw is None:
+            # 份额与行情是**同一个来源**，它没回话说明这一只什么都拿不到：
+            # 写一条全空的行只是噪音。（旧实现是「份额缺失也不跳过」，那是因为
+            # 份额与行情分属两个来源、行情本身单独有用；同源之后这条不成立。）
+            missing_quote += 1
+            continue
+
+        day = info["date"]
         if day is None:
             unknown_date += 1
             continue
@@ -221,26 +303,32 @@ def collect_etf(ak: AkshareSource) -> int:
             {
                 "trade_date": day,
                 "code": code,
-                "name": name,
-                # 份额缺失也**不跳过**：行情部分（涨跌幅、成交额）本身也有用，
-                # 少了份额只是算不出这只的申赎，不该连它的行情一起丢
-                "shares": to_float(row.get("最新份额")),
-                "close": to_float(row.get("最新价")),
-                "pct_chg": to_float(row.get("涨跌幅")),
-                "amount": to_float(row.get("成交额")),
+                "name": info["name"],
+                # 能走到这里说明拿到了行，那么**少一个字段也不该丢掉整行** ——
+                # 少了份额算不出申赎，但涨跌幅/成交额仍然有用
+                "shares": pick_float(raw, "份额"),
+                "close": pick_float(raw, "收盘价"),
+                "pct_chg": pick_float(raw, "涨跌幅"),
+                "amount": pick_float(raw, "成交额"),
             }
         )
     if unknown_date:
-        logger.warning("ETF 快照有 %d 行没有「数据日期」，已跳过（不猜日期）", unknown_date)
+        logger.warning("ETF 列表有 %d 只没有「最新-交易日」，已跳过（不猜日期）", unknown_date)
+    if missing_quote:
+        logger.warning("iFinD 没回 %d 只 ETF 的份额与行情，已跳过", missing_quote)
     if not records:
         # 宁可不写也不写错日期：猜一个日期出来就会污染份额序列
-        logger.warning("ETF 快照没取到任何带数据日期的行，本次不写份额")
+        logger.warning("ETF 没取到任何带数据日期的行，本次不写份额")
         return 0
     with session_scope() as session:
         # 分类用普通 upsert：它必须能被新词典**覆盖**（upsert_fill 只在
         # 新值为空时保留旧值，而分类永不为空，所以两者在这里等价，写 upsert 更直白）
         upsert(session, EtfCategory, categories)
-        return upsert_fill(session, EtfShare, records)
+        written = upsert_fill(session, EtfShare, records)
+    logger.info(
+        "ETF：清单 %d 只 → 入库 %d 行（%d 次 iFinD 调用）", len(meta), written, calls
+    )
+    return written
 
 
 def collect_lhb_institutions(

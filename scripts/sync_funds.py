@@ -50,7 +50,7 @@ def _latest_trade_date() -> date:
     2. **交易日但还没到收盘**同样没有数据 —— 凌晨和上午跑，龙虎榜是空的、
        ETF 快照也还是上一交易日的。实测踩过：09-21 凌晨补采，1621 行 ETF
        被写在 09-21 上，而份额其实还是 09-18 的。
-       （ETF 那边现在由数据源自带的「数据日期」兜住了，见 `collect_funds.collect_etf`；
+       （ETF 那边现在由数据源自带的「最新-交易日」兜住了，见 `collect_funds.collect_etf`；
        龙虎榜没有这种字段，只能在这里避开。）
 
     交易日历为空时退回今天（`init_db` 后通常已有，日历由 akshare 提供）。
@@ -91,9 +91,9 @@ def main() -> int:
     print(f"  两融      rows={collect_funds.collect_margin(ifind, end, args.days)}")
     print(f"  沪深股通  rows={collect_funds.collect_hsgt(ifind, end, args.days)}")
     if not args.skip_etf:
-        # ETF 与机构席位走 akshare，不占 iFinD 配额。
-        # ETF 的日期由数据源决定，与上面的 end 无关
-        print(f"  ETF 份额  rows={collect_funds.collect_etf(ak)}")
+        # ETF：代码清单与日期走同花顺（零配额），份额与行情走 iFinD（约 20 次调用）；
+        # 机构席位仍走 akshare。ETF 的日期由数据源决定，与上面的 end 无关
+        print(f"  ETF 份额  rows={collect_funds.collect_etf(ak, ifind)}")
     print(f"  机构席位  rows={collect_funds.collect_lhb_institutions(ak, end, args.days)}")
     return 0
 

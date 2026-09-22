@@ -33,7 +33,7 @@ from app.models import (
 )
 from app.jobs import collect_funds
 from app.services.sentiment import build_sentiment
-from app.services.usage import QuotaLevel, quota_level
+from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.akshare_source import AkshareSource
 from app.sources.ifind import IfindClient, from_ths_symbol, to_ths_symbol
 from app.sources.markdown_table import pick_float, pick_int, pick_text, to_float, to_int
@@ -783,13 +783,20 @@ class DailyCollector:
         return collect_funds.collect_hsgt(self.ifind, trade_date)
 
     def collect_etf(self) -> int:
-        """ETF 份额与行情快照（akshare，零配额）。
+        """ETF 份额与行情（同花顺清单 + iFinD 份额/行情，约 20 次 iFinD 调用）。
 
-        **不接受目标日期**：落库日期由行情源自带的「数据日期」决定 ——
+        **不接受目标日期**：落库日期由同花顺自带的「最新-交易日」决定 ——
         盘前/凌晨/周末取到的都是上一交易日的快照，按「今天」写会造出假数据点。
         详见 `collect_funds.collect_etf`。
+
+        配额到 80% 就让路（与形态日线、DDE 扫描同档）：它属于增强项，
+        指数 / 涨停 / 板块 / 情绪那条主线才是复盘的地基。
         """
-        return collect_funds.collect_etf(self.ak)
+        level = quota_level(date.today(), self.settings)
+        if level >= QuotaLevel.PAUSE_KLINE:
+            logger.warning("ETF 采集跳过：%s", level_label(level))
+            return 0
+        return collect_funds.collect_etf(self.ak, self.ifind)
 
     def collect_lhb_institution(self, trade_date: date) -> int:
         """龙虎榜机构席位统计（akshare，零配额）。"""
@@ -1018,7 +1025,8 @@ class DailyCollector:
         steps["flows"] = self._step(target, "flows", lambda: self.collect_flows(target))
         # 龙虎榜走 akshare，不占 iFinD 配额，任何档位都照采
         steps["lhb"] = self._step(target, "lhb", lambda: self.collect_lhb(target))
-        # ETF 份额与龙虎榜机构席位同样走 akshare（零配额），任何档位都采
+        # ETF 换 iFinD 源之后要花约 20 次调用（配额让路在它自己内部判断），
+        # 龙虎榜机构席位仍是 akshare、零配额
         steps["etf"] = self._step(target, "etf", self.collect_etf)
         steps["lhb_institution"] = self._step(
             target, "lhb_institution", lambda: self.collect_lhb_institution(target)

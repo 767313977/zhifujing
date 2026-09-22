@@ -423,6 +423,20 @@ class IfindClient:
         """个股日频历史行情与技术指标。返回结果含非交易日，需按交易日历过滤。"""
         return self._nl("stock", "get_stock_performance", {"query": query})
 
+    def fund_profile(self, query: str) -> tuple[str, list[dict]]:
+        """基金资料：份额 / 规模 / 净值 / 行情价（收盘价、成交额、涨跌幅）。
+
+        2026-09-22 实测两个坑，调用方都要防：
+
+        1. **一次只回一张表**。问四五个指标没问题（实测「基金份额、收盘价、
+           成交额、涨跌幅」一起问能全部拿到），但一次问八个指标就只剩「净值日期」
+           那张表、份额整列消失 —— 所以指标别贪多。
+        2. **批量过大会整批返回空，而且不带任何提示**。实测一批 80 只正常返回
+           80 行，一批 100 只返回 **0 行**，回答里也没有「以下为部分数据」这类
+           提示 —— 所以调用方必须自己按批校验行数（见 `collect_funds.ETF_BATCH`）。
+        """
+        return self._nl("fund", "get_fund_profile", {"query": query})
+
     def stock_history(self, symbol: str, start: date, end: date) -> list[dict]:
         """个股日频 OHLCV。这是唯一能取历史行情的方式（高频接口只给当日）。
 
