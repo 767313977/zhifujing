@@ -521,6 +521,17 @@ class DailyCollector:
         with session_scope() as session:
             return upsert(session, Lhb, rows)
 
+    def collect_reasons(self, trade_date: date) -> int:
+        """涨停原因（**同花顺**口径，零 iFinD 配额）。
+
+        与 `collect_themes` 是两条线：那个给「属于哪个开盘红精选板块」，这个给
+        「为什么涨停」（「房地产+城市更新+北京国资」）。排在涨停池之后，为的是能跟
+        涨停池的家数对账。
+        """
+        from app.jobs.collect_reasons import ReasonCollector
+
+        return ReasonCollector(self.settings).collect(trade_date)
+
     def collect_themes(self, trade_date: date) -> int:
         """涨停股的板块归属（「题材 × 涨停」联动的桥）。
 
@@ -979,6 +990,9 @@ class DailyCollector:
         steps["limit_pool"] = self._step(
             target, "limit_pool", lambda: self.collect_limit_pool(target)
         )
+        # 涨停原因走同花顺数据中心，零 iFinD 配额，任何档位都照采；
+        # 排在涨停池之后是为了能跟涨停池的家数对账
+        steps["reasons"] = self._step(target, "reasons", lambda: self.collect_reasons(target))
         # 龙虎榜走 akshare，不占 iFinD 配额，任何档位都照采
         steps["lhb"] = self._step(target, "lhb", lambda: self.collect_lhb(target))
         # ETF 份额与龙虎榜机构席位同样走 akshare（零配额），任何档位都采

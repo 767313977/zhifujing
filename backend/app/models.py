@@ -225,6 +225,26 @@ class StockConcept(Base):
     concept: Mapped[str] = mapped_column(String(64), primary_key=True)
 
 
+class LimitReason(Base):
+    """涨停原因（**同花顺**口径）。
+
+    来源是同花顺数据中心的涨停池接口（`sources/ths_limit_up.py`），逐只给
+    「房地产+城市更新+北京国资」这种串。**与开盘红无关**：开盘红的免费接口里没有
+    这个字段（`ZhuShuList` 是按板块聚合的成员表），App 里那个「涨停原因」是付费功能。
+
+    只覆盖涨停股，按 `(trade_date, code)` 与 `limit_pool`（东财口径）对齐。两边家数
+    会差几只（ST / 新股 / 北交所的处理不同），对不上的票在页面上留空 —— 不拿别的东西顶。
+    """
+
+    __tablename__ = "limit_reason"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    # 原样存：「水暖阀门+医疗器械+资产出售+业绩扭亏」。**不拆**成多个字段 ——
+    # 里面混着行业、事件、地域，拆开就再也拼不回接口给的那串了
+    reason: Mapped[str] = mapped_column(String(128))
+
+
 class Lhb(Base):
     """龙虎榜。iFinD 无此数据，唯一来源是 akshare push2ex。"""
 
