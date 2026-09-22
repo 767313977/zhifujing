@@ -32,6 +32,11 @@ DEFAULT_DAYS = 60
 # 不要求实时）。所以盘中抓回来的「今天」那一行直接丢掉不落库。
 CLOSE_READY = time(15, 5)
 
+# 来源单次回答的**行数上限**（与配额无关，是接口自己的输出上限）：实测请求「近 120 个
+# 交易日」和「近 250 个交易日」都只回 **100 行**，并在回答里另起一句提示。两种提示文案
+# 都认（新版「以下为部分数据」、旧版「数据过大」）。命中就说明这次只拿到了最近一段。
+_TRUNCATED_HINTS = ("以下为部分数据", "数据过大")
+
 
 def _query(code: str, days: int) -> str:
     """自然语言取数语句。
@@ -50,10 +55,20 @@ def _row_date(text: str | None) -> date | None:
     return date(int(text[:4]), int(text[4:6]), int(text[6:]))
 
 
-def collect_stock_dde(code: str, days: int = DEFAULT_DAYS) -> int:
-    """抓一次并落库，返回写入行数。调用方负责兜异常（`IfindError`）。"""
+def collect_stock_dde(code: str, days: int = DEFAULT_DAYS) -> tuple[int, bool]:
+    """抓一次并落库。返回（写入行数, 是否被来源截断）。调用方负责兜 `IfindError`。"""
     symbol = normalize_code(code)
-    _, rows = IfindClient().stock_performance(_query(symbol, days))
+    answer, rows = IfindClient().stock_performance(_query(symbol, days))
+
+    # 被截断时必须说出去：只拿到最近 100 行，画出来的窗口比用户要的短
+    truncated = any(hint in answer for hint in _TRUNCATED_HINTS)
+    if truncated:
+        logger.warning(
+            "个股 %s 的 DDE 被来源截断：请求 %d 个交易日，只回了 %d 行",
+            symbol,
+            days,
+            len(rows),
+        )
 
     parsed: list[dict] = []
     for row in rows:
@@ -72,7 +87,7 @@ def collect_stock_dde(code: str, days: int = DEFAULT_DAYS) -> int:
         )
     if not parsed:
         logger.warning("iFinD 没返回 %s 的 DDE 行", symbol)
-        return 0
+        return 0, truncated
 
     # 两轮过滤，理由不同：
     # ① **非交易日**：来源会把周末也列出来（净流入为空、DDE 延续前一交易日的值），
@@ -108,4 +123,4 @@ def collect_stock_dde(code: str, days: int = DEFAULT_DAYS) -> int:
         "今天还没收盘（丢掉盘中快照）" if before_close else "无需丢弃今日行",
         written,
     )
-    return written
+    return written, truncated

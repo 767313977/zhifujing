@@ -55,10 +55,10 @@ router = APIRouter(prefix="/api/stock", tags=["个股"])
 # 可选的 K 线周期。周/月由本地日线重采样（`_resample`），不额外取数
 PERIODS = ("day", "week", "month")
 
-# DDE 一栏最多能要多少个交易日。250 与形态引擎那套历史长度对齐 ——
-# 再往上 iFinD 也不一定给得回这么多，而且一次调用只有 1 个请求，
-# 窗口开太大没有额外代价，但会让图表挤成一团
-DDE_MAX_DAYS = 250
+# DDE 一栏最多能要多少个交易日。**卡在 100 是因为来源自己的输出上限**（实测请求 120 与
+# 250 个交易日都只回 100 行，并在回答里写「以下为部分数据」）—— 这个上限与配额无关，
+# 开上去只会让图里悄悄少画一段，所以宁可在接口层就挡住（`collect_dde._TRUNCATED_HINTS`）。
+DDE_MAX_DAYS = 100
 
 
 def _code(raw: str) -> str:
@@ -344,7 +344,7 @@ def _stock_dde(code: str, days: int) -> tuple[list[StockDde], str | None]:
         return cached, None
 
     try:
-        collect_stock_dde(code, days)
+        _, truncated = collect_stock_dde(code, days)
     except IfindError as exc:
         logger.warning("个股 %s 的 DDE 取数失败：%s", code, exc)
         return cached, f"iFinD 取数失败：{exc}"
@@ -352,7 +352,13 @@ def _stock_dde(code: str, days: int) -> tuple[list[StockDde], str | None]:
     with session_scope() as reader:
         rows = _read_dde(reader, code, days)
     if rows:
-        return rows, None
+        # 被来源截断时如实说明：图里的窗口比参数要的短，不说明就成了静默少数据
+        note = (
+            "来源单次最多返回 100 行，这次被截断了：图里只有最近 100 行"
+            if truncated
+            else None
+        )
+        return rows, note
     return cached, "iFinD 没返回这只票的 DDE（次新股或已退市的话可能是空的）"
 
 

@@ -146,6 +146,9 @@ class DailyScheduler:
         # 单独推送的形态：加新形态就在 `PUSH_PATTERNS` 里登记，然后在这里补一行
         self._push_pattern("limit_surge_flat", today)
         self._push_pattern("oneil_breakout", today)
+        # DDE 扫描排最后：它是这条链上**唯一要花十几二十次调用**的一步（前缀 × 单日），
+        # 前面几步里有零配额的，先跑完再说
+        self._scan_dde(today)
         self._maybe_remind_calibration(today)
 
     def _scan_patterns(self, trade_date: date) -> None:
@@ -303,6 +306,28 @@ class DailyScheduler:
             result.get("status"),
             result.get("reason") or "",
         )
+
+    def _scan_dde(self, trade_date: date) -> None:
+        """全市场 DDE 扫描并推送（条件：5日DDE 由负转正，见 `scan_dde` 模块）。
+
+        **每天十几次 iFinD 调用**（代码前缀 × 单个交易日）。配额紧张时先让它停 ——
+        它是增强项，而指数 / 涨停 / 板块 / 情绪那条主线才是复盘的地基。让路阈值
+        与形态日线同一档（80%），别等它把额度吃到影响次日的基础采集。
+        """
+        # 延迟导入：与 `_push_brief` 同理，避免模块级循环依赖
+        from app.jobs.scan_dde import run as run_dde_scan
+        from app.services.usage import QuotaLevel, level_label, quota_level
+
+        level = quota_level(trade_date, self.settings)
+        if level >= QuotaLevel.PAUSE_KLINE:
+            logger.warning("DDE 扫描跳过：%s", level_label(level))
+            return
+        try:
+            result = run_dde_scan(trade_date, self.settings)
+        except Exception:  # noqa: BLE001 - 扫描失败绝不能影响调度
+            logger.exception("DDE 扫描失败")
+            return
+        logger.info("DDE 扫描 %s：%s", trade_date, result)
 
     def _maybe_remind_calibration(self, trade_date: date) -> None:
         """每隔 `CALIBRATION_INTERVAL_DAYS` 天提醒一次配额对账。
