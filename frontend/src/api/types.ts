@@ -480,6 +480,47 @@ export interface PatternSummary {
   by_pattern: PatternCount[]
 }
 
+/** 次日结果：过线且收盘站住 / 过线没站住 / 连最高价都没过线 */
+export type TemplateNextResult = 'started' | 'weak' | 'missed'
+
+/**
+ * 样板日命中 —— 次日「明天盯」清单的一行。
+ *
+ * `trigger`（触发价 = 今高）与 `floor`（兜底线 = 触发价 × 0.98）是**派生量**，
+ * 由后端算好给过来：那两个数都是口径的一部分，前端再乘一遍迟早只改一处。
+ */
+export interface TemplateItem {
+  code: string
+  name: string | null
+  /** 样板日 */
+  trade_date: string
+  /** 今高 = 次日触发价：盘中越过它才谈买点 */
+  trigger: number | null
+  /** 兜底线 = 触发价 × 0.98：次日收盘站上它才算站住 */
+  floor: number | null
+  close: number | null
+  pct_chg: number | null
+  /** 冲高幅度（比值，0.098 = 9.8%） */
+  surge: number | null
+  /** 量比（当日成交量 / 前 20 日均量） */
+  vol_ratio: number | null
+  /** 收盘在当日区间里的位置（0 = 收在最低，1 = 收在最高） */
+  close_pos: number | null
+  amount: number | null
+  /** 次日结果，null = 次日还没有日线（停牌，或样板日就是最新交易日） */
+  next_result: TemplateNextResult | null
+  next_pct_chg: number | null
+}
+
+export interface TemplateBoard {
+  /** 样板日 */
+  trade_date: string | null
+  /** 回看用的那个次日（还没到就是 null） */
+  next_date: string | null
+  items: TemplateItem[]
+  total: number
+}
+
 export interface AdminStatus {
   latest_sentiment_date: string | null
   latest_limit_pool_date: string | null

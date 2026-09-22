@@ -41,6 +41,7 @@ import type {
   StockDde,
   StockProfile,
   StockThemes,
+  TemplateBoard,
   WatchlistRow,
 } from './types'
 
@@ -261,6 +262,15 @@ export const api = {
   patternSummary: (date?: string | null) => request<PatternSummary>(
     withDate('/patterns/summary', date),
   ),
+
+  /**
+   * 样板池（量价结构选股的第一天：有量冲高又收回来）。
+   *
+   * `date` 是**样板日**，返回里带的 `next_date` 是回看用的那个次日 ——
+   * 一行一行看「次日过没过线」用的就是它。数据来自收盘后的本地扫描（零配额）。
+   */
+  templatePool: (date?: string | null) =>
+    request<TemplateBoard>(withDate('/patterns/template', date)),
 
   syncStock: (code: string, days = 250) =>
     request<{ rows: number }>(`/stock/${code}/sync?days=${days}`, { method: 'POST' }),
