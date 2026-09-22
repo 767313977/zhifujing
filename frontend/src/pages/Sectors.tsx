@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
+  RotationLeader,
   RotationMetric,
   SectorCompare,
   SectorMembers,
@@ -129,6 +130,14 @@ export default function Sectors() {
   })
   const [rotation, setRotation] = useState<SectorRotation | null>(null)
   const [rotationLoading, setRotationLoading] = useState(true)
+  /**
+   * 「领涨」行的数据：`{交易日: 涨停股}`，取的是**当前选中板块**在各天的涨停股。
+   *
+   * 原来这一行是「每列各自取当天第 1 名板块」，用户点格子时它不动、看着像坏了
+   * （2026-09-22 改）。现在跟着 `selected` 走，所以**单独发一个请求**而不是塞进
+   * `rotation`：点一次格子就要重取一次，混在一起会让整个矩阵每点一下都进 loading。
+   */
+  const [leaders, setLeaders] = useState<Record<string, RotationLeader[]>>({})
   // 走势窗口也写进 URL，理由同上。初值先校验档位：URL 是可以手改的，
   // 塞个 10000 进来后端会直接 400，页面看起来就像坏了
   const [curveDays, setCurveDays] = useState(() => {
@@ -206,6 +215,32 @@ export default function Sectors() {
       stale = true
     }
   }, [taxonomy, date, rotationDays, ladderDays, rotationMetric])
+
+  // 「领涨」行：跟着选中的板块走（见 `leaders` 的说明）。
+  // 窗口用**矩阵窗口**而不是上榜窗口 —— 这一行是矩阵的一部分，列要对齐
+  useEffect(() => {
+    if (!selected) {
+      setLeaders({})
+      return
+    }
+    let stale = false
+    api
+      .sectorRotationLeaders(taxonomy, { days: rotationDays, code: selected }, date)
+      .then((data) => {
+        if (stale) return
+        setLeaders(
+          Object.fromEntries(data.map((item) => [item.trade_date, item.leaders])),
+        )
+      })
+      .catch(() => {
+        // 这是次级信息，取不到就留空：**不弹错**。矩阵与详情都还在，
+        // 为一行龙头股把整页标红会让人以为板块数据也挂了
+        if (!stale) setLeaders({})
+      })
+    return () => {
+      stale = true
+    }
+  }, [taxonomy, date, rotationDays, selected])
 
   useEffect(() => {
     let stale = false
@@ -432,8 +467,11 @@ export default function Sectors() {
             data={rotation}
             loading={rotationLoading}
             metric={rotationMetric}
+            taxonomy={taxonomy}
             days={rotationDays}
             ladderDays={ladderDays}
+            leaders={leaders}
+            leaderName={selectedBoard?.name ?? null}
             onMetric={setRotationMetric}
             onDays={setRotationDays}
             onLadderDays={setLadderDays}

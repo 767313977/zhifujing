@@ -270,7 +270,7 @@ export interface RotationCell {
 }
 
 /**
- * 「领涨」行的一只：当天榜首板块的涨停股。
+ * 「领涨」行的一只：某个板块当天的涨停股。
  *
  * ⚠️ 口径是**该板块当日的涨停股**（来自开盘红涨停天梯），**不是**「当日涨幅前 5 名」
  * —— 后者要逐个板块调成分股接口，20 列就是 20 次按需请求，为一行次级信息不值当。
@@ -282,12 +282,17 @@ export interface RotationLeader {
   consecutive: number | null
 }
 
+/** 「领涨」行的一天。这一行跟着**选中的板块**走，所以单独一个接口取，见 `sectorRotationLeaders` */
+export interface RotationLeaderDay {
+  trade_date: string
+  /** 该板块当天没有涨停股就是空数组（页面显示「—」） */
+  leaders: RotationLeader[]
+}
+
 export interface RotationColumn {
   trade_date: string
   /** 当天的前 N 名，已按指标降序 */
   cells: RotationCell[]
-  /** 当天第 1 名板块的涨停股，按连板数降序；那天没有涨停股就是空数组 */
-  leaders: RotationLeader[]
 }
 
 export interface SectorRotation {

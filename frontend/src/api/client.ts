@@ -21,6 +21,7 @@ import type {
   Preset,
   PromotionSeries,
   ReviewNote,
+  RotationLeaderDay,
   RotationMetric,
   ScreenRun,
   SectorCompare,
@@ -115,6 +116,25 @@ export const api = {
       withDate(
         `/sectors/rotation?taxonomy=${taxonomy}&days=${options.days}` +
           `&top=${options.top}&metric=${options.metric}`,
+        date,
+      ),
+    ),
+
+  /**
+   * 矩阵「领涨」行的数据：**选中板块**在最近 N 天的涨停股。
+   *
+   * 与 `sectorRotation` 分开取：这一行点一次格子换一次，而矩阵本身不变 ——
+   * 合在一个请求里的话，每点一下整个面板都会进 loading（那里面板整块变「加载中…」）。
+   */
+  sectorRotationLeaders: (
+    taxonomy: SectorTaxonomy,
+    options: { days: number; code: string },
+    date?: string | null,
+  ) =>
+    request<RotationLeaderDay[]>(
+      withDate(
+        `/sectors/rotation/leaders?taxonomy=${taxonomy}&days=${options.days}` +
+          `&code=${encodeURIComponent(options.code)}`,
         date,
       ),
     ),

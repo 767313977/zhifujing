@@ -1,5 +1,11 @@
 import { useState } from 'react'
-import type { RotationColumn, RotationMetric, SectorRotation } from '../api/types'
+import type {
+  RotationColumn,
+  RotationLeader,
+  RotationMetric,
+  SectorRotation,
+  SectorTaxonomy,
+} from '../api/types'
 import {
   AXIS_LABEL,
   AXIS_LINE,
@@ -136,10 +142,16 @@ interface Props {
   data: SectorRotation | null
   loading: boolean
   metric: RotationMetric
+  /** 口径。**行业口径不显示「领涨」行**：涨停归属只覆盖精选板块，那行会永远是「—」 */
+  taxonomy: SectorTaxonomy
   /** 矩阵显示多少列（交易日） */
   days: number
   /** 上榜次数折线图的统计窗口。**与矩阵窗口独立** —— 矩阵看 20 天、上榜看 50 天是常见用法 */
   ladderDays: number
+  /** 「领涨」行的数据：`{交易日: 涨停股}`，取的是当前选中板块在各天的涨停股 */
+  leaders: Record<string, RotationLeader[]>
+  /** 选中板块的名字，只用于「领涨」行的 tooltip 说明 */
+  leaderName: string | null
   onMetric: (metric: RotationMetric) => void
   onDays: (days: number) => void
   onLadderDays: (days: number) => void
@@ -151,8 +163,11 @@ export default function SectorRotationPanel({
   data,
   loading,
   metric,
+  taxonomy,
   days,
   ladderDays,
+  leaders,
+  leaderName,
   onMetric,
   onDays,
   onLadderDays,
@@ -189,7 +204,11 @@ export default function SectorRotationPanel({
         />
         <span className="text-[11px] text-fg-dim">{hint}</span>
         <span className="num ml-auto text-[11px] text-fg-dim">
-          {loading ? '加载中…' : `${columns.length} 个交易日 · 点格子看板块详情`}
+          {loading
+            ? '加载中…'
+            : taxonomy === 'kph_selected'
+              ? `${columns.length} 个交易日 · 点格子看板块详情，领涨行跟着选中板块`
+              : `${columns.length} 个交易日 · 行业口径没有涨停归属，不显示领涨行`}
         </span>
       </div>
 
@@ -201,7 +220,10 @@ export default function SectorRotationPanel({
         </div>
       ) : (
         <>
-          <div className="max-h-[430px] overflow-auto">
+          {/* 不加 max-height：整块矩阵（每天前 10 名 + 领涨行）一次性显示完。
+              原来卡了 430px，10 行加领涨行装不下，看第 1~4 名要滚动 —— 而「看头部」
+              恰恰是这张表的主要用法。横向仍留给 `overflow-x`：20~60 列在窄屏放不下。 */}
+          <div className="overflow-x-auto">
             <table className="border-collapse">
               <thead className="sticky top-0 z-20">
                 <tr>
@@ -281,42 +303,57 @@ export default function SectorRotationPanel({
                   </tr>
                 ))}
 
-                {/* 「领涨」行：当天榜首板块的涨停股。**必须放在这个表格里**而不是表格外 ——
-                    只有同处一张表，格子才会与上面的列严格同宽、同一天落在同一列。
-                    口径是「涨停股」不是「涨幅前 5」，见 types.ts 里 RotationLeader 的说明。 */}
-                <tr>
-                  <td className="num sticky left-0 z-10 border-r border-t border-line-soft bg-ink-900 px-2 py-1 text-fg-dim">
-                    领涨
-                  </td>
-                  {columns.map((column) => (
+                {/* 「领涨」行：**当前选中板块**在这些天的涨停股（跟着点格子变，见 leaders 的说明）。
+                    **必须放在这个表格里**而不是表格外 —— 只有同处一张表，格子才会与上面的列
+                    严格同宽、同一天落在同一列。
+                    口径是「涨停股」不是「涨幅前 5」，见 types.ts 里 RotationLeader 的说明。
+                    行业口径**整行不渲染**：涨停归属只覆盖精选板块，渲染出来会是一整行「—」，
+                    而那正是这个项目一直在避免的噪音。 */}
+                {taxonomy === 'kph_selected' && (
+                  <tr>
                     <td
-                      key={column.trade_date}
-                      className="border-t border-line-soft px-2 py-1 align-top"
+                      className="num sticky left-0 z-10 border-r border-t border-line-soft bg-ink-900 px-2 py-1 text-fg-dim"
+                      title={
+                        leaderName
+                          ? `领涨 = 选中板块「${leaderName}」当天的涨停股`
+                          : '领涨 = 选中板块当天的涨停股'
+                      }
                     >
-                      {column.leaders.length === 0 ? (
-                        // 该板块那天没有涨停股。留「—」而不是空着：空着会被读成「没取到」
-                        <span className="text-[11px] text-fg-dim">—</span>
-                      ) : (
-                        column.leaders.map((item, index) => (
-                          <div
-                            key={item.code}
-                            className="text-[11px] leading-4 whitespace-nowrap"
-                            title={`${LEADER_LABELS[index]} ${item.name ?? item.code}${
-                              item.consecutive && item.consecutive > 1
-                                ? ` · ${item.consecutive} 连板`
-                                : ''
-                            }`}
-                          >
-                            <span className="text-fg-dim">{LEADER_LABELS[index]}</span>{' '}
-                            <StockLink code={item.code} className="text-fg-muted">
-                              {item.name ?? item.code}
-                            </StockLink>
-                          </div>
-                        ))
-                      )}
+                      领涨
                     </td>
-                  ))}
-                </tr>
+                    {columns.map((column) => {
+                      const items = leaders[column.trade_date] ?? []
+                      return (
+                        <td
+                          key={column.trade_date}
+                          className="border-t border-line-soft px-2 py-1 align-top"
+                        >
+                          {items.length === 0 ? (
+                            // 该板块那天没有涨停股。留「—」而不是空着：空着会被读成「没取到」
+                            <span className="text-[11px] text-fg-dim">—</span>
+                          ) : (
+                            items.map((item, index) => (
+                              <div
+                                key={item.code}
+                                className="text-[11px] leading-4 whitespace-nowrap"
+                                title={`${LEADER_LABELS[index]} ${item.name ?? item.code}${
+                                  item.consecutive && item.consecutive > 1
+                                    ? ` · ${item.consecutive} 连板`
+                                    : ''
+                                }`}
+                              >
+                                <span className="text-fg-dim">{LEADER_LABELS[index]}</span>{' '}
+                                <StockLink code={item.code} className="text-fg-muted">
+                                  {item.name ?? item.code}
+                                </StockLink>
+                              </div>
+                            ))
+                          )}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
