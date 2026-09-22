@@ -1,13 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { StockProfile, StockThemes } from '../api/types'
+import type { StockDde, StockDdeRow, StockProfile, StockThemes } from '../api/types'
 import Alert from '../components/Alert'
+import EChart from '../components/EChart'
+import type { ChartOption } from '../components/EChart'
 import KLineChart from '../components/KLineChart'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import Segmented from '../components/Segmented'
-import { fmtAmount, fmtNum, fmtPct, toneOf } from '../lib/format'
+import {
+  AXIS_LABEL,
+  AXIS_LINE,
+  CHART,
+  GRID,
+  SPLIT_LINE,
+  TOOLTIP,
+} from '../lib/chart'
+import { fmtAmount, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
 import { K_VIEWS, useKLine } from '../lib/klinePeriod'
 import { alreadySynced, markSynced, readStockList } from '../lib/stockNav'
 
@@ -33,10 +43,86 @@ const VIEW_UNIT: Record<string, string> = {
   month: '不复权真实价 · 由日线按月聚合',
 }
 
+/**
+ * DDE 一栏的图：**柱 = 主力净流入额**（逐条上色，正红负绿）、**线 = 5日DDE**。
+ *
+ * 两个指标的单位都是元、量级又相近（都是亿元上下），所以共用一根 Y 轴；
+ * 柱子的红绿只表示**流入还是流出**，与「净流入额比前一天多了还是少了」无关。
+ *
+ * 缺值（来源没给那一天）一律留空：柱不画、线断开，不补 0、也不插值。
+ */
+function buildDdeOption(rows: StockDdeRow[]): ChartOption {
+  return {
+    // **不画图例**：柱子是逐条上色的（净流入红、净流出绿），而图例一个系列只能给一个
+    // 色块 —— 画出来就是个蓝色小方块配一堆红绿柱，反而误导人。颜色规则改用图上方那行
+    // 小字说明（与板块资金流面板同一套做法）。
+    grid: { ...GRID },
+    tooltip: {
+      ...TOOLTIP,
+      trigger: 'axis' as const,
+      axisPointer: {
+        type: 'line' as const,
+        lineStyle: { color: CHART.fgDim, type: 'dashed' as const },
+      },
+      formatter: (params: unknown) => {
+        const items = params as { dataIndex: number }[] | undefined
+        const row = rows[items?.[0]?.dataIndex ?? -1]
+        if (!row) return ''
+        return [
+          `<b>${row.trade_date}</b>`,
+          `主力净流入额 ${fmtAmount(row.net_inflow)}`,
+          `5日DDE ${fmtAmount(row.dde)}`,
+        ].join('<br/>')
+      },
+    },
+    xAxis: {
+      type: 'category' as const,
+      data: rows.map((row) => fmtShortDate(row.trade_date)),
+      // `interval` 是「隔几个类目显示一个」（0 = 全显示）。用 `floor` 而不是 `ceil`
+      // —— 后者在窗口短时得 1，会把一半日期标签吃掉
+      axisLabel: { ...AXIS_LABEL, interval: Math.max(0, Math.floor(rows.length / 8)) },
+      axisLine: AXIS_LINE,
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value' as const,
+      // 不设 scale：净流入有正有负，轴必须把 0 包进来，否则看不出零基线在哪
+      axisLabel: { ...AXIS_LABEL, formatter: (value: number) => fmtAmount(value) },
+      splitLine: SPLIT_LINE,
+      axisLine: { show: false },
+    },
+    series: [
+      {
+        type: 'bar' as const,
+        name: '主力净流入额',
+        data: rows.map((row) => ({
+          value: row.net_inflow,
+          // 逐条上色：净流入为正红、为负绿（A 股惯例）
+          itemStyle: {
+            color: row.net_inflow != null && row.net_inflow < 0 ? CHART.down : CHART.up,
+          },
+        })),
+        barMaxWidth: 14,
+      },
+      {
+        type: 'line' as const,
+        name: '5日DDE',
+        data: rows.map((row) => row.dde),
+        symbol: 'none' as const,
+        // 缺值绝不插值：连出一条假线比断开更容易被读成「数据是连续的」
+        connectNulls: false,
+        lineStyle: { width: 1.6, color: CHART.accent },
+        itemStyle: { color: CHART.accent },
+      },
+    ],
+  }
+}
+
 export default function StockDetail() {
   const { code = '' } = useParams<{ code: string }>()
   const [profile, setProfile] = useState<StockProfile | null>(null)
   const [themes, setThemes] = useState<StockThemes | null>(null)
+  const [dde, setDde] = useState<StockDde | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -55,13 +141,16 @@ export default function StockDetail() {
   const next = index >= 0 && index < codes.length - 1 ? codes[index + 1] : null
 
   const load = useCallback(async (target: string) => {
-    // 题材要现取，可能失败（比如首次打开、本地还没名称），不该拖垮整页
-    const [p, themeData] = await Promise.all([
+    // 题材要现取，可能失败（比如首次打开、本地还没名称），不该拖垮整页；
+    // DDE 同理 —— 它的失败原因后端会放在 note 里，这里兜住的只是传输/服务端层面的错
+    const [p, themeData, ddeData] = await Promise.all([
       api.stockProfile(target),
       api.stockThemes(target).catch(() => null),
+      api.stockDde(target).catch(() => null),
     ])
     setProfile(p)
     setThemes(themeData)
+    setDde(ddeData)
     return p
   }, [])
 
@@ -147,6 +236,11 @@ export default function StockDetail() {
   }, [profile, load])
 
   const latest = profile?.latest
+  /**
+   * DDE 的最新一行。序列是升序的，所以取末尾 —— 它是**最近一个交易日的收盘终值**，
+   * 盘中打开时通常就是昨天（见后端 `collect_dde.CLOSE_READY`），所以界面上不写「今日」。
+   */
+  const latestDde = dde && dde.rows.length > 0 ? dde.rows[dde.rows.length - 1] : null
   const toolbar = (
     <>
       {/* 从列表点进来才有这份上下文；直接输 URL 打开时不显示，
@@ -298,6 +392,53 @@ export default function StockDetail() {
             <div className="px-2 pt-2">
               <KLineChart bars={kline.bars} height={420} />
             </div>
+          )}
+        </Panel>
+
+        <Panel
+          title="资金流向（DDE）"
+          meta={<span className="num">iFinD 口径 · 主力净流入额与 5日DDE · 单位元</span>}
+          delay={100}
+        >
+          {/* 与 profile 同一个 Promise.all 里取回来的，所以「还没到」就等于「在加载」 */}
+          {profile === null ? (
+            <div className="flex h-[240px] items-center justify-center text-[13px] text-fg-dim">
+              <span className="pulse-soft">加载中…</span>
+            </div>
+          ) : !dde || dde.rows.length === 0 ? (
+            // note 有值就是取数失败的原因（iFinD 报错、或这只票本来就没数据），原样显示，
+            // 不画空图；note 也是空的时候才退回到「没有数据」这句
+            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+              {dde?.note ?? '这只票暂时没有 DDE 数据'}
+            </div>
+          ) : (
+            <>
+              {/* 有数据但 note 也有值 = 后端把上次取数失败的原因带出来了（画的是库里的
+                  旧数）。这种情况不能把说明吞掉，否则会被当成最新的终值看 */}
+              {dde.note && (
+                <div className="border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+                  {dde.note}
+                </div>
+              )}
+              <div className="grid grid-cols-2 overflow-hidden">
+                <Cell
+                  label="主力净流入额"
+                  value={fmtAmount(latestDde?.net_inflow)}
+                  tone={toneOf(latestDde?.net_inflow)}
+                />
+                <Cell
+                  label="5日DDE"
+                  value={fmtAmount(latestDde?.dde)}
+                  tone={toneOf(latestDde?.dde)}
+                />
+              </div>
+              <div className="px-2 pt-2">
+                <div className="mb-1 text-[11px] text-fg-dim">
+                  柱 = 主力净流入额（红=净流入 绿=净流出）· 线 = 5日DDE
+                </div>
+                <EChart option={buildDdeOption(dde.rows)} height={240} />
+              </div>
+            </>
           )}
         </Panel>
 

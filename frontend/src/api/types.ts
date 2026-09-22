@@ -542,6 +542,30 @@ export interface StockDailyRow {
 }
 
 /**
+ * 个股某一天的 DDE 与主力净流入。
+ *
+ * 单位一律**元**（iFinD 原始单位），亿/万的换算在展示层做，别在这里先除一遍。
+ */
+export interface StockDdeRow {
+  trade_date: string
+  /** 主力净流入额。来源没给那一天时为 null —— 不是 0 */
+  net_inflow: number | null
+  /** 「5日DDE」。名字是来源自己的窗口口径（5 日），不是「当日 DDE」 */
+  dde: number | null
+}
+
+/** 个股的 DDE 序列，**升序（左旧右新）**。 */
+export interface StockDde {
+  code: string
+  name: string | null
+  /** 实际给了多少个交易日：少于请求的天数，说明这只票的历史（或缓存）就这么长 */
+  days: number
+  rows: StockDdeRow[]
+  /** 取不到数据的原因；取到了就是 null */
+  note: string | null
+}
+
+/**
  * 后端能聚合的 K 线周期。
  *
  * 周/月是**本地日线重采样**出来的（同一张 `stock_daily`，不额外取数），

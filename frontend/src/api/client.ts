@@ -36,6 +36,7 @@ import type {
   SectorTaxonomy,
   Sentiment,
   StockDailyRow,
+  StockDde,
   StockProfile,
   StockThemes,
   WatchlistRow,
@@ -237,6 +238,15 @@ export const api = {
   },
 
   stockThemes: (code: string) => request<StockThemes>(`/stock/${code}/themes`),
+
+  /**
+   * 个股的 **DDE 与主力净流入**（iFinD 口径，日频，单位元）。
+   *
+   * `days` 是「最近 N 个交易日」（后端 5~250，默认 60）。这两个指标只有 iFinD 有；
+   * 库里没有最近交易日的数据时后端会**现取一次**（花 1 次配额），之后读库。
+   */
+  stockDde: (code: string, days = 60) =>
+    request<StockDde>(`/stock/${code}/dde?days=${days}`),
 
   // --- 形态选股 ---
   patternCatalog: () => request<PatternMeta[]>('/patterns/catalog'),
