@@ -269,20 +269,39 @@ def series(
     )
 
 
+def _etf_data_date(session: Session, target: date) -> date:
+    """ETF 份额的**实际数据日期**：从请求日往前找最近一天有份额的。
+
+    为什么不直接用请求日：ETF 份额只有当日快照、而且常在 **T+1** 才更新，
+    所以「最新交易日」那天通常是空的（实测 09-22 请求 → 空，数据落在 09-21）。
+    按请求日直接查，页面上表现为「打开就是空白」，很容易被当成功能坏了。
+
+    回落到最近有数据的一天，**并把实际日期返回给前端显示** —— 否则面板展示的
+    是前一天的数、而页面顶部写着今天，对着看会误读。
+    """
+    latest = session.scalar(
+        select(func.max(EtfShare.trade_date)).where(EtfShare.trade_date <= target)
+    )
+    return latest or target
+
+
 def _etf_flows(
     session: Session, target: date
-) -> tuple[date | None, list[EtfFlowItem], bool]:
+) -> tuple[date, date | None, list[EtfFlowItem], bool]:
     """当日每只 ETF 的份额变化与净申赎。两个 ETF 接口共用。
 
-    返回 (对比基准日, 明细, 有没有可比基准)。
+    返回 (**实际数据日**, 对比基准日, 明细, 有没有可比基准)。
+    实际数据日由 `_etf_data_date` 从请求日往前回落而来 —— 接口必须把它放进响应，
+    否则前端只会看到请求的那个日期，标不出「这份 ETF 数据是哪天的」。
     **has_prev 判的是「上一交易日的份额数据在不在」，不是「上一交易日在不在」** ——
     交易日历里天天都是交易日，但份额要等第一次采集才有数；只看日期会返回
     has_prev=True + 空列表，前端于是把「没得比」显示成「今天没人申赎」，
     那是两个相反的结论。
     """
+    target = _etf_data_date(session, target)
     prev = _prev_trade_date(session, target)
     if prev is None:
-        return None, [], False
+        return target, None, [], False
 
     today = list(session.scalars(select(EtfShare).where(EtfShare.trade_date == target)))
     yesterday = {
@@ -290,7 +309,7 @@ def _etf_flows(
         for row in session.scalars(select(EtfShare).where(EtfShare.trade_date == prev))
     }
     if not yesterday:
-        return prev, [], False
+        return target, prev, [], False
 
     items: list[EtfFlowItem] = []
     for row in today:
@@ -312,7 +331,7 @@ def _etf_flows(
                 net_inflow=None if not row.close else delta * row.close,
             )
         )
-    return prev, items, True
+    return target, prev, items, True
 
 
 def _sort_flows(items: list[EtfFlowItem], order: str) -> None:
@@ -331,11 +350,15 @@ def etf_flows(
     order: str = Query("inflow", pattern="^(inflow|outflow|amount)$"),
     session: Session = Depends(get_db),
 ) -> EtfFlowBoard:
-    """ETF 申赎排行（按单只）。份额变化 = 净申购，是真金白银的资金进出。"""
-    prev, items, has_prev = _etf_flows(session, target)
+    """ETF 申赎排行（按单只）。份额变化 = 净申购，是真金白银的资金进出。
+
+    `trade_date` 返回的是**实际数据日**（ETF 份额 T+1 才更新，所以通常比请求的
+    日期早一天），见 `_etf_data_date`。
+    """
+    actual, prev, items, has_prev = _etf_flows(session, target)
     _sort_flows(items, order)
     return EtfFlowBoard(
-        trade_date=target, prev_date=prev, has_prev=has_prev, items=items[:limit]
+        trade_date=actual, prev_date=prev, has_prev=has_prev, items=items[:limit]
     )
 
 
@@ -356,9 +379,11 @@ def etf_industry(
     分类来自 `services/etf_category` 的名称关键词词典 —— **没有任何数据源
     直接给 ETF 的行业归属**，词典实测覆盖 96% 只数 / 99.9% 成交额。
     """
-    prev, items, has_prev = _etf_flows(session, target)
+    actual, prev, items, has_prev = _etf_flows(session, target)
     if not has_prev:
-        return EtfIndustryBoard(trade_date=target, prev_date=prev, has_prev=False, items=[])
+        return EtfIndustryBoard(
+            trade_date=actual, prev_date=prev, has_prev=False, items=[]
+        )
 
     categories = {
         code: category
@@ -400,7 +425,7 @@ def etf_industry(
     else:
         board.sort(key=lambda item: item.net_inflow or 0, reverse=True)
     return EtfIndustryBoard(
-        trade_date=target, prev_date=prev, has_prev=True, items=board[:limit]
+        trade_date=actual, prev_date=prev, has_prev=True, items=board[:limit]
     )
 
 

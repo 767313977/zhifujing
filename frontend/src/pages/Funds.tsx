@@ -263,6 +263,14 @@ export default function Funds() {
     etfGroup === 'industry'
       ? '净申赎 = 该行业全部 ETF 的份额变化 × 收盘价求和（份额单位不可加，所以只加金额）'
       : '净申赎 = 份额变化 × 当日收盘价（近似当日净值），正数为净申购'
+  // ETF 份额常在 T+1 才更新，后端会回落到「最近有份额的那一天」，所以榜上的数据日
+  // 可能比页面顶部选的日期早一天 —— 这本身正常，但必须标出来，
+  // 否则两个日期对着看会把前一天的申赎当成今天的
+  const etfTradeDate = etfBoard?.trade_date ?? null
+  const etfDateNotice =
+    !etfLoading && etfTradeDate && etfTradeDate !== (overview?.trade_date ?? date)
+      ? etfTradeDate
+      : null
 
   const toolbar = (
     <>
@@ -404,6 +412,10 @@ export default function Funds() {
             <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
               <Toggle options={ETF_GROUPS} value={etfGroup} onChange={setEtfGroup} />
               <Toggle options={ETF_ORDERS} value={etfOrder} onChange={setEtfOrder} />
+              {/* ETF 份额 T+1 才更新，数据日可能比页面选的日期早一天 —— 如实标出来 */}
+              {etfDateNotice && (
+                <span className="num text-fg-dim">数据日期 {etfDateNotice}</span>
+              )}
               {/* 没有可比基准时不显示条数：那时的「0 只」会被读成
                   「今天没有 ETF 被申赎」，而事实是算不出来 */}
               {etfHasPrev !== false && (
