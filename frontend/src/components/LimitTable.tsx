@@ -41,10 +41,14 @@ const TITLES: Record<PoolType, string> = {
  * 三池的列不完全一样（跌停池是「封单资金/连续跌停/末封」，炸板池没有封板资金），
  * 这里按类型装配列，而不是硬套同一套表头。
  *
- * `hasBoard` 由调用方按数据判：涨停天梯只覆盖涨停股，跌停 / 炸板池拿不到板块归属，
- * 那种情况下不给「开盘啦板块」列。
+ * `hasBoard` / `hasReason` 由调用方**按数据判**：开盘啦板块来自涨停天梯、涨停原因
+ * 来自同花顺涨停池，两者都只覆盖涨停股，跌停 / 炸板池拿不到，那种情况下不给这两列
+ * （留一整列「—」只是噪音）。
  */
-function buildColumns(type: PoolType, hasBoard = false): Column[] {
+function buildColumns(
+  type: PoolType,
+  { hasBoard = false, hasReason = false }: { hasBoard?: boolean; hasReason?: boolean } = {},
+): Column[] {
   const columns: Column[] = [
     {
       key: 'code',
@@ -103,6 +107,27 @@ function buildColumns(type: PoolType, hasBoard = false): Column[] {
               <span className="text-[11px] text-fg-dim">{s.board ?? '—'}</span>
             ),
             sortValue: (s: LimitStock) => s.board,
+          },
+        ]
+      : []),
+    /* 涨停原因（同花顺 `reason_type`：「房地产+城市更新+北京国资」）。
+       放在板块右边 —— 两个都是「为什么涨」，一个给板块视角、一个给原因串。
+       这列**不给排序**：按一长串中文排序没有意义，表头也就不该点得动。
+       长原因用 `truncate` 收窄（列宽不能被它撑爆），原文挂 title 里，悬停可看全。 */
+    ...(hasReason
+      ? [
+          {
+            key: 'reason',
+            label: '涨停原因',
+            align: 'left' as const,
+            render: (s: LimitStock) => (
+              <span
+                className="block max-w-[240px] truncate text-[11px] text-fg-muted"
+                title={s.reason ?? undefined}
+              >
+                {s.reason ?? '—'}
+              </span>
+            ),
           },
         ]
       : []),
@@ -229,10 +254,10 @@ export default function LimitTable({
   delay = 280,
   loading = false,
 }: LimitTableProps) {
-  const columns = buildColumns(
-    type,
-    stocks.some((stock) => stock.board),
-  )
+  const columns = buildColumns(type, {
+    hasBoard: stocks.some((stock) => stock.board),
+    hasReason: stocks.some((stock) => stock.reason),
+  })
   // 首屏不排（key 为 null），保持后端顺序：涨停池的默认顺序本身有意义
   const [sort, shown] = useSort(stocks, buildSpecs(columns), { key: null })
 

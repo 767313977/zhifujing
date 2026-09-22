@@ -98,6 +98,8 @@ export interface LimitStock {
   industry: string | null
   /** **开盘啦精选板块**（芯片），涨停天梯口径 —— 梯队 chip 上显示的是这个。 */
   board: string | null
+  /** **涨停原因**（同花顺）：`房地产+城市更新+北京国资`。原样展示，不拆分。 */
+  reason: string | null
 }
 
 export interface LadderLevel {
