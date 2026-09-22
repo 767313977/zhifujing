@@ -2,6 +2,7 @@ import type {
   AdminStatus,
   CollectResult,
   EtfFlowBoard,
+  FundFlowTaxonomy,
   EtfFlowOrder,
   EtfIndustryBoard,
   FundFlowOverview,
@@ -25,6 +26,7 @@ import type {
   RotationMetric,
   ScreenRun,
   SectorCompare,
+  SectorFundFlowOut,
   SectorHeat,
   SectorMembers,
   SectorRanking,
@@ -137,6 +139,17 @@ export const api = {
           `&code=${encodeURIComponent(options.code)}`,
         date,
       ),
+    ),
+
+  /**
+   * 板块资金流向（**同花顺口径**：概念 / 行业）。
+   *
+   * 与 `sectorRanking` 是两套名字，别指望它的 name 能对上板块页的板块 ——
+   * 后端 `SectorFundFlow` 的注释写明了原因。
+   */
+  sectorFundFlow: (taxonomy: FundFlowTaxonomy, date?: string | null) =>
+    request<SectorFundFlowOut>(
+      withDate(`/sectors/fund-flow?taxonomy=${taxonomy}`, date),
     ),
 
   limitThemes: (date?: string | null) =>

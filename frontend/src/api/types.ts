@@ -228,6 +228,30 @@ export interface SectorMembers {
   members: SectorMemberItem[]
 }
 
+/** 板块资金流向的口径。**与 SectorTaxonomy 是两套名字**（同花顺概念 vs 开盘红精选） */
+export type FundFlowTaxonomy = 'ths_concept' | 'ths_industry'
+
+/** 资金流里的一行。金额单位是**亿元**（后端注释里也写死了这件事） */
+export interface FundFlowItem {
+  name: string
+  pct_chg: number | null
+  in_amount: number | null
+  out_amount: number | null
+  net_amount: number | null
+  member_count: number | null
+  leader_name: string | null
+  leader_pct_chg: number | null
+}
+
+export interface SectorFundFlowOut {
+  trade_date: string
+  taxonomy: string
+  taxonomy_label: string
+  total: number
+  /** 已按净额降序（净流入在前） */
+  items: FundFlowItem[]
+}
+
 export interface SectorHeatItem {
   code: string
   name: string

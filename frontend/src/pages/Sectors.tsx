@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
+  FundFlowTaxonomy,
   RotationLeader,
   RotationMetric,
   SectorCompare,
+  SectorFundFlowOut,
   SectorMembers,
   SectorQuote,
   SectorRanking,
@@ -17,6 +19,7 @@ import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
+import SectorFlowPanel from '../components/SectorFlowPanel'
 import SectorRotationPanel, { ROTATION_SPANS } from '../components/SectorRotationPanel'
 import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
@@ -138,6 +141,16 @@ export default function Sectors() {
    * `rotation`：点一次格子就要重取一次，混在一起会让整个矩阵每点一下都进 loading。
    */
   const [leaders, setLeaders] = useState<Record<string, RotationLeader[]>>({})
+  /**
+   * 资金流向面板的口径。**与上面的 `taxonomy` 故意分开存** ——
+   * 那个是开盘红的板块口径（精选/行业），这个是同花顺的概念/行业，两套名字对不上，
+   * 共用一个 state 会让人以为切上面那个就能换资金流的口径。
+   */
+  const [flowTaxonomy, setFlowTaxonomy] = useState<FundFlowTaxonomy>(() =>
+    params.get('flow') === 'ths_industry' ? 'ths_industry' : 'ths_concept',
+  )
+  const [flow, setFlow] = useState<SectorFundFlowOut | null>(null)
+  const [flowLoading, setFlowLoading] = useState(true)
   // 走势窗口也写进 URL，理由同上。初值先校验档位：URL 是可以手改的，
   // 塞个 10000 进来后端会直接 400，页面看起来就像坏了
   const [curveDays, setCurveDays] = useState(() => {
@@ -165,6 +178,9 @@ export default function Sectors() {
     else next.set('ladder', String(ladderDays))
     if (curveDays === 30) next.delete('curve')
     else next.set('curve', String(curveDays))
+    // 资金流面板的口径也是视图状态，同样不该在返回时被重置
+    if (flowTaxonomy === 'ths_concept') next.delete('flow')
+    else next.set('flow', flowTaxonomy)
     if (next.toString() !== params.toString()) setParams(next, { replace: true })
   }, [
     taxonomy,
@@ -174,6 +190,7 @@ export default function Sectors() {
     rotationDays,
     ladderDays,
     curveDays,
+    flowTaxonomy,
     params,
     setParams,
   ])
@@ -241,6 +258,30 @@ export default function Sectors() {
       stale = true
     }
   }, [taxonomy, date, rotationDays, selected])
+
+  // 资金流向面板：只跟日期与它自己的口径走。失败照旧显式报错 ——
+  // 面板里那句空态是给「这天真的没人采」准备的，拿它顶替错误会被读成「就是没有」
+  useEffect(() => {
+    let stale = false
+    setFlowLoading(true)
+    api
+      .sectorFundFlow(flowTaxonomy, date)
+      .then((data) => {
+        if (!stale) setFlow(data)
+      })
+      .catch((err: Error) => {
+        if (!stale) {
+          setFlow(null)
+          setError(err.message)
+        }
+      })
+      .finally(() => {
+        if (!stale) setFlowLoading(false)
+      })
+    return () => {
+      stale = true
+    }
+  }, [flowTaxonomy, date])
 
   useEffect(() => {
     let stale = false
@@ -696,6 +737,26 @@ export default function Sectors() {
             )}
           </Panel>
         </div>
+
+        {/* 放最后一块、整行宽：它是**另一种口径**（同花顺概念/行业），
+            与上面的开盘红板块对不上，所以不和上面任何面板并排，
+            免得被读成「同一个板块的两组数」 */}
+        <Panel
+          title="板块资金流向"
+          meta={
+            <span className="num">
+              {flowLoading ? '加载中…' : `${flow?.taxonomy_label ?? ''} · 单位亿元`}
+            </span>
+          }
+          delay={200}
+        >
+          <SectorFlowPanel
+            data={flow}
+            loading={flowLoading}
+            taxonomy={flowTaxonomy}
+            onTaxonomy={setFlowTaxonomy}
+          />
+        </Panel>
       </div>
     </Layout>
   )
