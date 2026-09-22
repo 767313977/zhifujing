@@ -54,6 +54,7 @@ akshare   ─┘                                                          │
 | 板块分类 / 成分股 / 涨停天梯 | 开盘红（`sources/kaipanhong.py`） |
 | 涨停原因、板块资金流 | 同花顺数据中心（`data.10jqka.com.cn`） |
 | 指数量价、均线、背离 | 本地计算（`services/index_tech.py`，0 配额） |
+| 形态选股、样板池（量价结构） | 本地计算（`services/patterns.py`、`services/template_pool.py`，0 配额） |
 
 **配额是这个项目最稀缺的资源**：iFinD 个人版 **5000 次 / 订阅周期**（按订阅日滚动的窗口，不是自然月），
 且**账号级共享** —— 定时采集、形态选股的日线更新、手动补数全花同一个池子。
@@ -67,7 +68,7 @@ akshare   ─┘                                                          │
 ```
 backend/app/
   api/        各页面用的只读接口（market / limit / sector / funds / stock / screener / watchlist / note / patterns / admin）
-  jobs/       采集与回补任务（collect_*、backfill_*、scan_patterns、push_brief、scheduler）
+  jobs/       采集与回补任务（collect_*、backfill_*、scan_patterns、scan_template、scan_dde、push_brief、scheduler）
   services/   计算层（情绪、板块、形态、指数技术指标、配额计量）
   sources/    所有外部数据源客户端，含限速 / 重试 / 分片 / 降级
   models.py   SQLAlchemy 模型；每张表的口径与坑写在 docstring 里
