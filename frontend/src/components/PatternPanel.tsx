@@ -67,7 +67,7 @@ export default function PatternPanel({
           {/* 形态家数一排：一眼看出「今天什么形态最普遍」，比只看 Top 8 更有信息量 */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line-soft px-4 py-2">
             {counts.map((item) => (
-              <span key={item.pattern} className="num text-[11px] text-fg-dim">
+              <span key={item.pattern} className="num text-[12px] text-fg-dim">
                 {item.pattern_name}
                 <span className={`ml-1 ${item.stocks > 0 ? 'text-fg-muted' : 'text-fg-dim'}`}>
                   {item.stocks}

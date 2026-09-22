@@ -195,7 +195,7 @@ export default function Screener() {
   )
 
   const toolbar = (
-    <span className="num hidden text-[11px] text-fg-dim lg:inline">
+    <span className="num hidden text-[12px] text-fg-dim lg:inline">
       {running ? '选股中…' : result ? `${result.returned} 行结果` : '就绪'}
     </span>
   )
@@ -235,14 +235,14 @@ export default function Screener() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] tracking-[0.1em] text-fg-dim">示例</span>
+              <span className="text-[12px] tracking-[0.1em] text-fg-dim">示例</span>
               {EXAMPLES.map((example) => (
                 <button
                   key={example}
                   type="button"
                   onClick={() => setQuery(example)}
                   title={example}
-                  className="max-w-[280px] truncate border border-line-soft px-2 py-1 text-[11px] text-fg-muted transition-colors hover:border-line hover:text-fg"
+                  className="max-w-[280px] truncate border border-line-soft px-2 py-1 text-[12px] text-fg-muted transition-colors hover:border-line hover:text-fg"
                 >
                   {example}
                 </button>
@@ -300,7 +300,7 @@ export default function Screener() {
                       setQuery(text)
                       void runScreen(text)
                     }}
-                    className="shrink-0 border border-line px-2.5 py-1 text-[11px] text-fg-muted transition-colors hover:border-accent/50 hover:text-accent"
+                    className="shrink-0 border border-line px-2.5 py-1 text-[12px] text-fg-muted transition-colors hover:border-accent/50 hover:text-accent"
                   >
                     执行
                   </button>
@@ -316,7 +316,7 @@ export default function Screener() {
                         setError((err as Error).message)
                       }
                     }}
-                    className="shrink-0 border border-line px-2.5 py-1 text-[11px] text-fg-dim transition-colors hover:border-danger/50 hover:text-danger"
+                    className="shrink-0 border border-line px-2.5 py-1 text-[12px] text-fg-dim transition-colors hover:border-danger/50 hover:text-danger"
                   >
                     删除
                   </button>
@@ -348,21 +348,21 @@ export default function Screener() {
             <>
               <div className="flex flex-wrap items-stretch gap-px border-b border-line-soft bg-line-soft">
                 <div className="flex-1 bg-ink-900 px-4 py-2.5">
-                  <div className="text-[11px] tracking-[0.1em] text-fg-dim">匹配总数</div>
+                  <div className="text-[12px] tracking-[0.1em] text-fg-dim">匹配总数</div>
                   <div className="num mt-1 text-[20px] leading-tight font-medium text-fg">
                     {result.matched ?? '—'}
-                    <span className="ml-1 text-[11px] text-fg-dim">只</span>
+                    <span className="ml-1 text-[12px] text-fg-dim">只</span>
                   </div>
                 </div>
                 <div className="flex-1 bg-ink-900 px-4 py-2.5">
-                  <div className="text-[11px] tracking-[0.1em] text-fg-dim">表格返回</div>
+                  <div className="text-[12px] tracking-[0.1em] text-fg-dim">表格返回</div>
                   <div className="num mt-1 text-[20px] leading-tight font-medium text-fg">
                     {result.returned}
-                    <span className="ml-1 text-[11px] text-fg-dim">行</span>
+                    <span className="ml-1 text-[12px] text-fg-dim">行</span>
                   </div>
                 </div>
                 <div className="flex-[2] bg-ink-900 px-4 py-2.5">
-                  <div className="text-[11px] tracking-[0.1em] text-fg-dim">说明</div>
+                  <div className="text-[12px] tracking-[0.1em] text-fg-dim">说明</div>
                   <div className="mt-1 text-[12px] leading-relaxed text-fg-muted">
                     列由 iFinD 按提问内容动态决定，列名方括号内是数据日期
                   </div>
@@ -395,7 +395,7 @@ export default function Screener() {
                       「这句话压根没被解析出来（有歧义）」。限高 + 可滚 */}
                   {result.answer && (
                     <div className="max-h-40 overflow-auto border-t border-line-soft bg-ink-850/40 px-4 py-2.5">
-                      <div className="mb-1 text-[11px] tracking-[0.1em] text-fg-dim">
+                      <div className="mb-1 text-[12px] tracking-[0.1em] text-fg-dim">
                         数据源的回答
                       </div>
                       <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-fg-muted">
@@ -498,7 +498,7 @@ function ResultTable({
                     type="button"
                     disabled={isWatched || !shortCode}
                     onClick={() => onAdd(code, name)}
-                    className="num border border-line px-2 py-[2px] text-[11px] text-fg-muted transition-colors hover:border-accent/50 hover:text-accent disabled:cursor-default disabled:border-line-soft disabled:text-fg-dim"
+                    className="num border border-line px-2 py-[2px] text-[12px] text-fg-muted transition-colors hover:border-accent/50 hover:text-accent disabled:cursor-default disabled:border-line-soft disabled:text-fg-dim"
                   >
                     {isWatched ? '已在自选' : '＋自选'}
                   </button>

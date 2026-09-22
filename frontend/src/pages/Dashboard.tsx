@@ -137,7 +137,7 @@ export default function Dashboard() {
 
   const toolbar = (
     <>
-      <span className="num hidden text-[11px] text-fg-dim lg:inline">
+      <span className="num hidden text-[12px] text-fg-dim lg:inline">
         {status ? `${status.data_days} 个交易日` : '—'}
       </span>
       <select

@@ -620,7 +620,7 @@ export default function Sectors() {
                     />
                   </div>
                   <div className="flex items-center justify-between gap-2 border-t border-line-soft px-3 py-2">
-                    <span className="text-[11px] text-fg-dim">
+                    <span className="text-[12px] text-fg-dim">
                       {taxonomy === 'kph_selected'
                         ? '涨停数按「个股 → 开盘红精选板块」归属统计（来自涨停天梯）'
                         : '行业口径没有涨停归属（涨停天梯只给精选板块）'}
@@ -629,7 +629,7 @@ export default function Sectors() {
                       type="button"
                       onClick={() => toggleCompare(selectedBoard)}
                       className={[
-                        'shrink-0 border px-2 py-[3px] text-[11px] transition-colors',
+                        'shrink-0 border px-2 py-[3px] text-[12px] transition-colors',
                         inCompare
                           ? 'border-accent/50 text-accent'
                           : 'border-line text-fg-muted hover:text-fg',
@@ -661,7 +661,7 @@ export default function Sectors() {
                   <select
                     value={curveDays}
                     onChange={(event) => setCurveDays(Number(event.target.value))}
-                    className="num border border-line bg-ink-900 px-2 py-[2px] text-[11px] text-fg outline-none focus:border-fg-dim"
+                    className="num border border-line bg-ink-900 px-2 py-[2px] text-[12px] text-fg outline-none focus:border-fg-dim"
                     title="走势图与对比图共用的窗口长度"
                   >
                     {CURVE_SPANS.map((span) => (
@@ -756,7 +756,7 @@ export default function Sectors() {
                           current.filter((code) => code !== item.code),
                         )
                       }
-                      className="border border-line px-2 py-[2px] text-[11px] text-fg-muted transition-colors hover:border-danger/40 hover:text-fg"
+                      className="border border-line px-2 py-[2px] text-[12px] text-fg-muted transition-colors hover:border-danger/40 hover:text-fg"
                     >
                       {item.name} ✕
                     </button>
@@ -815,14 +815,14 @@ function Stat({
 }) {
   return (
     <div className="flex-1 bg-ink-900 px-4 py-2.5">
-      <div className="text-[11px] tracking-[0.1em] text-fg-dim">{label}</div>
+      <div className="text-[12px] tracking-[0.1em] text-fg-dim">{label}</div>
       <div
         className={`num mt-1 leading-tight ${
           muted ? 'text-[12px] text-fg-muted' : `text-[19px] font-medium ${tone}`
         }`}
       >
         {value}
-        {unit && <span className="ml-1 text-[11px] text-fg-dim">{unit}</span>}
+        {unit && <span className="ml-1 text-[12px] text-fg-dim">{unit}</span>}
       </div>
     </div>
   )
@@ -839,7 +839,7 @@ function Cell({
 }) {
   return (
     <div className="bg-ink-900 px-3 py-2">
-      <div className="text-[11px] text-fg-dim">{label}</div>
+      <div className="text-[12px] text-fg-dim">{label}</div>
       <div className={`num mt-0.5 truncate text-[13px] ${tone}`} title={value}>
         {value}
       </div>
@@ -898,7 +898,7 @@ function BoardTable({
               <td className="!text-left">
                 <span className="text-fg">{board.name}</span>
                 {compareCodes.includes(board.code) && (
-                  <span className="ml-1.5 text-[10px] text-accent">对比中</span>
+                  <span className="ml-1.5 text-[11px] text-accent">对比中</span>
                 )}
               </td>
               <td>

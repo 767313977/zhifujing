@@ -61,7 +61,7 @@ export default function IndexStrip({ indexes, tradeDate }: IndexStripProps) {
 
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-[12px] text-fg-muted">{item.name ?? item.code}</span>
-            <span className="num text-[10px] text-fg-dim">{item.code}</span>
+            <span className="num text-[11px] text-fg-dim">{item.code}</span>
           </div>
 
           <div className="mt-1.5 flex items-baseline gap-2.5">
@@ -75,7 +75,7 @@ export default function IndexStrip({ indexes, tradeDate }: IndexStripProps) {
             </span>
           </div>
 
-          <div className="num mt-2 flex items-center gap-3 text-[11px] text-fg-dim">
+          <div className="num mt-2 flex items-center gap-3 text-[12px] text-fg-dim">
             <span>额 {fmtAmount(item.amount)}</span>
             {item.up_count != null && item.down_count != null ? (
               <span>
@@ -90,7 +90,7 @@ export default function IndexStrip({ indexes, tradeDate }: IndexStripProps) {
           </div>
 
           {/* 均线得失与量价配合：这一行是「今天这根怎么走出来的」 */}
-          <div className="num mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]">
+          <div className="num mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px]">
             <MaTag window={5} above={item.above_ma5} />
             <MaTag window={20} above={item.above_ma20} />
             {item.vol_price ? (

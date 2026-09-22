@@ -36,7 +36,7 @@ export default function SectorHeatPanel({ heat, delay = 0 }: SectorHeatPanelProp
         <Row label="领跌" items={selected.laggards} />
       </div>
 
-      <div className="border-t border-line-soft px-3 py-2 text-[11px] text-fg-dim">
+      <div className="border-t border-line-soft px-3 py-2 text-[12px] text-fg-dim">
         <span className="mr-2">行业</span>
         <span className="num text-fg-muted">
           {industry.rising} 涨 / {industry.falling} 跌 · 均值 {fmtPct(industry.average)}
@@ -67,7 +67,7 @@ export default function SectorHeatPanel({ heat, delay = 0 }: SectorHeatPanelProp
 function Row({ label, items }: { label: string; items: SectorHeatItem[] }) {
   return (
     <div className="flex items-start gap-2">
-      <span className="mt-1.5 w-7 shrink-0 text-[11px] text-fg-dim">{label}</span>
+      <span className="mt-1.5 w-7 shrink-0 text-[12px] text-fg-dim">{label}</span>
       <div className="grid flex-1 grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-5">
         {items.map((item) => (
           <div
@@ -85,7 +85,7 @@ function Row({ label, items }: { label: string; items: SectorHeatItem[] }) {
               </span>
             </div>
             {item.limit_up_count ? (
-              <div className="num text-[10px] text-fg-dim">
+              <div className="num text-[11px] text-fg-dim">
                 涨停 {item.limit_up_count}
               </div>
             ) : null}

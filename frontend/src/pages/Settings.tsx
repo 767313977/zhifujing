@@ -243,7 +243,7 @@ export default function Settings() {
                 style={{ width: `${barPercent}%` }}
               />
             </div>
-            <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-[11px] text-fg-dim">
+            <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-[12px] text-fg-dim">
               <span className="num">
                 已用 {usedPercent}%
                 {quota && (
@@ -326,13 +326,13 @@ export default function Settings() {
                     </td>
                     <td>
                       <span className="num">{fmtInt(row.days)}</span>
-                      <span className="ml-1 text-[11px] text-fg-dim">天</span>
+                      <span className="ml-1 text-[12px] text-fg-dim">天</span>
                     </td>
                     <td>
                       <span className="num text-fg-muted">{row.latest ?? '—'}</span>
                     </td>
                     <td className="!text-left">
-                      <span className="text-[11px] text-fg-dim">{COVERAGE_NOTES[row.label] ?? ''}</span>
+                      <span className="text-[12px] text-fg-dim">{COVERAGE_NOTES[row.label] ?? ''}</span>
                     </td>
                   </tr>
                 ))}
@@ -394,7 +394,7 @@ export default function Settings() {
                   onChange={(event) => setBackfillEnd(event.target.value)}
                   className="num border border-line bg-ink-850 px-2 py-1 text-[12px] text-fg outline-none focus:border-fg-dim"
                 />
-                <span className="text-[11px] text-fg-dim">（留空补到最新交易日）</span>
+                <span className="text-[12px] text-fg-dim">（留空补到最新交易日）</span>
                 <button
                   type="button"
                   onClick={() => void runBackfill()}
@@ -484,7 +484,7 @@ function Cell({
 }) {
   return (
     <div className="relative -mr-px -mb-px border-r border-b border-line-soft px-4 py-3">
-      <div className="text-[11px] tracking-[0.1em] text-fg-dim">{label}</div>
+      <div className="text-[12px] tracking-[0.1em] text-fg-dim">{label}</div>
       <div className={`num mt-1.5 text-[16px] leading-tight font-medium ${tone}`}>
         {pulse && (
           <span className="pulse-soft mr-1.5 inline-block h-[6px] w-[6px] bg-ok align-middle" />
@@ -523,7 +523,7 @@ function LogRow({ log }: { log: CollectLog }) {
       </td>
       <td className="!text-left">
         <span
-          className="inline-block max-w-[320px] truncate align-bottom text-[11px] text-fg-dim"
+          className="inline-block max-w-[320px] truncate align-bottom text-[12px] text-fg-dim"
           title={log.message ?? ''}
         >
           {log.message ?? '—'}

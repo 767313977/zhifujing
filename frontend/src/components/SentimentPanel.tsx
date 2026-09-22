@@ -73,7 +73,7 @@ function AmountTrend({
     .filter((amount): amount is number => amount != null)
 
   if (points.length === 0 || values.length === 0) {
-    return <span className="num text-[11px] text-fg-dim">沪指 + 深成指（无历史序列）</span>
+    return <span className="num text-[12px] text-fg-dim">沪指 + 深成指（无历史序列）</span>
   }
 
   const peak = Math.max(...values)
@@ -101,7 +101,7 @@ function AmountTrend({
           {ticks.map((value) => (
             <span
               key={value}
-              className="num absolute right-0 text-[10px] leading-none text-fg-dim"
+              className="num absolute right-0 text-[11px] leading-none text-fg-dim"
               style={{ bottom: `${(value / top) * BAR_AREA}px`, transform: 'translateY(50%)' }}
             >
               {fmtWan(value)}
@@ -151,7 +151,7 @@ function AmountTrend({
         </div>
       </div>
 
-      <div className="num mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-fg-dim">
+      <div className="num mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-fg-dim">
         <span>
           较昨日 <span className="text-fg-muted">{fmtPct(delta)}</span>
         </span>
@@ -190,7 +190,7 @@ function Metric({
         fill ? 'flex flex-col' : ''
       }`}
     >
-      <div className="text-[11px] tracking-[0.1em] text-fg-dim">{label}</div>
+      <div className="text-[12px] tracking-[0.1em] text-fg-dim">{label}</div>
       <div className={`num mt-1.5 text-[26px] leading-none font-medium ${tone}`}>
         {value}
       </div>
@@ -246,25 +246,25 @@ export default function SentimentPanel({
           label="涨停"
           value={fmtInt(s.limit_up_count)}
           tone="text-up"
-          sub={<span className="num text-[11px] text-fg-dim">含首板与连板</span>}
+          sub={<span className="num text-[12px] text-fg-dim">含首板与连板</span>}
         />
         <Metric
           label="跌停"
           value={fmtInt(s.limit_down_count)}
           tone="text-down"
-          sub={<span className="num text-[11px] text-fg-dim">当日跌停家数</span>}
+          sub={<span className="num text-[12px] text-fg-dim">当日跌停家数</span>}
         />
         <Metric
           label="炸板"
           value={fmtInt(s.broken_count)}
           tone="text-fg-muted"
-          sub={<span className="num text-[11px] text-fg-dim">触板未封住</span>}
+          sub={<span className="num text-[12px] text-fg-dim">触板未封住</span>}
         />
         <Metric
           label="最高连板"
           value={fmtInt(s.max_consecutive)}
           tone="text-accent"
-          sub={<span className="num text-[11px] text-fg-dim">市场高度</span>}
+          sub={<span className="num text-[12px] text-fg-dim">市场高度</span>}
         />
 
         <Metric
@@ -290,7 +290,7 @@ export default function SentimentPanel({
           value={fmtInt(s.up5_count)}
           tone={s.up5_count == null ? 'text-fg-dim' : 'text-up'}
           sub={
-            <span className="num text-[11px] text-fg-dim">
+            <span className="num text-[12px] text-fg-dim">
               {hasFive ? '全市场，含涨停' : '仅当日可取'}
             </span>
           }
@@ -300,7 +300,7 @@ export default function SentimentPanel({
           value={fmtInt(s.down5_count)}
           tone={s.down5_count == null ? 'text-fg-dim' : 'text-down'}
           sub={
-            <span className="num text-[11px] text-fg-dim">
+            <span className="num text-[12px] text-fg-dim">
               {hasFive ? '全市场，含跌停' : '仅当日可取'}
             </span>
           }
@@ -319,13 +319,13 @@ export default function SentimentPanel({
                   from="var(--color-up)"
                   to="var(--color-down)"
                 />
-                <div className="num flex justify-between text-[11px] text-fg-dim">
+                <div className="num flex justify-between text-[12px] text-fg-dim">
                   <span className="text-up">涨 {s.up_count}</span>
                   <span className="text-down">跌 {s.down_count}</span>
                 </div>
               </div>
             ) : (
-              <span className="num text-[11px] text-fg-dim">历史数据源仅提供当日值</span>
+              <span className="num text-[12px] text-fg-dim">历史数据源仅提供当日值</span>
             )
           }
         />
@@ -348,7 +348,7 @@ export default function SentimentPanel({
                 : 'text-down'
           }
           sub={
-            <span className="text-[11px] leading-relaxed text-fg-dim">
+            <span className="text-[12px] leading-relaxed text-fg-dim">
               昨日涨停股今日的均涨幅 ——
               <span className="text-fg-muted">短线接力情绪的体温计</span>：
               为正说明昨天的板今天有人接、追高的容错率高；为负说明市场在杀接力，

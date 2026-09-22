@@ -207,10 +207,10 @@ export default function SectorFlowPanel({
     <div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line-soft px-3 py-2">
         <Segmented value={taxonomy} items={TAXONOMIES} onChange={onTaxonomy} />
-        <span className="text-[11px] text-fg-dim">
+        <span className="text-[12px] text-fg-dim">
           同花顺{label}口径（与本站板块不是一套名字）· 单位亿元 · 红=净流入 绿=净流出
         </span>
-        <span className="num ml-auto text-[11px] text-fg-dim">
+        <span className="num ml-auto text-[12px] text-fg-dim">
           {loading ? '加载中…' : `${data?.total ?? 0} 个${label} · 各取前 ${TOP} 名`}
         </span>
       </div>
@@ -225,14 +225,14 @@ export default function SectorFlowPanel({
       ) : (
         <div className="grid grid-cols-1 gap-x-4 gap-y-2 p-3 md:grid-cols-2">
           <div>
-            <div className="mb-1 text-[11px] text-fg-dim">净流入前 {TOP}</div>
+            <div className="mb-1 text-[12px] text-fg-dim">净流入前 {TOP}</div>
             <EChart
               option={buildOption(inflow, true)}
               height={inflow.length * BAR_HEIGHT + 24}
             />
           </div>
           <div>
-            <div className="mb-1 text-[11px] text-fg-dim">净流出前 {TOP}</div>
+            <div className="mb-1 text-[12px] text-fg-dim">净流出前 {TOP}</div>
             <EChart
               option={buildOption(outflow, false)}
               height={outflow.length * BAR_HEIGHT + 24}
@@ -246,16 +246,16 @@ export default function SectorFlowPanel({
       {curveDays > 0 && (
         <div className="border-t border-line-soft px-3 py-2">
           <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <span className="text-[11px] text-fg-dim">累计净流入</span>
+            <span className="text-[12px] text-fg-dim">累计净流入</span>
             <Segmented
               value={historyDays}
               items={FLOW_SPANS.map((span) => ({ key: span, label: `近${span}日` }))}
               onChange={onHistoryDays}
             />
-            <span className="text-[11px] text-fg-dim">
+            <span className="text-[12px] text-fg-dim">
               从窗口起点累加，缺的那天累计值顺延
             </span>
-            <span className="num ml-auto text-[11px] text-fg-dim">
+            <span className="num ml-auto text-[12px] text-fg-dim">
               {historyLoading ? '加载中…' : `${curveDays} 个交易日`}
             </span>
           </div>

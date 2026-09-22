@@ -52,12 +52,12 @@ function StockChip({ stock }: { stock: LimitStock }) {
     >
       <span className="text-fg">{stock.name ?? stock.code}</span>
       {stock.board && (
-        <span className="text-[10px] text-fg-dim">{stock.board}</span>
+        <span className="text-[11px] text-fg-dim">{stock.board}</span>
       )}
       {/* 开板过的标记出来：同样的板高，含金量不同 */}
       {reopened && (
         <span
-          className="num text-[10px] text-fg-dim"
+          className="num text-[11px] text-fg-dim"
           title={`开板 ${stock.open_times} 次`}
         >
           ↩{stock.open_times}
@@ -107,7 +107,7 @@ export default function LadderBoard({
       delay={delay}
     >
       {/* 表头：只为对齐，视觉上极轻 */}
-      <div className="flex items-center gap-4 border-b border-line-soft bg-ink-850/60 px-4 py-1.5 text-[10px] tracking-[0.1em] text-fg-dim">
+      <div className="flex items-center gap-4 border-b border-line-soft bg-ink-850/60 px-4 py-1.5 text-[11px] tracking-[0.1em] text-fg-dim">
         <span className="w-14 shrink-0">高度</span>
         <span className="w-28 shrink-0">家数</span>
         <span>个股</span>
@@ -124,7 +124,7 @@ export default function LadderBoard({
             >
               {level.consecutive}
             </span>
-            <span className="text-[10px] text-fg-dim">板</span>
+            <span className="text-[11px] text-fg-dim">板</span>
           </div>
 
           <div className="flex w-28 shrink-0 items-center gap-2 pt-2">

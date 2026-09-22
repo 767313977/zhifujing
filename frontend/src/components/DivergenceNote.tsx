@@ -35,11 +35,11 @@ export default function DivergenceNote({ data }: { data: Divergence | null }) {
     <div className="flex items-start gap-2.5 border border-line-soft px-4 py-2.5 text-[12px] leading-relaxed">
       <span className={`mt-[5px] h-[6px] w-[6px] shrink-0 ${tone.bar}`} />
       <span>
-        <span className={`${tone.text} mr-2 text-[11px] tracking-[0.1em]`}>
+        <span className={`${tone.text} mr-2 text-[12px] tracking-[0.1em]`}>
           {tone.label}
         </span>
         <span className="text-fg">{data.title}</span>
-        <span className="num ml-3 text-[11px] text-fg-dim">{data.detail}</span>
+        <span className="num ml-3 text-[12px] text-fg-dim">{data.detail}</span>
       </span>
     </div>
   )

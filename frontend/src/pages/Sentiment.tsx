@@ -265,7 +265,7 @@ export default function SentimentPage() {
   const emotionDates = sentiment.map((item) => item.trade_date)
 
   const toolbar = (
-    <span className="num hidden text-[11px] text-fg-dim lg:inline">
+    <span className="num hidden text-[12px] text-fg-dim lg:inline">
       {loading ? '加载中…' : `${indexDates.length} / ${emotionDates.length} 天`}
     </span>
   )

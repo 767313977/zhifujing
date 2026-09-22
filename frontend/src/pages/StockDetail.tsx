@@ -152,12 +152,12 @@ export default function StockDetail() {
       {/* 从列表点进来才有这份上下文；直接输 URL 打开时不显示，
           免得给出一个「按了没反应」的提示 */}
       {codes.length > 1 && index >= 0 && (
-        <span className="num hidden text-[11px] text-fg-dim md:inline">
+        <span className="num hidden text-[12px] text-fg-dim md:inline">
           ← → 切换 · {index + 1} / {codes.length}
         </span>
       )}
       {syncing && (
-        <span className="num pulse-soft text-[11px] text-accent">同步中…</span>
+        <span className="num pulse-soft text-[12px] text-accent">同步中…</span>
       )}
       <button
         type="button"
@@ -207,7 +207,7 @@ export default function StockDetail() {
           </div>
 
           {latest?.trade_date && (
-            <div className="num border-t border-line-soft px-4 py-2 text-[11px] text-fg-dim">
+            <div className="num border-t border-line-soft px-4 py-2 text-[12px] text-fg-dim">
               最新数据 {latest.trade_date}
               <span className="mx-2">·</span>
               开 {fmtNum(latest.open, 2)}
@@ -242,7 +242,7 @@ export default function StockDetail() {
                 <span
                   key={theme.concept}
                   className={[
-                    'flex items-baseline gap-1.5 border px-2 py-1 text-[11px]',
+                    'flex items-baseline gap-1.5 border px-2 py-1 text-[12px]',
                     theme.board_code
                       ? 'border-line-soft bg-ink-850'
                       : // 对不上板块表的是历史遗留的旧口径名字，弱化显示
@@ -315,7 +315,7 @@ export default function StockDetail() {
               {profile.limit_up_dates.map((day) => (
                 <span
                   key={day}
-                  className="num border border-line-soft bg-ink-850 px-2 py-1 text-[11px] text-up"
+                  className="num border border-line-soft bg-ink-850 px-2 py-1 text-[12px] text-up"
                 >
                   {day}
                 </span>
@@ -341,11 +341,11 @@ function Cell({
 }) {
   return (
     <div className="relative -mr-px -mb-px border-r border-b border-line-soft px-4 py-3">
-      <div className="text-[11px] tracking-[0.1em] text-fg-dim">{label}</div>
+      <div className="text-[12px] tracking-[0.1em] text-fg-dim">{label}</div>
       <div className={`num mt-1.5 text-[18px] leading-tight font-medium ${tone}`}>
         {value}
       </div>
-      {sub && <div className="num mt-1 text-[11px] text-fg-dim">{sub}</div>}
+      {sub && <div className="num mt-1 text-[12px] text-fg-dim">{sub}</div>}
     </div>
   )
 }

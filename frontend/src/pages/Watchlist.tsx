@@ -89,7 +89,7 @@ export default function WatchlistPage() {
 
   const toolbar = (
     <>
-      <span className="num hidden text-[11px] text-fg-dim lg:inline">
+      <span className="num hidden text-[12px] text-fg-dim lg:inline">
         {loading ? '加载中…' : `${rows.length} 只`}
       </span>
       <button
@@ -211,7 +211,7 @@ export default function WatchlistPage() {
                         <button
                           type="button"
                           onClick={() => void remove(row.code)}
-                          className="border border-line px-2 py-[2px] text-[11px] text-fg-dim transition-colors hover:border-danger/50 hover:text-danger"
+                          className="border border-line px-2 py-[2px] text-[12px] text-fg-dim transition-colors hover:border-danger/50 hover:text-danger"
                         >
                           移除
                         </button>
@@ -292,7 +292,7 @@ function NoteEditor({
         className="w-full border border-transparent bg-transparent py-[2px] pr-12 pl-1 text-[12px] text-fg-muted outline-none transition-colors placeholder:text-fg-dim hover:border-line focus:border-line focus:bg-ink-850"
       />
       {state !== 'idle' && (
-        <span className="num pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 bg-ink-850 px-1 text-[10px] text-accent">
+        <span className="num pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 bg-ink-850 px-1 text-[11px] text-accent">
           {state === 'saving' ? '保存中…' : '已保存'}
         </span>
       )}

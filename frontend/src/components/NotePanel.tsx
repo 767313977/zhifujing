@@ -77,7 +77,7 @@ export default function NotePanel({ tradeDate, delay = 420 }: NotePanelProps) {
       >
         <div className="grid grid-cols-1 gap-px bg-line-soft lg:grid-cols-2">
           <label className="flex flex-col gap-1.5 bg-ink-900 px-4 py-3">
-            <span className="text-[11px] tracking-[0.1em] text-fg-dim">
+            <span className="text-[12px] tracking-[0.1em] text-fg-dim">
               今日市场怎么看
             </span>
             <textarea
@@ -89,7 +89,7 @@ export default function NotePanel({ tradeDate, delay = 420 }: NotePanelProps) {
             />
           </label>
           <label className="flex flex-col gap-1.5 bg-ink-900 px-4 py-3">
-            <span className="text-[11px] tracking-[0.1em] text-fg-dim">
+            <span className="text-[12px] tracking-[0.1em] text-fg-dim">
               明天打算怎么做
             </span>
             <textarea
@@ -102,7 +102,7 @@ export default function NotePanel({ tradeDate, delay = 420 }: NotePanelProps) {
           </label>
         </div>
         <div className="flex items-center justify-between border-t border-line-soft px-4 py-2.5">
-          <span className="text-[11px] text-fg-dim">
+          <span className="text-[12px] text-fg-dim">
             笔记按交易日保存，切到历史日期可回看当天的记录
           </span>
           <button

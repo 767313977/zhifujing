@@ -352,7 +352,7 @@ export default function Patterns() {
 
   const toolbar = (
     <>
-      <span className="num hidden text-[11px] text-fg-dim lg:inline">
+      <span className="num hidden text-[12px] text-fg-dim lg:inline">
         {loading ? '加载中…' : `${visible.length} / ${hits.length} 只`}
       </span>
       <select
@@ -392,7 +392,7 @@ export default function Patterns() {
           <div className="space-y-2 px-4 py-3">
             {groups.map(([group, items]) => (
               <div key={group} className="flex flex-wrap items-center gap-2">
-                <span className="w-8 shrink-0 text-[11px] text-fg-dim">{group}</span>
+                <span className="w-8 shrink-0 text-[12px] text-fg-dim">{group}</span>
                 {items.map((item) => {
                   const on = picked === item.key
                   const count = countOf[item.key] ?? 0
@@ -408,14 +408,14 @@ export default function Patterns() {
                       }`}
                     >
                       {item.name}
-                      <span className="ml-1.5 text-[11px] text-fg-dim">{count}</span>
+                      <span className="ml-1.5 text-[12px] text-fg-dim">{count}</span>
                     </button>
                   )
                 })}
               </div>
             ))}
             <div className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-2.5">
-              <span className="text-[11px] text-fg-dim">评分下限</span>
+              <span className="text-[12px] text-fg-dim">评分下限</span>
               <input
                 type="range"
                 min={0}
@@ -433,7 +433,7 @@ export default function Patterns() {
                     setPicked(null)
                     setMinScore(0)
                   }}
-                  className="num border border-line px-2 py-[2px] text-[11px] text-fg-dim hover:border-fg-dim hover:text-fg"
+                  className="num border border-line px-2 py-[2px] text-[12px] text-fg-dim hover:border-fg-dim hover:text-fg"
                 >
                   清除筛选
                 </button>
@@ -452,7 +452,7 @@ export default function Patterns() {
                   type="button"
                   onClick={copyCodes}
                   title="每行一个代码，可直接粘进同花顺的「导入自选股」"
-                  className="ml-3 border border-line px-2 py-[2px] text-[11px] text-fg-dim transition-colors hover:border-fg-dim hover:text-fg"
+                  className="ml-3 border border-line px-2 py-[2px] text-[12px] text-fg-dim transition-colors hover:border-fg-dim hover:text-fg"
                 >
                   {copied ? '已复制' : `复制 ${visible.length} 个代码`}
                 </button>
@@ -555,7 +555,7 @@ export default function Patterns() {
                           {stock.patterns.map((item) => (
                             <span
                               key={item.pattern}
-                              className="num border border-line-soft px-1.5 py-[1px] text-[11px] text-fg-muted"
+                              className="num border border-line-soft px-1.5 py-[1px] text-[12px] text-fg-muted"
                             >
                               {item.pattern_name}
                               <span className="ml-1 text-fg-dim">
@@ -617,7 +617,7 @@ export default function Patterns() {
                   <span className="num w-10 shrink-0 text-[12px] text-accent">
                     {item.score.toFixed(1)}
                   </span>
-                  <span className="num flex flex-wrap gap-x-3 text-[11px] text-fg-dim">
+                  <span className="num flex flex-wrap gap-x-3 text-[12px] text-fg-dim">
                     {Object.entries(item.detail).map(([key, value]) => (
                       <span key={key}>
                         {DETAIL_FIELDS[key]?.[0] ?? key}

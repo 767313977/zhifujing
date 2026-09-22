@@ -196,14 +196,14 @@ export default function SectorRotationPanel({
         <Segmented value={metric} items={METRICS} onChange={onMetric} />
         {/* 这个窗口只管上面的矩阵；上榜次数折线图有自己的一套档位（在面板底部），
             所以这里标一下「矩阵」，免得两套档位看着像重复的 */}
-        <span className="text-[11px] text-fg-dim">矩阵</span>
+        <span className="text-[12px] text-fg-dim">矩阵</span>
         <Segmented
           value={days}
           items={ROTATION_SPANS.map((span) => ({ key: span, label: `近${span}日` }))}
           onChange={onDays}
         />
-        <span className="text-[11px] text-fg-dim">{hint}</span>
-        <span className="num ml-auto text-[11px] text-fg-dim">
+        <span className="text-[12px] text-fg-dim">{hint}</span>
+        <span className="num ml-auto text-[12px] text-fg-dim">
           {loading
             ? '加载中…'
             : taxonomy === 'kph_selected'
@@ -281,7 +281,7 @@ export default function SectorRotationPanel({
                             </span>
                             <span
                               className={[
-                                'num mt-0.5 block text-[11px]',
+                                'num mt-0.5 block text-[12px]',
                                 // 按成交额排时，格子里那行数字也该按涨跌上色 ——
                                 // 成交额本身没有方向，红绿才是这行字要看的东西。
                                 // 强度虽然也是「强度越大越好」，但它有正负（弱板块为负），
@@ -330,12 +330,12 @@ export default function SectorRotationPanel({
                         >
                           {items.length === 0 ? (
                             // 该板块那天没有涨停股。留「—」而不是空着：空着会被读成「没取到」
-                            <span className="text-[11px] text-fg-dim">—</span>
+                            <span className="text-[12px] text-fg-dim">—</span>
                           ) : (
                             items.map((item, index) => (
                               <div
                                 key={item.code}
-                                className="text-[11px] leading-4 whitespace-nowrap"
+                                className="text-[12px] leading-4 whitespace-nowrap"
                                 title={`${LEADER_LABELS[index]} ${item.name ?? item.code}${
                                   item.consecutive && item.consecutive > 1
                                     ? ` · ${item.consecutive} 连板`
@@ -364,13 +364,13 @@ export default function SectorRotationPanel({
           {ladder.length > 0 && (
             <div className="border-t border-line-soft px-3 py-2">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                <span className="text-[11px] text-fg-dim">上榜次数</span>
+                <span className="text-[12px] text-fg-dim">上榜次数</span>
                 <Segmented
                   value={ladderDays}
                   items={ROTATION_SPANS.map((span) => ({ key: span, label: `近${span}日` }))}
                   onChange={onLadderDays}
                 />
-                <span className="num ml-auto text-[11px] text-fg-dim">
+                <span className="num ml-auto text-[12px] text-fg-dim">
                   {ladderColumns.length} 列 · 圆点才是真上榜，线只是跨过没上榜的日子
                 </span>
               </div>

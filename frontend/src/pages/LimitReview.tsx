@@ -223,7 +223,7 @@ export default function LimitReview() {
 
   const toolbar = (
     <>
-      <span className="num hidden text-[11px] text-fg-dim lg:inline">
+      <span className="num hidden text-[12px] text-fg-dim lg:inline">
         {loading ? '加载中…' : `${stocks.length} 只涨停`}
       </span>
       <select
@@ -342,8 +342,8 @@ export default function LimitReview() {
                   title={`${item.concept} 今日有 ${item.count} 只涨停`}
                 >
                   <span>{item.concept}</span>
-                  <span className="num text-[11px] text-fg">{item.count}</span>
-                  <span className={`num text-[10px] ${toneOf(item.pct_chg)}`}>
+                  <span className="num text-[12px] text-fg">{item.count}</span>
+                  <span className={`num text-[11px] ${toneOf(item.pct_chg)}`}>
                     {fmtPct(item.pct_chg)}
                   </span>
                 </button>
@@ -411,10 +411,10 @@ function Stat({
 }) {
   return (
     <div className="flex-1 bg-ink-900 px-4 py-2.5">
-      <div className="text-[11px] tracking-[0.1em] text-fg-dim">{label}</div>
+      <div className="text-[12px] tracking-[0.1em] text-fg-dim">{label}</div>
       <div className={`num mt-1 leading-tight ${muted ? 'text-[12px] text-fg-muted' : `text-[20px] font-medium ${tone}`}`}>
         {value}
-        {unit && <span className="ml-1 text-[11px] text-fg-dim">{unit}</span>}
+        {unit && <span className="ml-1 text-[12px] text-fg-dim">{unit}</span>}
       </div>
     </div>
   )
@@ -438,7 +438,7 @@ function BoardBars({ items, total }: { items: [string, number][]; total: number 
             />
           </div>
           <span className="num w-9 shrink-0 text-right text-[12px] text-fg">{count}</span>
-          <span className="num w-10 shrink-0 text-right text-[11px] text-fg-dim">
+          <span className="num w-10 shrink-0 text-right text-[12px] text-fg-dim">
             {total > 0 ? `${Math.round((count / total) * 100)}%` : '—'}
           </span>
         </div>

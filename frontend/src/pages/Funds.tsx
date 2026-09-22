@@ -364,7 +364,7 @@ export default function Funds() {
             ) : series && series.dates.length > 0 ? (
               <div className="px-2 pt-2">
                 <EChart option={marginOption} height={280} />
-                <div className="px-2 pb-2 pt-1 text-[11px] text-fg-dim">
+                <div className="px-2 pb-2 pt-1 text-[12px] text-fg-dim">
                   左轴融资余额 / 右轴融资买入额 · 断点是当日深市未披露（两市合计给不出来），不是 0
                 </div>
               </div>
@@ -387,7 +387,7 @@ export default function Funds() {
             ) : series && series.dates.length > 0 ? (
               <div className="px-2 pt-2">
                 <EChart option={hsgtOption} height={280} />
-                <div className="px-2 pb-2 pt-1 text-[11px] text-fg-dim">
+                <div className="px-2 pb-2 pt-1 text-[12px] text-fg-dim">
                   只有成交总额，不含买卖方向 —— 它是活跃度指标，不是净流入
                 </div>
               </div>
@@ -429,7 +429,7 @@ export default function Funds() {
             </div>
           ) : etfCount > 0 ? (
             <>
-              <div className="border-b border-line-soft px-3 py-1.5 text-[11px] text-fg-dim">
+              <div className="border-b border-line-soft px-3 py-1.5 text-[12px] text-fg-dim">
                 {etfNote}
                 {etfPrevDate && ` · 对比基准 ${etfPrevDate}`}
               </div>
@@ -490,7 +490,7 @@ function MetricCard({
 }) {
   return (
     <div className="bg-ink-900 px-4 py-3">
-      <div className="text-[11px] tracking-[0.1em] text-fg-dim">{label}</div>
+      <div className="text-[12px] tracking-[0.1em] text-fg-dim">{label}</div>
       <div
         className={`num mt-1 leading-tight ${
           muted ? 'text-[13px] text-fg-muted' : `text-[19px] font-medium ${tone}`
@@ -498,8 +498,8 @@ function MetricCard({
       >
         {value}
       </div>
-      {sub != null && <div className="num mt-1 text-[11px] text-fg-muted">{sub}</div>}
-      {note && <div className="mt-1 text-[11px] text-accent">{note}</div>}
+      {sub != null && <div className="num mt-1 text-[12px] text-fg-muted">{sub}</div>}
+      {note && <div className="mt-1 text-[12px] text-accent">{note}</div>}
     </div>
   )
 }
@@ -680,7 +680,7 @@ function EtfIndustryTable({ items }: { items: EtfIndustryItem[] }) {
                           </div>
                         ))}
                         {item.fund_count > item.funds.length && (
-                          <div className="px-3 py-1 text-[11px] text-fg-dim">
+                          <div className="px-3 py-1 text-[12px] text-fg-dim">
                             共 {item.fund_count} 只，此处只列净申赎前 {item.funds.length} 只；
                             完整列表见「按单只」
                           </div>
@@ -768,7 +768,7 @@ function InstitutionTable({ items }: { items: InstitutionItem[] }) {
                 </span>
               </td>
               <td className="!text-left">
-                <span className="inline-block max-w-[180px] truncate align-bottom text-[11px] text-fg-muted">
+                <span className="inline-block max-w-[180px] truncate align-bottom text-[12px] text-fg-muted">
                   {item.reason ?? '—'}
                 </span>
               </td>
