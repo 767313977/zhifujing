@@ -830,9 +830,19 @@ class DailyCollector:
             logger.exception("采集步骤 %s 失败", name)
 
         cost = round(time.monotonic() - started, 2)
+        # ⚠️ 落库的计数必须是**整数**：`collect_log.rows` 是 Integer 列，而有的步骤返回的是
+        # 「分口径的行数」字典（板块资金流是 `{taxonomy: 行数}`）。2026-09-22 实测到后果 ——
+        # 把字典直接塞进列里，SQLite 抛 `Error binding parameter 4`，而**下面写日志那行
+        # 在 try 之外**，于是整条采集链在这一步断掉：flows 之后的龙虎榜 / ETF / 题材 /
+        # 板块 / 自选股 / 两融 / 情绪全都没采，日志里只剩一句「定时采集失败」。
+        # 日志里仍打原值（字典），只是落库取总和 —— 明细比总数有用。
+        rows = sum(row_count.values()) if isinstance(row_count, dict) else row_count
         logger.info("采集 %-10s [%s] rows=%s cost=%.2fs", name, status, row_count, cost)
-        self._log(trade_date, name, status, row_count, message, cost)
-        return {"status": status, "rows": row_count, "cost": cost, "message": message}
+        try:
+            self._log(trade_date, name, status, rows, message, cost)
+        except Exception:  # noqa: BLE001 - 记日志失败同样不能拖垮整条链（见上）
+            logger.exception("写采集日志失败：%s", name)
+        return {"status": status, "rows": rows, "cost": cost, "message": message}
 
     def _trade_dates(self, start: date, end: date) -> list[date]:
         def _query() -> list[date]:
