@@ -290,6 +290,38 @@ class SectorMembers(BaseModel):
     members: list[SectorMemberItem]
 
 
+class FundFlowItem(BaseModel):
+    """板块资金流里的一行（**同花顺**口径）。
+
+    金额单位是**亿元**（来源就用亿元），字段名不带单位，所以口径写在这里与
+    `models.SectorFundFlow` 的注释里 —— 免得有人按元去算，差 1e8 倍。
+    """
+
+    name: str
+    pct_chg: float | None
+    in_amount: float | None
+    out_amount: float | None
+    net_amount: float | None
+    member_count: int | None
+    leader_name: str | None
+    leader_pct_chg: float | None
+
+
+class SectorFundFlowOut(BaseModel):
+    """板块资金流向（页面上的排行榜 + 条形图）。
+
+    ⚠️ `taxonomy` 是**同花顺概念 / 同花顺行业**，与站内板块（开盘红精选 / 行业）
+    不是一套名字，所以这个接口不返回任何能 join 的代码 —— 只有名字。
+    """
+
+    trade_date: date
+    taxonomy: str
+    taxonomy_label: str
+    total: int
+    # 已按净额降序（净流入在前），前端自己切 top / bottom
+    items: list[FundFlowItem]
+
+
 class SectorHeatItem(BaseModel):
     """板块热力里的一格。只带一眼要看的信息，不带全套字段。"""
 

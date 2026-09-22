@@ -521,6 +521,16 @@ class DailyCollector:
         with session_scope() as session:
             return upsert(session, Lhb, rows)
 
+    def collect_flows(self, trade_date: date) -> dict:
+        """板块资金流（**同花顺**口径，零 iFinD 配额，每天 2 个请求）。
+
+        只能采当天 —— 来源只有「即时 / 3日 / 5日 / 10日」窗口，没有历史日期可指定，
+        所以补不了历史，库里有多少天就是从哪天开始采的（见 `models.SectorFundFlow`）。
+        """
+        from app.jobs.collect_flows import FlowCollector
+
+        return FlowCollector(self.settings).collect(trade_date)
+
     def collect_reasons(self, trade_date: date) -> int:
         """涨停原因（**同花顺**口径，零 iFinD 配额）。
 
@@ -993,6 +1003,9 @@ class DailyCollector:
         # 涨停原因走同花顺数据中心，零 iFinD 配额，任何档位都照采；
         # 排在涨停池之后是为了能跟涨停池的家数对账
         steps["reasons"] = self._step(target, "reasons", lambda: self.collect_reasons(target))
+        # 板块资金流同理（同花顺、零配额、每天 2 个请求），而且**只有收盘后才能采到
+        # 当天的终值** —— 盘中采到的是那一刻的快照，所以放在这里的 18:00 跑正合适
+        steps["flows"] = self._step(target, "flows", lambda: self.collect_flows(target))
         # 龙虎榜走 akshare，不占 iFinD 配额，任何档位都照采
         steps["lhb"] = self._step(target, "lhb", lambda: self.collect_lhb(target))
         # ETF 份额与龙虎榜机构席位同样走 akshare（零配额），任何档位都采

@@ -25,19 +25,24 @@ from app.api.deps import resolve_trade_date
 from app.db import get_db, session_scope
 from app.jobs.collect_sectors import SectorCollector
 from app.models import (
+    FUND_FLOW_CONCEPT,
+    FUND_FLOW_INDUSTRY,
     LimitPool,
     SectorBasic,
     SectorDaily,
+    SectorFundFlow,
     SectorMember,
     StockConcept,
 )
 from app.schemas import (
+    FundFlowItem,
     RotationCell,
     RotationColumn,
     RotationLeader,
     RotationLeaderDay,
     SectorCompare,
     SectorCompareSeries,
+    SectorFundFlowOut,
     SectorHeat,
     SectorHeatGroup,
     SectorHeatItem,
@@ -589,6 +594,64 @@ def rotation_leaders(
     return [
         RotationLeaderDay(trade_date=day, leaders=leaders.get(day, [])) for day in dates
     ]
+
+
+# 资金流面板的口径与切换项。**与 TAXONOMIES 无关** —— 那是开盘红的板块口径，
+# 这是同花顺的概念/行业口径，两套名字对不上（芯片 vs 芯片概念），所以分成两个常量
+FUND_FLOW_TAXONOMIES = {FUND_FLOW_CONCEPT: "概念", FUND_FLOW_INDUSTRY: "行业"}
+
+
+@router.get("/fund-flow", response_model=SectorFundFlowOut)
+def fund_flow(
+    taxonomy: str = Query(
+        FUND_FLOW_CONCEPT, description="ths_concept=同花顺概念 ths_industry=同花顺行业"
+    ),
+    trade_date: date = Depends(resolve_trade_date),
+    session: Session = Depends(get_db),
+) -> SectorFundFlowOut:
+    """板块资金流（**同花顺**口径，日频）。
+
+    数据来自 `sector_fund_flow` 表（每天 18:00 采一次，见 `jobs/collect_flows.py`）。
+    **没有历史可补** —— 来源只给「即时」窗口，所以最早只能到开始采集那一天，
+    更早的日期返回空列表而不是 404，页面好统一处理。
+
+    金额单位是**亿元**（前端也是按亿显示，别在某一层偷偷换成元）。
+    """
+    if taxonomy not in FUND_FLOW_TAXONOMIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"taxonomy 只能是 {list(FUND_FLOW_TAXONOMIES)}，收到 {taxonomy}",
+        )
+
+    rows = session.scalars(
+        select(SectorFundFlow)
+        .where(
+            SectorFundFlow.taxonomy == taxonomy,
+            SectorFundFlow.trade_date == trade_date,
+        )
+        # 净额为空的沉底：它们排在哪里都不对，不如放在末尾
+        .order_by(SectorFundFlow.net_amount.desc().nullslast(), SectorFundFlow.name)
+    ).all()
+
+    return SectorFundFlowOut(
+        trade_date=trade_date,
+        taxonomy=taxonomy,
+        taxonomy_label=FUND_FLOW_TAXONOMIES[taxonomy],
+        total=len(rows),
+        items=[
+            FundFlowItem(
+                name=row.name,
+                pct_chg=row.pct_chg,
+                in_amount=row.in_amount,
+                out_amount=row.out_amount,
+                net_amount=row.net_amount,
+                member_count=row.member_count,
+                leader_name=row.leader_name,
+                leader_pct_chg=row.leader_pct_chg,
+            )
+            for row in rows
+        ],
+    )
 
 
 @router.get("/compare", response_model=SectorCompare)

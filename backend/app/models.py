@@ -29,6 +29,14 @@ def _now() -> datetime:
     return datetime.now()
 
 
+# `sector_fund_flow.taxonomy` 的取值：同花顺概念 / 同花顺行业。
+# **与开盘红的 taxonomy 刻意分开命名**（那边是 kph_selected / kph_industry）——
+# 两套名字体系对不上（芯片 vs 芯片概念），前缀就是为了防止有人写错表还能跑通。
+FUND_FLOW_CONCEPT = "ths_concept"
+FUND_FLOW_INDUSTRY = "ths_industry"
+FUND_FLOW_TAXONOMIES = (FUND_FLOW_CONCEPT, FUND_FLOW_INDUSTRY)
+
+
 class TradeCalendar(Base):
     """交易日历。iFinD 的历史行情会返回周末行，必须以此表过滤。"""
 
@@ -243,6 +251,39 @@ class LimitReason(Base):
     # 原样存：「水暖阀门+医疗器械+资产出售+业绩扭亏」。**不拆**成多个字段 ——
     # 里面混着行业、事件、地域，拆开就再也拼不回接口给的那串了
     reason: Mapped[str] = mapped_column(String(128))
+
+
+class SectorFundFlow(Base):
+    """板块资金流（**同花顺**口径，日频快照）。
+
+    来源是同花顺数据中心的「概念资金流 / 行业资金流」（经 `sources/akshare_source.py`），
+    走 `data.10jqka.com.cn` —— **不是**东财 `push2` 集群（那个集群实测会触发本机 IP
+    频控，见设计文档 1.7）。
+
+    ⚠️ 三条口径限制，页面必须如实说明：
+
+    1. **和站内板块不是一套名字**：本表是**同花顺概念**（359 个）/ **同花顺行业**（90 个），
+       而 `sector_daily` 是开盘红精选 / 行业。名字对不上（芯片 vs 芯片概念），不能混着比。
+    2. **没有历史可补**：来源只给「即时 / 3日 / 5日 / 10日」四个**窗口**，不给历史日期，
+       所以本表只能从开始采集那天攒起。
+    3. **主键是名字、不是代码**：来源不给代码。落库前按名字去重（同一名字会出现两行、
+       值还不一样，见 `AkshareSource.concept_fund_flow`），去重时**留第一行**。
+    """
+
+    __tablename__ = "sector_fund_flow"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    # ths_concept / ths_industry，取值见 FUND_FLOW_TAXONOMIES
+    taxonomy: Mapped[str] = mapped_column(String(16), primary_key=True)
+    name: Mapped[str] = mapped_column(String(32), primary_key=True)
+    pct_chg: Mapped[float | None] = mapped_column(Float)
+    # 金额单位一律**亿元**（来源就是亿元），字段名不带单位但注释写死，免得以后按元算错
+    in_amount: Mapped[float | None] = mapped_column(Float)
+    out_amount: Mapped[float | None] = mapped_column(Float)
+    net_amount: Mapped[float | None] = mapped_column(Float)
+    member_count: Mapped[int | None] = mapped_column(Integer)
+    leader_name: Mapped[str | None] = mapped_column(String(32))
+    leader_pct_chg: Mapped[float | None] = mapped_column(Float)
 
 
 class Lhb(Base):
