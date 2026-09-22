@@ -334,7 +334,7 @@ class RotationCell(BaseModel):
 
 
 class RotationLeader(BaseModel):
-    """当天该板块的领涨个股（矩阵里「领涨」那一行的一只）。
+    """某个板块当天的领涨个股（矩阵里「领涨」那一行的一只）。
 
     ⚠️ 口径是「该板块**当日的涨停股**」，来自开盘红的涨停天梯（`stock_concept`），
     **不是**开盘啦那种「当日涨幅前 5 名」。后者的精确做法只有逐个板块调成分股接口
@@ -348,13 +348,24 @@ class RotationLeader(BaseModel):
     consecutive: int | None
 
 
+class RotationLeaderDay(BaseModel):
+    """「领涨」行的一天：某板块在该交易日的涨停股（按连板数 → 封板时间排序）。
+
+    单独一个接口（不在 `/rotation` 里）是因为这一行**跟着选中的板块走**：
+    点一次格子就换一次，而矩阵本身不变。塞进 `/rotation` 的话，前端每次点格子都得
+    重取整个矩阵，而那个面板一进 loading 就整块变成「加载中…」—— 点一下闪一下。
+    """
+
+    trade_date: date
+    # 该板块当天没有涨停股就是空列表（页面显示「—」）
+    leaders: list[RotationLeader] = []
+
+
 class RotationColumn(BaseModel):
     """一列 = 一个交易日，格子按指标从高到低排。"""
 
     trade_date: date
     cells: list[RotationCell]
-    # 「领涨」行：当天**第 1 名板块**的涨停股，按连板数降序。没有涨停股就是空列表
-    leaders: list[RotationLeader] = []
 
 
 class SectorRotation(BaseModel):

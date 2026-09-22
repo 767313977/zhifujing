@@ -35,6 +35,7 @@ from app.schemas import (
     RotationCell,
     RotationColumn,
     RotationLeader,
+    RotationLeaderDay,
     SectorCompare,
     SectorCompareSeries,
     SectorHeat,
@@ -375,19 +376,23 @@ def _heat_group(session: Session, taxonomy: str, trade_date: date) -> SectorHeat
 
 
 def _rotation_leaders(
-    session: Session, first_boards: dict[date, str]
+    session: Session, targets: dict[date, str]
 ) -> dict[date, list[RotationLeader]]:
-    """每列**第 1 名板块**当日的涨停股，按「连板数 → 封板时间」取最强的前几只。
+    """`{交易日: 板块名}` → 该板块当日的涨停股，按「连板数 → 封板时间」取最强的前几只。
 
     数据全部来自本地库、**零额外请求**：`stock_concept` 给「个股 → 板块」的归属
     （来自开盘红涨停天梯），`limit_pool` 补名称、连板数与首封时间。
 
     两者用**外连接**：两边的涨停家数口径略有差异（天梯 77 家 vs 涨停池 78 家），
     内连接会悄悄丢掉只在一边出现的票，而这里丢一只就少一个名字、还看不出来。
+
+    ⚠️ 板块**当天不在榜上也没关系** —— 传进来的是「名字」，不要求它在那天的前 10 名里。
+    这正是「领涨行跟着选中板块走」需要的行为：选中「医药」之后，就算它 8 月某天没进榜，
+    那天也照样给出医药的涨停股（确实没有才是空列表）。
     """
-    if not first_boards:
+    if not targets:
         return {}
-    wanted = {(day, board) for day, board in first_boards.items()}
+    wanted = {(day, board) for day, board in targets.items()}
     rows = session.execute(
         select(
             StockConcept.trade_date,
@@ -406,7 +411,7 @@ def _rotation_leaders(
                 LimitPool.pool_type == "up",
             ),
         )
-        .where(StockConcept.trade_date.in_(list(first_boards)))
+        .where(StockConcept.trade_date.in_(list(targets)))
     ).all()
 
     # 先按「连板数 → 封板时间 → 代码」排好序再取前几只。
@@ -522,27 +527,68 @@ def rotation(
             RotationCell(code=code, name=name or code, value=value, pct_chg=pct_chg)
         )
 
-    # 「领涨」行：每列第 1 名板块当日的涨停股。只对有榜首的那几天查，
-    # 空列（那天没有板块数据）不必查
-    leaders = _rotation_leaders(
-        session,
-        {day: grouped[day][0].name for day in dates if grouped[day]},
-    )
-
     return SectorRotation(
         taxonomy=taxonomy,
         metric=metric,
         metric_label=ROTATION_METRICS[metric],
         top=top,
         columns=[
-            RotationColumn(
-                trade_date=day,
-                cells=grouped[day],
-                leaders=leaders.get(day, []),
-            )
-            for day in dates
+            RotationColumn(trade_date=day, cells=grouped[day]) for day in dates
         ],
     )
+
+
+# 「领涨」行单独一个接口，见 schemas.RotationLeaderDay 的说明：
+# 它跟着**选中的板块**走、点一次格子换一次，而矩阵本身不变。
+@router.get("/rotation/leaders", response_model=list[RotationLeaderDay])
+def rotation_leaders(
+    taxonomy: str = Query(
+        TAXONOMY_SELECTED,
+        description="kph_selected=精选板块 kph_industry=行业板块",
+    ),
+    code: str = Query(..., description="板块代码（矩阵格子里那个）"),
+    days: int = Query(20, ge=5, le=ROTATION_MAX_DAYS, description="跟着矩阵的窗口"),
+    trade_date: date = Depends(resolve_trade_date),
+    session: Session = Depends(get_db),
+) -> list[RotationLeaderDay]:
+    """某板块在最近 N 个交易日的**涨停股**（矩阵「领涨」行的数据）。
+
+    与 `/rotation` 的列严格同序（都由同一张表、同一个日期降序取出来），前端按
+    `trade_date` 对齐即可。
+    """
+    if taxonomy not in TAXONOMIES:
+        raise HTTPException(
+            status_code=400, detail=f"taxonomy 只能是 {list(TAXONOMIES)}，收到 {taxonomy}"
+        )
+
+    # 板块代码 → 名称。`stock_concept` 存的是名字、不是代码，所以这一步绕不开；
+    # 取最新一天的名字（板块改名极罕见，真改了也只会影响历史列的叫法）
+    name = session.scalar(
+        select(SectorDaily.name)
+        .where(
+            SectorDaily.taxonomy == taxonomy,
+            SectorDaily.sector_code == code,
+            SectorDaily.name.is_not(None),
+        )
+        .order_by(SectorDaily.trade_date.desc())
+        .limit(1)
+    )
+    dates = list(
+        session.scalars(
+            select(SectorDaily.trade_date)
+            .where(SectorDaily.trade_date <= trade_date, SectorDaily.taxonomy == taxonomy)
+            .distinct()
+            .order_by(SectorDaily.trade_date.desc())
+            .limit(days)
+        )
+    )
+    if not name or not dates:
+        return []
+
+    leaders = _rotation_leaders(session, {day: name for day in dates})
+    return [
+        RotationLeaderDay(trade_date=day, leaders=leaders.get(day, [])) for day in dates
+    ]
 
 
 @router.get("/compare", response_model=SectorCompare)
