@@ -644,6 +644,29 @@ class StockDailyRow(ApiModel):
     amount: float | None
 
 
+class StockDdeRow(ApiModel):
+    """个股某一天的 DDE 与主力净流入。
+
+    单位一律**元**（iFinD 原始单位）—— 亿/万的换算放在前端展示层，别在这里先除一遍。
+    """
+
+    trade_date: date
+    # 主力净流入额
+    net_inflow: float | None
+    # 「5日DDE」—— 名字是来源自己的窗口口径，不是「当日 DDE」
+    dde: float | None
+
+
+class StockDdeOut(BaseModel):
+    code: str
+    name: str | None
+    # 实际给了多少个交易日：少于请求的 days，说明这只票的历史（或缓存）就这么长
+    days: int
+    rows: list[StockDdeRow]
+    # 取不到数据时的原因；取到了就是 null
+    note: str | None = None
+
+
 class StockProfile(BaseModel):
     code: str
     name: str | None

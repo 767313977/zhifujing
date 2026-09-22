@@ -101,6 +101,36 @@ class StockDaily(Base):
     turnover: Mapped[float | None] = mapped_column(Float)
 
 
+class StockDde(Base):
+    """个股 DDE 与主力净流入（iFinD 口径，日频）。
+
+    来源是 iFinD 的两个资金指标，**一次调用同时取回**：
+    - `主力净流入额`（单位：元）
+    - `5日DDE`（单位：元）—— 「5日」是来源自己的窗口口径，**不是「当日 DDE」**，
+      显示时别改写成后者
+
+    ⚠️ 两条实测出来的坑（2026-09-22，见设计文档 8.43）：
+
+    1. **周末/非交易日也会返回行**：那两行的「主力净流入额」是空的，「5日DDE」直接
+       延续前一交易日的值（实测连着三行一模一样）。落库前**必须按 `trade_calendar`
+       过滤** —— 否则会写出「周六也有资金流入」这种假数据。
+    2. **数值格式不统一**：同一列里既有 `3157.1616万` 这种带「万」的字符串，也有
+       `-61226986.74` 这种纯数字，靠 `markdown_table.to_float` 统一换算成元。
+
+    **按需抓取**：个股页打开时若库里没有最近交易日的数据就现取一次（与 `sector_member`
+    同一套路数），之后读库 —— 页面不直连外部接口是本站的硬约束，这里是明列的例外之一
+    （另一处是选股器与板块成分股）。
+    """
+
+    __tablename__ = "stock_dde"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    # 单位一律**元**（来源就是元），字段名不带单位但注释写死，免得以后按万元算错
+    net_inflow: Mapped[float | None] = mapped_column(Float)
+    dde: Mapped[float | None] = mapped_column(Float)
+
+
 class LimitPool(Base):
     """涨停 / 跌停 / 炸板池。iFinD 无此数据，唯一来源是 akshare push2ex。"""
 

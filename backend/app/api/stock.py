@@ -10,19 +10,21 @@
 """
 
 import logging
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_db, session_scope
 from app.jobs.collect_daily import (
     STOCK_FULL_DAYS,
     CollectionBusy,
     DailyCollector,
     collect_guard,
 )
+from app.jobs.collect_dde import CLOSE_READY, collect_stock_dde
+from app.jobs.collect_dde import DEFAULT_DAYS as DDE_DAYS
 from app.models import (
     Lhb,
     LimitPool,
@@ -30,9 +32,18 @@ from app.models import (
     StockBasic,
     StockConcept,
     StockDaily,
+    StockDde,
+    TradeCalendar,
     Watchlist,
 )
-from app.schemas import StockDailyRow, StockProfile, StockThemeItem, StockThemes
+from app.schemas import (
+    StockDailyRow,
+    StockDdeOut,
+    StockDdeRow,
+    StockProfile,
+    StockThemeItem,
+    StockThemes,
+)
 from app.services.patterns import build_bars
 from app.sources.ifind import IfindError, normalize_code
 from app.sources.kaipanhong import TAXONOMY_SELECTED
@@ -43,6 +54,11 @@ router = APIRouter(prefix="/api/stock", tags=["个股"])
 
 # 可选的 K 线周期。周/月由本地日线重采样（`_resample`），不额外取数
 PERIODS = ("day", "week", "month")
+
+# DDE 一栏最多能要多少个交易日。250 与形态引擎那套历史长度对齐 ——
+# 再往上 iFinD 也不一定给得回这么多，而且一次调用只有 1 个请求，
+# 窗口开太大没有额外代价，但会让图表挤成一团
+DDE_MAX_DAYS = 250
 
 
 def _code(raw: str) -> str:
@@ -275,6 +291,96 @@ def _resample(items: list[dict], period: str) -> list[dict]:
         )
         previous_close = close
     return result
+
+
+def _expected_latest(session: Session) -> date | None:
+    """**应该已经拿到终值**的最近交易日 —— 用来判断缓存的 DDE 过期没有。
+
+    不能简单用「今天或之前的最大交易日」：交易日历里今天也算交易日，而**今天要过了
+    收盘时刻（15:05）才有终值**（见 `collect_dde.CLOSE_READY`）。盘中若拿今天当基准，
+    每次请求都会判定「缓存过期」→ 打开个股页就白花一次 iFinD 配额。
+    """
+    days = list(
+        session.scalars(
+            select(TradeCalendar.trade_date)
+            .where(TradeCalendar.trade_date <= date.today())
+            .order_by(TradeCalendar.trade_date.desc())
+            .limit(2)
+        )
+    )
+    if not days:
+        return None
+    if days[0] == date.today() and datetime.now().time() < CLOSE_READY:
+        return days[1] if len(days) > 1 else None
+    return days[0]
+
+
+def _read_dde(session: Session, code: str, days: int) -> list[StockDde]:
+    """取最近 N 个交易日，返回**升序**（左旧右新，与 daily 接口一致）。"""
+    rows = list(
+        session.scalars(
+            select(StockDde)
+            .where(StockDde.code == code)
+            .order_by(StockDde.trade_date.desc())
+            .limit(days)
+        )
+    )
+    return list(reversed(rows))
+
+
+def _stock_dde(code: str, days: int) -> tuple[list[StockDde], str | None]:
+    """读库；缓存过期就现取一次再读。返回（数据, 取不到的原因）。
+
+    与 `api/sector.py` 的 `_board_members` 同一套：现取那次是**另一个事务**写的，
+    用请求自带的 session 接着读看不到（SQLite WAL 下读事务是一个快照），
+    所以每次都要重新开一个 session 去读。
+    """
+    with session_scope() as reader:
+        cached = _read_dde(reader, code, days)
+        latest = _expected_latest(reader)
+
+    # 已经有数据、且最新一行就是最近交易日 → 直接用缓存，不花配额
+    if cached and latest and cached[-1].trade_date >= latest:
+        return cached, None
+
+    try:
+        collect_stock_dde(code, days)
+    except IfindError as exc:
+        logger.warning("个股 %s 的 DDE 取数失败：%s", code, exc)
+        return cached, f"iFinD 取数失败：{exc}"
+
+    with session_scope() as reader:
+        rows = _read_dde(reader, code, days)
+    if rows:
+        return rows, None
+    return cached, "iFinD 没返回这只票的 DDE（次新股或已退市的话可能是空的）"
+
+
+@router.get("/{code}/dde", response_model=StockDdeOut)
+def dde(
+    code: str,
+    days: int = Query(
+        DDE_DAYS, ge=5, le=DDE_MAX_DAYS, description="返回最近 N 个交易日，按日期升序"
+    ),
+    session: Session = Depends(get_db),
+) -> StockDdeOut:
+    """个股的 **DDE 与主力净流入**（iFinD 口径，日频）。
+
+    **这两个指标只有 iFinD 有**：akshare 的 `stock_fund_flow_*` 是同花顺公开页的
+    资金流（只有即时 / 3日 / 5日 / 10日窗口、不给历史），口径与 DDE 也不是一回事。
+
+    **数据是按需抓的**：库里没有最近交易日的数据时现取一次并落库（与板块成分股同一套），
+    之后读库。每次现取花 1 次 iFinD 配额 —— 别在这个接口外面套全市场循环。
+    """
+    code = _code(code)
+    rows, note = _stock_dde(code, days)
+    return StockDdeOut(
+        code=code,
+        name=_resolve_name(session, code),
+        days=len(rows),
+        rows=[StockDdeRow.model_validate(row) for row in rows],
+        note=note,
+    )
 
 
 @router.get("/{code}/themes", response_model=StockThemes)
