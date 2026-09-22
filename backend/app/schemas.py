@@ -785,6 +785,49 @@ class PatternSummary(BaseModel):
     by_pattern: list[PatternCount]
 
 
+# ------------------------------------------------------------------ 样板池
+
+
+class TemplateItem(BaseModel):
+    """样板日命中 —— 次日「明天盯」清单的一行。
+
+    `trigger` 与 `floor` 是**派生量**（触发价就是今高、兜底线是今高 × 0.98），
+    库里只存今高，由接口算出来。放在响应里而不是让前端乘一遍：那个 0.98 是
+    口径的一部分，两处各写一遍必然有一处先被改掉。
+    """
+
+    code: str
+    name: str | None
+    # 样板日（触发价与它同日，次日才是「过线」那天）
+    trade_date: date
+    # 今高 = 次日触发价：盘中越过它才谈买点
+    trigger: float | None
+    # 兜底线 = 触发价 × 0.98：次日收盘站上它才算站住
+    floor: float | None
+    close: float | None
+    pct_chg: float | None
+    # 冲高幅度（比值，0.098 = 9.8%）
+    surge: float | None
+    # 量比（当日成交量 / 前 20 日均量）
+    vol_ratio: float | None
+    # 收盘在当日区间里的位置（0 = 收在最低，1 = 收在最高）
+    close_pos: float | None
+    amount: float | None
+    # 次日结果：started（过线且收盘站住）/ weak（过线但没站住）/ missed（没过线）。
+    # None = 次日还没有日线（停牌，或样板日就是最新交易日）
+    next_result: str | None
+    next_pct_chg: float | None
+
+
+class TemplateBoard(BaseModel):
+    """样板池榜。`trade_date` 是样板日，`next_date` 是回看用的那个次日。"""
+
+    trade_date: date | None
+    next_date: date | None
+    items: list[TemplateItem]
+    total: int
+
+
 # ------------------------------------------------------------------ 资金面
 
 
