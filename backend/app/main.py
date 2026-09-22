@@ -69,7 +69,7 @@ async def lifespan(_app: FastAPI):
         stop_scheduler()
 
 
-app = FastAPI(title="<作者>私人复盘", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="致富经", version="0.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
