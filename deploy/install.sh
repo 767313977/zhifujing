@@ -95,6 +95,11 @@ User=$APP_USER
 Group=$APP_USER
 WorkingDirectory=$APP_DIR/backend
 Environment=PYTHONUNBUFFERED=1
+# 云端**永远**是采集机。这条守卫是必需的，不是重复设置：本机那份 .env 里写着
+# SCHEDULER_ENABLED=false（本机只当看图机，见仓库根 .env 的注释），而 .env 会被
+# pack_deploy 打进包里推过来 —— systemd 的环境变量优先级高于 .env，所以它不会
+# 把云端的定时任务一起关掉。删掉这条的后果很隐蔽：某次部署之后云端静悄悄不再采集。
+Environment=SCHEDULER_ENABLED=true
 ExecStart=$APP_DIR/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=10
