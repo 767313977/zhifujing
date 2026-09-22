@@ -132,6 +132,9 @@ class LimitStock(ApiModel):
     # 这个是开盘啦 App 那张天梯的口径（「芯片」）。`stock_concept` 只覆盖涨停股，
     # 非涨停池的票恒为 None —— 不知道就留空，不拿 industry 顶上（混口径比空着更糟）。
     board: str | None = None
+    # **涨停原因**，来自同花顺涨停池的 `reason_type`（`limit_reason` 表），
+    # 形如「房地产+城市更新+北京国资」。原样展示，不拆分。
+    reason: str | None = None
 
 
 class LadderLevel(BaseModel):

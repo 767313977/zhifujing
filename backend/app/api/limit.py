@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
 from app.db import get_db
-from app.models import Lhb, LimitPool, StockConcept
+from app.models import Lhb, LimitPool, LimitReason, StockConcept
 from app.schemas import (
     LadderLevel,
     LhbOut,
@@ -57,15 +57,36 @@ def _boards(session: Session, trade_date: date) -> dict[str, str]:
     )
 
 
-def _to_stock(row: LimitPool, boards: dict[str, str]) -> LimitStock:
-    """开盘啦板块名不在 `LimitPool` 里（那张表是东财口径），校验后再补进去。"""
+def _reasons(session: Session, trade_date: date) -> dict[str, str]:
+    """当日每只涨停股的**涨停原因**（同花顺 `reason_type`，见 `sources/ths_limit_up.py`）。
+
+    与 `_boards` 是两个来源、两个口径：这个答「为什么涨停」（房地产+城市更新+北京国资），
+    那个答「属于哪个开盘啦精选板块」（地产链）。覆盖度也略有差别 —— 同花顺那边少
+    ST / 北交所几只，对不上的票留空。
+    """
+    return dict(
+        session.execute(
+            select(LimitReason.code, LimitReason.reason).where(
+                LimitReason.trade_date == trade_date
+            )
+        ).all()
+    )
+
+
+def _to_stock(
+    row: LimitPool, boards: dict[str, str], reasons: dict[str, str]
+) -> LimitStock:
+    """开盘啦板块名与涨停原因都不在 `LimitPool` 里（那张表是东财口径），校验后补进去。"""
     return LimitStock.model_validate(row).model_copy(
-        update={"board": boards.get(row.code)}
+        update={
+            "board": boards.get(row.code),
+            "reason": reasons.get(row.code),
+        }
     )
 
 
 def _build_ladder(
-    rows: list[LimitPool], boards: dict[str, str]
+    rows: list[LimitPool], boards: dict[str, str], reasons: dict[str, str]
 ) -> list[LadderLevel]:
     """按连板高度分层，高度从高到低。"""
     buckets: dict[int, list[LimitPool]] = {}
@@ -75,7 +96,7 @@ def _build_ladder(
         LadderLevel(
             consecutive=level,
             count=len(items),
-            stocks=[_to_stock(item, boards) for item in items],
+            stocks=[_to_stock(item, boards, reasons) for item in items],
         )
         for level, items in sorted(buckets.items(), reverse=True)
     ]
@@ -103,16 +124,20 @@ def limit_pool(
             )
         )
     )
-    # 只要涨停池查开盘啦板块归属 —— `stock_concept` 就是涨停天梯的落库结果，
+    # 只要涨停池查这两张表 —— `stock_concept` 与 `limit_reason` 都只覆盖涨停股，
     # 跌停 / 炸板池本来就没有对应数据
-    boards = _boards(session, trade_date) if pool_type == "up" else {}
+    if pool_type == "up":
+        boards = _boards(session, trade_date)
+        reasons = _reasons(session, trade_date)
+    else:
+        boards, reasons = {}, {}
     return LimitPoolOut(
         trade_date=trade_date,
         pool_type=pool_type,
         total=len(rows),
         # 梯队只对涨停有意义：跌停是「连续跌停」、炸板池没有连板数
-        ladder=_build_ladder(rows, boards) if pool_type == "up" else None,
-        stocks=[_to_stock(row, boards) for row in rows],
+        ladder=_build_ladder(rows, boards, reasons) if pool_type == "up" else None,
+        stocks=[_to_stock(row, boards, reasons) for row in rows],
     )
 
 
