@@ -35,7 +35,9 @@ from app.models import (
     StockConcept,
 )
 from app.schemas import (
+    FundFlowHistoryOut,
     FundFlowItem,
+    FundFlowSeries,
     RotationCell,
     RotationColumn,
     RotationLeader,
@@ -651,6 +653,108 @@ def fund_flow(
             )
             for row in rows
         ],
+    )
+
+
+# 累计曲线的窗口档位（交易日）。默认 20：短了看不出趋势，长了早期数据太少会太稀
+FUND_FLOW_SPANS = (10, 20, 30)
+FUND_FLOW_HISTORY_DEFAULT = 20
+# 画几条线。太多颜色分不开（SERIES_PALETTE 只有 8 色，会绕回去重复）
+FUND_FLOW_TOP = 12
+FUND_FLOW_TOP_MAX = 16
+
+
+@router.get("/fund-flow/history", response_model=FundFlowHistoryOut)
+def fund_flow_history(
+    taxonomy: str = Query(
+        FUND_FLOW_CONCEPT, description="ths_concept=同花顺概念 ths_industry=同花顺行业"
+    ),
+    days: int = Query(
+        FUND_FLOW_HISTORY_DEFAULT, ge=2, le=120, description="窗口（交易日）"
+    ),
+    top: int = Query(
+        FUND_FLOW_TOP, ge=3, le=FUND_FLOW_TOP_MAX, description="画几条，按累计净额的绝对值取前几名"
+    ),
+    trade_date: date = Depends(resolve_trade_date),
+    session: Session = Depends(get_db),
+) -> FundFlowHistoryOut:
+    """各板块的**近 N 日累计净流入**曲线。
+
+    累计口径（三条规则见 `schemas.FundFlowSeries`）：**起点之前是 null、中间缺日顺延**。
+    这几条不是细节 —— 来源每天返回的板块集合会差几十个，不处理的话曲线会凭空归零或断裂。
+
+    窗口里到底有几天由库决定（这个来源没有历史可补、只能从采集那天攒），所以
+    `days < 2` 时前端会提示「一个点连不成线」而不是画一张空图。
+    """
+    if taxonomy not in FUND_FLOW_TAXONOMIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"taxonomy 只能是 {list(FUND_FLOW_TAXONOMIES)}，收到 {taxonomy}",
+        )
+
+    # 升序给前端画图（左旧右新）；`resolve_trade_date` 兜住「日期还没采到」的情况
+    dates = list(
+        session.scalars(
+            select(SectorFundFlow.trade_date)
+            .where(
+                SectorFundFlow.taxonomy == taxonomy,
+                SectorFundFlow.trade_date <= trade_date,
+            )
+            .distinct()
+            .order_by(SectorFundFlow.trade_date.desc())
+            .limit(days)
+        )
+    )[::-1]
+
+    label = FUND_FLOW_TAXONOMIES[taxonomy]
+    if not dates:
+        return FundFlowHistoryOut(
+            taxonomy=taxonomy, taxonomy_label=label, dates=[], series=[], days=0
+        )
+
+    rows = session.execute(
+        select(
+            SectorFundFlow.trade_date,
+            SectorFundFlow.name,
+            SectorFundFlow.net_amount,
+        ).where(
+            SectorFundFlow.taxonomy == taxonomy,
+            SectorFundFlow.trade_date.in_(dates),
+            SectorFundFlow.net_amount.is_not(None),
+        )
+    ).all()
+
+    # 名字 → {交易日: 当日净额}。这里用名字当键（来源不给代码），同一天同名只会有一行
+    per_board: dict[str, dict[date, float]] = {}
+    for day, name, net in rows:
+        per_board.setdefault(name, {})[day] = net
+
+    curves: list[tuple[float, FundFlowSeries]] = []
+    for name, by_date in per_board.items():
+        cumulative = 0.0
+        started = False
+        values: list[float | None] = []
+        for day in dates:
+            if day in by_date:
+                cumulative += by_date[day]
+                started = True
+                values.append(round(cumulative, 2))
+            else:
+                # 没出现在那天的快照里：起步前留空，起步后顺延
+                values.append(round(cumulative, 2) if started else None)
+        if started:
+            curves.append((abs(cumulative), FundFlowSeries(name=name, values=values)))
+
+    # 动得最狠的排前面。**按绝对值**：只按降序的话，全市场净流出那天图里就只剩
+    # 一堆「流得最少的」，真正该看的巨额流出会排到最后被 `top` 切掉
+    curves.sort(key=lambda item: item[0], reverse=True)
+
+    return FundFlowHistoryOut(
+        taxonomy=taxonomy,
+        taxonomy_label=label,
+        dates=dates,
+        series=[series for _, series in curves[:top]],
+        days=len(dates),
     )
 
 

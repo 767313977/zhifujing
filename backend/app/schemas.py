@@ -322,6 +322,38 @@ class SectorFundFlowOut(BaseModel):
     items: list[FundFlowItem]
 
 
+class FundFlowSeries(BaseModel):
+    """一条累计净流入曲线（一个板块）。
+
+    `values` 与 `FundFlowHistoryOut.dates` **等长**，单位同样是亿元，存的是**累计值**
+    （从窗口起点起加总），不是当日值 —— 曲线看的就是「这十几天资金净流进/流出多少」。
+
+    三个取值规则（后端算好，前端不要再动）：
+
+    - **起点之前是 `null`**：该板块在窗口前几天还没进过榜（来源每天返回的板块集合会
+      有出入），画成 0 就成了「那几天不流入不流出」，是假的。
+    - **中间缺的那天顺延**：板块存在但那天没出现在快照里，累计值保持不变（不是归零、
+      也不是断线）。
+    - 一旦有第一个数据点，后面就不会再出现 `null`。
+    """
+
+    name: str
+    values: list[float | None]
+
+
+class FundFlowHistoryOut(BaseModel):
+    """板块资金流的**多日累计**曲线（页面下方的折线图）。"""
+
+    taxonomy: str
+    taxonomy_label: str
+    # 升序（左旧右新），与 series 里每条曲线的 values 一一对应
+    dates: list[date]
+    # 已按「窗口内累计净额的绝对值」降序 —— 动得最狠的排前面，颜色也就固定了
+    series: list[FundFlowSeries]
+    # 库里实际有几个交易日。**少于 2 天时前端要提示**：一个点连不成线
+    days: int
+
+
 class SectorHeatItem(BaseModel):
     """板块热力里的一格。只带一眼要看的信息，不带全套字段。"""
 
