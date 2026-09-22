@@ -1,6 +1,6 @@
 """收盘后数据采集。
 
-触发时机：交易日 18:00（收盘数据已稳定、龙虎榜也已发布），也支持手动补数。
+触发时机：交易日 17:30（收盘数据已稳定、龙虎榜也已发布），也支持手动补数。
 
 设计要点：
 - 每步独立事务、独立日志，**单步失败不阻塞后续步骤**
@@ -1004,7 +1004,7 @@ class DailyCollector:
         # 排在涨停池之后是为了能跟涨停池的家数对账
         steps["reasons"] = self._step(target, "reasons", lambda: self.collect_reasons(target))
         # 板块资金流同理（同花顺、零配额、每天 2 个请求），而且**只有收盘后才能采到
-        # 当天的终值** —— 盘中采到的是那一刻的快照，所以放在这里的 18:00 跑正合适
+        # 当天的终值** —— 盘中采到的是那一刻的快照，所以放在这里的 17:30 跑正合适
         steps["flows"] = self._step(target, "flows", lambda: self.collect_flows(target))
         # 龙虎榜走 akshare，不占 iFinD 配额，任何档位都照采
         steps["lhb"] = self._step(target, "lhb", lambda: self.collect_lhb(target))

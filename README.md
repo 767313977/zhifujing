@@ -24,7 +24,7 @@
 
 ## 技术栈
 
-- **后端**：Python 3.13、FastAPI、SQLAlchemy 2.0、SQLite（WAL）、APScheduler（交易日 18:00 定时采集）
+- **后端**：Python 3.13、FastAPI、SQLAlchemy 2.0、SQLite（WAL）、APScheduler（交易日 17:30 定时采集）
 - **前端**：React 19、Vite、TypeScript、Tailwind v4、ECharts 6（按需注册，见 `frontend/src/components/EChart.tsx`）
 - **数据源**：iFinD 为主，akshare / 开盘红 / 同花顺数据中心补缺
 

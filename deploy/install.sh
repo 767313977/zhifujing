@@ -4,7 +4,8 @@
 # 前置：用本机 scripts/pack_deploy.py 打好包，传到服务器并解开到 /opt/fupan，
 #       然后在 /opt/fupan 下执行：sudo bash deploy/install.sh
 #
-# 跑完这台机器就自己按交易日 18:00 采集并推送到飞书了，不依赖本机开机。
+# 跑完这台机器就自己按交易日的采集时刻（`config.collect_hour/minute`）采集并推送到飞书了，
+# 不依赖本机开机。当前是 17:30。
 #
 # 可覆盖的环境变量：APP_DIR（默认 /opt/fupan）、APP_USER（默认 fupan）、SERVICE（默认 fupan）
 set -euo pipefail
@@ -39,10 +40,10 @@ if [[ "$PY_OK" != "1" ]]; then
 fi
 
 # ---------------------------------------------------------------- 时区（必做）
-# 不是为了日志好看。代码判断「今天是不是交易日」「现在过没过 18:00」用的是
+# 不是为了日志好看。代码判断「今天是不是交易日」「现在过没过采集时刻」用的是
 # **系统本地时间**（date.today() / datetime.now()）：
-# - 18:00 的定点采集本身不受影响（APScheduler 显式指定了 Asia/Shanghai）
-# - 但**启动补采会失效** —— 它把北京时间 18:10 当成 UTC 10:10，判定「还没到采集
+# - 定点采集本身不受影响（APScheduler 显式指定了 Asia/Shanghai）
+# - 但**启动补采会失效** —— 它把北京时间 17:40 当成 UTC 09:40，判定「还没到采集
 #   时刻」直接跳过。本机不常开、靠补采兜底的那套逻辑就废了。
 if command -v timedatectl >/dev/null 2>&1; then
   log "设置时区为 Asia/Shanghai"
@@ -141,10 +142,10 @@ cat <<'DONE'
 
   2. 看日志确认定时任务挂上了：
        journalctl -u fupan -n 50 --no-pager
-     应该能看到「定时采集已启动：交易日 18:00」。
+     应该能看到「定时采集已启动：交易日 17:30」（时刻取自 config.collect_hour/minute）。
 
   3. 这台机器开始推简报之后，把**本机那套停掉**。
      简报的去重是查 collect_log 决定的，而两边各查自己的库 ——
-     不停的话 18:00 会收到两条一模一样的简报。
+     不停的话到点会收到两条一模一样的简报。
 
 DONE

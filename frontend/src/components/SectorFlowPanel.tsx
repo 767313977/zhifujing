@@ -220,7 +220,7 @@ export default function SectorFlowPanel({
       ) : empty ? (
         <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
           这一天没有资金流数据。该来源只有「即时」快照、不给历史，所以只能从采集那天
-          开始累积 —— 每天收盘后（18:00）自动采一次
+          开始累积 —— 每天收盘后（17:30）自动采一次
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-x-4 gap-y-2 p-3 md:grid-cols-2">

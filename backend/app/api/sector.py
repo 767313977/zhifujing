@@ -613,7 +613,7 @@ def fund_flow(
 ) -> SectorFundFlowOut:
     """板块资金流（**同花顺**口径，日频）。
 
-    数据来自 `sector_fund_flow` 表（每天 18:00 采一次，见 `jobs/collect_flows.py`）。
+    数据来自 `sector_fund_flow` 表（每天 17:30 采一次，见 `jobs/collect_flows.py`）。
     **没有历史可补** —— 来源只给「即时」窗口，所以最早只能到开始采集那一天，
     更早的日期返回空列表而不是 404，页面好统一处理。
 
