@@ -247,7 +247,7 @@ export default function Sectors() {
     setSeriesLoading(true)
     setSeriesError(null)
     api
-      // 带上所选日期：图与左侧排行必须看的是同一天，否则选了历史日期时
+      // 带上所选日期：图与板块排行必须看的是同一天，否则选了历史日期时
       // 「表是那天的、图却到今天」，两个数字对不上还找不到原因
       .sectorSeries(selected, curveDays, date)
       .then((data) => {
@@ -341,7 +341,7 @@ export default function Sectors() {
   const switchTaxonomy = useCallback((next: SectorTaxonomy) => {
     setTaxonomy(next)
     // 板块代码属于各自的分类，跨分类对比没有意义；选中的板块也要清掉，
-    // 否则会停在上一个分类的代码上，右侧显示「点击左侧板块查看详情」
+    // 否则会停在上一个分类的代码上，右侧显示「点下方板块排行里的板块」
     setCompareCodes([])
     setSelected(null)
   }, [])
@@ -443,32 +443,32 @@ export default function Sectors() {
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
           <Panel
-            title={taxonomy === 'kph_selected' ? '精选板块排行' : '行业板块排行'}
+            title="板块成分股"
             meta={
               <span className="num">
-                {loading ? '加载中…' : `${boards.length} 个 · 点列头排序`}
+                {members
+                  ? `${members.members.length}${
+                      members.member_count ? ` / ${members.member_count}` : ''
+                    } 只 · 按涨跌幅降序`
+                  : '—'}
               </span>
             }
             delay={40}
           >
-            {loading ? (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
-            ) : boards.length === 0 ? (
+            {membersLoading ? (
               <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
-                暂无板块数据，请先在「数据管理」中执行采集
+                取数中…（该板块第一次打开时要向开盘红现取）
               </div>
+            ) : members && members.members.length > 0 ? (
+              <MemberTable members={members.members} />
             ) : (
-              <BoardTable
-                // key 挂 taxonomy：切换精选/行业时整块重建，
-                // 否则会带着上一类的排序列过来（比如按「净流入」排精选，
-                // 而精选没有这个字段，整列会沉底，看起来像没排）
-                key={taxonomy}
-                boards={boards}
-                withLimitUp={taxonomy === 'kph_selected'}
-                selected={selected}
-                compareCodes={compareCodes}
-                onSelect={onSelect}
-              />
+              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+                {members?.note
+                  ? members.note
+                  : selected
+                    ? '该板块暂无成分股数据'
+                    : '选中板块后显示成分股'}
+              </div>
             )}
           </Panel>
 
@@ -477,7 +477,7 @@ export default function Sectors() {
               title={selectedBoard?.name ?? '板块详情'}
               meta={
                 <span className="num">
-                  {selectedBoard ? selectedBoard.code : '点击左侧板块查看'}
+                  {selectedBoard ? selectedBoard.code : '点下方板块排行里的板块'}
                 </span>
               }
               delay={80}
@@ -528,7 +528,7 @@ export default function Sectors() {
                 </>
               ) : (
                 <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
-                  点击左侧板块查看详情
+                  点下方板块排行里的板块查看详情
                 </div>
               )}
             </Panel>
@@ -582,32 +582,32 @@ export default function Sectors() {
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <Panel
-            title="板块成分股"
+            title={taxonomy === 'kph_selected' ? '精选板块排行' : '行业板块排行'}
             meta={
               <span className="num">
-                {members
-                  ? `${members.members.length}${
-                      members.member_count ? ` / ${members.member_count}` : ''
-                    } 只 · 按涨跌幅降序`
-                  : '—'}
+                {loading ? '加载中…' : `${boards.length} 个 · 点列头排序`}
               </span>
             }
             delay={160}
           >
-            {membersLoading ? (
+            {loading ? (
+              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+            ) : boards.length === 0 ? (
               <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
-                取数中…（该板块第一次打开时要向开盘红现取）
+                暂无板块数据，请先在「数据管理」中执行采集
               </div>
-            ) : members && members.members.length > 0 ? (
-              <MemberTable members={members.members} />
             ) : (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
-                {members?.note
-                  ? members.note
-                  : selected
-                    ? '该板块暂无成分股数据'
-                    : '选中板块后显示成分股'}
-              </div>
+              <BoardTable
+                // key 挂 taxonomy：切换精选/行业时整块重建，
+                // 否则会带着上一类的排序列过来（比如按「净流入」排精选，
+                // 而精选没有这个字段，整列会沉底，看起来像没排）
+                key={taxonomy}
+                boards={boards}
+                withLimitUp={taxonomy === 'kph_selected'}
+                selected={selected}
+                compareCodes={compareCodes}
+                onSelect={onSelect}
+              />
             )}
           </Panel>
 
@@ -619,7 +619,7 @@ export default function Sectors() {
                   ? // 只显示当前窗口、不在这儿放第二个选择器：它与上面走势图共用同一个值，
                     // 放两个的话改一个另一个跟着变，用起来像坏了
                     `${compareCodes.length} 条 · 起点归一为 100 · 窗口 ${curveDays} 日`
-                  : '从左侧详情「＋ 加入对比」'}
+                  : '用上方「板块详情」的「＋ 加入对比」'}
               </span>
             }
             delay={200}

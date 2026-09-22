@@ -143,7 +143,7 @@ interface Props {
   onMetric: (metric: RotationMetric) => void
   onDays: (days: number) => void
   onLadderDays: (days: number) => void
-  /** 点格子跳到那个板块的详情（右侧那块），与左侧排行点一行是同一个动作 */
+  /** 点格子跳到那个板块的详情（右侧那块），与下方板块排行点一行是同一个动作 */
   onSelect: (code: string) => void
 }
 
