@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
+  FundFlowHistoryOut,
   FundFlowTaxonomy,
   RotationLeader,
   RotationMetric,
@@ -19,7 +20,7 @@ import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
-import SectorFlowPanel from '../components/SectorFlowPanel'
+import SectorFlowPanel, { FLOW_SPANS } from '../components/SectorFlowPanel'
 import SectorRotationPanel, { ROTATION_SPANS } from '../components/SectorRotationPanel'
 import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
@@ -151,6 +152,13 @@ export default function Sectors() {
   )
   const [flow, setFlow] = useState<SectorFundFlowOut | null>(null)
   const [flowLoading, setFlowLoading] = useState(true)
+  // 累计曲线的窗口档位。与「当日排行」共用口径，但窗口独立（同矩阵与上榜图的关系）
+  const [flowDays, setFlowDays] = useState(() => {
+    const raw = Number(params.get('flowdays'))
+    return FLOW_SPANS.includes(raw) ? raw : 20
+  })
+  const [flowHistory, setFlowHistory] = useState<FundFlowHistoryOut | null>(null)
+  const [flowHistoryLoading, setFlowHistoryLoading] = useState(true)
   // 走势窗口也写进 URL，理由同上。初值先校验档位：URL 是可以手改的，
   // 塞个 10000 进来后端会直接 400，页面看起来就像坏了
   const [curveDays, setCurveDays] = useState(() => {
@@ -181,6 +189,8 @@ export default function Sectors() {
     // 资金流面板的口径也是视图状态，同样不该在返回时被重置
     if (flowTaxonomy === 'ths_concept') next.delete('flow')
     else next.set('flow', flowTaxonomy)
+    if (flowDays === 20) next.delete('flowdays')
+    else next.set('flowdays', String(flowDays))
     if (next.toString() !== params.toString()) setParams(next, { replace: true })
   }, [
     taxonomy,
@@ -191,6 +201,7 @@ export default function Sectors() {
     ladderDays,
     curveDays,
     flowTaxonomy,
+    flowDays,
     params,
     setParams,
   ])
@@ -282,6 +293,29 @@ export default function Sectors() {
       stale = true
     }
   }, [flowTaxonomy, date])
+
+  // 累计曲线：与「当日排行」同口径、同日期，但窗口独立
+  useEffect(() => {
+    let stale = false
+    setFlowHistoryLoading(true)
+    api
+      .sectorFundFlowHistory(flowTaxonomy, { days: flowDays }, date)
+      .then((data) => {
+        if (!stale) setFlowHistory(data)
+      })
+      .catch((err: Error) => {
+        if (!stale) {
+          setFlowHistory(null)
+          setError(err.message)
+        }
+      })
+      .finally(() => {
+        if (!stale) setFlowHistoryLoading(false)
+      })
+    return () => {
+      stale = true
+    }
+  }, [flowTaxonomy, flowDays, date])
 
   useEffect(() => {
     let stale = false
@@ -753,6 +787,10 @@ export default function Sectors() {
           <SectorFlowPanel
             data={flow}
             loading={flowLoading}
+            history={flowHistory}
+            historyLoading={flowHistoryLoading}
+            historyDays={flowDays}
+            onHistoryDays={setFlowDays}
             taxonomy={flowTaxonomy}
             onTaxonomy={setFlowTaxonomy}
           />

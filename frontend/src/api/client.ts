@@ -2,6 +2,7 @@ import type {
   AdminStatus,
   CollectResult,
   EtfFlowBoard,
+  FundFlowHistoryOut,
   FundFlowTaxonomy,
   EtfFlowOrder,
   EtfIndustryBoard,
@@ -150,6 +151,24 @@ export const api = {
   sectorFundFlow: (taxonomy: FundFlowTaxonomy, date?: string | null) =>
     request<SectorFundFlowOut>(
       withDate(`/sectors/fund-flow?taxonomy=${taxonomy}`, date),
+    ),
+
+  /**
+   * 各板块的**近 N 日累计净流入**曲线（同一张表，后端按日累加）。
+   *
+   * 与 `sectorFundFlow` 分开取：那个是「那一天的排行」，这个要跨多天，
+   * 窗口档位也是独立的。
+   */
+  sectorFundFlowHistory: (
+    taxonomy: FundFlowTaxonomy,
+    options: { days: number },
+    date?: string | null,
+  ) =>
+    request<FundFlowHistoryOut>(
+      withDate(
+        `/sectors/fund-flow/history?taxonomy=${taxonomy}&days=${options.days}`,
+        date,
+      ),
     ),
 
   limitThemes: (date?: string | null) =>

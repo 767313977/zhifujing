@@ -252,6 +252,28 @@ export interface SectorFundFlowOut {
   items: FundFlowItem[]
 }
 
+/**
+ * 一条累计净流入曲线。`values` 与 `FundFlowHistoryOut.dates` 等长，单位亿元。
+ *
+ * 值由后端算好：**起点之前是 null**（该板块那时还没进过榜，画 0 是假的）、
+ * **中间缺的那天顺延**（累计值不变，不归零也不断线）。前端不要再自己累加。
+ */
+export interface FundFlowSeries {
+  name: string
+  values: (number | null)[]
+}
+
+export interface FundFlowHistoryOut {
+  taxonomy: string
+  taxonomy_label: string
+  /** 升序（左旧右新） */
+  dates: string[]
+  /** 已按「窗口内累计净额的绝对值」降序 */
+  series: FundFlowSeries[]
+  /** 库里实际有几个交易日。**少于 2 天时要提示**：一个点连不成线 */
+  days: number
+}
+
 export interface SectorHeatItem {
   code: string
   name: string
