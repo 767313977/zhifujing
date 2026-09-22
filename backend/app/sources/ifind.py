@@ -206,7 +206,10 @@ class IfindClient:
         self._sessions: dict[str, str] = {}
         self._ids: dict[str, int] = {}
         self._lock = threading.Lock()
+        # 本机若开了系统/终端代理（如 789x），requests 默认会走代理，
+        # iFinD MCP 常被拖死或 401；采集卡在 ETF 等步骤时整条链停住、情绪算不出。
         self._http = requests.Session()
+        self._http.trust_env = False
 
     # ------------------------------------------------------------------ 底层
 

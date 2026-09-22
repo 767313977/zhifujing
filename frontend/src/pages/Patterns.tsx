@@ -16,7 +16,7 @@ import type { SortSpecs } from '../lib/sort'
 import { rememberStockList } from '../lib/stockNav'
 
 /** 形态分组的展示顺序。后端给的 catalog 就是按这个顺序排的，这里只做兜底。 */
-const GROUP_ORDER = ['趋势', '突破', '量价', '几何']
+const GROUP_ORDER = ['致富', '趋势', '突破', '量价', '几何']
 
 /**
  * 命中列表一次取多少只。
@@ -137,6 +137,11 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   start_gap: ['距起涨点', true],
   // 欧奈尔突破（vol_ratio / flat_days / flat_range / excess 与既有字段共用）
   from_high: ['距一年新高', true],
+  // 悟道之路 · 致富（样板/启动）
+  high_pct: ['冲高%', false],
+  vol_ratio_20: ['量比(20日)', false],
+  leave_high: ['离开最高', true],
+  sample_high: ['样板高', false],
 }
 
 function detailText(key: string, value: number | string): string {
@@ -383,7 +388,7 @@ export default function Patterns() {
               {summary?.trade_date ? `${summary.trade_date} · ` : ''}
               共 {fmtInt(summary?.total_stocks ?? 0)} 只命中
               <span className="ml-3 text-fg-dim">
-                点形态名筛选（单选，再点一次取消）；徽标是该形态的全市场命中家数
+                点形态名筛选（单选，再点一次取消）；徽标是该形态的全市场命中家数。致富＝悟道样板/启动（只扫强势小池创业板）
               </span>
             </span>
           }
