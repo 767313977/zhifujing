@@ -98,8 +98,10 @@ def main() -> int:
         )
     elif not result["fetched_days"]:
         print("窗口内没有缺的天，不需要补")
-    if result["failed_days"]:
-        print(f"失败 {len(result['failed_days'])} 天：{result['failed_days'][:3]}")
+    # 键名是 `failed` 而不是 `failed_days` —— 2026-09-22 改名（那边顺手把结果字典
+    # 里的名字统一了），这个脚本当时没跟着改，`result["failed_days"]` 会直接 KeyError
+    if result["failed"]:
+        print(f"失败 {len(result['failed'])} 天：{result['failed'][:3]}")
     print(
         f"本周期（{usage['cycle_start']} ~ {usage['cycle_end']}）iFinD 已用 "
         f"{usage['cycle_calls']} / {usage['monthly_quota']}"
