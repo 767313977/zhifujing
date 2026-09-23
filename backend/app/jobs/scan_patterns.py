@@ -80,11 +80,8 @@ def _record(
         )
 
 
-def load_bars(trade_date: date, settings: Settings) -> dict[str, list[dict]]:
+def _load_bars(trade_date: date, settings: Settings) -> dict[str, list[dict]]:
     """取出最近 `SCAN_BARS` 个交易日内的**股票池**日线，按代码分组。
-
-    全市场扫描的公共取数口 —— 形态扫描与样板池扫描（`scan_template`）都走这里。
-    两边各写一遍的话，「必须按池子过滤」这条约束迟早只留在一边。
 
     一定要按池子过滤，不能把 `stock_daily` 里的票全拿来扫：库里还有一批
     **池外的涨停股**（见 8.22.4，每天只给它们补当天那一根）。它们的序列是断的 ——
@@ -161,9 +158,9 @@ def scan(
     settings = settings or get_settings()
     started = time.monotonic()
 
-    target = trade_date or latest_trade_date()
-    require_bars(target)
-    grouped = load_bars(target, settings)
+    target = trade_date or _latest_trade_date()
+    _require_bars(target)
+    grouped = _load_bars(target, settings)
     if not grouped:
         raise IfindError(f"{target} 没有日线数据，先跑 collect_kline")
 
@@ -226,7 +223,7 @@ def scan(
     }
 
 
-def require_bars(trade_date: date) -> None:
+def _require_bars(trade_date: date) -> None:
     """确认库里真的有这一天的日线。
 
     少了这道校验，扫描会拿**昨天**的 K 线当今天用 —— 结果不是空的，而是「用
@@ -249,7 +246,7 @@ def require_bars(trade_date: date) -> None:
         raise IfindError(f"{trade_date} 的日线还没采到（库里最新是 {latest}），先跑 collect_kline")
 
 
-def latest_trade_date() -> date:
+def _latest_trade_date() -> date:
     with session_scope() as session:
         found = session.scalar(
             select(TradeCalendar.trade_date)

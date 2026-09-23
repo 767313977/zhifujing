@@ -581,13 +581,8 @@ def _safe_mean(values: np.ndarray) -> float:
     return float(finite.mean()) if finite.size else 0.0
 
 
-def volume_ratio(bars: Bars, window: int) -> float:
-    """当日成交量 / 前 window 日均量（**不含当日**）。
-
-    全站唯一的量比口径 —— 形态引擎用 5 日，样板池用 20 日，但公式必须只有一份：
-    两处各写一遍的话，`> 0` 的判断、均值为 0 的兜底、含不含当日这些细节迟早分叉，
-    而分叉的表现是「同一个词在两个页面上是两个数」，没人能一眼看出来。
-    """
+def _volume_ratio(bars: Bars, window: int) -> float:
+    """当日成交量 / 前 window 日均量。"""
     if len(bars) < window + 1:
         return 0.0
     base = _safe_mean(bars.volume[-window - 1 : -1])
@@ -707,7 +702,7 @@ def _new_high(bars: Bars) -> Signal | None:
             continue
 
         excess = float(bars.close[-1] / prior - 1)
-        ratio = volume_ratio(bars, 5)
+        ratio = _volume_ratio(bars, 5)
         score = NEW_HIGH_BASE[window]
         score += _band_score(excess, 0.005, 0.03, 0.10) * 4
         # 量能按连续量给分，而不是「过 1.2 倍就 +3」的开关 ——
@@ -770,7 +765,7 @@ def _volume_breakout(bars: Bars) -> Signal | None:
     if bars.close[-1] <= prior:
         return None
 
-    ratio = volume_ratio(bars, PRIOR_HIGH_VOL_WINDOW)
+    ratio = _volume_ratio(bars, PRIOR_HIGH_VOL_WINDOW)
     if ratio < PRIOR_HIGH_VOL_MULT:
         return None
 

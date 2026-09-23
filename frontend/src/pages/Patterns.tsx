@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { PatternMeta, PatternStock, PatternSummary, TemplateBoard } from '../api/types'
+import type { PatternMeta, PatternStock, PatternSummary } from '../api/types'
 import Alert from '../components/Alert'
 import KLineChart from '../components/KLineChart'
 import type { KeyLevel } from '../components/KLineChart'
@@ -9,7 +9,6 @@ import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import Segmented from '../components/Segmented'
 import SortTh from '../components/SortTh'
-import TemplatePanel from '../components/TemplatePanel'
 import { fmtAmount, fmtInt, fmtPct, toneOf } from '../lib/format'
 import { K_VIEWS, useKLine } from '../lib/klinePeriod'
 import { useSort } from '../lib/sort'
@@ -18,15 +17,6 @@ import { rememberStockList } from '../lib/stockNav'
 
 /** 形态分组的展示顺序。后端给的 catalog 就是按这个顺序排的，这里只做兜底。 */
 const GROUP_ORDER = ['趋势', '突破', '量价', '几何']
-
-/**
- * 「样板池」这一组在筛选条里用的 key。
- *
- * 它**不是形态**（后端 `pattern_hit` 里没有这个 key），而是同一张筛选条上的
- * 另一路数据：选中它时下面的列表换成样板池表。名字带 `_pool` 就是为了跟形态 key
- * 区分开 —— 叫 `template` 的话，将来某个形态真叫这个名字就会撞车。
- */
-const TEMPLATE_KEY = 'template_pool'
 
 /**
  * 命中列表一次取多少只。
@@ -173,9 +163,6 @@ export default function Patterns() {
   const [catalog, setCatalog] = useState<PatternMeta[]>([])
   const [hits, setHits] = useState<PatternStock[]>([])
   const [summary, setSummary] = useState<PatternSummary | null>(null)
-  // 样板池（量价结构选股的「明天盯」清单）。与形态命中**分开取**：
-  // 它们的日期语义不同 —— 形态是「今天像什么」，样板池是「昨天那条线过了没」
-  const [template, setTemplate] = useState<TemplateBoard | null>(null)
   // 形态筛选是**单选**：一次只看一个形态，不然十几个形态叠在一起没人能读
   const [picked, setPicked] = useState<string | null>(() => params.get('patterns') || null)
   const [minScore, setMinScore] = useState(0)
@@ -211,20 +198,15 @@ export default function Patterns() {
     try {
       // 一次取全、前端筛 —— 命中量每天几百条，拖滑块不该打接口。
       // 也让「标签上的家数」和「筛出来的行数」天然一致（都用全量口径）
-      const [list, sum, tpl] = await Promise.all([
+      const [list, sum] = await Promise.all([
         api.patternHits(target, 0, HIT_LIMIT),
         api.patternSummary(target),
-        // 样板池挂了不该把形态列表一起弄空（Promise.all 一个 reject 全 reject）——
-        // 它是后加的一路数据源，不能反过来把这一页原有的功能拖下水
-        api.templatePool(target).catch(() => null),
       ])
       setHits(list)
       setSummary(sum)
-      setTemplate(tpl)
     } catch (err) {
       setHits([])
       setSummary(null)
-      setTemplate(null)
       setError((err as Error).message)
     } finally {
       setLoading(false)
@@ -301,30 +283,23 @@ export default function Patterns() {
   // 命中总数取自 summary 的全量口径，与列表长度一比就知道有没有被截断
   const truncated = (summary?.total_stocks ?? 0) > hits.length
 
-  const templateItems = useMemo(() => template?.items ?? [], [template])
-
-  // 筛完之后当前看图的票可能已经不在列表里，自动切到第一条。
-  // 「在列表里」两个列表都算 —— 样板池的行也能点开看图
+  // 筛完之后当前看图的票可能已经不在列表里，自动切到第一条
   useEffect(() => {
     // 取数期间 visible 必然是空的，此时判定「这只票不在列表里」会把
     // URL 上带的 code 冲掉 —— 从个股页退回本页时正好撞上这一下
     if (loading) return
-    const known = (code: string) =>
-      visible.some((stock) => stock.code === code) ||
-      templateItems.some((row) => row.code === code)
-    if (active && known(active)) return
-    setActive(visible[0]?.code ?? templateItems[0]?.code ?? null)
-  }, [visible, templateItems, active, loading])
+    if (visible.length === 0) {
+      setActive(null)
+      return
+    }
+    if (!active || !visible.some((stock) => stock.code === active)) {
+      setActive(visible[0].code)
+    }
+  }, [visible, active, loading])
 
   const current = useMemo(
     () => visible.find((stock) => stock.code === active) ?? null,
     [visible, active],
-  )
-
-  /** 当前看图的那只在样板池里的行 —— 触发价与兜底线要画在图上 */
-  const currentTemplate = useMemo(
-    () => templateItems.find((row) => row.code === active) ?? null,
-    [templateItems, active],
   )
 
   /**
@@ -346,38 +321,9 @@ export default function Patterns() {
     [],
   )
 
-  /** 点样板池那一行。与命中列表同理，顺手把这份清单存下供个股页 ← → 前后翻 */
-  const selectTemplateStock = useCallback(
-    (code: string) => {
-      selectStock(code)
-      rememberStockList(templateItems.map((row) => row.code))
-    },
-    [selectStock, templateItems],
-  )
-
   const keyLevels = useMemo<KeyLevel[]>(() => {
     const levels: KeyLevel[] = []
     const seen = new Set<string>()
-    // 样板池的触发价 / 兜底线**优先画**：点开样板池那一行，看的就是
-    // 「过没过昨天那条线」，这两条线比形态的突破位更贴当下
-    if (currentTemplate?.trigger != null) {
-      const key = `b${currentTemplate.trigger.toFixed(2)}`
-      seen.add(key)
-      levels.push({
-        label: '触发',
-        value: currentTemplate.trigger,
-        kind: 'breakout',
-      })
-    }
-    if (currentTemplate?.floor != null) {
-      const key = `s${currentTemplate.floor.toFixed(2)}`
-      seen.add(key)
-      levels.push({
-        label: '兜底',
-        value: currentTemplate.floor,
-        kind: 'support',
-      })
-    }
     for (const item of current?.patterns ?? []) {
       const breakout = item.key_levels.breakout
       if (breakout != null) {
@@ -397,7 +343,7 @@ export default function Patterns() {
       }
     }
     return levels
-  }, [current, currentTemplate])
+  }, [current])
 
   /** 单选：点已选中的那个就取消，回到「全部」 */
   const toggle = (key: string) => {
@@ -437,33 +383,13 @@ export default function Patterns() {
               {summary?.trade_date ? `${summary.trade_date} · ` : ''}
               共 {fmtInt(summary?.total_stocks ?? 0)} 只命中
               <span className="ml-3 text-fg-dim">
-                点名称筛选（单选，再点一次取消）；徽标是当天的命中家数 ·
-                「样板日」不在这套形态里，它是量价结构的两日节奏，点它看次日盯盘清单
+                点形态名筛选（单选，再点一次取消）；徽标是该形态的全市场命中家数
               </span>
             </span>
           }
-          delay={80}
+          delay={40}
         >
           <div className="space-y-2 px-4 py-3">
-            {/* 样板池这一组**排在形态之前**：它是唯一一张「今天定、次日盘中执行」、
-                有效期只有一天的清单，其余形态晚看一天也还能看 */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-8 shrink-0 text-[12px] text-fg-dim">样板</span>
-              <button
-                type="button"
-                onClick={() => toggle(TEMPLATE_KEY)}
-                title="量价结构：有量冲高又收回来（两日节奏的第一天）。点它看次日的盯盘清单"
-                className={`num border px-2 py-[2px] text-[12px] transition-colors ${
-                  picked === TEMPLATE_KEY
-                    ? 'border-accent bg-accent/10 text-accent'
-                    : 'border-line text-fg-muted hover:border-fg-dim hover:text-fg'
-                }`}
-              >
-                样板日
-                <span className="ml-1.5 text-[12px] text-fg-dim">{templateItems.length}</span>
-              </button>
-            </div>
-
             {groups.map(([group, items]) => (
               <div key={group} className="flex flex-wrap items-center gap-2">
                 <span className="w-8 shrink-0 text-[12px] text-fg-dim">{group}</span>
@@ -489,26 +415,17 @@ export default function Patterns() {
               </div>
             ))}
             <div className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-2.5">
-              {picked === TEMPLATE_KEY ? (
-                // 样板池不是评分筛出来的，滑块留在那儿会让人以为「拖到 80 能过滤样板」
-                <span className="text-[12px] text-fg-dim">
-                  样板池不走评分：它按冲高 / 量比 / 收盘位置三个门槛筛，见下方表格上方的说明
-                </span>
-              ) : (
-                <>
-                  <span className="text-[12px] text-fg-dim">评分下限</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={5}
-                    value={minScore}
-                    onChange={(event) => setMinScore(Number(event.target.value))}
-                    className="h-[3px] w-40 accent-amber-500"
-                  />
-                  <span className="num w-8 text-[12px] text-fg">{minScore}</span>
-                </>
-              )}
+              <span className="text-[12px] text-fg-dim">评分下限</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={minScore}
+                onChange={(event) => setMinScore(Number(event.target.value))}
+                className="h-[3px] w-40 accent-amber-500"
+              />
+              <span className="num w-8 text-[12px] text-fg">{minScore}</span>
               {(picked !== null || minScore > 0) && (
                 <button
                   type="button"
@@ -525,18 +442,7 @@ export default function Patterns() {
           </div>
         </Panel>
 
-        {/* 筛选条选「样板日」时，下面这一格换成样板池表 —— 两张表的列完全不同，
-            合成一张会得到一半空列，所以整块切换而不是按行合并 */}
-        {picked === TEMPLATE_KEY ? (
-          <TemplatePanel
-            board={template}
-            loading={loading}
-            active={active}
-            onSelect={selectTemplateStock}
-            delay={120}
-          />
-        ) : (
-          <Panel
+        <Panel
           title="命中列表"
           meta={
             <span className="num">
@@ -553,7 +459,7 @@ export default function Patterns() {
               )}
             </span>
           }
-          delay={120}
+          delay={80}
         >
           {truncated && (
             <div className="flex items-start gap-2.5 border-b border-accent/25 bg-accent/[0.05] px-4 py-2.5 text-[12px] leading-relaxed text-fg-muted">
@@ -682,26 +588,24 @@ export default function Patterns() {
               </table>
             </div>
           )}
-          </Panel>
-        )}
+        </Panel>
 
         <Panel
           title="看图确认"
           meta={
             <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="num">
-                {active
-                  ? `${active} ${current?.name ?? currentTemplate?.name ?? ''} · 前复权 · ${kline.bars.length} 根`
-                  : '点上面任意一行（形态命中或样板池）'}
+                {current
+                  ? `${current.code} ${current.name ?? ''} · 前复权 · ${kline.bars.length} 根`
+                  : '点上面任意一行'}
                 <span className="ml-3 text-fg-dim">
-                  画的是前复权序列，与引擎判定用的完全一致；虚线是关键位（样板池的触发价 /
-                  兜底线优先）
+                  画的是前复权序列，与引擎判定用的完全一致；虚线是形态关键位
                 </span>
               </span>
               <Segmented value={kline.view} items={K_VIEWS} onChange={kline.setView} />
             </span>
           }
-          delay={160}
+          delay={120}
         >
           {current && (
             <div className="border-b border-line-soft px-4 py-2.5">

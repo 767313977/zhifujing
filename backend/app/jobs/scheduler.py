@@ -142,9 +142,6 @@ class DailyScheduler:
         # 而形态扫描是全市场日线的下游，先让历史落库再算，两者不抢
         self._backfill_kline(today)
         self._scan_patterns(today)
-        # 样板池紧跟形态扫描：它也是零配额的本地计算，而产出的「明天盯」清单
-        # 必须在收盘后尽早出来（形态是天天都有、这个只有次日一天的有效期）
-        self._scan_template(today)
         self._push_brief(today)
         # 单独推送的形态：加新形态就在 `PUSH_PATTERNS` 里登记，然后在这里补一行
         self._push_pattern("limit_surge_flat", today)
@@ -169,26 +166,6 @@ class DailyScheduler:
             return
         logger.info(
             "形态扫描完成：%s 条命中 / %s 只票，用时 %ss",
-            result.get("rows"),
-            result.get("codes"),
-            result.get("cost_seconds"),
-        )
-
-    def _scan_template(self, trade_date: date) -> None:
-        """样板池扫描（次日「明天盯」清单）。
-
-        零 iFinD 调用、纯本地日线，所以不挂配额守卫。失败只记日志 ——
-        它是增强项，不该影响简报与采集。
-        """
-        from app.jobs.scan_template import scan
-
-        try:
-            result = scan(trade_date, self.settings)
-        except Exception:  # noqa: BLE001 - 样板池是增强，不该影响简报与采集
-            logger.exception("样板池扫描失败")
-            return
-        logger.info(
-            "样板池完成：%s 只合格样板 / %s 只票，用时 %ss",
             result.get("rows"),
             result.get("codes"),
             result.get("cost_seconds"),

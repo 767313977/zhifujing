@@ -39,7 +39,7 @@ from sqlalchemy import func, select  # noqa: E402
 
 from app.config import get_settings  # noqa: E402
 from app.db import session_scope  # noqa: E402
-from app.jobs.scan_patterns import load_bars  # noqa: E402
+from app.jobs.scan_patterns import _load_bars  # noqa: E402
 from app.models import StockDaily, TradeCalendar  # noqa: E402
 # 直接导入生产的形态函数（私有名也照导）：回测必须与线上判定**逐字一致**，
 # 另写一份判定逻辑迟早会跟生产偏离，那时候回测结论就是假的
@@ -302,14 +302,14 @@ def main() -> int:
     settings = get_settings()
     with session_scope() as session:
         # 截止日必须取 **stock_daily 的最大日期**，不能取交易日历的最大日期 ——
-        # 日历表会预置到年底，拿它当截止日会让 `load_bars` 的 260 日窗口整体后移，
+        # 日历表会预置到年底，拿它当截止日会让 `_load_bars` 的 260 日窗口整体后移，
         # 把最早那几个月的数据切掉（实测少了三个月，信号全挤在 4-6 月，
         # 看着像「这个形态只在特定行情下成立」，其实是窗口的问题）
         latest = session.scalar(select(func.max(StockDaily.trade_date)))
     if latest is None:
         raise SystemExit("stock_daily 是空的，先跑 collect_kline")
 
-    grouped = load_bars(latest, settings)
+    grouped = _load_bars(latest, settings)
     bars_by_code = {
         code: build_bars(records)
         for code, records in grouped.items()

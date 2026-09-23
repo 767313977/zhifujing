@@ -82,7 +82,7 @@ class StockDaily(Base):
     库里不放第二份前复权价（两种口径的价格混在一张表里迟早有人拿错）。
 
     **不存量比**。量比是「当日成交量 / 过去 N 日均量」的派生值，N 取 5 还是 10
-    是两个不同的数；形态引擎自己按 5 日算（`patterns.volume_ratio`）。
+    是两个不同的数；形态引擎自己按 5 日算（`patterns._volume_ratio`）。
     存一份进库只会造成两种口径并存。
     """
 
@@ -496,43 +496,6 @@ class PatternHit(Base):
     detail: Mapped[dict | None] = mapped_column(JSON)
 
 
-class TemplatePool(Base):
-    """样板日命中 —— 「明天盯」清单（量价结构选股，见设计文档 8.49）。
-
-    **只存原始事实，不存派生量。** 两条派生量都由接口现算：
-
-    - 「触发价」= `high`（今高），「兜底线」= `high × 0.98`：阈值一旦要调，
-      改一个常量就全部生效；落库的话就是第二份口径（同 `StockDaily` 不存量比的理由）。
-    - 「次日过没过线」也不落库：它在查询时用次日的日线现算（`api/patterns.py`）。
-      落库就得等第二天再回头改昨天的行，跨日写会让人搞不清「这行到底是谁写的」。
-
-    样本的口径见 `services/template_pool.py`：有量冲高（最高价对昨收 ≥ 约 7%、
-    量比 ≥ 约 1.3）**又收回来**（收盘位置 ≤ 0.7），并排除已主升（收盘 ≥ 约 12%、
-    冲高 ≥ 约 18%）与大跌（< 约 -3%）的那些。
-
-    ⚠️ `high` / `close` 存的是**原始价**而非前复权价：触发价是给人照着挂单用的，
-    必须是行情软件上那个数。这不冲突 —— `build_bars` 锚在最新收盘价上，
-    所以最后一根 K 线的前复权价本来就等于原始价，判定与展示拿到的是同一个数。
-    """
-
-    __tablename__ = "template_pool"
-
-    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
-    code: Mapped[str] = mapped_column(String(16), primary_key=True)
-    name: Mapped[str | None] = mapped_column(String(32))
-    # 今高（次日的触发价：盘中越过它才谈买点）
-    high: Mapped[float | None] = mapped_column(Float)
-    close: Mapped[float | None] = mapped_column(Float)
-    pct_chg: Mapped[float | None] = mapped_column(Float)
-    amount: Mapped[float | None] = mapped_column(Float)
-    # 冲高幅度：high / 昨收 - 1（比值口径，0.098 = 9.8%）
-    surge: Mapped[float | None] = mapped_column(Float)
-    # 量比：当日成交量 / 前 20 日均量
-    vol_ratio: Mapped[float | None] = mapped_column(Float)
-    # 收盘在当日区间里的位置（0 = 收在最低，1 = 收在最高）
-    close_pos: Mapped[float | None] = mapped_column(Float)
-
-
 class MarginDaily(Base):
     """两融（融资融券）市场日度数据。来源：iFinD EDB（上交所 / 深交所）。
 
@@ -647,5 +610,4 @@ class LhbInstitution(Base):
 Index("ix_stock_daily_code", StockDaily.code)
 Index("ix_limit_pool_type", LimitPool.trade_date, LimitPool.pool_type)
 Index("ix_pattern_hit_date", PatternHit.trade_date, PatternHit.pattern, PatternHit.score)
-Index("ix_template_pool_date", TemplatePool.trade_date, TemplatePool.vol_ratio)
 Index("ix_lhb_code", Lhb.code)

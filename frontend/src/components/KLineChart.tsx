@@ -48,13 +48,9 @@ export function dailyBars(
   }))
 }
 
-/** 图上的关键位标记（形态的突破价 / 支撑价、样板池的触发价 / 兜底线）。 */
+/** 图上的关键位标记（形态的突破价 / 支撑价）。 */
 export interface KeyLevel {
-  /**
-   * 线的名字，**只写名字、不要带数字** —— 图上显示的是「名字 价格」，
-   * 价格由本组件统一补（`${label} ${value}`）。带进来就打印两遍
-   * （「触发 20.18 20.18」），实测踩过。
-   */
+  /** 线的标签，如「突破 12.34」 */
   label: string
   value: number
   kind: 'breakout' | 'support'
@@ -113,22 +109,6 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
     }))
 
     const marks = keyLevels.filter((level) => Number.isFinite(level.value))
-    // 两条关键位挨得太近时，标签会叠在一起谁也读不出来 —— 这不是偶发情况：
-    // 样板池的「触发价」与「兜底线」按定义只差 2%。所以从高到低排一遍，
-    // 离上一条太近的那条把标签翻到线的下方。
-    // 判据用「占价格区间多少」而不是绝对价差：纵轴是自动缩放的，而 5% 的区间
-    // 大约就是一行 10px 字（主网格高约 56% 的图高）
-    const highs = bars.map((bar) => bar.high).filter((value): value is number => value != null)
-    const lows = bars.map((bar) => bar.low).filter((value): value is number => value != null)
-    const spread = highs.length && lows.length ? Math.max(...highs) - Math.min(...lows) : 0
-    const flipLabel = new Set<number>()
-    let lastValue: number | null = null
-    for (const level of [...marks].sort((a, b) => b.value - a.value)) {
-      if (lastValue !== null && (lastValue - level.value) <= spread * 0.05) {
-        flipLabel.add(level.value)
-      }
-      lastValue = level.value
-    }
     const legend = [...MA_WINDOWS.map((w) => `MA${w}`), '成交量']
     // 横轴放几个标签要看标签有多长：周月是 `25-09-30`（8 字符，比日线的 `09-21`
     // 长），同一宽度下要少放几个，否则相邻标签会贴在一起
@@ -215,12 +195,6 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
                 data: marks.map((level) => ({
                   yAxis: level.value,
                   name: `${level.label} ${level.value.toFixed(2)}`,
-                  // 与上一条太近的标签翻到线下方（见上面 flipLabel 的说明）
-                  label: {
-                    position: flipLabel.has(level.value)
-                      ? ('insideEndBottom' as const)
-                      : ('insideEndTop' as const),
-                  },
                   lineStyle: {
                     color: level.kind === 'breakout' ? CHART.accent : CHART.fgDim,
                     type: 'dashed' as const,
