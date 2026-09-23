@@ -5550,6 +5550,30 @@ ETF 份额原来走 akshare 的 `fund_etf_spot_em`，它请求的是
 
 ---
 
+### 8.57 悬停任何一根条都显示榜首（2026-09-23）
+
+用户报：「鼠标指向任何一个板块都显示第一个板块」。看图确实是 —— 悬停 `消费电子`，
+tooltip 却是 `人工智能`。
+
+根因在 `SectorFlowPanel.buildOption` 的 tooltip formatter：
+
+```ts
+const first = params as { dataIndex: number }[] | undefined   // 当成数组解
+const item = items[first?.[0]?.dataIndex ?? 0]
+```
+
+**ECharts 的 `trigger: 'item'` 传的是单个对象，不是数组**（只有 `axis` 触发才是数组）。
+于是 `first[0]` 恒为 `undefined`、`?? 0` 把它回落成 0 —— 永远取第一条。改成两种形状都接
+（`Array.isArray(params) ? params[0] : params`）。
+
+**这个 bug 从面板写出来那天就在**（8.47 那批），一直没被发现，因为历次验证都只悬停
+「最上面那一根」—— 而「永远显示第一条」在最上面那根上表现为**正确**。这条写进教训：
+**验 tooltip 要挑非首项**，否则等于没验。全站 `trigger: 'item'` 只有两处，另一处
+（`SectorRotationPanel` 的上榜次数图）用默认 tooltip、不涉及手写 formatter，未受影响；
+其余 `dataIndex` 的用法全是 `axis` 触发，形状本来就是数组，没有同类问题。
+
+---
+
 ## 9. 待确认事项
 
 - ~~**iFinD 账号权益等级未知**~~ —— 已确认：**每月 5000 次**（tools/call 计费，
