@@ -309,7 +309,9 @@ def main() -> int:
     if latest is None:
         raise SystemExit("stock_daily 是空的，先跑 collect_kline")
 
-    grouped = _load_bars(latest, settings)
+    from app.jobs.collect_universe import load_codes
+
+    grouped = _load_bars(latest, load_codes())
     bars_by_code = {
         code: build_bars(records)
         for code, records in grouped.items()

@@ -321,6 +321,15 @@ ON_MIN_RS = 80.0  # O'Neil 的建议：只买 RS 评级 80 以上（他偏好 87
 # 宁可多看几只。它挡不掉所有红利股（上面的限制仍在），只是把最「静止」的那批排除掉。
 ON_MIN_AMPLITUDE = 0.02
 
+# 悟道之路 · 致富选股（样板 → 启动）
+# 扫描侧只扫「强势/涨停/昨涨停/涨幅榜」创业板小池，与悟道名单对齐（见 jobs/scan_patterns.py）
+# 量比口径与本地悟道之路一致：当日量 / 近 20 日均量（不是 5 日）
+WUDAO_SAMPLE_HIGH_PCT = 7.0
+WUDAO_SAMPLE_VOL = 1.3
+WUDAO_START_VOL = 1.5
+WUDAO_DIVERGE_VOL = 2.5  # 与悟道：爆量冲高不收 → 吵/出货，不当明天盯
+WUDAO_MIN_BARS = 22  # 昨收 + 近 20 日均量 + 余量
+
 # 欧奈尔 RS 评级：加权涨幅的窗口（交易日）与权重，照 IBD 的原始口径 ——
 # 近 3 个月权重 0.4，其余三段各 0.2。最近这一段给双倍权重，是因为它最能
 # 反映「当下有没有资金在做」，这也是 RS 评级比「近一年涨幅」灵敏的原因。
@@ -1756,9 +1765,147 @@ def _oneil_breakout(bars: Bars) -> Signal | None:
     return best
 
 
+def _wudao_day_geom(bars: Bars, i: int) -> tuple[float, float, float, float]:
+    """返回 (vol_ratio, pct, close_pos, upper_shadow)。"""
+    base = _safe_mean(bars.volume[i - 20 : i]) if i >= 20 else 0.0
+    vol = float(bars.volume[i] / base) if base > 0 else 0.0
+    pct = float(bars.pct_chg[i])
+    high = float(bars.high[i])
+    low = float(bars.low[i])
+    open_ = float(bars.open[i])
+    close = float(bars.close[i])
+    span = max(high - low, 1e-9)
+    close_pos = (close - low) / span
+    upper = (high - max(open_, close)) / span
+    return vol, pct, close_pos, upper
+
+
+def _wudao_is_diverge_or_dump(bars: Bars, i: int) -> bool:
+    """与悟道 classify 一致：吵起来了 / 像出货 压过「明天盯」。"""
+    if i < 20:
+        return False
+    vol, pct, close_pos, upper = _wudao_day_geom(bars, i)
+    if vol >= WUDAO_DIVERGE_VOL and (upper >= 0.25 or close_pos <= 0.7):
+        return True
+    if vol >= 1.4 and pct < 2 and upper >= 0.3:
+        return True
+    return False
+
+
+def _wudao_is_sample(bars: Bars, i: int) -> bool:
+    """与悟道之路 `is_sample_day` 对齐：冲高约 ≥7%、量比≥1.3、收盘离开最高。"""
+    if i < 1 or i >= len(bars):
+        return False
+    if i < 20:
+        return False
+    vol, pct, close_pos, upper = _wudao_day_geom(bars, i)
+    if vol < WUDAO_SAMPLE_VOL:
+        return False
+
+    prev_close = float(bars.close[i - 1])
+    if prev_close <= 0:
+        return False
+    high = float(bars.high[i])
+    high_pct = (high / prev_close - 1.0) * 100.0
+    if high_pct < WUDAO_SAMPLE_HIGH_PCT:
+        return False
+    if pct >= 12 or high_pct >= 18:
+        return False
+
+    if close_pos >= 0.92 and upper < 0.08 and pct >= 9.5:
+        return False
+    leave_high = (high - float(bars.close[i])) / max(high, 1e-9)
+    if leave_high < 0.028 and upper < 0.15:
+        return False
+    if close_pos >= 0.88 and leave_high < 0.04:
+        return False
+    if pct < -3:
+        return False
+    return True
+
+
+def _wudao_sample(bars: Bars) -> Signal | None:
+    """明天盯：今日是样板日 —— 冲高回落有量，记下今高，今天不买。"""
+    if len(bars) < WUDAO_MIN_BARS:
+        return None
+    i = len(bars) - 1
+    if _wudao_is_diverge_or_dump(bars, i):
+        return None
+    if not _wudao_is_sample(bars, i):
+        return None
+
+    prev_close = float(bars.close[i - 1])
+    high = float(bars.high[i])
+    close = float(bars.close[i])
+    high_pct = (high / prev_close - 1.0) * 100.0
+    vol = _volume_ratio(bars, 20)
+    leave = (high - close) / max(high, 1e-9)
+
+    score = _band_score(high_pct, WUDAO_SAMPLE_HIGH_PCT, 12.0, 18.0) * 40
+    score += _band_score(vol, WUDAO_SAMPLE_VOL, 2.5, 6.0) * 35
+    score += _band_score(leave, 0.028, 0.08, 0.20) * 25
+    score = max(score, 55.0)
+
+    return Signal(
+        "wudao_sample",
+        score,
+        {"watch_high": high},
+        {
+            "high_pct": round(high_pct, 2),
+            "vol_ratio_20": round(vol, 2),
+            "leave_high": round(leave, 4),
+            "pct_chg": round(float(bars.pct_chg[i]), 2),
+        },
+    )
+
+
+def _wudao_start(bars: Bars) -> Signal | None:
+    """今天可买：昨是样板，今放量过昨高；买点是刚过昨高。"""
+    if len(bars) < WUDAO_MIN_BARS + 1:
+        return None
+    i = len(bars) - 1
+    y = i - 1
+    if not _wudao_is_sample(bars, y):
+        return None
+
+    sample_high = float(bars.high[y])
+    today_high = float(bars.high[i])
+    today_close = float(bars.close[i])
+    pct = float(bars.pct_chg[i])
+    vol = _volume_ratio(bars, 20)
+
+    broke = today_high > sample_high and today_close >= sample_high * 0.98
+    if not (broke and vol >= WUDAO_START_VOL and pct > 0):
+        return None
+
+    excess = today_close / sample_high - 1.0
+    score = _band_score(vol, WUDAO_START_VOL, 3.0, 8.0) * 45
+    score += _band_score(pct, 0.5, 8.0, 16.0) * 30
+    # 刚过线更好；收盘远离昨高太多偏追高，略降分但仍可进
+    if excess <= 0.04:
+        score += 25
+    else:
+        score += _band_score(excess, 0.0, 0.04, 0.12) * 25
+    score = max(score, 60.0)
+
+    return Signal(
+        "wudao_start",
+        score,
+        {"breakout": sample_high, "watch_high": sample_high},
+        {
+            "vol_ratio_20": round(vol, 2),
+            "pct_chg": round(pct, 2),
+            "excess": round(excess, 4),
+            "sample_high": round(sample_high, 2),
+        },
+    )
+
+
 # ---------------------------------------------------------------- 注册表
 
 PATTERNS: tuple[Pattern, ...] = (
+    Pattern("wudao_start", "今天可买", "致富", _wudao_start),
+    Pattern("wudao_sample", "明天盯", "致富", _wudao_sample),
     Pattern("ma_bull", "均线多头排列", "趋势", _ma_bull),
     Pattern("ma_pullback", "回踩不破", "趋势", _ma_pullback),
     Pattern("new_high", "创 N 日新高", "突破", _new_high),

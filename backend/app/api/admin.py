@@ -109,6 +109,39 @@ def collect(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.post("/kline/recent")
+def kline_recent(
+    days: int = Query(60, ge=20, le=120, description="补最近多少个交易日"),
+    trade_date: date | None = Query(None, alias="date"),
+) -> dict:
+    """补齐最近 N 个交易日的全市场日线（辉宾/形态需要连续近端 K 线）。"""
+    from app.jobs.collect_kline import KlineCollector
+
+    try:
+        with collect_guard("近端日线"):
+            return KlineCollector().collect_recent(trade_date, days=days)
+    except CollectionBusy as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except IfindError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/patterns/scan")
+def patterns_scan(
+    trade_date: date | None = Query(None, alias="date"),
+) -> dict:
+    """手动跑一遍形态扫描（含辉宾「明天盯 / 今天可买」）。"""
+    from app.jobs.scan_patterns import scan
+
+    try:
+        with collect_guard("形态扫描"):
+            return scan(trade_date)
+    except CollectionBusy as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except IfindError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/backfill")
 def backfill(
     start: date = Query(..., description="起始日期"),

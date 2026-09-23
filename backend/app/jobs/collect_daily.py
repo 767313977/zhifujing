@@ -1025,6 +1025,12 @@ class DailyCollector:
         steps["flows"] = self._step(target, "flows", lambda: self.collect_flows(target))
         # 龙虎榜走 akshare，不占 iFinD 配额，任何档位都照采
         steps["lhb"] = self._step(target, "lhb", lambda: self.collect_lhb(target))
+        # 情绪只依赖涨停池+指数，必须尽早落库：首页「今日复盘」以 market_sentiment
+        # 有没有数据为准。若把情绪放在 ETF（约 20 次 iFinD）之后，ETF 一卡死
+        # 页面会一直显示「暂无数据」，尽管指数/涨停其实已经采完。
+        steps["sentiment"] = self._step(
+            target, "sentiment", lambda: self.collect_sentiment(target)
+        )
         # ETF 换 iFinD 源之后要花约 20 次调用（配额让路在它自己内部判断），
         # 龙虎榜机构席位仍是 akshare、零配额
         steps["etf"] = self._step(target, "etf", self.collect_etf)
@@ -1046,8 +1052,4 @@ class DailyCollector:
                 target, "margin", lambda: self.collect_margin(target)
             )
             steps["hsgt"] = self._step(target, "hsgt", lambda: self.collect_hsgt(target))
-        # 情绪依赖涨停池与指数，放最后
-        steps["sentiment"] = self._step(
-            target, "sentiment", lambda: self.collect_sentiment(target)
-        )
         return {"trade_date": target.isoformat(), "steps": steps}

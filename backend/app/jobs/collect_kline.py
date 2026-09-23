@@ -247,14 +247,13 @@ class KlineCollector:
             # 为 0 表示窗口内该补的都补完了
             "pending_days": pending,
             "calls": calls,
-            "failed_days": failed,
             "rows": written,
+            "failed": failed,
             "pruned": pruned,
             "cost_seconds": round(time.monotonic() - started, 2),
         }
         logger.info(
-            "日线采集完成：采 %d 天 / 跳过 %d 天 / 待补 %d 天，%d 行 / %d 次调用，"
-            "清理 %d 行，失败 %d 天，用时 %.0fs",
+            "日线采集完成：采 %d 天 / 跳过 %d 天 / 待补 %d 天，%d 行 / %d 次调用，清理 %d 行，失败 %d 天，用时 %ss",
             len(fetched),
             skipped,
             pending,
@@ -273,6 +272,57 @@ class KlineCollector:
             + (f"，失败 {len(failed)} 天" if failed else ""),
         )
         return result
+
+    def collect_recent(
+        self, trade_date: date | None = None, *, days: int = 60
+    ) -> dict:
+        """只补「最近 N 个交易日」里还缺的天（从旧到新）。
+
+        辉宾/形态要**连续近期**日线；默认的 `full` 回补从窗口最旧端啃，
+        会先填两年前的洞，近期仍不够 20 根量比窗口。此方法专补近端。
+        """
+        end = trade_date or self._latest_trade_date()
+        universe = self._codes()
+        if not universe:
+            raise IfindError("股票池为空，先建池（UniverseCollector.collect）")
+        allowance = set(universe) | set(self._pool_codes(end))
+        all_days = _trade_dates(self._window_start(end, full=True), end)
+        if not all_days:
+            raise IfindError(f"{end} 之前没有交易日历数据，先采集交易日历")
+        target_days = all_days[-days:] if len(all_days) > days else all_days
+
+        started = time.monotonic()
+        written = 0
+        fetched: list[date] = []
+        skipped = 0
+        calls = 0
+        failed: list[str] = []
+        for day in target_days:
+            if not self._needs_day(day, universe):
+                skipped += 1
+                continue
+            try:
+                got, used = self._fetch_day(day, allowance)
+            except Exception as exc:  # noqa: BLE001
+                failed.append(f"{day} {type(exc).__name__}: {exc}")
+                logger.warning("%s 近端日线采集失败：%s", day, exc)
+                continue
+            written += got
+            calls += used
+            fetched.append(day)
+            logger.info("%s 近端写入 %d 行（%d 次调用）", day, got, used)
+
+        return {
+            "status": "ok" if not failed else "partial",
+            "trade_date": end.isoformat(),
+            "window_days": len(target_days),
+            "fetched_days": [day.isoformat() for day in fetched],
+            "skipped_days": skipped,
+            "calls": calls,
+            "rows": written,
+            "failed": failed,
+            "cost_seconds": round(time.monotonic() - started, 2),
+        }
 
     # ------------------------------------------------------------------ 内部
 
