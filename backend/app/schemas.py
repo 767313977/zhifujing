@@ -291,10 +291,13 @@ class SectorMembers(BaseModel):
 
 
 class FundFlowItem(BaseModel):
-    """板块资金流里的一行（**同花顺**口径）。
+    """板块资金流里的一行（**开盘啦板块口径**）。
 
-    金额单位是**亿元**（来源就用亿元），字段名不带单位，所以口径写在这里与
-    `models.SectorFundFlow` 的注释里 —— 免得有人按元去算，差 1e8 倍。
+    金额单位是**亿元**（库里 `sector_daily.net_inflow` 存的是元，接口层换算），
+    字段名不带单位，所以口径写在这里 —— 免得有人按元去算，差 1e8 倍。
+
+    `in_amount` / `out_amount` 恒为 None：净流入是「成分股主力净流入之和」，
+    **没有「流入 / 流出」这个拆法**（见 `jobs/collect_board_flow.py`）。
     """
 
     name: str
@@ -310,8 +313,9 @@ class FundFlowItem(BaseModel):
 class SectorFundFlowOut(BaseModel):
     """板块资金流向（页面上的排行榜 + 条形图）。
 
-    ⚠️ `taxonomy` 是**同花顺概念 / 同花顺行业**，与站内板块（开盘红精选 / 行业）
-    不是一套名字，所以这个接口不返回任何能 join 的代码 —— 只有名字。
+    `taxonomy` 与板块页**同一套**（`kph_selected` 精选 / `kph_industry` 行业）——
+    2026-09-23 之前这里是同花顺口径，与站内板块不是一套名字，换掉之后
+    `name` 可以直接和板块页的板块对上（但仍然只给名字、不给代码：曲线按名字画）。
     """
 
     trade_date: date

@@ -5,7 +5,6 @@ import type {
   DdeOrder,
   EtfFlowBoard,
   FundFlowHistoryOut,
-  FundFlowTaxonomy,
   EtfFlowOrder,
   EtfIndustryBoard,
   FundFlowOverview,
@@ -146,24 +145,25 @@ export const api = {
     ),
 
   /**
-   * 板块资金流向（**同花顺口径**：概念 / 行业）。
+   * 板块资金流向（**开盘啦口径**：精选 / 行业，与板块页同一套名字）。
    *
-   * 与 `sectorRanking` 是两套名字，别指望它的 name 能对上板块页的板块 ——
-   * 后端 `SectorFundFlow` 的注释写明了原因。
+   * 净流入 = 该板块**成分股的主力净流入之和**（本项目自己算的口径，见后端
+   * `jobs/collect_board_flow.py`），单位亿元。与开盘啦 App 里它自己的板块资金流
+   * 不保证相等；`in_amount` / `out_amount` 恒为空。
    */
-  sectorFundFlow: (taxonomy: FundFlowTaxonomy, date?: string | null) =>
+  sectorFundFlow: (taxonomy: SectorTaxonomy, date?: string | null) =>
     request<SectorFundFlowOut>(
       withDate(`/sectors/fund-flow?taxonomy=${taxonomy}`, date),
     ),
 
   /**
-   * 各板块的**近 N 日累计净流入**曲线（同一张表，后端按日累加）。
+   * 各板块的**近 N 日累计净流入**曲线（与 `sectorFundFlow` 同一份数据，后端按日累加）。
    *
    * 与 `sectorFundFlow` 分开取：那个是「那一天的排行」，这个要跨多天，
    * 窗口档位也是独立的。
    */
   sectorFundFlowHistory: (
-    taxonomy: FundFlowTaxonomy,
+    taxonomy: SectorTaxonomy,
     options: { days: number },
     date?: string | null,
   ) =>

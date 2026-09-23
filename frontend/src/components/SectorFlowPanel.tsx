@@ -1,8 +1,8 @@
 import type {
   FundFlowHistoryOut,
   FundFlowItem,
-  FundFlowTaxonomy,
   SectorFundFlowOut,
+  SectorTaxonomy,
 } from '../api/types'
 import EChart from './EChart'
 import type { ChartOption } from './EChart'
@@ -22,16 +22,19 @@ import { fmtNum, fmtPct, fmtShortDate } from '../lib/format'
 /**
  * 两个榜单各显示多少条。
  *
- * 10 条是「一屏看得完」与「够看出主线」的折中：行业一共才 90 个，前 10 已经能覆盖
- * 当天的主要方向；概念 359 个，前 10 只够看最强的，但再多图表就变成密密麻麻的条，
+ * 10 条是「一屏看得完」与「够看出主线」的折中：行业一共 104 个，前 10 已经能覆盖
+ * 当天的主要方向；精选 270 个，前 10 只够看最强的，但再多图表就变成密密麻麻的条，
  * 反而看不出对比。
  */
 const TOP = 10
 
-/** 口径切换项。**与上面板块的「精选/行业」不是一套**，标签也就不能复用 */
-const TAXONOMIES: { key: FundFlowTaxonomy; label: string }[] = [
-  { key: 'ths_concept', label: '概念' },
-  { key: 'ths_industry', label: '行业' },
+/**
+ * 口径切换项 —— **与上面板块页的「精选 / 行业」是同一套**（2026-09-23 统到开盘啦）。
+ * 在那之前这一页是「同花顺概念 / 行业」，与站内板块对不上名，标签也就不能复用。
+ */
+const TAXONOMIES: { key: SectorTaxonomy; label: string }[] = [
+  { key: 'kph_selected', label: '精选板块' },
+  { key: 'kph_industry', label: '行业板块' },
 ]
 
 const BAR_HEIGHT = 30
@@ -57,10 +60,14 @@ function buildOption(items: FundFlowItem[], inflow: boolean): ChartOption {
           `<b>${item.name}</b>`,
           `净额 ${fmtNum(item.net_amount, 2, ' 亿')}`,
           `涨跌幅 ${fmtPct(item.pct_chg)}`,
-          `流入 ${fmtNum(item.in_amount, 2, ' 亿')} / 流出 ${fmtNum(item.out_amount, 2, ' 亿')}`,
+          // 流入 / 流出只有同花顺那套口径才有拆分，开盘啦口径下恒为空 ——
+          // 空着就不显示这一行，别印成「流入 — / 流出 —」
+          item.in_amount == null && item.out_amount == null
+            ? ''
+            : `流入 ${fmtNum(item.in_amount, 2, ' 亿')} / 流出 ${fmtNum(item.out_amount, 2, ' 亿')}`,
           item.leader_name
             ? `领涨 ${item.leader_name} ${fmtPct(item.leader_pct_chg)}`
-            : '领涨 —',
+            : '',
           item.member_count == null ? '' : `成分 ${item.member_count} 只`,
         ]
           .filter(Boolean)
@@ -177,8 +184,13 @@ interface Props {
   historyLoading: boolean
   historyDays: number
   onHistoryDays: (days: number) => void
-  taxonomy: FundFlowTaxonomy
-  onTaxonomy: (taxonomy: FundFlowTaxonomy) => void
+  taxonomy: SectorTaxonomy
+  onTaxonomy: (taxonomy: SectorTaxonomy) => void
+  /**
+   * 页面当前看的交易日（板块排行解析出来的那天，缺省时用页面 state）。
+   * 只用来判断「面板的数据日是不是比它早」——资金流是按日累积算的，会晚一天。
+   */
+  pageDate: string | null
 }
 
 export default function SectorFlowPanel({
@@ -190,6 +202,7 @@ export default function SectorFlowPanel({
   onHistoryDays,
   taxonomy,
   onTaxonomy,
+  pageDate,
 }: Props) {
   // 后端已按净额降序；这里切两头。**只用有净额的行** —— 净额为空的排不到任何一边，
   // 混进来只会顶掉真实的榜首
@@ -202,14 +215,20 @@ export default function SectorFlowPanel({
   const empty = !loading && valid.length === 0
   // 库里几个交易日：曲线要 2 天以上才连得起来
   const curveDays = history?.days ?? 0
+  // 数据日比页面选的日期早时标出来。后端已经回落到最近有数据的一天，但**回落这件事
+  // 用户看不见** —— 不标的话会把昨天算的净流入当成今天的（两者差一个交易日）
+  const staleDate =
+    data && pageDate && data.trade_date !== pageDate ? data.trade_date : null
 
   return (
     <div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line-soft px-3 py-2">
         <Segmented value={taxonomy} items={TAXONOMIES} onChange={onTaxonomy} />
         <span className="text-[12px] text-fg-dim">
-          同花顺{label}口径（与本站板块不是一套名字）· 单位亿元 · 红=净流入 绿=净流出
+          开盘啦{label}口径（与站内板块同一套名字）· 单位亿元 ·
+          净流入 = 成分股主力净流入之和 · 红=净流入 绿=净流出
         </span>
+        {staleDate && <span className="num text-fg-dim">数据日期 {staleDate}</span>}
         <span className="num ml-auto text-[12px] text-fg-dim">
           {loading ? '加载中…' : `${data?.total ?? 0} 个${label} · 各取前 ${TOP} 名`}
         </span>
@@ -219,8 +238,9 @@ export default function SectorFlowPanel({
         <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
       ) : empty ? (
         <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
-          这一天没有资金流数据。该来源只有「即时」快照、不给历史，所以只能从采集那天
-          开始累积 —— 每天收盘后（17:30）自动采一次
+          这一天没有资金流数据。净流入是拿「开盘啦成分股 × 逐股主力净流入」现算的，
+          只算当天、补不了历史，所以要从改造那天起一天天累积 ——
+          每天收盘后（17:30）自动算一次
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-x-4 gap-y-2 p-3 md:grid-cols-2">

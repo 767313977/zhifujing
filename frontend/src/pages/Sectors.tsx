@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
   FundFlowHistoryOut,
-  FundFlowTaxonomy,
   RotationLeader,
   RotationMetric,
   SectorCompare,
@@ -143,12 +142,12 @@ export default function Sectors() {
    */
   const [leaders, setLeaders] = useState<Record<string, RotationLeader[]>>({})
   /**
-   * 资金流向面板的口径。**与上面的 `taxonomy` 故意分开存** ——
-   * 那个是开盘红的板块口径（精选/行业），这个是同花顺的概念/行业，两套名字对不上，
-   * 共用一个 state 会让人以为切上面那个就能换资金流的口径。
+   * 资金流向面板的口径。**与上面的 `taxonomy` 分开存**：两者现在是**同一套**口径
+   * （开盘啦精选 / 行业，2026-09-23 统一的），但分开存能让人「上面看精选排行、
+   * 下面看行业资金流」。共用一份的话，切一个会连带把另一块也切掉，反而不方便。
    */
-  const [flowTaxonomy, setFlowTaxonomy] = useState<FundFlowTaxonomy>(() =>
-    params.get('flow') === 'ths_industry' ? 'ths_industry' : 'ths_concept',
+  const [flowTaxonomy, setFlowTaxonomy] = useState<SectorTaxonomy>(() =>
+    params.get('flow') === 'kph_industry' ? 'kph_industry' : 'kph_selected',
   )
   const [flow, setFlow] = useState<SectorFundFlowOut | null>(null)
   const [flowLoading, setFlowLoading] = useState(true)
@@ -187,7 +186,7 @@ export default function Sectors() {
     if (curveDays === 30) next.delete('curve')
     else next.set('curve', String(curveDays))
     // 资金流面板的口径也是视图状态，同样不该在返回时被重置
-    if (flowTaxonomy === 'ths_concept') next.delete('flow')
+    if (flowTaxonomy === 'kph_selected') next.delete('flow')
     else next.set('flow', flowTaxonomy)
     if (flowDays === 20) next.delete('flowdays')
     else next.set('flowdays', String(flowDays))
@@ -772,9 +771,10 @@ export default function Sectors() {
           </Panel>
         </div>
 
-        {/* 放最后一块、整行宽：它是**另一种口径**（同花顺概念/行业），
-            与上面的开盘红板块对不上，所以不和上面任何面板并排，
-            免得被读成「同一个板块的两组数」 */}
+        {/* 放最后一块、整行宽：2026-09-23 之前它是**另一种口径**（同花顺概念 / 行业），
+            与上面的开盘红板块对不上，所以单独占一行、谁也不挨着，免得被读成
+            「同一个板块的两组数」。口径统一到开盘啦之后仍然整行宽 ——
+            它自己就是「两张条形图并排 + 一条累计曲线」，半栏根本放不下 */}
         <Panel
           title="板块资金流向"
           meta={
@@ -793,6 +793,9 @@ export default function Sectors() {
             onHistoryDays={setFlowDays}
             taxonomy={flowTaxonomy}
             onTaxonomy={setFlowTaxonomy}
+            // 页面当前看的交易日：优先用 URL / 选择器上的 `date`，没选时用排行
+            // 解析出来的那天（两者通常一致，但首屏刚进时 `date` 还是 null）
+            pageDate={date ?? ranking?.trade_date ?? null}
           />
         </Panel>
       </div>

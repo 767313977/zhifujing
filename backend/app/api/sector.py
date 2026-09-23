@@ -25,12 +25,9 @@ from app.api.deps import resolve_trade_date
 from app.db import get_db, session_scope
 from app.jobs.collect_sectors import SectorCollector
 from app.models import (
-    FUND_FLOW_CONCEPT,
-    FUND_FLOW_INDUSTRY,
     LimitPool,
     SectorBasic,
     SectorDaily,
-    SectorFundFlow,
     SectorMember,
     StockConcept,
 )
@@ -97,7 +94,12 @@ COMPARE_BASE = 100.0
 #
 # 保留并购重组 / 股权转让 / 举牌：它们同样是「筛出来的集合」，但在 A 股是真会炒的
 # 题材，与业绩、地域不是一回事。
-ROTATION_EXCLUDE = (
+#
+# 2026-09-23 起**资金流榜也用它**（那天全站板块口径统一到开盘啦，两处终于共用一套
+# 板块名）：换口径后资金流的净流出榜立刻被「中报增长 -282亿 / 业绩增长 -279亿」这类
+# 业绩板块霸榜 —— 与融资融券/沪深股通当年霸榜是同一个毛病：它们成员太多、是分类
+# 而不是题材。所以常量名从 ROTATION_EXCLUDE 改成 BOARD_EXCLUDE（两个页面共用的名单）。
+BOARD_EXCLUDE = (
     "增长",  # 中报增长 / 三季报增长 / 业绩增长
     "预增",  # 年报预增
     "预盈",
@@ -470,7 +472,7 @@ def rotation(
     不同的一张榜：芯片永远第一）。注意强度的**量纲不可跨口径比**：精选极值上万、
     行业一千出头，所以切口径时榜会整体换一套（这是对的，两个口径本就不可比）。
 
-    `ROTATION_EXCLUDE` 那张黑名单**对成交额与涨幅都生效，只有强度榜不剔** ——
+    `BOARD_EXCLUDE` 那张黑名单**对成交额与涨幅都生效，只有强度榜不剔** ——
     强度榜要与开盘啦 App 对齐，它给什么就显示什么（它自己的榜里 09-02 那列第 2 名
     就是「中报增长」）。实测黑名单对涨幅榜的影响很小（20 列只有 1 列的榜首命中），
     但剔掉的是「北交所」这种按交易所筛的集合，与已在名单里的「科创板」同类。
@@ -521,8 +523,8 @@ def rotation(
 
     # 每天只留前 top 个。截断放在 Python 里而不是写窗口函数：SQLite 虽然支持，
     # 但这里总量最多 60 × 270 ≈ 1.6 万行，够小，可读性比省那点内存重要
-    # 只有强度榜不过滤（见 `ROTATION_EXCLUDE` 的说明）
-    excluded = () if metric == "strength" else ROTATION_EXCLUDE
+    # 只有强度榜不过滤（见 `BOARD_EXCLUDE` 的说明）
+    excluded = () if metric == "strength" else BOARD_EXCLUDE
     grouped: dict[date, list[RotationCell]] = {day: [] for day in dates}
     for day, code, name, pct_chg, value in rows:
         bucket = grouped[day]
@@ -598,26 +600,69 @@ def rotation_leaders(
     ]
 
 
-# 资金流面板的口径与切换项。**与 TAXONOMIES 无关** —— 那是开盘红的板块口径，
-# 这是同花顺的概念/行业口径，两套名字对不上（芯片 vs 芯片概念），所以分成两个常量
-FUND_FLOW_TAXONOMIES = {FUND_FLOW_CONCEPT: "概念", FUND_FLOW_INDUSTRY: "行业"}
+# 资金流面板的口径 —— **与板块页同一套**（开盘啦精选 / 行业）。
+#
+# 2026-09-23 换的：在那之前这一页是「同花顺概念 / 行业」，与站内板块**不是一套名字**
+# （芯片 vs 芯片概念），面板上还得专门写一句「不是一套名字」提醒人别混着看。统到
+# 开盘啦之后，那句话连同两套名字一起没了（见设计文档 8.54）。
+FUND_FLOW_TAXONOMIES = TAXONOMIES
+FUND_FLOW_LABELS = {
+    TAXONOMY_SELECTED: "精选板块",
+    TAXONOMY_INDUSTRY: "行业板块",
+}
+
+
+def _excluded(name: str) -> bool:
+    """这条板块该不该从资金流榜里剔掉（业绩 / 地域 / 板块属性这类「筛出来的集合」）。
+
+    名单与板块轮动矩阵**共用一份**（`BOARD_EXCLUDE`）—— 统一到开盘啦口径之后两处
+    终于是一套板块名，没有理由再各留一份。理由也相同：它们成员多、是分类不是题材，
+    实测换口径当天「中报增长 / 业绩增长」以 -282亿 / -279亿 霸占净流出榜前两名。
+    """
+    return any(key in name for key in BOARD_EXCLUDE)
+
+
+def _latest_flow_date(session: Session, taxonomy: str, target: date) -> date | None:
+    """最近一个**算过净流入**的交易日（≤ target）。
+
+    与 8.47 给 ETF 榜做的是同一件事：页面日期由「最新有情绪数据的一天」决定
+    （`resolve_trade_date`），而板块资金流是另一条链路算出来的，两者会错开 ——
+    换口径当天、或聚合那步被跳过（配额让路）时都会差一天。不回落到最近有数据的那天，
+    面板就整块空白，而同一页别的面板都有数，看起来像坏了。
+
+    回落之后**必须把实际数据日显示出来**（前端做，见 `SectorFlowPanel`），
+    否则就成了「面板放着前一天的数、页面顶部写着今天」—— 那比空白更容易误读。
+    """
+    return session.scalar(
+        select(func.max(SectorDaily.trade_date)).where(
+            SectorDaily.taxonomy == taxonomy,
+            SectorDaily.trade_date <= target,
+            SectorDaily.net_inflow.is_not(None),
+        )
+    )
 
 
 @router.get("/fund-flow", response_model=SectorFundFlowOut)
 def fund_flow(
     taxonomy: str = Query(
-        FUND_FLOW_CONCEPT, description="ths_concept=同花顺概念 ths_industry=同花顺行业"
+        TAXONOMY_SELECTED, description="kph_selected=精选板块 kph_industry=行业板块"
     ),
     trade_date: date = Depends(resolve_trade_date),
     session: Session = Depends(get_db),
 ) -> SectorFundFlowOut:
-    """板块资金流（**同花顺**口径，日频）。
+    """板块资金流（**开盘啦口径**，与站内其它板块页同一套名字）。
 
-    数据来自 `sector_fund_flow` 表（每天 17:30 采一次，见 `jobs/collect_flows.py`）。
-    **没有历史可补** —— 来源只给「即时」窗口，所以最早只能到开始采集那一天，
-    更早的日期返回空列表而不是 404，页面好统一处理。
+    **净流入 = 该板块成分股的「主力净流入」之和**：成分股名单来自开盘啦
+    （`board_members`），逐股净流入来自 iFinD（`stock_dde.net_inflow`），
+    每天收盘后由 `jobs/collect_board_flow.py` 算一次写进 `sector_daily.net_inflow`。
 
-    金额单位是**亿元**（前端也是按亿显示，别在某一层偷偷换成元）。
+    ⚠️ 这是**本项目自己定义**的口径，与开盘啦 App 里它的板块资金流**不保证相等**
+    （那个是它自研口径，我们连字段含义都验不出来，见 `sources/kaipanhong.py`）。
+    ⚠️ **不拆「流入 / 流出」**：来源没有这个拆法，所以 `in_amount` / `out_amount`
+    一律空着（页面显示 `—`），别拿净额去凑。
+    ⚠️ 只有「开始算的那天起」才有数：`net_inflow` 逐日累积，补不了历史。
+
+    金额单位是**亿元**（库里存元，这里换算；前端也按亿显示）。
     """
     if taxonomy not in FUND_FLOW_TAXONOMIES:
         raise HTTPException(
@@ -625,28 +670,42 @@ def fund_flow(
             detail=f"taxonomy 只能是 {list(FUND_FLOW_TAXONOMIES)}，收到 {taxonomy}",
         )
 
-    rows = session.scalars(
-        select(SectorFundFlow)
-        .where(
-            SectorFundFlow.taxonomy == taxonomy,
-            SectorFundFlow.trade_date == trade_date,
-        )
-        # 净额为空的沉底：它们排在哪里都不对，不如放在末尾
-        .order_by(SectorFundFlow.net_amount.desc().nullslast(), SectorFundFlow.name)
-    ).all()
+    # 数据日按「最近算过净流入的一天」回落（见 `_latest_flow_date`）：请求的那天
+    # 可能还没算（换口径当天、或聚合被配额让路跳过），那就显示最近那天的
+    day = _latest_flow_date(session, taxonomy, trade_date) or trade_date
+
+    # 只列**算出净流入的板块**：没有净流入的板块放在「资金流榜」里没有意义
+    # （成分股与行情对不上时它会是空值，那种情况在 `collect_board_flow` 里记日志）
+    rows = [
+        row
+        for row in session.scalars(
+            select(SectorDaily)
+            .where(
+                SectorDaily.taxonomy == taxonomy,
+                SectorDaily.trade_date == day,
+                SectorDaily.net_inflow.is_not(None),
+            )
+            .order_by(SectorDaily.net_inflow.desc(), SectorDaily.name)
+        ).all()
+        if not _excluded(row.name or "")
+    ]
 
     return SectorFundFlowOut(
-        trade_date=trade_date,
+        # 返回**实际数据日**（可能早于请求日）—— 前端据此在面板上标出来
+        trade_date=day,
         taxonomy=taxonomy,
-        taxonomy_label=FUND_FLOW_TAXONOMIES[taxonomy],
+        taxonomy_label=FUND_FLOW_LABELS[taxonomy],
+        # 只数**有净流入的板块**，与列表长度一致 —— 按板块总数报会跟列表对不上，
+        # 一眼就像漏了东西
         total=len(rows),
         items=[
             FundFlowItem(
-                name=row.name,
+                name=row.name or row.sector_code,
                 pct_chg=row.pct_chg,
-                in_amount=row.in_amount,
-                out_amount=row.out_amount,
-                net_amount=row.net_amount,
+                in_amount=None,
+                out_amount=None,
+                # 库里是**元**，这里换亿元（`FundFlowItem` 的注释写死了单位）
+                net_amount=round(row.net_inflow / 1e8, 4),
                 member_count=row.member_count,
                 leader_name=row.leader_name,
                 leader_pct_chg=row.leader_pct_chg,
@@ -667,7 +726,7 @@ FUND_FLOW_TOP_MAX = 16
 @router.get("/fund-flow/history", response_model=FundFlowHistoryOut)
 def fund_flow_history(
     taxonomy: str = Query(
-        FUND_FLOW_CONCEPT, description="ths_concept=同花顺概念 ths_industry=同花顺行业"
+        TAXONOMY_SELECTED, description="kph_selected=精选板块 kph_industry=行业板块"
     ),
     days: int = Query(
         FUND_FLOW_HISTORY_DEFAULT, ge=2, le=120, description="窗口（交易日）"
@@ -678,12 +737,12 @@ def fund_flow_history(
     trade_date: date = Depends(resolve_trade_date),
     session: Session = Depends(get_db),
 ) -> FundFlowHistoryOut:
-    """各板块的**近 N 日累计净流入**曲线。
+    """各板块的**近 N 日累计净流入**曲线（开盘啦口径，与 `/fund-flow` 同源）。
 
     累计口径（三条规则见 `schemas.FundFlowSeries`）：**起点之前是 null、中间缺日顺延**。
-    这几条不是细节 —— 来源每天返回的板块集合会差几十个，不处理的话曲线会凭空归零或断裂。
+    这几条不是细节 —— 板块集合每天会有出入，不处理的话曲线会凭空归零或断裂。
 
-    窗口里到底有几天由库决定（这个来源没有历史可补、只能从采集那天攒），所以
+    窗口里到底有几天由库决定（`net_inflow` 从开始算那天起才有、补不了历史），所以
     `days < 2` 时前端会提示「一个点连不成线」而不是画一张空图。
     """
     if taxonomy not in FUND_FLOW_TAXONOMIES:
@@ -695,18 +754,19 @@ def fund_flow_history(
     # 升序给前端画图（左旧右新）；`resolve_trade_date` 兜住「日期还没采到」的情况
     dates = list(
         session.scalars(
-            select(SectorFundFlow.trade_date)
+            select(SectorDaily.trade_date)
             .where(
-                SectorFundFlow.taxonomy == taxonomy,
-                SectorFundFlow.trade_date <= trade_date,
+                SectorDaily.taxonomy == taxonomy,
+                SectorDaily.trade_date <= trade_date,
+                SectorDaily.net_inflow.is_not(None),
             )
             .distinct()
-            .order_by(SectorFundFlow.trade_date.desc())
+            .order_by(SectorDaily.trade_date.desc())
             .limit(days)
         )
     )[::-1]
 
-    label = FUND_FLOW_TAXONOMIES[taxonomy]
+    label = FUND_FLOW_LABELS[taxonomy]
     if not dates:
         return FundFlowHistoryOut(
             taxonomy=taxonomy, taxonomy_label=label, dates=[], series=[], days=0
@@ -714,20 +774,26 @@ def fund_flow_history(
 
     rows = session.execute(
         select(
-            SectorFundFlow.trade_date,
-            SectorFundFlow.name,
-            SectorFundFlow.net_amount,
+            SectorDaily.trade_date,
+            SectorDaily.name,
+            SectorDaily.net_inflow,
         ).where(
-            SectorFundFlow.taxonomy == taxonomy,
-            SectorFundFlow.trade_date.in_(dates),
-            SectorFundFlow.net_amount.is_not(None),
+            SectorDaily.taxonomy == taxonomy,
+            SectorDaily.trade_date.in_(dates),
+            SectorDaily.net_inflow.is_not(None),
         )
     ).all()
 
-    # 名字 → {交易日: 当日净额}。这里用名字当键（来源不给代码），同一天同名只会有一行
+    # 名字 → {交易日: 当日净额}。用名字当键是为了与前端图例一致（板块页有代码，
+    # 但曲线只按名字画）；同一天同名只会有一行（`sector_daily` 的主键含 sector_code）
     per_board: dict[str, dict[date, float]] = {}
     for day, name, net in rows:
-        per_board.setdefault(name, {})[day] = net
+        # 与资金流榜同一份名单：业绩/地域这类「筛出来的集合」不进曲线
+        # （曲线按「累计净额的绝对值」取前几名，它们成员多、必然霸榜）
+        if _excluded(name or ""):
+            continue
+        # 库里是**元**，曲线按亿元画（`FundFlowSeries` 的注释写死了单位）
+        per_board.setdefault(name, {})[day] = net / 1e8
 
     curves: list[tuple[float, FundFlowSeries]] = []
     for name, by_date in per_board.items():

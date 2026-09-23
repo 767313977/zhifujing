@@ -228,10 +228,12 @@ export interface SectorMembers {
   members: SectorMemberItem[]
 }
 
-/** 板块资金流向的口径。**与 SectorTaxonomy 是两套名字**（同花顺概念 vs 开盘红精选） */
-export type FundFlowTaxonomy = 'ths_concept' | 'ths_industry'
-
-/** 资金流里的一行。金额单位是**亿元**（后端注释里也写死了这件事） */
+/**
+ * 资金流里的一行。金额单位是**亿元**（后端注释里也写死了这件事）。
+ *
+ * `in_amount` / `out_amount` 恒为 null：开盘啦口径下净流入是「成分股主力净流入之和」，
+ * 没有「流入 / 流出」这个拆法，所以面板上那两行不显示（不是「数据缺失」）。
+ */
 export interface FundFlowItem {
   name: string
   pct_chg: number | null
