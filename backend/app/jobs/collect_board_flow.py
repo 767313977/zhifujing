@@ -160,7 +160,17 @@ def aggregate(day: date, settings: Settings | None = None) -> dict:
             unmatched.append(f"{code} {name}")
             continue
         rows.append(
-            {"trade_date": day, "sector_code": code, "net_inflow": sum(hit)}
+            {
+                "trade_date": day,
+                "sector_code": code,
+                "net_inflow": sum(hit),
+                # 成分股数**顺手存下来**：这一步本来就要拉全部板块的成分名单（每天 360 多次
+                # 请求），不存等于白拉。它是「宽泛板块」的判据 —— 页面靠它剔掉成分股特别多的
+                # 板块（见 `api/sector.py` 的 `_too_broad`），也顺带让 tooltip 能显示「成分 N 只」。
+                # ⚠️ 它来自 `member_day`（可能是上一交易日，见模块说明），当天名单没更新时
+                # 会差一天 —— 板块成员变动很慢，差一天不影响「宽泛 / 精准」的判断
+                "member_count": len(codes),
+            }
         )
 
     with session_scope() as session:

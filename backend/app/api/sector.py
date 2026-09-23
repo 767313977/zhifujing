@@ -22,6 +22,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
+from app.config import get_settings
 from app.db import get_db, session_scope
 from app.jobs.collect_sectors import SectorCollector
 from app.models import (
@@ -74,6 +75,75 @@ COMPARE_LIMIT = 8
 # 对比图的归一化基准
 COMPARE_BASE = 100.0
 
+# 地域里原先只滤带「省 / 自治区 / 自贸区」的，直辖市与「深圳 / 武汉」这类没滤 ——
+# 理由是「它们排不进当天前 10（实测最高的地域板块「广东省」排第 15）」，而矩阵每天只看
+# 前 10。**2026-09-23 这个前提不成立了**：加了成分股数阈值之后大板块被剔走，地域板块
+# 立刻浮上净流出榜（实测「北京市 -50.9 亿」进了前 10），所以这里补全成一份完整的名单。
+#
+# ⚠️ 三组分开写是为了各自好核对：
+#   1. 行政区划后缀（省 / 自治区 / 自贸区）
+#   2. 直辖市全名 —— **不要**用「市」这种单字做子串匹配：`智慧城市` 会被误伤
+#   3. 裸写的省份名与主要城市、区域经济圈（开盘啦有的省份就是裸写：「浙江」「海南」）
+#
+# ⚠️ 刻意**不收**「西藏」：`西藏水电站` 是雅下水电那个题材，名字带「西藏」但不是地域板块
+#   （「西藏自治区」已经被第 1 组的「自治区」挡住）。
+REGION_EXCLUDE = (
+    "省",  # 广东省 / 江苏省 …
+    "自治区",  # 内蒙古自治区 / 广西壮族自治区 …
+    "自贸区",  # 天津自贸区 / 黑龙江自贸区
+    "北京市",
+    "上海市",
+    "天津市",
+    "重庆市",
+    "河北",
+    "山西",
+    "辽宁",
+    "吉林",
+    "黑龙江",
+    "江苏",
+    "浙江",
+    "安徽",
+    "福建",
+    "江西",
+    "山东",
+    "河南",
+    "湖北",
+    "湖南",
+    "广东",
+    "广西",
+    "海南",
+    "四川",
+    "贵州",
+    "云南",
+    "陕西",
+    "甘肃",
+    "青海",
+    "宁夏",
+    "新疆",
+    "台湾",
+    "内蒙古",
+    "深圳",
+    "武汉",
+    "成都",
+    "杭州",
+    "南京",
+    "广州",
+    "西安",
+    "苏州",
+    "青岛",
+    "长沙",
+    "郑州",
+    "合肥",
+    "厦门",
+    "雄安",
+    "粤港澳",
+    "长三角",
+    "京津冀",
+    "成渝",
+    "海峡两岸",
+    "振兴东北",
+)
+
 # 按**成交额或涨幅**排时要先剔掉的「业绩 / 身份 / 地域类」板块。
 #
 # 它们不是产业题材，而是「按财务或身份筛出来的集合」：业绩增长 / 中报增长几乎等于
@@ -93,29 +163,25 @@ COMPARE_BASE = 100.0
 # 涨幅榜的榜首多是「霍乱概念 / 压缩机 / 转基因 / VPN / 银行」这类真题材，它们没有
 # 领涨股是因为**当天没有涨停股**，与伪板块无关。
 #
-# 地域里只滤带「省 / 自治区 / 自贸区」的，直辖市与「深圳 / 武汉」这类没滤 ——
-# 它们排不进当天前 10（实测最高的地域板块「广东省」排第 15），而矩阵每天只看前 10。
+# 地域板块见上面的 `REGION_EXCLUDE`（2026-09-23 从「只滤部分」补成完整名单）。
 #
 # 2026-09-23 用户要求「把并购重组这种特别宽泛的板块也剔掉，留下仪器仪表这种精准的」，
 # 于是并购重组 / 股权转让 / 举牌**从「保留」改成「剔除」** —— 当初留它们的理由是
 # 「同样是筛出来的集合，但在 A 股是真会炒的题材」，用下来看它们天天占着资金流榜的
 # 位置、却看不出任何产业方向，还是剔掉更干净。
 #
-# ⚠️ 顺带记一个**被否掉的方案**：用「成分股数量」当判据行不通。实测 09-22 的名单，
-# 举牌只有 90 只、并购重组 741 只，而军工 738 / 医药 693 / 通信 751 一样多 ——
-# 按数量卡会先误伤真行业；「宽泛」不是人多，而是「按事件或身份筛出来的集合、跨行业」，
-# 这件事只能用名单表达。
-#
 # 2026-09-23 起**资金流榜也用它**（那天全站板块口径统一到开盘啦，两处终于共用一套
 # 板块名）：换口径后资金流的净流出榜立刻被「中报增长 -282亿 / 业绩增长 -279亿」这类
 # 业绩板块霸榜 —— 与融资融券/沪深股通当年霸榜是同一个毛病：它们成员太多、是分类
 # 而不是题材。所以常量名从 ROTATION_EXCLUDE 改成 BOARD_EXCLUDE（两个页面共用的名单）。
 #
-# 名单 = 下面这串「业绩 / 身份 / 地域类」+ `models.NON_THEME_EXCLUDE`（资金通道 /
-# 国家队持股那四个关键词）。分开写不是为了省行数：那四个**采集时也要用**（入库前就
-# 剔），所以它们的家在 models；那边采完就不写库，这边是查询侧再兜一道。
-# 实测 2026-09-23：开盘啦的名单里根本没有这四个关键词的板块（374 个板块 / 9734 条
-# 成分股命中 0），并进来纯粹是防「哪天它冒出来」。
+# 名单 = 下面这串「业绩 / 身份 / 事件类」+ `REGION_EXCLUDE`（地域）+ `models.NON_THEME_EXCLUDE`
+# （资金通道 / 国家队持股那四个）。后两个分开写不是为了省行数：
+#   - 地域那份要单独核对（名单长、还要防「智慧城市」这种误伤）
+#   - 资金通道那四个**采集时也要用**（入库前就剔），所以它们的家在 models
+#
+# ⚠️ 这里只管「**按名字**能判出来的」，成分股数那种量纲判据在 `_too_broad` 里
+# （2026-09-23 用户明确要的：成分股特别多的宽泛板块也剔掉）。
 BOARD_EXCLUDE = (
     "增长",  # 中报增长 / 三季报增长 / 业绩增长
     "预增",  # 年报预增
@@ -138,10 +204,7 @@ BOARD_EXCLUDE = (
     "北交所",
     "次新",
     "ST",
-    "省",
-    "自治区",
-    "自贸区",
-) + NON_THEME_EXCLUDE
+) + REGION_EXCLUDE + NON_THEME_EXCLUDE
 
 # 轮动矩阵可选的排序指标。
 #
@@ -634,13 +697,27 @@ FUND_FLOW_LABELS = {
 
 
 def _excluded(name: str) -> bool:
-    """这条板块该不该从资金流榜里剔掉（业绩 / 地域 / 板块属性这类「筛出来的集合」）。
+    """这条板块该不该从资金流榜里剔掉（业绩 / 地域 / 事件这类「筛出来的集合」）。
 
     名单与板块轮动矩阵**共用一份**（`BOARD_EXCLUDE`）—— 统一到开盘啦口径之后两处
     终于是一套板块名，没有理由再各留一份。理由也相同：它们成员多、是分类不是题材，
     实测换口径当天「中报增长 / 业绩增长」以 -282亿 / -279亿 霸占净流出榜前两名。
     """
     return any(key in name for key in BOARD_EXCLUDE)
+
+
+def _too_broad(member_count: int | None) -> bool:
+    """成分股太多 → 这个板块是「大而泛的集合」，不是题材（阈值见 `Settings.board_flow_max_members`）。
+
+    与 `_excluded`（按名字判）是**两套并行的判据**：名字判据管得住「举牌」这种成员很少
+    但同样宽泛的，数量判据管得住「人工智能」这种名字看不出宽窄的。
+
+    没有这个数的行**放行** —— 那个数从 2026-09-23 才有（`collect_board_flow` 顺手存的），
+    缺数据不该被静默剔掉（页面会因此少东西，而看不出为什么）。
+    """
+    if member_count is None:
+        return False
+    return member_count > get_settings().board_flow_max_members
 
 
 def _latest_flow_date(session: Session, taxonomy: str, target: date) -> date | None:
@@ -708,7 +785,7 @@ def fund_flow(
             )
             .order_by(SectorDaily.net_inflow.desc(), SectorDaily.name)
         ).all()
-        if not _excluded(row.name or "")
+        if not _excluded(row.name or "") and not _too_broad(row.member_count)
     ]
 
     return SectorFundFlowOut(
@@ -719,6 +796,9 @@ def fund_flow(
         # 只数**有净流入的板块**，与列表长度一致 —— 按板块总数报会跟列表对不上，
         # 一眼就像漏了东西
         total=len(rows),
+        # 面板上要如实写出「剔掉了成分股过多的板块」以及那个阈值 —— 阈值是配置项，
+        # 前端硬写一个数就会在改配置后撒谎
+        excluded_members_over=get_settings().board_flow_max_members,
         items=[
             FundFlowItem(
                 name=row.name or row.sector_code,
@@ -798,6 +878,7 @@ def fund_flow_history(
             SectorDaily.trade_date,
             SectorDaily.name,
             SectorDaily.net_inflow,
+            SectorDaily.member_count,
         ).where(
             SectorDaily.taxonomy == taxonomy,
             SectorDaily.trade_date.in_(dates),
@@ -808,10 +889,10 @@ def fund_flow_history(
     # 名字 → {交易日: 当日净额}。用名字当键是为了与前端图例一致（板块页有代码，
     # 但曲线只按名字画）；同一天同名只会有一行（`sector_daily` 的主键含 sector_code）
     per_board: dict[str, dict[date, float]] = {}
-    for day, name, net in rows:
-        # 与资金流榜同一份名单：业绩/地域这类「筛出来的集合」不进曲线
-        # （曲线按「累计净额的绝对值」取前几名，它们成员多、必然霸榜）
-        if _excluded(name or ""):
+    for day, name, net, member_count in rows:
+        # 与资金流榜同一份判据：业绩/地域这类「筛出来的集合」，以及成分股过多的宽泛板块
+        # 都不进曲线（曲线按「累计净额的绝对值」取前几名，它们必然霸榜）
+        if _excluded(name or "") or _too_broad(member_count):
             continue
         # 库里是**元**，曲线按亿元画（`FundFlowSeries` 的注释写死了单位）
         per_board.setdefault(name, {})[day] = net / 1e8
@@ -914,6 +995,7 @@ def fund_flow_matrix(
             SectorDaily.name,
             SectorDaily.pct_chg,
             SectorDaily.net_inflow,
+            SectorDaily.member_count,
         )
         .where(
             SectorDaily.taxonomy == taxonomy,
@@ -925,12 +1007,12 @@ def fund_flow_matrix(
 
     # 每天只留前 top 个，截断放在 Python 里（与 `/rotation` 同一个取舍：量小、好读）
     grouped: dict[date, list[FundFlowMatrixCell]] = {day: [] for day in dates}
-    for day, code, name, pct_chg, net in rows:
+    for day, code, name, pct_chg, net, member_count in rows:
         bucket = grouped[day]
         if len(bucket) >= top:
             continue
-        # 与资金流榜、曲线同一份名单（业绩 / 地域这类「筛出来的集合」不进榜）
-        if _excluded(name or ""):
+        # 与资金流榜、曲线同一套判据（名字名单 + 成分股数阈值）
+        if _excluded(name or "") or _too_broad(member_count):
             continue
         bucket.append(
             FundFlowMatrixCell(

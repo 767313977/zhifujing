@@ -316,12 +316,18 @@ class SectorFundFlowOut(BaseModel):
     `taxonomy` 与板块页**同一套**（`kph_selected` 精选 / `kph_industry` 行业）——
     2026-09-23 之前这里是同花顺口径，与站内板块不是一套名字，换掉之后
     `name` 可以直接和板块页的板块对上（但仍然只给名字、不给代码：曲线按名字画）。
+
+    名单已剔掉两类板块：`BOARD_EXCLUDE` 关键词命中的（业绩 / 地域 / 事件类）与
+    **成分股多于 `excluded_members_over` 的宽泛板块**（后者是量纲判据，阈值是配置项，
+    所以随响应回传，见 `Settings.board_flow_max_members`）。
     """
 
     trade_date: date
     taxonomy: str
     taxonomy_label: str
     total: int
+    # 成分股超过这个数的板块已被剔掉（配置项，前端据它写文案，别硬写数字）
+    excluded_members_over: int
     # 已按净额降序（净流入在前），前端自己切 top / bottom
     items: list[FundFlowItem]
 

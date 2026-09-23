@@ -221,6 +221,15 @@ class SectorDaily(Base):
     顶部说明）。所以 `net_inflow` / `up_count` / `down_count` / `member_count` /
     `leader_name` / `leader_pct_chg` 在切换后是**大片 None**，页面显示 `—` ——
     宁可空着，也不填一个猜的数。
+
+    ⚠️ 但其中**两列的写入方不是采集器**，用它之前要知道（它们是「别的 job 往同一张表
+    补的一列」，而本表的每日采集是整天替换 —— 采集器必须把它们原样带回去，
+    见 `jobs/collect_sectors._kept_net_inflow`）：
+
+    - `net_inflow`：`jobs/collect_board_flow.py` 算的（板块成分股 × 逐股主力净流入）
+    - `member_count`：同一个 job 顺手存的（它本来就要拉全部板块的成分名单，
+      不存等于白拉）。**它是「宽泛板块」的判据** —— 资金流三个视图按
+      `Settings.board_flow_max_members` 把成员过多的板块剔掉
     """
 
     __tablename__ = "sector_daily"
