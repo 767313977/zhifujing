@@ -1,4 +1,9 @@
-"""板块资金流采集（**同花顺**口径，日频）。
+"""板块资金流采集（**同花顺**口径，日频）。**已停用（2026-09-23）**。
+
+⚠️ **这个采集器不再进采集链** —— 全站板块口径统一到开盘啦，板块资金流改成
+「开盘啦成分股 × 逐股主力净流入」自己算（`jobs/collect_board_flow.py`，见设计文档 8.54）。
+保留代码与 `sector_fund_flow` 表只是**留一手**：新版跑几天确认没问题之后再删。
+`collect_daily.run()` 里的 `flows` 步骤已经摘掉，所以它不会再被定时跑到。
 
 零 iFinD 配额（走同花顺数据中心，经 akshare），**每天只有 2 个请求**（概念 + 行业），
 成本可以忽略，所以和涨停原因一样排在配额让路判断之外。
@@ -22,6 +27,7 @@ from app.config import Settings, get_settings
 from app.db import session_scope
 from app.models import (
     FUND_FLOW_CONCEPT,
+    FUND_FLOW_EXCLUDE,
     FUND_FLOW_INDUSTRY,
     SectorFundFlow,
 )
@@ -62,11 +68,17 @@ class FlowCollector:
         records: list[dict] = []
         seen: set[str] = set()
         net_bad = 0
+        skipped = 0
         for item in raw:
             name = str(item.get("行业") or "").strip()
             if not name or name in seen:
                 continue
             seen.add(name)
+            # 资金通道 / 国家队持股这类**不是题材**的口径标签直接不落库，
+            # 否则融资融券、沪深股通会天天霸着流出榜（见 `FUND_FLOW_EXCLUDE`）
+            if any(key in name for key in FUND_FLOW_EXCLUDE):
+                skipped += 1
+                continue
             record = {
                 "taxonomy": taxonomy,
                 "name": name,
@@ -104,6 +116,12 @@ class FlowCollector:
                 taxonomy,
                 len(records),
                 low,
+            )
+        if skipped:
+            logger.info(
+                "%s 跳过 %d 个非题材标签（资金通道 / 国家队持股，见 `FUND_FLOW_EXCLUDE`）",
+                taxonomy,
+                skipped,
             )
         return records
 

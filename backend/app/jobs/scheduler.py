@@ -149,6 +149,10 @@ class DailyScheduler:
         # DDE 扫描排最后：它是这条链上**唯一要花十几二十次调用**的一步（前缀 × 单日），
         # 前面几步里有零配额的，先跑完再说
         self._scan_dde(today)
+        # 板块资金流排在**最末尾**：它要用上面 DDE 那一步的逐股净流入，自己还要走
+        # 370 多次开盘啦请求（约 2~3 分钟），零 iFinD 配额所以不受配额让路影响 ——
+        # 依赖缺失时它自己会跳过（不写一堆 0，见 `collect_board_flow` 的守卫）
+        self._collect_board_flow(today)
         self._maybe_remind_calibration(today)
 
     def _scan_patterns(self, trade_date: date) -> None:
@@ -328,6 +332,29 @@ class DailyScheduler:
             logger.exception("DDE 扫描失败")
             return
         logger.info("DDE 扫描 %s：%s", trade_date, result)
+
+    def _collect_board_flow(self, trade_date: date) -> None:
+        """板块资金流：开盘啦成分股 × 逐股净流入（见 `collect_board_flow` 模块）。
+
+        零 iFinD 配额，但要 2~3 分钟、且**依赖 `_scan_dde` 的结果** —— 依赖不在时
+        它自己会跳过并记日志（不写一堆 0）。失败只记日志，不影响别的步骤。
+        """
+        from app.jobs.collect_board_flow import aggregate
+
+        try:
+            result = aggregate(trade_date, self.settings)
+        except Exception:  # noqa: BLE001 - 板块资金流是增强，不该影响调度
+            logger.exception("板块资金流聚合失败")
+            return
+        logger.info(
+            "板块资金流 %s：%s 个板块 → 写 %s 行（名单 %s，逐股覆盖 %s 只，用时 %ss）",
+            trade_date,
+            result.get("boards"),
+            result.get("written"),
+            result.get("member_date"),
+            result.get("stocks"),
+            result.get("cost_seconds"),
+        )
 
     def _maybe_remind_calibration(self, trade_date: date) -> None:
         """每隔 `CALIBRATION_INTERVAL_DAYS` 天提醒一次配额对账。

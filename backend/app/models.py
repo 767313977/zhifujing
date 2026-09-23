@@ -36,6 +36,27 @@ FUND_FLOW_CONCEPT = "ths_concept"
 FUND_FLOW_INDUSTRY = "ths_industry"
 FUND_FLOW_TAXONOMIES = (FUND_FLOW_CONCEPT, FUND_FLOW_INDUSTRY)
 
+# 板块资金流里**不该当题材统计**的名字（**子串匹配**，与 `api/sector.py` 的
+# `BOARD_EXCLUDE` 同一套写法）。
+#
+# 这些不是题材，而是「资金通道 / 国家队持股」这类**口径标签**：融资融券与沪深股通
+# 天然是全市场口径，净额动辄几百亿 —— 实测 2026-09-22 融资融券 -424.3 亿、
+# 深股通 -280.3 亿，长期霸占流出榜前三；国家大基金 / 证金持股这类持股标签同理，
+# 它们把榜单和「累计净流入」曲线全带偏。
+#
+# 所以**采集时就不写库**（`jobs/collect_flows.py`），查询时也一并过滤
+# （`api/sector.py`）—— 后者是为了把开始过滤之前已经落库的那些也挡住，
+# 否则接下来 30 天的累计曲线里还会一直挂着它们。
+#
+# 刻意**不动**的：举牌 / 并购重组 / 股权转让 / 国企改革 —— 它们同样是「筛出来的集合」，
+# 但在 A 股是真会炒的题材（与 `ROTATION_EXCLUDE` 保留它们的理由一致）。
+FUND_FLOW_EXCLUDE = (
+    "融资融券",
+    "股通",  # 沪股通 / 深股通 / 港股通
+    "国家大基金",
+    "证金持股",
+)
+
 
 class TradeCalendar(Base):
     """交易日历。iFinD 的历史行情会返回周末行，必须以此表过滤。"""
@@ -307,6 +328,11 @@ class LimitReason(Base):
 
 class SectorFundFlow(Base):
     """板块资金流（**同花顺**口径，日频快照）。
+
+    ⚠️ **已不再是读取路径（2026-09-23）**：全站板块口径统一到开盘啦之后，板块资金流
+    改成「开盘啦成分股 × 逐股主力净流入」，落在 `sector_daily.net_inflow`（见设计文档
+    8.54 与 `jobs/collect_board_flow.py`）。本表连着 `jobs/collect_flows.py` 一起
+    **留一手** —— 新版跑几天确认没问题之后再一并删掉。
 
     来源是同花顺数据中心的「概念资金流 / 行业资金流」（经 `sources/akshare_source.py`），
     走 `data.10jqka.com.cn` —— **不是**东财 `push2` 集群（那个集群实测会触发本机 IP
