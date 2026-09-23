@@ -35,12 +35,12 @@ from datetime import date
 from sqlalchemy import select
 
 from app.config import Settings, get_settings
-from app.db import session_scope, upsert_fill
+from app.db import session_scope, upsert_fill, upsert_many
 from app.jobs.collect_universe import crawl_prefixes
 from app.jobs.push_brief import already_pushed, send_markdown
 from app.models import CollectLog, StockBasic, StockDaily, StockDde, TradeCalendar
 from app.sources.ifind import IfindClient
-from app.sources.markdown_table import pick_float
+from app.sources.markdown_table import pick_float, pick_text
 
 logger = logging.getLogger(__name__)
 
@@ -100,42 +100,57 @@ def collect_market(day: date) -> tuple[int, int]:
         IfindClient(), lambda prefix: _query(prefix, day), str(day)
     )
     rows: list[dict] = []
+    named: list[dict] = []
     for code, item in raw.items():
         # 列名形如 `区间dde大单净额[20260916-20260922]`，用关键词包含匹配取值
         value = pick_float(item, "区间dde", "dde", "DDE")
+        # 名字是**同一次调用**带回来的（列名「股票简称」），不额外花钱。顺手存进
+        # `stock_basic`：这条路径覆盖全市场，而 `stock_daily` 只有流动性池 + 池外
+        # 涨停股 —— 池外那一千来只在日线里查不到名字，推送与 DDE 榜上就只剩代码
+        name = pick_text(item, "股票简称", "证券简称", "简称")
+        if name:
+            named.append({"code": code, "name": name})
         if value is None:
             continue
         rows.append({"trade_date": day, "code": code, "dde": value})
 
     with session_scope() as session:
         written = upsert_fill(session, StockDde, rows)
-    logger.info("DDE 全市场抓取 %s：落库 %d 只（%d 次调用）", day, written, calls)
+        upsert_many(session, StockBasic, named)
+    logger.info(
+        "DDE 全市场抓取 %s：落库 %d 只 / 名称 %d 条（%d 次调用）",
+        day,
+        written,
+        len(named),
+        calls,
+    )
     return written, calls
 
 
 def _names(session, codes: set[str]) -> dict[str, str | None]:
-    """命中票的名字。`stock_dde` 不存名字，从日线里取，取不到再退回基础信息表。"""
+    """命中票的名字。
+
+    先查 `stock_basic` —— DDE 抓取每天把全市场简称写进去（见 `StockBasic` 的说明），
+    它是一张小表、一次读完就行；库里还没有的再退回 `stock_daily`。
+
+    顺序是刻意的：`stock_daily` 那条路**没有 trade_date 过滤**（名字是代码的属性，
+    不是某一天的属性），于是每个代码要扫过它全部历史行，几百个代码就是几十万行 ——
+    拿它当主路径会让每次推送都白扫一遍。
+    """
     if not codes:
         return {}
-    names: dict[str, str | None] = dict(
-        session.execute(
-            select(StockDaily.code, StockDaily.name).where(
-                StockDaily.code.in_(codes), StockDaily.name.is_not(None)
-            )
-        ).all()  # type: ignore[arg-type]
+    named: dict[str, str | None] = dict(
+        session.execute(select(StockBasic.code, StockBasic.name)).all()  # type: ignore[arg-type]
     )
-    missing = codes - set(names)
+    missing = {code for code in codes if not named.get(code)}
     if missing:
-        names.update(
-            dict(
-                session.execute(
-                    select(StockBasic.code, StockBasic.name).where(
-                        StockBasic.code.in_(missing)
-                    )
-                ).all()  # type: ignore[arg-type]
+        for code, name in session.execute(
+            select(StockDaily.code, StockDaily.name).where(
+                StockDaily.code.in_(missing), StockDaily.name.is_not(None)
             )
-        )
-    return names
+        ).all():
+            named.setdefault(code, name)
+    return {code: named.get(code) for code in codes}
 
 
 def scan(day: date) -> list[dict]:
@@ -199,10 +214,15 @@ def build_markdown(day: date, hits: list[dict]) -> str:
         "",
     ]
     for item in hits:
-        parts = [
-            f"**{item['name'] or item['code']}** {item['code']}",
-            f"5日DDE {_amount(item['dde'])}",
-        ]
+        # 没名字时**只打印一次代码**，别印两遍：池外的票（每天一千来只）名字要等
+        # `collect_market` 存进 `stock_basic` 才有，历史上推出来每行都是
+        # 「688084 688084 · 5日DDE …」，看着像坏了
+        label = (
+            f"**{item['name']}** {item['code']}"
+            if item["name"]
+            else f"**{item['code']}**"
+        )
+        parts = [label, f"5日DDE {_amount(item['dde'])}"]
         if item["net_inflow"] is not None:
             parts.append(f"净流入 {_amount(item['net_inflow'])}")
         lines.append("- " + " · ".join(parts))
