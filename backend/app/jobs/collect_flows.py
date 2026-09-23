@@ -27,8 +27,8 @@ from app.config import Settings, get_settings
 from app.db import session_scope
 from app.models import (
     FUND_FLOW_CONCEPT,
-    FUND_FLOW_EXCLUDE,
     FUND_FLOW_INDUSTRY,
+    NON_THEME_EXCLUDE,
     SectorFundFlow,
 )
 from app.sources.akshare_source import AkshareSource
@@ -75,8 +75,8 @@ class FlowCollector:
                 continue
             seen.add(name)
             # 资金通道 / 国家队持股这类**不是题材**的口径标签直接不落库，
-            # 否则融资融券、沪深股通会天天霸着流出榜（见 `FUND_FLOW_EXCLUDE`）
-            if any(key in name for key in FUND_FLOW_EXCLUDE):
+            # 否则融资融券、沪深股通会天天霸着流出榜（见 `NON_THEME_EXCLUDE`）
+            if any(key in name for key in NON_THEME_EXCLUDE):
                 skipped += 1
                 continue
             record = {
@@ -119,7 +119,7 @@ class FlowCollector:
             )
         if skipped:
             logger.info(
-                "%s 跳过 %d 个非题材标签（资金通道 / 国家队持股，见 `FUND_FLOW_EXCLUDE`）",
+                "%s 跳过 %d 个非题材标签（资金通道 / 国家队持股，见 `NON_THEME_EXCLUDE`）",
                 taxonomy,
                 skipped,
             )

@@ -26,6 +26,7 @@ from app.db import get_db, session_scope
 from app.jobs.collect_sectors import SectorCollector
 from app.models import (
     LimitPool,
+    NON_THEME_EXCLUDE,
     SectorBasic,
     SectorDaily,
     SectorMember,
@@ -99,6 +100,12 @@ COMPARE_BASE = 100.0
 # 板块名）：换口径后资金流的净流出榜立刻被「中报增长 -282亿 / 业绩增长 -279亿」这类
 # 业绩板块霸榜 —— 与融资融券/沪深股通当年霸榜是同一个毛病：它们成员太多、是分类
 # 而不是题材。所以常量名从 ROTATION_EXCLUDE 改成 BOARD_EXCLUDE（两个页面共用的名单）。
+#
+# 名单 = 下面这串「业绩 / 身份 / 地域类」+ `models.NON_THEME_EXCLUDE`（资金通道 /
+# 国家队持股那四个关键词）。分开写不是为了省行数：那四个**采集时也要用**（入库前就
+# 剔），所以它们的家在 models；那边采完就不写库，这边是查询侧再兜一道。
+# 实测 2026-09-23：开盘啦的名单里根本没有这四个关键词的板块（374 个板块 / 9734 条
+# 成分股命中 0），并进来纯粹是防「哪天它冒出来」。
 BOARD_EXCLUDE = (
     "增长",  # 中报增长 / 三季报增长 / 业绩增长
     "预增",  # 年报预增
@@ -120,7 +127,7 @@ BOARD_EXCLUDE = (
     "省",
     "自治区",
     "自贸区",
-)
+) + NON_THEME_EXCLUDE
 
 # 轮动矩阵可选的排序指标。
 #
