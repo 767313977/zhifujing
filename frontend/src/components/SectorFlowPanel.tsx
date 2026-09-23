@@ -244,6 +244,13 @@ export default function SectorFlowPanel({
           开盘啦{label}口径（与站内板块同一套名字）· 单位亿元 ·
           净流入 = 成分股主力净流入之和 · 红=净流入 绿=净流出
         </span>
+        {/* 剔掉哪些板块要写出来：否则「人工智能怎么不见了」会被当成 bug。
+            阈值来自后端（配置项），这里不硬写数字 */}
+        {data && (
+          <span className="text-[12px] text-fg-dim">
+            已剔掉成分股 &gt; {data.excluded_members_over} 只的宽泛板块与业绩 / 地域 / 事件类板块
+          </span>
+        )}
         {/* 多日窗口：矩阵与累计曲线共用这一个值（两处都是「近 N 日」的视角）。
             放面板头部是因为矩阵在上面、曲线在下面，放哪一头都够不着另一头 */}
         <span className="text-[12px] text-fg-dim">多日</span>

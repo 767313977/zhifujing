@@ -250,6 +250,11 @@ export interface SectorFundFlowOut {
   taxonomy: string
   taxonomy_label: string
   total: number
+  /**
+   * 成分股多于这个数的板块已被后端剔掉（业绩 / 地域 / 事件类另有一份关键词名单）。
+   * 阈值是后端配置项，所以随响应回传 —— 前端硬写一个数字会在改配置后撒谎。
+   */
+  excluded_members_over: number
   /** 已按净额降序（净流入在前） */
   items: FundFlowItem[]
 }
