@@ -388,19 +388,17 @@ def build_brief(trade_date: date) -> str:
 # ------------------------------------------------------------------------ 发送
 
 
-def _send_via_webhook(markdown: str, webhook: str) -> dict:
-    """走群自定义机器人 webhook。
+def _post_card(webhook: str, elements: list[dict]) -> dict:
+    """把**卡片元素列表**发给群自定义机器人。
 
-    消息体用**卡片 + lark_md**，不是 `text`：简报里的 `**小节标题**` 在纯文本
-    消息里会连星号一起显示出来，卡片才能把它们渲染成加粗。
+    为什么收的是元素而不是一整段 markdown：飞书的**表格组件只能挂在卡片根节点**、
+    不能塞进 `div` 里 —— 带表格的推送只能自己拼 `elements`。
     """
     payload = {
         "msg_type": "interactive",
         "card": {
             "config": {"wide_screen_mode": True},
-            "elements": [
-                {"tag": "div", "text": {"tag": "lark_md", "content": markdown}}
-            ],
+            "elements": elements,
         },
     }
     try:
@@ -474,16 +472,27 @@ def _send_via_lark_cli(markdown: str, settings: Settings) -> dict:
     }
 
 
-def send_markdown(markdown: str, settings: Settings) -> dict:
-    """选一条通道把简报发出去。
+def send_elements(
+    elements: list[dict], settings: Settings, *, fallback_markdown: str = ""
+) -> dict:
+    """发一组**卡片元素**（可含表格）。
 
-    **webhook 优先**：群自定义机器人的地址是长期有效的，而 lark-cli 那条路
-    靠 Trae 注入的 2 小时 Token，随时可能失效。配了 webhook 就没必要再走它。
+    **webhook 优先**：群自定义机器人的地址长期有效，而 lark-cli 那条路靠 Trae 注入的
+    2 小时 Token，随时可能失效。没配 webhook 时退回 lark-cli 发 `fallback_markdown`
+    —— 那条通道只吃 markdown，**表格发不出去**，所以调用方要给一份文字版兜底。
     """
     webhook = settings.feishu_webhook_url.strip()
     if webhook:
-        return _send_via_webhook(markdown, webhook)
-    return _send_via_lark_cli(markdown, settings)
+        return _post_card(webhook, elements)
+    if not fallback_markdown:
+        return {"ok": False, "error": "没有配 webhook，且没有提供可退回的文字版"}
+    return _send_via_lark_cli(fallback_markdown, settings)
+
+
+def send_markdown(markdown: str, settings: Settings) -> dict:
+    """把一段 markdown 当**一个**卡片块发出去（简报、形态推送都走它）。"""
+    element = {"tag": "div", "text": {"tag": "lark_md", "content": markdown}}
+    return send_elements([element], settings, fallback_markdown=markdown)
 
 
 # ------------------------------------------------------------------ 去重与记录
