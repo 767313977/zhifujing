@@ -35,6 +35,9 @@ from app.models import (
 from app.schemas import (
     FundFlowHistoryOut,
     FundFlowItem,
+    FundFlowMatrixCell,
+    FundFlowMatrixColumn,
+    FundFlowMatrixOut,
     FundFlowSeries,
     RotationCell,
     RotationColumn,
@@ -828,6 +831,113 @@ def fund_flow_history(
         dates=dates,
         series=[series for _, series in curves[:top]],
         days=len(dates),
+    )
+
+
+# 资金流矩阵每列取几名。10 行与轮动矩阵一样「一屏看得完」，也是页面当日榜的条数
+FUND_FLOW_MATRIX_TOP = 10
+FUND_FLOW_MATRIX_TOP_MAX = 20
+# 矩阵最多几列。自算口径才刚开始攒（补不了历史），60 列是上限而不是目标
+FUND_FLOW_MATRIX_DAYS_MAX = 60
+
+
+@router.get("/fund-flow/matrix", response_model=FundFlowMatrixOut)
+def fund_flow_matrix(
+    taxonomy: str = Query(
+        TAXONOMY_SELECTED, description="kph_selected=精选板块 kph_industry=行业板块"
+    ),
+    days: int = Query(
+        FUND_FLOW_HISTORY_DEFAULT, ge=2, le=FUND_FLOW_MATRIX_DAYS_MAX, description="窗口（交易日）"
+    ),
+    top: int = Query(
+        FUND_FLOW_MATRIX_TOP, ge=3, le=FUND_FLOW_MATRIX_TOP_MAX, description="每天取前几名"
+    ),
+    trade_date: date = Depends(resolve_trade_date),
+    session: Session = Depends(get_db),
+) -> FundFlowMatrixOut:
+    """资金流多日矩阵：**列是交易日（从新到旧）、行是当日的净流入第 N 名**。
+
+    与 `/rotation` 是同一套版式（前端两块表上下对齐、同一天落在同一列），区别只在
+    排序指标固定为 `net_inflow` 降序 —— 也就是当日「净流入榜」的多日版。净流出不用
+    另开一张表：它是同一张榜的另一头，格子里那个数字的红绿已经说明了方向。
+
+    **列只取「真算过净流入的日子」**（`net_inflow is not null`），不是 `sector_daily`
+    有行情的每一天 —— 自算口径从 2026-09-23 才开始，按行情日历取会得到一串空列。
+
+    窗口里到底有几天由库决定（补不了历史），所以库里只有 1 天时这张表就 1 列，
+    一天天往后长。
+    """
+    if taxonomy not in FUND_FLOW_TAXONOMIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"taxonomy 只能是 {list(FUND_FLOW_TAXONOMIES)}，收到 {taxonomy}",
+        )
+
+    dates = list(
+        session.scalars(
+            select(SectorDaily.trade_date)
+            .where(
+                SectorDaily.taxonomy == taxonomy,
+                SectorDaily.trade_date <= trade_date,
+                SectorDaily.net_inflow.is_not(None),
+            )
+            .distinct()
+            .order_by(SectorDaily.trade_date.desc())
+            .limit(days)
+        )
+    )
+    label = FUND_FLOW_LABELS[taxonomy]
+    if not dates:
+        return FundFlowMatrixOut(
+            trade_date=trade_date,
+            taxonomy=taxonomy,
+            taxonomy_label=label,
+            top=top,
+            columns=[],
+        )
+
+    rows = session.execute(
+        select(
+            SectorDaily.trade_date,
+            SectorDaily.sector_code,
+            SectorDaily.name,
+            SectorDaily.pct_chg,
+            SectorDaily.net_inflow,
+        )
+        .where(
+            SectorDaily.taxonomy == taxonomy,
+            SectorDaily.trade_date.in_(dates),
+            SectorDaily.net_inflow.is_not(None),
+        )
+        .order_by(SectorDaily.trade_date.desc(), SectorDaily.net_inflow.desc())
+    ).all()
+
+    # 每天只留前 top 个，截断放在 Python 里（与 `/rotation` 同一个取舍：量小、好读）
+    grouped: dict[date, list[FundFlowMatrixCell]] = {day: [] for day in dates}
+    for day, code, name, pct_chg, net in rows:
+        bucket = grouped[day]
+        if len(bucket) >= top:
+            continue
+        # 与资金流榜、曲线同一份名单（业绩 / 地域这类「筛出来的集合」不进榜）
+        if _excluded(name or ""):
+            continue
+        bucket.append(
+            FundFlowMatrixCell(
+                code=code,
+                name=name or code,
+                # 库里是元，这里换亿元（`FundFlowMatrixCell` 写死了单位）
+                net_amount=round(net / 1e8, 4),
+                pct_chg=pct_chg,
+            )
+        )
+
+    return FundFlowMatrixOut(
+        # 实际数据日 = 最新那一列（前端据此标「数据日期」，同 `/fund-flow`）
+        trade_date=dates[0],
+        taxonomy=taxonomy,
+        taxonomy_label=label,
+        top=top,
+        columns=[FundFlowMatrixColumn(trade_date=day, cells=grouped[day]) for day in dates],
     )
 
 

@@ -358,6 +358,42 @@ class FundFlowHistoryOut(BaseModel):
     days: int
 
 
+class FundFlowMatrixCell(BaseModel):
+    """资金流矩阵里的一格：某天净流入的第 N 名。
+
+    `net_amount` 单位是**亿元**（与 `FundFlowItem` 同一套），正值是净流入。
+    带 `code` 是为了让格子能点进板块详情 —— 与轮动矩阵的 `RotationCell` 一样。
+    """
+
+    code: str
+    name: str
+    net_amount: float
+    pct_chg: float | None
+
+
+class FundFlowMatrixColumn(BaseModel):
+    """矩阵的一列 = 一个交易日的净流入前 N 名。"""
+
+    trade_date: date
+    cells: list[FundFlowMatrixCell]
+
+
+class FundFlowMatrixOut(BaseModel):
+    """板块资金流的**多日矩阵**：列是交易日（从新到旧）、行是当日的第 N 名。
+
+    与 `/rotation` 那张矩阵是同一套版式（前端两块表上下对齐、同一天落在同一列），
+    区别只在排序指标 —— 这里固定按 `net_inflow` **降序**（净流入榜的多日版；
+    净流出就是同一张榜的另一头，前端用红绿区分方向即可）。
+    """
+
+    # **实际数据日**（可能早于请求日，同 `/fund-flow`）；库里有几天由 columns 长度体现
+    trade_date: date
+    taxonomy: str
+    taxonomy_label: str
+    top: int
+    columns: list[FundFlowMatrixColumn]
+
+
 class SectorHeatItem(BaseModel):
     """板块热力里的一格。只带一眼要看的信息，不带全套字段。"""
 
