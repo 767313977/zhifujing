@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
   FundFlowHistoryOut,
+  FundFlowMatrixOut,
   RotationLeader,
   RotationMetric,
   SectorCompare,
@@ -83,6 +84,12 @@ const BOARD_SORTS: SortSpecs<SectorQuote> = {
 const COMPARE_MAX = 8
 
 /**
+ * 资金流多日矩阵每天取几名。与面板里当日榜的 `TOP`（10）对齐 —— 两块表行数一样，
+ * 上下对照时才不会一个 10 行、一个 5 行。后端上限 20。
+ */
+const FLOW_MATRIX_TOP = 10
+
+/**
  * 走势图 / 对比图的窗口档位。板块历史在 2026-09-21 深回补后到了 252 天，
  * 所以这里能开到 250（后端 `CURVE_MAX_DAYS` 与它对齐）。
  */
@@ -151,7 +158,10 @@ export default function Sectors() {
   )
   const [flow, setFlow] = useState<SectorFundFlowOut | null>(null)
   const [flowLoading, setFlowLoading] = useState(true)
-  // 累计曲线的窗口档位。与「当日排行」共用口径，但窗口独立（同矩阵与上榜图的关系）
+  const [flowMatrix, setFlowMatrix] = useState<FundFlowMatrixOut | null>(null)
+  const [flowMatrixLoading, setFlowMatrixLoading] = useState(true)
+  // 累计曲线与多日矩阵的窗口档位。与「当日排行」共用口径，但窗口独立
+  // （同矩阵与上榜图的关系）；这两个多日视图**共用这一个窗口**，见面板里的说明
   const [flowDays, setFlowDays] = useState(() => {
     const raw = Number(params.get('flowdays'))
     return FLOW_SPANS.includes(raw) ? raw : 20
@@ -310,6 +320,34 @@ export default function Sectors() {
       })
       .finally(() => {
         if (!stale) setFlowHistoryLoading(false)
+      })
+    return () => {
+      stale = true
+    }
+  }, [flowTaxonomy, flowDays, date])
+
+  // 多日矩阵：与累计曲线**共用同一个窗口**（面板头部那一个档位），但取数方式不同
+  // （那边按板块累加、这边按天排名），所以是独立请求
+  useEffect(() => {
+    let stale = false
+    setFlowMatrixLoading(true)
+    api
+      .sectorFundFlowMatrix(
+        flowTaxonomy,
+        { days: flowDays, top: FLOW_MATRIX_TOP },
+        date,
+      )
+      .then((data) => {
+        if (!stale) setFlowMatrix(data)
+      })
+      .catch((err: Error) => {
+        if (!stale) {
+          setFlowMatrix(null)
+          setError(err.message)
+        }
+      })
+      .finally(() => {
+        if (!stale) setFlowMatrixLoading(false)
       })
     return () => {
       stale = true
@@ -774,7 +812,7 @@ export default function Sectors() {
         {/* 放最后一块、整行宽：2026-09-23 之前它是**另一种口径**（同花顺概念 / 行业），
             与上面的开盘红板块对不上，所以单独占一行、谁也不挨着，免得被读成
             「同一个板块的两组数」。口径统一到开盘啦之后仍然整行宽 ——
-            它自己就是「两张条形图并排 + 一条累计曲线」，半栏根本放不下 */}
+            它自己就是「两张条形图并排 + 一张多日矩阵 + 一条累计曲线」，半栏放不下 */}
         <Panel
           title="板块资金流向"
           meta={
@@ -787,12 +825,16 @@ export default function Sectors() {
           <SectorFlowPanel
             data={flow}
             loading={flowLoading}
+            matrix={flowMatrix}
+            matrixLoading={flowMatrixLoading}
             history={flowHistory}
             historyLoading={flowHistoryLoading}
             historyDays={flowDays}
             onHistoryDays={setFlowDays}
             taxonomy={flowTaxonomy}
             onTaxonomy={setFlowTaxonomy}
+            // 点矩阵格子 = 选中板块，与轮动矩阵、上面的板块排行是同一个动作
+            onSelect={onSelect}
             // 页面当前看的交易日：优先用 URL / 选择器上的 `date`，没选时用排行
             // 解析出来的那天（两者通常一致，但首屏刚进时 `date` 还是 null）
             pageDate={date ?? ranking?.trade_date ?? null}

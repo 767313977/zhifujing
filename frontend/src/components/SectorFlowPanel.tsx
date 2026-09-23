@@ -1,12 +1,14 @@
 import type {
   FundFlowHistoryOut,
   FundFlowItem,
+  FundFlowMatrixOut,
   SectorFundFlowOut,
   SectorTaxonomy,
 } from '../api/types'
 import EChart from './EChart'
 import type { ChartOption } from './EChart'
 import Segmented from './Segmented'
+import SectorFlowMatrix from './SectorFlowMatrix'
 import {
   AXIS_LABEL,
   AXIS_LINE,
@@ -113,7 +115,11 @@ function buildOption(items: FundFlowItem[], inflow: boolean): ChartOption {
   }
 }
 
-/** 累计曲线的窗口档位。与后端 `FUND_FLOW_SPANS` 对齐 */
+/**
+ * 多日窗口的档位。**矩阵与累计曲线共用同一个值** —— 两者都是「近 N 日」的视角，
+ * 页面上只放一个选择器（放在面板头部），改一个另一个跟着变是预期的。
+ * 后端上限 60（自算口径补不了历史，库里有几天就几列），30 已经是够用的档。
+ */
 export const FLOW_SPANS = [10, 20, 30]
 
 /**
@@ -179,6 +185,9 @@ function buildHistoryOption(history: FundFlowHistoryOut): ChartOption {
 interface Props {
   data: SectorFundFlowOut | null
   loading: boolean
+  /** 多日矩阵（列=交易日、行=当日净额第 N 名），与轮动矩阵同一套版式 */
+  matrix: FundFlowMatrixOut | null
+  matrixLoading: boolean
   /** 累计曲线（跨多日，另有窗口档位） */
   history: FundFlowHistoryOut | null
   historyLoading: boolean
@@ -186,6 +195,8 @@ interface Props {
   onHistoryDays: (days: number) => void
   taxonomy: SectorTaxonomy
   onTaxonomy: (taxonomy: SectorTaxonomy) => void
+  /** 点矩阵格子 = 选中那个板块，与轮动矩阵同一个动作 */
+  onSelect: (code: string) => void
   /**
    * 页面当前看的交易日（板块排行解析出来的那天，缺省时用页面 state）。
    * 只用来判断「面板的数据日是不是比它早」——资金流是按日累积算的，会晚一天。
@@ -196,12 +207,15 @@ interface Props {
 export default function SectorFlowPanel({
   data,
   loading,
+  matrix,
+  matrixLoading,
   history,
   historyLoading,
   historyDays,
   onHistoryDays,
   taxonomy,
   onTaxonomy,
+  onSelect,
   pageDate,
 }: Props) {
   // 后端已按净额降序；这里切两头。**只用有净额的行** —— 净额为空的排不到任何一边，
@@ -215,6 +229,8 @@ export default function SectorFlowPanel({
   const empty = !loading && valid.length === 0
   // 库里几个交易日：曲线要 2 天以上才连得起来
   const curveDays = history?.days ?? 0
+  // 矩阵有几列（只算真算过净流入的日子，见后端 `/fund-flow/matrix`）
+  const matrixDays = matrix?.columns.length ?? 0
   // 数据日比页面选的日期早时标出来。后端已经回落到最近有数据的一天，但**回落这件事
   // 用户看不见** —— 不标的话会把昨天算的净流入当成今天的（两者差一个交易日）
   const staleDate =
@@ -228,6 +244,14 @@ export default function SectorFlowPanel({
           开盘啦{label}口径（与站内板块同一套名字）· 单位亿元 ·
           净流入 = 成分股主力净流入之和 · 红=净流入 绿=净流出
         </span>
+        {/* 多日窗口：矩阵与累计曲线共用这一个值（两处都是「近 N 日」的视角）。
+            放面板头部是因为矩阵在上面、曲线在下面，放哪一头都够不着另一头 */}
+        <span className="text-[12px] text-fg-dim">多日</span>
+        <Segmented
+          value={historyDays}
+          items={FLOW_SPANS.map((span) => ({ key: span, label: `近${span}日` }))}
+          onChange={onHistoryDays}
+        />
         {staleDate && <span className="num text-fg-dim">数据日期 {staleDate}</span>}
         <span className="num ml-auto text-[12px] text-fg-dim">
           {loading ? '加载中…' : `${data?.total ?? 0} 个${label} · 各取前 ${TOP} 名`}
@@ -261,17 +285,32 @@ export default function SectorFlowPanel({
         </div>
       )}
 
+      {/* 多日矩阵：把「当日排行」按天排成一列一列，与板块轮动那张矩阵同一套版式。
+          放在条形图与曲线之间 —— 上是「今天谁最强」、中是「这几天每天谁最强」、
+          下是「这几天谁被持续买入」，三块是同一个数据的三种看法。
+          库里还没有净流入的日子时**不摆一张空表**，只在下面给出原因 */}
+      {(matrixLoading || matrixDays > 0) && (
+        <div className="border-t border-line-soft px-3 py-2">
+          <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <span className="text-[12px] text-fg-dim">每日净流入前 {TOP}</span>
+            <span className="text-[12px] text-fg-dim">
+              列是交易日（从新到旧）、行是当天的第 N 名 · 点格子看板块详情
+            </span>
+            <span className="num ml-auto text-[12px] text-fg-dim">
+              {matrixLoading ? '加载中…' : `${matrixDays} 个交易日`}
+            </span>
+          </div>
+          <SectorFlowMatrix data={matrix} loading={matrixLoading} onSelect={onSelect} />
+        </div>
+      )}
+
       {/* 累计曲线：与上面的「当日排行」是同一份数据的两个看法，所以放同一个面板，
-          只在中间加一条分隔线。库里还没两天数据时**不画空图**，直接说明原因 */}
+          只在中间加一条分隔线。库里还没两天数据时**不画空图**，直接说明原因。
+          窗口档位在面板头部（与矩阵共用一个值），这里只留说明文字 */}
       {curveDays > 0 && (
         <div className="border-t border-line-soft px-3 py-2">
           <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <span className="text-[12px] text-fg-dim">累计净流入</span>
-            <Segmented
-              value={historyDays}
-              items={FLOW_SPANS.map((span) => ({ key: span, label: `近${span}日` }))}
-              onChange={onHistoryDays}
-            />
             <span className="text-[12px] text-fg-dim">
               从窗口起点累加，缺的那天累计值顺延
             </span>

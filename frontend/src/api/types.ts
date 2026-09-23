@@ -276,6 +276,40 @@ export interface FundFlowHistoryOut {
   days: number
 }
 
+/**
+ * 资金流矩阵里的一格：某天净流入的第 N 名。`net_amount` 单位亿元（正数是净流入）。
+ *
+ * 带上 `code` 是为了能点进板块详情 —— 与轮动矩阵的格子同一个行为。
+ */
+export interface FundFlowMatrixCell {
+  code: string
+  name: string
+  net_amount: number
+  pct_chg: number | null
+}
+
+/** 矩阵的一列 = 一个交易日的净流入前 N 名 */
+export interface FundFlowMatrixColumn {
+  trade_date: string
+  cells: FundFlowMatrixCell[]
+}
+
+/**
+ * 板块资金流的**多日矩阵**：列是交易日（从新到旧）、行是当日的第 N 名。
+ *
+ * 与 `/sectors/rotation` 那张矩阵同一套版式（两块表上下对齐、同一天同一列），
+ * 排序指标固定为净额降序。`columns` 只有「真算过净流入的日子」——
+ * 自算口径从 2026-09-23 才开始、补不了历史，所以它是一天一天长出来的。
+ */
+export interface FundFlowMatrixOut {
+  /** 实际数据日（= 最新那一列），用来标「数据日期」 */
+  trade_date: string
+  taxonomy: string
+  taxonomy_label: string
+  top: number
+  columns: FundFlowMatrixColumn[]
+}
+
 export interface SectorHeatItem {
   code: string
   name: string

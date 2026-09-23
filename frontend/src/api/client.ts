@@ -5,6 +5,7 @@ import type {
   DdeOrder,
   EtfFlowBoard,
   FundFlowHistoryOut,
+  FundFlowMatrixOut,
   EtfFlowOrder,
   EtfIndustryBoard,
   FundFlowOverview,
@@ -170,6 +171,26 @@ export const api = {
     request<FundFlowHistoryOut>(
       withDate(
         `/sectors/fund-flow/history?taxonomy=${taxonomy}&days=${options.days}`,
+        date,
+      ),
+    ),
+
+  /**
+   * 资金流多日矩阵（与轮动矩阵同一套版式）：列是交易日、行是当日净流入第 N 名。
+   *
+   * `days` 与累计曲线**共用同一个窗口档位**（都是「近 N 日」）—— 页面上只放一个
+   * 选择器，两处一起变；数据量很小，分两个请求取是因为矩阵要按天排名、曲线要按
+   * 板块累加，后端的取数方式不同。
+   */
+  sectorFundFlowMatrix: (
+    taxonomy: SectorTaxonomy,
+    options: { days: number; top: number },
+    date?: string | null,
+  ) =>
+    request<FundFlowMatrixOut>(
+      withDate(
+        `/sectors/fund-flow/matrix?taxonomy=${taxonomy}` +
+          `&days=${options.days}&top=${options.top}`,
         date,
       ),
     ),
