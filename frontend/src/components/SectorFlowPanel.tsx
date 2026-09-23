@@ -55,8 +55,13 @@ function buildOption(items: FundFlowItem[], inflow: boolean): ChartOption {
       ...TOOLTIP,
       trigger: 'item' as const,
       formatter: (params: unknown) => {
-        const first = params as { dataIndex: number }[] | undefined
-        const item = items[first?.[0]?.dataIndex ?? 0]
+        // ⚠️ `trigger: 'item'` 时 ECharts 传的是**单个对象**，不是数组（只有 `axis` 触发才是
+        // 数组）。早先这里按数组解（`params[0].dataIndex`）—— `[0]` 恒为 undefined、
+        // 回落成 0，于是**悬停任何一根条都显示榜首那条**（用户 2026-09-23 报的）。
+        // 两种形状都接：ECharts 在不同触发方式下不一致，容错比赌一种便宜。
+        const raw = Array.isArray(params) ? params[0] : params
+        const index = (raw as { dataIndex?: number } | undefined)?.dataIndex ?? 0
+        const item = items[index]
         if (!item) return ''
         return [
           `<b>${item.name}</b>`,
