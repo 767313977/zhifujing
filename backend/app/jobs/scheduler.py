@@ -5,9 +5,11 @@
 「当天」取的 —— 15:05 那一轮取回来是空的，且没人会回头补（实测 15:25 空、
 17:05 有 42 行）。时刻定义在 `config.collect_hour/collect_minute`。
 
-另有两处针对「本机不常开」的处理：
+另有三处针对「本机不常开」的处理：
 - **启动补采**：错过采集时刻才开机时，启动后在后台补跑一次
 - **错过触发的宽限**：misfire_grace_time 一小时内仍会补跑，且 coalesce 保证只跑一次
+- **尾部链路每交易日只跑一次**：补采与定时采集共用同一个入口，见 `TAIL_TASK` ——
+  没有这道闸的话，**每次重启都会把尾部重跑一遍**（部署日一天能重启十几次）
 
 不要用多 worker 启动本服务：每个 worker 会各自拉起一个调度器，
 同一时刻会重复采集。默认单 worker 运行即符合预期。
@@ -19,15 +21,72 @@ from datetime import date, datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from sqlalchemy import func, select
 
 from app.config import Settings, get_settings
+from app.db import session_scope
 from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
+from app.models import CollectLog
 from app.sources.ifind import IfindError
 
 logger = logging.getLogger(__name__)
 
 TIMEZONE = "Asia/Shanghai"
 JOB_ID = "collect_daily"
+
+# 尾部链路的去重标记（写在 `collect_log`），每个交易日一条。
+#
+# 尾部指的是采集之后那一串：日线增量 → 历史回补 → 形态扫描 → 简报/形态推送 →
+# DDE 扫描 → 板块资金流。采集本身有「今天有没有数据」这道守卫（`has_collected`）
+# 挡着，所以重复触发不会重复花钱；**尾部没有**，于是它跟着 `_run_daily` 的每一次
+# 调用重跑一遍。
+#
+# 而 `_run_daily` 的调用方有两个：17:30 的 cron，以及**每次服务启动**的
+# `_catch_up`（过了采集时刻就补跑）。后者在部署日会被反复触发 —— 实测 2026-09-21
+# 那天晚上的 19:39~23:50 跑了 18 轮日线回补（每轮 4 天 / 56 次调用，合计约 950 次
+# iFinD 调用），09-22 又跑了 5 轮（约 280 次），两天占了那个订阅周期真实消耗的
+# 三分之一。而这本是个「每天往前啃一小段历史」的慢活（见 `kline_backfill_days`），
+# 一天跑 18 遍只会把配额提前烧掉，并不会让历史补得更完整。
+#
+# DDE 扫描同理：09-22 那天连扫 5 轮（每轮 19 次），因为前面几轮都「无命中、未推送」，
+# `already_pushed` 那道去重对没推送成功的情况不起作用。
+TAIL_TASK = "daily_tail"
+
+
+def tail_done(day: date) -> bool:
+    """该日的尾部链路是否已经完整跑过一遍。"""
+    with session_scope() as session:
+        return bool(
+            session.scalar(
+                select(func.count())
+                .select_from(CollectLog)
+                .where(
+                    CollectLog.trade_date == day,
+                    CollectLog.task == TAIL_TASK,
+                    CollectLog.status == "ok",
+                )
+            )
+        )
+
+
+def _mark_tail(day: date, reason: str) -> None:
+    """记下「这天的尾部跑完了」。
+
+    记录本身失败只告警：它的唯一作用是抑制重复触发，写不进去最多退回旧行为
+    （重启再跑一遍），不该把一次已经跑完的采集标成失败。
+    """
+    try:
+        with session_scope() as session:
+            session.add(
+                CollectLog(
+                    trade_date=day,
+                    task=TAIL_TASK,
+                    status="ok",
+                    message=f"尾部链路完成（{reason}）",
+                )
+            )
+    except Exception:  # noqa: BLE001 - 见 docstring：记录失败不能影响采集
+        logger.warning("写尾部链路记录失败，下次重启可能重跑一遍", exc_info=True)
 
 
 class DailyScheduler:
@@ -135,6 +194,13 @@ class DailyScheduler:
             else:
                 logger.info("%s 完成：%s", reason, result.get("trade_date"))
 
+        # 尾部链路每个交易日只跑一次，见 TAIL_TASK。
+        # 闸门放在这里而不是 `_catch_up` 里：cron 与启动补采走的是同一个入口，
+        # 放在入口内两条路才受同一份记录约束（重启后的补采是重复触发的主要来源）。
+        if tail_done(today):
+            logger.info("%s：%s 的尾部链路已跑过，跳过", reason, today)
+            return
+
         # 推送与采集解耦：上面「已有数据」分支会跳过采集，但简报该发还是要发 ——
         # 否则盘中手动采过一次，收盘后就不会再有简报了。
         self._collect_kline(today)
@@ -154,6 +220,9 @@ class DailyScheduler:
         # 依赖缺失时它自己会跳过（不写一堆 0，见 `collect_board_flow` 的守卫）
         self._collect_board_flow(today)
         self._maybe_remind_calibration(today)
+        # 整条尾巴走完才落记录。中途被重启打断（部署）的话记录不写，
+        # 下一次启动会重跑一遍 —— 宁可多跑一次，也不要把没跑完的当成跑过了
+        _mark_tail(today, reason)
 
     def _scan_patterns(self, trade_date: date) -> None:
         """全市场形态扫描。
