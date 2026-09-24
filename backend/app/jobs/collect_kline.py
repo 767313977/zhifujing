@@ -57,7 +57,12 @@ KLINE_TASK = "kline"
 
 # 判定「该日期的日线已经采到」的覆盖率门槛。池子里的票不可能全都在任一
 # 交易日有成交（停牌、次新股），所以不能要求 100%
-_COVERED_RATIO = 0.9
+#
+# ⚠️ 2026-09-24 从 0.9 提到 0.99：0.9 太松，**丢了一成票也算「采到了」**。
+# 实测那天 iFinD 的 `000` 段响应少了 266 只（深市主板池内 30%），覆盖 91% 就通过了，
+# 于是定时任务与启动补采都判定「已有数据、跳过」，缺口留到第二天还在；
+# 而形态选股照样拿这些票**停在 09-23 的旧 K 线**出了 44 条命中（8.64）。
+_COVERED_RATIO = 0.99
 
 # 一次问一天，一次问全市场的一个代码前缀段。选股接口按前缀切段后每段都在
 # 1000 行以内，不必再按行数分批。
@@ -66,7 +71,18 @@ _SNAPSHOT_COLUMNS = "开盘价、最高价、最低价、收盘价、成交量�
 # 某天缺的票超过这个比例，才认为那天是真的没采到（而不是停牌这种正常缺失）。
 # 正常交易日实测缺 0.3%（8/3032）；被抽样截断的那天缺 80% 以上 ——
 # 隔着两个数量级，取 20% 不会误伤，也不会让「那天没采」被当成正常而跳过。
+#
+# ⚠️ 只用于**较早的历史日**。近端的判据另见 `_RECENT_MISSING_RATIO` —— 历史日缺的
+# 常常是「当时还没上市的票」，缺一二十个点是正常的；而最近几天不该缺，也不能缺。
 _REPAIR_MISSING_RATIO = 0.2
+
+# 最近这么多**交易日**内按「近端」判：缺票比例超过 `_RECENT_MISSING_RATIO` 就重采这天。
+# 为什么近端要严：形态选股每天都要用最新的日线，这几天缺票 = 选股结果里混进旧价。
+_RECENT_STRICT_DAYS = 5
+
+# 近端允许的缺票比例。正常缺失（停牌 / 次新）实测约 0.3%，取 1% 留三倍余量；
+# 而 09-24 那种抽风是 9%，一定会被抓到。
+_RECENT_MISSING_RATIO = 0.01
 
 # 交易日 → 日历日的放大系数。250 个交易日约合 365 个自然日，
 # 再算上春节这种连休，按 1.5 倍取；多出来的会被交易日历滤掉，不会写进库
@@ -213,15 +229,21 @@ class KlineCollector:
         failed: list[str] = []
         pending = 0
         for index, day in enumerate(days):
+            # 近端几个交易日按「严」判：缺票就重采（见 `_RECENT_MISSING_RATIO`）
+            strict = len(days) - index <= _RECENT_STRICT_DAYS
             if max_days and len(fetched) >= max_days:
                 # 本轮补满了。剩下的天**只用库里的数据**判断要不要补（不花调用），
                 # 这样一次分批跑就能报出「还剩几天」，不必再空跑一轮才知道
                 pending = sum(
-                    1 for rest in days[index:] if self._needs_day(rest, universe)
+                    1
+                    for rest_index, rest in enumerate(days[index:], start=index)
+                    if self._needs_day(
+                        rest, universe, strict=len(days) - rest_index <= _RECENT_STRICT_DAYS
+                    )
                 )
                 logger.info("本轮补满 %d 天，窗口内还剩 %d 天待补", max_days, pending)
                 break
-            if not self._needs_day(day, universe):
+            if not self._needs_day(day, universe, strict=strict):
                 skipped += 1
                 continue
             try:
@@ -297,8 +319,10 @@ class KlineCollector:
         skipped = 0
         calls = 0
         failed: list[str] = []
-        for day in target_days:
-            if not self._needs_day(day, universe):
+        for index, day in enumerate(target_days):
+            # 这个方法本身就是「补近端」，所以整段都按严判（见 `_RECENT_MISSING_RATIO`）
+            strict = len(target_days) - index <= _RECENT_STRICT_DAYS
+            if not self._needs_day(day, universe, strict=strict):
                 skipped += 1
                 continue
             try:
@@ -352,7 +376,7 @@ class KlineCollector:
         """
         return _trade_dates(self._window_start(end, full=full), end)
 
-    def _needs_day(self, day: date, universe: list[str]) -> bool:
+    def _needs_day(self, day: date, universe: list[str], *, strict: bool = False) -> bool:
         """这一天要不要采。
 
         库里已有的天数直接跳过 —— 这是省配额与可续跑的关键：日常只有最新那天
@@ -360,6 +384,9 @@ class KlineCollector:
 
         只拿 `stock_universe` 当分母，不含当日涨停池里池外的票：那些票本来就
         不该在历史每一天都有行，算进来会让每一天都显得「缺票」而反复重采。
+
+        `strict=True`（近端几个交易日）用 1% 的判据，其余历史日用 20% —— 理由见
+        两个常量的注释：历史日缺的是「当时还没上市的票」，近端缺的就是**没采到**。
         """
         with session_scope() as session:
             got = (
@@ -370,7 +397,8 @@ class KlineCollector:
                 )
                 or 0
             )
-        return len(universe) - got > len(universe) * _REPAIR_MISSING_RATIO
+        ratio = _RECENT_MISSING_RATIO if strict else _REPAIR_MISSING_RATIO
+        return len(universe) - got > len(universe) * ratio
 
     def _fetch_day(self, day: date, allowance: set[str]) -> tuple[int, int]:
         """采一个交易日：按前缀问全市场，只留该留的票。返回 (行数, 调用次数)。"""

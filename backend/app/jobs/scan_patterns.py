@@ -2,7 +2,8 @@
 
 **这一步对「通用形态」不花 iFinD 配额** —— 形态全在本地算，实测 3032 只 0.7 秒。
 辉宾对齐悟道时，会对**池外创业板候选**按需补近端日线（见 `_ensure_wudao_kline`），
-那一小段才吃配额；候选已有 ≥22 根连续 K 线则 0 次调用。
+那一小段才吃配额；候选**已有 ≥22 根连续 K 线、且最新一根就是当天**则 0 次调用
+（两个条件缺一不可 —— 只有根数够但不含当天，就是拿旧 K 线出今天的信号，见 8.64）。
 
 ## 为什么整段重算而不是增量
 
@@ -34,7 +35,14 @@ from sqlalchemy import delete, func, select
 from app.config import Settings, get_settings
 from app.db import session_scope, upsert_many
 from app.jobs.collect_universe import load_codes
-from app.models import CollectLog, PatternHit, StockBasic, StockDaily, TradeCalendar
+from app.models import (
+    CollectLog,
+    PatternHit,
+    StockBasic,
+    StockDaily,
+    StockUniverse,
+    TradeCalendar,
+)
 from app.services.patterns import (
     MIN_SCORE,
     WUDAO_MIN_BARS,
@@ -52,6 +60,11 @@ SCAN_BARS = 260
 
 # 采集日志里的一类任务名
 PATTERN_TASK = "patterns"
+
+# 扫某一天之前，要求那一天在库里至少覆盖池子的这个比例（见 `_require_bars`）。
+# 90% 是「明显没采全」的底线：正常日子缺失约 0.3%（停牌/次新），
+# 而 2026-09-24 那种抽风是 9% —— 卡在 90% 能拦住整片缺，又不至于因为几只停牌票就不让扫。
+_MIN_DAY_COVERAGE = 0.9
 
 # 致富形态 key；只对小池创业板落库，与悟道「默认只扫创业板」对齐
 WUDAO_KEYS = frozenset({"wudao_sample", "wudao_start"})
@@ -316,6 +329,27 @@ def _bar_counts(codes: set[str], trade_date: date, *, lookback: int = 40) -> dic
             .group_by(StockDaily.code)
         ).all()
     return {str(code).zfill(6): int(n) for code, n in rows}
+
+
+def _last_bars(codes: set[str]) -> dict[str, date]:
+    """各代码在库里的**最后一根 K 线是哪天**（不限窗口）。
+
+    用来判断这份日线是不是**停在过去** —— 池外候选、以及「当天那根没采到的池内票」，
+    都会表现为「有几十根 K 线、但最新的那根不是今天」，见 8.64。
+
+    ⚠️ 只数 `pct_chg` 非空的行，与 `_load_bars` 的口径一致：iFinD 对停牌日会给一行
+    「只有收盘价、其余全空」的残行（`sync_stock` 那条路照写不误），它算不了一根 K 线，
+    却会把「最新一根」顶到当天、让这类票逃过补采。
+    """
+    if not codes:
+        return {}
+    with session_scope() as session:
+        rows = session.execute(
+            select(StockDaily.code, func.max(StockDaily.trade_date))
+            .where(StockDaily.code.in_(codes), StockDaily.pct_chg.is_not(None))
+            .group_by(StockDaily.code)
+        ).all()
+    return {str(code).zfill(6): day for code, day in rows}
 
 
 def _clear_proxies() -> None:
@@ -603,6 +637,11 @@ def _ensure_wudao_kline(
 ) -> dict:
     """池外辉宾候选补日线：悟道本地库 → 东财 → 腾讯 → iFinD。
 
+    **什么时候要补**（两个判据，缺一不可）：近端根数不足 `WUDAO_MIN_BARS`，
+    **或者最后一根 K 线不是 `trade_date` 那天**。后一条是 8.64 补上的：
+    池外候选第一次补完就再也不刷新了（根数早就够），于是它们会一直拿几天前的
+    K 线出「今天的信号」。
+
     **为什么四级**：前两级是「免费又快」（本地库一份不多花；东财一次请求），第三级
     腾讯也是免费的，但没有历史库、要两次请求并自己推涨跌幅；iFinD 是唯一**吃配额**的
     一级，放在最后、且有上限。
@@ -621,7 +660,15 @@ def _ensure_wudao_kline(
     """
     settings = settings or get_settings()
     counts = _bar_counts(codes, trade_date)
-    need = {c for c in codes if counts.get(c, 0) < WUDAO_MIN_BARS}
+    last = _last_bars(codes)
+    # 两个判据：**根数不够**（池外新股，从没补过）与**停在过去**（补过、之后没再刷）。
+    # 少了后一条就是 8.64 那个 bug：池外候选第一次补完就再也不刷新了，
+    # 于是 09-24 那天用 09-22 的 K 线出信号，命中列表上的「最新价」是两天前的。
+    need = {
+        c
+        for c in codes
+        if counts.get(c, 0) < WUDAO_MIN_BARS or last.get(c) != trade_date
+    }
     if not need:
         return {
             "synced": 0,
@@ -785,6 +832,22 @@ def scan(
     if not grouped:
         raise IfindError(f"{target} 没有日线数据，先跑 collect_kline")
 
+    # **日线停在过去的票一律不出信号**。它的「最新」K 线可能是几天前、甚至几周前的，
+    # 而命中列表那一列写的是「最新价」—— 混进去就是给用户看旧价（8.64 那次：
+    # 列表显示 33.86 / +3.71%，而当天真实收盘是 35.39 / +4.98%）。
+    # 上面 `_ensure_wudao_kline` 已经把**候选**里这种票补过一轮，剩下的补不到
+    # （当天没采到的池内票、以及真没成交的停牌票），只能不出。
+    stale = {code for code, records in grouped.items() if records[-1]["date"] != target}
+    for code in stale:
+        grouped.pop(code, None)
+    if stale:
+        logger.warning(
+            "%d 只票的日线停在 %s 之前，本轮不出它们的信号（先补日线："
+            "`collect_kline` 或 `_ensure_wudao_kline`）",
+            len(stale),
+            target,
+        )
+
     rows: list[dict] = []
     skipped = 0
     dropped_wudao = 0
@@ -832,13 +895,15 @@ def scan(
 
     cost = round(time.monotonic() - started, 2)
     logger.info(
-        "形态扫描完成：%s，%d 只票 → %d 条命中（跳过 %d / 致富剔池外 %d / 候选 %d / 补日线 %s），用时 %ss",
+        "形态扫描完成：%s，%d 只票 → %d 条命中"
+        "（跳过 %d / 致富剔池外 %d / 候选 %d / 日线停在过去 %d / 补日线 %s），用时 %ss",
         target,
         len(grouped),
         written,
         skipped,
         dropped_wudao,
         len(wudao_cands),
+        len(stale),
         sync_info,
         cost,
     )
@@ -847,6 +912,7 @@ def scan(
         "ok",
         written,
         f"{len(grouped)} 只 / {written} 条命中 / 致富候选 {len(wudao_cands)}"
+        + (f" / 日线停在过去剔除 {len(stale)} 只" if stale else "")
         + _sync_note(sync_info),
         cost,
     )
@@ -855,6 +921,8 @@ def scan(
         "trade_date": target.isoformat(),
         "codes": len(grouped),
         "skipped": skipped,
+        # 日线停在 target 之前、本轮没出信号的只数（>0 就说明当天的日线没采全）
+        "stale": len(stale),
         "wudao_cands": len(wudao_cands),
         "wudao_extras": len(extras),
         "wudao_sync": sync_info,
@@ -866,19 +934,31 @@ def scan(
 
 
 def _require_bars(trade_date: date) -> None:
-    """确认库里真的有这一天的日线。
+    """确认库里真的有这一天的日线，而且**大部分票都采到了**。
 
     少了这道校验，扫描会拿**昨天**的 K 线当今天用 —— 结果不是空的，而是「用
     昨天的数据打上今天的日期」，看起来完全正常。这种错误没有任何外部症状，
     只会在事后复盘时发现「那天的信号怎么是用前一天的价算的」。
+
+    ⚠️ 2026-09-24 补：原来只要求「那天有一行」。实测那天 274 只（9%）没采到，
+    这个校验照样通过，扫描仍然出了 44 条拿旧 K 线的命中。现在要求覆盖率
+    ≥ `_MIN_DAY_COVERAGE`：低于它说明当天没采全，**宁可报错**（当天不出信号），
+    也不要出一份掺着旧价的榜单 —— 上面那道「日线停在过去就剔除」只挡得住单只，
+    整片缺的时候该让人去看采集，而不是默默筛掉一成票。
     """
     with session_scope() as session:
         latest = session.scalar(select(func.max(StockDaily.trade_date)))
+        pool = session.scalar(select(func.count()).select_from(StockUniverse)) or 0
+        # 只数**能用**的行（`pct_chg` 非空），与 `_load_bars` 同口径：
+        # iFinD 的停牌残行（只有收盘价）会在库里堆着，但它们算不了一根 K 线
         count = (
             session.scalar(
                 select(func.count())
                 .select_from(StockDaily)
-                .where(StockDaily.trade_date == trade_date)
+                .where(
+                    StockDaily.trade_date == trade_date,
+                    StockDaily.pct_chg.is_not(None),
+                )
             )
             or 0
         )
@@ -886,6 +966,11 @@ def _require_bars(trade_date: date) -> None:
         raise IfindError("stock_daily 是空的，先跑 collect_kline")
     if latest < trade_date or count == 0:
         raise IfindError(f"{trade_date} 的日线还没采到（库里最新是 {latest}），先跑 collect_kline")
+    if pool and count < pool * _MIN_DAY_COVERAGE:
+        raise IfindError(
+            f"{trade_date} 的日线只采到 {count}/{pool} 只（{count / pool:.0%}），"
+            f"低于 {_MIN_DAY_COVERAGE:.0%} —— 当天没采全，先补 collect_kline 再扫"
+        )
 
 
 def _latest_trade_date() -> date:
