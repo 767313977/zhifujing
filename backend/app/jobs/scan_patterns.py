@@ -456,8 +456,21 @@ def _sync_stock_from_wudao(code: str, *, days: int = _WUDAO_SYNC_DAYS) -> int:
         return upsert_many(session, StockDaily, rows)
 
 
-def _ensure_wudao_kline(codes: set[str], trade_date: date) -> dict:
-    """池外辉宾候选补日线：悟道本地库 → 东财 → iFinD（401 后整轮跳过）。"""
+def _ensure_wudao_kline(
+    codes: set[str], trade_date: date, settings: Settings | None = None
+) -> dict:
+    """池外辉宾候选补日线：悟道本地库 → 东财 → iFinD。
+
+    **两道闸门**（2026-09-24 加，为同时省时间与配额；阈值见 `Settings` 的注释）：
+
+    - **东财熔断**：连续失败 `wudao_em_breaker_failures` 次就本轮不再试它。
+      云端连不上东财直连（1.7 / 8.51.3 记过），而这里是**逐只**补 —— 不熔断的话每只都要
+      等一次约 10 秒的超时。实测 09-24：48 只候选白等约 8 分钟，且最终全部落到 iFinD。
+    - **iFinD 上限**：每轮最多补 `wudao_ifind_fallback_max` 只，超出的**本轮不补**
+      （当天就没有这些候选的形态信号）。这是刻意的「配额 ↔ 覆盖」取舍，不静默：
+      跳过的只数进 `skipped_quota`，日志与采集日志里都会写出来。
+    """
+    settings = settings or get_settings()
     counts = _bar_counts(codes, trade_date)
     need = {c for c in codes if counts.get(c, 0) < WUDAO_MIN_BARS}
     if not need:
@@ -467,6 +480,8 @@ def _ensure_wudao_kline(codes: set[str], trade_date: date) -> dict:
             "needed": 0,
             "via_wudao": 0,
             "via_eastmoney": 0,
+            "via_ifind": 0,
+            "skipped_quota": 0,
         }
 
     from app.jobs.collect_daily import DailyCollector
@@ -477,7 +492,11 @@ def _ensure_wudao_kline(codes: set[str], trade_date: date) -> dict:
     failed = 0
     via_wudao = 0
     via_em = 0
+    via_ifind = 0
+    skipped_quota = 0
     skip_ifind = False
+    em_failures = 0
+    em_dead = False
     for code in sorted(need):
         ok = False
         try:
@@ -488,7 +507,7 @@ def _ensure_wudao_kline(codes: set[str], trade_date: date) -> dict:
             logger.info("辉宾补日线(悟道库) %s → %d 行", code, wrote)
         except Exception as exc:  # noqa: BLE001
             logger.debug("辉宾补日线(悟道库) %s：%s", code, exc)
-        if not ok:
+        if not ok and not em_dead:
             try:
                 wrote = _sync_stock_eastmoney(code, days=_WUDAO_SYNC_DAYS)
                 synced += 1
@@ -496,11 +515,28 @@ def _ensure_wudao_kline(codes: set[str], trade_date: date) -> dict:
                 ok = True
                 logger.info("辉宾补日线(东财) %s → %d 行", code, wrote)
             except Exception as exc:  # noqa: BLE001
-                logger.warning("辉宾补日线(东财) %s 失败：%s", code, exc)
+                em_failures += 1
+                if em_failures >= settings.wudao_em_breaker_failures:
+                    # 熔断：后面几十只不再一只只等超时。只报一次，别刷屏
+                    em_dead = True
+                    logger.warning(
+                        "辉宾补日线(东财) 连续失败 %d 次（最近一只 %s：%s），"
+                        "本轮剩余候选不再试东财，改由 iFinD 兜底",
+                        em_failures,
+                        code,
+                        exc,
+                    )
+                else:
+                    logger.warning("辉宾补日线(东财) %s 失败：%s", code, exc)
         if not ok and not skip_ifind:
+            if via_ifind >= settings.wudao_ifind_fallback_max:
+                # 到上限了：本轮不补它。不记 failed —— 这不是失败，是刻意的取舍
+                skipped_quota += 1
+                continue
             try:
                 wrote = collector.sync_stock(code, days=_WUDAO_SYNC_DAYS)
                 synced += 1
+                via_ifind += 1
                 ok = True
                 logger.info("辉宾补日线(iFinD) %s → %d 行", code, wrote)
             except Exception as exc:  # noqa: BLE001
@@ -512,12 +548,21 @@ def _ensure_wudao_kline(codes: set[str], trade_date: date) -> dict:
                     logger.warning("辉宾补日线(iFinD) %s 失败：%s", code, exc)
         if not ok:
             failed += 1
+    if skipped_quota:
+        logger.warning(
+            "辉宾补日线：%d 只候选因 iFinD 兜底到上限（%d 只）本轮未补 —— "
+            "它们当天没有形态信号；想让覆盖更全就调大 `WUDAO_IFIND_FALLBACK_MAX`",
+            skipped_quota,
+            settings.wudao_ifind_fallback_max,
+        )
     return {
         "synced": synced,
         "failed": failed,
         "needed": len(need),
         "via_wudao": via_wudao,
         "via_eastmoney": via_em,
+        "via_ifind": via_ifind,
+        "skipped_quota": skipped_quota,
     }
 
 
@@ -541,11 +586,19 @@ def scan(
     # 致富：只扫悟道同口径小池（强势/涨停/昨涨停/涨幅榜/本地），不对全流动性池出致富信号
     wudao_cands = _wudao_candidate_codes(target)
     extras = {c for c in wudao_cands if c not in set(universe)}
-    sync_info = _ensure_wudao_kline(wudao_cands, target) if wudao_cands else {
-        "synced": 0,
-        "failed": 0,
-        "needed": 0,
-    }
+    sync_info = (
+        _ensure_wudao_kline(wudao_cands, target, settings)
+        if wudao_cands
+        else {
+            "synced": 0,
+            "failed": 0,
+            "needed": 0,
+            "via_wudao": 0,
+            "via_eastmoney": 0,
+            "via_ifind": 0,
+            "skipped_quota": 0,
+        }
+    )
 
     scan_codes = set(universe) | extras
     grouped = _load_bars(target, scan_codes)
@@ -613,7 +666,12 @@ def scan(
         target,
         "ok",
         written,
-        f"{len(grouped)} 只 / {written} 条命中 / 致富候选 {len(wudao_cands)}",
+        f"{len(grouped)} 只 / {written} 条命中 / 致富候选 {len(wudao_cands)}"
+        + (
+            f" / 补日线 iFinD {sync_info['via_ifind']} 只、因上限跳过 {sync_info['skipped_quota']} 只"
+            if sync_info.get("skipped_quota")
+            else ""
+        ),
         cost,
     )
     return {
