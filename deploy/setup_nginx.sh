@@ -64,6 +64,12 @@ if [[ -n "$DOMAIN" && ! "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]]; then
   echo "DOMAIN 只能是域名本身（不要带 http://、端口或路径）：$DOMAIN" >&2
   exit 1
 fi
+# 端口会同时进 sed 的替换串和 nginx 配置：非数字、或带 | 的值会写出一份坏配置，
+# 而 nginx -t 同样指不到这里。10# 是为了让 08000 这类前导 0 不按八进制解析。
+if [[ ! "$BACKEND_PORT" =~ ^[0-9]+$ ]] || (( 10#$BACKEND_PORT < 1 || 10#$BACKEND_PORT > 65535 )); then
+  echo "BACKEND_PORT 要是 1-65535 的整数（当前：$BACKEND_PORT）" >&2
+  exit 1
+fi
 
 log "安装 nginx 与 htpasswd"
 export DEBIAN_FRONTEND=noninteractive
@@ -92,7 +98,7 @@ cat > "$PROXY_SNIPPET" <<'NGINX'
 auth_basic "fupan";
 auth_basic_user_file /etc/nginx/.htpasswd;
 
-proxy_pass http://127.0.0.1:8000;
+proxy_pass http://127.0.0.1:__BACKEND_PORT__;
 proxy_set_header Host $host;
 proxy_set_header X-Real-IP $remote_addr;
 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -103,6 +109,10 @@ proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 proxy_read_timeout 600s;
 proxy_send_timeout 600s;
 NGINX
+
+# 后端端口走 __占位符__ 而不是 $BACKEND_PORT：这段定界符带引号（里面有 nginx
+# 变量必须原样保留），bash 不会展开任何 $，直接写变量名会原样留在配置里。
+sed -i "s|__BACKEND_PORT__|$BACKEND_PORT|g" "$PROXY_SNIPPET"
 
 if [[ -n "$DOMAIN" ]]; then
   # ---- 有域名：先拿证书，再写正式配置 ----
