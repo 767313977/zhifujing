@@ -28,6 +28,7 @@ BACKEND = Path(__file__).resolve().parent.parent / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
+from sqlalchemy import select  # noqa: E402
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert  # noqa: E402
 
 from app.db import session_scope  # noqa: E402
@@ -51,8 +52,29 @@ def main() -> int:
     data = quota_status()
     local = data["cycle_calls"]
     start = date.fromisoformat(args.date) if args.date else date.fromisoformat(str(data["cycle_start"]))
-    diff = args.backend_calls - local
-    print(f"本周期 {start} 起：本地记录 {local} 次，后台 {args.backend_calls} 次，差额 {diff:+d}")
+
+    # 上次的校准值必须先扣掉：`cycle_calls` 是「本周期所有用量记录的合计」，里面**已经含**
+    # 上一次写进去的那条 `manual/calibration`。直接拿 `后台 - 本地` 当差额，等于把上次的校准
+    # 又当成本程序的真实调用减了一遍 —— 重复校准会**越校越少**，而少记正是配额守卫唯一
+    # 危险的方向（低估 → 该让路时不动作 → 撞墙）。
+    # 实测 2026-09-23：本机记录 1507（含上次校准 355）、后台 4689，按老算法写完得到 4334。
+    with session_scope() as session:
+        previous = (
+            session.scalar(
+                select(IfindUsage.calls).where(
+                    IfindUsage.usage_date == start,
+                    IfindUsage.server == "manual",
+                    IfindUsage.tool == "calibration",
+                )
+            )
+            or 0
+        )
+    real = local - previous
+    diff = args.backend_calls - real
+    print(
+        f"本周期 {start} 起：本地记录 {local} 次（含上次校准 {previous} 次，即程序自己发了 {real} 次），"
+        f"后台 {args.backend_calls} 次，差额 {diff:+d}"
+    )
 
     if diff == 0:
         print("已经对齐，不用动")
