@@ -34,7 +34,7 @@ from sqlalchemy import delete, func, select
 from app.config import Settings, get_settings
 from app.db import session_scope, upsert_many
 from app.jobs.collect_universe import load_codes
-from app.models import CollectLog, PatternHit, StockDaily, TradeCalendar
+from app.models import CollectLog, PatternHit, StockBasic, StockDaily, TradeCalendar
 from app.services.patterns import (
     MIN_SCORE,
     WUDAO_MIN_BARS,
@@ -68,6 +68,16 @@ _WUDAO_MARKET_DB = Path(__file__).resolve().parents[4] / "data" / "market.db"
 
 # 与悟道 `_candidate_rows` 排序一致：涨幅 > 强势 > 昨涨停 > 本地 > 涨停
 _WUDAO_SRC_PRIORITY = {"涨幅": 0, "强势": 1, "昨涨停": 2, "本地": 3, "涨停": 4}
+
+
+class _NoBars(Exception):
+    """这一级**没有这只票的数据** —— 与「这条源挂了」是两回事。
+
+    退市股、还没上市的代码、以及腾讯那边根本没有的代码都属于这一类。实测（2026-09-24）
+    300038 数知退、300060 都是这种：东财/腾讯都没有它们的近端日线，iFinD 却会给一行
+    只有收盘价、其余全空的行。**「没有数据」不该记进熔断计数** —— 几个退市股就能凑够
+    3 次、把一整条源整轮关掉，那才是真的亏。
+    """
 
 
 def is_chinext(code: str) -> bool:
@@ -375,7 +385,7 @@ def _sync_stock_eastmoney(code: str, *, days: int = _WUDAO_SYNC_DAYS) -> int:
     name = (data.get("name") or code).strip()
     klines = data.get("klines") or []
     if not klines:
-        raise RuntimeError("东财无数据")
+        raise _NoBars("东财无数据")
 
     rows: list[dict] = []
     for line in klines:
@@ -402,7 +412,119 @@ def _sync_stock_eastmoney(code: str, *, days: int = _WUDAO_SYNC_DAYS) -> int:
             }
         )
     if not rows:
-        raise RuntimeError("东财无数据")
+        raise _NoBars("东财无数据")
+    with session_scope() as session:
+        return upsert_many(session, StockDaily, rows)
+
+
+# 腾讯行情接口单次超时。单独给一个值：它挂在形态扫描的链条里，
+# 卡住就等于整条链路卡住（akshare 默认不设超时，会一直等下去）
+_TX_TIMEOUT = 15.0
+
+
+def _tx_symbol(code: str) -> str:
+    """腾讯行情的代码写法：沪市 `sh`、深市 `sz`。"""
+    c = str(code).zfill(6)
+    return ("sh" if c.startswith(("5", "6", "9")) else "sz") + c
+
+
+def _sync_stock_tencent(code: str, *, days: int = _WUDAO_SYNC_DAYS) -> int:
+    """池外候选补日线（第二级兜底）：腾讯 K 线 → `stock_daily`。**不占 iFinD 配额**。
+
+    为什么加这一级：云端连不上东财直连（8.51.3），那一级必然失败，于是每天几十只候选
+    全落到 iFinD 兜底（实测 2026-09-24：48 只 = 48 次调用）。腾讯这条线**云端可达**
+    （2026-09-24 在服务器上实测过），把它插进链条就把那几十次配额全省下来。
+
+    **口径对过账**（本机 + 云端各跑一遍 `scripts/probe_akshare_tx.py`）：腾讯「不复权」的
+    开高低收 / 成交量(股) / 成交额(元) 与库里 iFinD 写的值**逐位相同**（成交量有 14 股的
+    舍入差，腾讯是整百股）；唯一的单位差是 `turnover` —— 腾讯给**比例** 0.0015、
+    本站库里是**百分数** 0.15，故 ×100。
+
+    **涨跌幅必须由前复权序列算，不能用不复权收盘价比**：除权日不复权价会跳空，
+    比出来是一个假的暴跌。腾讯的 `qfq` 相邻收盘之比才是真实收益率（与 iFinD 的
+    `涨跌幅` 对账：48 行、差异 >0.02 的 0 行）。所以这里**拉两份** ——
+    价格存不复权、`pct_chg` 由前复权推。
+    """
+    import akshare as ak
+    import pandas as pd
+
+    def _num(value: object) -> float | None:
+        """pandas 的 NaN/NaT → None，其余转 float（腾讯的空字段给的是 NaN）。"""
+        if value is None or pd.isna(value):
+            return None
+        return float(value)
+
+    end = date.today()
+    # 多留两周：前复权序列的**第一行**没有前值、算不出涨跌幅，那一行会被丢掉，
+    # 多取的这段保证丢完之后仍在 `days` 个交易日以上
+    start = end - timedelta(days=int(days * 1.5) + 14)
+    symbol = _tx_symbol(code)
+
+    def _fetch(adjust: str) -> pd.DataFrame:
+        try:
+            return ak.stock_zh_a_hist_tx(
+                symbol=symbol,
+                start_date=start.strftime("%Y%m%d"),
+                end_date=end.strftime("%Y%m%d"),
+                adjust=adjust,
+                timeout=_TX_TIMEOUT,
+            )
+        except (IndexError, KeyError) as exc:
+            # ⚠️ 对「没有这只票」（退市 / 未上市），akshare 不是给空表，而是在解析里炸掉 ——
+            # 实测 300060 报 `list index out of range`。那是**没有数据**，不是这条源挂了，
+            # 不能记进熔断计数（见 `_NoBars`），否则几个退市股就能把腾讯整轮关掉。
+            raise _NoBars(f"腾讯无 {code} 数据：{exc}") from exc
+
+    plain = _fetch("")
+    if plain is None or plain.empty:
+        raise _NoBars(f"腾讯无 {code} 日线")
+    qfq = _fetch("qfq")
+    if qfq is None or qfq.empty:
+        raise _NoBars(f"腾讯无 {code} 前复权日线")
+
+    qfq_days = [str(v)[:10] for v in qfq["date"].tolist()]
+    qfq_close = {day: _num(v) for day, v in zip(qfq_days, qfq["close"].tolist())}
+    # 逐日的真实涨跌幅：**前复权比前复权**（拿不复权收盘当分子会在除权日算错）
+    pct_by_day: dict[str, float] = {}
+    for i, day in enumerate(qfq_days):
+        if not i:
+            continue
+        cur = qfq_close.get(day)
+        prev = qfq_close.get(qfq_days[i - 1])
+        if cur is None or not prev:
+            continue
+        pct_by_day[day] = (cur / prev - 1) * 100
+
+    with session_scope() as session:
+        name = session.scalar(
+            select(StockBasic.name).where(StockBasic.code == str(code).zfill(6))
+        )
+
+    rows: list[dict] = []
+    for rec in plain.to_dict("records"):
+        day = str(rec.get("date"))[:10]
+        close = _num(rec.get("close"))
+        pct = pct_by_day.get(day)
+        if close is None or pct is None:
+            continue  # 首行，或前复权缺这一行：算不出真实涨跌幅，丢掉
+        turnover = _num(rec.get("turnover"))
+        rows.append(
+            {
+                "trade_date": date.fromisoformat(day),
+                "code": str(code).zfill(6),
+                "name": name or str(code).zfill(6),
+                "open": _num(rec.get("open")),
+                "high": _num(rec.get("high")),
+                "low": _num(rec.get("low")),
+                "close": close,
+                "volume": _num(rec.get("volume")) or 0.0,
+                "amount": _num(rec.get("amount")) or 0.0,
+                "turnover": turnover * 100 if turnover is not None else None,
+                "pct_chg": pct,
+            }
+        )
+    if not rows:
+        raise _NoBars(f"腾讯 {code} 近端无效")
     with session_scope() as session:
         return upsert_many(session, StockDaily, rows)
 
@@ -456,19 +578,46 @@ def _sync_stock_from_wudao(code: str, *, days: int = _WUDAO_SYNC_DAYS) -> int:
         return upsert_many(session, StockDaily, rows)
 
 
+def _sync_note(sync_info: dict) -> str:
+    """采集日志里「补日线用了哪几级」那截说明；都没干活就不写。
+
+    分来源列出来是为了**事后能看出哪一级在扛** —— 腾讯这一级的价值正是让 iFinD 归零，
+    没有这个数就只能去翻 logger 才知道它到底生效没有。
+    """
+    parts = []
+    if sync_info.get("via_wudao"):
+        parts.append(f"悟道库 {sync_info['via_wudao']} 只")
+    if sync_info.get("via_eastmoney"):
+        parts.append(f"东财 {sync_info['via_eastmoney']} 只")
+    if sync_info.get("via_tencent"):
+        parts.append(f"腾讯 {sync_info['via_tencent']} 只")
+    if sync_info.get("via_ifind"):
+        parts.append(f"iFinD {sync_info['via_ifind']} 只")
+    if sync_info.get("skipped_quota"):
+        parts.append(f"因 iFinD 上限跳过 {sync_info['skipped_quota']} 只")
+    return (" / 补日线 " + "、".join(parts)) if parts else ""
+
+
 def _ensure_wudao_kline(
     codes: set[str], trade_date: date, settings: Settings | None = None
 ) -> dict:
-    """池外辉宾候选补日线：悟道本地库 → 东财 → iFinD。
+    """池外辉宾候选补日线：悟道本地库 → 东财 → 腾讯 → iFinD。
 
-    **两道闸门**（2026-09-24 加，为同时省时间与配额；阈值见 `Settings` 的注释）：
+    **为什么四级**：前两级是「免费又快」（本地库一份不多花；东财一次请求），第三级
+    腾讯也是免费的，但没有历史库、要两次请求并自己推涨跌幅；iFinD 是唯一**吃配额**的
+    一级，放在最后、且有上限。
+
+    **三道闸门**（后两道 2026-09-24 加，为同时省时间与配额；阈值见 `Settings` 的注释）：
 
     - **东财熔断**：连续失败 `wudao_em_breaker_failures` 次就本轮不再试它。
       云端连不上东财直连（1.7 / 8.51.3 记过），而这里是**逐只**补 —— 不熔断的话每只都要
       等一次约 10 秒的超时。实测 09-24：48 只候选白等约 8 分钟，且最终全部落到 iFinD。
+    - **腾讯熔断**：同一个道理 —— 这条线也有可能整轮不通（接口变动 / 该机器不可达），
+      不熔断就是 48 只 × 两次请求 × 超时。
     - **iFinD 上限**：每轮最多补 `wudao_ifind_fallback_max` 只，超出的**本轮不补**
       （当天就没有这些候选的形态信号）。这是刻意的「配额 ↔ 覆盖」取舍，不静默：
       跳过的只数进 `skipped_quota`，日志与采集日志里都会写出来。
+      **有了腾讯这一级，它其实很少再触发** —— 只有在腾讯也整轮不通时才轮得到它顶上来。
     """
     settings = settings or get_settings()
     counts = _bar_counts(codes, trade_date)
@@ -480,6 +629,7 @@ def _ensure_wudao_kline(
             "needed": 0,
             "via_wudao": 0,
             "via_eastmoney": 0,
+            "via_tencent": 0,
             "via_ifind": 0,
             "skipped_quota": 0,
         }
@@ -492,11 +642,14 @@ def _ensure_wudao_kline(
     failed = 0
     via_wudao = 0
     via_em = 0
+    via_tencent = 0
     via_ifind = 0
     skipped_quota = 0
     skip_ifind = False
     em_failures = 0
     em_dead = False
+    tx_failures = 0
+    tx_dead = False
     for code in sorted(need):
         ok = False
         try:
@@ -514,6 +667,9 @@ def _ensure_wudao_kline(
                 via_em += 1
                 ok = True
                 logger.info("辉宾补日线(东财) %s → %d 行", code, wrote)
+            except _NoBars as exc:
+                # 这只票这一级没有 —— 换下一级，不算这条源挂了
+                logger.info("辉宾补日线(东财) %s 无数据，换下一级：%s", code, exc)
             except Exception as exc:  # noqa: BLE001
                 em_failures += 1
                 if em_failures >= settings.wudao_em_breaker_failures:
@@ -521,13 +677,35 @@ def _ensure_wudao_kline(
                     em_dead = True
                     logger.warning(
                         "辉宾补日线(东财) 连续失败 %d 次（最近一只 %s：%s），"
-                        "本轮剩余候选不再试东财，改由 iFinD 兜底",
+                        "本轮剩余候选不再试东财，改由腾讯 / iFinD 兜底",
                         em_failures,
                         code,
                         exc,
                     )
                 else:
                     logger.warning("辉宾补日线(东财) %s 失败：%s", code, exc)
+        if not ok and not tx_dead:
+            try:
+                wrote = _sync_stock_tencent(code, days=_WUDAO_SYNC_DAYS)
+                synced += 1
+                via_tencent += 1
+                ok = True
+                logger.info("辉宾补日线(腾讯) %s → %d 行", code, wrote)
+            except _NoBars as exc:
+                logger.info("辉宾补日线(腾讯) %s 无数据，换下一级：%s", code, exc)
+            except Exception as exc:  # noqa: BLE001
+                tx_failures += 1
+                if tx_failures >= settings.wudao_tx_breaker_failures:
+                    tx_dead = True
+                    logger.warning(
+                        "辉宾补日线(腾讯) 连续失败 %d 次（最近一只 %s：%s），"
+                        "本轮剩余候选不再试腾讯，改由 iFinD 兜底（受上限约束）",
+                        tx_failures,
+                        code,
+                        exc,
+                    )
+                else:
+                    logger.warning("辉宾补日线(腾讯) %s 失败：%s", code, exc)
         if not ok and not skip_ifind:
             if via_ifind >= settings.wudao_ifind_fallback_max:
                 # 到上限了：本轮不补它。不记 failed —— 这不是失败，是刻意的取舍
@@ -561,6 +739,7 @@ def _ensure_wudao_kline(
         "needed": len(need),
         "via_wudao": via_wudao,
         "via_eastmoney": via_em,
+        "via_tencent": via_tencent,
         "via_ifind": via_ifind,
         "skipped_quota": skipped_quota,
     }
@@ -595,6 +774,7 @@ def scan(
             "needed": 0,
             "via_wudao": 0,
             "via_eastmoney": 0,
+            "via_tencent": 0,
             "via_ifind": 0,
             "skipped_quota": 0,
         }
@@ -667,11 +847,7 @@ def scan(
         "ok",
         written,
         f"{len(grouped)} 只 / {written} 条命中 / 致富候选 {len(wudao_cands)}"
-        + (
-            f" / 补日线 iFinD {sync_info['via_ifind']} 只、因上限跳过 {sync_info['skipped_quota']} 只"
-            if sync_info.get("skipped_quota")
-            else ""
-        ),
+        + _sync_note(sync_info),
         cost,
     )
     return {
