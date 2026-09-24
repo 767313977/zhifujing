@@ -76,14 +76,18 @@ def main() -> int:
         f"后台 {args.backend_calls} 次，差额 {diff:+d}"
     )
 
-    if diff == 0:
-        print("已经对齐，不用动")
-        return 0
     if diff < 0:
         # 不自动往回扣：**多记是安全方向**（早让路而已），少记才是危险方向。
         # 真出现负数，多半是两边看的不是同一个周期，值得人工核对。
         print("本地比后台还多 —— 不自动往回扣，请先核对是不是同一个计量区间")
         return 1
+    # ⚠️ 用 `previous == diff` 判断「已经对齐」，**不是 `diff == 0`** —— `diff` 是「这次该写的
+    # 校准值」（后台 - 程序自己发的），几乎不可能等于 0（那意味着完全没有外部调用）。早先写的
+    # 是 `diff == 0`，于是每次跑都重写一遍同样的值（幂等、结果没错，但看不到「不用动」）；
+    # 更糟的是真出现 `diff == 0` 时它会提前返回，把库里那条**过期的校准值**留着不清。
+    if previous == diff:
+        print(f"已经对齐（校准值 {diff} 次），不用动")
+        return 0
 
     with session_scope() as session:
         session.execute(
