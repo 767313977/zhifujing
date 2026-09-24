@@ -108,7 +108,16 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
       },
     }))
 
-    const marks = keyLevels.filter((level) => Number.isFinite(level.value))
+    // 关键位标签的落位：**按价格从高到低排，左右两端交替**。
+    // 为什么不能都放右端：关键位是算出来的，两个价位挨得近时标签会印在同一处叠字 ——
+    // 实测 300350（2026-09-23）的「突破 4.65 / 突破 4.60」只差 0.05 元 ≈ 7.8px，
+    // 而标签高 10px，垂直就叠了 2.2px。交替之后相邻价位必然分居左右，
+    // 横向直接分开，**与价格差多少无关**。
+    const marks = keyLevels
+      .filter((level) => Number.isFinite(level.value))
+      .slice()
+      .sort((left, right) => right.value - left.value)
+    const MARK_LABEL_POSITIONS = ['insideEndTop', 'insideStartTop'] as const
     const legend = [...MA_WINDOWS.map((w) => `MA${w}`), '成交量']
     // 横轴放几个标签要看标签有多长：周月是 `25-09-30`（8 字符，比日线的 `09-21`
     // 长），同一宽度下要少放几个，否则相邻标签会贴在一起
@@ -192,9 +201,11 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
                   fontSize: 10,
                   formatter: '{b}',
                 },
-                data: marks.map((level) => ({
+                data: marks.map((level, index) => ({
                   yAxis: level.value,
                   name: `${level.label} ${level.value.toFixed(2)}`,
+                  // 相邻价位分居左右两端（见上面 marks 的注释）
+                  label: { position: MARK_LABEL_POSITIONS[index % MARK_LABEL_POSITIONS.length] },
                   lineStyle: {
                     color: level.kind === 'breakout' ? CHART.accent : CHART.fgDim,
                     type: 'dashed' as const,
