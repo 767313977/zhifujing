@@ -107,8 +107,14 @@ function buildOption(items: FundFlowItem[], inflow: boolean): ChartOption {
         // 数值标在条的外侧：流入贴右边、流出贴左边，别盖在条上
         label: {
           show: true,
-          position: inflow ? ('right' as const) : ('left' as const),
-          color: CHART.fgMuted,
+          // ⚠️ 流出那一侧**不能**贴条外。负值条从 0 往左长，最长的条左端正好顶到绘图区
+          // 左边缘，标签再往左就伸进 y 轴那列板块名里，和榜首的名字印在同一处叠字
+          // （2026-09-24 用户截图为证：`-264.0` 压在「逆变器」上）。放进条内
+          // （`insideLeft` 锚在条的左端、向右排）就永远只压在绿条上，与数据量级无关 ——
+          // 换成贴右侧也不行，负值条的右端全都在 0 轴上，标签会挤成一列。
+          // 流入那侧贴条外是安全的：右边是 56px 的空白，没有坐标轴文字。
+          position: inflow ? ('right' as const) : ('insideLeft' as const),
+          color: inflow ? CHART.fgMuted : CHART.ink,
           fontSize: 10,
           formatter: (params: unknown) => {
             const item = params as { value: number | null }
