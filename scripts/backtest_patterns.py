@@ -15,6 +15,19 @@
 
 零 iFinD 配额：全部用库里已有的日线在本地算。
 
+## 数据来源：两个库
+
+| 数据源 | 窗口 | 用在 |
+| --- | --- | --- |
+| `stock_daily`（主库，iFinD 口径） | 260 个交易日 | 默认。与线上扫描喂进去的数据**完全一致** |
+| `backend/data/history.db`（`--history`） | 由 `--bars` 决定，默认 1300 根 | 长历史回测（5 年 ≈ 1200 根） |
+
+history.db 由 `scripts/backfill_history.py` 用腾讯补出来（零配额）。**为什么长历史不写主库**：
+采集任务 `prune()` 只留最近 400 个交易日，写进去会被下一次采集删掉。
+
+判定函数、入库门槛（`MIN_SCORE`）、去重与基准口径**三种模式完全相同**，变的只是
+喂进去的历史长度 —— 也正因如此，「长历史那一版」的结论可以直接和其他版本对比。
+
 ## 覆盖范围与用法
 
 判定一律**从 `app.services.patterns.PATTERNS` 取生产函数**，所以注册表里任何形态
@@ -25,21 +38,30 @@
 文件名是 2026-09-25 从 `backtest_three_stage.py` 改过来的：旧名字只覆盖三段式等
 4 个形态，现在要跑全部 46 个，名字跟着覆盖面走。
 
-    python scripts/backtest_patterns.py --pattern three_stage       # 单个
-    python scripts/backtest_patterns.py --pattern v_bottom          # 任何注册 key
-    python scripts/backtest_patterns.py --pattern all-new           # 26 个新形态
-    python scripts/backtest_patterns.py --pattern all               # 注册表里全部
-    python scripts/backtest_patterns.py --pattern all-new --stocks 800   # 限样本，跑得快
+    python scripts/backtest_patterns.py --pattern v_bottom            # 单个（短窗口）
+    python scripts/backtest_patterns.py --pattern all-new             # 26 个新形态
+    python scripts/backtest_patterns.py --pattern all                 # 注册表里全部
+    python scripts/backtest_patterns.py --pattern all-new --history   # 换成 5 年长历史
+    python scripts/backtest_patterns.py --pattern all-new --history --stocks 800   # 限样本试跑
 
 多目标时**一遍扫描**跑完所有形态（序列只切一次），输出「形态 × 持有期」汇总表；
 单个形态则额外打印按月分布与命中明细，方便逐个人工核对。
+
+## 内存与耗时（长历史下这两条要当回事）
+
+5 年 × 全池 × 26 形态会产生**上百万条**信号。所以：
+- 信号**逐条累加**进 `Tally`（分布用 `array('d')`，8 字节/条），不存 dict 对象
+- 基准按「日期 → 当日全市场平均」预先压成一个数，而不是把全市场每天的收益都留着
+（照旧写法峰值能到 GB 级。）全池 × 5 年 × 26 形态大约十几分钟到半小时。
 """
 
 import argparse
 import logging
 import sys
 import time
-from collections import defaultdict
+from array import array
+from collections import Counter, defaultdict, deque
+from datetime import date
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parent.parent / "backend"
@@ -47,9 +69,9 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 import numpy as np  # noqa: E402
-from sqlalchemy import func, select  # noqa: E402
+from sqlalchemy import create_engine, func, select  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
 
-from app.config import get_settings  # noqa: E402
 from app.db import session_scope  # noqa: E402
 from app.jobs.scan_patterns import _load_bars  # noqa: E402
 from app.models import StockDaily  # noqa: E402
@@ -75,6 +97,10 @@ HORIZONS = (5, 10, 20, 60)
 MIN_BARS = 80
 # 同一只票这么多交易日内的重复信号只留第一个（见模块说明第 2 条）
 DEDUP_DAYS = 20
+
+HISTORY_DB = BACKEND / "data" / "history.db"
+# 长历史的默认窗口：5 年约 1220 根，取 1300 留点余量
+DEFAULT_HISTORY_BARS = 1300
 
 # 2026-09-25 按用户清单补的 26 个形态。单独列出来是为了能一条命令跑完这一批
 NEW_KEYS = (
@@ -204,6 +230,75 @@ PRESCREENS = {
 }
 
 
+# ---------------------------------------------------------------- 数据装载
+
+
+def _load_history(engine, codes: list[str], bars: int) -> tuple[date, dict[str, list[dict]]]:
+    """从 `history.db` 装载：每只票最近 `bars` 根日线。
+
+    窗口**按数据自身的交易日**切，不用交易日历 —— 这个库只有 `stock_daily` 一张表，
+    没有日历表（见 backfill_history 的说明）。线上那条 `_load_bars` 走日历是因为
+    它要卡 `SCAN_BARS`，回测要的恰恰是「比线上更长」，所以在这里单独实现。
+    """
+    with Session(engine) as session:
+        dates = list(
+            session.scalars(
+                select(StockDaily.trade_date)
+                .group_by(StockDaily.trade_date)
+                .order_by(StockDaily.trade_date.desc())
+                .limit(bars)
+            )
+        )
+        if not dates:
+            raise SystemExit(f"{HISTORY_DB} 里没有数据，先跑 scripts/backfill_history.py")
+        start = min(dates)
+        latest = max(dates)
+        rows = session.execute(
+            select(
+                StockDaily.code,
+                StockDaily.name,
+                StockDaily.trade_date,
+                StockDaily.open,
+                StockDaily.high,
+                StockDaily.low,
+                StockDaily.close,
+                StockDaily.volume,
+                StockDaily.amount,
+                StockDaily.pct_chg,
+            )
+            .where(
+                StockDaily.trade_date >= start,
+                StockDaily.trade_date <= latest,
+                StockDaily.code.in_(codes),
+            )
+            .order_by(StockDaily.code, StockDaily.trade_date)
+        ).all()
+
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for code, name, day, open_, high, low, close, volume, amount, pct in rows:
+        # 涨跌幅为空的行在采集时就已经滤掉了，这里再挡一道：少了它 `build_bars`
+        # 会把停牌日当成 0% 涨跌，前复权序列直接失真
+        if close is None or pct is None:
+            continue
+        grouped[code].append(
+            {
+                "date": day,
+                "name": name,
+                "open": open_,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume,
+                "amount": amount,
+                "pct_chg": pct,
+            }
+        )
+    return latest, dict(grouped)
+
+
+# ---------------------------------------------------------------- RS 表
+
+
 def build_rs_table(bars_by_code: dict[str, Bars]) -> dict[object, dict[str, float]]:
     """逐日 RS 表：`{交易日: {代码: RS 评级}}`。
 
@@ -211,7 +306,7 @@ def build_rs_table(bars_by_code: dict[str, Bars]) -> dict[object, dict[str, floa
     只能用「截至 t 的全市场表现」来排；用整段数据算出来的 RS 是未来函数，
     会让回测结果虚高，而且从结果里看不出来（这正是最危险的一类错误）。
 
-    预计算而不是每个 t 重排一遍：回测要遍历全市场 × 全时段约 6 万个时点，
+    预计算而不是每个 t 重排一遍：回测要遍历全市场 × 全时段几百万个时点，
     逐点重排代价太高。这里是先算好每只票每天的加权涨幅，再逐日排序。
     """
     raw: dict[object, dict[str, float]] = defaultdict(dict)
@@ -244,21 +339,68 @@ def build_rs_table(bars_by_code: dict[str, Bars]) -> dict[object, dict[str, floa
     return table
 
 
-def _stats(values: list[float]) -> tuple[float, float, float, float, float]:
-    array = np.asarray(values, dtype=float)
-    return (
-        float(array.mean()),
-        float(np.median(array)),
-        float(np.mean(array > 0)),
-        float(array.max()),
-        float(array.min()),
-    )
+# ---------------------------------------------------------------- 累加器
 
 
-def _bench_mean(bench: dict, horizon: int, rows: list[dict]) -> float:
-    """命中组对应的「同日全市场平均收益」——同日取平均，再对信号取平均。"""
-    values = [float(np.mean(bench[horizon][s["date"]])) for s in rows if bench[horizon].get(s["date"])]
-    return float(np.mean(values)) if values else 0.0
+class Tally:
+    """一个形态的累加统计。
+
+    为什么不把每条信号存成一个 dict：5 年 × 全池 × 26 形态会产生**上百万条**信号，
+    逐条存 dict 要几百 MB 到 GB；而报告只需要「分布 + 同日基准均值 + 按月计数 +
+    几条样本」。所以：
+    - 分布用 `array('d')` 存（8 字节/条，不是 Python 对象）
+    - 基准只累加「当日全市场平均」的和，不保留日期
+    """
+
+    __slots__ = ("returns", "bench", "counts", "months", "samples")
+
+    def __init__(self, horizons: int = len(HORIZONS)) -> None:
+        self.returns = [array("d") for _ in range(horizons)]
+        self.bench = [0.0] * horizons
+        self.counts = [0] * horizons
+        self.months: Counter[str] = Counter()
+        self.samples: deque[dict] = deque(maxlen=40)
+
+    def add(
+        self,
+        outcomes: list[float],
+        bench_means: list[float],
+        month: str,
+        sample: dict | None = None,
+    ) -> None:
+        for index, value in enumerate(outcomes):
+            self.returns[index].append(value)
+            self.bench[index] += bench_means[index]
+            self.counts[index] += 1
+        self.months[month] += 1
+        if sample is not None:
+            self.samples.append(sample)
+
+    # -- 报告用 ----------------------------------------------------------
+
+    @property
+    def size(self) -> int:
+        return self.counts[0] if self.counts else 0
+
+    def values(self, index: int) -> np.ndarray:
+        """第 index 个持有期的收益数组（只读视图，不复制）。"""
+        return np.frombuffer(self.returns[index], dtype=np.float64)
+
+    def bench_mean(self, index: int) -> float:
+        count = self.counts[index]
+        return self.bench[index] / count if count else 0.0
+
+    def stats(self, index: int) -> tuple[float, float, float, float, float]:
+        values = self.values(index)
+        if not values.size:
+            return (0.0, 0.0, 0.0, 0.0, 0.0)
+        return (
+            float(values.mean()),
+            float(np.median(values)),
+            float(np.mean(values > 0)),
+            float(values.max()),
+            float(values.min()),
+        )
 
 
 def _resolve_targets(name: str) -> dict[str, dict]:
@@ -280,7 +422,7 @@ def _resolve_targets(name: str) -> dict[str, dict]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="全市场形态回测（调生产函数，与线上判定逐字一致）")
+    parser = argparse.ArgumentParser(description="形态回测（调生产函数，与线上判定逐字一致）")
     parser.add_argument(
         "--pattern",
         default="three_stage",
@@ -288,31 +430,52 @@ def main() -> int:
     )
     parser.add_argument("--samples", type=int, default=15, help="单个形态时打印多少条命中明细")
     parser.add_argument("--stocks", type=int, default=0, help="只用前 N 只票（0 = 全部）")
+    parser.add_argument("--history", action="store_true", help="用长历史库 history.db")
+    parser.add_argument(
+        "--bars", type=int, default=DEFAULT_HISTORY_BARS, help=f"长历史窗口（默认 {DEFAULT_HISTORY_BARS} 根）"
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    get_settings()
-    with session_scope() as session:
-        # 截止日必须取 **stock_daily 的最大日期**，不能取交易日历的最大日期 ——
-        # 日历表会预置到年底，拿它当截止日会让 `_load_bars` 的 260 日窗口整体后移，
-        # 把最早那几个月切掉（实测少了三个月，信号全挤在 4-6 月，看着像
-        # 「这个形态只在特定行情下成立」，其实是窗口的问题）
-        latest = session.scalar(select(func.max(StockDaily.trade_date)))
-    if latest is None:
-        raise SystemExit("stock_daily 是空的，先跑 collect_kline")
 
     from app.jobs.collect_universe import load_codes
 
     codes = load_codes()
     if args.stocks:
         codes = codes[: args.stocks]
-    grouped = _load_bars(latest, codes)
+    if not codes:
+        raise SystemExit("股票池为空，先建池")
+
+    if args.history:
+        if not HISTORY_DB.is_file():
+            raise SystemExit(f"没有 {HISTORY_DB}，先跑 scripts/backfill_history.py")
+        engine = create_engine(f"sqlite:///{HISTORY_DB.as_posix()}")
+        latest, grouped = _load_history(engine, codes, args.bars)
+        logger.info("数据源 history.db（窗口 %d 根），截至 %s", args.bars, latest)
+    else:
+        with session_scope() as session:
+            # 截止日必须取 **stock_daily 的最大日期**，不能取交易日历的最大日期 ——
+            # 日历表会预置到年底，拿它当截止日会让 `_load_bars` 的 260 日窗口整体后移，
+            # 把最早那几个月切掉（实测少了三个月，信号全挤在 4-6 月，看着像
+            # 「这个形态只在特定行情下成立」，其实是窗口的问题）
+            latest = session.scalar(select(func.max(StockDaily.trade_date)))
+        if latest is None:
+            raise SystemExit("stock_daily 是空的，先跑 collect_kline")
+        grouped = _load_bars(latest, codes)
+
     bars_by_code = {
         code: build_bars(records) for code, records in grouped.items() if len(records) >= MIN_BARS
     }
     if not bars_by_code:
         raise SystemExit("没有可用的日线序列")
-    logger.info("载入 %d 只票的日线（截至 %s）", len(bars_by_code), latest)
+    lengths = sorted(len(bars) for bars in bars_by_code.values())
+    logger.info(
+        "载入 %d 只票，每票 K 线 中位 %d 根（最长 %d），截至 %s",
+        len(bars_by_code),
+        lengths[len(lengths) // 2],
+        lengths[-1],
+        latest,
+    )
 
     targets = _resolve_targets(args.pattern)
     logger.info("目标形态 %d 个：%s", len(targets), ", ".join(targets))
@@ -322,17 +485,28 @@ def main() -> int:
 
     # 基准：每个交易日 → 全市场在该日之后 N 日的平均收益。
     # 必须按**同一天**比，否则「形态命中组涨了 6%」可能只是那段时间大盘在涨。
-    bench: dict[int, dict[object, list[float]]] = {h: defaultdict(list) for h in HORIZONS}
+    #
+    # 这里只累加 sum 与 count（而不是把每天的收益都存成一个列表）：5 年 × 全池会攒下
+    # 上千万个浮点数，存列表峰值能吃掉好几个 GB，而报告只需要那个均值。
+    bench_sum: dict[int, dict[object, float]] = {h: defaultdict(float) for h in HORIZONS}
+    bench_count: dict[int, dict[object, int]] = {h: defaultdict(int) for h in HORIZONS}
     for bars in bars_by_code.values():
         n = len(bars)
         for i in range(n - max(HORIZONS)):
             entry = float(bars.close[i])
             if entry <= 0:
                 continue
+            day = bars.dates[i]
             for h in HORIZONS:
-                bench[h][bars.dates[i]].append(float(bars.close[i + h]) / entry - 1)
+                bench_sum[h][day] += float(bars.close[i + h]) / entry - 1
+                bench_count[h][day] += 1
+    bench: dict[int, dict[object, float]] = {
+        h: {day: bench_sum[h][day] / count for day, count in bench_count[h].items() if count}
+        for h in HORIZONS
+    }
+    logger.info("基准表：%d 个交易日", len(bench[HORIZONS[0]]))
 
-    signals: dict[str, list[dict]] = {key: [] for key in targets}
+    tallies = {key: Tally() for key in targets}
     last_hit: dict[tuple[str, str], int] = {}
     started = time.monotonic()
 
@@ -358,25 +532,31 @@ def main() -> int:
                 if entry <= 0:
                     continue
                 last_hit[(key, code)] = t
-                signals[key].append(
+                day = bars.dates[t]
+                tallies[key].add(
+                    [float(bars.close[t + h]) / entry - 1 for h in HORIZONS],
+                    [bench[h].get(day, 0.0) for h in HORIZONS],
+                    str(day)[:7],
                     {
                         "code": code,
                         "name": grouped[code][-1].get("name") or "",
-                        "date": bars.dates[t],
+                        "date": day,
                         "hit": hit,
-                        "outcomes": {h: float(bars.close[t + h]) / entry - 1 for h in HORIZONS},
-                    }
+                        "outcomes": {
+                            h: float(bars.close[t + h]) / entry - 1 for h in HORIZONS
+                        },
+                    },
                 )
         if done % 1000 == 0:
             logger.info(
                 "  扫过 %d/%d 只，命中 %d 条，用时 %.0fs",
                 done,
                 len(bars_by_code),
-                sum(len(value) for value in signals.values()),
+                sum(tally.size for tally in tallies.values()),
                 time.monotonic() - started,
             )
 
-    total = sum(len(value) for value in signals.values())
+    total = sum(tally.size for tally in tallies.values())
     logger.info("命中 %d 条信号，用时 %.0fs", total, time.monotonic() - started)
     if total == 0:
         logger.warning("一个都没命中 —— 条件太严或数据太短")
@@ -384,37 +564,34 @@ def main() -> int:
 
     if len(targets) == 1:
         key = next(iter(targets))
-        _report_single(key, signals[key], bench, args.samples)
+        _report_single(key, tallies[key], args.samples)
     else:
-        _report_multi(signals, bench)
+        _report_multi(tallies)
     return 0
 
 
-def _excess(bench: dict, rows: list[dict]) -> dict[int, float]:
-    result = {}
-    for h in HORIZONS:
-        mean = _stats([s["outcomes"][h] for s in rows])[0]
-        result[h] = mean - _bench_mean(bench, h, rows)
-    return result
+# ---------------------------------------------------------------- 报告
 
 
-def _report_single(key: str, rows: list[dict], bench: dict, samples: int) -> None:
+def _report_single(key: str, tally: Tally, samples: int) -> None:
     meta = _BY_KEY[key]
+    if not tally.size:
+        print(f"\n形态：{meta.name}（{key}）—— 没有命中")
+        return
     print()
     print("=" * 92)
-    print(f"形态：{meta.name}（{key}，组={meta.group}）  信号 {len(rows)} 条")
+    print(f"形态：{meta.name}（{key}，组={meta.group}）  信号 {tally.size} 条")
     print("-" * 92)
     print(
         f"{'持有':>6} {'样本':>6} {'均值':>9} {'中位':>9} {'胜率':>7} "
         f"{'基准均值':>10} {'超额':>9} {'最好':>9} {'最差':>9}"
     )
     print("-" * 92)
-    for h in HORIZONS:
-        values = [s["outcomes"][h] for s in rows]
-        mean, median, win, best, worst = _stats(values)
-        base = _bench_mean(bench, h, rows)
+    for index, horizon in enumerate(HORIZONS):
+        mean, median, win, best, worst = tally.stats(index)
+        base = tally.bench_mean(index)
         print(
-            f"{h:>4}日 {len(values):>6} {mean * 100:>8.2f}% {median * 100:>8.2f}% "
+            f"{horizon:>4}日 {tally.counts[index]:>6} {mean * 100:>8.2f}% {median * 100:>8.2f}% "
             f"{win * 100:>6.1f}% {base * 100:>9.2f}% {(mean - base) * 100:>8.2f}% "
             f"{best * 100:>8.1f}% {worst * 100:>8.1f}%"
         )
@@ -422,77 +599,67 @@ def _report_single(key: str, rows: list[dict], bench: dict, samples: int) -> Non
 
     print()
     print("--- 信号按月分布（全挤在某一两个月 = 可能只在特定行情下成立）---")
-    print("  " + "   ".join(f"{m}: {c}" for m, c in _months(rows)))
+    print("  " + "   ".join(f"{m}: {c}" for m, c in sorted(tally.months.items())))
 
     if samples > 0:
         print()
-        print(f"--- 命中明细（最近 {samples} 条，便于逐个人工核对）---")
+        print(f"--- 命中明细（按扫描顺序最后 {samples} 条，便于逐个人工核对）---")
         # 注意别写成 rows[-samples:]：samples=0 时那是 [-0:] 等于整段，会把全部明细打出来
-        for s in sorted(rows, key=lambda item: item["date"])[-samples:]:
-            out = s["outcomes"]
+        for item in sorted(tally.samples, key=lambda entry: entry["date"])[-samples:]:
+            out = item["outcomes"]
             print(
-                f"  {s['date']} {s['code']} {str(s.get('name') or ''):<6} "
-                f"分数{s['hit'].get('score', 0):>5.1f}"
+                f"  {item['date']} {item['code']} {str(item.get('name') or ''):<6} "
+                f"分数{item['hit'].get('score', 0):>5.1f}"
                 f"  → 5日{out[5] * 100:>+6.1f}% 10日{out[10] * 100:>+6.1f}% "
                 f"20日{out[20] * 100:>+6.1f}%"
             )
 
 
-def _months(rows: list[dict]) -> list[tuple[str, int]]:
-    counts: dict[str, int] = defaultdict(int)
-    for s in rows:
-        counts[str(s["date"])[:7]] += 1
-    return sorted(counts.items())
-
-
-def _report_multi(signals: dict[str, list[dict]], bench: dict) -> None:
-    rows_report = []
-    for key, rows in signals.items():
+def _report_multi(tallies: dict[str, Tally]) -> None:
+    rows = []
+    for key, tally in tallies.items():
         meta = _BY_KEY[key]
-        if not rows:
-            rows_report.append({"key": key, "meta": meta, "count": 0, "excess": None, "median10": None, "win10": None})
+        if not tally.size:
+            rows.append({"key": key, "meta": meta, "tally": tally, "excess": None})
             continue
-        rows_report.append(
-            {
-                "key": key,
-                "meta": meta,
-                "count": len(rows),
-                "excess": _excess(bench, rows),
-                "median10": _stats([s["outcomes"][10] for s in rows])[1],
-                "win10": _stats([s["outcomes"][10] for s in rows])[2],
-            }
-        )
+        excess = {
+            index: tally.stats(index)[0] - tally.bench_mean(index)
+            for index in range(len(HORIZONS))
+        }
+        rows.append({"key": key, "meta": meta, "tally": tally, "excess": excess})
 
     # 按 10 日超额排序：做这张表的全部意义就是「一眼看出哪些形态值得留」
-    rows_report.sort(key=lambda item: (item["excess"][10] if item["excess"] else -99), reverse=True)
+    rows.sort(key=lambda item: (item["excess"][1] if item["excess"] else -99), reverse=True)
 
     print()
     print("=" * 110)
     print(
-        f"{'分组':<12}{'形态':<18}{'信号':>6}{'5日超额':>10}{'10日超额':>10}"
+        f"{'分组':<12}{'形态':<18}{'信号':>7}{'5日超额':>10}{'10日超额':>10}"
         f"{'20日超额':>10}{'60日超额':>10}{'10日胜率':>9}{'10日中位':>10}"
     )
     print("-" * 110)
-    for item in rows_report:
-        meta = item["meta"]
+    for item in rows:
+        meta, tally = item["meta"], item["tally"]
         if item["excess"] is None:
-            print(f"{meta.group:<12}{meta.name:<18}{0:>6}{'—':>10}{'—':>10}{'—':>10}{'—':>10}{'—':>9}{'—':>10}")
+            print(f"{meta.group:<12}{meta.name:<18}{0:>7}{'—':>10}{'—':>10}{'—':>10}{'—':>10}{'—':>9}{'—':>10}")
             continue
         excess = item["excess"]
+        median10 = tally.stats(1)[1]
+        win10 = tally.stats(1)[2]
         print(
-            f"{meta.group:<12}{meta.name:<18}{item['count']:>6}"
-            f"{excess[5] * 100:>9.2f}%{excess[10] * 100:>9.2f}%{excess[20] * 100:>9.2f}%"
-            f"{excess[60] * 100:>9.2f}%{item['win10'] * 100:>8.1f}%{item['median10'] * 100:>9.2f}%"
+            f"{meta.group:<12}{meta.name:<18}{tally.size:>7}"
+            f"{excess[0] * 100:>9.2f}%{excess[1] * 100:>9.2f}%{excess[2] * 100:>9.2f}%"
+            f"{excess[3] * 100:>9.2f}%{win10 * 100:>8.1f}%{median10 * 100:>9.2f}%"
         )
     print("=" * 110)
     print("（超额 = 命中组平均收益 − 同一天全市场平均收益，单位 %，未年化）")
 
     print()
     print("--- 各形态信号按月分布（看是不是只在某一两个月成立）---")
-    for key, rows in signals.items():
-        if not rows:
+    for key, tally in tallies.items():
+        if not tally.size:
             continue
-        months = "   ".join(f"{m}:{c}" for m, c in _months(rows))
+        months = "   ".join(f"{m}:{c}" for m, c in sorted(tally.months.items()))
         print(f"  {_BY_KEY[key].name:<18}{months}")
 
 
