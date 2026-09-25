@@ -21,6 +21,11 @@ interface Column {
   label: string
   /** 默认右对齐（数值列）；文字列显式左对齐 */
   align?: 'left' | 'right'
+  /**
+   * 窄屏（`< xl` = 1280）隐藏这一列。**表头与单元格必须读同一个字段**，
+   * 只藏一边会让整列错位（两边都走下面 `narrowClass`）。
+   */
+  narrowHidden?: boolean
   render: (stock: LimitStock) => ReactNode
   /**
    * 取这一列的排序值。不给 = 这列没有可比值、表头不可点。
@@ -30,6 +35,9 @@ interface Column {
    */
   sortValue?: (stock: LimitStock) => SortValue
 }
+
+/** `th` 与 `td` 共用的窄屏隐藏类。**不要再在两处各写一遍字符串**，写歪一处就错位。 */
+const narrowClass = (column: Column) => (column.narrowHidden ? 'max-xl:hidden' : '')
 
 const TITLES: Record<PoolType, string> = {
   up: '涨停明细',
@@ -44,6 +52,20 @@ const TITLES: Record<PoolType, string> = {
  * `hasBoard` / `hasReason` 由调用方**按数据判**：开盘啦板块来自涨停天梯、涨停原因
  * 来自同花顺涨停池，两者都只覆盖涨停股，跌停 / 炸板池拿不到，那种情况下不给这两列
  * （留一整列「—」只是噪音）。
+ *
+ * ### 窄屏（`< xl` = 1280）为什么要收起「行业」与「开盘啦板块」
+ *
+ * 涨停池是 14 列，2026-09-25 实测：1280 视口下容器 1218px、表宽 1176px，刚好放下；
+ * 但 1024 下容器只有 **962px**，要放下得再省 214px —— 实测把单元格左右内边距
+ * 压到 0 都还差 14px，**不删列无解**。
+ *
+ * 于是窄屏做两件事：① 隐藏「行业」与「开盘啦板块」；② 在 index.css 里把
+ * 单元格左右内边距 10px→6px（只作用于 `< xl`）。两项合计表宽降到约 906px，
+ * 1024 下留 56px 余量。收起的这两列都是「公司/板块做什么」，与保留下来的
+ * 「涨停原因」功能重叠 —— 窄屏优先保住数字列与「为什么涨」。
+ *
+ * 为什么用 `max-xl:hidden` 而不是在这里按视口裁列：列宽由 CSS 决定，JS 拿不到，
+ * 按视口裁列要么加 resize 监听、要么首屏闪一下。CSS 断点也和顶栏导航的做法一致。
  */
 function buildColumns(
   type: PoolType,
@@ -88,6 +110,7 @@ function buildColumns(
       key: 'industry',
       label: '行业',
       align: 'left',
+      narrowHidden: true,
       render: (s) => <span className="text-[13px] text-fg-dim">{s.industry ?? '—'}</span>,
       sortValue: (s) => s.industry,
     },
@@ -96,13 +119,16 @@ function buildColumns(
 
        **只在真有数据时给这一列**：它的来源是涨停天梯（只覆盖涨停股），跌停池与炸板池
        恒为空，留一整列「—」只是噪音 —— 与「没有题材数据时不给『名称 / 题材』表头」
-       同一个做法。 */
+       同一个做法。
+
+       窄屏收起（与「行业」一起，理由见 buildColumns 上方那段实测）。 */
     ...(hasBoard
       ? [
           {
             key: 'board',
             label: '开盘啦板块',
             align: 'left' as const,
+            narrowHidden: true,
             render: (s: LimitStock) => (
               <span className="text-[13px] text-fg-dim">{s.board ?? '—'}</span>
             ),
@@ -299,6 +325,7 @@ export default function LimitTable({
                     {...sort}
                     sortKey={column.sortValue ? column.key : undefined}
                     align={column.align}
+                    className={narrowClass(column)}
                   >
                     {column.label}
                   </SortTh>
@@ -316,7 +343,14 @@ export default function LimitTable({
                   {columns.map((column) => (
                     <td
                       key={column.key}
-                      className={column.align === 'left' ? '!text-left' : undefined}
+                      className={
+                        [
+                          column.align === 'left' ? '!text-left' : '',
+                          narrowClass(column),
+                        ]
+                          .filter(Boolean)
+                          .join(' ') || undefined
+                      }
                     >
                       {column.render(stock)}
                     </td>

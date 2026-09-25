@@ -200,6 +200,20 @@
     background-color: var(--color-ink-850);
   }
 
+  /* 窄屏（< xl = 1280）把单元格左右内边距 10px → 6px。
+     为什么需要：涨停明细 14 列在 1024 视口下要再省 214px 才不横滑，而实测
+     把内边距压到 0 都还差 14px —— 光隐藏「行业」「开盘啦板块」两列也还差 40px。
+     这一档收到 6px 后，配合那两列的隐藏，1024 下表宽降到约 906px（容器 962px）。
+     只作用于窄屏，宽屏的疏朗感不变。
+     阈值与 LimitTable 里的 `max-xl:hidden` 必须一致，否则两处不同步会各自错位。 */
+  @media (width < 80rem) {
+    .grid-table thead th,
+    .grid-table tbody td {
+      padding-left: 0.375rem;
+      padding-right: 0.375rem;
+    }
+  }
+
   /* 可排序表头。onClick 挂在 th 上（见 SortTh），整格都是热区 ——
      只让内层 button 可点的话，「窄按钮 + 宽单元格」会在两侧留下几十像素
      的死区（文字两三个字、单元格却有 120px 宽），点了没反应。

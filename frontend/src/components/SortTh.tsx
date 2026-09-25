@@ -16,6 +16,11 @@ interface SortThProps {
   onToggle?: (key: string) => void
   /** 文字列传 'left'，与单元格的对齐保持一致 */
   align?: 'left' | 'right'
+  /**
+   * 额外类名。目前只有一处用途：窄屏隐藏列时传 `max-xl:hidden`
+   * （调用方必须给 `th` 与 `td` 传**同一个**类，只藏一边会整列错位）。
+   */
+  className?: string
   /** 补充说明（如「近 20 日日均成交额」）。可排序时会叠加「点击排序」提示 */
   title?: string
 }
@@ -43,14 +48,15 @@ export default function SortTh({
   dir = 'desc',
   onToggle,
   align,
+  className,
   title,
 }: SortThProps) {
-  const alignClass = align === 'left' ? '!text-left' : undefined
+  const base = [align === 'left' ? '!text-left' : '', className].filter(Boolean).join(' ')
   const sortable = sortKey != null && onToggle != null
 
   if (!sortable) {
     return (
-      <th className={alignClass} title={title}>
+      <th className={base || undefined} title={title}>
         {children}
       </th>
     )
@@ -59,7 +65,7 @@ export default function SortTh({
   const active = sortKey === activeKey
   return (
     <th
-      className={[alignClass, 'sortable', active ? 'is-sorted' : ''].filter(Boolean).join(' ')}
+      className={[base, 'sortable', active ? 'is-sorted' : ''].filter(Boolean).join(' ')}
       // aria-sort 属于列头而不是按钮，屏幕阅读器靠它念「已按此列降序排列」
       aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
       onClick={() => onToggle(sortKey)}
