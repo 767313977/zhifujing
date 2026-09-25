@@ -54,17 +54,27 @@
   --color-danger: #ff4d4f;
   --color-ok: #00b96b;
 
-  /* 系统字体栈（2026-09-25 用户指定）：直接吃操作系统自带的 UI 字体，
-     零 webfont、零网络请求。原来是 'Times New Roman' + 仿宋的本地字体对。
+  /* 字体走系统栈：**不引任何 webfont**，直接从操作系统已装的字体里取
+     （2026-09-25 用户指定）。首位是思源黑体 —— 思源黑体（Source Han Sans）
+     与 Noto Sans SC 是同一套字形的两个名字（Adobe / Google 各自命名），
+     写 CSS 用 Google 那个名字。
 
-     顺序为什么必须这么排：`system-ui` 在 Windows 是 Segoe UI、macOS 是 SF Pro、
-     Android 是 Roboto，**这三者都没有中文字形** —— 中文只能靠后面显式列出的中文
-     字体接住，所以那段不能省。中文里苹方（macOS/iOS）放在微软雅黑（Windows）**前面**：
-     苹果设备上没有雅黑，列在后面不影响它；反过来把雅黑写前面，Mac 上装过 Office 的
-     机器就会命中雅黑，同一个站两套字形。末位 sans-serif 兜底（Linux 一般落思源/Noto）。 */
+     ⚠️ 它是**本地字体**，不是 webfont：本机 C:\Windows\Fonts 下已装
+     NotoSansSC-VF.ttf 与 Regular/Medium/Bold 三个 OTF，所以命中它、且
+     一个字节都不下载（实测字体请求 0 条、@font-face 0 条）。
+
+     代价要认：没装这个字体的设备（比如手机、别人的电脑）会**静默回退**到
+     后面的系统 UI 字体 —— 那些设备上看到的是雅黑 / 苹方，与你这台不完全一样。
+     这是「零加载」的必然结果：想全端一致就必须自托管字体文件，那就要下载。
+
+     顺序说明：`system-ui` 在 Windows 是 Segoe UI、macOS 是 SF Pro、Android 是
+     Roboto，**这三者都没有中文字形**，中文只能靠后面显式列出的中文字体接住；
+     中文里苹方（macOS/iOS）放雅黑（Windows）前面 —— 苹果设备上没有雅黑，列后面
+     不影响它；反过来把雅黑写前面，Mac 上装过 Office 的机器会命中雅黑，字形就变了。
+     末位 sans-serif 兜底（Linux 一般落思源/Noto）。 */
   --font-sans:
-    system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei',
-    'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif;
+    'Noto Sans SC', system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC',
+    'Microsoft YaHei', 'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif;
 
   /* 数字跟着正文用同一套系统字体，不再单独挑一种（`.num` 上的 `tabular-nums`
      负责纵向对齐，见 components 层）。保留 `--font-mono` 这个名字是因为它还有

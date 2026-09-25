@@ -35,7 +35,7 @@ export const SERIES_PALETTE = [
 // canvas 读不到 CSS 变量，只能把那一串写死 —— 改 index.css 里的字体栈时**必须同步这里**，
 // 否则图里的字会退回 canvas 默认的无衬线体，和页面上的字明显不是一个字体。
 const NUM_FONT =
-  "system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif"
+  "'Noto Sans SC', system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif"
 
 export const AXIS_LABEL = {
   color: CHART.fgDim,
