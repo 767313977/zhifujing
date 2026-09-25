@@ -15,8 +15,14 @@ import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'
 import { rememberStockList } from '../lib/stockNav'
 
-/** 形态分组的展示顺序。后端给的 catalog 就是按这个顺序排的，这里只做兜底。 */
-const GROUP_ORDER = ['致富', '趋势', '突破', '量价', '几何']
+/**
+ * 形态分组的展示顺序。后端给的 catalog 就是按这个顺序排的，这里只做兜底。
+ *
+ * ⚠️ 分组名长度会直接影响筛选条那个标签列：`w-24` 是按最长的一组
+ * 「单 K 蜡烛形态」（5 个汉字 + 1 个字母）留的。再加更长的分组名时要一起调，
+ * 否则标签会折行、把每个分组的高度撑成两行。
+ */
+const GROUP_ORDER = ['致富', '趋势', '突破', '量价', '几何', '单 K 蜡烛形态']
 
 /**
  * 命中列表一次取多少只。
@@ -145,6 +151,56 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   vol_ratio_20: ['量比(20日)', false],
   leave_high: ['离开最高', true],
   sample_high: ['样板高', false],
+
+  // ---- 2026-09-25 新增形态（键与 backend/app/services/patterns.py 的 detail 一一对应）----
+  // 键是全局共用的，所以新增时要**先看有没有语义相同的旧键**（能共用就共用，
+  // 不能共用就换个不会误导的名字）—— 像 `recover` 已经被杯柄占成「右杯沿恢复」，
+  // 圆弧底就只能另起 `recover_pct`，否则同一个是数字却挂着别人的标签。
+  // 趋势
+  squeeze_width: ['粘合宽度', true],
+  ma20_rise: ['MA20 涨幅', true],
+  ma10_rise: ['MA10 涨幅', true],
+  days: ['持续天数', false],
+  daily_slope: ['轨斜率/日', true],
+  touches: ['触轨次数', false],
+  cross_days_ago: ['金叉距今', false],
+  weeks: ['周线根数', false],
+  ma5_gap: ['距周 MA5', true],
+  // 突破
+  box_range: ['箱体振幅', true],
+  touches_top: ['触顶次数', false],
+  touches_bottom: ['触底次数', false],
+  fill: ['回补深度', true],
+  rise: ['缺口后涨幅', true],
+  days_ago: ['缺口天数', false],
+  // 量价
+  vol_shrink: ['缩量到', true],
+  drawdown: ['距高点回撤', true],
+  new_low: ['距新低', true],
+  upper_shadow: ['上影占比', true],
+  pile_days: ['堆量天数', false],
+  vol_ratio_5_20: ['5/20 日量比', false],
+  gain: ['区间涨幅', true],
+  // 几何
+  recover_pct: ['距底收复', true],
+  down_days: ['下跌段天数', false],
+  up_days: ['上涨段天数', false],
+  vol_boost: ['右侧量能倍数', false],
+  amplitude: ['窗口振幅', true],
+  low_position: ['低点位置', true],
+  low_spread: ['三底差距', true],
+  expand: ['扩张比例', true],
+  contract: ['收敛比例', true],
+  upper_slope: ['上轨斜率', true],
+  lower_slope: ['下轨斜率', true],
+  gap_ratio: ['末端间距', true],
+  // 单 K 蜡烛形态
+  shadow_ratio: ['影线/实体', false],
+  body_ratio: ['实体比', false],
+  close_pos: ['收盘位置', true],
+  prior_drop: ['前置跌幅', true],
+  star_recover: ['收复实体', true],
+  steady: ['实体不缩水', false],
 }
 
 function detailText(key: string, value: number | string): string {
@@ -400,7 +456,7 @@ export default function Patterns() {
           <div className="space-y-2 px-4 py-3">
             {groups.map(([group, items]) => (
               <div key={group} className="flex flex-wrap items-center gap-2">
-                <span className="w-8 shrink-0 text-[13px] text-fg-dim">{group}</span>
+                <span className="w-24 shrink-0 text-[13px] text-fg-dim">{group}</span>
                 {items.map((item) => {
                   const on = picked === item.key
                   const count = countOf[item.key] ?? 0

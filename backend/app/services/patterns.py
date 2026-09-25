@@ -364,6 +364,150 @@ RS_MIN_BARS = 200
 MIN_BARS = MA_PERIODS[-1] + MA_SLOPE_LOOKBACK
 
 
+# ------------------------------------------------- 新增形态阈值（2026-09-25）
+#
+# ⚠️ 这一批是**按经典定义实现的形状判定，没有回测支持** —— 与「N 字选股」同一定位：
+# 作用是「按这个形状捞一批票自己看」，不是高胜率信号。已回测的那几个（三段式突破、
+# 突破后横盘）仍以各自注释里那张表为准，别把这一批的分数当成同一回事。
+#
+# 也不要照着某一只票去调这里的数字。三段式与突破后横盘那两组是全市场扫描 + 回测
+# 校准出来的；这一批至少先跑一遍全市场（`scripts/check_day.py` 会打印各形态家数），
+# 确认命中量级合理再谈调参。
+
+# 均线粘合（四条均线收敛到极窄区间、横住 → 蓄势）
+SQUEEZE_DAYS = 5  # 要求粘合持续这么多天，只收敛一天是噪声
+SQUEEZE_MAX_SPREAD = 0.03  # MA5/10/20/60 的 (max/min − 1) 上限
+SQUEEZE_IDEAL_SPREAD = 0.008  # 收到这个宽度满分
+SQUEEZE_SLOPE_MAX = 0.02  # 粘合期内 MA20 的涨幅上限（已经在拉就不是粘合）
+
+# 上升通道
+CHANNEL_DAYS = 40
+CHANNEL_MIN_DAILY = 0.003  # 下轨斜率换成「每天涨百分之几」的下限（缓涨不算通道）
+CHANNEL_PARALLEL_TOL = 0.45  # 上下轨斜率差 / 上轨斜率 的上限，再大就是喇叭形
+CHANNEL_POSITION_IDEAL = (0.15, 0.55)  # 收盘在通道内的相对位置：贴近下轨才是买点
+CHANNEL_POSITION_MAX = 0.75  # 超过这个位置就不算「回踩到位」了（已在通道上部）
+CHANNEL_TOUCH_TOL = 0.03  # 轨被触碰的容差
+CHANNEL_MIN_TOUCHES = 2  # 每条轨至少被碰这么多次（不然只是"两条线正好夹住"）
+CHANNEL_TOUCH_FULL = 8  # 触碰这么多（上下合计）算通道很规整
+
+# 金叉共振（MA5 上穿 MA10，且 MA10 / MA20 同向）
+CROSS_LOOKBACK = 3  # 金叉要发生在最近这么多天内
+CROSS_MIN_MA10_RISE = 0.0  # MA10 五日斜率下限
+CROSS_MIN_MA20_RISE = -0.002  # MA20 允许略走平，但不能明显向下
+
+# 周线多头（日线聚合成周线后套均线多头）
+WEEKLY_BULL_MIN_BARS = 110  # 周线 20 根 + 斜率 4 根 ≈ 日线 110 根
+WEEKLY_BULL_SLOPE_WEEKS = 4
+WEEKLY_BULL_RISE_IDEAL = (0.005, 0.04)  # 周 MA10 四周涨幅的理想区间（太陡是加速末端）
+WEEKLY_BULL_RISE_CAP = 0.10
+WEEKLY_BULL_GAP_IDEAL = (0.005, 0.06)  # 当前价距周 MA5 的乖离
+
+# 下降趋势线突破
+TRENDLINE_DAYS = 60
+TRENDLINE_MIN_PIVOTS = 2  # 至少两个下降的摆动高点才画得出趋势线
+TRENDLINE_MAX_EXCESS = 0.08  # 突破幅度上限：追太多就不是买点
+
+# 向上跳空缺口突破
+GAP_MIN = 0.005  # 缺口宽度（今低 / 昨高 − 1）下限
+GAP_IDEAL = (0.01, 0.05)
+GAP_CAP = 0.09
+GAP_BREAK_HIGH_DAYS = 20  # 缺口当日还要突破这么多天的收盘高点
+
+# 缺口回补（向上缺口回踩不破 → 缺口变支撑）
+GAP_FILL_LOOKBACK = 20  # 在最近这么多天里找还没被补掉的向上缺口
+GAP_FILL_MIN_FILL = 0.2  # 今日最低至少扎进缺口这么多（占缺口宽度）
+GAP_FILL_MAX_FILL = 0.95  # 全补满就不算「支撑有效」了
+
+# 箱体突破（长箱体 + 上下沿反复验证）
+BOX_DAYS = 60
+BOX_MIN_RANGE = 0.08  # 太窄是平台，不是箱体
+BOX_MAX_RANGE = 0.35
+BOX_TOUCH_TOL = 0.025
+BOX_MIN_TOUCHES = 2  # 上下沿各至少被碰这么多次
+BOX_VOL_MULT = 1.3
+BOX_MAX_EXCESS = 0.06
+
+# 地量见底
+DRY_BOTTOM_DAYS = 60  # 「地量」与「低位」的回看窗口
+DRY_BOTTOM_VOL_MAX = 1.05  # 当日量 ≤ 窗口最低量 × 这个系数
+DRY_BOTTOM_MIN_DRAWDOWN = 0.2  # 距窗口最高收盘的回撤下限（够低才算底）
+
+# 量价底背离（价创新低、量能反而萎缩）
+VP_DIVERGE_DAYS = 40
+VP_DIVERGE_NEW_LOW = 0.01  # 收盘距窗口最低收盘在这个比例以内算「贴着新低」
+VP_DIVERGE_VOL_DROP = 0.7  # 本次跌段均量 / 上次跌段均量 的上限
+
+# 缩量涨停（涨停却没量 = 惜售）
+SHRINK_LIMIT_VOL_MAX = 0.8  # 涨停日量 / 前 5 日均量 的上限
+
+# 放量滞涨（量堆上去了、价格没动 → 低位吸筹嫌疑）
+STALL_VOL_MULT = 2.0
+STALL_PCT_BAND = (-0.01, 0.02)  # 当日涨幅落在这一段里才算「滞涨」
+STALL_SHADOW_MIN = 0.35  # 上影线占全日振幅的比例下限
+STALL_MIN_DRAWDOWN = 0.15  # 距 60 日高点的回撤下限（低位放量才有意义）
+
+# 量堆（连续放量、价格重心同步上移）
+PILE_DAYS = 5
+PILE_MIN_DAYS = 4  # 这 5 天里至少几天量比达标
+PILE_VOL_MULT = 1.5
+PILE_RATIO_5_20 = 1.5  # 5 日均量 / 20 日均量
+
+# V 型底
+V_BOTTOM_DAYS = 40
+V_BOTTOM_MIN_DROP = 0.18  # 左侧跌幅下限
+V_BOTTOM_MIN_REBOUND = 0.75  # 右侧收复左侧跌幅的比例
+V_BOTTOM_SYMMETRY = 1.8  # 左右两段天数之比的上限（V 要基本对称）
+
+# 圆弧底
+ROUND_DAYS = 90
+ROUND_MIN_DAYS = 60
+ROUND_MAX_AMPLITUDE = 0.35  # 窗口内 (最高 − 最低) / 最低 的上限：圆弧是平缓的
+ROUND_MIN_RECOVER = 0.6  # 当前价距窗口低点的收复比例
+
+# 三重底
+TRIPLE_DAYS = 90
+TRIPLE_LOW_TOL = 0.06  # 三个低点两两差距上限
+TRIPLE_MAX_EXCESS = 0.06  # 突破颈线的幅度上限
+
+# 矩形箱体（长矩形里贴着上沿，尚未突破）
+RECT_DAYS = 80
+RECT_MIN_RANGE = 0.1
+RECT_MAX_RANGE = 0.45
+RECT_POSITION_MIN = 0.7  # 收盘在箱体内的相对位置下限
+
+# 楔形（收敛三角形；上升楔形偏空、下降楔形偏多）
+WEDGE_DAYS = 50
+WEDGE_MIN_DAYS = 30
+WEDGE_MIN_SLOPE = 0.0004  # 两轨斜率绝对值的下限，再平就是箱体
+WEDGE_MIN_CONVERGE = 0.55  # 收敛比例下限 (起始间距 − 结束间距) / 起始间距
+WEDGE_TOUCH_TOL = 0.03  # 轨被触碰的容差
+WEDGE_MIN_TOUCHES = 3  # 每条轨至少被碰这么多次（真楔形的高/低点会反复贴轨）
+WEDGE_FALL_POSITION_MIN = 0.35  # 下降楔形要求收盘在楔形上部（跌势末端、准备向上突）
+WEDGE_FALL_GAP_MAX = 0.08  # 下降楔形末端两轨的间距上限（占均价）—— 成熟楔形快汇合了
+
+# 菱形（先扩张后收敛）
+DIAMOND_DAYS = 70
+DIAMOND_MIN_DAYS = 45
+DIAMOND_MIN_EXPAND = 0.25  # 前半段振幅扩张比例下限
+DIAMOND_MIN_CONTRACT = 0.4  # 后半段振幅收敛比例下限
+DIAMOND_MIDDLE_EDGE = 1.6  # 中段振幅至少要达到两端的这个倍数（不然只是普通波动）
+
+# 蜡烛形态（单根 / 两根 / 三根）
+CANDLE_BODY_MAX = 0.35  # 小实体：实体 / 全日振幅 的上限
+CANDLE_SHADOW_MULT = 2.0  # 长影线至少是实体的多少倍
+CANDLE_SHORT_SHADOW = 0.3  # 另一侧影线占振幅的上限
+CANDLE_PRIOR_DAYS = 5
+CANDLE_PRIOR_DROP = 0.03  # 前置下跌幅度：反转类蜡烛要在跌势之后出现才有意义
+ENGULF_MIN_BODY = 1.3  # 今日实体 / 昨日实体 的下限
+ENGULF_MIN_CLOSE_POS = 0.6  # 今日收盘要落在全日振幅的这个位置以上（收在上半部）
+STAR_BIG_BODY = 0.015  # 启明星两侧大实体的最小幅度（相对价格）
+STAR_SMALL_BODY = 0.5  # 中间小实体 / 左侧实体 的上限
+STAR_RECOVER = 0.5  # 右侧收盘要收复左侧实体这么多
+SOLDIER_MIN_BODY = 0.3  # 红三兵每根实体占振幅的下限
+SOLDIER_MAX_SHADOW = 0.35  # 每根上影线占振幅的上限
+SOLDIER_MIN_GAIN = 0.03  # 三根累计涨幅下限
+
+
 # ---------------------------------------------------------------- 数据结构
 
 
@@ -1993,7 +2137,1328 @@ def _wudao_start(bars: Bars) -> Signal | None:
     )
 
 
+# ------------------------------------------------- 新增形态实现（2026-09-25）
+
+
+def _linfit(values: np.ndarray) -> tuple[float, float]:
+    """最小二乘直线拟合，返回 `(斜率, 截距)`，x 取 0..n-1。
+
+    趋势线一律用拟合，而不是「窗口两端的极值连线」：后者对单根毛刺极度敏感 ——
+    一根长上影就能把整条轨拉歪；最小二乘会把毛刺摊到整条线上。
+    """
+    if values.size < 2:
+        return 0.0, 0.0
+    slope, intercept = np.polyfit(np.arange(values.size, dtype=float), values, 1)
+    return float(slope), float(intercept)
+
+
+def _weekly_closes(bars: Bars) -> np.ndarray:
+    """日线按自然周聚合成周线收盘序列（升序）。
+
+    最后一周可能不足 5 个交易日，照样算一根 —— 与真实周线一致（未收盘的周线也是 K 线）。
+    """
+    out: list[float] = []
+    current: tuple[int, int] | None = None
+    for index, day in enumerate(bars.dates):
+        iso = day.isocalendar()
+        key = (iso[0], iso[1])
+        if key != current:
+            out.append(float(bars.close[index]))
+            current = key
+        else:
+            out[-1] = float(bars.close[index])
+    return np.array(out, dtype=float)
+
+
+def _touches(values: np.ndarray, level: float, tol: float) -> int:
+    """序列里「碰到 level」的次数（相对容差）。
+
+    用来确认箱体上下沿是真被反复验证过，而不是取最大/最小时偶然扫到的一根毛刺。
+    """
+    if level <= 0:
+        return 0
+    return int(np.sum(np.abs(values / level - 1.0) <= tol))
+
+
+def _prior_drop(bars: Bars, days: int = CANDLE_PRIOR_DAYS) -> float:
+    """前置跌幅：`days` 个交易日前的收盘到**昨收**的跌幅（正数表示下跌）。
+
+    反转类蜡烛（锤子、吞没、启明星…）必须在跌势末端出现才有意义 ——
+    同样的形状出现在上涨半途，多半是中继或者干脆是噪声。
+    """
+    if len(bars) < days + 2:
+        return 0.0
+    base = float(bars.close[-1 - days])
+    if base <= 0:
+        return 0.0
+    return float(base / bars.close[-2] - 1)
+
+
+def _candle(
+    bars: Bars, index: int = -1
+) -> tuple[float, float, float, float, float, float, float, float]:
+    """一根 K 线的 `(开, 高, 低, 收, 实体, 上影, 下影, 振幅)`。
+
+    振幅可能是 0（一字板），调用方必须自己判 —— 除零会让整只票的扫描抛异常。
+    """
+    open_, high, low, close = (
+        float(bars.open[index]),
+        float(bars.high[index]),
+        float(bars.low[index]),
+        float(bars.close[index]),
+    )
+    return (
+        open_,
+        high,
+        low,
+        close,
+        abs(close - open_),
+        high - max(open_, close),
+        min(open_, close) - low,
+        high - low,
+    )
+
+
+def _ma_squeeze(bars: Bars) -> Signal | None:
+    """均线粘合：MA5/10/20/60 挤在极窄区间里横住 —— 方向未定的蓄势。
+
+    与「均线多头排列」正好互补：那个要四线**已发散且向上**（趋势中段），
+    这个要四线**挤在一起且没在拉**（趋势起点），两者很少同时命中。
+    """
+    if len(bars) < MA_PERIODS[-1] + SQUEEZE_DAYS:
+        return None
+    series = [_align(_ma_series(bars.close, period), period, len(bars)) for period in MA_PERIODS]
+    if any(not np.isfinite(item[-1]) for item in series):
+        return None
+
+    worst = 0.0
+    for offset in range(SQUEEZE_DAYS):
+        point = -1 - offset
+        values = [float(item[point]) for item in series]
+        lowest = min(values)
+        if lowest <= 0:
+            return None
+        worst = max(worst, max(values) / lowest - 1)
+    if worst > SQUEEZE_MAX_SPREAD:
+        return None
+
+    ma20 = series[2]
+    base = float(ma20[-1 - SQUEEZE_DAYS])
+    if base <= 0:
+        return None
+    slope = float(ma20[-1] / base - 1)
+    if slope > SQUEEZE_SLOPE_MAX:
+        return None  # 均线已经在拉了，那不是粘合
+
+    score = _gate_score(worst, SQUEEZE_MAX_SPREAD, SQUEEZE_IDEAL_SPREAD) * 70
+    # 横得越平越像蓄势；向上拉起来或向下破位都扣分
+    score += _gate_score(abs(slope), SQUEEZE_SLOPE_MAX, 0.0) * 30
+
+    return Signal(
+        "ma_squeeze",
+        score,
+        {
+            "breakout": float(bars.high[-SQUEEZE_DAYS:].max()),
+            "support": float(bars.low[-SQUEEZE_DAYS:].min()),
+        },
+        {"squeeze_width": round(worst, 4), "days": SQUEEZE_DAYS, "ma20_rise": round(slope, 4)},
+    )
+
+
+def _ascending_channel(bars: Bars) -> Signal | None:
+    """上升通道：近 40 天的最低价拟合出一条向上、且与上轨大致平行的下轨，
+    今天收盘落在通道下半部（贴着下轨 = 低吸位）。
+
+    上下轨分别对 low / high 序列做最小二乘，不用两端极值连线（理由见 `_linfit`）。
+    """
+    if len(bars) < CHANNEL_DAYS:
+        return None
+    window_high = bars.high[-CHANNEL_DAYS:]
+    window_low = bars.low[-CHANNEL_DAYS:]
+    mean_close = float(np.mean(bars.close[-CHANNEL_DAYS:]))
+    if mean_close <= 0:
+        return None
+
+    high_slope, high_intercept = _linfit(window_high)
+    low_slope, low_intercept = _linfit(window_low)
+    high_daily = high_slope / mean_close
+    low_daily = low_slope / mean_close
+    if low_daily < CHANNEL_MIN_DAILY or high_daily <= 0:
+        return None
+    if abs(high_daily - low_daily) / high_daily > CHANNEL_PARALLEL_TOL:
+        return None  # 两轨不平行，那是喇叭形
+
+    last = CHANNEL_DAYS - 1
+    upper = float(high_intercept + high_slope * last)
+    lower = float(low_intercept + low_slope * last)
+    if upper <= lower or lower <= 0:
+        return None
+    close = float(bars.close[-1])
+    position = (close - lower) / (upper - lower)
+    if not (-0.03 <= position <= CHANNEL_POSITION_MAX):
+        return None  # 跌穿下轨，或已经冲到通道上部（那就不是"回踩到位"了）
+
+    index = np.arange(CHANNEL_DAYS, dtype=float)
+    upper_series = high_intercept + high_slope * index
+    lower_series = low_intercept + low_slope * index
+    upper_touch = int(np.sum(np.abs(window_high / upper_series - 1.0) <= CHANNEL_TOUCH_TOL))
+    lower_touch = int(np.sum(np.abs(window_low / lower_series - 1.0) <= CHANNEL_TOUCH_TOL))
+    # 两条轨各要真被碰到过：只要求「上下轨正好夹住价格」的话，随便一段趋势
+    # 都能拟合出两条线来 —— 实测那样全市场有 7% 的票同时"在上升通道里"
+    if upper_touch < CHANNEL_MIN_TOUCHES or lower_touch < CHANNEL_MIN_TOUCHES:
+        return None
+    touches = upper_touch + lower_touch
+
+    score = _band_score(position, *CHANNEL_POSITION_IDEAL, 1.05) * 55
+    score += min((low_daily - CHANNEL_MIN_DAILY) / 0.003, 1.0) * 25
+    score += min(touches / CHANNEL_TOUCH_FULL, 1.0) * 20
+
+    return Signal(
+        "ascending_channel",
+        min(score, 100.0),
+        {"support": lower, "breakout": upper},
+        {
+            "daily_slope": round(low_daily, 5),
+            "position": round(position, 3),
+            "days": CHANNEL_DAYS,
+            "touches": touches,
+        },
+    )
+
+
+def _ma_golden_cross(bars: Bars) -> Signal | None:
+    """金叉共振：MA5 最近 3 天内上穿 MA10，同时 MA10 向上、MA20 不走弱。
+
+    「共振」指的是两个时间尺度同时转好：短期均线刚金叉（动能刚切），
+    中期均线也没在向下（趋势没坏）。只有金叉、而 MA20 还在下行的那种，
+    一半是真突破一半是反抽，所以拿 MA20 的五日斜率当否决条件。
+    """
+    if len(bars) < MA_PERIODS[-1] + CANDLE_PRIOR_DAYS + 1:
+        return None
+    ma5 = _align(_ma_series(bars.close, 5), 5, len(bars))
+    ma10 = _align(_ma_series(bars.close, 10), 10, len(bars))
+    ma20 = _align(_ma_series(bars.close, 20), 20, len(bars))
+    if not (np.isfinite(ma5[-1]) and np.isfinite(ma10[-1]) and np.isfinite(ma20[-1])):
+        return None
+    if ma5[-1] <= ma10[-1]:
+        return None
+
+    cross_ago = 0
+    for offset in range(1, CROSS_LOOKBACK + 1):
+        above = float(ma5[-1 - offset])
+        below = float(ma10[-1 - offset])
+        if not (np.isfinite(above) and np.isfinite(below)):
+            return None
+        if above <= below:
+            cross_ago = offset
+            break
+    if cross_ago == 0:
+        return None  # 这几天一直压着，不是「刚金叉」
+
+    look = CANDLE_PRIOR_DAYS
+    base10, base20 = float(ma10[-1 - look]), float(ma20[-1 - look])
+    if base10 <= 0 or base20 <= 0 or not np.isfinite(base10) or not np.isfinite(base20):
+        return None
+    rise10 = float(ma10[-1] / base10 - 1)
+    rise20 = float(ma20[-1] / base20 - 1)
+    if rise10 <= CROSS_MIN_MA10_RISE or rise20 < CROSS_MIN_MA20_RISE:
+        return None
+
+    ratio = _volume_ratio(bars, 5)
+    score = (CROSS_LOOKBACK + 1 - cross_ago) / (CROSS_LOOKBACK + 1) * 40
+    score += min(rise10 / 0.03, 1.0) * 30
+    score += min(max(rise20, 0.0) / 0.02, 1.0) * 20
+    score += min(ratio / 2.0, 1.0) * 10
+
+    return Signal(
+        "ma_golden_cross",
+        min(score, 100.0),
+        {"support": float(ma10[-1])},
+        {
+            "cross_days_ago": cross_ago,
+            "ma10_rise": round(rise10, 4),
+            "ma20_rise": round(rise20, 4),
+            "vol_ratio": round(ratio, 2),
+        },
+    )
+
+
+def _weekly_bull(bars: Bars) -> Signal | None:
+    """周线多头：日线聚合成周线后，周 MA5 > MA10 > MA20 且都在向上。
+
+    为什么值得单独看周线：日线多头排列在震荡里天天出信号，周线多头要求
+    **连续 20 周**的结构，频率低得多，是「大方向向上」的粗筛。
+    库里的日线约 250 根（≈1 年 ≈ 50 周），做不出 20 周以上的斜率，
+    所以不足 `WEEKLY_BULL_MIN_BARS` 根时直接跳过。
+    """
+    if len(bars) < WEEKLY_BULL_MIN_BARS:
+        return None
+    weekly = _weekly_closes(bars)
+    if weekly.size < 20 + WEEKLY_BULL_SLOPE_WEEKS:
+        return None
+    ma5 = _ma_series(weekly, 5)
+    ma10 = _ma_series(weekly, 10)
+    ma20 = _ma_series(weekly, 20)
+    if ma5 is None or ma10 is None or ma20 is None:
+        return None
+    if not (ma5[-1] > ma10[-1] > ma20[-1]):
+        return None
+
+    look = WEEKLY_BULL_SLOPE_WEEKS
+    base5, base10 = float(ma5[-1 - look]), float(ma10[-1 - look])
+    if base5 <= 0 or base10 <= 0:
+        return None
+    rise5 = float(ma5[-1] / base5 - 1)
+    rise10 = float(ma10[-1] / base10 - 1)
+    if rise5 <= 0 or rise10 <= 0:
+        return None
+    gap = float(weekly[-1] / ma5[-1] - 1) if ma5[-1] > 0 else 0.0
+
+    score = _band_score(rise10, *WEEKLY_BULL_RISE_IDEAL, WEEKLY_BULL_RISE_CAP) * 60
+    score += _band_score(gap, *WEEKLY_BULL_GAP_IDEAL, 0.15) * 40
+
+    return Signal(
+        "weekly_bull",
+        min(score, 100.0),
+        {"support": float(ma5[-1])},
+        {
+            "weeks": int(weekly.size),
+            "ma10_rise": round(rise10, 4),
+            "ma5_gap": round(gap, 4),
+        },
+    )
+
+
+def _downtrend_breakout(bars: Bars) -> Signal | None:
+    """下降趋势线突破：用近 60 天的**摆动高点**连出一条下降线，今天收盘站上它。
+
+    为什么只认摆动高点（zigzag）而不是窗口最高价：后者连出来是水平线，
+    那就把「下降趋势突破」偷换成了「平台突破」，两者含义完全不同。
+    """
+    if len(bars) < TRENDLINE_DAYS:
+        return None
+    highs = [
+        (index, price)
+        for index, price, direction in _recent_pivots(bars, TRENDLINE_DAYS)
+        if direction > 0
+    ]
+    if len(highs) < TRENDLINE_MIN_PIVOTS:
+        return None
+
+    use = highs[-(TRENDLINE_MIN_PIVOTS + 1) :]
+    prices = np.array([price for _, price in use], dtype=float)
+    if np.any(np.diff(prices) >= 0):
+        return None  # 高点没有逐个降低，那就不叫下降趋势
+
+    slope, intercept = np.polyfit(np.array([index for index, _ in use], dtype=float), prices, 1)
+    line_now = float(intercept + slope * (len(bars) - 1))
+    if line_now <= 0:
+        return None
+    close = float(bars.close[-1])
+    if close <= line_now:
+        return None
+    excess = close / line_now - 1
+    if excess > TRENDLINE_MAX_EXCESS:
+        return None
+
+    ratio = _volume_ratio(bars, 5)
+    score = _band_score(excess, 0.002, 0.03, TRENDLINE_MAX_EXCESS) * 45
+    score += _band_score(ratio, 1.0, 2.5, 6.0) * 35
+    score += min(len(use) / 3.0, 1.0) * 20
+
+    return Signal(
+        "downtrend_breakout",
+        min(score, 100.0),
+        {"breakout": line_now},
+        {"excess": round(excess, 4), "vol_ratio": round(ratio, 2), "pivots": len(use)},
+    )
+
+
+def _gap_up_breakout(bars: Bars) -> Signal | None:
+    """向上跳空缺口突破：今天最低价高于昨天最高价（区间不重叠的真缺口），
+    且当天收阳、收盘同时创 20 日新高。
+
+    「真缺口」用**今低 > 昨高**判，不用「今开 > 昨收」—— 后者会把开盘价恰好
+    等于昨收的那种漏掉，而前者只要两天成交区间不重叠就成立。
+    """
+    if len(bars) < GAP_BREAK_HIGH_DAYS + 2:
+        return None
+    prev_high = float(bars.high[-2])
+    today_low = float(bars.low[-1])
+    if prev_high <= 0 or today_low <= prev_high:
+        return None
+    gap = today_low / prev_high - 1
+    if gap < GAP_MIN:
+        return None
+    if float(bars.close[-1]) <= float(bars.open[-1]):
+        return None  # 跳空后收阴 = 冲高回落
+
+    prior = float(bars.close[-GAP_BREAK_HIGH_DAYS - 1 : -1].max())
+    close = float(bars.close[-1])
+    if close <= prior:
+        return None
+    excess = close / prior - 1
+    ratio = _volume_ratio(bars, 5)
+
+    score = _band_score(gap, *GAP_IDEAL, GAP_CAP) * 35
+    score += _band_score(ratio, 1.2, 3.0, 7.0) * 35
+    score += _band_score(excess, 0.002, 0.03, 0.09) * 30
+
+    return Signal(
+        "gap_up_breakout",
+        min(score, 100.0),
+        {"breakout": prior, "support": prev_high},
+        {"gap": round(gap, 4), "vol_ratio": round(ratio, 2), "excess": round(excess, 4)},
+    )
+
+
+def _gap_fill(bars: Bars) -> Signal | None:
+    """缺口回补：近期向上跳空留下的缺口，今天回踩进缺口里、但收在缺口下沿之上。
+
+    为什么回补缺口反而更值得看：向上跳空是当时抢筹留下的空白区，回踩到这里
+    不破，说明缺口下沿（跳空前的最高价）真成了支撑 —— 比追在缺口上方安全。
+    """
+    if len(bars) < GAP_FILL_LOOKBACK + 3:
+        return None
+    total = len(bars)
+    for start in range(total - 2, total - 2 - GAP_FILL_LOOKBACK, -1):
+        if start < 1:
+            break
+        base = float(bars.high[start - 1])  # 缺口下沿
+        top = float(bars.low[start])  # 缺口上沿
+        if base <= 0 or top <= base * (1 + GAP_MIN):
+            continue
+        # 缺口之后到昨天为止都没被回补过（最低价没碰到下沿）
+        if start + 1 <= total - 2 and bool((bars.low[start + 1 : total - 1] <= base).any()):
+            continue
+        width = top - base
+        if width <= 0:
+            continue
+
+        today_low = float(bars.low[-1])
+        today_close = float(bars.close[-1])
+        fill = (top - today_low) / width  # 扎进缺口的深度（占缺口宽度）
+        if fill < GAP_FILL_MIN_FILL or fill > GAP_FILL_MAX_FILL:
+            continue
+        if today_close < base:
+            continue  # 收盘丢了缺口下沿 = 破位，不是回踩
+
+        since_high = float(bars.close[start:total].max())
+        rise = since_high / base - 1 if base > 0 else 0.0
+        ratio = _volume_ratio(bars, 5)
+        score = _band_score(fill, 0.2, 0.6, GAP_FILL_MAX_FILL + 0.05) * 45
+        score += _band_score(rise, 0.005, 0.08, 0.25) * 30
+        # 回踩要缩量：带量砸回缺口的，支撑多半守不住
+        score += _gate_score(ratio, 1.5, 0.5) * 25
+
+        return Signal(
+            "gap_fill",
+            min(score, 100.0),
+            {"support": base, "breakout": top},
+            {
+                "gap": round(top / base - 1, 4),
+                "fill": round(fill, 3),
+                "rise": round(rise, 4),
+                "vol_ratio": round(ratio, 2),
+                "days_ago": total - 1 - start,
+            },
+        )
+    return None
+
+
+def _box_breakout(bars: Bars) -> Signal | None:
+    """箱体突破：60 天的箱体、上下沿各被触碰 ≥2 次，今天放量收在箱体上沿之上。
+
+    与「平台突破」的区别：平台看的是 30 天**窄幅**（≤18%），抓的是「横久了的启动」；
+    箱体反过来要求**宽度够大**（≥8%）且上下沿被反复验证（各 ≥2 次触碰）——
+    一个宽幅震荡了三个月的箱子被向上突破，与一段窄平台被突破，含义不一样。
+    """
+    if len(bars) < BOX_DAYS + 2:
+        return None
+    box = slice(len(bars) - 1 - BOX_DAYS, len(bars) - 1)
+    top = float(bars.high[box].max())
+    bottom = float(bars.low[box].min())
+    if bottom <= 0:
+        return None
+    width = (top - bottom) / bottom
+    if width < BOX_MIN_RANGE or width > BOX_MAX_RANGE:
+        return None
+
+    touches_top = _touches(bars.high[box], top, BOX_TOUCH_TOL)
+    touches_bottom = _touches(bars.low[box], bottom, BOX_TOUCH_TOL)
+    if touches_top < BOX_MIN_TOUCHES or touches_bottom < BOX_MIN_TOUCHES:
+        return None
+
+    close = float(bars.close[-1])
+    if close <= top:
+        return None
+    excess = close / top - 1
+    if excess > BOX_MAX_EXCESS:
+        return None
+    ratio = _volume_ratio(bars, 5)
+    if ratio < BOX_VOL_MULT:
+        return None
+
+    score = min((touches_top + touches_bottom) / 6.0, 1.0) * 25
+    score += _band_score(ratio, BOX_VOL_MULT, 3.0, 7.0) * 30
+    score += _band_score(excess, 0.002, 0.03, BOX_MAX_EXCESS) * 25
+    score += _gate_score(width, BOX_MAX_RANGE, BOX_MIN_RANGE) * 20  # 箱子越紧实越好
+
+    return Signal(
+        "box_breakout",
+        min(score, 100.0),
+        {"breakout": top, "support": bottom},
+        {
+            "box_range": round(width, 4),
+            "touches_top": touches_top,
+            "touches_bottom": touches_bottom,
+            "vol_ratio": round(ratio, 2),
+            "excess": round(excess, 4),
+        },
+    )
+
+
+def _volume_dry_bottom(bars: Bars) -> Signal | None:
+    """地量见底：成交量缩到 60 日最低，同时价格处在低位（距 60 日最高收盘回撤 ≥20%）。
+
+    「地量」与「低位」必须**同时**成立：只有地量可能是没人交易的僵尸股；
+    只有低位可能是放量下跌的中继。
+    """
+    if len(bars) < DRY_BOTTOM_DAYS + 1:
+        return None
+    window_vol = bars.volume[-DRY_BOTTOM_DAYS:]
+    lowest = float(window_vol.min())
+    average = _safe_mean(window_vol)
+    if lowest <= 0 or average <= 0:
+        return None
+    today_vol = float(bars.volume[-1])
+    if today_vol > lowest * DRY_BOTTOM_VOL_MAX:
+        return None
+    shrink = today_vol / average
+
+    peak = float(bars.close[-DRY_BOTTOM_DAYS:].max())
+    if peak <= 0:
+        return None
+    drawdown = 1 - float(bars.close[-1]) / peak
+    if drawdown < DRY_BOTTOM_MIN_DRAWDOWN:
+        return None
+    pct = float(bars.pct_chg[-1])
+    if pct < -2.0:
+        return None  # 还在放量下跌的不算「见底」
+
+    score = _gate_score(shrink, 0.6, 0.2) * 45
+    score += _band_score(drawdown, DRY_BOTTOM_MIN_DRAWDOWN, 0.45, 0.7) * 30
+    score += _gate_score(pct, -2.0, 2.0) * 25
+
+    return Signal(
+        "volume_dry_bottom",
+        min(score, 100.0),
+        {"support": float(bars.low[-DRY_BOTTOM_DAYS:].min())},
+        {
+            "vol_shrink": round(shrink, 3),
+            "drawdown": round(drawdown, 4),
+            "pct_chg": round(pct, 2),
+        },
+    )
+
+
+def _vp_divergence(bars: Bars) -> Signal | None:
+    """量价底背离：价格贴着 40 日新低，但这一段下跌的均量比上一段低点萎缩 ≥30%。
+
+    口径说明：这里取「**缩量新低** = 抛压衰竭」这个读法（价创新低、量不再创新低）。
+    另一种常见读法是「放量新低 = 恐慌盘出清」，两种都说得通，本引擎取前者；
+    要换口径就把 `VP_DIVERGE_VOL_DROP` 的比较方向改掉。
+    """
+    if len(bars) < VP_DIVERGE_DAYS + 5:
+        return None
+    window = bars.close[-VP_DIVERGE_DAYS:]
+    lowest = float(window.min())
+    if lowest <= 0:
+        return None
+    close = float(bars.close[-1])
+    if close > lowest * (1 + VP_DIVERGE_NEW_LOW):
+        return None  # 还没到新低附近
+
+    half = len(window) // 2
+    prev_index = len(bars) - VP_DIVERGE_DAYS + int(np.argmin(window[:half]))
+    prev_vol = _safe_mean(bars.volume[max(prev_index - 2, 0) : prev_index + 3])
+    now_vol = _safe_mean(bars.volume[-5:])
+    if prev_vol <= 0 or now_vol <= 0:
+        return None
+    ratio = now_vol / prev_vol
+    if ratio > VP_DIVERGE_VOL_DROP:
+        return None
+
+    peak = float(bars.close[-DRY_BOTTOM_DAYS:].max()) if len(bars) >= DRY_BOTTOM_DAYS else float(
+        bars.close.max()
+    )
+    drawdown = 1 - close / peak if peak > 0 else 0.0
+    pct = float(bars.pct_chg[-1])
+
+    score = _gate_score(ratio, VP_DIVERGE_VOL_DROP, 0.35) * 45
+    score += _band_score(drawdown, DRY_BOTTOM_MIN_DRAWDOWN, 0.45, 0.7) * 25
+    score += _gate_score(pct, -2.0, 2.0) * 30
+
+    return Signal(
+        "vp_divergence",
+        min(score, 100.0),
+        {"support": lowest},
+        {
+            "vol_ratio": round(ratio, 3),
+            "new_low": round(close / lowest - 1, 4),
+            "drawdown": round(drawdown, 4),
+            "pct_chg": round(pct, 2),
+        },
+    )
+
+
+def _shrink_limit_up(bars: Bars) -> Signal | None:
+    """缩量涨停：涨停（沿用 `LS_LIMIT_PCT` 的 9.5% 口径）却明显没量 —— 惜售。
+
+    与「放量上涨」正好相反：那个要量能配合，这个要**没量**。缩量涨停说明
+    卖盘极少，次日容易接着封；但也常常是「一字板买不进」，所以给的是
+    观察价值，别当成可执行的买点。
+    """
+    if len(bars) < 6:
+        return None
+    pct = float(bars.pct_chg[-1])
+    if pct < LS_LIMIT_PCT:
+        return None
+    ratio = _volume_ratio(bars, 5)
+    if ratio <= 0 or ratio > SHRINK_LIMIT_VOL_MAX:
+        return None
+    if float(bars.close[-1]) <= float(bars.open[-1]):
+        return None
+
+    score = _gate_score(ratio, SHRINK_LIMIT_VOL_MAX, 0.25) * 60
+    score += _gate_score(pct, LS_LIMIT_PCT, 12.0) * 40
+
+    return Signal(
+        "shrink_limit_up",
+        min(score, 100.0),
+        {"support": float(bars.low[-1])},
+        {"vol_ratio": round(ratio, 3), "pct_chg": round(pct, 2)},
+    )
+
+
+def _volume_stall(bars: Bars) -> Signal | None:
+    """放量滞涨：放量但价格没动、留长上影；位置越低越像吸筹。
+
+    ⚠️ 它偏**观察/风险类**，不是买点：放量滞涨在高位是派发，在低位才可能是吸筹。
+    所以「距 60 日高点的回撤」既是否决条件（<15% 直接不算），也参与打分 ——
+    位置越低分越高。
+    """
+    if len(bars) < DRY_BOTTOM_DAYS + 1:
+        return None
+    ratio = _volume_ratio(bars, 5)
+    if ratio < STALL_VOL_MULT:
+        return None
+    pct = float(bars.pct_chg[-1])
+    if not STALL_PCT_BAND[0] <= pct <= STALL_PCT_BAND[1]:
+        return None
+    _, _, _, close, _, upper, _, span = _candle(bars)
+    if span <= 0:
+        return None
+    shadow = upper / span
+    if shadow < STALL_SHADOW_MIN:
+        return None
+    peak = float(bars.close[-DRY_BOTTOM_DAYS:].max())
+    if peak <= 0:
+        return None
+    drawdown = 1 - close / peak
+    if drawdown < STALL_MIN_DRAWDOWN:
+        return None
+
+    score = _band_score(ratio, STALL_VOL_MULT, 4.0, 8.0) * 35
+    score += _band_score(shadow, STALL_SHADOW_MIN, 0.6, 0.95) * 30
+    score += _band_score(drawdown, STALL_MIN_DRAWDOWN, 0.45, 0.7) * 35
+
+    return Signal(
+        "volume_stall",
+        min(score, 100.0),
+        {"support": float(bars.low[-1])},
+        {
+            "vol_ratio": round(ratio, 2),
+            "pct_chg": round(pct, 2),
+            "upper_shadow": round(shadow, 3),
+            "drawdown": round(drawdown, 4),
+        },
+    )
+
+
+def _volume_pile(bars: Bars) -> Signal | None:
+    """量堆：最近 5 天里至少 4 天量比 >1.5，且 5 日均量 / 20 日均量 ≥1.5、价格重心上移。
+
+    看的是**连续性**而不是单日爆量：一根天量可能是消息刺激（一次性的），
+    连续四五天的堆量才像资金持续进场。
+    """
+    if len(bars) < 20 + PILE_DAYS:
+        return None
+    counts = 0
+    for offset in range(PILE_DAYS):
+        index = len(bars) - PILE_DAYS + offset
+        base = _safe_mean(bars.volume[index - 5 : index])
+        if base > 0 and float(bars.volume[index]) / base >= PILE_VOL_MULT:
+            counts += 1
+    if counts < PILE_MIN_DAYS:
+        return None
+
+    average = _safe_mean(bars.volume[-20:])
+    if average <= 0:
+        return None
+    ratio = _safe_mean(bars.volume[-PILE_DAYS:]) / average
+    if ratio < PILE_RATIO_5_20:
+        return None
+
+    start = float(bars.close[-PILE_DAYS - 1])
+    close = float(bars.close[-1])
+    if start <= 0:
+        return None
+    gain = close / start - 1
+    if gain <= 0:
+        return None  # 价格重心没上移，那就只是放量不是量堆
+
+    score = min(counts / PILE_DAYS, 1.0) * 35
+    score += _band_score(ratio, PILE_RATIO_5_20, 3.0, 6.0) * 35
+    score += _band_score(gain, 0.005, 0.06, 0.15) * 30
+
+    return Signal(
+        "volume_pile",
+        min(score, 100.0),
+        {"support": float(bars.low[-PILE_DAYS:].min())},
+        {
+            "pile_days": counts,
+            "vol_ratio_5_20": round(ratio, 3),
+            "gain": round(gain, 4),
+        },
+    )
+
+
+def _v_bottom(bars: Bars) -> Signal | None:
+    """V 型底：急跌 → 快速收复，左右两段基本对称，现在已从低点反弹到左侧跌幅的 60% 以上。
+
+    「对称」是它和「圆弧底」的分界：V 型的下跌段与上涨段**天数接近**（快跌快涨），
+    圆弧底是慢慢磨出来的（幅度小、时间长）。
+    """
+    if len(bars) < V_BOTTOM_DAYS:
+        return None
+    pivots = _recent_pivots(bars, V_BOTTOM_DAYS)
+    lows = [(index, price) for index, price, direction in pivots if direction < 0]
+    if not lows:
+        return None
+    low_index, low_price = min(lows, key=lambda item: item[1])
+    if low_price <= 0:
+        return None
+
+    left = [(index, price) for index, price, direction in pivots if direction > 0 and index < low_index]
+    if not left:
+        return None
+    peak_index, peak_price = max(left, key=lambda item: item[1])
+    if peak_price <= low_price:
+        return None
+    drop = 1 - low_price / peak_price
+    if drop < V_BOTTOM_MIN_DROP:
+        return None
+
+    close = float(bars.close[-1])
+    recovered = close / low_price - 1
+    if recovered / drop < V_BOTTOM_MIN_REBOUND:
+        return None
+
+    down_days = low_index - peak_index
+    up_days = len(bars) - 1 - low_index
+    if down_days <= 0 or up_days <= 0:
+        return None
+    symmetry = max(down_days, up_days) / min(down_days, up_days)
+    if symmetry > V_BOTTOM_SYMMETRY:
+        return None
+
+    left_vol = _safe_mean(bars.volume[peak_index : low_index + 1])
+    right_vol = _safe_mean(bars.volume[low_index + 1 :])
+    boost = right_vol / left_vol if left_vol > 0 else 0.0
+
+    score = _gate_score(recovered / drop, V_BOTTOM_MIN_REBOUND, 1.0) * 45
+    score += _gate_score(symmetry, V_BOTTOM_SYMMETRY, 1.0) * 30
+    score += min(boost / 1.5, 1.0) * 25
+
+    return Signal(
+        "v_bottom",
+        min(score, 100.0),
+        {"support": low_price, "breakout": peak_price},
+        {
+            "drop": round(drop, 4),
+            "recover_pct": round(recovered, 4),
+            "down_days": down_days,
+            "up_days": up_days,
+            "vol_boost": round(boost, 2),
+        },
+    )
+
+
+def _round_bottom(bars: Bars) -> Signal | None:
+    """圆弧底：90 天窗口走出一条平缓的凹形曲线，现在已从底部抬起 60% 以上。
+
+    开口方向用二次拟合判（二次项 >0 = 先跌后升），但**打分不看向量大小** ——
+    二次项系数的量纲随价格与索引刻度放大，同一个形状在 10 元股和 100 元股上
+    能差两个数量级。真正的判据是「振幅够小 + 最低点在窗口中段 + 现在已经抬起来」。
+    """
+    if len(bars) < ROUND_MIN_DAYS:
+        return None
+    days = min(ROUND_DAYS, len(bars))
+    window = bars.close[-days:]
+    lowest = float(window.min())
+    highest = float(window.max())
+    if lowest <= 0 or highest <= lowest:
+        return None
+    amplitude = highest / lowest - 1
+    if amplitude > ROUND_MAX_AMPLITUDE:
+        return None
+
+    quad = float(np.polyfit(np.arange(days, dtype=float), window, 2)[0])
+    if quad <= 0:
+        return None  # 开口向下 = 圆弧顶
+
+    close = float(bars.close[-1])
+    recover = (close - lowest) / (highest - lowest)
+    if recover < ROUND_MIN_RECOVER:
+        return None
+    low_position = float(np.argmin(window)) / (days - 1) if days > 1 else 0.5
+
+    score = _gate_score(recover, ROUND_MIN_RECOVER, 1.0) * 45
+    score += _band_score(amplitude, 0.08, 0.25, ROUND_MAX_AMPLITUDE) * 30
+    score += _band_score(low_position, 0.3, 0.7, 1.0) * 25
+
+    return Signal(
+        "round_bottom",
+        min(score, 100.0),
+        {"support": lowest, "breakout": highest},
+        {
+            "days": days,
+            "amplitude": round(amplitude, 4),
+            "recover_pct": round(recover, 3),
+            "low_position": round(low_position, 3),
+        },
+    )
+
+
+def _triple_bottom(bars: Bars) -> Signal | None:
+    """三重底：三次探底位置彼此接近，且当前已站上两个反弹高点连成的颈线。
+
+    颈线取两个反弹高点里**较低**的那个（更严格）：取高的那个会让「刚过其中一个
+    高点」也算突破，而那时价格其实还在另一个高点之下。
+    """
+    if len(bars) < TRIPLE_DAYS:
+        return None
+    pivots = _recent_pivots(bars, TRIPLE_DAYS)
+    lows = [(index, price) for index, price, direction in pivots if direction < 0]
+    if len(lows) < 3:
+        return None
+    use = lows[-3:]
+    prices = [price for _, price in use]
+    lowest = min(prices)
+    highest = max(prices)
+    if lowest <= 0:
+        return None
+    spread = highest / lowest - 1
+    if spread > TRIPLE_LOW_TOL:
+        return None
+
+    between = [
+        price
+        for index, price, direction in pivots
+        if direction > 0 and use[0][0] < index < use[-1][0]
+    ]
+    if not between:
+        return None
+    neckline = min(between)
+    close = float(bars.close[-1])
+    if close <= neckline:
+        return None
+    excess = close / neckline - 1
+    if excess > TRIPLE_MAX_EXCESS:
+        return None
+    ratio = _volume_ratio(bars, 5)
+
+    score = _gate_score(spread, TRIPLE_LOW_TOL, 0.01) * 35
+    score += _band_score(excess, 0.002, 0.03, TRIPLE_MAX_EXCESS) * 35
+    score += _band_score(ratio, 1.0, 2.5, 6.0) * 30
+
+    return Signal(
+        "triple_bottom",
+        min(score, 100.0),
+        {"breakout": neckline, "support": lowest},
+        {
+            "low_spread": round(spread, 4),
+            "excess": round(excess, 4),
+            "vol_ratio": round(ratio, 2),
+        },
+    )
+
+
+def _rectangle_box(bars: Bars) -> Signal | None:
+    """矩形箱体：80 天的宽幅矩形、上下沿反复验证，今天收在箱体上部但**尚未突破**。
+
+    与「箱体突破」的分工：那个要求已经收在上沿之上（右侧交易），这个要求贴着上沿
+    待突破（左侧埋伏）。买点不同，所以两个都留着。
+    """
+    if len(bars) < RECT_DAYS + 2:
+        return None
+    box = slice(len(bars) - 1 - RECT_DAYS, len(bars) - 1)
+    top = float(bars.high[box].max())
+    bottom = float(bars.low[box].min())
+    if bottom <= 0:
+        return None
+    width = (top - bottom) / bottom
+    if width < RECT_MIN_RANGE or width > RECT_MAX_RANGE:
+        return None
+    touches_top = _touches(bars.high[box], top, BOX_TOUCH_TOL)
+    touches_bottom = _touches(bars.low[box], bottom, BOX_TOUCH_TOL)
+    if touches_top < BOX_MIN_TOUCHES or touches_bottom < BOX_MIN_TOUCHES:
+        return None
+
+    close = float(bars.close[-1])
+    position = (close - bottom) / (top - bottom)
+    if not RECT_POSITION_MIN <= position <= 1.0:
+        return None  # 必须在上部，且还没突破上沿
+
+    score = min((touches_top + touches_bottom) / 8.0, 1.0) * 35
+    score += _band_score(position, RECT_POSITION_MIN, 0.95, 1.05) * 40
+    score += _gate_score(width, RECT_MAX_RANGE, RECT_MIN_RANGE) * 25
+
+    return Signal(
+        "rectangle_box",
+        min(score, 100.0),
+        {"breakout": top, "support": bottom},
+        {
+            "box_range": round(width, 4),
+            "position": round(position, 3),
+            "touches_top": touches_top,
+            "touches_bottom": touches_bottom,
+        },
+    )
+
+
+def _wedge_shape(bars: Bars) -> tuple[float, float, float, float] | None:
+    """楔形几何：返回 `(上轨日斜率, 下轨日斜率, 收敛比例, 末端间距/均价)`，不成立则 None。
+
+    上下轨分别对 high / low 序列做最小二乘（理由见 `_linfit`）。要求两轨**同向**
+    且间距明显收敛 —— 一上一下那种是「三角收敛」，已有专门的形态，不在这里重复收。
+    """
+    if len(bars) < WEDGE_MIN_DAYS:
+        return None
+    days = min(WEDGE_DAYS, len(bars))
+    mean_close = float(np.mean(bars.close[-days:]))
+    if mean_close <= 0:
+        return None
+    high_slope, high_intercept = _linfit(bars.high[-days:])
+    low_slope, low_intercept = _linfit(bars.low[-days:])
+    high_daily = high_slope / mean_close
+    low_daily = low_slope / mean_close
+    if abs(high_daily) < WEDGE_MIN_SLOPE or abs(low_daily) < WEDGE_MIN_SLOPE:
+        return None  # 太平，那是箱体
+    if high_daily * low_daily <= 0:
+        return None  # 一上一下 = 三角收敛，不是楔形
+
+    end = days - 1
+    gap_start = float(high_intercept - low_intercept)
+    gap_end = float(
+        high_intercept + high_slope * end - (low_intercept + low_slope * end)
+    )
+    if gap_start <= 0 or gap_end <= 0 or gap_end >= gap_start:
+        return None  # 没有收敛
+    converge = (gap_start - gap_end) / gap_start
+    if converge < WEDGE_MIN_CONVERGE:
+        return None
+
+    # 同向两轨要收敛，必然是「下轨比上轨陡」：上升楔形下轨涨得快，
+    # 下降楔形上轨跌得快 —— 两种情况都归到这一个判据上
+    if high_daily >= low_daily:
+        return None
+
+    # 两条轨都要真被碰到过。光要求「同向 + 收敛」太松：实测那样全市场有 8.6%
+    # 的票"在下降楔形里"，清单会长到没法看
+    index = np.arange(days, dtype=float)
+    upper_series = high_intercept + high_slope * index
+    lower_series = low_intercept + low_slope * index
+    high_touch = int(np.sum(np.abs(bars.high[-days:] / upper_series - 1.0) <= WEDGE_TOUCH_TOL))
+    low_touch = int(np.sum(np.abs(bars.low[-days:] / lower_series - 1.0) <= WEDGE_TOUCH_TOL))
+    if high_touch < WEDGE_MIN_TOUCHES or low_touch < WEDGE_MIN_TOUCHES:
+        return None
+
+    return high_daily, low_daily, converge, gap_end / mean_close
+
+
+def _rising_wedge(bars: Bars) -> Signal | None:
+    """上升楔形：两轨都向上但逐渐收敛 —— **偏空**形态（涨势在衰竭）。
+
+    ⚠️ 与其它形态不同，它给的是**风险提示**而不是买点：上升楔形向上突破的
+    成功率偏低，多数以下破告终。照样收录的理由是「持仓时看到它」比「选票时
+    看到它」更重要 —— 分数越高表示形态越成熟（越接近变盘）。
+    """
+    shape = _wedge_shape(bars)
+    if shape is None:
+        return None
+    high_daily, low_daily, converge, gap_ratio = shape
+    if high_daily <= 0 or low_daily <= 0:
+        return None
+
+    score = _gate_score(converge, WEDGE_MIN_CONVERGE, 0.75) * 45
+    score += min(low_daily / 0.006, 1.0) * 25  # 涨得越陡越危险
+    score += _gate_score(gap_ratio, 0.12, 0.02) * 30  # 末端越挤越接近变盘
+
+    return Signal(
+        "rising_wedge",
+        min(score, 100.0),
+        {"support": float(bars.low[-1]), "breakout": float(bars.high[-1])},
+        {
+            "converge": round(converge, 3),
+            "upper_slope": round(high_daily, 5),
+            "lower_slope": round(low_daily, 5),
+            "gap_ratio": round(gap_ratio, 4),
+        },
+    )
+
+
+def _falling_wedge(bars: Bars) -> Signal | None:
+    """下降楔形：两轨都向下但逐渐收敛 —— **偏多**（跌势衰竭，向上突破概率大）。"""
+    shape = _wedge_shape(bars)
+    if shape is None:
+        return None
+    high_daily, low_daily, converge, gap_ratio = shape
+    if high_daily >= 0 or low_daily >= 0:
+        return None
+
+    close = float(bars.close[-1])
+    high_slope, high_intercept = _linfit(bars.high[-min(WEDGE_DAYS, len(bars)) :])
+    low_slope, low_intercept = _linfit(bars.low[-min(WEDGE_DAYS, len(bars)) :])
+    end = min(WEDGE_DAYS, len(bars)) - 1
+    upper = float(high_intercept + high_slope * end)
+    lower = float(low_intercept + low_slope * end)
+    position = (close - lower) / (upper - lower) if upper > lower else 0.5
+    if position < WEDGE_FALL_POSITION_MIN:
+        return None  # 还在楔形下部 = 跌势没走完，别急着当"向上突破"看
+    if gap_ratio > WEDGE_FALL_GAP_MAX:
+        return None  # 两轨还没汇合，说明楔形还没走到底
+
+    score = _gate_score(converge, WEDGE_MIN_CONVERGE, 0.75) * 40
+    score += _band_score(position, 0.4, 0.95, 1.05) * 30
+    score += min(_volume_ratio(bars, 5) / 2.0, 1.0) * 30
+
+    return Signal(
+        "falling_wedge",
+        min(score, 100.0),
+        {"support": lower, "breakout": upper},
+        {
+            "converge": round(converge, 3),
+            "upper_slope": round(high_daily, 5),
+            "lower_slope": round(low_daily, 5),
+            "position": round(position, 3),
+        },
+    )
+
+
+def _diamond(bars: Bars) -> Signal | None:
+    """菱形（钻石形）：先扩张后收敛 —— 前两段振幅放大、后两段收窄。
+
+    判法把窗口四等分比各段振幅，这是「情绪先发散、后回归」的可计算版本。
+    菱形多出现在转折处，本身不指示方向，所以打分只看形状成熟度与当前位置。
+    """
+    if len(bars) < DIAMOND_MIN_DAYS:
+        return None
+    days = min(DIAMOND_DAYS, len(bars))
+    quarter = days // 4
+    if quarter < 8:
+        return None
+    ranges = []
+    for part in range(4):
+        start = len(bars) - days + part * quarter
+        segment = slice(start, start + quarter)
+        ranges.append(float(bars.high[segment].max() - bars.low[segment].min()))
+    if min(ranges) <= 0:
+        return None
+
+    expand = ranges[1] / ranges[0] - 1
+    contract = (ranges[2] - ranges[3]) / ranges[2]
+    if expand < DIAMOND_MIN_EXPAND or contract < DIAMOND_MIN_CONTRACT:
+        return None
+    # 中段必须明显比两端宽 —— 只看「前段扩张、后段收敛」的话，一段普通波动
+    # 也能凑出来（实测全市场 10.7% 的票"是菱形"）
+    if min(ranges[1], ranges[2]) < max(ranges[0], ranges[3]) * DIAMOND_MIDDLE_EDGE:
+        return None
+
+    tail = slice(len(bars) - quarter, len(bars))
+    top = float(bars.high[tail].max())
+    bottom = float(bars.low[tail].min())
+    position = (float(bars.close[-1]) - bottom) / (top - bottom) if top > bottom else 0.5
+
+    score = _gate_score(expand, DIAMOND_MIN_EXPAND, 0.6) * 35
+    score += _gate_score(contract, DIAMOND_MIN_CONTRACT, 0.7) * 35
+    score += _band_score(position, 0.4, 0.95, 1.05) * 30
+
+    return Signal(
+        "diamond",
+        min(score, 100.0),
+        {"breakout": top, "support": bottom},
+        {
+            "days": days,
+            "expand": round(expand, 3),
+            "contract": round(contract, 3),
+            "position": round(position, 3),
+        },
+    )
+
+
+def _engulf_shape(bars: Bars) -> tuple[float, float] | None:
+    """吞没形态的两根 K 判据，返回 `(今日实体 / 昨日实体, 今日收盘在全日中的位置)`。
+
+    「阳包阴」与「看涨吞没」的形状**完全相同**，差别只在要不要下跌背景
+    （见各自实现），所以形状判据只写这一遍。
+    """
+    if len(bars) < 3:
+        return None
+    prev_open, _, _, prev_close, prev_body, _, _, prev_span = _candle(bars, -2)
+    open_, _, low, close, body, _, _, span = _candle(bars)
+    if prev_close >= prev_open:
+        return None  # 昨天必须是阴线
+    if close <= open_:
+        return None  # 今天必须是阳线
+    if prev_body <= 0 or prev_span <= 0 or span <= 0:
+        return None
+    if not (open_ <= prev_close and close >= prev_open):
+        return None  # 今日实体没包住昨日实体
+    ratio = body / prev_body
+    if ratio < ENGULF_MIN_BODY:
+        return None
+    close_pos = (close - low) / span
+    if close_pos < ENGULF_MIN_CLOSE_POS:
+        return None  # 包住了但收在下半部 = 冲高回落，不是吞没该有的样子
+    return ratio, close_pos
+
+
+def _yang_wrap_yin(bars: Bars) -> Signal | None:
+    """阳包阴：今天的阳线实体完全包住昨天的阴线实体 —— **纯形态，不要求趋势背景**。
+
+    与「看涨吞没」的分工（两个名字在 A 股里常被混用，这里按「要不要下跌背景」分）：
+    这个只认两根 K 的包含关系；「看涨吞没」额外要求出现在回调末端。
+    """
+    shape = _engulf_shape(bars)
+    if shape is None:
+        return None
+    ratio, close_pos = shape
+    ratio_vol = _volume_ratio(bars, 5)
+    score = _gate_score(ratio, ENGULF_MIN_BODY, 3.0) * 45
+    score += _gate_score(close_pos, 0.5, 0.95) * 30
+    score += min(ratio_vol / 2.0, 1.0) * 25
+
+    return Signal(
+        "yang_wrap_yin",
+        min(score, 100.0),
+        {"support": float(bars.low[-1])},
+        {
+            "body_ratio": round(ratio, 2),
+            "close_pos": round(close_pos, 3),
+            "vol_ratio": round(ratio_vol, 2),
+        },
+    )
+
+
+def _bullish_engulfing(bars: Bars) -> Signal | None:
+    """看涨吞没：与「阳包阴」同一套包含关系，但**额外要求出现在回调末端**。
+
+    为什么要区分：同样的吞没形态，出现在跌势末端是反转信号，出现在上涨中段
+    往往只是中继（甚至是最后一冲）。加一条前置跌幅门槛，就能把两者分开，
+    代价是同一个形状会在两只票上分别命中不同的形态名 —— 这是有意的。
+    """
+    if len(bars) < CANDLE_PRIOR_DAYS + 3:
+        return None
+    drop = _prior_drop(bars)
+    if drop < CANDLE_PRIOR_DROP:
+        return None
+    shape = _engulf_shape(bars)
+    if shape is None:
+        return None
+    ratio, close_pos = shape
+    ratio_vol = _volume_ratio(bars, 5)
+    score = _gate_score(ratio, ENGULF_MIN_BODY, 3.0) * 40
+    score += _gate_score(close_pos, 0.5, 0.95) * 25
+    score += _gate_score(drop, CANDLE_PRIOR_DROP, 0.15) * 35
+
+    return Signal(
+        "bullish_engulfing",
+        min(score, 100.0),
+        {"support": float(bars.low[-1])},
+        {
+            "body_ratio": round(ratio, 2),
+            "close_pos": round(close_pos, 3),
+            "prior_drop": round(drop, 4),
+            "vol_ratio": round(ratio_vol, 2),
+        },
+    )
+
+
+def _hammer(bars: Bars) -> Signal | None:
+    """锤子线：长下影（≥2 倍实体）、上影极短、小实体，且出现在下跌之后。
+
+    下影线的含义是「盘中砸下去又被买回来」；没有前置下跌的话，同样的形状
+    出现在上涨中段只是普通回踩，不具备反转含义 —— 所以前置跌幅是否决条件。
+    实体为 0（十字星）单独排除：那是另一种含义，不按锤子线算。
+    """
+    if len(bars) < CANDLE_PRIOR_DAYS + 2:
+        return None
+    _, _, _, _, body, upper, lower, span = _candle(bars)
+    if span <= 0 or body <= 0:
+        return None
+    if body > span * CANDLE_BODY_MAX or upper > span * CANDLE_SHORT_SHADOW:
+        return None
+    if lower < body * CANDLE_SHADOW_MULT:
+        return None
+    drop = _prior_drop(bars)
+    if drop < CANDLE_PRIOR_DROP:
+        return None
+
+    score = _gate_score(lower / body, CANDLE_SHADOW_MULT, 4.0) * 40
+    score += _gate_score(body / span, CANDLE_BODY_MAX, 0.05) * 30
+    score += _gate_score(drop, CANDLE_PRIOR_DROP, 0.15) * 30
+
+    return Signal(
+        "hammer",
+        min(score, 100.0),
+        {"support": float(bars.low[-1])},
+        {
+            "shadow_ratio": round(lower / body, 2),
+            "body_ratio": round(body / span, 3),
+            "prior_drop": round(drop, 4),
+        },
+    )
+
+
+def _inverted_hammer(bars: Bars) -> Signal | None:
+    """倒锤子线：长上影（≥2 倍实体）、下影极短、小实体，且出现在下跌之后。
+
+    形状与锤子线相反（冲高被打回来），但在跌势末端两者含义接近 ——
+    都表示「这个位置的抛压已经衰竭」，所以判据只把上下影对调。
+    """
+    if len(bars) < CANDLE_PRIOR_DAYS + 2:
+        return None
+    _, _, _, _, body, upper, lower, span = _candle(bars)
+    if span <= 0 or body <= 0:
+        return None
+    if body > span * CANDLE_BODY_MAX or lower > span * CANDLE_SHORT_SHADOW:
+        return None
+    if upper < body * CANDLE_SHADOW_MULT:
+        return None
+    drop = _prior_drop(bars)
+    if drop < CANDLE_PRIOR_DROP:
+        return None
+
+    score = _gate_score(upper / body, CANDLE_SHADOW_MULT, 4.0) * 40
+    score += _gate_score(body / span, CANDLE_BODY_MAX, 0.05) * 30
+    score += _gate_score(drop, CANDLE_PRIOR_DROP, 0.15) * 30
+
+    return Signal(
+        "inverted_hammer",
+        min(score, 100.0),
+        {"support": float(bars.low[-1])},
+        {
+            "shadow_ratio": round(upper / body, 2),
+            "body_ratio": round(body / span, 3),
+            "prior_drop": round(drop, 4),
+        },
+    )
+
+
+def _morning_star(bars: Bars) -> Signal | None:
+    """启明星：大阴 → 小实体（探底）→ 大阳，且右侧收盘要收复左侧实体一半以上。
+
+    中间那根不要求跳空（A 股跳空缺口少见，硬要求跳空会把一大半形态挡掉），
+    但要求它**实体很小** —— 小实体本身就是「多空在这个位置僵住」的表现。
+    """
+    if len(bars) < CANDLE_PRIOR_DAYS + 4:
+        return None
+    open1, _, _, close1, body1, _, _, span1 = _candle(bars, -3)
+    _, _, _, _, body2, _, _, span2 = _candle(bars, -2)
+    open3, _, _, close3, body3, _, _, span3 = _candle(bars)
+    if close1 >= open1 or body1 <= 0 or span1 <= 0:
+        return None  # 第一根必须是大阴
+    if body1 / close1 < STAR_BIG_BODY:
+        return None
+    if span2 <= 0 or body2 > body1 * STAR_SMALL_BODY:
+        return None  # 第二根必须是小实体
+    if close3 <= open3 or body3 <= 0 or span3 <= 0:
+        return None  # 第三根必须是大阳
+    if body3 / close3 < STAR_BIG_BODY * 0.6:
+        return None
+
+    midpoint = (open1 + close1) / 2
+    if close3 < midpoint:
+        return None
+    recover = (close3 - midpoint) / (open1 - close1)  # 收复左侧实体过半之后又多收复了多少
+    ratio_vol = _volume_ratio(bars, 5)
+    score = _gate_score(recover, 0.0, 0.4) * 35
+    score += _gate_score(body3 / body1, 0.5, 1.5) * 35
+    score += min(ratio_vol / 2.0, 1.0) * 30
+
+    return Signal(
+        "morning_star",
+        min(score, 100.0),
+        {"support": float(bars.low[-2])},
+        {
+            "star_recover": round(recover, 3),
+            "body_ratio": round(body3 / body1, 2),
+            "vol_ratio": round(ratio_vol, 2),
+        },
+    )
+
+
+def _three_white_soldiers(bars: Bars) -> Signal | None:
+    """红三兵：连续三根阳线、实体扎实、收盘逐日抬高、上影短，三日累计涨幅 ≥3%。
+
+    上影短是它的关键特征（每根都被买到收盘），所以把上影占比也当否决条件 ——
+    三根都带长上影的「阳线」其实是三根冲高回落，含义正好相反。
+    """
+    if len(bars) < 4:
+        return None
+    closes = [float(bars.close[index]) for index in (-3, -2, -1)]
+    if not (closes[0] < closes[1] < closes[2]):
+        return None
+
+    bodies: list[float] = []
+    for index in (-3, -2, -1):
+        open_, _, _, close, body, upper, _, span = _candle(bars, index)
+        if span <= 0 or close <= open_:
+            return None
+        if body < span * SOLDIER_MIN_BODY or upper > span * SOLDIER_MAX_SHADOW:
+            return None
+        bodies.append(body)
+
+    gain = closes[2] / closes[0] - 1
+    if gain < SOLDIER_MIN_GAIN:
+        return None
+    steady = bodies[2] / bodies[0] if bodies[0] > 0 else 0.0
+    ratio_vol = _volume_ratio(bars, 5)
+
+    score = _band_score(gain, SOLDIER_MIN_GAIN, 0.08, 0.2) * 45
+    score += min(steady, 1.0) * 25  # 第三根实体不缩水（不缩水=1）
+    score += min(ratio_vol / 2.0, 1.0) * 30
+
+    return Signal(
+        "three_white_soldiers",
+        min(score, 100.0),
+        {"support": float(bars.low[-3])},
+        {
+            "gain": round(gain, 4),
+            "steady": round(steady, 2),
+            "vol_ratio": round(ratio_vol, 2),
+        },
+    )
+
+
 # ---------------------------------------------------------------- 注册表
+
+# 蜡烛形态的分组名。抽成常量有两个原因：一是它比其它组名长得多
+# （前端筛选条那个标签列要跟着加宽，见 Patterns.tsx 的 `w-24`），
+# 二是以后改名只动这里。
+CANDLE_GROUP = "单 K 蜡烛形态"
 
 PATTERNS: tuple[Pattern, ...] = (
     Pattern("wudao_start", "今天可买", "致富", _wudao_start),
@@ -2016,6 +3481,40 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("n_shape", "N 字选股", "量价", _n_shape),
     Pattern("oneil_breakout", "欧奈尔突破", "突破", _oneil_breakout),
     Pattern("burst_shrink_pullback", "爆量后缩量回踩", "量价", _burst_shrink_pullback),
+
+    # ---- 以下为 2026-09-25 按用户给的形态清单补齐（分组名与清单一致）----
+    #
+    # 顺序说明：**追加在末尾**而不是插进各自分组里 —— 注册表顺序决定了
+    # `/summary` 与筛选条里同组形态的排列，插进去会把用户已经熟悉的顺序打乱。
+    #
+    # ⚠️ 这一批是形状判定、**没有回测支持**（见文件上方阈值块开头那段说明）：
+    # 定位是「按这个形状捞一批票自己看」，不是高胜率信号。
+    Pattern("ma_squeeze", "均线粘合", "趋势", _ma_squeeze),
+    Pattern("ascending_channel", "上升通道", "趋势", _ascending_channel),
+    Pattern("ma_golden_cross", "金叉共振", "趋势", _ma_golden_cross),
+    Pattern("weekly_bull", "周线多头", "趋势", _weekly_bull),
+    Pattern("downtrend_breakout", "下降趋势线突破", "突破", _downtrend_breakout),
+    Pattern("gap_up_breakout", "向上跳空缺口突破", "突破", _gap_up_breakout),
+    Pattern("gap_fill", "缺口回补", "突破", _gap_fill),
+    Pattern("box_breakout", "箱体突破", "突破", _box_breakout),
+    Pattern("volume_dry_bottom", "地量见底", "量价", _volume_dry_bottom),
+    Pattern("vp_divergence", "量价底背离", "量价", _vp_divergence),
+    Pattern("shrink_limit_up", "缩量涨停", "量价", _shrink_limit_up),
+    Pattern("volume_stall", "放量滞涨", "量价", _volume_stall),
+    Pattern("volume_pile", "量堆", "量价", _volume_pile),
+    Pattern("v_bottom", "V 型底", "几何", _v_bottom),
+    Pattern("round_bottom", "圆弧底", "几何", _round_bottom),
+    Pattern("triple_bottom", "三重底", "几何", _triple_bottom),
+    Pattern("rectangle_box", "矩形箱体", "几何", _rectangle_box),
+    Pattern("rising_wedge", "上升楔形", "几何", _rising_wedge),
+    Pattern("falling_wedge", "下降楔形", "几何", _falling_wedge),
+    Pattern("diamond", "菱形", "几何", _diamond),
+    Pattern("morning_star", "启明星", CANDLE_GROUP, _morning_star),
+    Pattern("bullish_engulfing", "看涨吞没", CANDLE_GROUP, _bullish_engulfing),
+    Pattern("hammer", "锤子线", CANDLE_GROUP, _hammer),
+    Pattern("inverted_hammer", "倒锤子线", CANDLE_GROUP, _inverted_hammer),
+    Pattern("yang_wrap_yin", "阳包阴", CANDLE_GROUP, _yang_wrap_yin),
+    Pattern("three_white_soldiers", "红三兵", CANDLE_GROUP, _three_white_soldiers),
 )
 
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}
