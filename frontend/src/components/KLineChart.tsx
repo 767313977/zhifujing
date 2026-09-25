@@ -2,22 +2,28 @@ import { useMemo } from 'react'
 import type { StockDailyRow } from '../api/types'
 import EChart from './EChart'
 import type { ChartOption } from './EChart'
-import { AXIS_LABEL, CHART, THS, TOOLTIP } from '../lib/chart'
+import { AXIS_LABEL, CHART, TOOLTIP } from '../lib/chart'
 import { fmtShortDate } from '../lib/format'
 
 const MA_WINDOWS = [5, 10, 20]
 const MA_COLORS = ['#b8944f', '#6f93c4', '#a583c4']
 
-/** 副图均量线（成交量自己的均线）。窗口与同花顺默认一致：5 / 10。 */
+/**
+ * 副图均量线（成交量自己的均线），窗口与配色都按同花顺默认：MAVOL5 黄、MAVOL10 品红。
+ *
+ * ⚠️ 这两个色**不在 CHART 里**，因为站点的令牌体系里没有它们的语义（既不是涨跌、
+ * 也不是强调色）。同花顺那张截图里能确认的只有那条黄的（x 覆盖 2165/2469 列），
+ * 品红是按同花顺默认补的 —— 觉得刺眼就把它换掉或删掉这一条，不影响别处。
+ */
 const VOL_MA = [
-  { window: 5, color: THS.volMa5 },
-  { window: 10, color: THS.volMa10 },
+  { window: 5, color: '#ffff00' },
+  { window: 10, color: '#ff00ff' },
 ]
 
 /** 同花顺的网格是淡实线，不是本站其它图那种虚线。 */
 const THS_SPLIT_LINE = {
   show: true,
-  lineStyle: { color: THS.grid, type: 'solid' as const },
+  lineStyle: { color: CHART.line, type: 'solid' as const },
 }
 
 /**
@@ -95,9 +101,9 @@ interface Props {
 /**
  * K 线图（蜡烛 + 均线 + 成交量），个股详情页与形态选股页共用。
  *
- * 2026-09-26 起画法按**同花顺**那套来（阳线空心红 / 阴线实心青、副图带均量线），
- * 配色常量在 `lib/chart.ts` 的 `THS` 里，附采样依据。**只有这个图用它** ——
- * 站点其它地方（表格、板块热力、情绪周期）仍是自己那套红涨绿跌。
+ * 2026-09-26 起画法按**同花顺**那套来：阳线空心红 / 阴线实心青、网格淡实线、
+ * 图区比卡片沉一档、副图带均量线。配色直接吃站点令牌（`CHART` / `index.css`），
+ * 不另立一套 —— 当天全站配色也换成了同花顺，两边本来就是同一组值。
  *
  * 从 `StockDetail.tsx` 里抽出来而不是复制一份：这个图有三处容易写错的地方
  * —— A 股的红涨青跌覆盖（ECharts 默认是欧美惯例）、主图与副图的轴联动、
@@ -117,13 +123,13 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
     const volumes = bars.map((bar) => ({
       value: bar.volume,
       // 成交量柱跟随当日涨跌染色；涨跌幅缺失时用收盘价与开盘价比较。
-      // 颜色走 THS 那套亮红 / 亮青，**与主图蜡烛是两组色**（同花顺就是这么分的：
-      // 主图阳线暗红 #d90000、副图柱亮红 #fe3330），照采样值来，别「统一」成一个色。
+      // 与蜡烛同一个红/青（同花顺在图上把柱子和蜡烛分了两个色阶，本站 2026-09-26
+      // 统一取了亮的那档 —— 表格数字也是这两个值，全站一套）
       itemStyle: {
         color:
           (bar.pct_chg ?? (bar.close ?? 0) - (bar.open ?? 0)) >= 0
-            ? THS.volUp
-            : THS.volDown,
+            ? CHART.up
+            : CHART.down,
       },
     }))
 
@@ -149,16 +155,16 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
 
     return {
       grid: [
-        // 同花顺那种「纯黑底 + 淡实线网格」：底色铺在 grid 上（画布整块背景仍是页面的），
-        // 这样图区与页面的交界就是规则的矩形，不会跟着容器圆角跑
-        { left: 8, right: 14, top: 34, height: '56%', containLabel: true, backgroundColor: THS.bg },
+        // 图区铺「页面底」那一阶（比面板底更暗），同花顺那种图比卡片沉一档的观感。
+        // 铺在 grid 上而不是画布整体背景：画布整块上底会跟容器的圆角/内边距打架
+        { left: 8, right: 14, top: 34, height: '56%', containLabel: true, backgroundColor: CHART.page },
         {
           left: 8,
           right: 14,
           top: '76%',
           height: '16%',
           containLabel: true,
-          backgroundColor: THS.bg,
+          backgroundColor: CHART.page,
         },
       ],
       legend: {
@@ -221,9 +227,9 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
             // 体内透出背景色。ECharts 里 color 支持任意 CSS 颜色，透明即空心，
             // 不需要画两条线去凑。阴线保持实心青。
             color: 'transparent',
-            color0: THS.down,
-            borderColor: THS.up,
-            borderColor0: THS.down,
+            color0: CHART.down,
+            borderColor: CHART.up,
+            borderColor0: CHART.down,
           },
           // 关键位画成水平虚线。挂在蜡烛序列的 markLine 上，这样它自动跟随主图
           // 的坐标轴，价格尺度一变就跟着变，不用自己算位置
