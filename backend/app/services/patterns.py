@@ -440,11 +440,16 @@ VP_DIVERGE_VOL_DROP = 0.7  # 本次跌段均量 / 上次跌段均量 的上限
 # 缩量涨停（涨停却没量 = 惜售）
 SHRINK_LIMIT_VOL_MAX = 0.8  # 涨停日量 / 前 5 日均量 的上限
 
-# 放量滞涨（量堆上去了、价格没动 → 低位吸筹嫌疑）
-STALL_VOL_MULT = 2.0
-STALL_PCT_BAND = (-0.01, 0.02)  # 当日涨幅落在这一段里才算「滞涨」
-STALL_SHADOW_MIN = 0.35  # 上影线占全日振幅的比例下限
-STALL_MIN_DRAWDOWN = 0.15  # 距 60 日高点的回撤下限（低位放量才有意义）
+# 放量滞涨（放量了但价格没动、还留了长上影）
+#
+# ⚠️ 它是**警示类**形态，不是买点：高位放量滞涨多半是派发，低位才是吸筹嫌疑。
+# 所以「距 60 日高点的回撤」只写进 detail、只参与打分，**不做否决** ——
+# 一度把它当门槛（要求回撤 ≥15%），实测全市场只剩 0.2 次/天，等于页面上永远看不到；
+# 而且那是我替用户做的解读，名字本身并没有「只在低位」的意思。位置自己看明细判断。
+STALL_VOL_MULT = 1.8
+STALL_PCT_BAND = (-0.015, 0.025)  # 当日涨幅落在这一段里才算「滞涨」
+STALL_SHADOW_MIN = 0.28  # 上影线占全日振幅的比例下限
+STALL_MIN_DRAWDOWN = 0.1  # 低于这个回撤就不给「低位」那部分加分
 
 # 量堆（连续放量、价格重心同步上移）
 PILE_DAYS = 5
@@ -2742,11 +2747,10 @@ def _shrink_limit_up(bars: Bars) -> Signal | None:
 
 
 def _volume_stall(bars: Bars) -> Signal | None:
-    """放量滞涨：放量但价格没动、留长上影；位置越低越像吸筹。
+    """放量滞涨：放量（量比 ≥1.8）但价格没动（-1.5%~+2.5%）、还留了长上影。
 
-    ⚠️ 它偏**观察/风险类**，不是买点：放量滞涨在高位是派发，在低位才可能是吸筹。
-    所以「距 60 日高点的回撤」既是否决条件（<15% 直接不算），也参与打分 ——
-    位置越低分越高。
+    ⚠️ 偏**警示类**：高位放量滞涨多半是派发，低位才可能是吸筹。位置只写进 detail
+    与打分，不做否决（理由见阈值块里那段）。位置看 detail 的「距高点回撤」。
     """
     if len(bars) < DRY_BOTTOM_DAYS + 1:
         return None
@@ -2766,11 +2770,10 @@ def _volume_stall(bars: Bars) -> Signal | None:
     if peak <= 0:
         return None
     drawdown = 1 - close / peak
-    if drawdown < STALL_MIN_DRAWDOWN:
-        return None
 
     score = _band_score(ratio, STALL_VOL_MULT, 4.0, 8.0) * 35
     score += _band_score(shadow, STALL_SHADOW_MIN, 0.6, 0.95) * 30
+    # 低位才给这 35 分：高位放量滞涨同样会入库，但分数明显更低、排不到前面
     score += _band_score(drawdown, STALL_MIN_DRAWDOWN, 0.45, 0.7) * 35
 
     return Signal(
