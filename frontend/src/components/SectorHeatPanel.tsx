@@ -1,5 +1,5 @@
 import type { SectorHeat, SectorHeatItem } from '../api/types'
-import { CHART, withAlpha } from '../lib/chart'
+import { withAlpha } from '../lib/chart'
 import { fmtAmount, fmtPct, toneOf } from '../lib/format'
 import Panel from './Panel'
 
@@ -16,7 +16,8 @@ interface SectorHeatPanelProps {
  *
  * 用「色块深浅」而不是条形长度表达强度：首页只回答「今天什么在涨、什么在跌」，
  * 色块可以在一行里塞下更多板块，扫一眼就能看出方向。
- * 背景不用红/绿的实色，而是按涨跌幅叠加透明度 —— 避免整块高饱和让人分不清强弱。
+ * 背景不用红/青的实色，而是把**同色相的深色底**按涨跌幅叠加透明度 —— 深色底不抬
+ * 亮度，卡里的字才守得住对比度（亮色蒙层为什么不行，算据见下面 heatColor 的注释）。
  */
 export default function SectorHeatPanel({ heat, delay = 0 }: SectorHeatPanelProps) {
   const { selected, industry } = heat
@@ -81,7 +82,10 @@ function Row({ label, items }: { label: string; items: SectorHeatItem[] }) {
           >
             <div className="flex items-baseline justify-between gap-1.5">
               <span className="truncate text-[13px] text-fg">{item.name}</span>
-              <span className={`num shrink-0 text-[13px] ${toneOf(item.pct_chg)}`}>
+              {/* 数字不染涨跌色：底色已经在表达方向，再染一次是重复信息，
+                  而且红字压红底必然掉到 AA 线下（算据见 heatColor 的注释）。
+                  层级改由字重承担 —— 名称常规、数字中粗。 */}
+              <span className="num shrink-0 text-[13px] font-medium text-fg">
                 {fmtPct(item.pct_chg)}
               </span>
             </div>
@@ -98,14 +102,37 @@ function Row({ label, items }: { label: string; items: SectorHeatItem[] }) {
 }
 
 /**
- * A 股惯例红涨绿跌，底色按幅度叠加透明度 —— 只用**极低透明度的蒙层**，
- * 不用实色块：整块高饱和会让人分不清强弱，也把这一屏的颜色预算烧光。
+ * 卡片底色：方向用色相（红涨 / 青跌），强度用透明度。
  *
- * 颜色从 `CHART` 经 `withAlpha` 生成，不再手写 RGB 字面量 ——
+ * 透明蒙层一律经 `withAlpha` 生成、不手写 RGB 字面量 ——
  * 之前这里写死过一份 `'201, 96, 85'`，改色时就得记着同步它，漏了就只剩这一处旧色。
+ *
+ * ## 2026-09-26 改法：亮色蒙层 → 同色相**深色**蒙层
+ *
+ * 原先蒙层是 `withAlpha(涨色/跌色, α)`，即「亮色 + 低透明度」。卡里有两行字
+ * （主数字、「涨停 N」），它们压在蒙层上就掉对比度：
+ *
+ * | 蒙层 | α=0.16 | α=0.23 |
+ * | --- | --- | --- |
+ * | 涨色 #fe3330 | fg 10.6 / fg-dim **4.6** | fg 9.7 / fg-dim **4.2** |
+ * | 跌色 #3ec9cc | fg 8.9 / fg-dim **3.9** | fg 7.6 / fg-dim **3.3** |
+ *
+ * 而这条路的**上限本来就低**：涨色对面板底只有 4.65:1，任何红色系蒙层都把红字压到
+ * AA 线下（实测 α 压到几乎看不见也只有 4.0:1）。所以蒙层改用同色相的**深色底**
+ * —— 深色底不抬亮度，两行字在**整个强度区间**都过线（fg ≥10.6、fg-dim ≥4.6）。
+ *
+ * 两个基底的亮度是**对齐过的**（0.0216 vs 0.0241，差 1.12 倍）：否则同一强度下
+ * 跌卡会比涨卡亮，「领跌」那排看着反而更热。
+ *
+ * 主数字用中性 `text-fg`、不再染色（用户 2026-09-26 拍板）：底色已经在表达方向与
+ * 强弱，再染一次是重复信息，而且染成涨跌色就必然回到上面那张表的困境。同花顺自己的
+ * 板块热力也是「彩块 + 白字」。下方「涨停 N」那行仍是 fg-dim，它有 4.6:1，够用。
  */
+const HEAT_UP = '#4d1512'
+const HEAT_DOWN = '#0a3032'
+
 function heatColor(value: number | null): string | undefined {
   if (value == null || value === 0) return undefined
   const intensity = Math.min(Math.abs(value) / FULL_HEAT, 1)
-  return withAlpha(value > 0 ? CHART.up : CHART.down, 0.05 + intensity * 0.18)
+  return withAlpha(value > 0 ? HEAT_UP : HEAT_DOWN, 0.2 + intensity * 0.6)
 }
