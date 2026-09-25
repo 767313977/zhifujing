@@ -31,10 +31,11 @@ export const SERIES_PALETTE = [
   '#94a3b8', // 灰蓝
 ]
 
-// 图表数字/文字字体：与 index.css 的 --font-mono 同栈（2026-09-25 用户指定）。
-// Times New Roman 优先命中数字/英文，中文回退到仿宋。canvas 读不到 CSS 变量，只能写死。
+// 图表数字/文字字体：与 index.css 的 --font-sans 同栈（系统字体，零加载）。
+// canvas 读不到 CSS 变量，只能把那一串写死 —— 改 index.css 里的字体栈时**必须同步这里**，
+// 否则图里的字会退回 canvas 默认的无衬线体，和页面上的字明显不是一个字体。
 const NUM_FONT =
-  "'Times New Roman', 'FangSong_GB2312', '仿宋_GB2312', 'FangSong', '仿宋', serif"
+  "system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif"
 
 export const AXIS_LABEL = {
   color: CHART.fgDim,

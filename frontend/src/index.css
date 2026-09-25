@@ -3,8 +3,8 @@
 /* ------------------------------------------------------------------
    设计基调：交易终端 / 工业风
    深色、高信息密度、锐利边缘。
-   字体用本地字体栈而非 CDN —— 这是本地自用工具，离线必须可用。
-   数字用 Times New Roman、中文用仿宋（2026-09-25 用户指定，见下方两个变量）。
+   字体走系统栈：直接吃操作系统自带的 UI 字体，零 webfont、零网络请求
+   （2026-09-25 用户指定，见下方两个变量）。
 ------------------------------------------------------------------ */
 @theme {
   /* 底色不用纯黑：带一点冷调，避免在 OLED 上死黑、也让层级有区分余地 */
@@ -54,13 +54,24 @@
   --color-danger: #ff4d4f;
   --color-ok: #00b96b;
 
-  /* 数字用 Times New Roman、中文用仿宋（2026-09-25 用户指定）。
-     字体栈以 Times New Roman 开头：数字/英文优先命中它，中文它没有字形、
-     自动回退到后面的仿宋。仿宋同时写英文名与中文名，不同系统只认其中一个。 */
-  --font-mono:
-    'Times New Roman', 'FangSong_GB2312', '仿宋_GB2312', 'FangSong', '仿宋', serif;
+  /* 系统字体栈（2026-09-25 用户指定）：直接吃操作系统自带的 UI 字体，
+     零 webfont、零网络请求。原来是 'Times New Roman' + 仿宋的本地字体对。
+
+     顺序为什么必须这么排：`system-ui` 在 Windows 是 Segoe UI、macOS 是 SF Pro、
+     Android 是 Roboto，**这三者都没有中文字形** —— 中文只能靠后面显式列出的中文
+     字体接住，所以那段不能省。中文里苹方（macOS/iOS）放在微软雅黑（Windows）**前面**：
+     苹果设备上没有雅黑，列在后面不影响它；反过来把雅黑写前面，Mac 上装过 Office 的
+     机器就会命中雅黑，同一个站两套字形。末位 sans-serif 兜底（Linux 一般落思源/Noto）。 */
   --font-sans:
-    'Times New Roman', 'FangSong_GB2312', '仿宋_GB2312', 'FangSong', '仿宋', serif;
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei',
+    'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif;
+
+  /* 数字跟着正文用同一套系统字体，不再单独挑一种（`.num` 上的 `tabular-nums`
+     负责纵向对齐，见 components 层）。保留 `--font-mono` 这个名字是因为它还有
+     一处用处：万一哪个系统不给 tabular-nums、数字对不齐，把这一行换成系统等宽栈即可
+     —— `ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace`
+     （同样是零加载），不用改任何 `.num` 的调用点。 */
+  --font-mono: var(--font-sans);
 }
 
 @layer base {
@@ -124,7 +135,10 @@
 }
 
 @layer components {
-  /* 等宽数字：表格与卡片里所有数值都用它，保证纵向对齐可扫 */
+  /* 数值列：表格与卡片里所有数值都用它，保证纵向对齐可扫。
+     2026-09-25 起字体与正文同一套（系统栈），对齐**完全靠 `tabular-nums`** ——
+     不是靠等宽字体。所以这个声明不能删：没有它，比例数字（如 Segoe UI 的 1 比 8 窄）
+     会让每一行的数位错开，整列没法扫。 */
   .num {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
