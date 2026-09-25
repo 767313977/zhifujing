@@ -230,8 +230,8 @@ akshare   ─┘                                                          │
 | `market_sentiment` | trade_date | **物化**情绪快照（见下） |
 | `watchlist` | code | 自选股 + 备注 + 标签 |
 | `review_note` | trade_date | 复盘笔记：市场观点、次日计划 |
-| `screen_preset` | id | 保存的选股条件（自然语言 + 结构化条件） |
-| `screen_result` | id, code | 选股结果快照 |
+| `screen_preset` | id | 保存的选股条件（自然语言 + 结构化条件）← 代码已删，表留着，见 8.65 |
+| `screen_result` | id, code | 选股结果快照 ← 同上 |
 | `collect_log` | id | 采集日志：任务、状态、耗时、错误 |
 
 **`market_sentiment` 物化字段**（情绪曲线要快速读 60 天，实时计算太慢）：
@@ -379,12 +379,12 @@ GET  /api/sectors/heat?date=             首页板块热力（概念/行业各�
 GET  /api/stock/{code}/daily?days=120    K 线
 GET  /api/stock/{code}/profile           个股概况
 GET  /api/stock/{code}/themes            个股所属同花顺题材（首次现取并缓存，见 8.13）
-POST /api/screener/nl                    自然语言选股（iFinD search_stocks）
-POST /api/screener/run                    结构化条件选股（本地库）
-GET  /api/screener/fields                条件字段元数据
+POST /api/screener/nl                    自然语言选股（iFinD search_stocks）   ← 已删，见 8.65
+POST /api/screener/run                    结构化条件选股（本地库）              ← 已删，见 8.65
+GET  /api/screener/fields                条件字段元数据                        ← 已删，见 8.65
 GET/POST/DELETE /api/watchlist           自选股
 POST /api/note/{date}                    复盘笔记
-GET/POST /api/screen-preset              保存的选股条件
+GET/POST /api/screen-preset              保存的选股条件   ← 已删，见 8.65
 POST /api/admin/collect                  手动补数
 GET  /api/admin/status                   采集状态
 ```
@@ -399,7 +399,7 @@ GET  /api/admin/status                   采集状态
 | `/sentiment` | 情绪周期 | 近 60 日涨停数 / 炸板率 / 连板高度 / 指数叠加曲线 |
 | `/sectors` | 板块题材 | 板块排行（行业 90 / 概念 375，按涨跌幅 / 涨停家数 / 近 5 日 / 成交额 / 净流入排序）、板块详情、近 30 日涨跌幅柱状图、成分股（含连板标记）、多板块强弱对比（起点归一为 100） |
 | `/limit-up` | 涨停复盘 | 连板晋级率、连板梯队、**今日题材共振**（可点标签筛选涨停明细）、首封时间分布、涨停行业分布、涨停/炸板明细（名称下方标注所属题材） |
-| `/screener` | 选股器 | **自然语言选股（主力）** + 结构化条件筛选 + 保存条件 |
+| `/screener` | 选股器 | **自然语言选股（主力）** + 结构化条件筛选 + 保存条件 ← **已删，见 8.65** |
 | `/watchlist` | 自选股 | 自选池、每日表现、笔记 |
 | `/stock/:code` | 个股详情 | 概况统计格、**所属题材**、日 K 线（蜡烛 + MA5/10/20 + 成交量副图）、涨停记录 |
 | `/settings` | 数据管理 | 采集状态、手动补数、日志 |
@@ -428,7 +428,7 @@ GET  /api/admin/status                   采集状态
 | P1 | `sources/`：iFinD 客户端 + Markdown 解析 + akshare 缺口源 + 限速分片；采集与回补任务 | 能跑通全量数据入库 | ✅ 完成 |
 | P2 | 复盘 API + 今日复盘 Dashboard | 首页可用 | ✅ 完成 |
 | P3 | 情绪周期 + 板块 + 涨停复盘页 | 复盘主体完成 | ✅ 完成 |
-| P4 | 选股器（iFinD 自然语言） | 找票能力 | ✅ 完成 |
+| P4 | 选股器（iFinD 自然语言） | 找票能力 | ✅ 完成 → **2026-09-25 删除，见 8.65** |
 | P5 | 自选股 + 个股详情 + 复盘笔记 | 全功能闭环 | ✅ 完成 |
 | P6 | 定时任务 + 数据管理页 | 自动化 | ✅ 完成 |
 
@@ -4833,7 +4833,8 @@ akshare 侧也没有替代：`sources/akshare_source.py` 用的 `stock_fund_flow
 
 #### 8.43.3 按需抓取 + 两道**配套**的守卫
 
-页面不直连外部接口是本站的硬约束，这里是明列的例外之一（另两处是选股器、板块成分股）：
+页面不直连外部接口是本站的硬约束，这里是明列的例外之一（另两处是选股器、板块成分股；
+**选股器 2026-09-25 已删，见 8.65**）：
 个股页首次打开某只票时抓一次并落库，之后读库。
 
 1. **收盘前不落「今天」那一行** —— `CLOSE_READY = 15:05`，与 `collect_flows` 同一道守卫、
@@ -5972,6 +5973,35 @@ ETF、**DDE 扫描**）与概念兜底都已经停了。
 3. **「有数据」和「数据到没到今天」是两件事**。`_ensure_wudao_kline` 只看根数、
    `_require_bars` 只看「有没有行」，两道校验都漏掉了这件事 ——
    而它们的注释里写的恰恰是「防止拿昨天的数据打今天的日期」。
+
+---
+
+### 8.65 删掉选股器（2026-09-25）
+
+用户要求「把这个选股器删掉」。它是最早那批功能之一（P4，见 8.5），删之前是站里
+**唯一一条能主动花 iFinD 配额**的路径（一次自然语言选股 = 一次 `search_stocks`）。
+
+**删掉的东西**（前后端一次做干净，不留半截）：
+
+| 位置 | 内容 |
+| --- | --- |
+| 前端 | `pages/Screener.tsx` 整页；`App.tsx` 的路由 `/screener` 与 import；`Layout.tsx` 导航项 |
+| 前端 | `api/client.ts` 的 `runScreen` / `presets` / `savePreset` / `deletePreset`；`api/types.ts` 的 `ScreenRun` / `Preset` |
+| 前端 | 自选股空状态那句「或在选股器里点「＋自选」」—— 指向的入口没了，留着是死链 |
+| 后端 | `api/screener.py` 整个路由；`main.py` 的 import 与 `include_router` |
+| 后端 | `schemas.py` 的 `ScreenRunOut` / `PresetIn` / `PresetOut`；`models.py` 的 `ScreenPreset` / `ScreenResult` |
+| 文档 | README 的页面表、`api/` 目录说明、页面数；以及「页面只读 SQLite」那条例外 —— **从两处变回一处**（只剩板块成分股） |
+
+**刻意留下的两样**：
+
+1. **两张空表 `screen_preset` / `screen_result` 不删**。与当年那张没人读的
+   `sector_fund_flow`（953 行老数据）同一个处理：删表不可逆，而没人读的旧表无害。
+   `db.py` 的补列迁移只遍历 `base.metadata`，它们不在模型里也不会报错。
+2. **`IfindClient.search_stocks` 不能删** —— 它还被 `collect_daily` 用来数当天的涨跌家数
+   （`{day}涨幅大于5%的A股股票` 的 `matched`）。删之前先确认过调用方，不是「页面上没人用了」就删。
+
+**影响**：找票只剩「形态选股」一条路（本地算、0 配额）；iFinD 那边不再有「人工临时花掉
+几十次」的口子，配额预算只剩采集与形态选股两块。历史描述留在 8.5，不回头改写。
 
 ---
 

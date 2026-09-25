@@ -17,7 +17,6 @@
 | `/limit-up` | 涨停复盘 | 连板晋级率、涨停梯队、题材共振、首封时间分布、涨停/炸板明细（**含涨停原因**） |
 | `/funds` | 资金面 | 两融走势、北向成交额、ETF 申赎排行、龙虎榜机构席位排行 |
 | `/patterns` | 形态选股 | 全市场日线形态扫描（均线多头、回踩不破、N 日新高、平台突破、放量突破前高、放量上涨），命中推送到飞书 |
-| `/screener` | 选股器 | **自然语言选股（iFinD，主力）** + 结构化条件 + 保存条件 |
 | `/watchlist` | 自选股 | 自选池、每日表现、笔记 |
 | `/stock/:code` | 个股详情 | 概况、所属题材、日/周/月 K（蜡烛 + 均线 + 成交量）、**资金流向（DDE + 主力净流入额）**、涨停记录 |
 | `/settings` | 数据管理 | 采集状态与覆盖、iFinD 配额用量、手动采集 / 回补、日志 |
@@ -40,8 +39,7 @@ akshare   ─┘                                                          │
 两条硬约束：
 
 1. **页面只读 SQLite，绝不实时拉外部接口。**
-   只有两处例外，且都是刻意留的：**选股器**（一次自然语言选股 = 一次 iFinD 调用，等于用户主动花配额），
-   **板块成分股**（首次打开某板块时抓一次并落库，之后读库）。
+   只有一处例外，且是刻意留的：**板块成分股**（首次打开某板块时抓一次并落库，之后读库）。
 2. **外部脆弱性锁死在 `backend/app/sources/` 一层。** 接口变更、限流策略调整都只改这层，不往上传染。
 
 ## 数据源与配额
@@ -66,13 +64,13 @@ akshare   ─┘                                                          │
 
 ```
 backend/app/
-  api/        各页面用的只读接口（market / limit / sector / funds / stock / screener / watchlist / note / patterns / admin）
+  api/        各页面用的只读接口（market / limit / sector / funds / stock / watchlist / note / patterns / admin）
   jobs/       采集与回补任务（collect_*、backfill_*、scan_patterns、push_brief、scheduler）
   services/   计算层（情绪、板块、形态、指数技术指标、配额计量）
   sources/    所有外部数据源客户端，含限速 / 重试 / 分片 / 降级
   models.py   SQLAlchemy 模型；每张表的口径与坑写在 docstring 里
 frontend/src/
-  pages/      10 个页面
+  pages/      9 个页面
   components/ 面板与表格组件（EChart 是按需注册的 ECharts 封装）
   lib/        图表基座、格式化、排序、K 线周期等
 scripts/      一次性脚本：建库 / 回补 / 探针 / 打包部署
