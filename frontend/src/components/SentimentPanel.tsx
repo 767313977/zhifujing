@@ -191,7 +191,7 @@ function Metric({
       }`}
     >
       <div className="text-[13px] tracking-[0.1em] text-fg-dim">{label}</div>
-      <div className={`num mt-1.5 text-[26px] leading-none font-medium ${tone}`}>
+      <div className={`num mt-1.5 text-[26px] leading-none font-semibold ${tone}`}>
         {value}
       </div>
       {/* fill 用于同一行里装着柱状图的邻居格：Grid 会把整行拉齐，

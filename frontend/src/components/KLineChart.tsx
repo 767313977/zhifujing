@@ -6,7 +6,7 @@ import { AXIS_LABEL, CHART, SPLIT_LINE, TOOLTIP } from '../lib/chart'
 import { fmtShortDate } from '../lib/format'
 
 const MA_WINDOWS = [5, 10, 20]
-const MA_COLORS = ['#ffb020', '#5b9dff', '#c084fc']
+const MA_COLORS = ['#b8944f', '#6f93c4', '#a583c4']
 
 /**
  * 图上的一根 K。

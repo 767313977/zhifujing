@@ -602,7 +602,7 @@ function MetricCard({
       <div className="text-[13px] tracking-[0.1em] text-fg-dim">{label}</div>
       <div
         className={`num mt-1 leading-tight ${
-          muted ? 'text-[14px] text-fg-muted' : `text-[19px] font-medium ${tone}`
+          muted ? 'text-[14px] text-fg-muted' : `text-[19px] font-semibold ${tone}`
         }`}
       >
         {value}

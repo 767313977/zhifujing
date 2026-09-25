@@ -96,10 +96,17 @@ function Row({ label, items }: { label: string; items: SectorHeatItem[] }) {
   )
 }
 
-/** A 股惯例红涨绿跌，底色按幅度叠加透明度。 */
+/**
+ * A 股惯例红涨绿跌，底色按幅度叠加透明度 —— 只用**极低透明度的蒙层**，
+ * 不用实色块：整块高饱和会让人分不清强弱，也把这一屏的颜色预算烧光。
+ *
+ * ⚠️ 这里的 RGB 是 `--color-up` / `--color-down` 的**副本**（内联样式里没法写
+ * CSS 变量参与的计算）。改那两个令牌时必须同步这两个数，否则板块热力的底色
+ * 会留在旧的红绿上，和页面其它地方对不上。
+ */
 function heatColor(value: number | null): string | undefined {
   if (value == null || value === 0) return undefined
   const intensity = Math.min(Math.abs(value) / FULL_HEAT, 1)
-  const rgb = value > 0 ? '255, 77, 79' : '0, 185, 107'
+  const rgb = value > 0 ? '201, 96, 85' : '70, 145, 106'
   return `rgba(${rgb}, ${(0.05 + intensity * 0.18).toFixed(3)})`
 }

@@ -4,38 +4,42 @@
  *  只能写死）。改那边就得同步改这边，尤其是 `fgDim` —— 它是坐标轴、图例那层
  *  小灰字的颜色，两边不一致的话，图里的字会比页面上的字暗一档。 */
 export const CHART = {
-  up: '#ff4d4f',
-  down: '#00b96b',
-  accent: '#ffb020',
-  fg: '#e6e8ec',
-  fgMuted: '#98a1af',
-  // 与 --color-fg-dim 同步：2026-09-22 从 #59616d 提亮、2026-09-25 再提到 #87919f
-  fgDim: '#87919f',
-  line: '#232a33',
-  soft: '#191e25',
-  ink: '#0c0f13',
+  // 涨跌：低饱和砖红 / 松绿，两色相对亮度差 5%（见 index.css 里那段说明）
+  up: '#c96055',
+  down: '#46916a',
+  accent: '#ddaa4d',
+  fg: '#eae5da',
+  fgMuted: '#a5a29b',
+  fgDim: '#8a8881',
+  line: '#2e2e31',
+  soft: '#1f1f21',
+  ink: '#131314', // 与 --color-ink-900 同步（面板底）
 } as const
 
 /**
  * 多序列配色：不用红绿（那两个颜色在本站有涨跌含义），改用中性区分度高的色相。
  * 个数必须 ≥ 后端 `COMPARE_LIMIT`（8），否则第 9 条线会绕回去和第一条同色。
+ *
+ * 2026-09-25 改版：整组降饱和，并把**亮度对齐**（极差 0.049，占均值 16.4% —— 旧配色
+ * 是 57.3%）。亮度不齐的话，偏亮的那条线会凭「跳」抢注意力，读者会以为它更重要，
+ * 而那只是配色造成的错觉。金色也从 #d3a559 压到 #b8944f 才落进这条带里。
  */
 export const SERIES_PALETTE = [
-  '#ffb020', // 金
-  '#5b9dff', // 蓝
-  '#c084fc', // 紫
-  '#40c4c4', // 青
-  '#f472b6', // 粉
-  '#818cf8', // 靛
-  '#38bdf8', // 天蓝
-  '#94a3b8', // 灰蓝
+  '#b8944f', // 金
+  '#6f93c4', // 蓝
+  '#a583c4', // 紫
+  '#5f9f9d', // 青
+  '#c18aa4', // 粉
+  '#828cc0', // 靛
+  '#639fc2', // 天蓝
+  '#8b95a3', // 灰蓝
 ]
 
-// 图表数字/文字字体：与 index.css 的 --font-sans 同栈（系统字体，零加载）。
-// canvas 读不到 CSS 变量，只能把那一串写死 —— 改 index.css 里的字体栈时**必须同步这里**，
-// 否则图里的字会退回 canvas 默认的无衬线体，和页面上的字明显不是一个字体。
+// 图表里的字：与 index.css 同栈。canvas 读不到 CSS 变量，只能把那一串写死 ——
+// 改 index.css 的字体栈时**必须同步这里**，否则图里的字会退回 canvas 默认字体。
+// 数字走等宽体（轴标签、tooltip 里的数值），未命中时回退到正文那套中文黑体。
 const NUM_FONT =
-  "'Noto Sans SC', system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif"
+  "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', 'Noto Sans SC', monospace"
 
 export const AXIS_LABEL = {
   color: CHART.fgDim,
@@ -56,7 +60,7 @@ export const SPLIT_LINE = {
 }
 
 export const TOOLTIP = {
-  backgroundColor: 'rgba(8, 10, 12, 0.94)',
+  backgroundColor: 'rgba(12, 12, 13, 0.94)',
   borderColor: CHART.line,
   borderWidth: 1,
   padding: [8, 10] as [number, number],

@@ -66,7 +66,7 @@ export default function IndexStrip({ indexes, tradeDate }: IndexStripProps) {
 
           <div className="mt-1.5 flex items-baseline gap-2.5">
             <span
-              className={`num text-[22px] leading-none font-medium ${toneOf(item.pct_chg)}`}
+              className={`num text-[22px] leading-none font-semibold ${toneOf(item.pct_chg)}`}
             >
               {fmtNum(item.close, 2)}
             </span>

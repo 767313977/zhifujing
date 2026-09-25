@@ -1,36 +1,34 @@
 @import 'tailwindcss';
 
 /* ------------------------------------------------------------------
-   设计基调：交易终端 / 工业风
-   深色、高信息密度、锐利边缘。
-   字体走系统栈：直接吃操作系统自带的 UI 字体，零 webfont、零网络请求
-   （2026-09-25 用户指定，见下方两个变量）。
+   设计基调：专业金融终端
+   数据优先、弱装饰、强层级、低视疲劳。
+   深色、高信息密度、锐利边缘；所有色彩与字重都服务于信息效率。
+   字体走系统栈：直接吃操作系统自带的 UI 字体，零 webfont、零网络请求。
 ------------------------------------------------------------------ */
 @theme {
-  /* 底色不用纯黑：带一点冷调，避免在 OLED 上死黑、也让层级有区分余地 */
-  --color-ink-950: #080a0c;
-  --color-ink-900: #0c0f13;
-  --color-ink-850: #11151a;
-  --color-ink-800: #161b21;
-  --color-ink-700: #1d232b;
-  --color-line: #232a33;
-  --color-line-soft: #191e25;
+  /* ---- 背景系统：深炭黑 + 底色差分层，不靠亮线切割 ----
+     页面底不用纯黑：纯黑在暗环境里刺眼，也把「更暗」的余地占光了。用带极细微
+     灰调的炭黑，模块卡片比它亮 1 阶，**用底色差代替硬边框**做区块分割。
+     相邻两阶的相对亮度比实测 1.05~1.12 —— 够看出层次，又不像两块不同的板子。 */
+  --color-ink-950: #0c0c0d; /* 页面底 */
+  --color-ink-900: #131314; /* 面板 / 卡片底（比页面底亮 1 阶） */
+  --color-ink-850: #1a1a1c; /* chip、表头底、行 hover（亮 2 阶） */
+  --color-ink-800: #212123; /* 进度条槽底等 */
+  --color-ink-700: #2a2a2d; /* 选中态 */
+  --color-line: #2e2e31; /* 模块分割线：极细深灰，不用亮线 */
+  --color-line-soft: #1f1f21; /* 更弱的一档：面板描边、表格内分隔 */
 
-  --color-fg: #e6e8ec;
-  --color-fg-muted: #98a1af;
-  /*
-   * 三级文字（最弱的灰）。原值 #59616d 在深底上**只有约 3.1:1**，而这一档专门用在
-   * 10~11px 的小字上（子标签、表头、单位、注释），实际就是读不清 —— 2026-09-22
-   * 用户拿涨停页截图提过「灰字看不清」。
-   *
-   * 2026-09-25 再提亮一档（用户「深色模式字体对比度不够」）：#7d8794 → #87919f，
-   * 在 ink-900 上 6.0:1、在 ink-850（chip 与表头底色）上 5.7:1，小字可读性更好。
-   *
-   * ⚠️ 它和 fg-muted 要保持一档差距：fg-muted 也同步从 #8a93a0 提到 #98a1af
-   * （ink-900 上 7.4:1），两档不再糊在一起。若还想更亮，**两档一起往上提**，
-   * 别把 fg-dim 压回原来的暗度。
-   */
-  --color-fg-dim: #87919f;
+  /* ---- 文字三档：暖白 → 浅灰 → 中灰 ----
+     主文字用**暖白**（R>G>B 的极浅黄调）：纯白在深底上过于刺眼，暖白既保住
+     最高对比度（对面板底实测 14.8:1）又没那么扎眼。
+     次文字与弱化文字依次降到 7.3:1、5.2:1，三档拉开，让
+     「正文 > 表头/标签 > 注释」的层级靠颜色就能读出来，不用靠字号硬撑。
+     ⚠️ 弱化这一档**别再压暗**：2026-09-22 用户拿涨停页截图提过「灰字看不清」，
+     当时那档只有 3.1:1。5.2:1 是这条线的下限。 */
+  --color-fg: #eae5da;
+  --color-fg-muted: #a5a29b;
+  --color-fg-dim: #8a8881;
 
   /*
    * 内容外壳的宽度上限（`max-w-shell`）。用户 2026-09-25 要「占屏幕 80%」。
@@ -43,16 +41,21 @@
    */
   --container-shell: max(1600px, 80vw);
 
-  /* A 股惯例：红涨绿跌，与欧美市场相反 */
-  --color-up: #ff4d4f;
-  --color-down: #00b96b;
-  --color-accent: #ffb020;
+  /* ---- 涨跌功能色：低饱和 + 明度对齐 ----
+     A 股惯例红涨绿跌。原来的 #ff4d4f / #00b96b 饱和度太高、有荧光感，长时间盯盘
+     容易疲劳；换成砖红与松绿，并**把两色的相对亮度对齐**（0.214 vs 0.226，差 5%）
+     —— 否则偏亮的那一侧会因为「更跳」而读起来权重更高，红绿就不对等了。
+     两色对面板底的对比度 4.7:1 / 4.9:1，作为 14px 数字都过 WCAG AA。
+     强调色（金）同步降饱和，与整页低饱和基调一致。 */
+  --color-up: #c96055;
+  --color-down: #46916a;
+  --color-accent: #ddaa4d;
 
   /* 语义色。**不能复用 up / down** —— 那两个表达的是行情涨跌（红涨绿跌），
      拿 down（绿）去表示「失败」会读成完全相反的意思。
      这里只是恰好与 up/down 同色，但语义分开后未来可以各自调整。 */
-  --color-danger: #ff4d4f;
-  --color-ok: #00b96b;
+  --color-danger: #c96055;
+  --color-ok: #46916a;
 
   /* 字体走系统栈：**不引任何 webfont**，直接从操作系统已装的字体里取
      （2026-09-25 用户指定）。首位是思源黑体 —— 思源黑体（Source Han Sans）
@@ -76,12 +79,16 @@
     'Noto Sans SC', system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC',
     'Microsoft YaHei', 'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif;
 
-  /* 数字跟着正文用同一套系统字体，不再单独挑一种（`.num` 上的 `tabular-nums`
-     负责纵向对齐，见 components 层）。保留 `--font-mono` 这个名字是因为它还有
-     一处用处：万一哪个系统不给 tabular-nums、数字对不齐，把这一行换成系统等宽栈即可
-     —— `ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace`
-     （同样是零加载），不用改任何 `.num` 的调用点。 */
-  --font-mono: var(--font-sans);
+  /* 数字改用**系统等宽字体**（用户 2026-09-25「数字区域优先搭配等宽字体」）。
+     等宽让同一列的位数天然对齐，和 `.num` 上的 `tabular-nums` 是双保险 ——
+     比例字体的 `tnum` 只是「数字之间等宽」，换字体后一旦某个系统不支持就退化，
+     等宽字体不依赖这个特性。
+     末尾挂 'Noto Sans SC' 是必要的：`.num` 也套在含中文的片段上
+     （如「成交额 3.2亿」「首次封板 09:31:00」），等宽字体没有中文字形，
+     不显式接住就会掉进系统默认的衬线字体。依旧是系统字体，零加载。 */
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
+    'Noto Sans SC', monospace;
 }
 
 @layer base {
@@ -140,22 +147,26 @@
     border: 2px solid var(--color-ink-900);
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #2c343e;
+    background: #35353a;
   }
 }
 
 @layer components {
-  /* 数值列：表格与卡片里所有数值都用它，保证纵向对齐可扫。
-     2026-09-25 起字体与正文同一套（系统栈），对齐**完全靠 `tabular-nums`** ——
-     不是靠等宽字体。所以这个声明不能删：没有它，比例数字（如 Segoe UI 的 1 比 8 窄）
-     会让每一行的数位错开，整列没法扫。 */
+  /* 数值列：表格与卡片里所有数值都用它。
+     字体是等宽体（见 @theme 的 --font-mono），再叠一层 `tabular-nums` —— 两者
+     都是为了让同一列的位数对齐：前者不依赖字体特性，后者在比例字体上兜底。
+     `letter-spacing:-0.01em` 是因为等宽体本身字面偏宽，长数字串会显得松散。
+
+     「重点强调数字」（总成交额、涨跌家数、连板高度、核心涨跌幅）在各自页面用
+     `font-semibold` + 比正文大一号的字号 —— 强调只靠**字重与字号**，不额外上色，
+     否则整页的颜色预算会被这些大数字吃掉，涨跌色就不显眼了。 */
   .num {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.01em;
   }
 
-  /* 区块外壳：无圆角、发丝边框，靠层次而非阴影区分 */
+  /* 区块外壳：无圆角、发丝描边，主要靠底色差（比页面底亮 1 阶）与页面分开 */
   .panel {
     background-color: var(--color-ink-900);
     border: 1px solid var(--color-line-soft);
@@ -167,10 +178,14 @@
     gap: 0.5rem;
     padding: 0.625rem 0.875rem;
     border-bottom: 1px solid var(--color-line-soft);
-    /* 13px（2026-09-25 从 0.75rem 上调，与页面里 text-[Npx] 一起 +1px） */
-    font-size: 0.8125rem;
-    letter-spacing: 0.14em;
-    color: var(--color-fg-muted);
+    /* 一级标题（模块名）：全页最大的正文字号 + 中粗字重，做每个区块的视觉锚点。
+       2026-09-25 从 13px/常规字重 提上来（改版要求「中粗字重，全页最大字号」）；
+       字距同时从 0.14em 收到 0.04em —— 宽字距是装饰，与「弱装饰」的基调相冲。
+       正文是 14px，所以标题 15px 就够压住它，不必再大。 */
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--color-fg);
   }
 
   /* 表格：发丝分隔线，数字右对齐 */
@@ -187,11 +202,14 @@
     background-color: var(--color-ink-850);
     padding: 0.4rem 0.625rem;
     text-align: right;
-    font-weight: 500;
-    /* 13px，不是默认的 11px —— 表头也是 fg-dim，和正文小字一起上调过 1px */
+    /* 二级表头：常规字重 + 次文字色，靠**颜色与字重**退到数据后面，而不是靠字号。
+       ⚠️ 别把字号调到 14px（与正文齐平）：整张表的列宽基本由表头文字撑着，
+       实测表头 13→14px 会让 14 列的涨停明细宽出约 40px，直接把 1024 / 1280
+       两档调好的适配顶破（那两档的余量只有 56px / 42px）。 */
+    font-weight: 400;
     font-size: 0.8125rem;
     letter-spacing: 0.06em;
-    color: var(--color-fg-dim);
+    color: var(--color-fg-muted);
     white-space: nowrap;
     border-bottom: 1px solid var(--color-line);
   }

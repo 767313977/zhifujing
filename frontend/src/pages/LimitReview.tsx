@@ -8,7 +8,16 @@ import LadderBoard from '../components/LadderBoard'
 import Layout from '../components/Layout'
 import LimitTable from '../components/LimitTable'
 import Panel from '../components/Panel'
-import { AXIS_LABEL, AXIS_LINE, CHART, GRID, LEGEND, SPLIT_LINE, TOOLTIP } from '../lib/chart'
+import {
+  AXIS_LABEL,
+  AXIS_LINE,
+  CHART,
+  GRID,
+  LEGEND,
+  SERIES_PALETTE,
+  SPLIT_LINE,
+  TOOLTIP,
+} from '../lib/chart'
 import { fmtInt, fmtPct, fmtShortDate, toneOf } from '../lib/format'
 
 /** 首封时间分桶。首封越早说明资金越坚决，所以时间分布是强度的直接体现。 */
@@ -142,7 +151,7 @@ export default function LimitReview() {
       itemStyle: { color },
     })
 
-    const palette = [CHART.up, CHART.accent, '#5b9dff', CHART.fgMuted]
+    const palette = [CHART.up, CHART.accent, SERIES_PALETTE[1], CHART.fgMuted]
     const series = promotion.levels
       .filter((item) => CHART_LEVELS.includes(item.level))
       .map((item, i) => seriesFor(item.label, item.rates, palette[i]))
@@ -412,7 +421,7 @@ function Stat({
   return (
     <div className="flex-1 bg-ink-900 px-4 py-2.5">
       <div className="text-[13px] tracking-[0.1em] text-fg-dim">{label}</div>
-      <div className={`num mt-1 leading-tight ${muted ? 'text-[13px] text-fg-muted' : `text-[20px] font-medium ${tone}`}`}>
+      <div className={`num mt-1 leading-tight ${muted ? 'text-[13px] text-fg-muted' : `text-[20px] font-semibold ${tone}`}`}>
         {value}
         {unit && <span className="ml-1 text-[13px] text-fg-dim">{unit}</span>}
       </div>
