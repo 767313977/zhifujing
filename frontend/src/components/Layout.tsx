@@ -8,7 +8,6 @@ const NAV = [
   { to: '/limit-up', label: '涨停复盘' },
   { to: '/funds', label: '资金面' },
   { to: '/patterns', label: '形态选股' },
-  { to: '/screener', label: '选股器' },
   { to: '/watchlist', label: '自选股' },
   { to: '/settings', label: '数据管理' },
 ]

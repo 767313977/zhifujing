@@ -22,12 +22,10 @@ import type {
   PatternMeta,
   PatternStock,
   PatternSummary,
-  Preset,
   PromotionSeries,
   ReviewNote,
   RotationLeaderDay,
   RotationMetric,
-  ScreenRun,
   SectorCompare,
   SectorFundFlowOut,
   SectorHeat,
@@ -200,23 +198,6 @@ export const api = {
 
   promotion: (days = 15) =>
     request<PromotionSeries>(`/limit/promotion?days=${days}`),
-
-  runScreen: (query: string) =>
-    request<ScreenRun>(`/screener/run?query=${encodeURIComponent(query)}`, {
-      method: 'POST',
-    }),
-
-  presets: () => request<Preset[]>('/screener/presets'),
-
-  savePreset: (name: string, query: string) =>
-    request<Preset>('/screener/presets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, query }),
-    }),
-
-  deletePreset: (id: number) =>
-    request<{ ok: boolean }>(`/screener/presets/${id}`, { method: 'DELETE' }),
 
   watchlist: () => request<WatchlistRow[]>('/watchlist'),
 

@@ -165,7 +165,7 @@ class StockDde(Base):
 
     **按需抓取**：个股页打开时若库里没有最近交易日的数据就现取一次（与 `sector_member`
     同一套路数），之后读库 —— 页面不直连外部接口是本站的硬约束，这里是明列的例外之一
-    （另一处是选股器与板块成分股）。
+    （另一处是板块成分股；原来还有选股器，2026-09-25 整个删掉了，见设计文档 8.65）。
     """
 
     __tablename__ = "stock_dde"
@@ -439,34 +439,6 @@ class ReviewNote(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_now, onupdate=_now
     )
-
-
-class ScreenPreset(Base):
-    """保存的选股条件。"""
-
-    __tablename__ = "screen_preset"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(64), unique=True)
-    # natural=自然语言（iFinD search_stocks） structured=本地结构化条件
-    kind: Mapped[str] = mapped_column(String(16))
-    conditions: Mapped[dict] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
-
-
-class ScreenResult(Base):
-    """选股结果快照。"""
-
-    __tablename__ = "screen_result"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    preset_id: Mapped[int | None] = mapped_column(Integer)
-    query: Mapped[str | None] = mapped_column(Text)
-    code: Mapped[str] = mapped_column(String(16))
-    name: Mapped[str | None] = mapped_column(String(32))
-    industry: Mapped[str | None] = mapped_column(String(128))
-    extra: Mapped[dict | None] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
 class CollectLog(Base):

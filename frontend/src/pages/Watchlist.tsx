@@ -152,7 +152,7 @@ export default function WatchlistPage() {
         >
           {rows.length === 0 ? (
             <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
-              {loading ? '加载中…' : '自选池是空的。可以在上方加入，或在选股器里点「＋自选」'}
+              {loading ? '加载中…' : '自选池是空的。可以在上方按代码加入'}
             </div>
           ) : (
             <div className="overflow-auto">

@@ -533,29 +533,6 @@ export interface AdminStatus {
   ifind_quota: IfindQuota
 }
 
-/** 自然语言选股结果。列由 iFinD 按提问内容动态决定，不能写死表头。 */
-export interface ScreenRun {
-  query: string
-  columns: string[]
-  rows: Record<string, string>[]
-  /** 匹配总数 */
-  matched: number | null
-  /** 表格实际给出的行数（上限 100） */
-  returned: number
-  /** matched > returned 即为被截断，必须显式提示 */
-  truncated: boolean
-  answer: string
-  cost_seconds: number
-}
-
-export interface Preset {
-  id: number
-  name: string
-  kind: string
-  conditions: Record<string, unknown>
-  created_at: string
-}
-
 export interface WatchlistItem {
   code: string
   name: string | null

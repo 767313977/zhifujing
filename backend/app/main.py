@@ -17,7 +17,6 @@ from app.api import (
     market,
     note,
     patterns,
-    screener,
     sector,
     stock,
     watchlist,
@@ -84,7 +83,6 @@ app.include_router(funds.router)
 app.include_router(sector.router)
 app.include_router(stock.router)
 app.include_router(watchlist.router)
-app.include_router(screener.router)
 app.include_router(note.router)
 app.include_router(patterns.router)
 app.include_router(admin.router)
