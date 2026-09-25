@@ -15,6 +15,7 @@ import {
   SERIES_PALETTE,
   SPLIT_LINE,
   TOOLTIP,
+  withAlpha,
 } from '../lib/chart'
 import { fmtAmount, fmtShortDate } from '../lib/format'
 
@@ -140,7 +141,7 @@ export default function SentimentPage() {
           name: '两市成交额',
           yAxisIndex: 1,
           data: amount,
-          itemStyle: { color: 'rgba(138,147,160,0.16)' },
+          itemStyle: { color: withAlpha(CHART.fgMuted, 0.16) },
           barMaxWidth: 10,
           z: 0,
         },
@@ -211,7 +212,7 @@ export default function SentimentPage() {
           type: 'bar' as const,
           name: '炸板',
           data: sentiment.map((item) => item.broken_count),
-          itemStyle: { color: 'rgba(138,147,160,0.45)' },
+          itemStyle: { color: withAlpha(CHART.fgMuted, 0.45) },
           barMaxWidth: 14,
         },
         {

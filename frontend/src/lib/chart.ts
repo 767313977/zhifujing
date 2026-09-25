@@ -18,6 +18,23 @@ export const CHART = {
 } as const
 
 /**
+ * 把 `CHART` 里的 hex 变成带透明度的 rgba 字符串。
+ *
+ * 为什么要有它：图表里常要「同一个颜色但淡一点」（K 线成交量柱、情绪周期的中性柱、
+ * 板块热力蒙层）。以前这几处各自手写 `rgba(255,77,79,0.55)` 这种字面量，等于又多出
+ * 好几份副本 —— 而且**按 hex 搜是搜不到的**，改色时连续两轮都漏了：
+ * K 线成交量柱的 `rgba(255,77,79)` 一直停在最早的荧光红，用户看个股页才发现。
+ * 统一走这里之后，改色只需要动 `CHART`。
+ */
+export function withAlpha(hex: string, alpha: number): string {
+  const h = hex.replace('#', '')
+  const r = parseInt(h.slice(0, 2), 16)
+  const g = parseInt(h.slice(2, 4), 16)
+  const b = parseInt(h.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+/**
  * 多序列配色：不用红绿（那两个颜色在本站有涨跌含义），改用中性区分度高的色相。
  * 个数必须 ≥ 后端 `COMPARE_LIMIT`（8），否则第 9 条线会绕回去和第一条同色。
  *

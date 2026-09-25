@@ -1,4 +1,5 @@
 import type { SectorHeat, SectorHeatItem } from '../api/types'
+import { CHART, withAlpha } from '../lib/chart'
 import { fmtAmount, fmtPct, toneOf } from '../lib/format'
 import Panel from './Panel'
 
@@ -100,13 +101,11 @@ function Row({ label, items }: { label: string; items: SectorHeatItem[] }) {
  * A 股惯例红涨绿跌，底色按幅度叠加透明度 —— 只用**极低透明度的蒙层**，
  * 不用实色块：整块高饱和会让人分不清强弱，也把这一屏的颜色预算烧光。
  *
- * ⚠️ 这里的 RGB 是 `--color-up` / `--color-down` 的**副本**（内联样式里没法写
- * CSS 变量参与的计算）。改那两个令牌时必须同步这两个数，否则板块热力的底色
- * 会留在旧的红绿上，和页面其它地方对不上。
+ * 颜色从 `CHART` 经 `withAlpha` 生成，不再手写 RGB 字面量 ——
+ * 之前这里写死过一份 `'201, 96, 85'`，改色时就得记着同步它，漏了就只剩这一处旧色。
  */
 function heatColor(value: number | null): string | undefined {
   if (value == null || value === 0) return undefined
   const intensity = Math.min(Math.abs(value) / FULL_HEAT, 1)
-  const rgb = value > 0 ? '240, 90, 77' : '34, 181, 115'
-  return `rgba(${rgb}, ${(0.05 + intensity * 0.18).toFixed(3)})`
+  return withAlpha(value > 0 ? CHART.up : CHART.down, 0.05 + intensity * 0.18)
 }

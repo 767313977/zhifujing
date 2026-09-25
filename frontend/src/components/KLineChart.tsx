@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import type { StockDailyRow } from '../api/types'
 import EChart from './EChart'
 import type { ChartOption } from './EChart'
-import { AXIS_LABEL, CHART, SPLIT_LINE, TOOLTIP } from '../lib/chart'
+import { AXIS_LABEL, CHART, SPLIT_LINE, TOOLTIP, withAlpha } from '../lib/chart'
 import { fmtShortDate } from '../lib/format'
 
 const MA_WINDOWS = [5, 10, 20]
@@ -99,12 +99,14 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
     const candles = bars.map((bar) => [bar.open, bar.close, bar.low, bar.high])
     const volumes = bars.map((bar) => ({
       value: bar.volume,
-      // 成交量柱跟随当日涨跌染色；涨跌幅缺失时用收盘价与开盘价比较
+      // 成交量柱跟随当日涨跌染色；涨跌幅缺失时用收盘价与开盘价比较。
+      // 颜色走 withAlpha 从 CHART 生成 —— 这里以前写死 rgba(255,77,79)（最早的荧光红），
+      // 两次改色都没跟上，个股页的成交量柱一直是旧色。
       itemStyle: {
         color:
           (bar.pct_chg ?? (bar.close ?? 0) - (bar.open ?? 0)) >= 0
-            ? 'rgba(255,77,79,0.55)'
-            : 'rgba(0,185,107,0.55)',
+            ? withAlpha(CHART.up, 0.55)
+            : withAlpha(CHART.down, 0.55),
       },
     }))
 
