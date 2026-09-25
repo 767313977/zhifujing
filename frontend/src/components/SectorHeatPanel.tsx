@@ -107,6 +107,6 @@ function Row({ label, items }: { label: string; items: SectorHeatItem[] }) {
 function heatColor(value: number | null): string | undefined {
   if (value == null || value === 0) return undefined
   const intensity = Math.min(Math.abs(value) / FULL_HEAT, 1)
-  const rgb = value > 0 ? '201, 96, 85' : '70, 145, 106'
+  const rgb = value > 0 ? '240, 90, 77' : '34, 181, 115'
   return `rgba(${rgb}, ${(0.05 + intensity * 0.18).toFixed(3)})`
 }
