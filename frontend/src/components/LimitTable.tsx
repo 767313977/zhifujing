@@ -113,7 +113,17 @@ function buildColumns(
     /* 涨停原因（同花顺 `reason_type`：「房地产+城市更新+北京国资」）。
        放在板块右边 —— 两个都是「为什么涨」，一个给板块视角、一个给原因串。
        这列**不给排序**：按一长串中文排序没有意义，表头也就不该点得动。
-       长原因用 `truncate` 收窄（列宽不能被它撑爆），原文挂 title 里，悬停可看全。 */
+       长原因用 `truncate` 收窄（列宽不能被它撑爆），原文挂 title 里，悬停可看全。
+
+       ⚠️ 上限是**响应式**的，别改回单一值：这列是整张表唯一的「巨列」——
+       2026-09-25 实测 1280 视口下它宽 260px，而第二宽的开盘啦板块只有 101.7px，
+       其余 12 列都在 60~88px。当时的问题：14 列合计 1255.8px，而 1280 视口下
+       容器只有 1218px，横向滚 38px（字体换成系统栈后数字变宽约 17% 才越的线）。
+       把上限收到 160px 后表宽降到约 1176px，留 42px 余量 = 扛得住三四个汉字的浮动。
+
+       为什么门槛是 2xl(1536) 而不是 xl(1280)：需要整列 240px 的临界视口实测约 1308px，
+       1280~1307 这一段仍然放不下，而 Tailwind 没有 1308 这个断点，取不到中间的档，
+       就近取 2xl。代价是 1440 下原因串会早省略几个字（原文仍可悬停看全）。 */
     ...(hasReason
       ? [
           {
@@ -122,7 +132,7 @@ function buildColumns(
             align: 'left' as const,
             render: (s: LimitStock) => (
               <span
-                className="block max-w-[240px] truncate text-[13px] text-fg-muted"
+                className="block max-w-[160px] truncate text-[13px] text-fg-muted 2xl:max-w-[240px]"
                 title={s.reason ?? undefined}
               >
                 {s.reason ?? '—'}
