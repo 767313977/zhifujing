@@ -8,9 +8,9 @@ export const CHART = {
   down: '#00b96b',
   accent: '#ffb020',
   fg: '#e6e8ec',
-  fgMuted: '#8a93a0',
-  // 与 --color-fg-dim 同步：2026-09-22 从 #59616d 提亮（那值对比度只有 3.1:1）
-  fgDim: '#7d8794',
+  fgMuted: '#98a1af',
+  // 与 --color-fg-dim 同步：2026-09-22 从 #59616d 提亮、2026-09-25 再提到 #87919f
+  fgDim: '#87919f',
   line: '#232a33',
   soft: '#191e25',
   ink: '#0c0f13',
