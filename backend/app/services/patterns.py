@@ -281,6 +281,26 @@ NS_LOW_BAND = (0.95, 1.03)  # 回调最低点 / 起涨点：既不能破位太�
 NS_NOW_BAND = (0.96, 1.08)  # 今天的收盘 / 起涨点
 NS_MAX_SHRINK = 0.95  # 回调期均量 / 大涨日量
 
+# 爆量后缩量回踩（爆量日成交额 ≥ 前一日 2 倍 → 之后某天缩到爆量日一半以下）
+#
+# 用户举了 7 只票定义这个形态（昆船智能 / 奥佳华 / 内蒙新华 / 博通集成 / 新强联 /
+# 继峰股份 / 金丹科技），规则完全一致：
+#
+#   爆量日：成交额 ≥ 上一交易日成交额 × 2（「为上一交易日两倍以上」）
+#   缩量日：爆量日**之后**的某天，成交额 ≤ 爆量日成交额 × 0.5（「为爆量日一半以下」）
+#   **要选出来的就是缩量日**（不是爆量日）
+#
+# 只看**成交额**，不看价格 —— 用户的 7 个案例没有一个提到价格。爆量日到缩量日的
+# 间隔从 1 到 7 个交易日不等（继峰股份 1 天、博通集成 7 天）。
+BURST_SHRINK_MULT = 2.0  # 爆量日成交额 / 前一日成交额 的下限（「两倍以上」）
+BURST_SHRINK_RATIO = 0.5  # 缩量日成交额 / 爆量日成交额 的上限（「一半以下」）
+BURST_SHRINK_LOOKBACK = 10  # 往前找爆量日最多看几个交易日（案例最长 7 天）
+# 打分里「爆量倍数」的理想值：≥ 这个倍数的爆量算满分（越猛越醒目，越大不扣分）
+BURST_SHRINK_MULT_IDEAL = 5.0
+BURST_SHRINK_IDEAL_RATIO = 0.3  # 缩到爆量日的 30% 算「缩量到位」，满分
+BURST_SHRINK_GAP_IDEAL = (1.0, 5.0)  # 爆量日到缩量日间隔（交易日）的理想区间
+BURST_SHRINK_GAP_CAP = 10.0  # 隔得太久说明「缩量回踩」这层关系已经散了
+
 # 欧奈尔突破（O'Neil 的「枢轴点买入」）
 #
 # 来自《笑傲股市》那套买点，但只取**技术面**部分 —— 我们只有价量数据，
@@ -1668,6 +1688,73 @@ def _n_shape(bars: Bars) -> Signal | None:
     return best
 
 
+def _burst_shrink_pullback(bars: Bars) -> Signal | None:
+    """爆量后缩量回踩：某天成交额放量到前一日 2 倍以上（爆量日），之后某天缩量到
+    爆量日的一半以下（缩量日）—— **要选的是缩量日**，不是爆量日。
+
+    判定时点落在缩量日，且是「爆量日之后**第一个**跌破一半的日子」：一只票一次爆量
+    只出一个信号，不会在缩量期里连续好几天刷屏（缩量一旦到位往往会在低位趴几天，
+    逐日命中会把榜单塞满同一只票）。
+
+    只看成交额、不看价格 —— 这是用户给的规则（7 个案例没有一个提到价格）。
+    """
+    size = len(bars)
+    if size < BURST_SHRINK_LOOKBACK + 2:
+        return None
+
+    amount = bars.amount
+    today = size - 1
+    today_amt = float(amount[today])
+    if today_amt <= 0:
+        return None
+
+    # 从最近往前找爆量日：最近的那一个才是当前这轮缩量的参照 —— 更早的爆量日，
+    # 它的缩量早在新爆量日之前就走完了。找到最近的爆量日后，只看它之后
+    # **第一个**跌破一半的日子是不是今天；不是就说明这轮信号已经过去/还没到。
+    for e in range(today - 1, today - 1 - BURST_SHRINK_LOOKBACK, -1):
+        if e < 1:
+            break
+        prev = float(amount[e - 1])
+        cur = float(amount[e])
+        if prev <= 0 or cur <= 0 or cur < BURST_SHRINK_MULT * prev:
+            continue
+
+        threshold = cur * BURST_SHRINK_RATIO
+        for t in range(e + 1, today + 1):
+            a = float(amount[t])
+            if a <= 0:
+                continue  # 缺成交额的行不算「缩量日」
+            if a <= threshold:
+                if t != today:
+                    return None  # 第一个缩量日已经过去，这轮信号不是今天
+                break
+        else:
+            return None  # 到今天都还没跌破一半，缩量没到位
+
+        mult = cur / prev
+        shrink = today_amt / cur
+        gap = today - e
+        # 分数结构：过了两道硬门槛（爆量 ≥2×、缩量 ≤0.5×）就有保底分 —— 这是「是不是」，
+        # 函数前段已经把这些前提 return 掉了。叠加上去的才是「像不像」，只在命中之间排序。
+        # 爆量倍数只往一个方向打分（越猛越好）：它没有「太大就假」的上限，别用 _band_score。
+        score = 55.0
+        score += _gate_score(mult, BURST_SHRINK_MULT, BURST_SHRINK_MULT_IDEAL) * 20
+        score += _gate_score(shrink, BURST_SHRINK_RATIO, BURST_SHRINK_IDEAL_RATIO) * 20
+        score += _band_score(float(gap), *BURST_SHRINK_GAP_IDEAL, BURST_SHRINK_GAP_CAP) * 5
+
+        return Signal(
+            "burst_shrink_pullback",
+            score,
+            {},
+            {
+                "burst_mult": round(mult, 2),
+                "shrink": round(shrink, 4),
+                "burst_gap": gap,
+            },
+        )
+    return None
+
+
 def _oneil_breakout(bars: Bars) -> Signal | None:
     """欧奈尔突破：基底整理 → 放量站上平台上沿 → 且这个平台贴着一年新高。
 
@@ -1923,6 +2010,7 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("breakout_flat", "突破后横盘", "量价", _breakout_flat),
     Pattern("n_shape", "N 字选股", "量价", _n_shape),
     Pattern("oneil_breakout", "欧奈尔突破", "突破", _oneil_breakout),
+    Pattern("burst_shrink_pullback", "爆量后缩量回踩", "量价", _burst_shrink_pullback),
 )
 
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}

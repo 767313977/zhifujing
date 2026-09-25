@@ -137,6 +137,9 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   start_gap: ['距起涨点', true],
   // 欧奈尔突破（vol_ratio / flat_days / flat_range / excess 与既有字段共用）
   from_high: ['距一年新高', true],
+  // 爆量后缩量回踩（shrink 与既有字段共用：缩量日成交额 / 爆量日成交额）
+  burst_mult: ['爆量倍数', false],
+  burst_gap: ['爆量后间隔', false],
   // 悟道之路 · 致富（样板/启动）
   high_pct: ['冲高%', false],
   vol_ratio_20: ['量比(20日)', false],
