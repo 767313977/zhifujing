@@ -43,6 +43,11 @@ from app.models import (
     StockUniverse,
     TradeCalendar,
 )
+# 东财/腾讯两条兜底线的抓取逻辑都抽到了 `sources/` —— 本地回测往回补多年历史
+# （scripts/backfill_history.py）也要用它们。口径（不复权价 + 真实涨跌幅）只能有一份。
+from app.sources.eastmoney import clear_proxies as _clear_proxies
+from app.sources.eastmoney import fetch_daily as _fetch_daily_eastmoney
+from app.sources.tencent import fetch_daily as _fetch_tencent_daily
 from app.services.patterns import (
     MIN_SCORE,
     WUDAO_MIN_BARS,
@@ -352,114 +357,20 @@ def _last_bars(codes: set[str]) -> dict[str, date]:
     return {str(code).zfill(6): day for code, day in rows}
 
 
-def _clear_proxies() -> None:
-    import os
-
-    for key in (
-        "HTTP_PROXY",
-        "HTTPS_PROXY",
-        "http_proxy",
-        "https_proxy",
-        "ALL_PROXY",
-        "all_proxy",
-    ):
-        os.environ.pop(key, None)
-
-
-def _em_secid(code: str) -> str:
-    c = str(code).zfill(6)
-    if c.startswith(("5", "6", "9")):
-        return f"1.{c}"
-    return f"0.{c}"
-
-
 def _sync_stock_eastmoney(code: str, *, days: int = _WUDAO_SYNC_DAYS) -> int:
     """池外致富候选的日线兜底：东财不复权 K 线 → `stock_daily`。
 
     iFinD 401 / 配额紧张时走这条。只写近端 `days` 个日历日，够量比窗口即可。
-    OHLC 用不复权（fqt=0），与全市场采集口径一致，交给 `build_bars` 用涨跌幅复权。
+
+    抓取与口径都在 `app.sources.eastmoney`（本地回测往回补历史也用它，见
+    `scripts/backfill_history.py`）—— 口径只有一份，别在这里再写一遍。
     """
-    import requests
-
-    _clear_proxies()
-    end = date.today()
-    beg = (end - timedelta(days=int(days * 1.5) + 5)).strftime("%Y%m%d")
-    end_s = end.strftime("%Y%m%d")
-    last_err: Exception | None = None
-    payload = None
-    session = requests.Session()
-    session.trust_env = False
-    for _ in range(3):
-        try:
-            resp = session.get(
-                "https://push2his.eastmoney.com/api/qt/stock/kline/get",
-                params={
-                    "fields1": "f1,f2,f3,f4,f5,f6",
-                    "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
-                    "ut": "fa5fd1943c7b386f172d6893dbfba10b",
-                    "klt": "101",
-                    "fqt": "0",
-                    "secid": _em_secid(code),
-                    "beg": beg,
-                    "end": end_s,
-                },
-                timeout=20,
-                proxies={"http": None, "https": None},
-                headers={"Referer": "https://finance.eastmoney.com/", "User-Agent": "Mozilla/5.0"},
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-            break
-        except Exception as exc:  # noqa: BLE001
-            last_err = exc
-    if payload is None:
-        raise RuntimeError(f"东财直连失败：{last_err}")
-
-    data = payload.get("data") or {}
-    name = (data.get("name") or code).strip()
-    klines = data.get("klines") or []
-    if not klines:
-        raise _NoBars("东财无数据")
-
-    rows: list[dict] = []
-    for line in klines:
-        parts = str(line).split(",")
-        if len(parts) < 11:
-            continue
-        try:
-            day = date.fromisoformat(parts[0][:10])
-        except ValueError:
-            continue
-        vol_hands = float(parts[5] or 0)
-        rows.append(
-            {
-                "trade_date": day,
-                "code": str(code).zfill(6),
-                "name": name,
-                "open": float(parts[1]),
-                "close": float(parts[2]),
-                "high": float(parts[3]),
-                "low": float(parts[4]),
-                "volume": vol_hands * 100.0,
-                "amount": float(parts[6] or 0),
-                "pct_chg": float(parts[8] or 0),
-            }
-        )
+    rows = _fetch_daily_eastmoney(code, days=days)
     if not rows:
+        # 「没有数据」（退市股、未上市代码）与「源挂了」是两回事，见 `_NoBars`
         raise _NoBars("东财无数据")
     with session_scope() as session:
         return upsert_many(session, StockDaily, rows)
-
-
-# 腾讯行情接口单次超时。单独给一个值：它挂在形态扫描的链条里，
-# 卡住就等于整条链路卡住（akshare 默认不设超时，会一直等下去）
-_TX_TIMEOUT = 15.0
-
-
-def _tx_symbol(code: str) -> str:
-    """腾讯行情的代码写法：沪市 `sh`、深市 `sz`。"""
-    c = str(code).zfill(6)
-    return ("sh" if c.startswith(("5", "6", "9")) else "sz") + c
 
 
 def _sync_stock_tencent(code: str, *, days: int = _WUDAO_SYNC_DAYS) -> int:
@@ -476,89 +387,26 @@ def _sync_stock_tencent(code: str, *, days: int = _WUDAO_SYNC_DAYS) -> int:
 
     **涨跌幅必须由前复权序列算，不能用不复权收盘价比**：除权日不复权价会跳空，
     比出来是一个假的暴跌。腾讯的 `qfq` 相邻收盘之比才是真实收益率（与 iFinD 的
-    `涨跌幅` 对账：48 行、差异 >0.02 的 0 行）。所以这里**拉两份** ——
-    价格存不复权、`pct_chg` 由前复权推。
+    `涨跌幅` 对账：48 行、差异 >0.02 的 0 行）。
+
+    抓取与口径（不复权价 + 由前复权推涨跌幅 + `turnover` ×100）都在 `app.sources.tencent`
+    —— 本地补多年历史（`scripts/backfill_history.py`）用的是同一个函数。
+    这一段只负责查名字与写库，口径只能有一份。
     """
-    import akshare as ak
-    import pandas as pd
-
-    def _num(value: object) -> float | None:
-        """pandas 的 NaN/NaT → None，其余转 float（腾讯的空字段给的是 NaN）。"""
-        if value is None or pd.isna(value):
-            return None
-        return float(value)
-
     end = date.today()
     # 多留两周：前复权序列的**第一行**没有前值、算不出涨跌幅，那一行会被丢掉，
     # 多取的这段保证丢完之后仍在 `days` 个交易日以上
     start = end - timedelta(days=int(days * 1.5) + 14)
-    symbol = _tx_symbol(code)
-
-    def _fetch(adjust: str) -> pd.DataFrame:
-        try:
-            return ak.stock_zh_a_hist_tx(
-                symbol=symbol,
-                start_date=start.strftime("%Y%m%d"),
-                end_date=end.strftime("%Y%m%d"),
-                adjust=adjust,
-                timeout=_TX_TIMEOUT,
-            )
-        except (IndexError, KeyError) as exc:
-            # ⚠️ 对「没有这只票」（退市 / 未上市），akshare 不是给空表，而是在解析里炸掉 ——
-            # 实测 300060 报 `list index out of range`。那是**没有数据**，不是这条源挂了，
-            # 不能记进熔断计数（见 `_NoBars`），否则几个退市股就能把腾讯整轮关掉。
-            raise _NoBars(f"腾讯无 {code} 数据：{exc}") from exc
-
-    plain = _fetch("")
-    if plain is None or plain.empty:
+    rows = _fetch_tencent_daily(code, start=start, end=end)
+    if not rows:
         raise _NoBars(f"腾讯无 {code} 日线")
-    qfq = _fetch("qfq")
-    if qfq is None or qfq.empty:
-        raise _NoBars(f"腾讯无 {code} 前复权日线")
-
-    qfq_days = [str(v)[:10] for v in qfq["date"].tolist()]
-    qfq_close = {day: _num(v) for day, v in zip(qfq_days, qfq["close"].tolist())}
-    # 逐日的真实涨跌幅：**前复权比前复权**（拿不复权收盘当分子会在除权日算错）
-    pct_by_day: dict[str, float] = {}
-    for i, day in enumerate(qfq_days):
-        if not i:
-            continue
-        cur = qfq_close.get(day)
-        prev = qfq_close.get(qfq_days[i - 1])
-        if cur is None or not prev:
-            continue
-        pct_by_day[day] = (cur / prev - 1) * 100
 
     with session_scope() as session:
         name = session.scalar(
             select(StockBasic.name).where(StockBasic.code == str(code).zfill(6))
         )
-
-    rows: list[dict] = []
-    for rec in plain.to_dict("records"):
-        day = str(rec.get("date"))[:10]
-        close = _num(rec.get("close"))
-        pct = pct_by_day.get(day)
-        if close is None or pct is None:
-            continue  # 首行，或前复权缺这一行：算不出真实涨跌幅，丢掉
-        turnover = _num(rec.get("turnover"))
-        rows.append(
-            {
-                "trade_date": date.fromisoformat(day),
-                "code": str(code).zfill(6),
-                "name": name or str(code).zfill(6),
-                "open": _num(rec.get("open")),
-                "high": _num(rec.get("high")),
-                "low": _num(rec.get("low")),
-                "close": close,
-                "volume": _num(rec.get("volume")) or 0.0,
-                "amount": _num(rec.get("amount")) or 0.0,
-                "turnover": turnover * 100 if turnover is not None else None,
-                "pct_chg": pct,
-            }
-        )
-    if not rows:
-        raise _NoBars(f"腾讯 {code} 近端无效")
+    for row in rows:
+        row["name"] = name or str(code).zfill(6)
     with session_scope() as session:
         return upsert_many(session, StockDaily, rows)
 
