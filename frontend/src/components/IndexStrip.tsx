@@ -40,7 +40,7 @@ function MaTag({ window, above }: { window: number; above: boolean | null }) {
 export default function IndexStrip({ indexes, tradeDate }: IndexStripProps) {
   if (indexes.length === 0) {
     return (
-      <div className="panel px-4 py-6 text-center text-[13px] text-fg-dim">
+      <div className="panel px-4 py-6 text-center text-[14px] text-fg-dim">
         {tradeDate} 无指数数据
       </div>
     )
@@ -60,8 +60,8 @@ export default function IndexStrip({ indexes, tradeDate }: IndexStripProps) {
           />
 
           <div className="flex items-baseline justify-between gap-2">
-            <span className="text-[12px] text-fg-muted">{item.name ?? item.code}</span>
-            <span className="num text-[11px] text-fg-dim">{item.code}</span>
+            <span className="text-[13px] text-fg-muted">{item.name ?? item.code}</span>
+            <span className="num text-[12px] text-fg-dim">{item.code}</span>
           </div>
 
           <div className="mt-1.5 flex items-baseline gap-2.5">
@@ -70,12 +70,12 @@ export default function IndexStrip({ indexes, tradeDate }: IndexStripProps) {
             >
               {fmtNum(item.close, 2)}
             </span>
-            <span className={`num text-[13px] ${toneOf(item.pct_chg)}`}>
+            <span className={`num text-[14px] ${toneOf(item.pct_chg)}`}>
               {fmtPct(item.pct_chg)}
             </span>
           </div>
 
-          <div className="num mt-2 flex items-center gap-3 text-[12px] text-fg-dim">
+          <div className="num mt-2 flex items-center gap-3 text-[13px] text-fg-dim">
             <span>额 {fmtAmount(item.amount)}</span>
             {item.up_count != null && item.down_count != null ? (
               <span>
@@ -90,7 +90,7 @@ export default function IndexStrip({ indexes, tradeDate }: IndexStripProps) {
           </div>
 
           {/* 均线得失与量价配合：这一行是「今天这根怎么走出来的」 */}
-          <div className="num mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px]">
+          <div className="num mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px]">
             <MaTag window={5} above={item.above_ma5} />
             <MaTag window={20} above={item.above_ma20} />
             {item.vol_price ? (

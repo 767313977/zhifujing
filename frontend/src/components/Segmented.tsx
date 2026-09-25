@@ -23,7 +23,7 @@ export default function Segmented<T extends string | number>({
           title={item.hint}
           onClick={() => onChange(item.key)}
           className={[
-            'px-2 py-[3px] text-[12px] transition-colors',
+            'px-2 py-[3px] text-[13px] transition-colors',
             value === item.key ? 'bg-ink-700 text-fg' : 'text-fg-muted hover:text-fg',
           ].join(' ')}
         >

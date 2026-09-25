@@ -46,7 +46,7 @@ export default function Layout({ children, toolbar }: LayoutProps) {
           各子项**（品牌与导航各带 `h-[52px]`）；原来 nav 上的 `h-full` 在这里会失效
           —— 百分比高度要求父级有确定高度。
         */}
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-3 px-3 md:flex-nowrap md:gap-x-6 md:px-5">
+        <div className="mx-auto flex max-w-shell flex-wrap items-center gap-x-3 px-3 md:flex-nowrap md:gap-x-6 md:px-5">
           {/* 品牌：中文名做主标识，等宽拉丁字母做辅助标记。
               字号与字距是响应式的，当初按**7 个字的长站名**调过：照常规参数窄屏
               会从导航那里抢走约 80px 可视宽度（那一段导航本来就靠横滑，再挤就
@@ -61,10 +61,10 @@ export default function Layout({ children, toolbar }: LayoutProps) {
               品牌窄了一大截、导航随之变宽松，但没重新量过。要动这个断点，先在
               1024 / 1280 两档各量一次再改。1280 以上富余够，随便显示。 */}
           <div className="flex h-[52px] shrink-0 items-baseline gap-2">
-            <span className="text-[13px] font-semibold tracking-[0.05em] text-fg whitespace-nowrap md:text-[15px] md:tracking-[0.1em]">
+            <span className="text-[14px] font-semibold tracking-[0.05em] text-fg whitespace-nowrap md:text-[15px] md:tracking-[0.1em]">
               致富经
             </span>
-            <span className="num hidden text-[11px] tracking-[0.28em] text-fg-dim xl:inline">
+            <span className="num hidden text-[12px] tracking-[0.28em] text-fg-dim xl:inline">
               ZHIFUJING
             </span>
           </div>
@@ -84,6 +84,11 @@ export default function Layout({ children, toolbar }: LayoutProps) {
 
             代价要认：那一段的点击热区只有 6px 内边距、相邻项之间只隔 12px，比别处挤。
             将来若增减导航项，第一件事是把这里的等式重新量一遍（项宽 = 字数×字号 + 内边距×2）。
+
+            ⚠️ 2026-09-25 全站字号 +1px（用户「字体调大一点」）时**唯独导航没动**：
+            上面那组等式是逐 px 量过的，9 项各 +1px 等于多要 25~30px，1024 与 1280
+            两档会从「正好放下」变成「必须横滑」。导航本身是等宽字重里最不需要放大的
+            （它是图标级别的短词），宁可比正文小一档，也不动这组等式。
           */}
           <nav className="no-scrollbar flex h-[52px] min-w-0 grow basis-0 items-stretch gap-1 overflow-x-auto overflow-y-hidden lg:gap-0 xl:gap-1">
             {NAV.map((item) => (
@@ -139,8 +144,10 @@ export default function Layout({ children, toolbar }: LayoutProps) {
         </div>
       </header>
 
-      {/* 内边距与顶栏保持一致：两边不一样时窄屏下能看到内容与顶栏左边缘差 8px */}
-      <main className="mx-auto max-w-[1600px] px-3 py-5 md:px-5">{children}</main>
+      {/* 内边距与顶栏保持一致：两边不一样时窄屏下能看到内容与顶栏左边缘差 8px。
+          宽度上限用同一个 `max-w-shell`（见 index.css 里的说明），否则大屏上
+          顶栏会比内容宽出一截。 */}
+      <main className="mx-auto max-w-shell px-3 py-5 md:px-5">{children}</main>
     </div>
   )
 }

@@ -38,7 +38,8 @@ const NUM_FONT =
 
 export const AXIS_LABEL = {
   color: CHART.fgDim,
-  fontSize: 11,
+  // 12px：2026-09-25 跟页面文字一起 +1px（画布里的字不能靠 CSS 缩放，只能手改）
+  fontSize: 12,
   fontFamily: NUM_FONT,
 }
 
@@ -58,12 +59,12 @@ export const TOOLTIP = {
   borderColor: CHART.line,
   borderWidth: 1,
   padding: [8, 10] as [number, number],
-  textStyle: { color: CHART.fg, fontSize: 12, fontFamily: NUM_FONT },
+  textStyle: { color: CHART.fg, fontSize: 13, fontFamily: NUM_FONT },
   extraCssText: 'border-radius:0;box-shadow:0 6px 24px rgba(0,0,0,0.5)',
 }
 
 export const LEGEND = {
-  textStyle: { color: CHART.fgMuted, fontSize: 11 },
+  textStyle: { color: CHART.fgMuted, fontSize: 12 },
   itemWidth: 10,
   itemHeight: 10,
   itemGap: 14,

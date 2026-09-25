@@ -246,18 +246,18 @@ export default function StockDetail() {
       {/* 从列表点进来才有这份上下文；直接输 URL 打开时不显示，
           免得给出一个「按了没反应」的提示 */}
       {codes.length > 1 && index >= 0 && (
-        <span className="num hidden text-[12px] text-fg-dim md:inline">
+        <span className="num hidden text-[13px] text-fg-dim md:inline">
           ← → 切换 · {index + 1} / {codes.length}
         </span>
       )}
       {syncing && (
-        <span className="num pulse-soft text-[12px] text-accent">同步中…</span>
+        <span className="num pulse-soft text-[13px] text-accent">同步中…</span>
       )}
       <button
         type="button"
         onClick={() => void toggleWatch()}
         disabled={!profile}
-        className="num border border-line px-2.5 py-[3px] text-[12px] text-fg-muted transition-colors hover:border-accent/50 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+        className="num border border-line px-2.5 py-[3px] text-[13px] text-fg-muted transition-colors hover:border-accent/50 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
       >
         {profile?.in_watchlist ? '移出自选' : '加入自选'}
       </button>
@@ -301,7 +301,7 @@ export default function StockDetail() {
           </div>
 
           {latest?.trade_date && (
-            <div className="num border-t border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+            <div className="num border-t border-line-soft px-4 py-2 text-[13px] text-fg-dim">
               最新数据 {latest.trade_date}
               <span className="mx-2">·</span>
               开 {fmtNum(latest.open, 2)}
@@ -327,7 +327,7 @@ export default function StockDetail() {
           delay={70}
         >
           {syncing ? (
-            <div className="px-4 py-6 text-center text-[12px] text-fg-dim">
+            <div className="px-4 py-6 text-center text-[13px] text-fg-dim">
               同步日线后再取题材…
             </div>
           ) : themes && themes.themes.length > 0 ? (
@@ -336,7 +336,7 @@ export default function StockDetail() {
                 <span
                   key={theme.concept}
                   className={[
-                    'flex items-baseline gap-1.5 border px-2 py-1 text-[12px]',
+                    'flex items-baseline gap-1.5 border px-2 py-1 text-[13px]',
                     theme.board_code
                       ? 'border-line-soft bg-ink-850'
                       : // 对不上板块表的是历史遗留的旧口径名字，弱化显示
@@ -353,7 +353,7 @@ export default function StockDetail() {
               ))}
             </div>
           ) : (
-            <div className="px-4 py-6 text-center text-[12px] text-fg-dim">
+            <div className="px-4 py-6 text-center text-[13px] text-fg-dim">
               该股近期没有涨停过。板块归属来自开盘红的涨停天梯，只覆盖涨停股 ——
               非涨停个股没有可用的归属接口，所以这里如实留空
             </div>
@@ -375,17 +375,17 @@ export default function StockDetail() {
           delay={80}
         >
           {kline.loading || syncing ? (
-            <div className="flex h-[420px] items-center justify-center text-[13px] text-fg-dim">
+            <div className="flex h-[420px] items-center justify-center text-[14px] text-fg-dim">
               <span className="pulse-soft">
                 {kline.syncing ? '正在补 2 年历史（周/月 K 要的长周期）…' : '加载中…'}
               </span>
             </div>
           ) : kline.error ? (
-            <div className="px-4 py-10 text-center text-[13px] text-danger">
+            <div className="px-4 py-10 text-center text-[14px] text-danger">
               {kline.error}
             </div>
           ) : kline.bars.length === 0 ? (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               没有取到该股的日线 —— 同步失败（比如采集正忙）或该股当日无行情，稍后刷新重试
             </div>
           ) : (
@@ -402,13 +402,13 @@ export default function StockDetail() {
         >
           {/* 与 profile 同一个 Promise.all 里取回来的，所以「还没到」就等于「在加载」 */}
           {profile === null ? (
-            <div className="flex h-[240px] items-center justify-center text-[13px] text-fg-dim">
+            <div className="flex h-[240px] items-center justify-center text-[14px] text-fg-dim">
               <span className="pulse-soft">加载中…</span>
             </div>
           ) : !dde || dde.rows.length === 0 ? (
             // note 有值就是取数失败的原因（iFinD 报错、或这只票本来就没数据），原样显示，
             // 不画空图；note 也是空的时候才退回到「没有数据」这句
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               {dde?.note ?? '这只票暂时没有 DDE 数据'}
             </div>
           ) : (
@@ -416,7 +416,7 @@ export default function StockDetail() {
               {/* 有数据但 note 也有值 = 后端把上次取数失败的原因带出来了（画的是库里的
                   旧数）。这种情况不能把说明吞掉，否则会被当成最新的终值看 */}
               {dde.note && (
-                <div className="border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+                <div className="border-b border-line-soft px-4 py-2 text-[13px] text-fg-dim">
                   {dde.note}
                 </div>
               )}
@@ -433,7 +433,7 @@ export default function StockDetail() {
                 />
               </div>
               <div className="px-2 pt-2">
-                <div className="mb-1 text-[11px] text-fg-dim">
+                <div className="mb-1 text-[12px] text-fg-dim">
                   柱 = 主力净流入额（红=净流入 绿=净流出）· 线 = 5日DDE
                 </div>
                 <EChart option={buildDdeOption(dde.rows)} height={240} />
@@ -448,7 +448,7 @@ export default function StockDetail() {
           delay={120}
         >
           {!profile || profile.limit_up_dates.length === 0 ? (
-            <div className="px-4 py-6 text-center text-[12px] text-fg-dim">
+            <div className="px-4 py-6 text-center text-[13px] text-fg-dim">
               窗口内没有涨停记录
             </div>
           ) : (
@@ -456,7 +456,7 @@ export default function StockDetail() {
               {profile.limit_up_dates.map((day) => (
                 <span
                   key={day}
-                  className="num border border-line-soft bg-ink-850 px-2 py-1 text-[12px] text-up"
+                  className="num border border-line-soft bg-ink-850 px-2 py-1 text-[13px] text-up"
                 >
                   {day}
                 </span>
@@ -482,11 +482,11 @@ function Cell({
 }) {
   return (
     <div className="relative -mr-px -mb-px border-r border-b border-line-soft px-4 py-3">
-      <div className="text-[12px] tracking-[0.1em] text-fg-dim">{label}</div>
+      <div className="text-[13px] tracking-[0.1em] text-fg-dim">{label}</div>
       <div className={`num mt-1.5 text-[18px] leading-tight font-medium ${tone}`}>
         {value}
       </div>
-      {sub && <div className="num mt-1 text-[12px] text-fg-dim">{sub}</div>}
+      {sub && <div className="num mt-1 text-[13px] text-fg-dim">{sub}</div>}
     </div>
   )
 }

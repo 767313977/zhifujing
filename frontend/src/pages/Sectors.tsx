@@ -517,7 +517,7 @@ export default function Sectors() {
             type="button"
             onClick={() => switchTaxonomy(item.key)}
             className={[
-              'px-2.5 py-[3px] text-[12px] transition-colors',
+              'px-2.5 py-[3px] text-[13px] transition-colors',
               taxonomy === item.key ? 'bg-ink-700 text-fg' : 'text-fg-muted hover:text-fg',
             ].join(' ')}
           >
@@ -528,7 +528,7 @@ export default function Sectors() {
       <select
         value={date ?? ''}
         onChange={(event) => setDate(event.target.value || null)}
-        className="num border border-line bg-ink-900 px-2 py-[3px] text-[12px] text-fg outline-none focus:border-fg-dim"
+        className="num border border-line bg-ink-900 px-2 py-[3px] text-[13px] text-fg outline-none focus:border-fg-dim"
       >
         <option value="">最新</option>
         {/* 倒序渲染：最近的排最上面。原先是升序，展开后要一路滚到底才够得着昨天 */}
@@ -606,13 +606,13 @@ export default function Sectors() {
             delay={40}
           >
             {membersLoading ? (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
                 取数中…（该板块第一次打开时要向开盘红现取）
               </div>
             ) : members && members.members.length > 0 ? (
               <MemberTable members={members.members} />
             ) : (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
                 {members?.note
                   ? members.note
                   : selected
@@ -657,7 +657,7 @@ export default function Sectors() {
                     />
                   </div>
                   <div className="flex items-center justify-between gap-2 border-t border-line-soft px-3 py-2">
-                    <span className="text-[12px] text-fg-dim">
+                    <span className="text-[13px] text-fg-dim">
                       {taxonomy === 'kph_selected'
                         ? '涨停数按「个股 → 开盘红精选板块」归属统计（来自涨停天梯）'
                         : '行业口径没有涨停归属（涨停天梯只给精选板块）'}
@@ -666,7 +666,7 @@ export default function Sectors() {
                       type="button"
                       onClick={() => toggleCompare(selectedBoard)}
                       className={[
-                        'shrink-0 border px-2 py-[3px] text-[12px] transition-colors',
+                        'shrink-0 border px-2 py-[3px] text-[13px] transition-colors',
                         inCompare
                           ? 'border-accent/50 text-accent'
                           : 'border-line text-fg-muted hover:text-fg',
@@ -677,7 +677,7 @@ export default function Sectors() {
                   </div>
                 </>
               ) : (
-                <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+                <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
                   点下方板块排行里的板块查看详情
                 </div>
               )}
@@ -698,7 +698,7 @@ export default function Sectors() {
                   <select
                     value={curveDays}
                     onChange={(event) => setCurveDays(Number(event.target.value))}
-                    className="num border border-line bg-ink-900 px-2 py-[2px] text-[12px] text-fg outline-none focus:border-fg-dim"
+                    className="num border border-line bg-ink-900 px-2 py-[2px] text-[13px] text-fg outline-none focus:border-fg-dim"
                     title="走势图与对比图共用的窗口长度"
                   >
                     {CURVE_SPANS.map((span) => (
@@ -712,9 +712,9 @@ export default function Sectors() {
               delay={120}
             >
               {seriesLoading ? (
-                <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+                <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
               ) : seriesError ? (
-                <div className="px-4 py-10 text-center text-[13px] text-danger">
+                <div className="px-4 py-10 text-center text-[14px] text-danger">
                   {seriesError}
                 </div>
               ) : series && series.dates.length > 0 ? (
@@ -722,7 +722,7 @@ export default function Sectors() {
                   <EChart option={buildSeriesOption(series)} height={220} />
                 </div>
               ) : (
-                <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+                <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
                   暂无历史数据，可在「数据管理」里回补板块历史
                 </div>
               )}
@@ -741,9 +741,9 @@ export default function Sectors() {
             delay={160}
           >
             {loading ? (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
             ) : boards.length === 0 ? (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
                 暂无板块数据，请先在「数据管理」中执行采集
               </div>
             ) : (
@@ -775,9 +775,9 @@ export default function Sectors() {
             delay={200}
           >
             {compareLoading ? (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
             ) : compareError ? (
-              <div className="px-4 py-10 text-center text-[13px] text-danger">
+              <div className="px-4 py-10 text-center text-[14px] text-danger">
                 {compareError}
               </div>
             ) : compare && compare.series.length > 0 ? (
@@ -793,7 +793,7 @@ export default function Sectors() {
                           current.filter((code) => code !== item.code),
                         )
                       }
-                      className="border border-line px-2 py-[2px] text-[12px] text-fg-muted transition-colors hover:border-danger/40 hover:text-fg"
+                      className="border border-line px-2 py-[2px] text-[13px] text-fg-muted transition-colors hover:border-danger/40 hover:text-fg"
                     >
                       {item.name} ✕
                     </button>
@@ -801,7 +801,7 @@ export default function Sectors() {
                 </div>
               </div>
             ) : (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
                 选中的板块走势叠在一张图上比较强弱，
                 纵轴是「起点 = 100」的净值，只反映相对强弱
               </div>
@@ -860,14 +860,14 @@ function Stat({
 }) {
   return (
     <div className="flex-1 bg-ink-900 px-4 py-2.5">
-      <div className="text-[12px] tracking-[0.1em] text-fg-dim">{label}</div>
+      <div className="text-[13px] tracking-[0.1em] text-fg-dim">{label}</div>
       <div
         className={`num mt-1 leading-tight ${
-          muted ? 'text-[12px] text-fg-muted' : `text-[19px] font-medium ${tone}`
+          muted ? 'text-[13px] text-fg-muted' : `text-[19px] font-medium ${tone}`
         }`}
       >
         {value}
-        {unit && <span className="ml-1 text-[12px] text-fg-dim">{unit}</span>}
+        {unit && <span className="ml-1 text-[13px] text-fg-dim">{unit}</span>}
       </div>
     </div>
   )
@@ -884,8 +884,8 @@ function Cell({
 }) {
   return (
     <div className="bg-ink-900 px-3 py-2">
-      <div className="text-[12px] text-fg-dim">{label}</div>
-      <div className={`num mt-0.5 truncate text-[13px] ${tone}`} title={value}>
+      <div className="text-[13px] text-fg-dim">{label}</div>
+      <div className={`num mt-0.5 truncate text-[14px] ${tone}`} title={value}>
         {value}
       </div>
     </div>
@@ -943,7 +943,7 @@ function BoardTable({
               <td className="!text-left">
                 <span className="text-fg">{board.name}</span>
                 {compareCodes.includes(board.code) && (
-                  <span className="ml-1.5 text-[11px] text-accent">对比中</span>
+                  <span className="ml-1.5 text-[12px] text-accent">对比中</span>
                 )}
               </td>
               <td>

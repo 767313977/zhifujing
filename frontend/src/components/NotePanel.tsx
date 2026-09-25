@@ -77,7 +77,7 @@ export default function NotePanel({ tradeDate, delay = 420 }: NotePanelProps) {
       >
         <div className="grid grid-cols-1 gap-px bg-line-soft lg:grid-cols-2">
           <label className="flex flex-col gap-1.5 bg-ink-900 px-4 py-3">
-            <span className="text-[12px] tracking-[0.1em] text-fg-dim">
+            <span className="text-[13px] tracking-[0.1em] text-fg-dim">
               今日市场怎么看
             </span>
             <textarea
@@ -85,11 +85,11 @@ export default function NotePanel({ tradeDate, delay = 420 }: NotePanelProps) {
               onChange={(event) => setMarketView(event.target.value)}
               rows={4}
               placeholder="例如：缩量退潮，涨停从 89 降到 47，封板率跌破 70%，高位股开始松动"
-              className="resize-y border border-line-soft bg-ink-850 px-2.5 py-2 text-[13px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-dim focus:border-line"
+              className="resize-y border border-line-soft bg-ink-850 px-2.5 py-2 text-[14px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-dim focus:border-line"
             />
           </label>
           <label className="flex flex-col gap-1.5 bg-ink-900 px-4 py-3">
-            <span className="text-[12px] tracking-[0.1em] text-fg-dim">
+            <span className="text-[13px] tracking-[0.1em] text-fg-dim">
               明天打算怎么做
             </span>
             <textarea
@@ -97,19 +97,19 @@ export default function NotePanel({ tradeDate, delay = 420 }: NotePanelProps) {
               onChange={(event) => setNextPlan(event.target.value)}
               rows={4}
               placeholder="例如：盯 5 板以上的高度能否延续；自选里放量过前高的再看"
-              className="resize-y border border-line-soft bg-ink-850 px-2.5 py-2 text-[13px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-dim focus:border-line"
+              className="resize-y border border-line-soft bg-ink-850 px-2.5 py-2 text-[14px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-dim focus:border-line"
             />
           </label>
         </div>
         <div className="flex items-center justify-between border-t border-line-soft px-4 py-2.5">
-          <span className="text-[12px] text-fg-dim">
+          <span className="text-[13px] text-fg-dim">
             笔记按交易日保存，切到历史日期可回看当天的记录
           </span>
           <button
             type="button"
             onClick={() => void save()}
             disabled={saving || !dirty}
-            className="border border-accent/60 bg-accent/10 px-4 py-1 text-[12px] text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:border-line-soft disabled:bg-transparent disabled:text-fg-dim"
+            className="border border-accent/60 bg-accent/10 px-4 py-1 text-[13px] text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:border-line-soft disabled:bg-transparent disabled:text-fg-dim"
           >
             {saving ? '保存中…' : '保存'}
           </button>

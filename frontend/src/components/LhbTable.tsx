@@ -45,9 +45,9 @@ export default function LhbTable({ items, loading = false, delay = 340 }: LhbTab
       delay={delay}
     >
       {loading ? (
-        <div className="px-4 py-8 text-center text-[13px] text-fg-dim">加载中…</div>
+        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">加载中…</div>
       ) : items.length === 0 ? (
-        <div className="px-4 py-8 text-center text-[13px] text-fg-dim">当日无数据</div>
+        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">当日无数据</div>
       ) : (
         <div className="max-h-[440px] overflow-auto">
           <table className="grid-table">
@@ -108,12 +108,12 @@ export default function LhbTable({ items, loading = false, delay = 340 }: LhbTab
                     <span className="num text-fg-muted">{fmtAmount(item.sell_amount)}</span>
                   </td>
                   <td className="!text-left">
-                    <span className="inline-block max-w-[140px] truncate align-bottom text-[12px] text-fg-muted">
+                    <span className="inline-block max-w-[140px] truncate align-bottom text-[13px] text-fg-muted">
                       {item.reason}
                     </span>
                   </td>
                   <td className="!text-left">
-                    <span className="inline-block max-w-[120px] truncate align-bottom text-[12px] text-fg-dim">
+                    <span className="inline-block max-w-[120px] truncate align-bottom text-[13px] text-fg-dim">
                       {item.interpretation ?? '—'}
                     </span>
                   </td>

@@ -23,7 +23,7 @@ export default function DivergenceNote({ data }: { data: Divergence | null }) {
   if (!data) {
     // 历史日期没有涨跌家数（乐咕只给当日），如实说明而不是显示一句假的结论
     return (
-      <div className="flex items-start gap-2.5 border border-line-soft px-4 py-2.5 text-[12px] leading-relaxed text-fg-dim">
+      <div className="flex items-start gap-2.5 border border-line-soft px-4 py-2.5 text-[13px] leading-relaxed text-fg-dim">
         <span className="mt-[5px] h-[6px] w-[6px] shrink-0 bg-fg-dim" />
         <span>所选日期没有涨跌家数（该数据源只提供当日值），无法判断指数与个股是否背离。</span>
       </div>
@@ -32,14 +32,14 @@ export default function DivergenceNote({ data }: { data: Divergence | null }) {
 
   const tone = TONE[data.level] ?? TONE.aligned
   return (
-    <div className="flex items-start gap-2.5 border border-line-soft px-4 py-2.5 text-[12px] leading-relaxed">
+    <div className="flex items-start gap-2.5 border border-line-soft px-4 py-2.5 text-[13px] leading-relaxed">
       <span className={`mt-[5px] h-[6px] w-[6px] shrink-0 ${tone.bar}`} />
       <span>
-        <span className={`${tone.text} mr-2 text-[12px] tracking-[0.1em]`}>
+        <span className={`${tone.text} mr-2 text-[13px] tracking-[0.1em]`}>
           {tone.label}
         </span>
         <span className="text-fg">{data.title}</span>
-        <span className="num ml-3 text-[12px] text-fg-dim">{data.detail}</span>
+        <span className="num ml-3 text-[13px] text-fg-dim">{data.detail}</span>
       </span>
     </div>
   )

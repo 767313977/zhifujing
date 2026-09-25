@@ -116,7 +116,7 @@ export default function SentimentPage() {
         {
           type: 'value' as const,
           name: '首日=100',
-          nameTextStyle: { color: CHART.fgDim, fontSize: 10, fontFamily: AXIS_LABEL.fontFamily },
+          nameTextStyle: { color: CHART.fgDim, fontSize: 11, fontFamily: AXIS_LABEL.fontFamily },
           scale: true,
           axisLabel: { ...AXIS_LABEL, formatter: '{value}' },
           splitLine: SPLIT_LINE,
@@ -125,7 +125,7 @@ export default function SentimentPage() {
         {
           type: 'value' as const,
           name: '成交额',
-          nameTextStyle: { color: CHART.fgDim, fontSize: 10, fontFamily: AXIS_LABEL.fontFamily },
+          nameTextStyle: { color: CHART.fgDim, fontSize: 11, fontFamily: AXIS_LABEL.fontFamily },
           axisLabel: {
             ...AXIS_LABEL,
             formatter: (value: number) => `${(value / 1e12).toFixed(1)}万亿`,
@@ -176,7 +176,7 @@ export default function SentimentPage() {
         {
           type: 'value' as const,
           name: '家数',
-          nameTextStyle: { color: CHART.fgDim, fontSize: 10, fontFamily: AXIS_LABEL.fontFamily },
+          nameTextStyle: { color: CHART.fgDim, fontSize: 11, fontFamily: AXIS_LABEL.fontFamily },
           axisLabel: AXIS_LABEL,
           splitLine: SPLIT_LINE,
           axisLine: { show: false },
@@ -184,7 +184,7 @@ export default function SentimentPage() {
         {
           type: 'value' as const,
           name: '封板率 %',
-          nameTextStyle: { color: CHART.fgDim, fontSize: 10, fontFamily: AXIS_LABEL.fontFamily },
+          nameTextStyle: { color: CHART.fgDim, fontSize: 11, fontFamily: AXIS_LABEL.fontFamily },
           min: 0,
           max: 100,
           axisLabel: { ...AXIS_LABEL, formatter: '{value}%' },
@@ -243,7 +243,7 @@ export default function SentimentPage() {
       yAxis: {
         type: 'value' as const,
         name: '连板',
-        nameTextStyle: { color: CHART.fgDim, fontSize: 10, fontFamily: AXIS_LABEL.fontFamily },
+        nameTextStyle: { color: CHART.fgDim, fontSize: 11, fontFamily: AXIS_LABEL.fontFamily },
         minInterval: 1,
         axisLabel: AXIS_LABEL,
         splitLine: SPLIT_LINE,
@@ -265,7 +265,7 @@ export default function SentimentPage() {
   const emotionDates = sentiment.map((item) => item.trade_date)
 
   const toolbar = (
-    <span className="num hidden text-[12px] text-fg-dim lg:inline">
+    <span className="num hidden text-[13px] text-fg-dim lg:inline">
       {loading ? '加载中…' : `${indexDates.length} / ${emotionDates.length} 天`}
     </span>
   )
@@ -288,7 +288,7 @@ export default function SentimentPage() {
           delay={40}
         >
           {loading ? (
-            <div className="flex h-[320px] items-center justify-center text-[13px] text-fg-dim">
+            <div className="flex h-[320px] items-center justify-center text-[14px] text-fg-dim">
               <span className="pulse-soft">加载中…</span>
             </div>
           ) : (
@@ -299,7 +299,7 @@ export default function SentimentPage() {
         </Panel>
 
         {/* 区间不同必须显式说明，否则会被当成与上图同一段时间读 */}
-        <div className="rise flex items-start gap-2.5 border border-accent/25 bg-accent/[0.04] px-3.5 py-2.5 text-[12px] leading-relaxed text-fg-muted">
+        <div className="rise flex items-start gap-2.5 border border-accent/25 bg-accent/[0.04] px-3.5 py-2.5 text-[13px] leading-relaxed text-fg-muted">
           <span className="mt-[3px] h-[6px] w-[6px] shrink-0 bg-accent" />
           <span>
             下方情绪指标的区间比指数短得多：涨停 / 跌停 / 炸板明细的数据源
@@ -312,9 +312,9 @@ export default function SentimentPage() {
 
         <Panel title="情绪指标" meta={<span className="num">{rangeLabel(emotionDates)}</span>} delay={120}>
           {loading ? (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
           ) : sentiment.length === 0 ? (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               暂无情绪数据，请先在「今日复盘」执行采集
             </div>
           ) : (
@@ -326,9 +326,9 @@ export default function SentimentPage() {
 
         <Panel title="连板高度" meta={<span className="num">市场高度 · 最高连板数</span>} delay={180}>
           {loading ? (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
           ) : sentiment.length === 0 ? (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">暂无数据</div>
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">暂无数据</div>
           ) : (
             <div className="px-2 pt-2">
               <EChart option={ladderOption} height={200} />
@@ -337,7 +337,7 @@ export default function SentimentPage() {
         </Panel>
 
         {/* 补一段文字口径说明，避免只看图产生误读 */}
-        <div className="panel rise px-4 py-3 text-[12px] leading-relaxed text-fg-dim" style={{ animationDelay: '220ms' }}>
+        <div className="panel rise px-4 py-3 text-[13px] leading-relaxed text-fg-dim" style={{ animationDelay: '220ms' }}>
           <div className="mb-1.5 text-fg-muted">口径说明</div>
           <ul className="space-y-1">
             <li>

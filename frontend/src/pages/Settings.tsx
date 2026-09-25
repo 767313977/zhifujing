@@ -140,7 +140,7 @@ export default function Settings() {
     <button
       type="button"
       onClick={reload}
-      className="num border border-line px-2.5 py-[3px] text-[12px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg"
+      className="num border border-line px-2.5 py-[3px] text-[13px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg"
     >
       刷新
     </button>
@@ -180,7 +180,7 @@ export default function Settings() {
             />
             <Cell label="上次运行" value={fmtDateTime(scheduler?.last_run)} />
           </div>
-          <div className="border-t border-line-soft px-4 py-2.5 text-[12px] leading-relaxed text-fg-dim">
+          <div className="border-t border-line-soft px-4 py-2.5 text-[13px] leading-relaxed text-fg-dim">
             采集时刻 {scheduler?.collect_time ?? '—'} 是等收盘数据与龙虎榜都发布之后再取。
             {/* 时刻不写死在这里：它由后端 collect_hour/collect_minute 决定，
                 写死的话改配置就会让这段说明悄悄变成错的（已经错过一次） */}
@@ -243,7 +243,7 @@ export default function Settings() {
                 style={{ width: `${barPercent}%` }}
               />
             </div>
-            <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-[12px] text-fg-dim">
+            <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-[13px] text-fg-dim">
               <span className="num">
                 已用 {usedPercent}%
                 {quota && (
@@ -326,13 +326,13 @@ export default function Settings() {
                     </td>
                     <td>
                       <span className="num">{fmtInt(row.days)}</span>
-                      <span className="ml-1 text-[12px] text-fg-dim">天</span>
+                      <span className="ml-1 text-[13px] text-fg-dim">天</span>
                     </td>
                     <td>
                       <span className="num text-fg-muted">{row.latest ?? '—'}</span>
                     </td>
                     <td className="!text-left">
-                      <span className="text-[12px] text-fg-dim">{COVERAGE_NOTES[row.label] ?? ''}</span>
+                      <span className="text-[13px] text-fg-dim">{COVERAGE_NOTES[row.label] ?? ''}</span>
                     </td>
                   </tr>
                 ))}
@@ -355,15 +355,15 @@ export default function Settings() {
         >
           <div className="flex flex-col gap-4 px-4 py-3.5 lg:flex-row lg:items-start">
             <div className="flex-1 space-y-2">
-              <div className="text-[12px] text-fg-muted">采集最近交易日</div>
-              <p className="text-[12px] leading-relaxed text-fg-dim">
+              <div className="text-[13px] text-fg-muted">采集最近交易日</div>
+              <p className="text-[13px] leading-relaxed text-fg-dim">
                 拉取指数行情、涨停三池、龙虎榜与情绪指标。已采集过的日期会被幂等覆盖，重复点不会产生脏数据。
               </p>
               <button
                 type="button"
                 onClick={() => void runCollect()}
                 disabled={busy !== null}
-                className="border border-accent/60 bg-accent/10 px-4 py-1.5 text-[12px] text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
+                className="border border-accent/60 bg-accent/10 px-4 py-1.5 text-[13px] text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {busy === 'collect' ? '采集中…' : '立即采集'}
               </button>
@@ -372,34 +372,34 @@ export default function Settings() {
             <div className="hidden w-px self-stretch bg-line-soft lg:block" />
 
             <div className="flex-1 space-y-2">
-              <div className="text-[12px] text-fg-muted">历史回补</div>
-              <p className="text-[12px] leading-relaxed text-fg-dim">
+              <div className="text-[13px] text-fg-muted">历史回补</div>
+              <p className="text-[13px] leading-relaxed text-fg-dim">
                 指数与龙虎榜可补满半年；<b className="font-normal text-fg-muted">涨停三池受数据源窗口限制，只能覆盖最近 15 个交易日</b>，
                 更早的日期对应指标会记为 null（不是 0）。
               </p>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[12px] text-fg-dim">起始日期</span>
+                <span className="text-[13px] text-fg-dim">起始日期</span>
                 <input
                   type="date"
                   value={backfillStart}
                   onChange={(event) => setBackfillStart(event.target.value)}
-                  className="num border border-line bg-ink-850 px-2 py-1 text-[12px] text-fg outline-none focus:border-fg-dim"
+                  className="num border border-line bg-ink-850 px-2 py-1 text-[13px] text-fg outline-none focus:border-fg-dim"
                 />
                 {/* 只有起始日期的话想做「只补某一段」就得从那天一路补到最新，
                     补 3 天和补 120 天是两个完全不同的代价 */}
-                <span className="text-[12px] text-fg-dim">到</span>
+                <span className="text-[13px] text-fg-dim">到</span>
                 <input
                   type="date"
                   value={backfillEnd}
                   onChange={(event) => setBackfillEnd(event.target.value)}
-                  className="num border border-line bg-ink-850 px-2 py-1 text-[12px] text-fg outline-none focus:border-fg-dim"
+                  className="num border border-line bg-ink-850 px-2 py-1 text-[13px] text-fg outline-none focus:border-fg-dim"
                 />
-                <span className="text-[12px] text-fg-dim">（留空补到最新交易日）</span>
+                <span className="text-[13px] text-fg-dim">（留空补到最新交易日）</span>
                 <button
                   type="button"
                   onClick={() => void runBackfill()}
                   disabled={busy !== null}
-                  className="border border-line px-4 py-1.5 text-[12px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
+                  className="border border-line px-4 py-1.5 text-[13px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {busy === 'backfill' ? '回补中…' : '开始回补'}
                 </button>
@@ -414,7 +414,7 @@ export default function Settings() {
           delay={200}
         >
           {status === null || status.recent_logs.length === 0 ? (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">暂无日志</div>
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">暂无日志</div>
           ) : (
             <div className="max-h-[420px] overflow-auto">
               <table className="grid-table">
@@ -484,7 +484,7 @@ function Cell({
 }) {
   return (
     <div className="relative -mr-px -mb-px border-r border-b border-line-soft px-4 py-3">
-      <div className="text-[12px] tracking-[0.1em] text-fg-dim">{label}</div>
+      <div className="text-[13px] tracking-[0.1em] text-fg-dim">{label}</div>
       <div className={`num mt-1.5 text-[16px] leading-tight font-medium ${tone}`}>
         {pulse && (
           <span className="pulse-soft mr-1.5 inline-block h-[6px] w-[6px] bg-ok align-middle" />
@@ -523,7 +523,7 @@ function LogRow({ log }: { log: CollectLog }) {
       </td>
       <td className="!text-left">
         <span
-          className="inline-block max-w-[320px] truncate align-bottom text-[12px] text-fg-dim"
+          className="inline-block max-w-[320px] truncate align-bottom text-[13px] text-fg-dim"
           title={log.message ?? ''}
         >
           {log.message ?? '—'}

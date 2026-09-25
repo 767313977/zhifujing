@@ -21,7 +21,7 @@ export default function Alert({ tone = 'danger', children, onClose }: AlertProps
 
   return (
     <div
-      className={`rise mb-4 flex items-start gap-2.5 border px-4 py-3 text-[13px] ${styles}`}
+      className={`rise mb-4 flex items-start gap-2.5 border px-4 py-3 text-[14px] ${styles}`}
     >
       <span className="min-w-0 flex-1 leading-relaxed">{children}</span>
       {onClose && (

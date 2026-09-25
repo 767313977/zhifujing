@@ -44,7 +44,7 @@ export default function WatchlistPanel({ rows, delay = 0 }: WatchlistPanelProps)
       delay={delay}
     >
       {rows.length === 0 ? (
-        <div className="px-4 py-8 text-center text-[13px] text-fg-dim">
+        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">
           还没有自选股，在个股详情页点「加入自选」
         </div>
       ) : (

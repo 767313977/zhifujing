@@ -339,7 +339,7 @@ export default function Funds() {
       <select
         value={date ?? ''}
         onChange={(event) => setDate(event.target.value || null)}
-        className="num border border-line bg-ink-900 px-2 py-[3px] text-[12px] text-fg outline-none focus:border-fg-dim"
+        className="num border border-line bg-ink-900 px-2 py-[3px] text-[13px] text-fg outline-none focus:border-fg-dim"
       >
         <option value="">最新</option>
         {/* 倒序渲染：最近的排最上面。升序时展开要一路滚到底才够得着昨天 */}
@@ -350,7 +350,7 @@ export default function Funds() {
         ))}
       </select>
       {/* 下拉选「最新」时它显示的是空值，这里把后端解析出的实际交易日亮出来 */}
-      <span className="num text-[12px] text-fg-muted">
+      <span className="num text-[13px] text-fg-muted">
         {overviewLoading ? '加载中…' : (overview?.trade_date ?? '—')}
       </span>
     </>
@@ -364,7 +364,7 @@ export default function Funds() {
         {/* ---- 概览 ---- */}
         <div className="rise grid grid-cols-1 gap-px border border-line-soft bg-line-soft sm:grid-cols-2 xl:grid-cols-4">
           {overviewLoading ? (
-            <div className="bg-ink-900 px-4 py-8 text-center text-[13px] text-fg-dim sm:col-span-2 xl:col-span-4">
+            <div className="bg-ink-900 px-4 py-8 text-center text-[14px] text-fg-dim sm:col-span-2 xl:col-span-4">
               加载中…
             </div>
           ) : (
@@ -430,16 +430,16 @@ export default function Funds() {
             delay={80}
           >
             {seriesLoading ? (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
             ) : series && series.dates.length > 0 ? (
               <div className="px-2 pt-2">
                 <EChart option={marginOption} height={280} />
-                <div className="px-2 pb-2 pt-1 text-[12px] text-fg-dim">
+                <div className="px-2 pb-2 pt-1 text-[13px] text-fg-dim">
                   左轴融资余额 / 右轴融资买入额 · 断点是当日深市未披露（两市合计给不出来），不是 0
                 </div>
               </div>
             ) : (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">当日无数据</div>
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">当日无数据</div>
             )}
           </Panel>
 
@@ -453,16 +453,16 @@ export default function Funds() {
             delay={120}
           >
             {seriesLoading ? (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
             ) : series && series.dates.length > 0 ? (
               <div className="px-2 pt-2">
                 <EChart option={hsgtOption} height={280} />
-                <div className="px-2 pb-2 pt-1 text-[12px] text-fg-dim">
+                <div className="px-2 pb-2 pt-1 text-[13px] text-fg-dim">
                   只有成交总额，不含买卖方向 —— 它是活跃度指标，不是净流入
                 </div>
               </div>
             ) : (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">当日无数据</div>
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">当日无数据</div>
             )}
           </Panel>
         </div>
@@ -494,16 +494,16 @@ export default function Funds() {
           delay={160}
         >
           {etfLoading ? (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
           ) : etfHasPrev === false ? (
             // 首次采集只有当天份额，没有可比的基准 —— 这是「没得比」，
             // 与「今天没人申赎」完全不同，不能共用一句空态文案
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               还没有上一交易日的份额数据，无法计算净申赎；等下一次采集后再看
             </div>
           ) : etfCount > 0 ? (
             <>
-              <div className="border-b border-line-soft px-3 py-1.5 text-[12px] text-fg-dim">
+              <div className="border-b border-line-soft px-3 py-1.5 text-[13px] text-fg-dim">
                 {etfNote}
                 {etfPrevDate && ` · 对比基准 ${etfPrevDate}`}
               </div>
@@ -514,7 +514,7 @@ export default function Funds() {
               ) : null}
             </>
           ) : (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">当日无数据</div>
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">当日无数据</div>
           )}
         </Panel>
 
@@ -532,11 +532,11 @@ export default function Funds() {
           delay={200}
         >
           {instLoading ? (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
           ) : institutions && institutions.items.length > 0 ? (
             <InstitutionTable items={institutions.items} />
           ) : (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">当日无数据</div>
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">当日无数据</div>
           )}
         </Panel>
 
@@ -558,10 +558,10 @@ export default function Funds() {
           delay={240}
         >
           {ddeLoading ? (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
           ) : dde && dde.items.length > 0 ? (
             <>
-              <div className="border-b border-line-soft px-3 py-1.5 text-[12px] text-fg-dim">
+              <div className="border-b border-line-soft px-3 py-1.5 text-[13px] text-fg-dim">
                 5日DDE = iFinD 区间dde大单净额，与个股页那一栏是同一个数 ·
                 数据来自每天采集链末尾的全市场扫描，打开页面不花配额 ·
                 涨跌幅与收盘价取日线，池外的票显示为「—」
@@ -569,7 +569,7 @@ export default function Funds() {
               <DdeTable items={dde.items} />
             </>
           ) : (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               还没有 DDE 数据：它由每天的采集链在收盘后扫描全市场写入；当天扫描若还没跑到，明天再看
             </div>
           )}
@@ -599,16 +599,16 @@ function MetricCard({
 }) {
   return (
     <div className="bg-ink-900 px-4 py-3">
-      <div className="text-[12px] tracking-[0.1em] text-fg-dim">{label}</div>
+      <div className="text-[13px] tracking-[0.1em] text-fg-dim">{label}</div>
       <div
         className={`num mt-1 leading-tight ${
-          muted ? 'text-[13px] text-fg-muted' : `text-[19px] font-medium ${tone}`
+          muted ? 'text-[14px] text-fg-muted' : `text-[19px] font-medium ${tone}`
         }`}
       >
         {value}
       </div>
-      {sub != null && <div className="num mt-1 text-[12px] text-fg-muted">{sub}</div>}
-      {note && <div className="mt-1 text-[12px] text-accent">{note}</div>}
+      {sub != null && <div className="num mt-1 text-[13px] text-fg-muted">{sub}</div>}
+      {note && <div className="mt-1 text-[13px] text-accent">{note}</div>}
     </div>
   )
 }
@@ -631,7 +631,7 @@ function Toggle<T extends string>({
           type="button"
           onClick={() => onChange(item.key)}
           className={[
-            'px-2 py-[3px] text-[12px] transition-colors',
+            'px-2 py-[3px] text-[13px] transition-colors',
             value === item.key ? 'bg-ink-700 text-fg' : 'text-fg-muted hover:text-fg',
           ].join(' ')}
         >
@@ -767,7 +767,7 @@ function EtfIndustryTable({ items }: { items: EtfIndustryItem[] }) {
                         {item.funds.map((fund) => (
                           <div
                             key={fund.code}
-                            className="flex items-center gap-2 px-3 py-1 text-[12px]"
+                            className="flex items-center gap-2 px-3 py-1 text-[13px]"
                           >
                             <span className="num w-[52px] shrink-0 text-fg-dim">{fund.code}</span>
                             <span className="min-w-0 flex-1 truncate text-fg">
@@ -789,7 +789,7 @@ function EtfIndustryTable({ items }: { items: EtfIndustryItem[] }) {
                           </div>
                         ))}
                         {item.fund_count > item.funds.length && (
-                          <div className="px-3 py-1 text-[12px] text-fg-dim">
+                          <div className="px-3 py-1 text-[13px] text-fg-dim">
                             共 {item.fund_count} 只，此处只列净申赎前 {item.funds.length} 只；
                             完整列表见「按单只」
                           </div>
@@ -930,7 +930,7 @@ function InstitutionTable({ items }: { items: InstitutionItem[] }) {
                 </span>
               </td>
               <td className="!text-left">
-                <span className="inline-block max-w-[180px] truncate align-bottom text-[12px] text-fg-muted">
+                <span className="inline-block max-w-[180px] truncate align-bottom text-[13px] text-fg-muted">
                   {item.reason ?? '—'}
                 </span>
               </td>
@@ -949,7 +949,7 @@ function InstitutionTable({ items }: { items: InstitutionItem[] }) {
 function buildMarginOption(data: FundsSeries): ChartOption {
   const nameStyle = {
     color: CHART.fgDim,
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: AXIS_LABEL.fontFamily,
   }
 
@@ -1066,7 +1066,7 @@ function buildHsgtOption(data: FundsSeries): ChartOption {
       name: '成交额',
       nameTextStyle: {
         color: CHART.fgDim,
-        fontSize: 10,
+        fontSize: 11,
         fontFamily: AXIS_LABEL.fontFamily,
       },
       scale: true,

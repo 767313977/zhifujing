@@ -360,13 +360,13 @@ export default function Patterns() {
 
   const toolbar = (
     <>
-      <span className="num hidden text-[12px] text-fg-dim lg:inline">
+      <span className="num hidden text-[13px] text-fg-dim lg:inline">
         {loading ? '加载中…' : `${visible.length} / ${hits.length} 只`}
       </span>
       <select
         value={date ?? ''}
         onChange={(event) => setDate(event.target.value || null)}
-        className="num border border-line bg-ink-900 px-2 py-[3px] text-[12px] text-fg outline-none focus:border-fg-dim"
+        className="num border border-line bg-ink-900 px-2 py-[3px] text-[13px] text-fg outline-none focus:border-fg-dim"
       >
         <option value="">最新</option>
         {/* 倒序渲染：最近的排最上面。原先是升序，展开后要一路滚到底才够得着昨天 */}
@@ -400,7 +400,7 @@ export default function Patterns() {
           <div className="space-y-2 px-4 py-3">
             {groups.map(([group, items]) => (
               <div key={group} className="flex flex-wrap items-center gap-2">
-                <span className="w-8 shrink-0 text-[12px] text-fg-dim">{group}</span>
+                <span className="w-8 shrink-0 text-[13px] text-fg-dim">{group}</span>
                 {items.map((item) => {
                   const on = picked === item.key
                   const count = countOf[item.key] ?? 0
@@ -409,21 +409,21 @@ export default function Patterns() {
                       key={item.key}
                       type="button"
                       onClick={() => toggle(item.key)}
-                      className={`num border px-2 py-[2px] text-[12px] transition-colors ${
+                      className={`num border px-2 py-[2px] text-[13px] transition-colors ${
                         on
                           ? 'border-accent bg-accent/10 text-accent'
                           : 'border-line text-fg-muted hover:border-fg-dim hover:text-fg'
                       }`}
                     >
                       {item.name}
-                      <span className="ml-1.5 text-[12px] text-fg-dim">{count}</span>
+                      <span className="ml-1.5 text-[13px] text-fg-dim">{count}</span>
                     </button>
                   )
                 })}
               </div>
             ))}
             <div className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-2.5">
-              <span className="text-[12px] text-fg-dim">评分下限</span>
+              <span className="text-[13px] text-fg-dim">评分下限</span>
               <input
                 type="range"
                 min={0}
@@ -433,7 +433,7 @@ export default function Patterns() {
                 onChange={(event) => setMinScore(Number(event.target.value))}
                 className="h-[3px] w-40 accent-amber-500"
               />
-              <span className="num w-8 text-[12px] text-fg">{minScore}</span>
+              <span className="num w-8 text-[13px] text-fg">{minScore}</span>
               {(picked !== null || minScore > 0) && (
                 <button
                   type="button"
@@ -441,7 +441,7 @@ export default function Patterns() {
                     setPicked(null)
                     setMinScore(0)
                   }}
-                  className="num border border-line px-2 py-[2px] text-[12px] text-fg-dim hover:border-fg-dim hover:text-fg"
+                  className="num border border-line px-2 py-[2px] text-[13px] text-fg-dim hover:border-fg-dim hover:text-fg"
                 >
                   清除筛选
                 </button>
@@ -460,7 +460,7 @@ export default function Patterns() {
                   type="button"
                   onClick={copyCodes}
                   title="每行一个代码，可直接粘进同花顺的「导入自选股」"
-                  className="ml-3 border border-line px-2 py-[2px] text-[12px] text-fg-dim transition-colors hover:border-fg-dim hover:text-fg"
+                  className="ml-3 border border-line px-2 py-[2px] text-[13px] text-fg-dim transition-colors hover:border-fg-dim hover:text-fg"
                 >
                   {copied ? '已复制' : `复制 ${visible.length} 个代码`}
                 </button>
@@ -470,7 +470,7 @@ export default function Patterns() {
           delay={80}
         >
           {truncated && (
-            <div className="flex items-start gap-2.5 border-b border-accent/25 bg-accent/[0.05] px-4 py-2.5 text-[12px] leading-relaxed text-fg-muted">
+            <div className="flex items-start gap-2.5 border-b border-accent/25 bg-accent/[0.05] px-4 py-2.5 text-[13px] leading-relaxed text-fg-muted">
               <span className="mt-[3px] h-[6px] w-[6px] shrink-0 bg-accent" />
               <span>
                 <span className="font-medium text-accent">列表被截断：</span>
@@ -486,7 +486,7 @@ export default function Patterns() {
           )}
 
           {visible.length === 0 ? (
-            <div className="px-4 py-6 text-center text-[12px] text-fg-dim">
+            <div className="px-4 py-6 text-center text-[13px] text-fg-dim">
               {loading ? '加载中…' : '当前筛选下没有命中的个股'}
             </div>
           ) : (
@@ -563,7 +563,7 @@ export default function Patterns() {
                           {stock.patterns.map((item) => (
                             <span
                               key={item.pattern}
-                              className="num border border-line-soft px-1.5 py-[1px] text-[12px] text-fg-muted"
+                              className="num border border-line-soft px-1.5 py-[1px] text-[13px] text-fg-muted"
                             >
                               {item.pattern_name}
                               <span className="ml-1 text-fg-dim">
@@ -619,13 +619,13 @@ export default function Patterns() {
             <div className="border-b border-line-soft px-4 py-2.5">
               {current.patterns.map((item) => (
                 <div key={item.pattern} className="flex flex-wrap items-baseline gap-x-3 py-0.5">
-                  <span className="w-24 shrink-0 text-[12px] text-fg">
+                  <span className="w-24 shrink-0 text-[13px] text-fg">
                     {item.pattern_name}
                   </span>
-                  <span className="num w-10 shrink-0 text-[12px] text-accent">
+                  <span className="num w-10 shrink-0 text-[13px] text-accent">
                     {item.score.toFixed(1)}
                   </span>
-                  <span className="num flex flex-wrap gap-x-3 text-[12px] text-fg-dim">
+                  <span className="num flex flex-wrap gap-x-3 text-[13px] text-fg-dim">
                     {Object.entries(item.detail).map(([key, value]) => (
                       <span key={key}>
                         {DETAIL_FIELDS[key]?.[0] ?? key}
@@ -639,11 +639,11 @@ export default function Patterns() {
           )}
           <div className="px-2 pt-2">
             {kline.loading || kline.syncing ? (
-              <div className="flex h-[380px] items-center justify-center text-[12px] text-fg-dim">
+              <div className="flex h-[380px] items-center justify-center text-[13px] text-fg-dim">
                 {kline.syncing ? '正在补 2 年历史（周/月 K 要的长周期）…' : '加载日线…'}
               </div>
             ) : kline.error ? (
-              <div className="flex h-[380px] items-center justify-center px-6 text-center text-[12px] text-danger">
+              <div className="flex h-[380px] items-center justify-center px-6 text-center text-[13px] text-danger">
                 日线取数失败：{kline.error}
               </div>
             ) : (

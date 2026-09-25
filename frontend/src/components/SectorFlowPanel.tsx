@@ -115,7 +115,7 @@ function buildOption(items: FundFlowItem[], inflow: boolean): ChartOption {
           // 流入那侧贴条外是安全的：右边是 56px 的空白，没有坐标轴文字。
           position: inflow ? ('right' as const) : ('insideLeft' as const),
           color: inflow ? CHART.fgMuted : CHART.ink,
-          fontSize: 10,
+          fontSize: 11,
           formatter: (params: unknown) => {
             const item = params as { value: number | null }
             return item.value == null ? '—' : fmtNum(item.value, 1)
@@ -251,35 +251,35 @@ export default function SectorFlowPanel({
     <div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line-soft px-3 py-2">
         <Segmented value={taxonomy} items={TAXONOMIES} onChange={onTaxonomy} />
-        <span className="text-[12px] text-fg-dim">
+        <span className="text-[13px] text-fg-dim">
           开盘啦{label}口径（与站内板块同一套名字）· 单位亿元 ·
           净流入 = 成分股主力净流入之和 · 红=净流入 绿=净流出
         </span>
         {/* 剔掉哪些板块要写出来：否则「人工智能怎么不见了」会被当成 bug。
             阈值来自后端（配置项），这里不硬写数字 */}
         {data && (
-          <span className="text-[12px] text-fg-dim">
+          <span className="text-[13px] text-fg-dim">
             已剔掉成分股 &gt; {data.excluded_members_over} 只的宽泛板块与业绩 / 地域 / 事件类板块
           </span>
         )}
         {/* 多日窗口：矩阵与累计曲线共用这一个值（两处都是「近 N 日」的视角）。
             放面板头部是因为矩阵在上面、曲线在下面，放哪一头都够不着另一头 */}
-        <span className="text-[12px] text-fg-dim">多日</span>
+        <span className="text-[13px] text-fg-dim">多日</span>
         <Segmented
           value={historyDays}
           items={FLOW_SPANS.map((span) => ({ key: span, label: `近${span}日` }))}
           onChange={onHistoryDays}
         />
         {staleDate && <span className="num text-fg-dim">数据日期 {staleDate}</span>}
-        <span className="num ml-auto text-[12px] text-fg-dim">
+        <span className="num ml-auto text-[13px] text-fg-dim">
           {loading ? '加载中…' : `${data?.total ?? 0} 个${label} · 各取前 ${TOP} 名`}
         </span>
       </div>
 
       {loading ? (
-        <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+        <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
       ) : empty ? (
-        <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+        <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
           这一天没有资金流数据。净流入是拿「开盘啦成分股 × 逐股主力净流入」现算的，
           只算当天、补不了历史，所以要从改造那天起一天天累积 ——
           每天收盘后（17:30）自动算一次
@@ -287,14 +287,14 @@ export default function SectorFlowPanel({
       ) : (
         <div className="grid grid-cols-1 gap-x-4 gap-y-2 p-3 md:grid-cols-2">
           <div>
-            <div className="mb-1 text-[12px] text-fg-dim">净流入前 {TOP}</div>
+            <div className="mb-1 text-[13px] text-fg-dim">净流入前 {TOP}</div>
             <EChart
               option={buildOption(inflow, true)}
               height={inflow.length * BAR_HEIGHT + 24}
             />
           </div>
           <div>
-            <div className="mb-1 text-[12px] text-fg-dim">净流出前 {TOP}</div>
+            <div className="mb-1 text-[13px] text-fg-dim">净流出前 {TOP}</div>
             <EChart
               option={buildOption(outflow, false)}
               height={outflow.length * BAR_HEIGHT + 24}
@@ -310,11 +310,11 @@ export default function SectorFlowPanel({
       {(matrixLoading || matrixDays > 0) && (
         <div className="border-t border-line-soft px-3 py-2">
           <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <span className="text-[12px] text-fg-dim">每日净流入前 {TOP}</span>
-            <span className="text-[12px] text-fg-dim">
+            <span className="text-[13px] text-fg-dim">每日净流入前 {TOP}</span>
+            <span className="text-[13px] text-fg-dim">
               列是交易日（从新到旧）、行是当天的第 N 名 · 点格子看板块详情
             </span>
-            <span className="num ml-auto text-[12px] text-fg-dim">
+            <span className="num ml-auto text-[13px] text-fg-dim">
               {matrixLoading ? '加载中…' : `${matrixDays} 个交易日`}
             </span>
           </div>
@@ -328,20 +328,20 @@ export default function SectorFlowPanel({
       {curveDays > 0 && (
         <div className="border-t border-line-soft px-3 py-2">
           <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <span className="text-[12px] text-fg-dim">累计净流入</span>
-            <span className="text-[12px] text-fg-dim">
+            <span className="text-[13px] text-fg-dim">累计净流入</span>
+            <span className="text-[13px] text-fg-dim">
               从窗口起点累加，缺的那天累计值顺延
             </span>
-            <span className="num ml-auto text-[12px] text-fg-dim">
+            <span className="num ml-auto text-[13px] text-fg-dim">
               {historyLoading ? '加载中…' : `${curveDays} 个交易日`}
             </span>
           </div>
           {historyLoading ? (
-            <div className="py-8 text-center text-[13px] text-fg-dim">加载中…</div>
+            <div className="py-8 text-center text-[14px] text-fg-dim">加载中…</div>
           ) : history && curveDays >= 2 ? (
             <EChart option={buildHistoryOption(history)} height={360} />
           ) : (
-            <div className="py-8 text-center text-[13px] text-fg-dim">
+            <div className="py-8 text-center text-[14px] text-fg-dim">
               库里只有 1 个交易日的数据，曲线至少要两天才能连起来 ——
               这个来源没有历史可补，往后每天累积
             </div>

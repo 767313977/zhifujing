@@ -88,7 +88,7 @@ function buildColumns(
       key: 'industry',
       label: '行业',
       align: 'left',
-      render: (s) => <span className="text-[12px] text-fg-dim">{s.industry ?? '—'}</span>,
+      render: (s) => <span className="text-[13px] text-fg-dim">{s.industry ?? '—'}</span>,
       sortValue: (s) => s.industry,
     },
     /* 「开盘啦板块」与「行业」并存而不是替换：后者是 iFinD 的同花顺行业（公司做什么
@@ -104,7 +104,7 @@ function buildColumns(
             label: '开盘啦板块',
             align: 'left' as const,
             render: (s: LimitStock) => (
-              <span className="text-[12px] text-fg-dim">{s.board ?? '—'}</span>
+              <span className="text-[13px] text-fg-dim">{s.board ?? '—'}</span>
             ),
             sortValue: (s: LimitStock) => s.board,
           },
@@ -122,7 +122,7 @@ function buildColumns(
             align: 'left' as const,
             render: (s: LimitStock) => (
               <span
-                className="block max-w-[240px] truncate text-[12px] text-fg-muted"
+                className="block max-w-[240px] truncate text-[13px] text-fg-muted"
                 title={s.reason ?? undefined}
               >
                 {s.reason ?? '—'}
@@ -275,9 +275,9 @@ export default function LimitTable({
       delay={delay}
     >
       {loading ? (
-        <div className="px-4 py-8 text-center text-[13px] text-fg-dim">加载中…</div>
+        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">加载中…</div>
       ) : stocks.length === 0 ? (
-        <div className="px-4 py-8 text-center text-[13px] text-fg-dim">当日无数据</div>
+        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">当日无数据</div>
       ) : (
         <div className="max-h-[440px] overflow-auto">
           <table className="grid-table">

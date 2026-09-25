@@ -176,7 +176,7 @@ export default function LimitReview() {
       yAxis: {
         type: 'value' as const,
         name: '晋级率 %',
-        nameTextStyle: { color: CHART.fgDim, fontSize: 10, fontFamily: AXIS_LABEL.fontFamily },
+        nameTextStyle: { color: CHART.fgDim, fontSize: 11, fontFamily: AXIS_LABEL.fontFamily },
         min: 0,
         max: 100,
         axisLabel: { ...AXIS_LABEL, formatter: '{value}%' },
@@ -194,7 +194,7 @@ export default function LimitReview() {
       xAxis: {
         type: 'category' as const,
         data: TIME_BUCKETS.map((bucket) => bucket.label),
-        axisLabel: { ...AXIS_LABEL, interval: 0, rotate: 30, fontSize: 10 },
+        axisLabel: { ...AXIS_LABEL, interval: 0, rotate: 30, fontSize: 11 },
         axisLine: AXIS_LINE,
         axisTick: { show: false },
       },
@@ -223,13 +223,13 @@ export default function LimitReview() {
 
   const toolbar = (
     <>
-      <span className="num hidden text-[12px] text-fg-dim lg:inline">
+      <span className="num hidden text-[13px] text-fg-dim lg:inline">
         {loading ? '加载中…' : `${stocks.length} 只涨停`}
       </span>
       <select
         value={date ?? ''}
         onChange={(event) => setDate(event.target.value || null)}
-        className="num border border-line bg-ink-900 px-2 py-[3px] text-[12px] text-fg outline-none focus:border-fg-dim"
+        className="num border border-line bg-ink-900 px-2 py-[3px] text-[13px] text-fg outline-none focus:border-fg-dim"
       >
         <option value="">最新</option>
         {/* 倒序渲染：最近的排最上面。原先是升序，展开后要一路滚到底才够得着昨天 */}
@@ -266,7 +266,7 @@ export default function LimitReview() {
           delay={40}
         >
           {promotionError ? (
-            <div className="px-4 py-10 text-center text-[13px] text-danger">
+            <div className="px-4 py-10 text-center text-[14px] text-danger">
               {promotionError}
             </div>
           ) : promotion && promotion.dates.length > 0 ? (
@@ -286,7 +286,7 @@ export default function LimitReview() {
               </div>
             </>
           ) : (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               暂无晋级率数据，需要至少 2 个交易日的涨停池
             </div>
           )}
@@ -311,14 +311,14 @@ export default function LimitReview() {
           delay={130}
         >
           {loading ? (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
           ) : themes && themes.clusters.length > 0 ? (
             <div className="flex flex-wrap gap-1.5 px-3 py-3">
               <button
                 type="button"
                 onClick={() => setThemeFilter(null)}
                 className={[
-                  'border px-2 py-[3px] text-[12px] transition-colors',
+                  'border px-2 py-[3px] text-[13px] transition-colors',
                   themeFilter === null
                     ? 'border-accent/50 text-accent'
                     : 'border-line text-fg-muted hover:text-fg',
@@ -334,7 +334,7 @@ export default function LimitReview() {
                     setThemeFilter(item.concept === themeFilter ? null : item.concept)
                   }
                   className={[
-                    'flex items-baseline gap-1.5 border px-2 py-[3px] text-[12px] transition-colors',
+                    'flex items-baseline gap-1.5 border px-2 py-[3px] text-[13px] transition-colors',
                     item.concept === themeFilter
                       ? 'border-accent/50 text-accent'
                       : 'border-line text-fg-muted hover:text-fg',
@@ -342,15 +342,15 @@ export default function LimitReview() {
                   title={`${item.concept} 今日有 ${item.count} 只涨停`}
                 >
                   <span>{item.concept}</span>
-                  <span className="num text-[12px] text-fg">{item.count}</span>
-                  <span className={`num text-[11px] ${toneOf(item.pct_chg)}`}>
+                  <span className="num text-[13px] text-fg">{item.count}</span>
+                  <span className={`num text-[12px] ${toneOf(item.pct_chg)}`}>
                     {fmtPct(item.pct_chg)}
                   </span>
                 </button>
               ))}
             </div>
           ) : (
-            <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               该交易日没有题材数据（涨停题材随每日采集开始累积）
             </div>
           )}
@@ -359,9 +359,9 @@ export default function LimitReview() {
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <Panel title="首封时间分布" meta={<span className="num">首封越早，资金越坚决</span>} delay={160}>
             {loading ? (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
             ) : stocks.length === 0 ? (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">暂无数据</div>
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">暂无数据</div>
             ) : (
               <div className="px-2 pt-2">
                 <EChart option={timeOption} height={240} />
@@ -375,9 +375,9 @@ export default function LimitReview() {
             delay={200}
           >
             {loading ? (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
             ) : boardRanking.length === 0 ? (
-              <div className="px-4 py-10 text-center text-[13px] text-fg-dim">暂无数据</div>
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">暂无数据</div>
             ) : (
               <BoardBars items={boardRanking} total={stocks.length} />
             )}
@@ -411,10 +411,10 @@ function Stat({
 }) {
   return (
     <div className="flex-1 bg-ink-900 px-4 py-2.5">
-      <div className="text-[12px] tracking-[0.1em] text-fg-dim">{label}</div>
-      <div className={`num mt-1 leading-tight ${muted ? 'text-[12px] text-fg-muted' : `text-[20px] font-medium ${tone}`}`}>
+      <div className="text-[13px] tracking-[0.1em] text-fg-dim">{label}</div>
+      <div className={`num mt-1 leading-tight ${muted ? 'text-[13px] text-fg-muted' : `text-[20px] font-medium ${tone}`}`}>
         {value}
-        {unit && <span className="ml-1 text-[12px] text-fg-dim">{unit}</span>}
+        {unit && <span className="ml-1 text-[13px] text-fg-dim">{unit}</span>}
       </div>
     </div>
   )
@@ -428,7 +428,7 @@ function BoardBars({ items, total }: { items: [string, number][]; total: number 
     <div className="max-h-[320px] space-y-1 overflow-auto px-4 py-3">
       {items.map(([name, count]) => (
         <div key={name} className="flex items-center gap-2.5">
-          <span className="w-16 shrink-0 truncate text-[12px] text-fg-muted" title={name}>
+          <span className="w-16 shrink-0 truncate text-[13px] text-fg-muted" title={name}>
             {name}
           </span>
           <div className="h-[10px] flex-1 bg-ink-800">
@@ -437,8 +437,8 @@ function BoardBars({ items, total }: { items: [string, number][]; total: number 
               style={{ width: `${(count / max) * 100}%`, backgroundColor: CHART.up }}
             />
           </div>
-          <span className="num w-9 shrink-0 text-right text-[12px] text-fg">{count}</span>
-          <span className="num w-10 shrink-0 text-right text-[12px] text-fg-dim">
+          <span className="num w-9 shrink-0 text-right text-[13px] text-fg">{count}</span>
+          <span className="num w-10 shrink-0 text-right text-[13px] text-fg-dim">
             {total > 0 ? `${Math.round((count / total) * 100)}%` : '—'}
           </span>
         </div>

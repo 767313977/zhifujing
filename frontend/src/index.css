@@ -32,6 +32,17 @@
    */
   --color-fg-dim: #87919f;
 
+  /*
+   * 内容外壳的宽度上限（`max-w-shell`）。用户 2026-09-25 要「占屏幕 80%」。
+   *
+   * 用 `max(1600px, 80vw)` 而不是直接写 80vw：在 2560 这种大屏上 80vw = 2048px，
+   * 正文确实占到八成；而在 1920 及以下，80vw 比原来的 1600px 还窄 —— 那会让内容
+   * **倒退**（1920 下从 1600 缩到 1536）。取两者的较大值就只有放开、没有收窄。
+   *
+   * 顶栏与 <main> 必须用同一个值，否则内容与顶栏左边缘会差几像素。
+   */
+  --container-shell: max(1600px, 80vw);
+
   /* A 股惯例：红涨绿跌，与欧美市场相反 */
   --color-up: #ff4d4f;
   --color-down: #00b96b;
@@ -132,7 +143,8 @@
     gap: 0.5rem;
     padding: 0.625rem 0.875rem;
     border-bottom: 1px solid var(--color-line-soft);
-    font-size: 0.75rem;
+    /* 13px（2026-09-25 从 0.75rem 上调，与页面里 text-[Npx] 一起 +1px） */
+    font-size: 0.8125rem;
     letter-spacing: 0.14em;
     color: var(--color-fg-muted);
   }
@@ -141,7 +153,8 @@
   .grid-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.8125rem;
+    /* 14px（2026-09-25 从 0.8125rem 上调） */
+    font-size: 0.875rem;
   }
   .grid-table thead th {
     position: sticky;
@@ -151,8 +164,8 @@
     padding: 0.4rem 0.625rem;
     text-align: right;
     font-weight: 500;
-    /* 12px，不是默认的 11px —— 表头也是 fg-dim，和正文小字一起上调了 1px */
-    font-size: 0.75rem;
+    /* 13px，不是默认的 11px —— 表头也是 fg-dim，和正文小字一起上调过 1px */
+    font-size: 0.8125rem;
     letter-spacing: 0.06em;
     color: var(--color-fg-dim);
     white-space: nowrap;

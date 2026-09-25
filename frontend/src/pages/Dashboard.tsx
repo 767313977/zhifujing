@@ -137,13 +137,13 @@ export default function Dashboard() {
 
   const toolbar = (
     <>
-      <span className="num hidden text-[12px] text-fg-dim lg:inline">
+      <span className="num hidden text-[13px] text-fg-dim lg:inline">
         {status ? `${status.data_days} 个交易日` : '—'}
       </span>
       <select
         value={date ?? ''}
         onChange={(event) => setDate(event.target.value || null)}
-        className="num border border-line bg-ink-900 px-2 py-[3px] text-[12px] text-fg outline-none focus:border-fg-dim"
+        className="num border border-line bg-ink-900 px-2 py-[3px] text-[13px] text-fg outline-none focus:border-fg-dim"
       >
         <option value="">最新</option>
         {/* 倒序渲染：最近的排最上面。原先是升序，展开后要一路滚到底才够得着昨天 */}
@@ -157,7 +157,7 @@ export default function Dashboard() {
         type="button"
         onClick={handleCollect}
         disabled={collecting}
-        className="num border border-line px-2.5 py-[3px] text-[12px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
+        className="num border border-line px-2.5 py-[3px] text-[13px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
       >
         {collecting ? '采集中…' : '采集'}
       </button>
@@ -176,7 +176,7 @@ export default function Dashboard() {
       )}
 
       {loading && !data ? (
-        <div className="panel flex h-64 items-center justify-center text-[13px] text-fg-dim">
+        <div className="panel flex h-64 items-center justify-center text-[14px] text-fg-dim">
           <span className="pulse-soft">加载中…</span>
         </div>
       ) : data ? (
@@ -232,7 +232,7 @@ export default function Dashboard() {
         </div>
       ) : (
         !error && (
-          <div className="panel px-4 py-10 text-center text-[13px] text-fg-dim">
+          <div className="panel px-4 py-10 text-center text-[14px] text-fg-dim">
             暂无数据，点击右上角「采集」拉取当日行情
           </div>
         )

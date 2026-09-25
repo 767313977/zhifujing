@@ -32,11 +32,11 @@ export default function SectorFlowMatrix({ data, loading, onSelect }: Props) {
   const ranks = Array.from({ length: data?.top ?? 0 }, (_, index) => index)
 
   if (loading) {
-    return <div className="px-4 py-10 text-center text-[13px] text-fg-dim">加载中…</div>
+    return <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
   }
   if (columns.length === 0) {
     return (
-      <div className="px-4 py-10 text-center text-[13px] text-fg-dim">
+      <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
         还没有多日数据。净流入是每天收盘后现算的、补不了历史，所以这张表从改造那天起
         一天天攒 —— 现在是空的
       </div>
@@ -96,7 +96,7 @@ export default function SectorFlowMatrix({ data, loading, onSelect }: Props) {
                       className="block w-full px-2 py-1 text-left"
                     >
                       <span
-                        className={`text-[12px] whitespace-nowrap ${active ? 'text-accent' : 'text-fg'}`}
+                        className={`text-[13px] whitespace-nowrap ${active ? 'text-accent' : 'text-fg'}`}
                       >
                         {cell.name}
                       </span>
@@ -104,7 +104,7 @@ export default function SectorFlowMatrix({ data, loading, onSelect }: Props) {
                           净流出不用另开一张表：它就是同一张榜的另一头 */}
                       <span
                         className={[
-                          'num mt-0.5 block text-[12px]',
+                          'num mt-0.5 block text-[13px]',
                           toneOf(cell.net_amount),
                         ].join(' ')}
                       >

@@ -136,7 +136,7 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
         itemWidth: 10,
         itemHeight: 10,
         itemGap: 14,
-        textStyle: { color: CHART.fgMuted, fontSize: 11 },
+        textStyle: { color: CHART.fgMuted, fontSize: 12 },
         data: legend,
       },
       tooltip: { ...TOOLTIP, trigger: 'axis', axisPointer: { type: 'cross' } },
@@ -169,7 +169,7 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
         },
         {
           gridIndex: 1,
-          axisLabel: { ...AXIS_LABEL, fontSize: 10 },
+          axisLabel: { ...AXIS_LABEL, fontSize: 11 },
           splitLine: { show: false },
           axisLine: { show: false },
         },
@@ -198,7 +198,7 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
                 label: {
                   position: 'insideEndTop' as const,
                   color: CHART.fgMuted,
-                  fontSize: 10,
+                  fontSize: 11,
                   formatter: '{b}',
                 },
                 data: marks.map((level, index) => ({
@@ -241,7 +241,7 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
   if (bars.length === 0) {
     return (
       <div
-        className="flex items-center justify-center text-[12px] text-fg-dim"
+        className="flex items-center justify-center text-[13px] text-fg-dim"
         style={{ height }}
       >
         暂无日线数据

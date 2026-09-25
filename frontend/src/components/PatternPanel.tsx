@@ -55,11 +55,11 @@ export default function PatternPanel({
       delay={delay}
     >
       {error ? (
-        <div className="px-4 py-8 text-center text-[13px] text-danger">
+        <div className="px-4 py-8 text-center text-[14px] text-danger">
           形态数据取数失败：{error}
         </div>
       ) : stocks.length === 0 ? (
-        <div className="px-4 py-8 text-center text-[13px] text-fg-dim">
+        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">
           当日没有命中的形态（形态扫描在收盘采集之后自动跑）
         </div>
       ) : (
@@ -67,7 +67,7 @@ export default function PatternPanel({
           {/* 形态家数一排：一眼看出「今天什么形态最普遍」，比只看 Top 8 更有信息量 */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line-soft px-4 py-2">
             {counts.map((item) => (
-              <span key={item.pattern} className="num text-[12px] text-fg-dim">
+              <span key={item.pattern} className="num text-[13px] text-fg-dim">
                 {item.pattern_name}
                 <span className={`ml-1 ${item.stocks > 0 ? 'text-fg-muted' : 'text-fg-dim'}`}>
                   {item.stocks}
@@ -117,7 +117,7 @@ export default function PatternPanel({
                       </Link>
                     </td>
                     <td className="!text-left">
-                      <span className="text-[12px] text-fg-muted">
+                      <span className="text-[13px] text-fg-muted">
                         {stock.patterns.map((item) => item.pattern_name).join(' · ')}
                       </span>
                     </td>
