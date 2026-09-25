@@ -2,9 +2,9 @@
 
 /* ------------------------------------------------------------------
    设计基调：交易终端 / 工业风
-   深色、高信息密度、锐利边缘、等宽数字。
+   深色、高信息密度、锐利边缘。
    字体用本地字体栈而非 CDN —— 这是本地自用工具，离线必须可用。
-   数字采用 Cascadia Mono / Consolas，是刻意的终端选择，也是本页面的视觉主体。
+   数字用 Times New Roman、中文用仿宋（2026-09-25 用户指定，见下方两个变量）。
 ------------------------------------------------------------------ */
 @theme {
   /* 底色不用纯黑：带一点冷调，避免在 OLED 上死黑、也让层级有区分余地 */
@@ -43,12 +43,13 @@
   --color-danger: #ff4d4f;
   --color-ok: #00b96b;
 
+  /* 数字用 Times New Roman、中文用仿宋（2026-09-25 用户指定）。
+     字体栈以 Times New Roman 开头：数字/英文优先命中它，中文它没有字形、
+     自动回退到后面的仿宋。仿宋同时写英文名与中文名，不同系统只认其中一个。 */
   --font-mono:
-    'Cascadia Mono', 'Cascadia Code', Consolas, 'DejaVu Sans Mono', ui-monospace,
-    monospace;
+    'Times New Roman', 'FangSong_GB2312', '仿宋_GB2312', 'FangSong', '仿宋', serif;
   --font-sans:
-    'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', 'Source Han Sans SC',
-    system-ui, sans-serif;
+    'Times New Roman', 'FangSong_GB2312', '仿宋_GB2312', 'FangSong', '仿宋', serif;
 }
 
 @layer base {

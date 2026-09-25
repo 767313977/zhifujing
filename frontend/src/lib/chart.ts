@@ -31,12 +31,15 @@ export const SERIES_PALETTE = [
   '#94a3b8', // 灰蓝
 ]
 
-const MONO = 'Cascadia Mono, Consolas, monospace'
+// 图表数字/文字字体：与 index.css 的 --font-mono 同栈（2026-09-25 用户指定）。
+// Times New Roman 优先命中数字/英文，中文回退到仿宋。canvas 读不到 CSS 变量，只能写死。
+const NUM_FONT =
+  "'Times New Roman', 'FangSong_GB2312', '仿宋_GB2312', 'FangSong', '仿宋', serif"
 
 export const AXIS_LABEL = {
   color: CHART.fgDim,
   fontSize: 11,
-  fontFamily: MONO,
+  fontFamily: NUM_FONT,
 }
 
 /** 统一的坐标轴样式：只留底部与左侧一条发丝线。 */
@@ -55,7 +58,7 @@ export const TOOLTIP = {
   borderColor: CHART.line,
   borderWidth: 1,
   padding: [8, 10] as [number, number],
-  textStyle: { color: CHART.fg, fontSize: 12, fontFamily: MONO },
+  textStyle: { color: CHART.fg, fontSize: 12, fontFamily: NUM_FONT },
   extraCssText: 'border-radius:0;box-shadow:0 6px 24px rgba(0,0,0,0.5)',
 }
 
