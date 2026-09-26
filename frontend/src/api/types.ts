@@ -557,6 +557,10 @@ export interface StockDailyRow {
   pct_chg: number | null
   volume: number | null
   amount: number | null
+  /** 这一天是不是**收盘涨停**（按板块限幅判定，后端 `services/limit_rules.py`）。
+   *  **只有日 K 有值**；周 / 月 K 是 null —— 一根柱子是几天的合并，
+   *  「这天涨停」在那个粒度上不成立 */
+  is_limit_up: boolean | null
 }
 
 /**

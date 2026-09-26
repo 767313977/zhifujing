@@ -31,6 +31,26 @@ const THS_SPLIT_LINE = {
 }
 
 /**
+ * 涨停那天的蜡烛：**整根实心描金**（用户 2026-09-26 要的）。
+ *
+ * 判据在后端（`services/limit_rules.py`），前端只读 `is_limit_up` —— 板块限幅
+ * （主板 10 / 创业板科创板 20 / 北交所 30 / 主板 ST 5）与「收盘价 = 当日最高价」
+ * 这两个口径都留在后端一处，前端不重算。
+ *
+ * 四个键全给：ECharts 的 data-item `itemStyle` 会与序列级的合并，只覆盖想改的那几个也
+ * 可以，但那样「阳线空心」的 `color: 'transparent'` 会漏过来 —— 涨停日要的恰恰是实心。
+ *
+ * 颜色复用**强调金**（与关键位虚线同色）：画法上分得开（一个是实心蜡烛、一个是水平虚线），
+ * 且语义都是「这里要留意」，不再为它新增一个令牌。
+ */
+const LIMIT_UP_ITEM_STYLE = {
+  color: CHART.accent,
+  color0: CHART.accent,
+  borderColor: CHART.accent,
+  borderColor0: CHART.accent,
+} as const
+
+/**
  * 图上的一根 K。
  *
  * 三个周期的来源不同（日线读库、周/月由后端重采样），但画法完全一样，
@@ -47,6 +67,8 @@ export interface KLineBar {
   /** 决定成交量柱的颜色。周/月的**第一根**没有前一根可比，是 null
    *  （图上退回按「收 - 开」染色，与日线缺涨跌幅时的行为一致） */
   pct_chg: number | null
+  /** 收盘涨停（只有日线会是 true；周/月恒为 false，见 `is_limit_up` 的说明） */
+  limitUp: boolean
 }
 
 /**
@@ -67,6 +89,8 @@ export function dailyBars(
     close: row.close,
     volume: row.volume,
     pct_chg: row.pct_chg,
+    // 周/月由后端重采样，那边给的是 null（粒度上不成立）
+    limitUp: row.is_limit_up === true,
   }))
 }
 
@@ -109,6 +133,8 @@ interface Props {
  * 图区比卡片沉一档、副图带均量线。配色直接吃站点令牌（`CHART` / `index.css`），
  * 不另立一套 —— 当天全站配色也换成了同花顺，两边本来就是同一组值。
  *
+ * **涨停那天的蜡烛整根实心描金**（日 K 才有，判据在后端，见 `LIMIT_UP_ITEM_STYLE`）。
+ *
  * 从 `StockDetail.tsx` 里抽出来而不是复制一份：这个图有三处容易写错的地方
  * —— A 股的红涨青跌覆盖（ECharts 默认是欧美惯例）、主图与副图的轴联动、
  * 成交量柱跟随涨跌染色 —— 复制出去迟早会有一份忘了改。
@@ -122,8 +148,12 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
     const dates = bars.map((bar) => bar.label)
     const closes = bars.map((bar) => bar.close)
     const rawVolumes = bars.map((bar) => bar.volume)
-    // ECharts 蜡烛图的数据顺序是 [开, 收, 低, 高]
-    const candles = bars.map((bar) => [bar.open, bar.close, bar.low, bar.high])
+    // ECharts 蜡烛图的数据顺序是 [开, 收, 低, 高]；涨停那天的整根实心描金，
+    // 靠 data-item 上挂 itemStyle 覆盖序列级的画法（见 LIMIT_UP_ITEM_STYLE）
+    const candles = bars.map((bar) => {
+      const value = [bar.open, bar.close, bar.low, bar.high]
+      return bar.limitUp ? { value, itemStyle: LIMIT_UP_ITEM_STYLE } : value
+    })
     const volumes = bars.map((bar) => ({
       value: bar.volume,
       // 成交量柱跟随当日涨跌染色；涨跌幅缺失时用收盘价与开盘价比较。
