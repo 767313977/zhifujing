@@ -3,7 +3,7 @@ import type { StockDailyRow } from '../api/types'
 import EChart from './EChart'
 import type { ChartOption } from './EChart'
 import { AXIS_LABEL, CHART, TOOLTIP } from '../lib/chart'
-import { fmtShortDate } from '../lib/format'
+import { fmtAmount, fmtShortDate } from '../lib/format'
 
 const MA_WINDOWS = [5, 10, 20]
 const MA_COLORS = ['#b8944f', '#6f93c4', '#a583c4']
@@ -23,6 +23,14 @@ const VOL_MA = [
   { window: 5, color: MA_COLORS[0] },
   { window: 10, color: MA_COLORS[1] },
 ]
+
+/**
+ * 成交量在提示框里的格式：亿 / 万（`fmtAmount`），与纵轴标签同一口径。
+ *
+ * `valueFormatter` 收到的是 ECharts 的 `OptionDataValue`（可能是字符串 / 日期 / 数组），
+ * 这里只认数字，其余一律回落到 `fmtAmount(null)` 的「—」—— 成交量本来就是数字或 null。
+ */
+const VOLUME_TIP = (value: unknown) => fmtAmount(typeof value === 'number' ? value : null)
 
 /** 同花顺的网格是淡实线，不是本站其它图那种虚线。 */
 const THS_SPLIT_LINE = {
@@ -241,7 +249,25 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
         },
         {
           gridIndex: 1,
-          axisLabel: { ...AXIS_LABEL, fontSize: 11 },
+          // 成交量轴标签走 fmtAmount 的亿/万口径（用户 2026-09-26 要求）。
+          // 原样是 `1,000,000,000` 这种 13 个字符的裸数字，又长又读不出量级。
+          // 与站点其它地方同一口径：个股概况的成交量就是 `fmtAmount(volume) + '股'`
+          //（如「2786.0万股」），DDE 图的纵轴也是直接拿 fmtAmount。
+          axisLabel: {
+            ...AXIS_LABEL,
+            fontSize: 11,
+            formatter: (value: number) => `${fmtAmount(value)}股`,
+          },
+          // 十字光标贴在轴上的那枚数值标签也得同口径：实测它**不跟随** axisLabel.formatter，
+          // 鼠标一扫就冒出 `574,377,224.20` 这种裸数字（还带两位小数）
+          axisPointer: {
+            label: {
+              // 参数类型交给 TS 从上下文推断：ECharts 的 `value` 是 ScaleDataValue
+              //（可能是 string / number / Date），写窄了编译不过
+              formatter: (params) =>
+                `${fmtAmount(typeof params.value === 'number' ? params.value : null)}股`,
+            },
+          },
           splitLine: { show: false },
           axisLine: { show: false },
         },
@@ -317,6 +343,9 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
           xAxisIndex: 1,
           yAxisIndex: 1,
           barMaxWidth: 8,
+          // 提示里的成交量也走亿/万 —— 否则轴上是「10.00亿股」、鼠标一放又是裸数字，
+          // 同一个面板两套口径。价格那几条序列不动（股票价格不该被 亿/万 缩写）
+          tooltip: { valueFormatter: VOLUME_TIP },
         },
         // 均量线排在建量柱之后 —— 后画的在上层，否则细线会被柱子盖掉
         ...VOL_MA.map((ma) => ({
@@ -329,6 +358,8 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
           symbol: 'none' as const,
           lineStyle: { width: 1, color: ma.color },
           itemStyle: { color: ma.color },
+          // 均量线是成交量的均值，单位同样是股
+          tooltip: { valueFormatter: VOLUME_TIP },
         })),
       ],
     }
