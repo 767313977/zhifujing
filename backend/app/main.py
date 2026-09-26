@@ -5,7 +5,7 @@ import socket
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -76,6 +76,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def cache_headers(request: Request, call_next):
+    """给前端产物加缓存头 —— 不加的话**部署完了用户还在看旧版**。
+
+    构建产物的文件名带内容哈希（`index-B55kqZYy.js`），内容一变名字就变，所以
+    `/assets/*` 可以放心长缓存（`immutable`）。
+
+    而 `index.html` 必须每次重新校验。它是**引用哈希名的那一份**：一旦被浏览器
+    启发式缓存住（`StaticFiles` / `FileResponse` 默认不发 `Cache-Control`，浏览器
+    就会按「距 Last-Modified 过了多久」自己猜一个有效期），它指向的旧哈希产物在
+    服务器上已经被删了，页面只能从缓存里拼出旧版 —— **实测 2026-09-26 踩过**：
+    部署后云端三个产物与本机逐字节一致、`index.html` 也确实指向新哈希，
+    但用户刷新仍是旧界面。`no-cache` 是「可以存、但每次必须校验」，正好够用。
+    """
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/assets/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif not path.startswith("/api/"):
+        # 接口不碰（默认就不缓存）：只覆盖 index.html 与 SPA 回退出来的那些静态文件
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 
 app.include_router(market.router)
 app.include_router(limit.router)
