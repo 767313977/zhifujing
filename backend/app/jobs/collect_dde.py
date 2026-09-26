@@ -10,6 +10,10 @@
 - 东财那个集群本站不碰（实测会触发本机 IP 频控，见设计文档 1.7）。
 
 所以每次现取都花 1 次 iFinD 配额 —— 别在这个入口上做全市场循环。
+
+**回补历史走 `scripts/backfill_dde.py`**（2026-09-26 加）：那条路用 `collect_stock_dde_range`
+按日期区间取（探针确认能取到任意历史），按 ≤90 个日历天分段、带配额闸门、可续跑。
+本模块的 `collect_stock_dde`（「近N个交易日」）仍然只服务个股页的按需抓取。
 """
 
 import logging
@@ -48,6 +52,20 @@ def _query(code: str, days: int) -> str:
     return f"{code} 近{days}个交易日 的 主力净流入额 与 5日DDE"
 
 
+def range_query(code: str, start: date, end: date) -> str:
+    """按**日期区间**问同一个指标。
+
+    2026-09-26 探针确认这条路能取历史（`600519 2025年4月1日至2025年6月30日` → 91 行、
+    日期正好落在区间内），所以 100 个交易日以前的数据是补得回来的 ——
+    「只能逐日累积」那句话只适用于 `scan_dde` 的全市场扫描那条路（它永远返回最新）。
+
+    ⚠️ 单次回答的上限是 **100 行，按日历天算**（不是交易日），超了**不报错**而是
+    「以下为部分数据」+ 抽样/截断（实测 303 个日历天 → 回 100 行、跨满整个窗口）。
+    所以调用方必须把区间切到 100 个日历天以内，并检查返回里的截断提示。
+    """
+    return f"{code} {start:%Y年%m月%d日}至{end:%Y年%m月%d日} 的 主力净流入额 与 5日DDE"
+
+
 def _row_date(text: str | None) -> date | None:
     """iFinD 的日期列是 `20260922` 这种 8 位数字。"""
     if not text or len(text) != 8 or not text.isdigit():
@@ -55,21 +73,8 @@ def _row_date(text: str | None) -> date | None:
     return date(int(text[:4]), int(text[4:6]), int(text[6:]))
 
 
-def collect_stock_dde(code: str, days: int = DEFAULT_DAYS) -> tuple[int, bool]:
-    """抓一次并落库。返回（写入行数, 是否被来源截断）。调用方负责兜 `IfindError`。"""
-    symbol = normalize_code(code)
-    answer, rows = IfindClient().stock_performance(_query(symbol, days))
-
-    # 被截断时必须说出去：只拿到最近 100 行，画出来的窗口比用户要的短
-    truncated = any(hint in answer for hint in _TRUNCATED_HINTS)
-    if truncated:
-        logger.warning(
-            "个股 %s 的 DDE 被来源截断：请求 %d 个交易日，只回了 %d 行",
-            symbol,
-            days,
-            len(rows),
-        )
-
+def _parse(symbol: str, rows: list[dict]) -> list[dict]:
+    """把来源的 markdown 表行转成落库行（日期解析不了的行丢掉）。"""
     parsed: list[dict] = []
     for row in rows:
         trade_date = _row_date(pick_text(row, "日期"))
@@ -85,9 +90,26 @@ def collect_stock_dde(code: str, days: int = DEFAULT_DAYS) -> tuple[int, bool]:
                 "dde": pick_float(row, "DDE"),
             }
         )
+    return parsed
+
+
+def _truncated(answer: str) -> bool:
+    """回答里有没有「只给了部分数据」的提示（见 `_TRUNCATED_HINTS`）。"""
+    return any(hint in answer for hint in _TRUNCATED_HINTS)
+
+
+def _store(
+    symbol: str, parsed: list[dict], *, truncated: bool, note: str, fill_only: bool = False
+) -> int:
+    """过滤（非交易日 / 今天未收盘）后落库，返回写入行数。
+
+    `fill_only=True` 时**只写库里还没有的日期**（回补用）：已有值来自全市场扫描那条路，
+    是精确值（实测 000001 2026-09-24 的 5日DDE 是 322197361.17），而按区间取回的历史行
+    来源**会取整**（同一天给 322200000.0）—— 拿取整值把精确值盖掉是净损失。
+    """
     if not parsed:
-        logger.warning("iFinD 没返回 %s 的 DDE 行", symbol)
-        return 0, truncated
+        logger.warning("iFinD 没返回 %s 的 DDE 行（%s）", symbol, note)
+        return 0
 
     # 两轮过滤，理由不同：
     # ① **非交易日**：来源会把周末也列出来（净流入为空、DDE 延续前一交易日的值），
@@ -112,15 +134,74 @@ def collect_stock_dde(code: str, days: int = DEFAULT_DAYS) -> tuple[int, bool]:
             for item in fresh
             if not (item["trade_date"] == today and before_close)
         ]
+        if fill_only:
+            have = set(
+                session.scalars(
+                    select(StockDde.trade_date).where(
+                        StockDde.code == symbol,
+                        StockDde.trade_date >= start,
+                        StockDde.trade_date <= end,
+                    )
+                )
+            )
+            settled = [item for item in settled if item["trade_date"] not in have]
         # upsert_fill 而不是 upsert：来源偶发给空值，而空值不该把已经采到的数抹掉
         written = upsert_fill(session, StockDde, settled)
 
     logger.info(
-        "个股 %s 的 DDE：取回 %d 行 → 去掉 %d 行非交易日、%s，写入 %d 行",
+        "个股 %s 的 DDE（%s）：取回 %d 行 → 去掉 %d 行非交易日、%s，写入 %d 行%s",
         symbol,
+        note,
         len(parsed),
         len(parsed) - len(fresh),
         "今天还没收盘（丢掉盘中快照）" if before_close else "无需丢弃今日行",
         written,
+        "（来源截断/抽样）" if truncated else "",
     )
-    return written, truncated
+    return written
+
+
+def collect_stock_dde(code: str, days: int = DEFAULT_DAYS) -> tuple[int, bool]:
+    """抓最近 `days` 个交易日并落库。返回（写入行数, 是否被来源截断）。"""
+    symbol = normalize_code(code)
+    answer, rows = IfindClient().stock_performance(_query(symbol, days))
+
+    # 被截断时必须说出去：只拿到最近 100 行，画出来的窗口比用户要的短
+    truncated = _truncated(answer)
+    if truncated:
+        logger.warning(
+            "个股 %s 的 DDE 被来源截断：请求 %d 个交易日，只回了 %d 行",
+            symbol,
+            days,
+            len(rows),
+        )
+    return (
+        _store(symbol, _parse(symbol, rows), truncated=truncated, note=f"近{days}个交易日"),
+        truncated,
+    )
+
+
+def collect_stock_dde_range(
+    code: str, start: date, end: date, *, fill_only: bool = True
+) -> tuple[int, bool]:
+    """抓**指定日期区间**并落库（回补历史用）。返回（写入行数, 是否被来源截断）。
+
+    `fill_only` 默认 True：**只补库里没有的日期**，不覆盖已有值（理由见 `_store`）。
+
+    ⚠️ 区间必须 ≤100 个日历天，否则来源会给「部分数据」—— 调用方要检查第二个返回值，
+    被截断时把区间切半重来（`scripts/backfill_dde.py` 就是这么做的）。
+    """
+    symbol = normalize_code(code)
+    answer, rows = IfindClient().stock_performance(range_query(symbol, start, end))
+    truncated = _truncated(answer)
+    return (
+        _store(
+            symbol,
+            _parse(symbol, rows),
+            truncated=truncated,
+            note=f"{start}~{end}",
+            fill_only=fill_only,
+        ),
+        truncated,
+    )
+
