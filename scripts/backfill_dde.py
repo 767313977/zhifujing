@@ -138,6 +138,29 @@ def _fetch_one(
     return written, calls
 
 
+def _ordered_codes() -> list[str]:
+    """要补的票的**优先级顺序**：自选股 → 日均成交额降序 → 其余。
+
+    为什么要排序：这个回补是**分几个周期慢慢做**的（配额与每日采集共享），所以前几轮
+    只覆盖一部分票。而 `load_codes()` 是按代码顺序给的 —— 那样第一轮补的全是 000/001 段，
+    你天天看的 600519 要等到最后一轮才有历史（2026-09-26 实测：首轮 750 只全落在 000/001）。
+    按「自选 + 流动性」排，先看的先有。
+    """
+    from app.jobs.collect_universe import load_codes
+    from app.models import StockUniverse, Watchlist
+
+    codes = load_codes()
+    with session_scope() as session:
+        watch = set(session.scalars(select(Watchlist.code)))
+        amounts = {
+            code: (amount or 0.0)
+            for code, amount in session.execute(
+                select(StockUniverse.code, StockUniverse.avg_amount)
+            ).all()
+        }
+    return sorted(codes, key=lambda code: (code not in watch, -amounts.get(code, 0.0)))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="按日期区间回补个股 DDE（花 iFinD 配额）")
     parser.add_argument("--days", type=int, default=60, help="往回补多少个交易日（默认 60）")
@@ -174,9 +197,7 @@ def main() -> int:
     if args.codes:
         codes = [c.strip().zfill(6) for c in args.codes.split(",") if c.strip()]
     else:
-        from app.jobs.collect_universe import load_codes
-
-        codes = load_codes()
+        codes = _ordered_codes()  # 自选 → 流动性降序（见函数说明）
     if args.limit:
         codes = codes[: args.limit]
     if not codes:
@@ -200,6 +221,7 @@ def main() -> int:
             bucket = "无" if n == 0 else ("<30" if n < 30 else ("30~90" if n < 90 else "≥90"))
             by_count[bucket] = by_count.get(bucket, 0) + 1
         print("  覆盖分布（行数）：", by_count)
+        print("  补的先后顺序（前 8 只）：", pending[:8])
         return 0
     if not pending:
         return 0
