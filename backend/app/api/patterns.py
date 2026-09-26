@@ -50,7 +50,7 @@ def hits(
     db: Session = Depends(get_db),
     trade_date: date | None = Query(None, alias="date"),
     min_score: float = Query(0.0, ge=0.0, le=100.0),
-    limit: int = Query(500, ge=1, le=3000),
+    limit: int = Query(50, ge=1, le=3000),
 ) -> list[PatternStockOut]:
     """某交易日的全部命中，**按股票归并**（一只票命中多个形态就是一行多标签）。"""
     target = trade_date or _latest_date(db)

@@ -259,7 +259,7 @@ export const api = {
   // --- 形态选股 ---
   patternCatalog: () => request<PatternMeta[]>('/patterns/catalog'),
 
-  patternHits: (date?: string | null, minScore = 0, limit = 500) =>
+  patternHits: (date?: string | null, minScore = 0, limit = 50) =>
     request<PatternStock[]>(
       withDate(`/patterns/hits?min_score=${minScore}&limit=${limit}`, date),
     ),
