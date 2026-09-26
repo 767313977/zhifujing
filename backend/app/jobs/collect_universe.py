@@ -21,14 +21,15 @@
 """
 
 import logging
+import re
 from collections.abc import Callable, Iterable
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import delete, func, select
 
 from app.config import Settings, get_settings
-from app.db import session_scope
-from app.models import StockUniverse
+from app.db import session_scope, upsert_many
+from app.models import StockBasic, StockUniverse
 from app.sources.ifind import IfindClient, IfindError, from_ths_symbol
 from app.sources.markdown_table import pick_float, pick_text
 
@@ -52,16 +53,84 @@ MAX_PREFIX_DEPTH = 2
 # 每天重建的话一个月要多花 400 次配额，不值。
 REBUILD_INTERVAL_DAYS = 7
 
-# 建池时一并取回来的两个指标，用于门槛过滤与页面展示
-_UNIVERSE_COLUMNS = "证券代码、证券简称、近20日日均成交额、总市值"
+# 建池时一并取回来的指标。**加列不增加调用次数**（同一个选股请求，多要几列而已），
+# 所以顺手把概况格要用的市值 / 自由流通股 / 预测市盈率也带上，落进 `stock_basic`。
+#
+# ⚠️ 「自由流通股」不要写成「自由流通股本」或「自由流通市值」：`pick` 是**子串**匹配，
+# 而返回的列名里同时有 自由流通股 / 自由流通市值 —— 写成后者会命中错的那一列。
+# 「预测市盈率」同理：返回的列名里还有 市盈率(pe) / 市盈率(pe,ttm)，
+# 只有「预测市盈率」是**动态市盈率**（同花顺口径，按分析师预测净利润算）。
+_UNIVERSE_COLUMNS = (
+    "证券代码、证券简称、近20日日均成交额、总市值、自由流通股、预测市盈率(pe,最新预测)"
+)
+
+# iFinD 的列名自带数据日，如 `总市值[20260924]`。注意**区间列**是
+# `区间日均成交额[20260828-20260924]`（带横杠），所以这里要求中括号里正好 8 位数字。
+_DATE_IN_COLUMN = re.compile(r"\[(\d{8})\]")
 
 
 def _prefix_query(prefix: str) -> str:
     return f"证券代码以{prefix}开头的A股股票的{_UNIVERSE_COLUMNS}"
 
 
+def _metric_asof(row: dict[str, str]) -> date | None:
+    """这行的指标是哪一天的：从**总市值那一列的列名**里解析（`总市值[20260924]`）。
+
+    只认总市值那一列、不扫全行 —— 行里还有 `预测市盈率(pe,最新预测)[20261231]`
+    这种**未来日期**，随便扫第一个会拿到 2026-12-31，那就错了。
+    """
+    column = next((name for name in row if "总市值" in name), None)
+    match = _DATE_IN_COLUMN.search(column or "")
+    if not match:
+        return None
+    try:
+        return datetime.strptime(match.group(1), "%Y%m%d").date()
+    except ValueError:
+        return None
+
+
+def _basics(raw: Iterable[dict]) -> list[dict]:
+    """市值 / 自由流通股 / 预测市盈率 → `stock_basic` 的行。
+
+    **用全量 `raw`，不是过滤后的池子。** 这份数据是「一次问全市场」就带回来的：池子只留
+    流动性达标的 3000 只，而池外那两千多只同样值得有名有市值 —— 打开池外个股页面时
+    好几个格子不用显示「—」。覆盖范围从 3000 扩到全 A 是**白拿的**（同一次调用）。
+
+    ⚠️ **池跨了也没关系**：这些字段是慢变量，有效期比 7 天的建池周期长得多；
+    真正会过期的是市值（随股价变），那个由读取侧按收盘价缩放（见 `api/stock.py`）。
+    """
+    rows: list[dict] = []
+    for row in raw:
+        symbol = pick_text(row, "证券代码", "股票代码")
+        if not symbol:
+            continue
+        item = {
+            "code": from_ths_symbol(symbol),
+            "name": pick_text(row, "证券简称", "股票简称"),
+            "total_mv": pick_float(row, "总市值"),
+            "free_float_shares": pick_float(row, "自由流通股"),
+            "pe_forecast": pick_float(row, "预测市盈率"),
+            "asof": _metric_asof(row),
+        }
+        if (
+            item["total_mv"] is None
+            and item["free_float_shares"] is None
+            and item["pe_forecast"] is None
+        ):
+            continue  # 三个都没值，别白写一行
+        rows.append(item)
+
+    # ⚠️ `upsert_many` 会把「这一批里带了的列」一律覆盖 —— 所以 name 为 None 的行会**抹掉**
+    # 已经存好的名字。iFinD 这个查询每行都有简称、正常不会缺；真缺了就整批不带 name，
+    # 交给另两个写入方（`sync_stock` / `scan_dde`）去补，不值得冒抹名字的风险。
+    if not all(row["name"] for row in rows):
+        for row in rows:
+            row.pop("name")
+    return rows
+
+
 class UniverseCollector:
-    """维护 `stock_universe`。"""
+    """维护 `stock_universe`（顺带把市值 / 股本 / 市盈率落进 `stock_basic`）。"""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
@@ -103,12 +172,16 @@ class UniverseCollector:
         with session_scope() as session:
             session.execute(delete(StockUniverse))
             session.add_all([StockUniverse(**row) for row in picked])
+            # 顺手把市值 / 自由流通股 / 预测市盈率落进 `stock_basic`（见 `_basics`）
+            saved = upsert_many(session, StockBasic, _basics(raw))
 
         logger.info(
-            "股票池已重建：全市场 %d 只 → 池子 %d 只（门槛 %.2f 亿）",
+            "股票池已重建：全市场 %d 只 → 池子 %d 只（门槛 %.2f 亿）；"
+            "顺带更新 %d 只的市值 / 股本 / 市盈率",
             len(raw),
             len(picked),
             self.settings.universe_min_amount / 1e8,
+            saved,
         )
         return {
             "status": "ok",

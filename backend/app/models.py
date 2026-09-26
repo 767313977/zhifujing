@@ -87,21 +87,21 @@ class IndexDaily(Base):
 
 
 class StockBasic(Base):
-    """个股基础信息 —— 实际上**就是一张「代码 → 名称」表**。
+    """个股基础信息 —— 名字，加上几个**慢变**的市值 / 股本 / 市盈率指标。
 
-    ⚠️ `industry` / `total_mv` / `float_mv` 三列**从来没有写入方**（2026-09-23 实测：
-    全表 2339 行、这三列一个非空都没有）。留着只是将来真要补行业/市值时有地方放，
-    别以为里面有值。
-
-    写入方**只有两个**，而且都只传 `{code, name}`：
+    ## 写入方（**三个**，各自只传自己那几列）
 
     1. `collect_daily.sync_stock`（自选股 / 单只补数据，也是形态扫描里 iFinD 兜底那条路）
+       —— 只传 `{code, name}`
     2. `jobs/scan_dde.py` 的 `collect_market` —— 2026-09-23 新增：DDE 抓取本来就一次
        问全市场、响应里**本来就有「股票简称」**，只是没人取。顺手存下来，是因为
        `stock_daily` 只覆盖流动性池 + 池外涨停股，池外那一千来只在日线里查不到名字，
-       DDE 推送与榜上就只剩代码（实测推出来每行都是「688084 688084」）。
+       DDE 推送与榜上就只剩代码（实测推出来每行都是「688084 688084」）
+    3. **`jobs/collect_universe.py` 建池时**（2026-09-26 新增）—— 传
+       `{code, name, total_mv, free_float_shares, pe_forecast, asof}`，走的是建池那个
+       选股接口（**加列不增加调用次数**）。覆盖全 A（约 5500 只），**不只池子里那 3000 只**
 
-    两个写入方都只带 `{code, name}`，而 `upsert`（merge）与 `upsert_many`（ON CONFLICT）
+    三个写入方都只带自己那几列，而 `upsert`（merge）与 `upsert_many`（ON CONFLICT）
     **都只更新传入的那些列** —— 实测：只传 name 不会抹掉别的列，只传 industry 也不会
     把 name 抹掉。副作用有两个，用之前知道就行：
 
@@ -109,6 +109,22 @@ class StockBasic(Base):
       不是「最后一次写入时间」（没有读它的地方，所以只是个语义坑）
     - 名字里有值之后就不再区分来源：自选股手工写的名字会被下一次 DDE 抓取覆盖成
       iFinD 的简称 —— 这是想要的（官方简称更准），但别指望用户自定义的名字能留住
+
+    ## 市值 / 换手 / 市盈率的口径（2026-09-26）
+
+    下面几个值是**按数据日的快照**，`asof` 就是那一天 —— 从 iFinD 返回的列名
+    `总市值[20260924]` 里解析出来的，不是猜的。⚠️ 而**建池七天才跑一次**，
+    所以读取时**必须按股价缩放到最新交易日**（见 `api/stock.py:_market_fields`），
+    直接显示会停在 asof 那天、最多差 7 天。
+
+    - `total_mv`：总市值（元）→ 读取时按股价缩放
+    - `free_float_shares`：自由流通股（**股**，不是手）。同花顺自己那套口径，
+      另外两个字段都由它推（**这两个不用缩放**，股本慢变）：
+      `实际换手率 = 成交量 / 自由流通股`、`自由流通市值 = 自由流通股 × 最新收盘价`
+    - `pe_forecast`：**预测市盈率** —— 同花顺口径的「动态市盈率」，按分析师预测净利润算。
+      iFinD 按年给三列（今年 / 明年 / 后年），`pick` 取插入序第一个 = 今年
+      → 读取时按股价缩放（PE 与股价成正比）
+    - `float_mv` / `industry`：**仍然没有写入方**，留空
     """
 
     __tablename__ = "stock_basic"
@@ -118,6 +134,9 @@ class StockBasic(Base):
     industry: Mapped[str | None] = mapped_column(String(128))
     total_mv: Mapped[float | None] = mapped_column(Float)
     float_mv: Mapped[float | None] = mapped_column(Float)
+    free_float_shares: Mapped[float | None] = mapped_column(Float)
+    pe_forecast: Mapped[float | None] = mapped_column(Float)
+    asof: Mapped[date | None] = mapped_column(Date)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
