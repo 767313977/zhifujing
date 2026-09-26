@@ -627,6 +627,12 @@ export interface StockProfile {
   /** 该股历史上过涨停池的日期 */
   limit_up_dates: string[]
   lhb_count: number
+  /** 近 5 个交易日涨跌幅（百分数）。日线不足 6 根时是 null */
+  pct_chg_5d: number | null
+  /** 总市值（元）。来源是股票池快照并按最新收盘价缩放过；池外票是 null */
+  total_mv: number | null
+  /** 上面那个市值取自哪一天（缩放基准日） */
+  total_mv_asof: string | null
 }
 
 export interface ReviewNote {

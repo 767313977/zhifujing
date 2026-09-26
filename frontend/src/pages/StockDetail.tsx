@@ -290,9 +290,23 @@ export default function StockDetail() {
           }
           delay={40}
         >
-          <div className="grid grid-cols-2 overflow-hidden md:grid-cols-5">
-            <Cell label="收盘价" value={fmtNum(latest?.close, 2)} tone={toneOf(latest?.pct_chg)} />
+          {/* 9 格 → md 以上 3×3 刚好整齐（用户 2026-09-26 给的字段清单）。
+              清单里的「实际换手率 / 自由流通市值 / 动态市盈率」全库没有任何数据源，
+              按用户「查不到就不加了」的要求**不做**；缺值的格子（池外票没有总市值快照、
+              次新股算不出五日涨跌幅）按站点惯例显示「—」，不吃掉格子。 */}
+          <div className="grid grid-cols-2 overflow-hidden md:grid-cols-3">
+            <Cell label="开盘价" value={fmtNum(latest?.open, 2)} />
+            <Cell
+              label="收盘价"
+              value={fmtNum(latest?.close, 2)}
+              tone={toneOf(latest?.pct_chg)}
+            />
             <Cell label="涨跌幅" value={fmtPct(latest?.pct_chg)} tone={toneOf(latest?.pct_chg)} />
+            <Cell
+              label="五日涨跌幅"
+              value={fmtPct(profile?.pct_chg_5d)}
+              tone={toneOf(profile?.pct_chg_5d)}
+            />
             <Cell label="成交量" value={`${fmtAmount(latest?.volume)}股`} />
             <Cell label="成交额" value={fmtAmount(latest?.amount)} />
             <Cell
@@ -300,13 +314,14 @@ export default function StockDetail() {
               value={`涨停 ${profile?.limit_up_dates.length ?? 0} 次`}
               sub={`龙虎榜 ${profile?.lhb_count ?? 0} 次`}
             />
+            <Cell label="换手率" value={fmtNum(latest?.turnover, 2, '%')} />
+            <Cell label="总市值" value={fmtAmount(profile?.total_mv)} />
           </div>
 
           {latest?.trade_date && (
             <div className="num border-t border-line-soft px-4 py-2 text-[13px] text-fg-dim">
               最新数据 {latest.trade_date}
-              <span className="mx-2">·</span>
-              开 {fmtNum(latest.open, 2)}
+              {/* 「开」不再重复列 —— 上面已经有一格「开盘价」 */}
               <span className="mx-2">·</span>
               高 {fmtNum(latest.high, 2)}
               <span className="mx-2">·</span>
