@@ -33,6 +33,7 @@ from app.models import (
     StockConcept,
     StockDaily,
     StockDde,
+    StockUniverse,
     TradeCalendar,
     Watchlist,
 )
@@ -94,16 +95,67 @@ def _resolve_name(session: Session, code: str) -> str | None:
     return None
 
 
+def _pct_chg_5d(recent: list[StockDaily]) -> float | None:
+    """近 5 个交易日涨跌幅（%）= 最新收盘 / 5 个交易日前的收盘 − 1。
+
+    要 **6 根**日线：第 1 根是最新、第 6 根才是 5 个交易日前的基准。不足 6 根
+    （次新股、刚缓存一天）就算不出来，返回 None —— 前端不显示这一格，**不填 0**。
+    """
+    if len(recent) < 6:
+        return None
+    base, tip = recent[5].close, recent[0].close
+    if not base or tip is None:
+        return None
+    return (tip / base - 1) * 100
+
+
+def _total_mv(
+    session: Session, code: str, latest: StockDaily | None
+) -> tuple[float | None, date | None]:
+    """总市值（元）与它的基准日。
+
+    **库里唯一有总市值的地方是 `stock_universe.total_mv`**（建池时 iFinD 选股接口返回的），
+    而池子是**按日快照** —— 直接拿来显示会停在建池那天（实测 2026-09-26 拿到的值是 09-18 的）。
+    总市值 = 股本 × 股价，股本在一两周内基本不变，所以先用「建池时能看到的最后收盘价」
+    反推出股本，再乘最新收盘价。**池外票没有这个快照**，返回 (None, None)。
+
+    基准日怎么取：建池多在后半夜跑，那时**当天收盘还没产生**，所以取「严格早于建池日」
+    的那根日线；若建池在 15:00 之后跑，当天收盘已可用，就取当天。
+    """
+    row = session.get(StockUniverse, code)
+    if row is None or not row.total_mv or latest is None or not latest.close:
+        return None, None
+
+    built = row.updated_at
+    last_visible = StockDaily.trade_date <= built.date()
+    if (built.hour, built.minute) < (15, 0):
+        last_visible = StockDaily.trade_date < built.date()
+    base = session.execute(
+        select(StockDaily.trade_date, StockDaily.close)
+        .where(StockDaily.code == code, last_visible)
+        .order_by(StockDaily.trade_date.desc())
+        .limit(1)
+    ).first()
+    if base is None or not base[1]:
+        return None, None
+    base_day, base_close = base
+    return row.total_mv / base_close * latest.close, base_day
+
+
 @router.get("/{code}", response_model=StockProfile)
 def profile(code: str, session: Session = Depends(get_db)) -> StockProfile:
     code = _code(code)
     item = session.get(Watchlist, code)
-    latest = session.scalars(
-        select(StockDaily)
-        .where(StockDaily.code == code)
-        .order_by(StockDaily.trade_date.desc())
-        .limit(1)
-    ).first()
+    # 取 6 根：第 1 根当 latest，第 6 根用来算「五日涨跌幅」（见 _pct_chg_5d）
+    recent = list(
+        session.scalars(
+            select(StockDaily)
+            .where(StockDaily.code == code)
+            .order_by(StockDaily.trade_date.desc())
+            .limit(6)
+        )
+    )
+    latest = recent[0] if recent else None
     count, first_date, last_date = session.execute(
         select(
             func.count(),
@@ -123,6 +175,7 @@ def profile(code: str, session: Session = Depends(get_db)) -> StockProfile:
     lhb_count = (
         session.scalar(select(func.count()).select_from(Lhb).where(Lhb.code == code)) or 0
     )
+    total_mv, total_mv_asof = _total_mv(session, code, latest)
 
     return StockProfile(
         code=code,
@@ -135,6 +188,9 @@ def profile(code: str, session: Session = Depends(get_db)) -> StockProfile:
         last_date=last_date,
         limit_up_dates=limit_up_dates,
         lhb_count=lhb_count,
+        pct_chg_5d=_pct_chg_5d(recent),
+        total_mv=total_mv,
+        total_mv_asof=total_mv_asof,
     )
 
 

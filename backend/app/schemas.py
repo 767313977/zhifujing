@@ -697,6 +697,14 @@ class StockProfile(BaseModel):
     # 该股历史上过涨停池的日期，便于和复盘关联
     limit_up_dates: list[date]
     lhb_count: int
+    #: 近 5 个交易日涨跌幅（百分数，如 6.31 表示 +6.31%）。
+    #: 日线不足 6 根（次新股 / 刚缓存）时是 None —— 前端不显示这一格，不填 0
+    pct_chg_5d: float | None = None
+    #: 总市值（元）。**来源是股票池快照 `stock_universe.total_mv`，并按最新收盘价缩放过**
+    #: —— 池子是按日建的快照，直接显示会停在建池那天。池外票没有这个快照，是 None
+    total_mv: float | None = None
+    #: 市值取自哪一天（缩放用的基准日），给前端做 tooltip。None = 没有市值
+    total_mv_asof: date | None = None
 
 
 class StockThemeItem(BaseModel):
