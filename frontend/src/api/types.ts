@@ -564,6 +564,9 @@ export interface StockDailyRow {
    *  **只有日 K 有值**；周 / 月 K 是 null —— 一根柱子是几天的合并，
    *  「这天涨停」在那个粒度上不成立 */
   is_limit_up: boolean | null
+  /** 这一天是不是**收盘跌停**（判据同 `is_limit_up`，方向相反：跌幅达限制且
+   *  收盘价 = 当日最低价）。同样只有日 K 有值 */
+  is_limit_down: boolean | null
 }
 
 /**

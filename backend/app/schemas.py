@@ -659,6 +659,8 @@ class StockDailyRow(ApiModel):
     #: **只有日 K 有值**；周 / 月 K 是 None —— 一根柱子是几天的合并，
     #: 「这天涨停」在那个粒度上不成立（周涨幅够不到 10% 不代表那一周没有涨停日）。
     is_limit_up: bool | None = None
+    #: 这一天是不是跌停（同上，判据见 `is_limit_down`）。同样只有日 K 有值
+    is_limit_down: bool | None = None
 
 
 class StockDdeRow(ApiModel):

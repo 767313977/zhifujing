@@ -129,6 +129,23 @@ const LIMIT_UP_ITEM_STYLE = {
 } as const
 
 /**
+ * 跌停那天的蜡烛：**整根实心绿**（用户 2026-09-26 要的，与涨停那套完全对称）。
+ *
+ * 绿而不是站点跌色（青 `#45bfc4`）—— 两个理由：一是标记本来就该与普通柱**分色**，
+ * 涨停用金也是这个道理；二是青还是绿**本来就是两回事**，全站「红涨青跌」的文案说的
+ * 是青，这根绿蜡烛是例外，不会读成「跌得更多」。
+ *
+ * 同上，四个键全给，否则「阳线空心」的 `transparent` 会漏过来 —— 而一字跌停
+ * （开 = 收 = 最低）在 ECharts 眼里正是阳线，漏了就会画成一根空心柱。
+ */
+const LIMIT_DOWN_ITEM_STYLE = {
+  color: CHART.limitDown,
+  color0: CHART.limitDown,
+  borderColor: CHART.limitDown,
+  borderColor0: CHART.limitDown,
+} as const
+
+/**
  * 图上的一根 K。
  *
  * 三个周期的来源不同（日线读库、周/月由后端重采样），但画法完全一样，
@@ -154,6 +171,8 @@ export interface KLineBar {
   pct_chg: number | null
   /** 收盘涨停（只有日线会是 true；周/月恒为 false，见 `is_limit_up` 的说明） */
   limitUp: boolean
+  /** 收盘跌停（同上，只有日线会是 true） */
+  limitDown: boolean
 }
 
 /**
@@ -179,6 +198,7 @@ export function dailyBars(
     pct_chg: row.pct_chg,
     // 周/月由后端重采样，那边给的是 null（粒度上不成立）
     limitUp: row.is_limit_up === true,
+    limitDown: row.is_limit_down === true,
   }))
 }
 
@@ -221,7 +241,8 @@ interface Props {
  * 图区比卡片沉一档、副图带均量线。配色直接吃站点令牌（`CHART` / `index.css`），
  * 不另立一套 —— 当天全站配色也换成了同花顺，两边本来就是同一组值。
  *
- * **涨停那天的蜡烛整根实心描金**（日 K 才有，判据在后端，见 `LIMIT_UP_ITEM_STYLE`）。
+ * **涨停那天的蜡烛整根实心描金、跌停那天的整根实心绿**（日 K 才有，判据在后端，
+ * 见 `LIMIT_UP_ITEM_STYLE` / `LIMIT_DOWN_ITEM_STYLE`）。
  *
  * 从 `StockDetail.tsx` 里抽出来而不是复制一份：这个图有三处容易写错的地方
  * —— A 股的红涨青跌覆盖（ECharts 默认是欧美惯例）、主图与副图的轴联动、
@@ -236,11 +257,14 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
     const dates = bars.map((bar) => bar.label)
     const closes = bars.map((bar) => bar.close)
     const rawVolumes = bars.map((bar) => bar.volume)
-    // ECharts 蜡烛图的数据顺序是 [开, 收, 低, 高]；涨停那天的整根实心描金，
-    // 靠 data-item 上挂 itemStyle 覆盖序列级的画法（见 LIMIT_UP_ITEM_STYLE）
+    // ECharts 蜡烛图的数据顺序是 [开, 收, 低, 高]；涨跌停那天的整根实心换色，
+    // 靠 data-item 上挂 itemStyle 覆盖序列级的画法（见 LIMIT_UP_ITEM_STYLE /
+    // LIMIT_DOWN_ITEM_STYLE）。两者互斥，先判涨停
     const candles = bars.map((bar) => {
       const value = [bar.open, bar.close, bar.low, bar.high]
-      return bar.limitUp ? { value, itemStyle: LIMIT_UP_ITEM_STYLE } : value
+      if (bar.limitUp) return { value, itemStyle: LIMIT_UP_ITEM_STYLE }
+      if (bar.limitDown) return { value, itemStyle: LIMIT_DOWN_ITEM_STYLE }
+      return value
     })
     const volumes = bars.map((bar) => ({
       value: bar.volume,
