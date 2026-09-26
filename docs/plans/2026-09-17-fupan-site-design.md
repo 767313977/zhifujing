@@ -7027,6 +7027,67 @@ K 线的画法本身保留：阳线 `color: 'transparent'` 做空心 + 红描边
 本周期（09-17 起）已用 5470 / 7000，**剩 1530** → 这一轮最多补约 730 只（闸门 800），
 其余等 10-17 之后的下一个周期接着跑（脚本可续跑）。
 
+### 8.68.18 每个交易日补「命中前 50 只」的 DDE（2026-09-26）
+
+8.68.17 解决的是「**慢慢把全市场补全**」（按周期排队、几千只）。但真正天天要看的是
+**当天形态选股命中的那几十只** —— 等全市场轮完，页面上这几只的 DDE 栏还是短的。
+所以加一条每天跑的：**形态扫描出结果后，把当天命中列表里评分最高的 50 只的 DDE
+补到最近 60 个交易日**。
+
+#### 选票口径：与页面「命中列表」同一句 SQL
+
+命中按股票归并（一只票可能命中多个形态）、取最高分、按分数降序取前 N：
+
+```sql
+SELECT code FROM pattern_hit WHERE trade_date = ? GROUP BY code
+ORDER BY MAX(score) DESC LIMIT 50
+```
+
+即 `collect_dde.top_hit_codes(day, limit)`，与 `/api/patterns/hits`（`patterns.py`
+里 `PatternHit.score.desc()` + 按 code 归并）**同一口径**，否则「页面上的票」和
+「补了 DDE 的票」对不上。
+
+⚠️ **并列分数的票之间顺序是任意的**（SQL 没给 tie-break），别拿「第 47 位是谁」
+去核对两边；**成本只与只数有关**，顺序不影响。
+
+#### 成本：50 次调用/交易日 ≈ 1100 次/月 ≈ 一个周期额度的 16%
+
+60 个交易日 = 84 个日历天，一段装得下（同 8.68.17），所以**一只票 1 次调用**。
+每天 50 次 × 约 22 个交易日 ≈ **1100 次/月**。不便宜，所以：
+
+- 挂在 `_scan_dde` **之后**（全市场扫描那条路才是「今天全池」的地基，先跑完它）；
+- **跟着 `_scan_dde` 的让路阈值走**：`quota_level >= QuotaLevel.PAUSE_KLINE`（用量 80%）
+  时直接跳过 —— 配额紧张先停这条增强项，别挤基础采集；
+- 由 `Settings.dde_hit_top_n`（50）/ `dde_hit_days`（60）控制，调大就是更贵。
+
+#### 幂等：先查覆盖再决定发不发请求
+
+`backfill_top_hits` 先 `dde_coverage(codes, start, end)` 数每只票窗口内已有多少行，
+**够 90%（`FILL_RATIO`）的直接不发请求**；`collect_stock_dde_window` 内部落库仍是
+`fill_only`（只写库里没有的日期，见 8.68.17 的取整坑）。所以**重启重跑不重复花钱**。
+
+#### 实测（本机，`top_hit_codes(2026-09-24, 50)`）
+
+| 项 | 结果 |
+| --- | --- |
+| 与 `/api/patterns/hits?date=2026-09-24&limit=50` 对比 | **集合完全一致**（各 50 只），仅并列分数处顺序不同 |
+| 前 3 只首跑 | `pending=2, written=116, calls=2`（第 3 只已够 90%，没发请求） |
+| 同一批重跑 | `pending=0, calls=0` —— 幂等 ✓ |
+| 配额用量 | 776 → 774 → 774（重跑不再扣） |
+| 覆盖 | 从 <54 行变成 60 行 |
+
+#### 代码落点
+
+| 文件 | 内容 |
+| --- | --- |
+| `app/jobs/collect_dde.py` | `recent_trade_days` / `dde_coverage` / `dde_segments` / `collect_stock_dde_window` / `top_hit_codes` / `backfill_top_hits`；常量 `SEGMENT_DAYS=90`、`MIN_SEGMENT_DAYS=20`、`FILL_RATIO=0.9` |
+| `app/jobs/scheduler.py` | `_backfill_hit_dde`，在 `_run_daily` 里 `_scan_dde` 之后调用 |
+| `app/config.py` | `dde_hit_top_n: int = 50`、`dde_hit_days: int = 60` |
+| `scripts/backfill_dde.py` | 重构为调用上面那几个共用函数，CLI/优先级/闸门留脚本 |
+
+分段、覆盖、按窗抓一只票的实现**只有一份**（在 `collect_dde`），脚本与每日任务共用 ——
+避免 8.68.17 里提到过的那类「两套口径漂移」问题（形态回测上踩过）。
+
 ---
 
 ## 9. 待确认事项
