@@ -700,10 +700,18 @@ class StockProfile(BaseModel):
     #: 近 5 个交易日涨跌幅（百分数，如 6.31 表示 +6.31%）。
     #: 日线不足 6 根（次新股 / 刚缓存）时是 None —— 前端不显示这一格，不填 0
     pct_chg_5d: float | None = None
-    #: 总市值（元）。**来源是股票池快照 `stock_universe.total_mv`，并按最新收盘价缩放过**
-    #: —— 池子是按日建的快照，直接显示会停在建池那天。池外票没有这个快照，是 None
+    # 下面四个来自 `stock_basic`（建池时随选股接口取回，覆盖全 A，见 8.68.13）。
+    # ⚠️ 市值与市盈率是**按 asof 那天的价格算的快照**，读取时已按最新收盘价缩放；
+    #    自由流通市值 / 实际换手率只用股本（慢变）+ 最新数据推，不需要缩放。
+    #: 总市值（元）
     total_mv: float | None = None
-    #: 市值取自哪一天（缩放用的基准日），给前端做 tooltip。None = 没有市值
+    #: 自由流通市值（元）= 自由流通股 × 最新收盘价
+    free_float_mv: float | None = None
+    #: 实际换手率（百分数）= 成交量 ÷ 自由流通股。口径与 iFinD 自己返回的逐位相同
+    actual_turnover: float | None = None
+    #: 动态市盈率 = iFinD「预测市盈率」（按分析师预测净利润算，同花顺口径）
+    pe_forecast: float | None = None
+    #: 上面那几个指标的数据日（缩放基准日）。None = 没有这些数据
     total_mv_asof: date | None = None
 
 

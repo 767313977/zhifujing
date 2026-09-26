@@ -33,7 +33,6 @@ from app.models import (
     StockConcept,
     StockDaily,
     StockDde,
-    StockUniverse,
     TradeCalendar,
     Watchlist,
 )
@@ -109,37 +108,63 @@ def _pct_chg_5d(recent: list[StockDaily]) -> float | None:
     return (tip / base - 1) * 100
 
 
-def _total_mv(
-    session: Session, code: str, latest: StockDaily | None
-) -> tuple[float | None, date | None]:
-    """总市值（元）与它的基准日。
+# 概况格那几个市值 / 换手 / 市盈率字段的缺省值（还没跑过建池、或名单里没这只票）
+_NO_MARKET = {
+    "total_mv": None,
+    "pe_forecast": None,
+    "free_float_mv": None,
+    "actual_turnover": None,
+    "asof": None,
+}
 
-    **库里唯一有总市值的地方是 `stock_universe.total_mv`**（建池时 iFinD 选股接口返回的），
-    而池子是**按日快照** —— 直接拿来显示会停在建池那天（实测 2026-09-26 拿到的值是 09-18 的）。
-    总市值 = 股本 × 股价，股本在一两周内基本不变，所以先用「建池时能看到的最后收盘价」
-    反推出股本，再乘最新收盘价。**池外票没有这个快照**，返回 (None, None)。
 
-    基准日怎么取：建池多在后半夜跑，那时**当天收盘还没产生**，所以取「严格早于建池日」
-    的那根日线；若建池在 15:00 之后跑，当天收盘已可用，就取当天。
+def _market_fields(session: Session, code: str, latest: StockDaily | None) -> dict:
+    """总市值 / 自由流通市值 / 实际换手率 / 动态市盈率（概况格要用的那几格）。
+
+    数据来自 `stock_basic` —— 建池时随选股接口一并取回，**覆盖全 A、不只池内 3000 只**
+    （见 `collect_universe._basics`）。没跑过建池、或名单里没有这只票，就全给 None
+    （前端显示「—」，不填 0）。
+
+    ⚠️ **三个量的口径不同，不能一起缩放**：
+
+    - `total_mv` / `pe_forecast` 是按 `asof` 那天的价格算的 → 必须乘 `最新收盘 / asof 收盘`，
+      否则显示的是最多 7 天前的市值（建池七天才跑一次）
+    - `free_float_shares` 是**股数**、慢变 → 直接乘最新收盘价得自由流通市值，**不缩放**
+    - `实际换手率 = 成交量 / 自由流通股`。这个口径与 iFinD 自己返回的「实际换手率」
+      **逐位相同**（603773 实测 27.06775131969144），所以不另存一份
     """
-    row = session.get(StockUniverse, code)
-    if row is None or not row.total_mv or latest is None or not latest.close:
-        return None, None
+    basic = session.get(StockBasic, code)
+    if basic is None or latest is None or not latest.close:
+        return dict(_NO_MARKET)
 
-    built = row.updated_at
-    last_visible = StockDaily.trade_date <= built.date()
-    if (built.hour, built.minute) < (15, 0):
-        last_visible = StockDaily.trade_date < built.date()
-    base = session.execute(
-        select(StockDaily.trade_date, StockDaily.close)
-        .where(StockDaily.code == code, last_visible)
-        .order_by(StockDaily.trade_date.desc())
-        .limit(1)
-    ).first()
-    if base is None or not base[1]:
-        return None, None
-    base_day, base_close = base
-    return row.total_mv / base_close * latest.close, base_day
+    # 缩放系数：asof 那天收盘 → 最新收盘。同一天就是 1
+    ratio: float | None = None
+    if basic.asof is not None:
+        if basic.asof == latest.trade_date:
+            ratio = 1.0
+        else:
+            base_close = session.scalar(
+                select(StockDaily.close).where(
+                    StockDaily.code == code, StockDaily.trade_date == basic.asof
+                )
+            )
+            # 基准日收盘拿不到就**不给市值**：宁可显示「—」，也不显示一个几周前的旧值
+            ratio = latest.close / base_close if base_close else None
+
+    def scaled(value: float | None) -> float | None:
+        """随股价变的量（市值、市盈率）才缩放，股本类的量不缩。"""
+        if value is None or ratio is None:
+            return None
+        return value * ratio
+
+    shares = basic.free_float_shares
+    return {
+        "total_mv": scaled(basic.total_mv),
+        "pe_forecast": scaled(basic.pe_forecast),
+        "free_float_mv": shares * latest.close if shares else None,
+        "actual_turnover": latest.volume / shares * 100 if shares and latest.volume else None,
+        "asof": basic.asof,
+    }
 
 
 @router.get("/{code}", response_model=StockProfile)
@@ -175,7 +200,7 @@ def profile(code: str, session: Session = Depends(get_db)) -> StockProfile:
     lhb_count = (
         session.scalar(select(func.count()).select_from(Lhb).where(Lhb.code == code)) or 0
     )
-    total_mv, total_mv_asof = _total_mv(session, code, latest)
+    market = _market_fields(session, code, latest)
 
     return StockProfile(
         code=code,
@@ -189,8 +214,11 @@ def profile(code: str, session: Session = Depends(get_db)) -> StockProfile:
         limit_up_dates=limit_up_dates,
         lhb_count=lhb_count,
         pct_chg_5d=_pct_chg_5d(recent),
-        total_mv=total_mv,
-        total_mv_asof=total_mv_asof,
+        total_mv=market["total_mv"],
+        total_mv_asof=market["asof"],
+        free_float_mv=market["free_float_mv"],
+        actual_turnover=market["actual_turnover"],
+        pe_forecast=market["pe_forecast"],
     )
 
 
