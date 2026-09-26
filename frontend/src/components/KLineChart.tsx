@@ -9,15 +9,19 @@ const MA_WINDOWS = [5, 10, 20]
 const MA_COLORS = ['#b8944f', '#6f93c4', '#a583c4']
 
 /**
- * 副图均量线（成交量自己的均线），窗口与配色都按同花顺默认：MAVOL5 黄、MAVOL10 品红。
+ * 副图均量线（成交量自己的均线）。
  *
- * ⚠️ 这两个色**不在 CHART 里**，因为站点的令牌体系里没有它们的语义（既不是涨跌、
- * 也不是强调色）。同花顺那张截图里能确认的只有那条黄的（x 覆盖 2165/2469 列），
- * 品红是按同花顺默认补的 —— 觉得刺眼就把它换掉或删掉这一条，不影响别处。
+ * 配色**复用主图均线的色**（MAVOL5 = MA5 的金、MAVOL10 = MA10 的蓝）—— 同一个颜色就
+ * 代表「同一个周期的均线」，副图这两条只是量的版本。
+ *
+ * ⚠️ 原来用的是同花顺默认的纯黄 `#ffff00` / 品红 `#ff00ff`，2026-09-26 改掉，原因两条：
+ * 1. **它俩是整张图里最扎眼的元素**（纯黄在深底上比涨跌色还亮），把注意力从 K 线上抢走；
+ * 2. **品红那条在依据上就不成立** —— 用户给的同花顺截图里只有一条黄线（x 覆盖
+ *    2165/2469 列，据此才认出来的），品红是按「同花顺默认」补的，没有实据。
  */
 const VOL_MA = [
-  { window: 5, color: '#ffff00' },
-  { window: 10, color: '#ff00ff' },
+  { window: 5, color: MA_COLORS[0] },
+  { window: 10, color: MA_COLORS[1] },
 ]
 
 /** 同花顺的网格是淡实线，不是本站其它图那种虚线。 */
@@ -231,6 +235,14 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
             borderColor: CHART.up,
             borderColor0: CHART.down,
           },
+          // 蜡烛体宽。ECharts 默认是 `bandWidth / 2`（源码 candlestickLayout：
+          // `mathMax(mathMin(bandWidth / 2, barMaxWidth), barMinWidth)`，两个边界默认
+          // null / 1），而边框是 1px —— 所以**体宽掉到 2px 以下时空心就被边框吃满、
+          // 看起来跟实心一样**。日线 250 根时默认只有 3px 上下（内部约 1px，几乎看不出）。
+          // 提到 70% 后体宽约 4.2px、内部 2.2px，日线也认得出空心，且间隙更小、
+          // 更接近同花顺那种密排观感。
+          // ⚠️ 窄窗口下仍看不出（bandWidth 本身不足 2px，物理限制，调这个没用）。
+          barWidth: '70%',
           // 关键位画成水平虚线。挂在蜡烛序列的 markLine 上，这样它自动跟随主图
           // 的坐标轴，价格尺度一变就跟着变，不用自己算位置
           markLine: marks.length
