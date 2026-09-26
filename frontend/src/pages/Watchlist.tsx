@@ -115,7 +115,7 @@ export default function WatchlistPage() {
       <div className="space-y-4">
         <Panel
           title="加入自选"
-          meta={<span className="num">支持 600519 / 600519.SH / sh600519</span>}
+          meta={<span className="num">支持 600519 / 贵州茅台 / gzmt</span>}
           delay={40}
         >
           <div className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row">
@@ -125,7 +125,7 @@ export default function WatchlistPage() {
               onKeyDown={(event) => {
                 if (event.key === 'Enter') void add()
               }}
-              placeholder="输入 6 位股票代码"
+              placeholder="输入代码 / 名称 / 拼音首字母"
               className="num min-w-0 flex-1 border border-line bg-ink-850 px-3 py-2 text-[14px] text-fg outline-none placeholder:text-fg-dim focus:border-fg-dim"
             />
             <button
@@ -152,7 +152,7 @@ export default function WatchlistPage() {
         >
           {rows.length === 0 ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
-              {loading ? '加载中…' : '自选池是空的。可以在上方按代码加入'}
+              {loading ? '加载中…' : '自选池是空的。可以在上方按代码、名称或拼音首字母加入'}
             </div>
           ) : (
             <div className="overflow-auto">
