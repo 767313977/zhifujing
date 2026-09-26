@@ -3,7 +3,7 @@ import type { StockDailyRow } from '../api/types'
 import EChart from './EChart'
 import type { ChartOption } from './EChart'
 import { AXIS_LABEL, CHART, TOOLTIP } from '../lib/chart'
-import { fmtAmount, fmtShortDate } from '../lib/format'
+import { fmtAmount, fmtPct, fmtShortDate } from '../lib/format'
 
 const MA_WINDOWS = [5, 10, 20]
 const MA_COLORS = ['#b8944f', '#6f93c4', '#a583c4']
@@ -25,12 +25,82 @@ const VOL_MA = [
 ]
 
 /**
- * 成交量在提示框里的格式：亿 / 万（`fmtAmount`），与纵轴标签同一口径。
- *
- * `valueFormatter` 收到的是 ECharts 的 `OptionDataValue`（可能是字符串 / 日期 / 数组），
- * 这里只认数字，其余一律回落到 `fmtAmount(null)` 的「—」—— 成交量本来就是数字或 null。
+ * 星期几。日期串补 `T00:00:00` 再取**本地**星期 —— 直接 `new Date('2026-09-24')`
+ * 会按 UTC 解析，东八区在凌晨那几个小时会算错一天。
  */
-const VOLUME_TIP = (value: unknown) => fmtAmount(typeof value === 'number' ? value : null)
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+
+function weekdayOf(date: string): string {
+  const day = new Date(`${date}T00:00:00`)
+  return Number.isNaN(day.getTime()) ? '' : WEEKDAYS[day.getDay()]
+}
+
+/**
+ * tooltip 里的一行：左边中文标签（次文字色）、右边数值（等宽、右对齐）。
+ *
+ * 用 `table` 而不是 flex：tooltip 是 ECharts 注入的裸 HTML 片段，表格自带列对齐，
+ * 不用再依赖样式表 —— 而两列**在不同行之间必须严格对齐**，否则数值会参差。
+ */
+function tipRow(label: string, value: string, color: string = CHART.fg): string {
+  return (
+    `<tr><td style="padding:1px 10px 1px 0;color:${CHART.fgMuted}">${label}</td>` +
+    `<td style="padding:1px 0;text-align:right;font-variant-numeric:tabular-nums;` +
+    `color:${color}">${value}</td></tr>`
+  )
+}
+
+/**
+ * K 线 tooltip 的内容，按**同花顺**那张图的样子排（用户 2026-09-26 要求）。
+ *
+ * 原先交给 ECharts 自动罗列所有序列，结果是：标题用英文键名（`open` / `close` /
+ * `lowest` / `highest`）、成交量和 K 线分成两段各带一个日期、MA 值也堆在里面 ——
+ * 一屏十几行。现在收成「一行一天」的字段表，字段与同花顺对齐：
+ * 开盘价 / 最高价 / 最低价 / 收盘价 / 涨幅 / 振幅 / 成交量 / 成交额 / 换手 / 开盘涨幅。
+ *
+ * ⚠️ **查不到的就不显示**（用户明确要求）。两类情况整行不出现，而不是填 0 或「—」：
+ * - `盘后量 / 盘后额`：我们没有任何数据源，直接不做
+ * - 窗口第一根没有前一根收盘价 → `振幅` 与 `开盘涨幅` 算不出来
+ */
+function tipHtml(bars: KLineBar[], index: number): string {
+  const bar = bars[index]
+  if (!bar) return ''
+  const prev = bars[index - 1]?.close ?? null
+  const rows: string[] = []
+  const add = (label: string, value: string | null, color?: string) => {
+    if (value !== null) rows.push(tipRow(label, value, color))
+  }
+  /** 价格：两位小数；缺值给 null（= 这一行不显示） */
+  const price = (value: number | null) => (value == null ? null : value.toFixed(2))
+
+  add('开盘价', price(bar.open))
+  add('最高价', price(bar.high))
+  add('最低价', price(bar.low))
+  add('收盘价', price(bar.close))
+  add(
+    '涨幅',
+    bar.pct_chg == null ? null : fmtPct(bar.pct_chg),
+    (bar.pct_chg ?? 0) >= 0 ? CHART.up : CHART.down,
+  )
+  add(
+    '振幅',
+    prev && prev > 0 && bar.high != null && bar.low != null
+      ? `${(((bar.high - bar.low) / prev) * 100).toFixed(2)}%`
+      : null,
+  )
+  add('成交量', bar.volume == null ? null : `${fmtAmount(bar.volume)}股`)
+  add('成交额', bar.amount == null ? null : fmtAmount(bar.amount))
+  add('换手', bar.turnover == null ? null : `${bar.turnover.toFixed(2)}%`)
+  add(
+    '开盘涨幅',
+    prev && prev > 0 && bar.open != null ? fmtPct((bar.open / prev - 1) * 100) : null,
+    bar.open != null && prev != null && bar.open >= prev ? CHART.up : CHART.down,
+  )
+
+  return (
+    `<div>${bar.date} ${weekdayOf(bar.date)}</div>` +
+    `<table style="border-collapse:collapse;margin-top:2px">${rows.join('')}</table>`
+  )
+}
 
 /** 同花顺的网格是淡实线，不是本站其它图那种虚线。 */
 const THS_SPLIT_LINE = {
@@ -66,12 +136,19 @@ const LIMIT_UP_ITEM_STYLE = {
  * `label` 是**已经格式化好的**横轴文字（日线 `MM-DD`，周/月 `YY-MM-DD`）。
  */
 export interface KLineBar {
+  /** 原始交易日 `YYYY-MM-DD`。**只有它带年份** —— `label` 是给横轴用的短标签，
+   *  日线只有 `MM-DD`，拿它在 tooltip 里写日期会缺年份（跨年时认不出来） */
+  date: string
   label: string
   open: number | null
   high: number | null
   low: number | null
   close: number | null
   volume: number | null
+  /** 成交额（元）。周/月是组内求和 */
+  amount: number | null
+  /** 换手率（百分数）。**只有日线有** —— 周/月是几天合并，比率不可加 */
+  turnover: number | null
   /** 决定成交量柱的颜色。周/月的**第一根**没有前一根可比，是 null
    *  （图上退回按「收 - 开」染色，与日线缺涨跌幅时的行为一致） */
   pct_chg: number | null
@@ -90,12 +167,15 @@ export function dailyBars(
   { withYear = false }: { withYear?: boolean } = {},
 ): KLineBar[] {
   return rows.map((row) => ({
+    date: row.trade_date,
     label: withYear ? row.trade_date.slice(2) : fmtShortDate(row.trade_date),
     open: row.open,
     high: row.high,
     low: row.low,
     close: row.close,
     volume: row.volume,
+    amount: row.amount,
+    turnover: row.turnover,
     pct_chg: row.pct_chg,
     // 周/月由后端重采样，那边给的是 null（粒度上不成立）
     limitUp: row.is_limit_up === true,
@@ -219,7 +299,18 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
         textStyle: { color: CHART.fgMuted, fontSize: 12 },
         data: legend,
       },
-      tooltip: { ...TOOLTIP, trigger: 'axis', axisPointer: { type: 'cross' } },
+      tooltip: {
+        ...TOOLTIP,
+        trigger: 'axis',
+        axisPointer: { type: 'cross' },
+        // 自己排版（同花顺那种「一行一天」的字段表），不用 ECharts 的自动列表 ——
+        // 见 tipHtml 的说明。两个 grid 共用一个 tooltip，取同一根柱子的下标即可
+        formatter: (params) => {
+          const list = Array.isArray(params) ? params : [params]
+          const index = list[0]?.dataIndex
+          return typeof index === 'number' ? tipHtml(bars, index) : ''
+        },
+      },
       axisPointer: { link: [{ xAxisIndex: 'all' }] },
       xAxis: [
         {
@@ -343,9 +434,6 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
           xAxisIndex: 1,
           yAxisIndex: 1,
           barMaxWidth: 8,
-          // 提示里的成交量也走亿/万 —— 否则轴上是「10.00亿股」、鼠标一放又是裸数字，
-          // 同一个面板两套口径。价格那几条序列不动（股票价格不该被 亿/万 缩写）
-          tooltip: { valueFormatter: VOLUME_TIP },
         },
         // 均量线排在建量柱之后 —— 后画的在上层，否则细线会被柱子盖掉
         ...VOL_MA.map((ma) => ({
@@ -358,8 +446,6 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
           symbol: 'none' as const,
           lineStyle: { width: 1, color: ma.color },
           itemStyle: { color: ma.color },
-          // 均量线是成交量的均值，单位同样是股
-          tooltip: { valueFormatter: VOLUME_TIP },
         })),
       ],
     }

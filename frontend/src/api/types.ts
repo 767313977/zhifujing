@@ -557,6 +557,9 @@ export interface StockDailyRow {
   pct_chg: number | null
   volume: number | null
   amount: number | null
+  /** 换手率（百分数，如 2.18 表示 2.18%）。**只有日 K 有值** ——
+   *  周/月是几天合并，比率不能相加、均值也不成立，那边是 null */
+  turnover: number | null
   /** 这一天是不是**收盘涨停**（按板块限幅判定，后端 `services/limit_rules.py`）。
    *  **只有日 K 有值**；周 / 月 K 是 null —— 一根柱子是几天的合并，
    *  「这天涨停」在那个粒度上不成立 */
