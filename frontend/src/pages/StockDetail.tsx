@@ -290,11 +290,12 @@ export default function StockDetail() {
           }
           delay={40}
         >
-          {/* 9 格 → md 以上 3×3 刚好整齐（用户 2026-09-26 给的字段清单）。
-              清单里的「实际换手率 / 自由流通市值 / 动态市盈率」全库没有任何数据源，
-              按用户「查不到就不加了」的要求**不做**；缺值的格子（池外票没有总市值快照、
-              次新股算不出五日涨跌幅）按站点惯例显示「—」，不吃掉格子。 */}
-          <div className="grid grid-cols-2 overflow-hidden md:grid-cols-3">
+          {/* 12 格 = 用户 2026-09-26 给的完整清单（「实际管收率」「自留流通市值」按
+              实际换手率 / 自由流通市值理解）。**全部有数据源了** —— 市值 / 自由流通股 /
+              预测市盈率由建池时那次选股接口一并取回（加列不加调用次数，见设计文档 8.68.13）。
+              12 能被 2/3/4 整除，所以各档列数下都不会剩半行空格。
+              缺值的格子（还没跑过建池、或不在全 A 名单里）按站点惯例显示「—」。 */}
+          <div className="grid grid-cols-2 overflow-hidden md:grid-cols-3 xl:grid-cols-4">
             <Cell label="开盘价" value={fmtNum(latest?.open, 2)} />
             <Cell
               label="收盘价"
@@ -315,7 +316,10 @@ export default function StockDetail() {
               sub={`龙虎榜 ${profile?.lhb_count ?? 0} 次`}
             />
             <Cell label="换手率" value={fmtNum(latest?.turnover, 2, '%')} />
+            <Cell label="实际换手率" value={fmtNum(profile?.actual_turnover, 2, '%')} />
             <Cell label="总市值" value={fmtAmount(profile?.total_mv)} />
+            <Cell label="自由流通市值" value={fmtAmount(profile?.free_float_mv)} />
+            <Cell label="动态市盈率" value={fmtNum(profile?.pe_forecast, 2)} />
           </div>
 
           {latest?.trade_date && (

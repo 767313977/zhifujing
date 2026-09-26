@@ -629,9 +629,17 @@ export interface StockProfile {
   lhb_count: number
   /** 近 5 个交易日涨跌幅（百分数）。日线不足 6 根时是 null */
   pct_chg_5d: number | null
-  /** 总市值（元）。来源是股票池快照并按最新收盘价缩放过；池外票是 null */
+  // 下面四个来自后端 `stock_basic`（建池时随选股接口取回，覆盖全 A）。
+  // 市值与市盈率已按最新收盘价缩放，不是快照那天的旧值。
+  /** 总市值（元） */
   total_mv: number | null
-  /** 上面那个市值取自哪一天（缩放基准日） */
+  /** 自由流通市值（元） */
+  free_float_mv: number | null
+  /** 实际换手率（百分数）= 成交量 ÷ 自由流通股 */
+  actual_turnover: number | null
+  /** 动态市盈率（预测市盈率，同花顺口径） */
+  pe_forecast: number | null
+  /** 上面那几个指标的数据日（缩放基准日） */
   total_mv_asof: string | null
 }
 
