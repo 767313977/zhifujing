@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { StockDde, StockDdeRow, StockProfile, StockThemes } from '../api/types'
+import type { FqMode, StockDde, StockDdeRow, StockProfile, StockThemes } from '../api/types'
+import AdjustMenu from '../components/AdjustMenu'
 import Alert from '../components/Alert'
 import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
@@ -18,7 +19,7 @@ import {
   TOOLTIP,
 } from '../lib/chart'
 import { fmtAmount, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
-import { K_VIEWS, useKLine } from '../lib/klinePeriod'
+import { K_VIEWS, fqLabel, useKLine } from '../lib/klinePeriod'
 import { alreadySynced, markSynced, readStockList } from '../lib/stockNav'
 
 /**
@@ -37,12 +38,22 @@ const VIEW_LABEL: Record<string, string> = {
   month: '月 K',
 }
 
-const VIEW_UNIT: Record<string, string> = {
-  // 2026-09-26 起跌色是青不是绿（全站改同花顺配色，见设计文档 8.68）——
-  // 这行文案就贴在 K 线标题栏上，说「绿跌」而图上是青跌，是自相矛盾
-  day: '不复权真实价，红涨青跌',
-  week: '不复权真实价 · 由日线按 ISO 周聚合',
-  month: '不复权真实价 · 由日线按月聚合',
+/**
+ * K 线标题栏那行小字。
+ *
+ * 复权那一段**跟着菜单走**：写死「不复权真实价」而用户在菜单里切了前复权的话，
+ * 这行字就成了假话（它离菜单只有几十像素，自相矛盾最容易被看出来）。
+ * 2026-09-26 起跌色是青不是绿（全站改同花顺配色，见设计文档 8.68）—— 原文案写「红涨绿跌」
+ * 也是同一类问题，一并按现状写。
+ */
+function viewUnit(view: string, fq: FqMode, volAdjust: boolean): string {
+  // 成交量复权单独标一句：勾上之后副图的量与前一根柱不可直接比（缩放过的）
+  const vol = volAdjust && fq !== 'none' ? ' · 量复权' : ''
+  // 不复权那档多说一句「真实价」：它与个股概况、涨跌停标记是同一口径
+  const mode = fq === 'none' ? '除权(不复权)真实价' : fqLabel(fq)
+  if (view === 'day') return `${mode}，红涨青跌${vol}`
+  const how = view === 'week' ? '按 ISO 周' : '按月'
+  return `${mode} · 由日线${how}聚合${vol}`
 }
 
 /**
@@ -388,9 +399,19 @@ export default function StockDetail() {
               <span className="num">
                 {kline.loading || kline.syncing
                   ? '取数中…'
-                  : `${kline.bars.length} 根 · ${VIEW_UNIT[kline.view]}`}
+                  : `${kline.bars.length} 根 · ${viewUnit(kline.view, kline.fq, kline.volAdjust)}`}
               </span>
-              <Segmented value={kline.view} items={K_VIEWS} onChange={kline.setView} />
+              <span className="flex items-center gap-2">
+                <Segmented value={kline.view} items={K_VIEWS} onChange={kline.setView} />
+                {kline.fqAdjustable && (
+                  <AdjustMenu
+                    fq={kline.fq}
+                    volAdjust={kline.volAdjust}
+                    onChange={kline.setFq}
+                    onToggleVolume={kline.setVolAdjust}
+                  />
+                )}
+              </span>
             </span>
           }
           delay={80}

@@ -8,6 +8,7 @@ import type {
   FundFlowMatrixOut,
   EtfFlowOrder,
   EtfIndustryBoard,
+  FqMode,
   FundFlowOverview,
   FundsSeries,
   IndexHistory,
@@ -230,14 +231,17 @@ export const api = {
    *
    * `period` 只影响**后端怎么聚合**（周/月是本地日线重采样出来的，不额外取数）；
    * `days` 是「取多少根日线来聚合」—— 周/月要看长周期，所以要传得比日线大得多。
+   * `fq` 是复权方式（三档），`volAdjust` 让成交量跟着同一比例缩放 —— 两者都只影响
+   * 价格 / 量，**涨跌停标记始终按原始价判**（后端在复权之前算好、按交易日挂回来）。
    */
   stockDaily: (
     code: string,
-    options: { days?: number; adjust?: boolean; period?: KPeriod } = {},
+    options: { days?: number; fq?: FqMode; volAdjust?: boolean; period?: KPeriod } = {},
   ) => {
-    const { days = 120, adjust = false, period = 'day' } = options
+    const { days = 120, fq = 'none', volAdjust = false, period = 'day' } = options
+    const vol = volAdjust ? '&vol_adjust=1' : ''
     return request<StockDailyRow[]>(
-      `/stock/${code}/daily?days=${days}&period=${period}${adjust ? '&adjust=1' : ''}`,
+      `/stock/${code}/daily?days=${days}&period=${period}&fq=${fq}${vol}`,
     )
   },
 

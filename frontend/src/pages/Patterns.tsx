@@ -234,9 +234,9 @@ export default function Patterns() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   // 图上的 K 线：周期、取数、按需补长历史都在这个 hook 里（与个股页共用一套）。
-  // adjust=1 拿前复权序列 —— 引擎就是在这条序列上判定的，用不复权图画线会在
-  // 除权股上把关键位画错高度
-  const kline = useKLine(active ?? '', { adjust: true })
+  // fq='qfq' 固定前复权序列 —— 引擎就是在这条序列上判定的，用不复权图画线会在
+  // 除权股上把关键位画错高度。**传了 fq 就不再渲染复权菜单**（`fqAdjustable` 为 false）
+  const kline = useKLine(active ?? '', { fq: 'qfq' })
   // 「复制代码」的瞬时反馈：成功后按钮文案换成「已复制」，1.6 秒复原
   const [copied, setCopied] = useState(false)
 

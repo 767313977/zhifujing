@@ -56,6 +56,10 @@ router = APIRouter(prefix="/api/stock", tags=["个股"])
 # 可选的 K 线周期。周/月由本地日线重采样（`_resample`），不额外取数
 PERIODS = ("day", "week", "month")
 
+# 复权方式。**三档是与同花顺对齐的看图口径**（前端那个右键菜单的三项）：
+# none = 除权(不复权)、qfq = 向前复权、hfq = 向后复权。见 `_adjusted`
+FQ_MODES = ("none", "qfq", "hfq")
+
 # DDE 一栏最多能要多少个交易日。**卡在 100 是因为来源自己的输出上限**（实测请求 120 与
 # 250 个交易日都只回 100 行，并在回答里写「以下为部分数据」）—— 这个上限与配额无关，
 # 开上去只会让图里悄悄少画一段，所以宁可在接口层就挡住（`collect_dde._TRUNCATED_HINTS`）。
@@ -226,10 +230,15 @@ def profile(code: str, session: Session = Depends(get_db)) -> StockProfile:
 def daily(
     code: str,
     days: int = Query(120, ge=5, le=500, description="返回最近 N 个交易日，按日期升序"),
-    adjust: bool = Query(
+    fq: str = Query(
+        "none",
+        description="复权方式：none=除权(不复权) qfq=向前复权 hfq=向后复权。"
+        "形态页必须用 qfq —— 引擎判定用的就是那条序列，不复权图上的除权跳空会让"
+        "形态标注线画在错误的高度",
+    ),
+    vol_adjust: bool = Query(
         False,
-        description="是否返回前复权价。形态页要看图确认，而引擎判定用的是复权序列，"
-        "不复权图上的除权跳空会让形态标注线画在错误的高度",
+        description="成交量也按同一复权比例缩放（只在前/后复权时有意义），见 _adjusted",
     ),
     period: str = Query(
         "day",
@@ -242,6 +251,11 @@ def daily(
         raise HTTPException(
             status_code=400,
             detail=f"period 只能是 {'、'.join(PERIODS)}，收到「{period}」",
+        )
+    if fq not in FQ_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"fq 只能是 {'、'.join(FQ_MODES)}，收到「{fq}」",
         )
     rows = list(
         session.scalars(
@@ -272,8 +286,8 @@ def daily(
     name = basic.name if basic else None
     flags = _limit_flags(items, target, name) if period == "day" else {}
 
-    if adjust:
-        items = _adjusted(items)
+    if fq != "none":
+        items = _adjusted(items, fq, vol_adjust=vol_adjust)
     if period != "day":
         items = _resample(items, period)
 
@@ -319,9 +333,18 @@ def _daily_item(row: StockDaily) -> dict:
     }
 
 
-def _adjusted(items: list[dict]) -> list[dict]:
-    """前复权。复用形态引擎的复权逻辑，而不是在前端再实现一遍 ——「按当天收盘价
+def _adjusted(items: list[dict], mode: str, *, vol_adjust: bool = False) -> list[dict]:
+    """复权。前复权复用形态引擎的复权逻辑，而不是在前端再实现一遍 ——「按当天收盘价
     做日内换算」这个细节很容易写错，两个实现早晚会不一致。
+
+    **向后复权就是把同一条序列换个锚点**：`build_bars` 的净值序列锚在最新价
+    （`前复权[-1] == 原始收盘[-1]`），换成锚在首日（`后复权[0] == 原始收盘[0]`）只是
+    整条序列乘一个常数 `原始首日收盘 / 前复权首日`。所以没必要让形态引擎再算一遍
+    —— 它只用前复权，也不该为看图多一个参数。
+
+    `vol_adjust` 打开时成交量按**同一比例反向缩放**（`量 ÷ (复权价/原始价)`）：
+    除权日的量能因此与复权价一致（送转后股本变了，直接比绝对量会突然跳一档）。
+    这是本机口径 —— 成交量仍记作「股」，成交额保持原始金额（钱是钱，不缩放）。
 
     OHLC 缺一不可：`sync_stock` 那条路径写进来的行 OHLC 可能为 None，
     `build_bars` 里 `float(None)` 会直接抛 500。缺 OHLC 的行没法做日内换算，跳过。
@@ -352,21 +375,34 @@ def _adjusted(items: list[dict]) -> list[dict]:
             for item in usable
         ]
     )
-    return [
-        {
-            "trade_date": bars.dates[index],
-            "open": float(bars.open[index]),
-            "high": float(bars.high[index]),
-            "low": float(bars.low[index]),
-            "close": float(bars.close[index]),
-            # 涨跌幅、成交量、成交额、换手率不受复权影响，照原样带过来
-            "pct_chg": usable[index]["pct_chg"],
-            "volume": usable[index]["volume"],
-            "amount": usable[index]["amount"],
-            "turnover": usable[index]["turnover"],
-        }
-        for index in range(len(bars))
-    ]
+    # 向后复权：整条序列乘这个常数（前复权首日价不会为 0，真为 0 就退回前复权）
+    scale = 1.0
+    if mode == "hfq" and bars.close[0]:
+        scale = usable[0]["close"] / float(bars.close[0])
+
+    out: list[dict] = []
+    for index, item in enumerate(usable):
+        close = float(bars.close[index]) * scale
+        # 复权比例 = 复权价 / 原始价。成交量复权要的是它的倒数
+        ratio = close / item["close"] if item["close"] else 1.0
+        volume = item["volume"]
+        if vol_adjust and volume is not None and ratio:
+            volume = volume / ratio
+        out.append(
+            {
+                "trade_date": bars.dates[index],
+                "open": float(bars.open[index]) * scale,
+                "high": float(bars.high[index]) * scale,
+                "low": float(bars.low[index]) * scale,
+                "close": close,
+                # 涨跌幅、成交额、换手率不受复权影响，照原样带过来
+                "pct_chg": item["pct_chg"],
+                "volume": volume,
+                "amount": item["amount"],
+                "turnover": item["turnover"],
+            }
+        )
+    return out
 
 
 def _resample(items: list[dict], period: str) -> list[dict]:

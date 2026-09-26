@@ -601,6 +601,15 @@ export interface StockDde {
  */
 export type KPeriod = 'day' | 'week' | 'month'
 
+/**
+ * K 线复权方式。三档与同花顺的复权菜单对齐（见 `AdjustMenu`）。
+ *
+ * `none` = 除权(不复权)：交易所真实价，**个股概况、涨跌停标记都是这个口径**；
+ * `qfq` = 向前复权：锚在最新价（形态引擎判定用的就是这条）；
+ * `hfq` = 向后复权：锚在窗口首日，历史段会大于真实价。
+ */
+export type FqMode = 'none' | 'qfq' | 'hfq'
+
 export interface StockThemeItem {
   concept: string
   /** 能对上板块表时有板块代码；「沪深300样本股」这类为 null */
