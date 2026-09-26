@@ -14,15 +14,20 @@
 **回补历史走 `scripts/backfill_dde.py`**（2026-09-26 加）：那条路用 `collect_stock_dde_range`
 按日期区间取（探针确认能取到任意历史），按 ≤90 个日历天分段、带配额闸门、可续跑。
 本模块的 `collect_stock_dde`（「近N个交易日」）仍然只服务个股页的按需抓取。
+
+**每个交易日还要补「命中前 N 只」**（2026-09-26 加，用户要求）：形态扫描出结果后，
+把这天命中列表里评分最高的 N 只（默认 50）的 DDE 补到最近 `dde_hit_days`（默认 60）个
+交易日 —— 这几只才是当天真正要看的票，成本 N 次调用/交易日。入口是 `backfill_top_hits`，
+由 `jobs/scheduler` 排在 DDE 全市场扫描之后调用。
 """
 
 import logging
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db import session_scope, upsert_fill
-from app.models import StockDde, TradeCalendar
+from app.models import PatternHit, StockDde, TradeCalendar
 from app.sources.ifind import IfindClient, IfindError, normalize_code
 from app.sources.markdown_table import pick_float, pick_text
 
@@ -40,6 +45,18 @@ CLOSE_READY = time(15, 5)
 # 交易日」和「近 250 个交易日」都只回 **100 行**，并在回答里另起一句提示。两种提示文案
 # 都认（新版「以下为部分数据」、旧版「数据过大」）。命中就说明这次只拿到了最近一段。
 _TRUNCATED_HINTS = ("以下为部分数据", "数据过大")
+
+# ---- 按区间回补（`scripts/backfill_dde.py` 与每日的「命中前 N 只」共用）----
+
+# 一段最多多少**日历天**。上限是来源的 100 行（按日历天算），留 10 行余量
+SEGMENT_DAYS = 90
+
+# 切到多小就不再切了（再小也拿不到数据的话，就是这只票那段本来没有）
+MIN_SEGMENT_DAYS = 20
+
+# 「这只票这段已经补够了」的判据：窗口内 90% 的交易日有数据
+# （放 10% 是因为偶尔一两天来源自己就没有那一行）
+FILL_RATIO = 0.9
 
 
 def _query(code: str, days: int) -> str:
@@ -189,7 +206,7 @@ def collect_stock_dde_range(
     `fill_only` 默认 True：**只补库里没有的日期**，不覆盖已有值（理由见 `_store`）。
 
     ⚠️ 区间必须 ≤100 个日历天，否则来源会给「部分数据」—— 调用方要检查第二个返回值，
-    被截断时把区间切半重来（`scripts/backfill_dde.py` 就是这么做的）。
+    被截断时把区间切半重来（`collect_stock_dde_window` 就是这么做的）。
     """
     symbol = normalize_code(code)
     answer, rows = IfindClient().stock_performance(range_query(symbol, start, end))
@@ -204,4 +221,161 @@ def collect_stock_dde_range(
         ),
         truncated,
     )
+
+
+# ------------------------------------------------------------------ 按区间回补
+
+
+def recent_trade_days(days: int, *, until: date | None = None) -> list[date]:
+    """最近 `days` 个交易日，升序。"""
+    with session_scope() as session:
+        rows = list(
+            session.scalars(
+                select(TradeCalendar.trade_date)
+                .where(TradeCalendar.trade_date <= (until or date.today()))
+                .order_by(TradeCalendar.trade_date.desc())
+                .limit(days)
+            )
+        )
+    return sorted(rows)
+
+
+def dde_coverage(codes: list[str], start: date, end: date) -> dict[str, int]:
+    """这些票在 `[start, end]` 里各有多少行 DDE（不在结果里的就是 0 行）。"""
+    if not codes:
+        return {}
+    with session_scope() as session:
+        rows = session.execute(
+            select(StockDde.code, func.count())
+            .where(
+                StockDde.trade_date >= start,
+                StockDde.trade_date <= end,
+                StockDde.code.in_(list(codes)),
+            )
+            .group_by(StockDde.code)
+        ).all()
+    return {code: count for code, count in rows}
+
+
+def dde_segments(
+    start: date, end: date, size: int = SEGMENT_DAYS
+) -> list[tuple[date, date]]:
+    """把 `[start, end]` 切成若干段（每段 ≤ `size` 个日历天），升序。"""
+    out: list[tuple[date, date]] = []
+    cursor = start
+    while cursor <= end:
+        stop = min(cursor + timedelta(days=size - 1), end)
+        out.append((cursor, stop))
+        cursor = stop + timedelta(days=1)
+    return out
+
+
+def collect_stock_dde_window(
+    code: str,
+    start: date,
+    end: date,
+    *,
+    fill_only: bool = True,
+    segment_days: int = SEGMENT_DAYS,
+) -> tuple[int, int]:
+    """按日期区间把一只票的 DDE 补上（自动分段）。返回（写入行数, 调用次数）。
+
+    某段被来源截断（「以下为部分数据」）就把它切半重来 —— 抽样出来的行中间有洞，
+    宁可贵一次调用也不要写进去。
+    """
+    written = calls = 0
+    queue = dde_segments(start, end, segment_days)
+    while queue:
+        seg_start, seg_end = queue.pop(0)
+        calls += 1
+        rows, truncated = collect_stock_dde_range(
+            code, seg_start, seg_end, fill_only=fill_only
+        )
+        written += rows
+        span = (seg_end - seg_start).days + 1
+        if truncated and span > MIN_SEGMENT_DAYS:
+            mid = seg_start + timedelta(days=span // 2)
+            logger.warning(
+                "%s 的 %s~%s 被截断（%d 天），切成两段重来", code, seg_start, seg_end, span
+            )
+            queue.insert(0, (mid + timedelta(days=1), seg_end))
+            queue.insert(0, (seg_start, mid))
+    return written, calls
+
+
+# -------------------------------------------------------- 每日：命中前 N 只补齐
+
+
+def top_hit_codes(day: date, limit: int) -> list[str]:
+    """某日形态命中里**按股票归并取最高分**、按分数降序的前 `limit` 只。
+
+    与 `/api/patterns/hits` 同一口径（一只票命中多个形态只算它最高的那个分）——
+    口径不一致的话，页面说的「评分最高的 50 只」与这里补的 50 只会对不上。
+    实测 2026-09-24：两边选出的**集合完全相同**（各 50 只）。
+
+    ⚠️ **并列分数的票之间顺序是任意的**（两边的 `ORDER BY score DESC` 都不保证 tie-break），
+    所以别拿「第 47 位是谁」去对；成本只与只数有关，与顺序无关。
+    """
+    with session_scope() as session:
+        rows = session.execute(
+            select(PatternHit.code)
+            .where(PatternHit.trade_date == day)
+            .group_by(PatternHit.code)
+            .order_by(func.max(PatternHit.score).desc())
+            .limit(limit)
+        ).all()
+    return [code for (code,) in rows]
+
+
+def backfill_top_hits(
+    day: date, *, days: int = DEFAULT_DAYS, limit: int = 50
+) -> dict:
+    """把 `day` 命中列表里评分最高的 `limit` 只票的 DDE 补到最近 `days` 个交易日。
+
+    为什么要有这一步：DDE 一栏要的是**这几只**的历史，而 `scan_dde` 的全市场扫描
+    每天只写当天一行。成本 = `limit` 次调用/交易日（50 只 ≈ 1100 次/月，约占一个
+    周期额度的 16%），由调度器按 `Settings.dde_hit_top_n` 传进来。
+
+    已经补够的**不发请求**（先看 `dde_coverage`）—— 否则尾部链路在部署日重启几次
+    就白花 `limit`×次。
+    """
+    codes = top_hit_codes(day, limit)
+    if not codes:
+        return {"codes": 0, "pending": 0, "written": 0, "calls": 0, "failed": 0}
+
+    trade_days = recent_trade_days(days, until=day)
+    if not trade_days:
+        return {"codes": len(codes), "pending": 0, "written": 0, "calls": 0, "failed": 0}
+
+    start, end = trade_days[0], trade_days[-1]
+    need = int(len(trade_days) * FILL_RATIO)
+    have = dde_coverage(codes, start, end)
+    pending = [code for code in codes if have.get(code, 0) < need]
+
+    written = calls = failed = 0
+    failures: list[str] = []
+    for done, code in enumerate(pending, start=1):
+        try:
+            rows, used = collect_stock_dde_window(code, start, end)
+        except Exception as exc:  # noqa: BLE001 - 单只票失败不该带走其余的
+            failed += 1
+            failures.append(code)
+            logger.warning("命中 %s 的 DDE 补齐失败：%s", code, exc)
+            # 连着失败说明源或配额出问题了，别再耗完 50 次
+            if failed >= 5 and failed * 2 >= done:
+                logger.warning("命中 DDE 补齐提前停止：%d/%d 失败", failed, done)
+                break
+            continue
+        written += rows
+        calls += used
+
+    return {
+        "codes": len(codes),
+        "pending": len(pending),
+        "written": written,
+        "calls": calls,
+        "failed": failed,
+        "window": f"{start}~{end}",
+    }
+
 

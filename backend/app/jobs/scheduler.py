@@ -215,6 +215,9 @@ class DailyScheduler:
         # DDE 扫描排最后：它是这条链上**唯一要花十几二十次调用**的一步（前缀 × 单日），
         # 前面几步里有零配额的，先跑完再说
         self._scan_dde(today)
+        # 命中前 N 只的 DDE 补齐：排在 DDE 扫描之后 —— 那一步已经把「当天」写进全市场，
+        # 这里只补这几只票**剩下的历史**（fill_only 不会覆盖已有值）
+        self._backfill_hit_dde(today)
         # 板块资金流排在**最末尾**：它要用上面 DDE 那一步的逐股净流入，自己还要走
         # 370 多次开盘啦请求（约 2~3 分钟），零 iFinD 配额所以不受配额让路影响 ——
         # 依赖缺失时它自己会跳过（不写一堆 0，见 `collect_board_flow` 的守卫）
@@ -401,6 +404,44 @@ class DailyScheduler:
             logger.exception("DDE 扫描失败")
             return
         logger.info("DDE 扫描 %s：%s", trade_date, result)
+
+    def _backfill_hit_dde(self, trade_date: date) -> None:
+        """把当日形态命中里**评分最高的 N 只**的 DDE 补全（`Settings.dde_hit_top_n`）。
+
+        为什么要这一步：个股页 DDE 那一栏要的是**这几只**的历史，而 `_scan_dde` 的全市场
+        扫描与请求日期无关、每天只写当天一行。补的票与页面「命中列表」同一口径
+        （按股票归并取最高分），否则两边对不上。
+
+        成本 = N 次 iFinD 调用/交易日（默认 50 ≈ 1100 次/月，约占一个周期额度的 16%），
+        所以跟着 `_scan_dde` 的让路阈值走：配额紧张时先停它，别去挤基础采集。
+        已经补够的票不发请求（见 `backfill_top_hits`），重启重跑不会重复花钱。
+        """
+        from app.jobs.collect_dde import backfill_top_hits
+        from app.services.usage import QuotaLevel, level_label, quota_level
+
+        level = quota_level(trade_date, self.settings)
+        if level >= QuotaLevel.PAUSE_KLINE:
+            logger.warning("命中 DDE 补齐跳过：%s", level_label(level))
+            return
+        try:
+            result = backfill_top_hits(
+                trade_date,
+                days=self.settings.dde_hit_days,
+                limit=self.settings.dde_hit_top_n,
+            )
+        except Exception:  # noqa: BLE001 - 这是增强项，不该影响调度
+            logger.exception("命中 DDE 补齐失败")
+            return
+        logger.info(
+            "命中 DDE 补齐 %s：命中 %s 只 / 需补 %s 只 → 写 %s 行（%s 次调用，失败 %s），窗口 %s",
+            trade_date,
+            result.get("codes"),
+            result.get("pending"),
+            result.get("written"),
+            result.get("calls"),
+            result.get("failed"),
+            result.get("window"),
+        )
 
     def _collect_board_flow(self, trade_date: date) -> None:
         """板块资金流：开盘啦成分股 × 逐股净流入（见 `collect_board_flow` 模块）。
