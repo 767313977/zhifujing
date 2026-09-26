@@ -8,19 +8,32 @@ from app.db import get_db
 from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
 from app.models import StockBasic, StockDaily, Watchlist
 from app.schemas import WatchlistIn, WatchlistRow
+from app.services.stock_lookup import LookupError, resolve_code
 from app.sources.ifind import IfindError, normalize_code
 
 router = APIRouter(prefix="/api/watchlist", tags=["自选股"])
 
 
 def _normalize_code(raw: str) -> str:
-    """统一代码写法并校验长度。"""
+    """统一代码写法并校验长度。**路径参数**用（那里只可能是代码）。"""
     code = normalize_code(raw)
     if len(code) != 6:
         raise HTTPException(
             status_code=400, detail=f"股票代码应为 6 位数字，收到「{raw}」"
         )
     return code
+
+
+def _resolve(raw: str) -> str:
+    """加入自选时把输入解析成代码：**代码 / 名称 / 拼音首字母**都收。
+
+    路径参数（改备注、删除）不走这里 —— 那里前端给的一定是代码，多一层解析
+    反而会把「000001」这种真代码绕进名称索引。
+    """
+    try:
+        return resolve_code(raw)
+    except LookupError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _latest_quotes(session: Session, codes: list[str]) -> dict[str, StockDaily]:
@@ -75,7 +88,8 @@ def list_watchlist(session: Session = Depends(get_db)) -> list[WatchlistRow]:
 def add_watchlist(
     payload: WatchlistIn, session: Session = Depends(get_db)
 ) -> WatchlistRow:
-    code = _normalize_code(payload.code)
+    """加入自选。`code` 字段收代码、股票名称或拼音首字母（见 `_resolve`）。"""
+    code = _resolve(payload.code)
 
     existing = session.get(Watchlist, code)
     if existing is not None:
