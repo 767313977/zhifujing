@@ -98,12 +98,14 @@ export interface KLineState {
 
 /**
  * @param options.fq 传了就是**固定**复权方式（形态页传 `'qfq'`：引擎判定用的就是那条
- *   序列，换成不复权会让形态关键位画在错误的高度）。不传则由用户在复权菜单里切，默认不复权。
+ *   序列，换成不复权会让形态关键位画在错误的高度）。不传则由用户在复权菜单里切，
+ *   初始档位是**向前复权 + 成交量复权**（2026-09-26 用户要求：打开任何一只票都按
+ *   复权口径看，不复权那档留着自己切）。
  */
 export function useKLine(code: string, { fq: fixedFq }: { fq?: FqMode } = {}): KLineState {
   const [view, setView] = useState<KView>('day')
-  const [fq, setFq] = useState<FqMode>('none')
-  const [volAdjust, setVolAdjust] = useState(false)
+  const [fq, setFq] = useState<FqMode>('qfq')
+  const [volAdjust, setVolAdjust] = useState(true)
   const [bars, setBars] = useState<KLineBar[]>([])
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
