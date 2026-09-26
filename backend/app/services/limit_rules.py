@@ -14,71 +14,83 @@
 ⚠️ 创业板 / 科创板的 ST **仍是 20%**（2020 年改革后没有 5cm 那一档），所以 ST 只改变
 主板的判定 —— 这两类直接返回 20%，不看名称。
 
-## 判定：两个条件缺一不可
+## 判定：收盘价 = 交易所的板价，一分不差
 
-1. **涨幅达到限制**（留 0.5 余量，见下）
-2. **收盘价就是当日最高价** —— 涨停的含义是「收盘封在涨停价上」，而涨停价必然是当日最高价。
+1. **收盘价就是当天交易所的板价**：`板价 = 前收 × (1 ± 限幅)`，再按该板块的规则取整到分
+2. **收盘价 = 当日最高价**（跌停则是最低价）—— 封板的推论，留着是为了让判据自身可读、
+   并防住「收盘 = 最高但没封板」的脏数据
 
-第 2 条不能省：只用涨幅的话，一批**炸板**的票会被标成涨停（盘中摸到涨停、收盘掉到 +9.6%，
-主板很常见），而那恰恰是打板的人最不想看错的。加上它之后，判定对**不复权与复权序列同样成立**
-—— 复权是整段同乘一个系数，「收盘 = 最高」这个相对关系不变。
+**跌停完全对称**（`is_limit_down`），只是方向相反。
 
-**跌停完全对称**（`is_limit_down`）：跌幅达到限制（向下）且**收盘价就是当日最低价**
-—— 收盘封在跌停价上，而跌停价必然就是当日最低价。同样要防「盘中砸到跌停又拉回来」的
-假跌停。余量与容差共用同一组常量，方向相反而已。
+### 板价怎么取整（2026-09-26 实测）
 
-## 余量为什么是「一分钱折成的百分比」，不是一个固定的百分比
+| 板块 | 规则 | 实测依据 |
+| --- | --- | --- |
+| 沪深主板 / 创业板 / 科创板 | **四舍五入** | 12281 个「近板且收在最高价」的日子里 12089 与四舍五入逐位吻合，落在 ±1 分的只有个位数 |
+| 北交所 | **截断**（向下取整到分） | 38 个近板日 **38/38** 吻合截断；其中「比四舍五入价低 1 分」的 17 天全在截断价上，且落在涨停池里的 5 个也都是截断价 |
 
-判据是 `pct_chg >= 限制 − 余量`，**不是「>= 限制」**：涨跌停价要**四舍五入到分**，
-低价股的实际涨跌幅会低于名义值 —— 3.33 元的票涨停价 3.66 元，实际只有 **+9.91%**。
-不留余量就会漏掉一批真实的封板。
+⚠️ 半分钱的边界**必须用整数 / Decimal 做四舍五入**：4.85×1.1 = 5.335 要进到 5.34，
+浮点 `round()` 会给出 5.33（实测 002453 2026-09-18 恰好卡在这里）。
+下面的 `board_price` 走 `Decimal.quantize(ROUND_HALF_UP)`，就是为了这个。
 
-但余量**必须是价格空间的量**，不能是一个固定百分比（2026-09-26 改，原为固定 0.5）：
-「板价取整到分」带来的偏差在价格空间里恒为**不到一分钱**，折成百分比却随价格反向走 ——
-3.33 元的票是 0.15%、6 元的票 0.08%、50 元的票只剩 0.01%。固定 0.5 在低价股上刚好，
-在高价股上等于放进了三五分钱的误差，于是**「跌到 9.8%、收在当日最低」这种没封板的日子
-会被算成跌停**（实测 002084 2026-09-10：前收 6.12 → 跌停价 5.51，实收 5.52 = 当日最低，
-全天没碰过 5.51；旧判据标成跌停，K 线上多出一根绿蜡烛）。
+### 前收：优先上一根收盘价，只有除权日才反推
 
-前收由**官方涨跌幅反推**（`close / (1 + pct/100)`），不是取上一根收盘价：除权日交易所用的
-是除权参考价，反推出来的才是它真正用的那个基准，所以除权日同样成立；顺带也不依赖前一行
-是否存在。
+`limit_price` 里的「前收」是**交易所当天用的那个基准**：
 
-**容差取 1 分而不是半分**：北交所实测是**截断**到分（920592：21.93×1.3 = 28.509 → 收 28.50），
-半分钱容差会漏掉这类真涨停（实测漏 4 个涨停池里确认的）。代价是「离板恰好 1 分」的日子
-会保留（如 000545 2025-11-21 收 2.76 / 板价 2.75）—— 数据精度与各板取整规则不同带来的模糊
-无法再往下切，方向是保留（宁可多标不可漏标）。
+- 平常就是上一根**不复权**收盘价 —— 两位小数、干净，半分钱的边界要靠它才判得准
+- **除权日**例外：交易所用的是除权参考价，只能由官方涨跌幅反推（`close / (1 + pct/100)`）。
+  判法：拿上一根收盘价算出的涨跌幅与官方值比，**差 > 0.1pp** 就是除权或数据异常，改用反推值。
+  反推值带浮点尾巴，在半分钱边界上可能判反，所以能不用就不用
 
-改动的实测代价见设计文档 8.68.9.6：涨停 13899 → 13883、跌停 3365 → 3336，
-**涨停池 1079/1079、跌停池 141/141 召回不变**。
+板价是**原始价**上的概念，所以判定必须在 `_adjusted` **之前**做 —— 前复权整段乘一个系数，
+在复权价上「取整到分」没有意义（个股接口就是按这个顺序排的）。
 
-⚠️ 形态引擎里的 `patterns.LS_LIMIT_PCT = 9.5` **不再与这里对齐**（改之前那两句注释说两者
-一致，现在不是）：那个常量是「全市场一律 9.5%」，用途是筛形态、不吃板块差异，与这里的
-「按板块取限幅 + 一分钱余量」是两套口径，别拿一个去校另一个。
+### 为什么不再用「涨跌幅 ≥ 限幅 − 余量」
 
-## 新股上市初期
+2026-09-26 之前是 `pct >= 限幅 − 0.5`（固定百分比）+「收盘 = 最高」。两个问题：
 
-创业板 / 科创板前 5 个交易日、主板首日（2023 全面注册制后主板新股也是前 5 日）**没有涨跌幅
-限制**，那几天不该算涨跌停。这里**不特判**，所以这档**仍然会漏进来**：
+1. **固定余量与价格无关**：板价取整的偏差在价格空间里不到一分钱，折成百分比却随价格反向走
+   （3.33 元 0.15%、6 元 0.08%、50 元 0.01%）。0.5 在 6 元的票上等于 3 分钱的误差。
+2. **余量再小也漏「差 1 分」的日子**：实测 002084 2026-09-10（前收 6.12 → 跌停价 5.51，
+   实收 5.52 = 当日最低、全天没碰过 5.51）、002470 2026-09-10、000545 2025-11-21 都是这类误标。
+   改成「收盘 = 板价」之后全库这类（涨停 16 / 跌停 29 天）清零。
 
-阈值只卡一侧（`pct >= 限制 − 余量`，**没有上限**），于是新股不限幅那几天里**恰好收在
-最高 / 最低价上**的会撞进判据 —— 实测 603448 天博智能 2026-09-08 收 −16.1%、收 = 最低，
-是上市初期的不限幅日，收紧余量之后**依然会被标**（这次改的是下限，不是上限）。
-要修就得引入「上市天数」或加一侧上限，为一个低于 1% 的误标不值当 ——
-但**别再说「阈值法对它们不成立所以不会误标」**（这句原话是错的，2026-09-26 实测推翻）。
+顺带修掉两个同源问题：新股上市不限幅那几天不再误标（603448 2026-09-08 收 −16.1%，
+与 −10% 的板价差得远），涨停侧的同类误标也一起没了。
+
+⚠️ 形态引擎里的 `patterns.LS_LIMIT_PCT = 9.5` 与本模块**不是一套口径**（那个是「全市场一律
+9.5%」，用途是筛形态、不吃板块差异），别拿一个去校另一个。
+
+### 名称只用来认 ST，且对「名称口径错了」留了补救
+
+`limit_pct` 靠**当前名称**判 ST（主板 5cm），而历史 ST 变更还原不了。所以某天的涨跌幅
+**明显超过**名称口径（> 限幅 + 0.5pp）时，说明那天不是这一档，主板按 10cm 再判一次 ——
+否则 ST海王 / *ST康佳A 这类「名称带 ST、当时不是」的日子会被整片误删
+（实测 232 涨停 / 131 跌停）。
+
+反方向（当时是 ST、现在摘帽）补救不了：那种日子与「收盘恰好等于 5cm 板价的普通上涨日」
+从日线 OHLC 上**无法区分**（强行补会多出 664 个误标），所以只能漏 —— 这是本模块唯一
+已知的系统性漏标。
 """
+
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 
 CHINEXT_PREFIXES = ("300", "301", "302")
 STAR_PREFIXES = ("688", "689")
 BSE_PREFIXES = ("43", "83", "87", "88", "920")
 
-# 判定留的余量：**一分钱**（元）。板价取整到分带来的偏差在价格空间里恒为不到一分钱，
-# 所以余量必须按价格给 —— 折成百分比的算法见 `_slack_pct`，理由见模块说明。
-_LIMIT_TOL_PX = 0.01
-
 # 「收盘 = 最高 / 最低」的容差（元）。两个值来自同一个数据源、封板时逐位相同，
 # 留半个分只是防浮点噪声
 _CLOSE_IS_HIGH_TOL = 0.005
+
+_CENT = Decimal("0.01")
+
+# 前收与上一根收盘价「对不上」的判据（pp）：超过它就认为那天是除权日 / 数据异常，
+# 改用官方涨跌幅反推的基准（见模块说明）
+_REF_MISMATCH_PCT = 0.1
+
+# 「名称口径错了」的判据（pp）：涨跌幅比名称给的那一档还大这么多，就说明那天不是这一档
+_LIMIT_NAME_SLACK = 0.5
 
 
 def limit_pct(code: str, name: str | None = None) -> float:
@@ -96,18 +108,79 @@ def limit_pct(code: str, name: str | None = None) -> float:
     return 10.0
 
 
-def _slack_pct(close: float | None, pct_chg: float | None) -> float | None:
-    """余量（百分数）= 一分钱 ÷ 前收 × 100。价格或涨跌幅缺失时给 None。
+def is_bse(code: str) -> bool:
+    """北交所。它的板价取整规则与沪深不同（截断，见模块说明）。"""
+    return str(code or "").strip().zfill(6).startswith(BSE_PREFIXES)
 
-    前收是**反推**出来的（`close / (1 + pct/100)`）而不是拿上一根收盘价：除权日交易所用
-    除权参考价当基准，只有反推才拿得到它真正用的那个数（见模块说明）。
+
+def _ref_price(
+    prev_close: float | None, close: float | None, pct_chg: float | None
+) -> Decimal | None:
+    """交易所当天用的「前收盘价」，**对齐到分**。缺数据给 None。
+
+    优先用上一根不复权收盘价（干净；半分钱边界要靠它判准），只有它与官方涨跌幅对不上
+    （除权日 / 数据异常）时才反推 —— 理由见模块说明。
+
+    ⚠️ 反推值必须 `quantize` 到分再用：交易所的基准价本身就是两位小数（除权参考价也是），
+    而浮点算出来会带尾巴（实测 `close/(1+10.010277/100)` 得 48.64999999999995），
+    乘限幅之后正好落在半分钱下方、被 round 掉一分 —— 实测 000811 2026-06-25（除权日）
+    与 603289 2026-09-21 都因此漏判成没封板。
     """
     if close is None or pct_chg is None or close <= 0 or pct_chg <= -100:
         return None
-    ref = close / (1 + pct_chg / 100.0)
-    if ref <= 0:
+    if prev_close and prev_close > 0:
+        raw_pct = (close / prev_close - 1) * 100
+        if abs(raw_pct - pct_chg) <= _REF_MISMATCH_PCT:
+            return Decimal(repr(prev_close)).quantize(_CENT, rounding=ROUND_HALF_UP)
+    derived = close / (1 + pct_chg / 100.0)
+    if derived <= 0:
         return None
-    return _LIMIT_TOL_PX / ref * 100.0
+    return Decimal(repr(derived)).quantize(_CENT, rounding=ROUND_HALF_UP)
+
+
+def _limit_candidates(code: str, name: str | None, pct_chg: float | None) -> tuple[float, ...]:
+    """这天可能适用的限幅档位。名称只认得出「现在」的 ST，所以对明显超出名称口径的日子
+    再补一档主板 10cm（见模块说明「名称只用来认 ST」）。
+    """
+    named = limit_pct(code, name)
+    if pct_chg is not None and named == 5.0 and abs(pct_chg) > 5.0 + _LIMIT_NAME_SLACK:
+        return (named, 10.0)
+    return (named,)
+
+
+def board_price(ref: Decimal, lim: float, code: str, *, up: bool) -> Decimal:
+    """交易所的板价 = 前收 ×(1 ± 限幅)，按板块规则取整到分（沪深四舍五入、北交所截断）。"""
+    ratio = Decimal(1) + (Decimal(str(lim)) if up else -Decimal(str(lim))) / Decimal(100)
+    return (ref * ratio).quantize(
+        _CENT, rounding=ROUND_DOWN if is_bse(code) else ROUND_HALF_UP
+    )
+
+
+def _sealed(
+    pct_chg: float | None,
+    close: float | None,
+    extreme: float | None,
+    code: str,
+    name: str | None,
+    prev_close: float | None,
+    *,
+    up: bool,
+) -> bool:
+    """当天是否**收盘封在板价上**（涨 / 跌两个方向共用）。缺数据（停牌等）一律 False。"""
+    if pct_chg is None or close is None or extreme is None or close <= 0:
+        return False
+    ref = _ref_price(prev_close, close, pct_chg)
+    if ref is None:
+        return False
+    px = Decimal(repr(close)).quantize(_CENT)
+    # 两边都取整到分，所以直接比相等即可（不存在「差不多」）
+    if not any(
+        px == board_price(ref, lim, code, up=up)
+        for lim in _limit_candidates(code, name, pct_chg)
+    ):
+        return False
+    # 收盘封板 ⇒ 收盘价即当日最高 / 最低价（见模块说明第 2 条）
+    return close >= extreme - _CLOSE_IS_HIGH_TOL if up else close <= extreme + _CLOSE_IS_HIGH_TOL
 
 
 def is_limit_up(
@@ -116,15 +189,14 @@ def is_limit_up(
     high: float | None,
     code: str,
     name: str | None = None,
+    prev_close: float | None = None,
 ) -> bool:
-    """这一天是不是收盘涨停。涨跌幅 / 价格缺失（停牌等）一律 False。"""
-    if pct_chg is None or close is None or high is None:
-        return False
-    slack = _slack_pct(close, pct_chg)
-    if slack is None or pct_chg < limit_pct(code, name) - slack:
-        return False
-    # 收盘封板 ⇒ 收盘价即当日最高价（见模块说明第 2 条）
-    return close >= high - _CLOSE_IS_HIGH_TOL
+    """这一天是不是收盘涨停（收盘价 = 涨停价）。
+
+    `prev_close` 传**上一根不复权收盘价**（判板价要用，见模块说明）；拿不到时可省，
+    这时会退回用官方涨跌幅反推的基准，代价是半分钱边界上可能判反。
+    """
+    return _sealed(pct_chg, close, high, code, name, prev_close, up=True)
 
 
 def is_limit_down(
@@ -133,16 +205,7 @@ def is_limit_down(
     low: float | None,
     code: str,
     name: str | None = None,
+    prev_close: float | None = None,
 ) -> bool:
-    """这一天是不是收盘跌停。与 `is_limit_up` 完全对称，只是方向相反。
-
-    跌幅 / 价格缺失（停牌等）一律 False。余量与容差都共用同一组常量 —— 跌停价的
-    取整偏差对低价股同样成立，只是误差朝另一个方向。
-    """
-    if pct_chg is None or close is None or low is None:
-        return False
-    slack = _slack_pct(close, pct_chg)
-    if slack is None or pct_chg > -(limit_pct(code, name) - slack):
-        return False
-    # 收盘封板 ⇒ 收盘价即当日最低价（见模块说明）
-    return close <= low + _CLOSE_IS_HIGH_TOL
+    """这一天是不是收盘跌停（收盘价 = 跌停价）。与 `is_limit_up` 完全对称。"""
+    return _sealed(pct_chg, close, low, code, name, prev_close, up=False)

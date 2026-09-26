@@ -256,36 +256,53 @@ def daily(
         return []
 
     items = [_daily_item(row) for row in rows]
-    if adjust:
-        items = _adjusted(items)
 
     # 涨跌停标记只在**日 K** 上有意义：周/月一根柱子是几天的合并，「这天涨停」在那个粒度上
     # 不成立（周涨幅够不到 10% 不代表那一周没有涨停日）。所以非日 K 一律留 None。
     #
-    # 判定放在 _adjusted / _resample **之后** —— 那两个函数都是重建 dict，会丢字段。
+    # ⚠️ 判定必须在 `_adjusted` / `_resample` **之前**做，理由两条：
+    # 1. 判据是「收盘价 = 交易所板价」，而板价是**原始价**取整到分的概念 —— 前复权整段乘一个
+    #    系数之后再取整到分没有意义（半分的边界会被缩放搅乱）
+    # 2. 板价要用**前一根收盘价**当基准，所以逐行算、按交易日挂回去
     # 名称只用来认 ST（主板 ST 是 5cm），取 `StockBasic` 那份（权威的当前名称）。
     # ⚠️ 历史 ST 变更还原不了：库里没有按日的历史名称，所以「曾经 ST、现在摘帽」的票，
-    #    历史上那段 5cm 涨停会被按 10% 判而**漏标**；反向则会多标。
-    flag_limit = period == "day"
+    #    历史上那段 5cm 涨跌停会被按 10% 判而**漏标**；反向（现在 ST、当时不是）在
+    #    `limit_rules._limit_candidates` 里补了一档，不会多标。
     basic = session.get(StockBasic, target)
     name = basic.name if basic else None
+    flags = _limit_flags(items, target, name) if period == "day" else {}
+
+    if adjust:
+        items = _adjusted(items)
     if period != "day":
         items = _resample(items, period)
 
-    def _limit_flags(item: dict) -> dict:
-        """两个标记一起算：判据同源（板块限幅 + 封在板上），镜像关系不该分散在两处。"""
-        if not flag_limit:
-            return {"is_limit_up": None, "is_limit_down": None}
-        return {
+    # 按交易日取标记，而不是按下标：`_adjusted` 会把 OHLC 缺失的行剔掉，长度可能变
+    empty = {"is_limit_up": None, "is_limit_down": None}
+    return [
+        StockDailyRow(**item, **flags.get(item["trade_date"], empty)) for item in items
+    ]
+
+
+def _limit_flags(items: list[dict], code: str, name: str | None) -> dict[date, dict]:
+    """逐日判涨跌停，返回 {交易日: 两个标记}。
+
+    **必须传原始价（不复权）的行**，且要按交易日升序 —— 前一根的收盘价当天板价的基准
+    （除权日由 `limit_rules` 自己改用反推值，这里不管）。
+    """
+    out: dict[date, dict] = {}
+    prev_close: float | None = None
+    for item in items:
+        out[item["trade_date"]] = {
             "is_limit_up": limit_rules.is_limit_up(
-                item["pct_chg"], item["close"], item["high"], target, name
+                item["pct_chg"], item["close"], item["high"], code, name, prev_close
             ),
             "is_limit_down": limit_rules.is_limit_down(
-                item["pct_chg"], item["close"], item["low"], target, name
+                item["pct_chg"], item["close"], item["low"], code, name, prev_close
             ),
         }
-
-    return [StockDailyRow(**item, **_limit_flags(item)) for item in items]
+        prev_close = item["close"]
+    return out
 
 
 def _daily_item(row: StockDaily) -> dict:
