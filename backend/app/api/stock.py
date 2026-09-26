@@ -213,6 +213,7 @@ def _daily_item(row: StockDaily) -> dict:
         "pct_chg": row.pct_chg,
         "volume": row.volume,
         "amount": row.amount,
+        "turnover": row.turnover,
     }
 
 
@@ -256,10 +257,11 @@ def _adjusted(items: list[dict]) -> list[dict]:
             "high": float(bars.high[index]),
             "low": float(bars.low[index]),
             "close": float(bars.close[index]),
-            # 涨跌幅、成交量、成交额不受复权影响，照原样带过来
+            # 涨跌幅、成交量、成交额、换手率不受复权影响，照原样带过来
             "pct_chg": usable[index]["pct_chg"],
             "volume": usable[index]["volume"],
             "amount": usable[index]["amount"],
+            "turnover": usable[index]["turnover"],
         }
         for index in range(len(bars))
     ]
@@ -275,6 +277,9 @@ def _resample(items: list[dict], period: str) -> list[dict]:
     周/月的涨跌幅库里没有，只能用相邻两根的收盘价算；第一根没有前一根，记 None
     （成交量柱会退回按「收 - 开」染色）。成交量 / 成交额求和，组内全空就给 None
     （缺数据与 0 是两回事）。
+
+    **换手率不参与重采样**：它是个比率，几天相加没意义、取均值也不成立，
+    所以这里不带 `turnover` 键，由 `StockDailyRow` 的默认值落成 None（前端就不显示这项）。
     """
     grouped: list[tuple[tuple, list[dict]]] = []
     for item in items:

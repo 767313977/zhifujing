@@ -652,6 +652,9 @@ class StockDailyRow(ApiModel):
     pct_chg: float | None
     volume: float | None
     amount: float | None
+    #: 换手率（百分数，如 2.18 表示 2.18%）。**只有日 K 有值** ——
+    #: 周 / 月是几天的合并，换手率不能相加、均值也没意义，所以重采样后是 None
+    turnover: float | None = None
     #: 这一天是不是涨停（按板块限幅判定，见 `services/limit_rules.py`）。
     #: **只有日 K 有值**；周 / 月 K 是 None —— 一根柱子是几天的合并，
     #: 「这天涨停」在那个粒度上不成立（周涨幅够不到 10% 不代表那一周没有涨停日）。
