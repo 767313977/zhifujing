@@ -38,7 +38,9 @@ const VIEW_LABEL: Record<string, string> = {
 }
 
 const VIEW_UNIT: Record<string, string> = {
-  day: '不复权真实价，红涨绿跌',
+  // 2026-09-26 起跌色是青不是绿（全站改同花顺配色，见设计文档 8.68）——
+  // 这行文案就贴在 K 线标题栏上，说「绿跌」而图上是青跌，是自相矛盾
+  day: '不复权真实价，红涨青跌',
   week: '不复权真实价 · 由日线按 ISO 周聚合',
   month: '不复权真实价 · 由日线按月聚合',
 }
