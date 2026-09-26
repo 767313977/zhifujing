@@ -44,6 +44,7 @@ from app.schemas import (
     StockThemeItem,
     StockThemes,
 )
+from app.services import limit_rules
 from app.services.patterns import build_bars
 from app.sources.ifind import IfindError, normalize_code
 from app.sources.kaipanhong import TAXONOMY_SELECTED
@@ -174,9 +175,32 @@ def daily(
     if adjust:
         items = _adjusted(items)
 
+    # 涨停标记只在**日 K** 上有意义：周/月一根柱子是几天的合并，「这天涨停」在那个粒度上
+    # 不成立（周涨幅够不到 10% 不代表那一周没有涨停日）。所以非日 K 一律留 None。
+    #
+    # 判定放在 _adjusted / _resample **之后** —— 那两个函数都是重建 dict，会丢字段。
+    # 名称只用来认 ST（主板 ST 是 5cm），取 `StockBasic` 那份（权威的当前名称）。
+    # ⚠️ 历史 ST 变更还原不了：库里没有按日的历史名称，所以「曾经 ST、现在摘帽」的票，
+    #    历史上那段 5cm 涨停会被按 10% 判而**漏标**；反向则会多标。
+    flag_limit_up = period == "day"
+    basic = session.get(StockBasic, target)
+    name = basic.name if basic else None
     if period != "day":
         items = _resample(items, period)
-    return [StockDailyRow(**item) for item in items]
+
+    return [
+        StockDailyRow(
+            **item,
+            is_limit_up=(
+                limit_rules.is_limit_up(
+                    item["pct_chg"], item["close"], item["high"], target, name
+                )
+                if flag_limit_up
+                else None
+            ),
+        )
+        for item in items
+    ]
 
 
 def _daily_item(row: StockDaily) -> dict:

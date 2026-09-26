@@ -652,6 +652,10 @@ class StockDailyRow(ApiModel):
     pct_chg: float | None
     volume: float | None
     amount: float | None
+    #: 这一天是不是涨停（按板块限幅判定，见 `services/limit_rules.py`）。
+    #: **只有日 K 有值**；周 / 月 K 是 None —— 一根柱子是几天的合并，
+    #: 「这天涨停」在那个粒度上不成立（周涨幅够不到 10% 不代表那一周没有涨停日）。
+    is_limit_up: bool | None = None
 
 
 class StockDdeRow(ApiModel):
