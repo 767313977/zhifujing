@@ -7209,6 +7209,117 @@ ORDER BY MAX(score) DESC LIMIT 50
 前端只动了自选页那三处文案（占位符、面板右上角的示例、空池提示）——
 `支持 600519 / 贵州茅台 / gzmt`。
 
+### 8.68.21 全站体检：一轮 bug 修复（2026-09-27）
+
+用户要求「事无巨细地检查一遍」。把仓库分成四块（前端 40 文件 / 后端 API 11 / 采集调度 16 /
+services+sources 16）逐文件读完，`tsc`、`py_compile`、应用导入全绿。**没有发现会让正常路径
+崩溃或写坏库的确定性高危 bug**，但有几个「不出错、却会悄悄丢数或显示错」的问题。
+
+#### 高（都是「看着正常、实则出错」型）
+
+| # | 位置 | 问题 | 修法 |
+| --- | --- | --- | --- |
+| H1 | [collect_daily.py](../backend/app/jobs/collect_daily.py) `has_collected` | 「采集完成」只看情绪表有没有行，而情绪**排在链路中部**（后面还有 ETF / 机构席位 / 题材 / 板块 / 自选 / 两融 / 北向）。情绪写成功、ETF 失败时，下次触发走「已有数据」分支跳过整个采集，**ETF 份额当天永久丢失**（数据源次日只给新一天，补不回来） | 判据加上「当天 `collect_log` 里没有 `failed` 步骤」 |
+| H2 | [scheduler.py](../backend/app/jobs/scheduler.py) `_run_daily` | 交易日历为空时 `is_trade_day` 保守返回 False，于是**全新库**在这里直接 return，日历永远采不到、整条定时链一次都跑不起来（日志还显示成「今天不是交易日」） | 加 `DailyCollector.calendar_empty()`，空日历先补一次再判断 |
+| H3 | [StockDetail.tsx](../frontend/src/pages/StockDetail.tsx) `load` | 三次请求（概况 / 题材 / DDE）没有 stale 守卫，← → 快速连按时上一只票的响应可能晚到，**这三块会显示成另一只票**（K 线有守卫不会错） | `load` 接受 `isCancelled` 回调，effect 传 `() => cancelled` |
+
+⚠️ **H1 的代价是刻意接受的**：有步骤失败时，重启/补采会把整条链再跑一遍（各步都是幂等
+upsert，不会写坏数据），多花一点配额 —— 静默丢数比多花几十次调用严重得多，且只发生在
+「当天确实有步骤失败」的时候。本机实测：09-22 那天有 1 个失败步骤，**旧口径判「已完成」，
+新口径判「未完成」**（09-23 / 09-24 两天口径不变）。
+
+#### 中
+
+**形态打分（会改变命中列表，已回测量化）**
+
+- 缩量回踩与杯柄两处「回调幅度取中段最好」写成了 `span - abs(x - mid)` 再交给
+  `_band_score`：那个量的**最大值恰在中段**，却落在 band 上界之外被当成「过大」衰减 ——
+  分数成了**中间低两边高的 U 形**，与文档里写的「中段最好」正好相反。
+  实测旧公式：drop = 0.09（理想值）拿 0.400 分，而 drop = 0.05 / 0.13 拿 0.978、
+  0.03 / 0.15 拿 0.000 —— 教科书写法得分最低。
+  改成把 `drop` / `depth` 原样交给 `_band_score`（它本身就是中心给满分的钟形）。
+  回测（1200 只样本，`scripts/backtest_patterns.py`）：缩量回踩信号 **413 → 452 条**，
+  5/20/60 日超额基本不变；杯柄 **11 → 13 条**（样本太小，差异是噪声）。
+
+**数据源**
+
+- `ifind._download_csv` 用裸 `requests.get`，**没绕开环境代理**（主客户端特意设了
+  `trust_env=False`）—— 开代理的机器上会静默退回那张被截断的 100 行抽样表。
+- `_CSV_URL` 正则只匹配到 `.csv` 为止，带 `?查询串` 或被 markdown `)` 包住时会截断/越界。
+- `_extract` 的成功码只认 int，来源改成字符串 `"0"` 时**正常响应会被判成错误**。
+- `kaipanhong` 成分股对账用 `isinstance(reported, int)`，`Count` 是字符串时整段对账被静默跳过。
+- `eastmoney.em_secid` 把 `9` 开头一律当沪市 —— **北交所 920xxx 也在 `9` 段**。
+  实测（2026-09-27）：`1.920427` 取不到数据，`0.920427` 正常返回华维设计的 K 线。
+- `_BJ_PREFIXES` 与 `limit_rules.BSE_PREFIXES` 写法不一致（`92` vs `920`，恰好等效），统一。
+
+**前端**
+
+- Dashboard / LimitReview / Patterns 三个页面缺 stale 守卫（Sectors / Funds 早就规范地写了）；
+  顺手在切日期时**先清空**旧数据 —— 否则 IndexStrip / 情绪 / 板块热力 / 形态 / 自选 / 笔记
+  这几块（没接 `loading`）会继续显旧日期的值，与下方「加载中」的表混在一起。
+- `EChart` 只在 `window resize` 时 `resize()`，`height` prop 变化不触发 —— 板块资金流那两张
+  条形图按行数算高度，切日期/切精选时**底部裁切或留大片空白**，要手动拉一次窗口才恢复。
+  改为 `ResizeObserver` 监听容器。
+- `SectorRotationPanel` 的 `LEADER_LABELS[index]`：数组只有龙一~龙五，某板块单日涨停 >5 只时
+  会渲染出 **「undefined 股票名」**。多出来的统一叫「涨停」。
+- Dashboard 采集完成后可能对同一目标发两次请求（`setDate(null)` 已让 effect 重跑）。
+- 评分滑块用 Tailwind 内置 `accent-amber-500`（与 `--color-accent` 脱钩）→ 新增
+  `index.css` 的 `.range-accent`；`Settings.sixMonthsAgo` 月末溢出（3/31 往前 6 个月
+  会变成 10/1）+ `toISOString()` 按 UTC 切导致东八区凌晨偏一天；机构席位「买 0 家」
+  被当 falsy 显示成「—」。
+
+**采集调度**
+
+- 尾部链路（日线 → 回补 → 形态 → 简报 → DDE → 板块资金流）原来**不在采集锁内**，而
+  `tail_done` / `_mark_tail` 是「先查后写」—— 部署日重启时两个 `_run_daily` 会都看到
+  「没跑过」而**双跑**（DDE 扫描一轮十几次调用、板块资金流三百七十多次请求）。
+  改成整条尾巴包进 `collect_guard`，并抽成 `_run_tail`；拿不到锁就跳过且**不写标记**。
+- `collect_sectors` 整天替换时**只捞回 `net_inflow`、不捞 `member_count`** —— 手动重采某天
+  会让「宽泛板块」的过滤判据全变 None，资金流三个视图把成分股过多的板块一起算进来
+  （比面板空更难发现）。改成 `_kept_external` 一次捞两列。
+- `backfill_pools` 的 `collect_sentiment` 在 try/except **之外**，抛异常会中断整轮回补。
+- `collect_kline` 报「还剩几天待补」时逐天调 `_needs_day` —— 窗口内剩 500 个交易日就是
+  500 次「按日期把全池数一遍」的查询。改成一次 `group by` 预取计数（判据仍只走
+  `_needs_day`，不复制比例），实测 379 天：**2.09s → 0.81s，结果等值**。
+- `upsert_many` 会把 `None` 照写（会把库里的非空值刷成 NULL）：`collect_universe._basics`
+  原来只对 `name` 做了保护，`collect_kline._fetch_day` 没有。都改成「整列全空就不带这一列」，
+  并在 `db.upsert_many` 的 docstring 里把这个坑写成显式警告。
+
+**接口**
+
+- `limit._boards` 用 `dict(...)` 压多板块（`stock_concept` 主键含 `concept`，**schema 层面
+  不保证 1:1**）→ 改成按 code 排序取首个 + 告警。
+- 同一只票在天梯里是「1 板」、明细里是「—」（`consecutive` 为空时天梯按 1 分层）→ 明细也按层号。
+- `funds.overview` 的北向成交额在「有行但全是 None」时给 `0.0` 而不是 `None`
+  （「未披露」被显示成「成交 0」）；两融合计改判 `is not None`（余额为 0 不等于缺失）。
+- `sector.fund_flow_history` 按**名字**当键（同名不同代码会静默并成一条曲线，图上少一条线
+  看不出来）→ 改用 `sector_code`，名字只作图例；`/compare` 的 `codes` 去重。
+- `sector._board_members` 的裸 `except` 会吞掉 `TypeError / AttributeError / NameError`
+  这类**只会是代码写错**的异常 → 让它照常冒到 500。
+- `watchlist` 加自选时不落 `name`，之后每次读都要回查 `stock_basic` → 加入时就落库。
+
+#### 低（一并改了）
+
+- `markdown_table.to_float` 对 float 的 `NaN / inf` 直接返回 → 归一成 None（否则会以
+  `'nan'` 字符串落库）。
+- `base.retry_call` 在 `retries=0` 时抛 `AssertionError` → 显式 `ValueError`（看得出是配置问题）。
+- `collect_daily._parse_ymd` / `collect_dde._row_date` 对 `20260231` 这类非法日期会抛
+  `ValueError` → 一行脏数据就能中断整轮回补，改成告警 + 跳过。
+- `ths_limit_up` 注释写「与 q.10jqka.com.cn 共用限流桶」，实际两个桶各限各的 —— 改成实情。
+- `collect_stock_dde_window` 的注释写「宁可贵一次调用也不要写进去」，实际抽样行**已经落库**
+  （靠 `fill_only` 补洞），改成实情。
+
+#### 明确「不改」的几项（评估后认为不是 bug）
+
+| 项 | 不改的理由 |
+| --- | --- |
+| `/hits` 默认 `limit=50` 与模块 docstring「一次全量返回」矛盾 | 50 是用户 09-24 点名要的；前端有截断提示、家数取 `/summary`。**只把 docstring 改准** |
+| 「最新交易日」在 patterns / market 等处口径不同 | 有意设计（形态扫描晚于情绪落库），且接口都返回实际数据日、前端也在页面上标了 |
+| `stock_daily` 没有 `trade_date` 单列索引 | 复合主键就是 `(trade_date, code)`，SQLite 已按它建索引，按日期查是有索引的（子代理的判断有误） |
+| `stock.py` 的 `limit_up_dates` 无上限 | 上限被「库里有几个交易日」天然限住（≤501 条短字符串）；加 `limit` 会让前端的「涨停 N 次」**算错** |
+| `collect_etf` 让路时返回 0，日志里与「真 0 行」同貌 | journal 里紧挨着就有一行 `ETF 采集跳过：…` 的 warning，能认出来 |
+| 配额把 429/5xx 也算一次调用、`scan_patterns` 兜底按计数封顶、`CLOSE_READY` 用本机时区 | 都是注释里写明的有意取舍 |
+
 ---
 
 ## 9. 待确认事项
