@@ -60,7 +60,11 @@ class ThsLimitUpSource:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
-        # 与 q.10jqka.com.cn 共用 ths_rate_limit：同一个站点族，实测 3/s 未被限
+        # ⚠️ 这是**本实例自己的**令牌桶，并不与别的同花顺链路共享 —— 原来这里写
+        # 「与 q.10jqka.com.cn 共用 ths_rate_limit」，实际只是读了同一个配置值：
+        # akshare 那条同花顺资金流用的是 `akshare_rate_limit`（见 `akshare_source`），
+        # 两个桶各限各的，**并发时对同一站点的合计 QPS 会翻倍**（2026-09-27 修注）。
+        # 3/s 是实测未被限的值。
         self._bucket = TokenBucket(self.settings.ths_rate_limit)
 
     def _get(self, trade_date: date, page: int) -> dict:

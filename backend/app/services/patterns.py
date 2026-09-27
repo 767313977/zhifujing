@@ -753,6 +753,13 @@ def _band_score(value: float, low: float, high: float, cap: float) -> float:
     值正好落在那里会走 `value >= cap` 分支拿 0 分 —— 而那恰恰是最优值。
     这个坑我踩过 6 次（如「收盘从未跌破 MA20」得 0 分），单方向的打分一律用
     `_ramp`，别用这个。
+
+    ⚠️ **「越接近区间中段越好」就把量本身传进来，别自己拼 `span - abs(x - mid)`。**
+    那个量的最大值（正好落在中段时）是 `span`，而 band 的上界若写成 `span*0.8`，
+    最优样本会被当成「过大」衰减 —— 分数变成**中间低、两边高**的 U 形，与「中段最好」
+    正好相反，而且从结果里看不出来。缩量回踩与杯柄都这么错过（2026-09-27 修）。
+    修完实测（1200 只样本）：缩量回踩信号 413 → 452 条，5/20/60 日超额基本不变；
+    杯柄 11 → 13 条（样本太小，超额差异是噪声）。方向对、量级可控。
     """
     if value <= 0:
         return 0.0
@@ -1064,9 +1071,13 @@ def _dry_pullback(bars: Bars) -> Signal | None:
         gap = float((bars.close[-1] - ma20[-1]) / ma20[-1])
         score = _gate_score(ratio, DRY_PULLBACK_MAX_VOL_RATIO, DRY_PULLBACK_IDEAL_VOL_RATIO) * 45
         # 回调幅度取区间中段最好：太浅没洗够，太深就成破位了。这个是双向的，用 _band_score
-        mid = sum(DRY_PULLBACK_DROP) / 2
-        span = (DRY_PULLBACK_DROP[1] - DRY_PULLBACK_DROP[0]) / 2
-        score += _band_score(span - abs(drop - mid), 0.005, span * 0.8, span * 1.2) * 30
+        # —— `_band_score` 本身就是「区间中心给满分」的钟形，**把 drop 原样传进去**即可。
+        # ⚠️ 曾经写成 `span - abs(drop - mid)`：那个量的最大值（正好落在中段时）是 `span`，
+        # 而 band 的 high 只有 `span*0.8` —— 最优样本被当成「过大」衰减到 0.4，
+        # 反而是偏离中段的样本拿满分，与「中段最好」正好相反（2026-09-27 修）。
+        score += _band_score(
+            drop, DRY_PULLBACK_DROP[0], DRY_PULLBACK_DROP[1], DRY_PULLBACK_DROP[1] * 1.4
+        ) * 30
         score += _gate_score(gap, 0.002, 0.05) * 25
 
         candidate = Signal(
@@ -1208,10 +1219,10 @@ def _cup_handle(bars: Bars) -> Signal | None:
         return None
 
     excess = float(bars.close[-1] / handle_top - 1)
-    mid_depth = sum(CUP_DEPTH) / 2
-    half = (CUP_DEPTH[1] - CUP_DEPTH[0]) / 2
-    # 杯深取区间中段最好（太浅是回调不是杯，太深是反转不是整理）—— 唯一双向的一项
-    score = _band_score(half - abs(depth - mid_depth), 0.01, half * 0.8, half * 1.2) * 30
+    # 杯深取区间中段最好（太浅是回调不是杯，太深是反转不是整理）—— 唯一双向的一项。
+    # 同 `_dry_pullback`：把 `depth` 原样交给 `_band_score`，别自己拼
+    # `half - abs(depth - mid)`（那样最优值会被当成过大衰减，见该处的说明）。
+    score = _band_score(depth, CUP_DEPTH[0], CUP_DEPTH[1], CUP_DEPTH[1] * 1.4) * 30
     score += _gate_score(recover, CUP_RECOVER, 1.0) * 20
     score += _gate_score(handle_ratio, CUP_HANDLE_DEPTH_RATIO, CUP_HANDLE_IDEAL_RATIO) * 25
     score += _gate_score(ratio, CUP_HANDLE_VOL_RATIO, CUP_HANDLE_IDEAL_VOL_RATIO) * 15

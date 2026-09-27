@@ -49,9 +49,14 @@ def clear_proxies() -> None:
 
 
 def em_secid(code: str) -> str:
-    """东财的证券 ID：沪市（5/6/9 开头）加 `1.`，其余加 `0.`。"""
+    """东财的证券 ID：沪市（5 / 6 / 900 开头的 B 股）加 `1.`，其余加 `0.`。
+
+    ⚠️ 北交所（920xxx）虽然以 `9` 开头，**却不是沪市** —— 原来是「9 开头 → `1.`」，
+    实测 `1.920427` 取不到任何数据、`0.920427` 正常返回华维设计的 K 线
+    （2026-09-27 修）。判据用 `"90"` 而不是 `"9"`：900xxx 才是沪 B。
+    """
     c = str(code).zfill(6)
-    return f"1.{c}" if c.startswith(("5", "6", "9")) else f"0.{c}"
+    return f"1.{c}" if c.startswith(("5", "6", "90")) else f"0.{c}"
 
 
 def fetch_daily(code: str, *, days: int) -> list[dict]:

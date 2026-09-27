@@ -297,8 +297,14 @@ class KaipanhongSource:
                 f"开盘红板块成分股 {plate_id} {trade_date} 第 {page + 1} 页",
             )
             if reported is None:
-                # 这个接口的 Count 是**真总数**（与板块排行不同），可以拿来对账
-                reported = payload.get("Count")
+                # 这个接口的 Count 是**真总数**（与板块排行不同），可以拿来对账。
+                # ⚠️ 它可能是**字符串**（JSON 里常见，如 "1130"）—— 后面只用
+                # `isinstance(reported, int)` 判的话，整个对账会被静默跳过、
+                # 这道防线形同虚设，所以这里先归一成 int（2026-09-27 修）
+                try:
+                    reported = int(payload.get("Count"))
+                except (TypeError, ValueError):
+                    reported = None
             batch = payload.get("list") or []
             members.extend(self._parse_member(row) for row in batch)
             if len(batch) < MEMBER_PAGE_SIZE:

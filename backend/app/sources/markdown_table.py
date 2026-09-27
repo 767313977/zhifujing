@@ -7,6 +7,7 @@
 - 非交易日行的涨跌幅/成交额是空白或字面量 "\\t"
 """
 
+import math
 import re
 
 _TABLE_ROW = re.compile(r"^\s*\|(.+)\|\s*$")
@@ -58,7 +59,11 @@ def to_float(value: object) -> float | None:
     if value is None:
         return None
     if isinstance(value, (int, float)):
-        return float(value)
+        # NaN / inf 也当空值：pandas 的 NaN 会从上游漏进来，原样返回的话
+        # SQLAlchemy 会把它写成字符串 `'nan'` 落库（字符串里的 "nan" 已被
+        # `_EMPTY` 覆盖，浮点的没有 —— 2026-09-27 修）
+        number = float(value)
+        return number if math.isfinite(number) else None
 
     text = str(value).strip().replace(",", "")
     if text.lower() in _EMPTY:

@@ -49,7 +49,9 @@ MAX_INDICATORS = 10
 
 # 6 位代码 → 交易所后缀。akshare 返回裸代码，iFinD 需要带后缀的写法。
 _SH_PREFIXES = ("60", "68", "90")
-_BJ_PREFIXES = ("43", "83", "87", "88", "92")
+# 与 `services/limit_rules.BSE_PREFIXES` **保持一致**（原来这里写 "92"、那边写 "920"，
+# 只是恰好等效 —— 两边留一份不同的写法迟早会分叉）
+_BJ_PREFIXES = ("43", "83", "87", "88", "920")
 
 
 def to_ths_symbol(code: str) -> str:
@@ -96,7 +98,9 @@ _RATE_LIMIT_MARKERS = ("请求过于频繁", "status: 429")
 # 「数据被截断，目前无生成csv权限」。**抽样表看起来和完整数据一模一样**
 # （同样的列名、同样的数值格式、日期也对），只有这句话能区分 ——
 # 所以批量行情只能按「结果 ≤100 行」的形状去问，见 `jobs/collect_kline.py`。
-_CSV_URL = re.compile(r"https?://\S+?\.csv")
+# 链接常写成 markdown 的 `[下载](https://…csv)`，所以**不能跨过 `)` / `]`**；
+# 且要带上 `?查询串`（只匹配到 `.csv` 为止会把 `?token=…` 丢掉，下载会 401/404）
+_CSV_URL = re.compile(r"https?://[^\s\)\]]+?\.csv(?:\?[^\s\)\]]*)?")
 
 # 表格只给了抽样数据的两种情况，都在回答正文里留一句话。
 # 真正的问题是**上面那句「无生成csv权限」的文案是新出现的** ——
@@ -161,8 +165,10 @@ def _extract(response: dict) -> tuple[dict, dict]:
     except json.JSONDecodeError as exc:
         raise IfindError(f"iFinD 返回无法解析: {text[:200]}") from exc
 
+    # 成功码可能是 int 也可能是字符串（`"0"`）—— 用 `str()` 归一后再比，
+    # 只认 int 的话来源一旦改成字符串，**正常响应会被判成错误**（2026-09-27 修）
     code = outer.get("code")
-    if code not in (None, 0, 1):
+    if code is not None and str(code) not in ("0", "1"):
         raise IfindError(f"iFinD 返回错误 code={code} msg={outer.get('msg')}")
 
     inner = outer.get("data")
@@ -496,7 +502,15 @@ class IfindClient:
         所以它既不受 5 req/s 限速，也**不计入调用次数**。
         """
         try:
-            response = requests.get(url, verify=False, timeout=CSV_TIMEOUT)
+            response = requests.get(
+                url,
+                verify=False,
+                timeout=CSV_TIMEOUT,
+                # 必须显式绕开环境代理：与 `__init__` 里给主会话设 `trust_env=False`
+                # 同一个理由（开代理的机器上 iFinD 会被拖死 / 401）。这里漏过一次 ——
+                # 结果不是报错，而是**静默退回那张被截断的 100 行表**（2026-09-27 修）。
+                proxies={"http": None, "https": None},
+            )
             response.raise_for_status()
         except requests.RequestException as exc:
             logger.warning("下载 iFinD 结果 CSV 失败：%s", exc)

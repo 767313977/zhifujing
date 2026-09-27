@@ -65,6 +65,10 @@ def retry_call(
     akshare 的东财接口存在偶发 RemoteDisconnected，iFinD 也偶有超时，
     都靠这层兜住。
     """
+    if retries < 1:
+        # 配置成 0 的话循环一次都不进、`last_exc` 停在 None，下面那句 assert 会抛
+        # **AssertionError** —— 那种报错完全看不出是配置问题（2026-09-27 修）
+        raise ValueError(f"retries 必须 ≥ 1，收到 {retries}")
     last_exc: Exception | None = None
     for attempt in range(retries):
         try:
