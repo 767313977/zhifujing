@@ -153,26 +153,36 @@ export default function StockDetail() {
   const prev = index > 0 ? codes[index - 1] : null
   const next = index >= 0 && index < codes.length - 1 ? codes[index + 1] : null
 
-  const load = useCallback(async (target: string) => {
-    // 题材要现取，可能失败（比如首次打开、本地还没名称），不该拖垮整页；
-    // DDE 同理 —— 它的失败原因后端会放在 note 里，这里兜住的只是传输/服务端层面的错
-    const [p, themeData, ddeData] = await Promise.all([
-      api.stockProfile(target),
-      api.stockThemes(target).catch(() => null),
-      api.stockDde(target).catch(() => null),
-    ])
-    setProfile(p)
-    setThemes(themeData)
-    setDde(ddeData)
-    return p
-  }, [])
+  /**
+   * @param isCancelled 判断「这次请求还算不算数」。三次请求回来的顺序不保证，
+   *   ← → 快速连按时上一只票的响应可能晚于当前这只到达 —— 不判的话概况/题材/DDE
+   *   会**显示成另一只票**（K 线在 hook 里有自己的守卫，不会错；这三块原来没有，
+   *   见 2026-09-27 的修复）。页面内的用户动作（如 `toggleWatch`）不用传。
+   */
+  const load = useCallback(
+    async (target: string, isCancelled: () => boolean = () => false) => {
+      // 题材要现取，可能失败（比如首次打开、本地还没名称），不该拖垮整页；
+      // DDE 同理 —— 它的失败原因后端会放在 note 里，这里兜住的只是传输/服务端层面的错
+      const [p, themeData, ddeData] = await Promise.all([
+        api.stockProfile(target),
+        api.stockThemes(target).catch(() => null),
+        api.stockDde(target).catch(() => null),
+      ])
+      if (isCancelled()) return p
+      setProfile(p)
+      setThemes(themeData)
+      setDde(ddeData)
+      return p
+    },
+    [],
+  )
 
   useEffect(() => {
     let cancelled = false
     setError(null)
     ;(async () => {
       try {
-        const p = await load(code)
+        const p = await load(code, () => cancelled)
         // 本地没有缓存、或历史明显不全时自动补一次，之后走缓存。
         // alreadySynced 兜住「本来就短」的票，免得每次打开都再补一遍
         if (!cancelled && p.day_count < NEED_BARS && !alreadySynced(code)) {
@@ -183,7 +193,7 @@ export default function StockDetail() {
           // 刷新也没用」，只能关掉标签页重开。失败就让它下次打开再试一次
           markSynced(code)
           if (!cancelled) {
-            await load(code)
+            await load(code, () => cancelled)
             // 图的数据在 hook 里，得让它重取一次，否则补完还是空的
             reloadKline()
           }

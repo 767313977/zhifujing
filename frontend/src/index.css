@@ -322,6 +322,12 @@
 }
 
 @layer utilities {
+  /* 滑块（形态页的评分下限）的强调色。跟站点 accent 令牌走 —— 用 Tailwind 内置的
+     `accent-amber-500` 会与令牌脱钩，改配色时这一处必被漏掉。 */
+  .range-accent {
+    accent-color: var(--color-accent);
+  }
+
   /* 隐藏滚动条但保留滚动能力。用于顶栏导航：52px 高度里塞一条滚动条
      会挤压内容，且深色主题下滚动条交叉角会渲染出一个刺眼的白色方块。 */
   .no-scrollbar {

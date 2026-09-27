@@ -60,31 +60,48 @@ export default function LimitReview() {
       })
   }, [])
 
-  const load = useCallback(async (target: string | null) => {
-    setLoading(true)
-    setError(null)
-    setThemeFilter(null)
-    try {
-      const [up, brokenPool, themeData] = await Promise.all([
-        api.limitPool('up', target),
-        api.limitPool('broken', target),
-        api.limitThemes(target).catch(() => null),
-      ])
-      setPool(up)
-      setBroken(brokenPool)
-      setThemes(themeData)
-    } catch (err) {
-      setPool(null)
-      setBroken(null)
-      setThemes(null)
-      setError((err as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  /**
+   * @param isStale 判断这次请求还算不算数。切日期时旧日期的响应可能晚到，
+   *   没有守卫的话会把新日期的页面盖成旧日期的数据（2026-09-27 修）。
+   */
+  const load = useCallback(
+    async (target: string | null, isStale: () => boolean = () => false) => {
+      setLoading(true)
+      setError(null)
+      setThemeFilter(null)
+      try {
+        const [up, brokenPool, themeData] = await Promise.all([
+          api.limitPool('up', target),
+          api.limitPool('broken', target),
+          api.limitThemes(target).catch(() => null),
+        ])
+        if (isStale()) return
+        setPool(up)
+        setBroken(brokenPool)
+        setThemes(themeData)
+      } catch (err) {
+        if (isStale()) return
+        setPool(null)
+        setBroken(null)
+        setThemes(null)
+        setError((err as Error).message)
+      } finally {
+        if (!isStale()) setLoading(false)
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
-    void load(date)
+    let stale = false
+    // 先清空：旧日期的池留在表里会被当成新日期的数据看（与 `Funds` 同一处理）
+    setPool(null)
+    setBroken(null)
+    setThemes(null)
+    void load(date, () => stale)
+    return () => {
+      stale = true
+    }
   }, [date, load])
 
   const stocks = useMemo(() => pool?.stocks ?? [], [pool])

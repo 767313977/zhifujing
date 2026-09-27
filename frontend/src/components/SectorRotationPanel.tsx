@@ -66,6 +66,17 @@ const LADDER_SERIES = 5
 const LEADER_LABELS = ['龙一', '龙二', '龙三', '龙四', '龙五']
 
 /**
+ * 下标 → 叫法。
+ *
+ * ⚠️ **不能直接用 `LEADER_LABELS[index]` 取**：数组只有 5 项，而某个板块单日
+ * 涨停股可以超过 5 只，第 6 只起取到 `undefined`，界面上会渲染成
+ * 「undefined 贵州茅台」这种（2026-09-27 修）。多出来的统一叫「涨停」。
+ */
+function leaderLabel(index: number): string {
+  return LEADER_LABELS[index] ?? '涨停'
+}
+
+/**
  * 上榜次数榜：把上面的矩阵**转置**过来。
  *
  * 矩阵回答「某一天的前 N 名是谁」，这里回答「某个板块在这段窗口里上过几次榜、
@@ -336,13 +347,13 @@ export default function SectorRotationPanel({
                               <div
                                 key={item.code}
                                 className="text-[13px] leading-4 whitespace-nowrap"
-                                title={`${LEADER_LABELS[index]} ${item.name ?? item.code}${
+                                title={`${leaderLabel(index)} ${item.name ?? item.code}${
                                   item.consecutive && item.consecutive > 1
                                     ? ` · ${item.consecutive} 连板`
                                     : ''
                                 }`}
                               >
-                                <span className="text-fg-dim">{LEADER_LABELS[index]}</span>{' '}
+                                <span className="text-fg-dim">{leaderLabel(index)}</span>{' '}
                                 <StockLink code={item.code} className="text-fg-muted">
                                   {item.name ?? item.code}
                                 </StockLink>

@@ -910,12 +910,14 @@ function InstitutionTable({ items }: { items: InstitutionItem[] }) {
               </td>
               <td>
                 <span className={`num ${item.buy_count ? 'text-up' : 'text-fg-dim'}`}>
-                  {item.buy_count ? fmtInt(item.buy_count) : '—'}
+                  {/* 判 null 而不是判 falsy：机构**买 0 家**是有意义的事实，
+                      用 `? :` 会把它显示成「—」，读起来像「未知」（2026-09-27 修） */}
+                  {item.buy_count == null ? '—' : fmtInt(item.buy_count)}
                 </span>
               </td>
               <td>
                 <span className={`num ${item.sell_count ? 'text-down' : 'text-fg-dim'}`}>
-                  {item.sell_count ? fmtInt(item.sell_count) : '—'}
+                  {item.sell_count == null ? '—' : fmtInt(item.sell_count)}
                 </span>
               </td>
               <td>

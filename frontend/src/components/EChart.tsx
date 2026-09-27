@@ -67,7 +67,14 @@ export default function EChart({ option, height = 300 }: EChartProps) {
 
     const handleResize = () => chart.resize()
     window.addEventListener('resize', handleResize)
+    // 容器**自身**的尺寸变化也要跟着 resize：`height` 是个 prop（板块资金流
+    // 那两张条形图按行数算高度），窗口没动、容器变高时只监听 window 收不到 ——
+    // 表现是图底部被裁掉或留一大片空白，直到手动拉一次窗口（2026-09-27 修）。
+    // canvas 的尺寸由 `chart.resize()` 按容器算，不会反过来改容器，所以不会自激。
+    const observer = new ResizeObserver(handleResize)
+    observer.observe(element)
     return () => {
+      observer.disconnect()
       window.removeEventListener('resize', handleResize)
       chart.dispose()
       chartRef.current = null

@@ -259,29 +259,45 @@ export default function Patterns() {
     api.patternCatalog().then(setCatalog).catch(() => setCatalog([]))
   }, [])
 
-  const load = useCallback(async (target: string | null) => {
-    setLoading(true)
-    setError(null)
-    try {
-      // 一次取全、前端筛 —— 命中量每天几百条，拖滑块不该打接口。
-      // 也让「标签上的家数」和「筛出来的行数」天然一致（都用全量口径）
-      const [list, sum] = await Promise.all([
-        api.patternHits(target, 0, HIT_LIMIT),
-        api.patternSummary(target),
-      ])
-      setHits(list)
-      setSummary(sum)
-    } catch (err) {
-      setHits([])
-      setSummary(null)
-      setError((err as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  /**
+   * @param isStale 判断这次请求还算不算数。切日期时旧日期的响应可能晚到，
+   *   没有守卫的话会把新日期的命中列表盖成旧日期的（2026-09-27 修）。
+   */
+  const load = useCallback(
+    async (target: string | null, isStale: () => boolean = () => false) => {
+      setLoading(true)
+      setError(null)
+      try {
+        // 一次取全、前端筛 —— 命中量每天几百条，拖滑块不该打接口。
+        // 也让「标签上的家数」和「筛出来的行数」天然一致（都用全量口径）
+        const [list, sum] = await Promise.all([
+          api.patternHits(target, 0, HIT_LIMIT),
+          api.patternSummary(target),
+        ])
+        if (isStale()) return
+        setHits(list)
+        setSummary(sum)
+      } catch (err) {
+        if (isStale()) return
+        setHits([])
+        setSummary(null)
+        setError((err as Error).message)
+      } finally {
+        if (!isStale()) setLoading(false)
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
-    void load(date)
+    let stale = false
+    // 先清空：旧日期的命中留在表里会被当成新日期的数据看（与 `Funds` 同一处理）
+    setHits([])
+    setSummary(null)
+    void load(date, () => stale)
+    return () => {
+      stale = true
+    }
   }, [date, load])
 
   const groups = useMemo(() => {
@@ -490,7 +506,7 @@ export default function Patterns() {
                 step={5}
                 value={minScore}
                 onChange={(event) => setMinScore(Number(event.target.value))}
-                className="h-[3px] w-40 accent-amber-500"
+                className="range-accent h-[3px] w-40"
               />
               <span className="num w-8 text-[13px] text-fg">{minScore}</span>
               {(picked !== null || minScore > 0) && (

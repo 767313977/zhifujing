@@ -46,52 +46,61 @@ export default function Dashboard() {
   const [notice, setNotice] = useState<string | null>(null)
   const [collecting, setCollecting] = useState(false)
 
-  const load = useCallback(async (target: string | null) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [overview, up, down, broken, lhb, heat, watchlist] = await Promise.all([
-        api.overview(target),
-        api.limitPool('up', target),
-        api.limitPool('down', target),
-        api.limitPool('broken', target),
-        api.lhb(target),
-        api.sectorHeat(target),
-        // 自选股是最新行情，不随所选日期变，所以单独取一次即可
-        api.watchlist(),
-      ])
-      // 形态：榜单只取前 8 只（首页只列 8 行，没必要把 350 多只的明细都传过来），
-      // 但家数用 summary 的全量结果。两者故意不同口径 —— 面板上有「全部 →」说明
-      // 这是节选。单独 catch：形态是增强内容，拉失败不该把整个首页变成空白
-      let patternError: string | null = null
-      const [patterns, patternSummary] = await Promise.all([
-        api.patternHits(target, 0, 8).catch((err: Error) => {
-          // 形态是增强内容，拉失败不该把整个首页变成空白 —— 但也不能悄悄
-          // 退回空列表，那样面板会显示成「当日没有命中的形态」
-          patternError = err.message
-          return []
-        }),
-        api.patternSummary(target).catch(() => null),
-      ])
-      setData({
-        overview,
-        up,
-        down,
-        broken,
-        lhb,
-        heat,
-        watchlist,
-        patterns,
-        patternSummary,
-        patternError,
-      })
-    } catch (err) {
-      setData(null)
-      setError((err as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  /**
+   * @param isStale 判断这次请求还算不算数。切日期时两个请求的返回顺序不保证，
+   *   旧日期的响应晚到会盖掉新日期的数据（各面板没有自己的守卫，见 2026-09-27 修）。
+   */
+  const load = useCallback(
+    async (target: string | null, isStale: () => boolean = () => false) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const [overview, up, down, broken, lhb, heat, watchlist] = await Promise.all([
+          api.overview(target),
+          api.limitPool('up', target),
+          api.limitPool('down', target),
+          api.limitPool('broken', target),
+          api.lhb(target),
+          api.sectorHeat(target),
+          // 自选股是最新行情，不随所选日期变，所以单独取一次即可
+          api.watchlist(),
+        ])
+        // 形态：榜单只取前 8 只（首页只列 8 行，没必要把 350 多只的明细都传过来），
+        // 但家数用 summary 的全量结果。两者故意不同口径 —— 面板上有「全部 →」说明
+        // 这是节选。单独 catch：形态是增强内容，拉失败不该把整个首页变成空白
+        let patternError: string | null = null
+        const [patterns, patternSummary] = await Promise.all([
+          api.patternHits(target, 0, 8).catch((err: Error) => {
+            // 形态是增强内容，拉失败不该把整个首页变成空白 —— 但也不能悄悄
+            // 退回空列表，那样面板会显示成「当日没有命中的形态」
+            patternError = err.message
+            return []
+          }),
+          api.patternSummary(target).catch(() => null),
+        ])
+        if (isStale()) return
+        setData({
+          overview,
+          up,
+          down,
+          broken,
+          lhb,
+          heat,
+          watchlist,
+          patterns,
+          patternSummary,
+          patternError,
+        })
+      } catch (err) {
+        if (isStale()) return
+        setData(null)
+        setError((err as Error).message)
+      } finally {
+        if (!isStale()) setLoading(false)
+      }
+    },
+    [],
+  )
 
   // 首次进入先取可用日期与采集状态，再取页面数据
   useEffect(() => {
@@ -100,7 +109,15 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => {
-    void load(date)
+    let stale = false
+    // 切日期先清空：旧日期的数字留在页面上会被当成新日期的数据看
+    // （只有 IndexStrip / 情绪 / 板块热力 / 形态 / 自选 / 笔记这几块没接
+    //  `loading`，不清的话它们会继续显旧日期的值，与下方「加载中」的表混在一起）
+    setData(null)
+    void load(date, () => stale)
+    return () => {
+      stale = true
+    }
   }, [date, load])
 
   const handleCollect = useCallback(async () => {
@@ -127,7 +144,9 @@ export default function Dashboard() {
       setDate(null)
       setDates(await api.dates())
       setStatus(await api.adminStatus())
-      await load(null)
+      // date 本来就是「最新」时 `setDate(null)` 不会让上面的 effect 重跑（值没变），
+      // 得自己刷一次；date 非空时交给 effect —— 否则同一目标会连发两次请求
+      if (date === null) await load(null)
     } catch (err) {
       setError((err as Error).message)
     } finally {

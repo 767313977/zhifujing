@@ -42,10 +42,25 @@ function fmtDateTime(value: string | null | undefined): string {
   return `${month}-${day} ${hour}:${minute}`
 }
 
+/** `Date` → 本地 `YYYY-MM-DD`。
+ *
+ * ⚠️ 不用 `toISOString().slice(0,10)`：那是按 **UTC** 切的，东八区凌晨 0~8 点
+ * 会被算成**前一天**（2026-09-27 修）。
+ */
+function localDate(value: Date): string {
+  const pad = (number: number) => String(number).padStart(2, '0')
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
+}
+
 function sixMonthsAgo(): string {
   const now = new Date()
-  now.setMonth(now.getMonth() - 6)
-  return now.toISOString().slice(0, 10)
+  const year = now.getFullYear()
+  const month = now.getMonth() - 6
+  // 目标月的天数上限：3/31 往前 6 个月应当是 9/30，而 `setMonth` **不做月末钳制**，
+  // 会溢出成 10/1，默认起始日就差了一天（2026-09-27 修）。
+  // `day = 0` 即上个月的最后一天，用它把日号夹回去。
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  return localDate(new Date(year, month, Math.min(now.getDate(), lastDay)))
 }
 
 const LOG_TONE: Record<string, string> = {
