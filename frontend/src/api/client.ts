@@ -23,6 +23,7 @@ import type {
   PatternMeta,
   PatternStock,
   PatternSummary,
+  PatternTrack,
   PromotionSeries,
   ReviewNote,
   RotationLeaderDay,
@@ -278,6 +279,17 @@ export const api = {
   patternSummary: (date?: string | null) => request<PatternSummary>(
     withDate('/patterns/summary', date),
   ),
+
+  /**
+   * 每日「评分前 `top` 只」的后续走势（胜率跟踪）。
+   *
+   * `days` 是**最近多少个有命中记录的交易日**（不是自然日）。持有期默认由后端给
+   * （1/3/5/10 日），要改就传逗号分隔的交易日数。
+   */
+  patternTrack: (days = 30, top = 50, horizons = '') =>
+    request<PatternTrack>(
+      `/patterns/track?days=${days}&top=${top}${horizons ? `&horizons=${horizons}` : ''}`,
+    ),
 
   syncStock: (code: string, days = 250) =>
     request<{ rows: number }>(`/stock/${code}/sync?days=${days}`, { method: 'POST' }),

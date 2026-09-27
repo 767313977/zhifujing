@@ -24,7 +24,9 @@ from app.schemas import (
     PatternMeta,
     PatternStockOut,
     PatternSummary,
+    PatternTrackOut,
 )
+from app.services import pattern_track
 from app.services.patterns import PATTERNS
 
 router = APIRouter(prefix="/api/patterns", tags=["patterns"])
@@ -188,6 +190,44 @@ def hits(
                     break
         result.sort(key=lambda stock: stock.score, reverse=True)
     return result[:limit]
+
+
+@router.get("/track", response_model=PatternTrackOut)
+def track(
+    db: Session = Depends(get_db),
+    days: int = Query(pattern_track.DEFAULT_DAYS, ge=1, le=120),
+    top: int = Query(pattern_track.DEFAULT_TOP, ge=1, le=200),
+    horizons: str | None = Query(
+        None, description="持有期（交易日），逗号分隔；默认 1,3,5,10"
+    ),
+) -> PatternTrackOut:
+    """每日「评分前 N 只」的后续走势与胜率，滚动看最近 `days` 个扫描日。
+
+    ## 口径
+
+    - **入选**：每天按票归并取最高分、降序取前 `top` 只 —— 与 `/hits` 默认视图、
+      以及每天补 DDE 的那批**同一口径**。
+    - **窗口**：最近 `days` 个**有命中记录**的交易日（不是自然日，也不是日历上的最近
+      N 个交易日）—— 建站早期只有零星几天有命中，用它计算时窗口会跨得更长。
+    - **收益**：命中日收盘 → 之后第 N 个交易日收盘，**按涨跌幅逐日复利**（即前复权
+      口径，见 `services.pattern_track` 的模块说明）。
+    - **胜率**：两个都给 —— 上涨占比（`up_pct`）与跑赢当天全市场平均的比例（`beat_pct`），
+      外加平均超额（`excess`）。
+    - **样本**：逐日不去重（同一只票连上三天算三个样本），同时给出去重只数。
+
+    ⚠️ 到期日还没走到的日期**不会**被算成 0 收益，而是从那一档的 `samples` 里剔除 ——
+    所以越靠上的行、持有期越长，`samples` 越少。
+    """
+    parsed: tuple[int, ...] = ()
+    if horizons:
+        # 只认 1~60 的整数（持有期的单位是交易日；上限 60 是为了别把取数窗口拉成几个月）
+        values = {int(part) for part in horizons.split(",") if part.strip().isdigit()}
+        parsed = tuple(sorted(value for value in values if 0 < value <= 60))
+    return PatternTrackOut.model_validate(
+        pattern_track.track(
+            db, days=days, top=top, horizons=parsed or pattern_track.DEFAULT_HORIZONS
+        )
+    )
 
 
 @router.get("/summary", response_model=PatternSummary)

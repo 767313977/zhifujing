@@ -7,7 +7,10 @@ const NAV = [
   { to: '/sectors', label: '板块题材' },
   { to: '/limit-up', label: '涨停复盘' },
   { to: '/funds', label: '资金面' },
-  { to: '/patterns', label: '形态选股' },
+  // ⚠️ `end: true` 是必须的：下面 `胜率跟踪` 挂在 `/patterns/track` 下，不写的话
+  // 站在跟踪页时「形态选股」也会一起高亮（NavLink 默认按前缀匹配）
+  { to: '/patterns', label: '形态选股', end: true },
+  { to: '/patterns/track', label: '胜率跟踪' },
   { to: '/watchlist', label: '自选股' },
   { to: '/settings', label: '数据管理' },
 ]
@@ -89,6 +92,12 @@ export default function Layout({ children, toolbar }: LayoutProps) {
             上面那组等式是逐 px 量过的，9 项各 +1px 等于多要 25~30px，1024 与 1280
             两档会从「正好放下」变成「必须横滑」。导航本身是等宽字重里最不需要放大的
             （它是图标级别的短词），宁可比正文小一档，也不动这组等式。
+
+            ✅ **2026-09-27 加了第 9 项「胜率跟踪」后实测（headless Chrome + CDP 设视口）**：
+            1024×800 → nav.scrollWidth/clientWidth = **664/664**、documentElement = 1014/1014；
+            1280×900 → **823/823**、1270/1270。两档都没有溢出、9 项文字完整，整页无横向
+            滚动条。也就是说站名从 7 字缩到 3 字（「致富经」）省下来的余量足够再放一项，
+            上面那组偏保守的等式可以作废 —— 但**再加第 10 项之前仍要重量一次**。
           */}
           <nav className="no-scrollbar flex h-[52px] min-w-0 grow basis-0 items-stretch gap-1 overflow-x-auto overflow-y-hidden lg:gap-0 xl:gap-1">
             {NAV.map((item) => (

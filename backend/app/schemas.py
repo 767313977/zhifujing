@@ -820,6 +820,57 @@ class PatternSummary(BaseModel):
     by_pattern: list[PatternCount]
 
 
+class PatternTrackHorizon(BaseModel):
+    """一档持有期的统计。
+
+    ⚠️ **收益与比例都是百分数**（`mean=1.23` 表示 +1.23%、`up_pct=54.3` 表示 54.3%），
+    不是 0~1 的比率 —— 免得前端再猜一次单位。
+    """
+
+    horizon: int
+    # 有完整数据的样本数。当天选出的票里，到期日还没走到的、或到期日没有该股行的
+    # 都不计入 —— 所以短持有期的样本数会多于长持有期
+    samples: int
+    mean: float | None
+    median: float | None
+    # 上涨占比
+    up_pct: float | None
+    # 平均超额：各样本收益 − **它自己信号日**的全市场平均
+    excess: float | None
+    # 跑赢当天全市场平均的比例
+    beat_pct: float | None
+
+
+class PatternTrackDay(BaseModel):
+    """某个扫描日「评分前 N 只」的后续走势。"""
+
+    trade_date: date
+    # 当天选出的只数（不足 `top` 就是那天的命中总数不够）
+    stocks: int
+    horizons: list[PatternTrackHorizon]
+
+
+class PatternTrackSummary(BaseModel):
+    """整段窗口的合计。"""
+
+    days: int
+    # 逐日样本合计（天数 × 只数，同一只票重复上榜会重复计）
+    stocks: int
+    # 去重后的只数
+    unique: int
+    first_date: date | None
+    last_date: date | None
+    horizons: list[PatternTrackHorizon]
+
+
+class PatternTrackOut(BaseModel):
+    window_days: int
+    top: int
+    horizons: list[int]
+    summary: PatternTrackSummary
+    days: list[PatternTrackDay]
+
+
 # ------------------------------------------------------------------ 资金面
 
 

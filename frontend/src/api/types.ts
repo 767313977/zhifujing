@@ -521,6 +521,54 @@ export interface PatternSummary {
   by_pattern: PatternCount[]
 }
 
+/**
+ * 每日「评分前 N 只」的后续走势统计（`/patterns/track`）。
+ *
+ * ⚠️ **所有收益与比例都是百分数**（`mean: 1.23` 是 +1.23%、`up_pct: 54.3` 是 54.3%），
+ * 不是 0~1 的比率 —— 与后端的 `PatternTrackHorizon` 一一对应。
+ */
+export interface PatternTrackHorizon {
+  /** 持有几个交易日 */
+  horizon: number
+  /** 有完整数据的样本数（到期日还没走到的票不计入，所以短持有期样本更多） */
+  samples: number
+  mean: number | null
+  median: number | null
+  /** 上涨占比 */
+  up_pct: number | null
+  /** 平均超额 = 各样本收益 − 它自己信号日的全市场平均 */
+  excess: number | null
+  /** 跑赢当天全市场平均的比例 */
+  beat_pct: number | null
+}
+
+export interface PatternTrackDay {
+  trade_date: string
+  /** 当天选出的只数（不足 top 就是那天命中总数不够） */
+  stocks: number
+  horizons: PatternTrackHorizon[]
+}
+
+export interface PatternTrackSummary {
+  /** 窗口内实际有命中记录的天数 */
+  days: number
+  /** 逐日样本合计（同一只票重复上榜会重复计） */
+  stocks: number
+  /** 去重后的只数 */
+  unique: number
+  first_date: string | null
+  last_date: string | null
+  horizons: PatternTrackHorizon[]
+}
+
+export interface PatternTrack {
+  window_days: number
+  top: number
+  horizons: number[]
+  summary: PatternTrackSummary
+  days: PatternTrackDay[]
+}
+
 export interface AdminStatus {
   latest_sentiment_date: string | null
   latest_limit_pool_date: string | null
