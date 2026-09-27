@@ -25,7 +25,7 @@ import { rememberStockList } from '../lib/stockNav'
 const GROUP_ORDER = ['致富', '趋势', '突破', '量价', '几何', '单 K 蜡烛形态']
 
 /**
- * 命中列表一次取多少只。
+ * 默认视图（没选形态）一次取多少只。
  *
  * **2026-09-26 用户定为 50**（原 500）：这个列表是「今天最值得看的几十只」，
  * 一天命中一两千条时前 500 名里后半段基本没人翻；取 50 条也让响应体小一个量级。
@@ -37,11 +37,22 @@ const GROUP_ORDER = ['致富', '趋势', '突破', '量价', '几何', '单 K �
 const HIT_LIMIT = 50
 
 /**
+ * 选中某个形态时一次取多少只。
+ *
+ * **2026-09-27 用户要求**：点了形态就该看到**它的全部命中**，而不是「全市场前 50
+ * 里恰好属于这个形态的那几只」（原来两者混在一起，出现过「标签写 312 家、点进去
+ * 只剩 5 行」）。所以形态模式下按后端允许的最大值取，实际条数由 `countOf` 兜底
+ * 校验；真超过这个数（单形态一天三千只以上）会照旧弹截断提示，不会静默少给。
+ */
+const PATTERN_LIMIT = 3000
+
+/**
  * 命中列表各列的排序口径。
  *
- * ⚠️ 排序**只在这 50 条之内**（后端按评分给的前 50），不是全市场排名。
- * 按成交额排序得到的是「评分最高的 50 只里成交额最大的」，这一点靠列表上方
- * 那条截断提示来说明 —— 不写清楚的话，「成交额排名第一」会被读成全市场第一。
+ * ⚠️ **默认视图**（没选形态）下排序只在那 50 条之内（后端按评分给的前 50），
+ * 不是全市场排名 —— 靠列表上方那条截断提示说明，否则「成交额排名第一」会被读成
+ * 全市场第一。选中某个形态之后取的是**该形态的全部命中**，那时排序就是该形态的
+ * 完整排名（评分也换成该形态自己的分数）。
  */
 const HIT_SORTS: SortSpecs<PatternStock> = {
   score: { value: (stock) => stock.score },
@@ -260,18 +271,23 @@ export default function Patterns() {
   }, [])
 
   /**
-   * @param isStale 判断这次请求还算不算数。切日期时旧日期的响应可能晚到，
-   *   没有守卫的话会把新日期的命中列表盖成旧日期的（2026-09-27 修）。
+   * @param isStale 判断这次请求还算不算数。切日期/切形态时旧请求的响应可能晚到，
+   *   没有守卫的话会把新的一屏盖成旧的（2026-09-27 修）。
    */
   const load = useCallback(
-    async (target: string | null, isStale: () => boolean = () => false) => {
+    async (
+      target: string | null,
+      only: string | null,
+      isStale: () => boolean = () => false,
+    ) => {
       setLoading(true)
       setError(null)
       try {
-        // 一次取全、前端筛 —— 命中量每天几百条，拖滑块不该打接口。
-        // 也让「标签上的家数」和「筛出来的行数」天然一致（都用全量口径）
+        // 没选形态：全市场按评分取前 `HIT_LIMIT` 只（默认视图）。
+        // 选了形态：取该形态的**全部**命中（`PATTERN_LIMIT`），评分与排序由后端
+        // 换成该形态自己的分数 —— 见 `api.patternHits` 与后端 `/hits` 的说明。
         const [list, sum] = await Promise.all([
-          api.patternHits(target, 0, HIT_LIMIT),
+          api.patternHits(target, 0, only ? PATTERN_LIMIT : HIT_LIMIT, only),
           api.patternSummary(target),
         ])
         if (isStale()) return
@@ -291,14 +307,16 @@ export default function Patterns() {
 
   useEffect(() => {
     let stale = false
-    // 先清空：旧日期的命中留在表里会被当成新日期的数据看（与 `Funds` 同一处理）
+    // 先清空：旧日期/旧形态的命中留在表里会被当成新的一屏看（与 `Funds` 同一处理）
     setHits([])
     setSummary(null)
-    void load(date, () => stale)
+    void load(date, picked, () => stale)
     return () => {
       stale = true
     }
-  }, [date, load])
+    // ⚠️ `picked` 必须在依赖里：切形态要**重新取数**（默认视图取前 50、
+    // 形态视图取该形态的全部命中），这是 2026-09-27 那次改动的关键一步
+  }, [date, picked, load])
 
   const groups = useMemo(() => {
     const map = new Map<string, PatternMeta[]>()
@@ -318,12 +336,18 @@ export default function Patterns() {
     return map
   }, [summary])
 
+  /** 当前选中形态的中文名（标题与提示都要用；清单还没拉到时退回 key） */
+  const pickedName = useMemo(
+    () => (picked ? (catalog.find((item) => item.key === picked)?.name ?? picked) : null),
+    [picked, catalog],
+  )
+
   const visible = useMemo(() => {
     return hits.filter((stock) => {
       if (stock.score < minScore) return false
       if (!picked) return true
-      // 按**全部**命中形态筛，而不是展示用的一份截断列表 ——
-      // 否则会出现「标签写着 10 家、点进去只剩 1 行」
+      // 后端在形态模式下返回的就是「命中该形态的全部票」，所以这里通常全过；
+      // 留一道是兜底（也保证每行是按**全部**命中形态判的，不是按展示用的截断列表）
       return stock.patterns.some((item) => item.pattern === picked)
     })
   }, [hits, picked, minScore])
@@ -363,8 +387,15 @@ export default function Patterns() {
     window.setTimeout(() => setCopied(false), 1600)
   }, [visible])
 
-  // 命中总数取自 summary 的全量口径，与列表长度一比就知道有没有被截断
-  const truncated = (summary?.total_stocks ?? 0) > hits.length
+  /**
+   * 这一屏的「应有条数」与截断判定。
+   *
+   * - 默认视图：拿 summary 的**全市场去重只数**与列表长度比；
+   * - 形态视图：拿 `countOf[picked]`（该形态的去重只数）与列表长度比 ——
+   *   后端已按 `PATTERN_LIMIT` 取全，正常不会截断，但真超过就如实提示。
+   */
+  const expected = picked ? (countOf[picked] ?? 0) : (summary?.total_stocks ?? 0)
+  const truncated = expected > hits.length
 
   // 筛完之后当前看图的票可能已经不在列表里，自动切到第一条
   useEffect(() => {
@@ -526,9 +557,14 @@ export default function Patterns() {
         </Panel>
 
         <Panel
-          title="命中列表"
+          title={pickedName ? `命中列表 · ${pickedName}` : '命中列表'}
           meta={
             <span className="num">
+              {pickedName && (
+                <span className="text-accent">
+                  该形态共 {fmtInt(expected)} 只，已全部列出 ·{' '}
+                </span>
+              )}
               点列头排序 · 点一行看它的 K 线与关键位
               {visible.length > 0 && (
                 <button
@@ -549,13 +585,27 @@ export default function Patterns() {
               <span className="mt-[3px] h-[6px] w-[6px] shrink-0 bg-accent" />
               <span>
                 <span className="font-medium text-accent">列表被截断：</span>
-                当日共命中
-                <span className="num text-accent"> {summary?.total_stocks} </span>
-                只，这里只列出评分最高的
-                <span className="num text-fg"> {HIT_LIMIT} </span>
-                只，点列头排序也只在这
-                <span className="num text-fg"> {HIT_LIMIT} </span>
-                只里排 —— 不是全市场排名。用上面的形态筛选或评分下限把范围缩小。
+                {pickedName ? (
+                  <>
+                    「{pickedName}」当日共命中
+                    <span className="num text-accent"> {fmtInt(expected)} </span>
+                    只，这里只列出前
+                    <span className="num text-fg"> {PATTERN_LIMIT} </span>
+                    只。
+                  </>
+                ) : (
+                  <>
+                    当日共命中
+                    <span className="num text-accent"> {fmtInt(expected)} </span>
+                    只，这里只列出评分最高的
+                    <span className="num text-fg"> {HIT_LIMIT} </span>
+                    只，点列头排序也只在这
+                    <span className="num text-fg"> {HIT_LIMIT} </span>
+                    只里排 —— 不是全市场排名。点上面的形态名可以看该形态的
+                    <span className="text-fg">全部</span>
+                    命中。
+                  </>
+                )}
               </span>
             </div>
           )}

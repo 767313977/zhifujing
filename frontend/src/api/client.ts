@@ -259,10 +259,21 @@ export const api = {
   // --- 形态选股 ---
   patternCatalog: () => request<PatternMeta[]>('/patterns/catalog'),
 
-  patternHits: (date?: string | null, minScore = 0, limit = 50) =>
-    request<PatternStock[]>(
-      withDate(`/patterns/hits?min_score=${minScore}&limit=${limit}`, date),
-    ),
+  /**
+   * 命中列表。`pattern` 传了就只看该形态、且**不再按 50 截断**（后端会把它全部
+   * 返回，评分与排序也换成该形态自己的分数）；不传则是「全市场按评分取前 limit 只」。
+   */
+  patternHits: (
+    date?: string | null,
+    minScore = 0,
+    limit = 50,
+    pattern?: string | null,
+  ) => {
+    const pick = pattern ? `&pattern=${pattern}` : ''
+    return request<PatternStock[]>(
+      withDate(`/patterns/hits?min_score=${minScore}&limit=${limit}${pick}`, date),
+    )
+  },
 
   patternSummary: (date?: string | null) => request<PatternSummary>(
     withDate('/patterns/summary', date),
