@@ -84,6 +84,49 @@ PRIOR_HIGH_DAYS = 60
 PRIOR_HIGH_VOL_MULT = 2.0
 PRIOR_HIGH_VOL_WINDOW = 20
 
+# 玉柱擎天（2026-09-27 用户点名要的形态）
+#
+# 一根**长实体大阳线顶破前期的压制位**，且明显放量。「玉柱」是那根柱子，
+# 「擎天」指一天之内把上方压制买穿、且不让价格掉回来。
+#
+# 与三个邻居的分工（它们都不管 K 线**形状**，这是本形态真正的判据）：
+# - `volume_surge`（放量上涨）：只看涨幅与量比，不管形状、也不管位置；
+# - `volume_breakout`（放量突破前高）：按**收盘**突破 60 日收盘高点，不管形状；
+# - `platform_breakout`（平台突破）：要求突破前先有一段**窄幅平台**。
+# 玉柱擎天则要求「柱子够高 + 上影极短」，**且突破前不能已经涨了一大段** ——
+# 涨完一大段再来的那根长阳是加速赶顶，不是玉柱擎天。
+#
+# 频率（滚动切片：794 只 × 最近 80 个交易日 = 6.35 万截面）：**0.135%/天/票**，
+# 折合全市场每天约 7 只 —— 比「1~4%/天」那条经验线稀得多，但**这是定义使然**：
+# 漏斗测下来没有哪一道门槛单独卡死（把任意一项放宽，也只从 0.135% 动到 0.14~0.20%），
+# 各门槛的独立通过率是 收阳 49% / 实体≥5% 4.7% / 光头光脚 10% / 上影≤15% 16% /
+# **顶破 60 日最高价 1.3%** / 量比≥2 2.8% —— 是「合取」稀有，不是某一条定得太死。
+#
+# 回测（`scripts/backtest_patterns.py --pattern jade_pillar`，2995 只 · 250 个交易日）：
+#
+# | 持有 | 信号 | 均值 | 中位 | 胜率 | 超额 |
+# | --- | --- | --- | --- | --- | --- |
+# | 5 日 | 972 | +0.10% | −1.67% | 42.2% | −0.05% |
+# | 10 日 | 972 | −0.11% | −2.40% | 41.3% | −0.15% |
+# | 20 日 | 972 | −1.86% | −5.16% | 35.5% | −0.45% |
+# | 60 日 | 972 | −4.30% | −12.60% | 27.0% | −1.01% |
+#
+# ⚠️ **它没有超额**（短周期接近 0、20/60 日为负、中位一直为负、胜率不到 43%）。
+# 参数稳健性也查过：把实体比放宽到 50%、上影放宽到 30%、实体高度放宽到 3%，
+# 超额都在 ±0.2% 的噪声里打转，胜率始终 41~42% —— 没有可调出超额的空间，
+# 所以**不要为了凑数字去调这几个阈值**。定位和别的形状类形态一样：
+# 按这个形状捞一批票自己看。
+#
+# 一处确认（别顺手删掉）：去掉「突破前 60 日涨幅 ≤ 30%」这道位置门槛，信号从 972
+# 涨到 1210，而 5 日超额从 −0.05% 掉到 −0.23%、20 日从 −0.45% 掉到 −0.75% ——
+# 那道「排除加速段」的判断是对的，留着。
+YZ_LOOKBACK = 60  # 「压制位」与「前期涨幅」都取这么多日
+YZ_MIN_BODY_PCT = 0.05  # 实体相对昨收的下限：柱子要够高（大阳线）
+YZ_MIN_BODY_RATIO = 0.7  # 实体占振幅的下限：接近光头光脚
+YZ_MAX_UPPER = 0.15  # 上影占振幅的上限：冲高不能回落
+YZ_MIN_VOL = 2.0  # 量比下限（与上面两个放量形态同一通行口径）
+YZ_MAX_PRIOR_GAIN = 0.30  # 突破前 YZ_LOOKBACK 日的累计涨幅上限（排除加速段）
+
 # 放量上涨（量比按 5 日均量算，这是通行口径）
 SURGE_MIN_PCT = 3.0
 SURGE_MIN_VOL_RATIO = 2.0
@@ -3616,6 +3659,76 @@ def _kneading_line(bars: Bars) -> Signal | None:
     )
 
 
+def _jade_pillar(bars: Bars) -> Signal | None:
+    """玉柱擎天：一根长实体大阳线**顶破前期压制**，且明显放量。
+
+    「玉柱」说的是那根柱子本身 —— 实体要够高（≥ 昨收的 5%）、而且要接近**光头光脚**
+    （实体占振幅 ≥ 70%、上影 ≤ 15%）。上影短是关键：冲到高位被打回来就不叫「擎天」了，
+    那只是一根冲高回落的长阳。
+
+    「擎天」说的是位置 —— 收盘要**站上前 60 日的最高价**（用最高价而不是收盘价当压制位：
+    前期那根上影线扎过的高点就是套牢盘所在，顶穿它才算数）。
+
+    ⚠️ 还要**排除已经涨了一大段之后的那根长阳**：那种是加速赶顶，不是玉柱擎天。
+    判据是「突破前 60 日的累计涨幅 ≤ 30%」—— 横盘、下跌、温和上行都放行。
+
+    ⚠️ 与 `_volume_breakout`（放量突破前高）的关系：那个按**收盘**突破、且不看 K 线
+    形状，所以「冲高回落的长阳」也能命中；这里多两道形状门槛 + 一道位置门槛，
+    是它的严格子集方向上的筛法。两个形态都留着 —— 一个抓「放量突破」这个事实，
+    一个抓「玉柱」这个形状。
+    """
+    if len(bars) < YZ_LOOKBACK + 2:
+        return None
+    open_, _, _, close, body, upper, _, span = _candle(bars)
+    prev_close = float(bars.close[-2])
+    base = float(bars.close[-YZ_LOOKBACK - 1])
+    if prev_close <= 0 or base <= 0 or span <= 0:
+        return None
+    if close <= open_:
+        return None  # 必须收阳
+    if body < prev_close * YZ_MIN_BODY_PCT:
+        return None  # 柱子不够高
+    if body < span * YZ_MIN_BODY_RATIO:
+        return None  # 影线太长，不是光头光脚
+    if upper > span * YZ_MAX_UPPER:
+        return None  # 冲高回落
+
+    prior_high = float(bars.high[-YZ_LOOKBACK - 1 : -1].max())
+    if prior_high <= 0 or close <= prior_high:
+        return None  # 没顶破压制
+
+    ratio = _volume_ratio(bars, 5)
+    if ratio < YZ_MIN_VOL:
+        return None  # 不放量不算
+
+    prior_gain = prev_close / base - 1
+    if prior_gain > YZ_MAX_PRIOR_GAIN:
+        return None  # 前面已经涨了一大段，这是加速
+
+    pct = body / prev_close
+    excess = float(close / prior_high - 1)
+    # 柱子越高越好（单边）；上影越短越好；量越足越好；位置越低越干净
+    score = _gate_score(pct, YZ_MIN_BODY_PCT, 0.10) * 25
+    score += _gate_score(upper / span, YZ_MAX_UPPER, 0.02) * 15
+    score += _gate_score(ratio, YZ_MIN_VOL, 4.0) * 25
+    # 突破幅度是**双向**的：贴着压制位压线突破力度弱，跳得太远又成了追高
+    score += _band_score(excess, 0.005, 0.05, 0.12) * 20
+    score += _gate_score(prior_gain, YZ_MAX_PRIOR_GAIN, 0.05) * 15
+
+    return Signal(
+        "jade_pillar",
+        min(score, 100.0),
+        {"breakout": prior_high, "support": float(bars.low[-1])},
+        {
+            "body_pct": round(pct, 4),
+            "upper_ratio": round(upper / span, 3),
+            "vol_ratio": round(ratio, 2),
+            "excess": round(excess, 4),
+            "prior_gain": round(prior_gain, 4),
+        },
+    )
+
+
 # ---------------------------------------------------------------- 注册表
 
 # 蜡烛形态的分组名。抽成常量有两个原因：一是它比其它组名长得多
@@ -3682,6 +3795,8 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("three_white_soldiers", "红三兵", CANDLE_GROUP, _three_white_soldiers),
     # 2026-09-27 用户给的定义（两根 K 的组合，同样挂在蜡烛组下）
     Pattern("kneading_line", "揉搓线", CANDLE_GROUP, _kneading_line),
+    # 2026-09-27 用户点名要的（长实体大阳线顶破压制；追加在末尾，理由同上）
+    Pattern("jade_pillar", "玉柱擎天", "突破", _jade_pillar),
 )
 
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}

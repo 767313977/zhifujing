@@ -36,7 +36,7 @@ history.db 由 `scripts/backfill_history.py` 用腾讯补出来（零配额）�
 所以草案已删除，只留「调生产函数」这一条口径。
 
 文件名是 2026-09-25 从 `backtest_three_stage.py` 改过来的：旧名字只覆盖三段式等
-4 个形态，现在要跑注册表里全部（2026-09-27 起是 47 个），名字跟着覆盖面走。
+4 个形态，现在要跑注册表里全部（2026-09-27 起是 48 个），名字跟着覆盖面走。
 
     python scripts/backtest_patterns.py --pattern v_bottom            # 单个（短窗口）
     python scripts/backtest_patterns.py --pattern all-new             # 26 个新形态
