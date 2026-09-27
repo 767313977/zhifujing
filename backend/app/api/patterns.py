@@ -12,7 +12,7 @@
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -54,18 +54,65 @@ def hits(
     db: Session = Depends(get_db),
     trade_date: date | None = Query(None, alias="date"),
     min_score: float = Query(0.0, ge=0.0, le=100.0),
+    pattern: str | None = Query(None, description="只看某个形态的全部命中"),
     limit: int = Query(50, ge=1, le=3000),
 ) -> list[PatternStockOut]:
-    """某交易日的全部命中，**按股票归并**（一只票命中多个形态就是一行多标签）。"""
+    """某交易日的命中，**按股票归并**（一只票命中多个形态就是一行多标签）。
+
+    ## 两种模式（2026-09-27 用户要求区分）
+
+    - **不传 `pattern`**：全市场命中按评分降序取前 `limit` 只 —— 列表页的默认视图，
+      「今天最值得看的几十只」。
+    - **传 `pattern`**：只返回命中该形态的票，且**不再按 50 截断**（调用方传大
+      `limit`）—— 「点进一个形态就该看到它的全部命中」，这是用户点名要的。
+
+    ⚠️ 形态模式下**「评分」与排序都换成该形态的分数**：一只票可能同时命中了别的
+    更高分的形态，但那一屏讲的只是当前这个形态，拿别的高分来排序会让人对不上账。
+    每行仍会带上它命中的**全部**形态（`patterns` 数组，各自带自己的分数），
+    所以信息没有丢。
+
+    ⚠️ 取「命中该形态的票」之后要按 code 把当天的行**全部**查回来，不能直接按
+    `pattern` 过滤行 —— 那样每只票的标签就只剩选中的那一个了。
+    """
     target = trade_date or _latest_date(db)
     if target is None:
         return []
 
-    rows = db.scalars(
-        select(PatternHit)
-        .where(PatternHit.trade_date == target, PatternHit.score >= min_score)
-        .order_by(PatternHit.score.desc())
-    ).all()
+    if pattern is not None:
+        if pattern not in _META:
+            raise HTTPException(
+                status_code=400,
+                detail=f"未知形态 {pattern}，可选：{', '.join(_META)}",
+            )
+        codes = list(
+            db.scalars(
+                select(PatternHit.code)
+                .where(
+                    PatternHit.trade_date == target,
+                    PatternHit.pattern == pattern,
+                    PatternHit.score >= min_score,
+                )
+                .distinct()
+            )
+        )
+        if not codes:
+            return []
+        rows = db.scalars(
+            select(PatternHit)
+            .where(
+                PatternHit.trade_date == target,
+                PatternHit.code.in_(codes),
+                # `min_score` 两种模式下都过滤行，口径一致（默认 0 时是空操作）
+                PatternHit.score >= min_score,
+            )
+            .order_by(PatternHit.score.desc())
+        ).all()
+    else:
+        rows = db.scalars(
+            select(PatternHit)
+            .where(PatternHit.trade_date == target, PatternHit.score >= min_score)
+            .order_by(PatternHit.score.desc())
+        ).all()
     if not rows:
         return []
 
@@ -114,6 +161,16 @@ def hits(
             existing.score = max(existing.score, row.score)
 
     result = sorted(grouped.values(), key=lambda stock: stock.score, reverse=True)
+    if pattern is not None:
+        # 形态模式：把「评分」换成**该形态的分数**再排一次。
+        # 上面那句 max 取的是这只票的最高形态分；在当前这一屏里那不是它该显的分
+        # （页面上每行的其它形态仍各自带自己的分数，见 `patterns` 数组）
+        for stock in result:
+            for item in stock.patterns:
+                if item.pattern == pattern:
+                    stock.score = item.score
+                    break
+        result.sort(key=lambda stock: stock.score, reverse=True)
     return result[:limit]
 
 
