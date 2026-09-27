@@ -178,7 +178,10 @@ class DailyScheduler:
                 except Exception:  # noqa: BLE001 - 补不到就照旧跳过，别让调度崩掉
                     logger.exception("%s：补交易日历失败", reason)
             if not collector.is_trade_day(today):
-                logger.info("%s 跳过：%s 不是交易日", reason)
+                # 占位符是**两个**（跳过的原因 + 哪一天），少传一个会让 logging 抛
+                # TypeError —— 它被 logging 自己接住，只往 stderr 打一段栈，日志里
+                # 反而看不到「不是交易日」这句（2026-09-27 部署当天实测踩到）
+                logger.info("%s 跳过：%s 不是交易日", reason, today)
                 return
         if collector.has_collected(today):
             logger.info("%s 跳过：%s 已有数据", reason, today)
