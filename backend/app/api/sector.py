@@ -513,6 +513,10 @@ def _rotation_leaders(
     # 这是短线的常识）；还剩并列才用代码兜底，只为让顺序稳定（否则每次请求名字会换位）。
     # ⚠️ 一开始只用了「连板数 → 代码」，那是**稳定但没意义**的顺序 —— 代码小的排龙二，
     # 与强弱无关。核对数据时才发现的。
+    #
+    # `first_seal_time` 是 `HHMMSS` 的**零填充**字符串（实测 340 个取值全是 6 位，
+    # 如 `093500` / `100200`），所以可以直接按字符串比 —— 别改成「补零后再比」，
+    # 那是多余的；但也别在这里改用非零填充的格式。
     collected: dict[date, list[tuple[tuple, RotationLeader]]] = {}
     for day, concept, code, name, consecutive, first_seal in rows:
         if (day, concept) not in wanted:
@@ -875,8 +879,9 @@ def fund_flow_history(
 
     rows = session.execute(
         select(
-            SectorDaily.trade_date,
+            SectorDaily.sector_code,
             SectorDaily.name,
+            SectorDaily.trade_date,
             SectorDaily.net_inflow,
             SectorDaily.member_count,
         ).where(
@@ -886,19 +891,25 @@ def fund_flow_history(
         )
     ).all()
 
-    # 名字 → {交易日: 当日净额}。用名字当键是为了与前端图例一致（板块页有代码，
-    # 但曲线只按名字画）；同一天同名只会有一行（`sector_daily` 的主键含 sector_code）
+    # **代码** → {交易日: 当日净额}，另存一份代码 → 名字（名字只用于图例）。
+    #
+    # ⚠️ 键必须是 `sector_code` 而不是名字：`sector_daily` 的主键是
+    # `(trade_date, sector_code)`，**同名不同代码不保证只有一条**（历史改名、
+    # 两个口径撞名都会出现）。按名字当键的话两条曲线会静默并成一条 ——
+    # 图上少一条线是看不出来的（2026-09-27 修）。
     per_board: dict[str, dict[date, float]] = {}
-    for day, name, net, member_count in rows:
+    board_names: dict[str, str] = {}
+    for code, name, day, net, member_count in rows:
         # 与资金流榜同一份判据：业绩/地域这类「筛出来的集合」，以及成分股过多的宽泛板块
         # 都不进曲线（曲线按「累计净额的绝对值」取前几名，它们必然霸榜）
         if _excluded(name or "") or _too_broad(member_count):
             continue
+        board_names[code] = name or code
         # 库里是**元**，曲线按亿元画（`FundFlowSeries` 的注释写死了单位）
-        per_board.setdefault(name, {})[day] = net / 1e8
+        per_board.setdefault(code, {})[day] = net / 1e8
 
     curves: list[tuple[float, FundFlowSeries]] = []
-    for name, by_date in per_board.items():
+    for code, by_date in per_board.items():
         cumulative = 0.0
         started = False
         values: list[float | None] = []
@@ -911,7 +922,9 @@ def fund_flow_history(
                 # 没出现在那天的快照里：起步前留空，起步后顺延
                 values.append(round(cumulative, 2) if started else None)
         if started:
-            curves.append((abs(cumulative), FundFlowSeries(name=name, values=values)))
+            curves.append(
+                (abs(cumulative), FundFlowSeries(name=board_names[code], values=values))
+            )
 
     # 动得最狠的排前面。**按绝对值**：只按降序的话，全市场净流出那天图里就只剩
     # 一堆「流得最少的」，真正该看的巨额流出会排到最后被 `top` 切掉
@@ -1047,7 +1060,11 @@ def compare(
     纵轴没有真实含义（起点是任选的），但**相对强弱**是准的，对比图要看的正是这个。
     某天缺值的板块从那天起断线，不插值。
     """
-    wanted = [item.strip() for item in codes.split(",") if item.strip()]
+    # 去重但**保持传入顺序**：重复传同一个代码会画出两条一模一样的线，
+    # 而且会把 `COMPARE_LIMIT` 的名额白占掉（2026-09-27 修）
+    wanted = list(
+        dict.fromkeys(item.strip() for item in codes.split(",") if item.strip())
+    )
     if not wanted:
         raise HTTPException(status_code=400, detail="codes 不能为空")
     if len(wanted) > COMPARE_LIMIT:
@@ -1186,6 +1203,11 @@ def _board_members(code: str, trade_date: date) -> tuple[list[SectorMember], str
 
     try:
         SectorCollector().collect_members(trade_date, code)
+    except (TypeError, AttributeError, NameError):
+        # 这三类基本只可能是**代码写错了**（字段名拼错、None 当对象用），不是数据源
+        # 的问题。一起吞掉的话页面只会显示「当日没取到」，真 bug 查不出来 ——
+        # 所以让它们照常冒到 500（2026-09-27 修）
+        raise
     except Exception as exc:  # noqa: BLE001 - 取不到不该让板块页整个 500
         logger.warning("板块 %s %s 成分股取数失败：%s", code, trade_date, exc)
         return [], "开盘红的成分股当日要等盘后更新，这次没取到（历史日期不受影响）"

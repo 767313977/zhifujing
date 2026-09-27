@@ -1,5 +1,6 @@
 """涨停 / 跌停 / 炸板 与龙虎榜接口。"""
 
+import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -24,6 +25,8 @@ from app.services.themes import limit_up_themes
 
 router = APIRouter(prefix="/api", tags=["复盘"])
 
+logger = logging.getLogger(__name__)
+
 POOL_TYPES = {"up", "down", "broken"}
 
 # 晋级率展示的档位：1进2 / 2进3 / 3进4 / 4进5
@@ -47,14 +50,31 @@ def _boards(session: Session, trade_date: date) -> dict[str, str]:
 
     只覆盖涨停股，且实测每只票恰好一个板块（09-21：101 只各 1 条，涨停池 103 只
     里有 2 只没归到板块）。**没归到的不编**，留空。
+
+    ⚠️ `stock_concept` 的主键含 `concept`，所以**「恰好一个」只是实测、schema 层面
+    不保证**。一只票同一天有多个板块时按 `concept` 排序取首个并告警 —— 原来是
+    `dict(...)` 直接覆盖，取到哪一个取决于行序，既不稳定也不留痕（2026-09-27 修）。
     """
-    return dict(
-        session.execute(
-            select(StockConcept.code, StockConcept.concept).where(
-                StockConcept.trade_date == trade_date
-            )
-        ).all()
-    )
+    rows = session.execute(
+        select(StockConcept.code, StockConcept.concept)
+        .where(StockConcept.trade_date == trade_date)
+        .order_by(StockConcept.code, StockConcept.concept)
+    ).all()
+    boards: dict[str, str] = {}
+    multi: list[str] = []
+    for code, concept in rows:
+        if code in boards:
+            multi.append(code)
+            continue
+        boards[code] = concept
+    if multi:
+        logger.warning(
+            "%s 有 %d 只票归到了多个开盘啦板块（%s…），每只只取排序首个",
+            trade_date,
+            len(multi),
+            "、".join(multi[:3]),
+        )
+    return boards
 
 
 def _reasons(session: Session, trade_date: date) -> dict[str, str]:
@@ -74,13 +94,22 @@ def _reasons(session: Session, trade_date: date) -> dict[str, str]:
 
 
 def _to_stock(
-    row: LimitPool, boards: dict[str, str], reasons: dict[str, str]
+    row: LimitPool,
+    boards: dict[str, str],
+    reasons: dict[str, str],
+    *,
+    consecutive: int | None = None,
 ) -> LimitStock:
-    """开盘啦板块名与涨停原因都不在 `LimitPool` 里（那张表是东财口径），校验后补进去。"""
+    """开盘啦板块名与涨停原因都不在 `LimitPool` 里（那张表是东财口径），校验后补进去。
+
+    `consecutive` 传了就以传入值为准：天梯按 `consecutive or 1` 分层、明细直接读原字段，
+    不统一的话同一只票会「在天梯里是 1 板、在明细里是 —」（2026-09-27 修）。
+    """
     return LimitStock.model_validate(row).model_copy(
         update={
             "board": boards.get(row.code),
             "reason": reasons.get(row.code),
+            "consecutive": row.consecutive if consecutive is None else consecutive,
         }
     )
 
@@ -96,7 +125,10 @@ def _build_ladder(
         LadderLevel(
             consecutive=level,
             count=len(items),
-            stocks=[_to_stock(item, boards, reasons) for item in items],
+            # 明细也按这一层的层号显示（原字段为空的票否则会显示成「—」）
+            stocks=[
+                _to_stock(item, boards, reasons, consecutive=level) for item in items
+            ],
         )
         for level, items in sorted(buckets.items(), reverse=True)
     ]

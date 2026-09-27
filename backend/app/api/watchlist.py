@@ -60,11 +60,22 @@ def _latest_quotes(session: Session, codes: list[str]) -> dict[str, StockDaily]:
     return {row.code: row for row in rows}
 
 
+def _known_name(session: Session, code: str) -> str | None:
+    """本地已知的股票简称（`stock_basic`）。没有就返回 None。
+
+    加自选时用它把名字**落库**：不落的话 `watchlist.name` 永远是 None，
+    每次列表都要回查 `stock_basic` 才显示得出名字（`_row` 的兜底，且那条路不写库）。
+    刚加自选时本地可能还没有这只票（要等一次日线同步才有），那就留空。
+    """
+    basic = session.get(StockBasic, code)
+    return basic.name if basic and basic.name else None
+
+
 def _row(session: Session, item: Watchlist, quote: StockDaily | None) -> WatchlistRow:
+    # 兜底：老数据里 `name` 可能是空的（2026-09-27 之前加自选时不落名字）。
+    # 这里只补到内存对象上供本次响应使用，**不写库** —— 读路径不做写操作
     if not item.name:
-        basic = session.get(StockBasic, item.code)
-        if basic and basic.name:
-            item.name = basic.name
+        item.name = _known_name(session, item.code)
     return WatchlistRow(
         code=item.code,
         name=item.name,
@@ -96,7 +107,14 @@ def add_watchlist(
         # 重复加入当成功处理，前端连点不会报错
         return _row(session, existing, _latest_quotes(session, [code]).get(code))
 
-    row = Watchlist(code=code, name=payload.name, note=payload.note)
+    row = Watchlist(
+        code=code,
+        # 名字在**加入时**就落库（没传就用本地的简称）：只存代码的话，
+        # 之后每次读自选都要回查 `stock_basic` 才显示得出名字
+        name=payload.name or _known_name(session, code),
+        note=payload.note,
+    )
+
     session.add(row)
     session.commit()
     session.refresh(row)

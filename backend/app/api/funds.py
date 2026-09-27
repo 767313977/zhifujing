@@ -56,6 +56,17 @@ def _prev_trade_date(session: Session, day: date) -> date | None:
     )
 
 
+def _hsgt_total(rows: list[HsgtDaily]) -> float | None:
+    """北向成交额合计（元）。
+
+    ⚠️ **有行但 `turnover` 全是 None** 时要给 None，不能给 0（2026-09-27 修）：
+    前者是「当天没披露」，后者是「成交 0 元」。原来的写法按 `if rows` 判，
+    这种日子会在页面上显示成「成交 0」，与两融那边「无数据给 None」的口径也不一致。
+    """
+    values = [row.turnover for row in rows if row.turnover is not None]
+    return sum(values) * MILLION if values else None
+
+
 def _recent_trade_dates(session: Session, end: date, days: int) -> list[date]:
     """最近 `days` 个交易日，升序。"""
     rows = session.scalars(
@@ -96,13 +107,15 @@ def overview(
     # 两市合计：**只在两个市场都有数时才给**。深市常比沪市晚一天（实测），
     # 只有一个市场时相加会把「深市待披露」误报成「深市归零」——
     # 那个数字会小一大截，看起来像两融骤降。
-    if sh is not None and sz is not None and sh.financing_balance and sz.financing_balance:
+    # 判 `is not None` 而不是真值：余额/买入额为 0 是「有数且为零」，不是「缺失」
+    both = sh is not None and sz is not None
+    if both and sh.financing_balance is not None and sz.financing_balance is not None:
         financing_total = (sh.financing_balance + sz.financing_balance) * YI
     else:
         financing_total = None
 
     financing_buy_total = None
-    if sh is not None and sz is not None and sh.financing_buy and sz.financing_buy:
+    if both and sh.financing_buy is not None and sz.financing_buy is not None:
         financing_buy_total = (sh.financing_buy + sz.financing_buy) * YI
 
     # 融资余额变化：拿上一交易日的同口径合计来比，同样要求两边齐全
@@ -116,8 +129,8 @@ def overview(
         if (
             prev_sh is not None
             and prev_sz is not None
-            and prev_sh.financing_balance
-            and prev_sz.financing_balance
+            and prev_sh.financing_balance is not None
+            and prev_sz.financing_balance is not None
         ):
             financing_change = financing_total - (
                 prev_sh.financing_balance + prev_sz.financing_balance
@@ -126,20 +139,13 @@ def overview(
     hsgt_rows = list(
         session.scalars(select(HsgtDaily).where(HsgtDaily.trade_date == target))
     )
-    hsgt_turnover = (
-        sum(row.turnover for row in hsgt_rows if row.turnover is not None) * MILLION
-        if hsgt_rows
-        else None
-    )
+    hsgt_turnover = _hsgt_total(hsgt_rows)
     hsgt_prev = None
     if prev is not None:
         prev_hsgt = list(
             session.scalars(select(HsgtDaily).where(HsgtDaily.trade_date == prev))
         )
-        if prev_hsgt:
-            hsgt_prev = (
-                sum(row.turnover for row in prev_hsgt if row.turnover is not None) * MILLION
-            )
+        hsgt_prev = _hsgt_total(prev_hsgt)
 
     institutions = list(
         session.scalars(select(LhbInstitution).where(LhbInstitution.trade_date == target))
