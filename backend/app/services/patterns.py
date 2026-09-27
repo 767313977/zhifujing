@@ -566,17 +566,18 @@ SOLDIER_MIN_GAIN = 0.03  # 三根累计涨幅下限
 # **顺序不能反**（用户点名强调）：先长下影、后长上影是另一回事，所以判据分别落在
 # 昨天（上影长 / 下影短）与今天（下影长 / 上影短）上，见 `_kneading_line`。
 #
-# 频率（滚动切片：794 只 × 最近 80 个交易日 = 6.35 万截面）：**1.57%/天/票**，
-# 折合全市场每天约 83 只 —— 与 N 字选股同量级，是「一份清单」的规模，不是稀有信号。
+# 频率（滚动切片：794 只 × 最近 80 个交易日 = 6.35 万截面）：**1.34%/天/票**，
+# 折合全市场每天约 71 只 —— 与 N 字选股同量级，是「一份清单」的规模，不是稀有信号。
+# （补上实体下限之前是 1.57%：多出来的是实体趋近 0 的退化样本，见下。）
 #
 # 回测（`scripts/backtest_patterns.py --pattern kneading_line`，2995 只 · 250 个交易日）：
 #
 # | 持有 | 信号 | 均值 | 中位 | 胜率 | 超额 |
 # | --- | --- | --- | --- | --- | --- |
-# | 5 日 | 5728 | −0.55% | −1.00% | 42.5% | −0.20% |
-# | 10 日 | 5728 | −0.64% | −1.86% | 40.6% | −0.24% |
-# | 20 日 | 5728 | −1.72% | −3.69% | 36.6% | +0.13% |
-# | 60 日 | 5728 | −3.41% | −7.69% | 32.9% | +1.01% |
+# | 5 日 | 4777 | −0.59% | −0.92% | 42.8% | −0.28% |
+# | 10 日 | 4777 | −0.68% | −1.86% | 40.5% | −0.32% |
+# | 20 日 | 4777 | −1.78% | −3.69% | 36.3% | +0.03% |
+# | 60 日 | 4777 | −3.37% | −7.73% | 32.6% | +1.01% |
 #
 # ⚠️ **结论与其它蜡烛形态一致：短周期没有预测力**（胜率不到 50%、中位为负、超额接近 0），
 # 20 / 60 日才略微转正。所以它的定位就是「按这个形状捞一批票自己看」，别当买点信号用。
@@ -584,6 +585,13 @@ KNEAD_SHADOW_MULT = 1.5  # 主影线（昨天的上影 / 今天的下影）至�
 # 另一侧影线占振幅的上限。比 `CANDLE_SHORT_SHADOW`（0.3）松一档：这里是**两根都要**
 # 各自带一条长影线，再叠上小实体与收盘相近两条，按 0.3 卡会几乎没有信号
 KNEAD_SHORT_SHADOW = 0.4
+# 实体占振幅的**下限**：实体要看得见，不能是十字星。
+# ⚠️ 这条是必需的，不是保险：只判上界（≤0.35）的话，「影线 ≥ 实体 × 1.5」在实体趋近 0
+# 时被白送，实体 1e-12 的样本也能拿满分并排到列表最前 —— 实测过。
+# 也不能写成 `body <= 0` 排除十字星：前复权把「开 = 收」算成 `open × (net/close)`，
+# 真实数据上几乎必然是 1e-13 这种尾巴，位精确比较挡不住（2026-09-27 修）。
+# 取 0.05 与打分里那项「小实体的理想值」同一个数，避免两处各写一个。
+KNEAD_MIN_BODY = 0.05
 KNEAD_CLOSE_GAP_MAX = 0.012  # 两根收盘价的相对差上限：再大就谈不上「收盘价相近」
 KNEAD_CLOSE_GAP_IDEAL = 0.003  # 到这个差以内给满分
 
@@ -3555,8 +3563,11 @@ def _kneading_line(bars: Bars) -> Signal | None:
     否则昨天本身就是一根十字星，今天就谈不上是「长下影那根」。
 
     收盘价相近是**否决条件**：两根收盘差得远说明位置已经挪走了，不是同一个位置的搓揉。
-    实体为 0（真正的十字星）单独排除，与 `_hammer` / `_inverted_hammer` 同一处理 ——
-    那是另一种含义，不按揉搓线算。
+
+    实体有**上下两道**门槛：上界 `CANDLE_BODY_MAX`（0.35，「小实体」，与其它蜡烛形态
+    共用），下界 `KNEAD_MIN_BODY`（0.05，**实体要看得见**）。下界不是保险 ——
+    没有它的话「影线 ≥ 实体 × 1.5」在实体趋近 0 时会被白送，实体 1e-12 的样本也能
+    拿满分（那条路径靠 `body <= 0` 是挡不住的：前复权会留一个浮点尾巴，见常量注释）。
 
     ⚠️ 与前置趋势无关（与锤子线那类不同）：揉搓线讲的是**换手**，出现在哪一段都成立，
     所以这里不加前置涨跌幅门槛。
@@ -3565,10 +3576,12 @@ def _kneading_line(bars: Bars) -> Signal | None:
         return None
     _, _, _, prev_close, prev_body, prev_upper, prev_lower, prev_span = _candle(bars, -2)
     _, _, _, close, body, upper, lower, span = _candle(bars)
-    if prev_span <= 0 or span <= 0 or prev_body <= 0 or body <= 0 or prev_close <= 0:
+    if prev_span <= 0 or span <= 0 or prev_close <= 0:
         return None
-    # 两根都是小实体
-    if prev_body > prev_span * CANDLE_BODY_MAX or body > span * CANDLE_BODY_MAX:
+    # 两根都是「看得见的小实体」
+    if prev_body < prev_span * KNEAD_MIN_BODY or prev_body > prev_span * CANDLE_BODY_MAX:
+        return None
+    if body < span * KNEAD_MIN_BODY or body > span * CANDLE_BODY_MAX:
         return None
     # 顺序：昨天长上影 + 短下影，今天长下影 + 短上影
     if prev_lower > prev_span * KNEAD_SHORT_SHADOW or upper > span * KNEAD_SHORT_SHADOW:
@@ -3583,8 +3596,8 @@ def _kneading_line(bars: Bars) -> Signal | None:
     score = _gate_score(gap, KNEAD_CLOSE_GAP_MAX, KNEAD_CLOSE_GAP_IDEAL) * 40
     score += _gate_score(prev_upper / prev_body, KNEAD_SHADOW_MULT, 4.0) * 20
     score += _gate_score(lower / body, KNEAD_SHADOW_MULT, 4.0) * 20
-    score += _gate_score(prev_body / prev_span, CANDLE_BODY_MAX, 0.05) * 10
-    score += _gate_score(body / span, CANDLE_BODY_MAX, 0.05) * 10
+    score += _gate_score(prev_body / prev_span, CANDLE_BODY_MAX, KNEAD_MIN_BODY) * 10
+    score += _gate_score(body / span, CANDLE_BODY_MAX, KNEAD_MIN_BODY) * 10
 
     return Signal(
         "kneading_line",
