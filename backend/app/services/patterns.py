@@ -560,6 +560,32 @@ STAR_RECOVER = 0.5  # 右侧收盘要收复左侧实体这么多
 SOLDIER_MIN_BODY = 0.3  # 红三兵每根实体占振幅的下限
 SOLDIER_MAX_SHADOW = 0.35  # 每根上影线占振幅的上限
 SOLDIER_MIN_GAIN = 0.03  # 三根累计涨幅下限
+# 揉搓线（两根 K 的组合）—— 2026-09-27 用户给的定义
+#
+# 昨天长上影、今天长下影，两根都是小实体、收盘价相近，合起来像一根十字线（螺旋桨）。
+# **顺序不能反**（用户点名强调）：先长下影、后长上影是另一回事，所以判据分别落在
+# 昨天（上影长 / 下影短）与今天（下影长 / 上影短）上，见 `_kneading_line`。
+#
+# 频率（滚动切片：794 只 × 最近 80 个交易日 = 6.35 万截面）：**1.57%/天/票**，
+# 折合全市场每天约 83 只 —— 与 N 字选股同量级，是「一份清单」的规模，不是稀有信号。
+#
+# 回测（`scripts/backtest_patterns.py --pattern kneading_line`，2995 只 · 250 个交易日）：
+#
+# | 持有 | 信号 | 均值 | 中位 | 胜率 | 超额 |
+# | --- | --- | --- | --- | --- | --- |
+# | 5 日 | 5728 | −0.55% | −1.00% | 42.5% | −0.20% |
+# | 10 日 | 5728 | −0.64% | −1.86% | 40.6% | −0.24% |
+# | 20 日 | 5728 | −1.72% | −3.69% | 36.6% | +0.13% |
+# | 60 日 | 5728 | −3.41% | −7.69% | 32.9% | +1.01% |
+#
+# ⚠️ **结论与其它蜡烛形态一致：短周期没有预测力**（胜率不到 50%、中位为负、超额接近 0），
+# 20 / 60 日才略微转正。所以它的定位就是「按这个形状捞一批票自己看」，别当买点信号用。
+KNEAD_SHADOW_MULT = 1.5  # 主影线（昨天的上影 / 今天的下影）至少是实体的多少倍
+# 另一侧影线占振幅的上限。比 `CANDLE_SHORT_SHADOW`（0.3）松一档：这里是**两根都要**
+# 各自带一条长影线，再叠上小实体与收盘相近两条，按 0.3 卡会几乎没有信号
+KNEAD_SHORT_SHADOW = 0.4
+KNEAD_CLOSE_GAP_MAX = 0.012  # 两根收盘价的相对差上限：再大就谈不上「收盘价相近」
+KNEAD_CLOSE_GAP_IDEAL = 0.003  # 到这个差以内给满分
 
 
 # ---------------------------------------------------------------- 数据结构
@@ -3516,6 +3542,67 @@ def _three_white_soldiers(bars: Bars) -> Signal | None:
     )
 
 
+def _kneading_line(bars: Bars) -> Signal | None:
+    """揉搓线：**昨天长上影、今天长下影**的两根小实体 K，合起来像一根螺旋桨。
+
+    为什么必须两根一起看：单独一根带长影线的小实体已经有了名字（上影是倒锤子、
+    下影是锤子），而「先冲高被打回、再砸下去被接回」这一套连着的动作才是搓揉 ——
+    两根的收盘几乎停在同一个位置，等于价格被上下各拧了一遍、筹码换了手而位置没动。
+
+    ⚠️ **顺序不能反**（用户点名强调）：先长下影、后长上影是另一回事，所以这里对
+    **昨天（-2）** 要求上影长下影短、对**今天（-1）** 要求下影长上影短 ——
+    不是含糊的「两根各带一条长影线」。同理「另一侧影线要短」也是两条都要判，
+    否则昨天本身就是一根十字星，今天就谈不上是「长下影那根」。
+
+    收盘价相近是**否决条件**：两根收盘差得远说明位置已经挪走了，不是同一个位置的搓揉。
+    实体为 0（真正的十字星）单独排除，与 `_hammer` / `_inverted_hammer` 同一处理 ——
+    那是另一种含义，不按揉搓线算。
+
+    ⚠️ 与前置趋势无关（与锤子线那类不同）：揉搓线讲的是**换手**，出现在哪一段都成立，
+    所以这里不加前置涨跌幅门槛。
+    """
+    if len(bars) < 2:
+        return None
+    _, _, _, prev_close, prev_body, prev_upper, prev_lower, prev_span = _candle(bars, -2)
+    _, _, _, close, body, upper, lower, span = _candle(bars)
+    if prev_span <= 0 or span <= 0 or prev_body <= 0 or body <= 0 or prev_close <= 0:
+        return None
+    # 两根都是小实体
+    if prev_body > prev_span * CANDLE_BODY_MAX or body > span * CANDLE_BODY_MAX:
+        return None
+    # 顺序：昨天长上影 + 短下影，今天长下影 + 短上影
+    if prev_lower > prev_span * KNEAD_SHORT_SHADOW or upper > span * KNEAD_SHORT_SHADOW:
+        return None
+    if prev_upper < prev_body * KNEAD_SHADOW_MULT or lower < body * KNEAD_SHADOW_MULT:
+        return None
+    # 两根收盘价相近
+    gap = abs(close - prev_close) / prev_close
+    if gap > KNEAD_CLOSE_GAP_MAX:
+        return None
+
+    score = _gate_score(gap, KNEAD_CLOSE_GAP_MAX, KNEAD_CLOSE_GAP_IDEAL) * 40
+    score += _gate_score(prev_upper / prev_body, KNEAD_SHADOW_MULT, 4.0) * 20
+    score += _gate_score(lower / body, KNEAD_SHADOW_MULT, 4.0) * 20
+    score += _gate_score(prev_body / prev_span, CANDLE_BODY_MAX, 0.05) * 10
+    score += _gate_score(body / span, CANDLE_BODY_MAX, 0.05) * 10
+
+    return Signal(
+        "kneading_line",
+        min(score, 100.0),
+        {
+            # 搓揉的区间就是这两根的高低点：上破才算拧完向上、下破就是搓失败
+            "support": min(float(bars.low[-2]), float(bars.low[-1])),
+            "breakout": max(float(bars.high[-2]), float(bars.high[-1])),
+        },
+        {
+            "close_gap": round(gap, 4),
+            "upper_ratio": round(prev_upper / prev_body, 2),
+            "lower_ratio": round(lower / body, 2),
+            "body_ratio": round((prev_body / prev_span + body / span) / 2, 3),
+        },
+    )
+
+
 # ---------------------------------------------------------------- 注册表
 
 # 蜡烛形态的分组名。抽成常量有两个原因：一是它比其它组名长得多
@@ -3580,6 +3667,8 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("inverted_hammer", "倒锤子线", CANDLE_GROUP, _inverted_hammer),
     Pattern("yang_wrap_yin", "阳包阴", CANDLE_GROUP, _yang_wrap_yin),
     Pattern("three_white_soldiers", "红三兵", CANDLE_GROUP, _three_white_soldiers),
+    # 2026-09-27 用户给的定义（两根 K 的组合，同样挂在蜡烛组下）
+    Pattern("kneading_line", "揉搓线", CANDLE_GROUP, _kneading_line),
 )
 
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}
