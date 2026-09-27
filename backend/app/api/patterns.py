@@ -30,6 +30,16 @@ from app.services.patterns import PATTERNS
 router = APIRouter(prefix="/api/patterns", tags=["patterns"])
 
 _META = {pattern.key: pattern for pattern in PATTERNS}
+# 注册表里**当前存在**的 key，所有查询都必须带上这道过滤。
+#
+# 为什么需要它：形态被删掉之后，**历史那几天的 `pattern_hit` 行还在库里**
+# （扫描是「先删后插」，但它只重写自己扫的那一天，没人去清旧日期）。少这道过滤
+# 会出现三件怪事：① 被删形态的命中混进默认列表，标签名显示成 key、分组显示「其他」；
+# ② 「共 N 只命中」把它们的去重只数也算进去，与筛选条上各家数之和对不上；
+# ③ 飞书简报的口径跟着一起错。
+# 过滤放在查询侧而不是去删库：删库要在云端也执行一遍 SQL，而过滤跟着代码走，
+# 一次部署就生效，历史行留着也无害。
+_KEYS = tuple(_META)
 
 
 def _latest_date(db: Session) -> date | None:
@@ -102,6 +112,8 @@ def hits(
             .where(
                 PatternHit.trade_date == target,
                 PatternHit.code.in_(codes),
+                # 被删掉的形态的标签也要滤掉，否则那一行会多出一个「其他」组
+                PatternHit.pattern.in_(_KEYS),
                 # `min_score` 两种模式下都过滤行，口径一致（默认 0 时是空操作）
                 PatternHit.score >= min_score,
             )
@@ -110,7 +122,11 @@ def hits(
     else:
         rows = db.scalars(
             select(PatternHit)
-            .where(PatternHit.trade_date == target, PatternHit.score >= min_score)
+            .where(
+                PatternHit.trade_date == target,
+                PatternHit.pattern.in_(_KEYS),
+                PatternHit.score >= min_score,
+            )
             .order_by(PatternHit.score.desc())
         ).all()
     if not rows:
@@ -186,7 +202,7 @@ def summary(
 
     rows = db.execute(
         select(PatternHit.pattern, func.count(), func.count(func.distinct(PatternHit.code)))
-        .where(PatternHit.trade_date == target)
+        .where(PatternHit.trade_date == target, PatternHit.pattern.in_(_KEYS))
         .group_by(PatternHit.pattern)
     ).all()
     counts = {pattern: (hits, stocks) for pattern, hits, stocks in rows}
@@ -206,7 +222,7 @@ def summary(
         total_hits=sum(hits for hits, _ in counts.values()),
         total_stocks=db.scalar(
             select(func.count(func.distinct(PatternHit.code))).where(
-                PatternHit.trade_date == target
+                PatternHit.trade_date == target, PatternHit.pattern.in_(_KEYS)
             )
         )
         or 0,

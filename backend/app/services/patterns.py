@@ -3,7 +3,7 @@
 ## 输入必须是**前复权**序列
 
 `build_bars` 负责把不复权原始价 + 真实涨跌幅复利成前复权序列，本模块只处理
-复权后的价格。除权跳空会让「回踩不破」「平台突破」这类形态在错误的位置触发 ——
+复权后的价格。除权跳空会让「缩量回踩」「平台突破」这类形态在错误的位置触发 ——
 这是最容易埋雷的地方：形态图上看着不像，但引擎认为命中了，而且没人能一眼看出来。
 
 ## 输出是评分而不是布尔值
@@ -46,20 +46,11 @@ MA_SPREAD_CAP = 0.08
 MA_GAP_IDEAL = (0.01, 0.08)
 MA_GAP_CAP = 0.15
 
-# 回踩不破
-PULLBACK_LOOKBACK = 15  # 在最近多少天里找「先在上方、再回踩」
-PULLBACK_ABOVE_GAP = 0.02  # 高于 MA20 这么多才算「在上方」
-PULLBACK_TOLERANCE = 0.03  # 最低价距 MA20 多近算「踩到了」（允许下影线扎破）
-PULLBACK_MAX_VOL_DRAG = 0.75  # 回踩期均量 / 上涨期均量 的上限
-# 缩到这个比例以下算「缩量到位」，满分
-PULLBACK_IDEAL_VOL_DRAG = 0.4
-# 回踩至少要持续这么多天。只回调一天的话，那一天的量对比一段均量毫无意义 ——
-# 实测放进来一大批「昨天在均线上方、今天碰一下均线」的日线噪声
-PULLBACK_MIN_DIP_DAYS = 2
-# **收盘**最多允许跌破 MA20 这么多。下影线扎破（`PULLBACK_TOLERANCE`）算回踩，
-# 收盘站不回去就是破位了。少了这一条会误判：实测 002906 华阳集团连续 5 天收盘
-# 跌破 MA20、最深 −3.11%，却因为「最低价碰到过均线」被打了 99.7 分
-PULLBACK_MAX_CLOSE_BREAK = 0.02
+# 回踩不破 —— **2026-09-27 已删除**（阈值随判定函数一起删）。
+#
+# 它是最典型的「教科书买点」，但全量回测（5100 只 × 250 个交易日、3083 条信号）
+# 里 10 日超额 −0.86%、20 日 −1.31%、10 日胜率只有 35.9% —— 买进去就落后大盘。
+# 数字与另外三个同批被删的形态见设计文档 §8.68.25。
 
 # 创 N 日新高：从长周期往短周期试，取命中的最长那个
 NEW_HIGH_WINDOWS = (250, 120, 60)
@@ -182,11 +173,10 @@ DOUBLE_BOTTOM_GAP = (15, 70)  # 两底间隔的交易日数
 DOUBLE_BOTTOM_REBOUND = 0.10  # 中间反弹幅度
 DOUBLE_BOTTOM_MAX_EXCESS = 0.06  # 收在颈线上方太多就不算「刚突破」了
 
-# 三角收敛
-TRIANGLE_WINDOW = 110
-TRIANGLE_MIN_PIVOTS = 3  # 高点、低点各至少这么多个才谈得上「递降/递升」
-TRIANGLE_CONVERGE = 0.5  # 末端振幅收敛到起点的一半以内
-TRIANGLE_APEX_GAP = 0.6  # 收盘要在上下边界之间；离上边界多近算「贴着待突破」
+# 三角收敛 —— **2026-09-27 已删除**（阈值随判定函数一起删）。
+#
+# 全量回测（5100 只 × 250 个交易日、306 条信号）：10/20/60 日超额 −1.08% / −1.97%
+# / −1.91%，10 日胜率 **31.0%**（当时全部形态里最低）。详见设计文档 §8.68.25。
 
 # 头肩底
 HS_WINDOW = 150
@@ -310,13 +300,15 @@ BF_EDGE_TOLERANCE = 0.02
 #
 # 名字是用户起的，形态就是他说的那三步：**一笔上（放量大涨）→ 一折下（缩量回踩起点）
 # → 等再一笔上**。起涨点取**大涨那天的起点**（开盘价与前一日收盘取低的，含跳空），
-# 这是它与「缩量回踩」「回踩不破」最大的区别 —— 那两个看均线或涨幅比例，
-# 这里看的是**涨势的起点有没有被回踩确认**。
+# 这是它与「缩量回踩」最大的区别 —— 那个看均线，这里看的是
+# **涨势的起点有没有被回踩确认**。
 #
 # ⚠️ 它**不是回测出来的形态，也没有回测支持**：用户明确说「后续涨跌无所谓」，
-# 要的就是一份清单。实测一年 8000+ 个信号、**平均每天 70 个**（占全市场 2.4%），
-# 拿 N 日收益去衡量时超额接近 0（5 日 +0.11%、10 日 −0.16%）。
-# 所以它的定位是「按这个形状捞一批票自己看」，不是高胜率信号 —— **别按信号去理解它**。
+# 要的就是一份清单。2026-09-27 全量回测（5100 只 × 250 日、4557 条信号）：
+# 5/10/20/60 日超额 −0.65% / −1.23% / −1.61% / −2.00%、10 日胜率 39.5% ——
+# 比早先 2995 只样本那次测出来的 −0.16% 更负，**它是明确跑输大盘的**。
+# 保留它是因为用户点名要这个形状，不是因为它有效。
+# 所以定位是「按这个形状捞一批票自己看」，**别按信号去理解它**。
 NS_SURGE_PCT = 5.0  # 「放量大涨」：单日涨幅
 NS_SURGE_VOL = 2.0  # 放量：量 / 前 5 日均量
 NS_PULL_DAYS = (1, 5)  # 缩量回调的天数
@@ -345,45 +337,19 @@ BURST_SHRINK_IDEAL_RATIO = 0.3  # 缩到爆量日的 30% 算「缩量到位」�
 BURST_SHRINK_GAP_IDEAL = (1.0, 5.0)  # 爆量日到缩量日间隔（交易日）的理想区间
 BURST_SHRINK_GAP_CAP = 10.0  # 隔得太久说明「缩量回踩」这层关系已经散了
 
-# 欧奈尔突破（O'Neil 的「枢轴点买入」）
+# 欧奈尔突破（O'Neil 的「枢轴点买入」）—— **2026-09-27 连同整套 RS 机制一起删除**
 #
-# 来自《笑傲股市》那套买点，但只取**技术面**部分 —— 我们只有价量数据，
-# 没有盈利（C/A）与机构持仓（I），做不了完整的 CANSLIM。剩下四条对应：
+# 它来自《笑傲股市》，但只取技术面（缺 C/A 盈利项与 I 机构持仓）。删它的两条理由
+# 与实测数字见设计文档 §8.68.25，这里只留结论：
 #
-#   N（新高）：  基底上沿要贴近一年最高价（5% 以内）
-#   整理：       基底 3 周~3 个月（20/30/45/65/90 日候选），期间回撤 ≤15%
-#   S（量价）：  突破日成交量 ≥ 50 日均量的 1.4 倍（他说的「高出 40% 以上」）
-#   L（强度）：  RS 评级 ≥ 80（全市场横截面百分位，见 `compute_rs`）
+# 1. **它不出票**：库里 24 个交易日里一共命中过 1 只，全量回测 0 条信号 ——
+#    筛选条上常年是 0，对用户等于一个坏按钮。
+# 2. **它本来就不是信号**：筛出来的是银行 / 红利 / 公用事业这类稳健股，各口径超额
+#    都在负区间；试过加「日均振幅 ≥2.5%」挡红利股，没挡住，反而把样本从 32 砍到 14。
+#    **缺基本面，靠技术面补不上。**
 #
-# ⚠️ **它只能当清单工具，不是信号。** 根源是缺了 CANSLIM 的发动机（C/A 盈利项）：
-# 光靠「贴新高 + 低回撤 + 高 RS + 长均线之上」，在 A 股筛出来的是**银行、红利、
-# 公用事业**这类稳健股（实测：建行、工行、招行、伊利、格力、粤高速…），
-# 不是《笑傲股市》要的爆发股。回测同样不支持它 —— 各口径超额都在负区间，
-# 而样本受 RS 预热限制只有十几到几十个、还集中在两个月，本来也说明不了问题。
-#
-# 试过并放弃的补救：加「日均振幅 ≥2.5%」挡红利股 —— 实测没挡住（那阵银行自己
-# 波动就大），反而把样本从 32 砍到 14。**缺基本面，靠技术面补不上。**
-#
-# 想要爆发股请用「突破后横盘」（10 日超额 +4.03%、胜率 61.9%，那个有回测支持）；
-# 这条线等有了财务数据（盈利增速、机构持仓）再谈。
-ON_BASE_LENGTHS = (20, 30, 45, 65, 90)  # 候选基底长度（交易日）
-# 为什么只取这 5 个而不是逐日枚举：逐日枚举一年要跑 1.7 亿次切片，实测会让
-# 全市场扫描从 5 秒涨到一分钟以上 —— 而 5 个候选已经覆盖了 O'Neil 说的
-# 「5~7 周到几个月」这个区间
-ON_BASE_MAX_DROP = 0.15  # 基底内回撤上限（O'Neil：正常基底 15% 以内，25% 是熊市底）
-ON_NEAR_HIGH = 0.05  # 基底上沿距一年最高价的上限（「贴近新高」）
-ON_BREAK_VOL = 1.4  # 突破日量 / 50 日均量
-ON_MAX_EXCESS = 0.05  # 突破幅度上限：追太多就不叫买点了
-ON_MIN_GAIN = 0.0  # 近 120 个交易日涨幅下限
-ON_MIN_RS = 80.0  # O'Neil 的建议：只买 RS 评级 80 以上（他偏好 87+）
-# 近 60 个交易日的日均振幅下限：把低波动的红利股挡在清单外。
-#
-# ⚠️ 它**不是 O'Neil 的条件，而且挡不干净** —— 实测 2026-07 那阵银行自己波动也大，
-# 2.5% 这道门槛仍然放进来建行、齐鲁银行。它的作用只是**让清单窄一点、好挑一点**，
-# 别指望它区分「成长股 / 红利股」—— 那需要盈利数据。
-# 取 2% 而不是最初试的 2.5%：这个形态定位是清单工具（见上），**太严会把清单筛空**，
-# 宁可多看几只。它挡不掉所有红利股（上面的限制仍在），只是把最「静止」的那批排除掉。
-ON_MIN_AMPLITUDE = 0.02
+# ⚠️ 它一删，`compute_rs` / `RS_WEIGHTS` / `RS_MIN_BARS` / `Bars.rs` 全成了死代码，
+# 已一并删除 —— 那套横截面 RS 排名只服务于这一个形态。想要爆发股请看「突破后横盘」。
 
 # 悟道之路 · 致富选股（样板 → 启动）
 # 扫描侧只扫「强势/涨停/昨涨停/涨幅榜」创业板小池，与悟道名单对齐（见 jobs/scan_patterns.py）
@@ -394,15 +360,6 @@ WUDAO_START_VOL = 1.5
 WUDAO_DIVERGE_VOL = 2.5  # 与悟道：爆量冲高不收 → 吵/出货，不当明天盯
 WUDAO_MIN_BARS = 22  # 昨收 + 近 20 日均量 + 余量
 
-# 欧奈尔 RS 评级：加权涨幅的窗口（交易日）与权重，照 IBD 的原始口径 ——
-# 近 3 个月权重 0.4，其余三段各 0.2。最近这一段给双倍权重，是因为它最能
-# 反映「当下有没有资金在做」，这也是 RS 评级比「近一年涨幅」灵敏的原因。
-RS_WEIGHTS = ((63, 0.4), (126, 0.2), (189, 0.2), (252, 0.2))
-# 参与排名的最低 K 线数。取 200 而不是 252：库里的历史是 250 个交易日，
-# 卡 252 会让**一只票都进不来**（实测踩到：RS 全为 0、欧奈尔形态一个都不出）。
-# 拿不到的窗口按下面的逻辑跳过并把权重归一化，排名依然是可比的。
-RS_MIN_BARS = 200
-
 # 引擎至少要这么多根 K 线才动手（MA60 + 斜率窗口）
 MIN_BARS = MA_PERIODS[-1] + MA_SLOPE_LOOKBACK
 
@@ -412,6 +369,10 @@ MIN_BARS = MA_PERIODS[-1] + MA_SLOPE_LOOKBACK
 # 这一批按用户给的清单实现，**2026-09-25 补了回测**（`scripts/backtest_patterns.py
 # --pattern all-new`：2995 只票 × 2026-01~07，无未来函数、同票 20 日去重、
 # 以「同一天全市场平均收益」为基准）：
+#
+# ⚠️ **下表是 2995 只票那一版，已不是最新口径** —— 2026-09-27 扩到全池 5100 只
+# 重跑后，有几个形态的结论变了（尤其量堆、地量见底）。**引用数字请看设计文档
+# §8.68.25 那张全量表**，下表留着是为了对照「换口径前后差多少」。
 #
 # | 形态 | 信号 | 5日 | 10日 | 20日 | 60日 | 10日胜率 |
 # | --- | --- | --- | --- | --- | --- | --- |
@@ -433,7 +394,7 @@ MIN_BARS = MA_PERIODS[-1] + MA_SLOPE_LOOKBACK
 # | 下降趋势线突破 | 3197 | −0.27% | −0.27% | −0.60% | −2.08% | 49.2% |
 # | 锤子线 | 4191 | −0.32% | −0.40% | +0.04% | +2.51% | 42.4% |
 # | 地量见底 | 1901 | −0.36% | −0.43% | −0.81% | +0.37% | 53.1% |
-# | 量堆 | 882 | −0.19% | −0.48% | −0.27% | −2.86% | 45.2% |
+# | ~~量堆~~ | 882 | −0.19% | −0.48% | −0.27% | −2.86% | 45.2% |  ← 2026-09-27 删除
 # | 缺口回补 | 1742 | −0.29% | −0.54% | −1.07% | −1.01% | 45.3% |
 # | 上升楔形 | 56 | +0.82% | −0.62% | −3.83% | −9.72% | 26.8% |
 # | 均线粘合 | 980 | −0.54% | −0.87% | −0.55% | −3.68% | 41.5% |
@@ -455,8 +416,24 @@ MIN_BARS = MA_PERIODS[-1] + MA_SLOPE_LOOKBACK
 #    - **警示类**（上升楔形 −0.62%/20日 −3.83%、放量滞涨 −2.54%/20日 −5.71%、菱形、
 #      下降楔形）：负超额恰恰是「形态有效」的证据 —— 它们本来就该出现在高位/破位前，
 #      用来提示风险，不是选买点。放量滞涨胜率 32.8%、上升楔形 26.8%，指向性很明确。
-#    - **本该是买点的**（均线粘合 −0.87%、地量见底 −0.43%、量价底背离 −1.15%、
-#      量堆 −0.48%）：这些的负超额说明「经典说法在这段样本里不成立」，看的时候要打折。
+#    - **本该是买点的**（均线粘合 −0.87%、地量见底 −0.43%、量价底背离 −1.15%）：
+#      这些的负超额说明「经典说法在这段样本里不成立」，看的时候要打折。
+#
+# ⚠️ **2026-09-27 重跑，口径变大，有几个结论跟着变**：上面那张表是 2995 只票的
+# 样本；扩成**全池 5100 只 × 250 个交易日、165894 条信号**之后 ——
+#
+# | 形态 | 信号 | 10 日超额 | 10 日胜率 | 处置 |
+# | --- | --- | --- | --- | --- |
+# | 量堆 | 1522 | −1.74% | 40.5% | **删除** |
+# | 三角收敛 | 306 | −1.08% | **31.0%** | **删除** |
+# | 回踩不破 | 3083 | −0.86% | **35.9%** | **删除** |
+# | 欧奈尔突破 | **0** | — | — | **删除**（一条信号都不出） |
+#
+# 判据：**负超额 + 本来就是买点定位 + 没有别的用途**，三条同时成立才删。所以
+# 警示类（上升楔形 / 放量滞涨 / 菱形 / 下降楔形，负超额正是它们「有效」的证据）
+# 与用户点名要的「按形状捞票」类（N 字选股、揉搓线、玉柱擎天、爆量后缩量回踩）
+# 都留着 —— 后者的负超额是已知代价，不是新信息。形态数 48 → **44**。
+# 完整表格与逐条理由见设计文档 §8.68.25。
 #
 # ⚠️ **样本局限必须一起看**：库里每只票只有 260 根日线，扣掉 80 根预热与 60 日前瞻，
 # 实际只有 **2026-01 ~ 2026-07 这一段单一市场环境**（信号数虽大，但都在同一轮行情里）。
@@ -543,11 +520,10 @@ STALL_PCT_BAND = (-0.015, 0.025)  # 当日涨幅落在这一段里才算「滞�
 STALL_SHADOW_MIN = 0.28  # 上影线占全日振幅的比例下限
 STALL_MIN_DRAWDOWN = 0.1  # 低于这个回撤就不给「低位」那部分加分
 
-# 量堆（连续放量、价格重心同步上移）
-PILE_DAYS = 5
-PILE_MIN_DAYS = 4  # 这 5 天里至少几天量比达标
-PILE_VOL_MULT = 1.5
-PILE_RATIO_5_20 = 1.5  # 5 日均量 / 20 日均量
+# 量堆（连续放量、价格重心同步上移）—— **2026-09-27 已删除**（阈值随判定函数一起删）。
+#
+# 全量回测（5100 只 × 250 个交易日、1522 条信号）：5/10/20/60 日超额 −1.06% /
+# −1.74% / −2.20% / −4.41%，一路负到底，10 日胜率 40.5%。详见设计文档 §8.68.25。
 
 # V 型底
 V_BOTTOM_DAYS = 40
@@ -654,15 +630,6 @@ class Bars:
     volume: np.ndarray
     amount: np.ndarray
     pct_chg: np.ndarray
-    # 欧奈尔 RS 评级（1~99，全市场横截面百分位）。
-    #
-    # 它是**横截面量** —— 单只票自己算不出来，必须等全市场的 K 线都建好之后
-    # 统一排名，所以由 `compute_rs` 事后写进来，而不是 `build_bars` 里算。
-    #
-    # 默认 0 表示「没算过」（个股页只取一只票、单元测试、回测切片都会走到这里）。
-    # 依赖它的形态会**主动跳过**，而不是把 0 当成「最弱」误杀 —— 这个区别很重要：
-    # 拿 0 当最弱的话，个股页单独跑形态时会永远出不了信号，且没人看得出为什么。
-    rs: float = 0.0
 
     def __len__(self) -> int:
         return int(self.close.size)
@@ -740,52 +707,6 @@ def build_bars(records: list[dict]) -> Bars:
     )
 
 
-def compute_rs(bars_by_code: dict[str, Bars]) -> None:
-    """算欧奈尔 RS 评级（1~99），**就地写进每只票的 `bars.rs`**。
-
-    口径照 IBD 的原始定义：先算加权涨幅
-        RS_raw = 0.4×近 3 月 + 0.2×近 6 月 + 0.2×近 9 月 + 0.2×近 12 月
-    再按**全市场横截面**排名取百分位。
-
-    关键是「横截面」这三个字：它衡量的是**比多少票强**，不是涨了多少。
-    所以它不随大盘涨跌漂移 —— 熊市里普跌 30% 而它只跌 10%，RS 照样很高，
-    这正是 O'Neil 要的「相对强度」（他一句名言就是「买最强的票，别买最便宜的」）。
-
-    全市场 K 线已经都在手上，一次排序就够，比逐票查库便宜得多。
-    """
-    raw: dict[str, float] = {}
-    for code, bars in bars_by_code.items():
-        if len(bars) < RS_MIN_BARS:
-            continue
-        close = bars.close
-        latest = float(close[-1])
-        if latest <= 0:
-            continue
-        piece = 0.0
-        weight_sum = 0.0
-        for window, weight in RS_WEIGHTS:
-            if len(close) <= window:
-                # 这一年窗口拿不到（历史不够长）。**跳过并把权重归一化**，
-                # 而不是当成 0 涨幅 —— 后者会让所有票一起被拉向中间值
-                continue
-            base = float(close[-1 - window])
-            if base <= 0:
-                continue
-            piece += weight * (latest / base - 1)
-            weight_sum += weight
-        if weight_sum <= 0:
-            continue
-        raw[code] = piece / weight_sum
-
-    if not raw:
-        return
-    order = sorted(raw, key=lambda item: raw[item])
-    total = len(order)
-    for rank, code in enumerate(order):
-        # 映射到 1~99：最弱的 1、最强的 99（IBD 的评级就是这个量纲）
-        bars_by_code[code].rs = round(rank / max(total - 1, 1) * 98) + 1
-
-
 # ---------------------------------------------------------------- 打分工具
 
 
@@ -799,8 +720,9 @@ def _gate_score(value: float, gate: float, ideal: float) -> float:
     —— 太弱不行、太强也不行）；只有一个方向的用这个。
 
     **不要把 `gate` 当成满分点**：那样刚过门槛的样本会直接拿 0 分，等于把
-    「能接受的最差值」和「理想值」混成一件事。实测这么写会让「回踩不破」
-    从 80 只掉到 16 只 —— 分数低到进不了库，而不是判定变严了。
+    「能接受的最差值」和「理想值」混成一件事。实测这么写会让一个形态的命中
+    从 80 只掉到 16 只（当时测的是「回踩不破」，该形态 2026-09-27 已删）——
+    分数低到进不了库，而不是判定变严了。
     """
     if gate == ideal:
         return 1.0
@@ -938,68 +860,6 @@ def _ma_bull(bars: Bars) -> Signal | None:
         score,
         {"support": float(m20[-1]), "ma5": float(m5[-1]), "ma10": float(m10[-1])},
         {"stack_days": days, "spread": round(spread, 4), "gap": round(gap, 4)},
-    )
-
-
-def _ma_pullback(bars: Bars) -> Signal | None:
-    """回踩不破：先站上 MA20，再回踩到 MA20 附近缩量收回，且没跌破。"""
-    if len(bars) < MIN_BARS + PULLBACK_LOOKBACK:
-        return None
-
-    ma20 = _align(_ma_series(bars.close, 20), 20, len(bars))
-    window = slice(len(bars) - PULLBACK_LOOKBACK, len(bars))
-    above = bars.close[window] > ma20[window] * (1 + PULLBACK_ABOVE_GAP)
-    if not above.any():
-        return None
-
-    # 回踩只可能发生在「最后一次站上 MA20」之后
-    last_above = len(bars) - PULLBACK_LOOKBACK + int(np.flatnonzero(above)[-1])
-    if last_above >= len(bars) - 1:
-        # 最后一天还在上方，压根没回踩
-        return None
-
-    dip = slice(last_above + 1, len(bars))
-    dip_days = len(bars) - last_above - 1
-    if dip_days < PULLBACK_MIN_DIP_DAYS:
-        return None
-    if ma20[dip].size == 0 or not np.isfinite(ma20[dip]).all() or (ma20[dip] <= 0).any():
-        return None
-
-    distance = np.abs(bars.low[dip] - ma20[dip]) / ma20[dip]
-    touched = float(distance.min())
-    if touched > PULLBACK_TOLERANCE:
-        return None
-    # 下影线扎破均线算回踩，**收盘**站不回去就是破位 —— 这两件事必须分开判
-    deepest_break = float(((ma20[dip] - bars.close[dip]) / ma20[dip]).max())
-    if deepest_break > PULLBACK_MAX_CLOSE_BREAK:
-        return None
-    if bars.close[-1] <= ma20[-1]:
-        # 收在 MA20 下方，那就是破了，不是「回踩不破」
-        return None
-
-    up_volume = _safe_mean(bars.volume[window][above])
-    dip_volume = _safe_mean(bars.volume[dip])
-    drag = dip_volume / up_volume if up_volume > 0 else 1.0
-    if drag > PULLBACK_MAX_VOL_DRAG:
-        return None
-
-    # 缩量越狠越好、踩得越浅越好、收盘守得越稳越好、收回力度适中
-    score = _gate_score(drag, PULLBACK_MAX_VOL_DRAG, PULLBACK_IDEAL_VOL_DRAG) * 40
-    score += _gate_score(touched, PULLBACK_TOLERANCE, 0.005) * 20
-    score += _gate_score(max(deepest_break, 0.0), PULLBACK_MAX_CLOSE_BREAK, 0.0) * 20
-    reclaim = float((bars.close[-1] - ma20[-1]) / ma20[-1])
-    score += _gate_score(reclaim, 0.002, 0.05) * 20
-
-    return Signal(
-        "ma_pullback",
-        score,
-        {"support": float(ma20[-1]), "dip_low": float(bars.low[dip].min())},
-        {
-            "dip_low_vs_ma20": round(touched, 4),
-            "close_break": round(deepest_break, 4),
-            "vol_drag": round(drag, 3),
-            "dip_days": dip_days,
-        },
     )
 
 
@@ -1374,59 +1234,6 @@ def _double_bottom(bars: Bars) -> Signal | None:
     )
 
 
-def _triangle(bars: Bars) -> Signal | None:
-    """三角收敛：高点递降 + 低点递升，末端振幅收敛到起点的一半以内。
-
-    这类形态本身不是买点，而是**待突破**的观察名单 —— 所以不打「突破」的分，
-    改打「收敛得有多成熟」的分，越接近顶点越高。
-    """
-    if len(bars) < TRIANGLE_WINDOW:
-        return None
-
-    recent = _recent_pivots(bars, TRIANGLE_WINDOW)
-    highs = [item for item in recent if item[2] > 0]
-    lows = [item for item in recent if item[2] < 0]
-    if len(highs) < TRIANGLE_MIN_PIVOTS or len(lows) < TRIANGLE_MIN_PIVOTS:
-        return None
-
-    last_highs = [item[1] for item in highs[-TRIANGLE_MIN_PIVOTS:]]
-    last_lows = [item[1] for item in lows[-TRIANGLE_MIN_PIVOTS:]]
-    if not (last_highs[0] > last_highs[1] > last_highs[2]):
-        return None
-    if not (last_lows[0] < last_lows[1] < last_lows[2]):
-        return None
-
-    early = highs[0][1] - lows[0][1]
-    late = last_highs[-1] - last_lows[-1]
-    if early <= 0 or late <= 0:
-        return None
-    ratio = late / early
-    if ratio > TRIANGLE_CONVERGE:
-        return None
-
-    upper, lower = last_highs[-1], last_lows[-1]
-    # 当前价必须还在上下边界之间；已经突破出去的不该留在「收敛中」的名单里
-    if not (lower <= bars.close[-1] <= upper * 1.02):
-        return None
-    position = (bars.close[-1] - lower) / (upper - lower)
-
-    score = _band_score(TRIANGLE_CONVERGE - ratio, 0.05, 0.35, 0.50) * 45
-    # 贴着上边界说明快要选方向了，比趴在中间更值得盯
-    score += _band_score(position, 0.4, 0.95, 1.05) * 35
-    score += _band_score(len(highs) + len(lows), 6, 12, 18) * 20
-
-    return Signal(
-        "triangle",
-        score,
-        {"breakout": upper, "support": lower},
-        {
-            "converge": round(ratio, 3),
-            "position": round(position, 3),
-            "pivots": len(highs) + len(lows),
-        },
-    )
-
-
 def _head_shoulders(bars: Bars) -> Signal | None:
     """头肩底：左肩 → 头（更低的低点）→ 右肩，两肩等高、颈线大致水平，今天收在颈线上方。
 
@@ -1505,7 +1312,7 @@ def _head_shoulders(bars: Bars) -> Signal | None:
 def _flag(bars: Bars) -> Signal | None:
     """旗形：一段急涨（旗杆）之后窄幅缩量整理（旗面），今天贴着旗面上沿。
 
-    和三角收敛一样属于**待突破**的观察位，所以不打「已经突破」的分，
+    属于**待突破**的观察位，所以不打「已经突破」的分，
     打的是「旗杆够不够强、整理得够不够紧」。
 
     旗面不用摆动点切，而是**从最高点之后算起**：整理期的波动本来就小，
@@ -2044,103 +1851,6 @@ def _burst_shrink_pullback(bars: Bars) -> Signal | None:
             },
         )
     return None
-
-
-def _oneil_breakout(bars: Bars) -> Signal | None:
-    """欧奈尔突破：基底整理 → 放量站上平台上沿 → 且这个平台贴着一年新高。
-
-    四条技术面约束对应 O'Neil 的说法：贴新高（N）、基底整理、放量确认（S）、
-    RS 评级（L）。**RS 用的不是绝对涨幅，而是全市场横截面百分位**（见 `compute_rs`）。
-
-    只在**突破当天**出信号（他说的「枢轴点买入」），所以频率低、时效短 ——
-    今天没跟上，明天再买就是追高了（`ON_MAX_EXCESS` 会把追高的挡掉）。
-
-    与已有的「平台突破」的区别：那个只看「30 日窄幅 + 今天放量收上去」，
-    不管这个平台在什么位置；这里多两道 O'Neil 的硬约束 ——
-    **平台上沿必须贴近一年最高价**（否则只是反弹到半山腰）、
-    以及**价格必须站在 50/150 日均线上方**（中期趋势向上）。
-    """
-    size = len(bars)
-    if size < 160:  # 150 日均线 + 一点余量
-        return None
-
-    close, high, low, volume = bars.close, bars.high, bars.low, bars.volume
-    today_close = float(close[-1])
-    if today_close <= 0:
-        return None
-
-    ma50 = _safe_mean(close[-50:])
-    ma150 = _safe_mean(close[-150:])
-    if today_close < ma50 or today_close < ma150:
-        return None
-    gain120 = today_close / float(close[-121]) - 1 if size > 121 else 0.0
-    if gain120 < ON_MIN_GAIN:
-        return None
-    # 日均振幅过滤：把低波动的红利股挡在清单外（局限见 ON_MIN_AMPLITUDE 的注释）
-    recent_close = close[-60:]
-    if np.any(recent_close <= 0):
-        return None
-    if _safe_mean((high[-60:] - low[-60:]) / recent_close) < ON_MIN_AMPLITUDE:
-        return None
-    # RS 评级要在门槛之上。默认的 0 表示这笔数据没参与过横截面排名
-    # （个股页只取一只、回测切片），一并挡掉 —— 它不该被当成「最弱」放行
-    if bars.rs < ON_MIN_RS:
-        return None
-
-    year_high = float(high[-250:].max())
-    if year_high <= 0:
-        return None
-    # 突破日量能：O'Neil 看的是「比日均量高 40% 以上」，所以基准取 50 日均量
-    avg_vol = _safe_mean(volume[-51:-1])
-    if avg_vol <= 0:
-        return None
-    vol_ratio = float(volume[-1]) / avg_vol
-    if vol_ratio < ON_BREAK_VOL:
-        return None
-
-    best: Signal | None = None
-    for base_days in ON_BASE_LENGTHS:
-        base_start = size - 1 - base_days
-        if base_start < 20:
-            continue
-        # 基底 = 今天之前的那一段（今天不算，它是突破日）
-        base_high = float(high[base_start : size - 1].max())
-        base_low = float(low[base_start : size - 1].min())
-        if base_high <= 0 or base_low <= 0:
-            continue
-        drop = (base_high - base_low) / base_high
-        if drop > ON_BASE_MAX_DROP:
-            continue
-        # 平台上沿要贴近一年新高：否则那是「反弹到半山腰」而不是「突破新高」
-        from_high = base_high / year_high - 1
-        if from_high < -ON_NEAR_HIGH:
-            continue
-        if today_close <= base_high:
-            continue
-        excess = today_close / base_high - 1
-        if excess > ON_MAX_EXCESS:
-            continue
-
-        score = _band_score(vol_ratio, ON_BREAK_VOL, 2.5, 5.0) * 30
-        score += _gate_score(-from_high, ON_NEAR_HIGH, 0.0) * 25
-        score += _gate_score(drop, ON_BASE_MAX_DROP, 0.08) * 20
-        score += _band_score(excess, 0.005, 0.025, 0.05) * 15
-        score += _gate_score(float(base_days), float(ON_BASE_LENGTHS[0]), 90.0) * 10
-
-        if best is None or score > best.score:
-            best = Signal(
-                "oneil_breakout",
-                score,
-                {"breakout": base_high, "support": base_low},
-                {
-                    "vol_ratio": round(vol_ratio, 2),
-                    "flat_days": base_days,
-                    "flat_range": round(drop, 4),
-                    "from_high": round(from_high, 4),
-                    "excess": round(excess, 4),
-                },
-            )
-    return best
 
 
 def _wudao_day_geom(bars: Bars, i: int) -> tuple[float, float, float, float]:
@@ -2926,54 +2636,6 @@ def _volume_stall(bars: Bars) -> Signal | None:
     )
 
 
-def _volume_pile(bars: Bars) -> Signal | None:
-    """量堆：最近 5 天里至少 4 天量比 >1.5，且 5 日均量 / 20 日均量 ≥1.5、价格重心上移。
-
-    看的是**连续性**而不是单日爆量：一根天量可能是消息刺激（一次性的），
-    连续四五天的堆量才像资金持续进场。
-    """
-    if len(bars) < 20 + PILE_DAYS:
-        return None
-    counts = 0
-    for offset in range(PILE_DAYS):
-        index = len(bars) - PILE_DAYS + offset
-        base = _safe_mean(bars.volume[index - 5 : index])
-        if base > 0 and float(bars.volume[index]) / base >= PILE_VOL_MULT:
-            counts += 1
-    if counts < PILE_MIN_DAYS:
-        return None
-
-    average = _safe_mean(bars.volume[-20:])
-    if average <= 0:
-        return None
-    ratio = _safe_mean(bars.volume[-PILE_DAYS:]) / average
-    if ratio < PILE_RATIO_5_20:
-        return None
-
-    start = float(bars.close[-PILE_DAYS - 1])
-    close = float(bars.close[-1])
-    if start <= 0:
-        return None
-    gain = close / start - 1
-    if gain <= 0:
-        return None  # 价格重心没上移，那就只是放量不是量堆
-
-    score = min(counts / PILE_DAYS, 1.0) * 35
-    score += _band_score(ratio, PILE_RATIO_5_20, 3.0, 6.0) * 35
-    score += _band_score(gain, 0.005, 0.06, 0.15) * 30
-
-    return Signal(
-        "volume_pile",
-        min(score, 100.0),
-        {"support": float(bars.low[-PILE_DAYS:].min())},
-        {
-            "pile_days": counts,
-            "vol_ratio_5_20": round(ratio, 3),
-            "gain": round(gain, 4),
-        },
-    )
-
-
 def _v_bottom(bars: Bars) -> Signal | None:
     """V 型底：急跌 → 快速收复，左右两段基本对称，现在已从低点反弹到左侧跌幅的 60% 以上。
 
@@ -3182,7 +2844,8 @@ def _wedge_shape(bars: Bars) -> tuple[float, float, float, float] | None:
     """楔形几何：返回 `(上轨日斜率, 下轨日斜率, 收敛比例, 末端间距/均价)`，不成立则 None。
 
     上下轨分别对 high / low 序列做最小二乘（理由见 `_linfit`）。要求两轨**同向**
-    且间距明显收敛 —— 一上一下那种是「三角收敛」，已有专门的形态，不在这里重复收。
+    且间距明显收敛 —— 一上一下那种是收敛三角形（原「三角收敛」形态已删，
+    这里的判定不变：它不是楔形）。
     """
     if len(bars) < WEDGE_MIN_DAYS:
         return None
@@ -3197,7 +2860,7 @@ def _wedge_shape(bars: Bars) -> tuple[float, float, float, float] | None:
     if abs(high_daily) < WEDGE_MIN_SLOPE or abs(low_daily) < WEDGE_MIN_SLOPE:
         return None  # 太平，那是箱体
     if high_daily * low_daily <= 0:
-        return None  # 一上一下 = 三角收敛，不是楔形
+        return None  # 一上一下 = 收敛三角形，不是楔形
 
     end = days - 1
     gap_start = float(high_intercept - low_intercept)
@@ -3740,7 +3403,6 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("wudao_start", "今天可买", "致富", _wudao_start),
     Pattern("wudao_sample", "明天盯", "致富", _wudao_sample),
     Pattern("ma_bull", "均线多头排列", "趋势", _ma_bull),
-    Pattern("ma_pullback", "回踩不破", "趋势", _ma_pullback),
     Pattern("new_high", "创 N 日新高", "突破", _new_high),
     Pattern("platform_breakout", "平台突破", "突破", _platform_breakout),
     Pattern("volume_breakout", "放量突破前高", "突破", _volume_breakout),
@@ -3748,14 +3410,12 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("dry_pullback", "缩量回踩", "量价", _dry_pullback),
     Pattern("cup_handle", "杯柄", "几何", _cup_handle),
     Pattern("double_bottom", "W 底", "几何", _double_bottom),
-    Pattern("triangle", "三角收敛", "几何", _triangle),
     Pattern("head_shoulders", "头肩底", "几何", _head_shoulders),
     Pattern("flag", "旗形", "几何", _flag),
     Pattern("three_stage", "三段式突破", "几何", _three_stage),
     Pattern("limit_surge_flat", "涨停爆量横盘", "量价", _limit_surge_flat),
     Pattern("breakout_flat", "突破后横盘", "量价", _breakout_flat),
     Pattern("n_shape", "N 字选股", "量价", _n_shape),
-    Pattern("oneil_breakout", "欧奈尔突破", "突破", _oneil_breakout),
     Pattern("burst_shrink_pullback", "爆量后缩量回踩", "量价", _burst_shrink_pullback),
 
     # ---- 以下为 2026-09-25 按用户给的形态清单补齐（分组名与清单一致）----
@@ -3779,7 +3439,6 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("vp_divergence", "量价底背离", "量价", _vp_divergence),
     Pattern("shrink_limit_up", "缩量涨停", "量价", _shrink_limit_up),
     Pattern("volume_stall", "放量滞涨", "量价", _volume_stall),
-    Pattern("volume_pile", "量堆", "量价", _volume_pile),
     Pattern("v_bottom", "V 型底", "几何", _v_bottom),
     Pattern("round_bottom", "圆弧底", "几何", _round_bottom),
     Pattern("triple_bottom", "三重底", "几何", _triple_bottom),

@@ -239,7 +239,6 @@ class DailyScheduler:
         self._push_brief(today)
         # 单独推送的形态：加新形态就在 `PUSH_PATTERNS` 里登记，然后在这里补一行
         self._push_pattern("limit_surge_flat", today)
-        self._push_pattern("oneil_breakout", today)
         # DDE 扫描排最后：它是这条链上**唯一要花十几二十次调用**的一步（前缀 × 单日），
         # 前面几步里有零配额的，先跑完再说
         self._scan_dde(today)

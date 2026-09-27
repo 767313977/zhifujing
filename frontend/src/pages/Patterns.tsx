@@ -100,10 +100,6 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   stack_days: ['排列天数', false],
   spread: ['MA5-MA60 乖离', true],
   gap: ['距 MA20', true],
-  dip_days: ['回踩天数', false],
-  dip_low_vs_ma20: ['低点距 MA20', true],
-  close_break: ['收盘最深破位', true],
-  vol_drag: ['回踩缩量比', true],
   // 突破
   window: ['新高窗口', false],
   excess: ['突破幅度', true],
@@ -155,8 +151,6 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   giveback: ['横盘回撤', true],
   // N 字选股（surge_gain / vol_ratio / pullback_days / shrink 与既有字段共用）
   start_gap: ['距起涨点', true],
-  // 欧奈尔突破（vol_ratio / flat_days / flat_range / excess 与既有字段共用）
-  from_high: ['距一年新高', true],
   // 爆量后缩量回踩（shrink 与既有字段共用：缩量日成交额 / 爆量日成交额）
   burst_mult: ['爆量倍数', false],
   burst_gap: ['爆量后间隔', false],
@@ -192,8 +186,6 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   drawdown: ['距高点回撤', true],
   new_low: ['距新低', true],
   upper_shadow: ['上影占比', true],
-  pile_days: ['堆量天数', false],
-  vol_ratio_5_20: ['5/20 日量比', false],
   gain: ['区间涨幅', true],
   // 几何
   recover_pct: ['距底收复', true],

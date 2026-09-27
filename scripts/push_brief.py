@@ -62,11 +62,6 @@ def main() -> int:
         help="只处理「共达模式选股」那条独立消息（当日无命中则不发送）",
     )
     parser.add_argument(
-        "--oneil",
-        action="store_true",
-        help="只处理「欧奈尔突破」那条独立消息（当日无命中则不发送）",
-    )
-    parser.add_argument(
         "--calibration",
         action="store_true",
         help="只处理「配额对账提醒」",
@@ -84,9 +79,9 @@ def main() -> int:
     if args.calibration:
         task, label, sender = CALIBRATION_TASK, "配额对账提醒", push_calibration_reminder
         markdown = build_calibration_reminder(target_date)
-    elif args.gongda or args.oneil:
+    elif args.gongda:
         # 形态清单在 backend 的 PUSH_PATTERNS 里；partial 把形态 key 绑进发送函数
-        pattern = "limit_surge_flat" if args.gongda else "oneil_breakout"
+        pattern = "limit_surge_flat"
         label = PUSH_PATTERNS[pattern][0]
         task = PUSH_PATTERNS[pattern][1]
         markdown = build_pattern_brief(target_date, pattern)

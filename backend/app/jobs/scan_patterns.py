@@ -53,7 +53,6 @@ from app.services.patterns import (
     WUDAO_MIN_BARS,
     Bars,
     build_bars,
-    compute_rs,
     evaluate,
 )
 from app.sources.ifind import IfindError
@@ -700,8 +699,6 @@ def scan(
     skipped = 0
     dropped_wudao = 0
     by_pattern: dict[str, int] = defaultdict(int)
-    # 先把全市场的 K 线都建出来、再统一算 RS 评级 —— 它是**横截面排名**，
-    # 单只票自己算不出来，必须等所有票都在手上（见 patterns.compute_rs）
     bars_map: dict[str, Bars] = {}
     for code, records in grouped.items():
         # 致富只要约 22 根；其它形态内部仍按各自 MIN_BARS 自行跳过
@@ -709,7 +706,6 @@ def scan(
             skipped += 1
             continue
         bars_map[code] = build_bars(records)
-    compute_rs(bars_map)
 
     for code, bars in bars_map.items():
         records = grouped[code]

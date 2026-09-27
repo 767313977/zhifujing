@@ -53,11 +53,15 @@ CALIBRATION_INTERVAL_DAYS = 15
 # 会**单独推一条消息**的形态：`形态 key → (标题, 采集日志任务名, 一句话描述, 买点提示)`。
 #
 # 为什么不并进每日简报的「形态选股」那一节：那节按命中家数降序、每形态只列前 3，
-# 而这两个形态都稀疏（共达模式每天十几只，欧奈尔收紧后常常只有 1 只），永远排在
-# 最后，扫一眼注意不到。独立推送才能做到「有票就响」。
+# 而共达模式这类形态稀疏（每天十几只），永远排在最后，扫一眼注意不到。
+# 独立推送才能做到「有票就响」。
 #
 # 每个形态用**自己的任务名**去重：它们与复盘简报的发送条件不同（一个有命中才发、
 # 一个每天必发），混用同一个名字会互相顶掉。
+#
+# ⚠️ 2026-09-27 删掉了 `oneil_breakout` 那条（连带形态本身一起删，理由见 §8.68.25）：
+# 它 24 个交易日里只响过 1 次、且回测没有任何超额 —— 一条「有票才响」的推送挂在
+# 一个几乎不出票的形态上，等于没有。加回去要先在注册表里恢复那个形态。
 PUSH_PATTERNS: dict[str, tuple[str, str, str, str]] = {
     "limit_surge_flat": (
         "⭐ 共达模式选股",
@@ -65,17 +69,16 @@ PUSH_PATTERNS: dict[str, tuple[str, str, str, str]] = {
         "涨停爆量 → 突破平台 → 缩量横盘，等二次启动",
         "买点：放量站上突破价 · 跌破支撑价作废",
     ),
-    "oneil_breakout": (
-        "⭐ 欧奈尔突破",
-        "push_oneil",
-        "基底整理 → 放量突破平台上沿 → 贴近一年新高",
-        "买点：突破枢轴点当天买入 · 跌破基底下沿作废",
-    ),
 }
 
 DASH = "—"
 # 与前端 lib/format.ts 的金额口径保持一致
 WAN, YI, WANYI = 1e4, 1e8, 1e12
+
+# 注册表里当前存在的形态 key。简报也要带上这道过滤 —— 形态被删之后，历史那几天
+# 的 `pattern_hit` 行还留在库里（扫描只重写自己扫的那一天），不过滤就会在简报里
+# 多列一行「回踩不破 3 只」这种已经不存在的标签（名字会退化成 key）
+_PATTERN_KEYS = tuple(PATTERN_NAMES)
 
 # 2 板及以上每档都点名，首板只报家数（首板动辄几十只，全列出来会把简报撑爆）
 NAMED_CONSECUTIVE = 2
@@ -309,7 +312,7 @@ def _pattern_block(session, trade_date: date) -> str:
     """
     rows = session.execute(
         select(PatternHit.pattern, PatternHit.name, PatternHit.code, PatternHit.score)
-        .where(PatternHit.trade_date == trade_date)
+        .where(PatternHit.trade_date == trade_date, PatternHit.pattern.in_(_PATTERN_KEYS))
         .order_by(PatternHit.pattern, PatternHit.score.desc())
     ).all()
     if not rows:

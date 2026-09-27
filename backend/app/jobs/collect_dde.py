@@ -28,6 +28,7 @@ from sqlalchemy import func, select
 
 from app.db import session_scope, upsert_fill
 from app.models import PatternHit, StockDde, TradeCalendar
+from app.services.patterns import PATTERNS
 from app.sources.ifind import IfindClient, IfindError, normalize_code
 from app.sources.markdown_table import pick_float, pick_text
 
@@ -35,6 +36,11 @@ logger = logging.getLogger(__name__)
 
 # 一次取多少个交易日：60 ≈ 一个季度，够看趋势；要更长由调用方传 days
 DEFAULT_DAYS = 60
+
+# 注册表里当前存在的形态 key。取前 N 只时必须带上这道过滤：被删形态的历史命中
+# 还留在 `pattern_hit` 里，不过滤就可能选出一只「只因已删形态命中」的票，
+# 白花一次 DDE 调用，而且与 `/api/patterns/hits` 选出的那 50 只对不上
+_PATTERN_KEYS = tuple(pattern.key for pattern in PATTERNS)
 
 # 与 `collect_flows.CLOSE_READY` 同一道守卫、同一个理由：**早于这个时刻取「当天」，
 # 拿到的是盘中瞬时快照，不是收盘终值** —— 标成当天的数就是编数据（那是给复盘用的，
@@ -328,7 +334,7 @@ def top_hit_codes(day: date, limit: int) -> list[str]:
     with session_scope() as session:
         rows = session.execute(
             select(PatternHit.code)
-            .where(PatternHit.trade_date == day)
+            .where(PatternHit.trade_date == day, PatternHit.pattern.in_(_PATTERN_KEYS))
             .group_by(PatternHit.code)
             .order_by(func.max(PatternHit.score).desc())
             .limit(limit)

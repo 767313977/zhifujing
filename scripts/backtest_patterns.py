@@ -36,10 +36,10 @@ history.db 由 `scripts/backfill_history.py` 用腾讯补出来（零配额）�
 所以草案已删除，只留「调生产函数」这一条口径。
 
 文件名是 2026-09-25 从 `backtest_three_stage.py` 改过来的：旧名字只覆盖三段式等
-4 个形态，现在要跑注册表里全部（2026-09-27 起是 48 个），名字跟着覆盖面走。
+4 个形态，现在要跑注册表里全部（2026-09-27 起是 44 个），名字跟着覆盖面走。
 
     python scripts/backtest_patterns.py --pattern v_bottom            # 单个（短窗口）
-    python scripts/backtest_patterns.py --pattern all-new             # 26 个新形态
+    python scripts/backtest_patterns.py --pattern all-new             # 25 个新形态
     python scripts/backtest_patterns.py --pattern all                 # 注册表里全部
     python scripts/backtest_patterns.py --pattern all-new --history   # 换成 5 年长历史
     python scripts/backtest_patterns.py --pattern all-new --history --stocks 800   # 限样本试跑
@@ -83,10 +83,7 @@ from app.services.patterns import (  # noqa: E402
     LS_LIMIT_PCT,
     LS_LOOKBACK,
     MIN_SCORE,
-    ON_BREAK_VOL,
     PATTERNS,
-    RS_MIN_BARS,
-    RS_WEIGHTS,
     Bars,
     build_bars,
 )
@@ -102,7 +99,8 @@ HISTORY_DB = BACKEND / "data" / "history.db"
 # 长历史的默认窗口：5 年约 1220 根，取 1300 留点余量
 DEFAULT_HISTORY_BARS = 1300
 
-# 2026-09-25 按用户清单补的 26 个形态。单独列出来是为了能一条命令跑完这一批
+# 2026-09-25 按用户清单补的那一批（原 26 个，量堆已于 2026-09-27 删除）。
+# 单独列出来是为了能一条命令跑完这一批
 NEW_KEYS = (
     "ma_squeeze",
     "ascending_channel",
@@ -116,7 +114,6 @@ NEW_KEYS = (
     "vp_divergence",
     "shrink_limit_up",
     "volume_stall",
-    "volume_pile",
     "v_bottom",
     "round_bottom",
     "triple_bottom",
@@ -135,14 +132,11 @@ NEW_KEYS = (
 _BY_KEY = {pattern.key: pattern for pattern in PATTERNS}
 
 
-def _upto(bars: Bars, end: int, rs: float = 0.0) -> Bars:
+def _upto(bars: Bars, end: int) -> Bars:
     """截到第 `end` 根（不含）为止。
 
     判定函数只认「序列的最后一天就是今天」，所以回测到哪天就得把序列切到哪天 ——
     直接传整段等于把后面的行情喂进去，那就是未来函数。
-
-    `rs` 必须由调用方按**那一天**的横截面排名传进来（见 `build_rs_table`），
-    不能从 `bars` 上继承 —— 用整段数据算出来的 RS 同样是未来函数。
     """
     return Bars(
         dates=bars.dates[:end],
@@ -153,7 +147,6 @@ def _upto(bars: Bars, end: int, rs: float = 0.0) -> Bars:
         volume=bars.volume[:end],
         amount=bars.amount[:end],
         pct_chg=bars.pct_chg[:end],
-        rs=rs,
     )
 
 
@@ -171,7 +164,7 @@ def _as_hit(signal) -> dict | None:
 # ---------------------------------------------------------------- 廉价预筛
 #
 # 预筛只是**必要条件**，用来先把 (票, 日) 组合砍掉九成以上；命中与否一律由生产函数
-# 说了算。没有预筛的形态就走全量扫 —— 2026-09-25 补的 26 个都属这一类：它们的
+# 说了算。没有预筛的形态就走全量扫 —— 2026-09-25 补的那一批都属这一类：它们的
 # 必要条件不容易用一两行写对，硬写反而容易把真信号筛掉（预筛写错的后果是
 # 「回测说没有超额」，而不是报错）。
 
@@ -211,22 +204,10 @@ def prescreen_limit_surge(bars: Bars, t: int) -> bool:
     return bool((bars.pct_chg[start : t + 1] >= LS_LIMIT_PCT).any())
 
 
-def prescreen_oneil(bars: Bars, t: int) -> bool:
-    """今天放量、且站在 50 日均线上方（两条都是生产判定的必要条件）。"""
-    if t < 160:
-        return False
-    volume = bars.volume
-    avg = float(volume[t - 50 : t].mean())
-    if avg <= 0 or float(volume[t]) / avg < ON_BREAK_VOL:
-        return False
-    return float(bars.close[t]) >= float(bars.close[t - 50 : t].mean())
-
-
 PRESCREENS = {
     "three_stage": prescreen_three_stage,
     "breakout_flat": prescreen_breakout_flat,
     "limit_surge_flat": prescreen_limit_surge,
-    "oneil_breakout": prescreen_oneil,
 }
 
 
@@ -294,49 +275,6 @@ def _load_history(engine, codes: list[str], bars: int) -> tuple[date, dict[str, 
             }
         )
     return latest, dict(grouped)
-
-
-# ---------------------------------------------------------------- RS 表
-
-
-def build_rs_table(bars_by_code: dict[str, Bars]) -> dict[object, dict[str, float]]:
-    """逐日 RS 表：`{交易日: {代码: RS 评级}}`。
-
-    **必须按天预计算，不能拿整段数据算一次** —— RS 是横截面排名，判定第 t 天时
-    只能用「截至 t 的全市场表现」来排；用整段数据算出来的 RS 是未来函数，
-    会让回测结果虚高，而且从结果里看不出来（这正是最危险的一类错误）。
-
-    预计算而不是每个 t 重排一遍：回测要遍历全市场 × 全时段几百万个时点，
-    逐点重排代价太高。这里是先算好每只票每天的加权涨幅，再逐日排序。
-    """
-    raw: dict[object, dict[str, float]] = defaultdict(dict)
-    for code, bars in bars_by_code.items():
-        close = bars.close
-        for t in range(RS_MIN_BARS - 1, len(close)):
-            latest = float(close[t])
-            if latest <= 0:
-                continue
-            piece = 0.0
-            weight_sum = 0.0
-            for window, weight in RS_WEIGHTS:
-                if t < window:
-                    continue  # 这一年窗口还拿不到，跳过并归一化（与线上同一套逻辑）
-                base = float(close[t - window])
-                if base <= 0:
-                    continue
-                piece += weight * (latest / base - 1)
-                weight_sum += weight
-            if weight_sum > 0:
-                raw[bars.dates[t]][code] = piece / weight_sum
-
-    table: dict[object, dict[str, float]] = {}
-    for day, values in raw.items():
-        order = sorted(values, key=lambda item: values[item])
-        total = len(order)
-        table[day] = {
-            code: round(rank / max(total - 1, 1) * 98) + 1 for rank, code in enumerate(order)
-        }
-    return table
 
 
 # ---------------------------------------------------------------- 累加器
@@ -426,7 +364,7 @@ def main() -> int:
     parser.add_argument(
         "--pattern",
         default="three_stage",
-        help="形态 key / all-new（26 个新形态）/ all（除致富外全部）",
+        help="形态 key / all-new（25 个新形态）/ all（除致富外全部）",
     )
     parser.add_argument("--samples", type=int, default=15, help="单个形态时打印多少条命中明细")
     parser.add_argument("--stocks", type=int, default=0, help="只用前 N 只票（0 = 全部）")
@@ -480,9 +418,6 @@ def main() -> int:
     targets = _resolve_targets(args.pattern)
     logger.info("目标形态 %d 个：%s", len(targets), ", ".join(targets))
 
-    rs_table = build_rs_table(bars_by_code)
-    logger.info("RS 表：%d 个交易日", len(rs_table))
-
     # 基准：每个交易日 → 全市场在该日之后 N 日的平均收益。
     # 必须按**同一天**比，否则「形态命中组涨了 6%」可能只是那段时间大盘在涨。
     #
@@ -519,8 +454,7 @@ def main() -> int:
                 if screen is not None and not screen(bars, t):
                     continue
                 if sample is None:
-                    rs = rs_table.get(bars.dates[t], {}).get(code, 0.0)
-                    sample = _upto(bars, t + 1, rs)
+                    sample = _upto(bars, t + 1)
                 hit = _as_hit(_BY_KEY[key].detect(sample))
                 if hit is None:
                     continue
