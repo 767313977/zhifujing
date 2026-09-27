@@ -522,51 +522,55 @@ export interface PatternSummary {
 }
 
 /**
- * 每日「评分前 N 只」的后续走势统计（`/patterns/track`）。
+ * 每日「评分前 N 只」的 30 个交易日跟踪（`/patterns/track`）。
  *
  * ⚠️ **所有收益与比例都是百分数**（`mean: 1.23` 是 +1.23%、`up_pct: 54.3` 是 54.3%），
- * 不是 0~1 的比率 —— 与后端的 `PatternTrackHorizon` 一一对应。
+ * 不是 0~1 的比率 —— 与后端的 `PatternTrackPoint` 一一对应。
  */
-export interface PatternTrackHorizon {
-  /** 持有几个交易日 */
-  horizon: number
-  /** 有完整数据的样本数（到期日还没走到的票不计入，所以短持有期样本更多） */
+export interface PatternTrackPoint {
+  /** 筛选后第几个交易日（1 起） */
+  day: number
+  /** 有完整数据的样本数（该股这天没有行、或循环还没走到这天时不计入） */
   samples: number
   mean: number | null
   median: number | null
   /** 上涨占比 */
   up_pct: number | null
-  /** 平均超额 = 各样本收益 − 它自己信号日的全市场平均 */
+  /** 平均超额 = 各样本收益 − 它自己循环那天的全市场平均 */
   excess: number | null
   /** 跑赢当天全市场平均的比例 */
   beat_pct: number | null
 }
 
-export interface PatternTrackDay {
+/** 一个循环：某个筛选日选出的前 N 只，以及它们之后每一天的表现。 */
+export interface PatternTrackCohort {
   trade_date: string
   /** 当天选出的只数（不足 top 就是那天命中总数不够） */
   stocks: number
-  horizons: PatternTrackHorizon[]
+  /** 已经能算到第几个交易日（= 已走完多少） */
+  progress: number
+  /** 长度 = progress：**没走到的日子不返回**（峰 / 谷由前端从这里取） */
+  points: PatternTrackPoint[]
 }
 
 export interface PatternTrackSummary {
-  /** 窗口内实际有命中记录的天数 */
-  days: number
-  /** 逐日样本合计（同一只票重复上榜会重复计） */
+  cohorts_used: number
+  /** 逐循环样本合计（同一只票重复上榜会重复计） */
   stocks: number
   /** 去重后的只数 */
   unique: number
   first_date: string | null
   last_date: string | null
-  horizons: PatternTrackHorizon[]
 }
 
 export interface PatternTrack {
-  window_days: number
+  cohorts: number
+  track_days: number
   top: number
-  horizons: number[]
   summary: PatternTrackSummary
-  days: PatternTrackDay[]
+  /** 所有循环摊平后的同一条线（画主线用） */
+  average: PatternTrackPoint[]
+  days: PatternTrackCohort[]
 }
 
 export interface AdminStatus {

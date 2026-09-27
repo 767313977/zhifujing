@@ -820,55 +820,58 @@ class PatternSummary(BaseModel):
     by_pattern: list[PatternCount]
 
 
-class PatternTrackHorizon(BaseModel):
-    """一档持有期的统计。
+class PatternTrackPoint(BaseModel):
+    """循环里**第 `day` 个交易日**上的统计。
 
     ⚠️ **收益与比例都是百分数**（`mean=1.23` 表示 +1.23%、`up_pct=54.3` 表示 54.3%），
     不是 0~1 的比率 —— 免得前端再猜一次单位。
     """
 
-    horizon: int
-    # 有完整数据的样本数。当天选出的票里，到期日还没走到的、或到期日没有该股行的
-    # 都不计入 —— 所以短持有期的样本数会多于长持有期
+    # 筛选后第几个交易日（1 起）
+    day: int
+    # 有完整数据的样本数（这一天该股没有行、或循环还没走到这一天时不计入）
     samples: int
     mean: float | None
     median: float | None
     # 上涨占比
     up_pct: float | None
-    # 平均超额：各样本收益 − **它自己信号日**的全市场平均
+    # 平均超额：各样本收益 − **它自己循环那天**的全市场平均
     excess: float | None
     # 跑赢当天全市场平均的比例
     beat_pct: float | None
 
 
-class PatternTrackDay(BaseModel):
-    """某个扫描日「评分前 N 只」的后续走势。"""
+class PatternTrackCohort(BaseModel):
+    """一个循环：某个筛选日选出的前 N 只，以及它们之后每一天的表现。"""
 
     trade_date: date
-    # 当天选出的只数（不足 `top` 就是那天的命中总数不够）
+    # 当天选出的只数（不足 `top` 就是那天命中总数不够）
     stocks: int
-    horizons: list[PatternTrackHorizon]
+    # 这个循环已经能算到第几个交易日（= 已走完多少；`track_days` 就是走完了）
+    progress: int
+    # 长度 = `progress`：**没走到的日子不返回**，不编造数据。
+    # 曲线上的峰 / 谷（最多浮盈、最深回撤）由前端从这里面取，接口不另存一份。
+    points: list[PatternTrackPoint]
 
 
 class PatternTrackSummary(BaseModel):
-    """整段窗口的合计。"""
-
-    days: int
-    # 逐日样本合计（天数 × 只数，同一只票重复上榜会重复计）
+    cohorts_used: int
+    # 逐循环样本合计（同一只票重复上榜会重复计）
     stocks: int
     # 去重后的只数
     unique: int
     first_date: date | None
     last_date: date | None
-    horizons: list[PatternTrackHorizon]
 
 
 class PatternTrackOut(BaseModel):
-    window_days: int
+    cohorts: int
+    track_days: int
     top: int
-    horizons: list[int]
     summary: PatternTrackSummary
-    days: list[PatternTrackDay]
+    # 所有循环在同一个「第 n 个交易日」上摊平的统计 —— 画那条主线用
+    average: list[PatternTrackPoint]
+    days: list[PatternTrackCohort]
 
 
 # ------------------------------------------------------------------ 资金面

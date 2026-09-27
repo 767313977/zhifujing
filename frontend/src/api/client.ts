@@ -281,14 +281,13 @@ export const api = {
   ),
 
   /**
-   * 每日「评分前 `top` 只」的后续走势（胜率跟踪）。
+   * 每个筛选日的「评分前 `top` 只」在其后 `trackDays` 个交易日里的走势。
    *
-   * `days` 是**最近多少个有命中记录的交易日**（不是自然日）。持有期默认由后端给
-   * （1/3/5/10 日），要改就传逗号分隔的交易日数。
+   * `cohorts` 是**最近多少个有命中记录的交易日**（每个日子 = 一个循环，不是自然日）。
    */
-  patternTrack: (days = 30, top = 50, horizons = '') =>
+  patternTrack: (cohorts = 30, top = 50, trackDays = 30) =>
     request<PatternTrack>(
-      `/patterns/track?days=${days}&top=${top}${horizons ? `&horizons=${horizons}` : ''}`,
+      `/patterns/track?cohorts=${cohorts}&top=${top}&track_days=${trackDays}`,
     ),
 
   syncStock: (code: string, days = 250) =>
