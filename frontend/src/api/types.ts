@@ -568,9 +568,33 @@ export interface PatternTrack {
   track_days: number
   top: number
   summary: PatternTrackSummary
-  /** 所有循环摊平后的同一条线（画主线用） */
+  /** 所有循环摊平后的同一条线（表格的「合计」行用） */
   average: PatternTrackPoint[]
   days: PatternTrackCohort[]
+}
+
+/** 明细表里的一只票。 */
+export interface PatternTrackStock {
+  code: string
+  name: string | null
+  score: number
+  /**
+   * 之后第 1..track_days 个交易日的**当日涨跌幅**（百分数，1.23 = +1.23%）。
+   * ⚠️ 是每天的涨跌幅、不是累计；该股那天没有行情行时为 null
+   */
+  pct: (number | null)[]
+}
+
+/** 某个循环选中的票的逐日明细。 */
+export interface PatternTrackDetail {
+  trade_date: string
+  top: number
+  track_days: number
+  /** 已经走到第几个交易日（0 = 还没走到任何一天） */
+  progress: number
+  /** 每一列对应的实际交易日，与每行 `pct` 一一对应 */
+  days: string[]
+  rows: PatternTrackStock[]
 }
 
 export interface AdminStatus {

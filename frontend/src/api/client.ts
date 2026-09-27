@@ -24,6 +24,7 @@ import type {
   PatternStock,
   PatternSummary,
   PatternTrack,
+  PatternTrackDetail,
   PromotionSeries,
   ReviewNote,
   RotationLeaderDay,
@@ -288,6 +289,16 @@ export const api = {
   patternTrack: (cohorts = 30, top = 50, trackDays = 30) =>
     request<PatternTrack>(
       `/patterns/track?cohorts=${cohorts}&top=${top}&track_days=${trackDays}`,
+    ),
+
+  /**
+   * 某个循环选中的票的**逐日明细**（哪 50 只、之后每个交易日各涨跌多少）。
+   *
+   * 每列是**当天的涨跌幅**，不是累计。入选口径与 `patternTrack` 完全一致。
+   */
+  patternTrackDetail: (date: string, top = 50, trackDays = 30) =>
+    request<PatternTrackDetail>(
+      `/patterns/track/detail?date=${date}&top=${top}&track_days=${trackDays}`,
     ),
 
   syncStock: (code: string, days = 250) =>

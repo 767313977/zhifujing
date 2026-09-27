@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db import get_db
 from app.models import PatternHit, StockDaily, StockUniverse
 from app.schemas import (
@@ -24,6 +25,7 @@ from app.schemas import (
     PatternMeta,
     PatternStockOut,
     PatternSummary,
+    PatternTrackDetail,
     PatternTrackOut,
 )
 from app.services import pattern_track
@@ -232,16 +234,41 @@ def track(
     ⚠️ 循环还没走到第 n 个交易日时**不返回那个点**（`progress` 只记到能算的那个 n），
     所以越新的循环 `points` 越短。
     """
-    key = (cohorts, top, track_days, *_track_version(db))
+    # 缓存键里连「统计起点」一起带上：改了配置就该立刻生效，不能吃旧结果
+    start = get_settings().pattern_track_start
+    key = (cohorts, top, track_days, start, *_track_version(db))
     cached = _TRACK_CACHE.get(key)
     if cached is not None and datetime.now() - cached[0] < _TRACK_TTL:
         return cached[1]
 
     result = PatternTrackOut.model_validate(
-        pattern_track.track(db, cohorts=cohorts, top=top, track_days=track_days)
+        pattern_track.track(
+            db, start=start, cohorts=cohorts, top=top, track_days=track_days
+        )
     )
     _TRACK_CACHE[key] = (datetime.now(), result)
     return result
+
+
+@router.get("/track/detail", response_model=PatternTrackDetail)
+def track_detail(
+    db: Session = Depends(get_db),
+    trade_date: date = Query(..., alias="date", description="哪一天的循环"),
+    top: int = Query(pattern_track.DEFAULT_TOP, ge=1, le=200),
+    track_days: int = Query(pattern_track.DEFAULT_TRACK_DAYS, ge=1, le=120),
+) -> PatternTrackDetail:
+    """某个循环选中的票的**逐日明细**：是哪 50 只、之后每个交易日各涨跌多少。
+
+    - 入选口径与 `/track` 完全一致（按票归并取最高分的前 `top` 只、只认注册表里的形态），
+      所以两边的「只数」永远对得上。
+    - `pct` 的每一列是**那一天的当日涨跌幅**（相对前一交易日），不是从筛选日起算的累计。
+    - `days` 给出每列对应的实际交易日；`progress` = 已经走到第几个交易日（与 `/track` 同义）。
+    - 只走到「最后一天真有行情」那天，没走到的日子**不返回**（不是返回 null 让你以为是
+      当天没涨跌）。
+    """
+    return PatternTrackDetail.model_validate(
+        pattern_track.detail(db, trade_date, top=top, track_days=track_days)
+    )
 
 
 @router.get("/summary", response_model=PatternSummary)

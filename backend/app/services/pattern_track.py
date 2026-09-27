@@ -59,16 +59,25 @@ DEFAULT_COHORTS = 30
 DEFAULT_TOP = 50
 DEFAULT_TRACK_DAYS = 30
 
+# **统计起点**由 `Settings.pattern_track_start` 传进来（用户 2026-09-27 要求
+# 「每个循环从 9 月 24 日开始统计」）：从那天起，每个有命中记录的交易日就是一个循环。
+# 为什么要有起点 —— 09-24 之前那几天只扫了 3032 只（当天起才扩到 5279 只），
+# 「前 50 只」是在不同大小的池子里排出来的，前后不可比。这里**不设默认值**，
+# 免得配置与代码各有一份真相。
+
 # 只统计**注册表里当前存在**的形态。少了这道过滤，被删形态的历史命中会混进
 # 「评分前 50 只」（`/hits` 与 DDE 补齐都已经加了同一道过滤，口径必须一致）
 _KEYS = tuple(pattern.key for pattern in PATTERNS)
 
+# 一个循环选中的一只票：(代码, 名称, 最高分)
+Pick = tuple[str, str | None, float]
 
-def _scan_dates(session: Session, cohorts: int) -> list[date]:
-    """最近 `cohorts` 个**有命中记录**的交易日，升序返回（每个日子就是一个循环）。"""
+
+def _scan_dates(session: Session, cohorts: int, start: date) -> list[date]:
+    """`start` 起、最近 `cohorts` 个**有命中记录**的交易日，升序返回。"""
     rows = session.scalars(
         select(PatternHit.trade_date)
-        .where(PatternHit.pattern.in_(_KEYS))
+        .where(PatternHit.pattern.in_(_KEYS), PatternHit.trade_date >= start)
         .group_by(PatternHit.trade_date)
         .order_by(PatternHit.trade_date.desc())
         .limit(cohorts)
@@ -76,34 +85,35 @@ def _scan_dates(session: Session, cohorts: int) -> list[date]:
     return sorted(rows)
 
 
-def _picks(session: Session, days: list[date], top: int) -> dict[date, list[str]]:
-    """每个循环的「评分前 `top` 只」，按票归并取最高分。
+def _picks(session: Session, days: list[date], top: int) -> dict[date, list[Pick]]:
+    """每个循环的「评分前 `top` 只」，按票归并取最高分（名称取自命中记录的快照）。
 
     ⚠️ 并列分数时的取舍与 `/hits` **不保证逐只一致**（那边是纯 SQL `order by score
     desc`、没有 tie-break，本身也是任意的；这里显式按代码升序兜底，至少**同一天同
-    一份数据每次结果相同**）。差一两只不影响胜率统计，但别拿「第 50 位是谁」去对账。
+    一份数据每次结果相同**）。差一两只不影响统计，但别拿「第 50 位是谁」去对账。
     """
-    best: dict[tuple[date, str], float] = {}
+    best: dict[tuple[date, str], Pick] = {}
     if not days:
         return {}
     rows = session.execute(
-        select(PatternHit.trade_date, PatternHit.code, PatternHit.score).where(
+        select(PatternHit.trade_date, PatternHit.code, PatternHit.name, PatternHit.score).where(
             PatternHit.trade_date.in_(days), PatternHit.pattern.in_(_KEYS)
         )
     ).all()
-    for day, code, score in rows:
+    for day, code, name, score in rows:
         key = (day, code)
-        if score > best.get(key, -np.inf):
-            best[key] = score
+        current = best.get(key)
+        if current is None or score > current[2]:
+            best[key] = (code, name, float(score))
 
-    grouped: dict[date, list[tuple[float, str]]] = defaultdict(list)
-    for (day, code), score in best.items():
-        grouped[day].append((score, code))
+    grouped: dict[date, list[Pick]] = defaultdict(list)
+    for (day, _code), item in best.items():
+        grouped[day].append(item)
 
-    picked: dict[date, list[str]] = {}
+    picked: dict[date, list[Pick]] = {}
     for day, items in grouped.items():
-        items.sort(key=lambda item: (-item[0], item[1]))
-        picked[day] = [code for _, code in items[:top]]
+        items.sort(key=lambda item: (-item[2], item[0]))
+        picked[day] = items[:top]
     return picked
 
 
@@ -187,7 +197,7 @@ def _curves(
     for day in scan_days:
         calendar_pos = index[day]
         start = date_pos[day]
-        picked = np.array([code_pos.get(code, -1) for code in picks[day]], dtype=np.int64)
+        picked = np.array([code_pos.get(code, -1) for code, _, _ in picks[day]], dtype=np.int64)
         index_in = picked[picked >= 0]
         entry_present = present[start]
         has_entry = entry_present[index_in] if index_in.size else np.array([], dtype=bool)
@@ -287,12 +297,13 @@ def _pooled_stats(items: list[tuple[np.ndarray, float]]) -> dict:
 def track(
     session: Session,
     *,
+    start: date,
     cohorts: int = DEFAULT_COHORTS,
     top: int = DEFAULT_TOP,
     track_days: int = DEFAULT_TRACK_DAYS,
 ) -> dict:
-    """滚动统计最近 `cohorts` 个循环：每个循环的 50 只跟踪 `track_days` 个交易日。"""
-    picks = _picks(session, _scan_dates(session, cohorts), top)
+    """滚动统计 `start` 起最近 `cohorts` 个循环：每个循环的 50 只跟踪 `track_days` 个交易日。"""
+    picks = _picks(session, _scan_dates(session, cohorts, start), top)
     curves = _curves(session, picks, track_days)
     days_desc = sorted(picks, reverse=True)
 
@@ -301,7 +312,7 @@ def track(
     total_stocks = 0
     pool: dict[int, list[tuple[np.ndarray, float]]] = defaultdict(list)
     for day in days_desc:
-        unique.update(picks[day])
+        unique.update(item[0] for item in picks[day])
         total_stocks += len(picks[day])
         curve = curves.get(day, {})
         points = []
@@ -338,4 +349,93 @@ def track(
         },
         "average": average,
         "days": rows,
+    }
+
+
+def detail(
+    session: Session,
+    day: date,
+    *,
+    top: int = DEFAULT_TOP,
+    track_days: int = DEFAULT_TRACK_DAYS,
+) -> dict:
+    """某个循环选中的票，**逐只、逐日**列出它们之后每个交易日的当日涨跌幅。
+
+    与 `track()` 的分工：那边给的是「到第 n 日的累计收益」的统计量（画曲线、算胜率），
+    这里给的是原始明细 —— 回答「那 50 只到底是哪些票、之后每天各涨跌多少」。
+
+    ⚠️ 每一列都是**那一天的当日涨跌幅**（相对前一交易日），不是从筛选日起算的累计。
+    要累计就自己往上连乘，或者在 `track()` 的统计量里看。
+    """
+    picks = _picks(session, [day], top).get(day, [])
+    empty = {
+        "trade_date": day,
+        "top": top,
+        "track_days": track_days,
+        "progress": 0,
+        "days": [],
+        "rows": [],
+    }
+    if not picks:
+        return empty
+
+    calendar = list(
+        session.scalars(select(TradeCalendar.trade_date).order_by(TradeCalendar.trade_date))
+    )
+    index = {item: i for i, item in enumerate(calendar)}
+    start = index.get(day)
+    data_end = session.scalar(select(func.max(StockDaily.trade_date)))
+    if start is None or data_end is None or data_end not in index:
+        return empty
+
+    # 之后 `track_days` 个交易日，按「最后一天真有行情」封顶 —— 与 `track()` 同一道
+    # 边界（否则会把还没走到的日子列成空白，看着像「当天没涨跌」）
+    stop = min(start + track_days, index[data_end])
+    days = calendar[start + 1 : stop + 1]
+
+    # 再按**整个市场有没有数据**截断：某天一行都没有（采集被配额让路跳过，如 2026-09-25）
+    # 就停在它之前。不这么做的话，那天会显示成整列「—」，读起来像「当天全市场没涨跌」，
+    # 而实际是「我们没这天的数据」。`track()` 用的是同一条规则，两边进度才对得上。
+    if days:
+        covered = {
+            when
+            for (when,) in session.execute(
+                select(StockDaily.trade_date)
+                .where(StockDaily.trade_date.in_(days))
+                .group_by(StockDaily.trade_date)
+            ).all()
+        }
+        for offset, when in enumerate(days):
+            if when not in covered:
+                days = days[:offset]
+                break
+
+    values: dict[str, dict[date, float | None]] = defaultdict(dict)
+    if days:
+        codes = [item[0] for item in picks]
+        rows = session.execute(
+            select(StockDaily.code, StockDaily.trade_date, StockDaily.pct_chg).where(
+                StockDaily.code.in_(codes), StockDaily.trade_date.in_(days)
+            )
+        ).all()
+        for code, when, pct_value in rows:
+            values[code][when] = None if pct_value is None else round(float(pct_value), 2)
+
+    return {
+        "trade_date": day,
+        "top": top,
+        "track_days": track_days,
+        # 这个循环已经走到第几个交易日（与 `track()` 的 progress 同一含义）
+        "progress": len(days),
+        # 每一列对应的实际交易日，给前端做表头提示用
+        "days": [item.isoformat() for item in days],
+        "rows": [
+            {
+                "code": code,
+                "name": name,
+                "score": round(score, 1),
+                "pct": [values.get(code, {}).get(item) for item in days],
+            }
+            for code, name, score in picks
+        ],
     }

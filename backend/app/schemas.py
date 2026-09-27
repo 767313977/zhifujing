@@ -869,9 +869,33 @@ class PatternTrackOut(BaseModel):
     track_days: int
     top: int
     summary: PatternTrackSummary
-    # 所有循环在同一个「第 n 个交易日」上摊平的统计 —— 画那条主线用
+    # 所有循环在同一个「第 n 个交易日」上摊平的统计 —— 表格底部的「合计」行用
     average: list[PatternTrackPoint]
     days: list[PatternTrackCohort]
+
+
+class PatternTrackStock(BaseModel):
+    """明细表里的一只票。"""
+
+    code: str
+    name: str | None
+    score: float
+    # 之后第 1..track_days 个交易日的**当日涨跌幅**（百分数，1.23 = +1.23%）。
+    # ⚠️ 是**每天的涨跌幅**，不是从筛选日起算的累计；该股那天没有行情行时为 null
+    pct: list[float | None]
+
+
+class PatternTrackDetail(BaseModel):
+    """某个循环选中的票的逐日明细。"""
+
+    trade_date: date
+    top: int
+    track_days: int
+    # 已经走到第几个交易日（0 表示还没走到任何一天）
+    progress: int
+    # 每一列对应的实际交易日，与每行 `pct` 一一对应（给表头做提示用）
+    days: list[date]
+    rows: list[PatternTrackStock]
 
 
 # ------------------------------------------------------------------ 资金面
