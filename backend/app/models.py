@@ -243,7 +243,7 @@ class SectorDaily(Base):
 
     ⚠️ 但其中**两列的写入方不是采集器**，用它之前要知道（它们是「别的 job 往同一张表
     补的一列」，而本表的每日采集是整天替换 —— 采集器必须把它们原样带回去，
-    见 `jobs/collect_sectors._kept_net_inflow`）：
+    见 `jobs/collect_sectors._kept_external`）：
 
     - `net_inflow`：`jobs/collect_board_flow.py` 算的（板块成分股 × 逐股主力净流入）
     - `member_count`：同一个 job 顺手存的（它本来就要拉全部板块的成分名单，

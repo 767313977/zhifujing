@@ -234,12 +234,8 @@ class KlineCollector:
             if max_days and len(fetched) >= max_days:
                 # 本轮补满了。剩下的天**只用库里的数据**判断要不要补（不花调用），
                 # 这样一次分批跑就能报出「还剩几天」，不必再空跑一轮才知道
-                pending = sum(
-                    1
-                    for rest_index, rest in enumerate(days[index:], start=index)
-                    if self._needs_day(
-                        rest, universe, strict=len(days) - rest_index <= _RECENT_STRICT_DAYS
-                    )
+                pending = self._count_pending(
+                    days[index:], universe, tail=_RECENT_STRICT_DAYS
                 )
                 logger.info("本轮补满 %d 天，窗口内还剩 %d 天待补", max_days, pending)
                 break
@@ -376,7 +372,14 @@ class KlineCollector:
         """
         return _trade_dates(self._window_start(end, full=full), end)
 
-    def _needs_day(self, day: date, universe: list[str], *, strict: bool = False) -> bool:
+    def _needs_day(
+        self,
+        day: date,
+        universe: list[str],
+        *,
+        strict: bool = False,
+        got: int | None = None,
+    ) -> bool:
         """这一天要不要采。
 
         库里已有的天数直接跳过 —— 这是省配额与可续跑的关键：日常只有最新那天
@@ -387,18 +390,56 @@ class KlineCollector:
 
         `strict=True`（近端几个交易日）用 1% 的判据，其余历史日用 20% —— 理由见
         两个常量的注释：历史日缺的是「当时还没上市的票」，近端缺的就是**没采到**。
+
+        `got` 传了就不再查库（`_count_pending` 一次查完多天再用），**判定逻辑只有
+        这一处** —— 别在外面照抄这两个比例。
         """
-        with session_scope() as session:
-            got = (
-                session.scalar(
-                    select(func.count(func.distinct(StockDaily.code))).where(
-                        StockDaily.trade_date == day, StockDaily.code.in_(universe)
+        if got is None:
+            with session_scope() as session:
+                got = (
+                    session.scalar(
+                        select(func.count(func.distinct(StockDaily.code))).where(
+                            StockDaily.trade_date == day, StockDaily.code.in_(universe)
+                        )
                     )
+                    or 0
                 )
-                or 0
-            )
         ratio = _RECENT_MISSING_RATIO if strict else _REPAIR_MISSING_RATIO
         return len(universe) - got > len(universe) * ratio
+
+    def _count_pending(self, days: list[date], universe: list[str], *, tail: int) -> int:
+        """`days` 里还有几天要采。**一次 group by 查完**。
+
+        原来在 `collect` 的「本轮补满」分支里逐天调 `_needs_day`，窗口内剩 500 个
+        交易日就是 500 次「按日期把全池数一遍」的查询，每轮尾部都要白扫一遍
+        （2026-09-27 优化）。判据仍走 `_needs_day`，只是把 `got` 预先算好。
+        """
+        if not days:
+            return 0
+        with session_scope() as session:
+            counts = dict(
+                session.execute(
+                    select(
+                        StockDaily.trade_date,
+                        func.count(func.distinct(StockDaily.code)),
+                    )
+                    .where(
+                        StockDaily.trade_date.in_(days),
+                        StockDaily.code.in_(universe),
+                    )
+                    .group_by(StockDaily.trade_date)
+                ).all()
+            )
+        return sum(
+            1
+            for index, day in enumerate(days)
+            if self._needs_day(
+                day,
+                universe,
+                strict=len(days) - index <= tail,
+                got=counts.get(day, 0),
+            )
+        )
 
     def _fetch_day(self, day: date, allowance: set[str]) -> tuple[int, int]:
         """采一个交易日：按前缀问全市场，只留该留的票。返回 (行数, 调用次数)。"""
@@ -416,6 +457,16 @@ class KlineCollector:
         if not rows:
             logger.warning("%s 一只都没取到行情，可能不是交易日或问法失效", day)
             return 0, calls
+
+        # ⚠️ `upsert_many` 会把「这一批里带了的列」一律覆盖：来源这次不返回某列时
+        # 整批都是 None，重采某天会把库里已经存好的量/额/换手率**全抹成空**。
+        # 所以整列全空就干脆不带这一列 —— 逐行的 None 不动（那一行本来就该是空的）。
+        # 2026-09-27 修（原来只有 `_basics` 对 name 做了这种保护）。
+        for column in ("name", "volume", "amount", "turnover"):
+            if not any(row[column] is not None for row in rows):
+                for row in rows:
+                    row.pop(column)
+
         with session_scope() as session:
             return upsert_many(session, StockDaily, rows), calls
 

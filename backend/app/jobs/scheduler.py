@@ -167,8 +167,19 @@ class DailyScheduler:
             return
 
         if not collector.is_trade_day(today):
-            logger.info("%s 跳过：%s 不是交易日", reason, today)
-            return
+            # 交易日历为空时 `is_trade_day` 保守返回 False，于是**全新部署的库**
+            # 在这里直接 return —— 日历永远采不到，整条定时链一次都跑不起来
+            # （2026-09-27 修；日志还会显示成「今天不是交易日」，很有误导性）。
+            # 先把「空日历」与「今天确实休市」分开：空日历就补一次再判断。
+            if collector.calendar_empty():
+                logger.info("%s：交易日历为空，先补一次日历再判断", reason)
+                try:
+                    collector.collect_calendar()
+                except Exception:  # noqa: BLE001 - 补不到就照旧跳过，别让调度崩掉
+                    logger.exception("%s：补交易日历失败", reason)
+            if not collector.is_trade_day(today):
+                logger.info("%s 跳过：%s 不是交易日", reason)
+                return
         if collector.has_collected(today):
             logger.info("%s 跳过：%s 已有数据", reason, today)
         else:
@@ -201,6 +212,23 @@ class DailyScheduler:
             logger.info("%s：%s 的尾部链路已跑过，跳过", reason, today)
             return
 
+        # 整条尾巴包进采集锁（2026-09-27 修）：`tail_done` 与 `_mark_tail` 是
+        # 「先查后写」，两个 `_run_daily` 并发时（部署日重启、旧进程的尾巴还没跑完）
+        # 会**都看到「没跑过」而双跑** —— DDE 全市场扫描一轮十几次调用、板块资金流
+        # 三百七十多次请求，纯属白烧。锁同时也挡住并发的 `POST /api/admin/collect`。
+        # 拿不到锁就跳过且**不写标记**（尾巴确实没跑完），下次触发还会再试。
+        try:
+            with collect_guard(f"{reason} 尾部"):
+                self._run_tail(today, reason)
+        except CollectionBusy as exc:
+            logger.warning("%s：尾部链路跳过（%s）", reason, exc)
+
+    def _run_tail(self, trade_date: date, reason: str) -> None:
+        """采集之后那一串：日线 → 回补 → 形态 → 简报/推送 → DDE → 板块资金流。
+
+        由 `_run_daily` 在**采集锁内**调用（见那里的说明）。
+        """
+        today = trade_date
         # 推送与采集解耦：上面「已有数据」分支会跳过采集，但简报该发还是要发 ——
         # 否则盘中手动采过一次，收盘后就不会再有简报了。
         self._collect_kline(today)

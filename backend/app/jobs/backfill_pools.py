@@ -394,8 +394,13 @@ def backfill(
                 0.0,
             )
         # 情绪指标依赖三池的计数与日志状态，补完立刻重算 ——
-        # history=True 不会去问涨跌家数/打板效应（那两个本来就补不了）
-        DailyCollector(settings).collect_sentiment(day, history=True)
+        # history=True 不会去问涨跌家数/打板效应（那两个本来就补不了）。
+        # ⚠️ 它是**增强项**，必须自己兜住异常：漏一次情绪可以从容补算，
+        # 但抛到这里会**中断整轮回补**，后面的交易日一个都不补（2026-09-27 修）
+        try:
+            DailyCollector(settings).collect_sentiment(day, history=True)
+        except Exception as exc:  # noqa: BLE001 - 三池已经写好，不该因为情绪回滚这一天
+            logger.warning("%s 情绪重算失败（三池已写入，可另行补算）：%s", day, exc)
         done.append(day.isoformat())
         logger.info(
             "%s 回补完成：涨停 %d / 跌停 %d / 炸板 %d",

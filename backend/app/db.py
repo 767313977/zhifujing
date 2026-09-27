@@ -161,6 +161,12 @@ def upsert_many(session: Session, model, rows: list[dict]) -> int:
     同样是幂等的，但快两个数量级。
 
     要求 `rows` 的每个 dict 列必须一致 —— 多行 VALUES 不支持各行列不同。
+
+    ⚠️ 与 `upsert_fill` 的差别（用之前要想清楚）：这一批里带了的列**一律照写**，
+    `None` 也会把库里的非空值刷成 NULL。所以「来源这次没返回某列」时整批都是
+    None，一次重采就能把已存好的值全抹掉 —— 调用方要么像 `collect_universe`
+    那样整列全空时干脆不带这一列，要么改用 `upsert_fill`。**别把没校验过的
+    上游数据直接喂进来。**
     """
     if not rows:
         return 0

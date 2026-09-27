@@ -15,7 +15,7 @@
 import logging
 from datetime import date, timedelta
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 
 from app.config import Settings, get_settings
 from app.db import session_scope, upsert, upsert_many
@@ -86,25 +86,40 @@ class SectorCollector:
 
     # ------------------------------------------------------------ 每日行情
 
-    def _kept_net_inflow(self, trade_date: date, taxonomy: str) -> dict[str, float]:
-        """即将被整天替换删掉的那些行里，**别人写的** `net_inflow`。
+    def _kept_external(self, trade_date: date, taxonomy: str) -> dict[str, dict]:
+        """即将被整天替换删掉的那些行里，**别人写的**列（`net_inflow` / `member_count`）。
 
-        `net_inflow` 是 `jobs/collect_board_flow.py` 算的（板块成分股 × 逐股主力净流入），
-        与本采集器落在**同一张表、同一个主键**上，而本采集器的写入策略是整天替换
-        （先 DELETE 再 INSERT）—— 不捞出来就会被删掉，且**当天不会有谁再算一遍**
-        （那个 job 排在采集链末尾、一天只跑一次）。
+        这两列都是 `jobs/collect_board_flow.py` 算的，与本采集器落在**同一张表、
+        同一个主键**上，而本采集器的写入策略是整天替换（先 DELETE 再 INSERT）——
+        不捞出来就会被删掉，且**当天不会有谁再算一遍**（那个 job 排在采集链末尾、
+        一天只跑一次）。
         实测 2026-09-23：手动重采一次板块行情，227 个板块的净流入当场全没了，
         资金流面板变成空白。
+
+        ⚠️ `member_count` 是「宽泛板块」的过滤判据（见 `models.SectorDaily`）。
+        2026-09-27 之前这里**只捞 `net_inflow`**，于是手动重采会把 `member_count`
+        写成 None、宽泛板块过滤器失效 —— 面板不会空，但会把成分股过多的板块
+        一起算进资金流，比空面板更难发现。
         """
         with session_scope() as session:
             rows = session.execute(
-                select(SectorDaily.sector_code, SectorDaily.net_inflow).where(
+                select(
+                    SectorDaily.sector_code,
+                    SectorDaily.net_inflow,
+                    SectorDaily.member_count,
+                ).where(
                     SectorDaily.trade_date == trade_date,
                     SectorDaily.taxonomy == taxonomy,
-                    SectorDaily.net_inflow.is_not(None),
+                    or_(
+                        SectorDaily.net_inflow.is_not(None),
+                        SectorDaily.member_count.is_not(None),
+                    ),
                 )
             ).all()
-        return {str(code): float(value) for code, value in rows}
+        return {
+            str(code): {"net_inflow": net, "member_count": members}
+            for code, net, members in rows
+        }
 
     def collect_day(self, trade_date: date, known: dict[str, int] | None = None) -> int:
         """采集某个交易日的两个口径，返回写入行数。
@@ -132,32 +147,34 @@ class SectorCollector:
                 logger.warning("开盘红 %s %s 取到 0 个板块，跳过", taxonomy, trade_date)
                 continue
 
-            # 别人写的列要先捞出来（整天替换会连它一起删掉，见 `_kept_net_inflow`）。
-            # **每一行都要带上这个键**，哪怕值是 None：`upsert_many` 要求一批里各行的列
-            # 完全一致（多行 VALUES 不支持各行列不同）
-            kept = self._kept_net_inflow(trade_date, taxonomy)
-            rows = [
-                {
-                    "trade_date": trade_date,
-                    "sector_code": board["sector_code"],
-                    "name": board["name"],
-                    "taxonomy": taxonomy,
-                    "source": SOURCE_KPH,
-                    "strength": board["strength"],
-                    "pct_chg": board["pct_chg"],
-                    "amount": board["amount"],
-                    # 下面这几列开盘红没有可反解的对应列，如实留空；
-                    # `net_inflow` 是唯一的例外 —— 那一列不是这里产的
-                    "volume": None,
-                    "net_inflow": kept.get(str(board["sector_code"])),
-                    "up_count": None,
-                    "down_count": None,
-                    "member_count": None,
-                    "leader_name": None,
-                    "leader_pct_chg": None,
-                }
-                for board in boards
-            ]
+            # 别人写的列要先捞出来（整天替换会连它一起删掉，见 `_kept_external`）。
+            # **每一行都要带上这两个键**，哪怕值是 None：`upsert_many` 要求一批里
+            # 各行的列完全一致（多行 VALUES 不支持各行列不同）
+            kept = self._kept_external(trade_date, taxonomy)
+            rows = []
+            for board in boards:
+                external = kept.get(str(board["sector_code"]), {})
+                rows.append(
+                    {
+                        "trade_date": trade_date,
+                        "sector_code": board["sector_code"],
+                        "name": board["name"],
+                        "taxonomy": taxonomy,
+                        "source": SOURCE_KPH,
+                        "strength": board["strength"],
+                        "pct_chg": board["pct_chg"],
+                        "amount": board["amount"],
+                        # 下面这几列开盘红没有可反解的对应列，如实留空；
+                        # `net_inflow` / `member_count` 是例外 —— 那两列不是这里产的
+                        "volume": None,
+                        "net_inflow": external.get("net_inflow"),
+                        "up_count": None,
+                        "down_count": None,
+                        "member_count": external.get("member_count"),
+                        "leader_name": None,
+                        "leader_pct_chg": None,
+                    }
+                )
             with session_scope() as session:
                 session.execute(
                     delete(SectorDaily).where(

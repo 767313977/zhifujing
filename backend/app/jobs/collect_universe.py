@@ -120,9 +120,18 @@ def _basics(raw: Iterable[dict]) -> list[dict]:
             continue  # 三个都没值，别白写一行
         rows.append(item)
 
-    # ⚠️ `upsert_many` 会把「这一批里带了的列」一律覆盖 —— 所以 name 为 None 的行会**抹掉**
-    # 已经存好的名字。iFinD 这个查询每行都有简称、正常不会缺；真缺了就整批不带 name，
-    # 交给另两个写入方（`sync_stock` / `scan_dde`）去补，不值得冒抹名字的风险。
+    # ⚠️ `upsert_many` 会把「这一批里带了的列」一律覆盖 —— 来源某次不返回某列时，
+    # 那一列整批都是 None，会把库里已经存好的值**全抹成空**。所以整列全空就直接
+    # 不带这一列（2026-09-27 把 name 那套保护扩到其余几列；逐行的 None 不动，
+    # 那一行本来就该是空的，比如没有预测市盈率）。
+    for column in ("total_mv", "free_float_shares", "pe_forecast", "asof"):
+        if not any(row[column] is not None for row in rows):
+            for row in rows:
+                row.pop(column)
+
+    # ⚠️ name 更严一档：只要有**一行**没有简称就整批不带。名字是三个写入方
+    # （`_basics` / `sync_stock` / `scan_dde`）共用的字段，缺一个说明这次响应不正常，
+    # 不值得冒抹名字的风险。iFinD 这个查询每行都有简称，正常不会触发。
     if not all(row["name"] for row in rows):
         for row in rows:
             row.pop("name")

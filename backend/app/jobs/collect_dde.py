@@ -87,7 +87,12 @@ def _row_date(text: str | None) -> date | None:
     """iFinD 的日期列是 `20260922` 这种 8 位数字。"""
     if not text or len(text) != 8 or not text.isdigit():
         return None
-    return date(int(text[:4]), int(text[4:6]), int(text[6:]))
+    try:
+        return date(int(text[:4]), int(text[4:6]), int(text[6:]))
+    except ValueError:
+        # 8 位数字也可能是非法日期（`20260231`）：不接住的话一行脏数据会中断整轮补齐
+        logger.warning("忽略非法日期：%s", text)
+        return None
 
 
 def _parse(symbol: str, rows: list[dict]) -> list[dict]:
@@ -280,8 +285,12 @@ def collect_stock_dde_window(
 ) -> tuple[int, int]:
     """按日期区间把一只票的 DDE 补上（自动分段）。返回（写入行数, 调用次数）。
 
-    某段被来源截断（「以下为部分数据」）就把它切半重来 —— 抽样出来的行中间有洞，
-    宁可贵一次调用也不要写进去。
+    某段被来源截断（「以下为部分数据」）就把这一段切半重来 —— 抽样出来的行
+    **中间有洞**，切半后两边重取，洞会被补齐。
+
+    ⚠️ 那一版抽样行**已经落库了**（`collect_stock_dde_range` 是先写、再返回截断
+    标记），所以这里补的是「洞」而不是「被写脏的数据」：抽样行本身是真实日值，
+    `fill_only` 只写库里没有的日期，不必也不该覆盖它们。
     """
     written = calls = 0
     queue = dde_segments(start, end, segment_days)

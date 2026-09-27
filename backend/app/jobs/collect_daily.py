@@ -156,7 +156,14 @@ def _parse_ymd(value: object) -> date | None:
     text = str(value or "").strip().replace("-", "")
     if len(text) != 8 or not text.isdigit():
         return None
-    return date(int(text[:4]), int(text[4:6]), int(text[6:8]))
+    try:
+        return date(int(text[:4]), int(text[4:6]), int(text[6:8]))
+    except ValueError:
+        # 8 位数字也可能是非法日期（`20260231`）。不接住的话，**一行脏数据就会中断
+        # 整轮回补** —— 而这个函数在 `backfill_index` / `sync_stock` 里逐行调用、
+        # 外面没有 try（2026-09-27 修）
+        logger.warning("忽略非法日期：%s", value)
+        return None
 
 
 def _date_chunks(start: date, end: date, span_days: int) -> list[tuple[date, date]]:
@@ -377,7 +384,9 @@ class DailyCollector:
     def is_trade_day(self, day: date) -> bool:
         """该日期是否交易日。定时任务靠它跳过周末与节假日。
 
-        交易日历没数据时保守返回 False，避免在非交易日白跑一遍采集。
+        交易日历没数据时保守返回 False，避免在非交易日白跑一遍采集
+        —— 但这会让**全新库**永远起不来，调用方要先 `calendar_empty()` 判断，
+        见 `scheduler._run_daily`。
         """
         with session_scope() as session:
             count = session.scalar(
@@ -387,18 +396,45 @@ class DailyCollector:
             )
         return bool(count)
 
-    def has_collected(self, day: date) -> bool:
-        """该日是否已有情绪数据，即是否完成过一次完整采集。
-
-        只看情绪表：它是采集流程的最后一步，有它说明前面几步都跑过了。
-        """
+    def calendar_empty(self) -> bool:
+        """交易日历表是否为空。全新部署第一次启动时就是这样。"""
         with session_scope() as session:
             count = session.scalar(
+                select(func.count()).select_from(TradeCalendar)
+            )
+        return not count
+
+    def has_collected(self, day: date) -> bool:
+        """该日是否已完成一次采集（可以跳过重采）。
+
+        判据是**两个条件同时成立**：
+        1. 情绪表有当天的行 —— 首页「今日复盘」有数据可看；
+        2. 当天的 `collect_log` 里**没有** `failed` 的步骤。
+
+        ⚠️ **为什么不能只看情绪表**（2026-09-27 修）：情绪排在链路**中部**
+        （见 `run()`：它后面还有 ETF、龙虎榜机构席位、题材、板块、自选股、两融、
+        北向）。只看情绪的话，ETF 失败后这一天再也不会被重试 —— 而 ETF 份额是
+        「最新-交易日」快照，数据源次日只给新一天，**漏了当天就永久补不回来**。
+        原来的注释写「情绪是采集流程的最后一步」是错的（情绪曾经在最后，后来被
+        前移，为了 ETF 卡死时首页仍能显示复盘）。
+
+        代价：有步骤失败时，重启/补采会把整条链再跑一遍（各步都是幂等 upsert，
+        不会写坏数据），会多花一点配额。**这个代价是刻意接受的** —— 静默丢数
+        比多花几十次调用严重得多，而且只发生在「当天确实有步骤失败」的时候。
+        """
+        with session_scope() as session:
+            if not session.scalar(
                 select(func.count())
                 .select_from(MarketSentiment)
                 .where(MarketSentiment.trade_date == day)
+            ):
+                return False
+            failed = session.scalar(
+                select(func.count())
+                .select_from(CollectLog)
+                .where(CollectLog.trade_date == day, CollectLog.status == "failed")
             )
-        return bool(count)
+        return not failed
 
     # -------------------------------------------------------------------- 步骤
 
