@@ -15,6 +15,10 @@
 #     sudo bash deploy/setup_nginx.sh                     # 只有 8080（纯 IP 访问时用）
 #     sudo DOMAIN=a.com CERT_EMAIL=me@x.com bash deploy/setup_nginx.sh   # 再加 80 / 443 + HTTPS
 #
+# 想把 www 一起签进**同一张**证书（两个域名都能用 https、都不报警告）：
+#
+#     sudo DOMAIN=a.com ALT_DOMAINS="www.a.com" CERT_EMAIL=me@x.com bash deploy/setup_nginx.sh
+#
 # 跑之前先在腾讯云控制台的「防火墙」里放行端口：8080；开 HTTPS 还要 80 和 443。
 #
 # ## 两种模式
@@ -36,6 +40,12 @@ USER_NAME="${USER_NAME:-fupan}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 # 空 = 不启用 HTTPS。给了域名就必须同时给邮箱（Let's Encrypt 注册要一个）
 DOMAIN="${DOMAIN:-}"
+# 可选的额外域名（空格分隔），和主域名一起进 server_name、一起签进同一张证书。
+#
+# 为什么**要显式给**、而不是自动带上 www：ACME 的 http-01 校验要求**每个域名都能
+# 解析到本机**，自动塞一个没配解析的 `www.<主域名>` 会让整次签发失败 —— 连主域名
+# 的证书都拿不到。所以默认只签主域名，需要时自己列出来。
+ALT_DOMAINS="${ALT_DOMAINS:-}"
 CERT_EMAIL="${CERT_EMAIL:-}"
 HTPASSWD="/etc/nginx/.htpasswd"
 SITE="/etc/nginx/sites-available/$SITE_NAME"
@@ -58,12 +68,21 @@ if [[ -n "$DOMAIN" && -z "$CERT_EMAIL" ]]; then
   echo "    sudo DOMAIN=a.com CERT_EMAIL=me@x.com bash deploy/setup_nginx.sh" >&2
   exit 1
 fi
+# 要签进同一张证书的所有域名。**主域名必须排第一** —— certbot 拿第一个 -d 的名字
+# 作为 /etc/letsencrypt/live/<名字>/ 的目录名，排在后面的话证书路径会跟着变，
+# 下面写死的 `live/$DOMAIN/` 就对不上了。
+SERVER_NAMES="$DOMAIN${ALT_DOMAINS:+ $ALT_DOMAINS}"
+# 用 read -ra 拆而不是直接 `for x in $ALT_DOMAINS`：后者会做**通配符展开**，
+# 万一值里带 * 会先去匹配当前目录的文件名，再轮到下面那条正则校验。
+read -ra ALL_DOMAINS <<< "$SERVER_NAMES" || true
 # 只放行域名本身的字符。带了 http:// 、端口或路径进来会写出一份坏配置，
 # 而 nginx -t 的报错完全看不出是这里的问题（它只会说 server_name 不合法）
-if [[ -n "$DOMAIN" && ! "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]]; then
-  echo "DOMAIN 只能是域名本身（不要带 http://、端口或路径）：$DOMAIN" >&2
-  exit 1
-fi
+for _name in "${ALL_DOMAINS[@]}"; do
+  if [[ ! "$_name" =~ ^[A-Za-z0-9.-]+$ ]]; then
+    echo "域名只能是域名本身（不要带 http://、端口或路径）：$_name" >&2
+    exit 1
+  fi
+done
 # 端口会同时进 sed 的替换串和 nginx 配置：非数字、或带 | 的值会写出一份坏配置，
 # 而 nginx -t 同样指不到这里。10# 是为了让 08000 这类前导 0 不按八进制解析。
 if [[ ! "$BACKEND_PORT" =~ ^[0-9]+$ ]] || (( 10#$BACKEND_PORT < 1 || 10#$BACKEND_PORT > 65535 )); then
@@ -126,7 +145,7 @@ if [[ -n "$DOMAIN" ]]; then
     cat > "$SITE" <<NGINX
 server {
     listen 80 default_server;
-    server_name $DOMAIN;
+    server_name $SERVER_NAMES;
 
     location /.well-known/acme-challenge/ { root $WEBROOT; }
     location / { return 503; }
@@ -135,8 +154,13 @@ NGINX
     nginx -t
     systemctl reload nginx
 
-    log "申请证书（Let's Encrypt）"
-    certbot certonly --webroot -w "$WEBROOT" -d "$DOMAIN" \
+    # 每个域名一个 -d，**顺序与 ALL_DOMAINS 一致**（第一个决定证书目录名）。
+    CERT_ARGS=()
+    for _name in "${ALL_DOMAINS[@]}"; do
+      CERT_ARGS+=(-d "$_name")
+    done
+    log "申请证书（Let's Encrypt）：$SERVER_NAMES"
+    certbot certonly --webroot -w "$WEBROOT" "${CERT_ARGS[@]}" \
       --non-interactive --agree-tos --email "$CERT_EMAIL" --keep-until-expiring
 
     # 用 webroot 模式时 certbot **不会**碰 nginx 配置，续期只是换掉文件。
@@ -151,6 +175,10 @@ systemctl reload nginx
 HOOK
     chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
   else
+    # ⚠️ 这里**不检查**现有证书覆盖了哪些域名。已经有 a.com 的证书、再带
+    # ALT_DOMAINS="www.a.com" 重跑时，它会直接跳过申请 —— 而 443 那份配置已经
+    # 把 www 写进 server_name 了，结果是 www 报「证书与域名不匹配」。
+    # 要**换域名列表**就先删掉旧证书再来：sudo certbot delete --cert-name a.com
     log "证书已存在，跳过申请：$CERT"
   fi
 
@@ -159,7 +187,7 @@ HOOK
 # 80：只做两件事 —— 给 ACME 校验放行、其余全部 301 到 https
 server {
     listen 80 default_server;
-    server_name __DOMAIN__;
+    server_name __SERVER_NAMES__;
 
     location /.well-known/acme-challenge/ { root __WEBROOT__; }
     location / { return 301 https://$host$request_uri; }
@@ -168,7 +196,7 @@ server {
 # 443：正式入口
 server {
     listen 443 ssl;
-    server_name __DOMAIN__;
+    server_name __SERVER_NAMES__;
 
     ssl_certificate     /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/__DOMAIN__/privkey.pem;
@@ -188,6 +216,7 @@ server {
 NGINX
   sed -i \
     -e "s|__DOMAIN__|$DOMAIN|g" \
+    -e "s|__SERVER_NAMES__|$SERVER_NAMES|g" \
     -e "s|__WEBROOT__|$WEBROOT|g" \
     -e "s|__SNIPPET__|$PROXY_SNIPPET|g" \
     "$SITE"
@@ -213,7 +242,9 @@ systemctl reload nginx
 
 log "完成"
 if [[ -n "$DOMAIN" ]]; then
-  echo "    https://$DOMAIN/"
+  for _name in "${ALL_DOMAINS[@]}"; do
+    echo "    https://$_name/"
+  done
   echo "    证书续期自检：sudo certbot renew --dry-run"
   echo "    （8080 仍开着做兜底，不需要了就把配置里那一段删掉）"
 else
