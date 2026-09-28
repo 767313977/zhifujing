@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
+import { useAuth } from '../lib/auth'
+import Footer from './Footer'
 
 const NAV = [
   { to: '/', label: '今日复盘', end: true },
@@ -22,6 +24,12 @@ interface LayoutProps {
 }
 
 export default function Layout({ children, toolbar }: LayoutProps) {
+  const { me } = useAuth()
+  // 「数据管理」只给管理员看：那一页能触发采集（烧 iFinD 配额），还会显示邀请码与
+  // 会员名单。前端隐藏只是体面，真正的拦截在后端（/api/admin/* 一律 403）。
+  // 会员少一项，因此导航比下面注释里量过的 9 项还宽松一点。
+  const items = me?.is_admin ? NAV : NAV.filter((item) => item.to !== '/settings')
+
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 border-b border-line bg-ink-950/95 backdrop-blur-sm">
@@ -100,7 +108,7 @@ export default function Layout({ children, toolbar }: LayoutProps) {
             上面那组偏保守的等式可以作废 —— 但**再加第 10 项之前仍要重量一次**。
           */}
           <nav className="no-scrollbar flex h-[52px] min-w-0 grow basis-0 items-stretch gap-1 overflow-x-auto overflow-y-hidden lg:gap-0 xl:gap-1">
-            {NAV.map((item) => (
+            {items.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
@@ -158,24 +166,8 @@ export default function Layout({ children, toolbar }: LayoutProps) {
           顶栏会比内容宽出一截。 */}
       <main className="mx-auto max-w-shell px-3 py-5 md:px-5">{children}</main>
 
-      {/*
-        页脚的 ICP 备案号。管局的要求是「悬挂 ICP 备案号并链接至工信部备案官网首页，
-        否则将被管局责令更改」—— 所以这不只是装饰，别顺手删掉。
-        （「公安联网备案」是另一套系统的事，不要求悬挂，只要求 30 日内去
-        beian.mps.gov.cn 提交。）
-
-        样式刻意压到最弱一档（12px + `text-fg-dim`）：它必须存在，但不该和正文抢视线。
-      */}
-      <footer className="mx-auto max-w-shell px-3 pt-2 pb-6 md:px-5">
-        <a
-          href="https://beian.miit.gov.cn/"
-          target="_blank"
-          rel="noreferrer"
-          className="num text-[12px] text-fg-dim transition-colors hover:text-fg-muted"
-        >
-          陕ICP备2026027279号
-        </a>
-      </footer>
+      {/* 页脚抽成了组件：登录页也要渲染备案号（见 Footer 的说明） */}
+      <Footer />
     </div>
   )
 }

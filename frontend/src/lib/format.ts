@@ -45,6 +45,21 @@ export function fmtShortDate(value: string | null | undefined): string {
 }
 
 /**
+ * ISO 时间戳 → `09-18 15:05`（不含年份、不含秒）。
+ *
+ * 用正则截字符串而不是 `new Date(value)`：后端给的是**不带时区**的本地时间串
+ * （`2026-09-18T15:05:00`），交给 `Date` 解析会按运行环境时区偏移，跨时区看就对不上。
+ * 页面里所有「几分钟前」级别的展示都用这个粒度，年份是噪音。
+ */
+export function fmtDateTime(value: string | null | undefined): string {
+  if (!value) return DASH
+  const matched = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/)
+  if (!matched) return value
+  const [, , month, day, hour, minute] = matched
+  return `${month}-${day} ${hour}:${minute}`
+}
+
+/**
  * A 股惯例：红涨绿跌。
  * 0 与空值走中性色，不要误染色。
  */

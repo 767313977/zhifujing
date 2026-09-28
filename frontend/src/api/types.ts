@@ -880,3 +880,35 @@ export interface DdeBoard {
   /** 当天**有 DDE 的票数**（覆盖度），不是全市场只数 */
   total: number
 }
+
+/* ------------------------------- 会员与登录（设计见文档 §8.69） ------------------- */
+
+/** 「我是谁」。前端启动时问一次，用来决定要不要跳登录页、能不能进数据管理页。 */
+export interface Me {
+  id: number
+  username: string
+  is_admin: boolean
+}
+
+export interface Invite {
+  code: string
+  /** 这个码打算给谁（纯备注） */
+  note: string | null
+  created_at: string
+  used_by: number | null
+  /** 用掉它的那个人的用户名 —— 列表里直接看得懂 */
+  used_by_name: string | null
+  used_at: string | null
+  disabled_at: string | null
+}
+
+export interface Member {
+  id: number
+  username: string
+  is_admin: boolean
+  created_at: string
+  last_login_at: string | null
+  disabled_at: string | null
+  /** 他是拿哪个邀请码进来的（可追来源） */
+  invite_code: string | null
+}
