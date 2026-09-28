@@ -125,11 +125,19 @@ npm run dev     # 5173，/api 已代理到 8000
 
 **4）首次灌数据**
 
-新库是空的。到「数据管理」页点手动采集，或：
+新库是空的。**采集没有手动入口**（2026-09-28 起按用户要求禁止手动采集：接口
+`POST /api/admin/collect` 与页面上的按钮都已删除 —— 它点一下就白跑一轮、约 50 次 iFinD
+调用）。两条路：
+
+- 等下一个**交易日**的采集时刻（`config.collect_hour/collect_minute`）自动跑；
+- 或者在交易日、已过采集时刻之后重启一次服务 —— `start()` 里的**启动补采**会补跑：
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/admin/collect
+sudo systemctl restart fupan
 ```
+
+（补采的判据是 `collect_daily.has_collected`：当天情绪表有数据**且**当天没有 failed
+步骤。空日历的新机器也没关系：`_run_daily` 会先补一次交易日历再判断。）
 
 历史回补用 `scripts/backfill_*.py`，但**注意各数据源的回补边界不一样**（涨停三池只有最近 15 个交易日、
 指数与龙虎榜能补约半年），详见设计文档 §4.1。形态选股的日线库首次建库要跑较长时间，且会占用大量配额，
