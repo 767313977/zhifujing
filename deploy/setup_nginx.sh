@@ -19,6 +19,14 @@
 #
 #     sudo DOMAIN=a.com ALT_DOMAINS="www.a.com" CERT_EMAIL=me@x.com bash deploy/setup_nginx.sh
 #
+# 想去掉网页访问的密码（入口不再弹账号密码框）：
+#
+#     sudo DOMAIN=a.com AUTH=off CERT_EMAIL=me@x.com bash deploy/setup_nginx.sh
+#
+# ⚠️ AUTH=off **只去掉密码那一层**，反代本身照旧（后端 8000 仍然只对内）。
+# 但后端**没有任何鉴权**，所以 off 之后任何知道域名的人都能看自选股 / 复盘笔记，
+# 还能 POST /api/admin/collect 触发采集 —— 那会白烧 iFinD 配额。
+
 # 跑之前先在腾讯云控制台的「防火墙」里放行端口：8080；开 HTTPS 还要 80 和 443。
 #
 # ## 两种模式
@@ -46,6 +54,12 @@ DOMAIN="${DOMAIN:-}"
 # 解析到本机**，自动塞一个没配解析的 `www.<主域名>` 会让整次签发失败 —— 连主域名
 # 的证书都拿不到。所以默认只签主域名，需要时自己列出来。
 ALT_DOMAINS="${ALT_DOMAINS:-}"
+# 网页访问要不要密码：on / off。
+#
+# ⚠️ 后端**完全没有鉴权**（/api/admin/collect 谁都能 POST，会白烧 iFinD 配额），
+# Basic Auth 是唯一的门。用户 2026-09-28 明确要求取消密码，所以留了这个开关；
+# 想加回来：`AUTH=on` 重跑一次即可（.htpasswd 文件还在，密码不变）。
+AUTH="${AUTH:-on}"
 CERT_EMAIL="${CERT_EMAIL:-}"
 HTPASSWD="/etc/nginx/.htpasswd"
 SITE="/etc/nginx/sites-available/$SITE_NAME"
@@ -89,6 +103,12 @@ if [[ ! "$BACKEND_PORT" =~ ^[0-9]+$ ]] || (( 10#$BACKEND_PORT < 1 || 10#$BACKEND
   echo "BACKEND_PORT 要是 1-65535 的整数（当前：$BACKEND_PORT）" >&2
   exit 1
 fi
+# AUTH 只认 on / off。校验不是洁癖：写成 `AUTH=Off`/`AUTH=no` 这类不报错的话，
+# 会被静默当成 off —— 也就是**你以为开着密码，其实全站裸奔**。
+if [[ "$AUTH" != "on" && "$AUTH" != "off" ]]; then
+  echo "AUTH 只能是 on（要密码）或 off（不要密码）（当前：$AUTH）" >&2
+  exit 1
+fi
 
 log "安装 nginx 与 htpasswd"
 export DEBIAN_FRONTEND=noninteractive
@@ -98,11 +118,16 @@ if [[ -n "$DOMAIN" ]]; then
   apt-get install -y -qq certbot >/dev/null
 fi
 
-if [[ -f "$HTPASSWD" ]]; then
-  log "密码文件已存在，跳过。要改密码：sudo htpasswd $HTPASSWD $USER_NAME"
+if [[ "$AUTH" == "on" ]]; then
+  if [[ -f "$HTPASSWD" ]]; then
+    log "密码文件已存在，跳过。要改密码：sudo htpasswd $HTPASSWD $USER_NAME"
+  else
+    log "设置网页访问的账号密码（账号：$USER_NAME）"
+    htpasswd -c "$HTPASSWD" "$USER_NAME"
+  fi
 else
-  log "设置网页访问的账号密码（账号：$USER_NAME）"
-  htpasswd -c "$HTPASSWD" "$USER_NAME"
+  # 不跳过这一步的话，下面 htpasswd -c 会**交互式**要密码，脚本就卡在那里了。
+  log "AUTH=off：不设账号密码，入口不再要密码"
 fi
 
 log "写鉴权 + 反代片段（$PROXY_SNIPPET）"
@@ -112,11 +137,25 @@ log "写鉴权 + 反代片段（$PROXY_SNIPPET）"
 # 规则：大括号里**没有** nginx 变量的用不带引号的定界符（好展开 $DOMAIN 之类）；
 # 含 nginx 变量的用带引号的，再把要填的值做成 __占位符__ 走 sed。
 install -d /etc/nginx/snippets
-cat > "$PROXY_SNIPPET" <<'NGINX'
+if [[ "$AUTH" == "on" ]]; then
+  cat > "$PROXY_SNIPPET" <<'NGINX'
 # 全站要密码。**别删这几行** —— 后端本身没有任何鉴权，这层是唯一的门。
 auth_basic "fupan";
 auth_basic_user_file /etc/nginx/.htpasswd;
-
+NGINX
+else
+  # 把「这里没有鉴权」写进配置本体（而不是只改脚本）：以后在服务器上翻到这份
+  # 配置时，能立刻看出是**故意的**，不会当成哪次改漏了。
+  cat > "$PROXY_SNIPPET" <<'NGINX'
+# ⚠️ 全站**没有鉴权**（AUTH=off，2026-09-28 起按用户要求取消密码）。后端本身
+# 也没有任何鉴权，所以任何知道域名的人都能看自选股 / 复盘笔记，还能
+# POST /api/admin/collect **触发采集** —— 那会白烧 iFinD 配额。
+# 想加回来：重跑一次带 `AUTH=on` 的 setup_nginx.sh，或把下面两行补在这里：
+#     auth_basic "fupan";
+#     auth_basic_user_file /etc/nginx/.htpasswd;
+NGINX
+fi
+cat >> "$PROXY_SNIPPET" <<'NGINX'
 proxy_pass http://127.0.0.1:__BACKEND_PORT__;
 proxy_set_header Host $host;
 proxy_set_header X-Real-IP $remote_addr;
@@ -251,4 +290,9 @@ else
   echo "    确认腾讯云控制台的「防火墙」已放行 8080 后，浏览器打开："
   echo "    http://<服务器IP>:8080/"
 fi
-echo "    账号：$USER_NAME   密码：你刚设的那个"
+if [[ "$AUTH" == "on" ]]; then
+  echo "    账号：$USER_NAME   密码：你刚设的那个"
+else
+  echo "    ⚠️ 入口**不要密码**（AUTH=off）：任何知道域名的人都能打开页面，"
+  echo "       也可以 POST /api/admin/collect 触发采集（白烧 iFinD 配额）。"
+fi
