@@ -479,9 +479,10 @@ class CollectLog(Base):
 class IfindUsage(Base):
     """iFinD 调用次数按天累计。
 
-    iFinD 的权益**按 `tools/call` 次数计费**，账号级每月 5000 次 ——
+    iFinD 的权益**按 `tools/call` 次数计费**，账号级一个计量周期（约一个月，
+    起点见 `Settings.ifind_cycle_start_day`）9000 次 ——
     定时采集、形态选股、手工补数全都在花同一个额度。没有这张表，
-    「这个月还剩多少」根本无从回答，配额守卫也无从谈起。
+    「这个周期还剩多少」根本无从回答，配额守卫也无从谈起。
 
     按 `(日期, server, tool)` 累加而不是记流水：要知道的是「谁在花」，
     不是「每一笔分别是什么时候花的」。
