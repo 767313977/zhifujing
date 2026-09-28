@@ -1,49 +1,27 @@
-import { Link } from 'react-router-dom'
-import { useAuth } from '../lib/auth'
-
 /**
- * 页脚：左边的备案号 + 右边的账号区（用户名 / 改密码 / 退出）。
+ * 页脚：只剩 ICP 备案号。
  *
- * 为什么账号区放这里而不是顶栏：顶栏是全站最挤的地方（见 Layout 里那段说明，
- * 1024px 下导航已经 664/664、一点余量都没有），为一个人名去动它不划算；
- * 而退出登录这种一个月用不上一次的操作，藏在页脚完全够用。
+ * 管局的要求是「悬挂 ICP 备案号并链接至工信部备案官网首页，否则将被管局责令更改」——
+ * 所以这不只是装饰，**别顺手删掉**。
+ * （「公安联网备案」是另一套系统的事，不要求悬挂，只要求 30 日内去 beian.mps.gov.cn 提交。）
  *
- * 登录页也渲染它 —— 登录页是「没登录就进不来」的唯一例外，而**管局要求备案号
- * 挂在站上**，用户第一眼看到的就是登录页，所以这一块两处都得有。
+ * 单独抽成组件（而不是写在 Layout 里）是因为**登录页也要渲染它**：登录页不套 Layout，
+ * 而用户第一眼看到的正是那一页。
+ *
+ * 账号区（用户名 / 改密码 / 退出）2026-09-28 挪去了顶栏右上角，见 `UserMenu`；
+ * 样式刻意压到最弱一档（12px + `text-fg-dim`）：它必须存在，但不该和正文抢视线。
  */
 export default function Footer() {
-  const { me, logout } = useAuth()
-
   return (
-    <footer className="mx-auto flex max-w-shell flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-2 pb-6 text-[12px] md:px-5">
+    <footer className="mx-auto max-w-shell px-3 pt-2 pb-6 md:px-5">
       <a
         href="https://beian.miit.gov.cn/"
         target="_blank"
         rel="noreferrer"
-        className="num text-fg-dim transition-colors hover:text-fg-muted"
+        className="num text-[12px] text-fg-dim transition-colors hover:text-fg-muted"
       >
         陕ICP备2026027279号
       </a>
-
-      {me && (
-        <span className="ml-auto flex items-center gap-2 text-fg-dim">
-          <span className="num" title={`${me.username}${me.is_admin ? '（管理员）' : ''}`}>
-            {me.username}
-          </span>
-          <span className="text-line">·</span>
-          <Link to="/account" className="transition-colors hover:text-fg-muted">
-            改密码
-          </Link>
-          <span className="text-line">·</span>
-          <button
-            type="button"
-            onClick={() => void logout()}
-            className="transition-colors hover:text-fg-muted"
-          >
-            退出
-          </button>
-        </span>
-      )}
     </footer>
   )
 }

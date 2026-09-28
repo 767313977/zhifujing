@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import Footer from './Footer'
+import UserMenu from './UserMenu'
 
 const NAV = [
   { to: '/', label: '今日复盘', end: true },
@@ -34,7 +35,17 @@ export default function Layout({ children, toolbar }: LayoutProps) {
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 border-b border-line bg-ink-950/95 backdrop-blur-sm">
         {/*
-          顶栏在窄屏折成两行：第一行品牌 + 导航，第二行操作区；md 以上回到一行。
+          顶栏折成两行的断点是 **xl（1280）**：以下两行（第一行品牌 + 导航，第二行
+          操作区），1280 及以上回到一行。
+
+          ⚠️ 这个断点 2026-09-28 从 md（768）挪到了 xl —— 因为顶栏最右端多了账号区
+          （`用户名 · 改密码 · 退出`，约 169px）。实测（headless Chrome + CDP 设视口、
+          落地页 `/`、工具栏是最宽的那一档）：
+            · 一行布局下 1024 时导航可用 422px、内容要 516px（缺 94px）；
+              1280 时可用 580px、内容要 690px（缺 110px）—— 最后 1~2 项被裁掉，
+              而导航挂的是 `.no-scrollbar`，用户看不见任何「还能横滑」的提示。
+            · 折成两行后导航独占第一行，1024 下可用约 774px > 690px，宽松。
+          所以「一行放不下就折行」这件事在 1024~1279 也必须成立。
 
           为什么不折不行：一行里「品牌 + 9 项导航 + 三四个控件」在 420px 里必然装不下，
           而导航是**唯一能被压缩的那个**（`overflow-x-auto` 让它的自动最小尺寸变成 0，
@@ -45,8 +56,9 @@ export default function Layout({ children, toolbar }: LayoutProps) {
 
           1. 只给操作区加 `w-full` 而不开 `flex-wrap` 是没用的 —— 那只会把它压成
              100% 宽却仍挤在同一行。
-          2. 反过来 `md:flex-nowrap` 是必要的：768~1265px 这段宽度下，一行内容的
-             「基准宽度和」仍超过视口，不锁死的话桌面笔记本上顶栏也会莫名折行。
+          2. `flex-nowrap` 现在挂在 **xl** 上（原来是 md）：1280 以上要锁死成一行，
+             否则「品牌 + 导航 + 操作区」的基准宽度和也会让笔记本上莫名折行。
+             1280 以下**必须允许折行**，否则操作区那 `w-full` 不起作用。
           3. **导航必须显式 `basis-0 grow`**。换行判据用的是 flex 基准尺寸，而
              `overflow-x-auto` 只改「最小尺寸」、不改基准尺寸 —— 不动它的话导航的
              基准宽仍是内容宽 677px，第一行永远放不下「品牌 + 导航」，于是折成
@@ -57,7 +69,7 @@ export default function Layout({ children, toolbar }: LayoutProps) {
           各子项**（品牌与导航各带 `h-[52px]`）；原来 nav 上的 `h-full` 在这里会失效
           —— 百分比高度要求父级有确定高度。
         */}
-        <div className="mx-auto flex max-w-shell flex-wrap items-center gap-x-3 px-3 md:flex-nowrap md:gap-x-6 md:px-5">
+        <div className="mx-auto flex max-w-shell flex-wrap items-center gap-x-3 px-3 md:px-5 xl:flex-nowrap xl:gap-x-6">
           {/* 品牌：中文名做主标识，等宽拉丁字母做辅助标记。
               字号与字距是响应式的，当初按**7 个字的长站名**调过：照常规参数窄屏
               会从导航那里抢走约 80px 可视宽度（那一段导航本来就靠横滑，再挤就
@@ -107,7 +119,7 @@ export default function Layout({ children, toolbar }: LayoutProps) {
             滚动条。也就是说站名从 7 字缩到 3 字（「致富经」）省下来的余量足够再放一项，
             上面那组偏保守的等式可以作废 —— 但**再加第 10 项之前仍要重量一次**。
           */}
-          <nav className="no-scrollbar flex h-[52px] min-w-0 grow basis-0 items-stretch gap-1 overflow-x-auto overflow-y-hidden lg:gap-0 xl:gap-1">
+          <nav className="no-scrollbar flex h-[52px] min-w-0 grow basis-0 items-stretch gap-1 overflow-x-auto overflow-y-hidden lg:gap-0">
             {items.map((item) => (
               <NavLink
                 key={item.to}
@@ -116,8 +128,10 @@ export default function Layout({ children, toolbar }: LayoutProps) {
                 className={({ isActive }) =>
                   [
                     'relative flex items-center px-3 text-[13px] whitespace-nowrap transition-colors',
-                    // 只在 1024~1279 收紧，1280 起覆盖回常规值（见上面那段说明）
-                    'lg:px-1.5 lg:text-[12px] xl:px-3 xl:text-[13px]',
+                    // 1024 起收紧。**不再在 xl 恢复常规密度**（2026-09-28 改）：
+                    // 顶栏多了右上角账号区（约 169px），1280 下按 13px 算导航要 690px、
+                    // 而只剩 580px —— 实测最后两项被裁掉。12px 时内容 516px，余 64px。
+                    'lg:px-1.5 lg:text-[12px]',
                     isActive ? 'text-fg' : 'text-fg-muted hover:text-fg',
                   ].join(' ')
                 }
@@ -135,8 +149,9 @@ export default function Layout({ children, toolbar }: LayoutProps) {
             ))}
           </nav>
 
-          {/* 操作区。窄屏 `w-full` 把它挤到第二行并占满整行，md 以上恢复成
-              「靠右、宽度随内容」。
+          {/* 操作区。xl 以下 `w-full` 把它挤到第二行并占满整行，1280 以上恢复成
+              「靠右、宽度随内容」（断点 2026-09-28 从 md 挪到 xl，理由见上面那段：
+              账号区占了 169px 之后 1024~1279 一行放不下）。
 
               不用 `ml-auto`：导航那边的 `grow` 已经吃满剩余空间、自然把这一块顶到右边，
               再加 auto margin 是空操作（实测 computed `margin-left: 0px`）。
@@ -154,9 +169,14 @@ export default function Layout({ children, toolbar }: LayoutProps) {
               实测过一次：板块题材页的操作区曾经有三个控件（口径 + 日期 + 走势窗口，379px），
               1280px 下导航只剩 568px、只显示 7/9 项；把只管图表的那一个挪进图表 header
               之后回到 689px，9 项全展开。**判断标准是「这是不是全局切换」**：口径、日期
-              是（整页都跟着变），图表窗口不是（它只影响那一两张图）。 */}
-          <div className="no-scrollbar flex w-full shrink-0 items-center gap-3 overflow-x-auto pb-2 *:shrink-0 md:w-auto md:pb-0">
+              是（整页都跟着变），图表窗口不是（它只影响那一两张图）。
+              2026-09-28 就是被这条咬到：右上角账号区（169px）加进来之后导航开始被裁，
+              于是把折行断点从 md 挪到 xl（见上）。 */}
+          <div className="no-scrollbar flex w-full shrink-0 items-center gap-3 overflow-x-auto pb-2 *:shrink-0 xl:w-auto xl:pb-0">
             {toolbar}
+            {/* 账号区放**最右端**（即整页右上角）。它拼在操作区里而不是单开一块：
+                顶栏的剩余宽度全归导航，单开一块等于再切一刀。 */}
+            <UserMenu />
           </div>
         </div>
       </header>
