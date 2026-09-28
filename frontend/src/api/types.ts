@@ -738,18 +738,6 @@ export interface ReviewNote {
   updated_at: string | null
 }
 
-export interface CollectStepResult {
-  status: string
-  rows: number
-  cost: number
-  message: string | null
-}
-
-export interface CollectResult {
-  trade_date: string
-  steps: Record<string, CollectStepResult>
-}
-
 /** 单个市场的两融快照。金额单位与下面所有资金面字段一样，统一是「元」。 */
 export interface MarginSnapshot {
   /** 融资余额 */

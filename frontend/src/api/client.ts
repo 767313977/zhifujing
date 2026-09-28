@@ -1,6 +1,5 @@
 import type {
   AdminStatus,
-  CollectResult,
   DdeBoard,
   DdeOrder,
   EtfFlowBoard,
@@ -358,8 +357,9 @@ export const api = {
 
   adminStatus: () => request<AdminStatus>('/admin/status'),
 
-  collect: (date?: string | null) =>
-    request<CollectResult>(withDate('/admin/collect', date), { method: 'POST' }),
+  // 这里原来有个 `collect`（POST /admin/collect）。**2026-09-28 删掉**：采集是
+  // 「点一下就白跑一轮（约 50 次 iFinD 调用）」的操作，用户要求禁止手动采集，
+  // 后端那个接口也一并删了。要强制重采就重启服务（启动补采会补跑）。
 
   backfill: (start: string, end?: string) =>
     request<{ days: number; failed_steps: number }>(

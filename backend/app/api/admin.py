@@ -26,7 +26,6 @@ from app.models import (
 from app.schemas import (
     AdminStatus,
     CollectLogOut,
-    CollectResult,
     DisabledIn,
     IfindQuota,
     InviteIn,
@@ -120,17 +119,18 @@ def status(session: Session = Depends(get_db)) -> AdminStatus:
     )
 
 
-@router.post("/collect", response_model=CollectResult)
-def collect(
-    trade_date: date | None = Query(None, alias="date", description="缺省取最近交易日"),
-) -> CollectResult:
-    """执行一次完整采集（含指数、涨停三池、龙虎榜、情绪指标）。"""
-    try:
-        # 与定时任务互斥：两者同时跑会让实际请求速率翻倍并触发 iFinD 429
-        with collect_guard("手动采集"):
-            return CollectResult.model_validate(_build_collector().run(trade_date))
-    except CollectionBusy as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+# 这里原来有个 `POST /api/admin/collect`（手动跑一次完整采集）。**2026-09-28 删掉了**，
+# 用户要求「删掉手动采集按钮，禁止手动采集」。
+#
+# 起因：当天有个自动化代理在测顶栏时误点了首页工具栏上的「采集」，于是白跑一轮
+# （约 50 次 iFinD 调用）—— 采集是这一站唯一「点一下就花钱」的操作，而它本来就不需要
+# 手动跑（每天收盘后自动跑 + 错过时刻的启动补采）。
+#
+# ⚠️ 真需要强制重采时的替代办法（都不需要这个接口）：
+#   1. 重启服务 —— `start()` 里的「启动补采」会在当天数据缺失或有失败步骤时补跑
+#      （`sudo systemctl restart fupan`）
+#   2. 要补历史某几天：`POST /api/admin/backfill`（那个还在，它是「补数」不是「采集」）
+# 判断依据见 `collect_daily.has_collected`：情绪表有当天数据**且**当天没有 failed 步骤。
 
 
 @router.post("/kline/recent")

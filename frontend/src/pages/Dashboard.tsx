@@ -43,8 +43,6 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const [collecting, setCollecting] = useState(false)
 
   /**
    * @param isStale 判断这次请求还算不算数。切日期时两个请求的返回顺序不保证，
@@ -120,40 +118,6 @@ export default function Dashboard() {
     }
   }, [date, load])
 
-  const handleCollect = useCallback(async () => {
-    setCollecting(true)
-    setNotice(null)
-    try {
-      const result = await api.collect(date)
-      const steps = Object.entries(result.steps)
-      const failed = steps.filter(([, s]) => s.status !== 'ok')
-      // 行数与耗时一起报：只说「成功」的话，某个步骤返回 0 行也会被读成
-      // 一切正常 —— 而那正是「采了个寂寞」的样子
-      const rows = steps.reduce((sum, [, s]) => sum + s.rows, 0)
-      const cost = steps.reduce((sum, [, s]) => sum + s.cost, 0)
-      if (failed.length > 0) {
-        setError(
-          `采集部分失败：${failed.map(([name, s]) => `${name}(${s.message ?? '未知'})`).join('；')}` +
-            `｜成功 ${steps.length - failed.length} 个步骤、${rows} 行，用时 ${cost.toFixed(0)}s`,
-        )
-      } else {
-        setNotice(
-          `${result.trade_date} 采集完成：${steps.length} 个步骤 · ${rows.toLocaleString('zh-CN')} 行 · 用时 ${cost.toFixed(0)}s`,
-        )
-      }
-      setDate(null)
-      setDates(await api.dates())
-      setStatus(await api.adminStatus())
-      // date 本来就是「最新」时 `setDate(null)` 不会让上面的 effect 重跑（值没变），
-      // 得自己刷一次；date 非空时交给 effect —— 否则同一目标会连发两次请求
-      if (date === null) await load(null)
-    } catch (err) {
-      setError((err as Error).message)
-    } finally {
-      setCollecting(false)
-    }
-  }, [date, load])
-
   const toolbar = (
     <>
       <span className="num hidden text-[13px] text-fg-dim lg:inline">
@@ -172,14 +136,10 @@ export default function Dashboard() {
           </option>
         ))}
       </select>
-      <button
-        type="button"
-        onClick={handleCollect}
-        disabled={collecting}
-        className="num border border-line px-2.5 py-[3px] text-[13px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {collecting ? '采集中…' : '采集'}
-      </button>
+      {/* 这里原来有个「采集」按钮。**2026-09-28 删掉了**（用户要求「删掉手动采集按钮，
+          禁止手动采集」）：它就在落地页工具栏上，点一下就白跑一轮采集（约 50 次
+          iFinD 调用）—— 当天真发生过一次误点。采集现在只有自动那一条路：
+          每天收盘后跑，错过时刻由启动补采兜住。 */}
     </>
   )
 
@@ -187,11 +147,6 @@ export default function Dashboard() {
     <Layout toolbar={toolbar}>
       {error && (
         <Alert onClose={() => setError(null)}>{error}</Alert>
-      )}
-      {notice && (
-        <Alert tone="accent" onClose={() => setNotice(null)}>
-          {notice}
-        </Alert>
       )}
 
       {loading && !data ? (
@@ -252,7 +207,8 @@ export default function Dashboard() {
       ) : (
         !error && (
           <div className="panel px-4 py-10 text-center text-[14px] text-fg-dim">
-            暂无数据，点击右上角「采集」拉取当日行情
+            暂无数据 —— 采集是每天收盘后自动跑的（当前 {status?.scheduler.collect_time ?? '—'}），
+            还没跑到、或者那一轮有步骤失败时就会是空的。
           </div>
         )
       )}
