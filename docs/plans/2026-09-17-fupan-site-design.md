@@ -8167,6 +8167,59 @@ cookie 带 `Secure` 时，浏览器在明文 http 上**根本不发送**它 —�
 
 ---
 
+### 8.71 禁止手动采集：删掉按钮与接口（2026-09-28）
+
+用户原话：「删掉手动采集按钮，禁止手动采集」。
+
+**起因**：当天有个自动化代理在测顶栏时误点了首页工具栏上的「采集」，白跑一轮完整采集
+（约 50 次 iFinD 调用，见 8.70.2 那张表）。采集是这一站**唯一「点一下就花钱」**的操作，
+而它本来就不需要手动跑。
+
+#### 删了什么
+
+| 位置 | 改动 |
+| --- | --- |
+| `frontend/pages/Dashboard.tsx` | 首页工具栏的「采集」按钮（连 `handleCollect`、`collecting`、`notice` 状态一起删干净） |
+| `frontend/pages/Settings.tsx` | 数据管理页「手动操作」里的「立即采集」按钮（那一块现在只剩「历史回补」） |
+| `backend/api/admin.py` | `POST /api/admin/collect` 整条路由 |
+| `frontend/api/client.ts` / `types.ts` | `api.collect`、`CollectResult`、`CollectStepResult` |
+| 四处文案 | 首页空状态（原写「点击右上角『采集』拉取当日行情」）、数据管理页的定时任务说明（原写「等龙虎榜发布之后再取」，那是 17:30 时代的解释）、`deploy/install.sh` 的部署后提示、`README` 的「首次灌数据」 |
+
+#### 保留了哪些手工入口（**故意的**）
+
+`/api/admin/backfill`（历史回补）、`/api/admin/kline/recent`（补近端日线）、
+`/api/admin/patterns/scan`（形态扫描）都**没动**。理由：它们都在「数据管理」页里
+（不在落地页，不会被随手点到），而且**回补是补历史缺口的正规手段** —— 8.70 那节刚写过
+「当天龙虎榜空了就手动 backfill」。如果这些也要一起禁，说一声。
+
+#### 没有手动采集之后，怎么强制重采
+
+只有一条路：**重启服务** —— `start()` 里的「启动补采」会在当天数据缺失或有失败步骤时
+补跑（判据 `collect_daily.has_collected`：情绪表有当天数据**且**当天没有 failed 步骤）：
+
+    sudo systemctl restart fupan
+
+对「首次建库的空库」也一样够用（新机器在交易日、过了采集时刻后重启一次即可；
+空日历的情况 `_run_daily` 会先补日历再判断）。这条已写进 README 与 install.sh 的提示。
+
+#### 验收（云端实测）
+
+    POST /api/admin/collect -> 405（路由没了；SPA 回退那条 GET 路由匹配了路径，所以是 405 不是 404）
+    GET  /api/admin/collect -> 404
+    GET  /api/admin/status  -> 200   其他管理接口照常
+    首页产物的 JS 里「立即采集」字样：0 处
+
+#### 一个我犯的错，记下来
+
+验收「其他管理接口还在不在」时，我图省事 `POST /api/admin/kline/recent` 试了一下 ——
+**那是会真干活的接口**（它自己的注释写着「补全市场近端 60 天 ≈ 840 次调用，别随手点」）。
+这次侥幸：本机库里那 60 天日线是齐的，`collect_recent` 没找到缺口、一次调用都没发
+（本机配额当天仍只有 14 次，全是 search 类）。
+
+教训：**别拿 POST 去探接口是否存在** —— 该看路由表或 OpenAPI，而不是打一发试试。
+
+---
+
 ## 9. 待确认事项
 
 - **域名备案与 HTTPS（2026-09-28 已上线）**：

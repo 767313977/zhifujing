@@ -141,13 +141,17 @@ cat <<'DONE'
 
   1. 采集能不能真的连通（iFinD 的授权可能绑 IP，换了机器未必认）：
        sudo -u fupan /opt/fupan/.venv/bin/python /opt/fupan/scripts/push_brief.py --print
-     打出简报内容就说明本地库没问题；再手动触发一次采集验证外部数据源：
-       curl -s -X POST http://127.0.0.1:8000/api/admin/collect
-     这一步会消耗 iFinD 权益次数，但只跑一次，值得先验证。
+     打出简报内容就说明本地库没问题。
+
+     ⚠️ **没有手动采集接口了**（2026-09-28 用户要求禁止手动采集，`POST
+     /api/admin/collect` 与两个页面上的按钮都已删除）—— 它点一下就白跑一轮、
+     约 50 次 iFinD 调用。要强制重采就重启服务，`start()` 里的启动补采会在
+     「当天数据缺失或有失败步骤」时补跑：
+       sudo systemctl restart fupan
 
   2. 看日志确认定时任务挂上了：
        journalctl -u fupan -n 50 --no-pager
-     应该能看到「定时采集已启动：交易日 17:30」（时刻取自 config.collect_hour/minute）。
+     应该能看到「定时采集已启动：交易日 HH:MM」（时刻取自 config.collect_hour/minute）。
 
   3. 这台机器开始推简报之后，把**本机那套停掉**。
      简报的去重是查 collect_log 决定的，而两边各查自己的库 ——
