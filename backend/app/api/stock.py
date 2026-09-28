@@ -26,6 +26,7 @@ from app.jobs.collect_daily import (
 from app.jobs.collect_dde import CLOSE_READY, collect_stock_dde
 from app.jobs.collect_dde import DEFAULT_DAYS as DDE_DAYS
 from app.models import (
+    AppUser,
     Lhb,
     LimitPool,
     SectorDaily,
@@ -45,6 +46,7 @@ from app.schemas import (
     StockThemes,
 )
 from app.services import limit_rules
+from app.services.auth import current_user
 from app.services.patterns import build_bars
 from app.sources.ifind import IfindError, normalize_code
 from app.sources.kaipanhong import TAXONOMY_SELECTED
@@ -80,7 +82,14 @@ def _resolve_name(session: Session, code: str) -> str | None:
 
     按可信度依次从自选股、股票基础信息、本地日线里找。
     """
-    item = session.get(Watchlist, code)
+    # ⚠️ 自选股从 2026-09-28 起按用户隔离（主键变成 `(user_id, code)`），所以
+    # 不能再用 `session.get(Watchlist, code)` —— 那个写法会报「主键值个数不对」。
+    # 而且**名字本来就不是「谁的」数据**（600519 对谁都叫茅台），取任意一条即可。
+    watchlist_name = session.scalars(
+        select(Watchlist.name)
+        .where(Watchlist.code == code, Watchlist.name.is_not(None))
+        .limit(1)
+    ).first()
     basic = session.get(StockBasic, code)
     latest = session.scalars(
         select(StockDaily.name)
@@ -89,7 +98,7 @@ def _resolve_name(session: Session, code: str) -> str | None:
         .limit(1)
     ).first()
     for candidate in (
-        item.name if item else None,
+        watchlist_name,
         basic.name if basic else None,
         latest,
     ):
@@ -172,9 +181,14 @@ def _market_fields(session: Session, code: str, latest: StockDaily | None) -> di
 
 
 @router.get("/{code}", response_model=StockProfile)
-def profile(code: str, session: Session = Depends(get_db)) -> StockProfile:
+def profile(
+    code: str,
+    user: AppUser = Depends(current_user),
+    session: Session = Depends(get_db),
+) -> StockProfile:
     code = _code(code)
-    item = session.get(Watchlist, code)
+    # 「在不在自选里」问的是**当前用户自己的**自选 —— 复合主键 (user_id, code)
+    item = session.get(Watchlist, (user.id, code))
     # 取 6 根：第 1 根当 latest，第 6 根用来算「五日涨跌幅」（见 _pct_chg_5d）
     recent = list(
         session.scalars(
