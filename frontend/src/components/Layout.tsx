@@ -157,6 +157,25 @@ export default function Layout({ children, toolbar }: LayoutProps) {
           宽度上限用同一个 `max-w-shell`（见 index.css 里的说明），否则大屏上
           顶栏会比内容宽出一截。 */}
       <main className="mx-auto max-w-shell px-3 py-5 md:px-5">{children}</main>
+
+      {/*
+        页脚的 ICP 备案号。管局的要求是「悬挂 ICP 备案号并链接至工信部备案官网首页，
+        否则将被管局责令更改」—— 所以这不只是装饰，别顺手删掉。
+        （「公安联网备案」是另一套系统的事，不要求悬挂，只要求 30 日内去
+        beian.mps.gov.cn 提交。）
+
+        样式刻意压到最弱一档（12px + `text-fg-dim`）：它必须存在，但不该和正文抢视线。
+      */}
+      <footer className="mx-auto max-w-shell px-3 pt-2 pb-6 md:px-5">
+        <a
+          href="https://beian.miit.gov.cn/"
+          target="_blank"
+          rel="noreferrer"
+          className="num text-[12px] text-fg-dim transition-colors hover:text-fg-muted"
+        >
+          陕ICP备2026027279号
+        </a>
+      </footer>
     </div>
   )
 }
