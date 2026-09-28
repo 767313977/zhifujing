@@ -7831,28 +7831,39 @@ upsert，不会写坏数据），多花一点配额 —— 静默丢数比多花
 
 ## 9. 待确认事项
 
-- **域名备案与 HTTPS（2026-09-27 更新）**：
+- **域名备案与 HTTPS（2026-09-28 已上线）**：
   - **ICP 备案已通过**：陕ICP备2026027279号（-1，服务名「个人工具分享」，域名 `zhifujing.top`，
     云资源 124.222.150.187）。页脚已按管局要求**悬挂备案号并链接到工信部官网**
     （`Layout` 的 footer；管局原话「否则将被管局责令更改」，别删）。
   - ⚠️ **公安联网备案是另一件事**：不拦访问、不拦端口、不影响解析，只要求「服务开通 30 日内」
     去 https://beian.mps.gov.cn 提交（数据码 `6bb7acd3d2c20e6a0985c6d5110d1687`）。
     **不需要等它**才能用站点。
-  - **要上 HTTPS 只差一步：DNS 解析**（2026-09-28 复核）：
-    - 腾讯云**防火墙已放行 80 / 443**（用户 09-28 截图确认，HTTP、HTTPS 两条规则都在）。
-    - ✅ **80 从外网可达已实测**：临时在 80 起一个监听（空目录 + `python3 -m http.server 80`），
-      本机 `Invoke-WebRequest http://124.222.150.187/` 拿到 **HTTP 200**，验完已撤掉监听。
-      ⚠️ 顺带纠正一个我先前的误判：09-27 那次「80/443 连接超时」**不是防火墙没放行**，而是
-      **压根没有进程监听 80**（nginx 当时只有 `listen 8080` 那个 server 块）—— 所以别拿
-      「telnet 超时」当作防火墙的判断依据，要看有没有监听。
-    - ❌ **DNS 还指着 DNSPod 的域名停放**（`zhifujing.top` → `domainparking-dnspod.cn`
-      的 43.153.x / 43.163.x）。这一步只能用户在 DNSPod 控制台做：
-      加 **A 记录**，主机记录 `@`（要 `www` 就再加一条），记录值 `124.222.150.187`。
+  - ✅ **HTTPS 已上线（2026-09-28）**：`zhifujing.top` 与 `www.zhifujing.top` 一起签进
+    **同一张** Let's Encrypt 证书（`/etc/letsencrypt/live/zhifujing.top/`，ECDSA，
+    SAN 两个域名，2026-12-27 到期），并装了续期钩子
+    `/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh`。跑的命令：
 
-    解析生效后跑：`sudo DOMAIN=zhifujing.top CERT_EMAIL=<邮箱> bash deploy/setup_nginx.sh`。
-    **顺序不能颠倒**：Let's Encrypt 的 http-01 校验会自己去解析 `zhifujing.top` 并请求 80，
-    解析没生效就会打到 DNSPod 的停放页、签发必然失败（脚本注释里写了这个坑）。
-    脚本会保留 8080 做兜底入口，稳定后再决定是否收掉。
+        sudo DOMAIN=zhifujing.top ALT_DOMAINS="www.zhifujing.top" \
+             CERT_EMAIL=767313977@qq.com bash deploy/setup_nginx.sh
+
+    - **`ALT_DOMAINS` 是这次新加的**（`setup_nginx.sh` 里的可选变量）：空格分隔的额外域名，
+      一起进 `server_name`、并逐个 `-d` 签进同一张证书（主域名必须排第一 —— certbot 拿
+      第一个 `-d` 当证书目录名）。**没做成「自动带上 www」**：http-01 校验要求每个域名
+      都能解析到本机，自动塞一个没配解析的 `www.*` 会让**整次签发失败**（连主域名的
+      证书都拿不到）。
+    - 端口现状：**80** 只做 ACME 校验 + 其余 301 到 https；**443** 正式入口（TLSv1.2+，
+      Basic Auth）；**8080** 仍保留做明文兜底（DNS 挂了 / 证书过期还能进去修），稳定后
+      再决定是否收掉。后端 8000 仍只绑 `127.0.0.1`。
+    - 实测（本机 curl，2026-09-28）：`https://zhifujing.top/` 与 `https://www.zhifujing.top/`
+      都是 **401 + `ssl_verify_result=0`**（401 = 已过 TLS、停在 Basic Auth，正是预期）；
+      `http://zhifujing.top/` → **301** 到 `https://zhifujing.top/`。
+    - ⚠️ **`certbot renew --dry-run` 会先睡一段随机时间**（本次日志里是 374 秒，
+      `Non-interactive renewal: random delay of ...`）—— 看着像卡死，其实在等。
+      别把它当故障去 kill：我 kill 掉本地 ssh 之后远端进程还在，再跑就报
+      `Another instance of Certbot is already running.`。要看结论就照日志等几分钟。
+    - ⚠️ 顺带纠正一个先前的误判：09-27 那次「80/443 连接超时」**不是防火墙没放行**，
+      而是**压根没有进程监听 80**（nginx 当时只有 `listen 8080` 那个 server 块）——
+      别拿「telnet 超时」当作防火墙的判断依据，要看有没有监听。
 
 - **DDE 历史还差 4517 只，按周期慢慢续**（2026-09-26 用户定的方案）。首轮（8.68.17）补了
   750 只 / 43,212 行，剩 4517 只——**每个新周期（每月 17 日）之后在云端跑一次**：
