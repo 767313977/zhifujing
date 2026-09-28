@@ -31,7 +31,6 @@ from app.db import session_scope
 from app.models import (
     CollectLog,
     IndexDaily,
-    Lhb,
     LimitPool,
     MarketSentiment,
     PatternHit,
@@ -84,8 +83,6 @@ _PATTERN_KEYS = tuple(PATTERN_NAMES)
 NAMED_CONSECUTIVE = 2
 # 板块热力领涨/领跌各列几个
 HEAT_LEADERS = 5
-# 龙虎榜净买额取前几
-LHB_TOP = 5
 # 简报里每个形态列几只。简报是扫一眼用的，不是挑票用的
 PATTERN_TOP = 3
 # 共振题材按涨停家数取前几。库里一天能聚出几十个板块，推送里全列出来没人看 ——
@@ -243,23 +240,6 @@ def _sector_block(session: Session, trade_date: date) -> str:
     return _section("板块热力", lines)
 
 
-def _lhb_block(session: Session, trade_date: date) -> str:
-    rows = list(
-        session.scalars(
-            select(Lhb)
-            .where(Lhb.trade_date == trade_date)
-            .order_by(Lhb.net_buy.desc().nullslast())
-            .limit(LHB_TOP)
-        )
-    )
-    lines = [
-        f"- {row.name or row.code} {_amount(row.net_buy)} {_pct(row.pct_chg)}"
-        for row in rows
-        if row.net_buy is not None
-    ]
-    return _section(f"龙虎榜净买额前 {LHB_TOP}", lines)
-
-
 def build_pattern_brief(trade_date: date, pattern: str) -> str:
     """某个形态当天的独立推送内容（形态清单见 `PUSH_PATTERNS`）。
 
@@ -380,7 +360,11 @@ def build_brief(trade_date: date) -> str:
             _ladder_block(session, trade_date),
             _theme_block(session, trade_date),
             _sector_block(session, trade_date),
-            _lhb_block(session, trade_date),
+            # 「龙虎榜净买额前 5」这一节**2026-09-28 删掉了**（用户要求）。
+            # 背景：龙虎榜是「不能贴着收盘采集」的唯一理由（东财要等收盘后一段时间才发布），
+            # 用户说「推送去掉龙虎榜不等他了」——于是采集时刻从 17:30 提到 15:05，
+            # 这一节也就没数据可列了。⚠️ 当天龙虎榜**不会入库**，想补要手动 backfill。
+            # 见 config.collect_hour 的注释与设计文档 §8.70。
             # 「共达模式选股」不在这里 —— 它有命中时单独发一条
             # （`build_gongda_brief` + `push_gongda`），混进复盘简报会被淹掉
             _pattern_block(session, trade_date),
