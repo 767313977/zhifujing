@@ -96,26 +96,6 @@ export default function Settings() {
     reload()
   }, [reload])
 
-  const runCollect = useCallback(async () => {
-    setBusy('collect')
-    setError(null)
-    setMessage(null)
-    try {
-      const result = await api.collect()
-      const failed = Object.entries(result.steps).filter(([, s]) => s.status !== 'ok')
-      setMessage(
-        failed.length === 0
-          ? `采集完成：${result.trade_date}，${Object.keys(result.steps).length} 个步骤全部成功`
-          : `采集部分失败：${failed.map(([n, s]) => `${n}(${s.status})`).join('；')}`,
-      )
-      reload()
-    } catch (err) {
-      setError((err as Error).message)
-    } finally {
-      setBusy(null)
-    }
-  }, [reload])
-
   const runBackfill = useCallback(async () => {
     setBusy('backfill')
     setError(null)
@@ -189,9 +169,11 @@ export default function Settings() {
             <Cell label="上次运行" value={fmtDateTime(scheduler?.last_run)} />
           </div>
           <div className="border-t border-line-soft px-4 py-2.5 text-[13px] leading-relaxed text-fg-dim">
-            采集时刻 {scheduler?.collect_time ?? '—'} 是等收盘数据与龙虎榜都发布之后再取。
+            采集时刻 {scheduler?.collect_time ?? '—'} 取自后端配置。
             {/* 时刻不写死在这里：它由后端 collect_hour/collect_minute 决定，
-                写死的话改配置就会让这段说明悄悄变成错的（已经错过一次） */}
+                写死的话改配置就会让这段说明悄悄变成错的（已经错过一次）。
+                2026-09-28 也删掉了「等龙虎榜发布之后再取」那句 —— 时刻改到 15:05 之后
+                它已经不成立（那一版是 17:30 时的解释）。 */}
             {scheduler?.catchup_on_start && (
               <>
                 <span className="mx-1">·</span>
@@ -200,8 +182,8 @@ export default function Settings() {
               </>
             )}
             <span className="mx-1">·</span>
-            定时与手动采集<b className="font-normal text-fg-muted">互斥</b>，
-            不会重复请求数据源。
+            <b className="font-normal text-fg-muted">没有手动采集入口</b>
+            ：采集只在上面这个时刻自动跑（2026-09-28 起），需要强制重采就重启服务。
           </div>
         </Panel>
 
@@ -362,22 +344,11 @@ export default function Settings() {
           delay={160}
         >
           <div className="flex flex-col gap-4 px-4 py-3.5 lg:flex-row lg:items-start">
-            <div className="flex-1 space-y-2">
-              <div className="text-[13px] text-fg-muted">采集最近交易日</div>
-              <p className="text-[13px] leading-relaxed text-fg-dim">
-                拉取指数行情、涨停三池、龙虎榜与情绪指标。已采集过的日期会被幂等覆盖，重复点不会产生脏数据。
-              </p>
-              <button
-                type="button"
-                onClick={() => void runCollect()}
-                disabled={busy !== null}
-                className="border border-accent/60 bg-accent/10 px-4 py-1.5 text-[13px] text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {busy === 'collect' ? '采集中…' : '立即采集'}
-              </button>
-            </div>
-
-            <div className="hidden w-px self-stretch bg-line-soft lg:block" />
+            {/* 这里原来还有个「立即采集」按钮，**2026-09-28 删掉**（用户要求「删掉手动
+                采集按钮，禁止手动采集」）：点一下就白跑一轮采集（约 50 次 iFinD 调用），
+                而它本来就不需要手动跑。后端 `POST /api/admin/collect` 也一并删了，
+                所以现在没有任何「手动采集」的入口 —— 采集只有每天收盘后那一条路。
+                真需要强制重采：重启服务（启动补采会补跑）。 */}
 
             <div className="flex-1 space-y-2">
               <div className="text-[13px] text-fg-muted">历史回补</div>
