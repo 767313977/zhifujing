@@ -4,9 +4,11 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     Date,
     DateTime,
     Float,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -435,11 +437,74 @@ class MarketSentiment(Base):
     yesterday_limit_today_avg: Mapped[float | None] = mapped_column(Float)
 
 
+# ---- 会员与登录态（2026-09-28，设计见设计文档 §8.69）----
+#
+# 这三张表是「邀请码注册 + 登录」的全部存储。刻意**不引入任何第三方鉴权库**：
+# 密码哈希用标准库的 `hashlib.scrypt`、令牌用 `secrets.token_urlsafe`，
+# 于是云端部署不必装新包（`requirements.txt` 一行都不用改）。
+#
+# ⚠️ `db.py` 的自动迁移只做「给老表加可空列」，**管不了改主键**。而下面
+# `watchlist` / `review_note` 从单列主键变成了复合主键 —— 那两张表的改造靠
+# `scripts/multiuser_migrate.py` 手工做一次（建新表 → 搬数据 → 删旧表 → 改名）。
+
+
+class AppUser(Base):
+    """会员账号（含管理员）。"""
+
+    __tablename__ = "app_user"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(32), unique=True)
+    # 一整串 `scrypt$n$r$p$盐$摘要`（见 services/auth.py 的 hash_password）。
+    # **不存明文、不可逆**；盐和参数都在同一串里，将来调参数也不会与老值对不上
+    password_hash: Mapped[str] = mapped_column(String(256))
+    # 只有管理员能碰 /api/admin/*（那几个接口会触发采集、烧 iFinD 配额）
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # 停用而不是删号：删号会让「谁用哪个邀请码进来的」断链。
+    # **非空即停用**（与 invite_code.disabled_at 同一套约定）
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class InviteCode(Base):
+    """一次性邀请码。注册成功即消费掉。"""
+
+    __tablename__ = "invite_code"
+
+    code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    # 这个码打算给谁（自己看得懂就行，纯备注）
+    note: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    # 一次性 = `used_by` 非空即作废。
+    # ⚠️ 刻意不做「回收后重用」：码一旦与某个账号绑定，重用它就等于抹掉
+    # 「这个账号是拿哪个码进来的」这条记录，而那正是发一次性码的意义所在
+    used_by: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class UserSession(Base):
+    """登录会话。**存令牌的哈希，不存原文。**"""
+
+    __tablename__ = "user_session"
+
+    # sha256(令牌) 的十六进制。cookie 里放原文、这里只放摘要 ——
+    # 库被看到（备份、快照、误提交）也不能直接拿去冒充登录
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    # 滑动过期：每次带有效 cookie 访问就往后推（见 services/auth.py）
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    user_agent: Mapped[str | None] = mapped_column(String(200))
+
+
 class Watchlist(Base):
-    """自选股。"""
+    """自选股。**按用户隔离**（2026-09-28 起，见设计文档 §8.69）。"""
 
     __tablename__ = "watchlist"
 
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"), primary_key=True)
     code: Mapped[str] = mapped_column(String(16), primary_key=True)
     name: Mapped[str | None] = mapped_column(String(32))
     tags: Mapped[list | None] = mapped_column(JSON)
@@ -448,10 +513,11 @@ class Watchlist(Base):
 
 
 class ReviewNote(Base):
-    """每日复盘笔记。"""
+    """每日复盘笔记。**按用户隔离**（2026-09-28 起）。"""
 
     __tablename__ = "review_note"
 
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"), primary_key=True)
     trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
     market_view: Mapped[str | None] = mapped_column(Text)
     next_plan: Mapped[str | None] = mapped_column(Text)
