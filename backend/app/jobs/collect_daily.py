@@ -635,13 +635,22 @@ class DailyCollector:
                     upsert(session, StockBasic, [{"code": code, "name": name}])
         return written
 
-    def sync_watchlist(self, days: int = STOCK_DAILY_DAYS) -> int:
+    def sync_watchlist(
+        self, days: int = STOCK_DAILY_DAYS, codes: list[str] | None = None
+    ) -> int:
         """同步自选股近期日线，是每日采集的一部分。
 
         默认只回看最近几天：当日采集只需要覆盖最新交易日，不必每次拉全程。
+
+        `codes` 不给就同步**全部会员自选股的并集**（每日采集走这条）；给了就只同步
+        这些（`/api/watchlist/sync` 传当前用户自己的票）。
+
+        ⚠️ 并集必须 `distinct()`：自选股从 2026-09-28 起按用户隔离，同一只票在表里
+        会有多行。不去重就会同一只票同步好几遍 —— 那是纯浪费 iFinD 调用次数。
         """
-        with session_scope() as session:
-            codes = list(session.scalars(select(Watchlist.code)))
+        if codes is None:
+            with session_scope() as session:
+                codes = list(session.scalars(select(Watchlist.code).distinct()))
         if not codes:
             return 0
 

@@ -1022,3 +1022,68 @@ class DdeBoard(BaseModel):
     # 当天**有 DDE 的票数**，不是全市场只数 —— 来源在收盘后逐步发布，
     # 当天 18 点前后大约只覆盖七成（见设计文档 8.44/8.46）
     total: int
+
+
+# --------------------------------------------------------------- 会员与登录
+#
+# 见设计文档 §8.69。密码永远不出现在任何响应里（连哈希也不给）。
+
+
+class RegisterIn(BaseModel):
+    invite_code: str
+    username: str
+    password: str
+
+
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+
+class PasswordIn(BaseModel):
+    old_password: str
+    new_password: str
+
+
+class MeOut(ApiModel):
+    """「我是谁」—— 前端启动时问一次，用来决定显示什么、能不能进数据管理页。"""
+
+    id: int
+    username: str
+    is_admin: bool
+
+
+class InviteIn(BaseModel):
+    note: str | None = None
+    # 一次生成几个。发一群人时省得点很多次
+    count: int = 1
+
+
+class InviteOut(ApiModel):
+    code: str
+    note: str | None
+    created_at: datetime
+    used_by: int | None
+    # 用掉它的那个人的用户名（列表里直接看得懂，不用再去对 id）
+    used_by_name: str | None = None
+    used_at: datetime | None
+    disabled_at: datetime | None
+
+
+class MemberOut(ApiModel):
+    id: int
+    username: str
+    is_admin: bool
+    created_at: datetime
+    last_login_at: datetime | None
+    disabled_at: datetime | None
+    # 他是拿哪个邀请码进来的（来源可追）
+    invite_code: str | None = None
+
+
+class ResetPasswordIn(BaseModel):
+    new_password: str
+
+
+class DisabledIn(BaseModel):
+    disabled: bool
