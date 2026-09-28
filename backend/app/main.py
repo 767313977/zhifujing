@@ -5,13 +5,14 @@ import socket
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import (
     admin,
+    auth as auth_api,
     funds,
     limit,
     market,
@@ -24,6 +25,7 @@ from app.api import (
 from app.config import ROOT, get_settings
 from app.db import init_db
 from app.jobs.scheduler import start_scheduler, stop_scheduler
+from app.services.auth import require_login
 
 settings = get_settings()
 
@@ -68,7 +70,22 @@ async def lifespan(_app: FastAPI):
         stop_scheduler()
 
 
-app = FastAPI(title="致富经", version="0.2.0", lifespan=lifespan)
+app = FastAPI(
+    title="致富经",
+    version="0.3.0",
+    lifespan=lifespan,
+    # **全站登录关卡**。挂成 app 级依赖而不是逐个路由挂：20 多个 `/api/*` 路由，
+    # 一个一个挂漏掉一个就是一个洞，将来新加路由也容易忘。这里是白名单制、
+    # **默认拒绝**（名单在 services/auth.PUBLIC_PATHS）。
+    #
+    # 为什么不是 `@app.middleware("http")`：中间件跑在事件循环里，而这里要查一次库
+    # （拿会话 → 拿用户）。同步依赖会被 FastAPI 丢到线程池执行，不会堵住事件循环。
+    #
+    # ⚠️ 挂在 mount 上的 `/assets`（StaticFiles）不受 app 级依赖约束 —— 静态资源
+    # 本来就该公开，登录页要用。SPA 回退那条路由会被这个依赖看到，但
+    # require_login 对非 `/api/` 路径直接放行。
+    dependencies=[Depends(require_login)],
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -102,6 +119,7 @@ async def cache_headers(request: Request, call_next):
     return response
 
 
+app.include_router(auth_api.router)
 app.include_router(market.router)
 app.include_router(limit.router)
 app.include_router(funds.router)

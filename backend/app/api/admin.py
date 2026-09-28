@@ -1,7 +1,8 @@
-"""数据管理接口。"""
+"""数据管理接口。**整个 `/api/admin` 都是管理员专属**（见下面 router 的 dependencies）。"""
 
 import logging
-from datetime import date
+import secrets
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -11,8 +12,10 @@ from app.db import get_db
 from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
 from app.jobs.scheduler import get_scheduler
 from app.models import (
+    AppUser,
     CollectLog,
     IndexDaily,
+    InviteCode,
     Lhb,
     LimitPool,
     MarketSentiment,
@@ -24,16 +27,37 @@ from app.schemas import (
     AdminStatus,
     CollectLogOut,
     CollectResult,
+    DisabledIn,
     IfindQuota,
+    InviteIn,
+    InviteOut,
+    MemberOut,
+    ResetPasswordIn,
     SchedulerStatus,
     TableCoverage,
 )
+from app.services import auth
+from app.services.auth import require_admin
 from app.services.usage import quota_status
 from app.sources.ifind import IfindError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/admin", tags=["数据管理"])
+# ⚠️ `dependencies=[Depends(require_admin)]` 挂在**路由级**，而不是逐个接口挂：
+# 这里每一条都能触发采集（烧 iFinD 配额），漏挂一条就是一个洞，
+# 而且将来往这个文件加接口的人很容易忘了 —— 挂在 router 上就忘不掉。
+router = APIRouter(
+    prefix="/api/admin", tags=["数据管理"], dependencies=[Depends(require_admin)]
+)
+
+
+# 邀请码用的字母表：**去掉了 0 O 1 l I** 这些手抄/口述时容易认错的。
+# 邀请码是要发给人、可能被念出来的东西，可读性比多几个比特重要。
+_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+# 8 位 ≈ 32^8 ≈ 1.1e12 种，配合登录/注册限流足够；再短就开始担心被猜
+_CODE_LENGTH = 8
+# 一次最多生成几个：够发给一个群，又不至于让清单变成一坨
+_CODE_MAX_BATCH = 20
 
 
 def _build_collector() -> DailyCollector:
@@ -178,3 +202,157 @@ def backfill(
         ],
         "detail": days,
     }
+
+
+# ------------------------------------------------------------ 会员与邀请码
+#
+# 见设计文档 §8.69。这几条也在 `/api/admin/*` 下，所以自动受上面的 require_admin 保护。
+
+
+def _new_invite_code(session: Session) -> str:
+    """生成一个没被占用的邀请码。
+
+    **不用 uuid**：那串 32 个十六进制字符既没法口头念给人、也不好手抄。
+    这里用去掉了易混字母的 32 个字符表，随机 8 位。
+    """
+    for _ in range(20):
+        code = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(_CODE_LENGTH))
+        if session.get(InviteCode, code) is None:
+            return code
+    # 撞 20 次同一批已存在的码：不是运气问题就是哪里坏了，别静默继续
+    raise HTTPException(status_code=500, detail="生成邀请码失败，请重试")
+
+
+def _invite_out(row: InviteCode, names: dict[int, str]) -> InviteOut:
+    return InviteOut(
+        code=row.code,
+        note=row.note,
+        created_at=row.created_at,
+        used_by=row.used_by,
+        # 列表里直接显示「被谁用了」，省得自己拿 id 去对
+        used_by_name=names.get(row.used_by) if row.used_by else None,
+        used_at=row.used_at,
+        disabled_at=row.disabled_at,
+    )
+
+
+@router.get("/invites", response_model=list[InviteOut])
+def list_invites(session: Session = Depends(get_db)) -> list[InviteOut]:
+    """所有邀请码，新的在前。"""
+    rows = list(
+        session.scalars(select(InviteCode).order_by(InviteCode.created_at.desc()))
+    )
+    names = {user.id: user.username for user in session.scalars(select(AppUser))}
+    return [_invite_out(row, names) for row in rows]
+
+
+@router.post("/invites", response_model=list[InviteOut])
+def create_invites(
+    payload: InviteIn, session: Session = Depends(get_db)
+) -> list[InviteOut]:
+    """生成邀请码。`count` 可以一次多生成几个（最多 20）。"""
+    count = max(1, min(payload.count, _CODE_MAX_BATCH))
+    rows = []
+    for _ in range(count):
+        row = InviteCode(code=_new_invite_code(session), note=payload.note)
+        session.add(row)
+        rows.append(row)
+    session.commit()
+    for row in rows:
+        session.refresh(row)
+    names: dict[int, str] = {}
+    return [_invite_out(row, names) for row in rows]
+
+
+@router.delete("/invites/{code}")
+def delete_invite(code: str, session: Session = Depends(get_db)) -> dict:
+    """删掉一个**没用过**的邀请码。
+
+    ⚠️ 用过的拒绝删除：删了就断了「这个账号是拿哪个码进来的」这条记录，
+    而那正是发一次性码的意义（见 models.InviteCode 的说明）。想阻止它继续被用，
+    停用账号即可 —— 反正它已经绑定了，用不了第二次。
+    """
+    row = session.get(InviteCode, code.strip().upper())
+    if row is None:
+        raise HTTPException(status_code=404, detail="没有这个邀请码")
+    if row.used_by is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="这个邀请码已经被用过了，删掉会失去「谁用哪个码进来」的记录",
+        )
+    session.delete(row)
+    session.commit()
+    return {"ok": True}
+
+
+@router.get("/users", response_model=list[MemberOut])
+def list_users(session: Session = Depends(get_db)) -> list[MemberOut]:
+    """所有会员。`invite_code` 是他注册时用的那个码（可追来源）。"""
+    users = list(session.scalars(select(AppUser).order_by(AppUser.created_at)))
+    invites = {
+        row.used_by: row.code
+        for row in session.scalars(select(InviteCode))
+        if row.used_by
+    }
+    return [
+        MemberOut(
+            id=user.id,
+            username=user.username,
+            is_admin=user.is_admin,
+            created_at=user.created_at,
+            last_login_at=user.last_login_at,
+            disabled_at=user.disabled_at,
+            invite_code=invites.get(user.id),
+        )
+        for user in users
+    ]
+
+
+@router.post("/users/{user_id}/reset-password")
+def reset_password(
+    user_id: int,
+    payload: ResetPasswordIn,
+    me: AppUser = Depends(require_admin),
+    session: Session = Depends(get_db),
+) -> dict:
+    """管理员替会员重置密码，并**踢掉他所有会话**。
+
+    先小规模不做自助找回：忘了密码来找你重置，比引入邮箱验证那一整套便宜得多。
+    改完必须踢会话 —— 密码重置通常就发生在「怀疑账号被别人用了」的时候。
+    """
+    auth.validate_password(payload.new_password)
+    row = session.get(AppUser, user_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="没有这个账号")
+    row.password_hash = auth.hash_password(payload.new_password)
+    session.commit()
+    kicked = auth.delete_user_sessions(session, user_id)
+    logger.info("管理员 %s 重置了 %s 的密码，踢掉 %d 个会话", me.username, row.username, kicked)
+    return {"ok": True, "kicked_sessions": kicked}
+
+
+@router.post("/users/{user_id}/disabled")
+def set_disabled(
+    user_id: int,
+    payload: DisabledIn,
+    me: AppUser = Depends(require_admin),
+    session: Session = Depends(get_db),
+) -> dict:
+    """停用 / 恢复会员。停用即踢掉他所有会话。"""
+    # 不拦的话可以一键把自己锁在门外 —— 而这时唯一能救你的账号就是你自己
+    if user_id == me.id:
+        raise HTTPException(status_code=400, detail="不能停用自己")
+    row = session.get(AppUser, user_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="没有这个账号")
+    row.disabled_at = datetime.now() if payload.disabled else None
+    session.commit()
+    kicked = auth.delete_user_sessions(session, user_id) if payload.disabled else 0
+    logger.info(
+        "%s 把 %s %s（踢掉 %d 个会话）",
+        me.username,
+        row.username,
+        "停用了" if payload.disabled else "恢复了",
+        kicked,
+    )
+    return {"ok": True, "kicked_sessions": kicked}
