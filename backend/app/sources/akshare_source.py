@@ -120,12 +120,32 @@ class AkshareSource:
     # ------------------------------------------------------------------ 龙虎榜
 
     def lhb(self, trade_date: date) -> list[dict]:
-        """龙虎榜。同一股票可能因多条上榜原因重复出现。"""
+        """龙虎榜。同一股票可能因多条上榜原因重复出现。
+
+        ⚠️ **当天还没发布时它返回空、而且是抛 TypeError 而不是空表**：
+        akshare 的 `stock_lhb_detail_em` 内部直接取 `data_json["result"]["pages"]`，
+        而东财在没有数据时返回的 `result` 是 **null** → `None[...]` 就是
+        `TypeError: 'NoneType' object is not subscriptable`。
+        （2026-09-28 实测：15:55 取当天就是这个错，16:35 再取就有数据了。）
+
+        所以这里把这一种情况当成「来源暂无数据」而不是失败 ——
+        采集时刻 2026-09-28 起改到 15:05，而龙虎榜要等收盘后一段时间才发布，
+        **每天都会走到这个分支**；当成 failed 会让「数据管理」页每天多一条红字，
+        真出故障时反而看不出来。
+
+        只吞 TypeError，其它异常（网络、解析）照旧往上抛。
+        """
         ymd = _ymd(trade_date)
-        df = self._call(
-            lambda: ak.stock_lhb_detail_em(start_date=ymd, end_date=ymd),
-            f"akshare 龙虎榜 {trade_date}",
-        )
+        try:
+            df = self._call(
+                lambda: ak.stock_lhb_detail_em(start_date=ymd, end_date=ymd),
+                f"akshare 龙虎榜 {trade_date}",
+            )
+        except TypeError as exc:
+            if "subscriptable" not in str(exc):
+                raise  # 不是那个签名，就不当「暂无数据」处理
+            logger.info("龙虎榜 %s 来源暂无数据（东财还没发布），跳过", trade_date)
+            return []
         return _records(df)
 
     def lhb_range(self, start: date, end: date) -> list[dict]:
