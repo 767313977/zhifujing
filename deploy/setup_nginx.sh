@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# 给云端这台机器配一个「带密码的网页入口」（nginx + Basic Auth）。
+# 给云端这台机器配对外入口：nginx 反向代理 + HTTPS（可选 Basic Auth）。
 #
 # ## 为什么需要它
 #
-# 后端的 8000 端口**没有任何鉴权**：谁扫到都能看你的自选股、复盘笔记，
-# 还能 POST /api/admin/collect 触发采集 —— 那会白烧 iFinD 配额（每天上限就
-# 五千次，烧光了第二天的采集也会一起失败）。
+# 后端绑死 `127.0.0.1:8000`（systemd unit 就是这么写的、只对内），要能从公网访问
+# 就得有个反向代理；顺带由 nginx 处理 TLS（80 上的 ACME 校验、80→443 跳转）。
 #
-# 所以 **不要**把 8000 直接对外（systemd unit 里绑 127.0.0.1 就是这个原因），
-# 必须前面挡一层带密码的反向代理。
+# ⚠️ **鉴权不在这一层**：2026-09-28 起后端自己有一套登录体系（设计见文档 §8.69），
+# `/api/*` 全部要求登录，只放行 `/api/auth/login`、`/api/auth/register`、`/api/health`；
+# 注册要一次性邀请码。所以别把「这里必须有密码」当成这套东西的前提 ——
+# `AUTH=off`（现在的默认值）是正常的，反代本身照旧。
 #
 # ## 用法（在服务器上）
 #
@@ -19,15 +20,19 @@
 #
 #     sudo DOMAIN=a.com ALT_DOMAINS="www.a.com" CERT_EMAIL=me@x.com bash deploy/setup_nginx.sh
 #
-# 想去掉网页访问的密码（入口不再弹账号密码框）：
+# 几个可选开关（默认值就是当前线上在用的那套）：
 #
-#     sudo DOMAIN=a.com AUTH=off CERT_EMAIL=me@x.com bash deploy/setup_nginx.sh
+#     AUTH=on|off          nginx 这层的 Basic Auth 密码，**默认 off**
+#     FALLBACK_8080=on|off 额外留一个 8080 明文兜底入口，**默认 off**
 #
-# ⚠️ AUTH=off **只去掉密码那一层**，反代本身照旧（后端 8000 仍然只对内）。
-# 但后端**没有任何鉴权**，所以 off 之后任何知道域名的人都能看自选股 / 复盘笔记，
-# 还能 POST /api/admin/collect 触发采集 —— 那会白烧 iFinD 配额。
+# ⚠️ 两个 off 都是 2026-09-28 定的，因为**站点自己有了登录体系**（设计见文档 §8.69）：
+# `/api/*` 全部要求登录、只放行 login / register / health，邀请码是注册的唯一门。
+# 所以 nginx 那层密码不再是必需的；而 8080 在明文 http 上**登录不了**
+# （cookie 带 `Secure`），留着只让人困惑。
+# 想看当前线上到底是什么样：`sudo nginx -T | grep -n -e listen -e auth_basic`。
 
 # 跑之前先在腾讯云控制台的「防火墙」里放行端口：8080；开 HTTPS 还要 80 和 443。
+# 用默认值（AUTH=off + FALLBACK_8080=off）时，防火墙里只需要 80 和 443。
 #
 # ## 两种模式
 #
@@ -54,12 +59,23 @@ DOMAIN="${DOMAIN:-}"
 # 解析到本机**，自动塞一个没配解析的 `www.<主域名>` 会让整次签发失败 —— 连主域名
 # 的证书都拿不到。所以默认只签主域名，需要时自己列出来。
 ALT_DOMAINS="${ALT_DOMAINS:-}"
-# 网页访问要不要密码：on / off。
+# nginx 这一层要不要 Basic Auth 密码：on / off。
 #
-# ⚠️ 后端**完全没有鉴权**（/api/admin/collect 谁都能 POST，会白烧 iFinD 配额），
-# Basic Auth 是唯一的门。用户 2026-09-28 明确要求取消密码，所以留了这个开关；
-# 想加回来：`AUTH=on` 重跑一次即可（.htpasswd 文件还在，密码不变）。
-AUTH="${AUTH:-on}"
+# ⚠️ **2026-09-28 起后端自己有了登录体系**（设计见文档 §8.69）：`/api/*` 全部要求
+# 登录，只放行 `/api/auth/login`、`/api/auth/register`、`/api/health`。也就是说
+# 这一层**不再是「唯一的门」**，只是可选的一道额外面。
+# 用户 2026-09-28 明确要求取消密码 → 默认改成 **off**（否则重跑一次脚本就会
+# 静悄悄地又把密码加回来，那种「多弹一个框」的困惑很难追）。
+# 想开：`AUTH=on` 重跑一次（.htpasswd 文件还在，密码不变）。
+AUTH="${AUTH:-off}"
+# 有域名时，要不要**额外**留一个 8080 明文兜底入口：on / off。
+#
+# **默认 off**（2026-09-28 起，见设计文档 §8.69.7）：站点开始要登录密码了，而会话
+# cookie 带着 `Secure` —— 浏览器在明文 http 上根本不发它，于是 8080 只会变成
+# 「页面打得开、但登录不了」的困惑入口，还平白留一条明文链路。
+# 应急（证书过期 / DNS 挂了）才开；不带 DOMAIN 的那套纯 IP 模式不受这个开关影响
+# （那边 8080 就是唯一的入口）。
+FALLBACK_8080="${FALLBACK_8080:-off}"
 CERT_EMAIL="${CERT_EMAIL:-}"
 HTPASSWD="/etc/nginx/.htpasswd"
 SITE="/etc/nginx/sites-available/$SITE_NAME"
@@ -107,6 +123,10 @@ fi
 # 会被静默当成 off —— 也就是**你以为开着密码，其实全站裸奔**。
 if [[ "$AUTH" != "on" && "$AUTH" != "off" ]]; then
   echo "AUTH 只能是 on（要密码）或 off（不要密码）（当前：$AUTH）" >&2
+  exit 1
+fi
+if [[ "$FALLBACK_8080" != "on" && "$FALLBACK_8080" != "off" ]]; then
+  echo "FALLBACK_8080 只能是 on 或 off（当前：$FALLBACK_8080）" >&2
   exit 1
 fi
 
@@ -160,6 +180,11 @@ proxy_pass http://127.0.0.1:__BACKEND_PORT__;
 proxy_set_header Host $host;
 proxy_set_header X-Real-IP $remote_addr;
 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+# ⚠️ 必须有这一行：后端靠**实际协议**决定会话 cookie 要不要带 `Secure`
+# （见 app/api/auth.py 的 _set_cookie）。少了它，uvicorn 只看到 127.0.0.1 上的
+# 明文 http，云端也会被判成 http —— cookie 少一个 Secure，静默降级。
+# 后端认得它是因为 uvicorn 默认开了 proxy-headers，且信任来自 127.0.0.1 的代理。
+proxy_set_header X-Forwarded-Proto $scheme;
 
 # 一次采集要跑几分钟（板块那步是逐个拉 400 多个板块，实测约 8 分钟）。
 # 默认的 60s 会让 nginx 提前断开，页面上显示成「采集失败」——
@@ -244,8 +269,20 @@ server {
 
     location / { include __SNIPPET__; }
 }
+NGINX
 
-# 8080：明文兜底入口（DNS 挂了 / 证书过期了还能进来修）。稳定后删掉这一段。
+  # 8080 明文兜底入口，**默认不开**（2026-09-28 起，见设计文档 §8.69.7）：
+  # 站点开始要登录密码了，而会话 cookie 带着 `Secure` —— 浏览器在明文 http 上
+  # **根本不会发它**，于是 8080 变成「页面打得开、但登录不了」，只让人困惑，
+  # 还平白留一条明文入口。真要应急（证书挂了/DNS 挂了）就临时开：
+  #     sudo DOMAIN=... FALLBACK_8080=on bash deploy/setup_nginx.sh
+  if [[ "$FALLBACK_8080" == "on" ]]; then
+    log "保留 8080 明文兜底入口（FALLBACK_8080=on）"
+    cat >> "$SITE" <<'NGINX'
+
+# 8080：明文兜底入口（DNS 挂了 / 证书过期了还能进来修）。
+# ⚠️ 在它上面**登录不了**（cookie 带 Secure，明文 http 不发）——
+# 它的用途只是「能打开页面确认服务活着 / 看 nginx 报错」。
 server {
     listen 8080 default_server;
     server_name _;
@@ -253,6 +290,9 @@ server {
     location / { include __SNIPPET__; }
 }
 NGINX
+  fi
+
+  # sed 必须在**追加 8080 那段之后**跑：那段里也有 __SNIPPET__ 占位符
   sed -i \
     -e "s|__DOMAIN__|$DOMAIN|g" \
     -e "s|__SERVER_NAMES__|$SERVER_NAMES|g" \
@@ -285,7 +325,11 @@ if [[ -n "$DOMAIN" ]]; then
     echo "    https://$_name/"
   done
   echo "    证书续期自检：sudo certbot renew --dry-run"
-  echo "    （8080 仍开着做兜底，不需要了就把配置里那一段删掉）"
+  if [[ "$FALLBACK_8080" == "on" ]]; then
+    echo "    （8080 明文兜底也开着：能打开页面，但在上面**登录不了**）"
+  else
+    echo "    （8080 明文入口已关闭；要应急开就加 FALLBACK_8080=on 重跑）"
+  fi
 else
   echo "    确认腾讯云控制台的「防火墙」已放行 8080 后，浏览器打开："
   echo "    http://<服务器IP>:8080/"
@@ -293,6 +337,6 @@ fi
 if [[ "$AUTH" == "on" ]]; then
   echo "    账号：$USER_NAME   密码：你刚设的那个"
 else
-  echo "    ⚠️ 入口**不要密码**（AUTH=off）：任何知道域名的人都能打开页面，"
-  echo "       也可以 POST /api/admin/collect 触发采集（白烧 iFinD 配额）。"
+  echo "    nginx 这层没有密码（AUTH=off）—— 站点自己的登录在页面上，"
+  echo "    没有邀请码注册不了账号（见设计文档 §8.69）。"
 fi
