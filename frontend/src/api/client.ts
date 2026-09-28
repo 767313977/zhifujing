@@ -14,11 +14,14 @@ import type {
   IndexHistory,
   InstitutionBoard,
   InstitutionOrder,
+  Invite,
   KPeriod,
   LimitPool,
   LimitThemes,
   LhbItem,
   MarketOverview,
+  Me,
+  Member,
   PoolType,
   PatternMeta,
   PatternStock,
@@ -47,8 +50,29 @@ import type {
 
 const BASE = '/api'
 
+/**
+ * 收到 401 时发的自定义事件。定义在这里（而不是 lib/auth.tsx）是为了**避免循环导入**：
+ * auth.tsx 要用 api，而这个事件要用在 api 里 —— 只能有一个方向。
+ */
+export const UNAUTHORIZED_EVENT = 'fupan:unauthorized'
+
+/**
+ * 未登录 / 会话过期。
+ *
+ * **单独一个错误类型**是必要的：调用方（`RequireAuth`）要靠它决定「跳登录页」，
+ * 而不是把「请先登录」当成普通业务错误，在页面上显示成一行红字。
+ */
+export class UnauthorizedError extends Error {
+  constructor(message = '请先登录') {
+    super(message)
+    this.name = 'UnauthorizedError'
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${BASE}${path}`, init)
+  // `credentials: 'same-origin'`：登录态在 HttpOnly cookie 里，不带它就等于没登录。
+  // 同源请求浏览器默认也会带，但显式写出来 —— 将来若改成跨域部署，这里不会静默失效。
+  const response = await fetch(`${BASE}${path}`, { credentials: 'same-origin', ...init })
   if (!response.ok) {
     // 后端把可读原因放在 detail 里（如「暂无数据，请先执行采集」）
     let detail = `${response.status} ${response.statusText}`
@@ -58,9 +82,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // 响应不是 JSON，保留状态文本
     }
+    if (response.status === 401) {
+      // 会话**在使用中**失效（闲置过期 / 在别处改了密码 / 被停用）时，页面早就渲染出来了，
+      // RequireAuth 不会再跑。靠这个事件让 AuthProvider 清掉用户，下一次渲染自动跳登录页。
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+      throw new UnauthorizedError(detail)
+    }
     throw new Error(detail)
   }
   return (await response.json()) as T
+}
+
+/** POST / PUT / PATCH 带 JSON body。抽出来只为少写三行样板。 */
+function send<T>(
+  method: 'POST' | 'PUT' | 'PATCH',
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  return request<T>(path, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
 }
 
 function withDate(path: string, date?: string | null): string {
@@ -346,4 +389,58 @@ export const api = {
   // DDE 榜。数据来自每天采集链末尾的全市场扫描，打开页面不花任何配额
   fundsDde: (order: DdeOrder = 'inflow', limit = 30, date?: string | null) =>
     request<DdeBoard>(withDate(`/funds/dde?limit=${limit}&order=${order}`, date)),
+
+  // --- 登录与会员（设计见文档 §8.69）---
+
+  /** 「我是谁」。未登录会抛 UnauthorizedError，由 RequireAuth 兜住跳登录页。 */
+  authMe: () => request<Me>('/auth/me'),
+
+  login: (username: string, password: string) =>
+    send<Me>('POST', '/auth/login', { username, password }),
+
+  /** 注册成功即登录（后端直接种 cookie），所以不需要再调一次 login。 */
+  register: (inviteCode: string, username: string, password: string) =>
+    send<Me>('POST', '/auth/register', {
+      invite_code: inviteCode,
+      username,
+      password,
+    }),
+
+  logout: () => send<{ ok: boolean }>('POST', '/auth/logout'),
+
+  /** 改密码会把**其它**设备的会话全部踢掉，当前这个保留。 */
+  changePassword: (oldPassword: string, newPassword: string) =>
+    send<Me>('PUT', '/auth/password', {
+      old_password: oldPassword,
+      new_password: newPassword,
+    }),
+
+  // --- 管理员：邀请码与会员 ---
+
+  invites: () => request<Invite[]>('/admin/invites'),
+
+  createInvites: (note: string, count = 1) =>
+    send<Invite[]>('POST', '/admin/invites', { note, count }),
+
+  /** 只对**没用过**的邀请码生效；用过的后端会拒绝（会失去来源记录）。 */
+  deleteInvite: (code: string) =>
+    request<{ ok: boolean }>(`/admin/invites/${encodeURIComponent(code)}`, {
+      method: 'DELETE',
+    }),
+
+  members: () => request<Member[]>('/admin/users'),
+
+  resetMemberPassword: (id: number, newPassword: string) =>
+    send<{ ok: boolean; kicked_sessions: number }>(
+      'POST',
+      `/admin/users/${id}/reset-password`,
+      { new_password: newPassword },
+    ),
+
+  setMemberDisabled: (id: number, disabled: boolean) =>
+    send<{ ok: boolean; kicked_sessions: number }>(
+      'POST',
+      `/admin/users/${id}/disabled`,
+      { disabled },
+    ),
 }

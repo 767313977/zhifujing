@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { AdminStatus, CollectLog, IfindToolUsage, TableCoverage } from '../api/types'
 import Alert from '../components/Alert'
+import InvitePanel from '../components/InvitePanel'
 import Layout from '../components/Layout'
+import MembersPanel from '../components/MembersPanel'
 import Panel from '../components/Panel'
 import SortTh from '../components/SortTh'
-import { fmtInt, fmtShortDate } from '../lib/format'
+import { fmtDateTime, fmtInt, fmtShortDate } from '../lib/format'
 import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'
 
@@ -31,15 +33,6 @@ const LOG_SORTS: SortSpecs<CollectLog> = {
   status: { value: (log) => log.status, first: 'asc' },
   rows: { value: (log) => log.rows },
   cost_seconds: { value: (log) => log.cost_seconds },
-}
-
-/** ISO 时间戳 → 09-18 15:05 */
-function fmtDateTime(value: string | null | undefined): string {
-  if (!value) return '—'
-  const matched = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/)
-  if (!matched) return value
-  const [, , month, day, hour, minute] = matched
-  return `${month}-${day} ${hour}:${minute}`
 }
 
 /** `Date` → 本地 `YYYY-MM-DD`。
@@ -454,6 +447,11 @@ export default function Settings() {
             </div>
           )}
         </Panel>
+
+        {/* 会员与邀请码。这两块只有管理员看得到这个页面（导航项本身对会员隐藏，
+            路由也套了 RequireAdmin）。 */}
+        <MembersPanel />
+        <InvitePanel />
       </div>
     </Layout>
   )
