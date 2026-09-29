@@ -52,9 +52,10 @@ from app.models import (
 # 东财/腾讯两条兜底线的抓取逻辑都抽到了 `sources/` —— 本地回测往回补多年历史
 # （scripts/backfill_history.py）也要用它们。口径（不复权价 + 真实涨跌幅）只能有一份。
 from app.sources.eastmoney import clear_proxies as _clear_proxies
-from app.sources.eastmoney import fetch_board_spot
+from app.sources.eastmoney import fetch_board_spot as _fetch_board_spot_em
 from app.sources.eastmoney import fetch_daily as _fetch_daily_eastmoney
 from app.sources.tencent import fetch_daily as _fetch_tencent_daily
+from app.sources.ths_rank import fetch_board_spot as _fetch_board_spot_ths
 from app.services.patterns import (
     MIN_SCORE,
     WUDAO_MIN_BARS,
@@ -84,6 +85,16 @@ WUDAO_KEYS = frozenset({"wudao_sample", "wudao_start"})
 # 与悟道 `/api/pattern/scan?limit=80&board=cyb` 同量级（UI 常用 50~80）
 # ⚠️ 只有条数取齐；板块比悟道多一块科创板（见 `is_wudao_board`）
 WUDAO_SCAN_LIMIT = 80
+
+# 涨幅榜这一路的窗口与取数上限。
+#
+# 窗口按 **20cm 板**定（北交所 30cm 不在这两块里，见 `is_wudao_board`）：下界挡掉
+# 「不算强势」的，上界挡掉「首日无涨跌幅限制的新股」（实测榜上能到 +653%）。
+# 上限 100 是因为服务端**每页最多约 100 行**，要更多只能翻页 —— 而目标池只有
+# `WUDAO_SCAN_LIMIT`（80）个位置、涨幅那一路优先级最高会先占满，所以 100 够。
+WUDAO_GAIN_MIN = 4.5
+WUDAO_GAIN_MAX = 20.5
+WUDAO_GAIN_TOP = 100
 
 # 池外致富候选补多少交易日日线（日历日粗算 ×1.5 在 sync_stock 内）
 _WUDAO_SYNC_DAYS = 60
@@ -303,33 +314,56 @@ def _wudao_candidate_codes(trade_date: date) -> set[str]:
         for raw in df[col].tolist():
             add(raw, label)
 
-    # 涨幅榜：**一次** clist 请求，只要创业板 + 科创板按涨幅降序的那一页。
+    # 涨幅榜：**一次**东财 clist 请求，只要创业板 + 科创板按涨幅降序的那一页。
     #
     # 旧实现是 akshare 的 `stock_zh_a_spot_em()` —— 它 `pz=100` 翻 56 页把全市场
     # 5561 只拉回来，只为排序取前 100。2026-09-29 实测：那 56 次连发会把这个 IP 打进
     # 东财 `push2*` 集群的惩罚期（> 10 分钟，期间连 `push2his` 的其它路径一起被拒），
     # 于是这一路时好时坏、候选池从约 80 只掉到 39~54 只。详见 `sources/eastmoney`。
+    #
+    # **东财不可用就退到同花顺**（2026-09-29 用户要求）：走数据中心那张按涨跌幅降序的
+    # 排行表，代价是翻几页、且解析的是 HTML 表格，换一个与东财完全独立的源。
+    # 两条都不通时这一路本轮为空 —— 只影响池子大小，另外四路照常。
+    spot: list[tuple[str, float]] = []
+    source = ""
     try:
-        spot = fetch_board_spot(limit=100)
-        rows: list[tuple[str, float]] = []
-        for code, pct in spot:
-            # `fs` 已经把范围限定在创业板 + 科创板，这里再挡一次是**当断言用** ——
-            # 万一东财改了 `fs` 的语义，池子不会悄悄混进别的板。
-            if not is_wudao_board(code):
-                continue
-            # 20cm 板的窗口。**北交所不在这两块里**，所以不用为 30cm 另外放开 ——
-            # 真要收北交所，这个上限和「太热」阈值都得跟着重调，别只改板块判据。
-            if 4.5 <= pct <= 20.5:
-                rows.append((code, pct))
-        rows.sort(key=lambda x: x[1], reverse=True)
-        for code, _ in rows[:100]:
-            add(code, "涨幅")
-        # 把「一页够不够」写成日志：服务端每页上限约 100 行，而目标池只有 80 个位置、
-        # 涨幅这一路优先级最高会先把它占满，所以一页就该够。哪天这个数掉到 80 以下，
-        # 说明被上面那个 20.5 上限挡掉的新股（首日无涨跌幅限制）变多了，那时才需要翻页。
-        logger.info("东财涨幅榜：一页 %d 只，其中落在 4.5~20.5%% 的 %d 只", len(spot), len(rows))
+        spot = _fetch_board_spot_em(limit=WUDAO_GAIN_TOP)
+        source = "东财"
     except Exception as exc:  # noqa: BLE001
-        logger.warning("拉东财涨幅榜失败：%s", exc)
+        logger.warning("拉东财涨幅榜失败，退到同花顺：%s", exc)
+        try:
+            spot = _fetch_board_spot_ths(
+                boards=_WUDAO_BOARD_PREFIXES,
+                min_pct=WUDAO_GAIN_MIN,
+                max_pct=WUDAO_GAIN_MAX,
+                want=WUDAO_GAIN_TOP,
+            )
+            source = "同花顺"
+        except Exception as exc2:  # noqa: BLE001
+            logger.warning("拉同花顺涨幅榜也失败，这一路本轮为空：%s", exc2)
+
+    rows: list[tuple[str, float]] = []
+    for code, pct in spot:
+        # 东财那边 `fs` 已经把范围限定在创业板 + 科创板，这里再挡一次是**当断言用** ——
+        # 万一接口改了语义，池子不会悄悄混进别的板。（同花顺那条是全市场榜，本来就要筛。）
+        if not is_wudao_board(code):
+            continue
+        if WUDAO_GAIN_MIN <= pct <= WUDAO_GAIN_MAX:
+            rows.append((code, pct))
+    rows.sort(key=lambda x: x[1], reverse=True)
+    for code, _ in rows[:WUDAO_GAIN_TOP]:
+        add(code, "涨幅")
+    # 走的是哪个源、以及「一页够不够」都写出来：服务端每页上限约 100 行，而目标池只有
+    # `WUDAO_SCAN_LIMIT` 个位置、涨幅这一路优先级最高会先占满，所以一页就该够。
+    # 哪天这个数掉到 80 以下，先看是不是走了备源、以及区间外的新股是不是变多了。
+    logger.info(
+        "涨幅榜（%s）：拿到 %d 只，其中落在 %.1f~%.1f%% 的 %d 只",
+        source or "无源",
+        len(spot),
+        WUDAO_GAIN_MIN,
+        WUDAO_GAIN_MAX,
+        len(rows),
+    )
 
     ranked = sorted(best.items(), key=lambda kv: (kv[1], kv[0]))
     return {c for c, _ in ranked[:WUDAO_SCAN_LIMIT]}
