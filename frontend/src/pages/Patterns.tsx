@@ -489,7 +489,7 @@ export default function Patterns() {
               {summary?.trade_date ? `${summary.trade_date} · ` : ''}
               共 {fmtInt(summary?.total_stocks ?? 0)} 只命中
               <span className="ml-3 text-fg-dim">
-                点形态名筛选（单选，再点一次取消）；徽标是该形态的全市场命中家数。致富＝悟道样板/启动（只扫强势小池创业板）
+                点形态名筛选（单选，再点一次取消）；徽标是该形态的全市场命中家数。致富＝悟道样板/启动（只扫强势小池的创业板与科创板）
               </span>
             </span>
           }
