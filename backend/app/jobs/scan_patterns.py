@@ -1,7 +1,7 @@
 """全市场形态扫描：读日线 → 复权 → 逐形态判定 → 落 `pattern_hit`。
 
 **这一步对「通用形态」不花 iFinD 配额** —— 形态全在本地算，实测 3032 只 0.7 秒。
-辉宾对齐悟道时，会对**池外创业板候选**按需补近端日线（见 `_ensure_wudao_kline`），
+辉宾对齐悟道时，会对**池外候选**按需补近端日线（见 `_ensure_wudao_kline`），
 那一小段才吃配额；候选**已有 ≥22 根连续 K 线、且最新一根就是当天**则 0 次调用
 （两个条件缺一不可 —— 只有根数够但不含当天，就是拿旧 K 线出今天的信号，见 8.64）。
 
@@ -19,8 +19,14 @@
 
 ## 致富（原辉宾）与悟道对齐
 
-- **只扫同一小池**：东财强势/涨停/昨涨停 + 涨幅榜前 100（创业板）+ 悟道近端本地缓存，
-  **不**对全市场流动性池里的创业板出 `wudao_*`。
+- **只扫同一小池**：东财强势/涨停/昨涨停 + 涨幅榜前 100 + 悟道近端本地缓存，
+  **不**对全市场流动性池出 `wudao_*`。
+- 板块范围 = **创业板 + 科创板**（`is_wudao_board`）。2026-09-29 用户要求由「只创业板」
+  扩到这两块 —— 选这两块的唯一理由是它们**同属 20cm**，于是涨幅榜窗口（4.5~20.5%）、
+  「太热」否决阈值（涨幅 ≥12% / 最高涨幅 ≥18%）、封板判据（涨幅 ≥9.5%）全都不用重调。
+  北交所（30cm）当时一并考虑过，**明确不要**。
+  ⚠️ 这一条是**悟道的超集** —— 悟道默认只扫创业板。来源、优先级、前 80、以及两个判定
+  函数仍与悟道逐条一致，只有板块多了科创板这一块。
 - 池外缺 K 线时从悟道库 / 东财补近端（见 `_ensure_wudao_kline`）。
 """
 
@@ -71,10 +77,11 @@ PATTERN_TASK = "patterns"
 # 而 2026-09-24 那种抽风是 9% —— 卡在 90% 能拦住整片缺，又不至于因为几只停牌票就不让扫。
 _MIN_DAY_COVERAGE = 0.9
 
-# 致富形态 key；只对小池创业板落库，与悟道「默认只扫创业板」对齐
+# 致富形态 key；只对候选小池（`_wudao_candidate_codes`）落库，板块范围见 `is_wudao_board`
 WUDAO_KEYS = frozenset({"wudao_sample", "wudao_start"})
 
 # 与悟道 `/api/pattern/scan?limit=80&board=cyb` 同量级（UI 常用 50~80）
+# ⚠️ 只有条数取齐；板块比悟道多一块科创板（见 `is_wudao_board`）
 WUDAO_SCAN_LIMIT = 80
 
 # 池外致富候选补多少交易日日线（日历日粗算 ×1.5 在 sync_stock 内）
@@ -98,10 +105,22 @@ class _NoBars(Exception):
     """
 
 
-def is_chinext(code: str) -> bool:
-    """创业板：300 / 301 / 302。"""
+# 致富候选可收的板块前缀。**只有 20cm 的两块**：创业板 300/301/302、科创板 688/689。
+#
+# 放一起的依据不是「都算科技板」，而是**涨跌停幅度相同** —— 涨幅榜窗口 4.5~20.5%、
+# 「太热」否决阈值（涨幅 ≥12% / 最高涨幅 ≥18%）、封板判据（涨幅 ≥9.5%）全是按 20cm
+# 校准的，换板块不用重调。北交所是 30cm，2026-09-29 用户权衡后明确不要。
+_WUDAO_BOARD_PREFIXES = ("300", "301", "302", "688", "689")
+
+
+def is_wudao_board(code: str) -> bool:
+    """创业板 + 科创板（两块都是 20cm）。致富候选只收这两块。
+
+    ⚠️ 名字故意不叫 `is_chinext` —— 2026-09-29 前它确实只认创业板，扩板块后旧名字
+    会骗人（调用点在候选池、涨幅榜过滤、以及扫描末段的落库闸门，三处都吃这个判据）。
+    """
     c = str(code or "").strip().zfill(6)
-    return c.startswith(("300", "301", "302"))
+    return c.startswith(_WUDAO_BOARD_PREFIXES)
 
 
 def already_scanned(trade_date: date) -> bool:
@@ -220,14 +239,18 @@ def _wudao_candidate_codes(trade_date: date) -> set[str]:
     """致富候选：与悟道 `_candidate_rows` + `[:limit]` 同口径。
 
     来源：强势 / 涨停 / 昨涨停 + 涨幅榜前 100（4.5%~20.5%）+ 悟道近端本地。
-    按悟道优先级排序后只取前 `WUDAO_SCAN_LIMIT` 只创业板。
+    按悟道优先级排序后只取前 `WUDAO_SCAN_LIMIT` 只，板块见 `is_wudao_board`。
+
+    ⚠️ 别以为「涨幅榜」只是五路里的一路：它的优先级最高（0），而它一次就能给出 100 只，
+    比 `WUDAO_SCAN_LIMIT` 还多 —— 所以**池子实际就是涨幅榜的前 80**，另外四路只在
+    涨幅榜凑不满 80 时才补位。想改池子内容，先看那个 4.5~20.5% 的窗口。
     """
     # code → 最高优先级来源（数字越小越优先）
     best: dict[str, int] = {}
 
     def add(code: str, source: str) -> None:
         c = str(code or "").strip().zfill(6)
-        if not is_chinext(c):
+        if not is_wudao_board(c):
             return
         pri = _WUDAO_SRC_PRIORITY.get(source, 9)
         prev = best.get(c)
@@ -290,12 +313,14 @@ def _wudao_candidate_codes(trade_date: date) -> set[str]:
             rows: list[tuple[str, float]] = []
             for rec in spot.to_dict("records"):
                 code = str(rec.get("代码") or "").strip().zfill(6)
-                if not is_chinext(code):
+                if not is_wudao_board(code):
                     continue
                 try:
                     pct = float(rec.get("涨跌幅") or 0)
                 except (TypeError, ValueError):
                     continue
+                # 20cm 板的窗口。**北交所不在这两块里**，所以不用为 30cm 另外放开 ——
+                # 真要收北交所，这个上限和「太热」阈值都得跟着重调，别只改板块判据。
                 if 4.5 <= pct <= 20.5:
                     rows.append((code, pct))
             rows.sort(key=lambda x: x[1], reverse=True)
@@ -723,9 +748,9 @@ def scan(
         records = grouped[code]
         last = records[-1]
         for signal in evaluate(bars, min_score=min_score):
-            # 致富只出小池创业板，与悟道名单对齐
+            # 致富只出小池里的 20cm 板（`is_wudao_board`），与悟道名单同口径
             if signal.pattern in WUDAO_KEYS and (
-                not is_chinext(code) or code not in wudao_cands
+                not is_wudao_board(code) or code not in wudao_cands
             ):
                 dropped_wudao += 1
                 continue
