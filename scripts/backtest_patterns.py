@@ -86,6 +86,7 @@ from app.services.patterns import (  # noqa: E402
     PATTERNS,
     Bars,
     build_bars,
+    is_st,
 )
 
 logger = logging.getLogger("backtest")
@@ -400,6 +401,17 @@ def main() -> int:
         if latest is None:
             raise SystemExit("stock_daily 是空的，先跑 collect_kline")
         grouped = _load_bars(latest, codes)
+
+    # **ST 一律不参与**，判据与线上扫描**同一个函数**（`patterns.is_st`）——
+    # 各写一份的话，回测数字就不再代表生产（8.68 那批形态就是栽在这上面）。
+    # ⚠️ 必须在这里剔（`grouped` 一份），**不能只剔样本**：下面那张基准表是拿
+    # 同一份逐票序列算出来的「同一天全市场平均」，样本剔了 ST 而基准不剔，
+    # 两组就不是对照了。
+    st_dropped = [code for code, records in grouped.items() if is_st(records[-1].get("name"))]
+    for code in st_dropped:
+        grouped.pop(code, None)
+    if st_dropped:
+        logger.info("剔除 %d 只 ST 票（与线上扫描同口径）", len(st_dropped))
 
     bars_by_code = {
         code: build_bars(records) for code, records in grouped.items() if len(records) >= MIN_BARS

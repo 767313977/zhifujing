@@ -558,6 +558,14 @@ export default function Patterns() {
                 </span>
               )}
               点列头排序 · 点一行看它的 K 线与关键位
+              {/* 说明 ST 是被**故意**筛掉的：不说的话，库里少了几百条命中会被当成采集出问题。
+                  判据在后端 `app.services.patterns.is_st`（扫描与回测共用）。 */}
+              <span
+                className="cursor-help"
+                title="2026-09-28 起：名称带 ST 的票不参与形态选股（扫描时就已剔除，历史命中里的也一起清掉了）"
+              >
+                {' '}· ST 已剔除
+              </span>
               {visible.length > 0 && (
                 <button
                   type="button"

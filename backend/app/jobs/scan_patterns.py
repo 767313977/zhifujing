@@ -54,6 +54,7 @@ from app.services.patterns import (
     Bars,
     build_bars,
     evaluate,
+    is_st,
 )
 from app.sources.ifind import IfindError
 
@@ -695,6 +696,17 @@ def scan(
             target,
         )
 
+    # **ST 票一律不参与**（2026-09-28 用户要求「形态选股剔除 st 票」）。
+    # 放在「日线停在过去」之后、`build_bars` 之前：判据取的是**最新那根 K 线的名字**，
+    # 也就是命中列表上要显示的那个名字 —— 用别处的名字（池子里的、`stock_basic` 的）
+    # 会有对不上的可能。
+    # 致富候选那一支也走这里，所以 ST 涨停股同样进不来（实测 09-24 那天有 111 条）。
+    st_codes = {code for code, records in grouped.items() if is_st(records[-1].get("name"))}
+    for code in st_codes:
+        grouped.pop(code, None)
+    if st_codes:
+        logger.info("%s：剔除 %d 只 ST 票（形态选股不收 ST）", target, len(st_codes))
+
     rows: list[dict] = []
     skipped = 0
     dropped_wudao = 0
@@ -740,7 +752,8 @@ def scan(
     cost = round(time.monotonic() - started, 2)
     logger.info(
         "形态扫描完成：%s，%d 只票 → %d 条命中"
-        "（跳过 %d / 致富剔池外 %d / 候选 %d / 日线停在过去 %d / 补日线 %s），用时 %ss",
+        "（跳过 %d / 致富剔池外 %d / 候选 %d / 日线停在过去 %d / 剔除 ST %d / 补日线 %s），"
+        "用时 %ss",
         target,
         len(grouped),
         written,
@@ -748,6 +761,7 @@ def scan(
         dropped_wudao,
         len(wudao_cands),
         len(stale),
+        len(st_codes),
         sync_info,
         cost,
     )
@@ -757,6 +771,7 @@ def scan(
         written,
         f"{len(grouped)} 只 / {written} 条命中 / 致富候选 {len(wudao_cands)}"
         + (f" / 日线停在过去剔除 {len(stale)} 只" if stale else "")
+        + (f" / 剔除 ST {len(st_codes)} 只" if st_codes else "")
         + _sync_note(sync_info),
         cost,
     )
@@ -767,6 +782,8 @@ def scan(
         "skipped": skipped,
         # 日线停在 target 之前、本轮没出信号的只数（>0 就说明当天的日线没采全）
         "stale": len(stale),
+        # 因带 ST 被剔除的只数（2026-09-28 起的口径）
+        "st_dropped": len(st_codes),
         "wudao_cands": len(wudao_cands),
         "wudao_extras": len(extras),
         "wudao_sync": sync_info,
