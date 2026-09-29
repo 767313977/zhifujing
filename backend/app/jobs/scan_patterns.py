@@ -52,6 +52,7 @@ from app.models import (
 # 东财/腾讯两条兜底线的抓取逻辑都抽到了 `sources/` —— 本地回测往回补多年历史
 # （scripts/backfill_history.py）也要用它们。口径（不复权价 + 真实涨跌幅）只能有一份。
 from app.sources.eastmoney import clear_proxies as _clear_proxies
+from app.sources.eastmoney import fetch_board_spot
 from app.sources.eastmoney import fetch_daily as _fetch_daily_eastmoney
 from app.sources.tencent import fetch_daily as _fetch_tencent_daily
 from app.services.patterns import (
@@ -302,30 +303,31 @@ def _wudao_candidate_codes(trade_date: date) -> set[str]:
         for raw in df[col].tolist():
             add(raw, label)
 
+    # 涨幅榜：**一次** clist 请求，只要创业板 + 科创板按涨幅降序的那一页。
+    #
+    # 旧实现是 akshare 的 `stock_zh_a_spot_em()` —— 它 `pz=100` 翻 56 页把全市场
+    # 5561 只拉回来，只为排序取前 100。2026-09-29 实测：那 56 次连发会把这个 IP 打进
+    # 东财 `push2*` 集群的惩罚期（> 10 分钟，期间连 `push2his` 的其它路径一起被拒），
+    # 于是这一路时好时坏、候选池从约 80 只掉到 39~54 只。详见 `sources/eastmoney`。
     try:
-        spot = ak.stock_zh_a_spot_em()
-        if (
-            spot is not None
-            and not spot.empty
-            and "代码" in spot.columns
-            and "涨跌幅" in spot.columns
-        ):
-            rows: list[tuple[str, float]] = []
-            for rec in spot.to_dict("records"):
-                code = str(rec.get("代码") or "").strip().zfill(6)
-                if not is_wudao_board(code):
-                    continue
-                try:
-                    pct = float(rec.get("涨跌幅") or 0)
-                except (TypeError, ValueError):
-                    continue
-                # 20cm 板的窗口。**北交所不在这两块里**，所以不用为 30cm 另外放开 ——
-                # 真要收北交所，这个上限和「太热」阈值都得跟着重调，别只改板块判据。
-                if 4.5 <= pct <= 20.5:
-                    rows.append((code, pct))
-            rows.sort(key=lambda x: x[1], reverse=True)
-            for code, _ in rows[:100]:
-                add(code, "涨幅")
+        spot = fetch_board_spot(limit=100)
+        rows: list[tuple[str, float]] = []
+        for code, pct in spot:
+            # `fs` 已经把范围限定在创业板 + 科创板，这里再挡一次是**当断言用** ——
+            # 万一东财改了 `fs` 的语义，池子不会悄悄混进别的板。
+            if not is_wudao_board(code):
+                continue
+            # 20cm 板的窗口。**北交所不在这两块里**，所以不用为 30cm 另外放开 ——
+            # 真要收北交所，这个上限和「太热」阈值都得跟着重调，别只改板块判据。
+            if 4.5 <= pct <= 20.5:
+                rows.append((code, pct))
+        rows.sort(key=lambda x: x[1], reverse=True)
+        for code, _ in rows[:100]:
+            add(code, "涨幅")
+        # 把「一页够不够」写成日志：服务端每页上限约 100 行，而目标池只有 80 个位置、
+        # 涨幅这一路优先级最高会先把它占满，所以一页就该够。哪天这个数掉到 80 以下，
+        # 说明被上面那个 20.5 上限挡掉的新股（首日无涨跌幅限制）变多了，那时才需要翻页。
+        logger.info("东财涨幅榜：一页 %d 只，其中落在 4.5~20.5%% 的 %d 只", len(spot), len(rows))
     except Exception as exc:  # noqa: BLE001
         logger.warning("拉东财涨幅榜失败：%s", exc)
 
