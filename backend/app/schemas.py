@@ -808,6 +808,16 @@ class PatternStockOut(BaseModel):
     # 取的是「该股出现过的最近一天」而不是「命中当天」—— 当天口径只有那几十只涨停股
     # 有值，等于整列空着。空就是空，**不拿行业或别的口径去顶**。
     sectors: list[str] = []
+    # 所属**同花顺行业**，来自 `stock_basic.industry`（2026-09-29 起由建池那条路顺手带回来，
+    # 7 天一次、覆盖全 A）。
+    #
+    # ⚠️ 与上面的 `sectors` **不是一个口径**，不要合并成一列：
+    # - 这个答「公司做什么生意」，值是**三级路径**（`房地产-房地产-住宅开发`），
+    #   页面只显示第一级，完整路径放 tooltip；
+    # - 上面那个答「最近一次涨停是因为哪个板块」，是开盘红精选板块（`地产链`）。
+    # 英文名撞车（都叫 industry）是来源的锅：`limit_pool.industry` 也是同花顺行业，
+    # 而开盘红那套在 `sectors` 里。
+    industry: str | None = None
     score: float
     patterns: list[PatternHitItem]
 
