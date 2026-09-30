@@ -625,6 +625,13 @@ export default function Patterns() {
                     <SortTh sortKey="code" align="left" {...hitSort}>
                       代码 / 名称
                     </SortTh>
+                    {/* 「板块」是一串名字、没有单一可比值，不排序（与「命中形态」同理） */}
+                    <th
+                      className="!text-left"
+                      title="该股所属的开盘红精选板块 —— 口径与个股页「所属题材」一致：它最近一次涨停是因为哪个板块（不是它属于哪些概念）。没有涨停过就没有值，留空（覆盖约 75%）"
+                    >
+                      板块
+                    </th>
                     {/* 「命中形态」是一串标签，没有单一可比值，不排序 */}
                     <th className="!text-left">命中形态</th>
                     <SortTh sortKey="close" {...hitSort}>
@@ -682,6 +689,17 @@ export default function Patterns() {
                           <span className="num text-fg-dim">{stock.code}</span>
                           <span className="ml-2 text-fg">{stock.name ?? '—'}</span>
                         </Link>
+                      </td>
+                      <td className="!text-left">
+                        {/* 实测每只票恰好一个板块、名字最长 8 字（VR/AR/MR），所以不用截断；
+                            一个都没有时留空 —— 那是「从没涨停过」，不是漏采 */}
+                        {stock.sectors.length === 0 ? (
+                          <span className="text-fg-dim">—</span>
+                        ) : (
+                          <span className="whitespace-nowrap text-[13px] text-fg-muted">
+                            {stock.sectors.join(' / ')}
+                          </span>
+                        )}
                       </td>
                       <td className="!text-left">
                         <div className="flex flex-wrap gap-1">

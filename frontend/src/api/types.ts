@@ -503,6 +503,12 @@ export interface PatternStock {
   avg_amount: number | null
   /** 总市值 */
   total_mv: number | null
+  /**
+   * 所属的**开盘红精选板块**（口径 = 个股页「所属题材」：这只票**最近一次涨停**
+   * 是因为哪个板块，不是它属于哪些概念）。开盘红没有非涨停个股的板块归属，
+   * 所以从未涨停过的票这里是空数组 —— 实测覆盖约 75%，页面留空而不是拿别的顶。
+   */
+  sectors: string[]
   score: number
   patterns: PatternHitItem[]
 }
