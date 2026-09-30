@@ -172,18 +172,25 @@ export default function Settings() {
             采集时刻 {scheduler?.collect_time ?? '—'} 取自后端配置。
             {/* 时刻不写死在这里：它由后端 collect_hour/collect_minute 决定，
                 写死的话改配置就会让这段说明悄悄变成错的（已经错过一次）。
-                2026-09-28 也删掉了「等龙虎榜发布之后再取」那句 —— 时刻改到 15:05 之后
-                它已经不成立（那一版是 17:30 时的解释）。 */}
+                ⚠️ 2026-09-28 那次是**把「收盘后再跑一趟」整段删掉**，结果龙虎榜与机构席位
+                从那天起再没入过库（这几类是「按日期问」的、没有回看窗口）——
+                2026-09-30 补回来了，见 config.late_collect_hour。别再把这段删掉。 */}
+            <span className="mx-1">·</span>
+            收盘后 {scheduler?.late_collect_time ?? '—'} 还有一趟补采，只跑
+            <b className="font-normal text-fg-muted">龙虎榜 / 机构席位 / 两融 / 北向</b>
+            —— 这几类要收盘后（甚至晚上）才发布，15:05 那趟取不到，所以首页龙虎榜面板
+            当天显示的多半是<b className="font-normal text-fg-muted">上一个交易日</b>
+            的数据（面板上标了是哪天）。
             {scheduler?.catchup_on_start && (
               <>
                 <span className="mx-1">·</span>
                 已开启<b className="font-normal text-fg-muted">启动补采</b>：本机不常开，
-                错过采集时刻后下次启动会在后台补上。
+                错过采集时刻后下次启动会在后台补上（两个时刻都会补）。
               </>
             )}
             <span className="mx-1">·</span>
             <b className="font-normal text-fg-muted">没有手动采集入口</b>
-            ：采集只在上面这个时刻自动跑（2026-09-28 起），需要强制重采就重启服务。
+            ：采集只在上面这两个时刻自动跑，需要强制重采就重启服务。
           </div>
         </Panel>
 
@@ -347,7 +354,8 @@ export default function Settings() {
             {/* 这里原来还有个「立即采集」按钮，**2026-09-28 删掉**（用户要求「删掉手动
                 采集按钮，禁止手动采集」）：点一下就白跑一轮采集（约 50 次 iFinD 调用），
                 而它本来就不需要手动跑。后端 `POST /api/admin/collect` 也一并删了，
-                所以现在没有任何「手动采集」的入口 —— 采集只有每天收盘后那一条路。
+                所以现在没有任何「手动采集」的入口 —— 采集只有每天收盘后那两条定时任务
+                （15:05 主采集 + 17:30 补采）。
                 真需要强制重采：重启服务（启动补采会补跑）。 */}
 
             <div className="flex-1 space-y-2">

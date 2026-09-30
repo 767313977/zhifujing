@@ -423,8 +423,11 @@ export interface SchedulerStatus {
   enabled: boolean
   running: boolean
   collect_time: string
+  /** 收盘后那一趟（龙虎榜 / 机构席位 / 两融 / 北向成交）—— 那几类 15:05 还没发布 */
+  late_collect_time: string
   catchup_on_start: boolean
   next_run_time: string | null
+  late_next_run_time: string | null
   last_run: string | null
   last_result: Record<string, unknown> | null
 }
