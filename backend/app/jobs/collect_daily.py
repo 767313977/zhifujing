@@ -1076,9 +1076,13 @@ class DailyCollector:
             target, "lhb_institution", lambda: self.collect_lhb_institution(target)
         )
         if not core_only:
-            # 涨停题材：开盘红涨停天梯给每只涨停股带所属板块
-            steps["themes"] = self._step(target, "themes", lambda: self.collect_themes(target))
-            # 板块行情（开盘红口径）
+            # 涨停题材（开盘红涨停天梯 → `stock_concept`）**不在这里**：开盘红当天要
+            # 晚些才更新天梯，15:05 问回来的是**上一交易日**的那批（payload 的 Date
+            # 会明说，见 `sources/kaipanhong.limit_up_ladder`），所以挪到 17:30 那一趟
+            # （`run_late`）。2026-09-30 之前放这里，结果 09-28 起三天的板块归属
+            # 全是前一天的数据，首板全没有板块。
+            # 板块行情（开盘红口径）—— 这个**不滞后**：实测 15:05 问当天给的就是当天
+            # （09-30 医药 +1.545% 对 09-29 锂电池 +1.222%，逐项不同）
             steps["sectors"] = self._step(
                 target, "sectors", lambda: self.collect_sectors(target)
             )
@@ -1102,10 +1106,14 @@ class DailyCollector:
 
         两融 / 北向本来有回看、漏一天下次自动补，放这一趟是为了把「滞后一天」收掉。
 
-        **不重跑 15:05 那套**：指数 / 三池 / 情绪 / 题材 / 板块都已在库，重跑白花约 50 次调用。
+        **涨停题材（开盘红天梯）也在这一趟**：它同样是「问当天给上一天」（当天要晚些
+        才更新，见 `sources/kaipanhong.limit_up_ladder`），放在 15:05 会把昨天的板块
+        安到今天的票上 —— 首板全没有板块（2026-09-30 修，用户就是从这看出来的）。
 
-        配额：龙虎榜与机构席位零 iFinD 配额，任何档位都采；两融 / 北向与 `run()` 一样
-        受 CORE_ONLY 约束（它们能回看，真让路也补得回来）。
+        **不重跑 15:05 那套**：指数 / 三池 / 情绪 / 板块行情都已在库，重跑白花约 50 次调用。
+
+        配额：龙虎榜、机构席位、涨停题材零 iFinD 配额（akshare / 开盘红），任何档位都采；
+        两融 / 北向与 `run()` 一样受 CORE_ONLY 约束（它们能回看，真让路也补得回来）。
         """
         target = trade_date or self.latest_trade_date()
         steps: dict[str, dict] = {}
@@ -1113,9 +1121,10 @@ class DailyCollector:
         steps["lhb_institution"] = self._step(
             target, "lhb_institution", lambda: self.collect_lhb_institution(target)
         )
+        steps["themes"] = self._step(target, "themes", lambda: self.collect_themes(target))
         if quota_level(settings=self.settings) < QuotaLevel.CORE_ONLY:
             steps["margin"] = self._step(target, "margin", lambda: self.collect_margin(target))
             steps["hsgt"] = self._step(target, "hsgt", lambda: self.collect_hsgt(target))
         else:
-            logger.warning("配额已达 95%，收盘后这一趟只采龙虎榜与机构席位（零配额那两项）")
+            logger.warning("配额已达 95%，收盘后这一趟只采零配额那三项（龙虎榜 / 机构席位 / 题材）")
         return {"trade_date": target.isoformat(), "steps": steps}

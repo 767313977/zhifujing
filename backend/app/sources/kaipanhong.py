@@ -353,7 +353,15 @@ class KaipanhongSource:
         这是「个股 → 板块」的唯一可靠来源。实时与历史都通（一个接口两种域名），
         实测 09-18 得 77 家、09-21 得 101 家，与站内涨停池的 78 / 103 基本吻合。
 
-        返回按连板数降序（接口本身就是这个顺序）。
+        返回按连板数降序（接口本身就是这个顺序）。每行都带 `ladder_date`
+        （本批天梯**实际是哪一天**的，取自 payload 的 `Date`）—— 见下面那段说明。
+
+        ⚠️ **问「今天」时拿到的可能是「昨天」**（2026-09-30 实测）：`trade_date == today`
+        走实时域名，而开盘红**当天要晚些才更新**天梯。15:05 问 09-30 → payload 的
+        `Date` 是 **09-29**、`StockList` 也是 09-29 的 56 行（09-29 自己问自己同样是 56 行，
+        逐只吻合），**不报错、行数也正常**。按 09-30 落库就会把昨天的板块安到今天的票上：
+        实测当天涨停池 52 只里只有 12 只与那批对得上，**首板 40 只全都没有板块**。
+        所以调用方必须核对 `ladder_date`（见 `jobs/collect_themes`）。
         """
         payload = self._post(
             trade_date,
@@ -365,6 +373,16 @@ class KaipanhongSource:
             # 空列表既可能是「当天真的没有涨停」也可能是接口变了。涨停家数有
             # 其他来源可以交叉验证，这里只如实记一行，让上层去对账。
             logger.warning("开盘红涨停天梯 %s 返回 0 行", trade_date)
+
+        # payload 自带的日期 = 这批天梯实际是哪一天的。历史域名会给请求的那天，
+        # 实时域名给的是「它手上最新的那天」。解析不出来就问号，交给调用方判断。
+        ladder_date: date | None = None
+        raw_date = str(payload.get("Date") or payload.get("date") or "").strip()[:10]
+        if raw_date:
+            try:
+                ladder_date = date.fromisoformat(raw_date)
+            except ValueError:
+                logger.warning("开盘红涨停天梯 %s 的 Date 字段看不懂：%r", trade_date, raw_date)
 
         rows = []
         for row in stocks:
@@ -385,6 +403,9 @@ class KaipanhongSource:
                     "board_name": str(cell(LADDER_BOARD_NAME) or "").strip(),
                     "board_limit_count": _to_float(cell(LADDER_BOARD_LIMIT_COUNT)),
                     "amount": _to_float(cell(LADDER_AMOUNT)),
+                    # 这批天梯实际是哪一天的（见方法说明）。**调用方必须核对它**，
+                    # 否则实时域名给回来的「昨天」会被当成今天
+                    "ladder_date": ladder_date,
                 }
             )
         return rows

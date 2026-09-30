@@ -46,6 +46,20 @@ class ThemeCollector:
             logger.warning("%s 涨停天梯返回 0 行，题材归属记空", trade_date)
             return 0
 
+        # ⚠️ **必须是当天的天梯**（2026-09-30 加）：问「今天」走的是实时域名，而开盘红
+        # 当天要晚些才更新，15:05 问回来的其实是**上一交易日**的那批 —— payload 自带
+        # 日期会明说（`ladder_date`），行数也正常、不报错。按当天落库就会把昨天的板块
+        # 安到今天的票上：实测 09-30 落库的 56 行里只有 12 只当天真涨停，
+        # **首板 40 只全都没有板块**（用户看到的就是这个）。
+        # 宁可整天不写并**报失败**（`_step` 会记成 failed，设置页一眼能看到），
+        # 也不写一批日期不对的归属 —— 采集已挪到 17:30 那一趟，正常不会再撞上。
+        data_date = ladder[0].get("ladder_date")
+        if data_date is not None and data_date != trade_date:
+            raise RuntimeError(
+                f"开盘红涨停天梯 {trade_date} 返回的是 {data_date} 的数据"
+                f"（当天还没更新），本次不落库"
+            )
+
         # 与站内涨停池对账。两者来源不同（一个开盘红、一个东财），差几只很正常
         # （ST / 新股 / 北交所的处理口径不同），但差太多说明有一边出问题了。
         with session_scope() as session:
