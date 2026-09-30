@@ -100,8 +100,8 @@ class StockBasic(Base):
        `stock_daily` 只覆盖流动性池 + 池外涨停股，池外那一千来只在日线里查不到名字，
        DDE 推送与榜上就只剩代码（实测推出来每行都是「688084 688084」）
     3. **`jobs/collect_universe.py` 建池时**（2026-09-26 新增）—— 传
-       `{code, name, total_mv, free_float_shares, pe_forecast, asof}`，走的是建池那个
-       选股接口（**加列不增加调用次数**）。覆盖全 A（约 5500 只），**不只池子里那 3000 只**
+       `{code, name, total_mv, free_float_shares, pe_forecast, asof, industry}`，走的是建池
+       那个选股接口（**加列不增加调用次数**）。覆盖全 A（约 5500 只），**不只池子里那 3000 只**
 
     三个写入方都只带自己那几列，而 `upsert`（merge）与 `upsert_many`（ON CONFLICT）
     **都只更新传入的那些列** —— 实测：只传 name 不会抹掉别的列，只传 industry 也不会
@@ -126,7 +126,12 @@ class StockBasic(Base):
     - `pe_forecast`：**预测市盈率** —— 同花顺口径的「动态市盈率」，按分析师预测净利润算。
       iFinD 按年给三列（今年 / 明年 / 后年），`pick` 取插入序第一个 = 今年
       → 读取时按股价缩放（PE 与股价成正比）
-    - `float_mv` / `industry`：**仍然没有写入方**，留空
+    - `float_mv`：**仍然没有写入方**，留空
+    - `industry`：**2026-09-29 起有写入方了**（建池那一路，7 天一次、覆盖全 A，见写入方 3）。
+      ⚠️ 值是**同花顺行业的三级路径**（「房地产-房地产-住宅开发」这种 19 字以内），与
+      `limit_pool.industry` 里东财段那种单级名称**不是一套分类**；也不是开盘红精选板块的
+      口径 —— **别拿它去顶 `stock_concept`**（混口径比空着更糟，`api/stock.py:themes` 里
+      那句话对这里同样成立）。7 天一次意味着**新上市的票最多晚 7 天**才有这一列。
     """
 
     __tablename__ = "stock_basic"

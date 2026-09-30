@@ -60,8 +60,14 @@ REBUILD_INTERVAL_DAYS = 7
 # 而返回的列名里同时有 自由流通股 / 自由流通市值 —— 写成后者会命中错的那一列。
 # 「预测市盈率」同理：返回的列名里还有 市盈率(pe) / 市盈率(pe,ttm)，
 # 只有「预测市盈率」是**动态市盈率**（同花顺口径，按分析师预测净利润算）。
+#
+# 2026-09-29 加了「所属同花顺行业」—— 落 `stock_basic.industry`，那一列从建库起一直空着
+# （没有写入方）。**加它不增加调用次数**。实测（1 次调用、84 只的窄前缀 6005）：
+# 列名被接受；值是**三级路径**（「房地产-房地产-住宅开发」）、最长 19 字；
+# **没有含逗号的值**，所以 CSV 不会切错列。
 _UNIVERSE_COLUMNS = (
-    "证券代码、证券简称、近20日日均成交额、总市值、自由流通股、预测市盈率(pe,最新预测)"
+    "证券代码、证券简称、近20日日均成交额、总市值、自由流通股、预测市盈率(pe,最新预测)、"
+    "所属同花顺行业"
 )
 
 # iFinD 的列名自带数据日，如 `总市值[20260924]`。注意**区间列**是
@@ -107,6 +113,9 @@ def _basics(raw: Iterable[dict]) -> list[dict]:
         item = {
             "code": from_ths_symbol(symbol),
             "name": pick_text(row, "证券简称", "股票简称"),
+            # ⚠️ 三级路径（「房地产-房地产-住宅开发」），**不是**单级名称，也不是开盘红的
+            # 精选板块口径 —— 别拿它去顶 `stock_concept` 那套（见 models.StockBasic）
+            "industry": pick_text(row, "所属同花顺行业"),
             "total_mv": pick_float(row, "总市值"),
             "free_float_shares": pick_float(row, "自由流通股"),
             "pe_forecast": pick_float(row, "预测市盈率"),
@@ -124,7 +133,11 @@ def _basics(raw: Iterable[dict]) -> list[dict]:
     # 那一列整批都是 None，会把库里已经存好的值**全抹成空**。所以整列全空就直接
     # 不带这一列（2026-09-27 把 name 那套保护扩到其余几列；逐行的 None 不动，
     # 那一行本来就该是空的，比如没有预测市盈率）。
-    for column in ("total_mv", "free_float_shares", "pe_forecast", "asof"):
+    #
+    # `industry` 也在这一组里，原因更硬：iFinD 对**不认识的列名会整条查询返回 0 行**
+    # （backfill_pools 记过这个坑），万一哪天它改了「所属同花顺行业」的写法，这一批的
+    # industry 会整列是 None —— 有这道闸在，库里已存好的行业不会被抹掉，只是不再更新。
+    for column in ("total_mv", "free_float_shares", "pe_forecast", "asof", "industry"):
         if not any(row[column] is not None for row in rows):
             for row in rows:
                 row.pop(column)
