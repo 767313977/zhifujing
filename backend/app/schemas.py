@@ -551,9 +551,12 @@ class SchedulerStatus(BaseModel):
     enabled: bool
     running: bool
     collect_time: str
-    # 收盘后那一趟（龙虎榜 / 机构席位 / 两融 / 北向）—— 这几类 15:05 还没发布，
+    # 收盘后那一趟（龙虎榜 / 机构席位 / 涨停题材 / 两融 / 北向）—— 这几类 15:05 还没发布，
     # 页面要显示它，否则「龙虎榜 0 条」会被当成故障（见 config.late_collect_hour）
     late_collect_time: str
+    # 同一趟的兜底时刻（见 config.late_retry_hour）：来源当天什么时候更新不确定，
+    # 只赌一个时刻会赌空，所以固定跑两趟
+    late_retry_time: str
     catchup_on_start: bool
     next_run_time: str | None
     late_next_run_time: str | None

@@ -38,9 +38,12 @@ logger = logging.getLogger(__name__)
 
 TIMEZONE = "Asia/Shanghai"
 JOB_ID = "collect_daily"
-# 收盘后那一趟（龙虎榜 / 机构席位 / 两融 / 北向成交）。为什么单独一个 job：
+# 收盘后那一趟（龙虎榜 / 机构席位 / 涨停题材 / 两融 / 北向成交）。为什么单独一个 job：
 # 这几样在 15:05 还没发布，见 `app.jobs.collect_daily.DailyCollector.run_late` 的说明。
 LATE_JOB_ID = "collect_late"
+# 同一趟的**兜底重跑**（见 config.late_retry_hour）：这些来源当天什么时候更新不在我们
+# 手上，问早了又**不报错、只给前一天的**，所以固定跑两趟，赌错的那天还有第二次机会。
+LATE_RETRY_JOB_ID = "collect_late_retry"
 
 # 尾部链路的去重标记（写在 `collect_log`），每个交易日一条。
 #
@@ -129,29 +132,52 @@ class DailyScheduler:
             misfire_grace_time=3600,
             coalesce=True,
         )
-        # 收盘后那一趟：15:05 采不到的那几类（龙虎榜 / 机构席位 / 两融 / 北向）
-        scheduler.add_job(
-            self._run_late,
-            CronTrigger(
-                day_of_week="mon-fri",
-                hour=self.settings.late_collect_hour,
-                minute=self.settings.late_collect_minute,
-                timezone=TIMEZONE,
+        # 收盘后那一趟：15:05 采不到的那几类（龙虎榜 / 机构席位 / 涨停题材 / 两融 / 北向）
+        #
+        # **挂成两个 job、跑同一份代码**（2026-09-30）：这些来源「当天什么时候更新」不在
+        # 我们手上，只赌一个时刻，赌错的那天就整天空着（问早了不报错、只给前一天的，
+        # 见设计文档 §8.78）。17:30 尽早拿一次、19:30 兜底再拿一次，各步都是幂等重跑，
+        # 成本见 config.late_retry_hour。
+        #
+        # ⚠️ 为什么不是「一个 job 带两个 trigger」：apscheduler 3.x 的 `add_job` **不接受
+        # trigger 列表**（3.11.3 实测直接 TypeError: Expected a trigger instance or string,
+        # got list instead）。两个 id 各挂一个，`status()` 里取两者较早的 next_run。
+        for job_id, label, hour, minute in (
+            (
+                LATE_JOB_ID,
+                "收盘后数据补采",
+                self.settings.late_collect_hour,
+                self.settings.late_collect_minute,
             ),
-            id=LATE_JOB_ID,
-            name="收盘后数据补采",
-            replace_existing=True,
-            misfire_grace_time=3600,
-            coalesce=True,
-        )
+            (
+                LATE_RETRY_JOB_ID,
+                "收盘后数据补采（兜底）",
+                self.settings.late_retry_hour,
+                self.settings.late_retry_minute,
+            ),
+        ):
+            scheduler.add_job(
+                self._run_late,
+                CronTrigger(
+                    day_of_week="mon-fri", hour=hour, minute=minute, timezone=TIMEZONE
+                ),
+                kwargs={"reason": label},
+                id=job_id,
+                name=label,
+                replace_existing=True,
+                misfire_grace_time=3600,
+                coalesce=True,
+            )
         scheduler.start()
         self._scheduler = scheduler
         logger.info(
-            "定时采集已启动：交易日 %02d:%02d（收盘后补采 %02d:%02d）",
+            "定时采集已启动：交易日 %02d:%02d（收盘后补采 %02d:%02d / 兜底 %02d:%02d）",
             self.settings.collect_hour,
             self.settings.collect_minute,
             self.settings.late_collect_hour,
             self.settings.late_collect_minute,
+            self.settings.late_retry_hour,
+            self.settings.late_retry_minute,
         )
 
         if self.settings.catchup_on_start:
@@ -169,8 +195,15 @@ class DailyScheduler:
     def status(self) -> dict:
         job = self._scheduler.get_job(JOB_ID) if self._scheduler else None
         next_run = getattr(job, "next_run_time", None) if job else None
-        late_job = self._scheduler.get_job(LATE_JOB_ID) if self._scheduler else None
-        late_next = getattr(late_job, "next_run_time", None) if late_job else None
+        # 收盘后那两个 job（正点 + 兜底）取**较早**的下次运行：页面只显示一个「下次运行」，
+        # 写较早的那个才不会被误读成「17:30 不跑了」
+        late_nexts = [
+            getattr(self._scheduler.get_job(job_id), "next_run_time", None)
+            for job_id in (LATE_JOB_ID, LATE_RETRY_JOB_ID)
+            if self._scheduler
+        ]
+        late_nexts = [value for value in late_nexts if value is not None]
+        late_next = min(late_nexts) if late_nexts else None
         return {
             "enabled": self.settings.scheduler_enabled,
             "running": bool(self._scheduler and self._scheduler.running),
@@ -181,6 +214,11 @@ class DailyScheduler:
             # 「龙虎榜 0 条」会以为是坏了
             "late_collect_time": (
                 f"{self.settings.late_collect_hour:02d}:{self.settings.late_collect_minute:02d}"
+            ),
+            # 同一趟的兜底时刻（见 config.late_retry_hour）。`late_next_run_time` 是这两个
+            # 时刻里**较早**的那个 —— 两个触发挂在同一个 job 上，apscheduler 自己取最早
+            "late_retry_time": (
+                f"{self.settings.late_retry_hour:02d}:{self.settings.late_retry_minute:02d}"
             ),
             "late_next_run_time": late_next.isoformat() if late_next else None,
             "catchup_on_start": self.settings.catchup_on_start,
