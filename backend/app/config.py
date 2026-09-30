@@ -112,6 +112,19 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = True
     collect_hour: int = 15
     collect_minute: int = 5
+    # 「收盘后才有数据」的那一趟（2026-09-30 新增）：龙虎榜 / 机构席位 / 两融 / 北向成交。
+    #
+    # 为什么需要它：采集时刻从 17:30 提到 15:05（上面那段的来历）之后，**龙虎榜与机构席位
+    # 从 09-28 起再没入过库** —— 这两个来源是「**按日期问**」的、没有回看窗口，15:05 问它
+    # 当天就是没有，第二天也不会替它补（实测两张表都停在 09-28，而涨停三池当天就有）。
+    # 用户当时的要求只是「**推送**不等龙虎榜」，不该连带把数据也丢掉。
+    #
+    # 两融 / 北向**不受**这个影响（`collect_funds.EDB_LOOKBACK_DAYS` 会回看，漏一天下次
+    # 自动补上），但顺手也放这一趟里 —— 17:30 时当天的已经发布，能把那 1 天滞后收掉。
+    #
+    # 成本：龙虎榜 / 机构席位走 akshare、**零 iFinD 配额**；两融 / 北向各 1 次 EDB。
+    late_collect_hour: int = 17
+    late_collect_minute: int = 30
     # 本机不常开，启动时若已过采集时刻且当日无数据，补采一次
     catchup_on_start: bool = True
 

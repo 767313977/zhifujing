@@ -1091,3 +1091,31 @@ class DailyCollector:
             )
             steps["hsgt"] = self._step(target, "hsgt", lambda: self.collect_hsgt(target))
         return {"trade_date": target.isoformat(), "steps": steps}
+
+    def run_late(self, trade_date: date | None = None) -> dict:
+        """只跑「收盘后才有数据」的那几步（17:30 那一趟）。
+
+        **背景**（2026-09-30 加）：采集时刻 09-28 从 17:30 提到 15:05 之后，
+        **龙虎榜与机构席位从那天起再没入过库** —— 这两个来源按日期问、没有回看窗口，
+        15:05 问它当天就是「暂无数据」，第二天也不会替它补（实测两张表停在 09-28，
+        而涨停三池当天就有）。用户当时要的只是「**推送**不等龙虎榜」。
+
+        两融 / 北向本来有回看、漏一天下次自动补，放这一趟是为了把「滞后一天」收掉。
+
+        **不重跑 15:05 那套**：指数 / 三池 / 情绪 / 题材 / 板块都已在库，重跑白花约 50 次调用。
+
+        配额：龙虎榜与机构席位零 iFinD 配额，任何档位都采；两融 / 北向与 `run()` 一样
+        受 CORE_ONLY 约束（它们能回看，真让路也补得回来）。
+        """
+        target = trade_date or self.latest_trade_date()
+        steps: dict[str, dict] = {}
+        steps["lhb"] = self._step(target, "lhb", lambda: self.collect_lhb(target))
+        steps["lhb_institution"] = self._step(
+            target, "lhb_institution", lambda: self.collect_lhb_institution(target)
+        )
+        if quota_level(settings=self.settings) < QuotaLevel.CORE_ONLY:
+            steps["margin"] = self._step(target, "margin", lambda: self.collect_margin(target))
+            steps["hsgt"] = self._step(target, "hsgt", lambda: self.collect_hsgt(target))
+        else:
+            logger.warning("配额已达 95%，收盘后这一趟只采龙虎榜与机构席位（零配额那两项）")
+        return {"trade_date": target.isoformat(), "steps": steps}

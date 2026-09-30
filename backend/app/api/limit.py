@@ -4,7 +4,7 @@ import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
@@ -175,9 +175,25 @@ def limit_pool(
 
 @router.get("/lhb", response_model=list[LhbOut])
 def lhb_list(
-    trade_date: date = Depends(resolve_trade_date),
+    trade_date: date | None = Query(None, alias="date"),
     session: Session = Depends(get_db),
 ) -> list[LhbOut]:
+    """龙虎榜：**缺省回落到「最近有龙虎榜的那一天」**，而不是 `resolve_trade_date`。
+
+    为什么不用那个公共依赖（2026-09-30 修）：它缺省取**库中最新情绪日**，而龙虎榜是
+    「按日期问」的来源 —— 交易所当晚才发布，15:05 那一趟问不到、第二天也不替它补。
+    结果两边的日期一旦错开（实测 09-29 访问 / 龙虎榜 只到 09-28），条件永远不成立、
+    接口永远返回空数组，页面上就是「龙虎榜 0 条」，看着像故障。
+
+    现在缺省取 `max(trade_date)`，返回的每条都带 `trade_date`，前端把它标出来
+    （`LhbTable` title 里显示实际数据日），所以「为什么不是今天」是自解释的。
+
+    表里一条都没有时返回 `[]`（而不是 404）：前端本来就是按空列表渲染的。
+    """
+    if trade_date is None:
+        trade_date = session.scalar(select(func.max(Lhb.trade_date)))
+        if trade_date is None:
+            return []
     rows = list(
         session.scalars(
             select(Lhb)
