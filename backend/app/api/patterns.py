@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
-from app.models import PatternHit, StockDaily, StockUniverse
+from app.models import PatternHit, StockConcept, StockDaily, StockUniverse
 from app.schemas import (
     PatternCount,
     PatternHitItem,
@@ -163,6 +163,26 @@ def hits(
         ).all()
     }
 
+    # 板块（口径与个股页「所属题材」一致，见 `PatternStockOut.sectors` 的说明）。
+    #
+    # ⚠️ 取「该股出现过的**最近一天**」而不是命中当天：`stock_concept` 来自涨停天梯、
+    # 只有涨停股有值，用当天口径的话这个列表里 97% 的行会是空的。
+    # **一次查全、在内存里按 code 挑最新的那天**：写成「每只票一条相关子查询」会把这个
+    # 接口从一次查询变成上千次（`code` 不是那张表主键的首列，每次都要扫）。
+    concept_rows = db.execute(
+        select(StockConcept.code, StockConcept.trade_date, StockConcept.concept).where(
+            StockConcept.code.in_({row.code for row in rows})
+        )
+    ).all()
+    latest_seen: dict[str, tuple[date, list[str]]] = {}
+    for code, seen_on, concept in concept_rows:
+        current = latest_seen.get(code)
+        if current is None or seen_on > current[0]:
+            latest_seen[code] = (seen_on, [concept])
+        elif seen_on == current[0]:
+            current[1].append(concept)
+    sectors = {code: sorted(names) for code, (_, names) in latest_seen.items()}
+
     grouped: dict[str, PatternStockOut] = {}
     for row in rows:
         meta = _META.get(row.pattern)
@@ -187,6 +207,7 @@ def hits(
                 amount=row.amount,
                 avg_amount=avg_amount,
                 total_mv=total_mv,
+                sectors=sectors.get(row.code, []),
                 score=row.score,
                 patterns=[item],
             )
