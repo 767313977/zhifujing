@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api/client'
 import Alert from '../components/Alert'
+import ContactQr from '../components/ContactQr'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import { useAuth } from '../lib/auth'
@@ -19,10 +20,11 @@ const LABEL = 'mb-1 block text-[13px] text-fg-dim'
  * 放在页脚链接进来（见 components/Footer）：会员看不到「数据管理」页，
  * 总得有个地方改密码。
  *
- * **联系站长也放这一页**（2026-09-30 用户要求加联系方式）：先加在登录页，但那等于把
- * 个人微信**公开挂出来**（登录页是唯一不用登录就能打开的页面），用户要求挪到登录后。
- * 这里是最合适的落点 —— `/account` 受 `RequireAuth` 保护，而且**所有会员都到得了**
- * （数据管理页是管理员专属的，会员看不到，放那儿等于没有）。
+ * **联系站长也放这一页**（2026-09-30 用户要求加联系方式）。这一天它搬了两次，最终状态是
+ * **两处都有**，各有各的对象：
+ * - **登录页的「注册」tab**（未登录可见）—— 给**想注册的人**，他们正卡在「要邀请码」；
+ * - **这一页**（登录后）—— 给**已有账号的会员**：报错、提需求。
+ * 所以别再为了「统一」把其中一处删掉。见 `components/ContactQr`（图片本身抽成了组件）。
  */
 export default function Account() {
   const { me } = useAuth()
@@ -134,19 +136,7 @@ export default function Account() {
         delay={80}
       >
         <div className="flex flex-wrap items-center gap-4 px-4 py-4">
-          <a
-            href="/wechat-qr.png"
-            target="_blank"
-            rel="noreferrer"
-            title="点开看原图（放大更好扫）"
-            className="shrink-0"
-          >
-            <img
-              src="/wechat-qr.png"
-              alt="站长微信二维码"
-              className="h-[132px] w-[132px] bg-white"
-            />
-          </a>
+          <ContactQr size={132} />
           <div className="min-w-[180px] flex-1 text-[13px] leading-relaxed text-fg-dim">
             <div className="text-fg-muted">微信扫码加我（知白守黑）</div>
             <p className="mt-1">

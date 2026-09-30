@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import Alert from '../components/Alert'
+import ContactQr from '../components/ContactQr'
 import Footer from '../components/Footer'
 import { useAuth } from '../lib/auth'
 
@@ -167,6 +168,21 @@ export default function Login() {
               ? '一个邀请码只能注册一个账号。'
               : '只有受邀的人才能注册 —— 需要邀请码就找站长要。'}
           </p>
+
+          {/* 联系方式**只在「注册」这一页显示**（2026-09-30 用户要求，原话「我本来就是让想
+              注册的人联系我」）：想注册的人正是卡在「要邀请码」这一步，所以只在注册 tab 给
+              联系方式，登录 tab 不给（已经有账号的人不需要）。
+              ⚠️ 因此它在**未登录**时也可见 —— 这是**用户明确要的**，别再「顺手挪走」。 */}
+          {tab === 'register' && (
+            <div className="mt-4 flex items-center gap-3 border border-line-soft px-3 py-2.5">
+              <ContactQr size={104} />
+              <div className="text-[12px] leading-relaxed text-fg-dim">
+                <div className="text-[13px] text-fg-muted">还没邀请码？</div>
+                <p className="mt-1">微信扫码加我（知白守黑），说明来意即可。</p>
+                <p className="mt-1">点二维码可以看原图，放大更好扫。</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
