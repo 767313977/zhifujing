@@ -153,7 +153,11 @@ def _market_fields(session: Session, code: str, latest: StockDaily | None) -> di
     # 缩放系数：asof 那天收盘 → 最新收盘。同一天就是 1
     ratio: float | None = None
     if basic.asof is not None:
-        if basic.asof == latest.trade_date:
+        if basic.asof >= latest.trade_date:
+            # 同一天：不用缩。**asof 比这只票的日线还新**时也不缩（2026-09-30 修）：
+            # 那说明建池时股价是新的、而这票自己的日线还没跟上（停牌、或那天的日线
+            # 还没采），拿旧收盘去除只会把一个**过时且更小**的市值显示出来 ——
+            # 这时 asof 那份数据本身就是我们手上最新的，原样用即可。
             ratio = 1.0
         else:
             base_close = session.scalar(

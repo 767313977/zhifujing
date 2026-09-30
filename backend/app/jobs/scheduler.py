@@ -38,6 +38,9 @@ logger = logging.getLogger(__name__)
 
 TIMEZONE = "Asia/Shanghai"
 JOB_ID = "collect_daily"
+# 收盘后那一趟（龙虎榜 / 机构席位 / 两融 / 北向成交）。为什么单独一个 job：
+# 这几样在 15:05 还没发布，见 `app.jobs.collect_daily.DailyCollector.run_late` 的说明。
+LATE_JOB_ID = "collect_late"
 
 # 尾部链路的去重标记（写在 `collect_log`），每个交易日一条。
 #
@@ -126,12 +129,29 @@ class DailyScheduler:
             misfire_grace_time=3600,
             coalesce=True,
         )
+        # 收盘后那一趟：15:05 采不到的那几类（龙虎榜 / 机构席位 / 两融 / 北向）
+        scheduler.add_job(
+            self._run_late,
+            CronTrigger(
+                day_of_week="mon-fri",
+                hour=self.settings.late_collect_hour,
+                minute=self.settings.late_collect_minute,
+                timezone=TIMEZONE,
+            ),
+            id=LATE_JOB_ID,
+            name="收盘后数据补采",
+            replace_existing=True,
+            misfire_grace_time=3600,
+            coalesce=True,
+        )
         scheduler.start()
         self._scheduler = scheduler
         logger.info(
-            "定时采集已启动：交易日 %02d:%02d",
+            "定时采集已启动：交易日 %02d:%02d（收盘后补采 %02d:%02d）",
             self.settings.collect_hour,
             self.settings.collect_minute,
+            self.settings.late_collect_hour,
+            self.settings.late_collect_minute,
         )
 
         if self.settings.catchup_on_start:
@@ -149,12 +169,20 @@ class DailyScheduler:
     def status(self) -> dict:
         job = self._scheduler.get_job(JOB_ID) if self._scheduler else None
         next_run = getattr(job, "next_run_time", None) if job else None
+        late_job = self._scheduler.get_job(LATE_JOB_ID) if self._scheduler else None
+        late_next = getattr(late_job, "next_run_time", None) if late_job else None
         return {
             "enabled": self.settings.scheduler_enabled,
             "running": bool(self._scheduler and self._scheduler.running),
             "collect_time": (
                 f"{self.settings.collect_hour:02d}:{self.settings.collect_minute:02d}"
             ),
+            # 收盘后那一趟（15:05 采不到的那几类）—— 页面要显示它，否则用户看到
+            # 「龙虎榜 0 条」会以为是坏了
+            "late_collect_time": (
+                f"{self.settings.late_collect_hour:02d}:{self.settings.late_collect_minute:02d}"
+            ),
+            "late_next_run_time": late_next.isoformat() if late_next else None,
             "catchup_on_start": self.settings.catchup_on_start,
             "next_run_time": next_run.isoformat() if next_run else None,
             "last_run": self._last_run.isoformat() if self._last_run else None,
@@ -232,6 +260,40 @@ class DailyScheduler:
                 self._run_tail(today, reason)
         except CollectionBusy as exc:
             logger.warning("%s：尾部链路跳过（%s）", reason, exc)
+
+    def _run_late(self, reason: str = "收盘后补采") -> None:
+        """17:30 那一趟：只补「收盘后才发布」的数据（见 `DailyCollector.run_late`）。
+
+        **没有「今天采过没有」那道守卫**（与 `_run_daily` 不同）：这几类数据很小、
+        写库是幂等的（同一天覆盖写），重复触发最多多花 1 次 akshare + 2 次 EDB，
+        不值得再为它加一套去重标记。
+        """
+        today = date.today()
+        try:
+            collector = DailyCollector(self.settings)
+        except IfindError as exc:
+            logger.warning("%s 跳过：%s", reason, exc)
+            return
+
+        if not collector.is_trade_day(today):
+            logger.info("%s 跳过：%s 不是交易日", reason, today)
+            return
+
+        try:
+            result = collector.run_late(today)
+        except Exception:  # noqa: BLE001 - 定时任务绝不能因异常中断调度
+            logger.exception("%s 失败", reason)
+            return
+
+        failed = [
+            name
+            for name, step in result.get("steps", {}).items()
+            if step.get("status") != "ok"
+        ]
+        if failed:
+            logger.warning("%s 完成但部分步骤失败：%s", reason, failed)
+        else:
+            logger.info("%s 完成：%s", reason, result.get("trade_date"))
 
     def _run_tail(self, trade_date: date, reason: str) -> None:
         """采集之后那一串：日线 → 回补 → 形态 → 简报/推送 → DDE → 板块资金流。
@@ -554,6 +616,20 @@ class DailyScheduler:
             daemon=True,
         )
         thread.start()
+
+        # 收盘后那一趟也补：服务一直开着时调度器会自己触发，但「17:30 之后才起来」
+        # （部署、重启）就会错过 —— 那天的龙虎榜就再没人去采了（这正是要修的那个坑）。
+        # 上面那个早返回不用担心：`now < 15:05` 时必然也 `< 17:30`。
+        if (now.hour, now.minute) >= (
+            self.settings.late_collect_hour,
+            self.settings.late_collect_minute,
+        ):
+            threading.Thread(
+                target=self._run_late,
+                kwargs={"reason": "启动补采（收盘后）"},
+                name="collect-catchup-late",
+                daemon=True,
+            ).start()
 
 
 _scheduler: DailyScheduler | None = None
