@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
-from app.models import PatternHit, StockConcept, StockDaily, StockUniverse
+from app.models import PatternHit, StockBasic, StockConcept, StockDaily, StockUniverse
 from app.schemas import (
     PatternCount,
     PatternHitItem,
@@ -183,6 +183,16 @@ def hits(
             current[1].append(concept)
     sectors = {code: sorted(names) for code, (_, names) in latest_seen.items()}
 
+    # 同花顺行业（三级路径）。与上面的板块**不是一套分类**，见 `PatternStockOut.industry`。
+    # 一次查全即可 —— 建池 7 天一次、覆盖全 A，所以基本没有查不到的行；查不到就是 None。
+    industries = dict(
+        db.execute(
+            select(StockBasic.code, StockBasic.industry).where(
+                StockBasic.code.in_({row.code for row in rows})
+            )
+        ).all()
+    )
+
     grouped: dict[str, PatternStockOut] = {}
     for row in rows:
         meta = _META.get(row.pattern)
@@ -208,6 +218,7 @@ def hits(
                 avg_amount=avg_amount,
                 total_mv=total_mv,
                 sectors=sectors.get(row.code, []),
+                industry=industries.get(row.code),
                 score=row.score,
                 patterns=[item],
             )

@@ -509,6 +509,14 @@ export interface PatternStock {
    * 所以从未涨停过的票这里是空数组 —— 实测覆盖约 75%，页面留空而不是拿别的顶。
    */
   sectors: string[]
+  /**
+   * 所属**同花顺行业**，**三级路径**（`房地产-房地产-住宅开发`）。来自建池时顺手带回来的
+   * `stock_basic.industry`（7 天一次、覆盖全 A），所以基本不会空。
+   *
+   * ⚠️ 与 `sectors` **不是一个口径**，页面是**两列**、不合并：这个答「公司做什么生意」，
+   * `sectors` 答「最近一次涨停是因为哪个题材」。列里只显示第一级，完整路径放 tooltip。
+   */
+  industry: string | null
   score: number
   patterns: PatternHitItem[]
 }

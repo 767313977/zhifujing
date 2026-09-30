@@ -632,6 +632,13 @@ export default function Patterns() {
                     >
                       板块
                     </th>
+                    {/* 「行业」同样不排序（完整值是最长 19 字的三级路径，没有单一可比值） */}
+                    <th
+                      className="!text-left"
+                      title="同花顺行业（三级路径，如「房地产-房地产-住宅开发」）。列里只显示第一级，悬停看完整路径。它答的是「公司做什么生意」—— 与左边「板块」不是一个口径（那个答「最近一次涨停是因为哪个题材」）"
+                    >
+                      行业
+                    </th>
                     {/* 「命中形态」是一串标签，没有单一可比值，不排序 */}
                     <th className="!text-left">命中形态</th>
                     <SortTh sortKey="close" {...hitSort}>
@@ -699,6 +706,21 @@ export default function Patterns() {
                           <span className="whitespace-nowrap text-[13px] text-fg-muted">
                             {stock.sectors.join(' / ')}
                           </span>
+                        )}
+                      </td>
+                      <td className="!text-left">
+                        {/* 完整值是三级路径、最长 19 字（「电力设备-其他电源设备-其他电源设备Ⅲ」），
+                            铺在列里太占宽 —— 只显示**第一级**，完整路径放 tooltip。
+                            建池 7 天一次、覆盖全 A，所以基本不会空 */}
+                        {stock.industry ? (
+                          <span
+                            className="whitespace-nowrap text-[13px] text-fg-muted"
+                            title={stock.industry}
+                          >
+                            {stock.industry.split('-')[0]}
+                          </span>
+                        ) : (
+                          <span className="text-fg-dim">—</span>
                         )}
                       </td>
                       <td className="!text-left">
