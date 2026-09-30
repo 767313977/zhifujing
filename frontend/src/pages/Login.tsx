@@ -167,30 +167,6 @@ export default function Login() {
               ? '一个邀请码只能注册一个账号。'
               : '只有受邀的人才能注册 —— 需要邀请码就找站长要。'}
           </p>
-
-          {/* 站长联系方式（2026-09-30 用户要求）。放这一页是因为**它是全站唯一不用登录
-              就能打开**的页面 —— 要邀请码的人本来就卡在这儿，联系方式不在这儿等于没有。
-              整个块是一个链接：点开看原图（内联这个尺寸手机上勉强能扫，放大之后稳）。
-              ⚠️ 代价：二维码因此是**公开可见**的（未登录也能看），知道就
-              行 —— 想收起来就得挪到需要登录的页面去。 */}
-          <a
-            href="/wechat-qr.png"
-            target="_blank"
-            rel="noreferrer"
-            className="mt-4 flex items-center gap-3 border border-line-soft px-3 py-2.5 transition-colors hover:border-fg-dim"
-          >
-            <img
-              src="/wechat-qr.png"
-              alt="站长微信二维码"
-              // 二维码必须落在白底上，别让它继承暗色卡片背景（会扫不出来）
-              className="h-[104px] w-[104px] shrink-0 bg-white"
-            />
-            <span className="text-[12px] leading-relaxed text-fg-dim">
-              <span className="block text-[13px] text-fg-muted">需要邀请码 / 有问题？</span>
-              <span className="mt-1 block">微信扫码加我（知白守黑），备注一下来意。</span>
-              <span className="mt-1 block">点这张图可以放大</span>
-            </span>
-          </a>
         </div>
       </div>
 
