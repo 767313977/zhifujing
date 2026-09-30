@@ -36,9 +36,13 @@ export default function LhbTable({ items, loading = false, delay = 340 }: LhbTab
       meta={
         <span className="num">
           {loading ? '加载中…' : `${items.length} 条`}
-          {/* 同一股票可能因多条上榜原因重复出现，提前说明避免误读 */}
+          {/* 标出**实际数据日**（后端会回落到「最近有龙虎榜的一天」）：龙虎榜要收盘后
+              （甚至晚上）才发布，15:05 那趟取不到，所以这里常常是上一个交易日的 ——
+              不标的话「67 条」会被当成今天的。同股多原因会重复也提前说明，避免误读。 */}
           {!loading && items.length > 0 && (
-            <span className="ml-2 text-fg-dim">同股多原因会重复 · 点列头排序</span>
+            <span className="ml-2 text-fg-dim">
+              {items[0].trade_date} · 同股多原因会重复 · 点列头排序
+            </span>
           )}
         </span>
       }
