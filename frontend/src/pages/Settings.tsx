@@ -176,7 +176,8 @@ export default function Settings() {
                 从那天起再没入过库（这几类是「按日期问」的、没有回看窗口）——
                 2026-09-30 补回来了，见 config.late_collect_hour。别再把这段删掉。 */}
             <span className="mx-1">·</span>
-            收盘后 {scheduler?.late_collect_time ?? '—'} 还有一趟补采，只跑
+            收盘后 {scheduler?.late_collect_time ?? '—'} 还有一趟补采（
+            {scheduler?.late_retry_time ?? '—'} 再兜底跑一次，同一趟代码、幂等重跑），只跑
             <b className="font-normal text-fg-muted">龙虎榜 / 机构席位 / 涨停题材 / 两融 / 北向</b>
             —— 这几类要收盘后（甚至晚上）才发布，15:05 那趟取不到（涨停题材给的是<b
               className="font-normal text-fg-muted"
