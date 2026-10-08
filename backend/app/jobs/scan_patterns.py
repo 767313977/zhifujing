@@ -19,15 +19,30 @@
 
 ## 致富（原辉宾）与悟道对齐
 
-- **只扫同一小池**：东财强势/涨停/昨涨停 + 涨幅榜前 100 + 悟道近端本地缓存，
-  **不**对全市场流动性池出 `wudao_*`。
-- 板块范围 = **创业板 + 科创板**（`is_wudao_board`）。2026-09-29 用户要求由「只创业板」
-  扩到这两块 —— 选这两块的唯一理由是它们**同属 20cm**，于是涨幅榜窗口（4.5~20.5%）、
-  「太热」否决阈值（涨幅 ≥12% / 最高涨幅 ≥18%）、封板判据（涨幅 ≥9.5%）全都不用重调。
-  北交所（30cm）当时一并考虑过，**明确不要**。
-  ⚠️ 这一条是**悟道的超集** —— 悟道默认只扫创业板。来源、优先级、前 80、以及两个判定
-  函数仍与悟道逐条一致，只有板块多了科创板这一块。
-- 池外缺 K 线时从悟道库 / 东财补近端（见 `_ensure_wudao_kline`）。
+**2026-10-08 起三个池子全部按原型口径收窄**（用户看到「和他选出来的不一样」后定的，
+口径与对照见设计文档 §8.83）：
+
+| 池子 | 候选来源与截断 |
+| --- | --- |
+| 致富三兄弟（明天盯 / 今天可买 / 洗完可盯） | 创业板候选，按来源优先级排序后**前 50** |
+| 华宝早期 | **创业板候选 50 + 主板候选 35**，且该票不是样板/启动 |
+| 强达型（洗后可盯 / 缩量洗盘中） | **创业板+主板候选，按插入顺序前 60** |
+
+- 候选五路来源（与原型 `pattern._candidate_rows` 逐条一致）：东财强势 / 涨停 / 昨涨停 +
+  涨幅榜前 100 + 悟道本地近端缓存；加池顺序也是原型的
+  **强势 → 涨停 → 昨涨停 → 涨幅 → 本地**。
+- ⚠️ **一只票归到「最先加进来的那个来源」**（原型 `add()` 只在首次见到时写 `source`，
+  之后只往后拼字符串、排序时取 `source.split(",")[0]`）。所以我们这里用 `min(优先级)`
+  是**错的** —— 会把「既在强势池、又在涨幅榜」的票从「强势档」提到「涨幅档」，
+  池子内容跟着变（2026-10-08 修）。
+- 板块 = **创业板（300/301/302）**，主板另算（`is_mainboard`）。2026-09-29 一度把创业板
+  扩到「创业板 + 科创板」，10-08 按用户要求**退回原型口径**：科创板（688/689）在任何
+  一个池子里都不出现 —— 原型那边 `only_chinext=True` 只认 `is_chinext`（300/301），
+  而主板/强达那两路又都把 688/689 排掉了。
+  ⚠️ 我们比原型多留了 **302**（创业板新号段，原型 `is_chinext` 里没有）—— 只差这一只。
+- 涨幅榜窗口：创业板 `4.5~20.5%`、全市场版 `4.5~16%`（原型的 `hi` 就是这两个值）。
+  板块要**分开请求**（每页只给约 100 行，混在一起会互相挤掉），见 `_spot_rows`。
+- 池外缺 K 线时从悟道库 / 东财补近端（见 `_ensure_wudao_kline`，覆盖三个池的并集）。
 """
 
 import logging
@@ -79,21 +94,36 @@ PATTERN_TASK = "patterns"
 # 而 2026-09-24 那种抽风是 9% —— 卡在 90% 能拦住整片缺，又不至于因为几只停牌票就不让扫。
 _MIN_DAY_COVERAGE = 0.9
 
-# 致富形态 key；只对候选小池（`_wudao_candidate_codes`）落库，板块范围见 `is_wudao_board`
+# ---- 悟道（原型）各池的候选口径。2026-10-08 按原型逐条对齐，改动前先读模块顶部的表 ----
+
+# 致富三兄弟（明天盯 / 今天可买 / 洗完可盯）：只在**创业板候选前 50** 里出信号
 WUDAO_KEYS = frozenset({"wudao_sample", "wudao_start", "wudao_wash2"})
 
-# 与悟道 `/api/pattern/scan?limit=80&board=cyb` 同量级（UI 常用 50~80）
-# ⚠️ 只有条数取齐；板块比悟道多一块科创板（见 `is_wudao_board`）
-WUDAO_SCAN_LIMIT = 80
+# 强达型（洗后可盯 / 缩量洗盘中）：只在**创业板+主板候选前 60** 里出信号
+PILE_KEYS = frozenset({"pile_wash_ready", "pile_wash_wash"})
+
+# 华宝早期：在**创业板候选 50 + 主板候选 35** 里出，且排掉已经是样板/启动的票。
+# 它的 key 单独拎出来：上面那两类池子都用不上它，而它自己要多一道过滤。
+HUABAO_KEY = "huabao_early"
+
+# 候选池的截断条数 —— 三个数都是原型里的实参，别顺手改：
+#   致富 = `sorted(cands)[:max(limit,20)]`，原型 `limit=50` → 50
+#   主板 = `sorted(main)[:max(35,limit//2)]`，原型 `limit=50` → 35
+#   强达 = `cands[:max(limit,40)]`，原型 `limit=60` → 60（**按插入顺序**，不排序）
+WUDAO_SCAN_LIMIT = 50
+WUDAO_MAIN_LIMIT = 35
+PILE_SCAN_LIMIT = 60
 
 # 涨幅榜这一路的窗口与取数上限。
 #
-# 窗口按 **20cm 板**定（北交所 30cm 不在这两块里，见 `is_wudao_board`）：下界挡掉
-# 「不算强势」的，上界挡掉「首日无涨跌幅限制的新股」（实测榜上能到 +653%）。
-# 上限 100 是因为服务端**每页最多约 100 行**，要更多只能翻页 —— 而目标池只有
-# `WUDAO_SCAN_LIMIT`（80）个位置、涨幅那一路优先级最高会先占满，所以 100 够。
+# 下界挡掉「不算强势」的，上界挡掉「首日无涨跌幅限制的新股」（实测榜上能到 +653%）。
+# **上界随口径变**（原型 `hi = 20.5 if only_chinext else 16.0`）：创业板版放 20.5
+# （按 20cm 板校准），全市场版只放到 16。
+# 上限 100 是因为服务端**每页最多约 100 行**，要更多只能翻页 —— 而目标池最多 60 个位
+# 置、涨幅那一路优先级最高会先占满，所以 100 够。
 WUDAO_GAIN_MIN = 4.5
-WUDAO_GAIN_MAX = 20.5
+WUDAO_GAIN_CYB_MAX = 20.5
+WUDAO_GAIN_ALL_MAX = 16.0
 WUDAO_GAIN_TOP = 100
 
 # 池外致富候选补多少交易日日线（日历日粗算 ×1.5 在 sync_stock 内）
@@ -103,7 +133,10 @@ _WUDAO_SYNC_DAYS = 60
 # __file__ = .../zhifujing/backend/app/jobs/scan_patterns.py → parents[4]=cursorzhb
 _WUDAO_MARKET_DB = Path(__file__).resolve().parents[4] / "data" / "market.db"
 
-# 与悟道 `_candidate_rows` 排序一致：涨幅 > 强势 > 昨涨停 > 本地 > 涨停
+# 与原型 `pattern._candidate_rows` 排序一致：涨幅 > 强势 > 昨涨停 > 本地 > 涨停。
+#
+# ⚠️ 它只用来**排序**（`sorted(key=...)`）；一只票归到哪一档看的是「**最先加进来的那个
+# 来源**」，不是「优先级最高的来源」—— 见 `_candidate_rows` 里 `add()` 的注释。
 _WUDAO_SRC_PRIORITY = {"涨幅": 0, "强势": 1, "昨涨停": 2, "本地": 3, "涨停": 4}
 
 
@@ -117,22 +150,33 @@ class _NoBars(Exception):
     """
 
 
-# 致富候选可收的板块前缀。**只有 20cm 的两块**：创业板 300/301/302、科创板 688/689。
-#
-# 放一起的依据不是「都算科技板」，而是**涨跌停幅度相同** —— 涨幅榜窗口 4.5~20.5%、
-# 「太热」否决阈值（涨幅 ≥12% / 最高涨幅 ≥18%）、封板判据（涨幅 ≥9.5%）全是按 20cm
-# 校准的，换板块不用重调。北交所是 30cm，2026-09-29 用户权衡后明确不要。
-_WUDAO_BOARD_PREFIXES = ("300", "301", "302", "688", "689")
+# 创业板前缀。**只有这三段**（300/301/302）—— 科创板 2026-10-08 起不再进任何池子。
+# ⚠️ 原型 `is_chinext` 只认 300/301，我们多留了 302（创业板新号段，如 302132 中航成飞）。
+_WUDAO_BOARD_PREFIXES = ("300", "301", "302")
+
+# 沪深主板前缀（原型 `is_mainboard`）：600/601/603/605/000/001/002/003。
+# 688/689（科创）、8/4（北交所）、9（B 股）都不算。
+_MAINBOARD_PREFIXES = ("600", "601", "603", "605", "000", "001", "002", "003")
 
 
 def is_wudao_board(code: str) -> bool:
-    """创业板 + 科创板（两块都是 20cm）。致富候选只收这两块。
+    """创业板（300/301/302）。致富候选与「明天盯 / 今天可买」只收这一块。
 
-    ⚠️ 名字故意不叫 `is_chinext` —— 2026-09-29 前它确实只认创业板，扩板块后旧名字
-    会骗人（调用点在候选池、涨幅榜过滤、以及扫描末段的落库闸门，三处都吃这个判据）。
+    ⚠️ 名字故意不叫 `is_chinext` —— 2026-09-29 ~ 10-08 之间它一度还认科创板，
+    叫 `is_chinext` 会骗人。调用点在候选池、涨幅榜过滤、以及扫描末段的落库闸门。
     """
     c = str(code or "").strip().zfill(6)
     return c.startswith(_WUDAO_BOARD_PREFIXES)
+
+
+def is_mainboard(code: str) -> bool:
+    """沪深主板（含中小板 002/003）。华宝早期与强达型会额外收这一块。"""
+    c = str(code or "").strip().zfill(6)
+    if is_wudao_board(c):
+        return False
+    if c.startswith(("688", "689", "8", "4", "9")):
+        return False
+    return c.startswith(_MAINBOARD_PREFIXES)
 
 
 def already_scanned(trade_date: date) -> bool:
@@ -247,54 +291,70 @@ def _load_bars(
     return grouped
 
 
-def _wudao_candidate_codes(trade_date: date) -> set[str]:
-    """致富候选：与悟道 `_candidate_rows` + `[:limit]` 同口径。
+# 涨幅榜的两个口径 —— 原型对每个口径各取一页，**板块筛在前、取前 100 在后**
+# （`spot = spot[is_chinext]` 在 `.head(100)` 之前），所以「创业板口径」要的是创业板
+# 自己的榜，不是「全市场前 100 里恰好属于创业板的那几只」。
+_SPOT_SCOPES = ("cyb", "all")
 
-    来源：强势 / 涨停 / 昨涨停 + 涨幅榜前 100（4.5%~20.5%）+ 悟道近端本地。
-    按悟道优先级排序后只取前 `WUDAO_SCAN_LIMIT` 只，板块见 `is_wudao_board`。
+# 备源（同花顺）按前缀筛：创业板口径只认创业板，全市场口径收全部 A 股
+# （含科创板 —— 全市场榜里本来就有它们，只是下游所有池子都限制在创业板/主板）
+_SPOT_PREFIXES = {
+    "cyb": _WUDAO_BOARD_PREFIXES,
+    "all": _WUDAO_BOARD_PREFIXES + _MAINBOARD_PREFIXES + ("688", "689"),
+}
 
-    ⚠️ 别以为「涨幅榜」只是五路里的一路：它的优先级最高（0），而它一次就能给出 100 只，
-    比 `WUDAO_SCAN_LIMIT` 还多 —— 所以**池子实际就是涨幅榜的前 80**，另外四路只在
-    涨幅榜凑不满 80 时才补位。想改池子内容，先看那个 4.5~20.5% 的窗口。
+
+def _spot_rows(scope: str) -> list[tuple[str, float]]:
+    """涨幅榜那一路：`scope` 那个口径按涨幅降序的一页（**不截窗口**，由调用方过滤）。
+
+    `scope` 见 `_SPOT_SCOPES`；两块**分开请求** —— 服务端每页只给约 100 行，混在一起
+    会互相挤掉（原型是先按板筛、再取前 100）。
+
+    旧实现是 akshare 的 `stock_zh_a_spot_em()`：`pz=100` 翻 56 页把全市场 5561 只拉回来、
+    只为排序取前 100。2026-09-29 实测那 56 次连发会把这个 IP 打进东财 `push2*` 集群的
+    惩罚期（> 10 分钟，期间连 `push2his` 的其它路径一起被拒）。换成「服务端按涨幅降序 +
+    一次请求」就够（56 → 2，两个口径各一页）。
+
+    **东财不可用就退到同花顺**（2026-09-29 用户要求）：走数据中心那张按涨跌幅降序的排行
+    表，与东财完全独立，代价是翻几页、且解析的是 HTML 表格。两条都不通时这一路本轮为空
+    —— 只影响池子内容，另外四路照常。
     """
-    # code → 最高优先级来源（数字越小越优先）
-    best: dict[str, int] = {}
+    try:
+        rows = _fetch_board_spot_em(limit=WUDAO_GAIN_TOP, board=scope)
+        logger.info("涨幅榜(%s/东财)：拿到 %d 只", scope, len(rows))
+        return rows
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("拉东财 %s 涨幅榜失败，退到同花顺：%s", scope, exc)
+    try:
+        # 上界统一给最宽的那个（创业板 20.5），按口径收窄留给调用方 —— 备源多几行无妨
+        rows = _fetch_board_spot_ths(
+            boards=_SPOT_PREFIXES[scope],
+            min_pct=WUDAO_GAIN_MIN,
+            max_pct=WUDAO_GAIN_CYB_MAX,
+            want=WUDAO_GAIN_TOP,
+        )
+        logger.info("涨幅榜(%s/同花顺)：拿到 %d 只", scope, len(rows))
+        return rows
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("拉同花顺 %s 涨幅榜也失败，这一路本轮为空：%s", scope, exc)
+        return []
 
-    def add(code: str, source: str) -> None:
-        c = str(code or "").strip().zfill(6)
-        if not is_wudao_board(c):
-            return
-        pri = _WUDAO_SRC_PRIORITY.get(source, 9)
-        prev = best.get(c)
-        if prev is None or pri < prev:
-            best[c] = pri
 
-    ymd = trade_date.strftime("%Y%m%d")
+def _zt_rows(trade_date: date) -> list[tuple[str, list[tuple[str, str]]]]:
+    """三张涨停池表，顺序就是原型的加池顺序：强势 → 涨停 → 昨涨停。
 
-    db = _WUDAO_MARKET_DB
-    if db.is_file() and db.stat().st_size > 0:
-        import sqlite3
-
-        cutoff = (trade_date - timedelta(days=14)).isoformat()
-        try:
-            with sqlite3.connect(str(db)) as conn:
-                for (code,) in conn.execute(
-                    "SELECT DISTINCT code FROM kline WHERE trade_date >= ?",
-                    (cutoff,),
-                ):
-                    add(code, "本地")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("读悟道本地候选失败：%s", exc)
-
+    ⚠️ 只拉**一次**、给两个口径复用 —— 这一路每张表一次请求，两个口径各拉一遍就是 6 次。
+    某一张失败只跳过它（原型的 `try/except` 也是这样），不影响另外两张。
+    """
+    out: list[tuple[str, list[tuple[str, str]]]] = []
     try:
         import akshare as ak
     except Exception as exc:  # noqa: BLE001
-        logger.warning("akshare 不可用，致富候选只靠悟道本地库：%s", exc)
-        ranked = sorted(best.items(), key=lambda kv: (kv[1], kv[0]))
-        return {c for c, _ in ranked[:WUDAO_SCAN_LIMIT]}
+        logger.warning("akshare 不可用，候选只剩涨幅榜与本地库：%s", exc)
+        return out
 
     _clear_proxies()
-
+    ymd = trade_date.strftime("%Y%m%d")
     loaders = (
         ("强势", lambda: ak.stock_zt_pool_strong_em(date=ymd)),
         ("涨停", lambda: ak.stock_zt_pool_em(date=ymd)),
@@ -306,67 +366,141 @@ def _wudao_candidate_codes(trade_date: date) -> set[str]:
         except Exception as exc:  # noqa: BLE001
             logger.warning("拉东财%s池失败：%s", label, exc)
             continue
-        if df is None or getattr(df, "empty", True):
+        if df is None or getattr(df, "empty", True) or "代码" not in df.columns:
             continue
-        col = "代码" if "代码" in df.columns else None
-        if not col:
-            continue
-        for raw in df[col].tolist():
-            add(raw, label)
-
-    # 涨幅榜：**一次**东财 clist 请求，只要创业板 + 科创板按涨幅降序的那一页。
-    #
-    # 旧实现是 akshare 的 `stock_zh_a_spot_em()` —— 它 `pz=100` 翻 56 页把全市场
-    # 5561 只拉回来，只为排序取前 100。2026-09-29 实测：那 56 次连发会把这个 IP 打进
-    # 东财 `push2*` 集群的惩罚期（> 10 分钟，期间连 `push2his` 的其它路径一起被拒），
-    # 于是这一路时好时坏、候选池从约 80 只掉到 39~54 只。详见 `sources/eastmoney`。
-    #
-    # **东财不可用就退到同花顺**（2026-09-29 用户要求）：走数据中心那张按涨跌幅降序的
-    # 排行表，代价是翻几页、且解析的是 HTML 表格，换一个与东财完全独立的源。
-    # 两条都不通时这一路本轮为空 —— 只影响池子大小，另外四路照常。
-    spot: list[tuple[str, float]] = []
-    source = ""
-    try:
-        spot = _fetch_board_spot_em(limit=WUDAO_GAIN_TOP)
-        source = "东财"
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("拉东财涨幅榜失败，退到同花顺：%s", exc)
-        try:
-            spot = _fetch_board_spot_ths(
-                boards=_WUDAO_BOARD_PREFIXES,
-                min_pct=WUDAO_GAIN_MIN,
-                max_pct=WUDAO_GAIN_MAX,
-                want=WUDAO_GAIN_TOP,
+        name_col = "名称" if "名称" in df.columns else None
+        out.append(
+            (
+                label,
+                [
+                    (rec.get("代码"), rec.get(name_col) or "" if name_col else "")
+                    for rec in df.to_dict("records")
+                ],
             )
-            source = "同花顺"
-        except Exception as exc2:  # noqa: BLE001
-            logger.warning("拉同花顺涨幅榜也失败，这一路本轮为空：%s", exc2)
+        )
+    return out
 
-    rows: list[tuple[str, float]] = []
-    for code, pct in spot:
-        # 东财那边 `fs` 已经把范围限定在创业板 + 科创板，这里再挡一次是**当断言用** ——
-        # 万一接口改了语义，池子不会悄悄混进别的板。（同花顺那条是全市场榜，本来就要筛。）
-        if not is_wudao_board(code):
+
+def _local_rows(trade_date: date) -> list[str]:
+    """悟道本地库近端的代码（原型这一路读的是它自己的 `kline`，近 10 天）。"""
+    db = _WUDAO_MARKET_DB
+    if not db.is_file() or db.stat().st_size == 0:
+        return []
+    import sqlite3
+
+    cutoff = (trade_date - timedelta(days=14)).isoformat()
+    with sqlite3.connect(str(db)) as conn:
+        return [row[0] for row in conn.execute(
+            "SELECT DISTINCT code FROM kline WHERE trade_date >= ?", (cutoff,)
+        )]
+
+
+def _candidate_rows(
+    trade_date: date,
+    *,
+    only_chinext: bool,
+    spots: dict[str, list[tuple[str, float]]],
+    zt_rows: list[tuple[str, list[tuple[str, str]]]],
+) -> list[dict]:
+    """一个口径的候选表，返回**插入顺序**的 `[{code, name, source}, …]`。
+
+    与原型 `pattern._candidate_rows` 逐条对齐：加池顺序 = 强势 → 涨停 → 昨涨停 → 涨幅 →
+    本地；`source` 记**最先加进来的那一个**（原型 `add()` 只在首次见到时写 `source`，
+    之后只往后拼字符串、排序时取 `source.split(",")[0]`）。
+
+    ⚠️ 所以这里**不能**写成「取优先级最高的来源」—— 那样「既在强势池、又在涨幅榜」的票
+    会被从强势档提到涨幅档、排序位置前移，池子内容跟着变（2026-10-08 修，之前是错的）。
+
+    涨幅榜窗口随口径变：创业板版 `4.5~20.5%`、全市场版 `4.5~16%`（原型 `hi` 的两个值）。
+    """
+    gain_max = WUDAO_GAIN_CYB_MAX if only_chinext else WUDAO_GAIN_ALL_MAX
+    seen: dict[str, dict] = {}
+
+    def add(code, name, source: str) -> None:
+        c = str(code or "").strip().zfill(6)
+        # 原型的过滤：北交所（4/8）与 B 股（9）不收
+        if len(c) != 6 or c.startswith(("4", "8", "9")):
+            return
+        if only_chinext and not is_wudao_board(c):
+            return
+        if c not in seen:
+            seen[c] = {"code": c, "name": str(name or c), "source": source}
+
+    for label, rows in zt_rows:
+        for code, name in rows:
+            add(code, name, label)
+
+    for code, pct in spots["cyb" if only_chinext else "all"]:
+        if not (WUDAO_GAIN_MIN <= pct <= gain_max):
             continue
-        if WUDAO_GAIN_MIN <= pct <= WUDAO_GAIN_MAX:
-            rows.append((code, pct))
-    rows.sort(key=lambda x: x[1], reverse=True)
-    for code, _ in rows[:WUDAO_GAIN_TOP]:
-        add(code, "涨幅")
-    # 走的是哪个源、以及「一页够不够」都写出来：服务端每页上限约 100 行，而目标池只有
-    # `WUDAO_SCAN_LIMIT` 个位置、涨幅这一路优先级最高会先占满，所以一页就该够。
-    # 哪天这个数掉到 80 以下，先看是不是走了备源、以及区间外的新股是不是变多了。
-    logger.info(
-        "涨幅榜（%s）：拿到 %d 只，其中落在 %.1f~%.1f%% 的 %d 只",
-        source or "无源",
-        len(spot),
-        WUDAO_GAIN_MIN,
-        WUDAO_GAIN_MAX,
-        len(rows),
-    )
+        # 两个口径的榜都可能是全市场的（备源那条就是），所以这里**必须**再按板块筛一道
+        if only_chinext and not is_wudao_board(code):
+            continue
+        add(code, "", "涨幅")
 
-    ranked = sorted(best.items(), key=lambda kv: (kv[1], kv[0]))
-    return {c for c, _ in ranked[:WUDAO_SCAN_LIMIT]}
+    try:
+        for code in _local_rows(trade_date):
+            add(code, "", "本地")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("读悟道本地候选失败：%s", exc)
+
+    return list(seen.values())
+
+
+def _wudao_pools(trade_date: date) -> dict[str, set[str]]:
+    """当天三个候选池的代码集合。键：`cyb` / `huabao` / `pile` / `all`（并集，补日线用）。
+
+    三处截断都是原型的实参，条数与来源见 `WUDAO_SCAN_LIMIT` 那一段注释：
+    · `cyb`   —— 创业板候选，按 (来源优先级, 代码) 排序后前 50（致富三兄弟）
+    · `huabao`—— `cyb` ∪ 主板候选前 35（华宝早期）
+    · `pile`  —— 创业板+主板候选，**按插入顺序**前 60（强达型）
+    """
+    spots = {scope: _spot_rows(scope) for scope in _SPOT_SCOPES}
+    zt_rows = _zt_rows(trade_date)
+    cyb_rows = _candidate_rows(trade_date, only_chinext=True, spots=spots, zt_rows=zt_rows)
+    all_rows = _candidate_rows(trade_date, only_chinext=False, spots=spots, zt_rows=zt_rows)
+
+    def rank(rows: list[dict]) -> list[dict]:
+        return sorted(
+            rows, key=lambda r: (_WUDAO_SRC_PRIORITY.get(r["source"], 9), r["code"])
+        )
+
+    cyb = rank(cyb_rows)[:WUDAO_SCAN_LIMIT]
+    main = rank([r for r in all_rows if is_mainboard(r["code"])])[:WUDAO_MAIN_LIMIT]
+    # 强达这一路原型**不排序**：`cands = [过滤后…]`，紧接着 `cands[:max(limit,40)]`
+    pile = [
+        r for r in all_rows if is_wudao_board(r["code"]) or is_mainboard(r["code"])
+    ][:PILE_SCAN_LIMIT]
+    logger.info(
+        "悟道候选：创业板 %d / 主板 %d / 强达 %d（涨幅榜 创业板 %d 只、全市场 %d 只）",
+        len(cyb),
+        len(main),
+        len(pile),
+        len(spots.get("cyb") or []),
+        len(spots.get("all") or []),
+    )
+    cyb_codes = {r["code"] for r in cyb}
+    main_codes = {r["code"] for r in main}
+    pile_codes = {r["code"] for r in pile}
+    return {
+        "cyb": cyb_codes,
+        "huabao": cyb_codes | main_codes,
+        "pile": pile_codes,
+        "all": cyb_codes | main_codes | pile_codes,
+    }
+
+
+def _in_wudao_pool(
+    pattern: str, code: str, pools: dict[str, set[str]], huabao_skip: set[str]
+) -> bool:
+    """这条悟道信号允不允许落库 —— **非悟道形态一律放行**（照旧扫全池）。"""
+    if pattern in WUDAO_KEYS:
+        return code in pools["cyb"]
+    if pattern in PILE_KEYS:
+        return code in pools["pile"]
+    if pattern == HUABAO_KEY:
+        return code in pools["huabao"] and code not in huabao_skip
+    return True
 
 
 def _bar_counts(codes: set[str], trade_date: date, *, lookback: int = 40) -> dict[str, int]:
@@ -718,8 +852,10 @@ def scan(
     if not universe:
         raise IfindError("股票池为空，先建池（UniverseCollector.collect）")
 
-    # 致富：只扫悟道同口径小池（强势/涨停/昨涨停/涨幅榜/本地），不对全流动性池出致富信号
-    wudao_cands = _wudao_candidate_codes(target)
+    # 悟道三个池子的候选（创业板 50 / 主板 35 / 强达 60）—— **只在这三份名单里**出
+    # 悟道家族的信号，其余形态照旧扫全池。
+    pools = _wudao_pools(target)
+    wudao_cands = pools["all"]
     extras = {c for c in wudao_cands if c not in set(universe)}
     sync_info = (
         _ensure_wudao_kline(wudao_cands, target, settings)
@@ -780,14 +916,22 @@ def scan(
             continue
         bars_map[code] = build_bars(records)
 
+    # 先把每只票的形态全算出来，再决定哪条能落库 —— 华宝早期要排掉**同一只票**上已经
+    # 命中的样板/启动（原型 `_early_card_from` 开头就把 start/sample/diverge/dump 退回），
+    # 不先算完就没有这个信息。我们只搬了 sample/start 两个阶段，diverge/dump 没有。
+    code_sigs: dict[str, list] = {}
+    huabao_skip: set[str] = set()
     for code, bars in bars_map.items():
-        records = grouped[code]
-        last = records[-1]
-        for signal in evaluate(bars, min_score=min_score):
-            # 致富只出小池里的 20cm 板（`is_wudao_board`），与悟道名单同口径
-            if signal.pattern in WUDAO_KEYS and (
-                not is_wudao_board(code) or code not in wudao_cands
-            ):
+        sigs = list(evaluate(bars, min_score=min_score))
+        code_sigs[code] = sigs
+        if any(s.pattern in ("wudao_sample", "wudao_start") for s in sigs):
+            huabao_skip.add(code)
+
+    for code, sigs in code_sigs.items():
+        last = grouped[code][-1]
+        for signal in sigs:
+            # 悟道各池只收自己候选名单里的票（非悟道形态一律放行）
+            if not _in_wudao_pool(signal.pattern, code, pools, huabao_skip):
                 dropped_wudao += 1
                 continue
             by_pattern[signal.pattern] += 1
@@ -811,16 +955,20 @@ def scan(
         written = upsert_many(session, PatternHit, rows)
 
     cost = round(time.monotonic() - started, 2)
+    pool_brief = (
+        f"候选 创{len(pools['cyb'])}/主{len(pools['huabao']) - len(pools['cyb'])}"
+        f"/强{len(pools['pile'])}"
+    )
     logger.info(
         "形态扫描完成：%s，%d 只票 → %d 条命中"
-        "（跳过 %d / 致富剔池外 %d / 候选 %d / 日线停在过去 %d / 剔除 ST %d / 补日线 %s），"
+        "（跳过 %d / 悟道剔池外 %d / %s / 日线停在过去 %d / 剔除 ST %d / 补日线 %s），"
         "用时 %ss",
         target,
         len(grouped),
         written,
         skipped,
         dropped_wudao,
-        len(wudao_cands),
+        pool_brief,
         len(stale),
         len(st_codes),
         sync_info,
@@ -830,7 +978,7 @@ def scan(
         target,
         "ok",
         written,
-        f"{len(grouped)} 只 / {written} 条命中 / 致富候选 {len(wudao_cands)}"
+        f"{len(grouped)} 只 / {written} 条命中 / {pool_brief}"
         + (f" / 日线停在过去剔除 {len(stale)} 只" if stale else "")
         + (f" / 剔除 ST {len(st_codes)} 只" if st_codes else "")
         + _sync_note(sync_info),
@@ -846,6 +994,7 @@ def scan(
         # 因带 ST 被剔除的只数（2026-09-28 起的口径）
         "st_dropped": len(st_codes),
         "wudao_cands": len(wudao_cands),
+        "wudao_pools": {key: len(value) for key, value in pools.items()},
         "wudao_extras": len(extras),
         "wudao_sync": sync_info,
         "wudao_dropped": dropped_wudao,
