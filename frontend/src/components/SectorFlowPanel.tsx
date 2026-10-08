@@ -72,8 +72,12 @@ function buildOption(items: FundFlowItem[], inflow: boolean): ChartOption {
           item.in_amount == null && item.out_amount == null
             ? ''
             : `流入 ${fmtNum(item.in_amount, 2, ' 亿')} / 流出 ${fmtNum(item.out_amount, 2, ' 亿')}`,
+          // leader_name 现在是**开盘红口径的「龙一~龙五」**（顿号分隔），所以涨幅要
+          // 标成「龙一」的：不标就会被读成最后一个名字的涨幅（2026-10-08 改）
           item.leader_name
-            ? `领涨 ${item.leader_name} ${fmtPct(item.leader_pct_chg)}`
+            ? `领涨 ${item.leader_name}${
+                item.leader_pct_chg == null ? '' : `（龙一 ${fmtPct(item.leader_pct_chg)}）`
+              }`
             : '',
           item.member_count == null ? '' : `成分 ${item.member_count} 只`,
         ]
