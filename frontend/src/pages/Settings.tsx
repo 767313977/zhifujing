@@ -184,11 +184,18 @@ export default function Settings() {
             >上一交易日</b>的天梯），所以首页龙虎榜面板
             当天显示的多半是<b className="font-normal text-fg-muted">上一个交易日</b>
             的数据（面板上标了是哪天）。
+            {/* 成分股预取是另一回事：它不写 collect_log，跑完只有日志。开盘红当天要到
+                晚上才发布成分股名单，所以它排在 22:00（见 config.members_collect_hour） */}
+            <span className="mx-1">·</span>
+            <b className="font-normal text-fg-muted">
+              {scheduler?.members_collect_time ?? '—'} 预取当天板块成分股
+            </b>
+            （开盘红要到晚上才发布当天名单，之前打开板块是「0 只」而不是故障）。
             {scheduler?.catchup_on_start && (
               <>
                 <span className="mx-1">·</span>
                 已开启<b className="font-normal text-fg-muted">启动补采</b>：本机不常开，
-                错过采集时刻后下次启动会在后台补上（两个时刻都会补）。
+                错过采集时刻后下次启动会在后台补上（上面三个时刻都会补）。
               </>
             )}
             <span className="mx-1">·</span>

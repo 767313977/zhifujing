@@ -427,6 +427,8 @@ export interface SchedulerStatus {
   late_collect_time: string
   /** 同一趟的兜底时刻：来源当天什么时候更新不确定，只赌一个时刻会赌空 */
   late_retry_time: string
+  /** 当天板块成分股的预取时刻：开盘红要到晚上才发布当天名单 */
+  members_collect_time: string
   catchup_on_start: boolean
   next_run_time: string | null
   late_next_run_time: string | null
