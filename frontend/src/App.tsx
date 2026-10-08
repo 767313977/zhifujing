@@ -11,6 +11,7 @@ import SentimentPage from './pages/Sentiment'
 import Settings from './pages/Settings'
 import StockDetail from './pages/StockDetail'
 import WatchlistPage from './pages/Watchlist'
+import Wudao from './pages/Wudao'
 import { AuthProvider, RequireAdmin, RequireAuth } from './lib/auth'
 
 /**
@@ -96,6 +97,15 @@ export default function App() {
             element={
               <RequireAuth>
                 <StockDetail />
+              </RequireAuth>
+            }
+          />
+          {/* 悟道之路：移植过来的选股池（判定逻辑在 services/patterns.py） */}
+          <Route
+            path="/wudao"
+            element={
+              <RequireAuth>
+                <Wudao />
               </RequireAuth>
             }
           />

@@ -9,8 +9,6 @@ interface NavItem {
   label: string
   /** 站内路由才有：`end` 让前缀匹配不误高亮（见下面形态选股那条的说明） */
   end?: boolean
-  /** 外链：渲染成 `<a target="_blank">`，不参与路由、没有选中态 */
-  external?: boolean
 }
 
 const NAV: NavItem[] = [
@@ -24,10 +22,12 @@ const NAV: NavItem[] = [
   { to: '/patterns', label: '形态选股', end: true },
   { to: '/patterns/track', label: '胜率跟踪' },
   { to: '/watchlist', label: '自选股' },
-  // 外链（2026-10-08 用户要求加在「自选股」之后，给的是这个仓库地址）。
-  // ⚠️ 这是**跳出去**看那个项目、不是把它移植进来；真要移植（早期讨论过、
-  // 当时被用户叫停等地址），把这一项换成站内路由 + 对应页面即可。
-  { to: 'https://github.com/zhaohuibin7/yangban-desk', label: '悟道之路', external: true },
+  // 悟道之路（2026-10-08 用户要求加在「自选股」之后）。
+  // ⚠️ 一开始做成了**指向 GitHub 仓库的外链**，用户随即反馈「点进去还是跳转」——
+  // 他要的是站内的选股池页面。现在判定逻辑已经移植进来（`services/patterns.py` 的
+  // `wudao_*` / `pile_wash_*` / `huabao_early`），所以这里通向站内 `/wudao`；
+  // 仓库地址挪到那个页面里当「出处」链接。别再改回外链。
+  { to: '/wudao', label: '悟道之路' },
   { to: '/settings', label: '数据管理' },
 ]
 
@@ -147,58 +147,42 @@ export default function Layout({ children, toolbar }: LayoutProps) {
             | 1280（一行） | 762 | 516 | **588**（余 174） |
             | 1536（一行） | 1018 | 516 | **588** |
 
-            一项 4 字的成本正好是 `4×12 + 6×2 = 60px`（与 112 行那条等式对得上），
-            外链那个 `↗`（10px + 2px 边距）再加约 12px。10 项在 1024 / 1280 / 1536
-            三档都没有溢出、整页也没有横向滚动，**所以断点不用动、也没有横滑**。
+            一项 4 字的成本正好是 `4×12 + 6×2 = 60px`（与 112 行那条等式对得上）；
+            当时「悟道之路」还是外链、末尾带个 `↗`（10px + 2px 边距）所以再多 12px。
+            **它后来改成站内路由、`↗` 去掉了**，所以现在实际是 577 / 576 / 576，余量还更大。
+            10 项在 1024 / 1280 / 1536 三档都没有溢出、整页也没有横向滚动，
+            **所以断点不用动、也没有横滑**。
             操作区按最宽那一档（258px）建模；真到了再挤不下的时候，先动的是这里的
             密度（字号/内边距），别去改 `xl:flex-nowrap`。
           */}
           <nav className="no-scrollbar flex h-[52px] min-w-0 grow basis-0 items-stretch gap-1 overflow-x-auto overflow-y-hidden lg:gap-0">
-            {items.map((item) => {
-              // 导航项的类名两处共用（站内 NavLink 与外链 a）：改样式只改这一份
-              const itemClass = [
-                'relative flex items-center px-3 text-[13px] whitespace-nowrap transition-colors',
-                // 1024 起收紧。**不再在 xl 恢复常规密度**（2026-09-28 改）：
-                // 顶栏多了右上角账号区，实测按 13px 算会被裁。12px + px-1.5 下
-                // 第 10 项（2026-10-08）也仍有余量，见下面那段实测数字。
-                'lg:px-1.5 lg:text-[12px]',
-              ].join(' ')
-              if (item.external) {
-                return (
-                  <a
-                    key={item.to}
-                    href={item.to}
-                    target="_blank"
-                    rel="noreferrer"
-                    // 外链没有「当前页」概念，所以恒用次要色；`↗` 提示它跳到站外
-                    className={`${itemClass} text-fg-muted hover:text-fg`}
-                  >
+            {items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  [
+                    'relative flex items-center px-3 text-[13px] whitespace-nowrap transition-colors',
+                    // 1024 起收紧。**不再在 xl 恢复常规密度**（2026-09-28 改）：
+                    // 顶栏多了右上角账号区，实测按 13px 算会被裁。12px + px-1.5 下
+                    // 10 项（2026-10-08）仍有余量，见上面那段实测数字。
+                    'lg:px-1.5 lg:text-[12px]',
+                    isActive ? 'text-fg' : 'text-fg-muted hover:text-fg',
+                  ].join(' ')
+                }
+              >
+                {({ isActive }) => (
+                  <>
                     {item.label}
-                    <span className="ml-0.5 text-[10px] text-fg-dim">↗</span>
-                  </a>
-                )
-              }
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
-                  className={({ isActive }) =>
-                    [itemClass, isActive ? 'text-fg' : 'text-fg-muted hover:text-fg'].join(' ')
-                  }
-                >
-                  {({ isActive }) => (
-                    <>
-                      {item.label}
-                      {/* 下划线贴容器底边，不再向外溢出，否则会逼出竖向滚动条 */}
-                      {isActive && (
-                        <span className="absolute inset-x-2 bottom-0 h-[2px] bg-accent wipe" />
-                      )}
-                    </>
-                  )}
-                </NavLink>
-              )
-            })}
+                    {/* 下划线贴容器底边，不再向外溢出，否则会逼出竖向滚动条 */}
+                    {isActive && (
+                      <span className="absolute inset-x-2 bottom-0 h-[2px] bg-accent wipe" />
+                    )}
+                  </>
+                )}
+              </NavLink>
+            ))}
           </nav>
 
           {/* 操作区。xl 以下 `w-full` 把它挤到第二行并占满整行，1280 以上恢复成
