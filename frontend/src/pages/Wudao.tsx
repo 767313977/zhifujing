@@ -84,6 +84,21 @@ const SECTIONS: Section[] = [
 
 const POOL_LIMIT = 3000
 
+/**
+ * 每张表最多渲染多少行。
+ *
+ * 「缩量洗盘中」「华宝早期」这类是全池扫出来的，一天几百只是常态（10-08：633 / 190），
+ * 全塞进 DOM 既卡又没人翻 —— 按分数降序只渲染前这么多，**总数照旧显示在标题上**，
+ * 并在表尾写明「还有多少只没显示」。想看得更多就调大这个数（数据本身是全的，
+ * `POOL_LIMIT` 才是真正的取数上限）。
+ */
+const RENDER_LIMIT = 100
+
+/** 形态 key → 池子标题，用来标「这只票也命中了别的池子」。 */
+const POOL_TITLES: Record<string, string> = Object.fromEntries(
+  SECTIONS.flatMap((section) => section.pools.map((pool) => [pool.key, pool.title])),
+)
+
 export default function Wudao() {
   const [summary, setSummary] = useState<PatternSummary | null>(null)
   const [hits, setHits] = useState<Record<string, PatternStock[]>>({})
@@ -158,10 +173,11 @@ export default function Wudao() {
               移植进本站形态引擎（数字逐条照抄源码），这个页面按它原来的三张选股页摆出当天名单。
             </p>
             <p>
-              候选口径也与他一致（2026-10-08 对齐）：辉宾两页只在当天
-              <b className="font-normal text-fg-muted">创业板候选前 50 只</b>
-              里挑，华宝早期再加 35 只主板候选，黑白选股在两块板的候选前 60 只里 ——
-              所以名单不会比他多出一堆来。
+              清单的<b className="font-normal text-fg-muted">扫描范围按形态各定</b>（2026-10-08 优化）：
+              「明天盯 / 今天可买」只看当天<b className="font-normal text-fg-muted">创业板里冲高过 4.5% 的票</b>
+              （几十只量级，用的就是判定要的那份日线，不再依赖行情快照）；
+              「洗完可盯」「华宝早期」「黑白选股」<b className="font-normal text-fg-muted">不限池子、扫全市场</b> —— 它们的票今天往往很安静
+              （洗盘、连阳初期涨幅只有 1~3%），拿「今天强势」当候选等于把它们全筛掉。
             </p>
             <p className="text-fg-dim">
               ⚠️ 四个池子的回测都是「短周期略有指向、胜率不到 50%、四档中位数全负」——
@@ -204,15 +220,22 @@ function PoolPanel({
   loading: boolean
   count?: number
 }) {
-  // 一只票在本池里的分数与关键位要看**它自己**那条命中记录（同一只票可能命中别的形态）
+  // 一只票在本池里的分数与关键位要看**它自己**那条命中记录（同一只票可能命中别的形态），
+  // 顺便把「它还命中了哪些池子」也算出来 —— 同一只票常同时是样板 + 洗盘，不该重复研究。
   const pick = useMemo(
     () =>
       rows.map((row) => ({
         row,
         hit: row.patterns.find((item) => item.pattern === pool.key),
+        others: row.patterns
+          .filter((item) => item.pattern !== pool.key && POOL_TITLES[item.pattern])
+          .map((item) => POOL_TITLES[item.pattern]),
       })),
     [rows, pool.key],
   )
+  // 分数降序（后端已排过），但只渲染前 RENDER_LIMIT 行 —— 见那个常量的注释
+  const shown = useMemo(() => pick.slice(0, RENDER_LIMIT), [pick])
+  const hidden = pick.length - shown.length
 
   return (
     <Panel
@@ -230,65 +253,77 @@ function PoolPanel({
       ) : rows.length === 0 ? (
         <div className="px-4 py-8 text-center text-[14px] text-fg-dim">当日无命中</div>
       ) : (
-        <div className="max-h-[520px] overflow-auto">
-          <table className="grid-table">
-            <thead>
-              <tr>
-                <th>代码</th>
-                <th className="!text-left">名称</th>
-                <th className="!text-left">板块</th>
-                <th>收盘</th>
-                <th>涨跌幅</th>
-                <th>分数</th>
-                {pool.levels.map(([field, label]) => (
-                  <th key={field}>{label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {pick.map(({ row, hit }) => (
-                <tr
-                  key={row.code}
-                  // 记整份名单给个股页 ← → 前后翻（StockLink 只管导航，靠冒泡触发这里）
-                  onClick={() => rememberStockList(rows.map((item) => item.code))}
-                  title={[row.name ?? '', row.industry ?? '', row.sectors.join('、')]
-                    .filter(Boolean)
-                    .join(' · ')}
-                >
-                  <td>
-                    <StockLink code={row.code} className="num text-fg-muted">
-                      {row.code}
-                    </StockLink>
-                  </td>
-                  <td className="!text-left">
-                    <StockLink code={row.code}>{row.name ?? row.code}</StockLink>
-                  </td>
-                  <td className="!text-left">
-                    <span className="text-[13px] text-fg-muted">
-                      {row.sectors.length > 0 ? row.sectors.join('、') : '—'}
-                    </span>
-                  </td>
-                  <td>
-                    <span className="num">{fmtNum(row.close, 2)}</span>
-                  </td>
-                  <td>
-                    <span className={`num ${toneOf(row.pct_chg)}`}>{fmtPct(row.pct_chg)}</span>
-                  </td>
-                  <td>
-                    <span className="num text-fg">{fmtNum(hit?.score ?? row.score, 1)}</span>
-                  </td>
-                  {pool.levels.map(([field]) => (
-                    <td key={field}>
-                      <span className="num text-fg-muted">
-                        {fmtNum(hit?.key_levels?.[field] ?? null, 2)}
-                      </span>
-                    </td>
+        <>
+          <div className="max-h-[520px] overflow-auto">
+            <table className="grid-table">
+              <thead>
+                <tr>
+                  <th>代码</th>
+                  <th className="!text-left">名称</th>
+                  <th className="!text-left">板块</th>
+                  <th>收盘</th>
+                  <th>涨跌幅</th>
+                  <th>分数</th>
+                  {pool.levels.map(([field, label]) => (
+                    <th key={field}>{label}</th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {shown.map(({ row, hit, others }) => (
+                  <tr
+                    key={row.code}
+                    // 记整份名单给个股页 ← → 前后翻（StockLink 只管导航，靠冒泡触发这里）
+                    onClick={() => rememberStockList(rows.map((item) => item.code))}
+                    title={[row.name ?? '', row.industry ?? '', row.sectors.join('、')]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  >
+                    <td>
+                      <StockLink code={row.code} className="num text-fg-muted">
+                        {row.code}
+                      </StockLink>
+                    </td>
+                    <td className="!text-left">
+                      <StockLink code={row.code}>{row.name ?? row.code}</StockLink>
+                      {others.length > 0 && (
+                        <span className="ml-2 text-[12px] text-fg-dim">
+                          也是{others.join('/')}
+                        </span>
+                      )}
+                    </td>
+                    <td className="!text-left">
+                      <span className="text-[13px] text-fg-muted">
+                        {row.sectors.length > 0 ? row.sectors.join('、') : '—'}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="num">{fmtNum(row.close, 2)}</span>
+                    </td>
+                    <td>
+                      <span className={`num ${toneOf(row.pct_chg)}`}>{fmtPct(row.pct_chg)}</span>
+                    </td>
+                    <td>
+                      <span className="num text-fg">{fmtNum(hit?.score ?? row.score, 1)}</span>
+                    </td>
+                    {pool.levels.map(([field]) => (
+                      <td key={field}>
+                        <span className="num text-fg-muted">
+                          {fmtNum(hit?.key_levels?.[field] ?? null, 2)}
+                        </span>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {hidden > 0 && (
+            <div className="border-t border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+              按分数只显示前 {RENDER_LIMIT} 只，另有 {hidden} 只没显示
+            </div>
+          )}
+        </>
       )}
     </Panel>
   )
