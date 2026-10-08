@@ -5,24 +5,16 @@ import type { ChartOption } from './EChart'
 import { AXIS_LABEL, CHART, TOOLTIP } from '../lib/chart'
 import { fmtAmount, fmtPct, fmtShortDate } from '../lib/format'
 
-const MA_WINDOWS = [5, 10, 20]
-const MA_COLORS = ['#b8944f', '#6f93c4', '#a583c4']
-
-/**
- * 副图均量线（成交量自己的均线）。
+/*
+ * ⚠️ **这张图不画均线**（2026-10-08 用户要求「把均线去掉」：主图 MA5/10/20 与副图
+ * 均量线 MAVOL5/10 一起去掉）。别再顺手加回来：
  *
- * 配色**复用主图均线的色**（MAVOL5 = MA5 的金、MAVOL10 = MA10 的蓝）—— 同一个颜色就
- * 代表「同一个周期的均线」，副图这两条只是量的版本。
- *
- * ⚠️ 原来用的是同花顺默认的纯黄 `#ffff00` / 品红 `#ff00ff`，2026-09-26 改掉，原因两条：
- * 1. **它俩是整张图里最扎眼的元素**（纯黄在深底上比涨跌色还亮），把注意力从 K 线上抢走；
- * 2. **品红那条在依据上就不成立** —— 用户给的同花顺截图里只有一条黄线（x 覆盖
- *    2165/2469 列，据此才认出来的），品红是按「同花顺默认」补的，没有实据。
+ * - 用户的原话就是「把均线去掉」，截图里圈住的正是主图那三条线；
+ * - 原来的两条均量线是照「同花顺默认」补的、没有实据（旧注释里写着），2026-09-26
+ *   那轮配色只把它们调暗过，不如直接去掉；
+ * - 均线的信息别处都有：指数条有 `MA5 上 / MA20 下`，形态选股有「均线多头排列」，
+ *   而图上真正要看的是**关键位虚线**（`keyLevels`，形态引擎的前复权判定价）。
  */
-const VOL_MA = [
-  { window: 5, color: MA_COLORS[0] },
-  { window: 10, color: MA_COLORS[1] },
-]
 
 /**
  * 星期几。日期串补 `T00:00:00` 再取**本地**星期 —— 直接 `new Date('2026-09-24')`
@@ -210,17 +202,6 @@ export interface KeyLevel {
   kind: 'breakout' | 'support'
 }
 
-/** 移动平均。窗口不足或含空值时给 null，ECharts 会自然断线。 */
-function movingAverage(values: (number | null)[], window: number): (number | null)[] {
-  return values.map((_, index) => {
-    if (index + 1 < window) return null
-    const slice = values.slice(index + 1 - window, index + 1)
-    if (slice.some((value) => value == null)) return null
-    const sum = slice.reduce<number>((acc, value) => acc + (value as number), 0)
-    return Number((sum / window).toFixed(2))
-  })
-}
-
 interface Props {
   bars: KLineBar[]
   height?: number
@@ -235,10 +216,10 @@ interface Props {
 }
 
 /**
- * K 线图（蜡烛 + 均线 + 成交量），个股详情页与形态选股页共用。
+ * K 线图（蜡烛 + 成交量；**不画均线**，见文件顶部那段），个股详情页与形态选股页共用。
  *
  * 2026-09-26 起画法按**同花顺**那套来：阳线空心红 / 阴线实心青、网格淡实线、
- * 图区比卡片沉一档、副图带均量线。配色直接吃站点令牌（`CHART` / `index.css`），
+ * 图区比卡片沉一档。配色直接吃站点令牌（`CHART` / `index.css`），
  * 不另立一套 —— 当天全站配色也换成了同花顺，两边本来就是同一组值。
  *
  * **涨停那天的蜡烛整根实心描金、跌停那天的整根实心绿**（日 K 才有，判据在后端，
@@ -247,16 +228,11 @@ interface Props {
  * 从 `StockDetail.tsx` 里抽出来而不是复制一份：这个图有三处容易写错的地方
  * —— A 股的红涨青跌覆盖（ECharts 默认是欧美惯例）、主图与副图的轴联动、
  * 成交量柱跟随涨跌染色 —— 复制出去迟早会有一份忘了改。
- *
- * 均线按**行数**滚动，所以周期切换后自动变成「5/10/20 周」「5/10/20 月」，
- * 不需要为每个周期另配参数。
  */
 export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props) {
   const option = useMemo<ChartOption>(() => {
     if (bars.length === 0) return {}
     const dates = bars.map((bar) => bar.label)
-    const closes = bars.map((bar) => bar.close)
-    const rawVolumes = bars.map((bar) => bar.volume)
     // ECharts 蜡烛图的数据顺序是 [开, 收, 低, 高]；涨跌停那天的整根实心换色，
     // 靠 data-item 上挂 itemStyle 覆盖序列级的画法（见 LIMIT_UP_ITEM_STYLE /
     // LIMIT_DOWN_ITEM_STYLE）。两者互斥，先判涨停
@@ -289,11 +265,6 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
       .slice()
       .sort((left, right) => right.value - left.value)
     const MARK_LABEL_POSITIONS = ['insideEndTop', 'insideStartTop'] as const
-    const legend = [
-      ...MA_WINDOWS.map((w) => `MA${w}`),
-      '成交量',
-      ...VOL_MA.map((ma) => `MAVOL${ma.window}`),
-    ]
     // 横轴放几个标签要看标签有多长：周月是 `25-09-30`（8 字符，比日线的 `09-21`
     // 长），同一宽度下要少放几个，否则相邻标签会贴在一起
     const wideLabels = (dates[0] ?? '').length > 6
@@ -302,8 +273,9 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
     return {
       grid: [
         // 图区铺「页面底」那一阶（比面板底更暗），同花顺那种图比卡片沉一档的观感。
-        // 铺在 grid 上而不是画布整体背景：画布整块上底会跟容器的圆角/内边距打架
-        { left: 8, right: 14, top: 34, height: '56%', containLabel: true, backgroundColor: CHART.page },
+        // 铺在 grid 上而不是画布整体背景：画布整块上底会跟容器的圆角/内边距打架。
+        // `top` 只留一点点：图例（均线那几条）已经去掉，把它让给蜡烛
+        { left: 8, right: 14, top: 10, height: '58%', containLabel: true, backgroundColor: CHART.page },
         {
           left: 8,
           right: 14,
@@ -313,16 +285,6 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
           backgroundColor: CHART.page,
         },
       ],
-      legend: {
-        top: 2,
-        left: 8,
-        icon: 'rect',
-        itemWidth: 10,
-        itemHeight: 10,
-        itemGap: 14,
-        textStyle: { color: CHART.fgMuted, fontSize: 12 },
-        data: legend,
-      },
       tooltip: {
         ...TOOLTIP,
         trigger: 'axis',
@@ -440,17 +402,6 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
               }
             : undefined,
         },
-        ...MA_WINDOWS.map((window, index) => ({
-          type: 'line' as const,
-          name: `MA${window}`,
-          data: movingAverage(closes, window),
-          xAxisIndex: 0,
-          yAxisIndex: 0,
-          smooth: true,
-          symbol: 'none' as const,
-          lineStyle: { width: 1.2, color: MA_COLORS[index] },
-          itemStyle: { color: MA_COLORS[index] },
-        })),
         {
           type: 'bar' as const,
           name: '成交量',
@@ -459,18 +410,6 @@ export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props
           yAxisIndex: 1,
           barMaxWidth: 8,
         },
-        // 均量线排在建量柱之后 —— 后画的在上层，否则细线会被柱子盖掉
-        ...VOL_MA.map((ma) => ({
-          type: 'line' as const,
-          name: `MAVOL${ma.window}`,
-          data: movingAverage(rawVolumes, ma.window),
-          xAxisIndex: 1,
-          yAxisIndex: 1,
-          smooth: true,
-          symbol: 'none' as const,
-          lineStyle: { width: 1, color: ma.color },
-          itemStyle: { color: ma.color },
-        })),
       ],
     }
   }, [bars, keyLevels])
