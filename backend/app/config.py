@@ -136,6 +136,15 @@ class Settings(BaseSettings):
     # 日志里会看到同一天两批 collect_log 行，那是正常的。
     late_retry_hour: int = 19
     late_retry_minute: int = 30
+    # 当天**板块成分股**的预取（2026-10-08 加，用户要求）。收盘后那一趟**不能**做它：
+    # 开盘红当天要到**晚上**才发布成分股（实测 21:20 还是 `errcode=1020`、21:55 才有），
+    # 17:30/19:30 都太早；而它不做又不行 —— 不预取就得「打开哪个板块现取哪个」，
+    # 白天永远是 0 只，等发布之后每个板块还要各等几秒。
+    #
+    # 成本：约 370 个板块 × 1 次请求（上千只成分股的大板块 2 次），走开盘红限速
+    # （3 次/秒 → 一轮约两分多钟），**零 iFinD 配额**。已在库的板块会跳过。
+    members_collect_hour: int = 22
+    members_collect_minute: int = 0
     # 本机不常开，启动时若已过采集时刻且当日无数据，补采一次
     catchup_on_start: bool = True
 

@@ -557,6 +557,9 @@ class SchedulerStatus(BaseModel):
     # 同一趟的兜底时刻（见 config.late_retry_hour）：来源当天什么时候更新不确定，
     # 只赌一个时刻会赌空，所以固定跑两趟
     late_retry_time: str
+    # 当天板块成分股的预取时刻（见 config.members_collect_hour）：开盘红要到晚上才
+    # 发布当天成分股，所以它比上面那两趟都晚
+    members_collect_time: str
     catchup_on_start: bool
     next_run_time: str | None
     late_next_run_time: str | None

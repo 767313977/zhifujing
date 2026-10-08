@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 # 250 天就是 3500 多次请求，没有进度日志看着像卡死。
 PROGRESS_EVERY = 20
 
+# 成分股预取用的探测档：连着这么多个板块都失败、且一行都没写，就当「当天名单还没
+# 发布」（`errcode=1020`）整轮放弃 —— 否则会为一天白打约 370 次请求。
+PROBE_BOARDS = 3
+
 # 一次取数拿到的板块数不得少于「已知板块数」的这个比例，否则**整天都不写**。
 #
 # 这是防「静默截断」的闸门。开盘红历史接口的 `Count` 只报当页条数（50/50/…/20），
@@ -261,3 +265,91 @@ class SectorCollector:
         ]
         with session_scope() as session:
             return upsert_many(session, SectorMember, rows)
+
+    # ------------------------------------------------------------ 当天成分股预取
+
+    def collect_all_members(self, trade_date: date, *, only_missing: bool = True) -> dict:
+        """把某天**所有板块**的成分股一次性拉下来（`scheduler._run_members`，22:00 那一趟）。
+
+        为什么要有这一趟：成分股本来是「打开板块时现取」（`api/sector._board_members`），
+        而开盘红要到**晚上**才发布当天名单（实测 21:20 还是 `errcode=1020`、21:55 才有），
+        于是白天点开任何板块都是「0 只 + 一句说明」；等它发布之后，又变成每打开一个板块
+        现取一次、各等几秒。固定预取一遍，之后都是读库。
+
+        成本：每个板块 1 次请求（上千只成分股的大板块 2 次），精选 + 行业共约 370 个板块
+        —— 全部走开盘红（**免费、不占 iFinD 配额**），受它的限速约束（`kph_rate_limit`
+        实测 3 次/秒，一轮约两分多钟）。
+
+        `only_missing`（默认开）：库里已有该日成分股的板块直接跳过。22:00 那次是从零
+        开始、基本都要取；它的真正作用是让**重复触发**变得便宜。
+
+        ⚠️ 当天名单**还没发布**时（`errcode=1020`）**不硬撞**：连着 `PROBE_BOARDS` 个
+        板块都失败且一行都没写，就当「今天还没发布」整轮放弃并告警 —— 免得为一天
+        白打 370 次请求。返回的 `aborted=True` 就是这种情况。
+        """
+        with session_scope() as session:
+            codes = list(session.scalars(select(SectorBasic.code).order_by(SectorBasic.code)))
+            have: set[str] = set()
+            if only_missing:
+                have = set(
+                    session.scalars(
+                        select(SectorMember.sector_code)
+                        .where(SectorMember.trade_date == trade_date)
+                        .distinct()
+                    )
+                )
+        if not codes:
+            logger.warning(
+                "板块清单（sector_basic）是空的，成分股预取无从下手 —— 先跑一次"
+                "`SectorCollector.refresh_sector_list`"
+            )
+            return {"trade_date": trade_date.isoformat(), "boards": 0, "written": 0, "failed": 0}
+
+        todo = [code for code in codes if code not in have]
+        if not todo:
+            logger.info("成分股预取 %s：%d 个板块都已在库，无需重取", trade_date, len(codes))
+            return {
+                "trade_date": trade_date.isoformat(),
+                "boards": 0,
+                "written": 0,
+                "failed": 0,
+            }
+
+        written = 0
+        failed = 0
+        for index, code in enumerate(todo, 1):
+            try:
+                written += self.collect_members(trade_date, code)
+            except Exception as exc:  # noqa: BLE001 - 单个板块不该拖垮整轮
+                failed += 1
+                if failed >= PROBE_BOARDS and written == 0:
+                    logger.warning(
+                        "开盘红 %s 的成分股连着 %d 个板块都取不到（%s），当天名单应该还"
+                        "没发布，本轮放弃（待取 %d 个板块）",
+                        trade_date,
+                        failed,
+                        exc,
+                        len(todo),
+                    )
+                    return {
+                        "trade_date": trade_date.isoformat(),
+                        "boards": len(todo),
+                        "written": 0,
+                        "failed": failed,
+                        "aborted": True,
+                    }
+            if index % PROGRESS_EVERY == 0:
+                logger.info("成分股预取进度 %d/%d（已写 %d 行）", index, len(todo), written)
+        logger.info(
+            "成分股预取完成：%s 共 %d 个板块，写入 %d 行，失败 %d 个",
+            trade_date,
+            len(todo),
+            written,
+            failed,
+        )
+        return {
+            "trade_date": trade_date.isoformat(),
+            "boards": len(todo),
+            "written": written,
+            "failed": failed,
+        }

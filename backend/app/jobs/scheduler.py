@@ -31,7 +31,8 @@ from sqlalchemy import func, select
 from app.config import Settings, get_settings
 from app.db import session_scope
 from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
-from app.models import CollectLog
+from app.jobs.collect_sectors import SectorCollector
+from app.models import CollectLog, TradeCalendar
 from app.sources.ifind import IfindError
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,26 @@ LATE_JOB_ID = "collect_late"
 # 同一趟的**兜底重跑**（见 config.late_retry_hour）：这些来源当天什么时候更新不在我们
 # 手上，问早了又**不报错、只给前一天的**，所以固定跑两趟，赌错的那天还有第二次机会。
 LATE_RETRY_JOB_ID = "collect_late_retry"
+# 当天板块成分股的预取（见 config.members_collect_hour）：开盘红要到晚上才发布当天
+# 成分股，所以这一趟比「收盘后」那两趟都晚。
+MEMBERS_JOB_ID = "prefetch_members"
+
+
+def _is_trade_day(day: date) -> bool:
+    """该日是否交易日（直接查日历表）。
+
+    这里不借 `DailyCollector.is_trade_day`：成分股预取走的是开盘红、**与 iFinD 无关**，
+    而构造 `DailyCollector` 会因为 iFinD 没配好而抛 `IfindError`。
+    """
+    with session_scope() as session:
+        return bool(
+            session.scalar(
+                select(func.count())
+                .select_from(TradeCalendar)
+                .where(TradeCalendar.trade_date == day)
+            )
+        )
+
 
 # 尾部链路的去重标记（写在 `collect_log`），每个交易日一条。
 #
@@ -168,16 +189,36 @@ class DailyScheduler:
                 misfire_grace_time=3600,
                 coalesce=True,
             )
+        # 当天板块成分股预取（见 config.members_collect_hour）：开盘红要到晚上才发布
+        # 当天成分股，所以它比上面那两趟都晚 —— 不是为了「早」，而是为了「发布之后立刻
+        # 取一遍」，让之后打开任何板块都是读库
+        scheduler.add_job(
+            self._run_members,
+            CronTrigger(
+                day_of_week="mon-fri",
+                hour=self.settings.members_collect_hour,
+                minute=self.settings.members_collect_minute,
+                timezone=TIMEZONE,
+            ),
+            id=MEMBERS_JOB_ID,
+            name="板块成分股预取",
+            replace_existing=True,
+            misfire_grace_time=3600,
+            coalesce=True,
+        )
         scheduler.start()
         self._scheduler = scheduler
         logger.info(
-            "定时采集已启动：交易日 %02d:%02d（收盘后补采 %02d:%02d / 兜底 %02d:%02d）",
+            "定时采集已启动：交易日 %02d:%02d（收盘后补采 %02d:%02d / 兜底 %02d:%02d，"
+            "成分股预取 %02d:%02d）",
             self.settings.collect_hour,
             self.settings.collect_minute,
             self.settings.late_collect_hour,
             self.settings.late_collect_minute,
             self.settings.late_retry_hour,
             self.settings.late_retry_minute,
+            self.settings.members_collect_hour,
+            self.settings.members_collect_minute,
         )
 
         if self.settings.catchup_on_start:
@@ -219,6 +260,11 @@ class DailyScheduler:
             # 时刻里**较早**的那个 —— 两个触发挂在同一个 job 上，apscheduler 自己取最早
             "late_retry_time": (
                 f"{self.settings.late_retry_hour:02d}:{self.settings.late_retry_minute:02d}"
+            ),
+            # 当天板块成分股的预取时刻（见 config.members_collect_hour）
+            "members_collect_time": (
+                f"{self.settings.members_collect_hour:02d}:"
+                f"{self.settings.members_collect_minute:02d}"
             ),
             "late_next_run_time": late_next.isoformat() if late_next else None,
             "catchup_on_start": self.settings.catchup_on_start,
@@ -332,6 +378,46 @@ class DailyScheduler:
             logger.warning("%s 完成但部分步骤失败：%s", reason, failed)
         else:
             logger.info("%s 完成：%s", reason, result.get("trade_date"))
+
+    def _run_members(self, reason: str = "板块成分股预取") -> None:
+        """22:00 那一趟：把当天的**板块成分股**一次性预取进库。
+
+        为什么单独一趟：开盘红要到**晚上**才发布当天成分股（实测 21:20 还是
+        `errcode=1020`、21:55 才有），所以白天点开任何板块都是「0 只 + 一句说明」，
+        而发布之后每个板块又要各等几秒现取。这一趟跑完，之后都是读库。
+        零 iFinD 配额（开盘红），已在库的板块自动跳过 —— 所以重复触发很便宜。
+
+        **有「今天采过没有」那道守卫的替代品**：`collect_all_members(only_missing=True)`
+        本身就是幂等跳过，不需要额外的去重标记。
+        """
+        today = date.today()
+        if not _is_trade_day(today):
+            logger.info("%s 跳过：%s 不是交易日", reason, today)
+            return
+
+        try:
+            result = SectorCollector(self.settings).collect_all_members(today)
+        except Exception:  # noqa: BLE001 - 定时任务绝不能因异常中断调度
+            logger.exception("%s 失败", reason)
+            return
+
+        if result.get("aborted"):
+            logger.warning(
+                "%s 中止：开盘红 %s 的成分股还没发布（连着 %d 个板块取不到），"
+                "今天就不预取了，打开板块时会各自重试",
+                reason,
+                today,
+                result.get("failed", 0),
+            )
+            return
+        logger.info(
+            "%s 完成：%s 共 %d 个板块，写入 %d 行，失败 %d 个",
+            reason,
+            result.get("trade_date"),
+            result.get("boards", 0),
+            result.get("written", 0),
+            result.get("failed", 0),
+        )
 
     def _run_tail(self, trade_date: date, reason: str) -> None:
         """采集之后那一串：日线 → 回补 → 形态 → 简报/推送 → DDE → 板块资金流。
@@ -666,6 +752,20 @@ class DailyScheduler:
                 target=self._run_late,
                 kwargs={"reason": "启动补采（收盘后）"},
                 name="collect-catchup-late",
+                daemon=True,
+            ).start()
+
+        # 成分股预取也补：22:00 那次常常正好撞上部署/重启（本机更是常年关机）。
+        # **重复触发不贵**：`collect_all_members(only_missing=True)` 会把已在库的板块
+        # 全部跳过，真跑完过的一轮只会打一条「都已在库」的日志。
+        if (now.hour, now.minute) >= (
+            self.settings.members_collect_hour,
+            self.settings.members_collect_minute,
+        ):
+            threading.Thread(
+                target=self._run_members,
+                kwargs={"reason": "启动补采（成分股）"},
+                name="collect-catchup-members",
                 daemon=True,
             ).start()
 
