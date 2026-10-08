@@ -369,6 +369,16 @@ def main() -> int:
     )
     parser.add_argument("--samples", type=int, default=15, help="单个形态时打印多少条命中明细")
     parser.add_argument("--stocks", type=int, default=0, help="只用前 N 只票（0 = 全部）")
+    parser.add_argument(
+        "--board",
+        default="all",
+        choices=("all", "wudao"),
+        help=(
+            "wudao = 只扫创业板 + 科创板（300/301/302/688/689）。致富家族"
+            "（wudao_sample / wudao_start / wudao_wash2）的候选池就是这两块，"
+            "拿全市场跑会得到另一批票的信号、数字不代表生产 —— 见 2026-10-08 移植方案 §4"
+        ),
+    )
     parser.add_argument("--history", action="store_true", help="用长历史库 history.db")
     parser.add_argument(
         "--bars", type=int, default=DEFAULT_HISTORY_BARS, help=f"长历史窗口（默认 {DEFAULT_HISTORY_BARS} 根）"
@@ -380,6 +390,11 @@ def main() -> int:
     from app.jobs.collect_universe import load_codes
 
     codes = load_codes()
+    if args.board == "wudao":
+        from app.jobs.scan_patterns import is_wudao_board
+
+        codes = [code for code in codes if is_wudao_board(code)]
+        logger.info("只扫创业板 + 科创板：%d 只（与致富候选池同板块口径）", len(codes))
     if args.stocks:
         codes = codes[: args.stocks]
     if not codes:

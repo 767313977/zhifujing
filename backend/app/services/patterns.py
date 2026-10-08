@@ -379,6 +379,32 @@ WUDAO_START_VOL = 1.5
 WUDAO_DIVERGE_VOL = 2.5  # 与悟道：爆量冲高不收 → 吵/出货，不当明天盯
 WUDAO_MIN_BARS = 22  # 昨收 + 近 20 日均量 + 余量
 
+# 悟道之路 · 辉宾选股2「洗完 → 明天可进」（2026-10-08 移植，见 docs/plans/2026-10-08-yangban-port.md）
+#
+# 数字**照抄** `yangban-desk/app/pattern_wash2.py`（commit fe32f80）：洗盘日要像金丹 9/16 ——
+# 锚点（启动低 / 样板高）还在、收盘温和、不是继续主升。
+WUDAO_WASH_MAX_ABS_PCT = 3.0  # 洗盘日 |涨跌幅| 上限
+WUDAO_WASH_MAX_BODY_PCT = 3.5  # 实体（相对启动收盘）上限；只在当日 pct > 2 时才否决
+WUDAO_WASH_MAX_VS_START_CLOSE = 1.04  # 洗盘收盘 / 启动收盘 的上限倍数
+WUDAO_WASH_MIN_BARS = 28  # 要取到 bars[-4]（样板前一根）
+#
+# 回测（2026-10-08，`scripts/backtest_patterns.py --pattern wudao_wash2 --board wudao`
+# = 创业板 + 科创板 1908 只 × 2026-01~07，无未来函数、同票 20 日去重、基准 = 同日全市场平均）：
+#
+# | 持有 | 信号 | 均值 | 中位 | 胜率 | 超额 |
+# | 5 日 | 638 | +0.55% | −0.36% | 48.0% | **+0.41%** |
+# | 10 日 | 638 | −0.61% | −1.85% | 43.6% | −0.05% |
+# | 20 日 | 638 | −1.81% | −5.85% | 40.3% | +0.30% |
+# | 60 日 | 638 | −6.74% | −14.83% | 28.7% | −1.82% |
+#
+# ⚠️ **读法：短周期略有指向、中期没有**。5 日 +0.41% 是噪声量级（胜率 48% 接近抛硬币），
+# 10/20 日超额在 ±0.3% 里打转，60 日为负、四档中位数全负 —— 它**不是高胜率信号**，
+# 定位与「明天盯 / 今天可买」相同：按这个形状捞一批票自己看。它的价值在纪律上
+# （洗盘日只观察、明天过洗高再进、破启动低作废），不在统计超额。
+# ⚠️ 样本只有 2026-01~07 一段行情（同 §8.67 那条老提醒），只能横向比、不能当长期能力。
+# ⚠️ **必须用 `--board wudao`**：拿全市场跑会得到另一批票的信号 —— 2026-10-08 实测
+# 1200 只深市主板时是 −0.35% / +0.50% / −0.89% / −3.07%、胜率 35~39%，与上表不可比。
+
 # 引擎至少要这么多根 K 线才动手（MA60 + 斜率窗口）
 MIN_BARS = MA_PERIODS[-1] + MA_SLOPE_LOOKBACK
 
@@ -2008,6 +2034,105 @@ def _wudao_start(bars: Bars) -> Signal | None:
     )
 
 
+def _wudao_day_volume_ratio(bars: Bars, i: int) -> float:
+    """第 i 根的**量比** = 当日量 ÷ 近 20 日均量（不含当日），口径与 `_wudao_day_geom` 一致。
+
+    与悟道之路的 `enrich` 有一处小差别：它 `vol_ma20 = volume.rolling(20).mean()` 是
+    **含当日**的，我们是不含当日。在 1.3~1.5 这些门槛附近两者差不到 3%
+    （解一下方程：要打到量比 1.3，含当日口径其实只要 1.32 倍的「前 20 日均量」），
+    所以 2026-09-23 那次对账两边计数才会完全一致。**站内一律用这一套**
+    （含当日的写法会让一根爆量把分母自己抬高、量比反而变小，不同口径混用比统一更重要）。
+    """
+    if i < 20:
+        return 0.0
+    base = _safe_mean(bars.volume[i - 20 : i])
+    return float(bars.volume[i] / base) if base > 0 else 0.0
+
+
+def _wudao_wash2(bars: Bars) -> Signal | None:
+    """洗完 → 明天可进（悟道之路「辉宾选股2」，2026-10-08 移植）。
+
+    四段结构：**样板日 → 启动日 → 今日洗盘 → 明天放量过「洗高」**。
+    前两段的判定与「明天盯 / 今天可买」**完全同一套**（复用 `_wudao_is_sample` 与同组数字），
+    第三段是本形态新增的：洗盘日要守住两个锚点（启动低 / 样板高）、收盘温和、不是继续主升。
+
+    数字全部照抄 `yangban-desk/app/pattern_wash2.py`（commit fe32f80），逐条见文件上方常量。
+    它的纪律（`选股逻辑说明.txt` 六段口诀）：**今天是洗盘日 → 只观察记账，不追尖、不加仓**；
+    明天盘中放量过洗高再小仓；缩量阴过洗高不算；破启动低（或放量破样板高且收不回）作废。
+
+    出参把两条线一起给前端：`watch_high`（明天要过的线）、`start_low`（作废线）。
+    """
+    if len(bars) < WUDAO_WASH_MIN_BARS:
+        return None
+    i = len(bars) - 1
+    s, st, w = i - 2, i - 1, i  # 样板 / 启动 / 今日洗盘
+
+    # ① 样板日：与「明天盯」同一判定（含吵了/出货的否决）
+    if not _wudao_is_sample(bars, s):
+        return None
+    sample_high = float(bars.high[s])
+
+    # ② 启动日：今过昨高 + 收盘站在昨高之上 + 量比达标 + 收红
+    start_pct = float(bars.pct_chg[st])
+    start_vol = _wudao_day_volume_ratio(bars, st)
+    if float(bars.high[st]) <= sample_high:
+        return None
+    if float(bars.close[st]) < sample_high * 0.98:
+        return None
+    if start_vol < WUDAO_START_VOL or start_pct <= 0:
+        return None
+
+    # ③ 今日洗盘：四个锚点条件
+    start_close = float(bars.close[st])
+    start_low = float(bars.low[st])
+    wash_open = float(bars.open[w])
+    wash_close = float(bars.close[w])
+    wash_low = float(bars.low[w])
+    wash_high = float(bars.high[w])
+    wash_pct = float(bars.pct_chg[w])
+    start_volume = float(bars.volume[st])
+    wash_volume = float(bars.volume[w])
+    vol_vs = wash_volume / start_volume if start_volume > 0 else 1.0
+
+    if wash_low < start_low * 0.995:  # 破启动低
+        return None
+    if wash_close < sample_high * 0.98:  # 掉下样板高
+        return None
+    if abs(wash_pct) > WUDAO_WASH_MAX_ABS_PCT:
+        return None
+    body_pct = abs(wash_close - wash_open) / max(start_close, 1e-9) * 100.0
+    if body_pct > WUDAO_WASH_MAX_BODY_PCT and wash_pct > 2:  # 大阳续涨不算洗
+        return None
+    if wash_close > start_close * WUDAO_WASH_MAX_VS_START_CLOSE:
+        return None
+
+    # 打分：越干净的洗盘分越高。干净的判据与它一致 —— |洗盘涨跌|≤2% 且 量/启动 ≤1.05
+    clean = abs(wash_pct) <= 2.0 and vol_vs <= 1.05
+    score = 62.0 if clean else 54.0
+    score += _band_score(start_vol, WUDAO_START_VOL, 3.0, 8.0) * 18
+    score += _band_score(abs(wash_pct), 0.0, 3.0, 8.0) * 12  # 洗盘越温和越高
+    if vol_vs <= 1.05:
+        score += 8
+
+    return Signal(
+        "wudao_wash2",
+        score,
+        # 两条线：明天要过洗高才进；破了启动低就作废
+        {"watch_high": wash_high, "start_low": start_low, "breakout": wash_high},
+        {
+            "sample_high": round(sample_high, 2),
+            "start_low": round(start_low, 2),
+            "start_close": round(start_close, 2),
+            "start_pct": round(start_pct, 2),
+            "start_vol_ratio": round(start_vol, 2),
+            "wash_high": round(wash_high, 2),
+            "wash_pct": round(wash_pct, 2),
+            "wash_vol_vs_start": round(vol_vs, 2),
+            "clean": clean,
+        },
+    )
+
+
 # ------------------------------------------------- 新增形态实现（2026-09-25）
 
 
@@ -3421,6 +3546,8 @@ CANDLE_GROUP = "单 K 蜡烛形态"
 PATTERNS: tuple[Pattern, ...] = (
     Pattern("wudao_start", "今天可买", "致富", _wudao_start),
     Pattern("wudao_sample", "明天盯", "致富", _wudao_sample),
+    # 2026-10-08 移植自 yangban-desk「辉宾选股2」（洗完 → 明天可进）
+    Pattern("wudao_wash2", "洗完可盯", "致富", _wudao_wash2),
     Pattern("ma_bull", "均线多头排列", "趋势", _ma_bull),
     Pattern("new_high", "创 N 日新高", "突破", _new_high),
     Pattern("platform_breakout", "平台突破", "突破", _platform_breakout),

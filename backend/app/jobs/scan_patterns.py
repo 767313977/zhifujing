@@ -80,7 +80,7 @@ PATTERN_TASK = "patterns"
 _MIN_DAY_COVERAGE = 0.9
 
 # 致富形态 key；只对候选小池（`_wudao_candidate_codes`）落库，板块范围见 `is_wudao_board`
-WUDAO_KEYS = frozenset({"wudao_sample", "wudao_start"})
+WUDAO_KEYS = frozenset({"wudao_sample", "wudao_start", "wudao_wash2"})
 
 # 与悟道 `/api/pattern/scan?limit=80&board=cyb` 同量级（UI 常用 50~80）
 # ⚠️ 只有条数取齐；板块比悟道多一块科创板（见 `is_wudao_board`）
