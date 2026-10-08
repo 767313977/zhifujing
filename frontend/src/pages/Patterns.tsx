@@ -22,7 +22,7 @@ import { rememberStockList } from '../lib/stockNav'
  * 「单 K 蜡烛形态」（5 个汉字 + 1 个字母）留的。再加更长的分组名时要一起调，
  * 否则标签会折行、把每个分组的高度撑成两行。
  */
-const GROUP_ORDER = ['致富', '趋势', '突破', '量价', '几何', '单 K 蜡烛形态']
+const GROUP_ORDER = ['致富', '悟道之路', '趋势', '突破', '量价', '几何', '单 K 蜡烛形态']
 
 /**
  * 默认视图（没选形态）一次取多少只。
@@ -489,7 +489,11 @@ export default function Patterns() {
               {summary?.trade_date ? `${summary.trade_date} · ` : ''}
               共 {fmtInt(summary?.total_stocks ?? 0)} 只命中
               <span className="ml-3 text-fg-dim">
-                点形态名筛选（单选，再点一次取消）；徽标是该形态的全市场命中家数。致富＝悟道样板/启动（只扫强势小池的创业板与科创板）
+                点形态名筛选（单选，再点一次取消）；徽标是该形态的全市场命中家数。致富＝悟道样板/启动
+                ＋洗完（只扫强势小池的创业板与科创板），悟道之路＝强达型与华宝早期（全池扫）；
+                <Link to="/wudao" className="text-fg-dim underline decoration-line underline-offset-2 hover:text-fg">
+                  悟道之路单独一页
+                </Link>
               </span>
             </span>
           }
