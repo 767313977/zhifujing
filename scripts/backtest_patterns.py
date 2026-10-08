@@ -347,7 +347,7 @@ def _resolve_targets(name: str) -> dict[str, dict]:
         keys = list(NEW_KEYS)
     elif name == "all":
         # 致富那两个（今天可买 / 明天盯）**不进全量回测**：它们的候选池是悟道同口径的
-        # 强势小池（见 scan_patterns._wudao_pools），拿全市场跑出来的是
+        # 强势小池（见 scan_patterns._candidate_codes），拿全市场跑出来的是
         # 另一个分布，结论没有意义
         keys = [p.key for p in PATTERNS if p.group != "致富"]
     else:
