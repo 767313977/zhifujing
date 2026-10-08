@@ -15,7 +15,7 @@
 import logging
 from datetime import date, timedelta
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 
 from app.config import Settings, get_settings
 from app.db import session_scope, upsert, upsert_many
@@ -31,6 +31,10 @@ PROGRESS_EVERY = 20
 # 成分股预取用的探测档：连着这么多个板块都失败、且一行都没写，就当「当天名单还没
 # 发布」（`errcode=1020`）整轮放弃 —— 否则会为一天白打约 370 次请求。
 PROBE_BOARDS = 3
+
+# 「龙一~龙五」取几只。开盘红成分股接口返回的**原始顺序**前 5 只就是它 App 里的龙一~龙五
+# （实测与短线侠板块轮动页逐位一致，见 `_write_leaders`）。
+LEADER_COUNT = 5
 
 # 一次取数拿到的板块数不得少于「已知板块数」的这个比例，否则**整天都不写**。
 #
@@ -91,12 +95,16 @@ class SectorCollector:
     # ------------------------------------------------------------ 每日行情
 
     def _kept_external(self, trade_date: date, taxonomy: str) -> dict[str, dict]:
-        """即将被整天替换删掉的那些行里，**别人写的**列（`net_inflow` / `member_count`）。
+        """即将被整天替换删掉的那些行里，**别人写的**列。
 
-        这两列都是 `jobs/collect_board_flow.py` 算的，与本采集器落在**同一张表、
-        同一个主键**上，而本采集器的写入策略是整天替换（先 DELETE 再 INSERT）——
-        不捞出来就会被删掉，且**当天不会有谁再算一遍**（那个 job 排在采集链末尾、
-        一天只跑一次）。
+        这些都是「别的代码 path 往同一张表补的列」，而本采集器的写入策略是整天替换
+        （先 DELETE 再 INSERT）—— 不捞出来就会被删掉，且**当天不会有谁再算一遍**。
+
+        - `net_inflow` / `member_count`：`jobs/collect_board_flow.py` 算的
+        - `leader_name` / `leader_pct_chg`：「龙一~龙五」，`collect_members` 顺手写的
+          （板块行情 15:05 先落库、成分股要等开盘红发布，所以采集器必须把它带回去，
+          否则 15:05 之后任何一次重跑都会把龙头抹掉）
+
         实测 2026-09-23：手动重采一次板块行情，227 个板块的净流入当场全没了，
         资金流面板变成空白。
 
@@ -111,18 +119,26 @@ class SectorCollector:
                     SectorDaily.sector_code,
                     SectorDaily.net_inflow,
                     SectorDaily.member_count,
+                    SectorDaily.leader_name,
+                    SectorDaily.leader_pct_chg,
                 ).where(
                     SectorDaily.trade_date == trade_date,
                     SectorDaily.taxonomy == taxonomy,
                     or_(
                         SectorDaily.net_inflow.is_not(None),
                         SectorDaily.member_count.is_not(None),
+                        SectorDaily.leader_name.is_not(None),
                     ),
                 )
             ).all()
         return {
-            str(code): {"net_inflow": net, "member_count": members}
-            for code, net, members in rows
+            str(code): {
+                "net_inflow": net,
+                "member_count": members,
+                "leader_name": leader,
+                "leader_pct_chg": leader_pct,
+            }
+            for code, net, members, leader, leader_pct in rows
         }
 
     def collect_day(self, trade_date: date, known: dict[str, int] | None = None) -> int:
@@ -169,14 +185,17 @@ class SectorCollector:
                         "pct_chg": board["pct_chg"],
                         "amount": board["amount"],
                         # 下面这几列开盘红没有可反解的对应列，如实留空；
-                        # `net_inflow` / `member_count` 是例外 —— 那两列不是这里产的
+                        # `net_inflow` / `member_count` / `leader_*` 是例外 —— 那几列
+                        # 不是这里产的，由 `_kept_external` 原样带回（见它的说明）
                         "volume": None,
                         "net_inflow": external.get("net_inflow"),
                         "up_count": None,
                         "down_count": None,
                         "member_count": external.get("member_count"),
-                        "leader_name": None,
-                        "leader_pct_chg": None,
+                        # 「龙一~龙五」与它的涨幅：`collect_members` 写的（见 `_kept_external`），
+                        # 这里原样带回去，否则整天替换会把刚写的龙头抹掉
+                        "leader_name": external.get("leader_name"),
+                        "leader_pct_chg": external.get("leader_pct_chg"),
                     }
                 )
             with session_scope() as session:
@@ -264,7 +283,43 @@ class SectorCollector:
             if member["code"]
         ]
         with session_scope() as session:
-            return upsert_many(session, SectorMember, rows)
+            written = upsert_many(session, SectorMember, rows)
+        self._write_leaders(trade_date, sector_code, members)
+        return written
+
+    def _write_leaders(self, trade_date: date, sector_code: str, members: list[dict]) -> None:
+        """顺手把该板块的「龙一~龙五」补进 `sector_daily.leader_name` / `leader_pct_chg`。
+
+        **依据**：开盘红成分股接口返回的**原始顺序**前 5 只就是它 App 里的龙一~龙五 ——
+        2026-10-08 用短线侠的板块轮动页逐位核对过（那页的「领涨」行就是开盘红这份数据）：
+
+            09-30 锂电池：接口前 5 = 时代万恒/紫竹高科/传艺科技/上海洗霸/新亚制程
+                          短线侠     = 时代万恒/紫竹高科/传艺科技/上海洗霸/新亚制程  ✓
+            09-29 锂电池：接口前 5 = 时代万恒/尚水智能/利元亨/信宇人/上海洗霸
+                          短线侠     = 时代万恒/尚水智能/利元亨/信宇人/上海洗霸        ✓
+
+        ⚠️ **不能按涨跌幅排**：那不是龙头序 —— 09-29 锂电池涨幅第一是武汉蓝电（+29.98%），
+        它并不在龙一~龙五里。所以这里只取接口顺序，不排序。
+
+        ⚠️ 只 UPDATE 已存在的行（板块行情 15:05 就落库了）：`sector_daily` 的主键含
+        `(trade_date, sector_code)`，若这天的行还没建（比如回补历史日期），写不进去也不该
+        插一行残缺的 —— 那种情况留给 `collect_day`。
+        """
+        top = [item["name"] for item in members[:LEADER_COUNT] if item.get("name")]
+        if not top:
+            return
+        with session_scope() as session:
+            session.execute(
+                update(SectorDaily)
+                .where(
+                    SectorDaily.trade_date == trade_date,
+                    SectorDaily.sector_code == sector_code,
+                )
+                .values(
+                    leader_name="、".join(top),
+                    leader_pct_chg=members[0].get("pct_chg"),
+                )
+            )
 
     # ------------------------------------------------------------ 当天成分股预取
 
