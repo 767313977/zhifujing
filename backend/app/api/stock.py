@@ -10,6 +10,7 @@
 """
 
 import logging
+from dataclasses import asdict
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -44,10 +45,11 @@ from app.schemas import (
     StockProfile,
     StockThemeItem,
     StockThemes,
+    WudaoPhase,
 )
 from app.services import limit_rules
 from app.services.auth import current_user
-from app.services.patterns import build_bars
+from app.services.patterns import build_bars, classify_phase
 from app.sources.ifind import IfindError, normalize_code
 from app.sources.kaipanhong import TAXONOMY_SELECTED
 
@@ -223,6 +225,16 @@ def profile(
         session.scalar(select(func.count()).select_from(Lhb).where(Lhb.code == code)) or 0
     )
     market = _market_fields(session, code, latest)
+    # 悟道「阶段判定」：要 ≥25 根；`classify_phase` 里 `high_120` 那步想看满 120 根，
+    # 所以取 130 根（一次 130 行的本地查询，不额外取数）
+    phase_rows = list(
+        session.scalars(
+            select(StockDaily)
+            .where(StockDaily.code == code)
+            .order_by(StockDaily.trade_date.desc())
+            .limit(130)
+        )
+    )
 
     return StockProfile(
         code=code,
@@ -241,6 +253,7 @@ def profile(
         free_float_mv=market["free_float_mv"],
         actual_turnover=market["actual_turnover"],
         pe_forecast=market["pe_forecast"],
+        phase=_phase_verdict(list(reversed(phase_rows))),
     )
 
 
@@ -349,6 +362,43 @@ def _daily_item(row: StockDaily) -> dict:
         "amount": row.amount,
         "turnover": row.turnover,
     }
+
+
+def _phase_verdict(items: list[StockDaily]) -> WudaoPhase | None:
+    """日线（按日期升序）→ 悟道「阶段判定」。
+
+    ⚠️ 判据在 `services/patterns.classify_phase` —— 与形态选股的「明天盯 / 今天可买」
+    **共用同一批判据**，这里只负责把 ORM 行转成 `Bars` 再搬给前端，别另写一份。
+    根数不够（<25）或 OHLC 有洞就返回 None，前端不显示这块。
+    """
+    usable = [
+        item
+        for item in items
+        if item.close is not None
+        and item.pct_chg is not None
+        and item.open is not None
+        and item.high is not None
+        and item.low is not None
+    ]
+    if len(usable) < 25:
+        return None
+    bars = build_bars(
+        [
+            {
+                "date": item.trade_date,
+                "open": item.open,
+                "high": item.high,
+                "low": item.low,
+                "close": item.close,
+                "volume": item.volume,
+                "amount": item.amount,
+                "pct_chg": item.pct_chg,
+            }
+            for item in usable
+        ]
+    )
+    verdict = classify_phase(bars)
+    return WudaoPhase(**asdict(verdict)) if verdict else None
 
 
 def _adjusted(items: list[dict], mode: str, *, vol_adjust: bool = False) -> list[dict]:
