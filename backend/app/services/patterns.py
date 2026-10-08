@@ -405,9 +405,85 @@ WUDAO_WASH_MIN_BARS = 28  # 要取到 bars[-4]（样板前一根）
 # ⚠️ **必须用 `--board wudao`**：拿全市场跑会得到另一批票的信号 —— 2026-10-08 实测
 # 1200 只深市主板时是 −0.35% / +0.50% / −0.89% / −3.07%、胜率 35~39%，与上表不可比。
 
+# 悟道之路 · 强达型「堆量吸筹 → 放量拉升 → 缩量洗盘」（2026-10-08 移植，见移植方案 §1.2）
+#
+# 多日结构（十几到几十个交易日），不是单日样板。数字**照抄** `yangban-desk/app/pile_wash.py`
+# （commit fe32f80）：在近 55 根里滑窗找「放量拉升」段，再判前段有没有堆量、后段是不是缩量洗盘。
+#
+# ⚠️ 它那套有五个阶段，我们**只出两个能动手的**：
+#   · `ready` 洗后可盯 → 形态 `pile_wash_ready`
+#   · `wash` 缩量洗盘中 → 形态 `pile_wash_wash`
+#   `pile`（堆量吸筹中）/ `surge`（刚放量拉升）它的纪律都是「只观察、别动手」，不值当占形态卡片；
+#   `gone`（已经主升完 / 回撤吐光）更不该出信号。所以那两个 key 都不会出现在结果里。
+PILE_MIN_BARS = 50
+PILE_LOOK_BARS = 55  # 只在最近 55 根里找拉升窗口
+PILE_SURGE_WIDTHS = (5, 6, 7, 8, 9, 10, 12)  # 滑窗宽度
+PILE_PRE_MIN_BARS = 8  # 窗口前至少要有 8 根当基准
+PILE_SURGE_MIN_RET = 16.0  # 拉升段：段内最高 / 前基 ≥ 16%
+PILE_SURGE_MIN_CLOSE_RET = 10.0  # 拉升段：段末收盘 / 前基 ≥ 10%
+PILE_SURGE_MIN_VOL_LIFT = 1.35  # 拉升段均量 / 前段均量
+PILE_PILE_MIN_RATIO = 1.25  # 堆量：后段均量 / 前段均量 ≥ 1.25
+PILE_PILE_MIN_PRE_RET = -12.0  # 堆量前不是单边暴跌（pre_ret > -12）
+PILE_PILE_MAX_PRE_RANGE = 38.0  # 堆量前振幅上限（%）
+PILE_WASH_MAX_VOL_RATIO = 0.72  # 洗盘均量 / 拉升均量 ≤ 0.72
+PILE_WASH_KEEP_ABOVE_BASE = 1.05  # 洗盘末收盘 ≥ 前基 × 1.05
+PILE_WASH_MAX_GIVEBACK = 0.62  # 回吐 / 整段涨幅 的上限
+PILE_WASH_MAX_RANGE_PCT = 28.0  # 洗盘段振幅上限（%）
+PILE_READY_NEAR = 0.97  # 收盘 ≥ 洗盘高 × 0.97 算「贴近」
+PILE_READY_MIN_VOL = 1.15  # 贴近时要求的量比
+PILE_GONE_ABOVE = 1.18  # 突破后远离洗盘高这么多、且 5 日涨幅大 → 已主升完
+PILE_GONE_RET5 = 18.0
+#
+# 回测（2026-10-08，`scripts/backtest_patterns.py --pattern <key>`，全池 4945 只 × 2026-01~07，
+# 无未来函数、同票 20 日去重、基准 = 同日全市场平均）。它这套**不分板**（创业板 + 主板都扫），
+# 所以用默认的全市场池，不加 `--board wudao`：
+#
+# | 形态 | 信号 | 5 日超额 | 10 日超额 | 20 日超额 | 60 日超额 | 胜率(5/10/20/60) |
+# | --- | --- | --- | --- | --- | --- | --- |
+# | 洗后可盯 | 2347 | +0.27% | +0.18% | −0.24% | +0.80% | 46.0 / 43.7 / 37.6 / 33.1% |
+# | 缩量洗盘中 | 6707 | +0.45% | +0.37% | +0.19% | +0.92% | 48.4 / 44.7 / 38.4 / 33.6% |
+#
+# ⚠️ **读法与 wash2 一致：短周期略有指向、胜率不到 50%、四档中位数全负** —— 不是高胜率信号。
+# 它的用法本来就写在纪律里（`wash` 主观察、`ready` 才是「可小仓试」），当清单用。
+# ⚠️ 频率差异要知道：悟道那边只扫当天的强势候选（40~60 只）再截前 20/25 张卡片；
+# 我们按全池扫，所以「缩量洗盘中」一天能有几百只 —— 它本身就是「安静了很多天的票」，
+# 拿「今天有动静」的候选去筛反而会漏掉，这是我们**故意**跟它不一样的地方。
+# ⚠️ 样本 2026-01~07 一段行情，只能横向比。
+
+# 悟道之路 · 华宝早期（2026-10-08 移植，见移植方案 §1.3）
+#
+# 更早一档的观察池：连阳 + 贴 5 日线 + 量由缩转放 + MACD 抬头。数字**照抄**
+# `yangban-desk/app/huabao_early.py`（commit fe32f80）。**只观察、不直接买** ——
+# 它自己的纪律是「真正动手仍要等走出明天盯 → 今天可买」。
+WUDAO_HUABAO_MIN_BARS = 30
+WUDAO_HUABAO_MAX_RET_20 = 32.0  # 20 日累计涨幅上限（超过 = 已经主升完）
+WUDAO_HUABAO_MAX_RET_5 = 22.0  # 5 日累计涨幅上限
+WUDAO_HUABAO_LATE_RET_20 = 25.0  # 贴着 20 日高时，涨幅超过它才算「太晚」
+WUDAO_HUABAO_MIN_YANG = 3  # 最少连阳根数
+WUDAO_HUABAO_MAX_YANG_LOOK = 8  # 连阳最多往回数这么多根
+WUDAO_HUABAO_HUG_LOW_GAP = (-2.8, 3.2)  # 最低价相对 MA5 的区间（%）
+WUDAO_HUABAO_HUG_CLOSE_GAP = (0.0, 9.5)  # 收盘相对 MA5 的区间（%）
+WUDAO_HUABAO_HUG_MAX_UPPER = 0.45  # 上影上限；超过它时当日涨幅必须 ≥4%
+WUDAO_HUABAO_HUG_MAX_PCT = 9.5  # 单日涨幅上限（别天天接近一字板）
+WUDAO_HUABAO_YANG_AVG = (0.4, 6.5)  # 连阳段平均涨幅区间（%）
+WUDAO_HUABAO_YANG_MAX_VAR = 18.0  # 连阳段涨幅方差上限（别暴涨暴跌混着）
+WUDAO_HUABAO_MACD_MIN = -0.05
+#
+# 回测（2026-10-08，`scripts/backtest_patterns.py --pattern huabao_early`，全池 4945 只
+# × 2026-01~07，无未来函数、同票 20 日去重、基准 = 同日全市场平均）：
+#
+# | 形态 | 信号 | 5 日超额 | 10 日超额 | 20 日超额 | 60 日超额 | 胜率(5/10/20/60) |
+# | --- | --- | --- | --- | --- | --- | --- |
+# | 华宝早期 | 9917 | +0.02% | +0.35% | +0.43% | +0.35% | 47.1 / 48.5 / 42.4 / 30.4% |
+#
+# ⚠️ 与同批两个强达形态同读：**短周期略有指向、胜率不到 50%、四档中位数全负**。
+# 它的定位本来就更早一档（只观察，真正动手要等走出「明天盯 → 今天可买」），
+# 再加上我们**没做**它的资金流与分时两步（对方把「取不到资金流」当不淘汰处理），
+# 所以一天能有近百只 —— 当观察池用，别当买点清单。
+# ⚠️ 样本 2026-01~07 一段行情，只能横向比。
+
 # 引擎至少要这么多根 K 线才动手（MA60 + 斜率窗口）
 MIN_BARS = MA_PERIODS[-1] + MA_SLOPE_LOOKBACK
-
 
 # ------------------------------------------------- 新增形态阈值（2026-09-25）
 #
@@ -2133,8 +2209,437 @@ def _wudao_wash2(bars: Bars) -> Signal | None:
     )
 
 
-# ------------------------------------------------- 新增形态实现（2026-09-25）
+# ------------------------------------------------- 悟道之路 · 强达型（2026-10-08 移植）
 
+
+def _ret_pct(bars: Bars, index: int, back: int) -> float:
+    """第 index 根相对 `back` 个交易日前的涨幅（%）。`back=5` 就是悟道的 `ret_5`。"""
+    base_index = index - back
+    if base_index < 0:
+        return 0.0
+    base = float(bars.close[base_index])
+    return (float(bars.close[index]) / base - 1.0) * 100.0 if base > 0 else 0.0
+
+
+def _pile_wash_phase(bars: Bars) -> tuple[str, dict] | None:
+    """强达型的阶段判定，返回 `(阶段, 指标)`。
+
+    逐行照抄 `yangban-desk/app/pile_wash.py::score_pile_wash`（commit fe32f80），
+    只把 pandas 的 `iloc` 切片换成 numpy 下标：
+
+    1. 在**最近 55 根**里滑窗找「放量拉升」段（宽度 5~12、段内最高 / 前基 ≥16%、
+       段末收盘 / 前基 ≥10%、段均量 / 前段均量 ≥1.35、阳线数 ≥ max(2, 宽度//3)），
+       给每个候选打分（涨幅×0.45 + 放量×12 + 收盘涨幅×0.25 + 阳线数；收盘位置偏低 ×0.7；
+       拉升后已经缩量的加分），取最高分的那个窗口
+    2. 判前段堆量（≥1.25 倍、不是单边暴跌、振幅 <38%）
+    3. 判后段缩量洗盘（量 ≤ 拉升期 0.72、守住前基 ×1.05、回吐 <0.62、振幅 ≤28%）
+    4. 洗盘成立再看形态走到哪：贴着/越过洗盘高 → `ready`；已远离且 5 日大涨 → `gone`；
+       回撤过大 → `gone`；其余 → `wash`
+
+    ⚠️ 它那套的 `pile`（堆量吸筹中，含「只有堆量、还没拉升」那条 `_maybe_pile_only` 分支）
+    我们**不出信号**，直接返回 None —— 纪律是「只观察，别动手」。
+    """
+    n = len(bars.close)
+    if n < PILE_MIN_BARS:
+        return None
+    off = max(0, n - PILE_LOOK_BARS)  # look 的起点（绝对下标）
+    total = n - off  # look 的长度
+    if total < 30:
+        return None
+
+    def mean_vol(start: int, end: int) -> float:
+        """look 上 `[start, end]` 闭区间的均量（绝对下标）。"""
+        lo, hi = off + start, off + end + 1
+        return float(np.mean(bars.volume[lo:hi])) if hi > lo else 0.0
+
+    best: tuple | None = None
+    for end in range(8, total):
+        for width in PILE_SURGE_WIDTHS:
+            start = end - width + 1
+            if start < 5:
+                continue
+            pre_start = max(0, start - 18)
+            if start - pre_start < PILE_PRE_MIN_BARS:
+                continue
+            base = float(bars.close[off + start - 1])
+            if base <= 0:
+                continue
+            peak = float(np.max(bars.high[off + start : off + end + 1]))
+            end_close = float(bars.close[off + end])
+            surge_ret = (peak / base - 1.0) * 100.0
+            close_ret = (end_close / base - 1.0) * 100.0
+            if surge_ret < PILE_SURGE_MIN_RET or close_ret < PILE_SURGE_MIN_CLOSE_RET:
+                continue
+            vol_s = mean_vol(start, end)
+            vol_p = mean_vol(pre_start, start - 1) or 1.0
+            vol_lift = vol_s / vol_p
+            if vol_lift < PILE_SURGE_MIN_VOL_LIFT:
+                continue
+            window_close = bars.close[off + start : off + end + 1]
+            window_open = bars.open[off + start : off + end + 1]
+            yang = int(np.sum(window_close >= window_open))
+            if yang < max(2, width // 3):
+                continue
+            lowest = float(np.min(bars.low[off + start : off + end + 1]))
+            close_pos = (end_close - lowest) / max(peak - lowest, 1e-9)
+            score = surge_ret * 0.45 + vol_lift * 12 + close_ret * 0.25 + yang
+            if close_pos < 0.55:
+                score *= 0.7
+            # 更偏向「拉升后还有缩量段」的窗口（强达那种中段），避免只咬住最近的主升尖
+            after_len = total - 1 - end
+            if after_len >= 4:
+                tail_end = min(end + 14, total - 1)
+                wr = mean_vol(end + 1, tail_end) / max(vol_s, 1.0)
+                if wr <= PILE_WASH_MAX_VOL_RATIO:
+                    score += 18 + (PILE_WASH_MAX_VOL_RATIO - wr) * 20
+                elif wr <= 0.9:
+                    score += 6
+            else:
+                score *= 0.85
+            cand = (score, start, end, surge_ret, vol_lift, base, peak)
+            if best is None or cand[0] > best[0]:
+                best = cand
+
+    if best is None:
+        return None  # 没找到拉升窗口 → 只有可能落在「堆量」那一档，我们不出信号
+
+    _, s0, s1, surge_ret, vol_lift, base, surge_high = best
+    last_i = total - 1
+
+    # —— ① 拉升前是否有堆量 ——
+    pile_ok = False
+    pile_ratio: float | None = None
+    pre_start = max(0, s0 - 22)
+    pre_len = s0 - pre_start
+    if pre_len >= 10:
+        quiet_end = max(5, pre_len // 2)  # 相对 pre 的前半段
+        quiet_vol = mean_vol(pre_start, pre_start + quiet_end - 1) or 1.0
+        pile_vol = mean_vol(pre_start + quiet_end, s0 - 1)
+        pile_ratio = pile_vol / quiet_vol
+        pre_ret = (
+            float(bars.close[off + s0 - 1]) / float(bars.close[off + pre_start]) - 1.0
+        ) * 100.0
+        pre_range = (
+            float(np.max(bars.high[off + pre_start : off + s0]))
+            / max(float(np.min(bars.low[off + pre_start : off + s0])), 1e-9)
+            - 1.0
+        ) * 100.0
+        pile_ok = (
+            pile_ratio >= PILE_PILE_MIN_RATIO
+            and pre_ret > PILE_PILE_MIN_PRE_RET
+            and pre_range < PILE_PILE_MAX_PRE_RANGE
+        )
+
+    # —— ② 拉升后是不是缩量洗盘 ——
+    wash_days = last_i - s1
+    phase = "surge"
+    wash_vol_ratio: float | None = None
+    wash_high: float | None = None
+    wash_low: float | None = None
+    giveback: float | None = None
+    if wash_days >= 3:
+        wash_end = min(s1 + 18, last_i)  # 洗盘超过 18 根只取前 18 根
+        vol_surge = mean_vol(s0, s1) or 1.0
+        vol_wash = mean_vol(s1 + 1, wash_end)
+        wash_vol_ratio = vol_wash / vol_surge
+        wash_high = float(np.max(bars.high[off + s1 + 1 : off + wash_end + 1]))
+        wash_low = float(np.min(bars.low[off + s1 + 1 : off + wash_end + 1]))
+        peak_close = float(np.max(bars.close[off + s0 : off + s1 + 1]))
+        wash_close = float(bars.close[off + wash_end])
+        giveback = (peak_close - wash_close) / max(peak_close - base, 1e-9)
+        held = wash_close >= base * PILE_WASH_KEEP_ABOVE_BASE
+        not_dump = giveback < PILE_WASH_MAX_GIVEBACK
+        vol_shrink = wash_vol_ratio <= PILE_WASH_MAX_VOL_RATIO
+        tight = (wash_high / max(wash_low, 1e-9) - 1.0) * 100.0 <= PILE_WASH_MAX_RANGE_PCT
+
+        if vol_shrink and held and not_dump and tight:
+            phase = "wash"
+            close = float(bars.close[n - 1])
+            vol_ratio = _wudao_day_volume_ratio(bars, n - 1)
+            pct_now = float(bars.pct_chg[n - 1])
+            near = close >= wash_high * PILE_READY_NEAR
+            broke = close > wash_high and last_i > s1
+            if broke and close > wash_high * PILE_GONE_ABOVE and _ret_pct(
+                bars, n - 1, 5
+            ) > PILE_GONE_RET5:
+                phase = "gone"
+            elif broke or (near and vol_ratio >= PILE_READY_MIN_VOL and pct_now > 0):
+                phase = "ready"
+        elif giveback > 0.75:
+            phase = "gone"
+
+    if last_i <= s1:  # 仍在拉升窗内
+        phase = "surge"
+
+    metrics = {
+        "pile_ok": pile_ok,
+        "pile_ratio": pile_ratio,
+        "surge_ret": surge_ret,
+        "vol_lift": vol_lift,
+        "surge_high": surge_high,
+        "wash_days": wash_days,
+        "wash_vol_ratio": wash_vol_ratio,
+        "wash_high": wash_high,
+        "wash_low": wash_low,
+        "giveback": giveback,
+        "surge_start_gap": last_i - s1,  # 拉升段结束距今几根（诊断用）
+    }
+    return phase, metrics
+
+
+def _pile_wash_signal(bars: Bars, want: str) -> Signal | None:
+    """强达型两个形态的公共出口：只在阶段等于 `want` 时出信号。"""
+    result = _pile_wash_phase(bars)
+    if result is None:
+        return None
+    phase, m = result
+    if phase != want or m["wash_high"] is None:
+        return None
+
+    wash_high = float(m["wash_high"])
+    wash_low = float(m["wash_low"]) if m["wash_low"] is not None else None
+    shrink = m["wash_vol_ratio"]
+    # 打分：洗后可盯（要动手的）> 缩量洗盘中（主观察）。缩得越干净、前面有堆量，分越高
+    score = 68.0 if want == "ready" else 56.0
+    if shrink is not None:
+        score += min(14.0, max(0.0, (PILE_WASH_MAX_VOL_RATIO - float(shrink)) * 40.0))
+    if m["pile_ok"]:
+        score += 6.0
+    score = min(score, 95.0)
+
+    levels: dict[str, float] = {"breakout": wash_high, "wash_high": wash_high}
+    if wash_low is not None:
+        levels["wash_low"] = wash_low
+    detail: dict[str, float | int] = {
+        "surge_ret": round(float(m["surge_ret"]), 2),
+        "vol_lift": round(float(m["vol_lift"]), 2),
+        "wash_days": int(m["wash_days"]),
+        "pile_ok": int(bool(m["pile_ok"])),
+    }
+    if shrink is not None:
+        detail["wash_vol_ratio"] = round(float(shrink), 2)
+    if m["giveback"] is not None:
+        detail["giveback"] = round(float(m["giveback"]), 3)
+    if m["pile_ratio"] is not None:
+        detail["pile_ratio"] = round(float(m["pile_ratio"]), 2)
+    return Signal(f"pile_wash_{want}", score, levels, detail)
+
+
+def _pile_wash_ready(bars: Bars) -> Signal | None:
+    """洗后可盯：缩量洗完，现价刚贴近/越过洗盘高 —— 盘中放量过洗盘高可小仓试。
+
+    判据见 `_pile_wash_phase`；「过洗盘高」那条线在 `key_levels["breakout"]`。
+    """
+    return _pile_wash_signal(bars, "ready")
+
+
+def _pile_wash_wash(bars: Bars) -> Signal | None:
+    """缩量洗盘中：拉升后横着、量掉回拉升期 —— 主观察，记下洗盘高，缩量别乱砍。"""
+    return _pile_wash_signal(bars, "wash")
+
+
+# ------------------------------------------------- 悟道之路 · 华宝早期（2026-10-08 移植）
+
+
+def _ema(values: np.ndarray, span: int) -> np.ndarray:
+    """指数移动平均，与 pandas `ewm(span, adjust=False)` 同口径（首值取第一个样本）。"""
+    out = np.empty(values.size, dtype=float)
+    if values.size == 0:
+        return out
+    alpha = 2.0 / (span + 1.0)
+    out[0] = float(values[0])
+    for i in range(1, values.size):
+        out[i] = alpha * float(values[i]) + (1.0 - alpha) * out[i - 1]
+    return out
+
+
+def _macd_tail(bars: Bars, count: int = 3) -> tuple[list[float], list[float]]:
+    """最近 `count` 根的 `(MACD, DIF)`，口径与悟道一致：
+
+    `DIF = EMA12 − EMA26`、`DEA = EMA9(DIF)`、`MACD = (DIF − DEA) × 2`。
+    """
+    close = bars.close.astype(float)
+    dif = _ema(close, 12) - _ema(close, 26)
+    dea = _ema(dif, 9)
+    macd = (dif - dea) * 2.0
+    take = slice(max(0, close.size - count), close.size)
+    return [float(x) for x in macd[take]], [float(x) for x in dif[take]]
+
+
+def _huabao_is_yang(bars: Bars, i: int) -> bool:
+    """阳线：收 ≥ 开 **且** 当日涨幅 ≥ 0（只满足一个不算）。"""
+    return float(bars.close[i]) >= float(bars.open[i]) and float(bars.pct_chg[i]) >= 0.0
+
+
+def _huabao_hug_ma5(bars: Bars, i: int) -> bool:
+    """贴着 5 日线抬（日线近似，与悟道的 `_hug_ma5` 同一组数字）。
+
+    MA5 取**含当日**的 5 根收盘均值（pandas `rolling(5).mean()` 同口径）。
+    """
+    if i < 4:
+        return False
+    ma5 = _safe_mean(bars.close[i - 4 : i + 1])
+    if ma5 <= 0:
+        return False
+    low = float(bars.low[i])
+    close = float(bars.close[i])
+    open_ = float(bars.open[i])
+    high = float(bars.high[i])
+    pct = float(bars.pct_chg[i])
+    low_gap = (low - ma5) / ma5 * 100.0
+    close_gap = (close - ma5) / ma5 * 100.0
+    if low_gap < WUDAO_HUABAO_HUG_LOW_GAP[0] or low_gap > WUDAO_HUABAO_HUG_LOW_GAP[1]:
+        return False
+    if close_gap < WUDAO_HUABAO_HUG_CLOSE_GAP[0] or close_gap > WUDAO_HUABAO_HUG_CLOSE_GAP[1]:
+        return False
+    span = max(high - low, 1e-9)
+    upper = (high - max(open_, close)) / span
+    if upper > WUDAO_HUABAO_HUG_MAX_UPPER and pct < 4.0:
+        return False
+    return pct <= WUDAO_HUABAO_HUG_MAX_PCT
+
+
+def _huabao_yang_streak(bars: Bars) -> tuple[int, int]:
+    """从最近往回数连阳，返回 `(根数, 连阳段起点下标)`。
+
+    末日若是**小阴缩量**（`pct > -2.2` 且 量比 ≤1.35）仍看前一段连阳 —— 与悟道一致。
+    最多回看 `WUDAO_HUABAO_MAX_YANG_LOOK` 根。
+    """
+    n = len(bars.close)
+    if n < 8:
+        return 0, 0
+    start = n - 1
+    if not _huabao_is_yang(bars, start):
+        if float(bars.pct_chg[start]) > -2.2 and _wudao_day_volume_ratio(bars, start) <= 1.35:
+            start -= 1
+        else:
+            return 0, 0
+    i = start
+    while i >= 0 and _huabao_is_yang(bars, i) and (start - i + 1) <= WUDAO_HUABAO_MAX_YANG_LOOK:
+        i -= 1
+    streak = start - i
+    if streak <= 0:
+        return 0, 0
+    return streak, i + 1
+
+
+def _huabao_vol_wake(bars: Bars, streak_start: int, streak_end: int) -> bool:
+    """量由缩转放：连阳前相对安静，或连阳过程里量比上台阶。"""
+    vols = [
+        _wudao_day_volume_ratio(bars, i) for i in range(streak_start, streak_end + 1)
+    ]
+    if not vols:
+        return False
+    quiet = False
+    if streak_start >= 3:
+        pre = [
+            _wudao_day_volume_ratio(bars, i)
+            for i in range(max(0, streak_start - 5), streak_start)
+        ]
+        if pre and min(pre) <= 0.95 and sum(pre) / len(pre) <= 1.2:
+            quiet = True
+    rising = (
+        vols[-1] >= vols[0] * 1.05
+        or max(vols) >= vols[0] * 1.2
+        or vols[-1] >= 1.2
+        or (len(vols) >= 3 and sum(vols[-2:]) / 2 >= sum(vols[:2]) / 2 * 1.08)
+    )
+    mild = 0.55 <= vols[-1] <= 4.2
+    return mild and (quiet or rising)
+
+
+def _huabao_macd_ok(bars: Bars) -> bool:
+    """MACD 抬头：`expanding and dif_up and macd[-1] > -0.05`（照抄它的 `_macd_ok`）。"""
+    macd, dif = _macd_tail(bars, 3)
+    if len(macd) < 2 or len(dif) < 2:
+        return False
+    expanding = macd[-1] > macd[0] or (macd[-1] > 0 and macd[-1] >= macd[-2])
+    dif_up = dif[-1] >= dif[0]
+    return expanding and dif_up and macd[-1] > WUDAO_HUABAO_MACD_MIN
+
+
+def _huabao_early(bars: Bars) -> Signal | None:
+    """华宝早期：连阳 + 贴 5 日线 + 量由缩转放 + MACD 抬头（只观察，不直接买）。
+
+    逐条照抄 `yangban-desk/app/huabao_early.py::score_huabao_early` 的**日线部分**：
+
+    1. `ret_20 ≤ 32`、`ret_5 ≤ 22`（已经主升完的不算早期）；贴 20 日高且 `ret_20 > 25` 也剔
+    2. 连阳 ≥3 根（末日小阴缩量可容忍）、连阳日子形态相近（均涨 0.4~6.5%、方差 ≤18、
+       贴均天数 ≥60%）
+    3. 量：`0.55 ≤ 末日量比 ≤ 4.2`，且（连阳前 5 日缩量 或 连阳里量上台阶）
+    4. MACD 抬头
+
+    ⚠️ 它还有两步我们**不做**：`fund_flow.flow_on_dates`（大单/主力净额，我们用 iFinD DDE、
+    口径不同）与分钟线贴 VWAP 校验（要现拉分钟线）。它自己也把「取不到资金流」当不淘汰处理，
+    所以缺这两步只会让清单稍宽一点，不会引入错票。
+    """
+    n = len(bars.close)
+    if n < WUDAO_HUABAO_MIN_BARS:
+        return None
+    ret_20 = _ret_pct(bars, n - 1, 20)
+    ret_5 = _ret_pct(bars, n - 1, 5)
+    if ret_20 > WUDAO_HUABAO_MAX_RET_20 or ret_5 > WUDAO_HUABAO_MAX_RET_5:
+        return None
+    close = float(bars.close[n - 1])
+    high_20 = float(np.max(bars.high[max(0, n - 20) : n]))
+    if ret_20 > 18 and close >= high_20 * 0.97 and ret_20 > WUDAO_HUABAO_LATE_RET_20:
+        return None
+
+    streak, start = _huabao_yang_streak(bars)
+    if streak < WUDAO_HUABAO_MIN_YANG:
+        return None
+
+    pcts = [float(bars.pct_chg[i]) for i in range(start, start + streak)]
+    avg = sum(pcts) / len(pcts)
+    if avg < WUDAO_HUABAO_YANG_AVG[0] or avg > WUDAO_HUABAO_YANG_AVG[1]:
+        return None
+    var = sum((p - avg) ** 2 for p in pcts) / len(pcts)
+    if var > WUDAO_HUABAO_YANG_MAX_VAR:
+        return None
+    hug_days = sum(1 for i in range(start, start + streak) if _huabao_hug_ma5(bars, i))
+    if hug_days < max(2, int(round(streak * 0.6))):
+        return None
+
+    if not _huabao_vol_wake(bars, start, start + streak - 1):
+        return None
+    if not _huabao_macd_ok(bars):
+        return None
+
+    vols = [_wudao_day_volume_ratio(bars, i) for i in range(start, start + streak)]
+    ma5 = _safe_mean(bars.close[n - 5 : n])
+    macd_last, _ = _macd_tail(bars, 1)
+    score = 56.0
+    if streak >= 4:
+        score += 4.0
+    if hug_days >= streak:  # 整段都贴着 5 日线，最像
+        score += 6.0
+    if vols[-1] >= 1.2:
+        score += 4.0
+    if ret_20 <= 18:
+        score += 4.0
+    score = min(score, 78.0)
+
+    return Signal(
+        "huabao_early",
+        score,
+        # 连阳段低点是「跌回去就不像了」的参照，MA5 是贴着爬的那条线
+        {
+            "streak_low": float(np.min(bars.low[start : start + streak])),
+            "ma5": ma5,
+        },
+        {
+            "yang_days": int(streak),
+            "hug_days": int(hug_days),
+            "vol_from": round(vols[0], 2),
+            "vol_to": round(vols[-1], 2),
+            "macd": round(macd_last[0], 3) if macd_last else 0.0,
+            "ret_20": round(ret_20, 1),
+            "ret_5": round(ret_5, 1),
+        },
+    )
+
+
+# ------------------------------------------------- 新增形态实现（2026-09-25）
 
 def _linfit(values: np.ndarray) -> tuple[float, float]:
     """最小二乘直线拟合，返回 `(斜率, 截距)`，x 取 0..n-1。
@@ -3542,6 +4047,11 @@ def _jade_pillar(bars: Bars) -> Signal | None:
 # （前端筛选条那个标签列要跟着加宽，见 Patterns.tsx 的 `w-24`），
 # 二是以后改名只动这里。
 CANDLE_GROUP = "单 K 蜡烛形态"
+# 2026-10-08：从悟道之路（yangban-desk）搬过来的形态里，**不是辉宾那两页**的单独一组。
+# 强达型 = 它的「黑白选股」，华宝早期 = 「辉宾选股」里的早期池 —— 品类不同，混进「致富」
+# 会让人以为它们也是「明天盯 / 今天可买」那一套。
+# （`wudao_wash2` 留在「致富」：它是辉宾1 的续做，与「明天盯 / 今天可买」前后相接。）
+WUDAO_GROUP = "悟道之路"
 
 PATTERNS: tuple[Pattern, ...] = (
     Pattern("wudao_start", "今天可买", "致富", _wudao_start),
@@ -3602,6 +4112,12 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("kneading_line", "揉搓线", CANDLE_GROUP, _kneading_line),
     # 2026-09-27 用户点名要的（长实体大阳线顶破压制；追加在末尾，理由同上）
     Pattern("jade_pillar", "玉柱擎天", "突破", _jade_pillar),
+    # 2026-10-08 移植自 yangban-desk「黑白选股」（强达型）：堆量吸筹 → 放量拉升 → 缩量洗盘。
+    # 只出两个能动手的阶段 —— 它在「堆量中 / 刚拉升」时的纪律都是「只观察、别动手」
+    Pattern("pile_wash_ready", "洗后可盯", WUDAO_GROUP, _pile_wash_ready),
+    Pattern("pile_wash_wash", "缩量洗盘中", WUDAO_GROUP, _pile_wash_wash),
+    # 2026-10-08 同批：华宝早期（连阳贴均、量抬头）—— 只观察，不动手
+    Pattern("huabao_early", "华宝早期", WUDAO_GROUP, _huabao_early),
 )
 
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}
