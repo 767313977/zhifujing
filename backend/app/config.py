@@ -145,6 +145,15 @@ class Settings(BaseSettings):
     # （3 次/秒 → 一轮约两分多钟），**零 iFinD 配额**。已在库的板块会跳过。
     members_collect_hour: int = 22
     members_collect_minute: int = 0
+    # 上面那一趟的**兜底重跑**（2026-10-08 用户要求「22:00 失败就 22:30 再试」）。
+    # 22:00 距实测的「21:55 才有」只有 5 分钟余量，撞上还没发布时那一轮会整轮中止
+    # （`aborted=True`），这一趟就是给它第二次机会。
+    #
+    # ⚠️ **它几乎不花请求**：`collect_all_members(only_missing=True)` 会把已经取到的板块
+    # 全部跳过 —— 正常日子（22:00 就成功了）它只会打一条「都已在库，无需重取」。
+    # 所以不需要做成「第一次失败了才排第二次」那种条件调度，固定挂两个时刻更简单。
+    members_retry_hour: int = 22
+    members_retry_minute: int = 30
     # 本机不常开，启动时若已过采集时刻且当日无数据，补采一次
     catchup_on_start: bool = True
 

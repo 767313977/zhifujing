@@ -48,6 +48,9 @@ LATE_RETRY_JOB_ID = "collect_late_retry"
 # 当天板块成分股的预取（见 config.members_collect_hour）：开盘红要到晚上才发布当天
 # 成分股，所以这一趟比「收盘后」那两趟都晚。
 MEMBERS_JOB_ID = "prefetch_members"
+# 它的兜底重跑（见 config.members_retry_hour）：22:00 撞上「还没发布」时再给一次机会。
+# 正常日子这一趟几乎不花请求（已在库的板块全跳过）。
+MEMBERS_RETRY_JOB_ID = "prefetch_members_retry"
 
 
 def _is_trade_day(day: date) -> bool:
@@ -191,26 +194,42 @@ class DailyScheduler:
             )
         # 当天板块成分股预取（见 config.members_collect_hour）：开盘红要到晚上才发布
         # 当天成分股，所以它比上面那两趟都晚 —— 不是为了「早」，而是为了「发布之后立刻
-        # 取一遍」，让之后打开任何板块都是读库
-        scheduler.add_job(
-            self._run_members,
-            CronTrigger(
-                day_of_week="mon-fri",
-                hour=self.settings.members_collect_hour,
-                minute=self.settings.members_collect_minute,
-                timezone=TIMEZONE,
+        # 取一遍」，让之后打开任何板块都是读库。
+        #
+        # 同样给两个时刻（22:00 + 22:30）：开盘红「当晚几点发布」不确定，22:00 撞上还没
+        # 发布时那一轮会整轮中止，22:30 再给一次机会。第二次**几乎不花请求** ——
+        # 已经在库的板块全跳过，正常日子只会打一条「都已在库，无需重取」。
+        for job_id, label, hour, minute in (
+            (
+                MEMBERS_JOB_ID,
+                "板块成分股预取",
+                self.settings.members_collect_hour,
+                self.settings.members_collect_minute,
             ),
-            id=MEMBERS_JOB_ID,
-            name="板块成分股预取",
-            replace_existing=True,
-            misfire_grace_time=3600,
-            coalesce=True,
-        )
+            (
+                MEMBERS_RETRY_JOB_ID,
+                "板块成分股预取（兜底）",
+                self.settings.members_retry_hour,
+                self.settings.members_retry_minute,
+            ),
+        ):
+            scheduler.add_job(
+                self._run_members,
+                CronTrigger(
+                    day_of_week="mon-fri", hour=hour, minute=minute, timezone=TIMEZONE
+                ),
+                kwargs={"reason": label},
+                id=job_id,
+                name=label,
+                replace_existing=True,
+                misfire_grace_time=3600,
+                coalesce=True,
+            )
         scheduler.start()
         self._scheduler = scheduler
         logger.info(
             "定时采集已启动：交易日 %02d:%02d（收盘后补采 %02d:%02d / 兜底 %02d:%02d，"
-            "成分股预取 %02d:%02d）",
+            "成分股预取 %02d:%02d / 兜底 %02d:%02d）",
             self.settings.collect_hour,
             self.settings.collect_minute,
             self.settings.late_collect_hour,
@@ -219,6 +238,8 @@ class DailyScheduler:
             self.settings.late_retry_minute,
             self.settings.members_collect_hour,
             self.settings.members_collect_minute,
+            self.settings.members_retry_hour,
+            self.settings.members_retry_minute,
         )
 
         if self.settings.catchup_on_start:
@@ -265,6 +286,12 @@ class DailyScheduler:
             "members_collect_time": (
                 f"{self.settings.members_collect_hour:02d}:"
                 f"{self.settings.members_collect_minute:02d}"
+            ),
+            # 它的兜底时刻（见 config.members_retry_hour）：22:00 撞上「还没发布」时再试一次。
+            # 正常日子那一趟几乎不花请求（已在库的板块全跳过）
+            "members_retry_time": (
+                f"{self.settings.members_retry_hour:02d}:"
+                f"{self.settings.members_retry_minute:02d}"
             ),
             "late_next_run_time": late_next.isoformat() if late_next else None,
             "catchup_on_start": self.settings.catchup_on_start,
@@ -380,15 +407,16 @@ class DailyScheduler:
             logger.info("%s 完成：%s", reason, result.get("trade_date"))
 
     def _run_members(self, reason: str = "板块成分股预取") -> None:
-        """22:00 那一趟：把当天的**板块成分股**一次性预取进库。
+        """22:00 那一趟（+ 22:30 兜底）：把当天的**板块成分股**一次性预取进库。
 
         为什么单独一趟：开盘红要到**晚上**才发布当天成分股（实测 21:20 还是
         `errcode=1020`、21:55 才有），所以白天点开任何板块都是「0 只 + 一句说明」，
         而发布之后每个板块又要各等几秒现取。这一趟跑完，之后都是读库。
         零 iFinD 配额（开盘红），已在库的板块自动跳过 —— 所以重复触发很便宜。
 
-        **有「今天采过没有」那道守卫的替代品**：`collect_all_members(only_missing=True)`
-        本身就是幂等跳过，不需要额外的去重标记。
+        **不需要「今天采过没有」那道守卫**：`collect_all_members(only_missing=True)`
+        本身就是幂等跳过；也正因为如此，22:30 那趟兜底在正常日子只会打一条
+        「都已在库，无需重取」，不必做成条件调度。
         """
         today = date.today()
         if not _is_trade_day(today):
@@ -404,7 +432,7 @@ class DailyScheduler:
         if result.get("aborted"):
             logger.warning(
                 "%s 中止：开盘红 %s 的成分股还没发布（连着 %d 个板块取不到），"
-                "今天就不预取了，打开板块时会各自重试",
+                "本轮不预取 —— 之后打开板块会各自重试，兜底那一趟还会再试一遍",
                 reason,
                 today,
                 result.get("failed", 0),
