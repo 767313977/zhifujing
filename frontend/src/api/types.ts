@@ -725,6 +725,35 @@ export interface StockThemes {
   themes: StockThemeItem[]
 }
 
+/**
+ * 悟道「阶段判定」——一只票当天处于哪一档（移植自 yangban-desk 的 8 个标签）。
+ *
+ * 与形态选股的「明天盯 / 今天可买」**同一批判据**，所以这里显示「明天盯」时，
+ * 悟道之路页的名单里也一定有它；反过来它没出现在名单里，可能是被更靠前的阶段占了
+ * （比如 `diverge` 压过 `sample`）。
+ */
+export interface WudaoPhase {
+  /** silent / wake / sample / start / digest / diverge / dump / unknown */
+  phase: string
+  label: string
+  /** 现在该怎么做 */
+  action: string
+  /** 一句话结论（带量比等数字） */
+  text: string
+  fit_label: string
+  fit_text: string
+  prefer: number
+  shadow_label: string
+  shadow_text: string
+  pressure_label: string
+  pressure_text: string
+  plan_text: string
+  risk_text: string
+  /** 关键价位：样板=今高、启动=昨高，其余为 null */
+  watch_price: number | null
+  metrics: Record<string, number | null>
+}
+
 export interface StockProfile {
   code: string
   name: string | null
@@ -752,6 +781,8 @@ export interface StockProfile {
   pe_forecast: number | null
   /** 上面那几个指标的数据日（缩放基准日） */
   total_mv_asof: string | null
+  /** 悟道「阶段判定」。日线不足 25 根时是 null */
+  phase: WudaoPhase | null
 }
 
 export interface ReviewNote {

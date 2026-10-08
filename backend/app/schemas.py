@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ApiModel(BaseModel):
@@ -699,6 +699,38 @@ class StockDdeOut(BaseModel):
     note: str | None = None
 
 
+class WudaoPhase(BaseModel):
+    """悟道「阶段判定」：8 个标签之一 + 一眼看懂的说明。
+
+    判定在 `services/patterns.classify_phase`（与「明天盯 / 今天可买」共用同一批判据），
+    这里只是把它搬给前端。
+    """
+
+    #: silent / wake / sample / start / digest / diverge / dump / unknown
+    phase: str
+    label: str
+    #: 现在该怎么做（原型 `PHASE_DO`）
+    action: str
+    #: 一句话结论（带量比等数字）
+    text: str
+    #: 样板/启动的「像不像」档（更像你要的 / 能盯略吵 / …）
+    fit_label: str
+    fit_text: str
+    prefer: int
+    #: 近 8 日的上影情况
+    shadow_label: str
+    shadow_text: str
+    #: 左侧压力
+    pressure_label: str
+    pressure_text: str
+    #: 明天的计划 / 主要风险
+    plan_text: str
+    risk_text: str
+    #: 关键价位：样板=今高、启动=昨高，其余为 None
+    watch_price: float | None = None
+    metrics: dict[str, float | None] = Field(default_factory=dict)
+
+
 class StockProfile(BaseModel):
     code: str
     name: str | None
@@ -728,6 +760,8 @@ class StockProfile(BaseModel):
     pe_forecast: float | None = None
     #: 上面那几个指标的数据日（缩放基准日）。None = 没有这些数据
     total_mv_asof: date | None = None
+    #: 悟道「阶段判定」（8 个标签 / 左侧压力 / 上影 / 计划）—— 日线不足 25 根时是 None
+    phase: WudaoPhase | None = None
 
 
 class StockThemeItem(BaseModel):

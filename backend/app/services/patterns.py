@@ -2110,6 +2110,293 @@ def _wudao_start(bars: Bars) -> Signal | None:
     )
 
 
+# ---------------------------------------------------------------- 悟道「阶段判定」
+
+# 8 个阶段的展示名与建议动作 —— 与原型 `PHASE_LABELS` / `PHASE_DO` 逐条一致。
+# 这是**给单只票的一句话结论**（个股页「阶段判定」卡片用），不是选股信号；
+# 选股走的是注册进上面 `PATTERNS` 的那些形态。
+WUDAO_PHASE_LABELS = {
+    "silent": "没动静",
+    "wake": "刚有人气",
+    "sample": "明天盯",
+    "start": "今天可买",
+    "digest": "休息中",
+    "diverge": "吵起来了",
+    "dump": "像出货",
+    "unknown": "对不上",
+}
+
+WUDAO_PHASE_DO = {
+    "silent": "不看，空仓",
+    "wake": "先记自选，别急着买",
+    "sample": "今天不买；明天过今高再买",
+    "start": "盘中过昨高可小仓；收盘后看见别追明天",
+    "digest": "有仓看分时均价；没仓别抄",
+    "diverge": "只卖不加",
+    "dump": "减仓走人，别接",
+    "unknown": "空仓，等对上模板再说",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class PhaseVerdict:
+    """一只票当天的阶段判定：8 个标签之一 + 一眼看懂的说明。"""
+
+    phase: str
+    label: str
+    action: str
+    text: str
+    fit_label: str
+    fit_text: str
+    prefer: int
+    shadow_label: str
+    shadow_text: str
+    pressure_label: str
+    pressure_text: str
+    plan_text: str
+    risk_text: str
+    watch_price: float | None
+    metrics: dict[str, float | None]
+
+
+def classify_phase(bars: Bars) -> PhaseVerdict | None:
+    """整只票的阶段判定（移植自原型的 `classify_bars` + `_structure_brief`）。
+
+    ⚠️ 与 `PATTERNS` 里的 `wudao_sample` / `wudao_start` **共用同一批判据**
+    （`_wudao_is_sample` / `_wudao_is_diverge_or_dump` / `_wudao_day_geom`）——
+    别在这里另写一套：两边分叉过一次，回测数字就不再代表生产。
+
+    优先级照原型：**启动 > 吵起来了 / 像出货 > 明天盯 > 休息中 > 刚有人气 > 没动静**。
+    这也是「明明冲高回落了、为什么没进明天盯」的答案 —— 它被更靠前的阶段占了
+    （`_wudao_sample` 那边同样先过 `_wudao_is_diverge_or_dump`）。
+    """
+    n = len(bars)
+    if n < 25:
+        return None
+    i = n - 1
+    vol, pct, close_pos, upper = _wudao_day_geom(bars, i)
+    close = float(bars.close[i])
+    high = float(bars.high[i])
+    prev_close = float(bars.close[i - 1])
+    yday_high = float(bars.high[i - 1])
+    high_pct = (high / prev_close - 1.0) * 100.0 if prev_close else 0.0
+    leave_high = (high - close) / max(high, 1e-9)
+    ret_5 = (close / float(bars.close[i - 5]) - 1.0) * 100.0 if float(bars.close[i - 5]) else 0.0
+    ret_20 = (
+        (close / float(bars.close[i - 20]) - 1.0) * 100.0 if float(bars.close[i - 20]) else 0.0
+    )
+    yday_sample = _wudao_is_sample(bars, i - 1)
+    today_sample = _wudao_is_sample(bars, i)
+    broke_yday_high = high > yday_high and close >= yday_high * 0.98
+
+    if yday_sample and broke_yday_high and vol >= WUDAO_START_VOL and pct > 0:
+        phase = "start"
+    elif _wudao_is_diverge_or_dump(bars, i):
+        # 原型是两条（吵起来了 / 像出货），标签要分开；判据在共用的那个函数里
+        phase = "dump" if (vol >= 1.4 and pct < 2 and upper >= 0.3) else "diverge"
+    elif today_sample:
+        phase = "sample"
+    elif pct <= 0 and vol <= 1.15 and ret_5 >= 8:
+        phase = "digest"
+    elif vol >= 1.2 and (pct >= 4 or high_pct >= 6) and not today_sample:
+        phase = "wake"
+    elif vol < 0.85:
+        phase = "silent"
+    else:
+        phase = "unknown"
+
+    # ---- 结构简报：上影天数 / 左侧压力 / 计划 / 风险 ----
+    recent_n = min(8, n)
+    shadow_days = 0
+    leave_sum = 0.0
+    for k in range(n - recent_n, n):
+        span = max(float(bars.high[k]) - float(bars.low[k]), 1e-9)
+        up = (float(bars.high[k]) - max(float(bars.open[k]), float(bars.close[k]))) / span
+        leave_sum += (float(bars.high[k]) - float(bars.close[k])) / max(float(bars.high[k]), 1e-9)
+        if up >= 0.35:
+            shadow_days += 1
+    avg_leave = leave_sum / max(recent_n, 1)
+
+    if shadow_days >= 5 and avg_leave >= 0.04:
+        shadow_label = "天天长上影"
+        shadow_text = (
+            f"近 8 个交易日里有 {shadow_days} 天带明显长上影，平均离最高点约 {avg_leave:.0%}："
+            "冲得猛、回得也猛，多空一直在打架。偶发一次可以是洗；天天都有更像分歧票，"
+            "难拿、假突破也多。"
+        )
+        noisy = True
+    elif shadow_days >= 5:
+        shadow_label = "上影偏多"
+        shadow_text = f"近 8 日有 {shadow_days} 天带上影，但回落幅度还不算极端。有点吵，仍可盯，仓位要小。"
+        noisy = True
+    elif shadow_days >= 3:
+        shadow_label = "上影偏多"
+        shadow_text = f"近 8 日有 {shadow_days} 天长上影，上方抛压不轻，过昨高后也要防冲高回落。"
+        noisy = True
+    elif upper >= 0.35:
+        shadow_label = "今天有上影"
+        shadow_text = "今天冲高没完全站住，更像「画样子」回落，不是单边封死。"
+        noisy = False
+    else:
+        shadow_label = "上影不多"
+        shadow_text = "最近不是天天冲高回落，形态相对干净一些。"
+        noisy = False
+
+    high_60 = float(np.max(bars.high[max(0, n - 60) :])) if n >= 30 else None
+    high_120 = float(np.max(bars.high[max(0, n - 120) :])) if n >= 30 else high_60
+    left_high = max([x for x in (high_60, high_120) if x], default=None)
+    low_20 = float(np.min(bars.low[n - 20 :]))
+    ma20 = float(np.mean(bars.close[n - 20 :]))
+    ma60 = float(np.mean(bars.close[n - 60 :])) if n >= 60 else None
+
+    pressure_bits: list[str] = []
+    if left_high and left_high > 0:
+        dist = (left_high - close) / left_high * 100
+        if dist >= 20:
+            pressure_bits.append(
+                f"离近几个月高点 {left_high:.2f} 还有约 {dist:.0f}%，上方有一段下跌留下的套牢区（左侧压力）。"
+            )
+        elif dist >= 10:
+            pressure_bits.append(f"上方不远有前高/套牢带（约 {left_high:.2f}），冲过去容易滞涨。")
+    if ma20 and close < ma20 * 0.98 and ret_5 > 0:
+        pressure_bits.append(f"价格还在 20 日线（约 {ma20:.2f}）下方附近抬头，反弹时容易碰到均线压力。")
+    if ma60 and close >= ma60 * 0.97 and close <= ma60 * 1.05:
+        pressure_bits.append(f"正蹭着 60 日线一带（约 {ma60:.2f}），这里常有多空分歧。")
+    if low_20 and left_high and (close - low_20) / max(left_high - low_20, 1e-9) < 0.45 and ret_20 < 15:
+        pressure_bits.append("更像底部反抽探路，不是主升中段；过昨高只是短线确认，别当一飞冲天。")
+
+    # 样板质量：回落温和 + 冲高没太猛 → 更像「干净样板」
+    mild_pullback = avg_leave <= 0.045 and high_pct <= 10
+    if phase == "sample" and mild_pullback and vol >= 1.5 and not (shadow_days >= 5 and avg_leave >= 0.05):
+        fit_label, prefer = "更像你要的", 3
+        fit_text = "冲高回落 + 有量，回落幅度相对温和，比较像「先画出样子再等确认」。"
+        if pressure_bits:
+            fit_text += " 但上方有左侧压力，过昨高后别幻想直奔前高。"
+    elif phase == "sample" and noisy and avg_leave >= 0.05:
+        fit_label, prefer = "勉强算样板，但偏吵", 1
+        fit_text = (
+            "也冲高回落了所以进了「明天盯」，但最近老是大幅冲高回落，质量不如干净样板。"
+            "可观察，不必跟更干净的票抢仓。"
+        )
+    elif phase == "sample" and noisy:
+        fit_label, prefer = "能盯，略吵", 2
+        fit_text = "符合「明天盯」，但上影偏多。能盯，仓位要小；有更干净的票时优先别人。"
+    elif phase == "sample":
+        fit_label, prefer = "能盯，中等", 2
+        fit_text = "符合「明天盯」的基本样子，质量中等。过今高可小仓，不过就空着。"
+    elif phase == "start" and not noisy:
+        fit_label, prefer = "启动较干净", 3
+        fit_text = "过昨高且量跟上了。买点是刚过那一下；收盘后才看见大涨贴板，明天别追。"
+    elif phase == "start":
+        fit_label, prefer = "启动但带分歧", 1
+        fit_text = "算启动，但上影/波动大，只能极小仓或等回踩分时均价，别追尖。"
+    elif phase in ("diverge", "dump"):
+        fit_label, prefer = "不像启动模板", 0
+        fit_text = "现在是刹车灯，不是油门。别当样板/启动去追。"
+    else:
+        fit_label, prefer = "还没到动手档", 0
+        fit_text = "还没走到「明天盯 / 今天可买」。先放着，别空耗仓位。"
+
+    if phase == "sample":
+        plan_text = (
+            f"今天不买。下一个交易日盯今高 {high:.2f}：刚过可小仓；不过就空着；"
+            "过了又快速掉回今高下，当假突破。"
+        )
+        if noisy:
+            plan_text += " 这只偏吵，仓位要比更干净的票更小，甚至可以只观察不做。"
+        if pressure_bits:
+            plan_text += " 过了也不要幻想直奔前高，碰到左侧压力滞涨就减。"
+    elif phase == "start":
+        plan_text = (
+            f"买点是盘中刚过昨高 {yday_high:.2f}。若你是收盘后才看到、已经大涨，"
+            "默认下一个交易日不追。"
+        )
+    elif phase in ("diverge", "dump"):
+        plan_text = "只减不加。没仓就别上车。"
+    elif phase == "digest":
+        plan_text = "有仓用分时均价：跌破减/清。没仓别抄。"
+    else:
+        plan_text = WUDAO_PHASE_DO[phase]
+
+    if phase == "start":
+        text = f"昨天冲高回落过，今天已经过了昨高 {yday_high:.2f}，量比 {vol:.2f}。"
+    elif phase == "diverge":
+        text = f"量很大（量比 {vol:.2f}），但冲高没站住（上影约 {upper:.2f}），多空在打架。"
+    elif phase == "dump":
+        text = f"量不小（量比 {vol:.2f}），价格却涨不动、冲完就回，更像有人在出。"
+    elif phase == "sample":
+        text = (
+            f"今天冲过大约 {high_pct:.1f}% 又收回来，量比 {vol:.2f}；"
+            f"记下今高 {high:.2f}，明天过了再买，不过就空着。"
+        )
+    elif phase == "digest":
+        text = f"前几天已经拉过一截，今天量缩（量比 {vol:.2f}）、涨跌不大，像在歇口气。"
+    elif phase == "wake":
+        text = f"量开始回来（量比 {vol:.2f}），价格也动了，但还没走出「冲高再回落」的样子。"
+    elif phase == "silent":
+        text = f"量比只有 {vol:.2f}，几乎没人气；这种票很少第二天就起飞。"
+    else:
+        text = f"量比 {vol:.2f}，涨跌 {pct:.2f}%，暂时对不上模板。"
+
+    action = WUDAO_PHASE_DO[phase]
+    if phase == "start" and (upper >= 0.28 or close_pos < 0.65):
+        text += " 今天上影不小，即使算可买也只能极小仓，冲高先减。"
+        action = "极小仓；更稳是等回踩分时均价"
+
+    risk_bits: list[str] = []
+    if pressure_bits:
+        risk_bits.append("左侧/均线压力，冲高易滞涨")
+    if noisy:
+        risk_bits.append("反复长上影，假突破多")
+    if ret_5 >= 25:
+        risk_bits.append(f"近 5 日已涨约 {ret_5:.0f}%，别当起涨点猛加")
+    if vol >= 3 and close_pos < 0.7:
+        risk_bits.append("爆量却收不在高位，分歧大")
+    if not risk_bits:
+        risk_bits.append("不过昨高不要进；破分时均价要会走")
+
+    if pressure_bits:
+        pressure_label, pressure_text = "左侧有压力", " ".join(pressure_bits[:3])
+    else:
+        pressure_label = "上方压力不明显"
+        pressure_text = "按近期结构看，没有特别扎眼的左侧大套牢墙；仍要用分时均价管风险。"
+
+    watch_price = high if phase == "sample" else (yday_high if phase == "start" else None)
+
+    return PhaseVerdict(
+        phase=phase,
+        label=WUDAO_PHASE_LABELS[phase],
+        action=action,
+        text=text,
+        fit_label=fit_label,
+        fit_text=fit_text,
+        prefer=prefer,
+        shadow_label=shadow_label,
+        shadow_text=shadow_text,
+        pressure_label=pressure_label,
+        pressure_text=pressure_text,
+        plan_text=plan_text,
+        risk_text="；".join(risk_bits) + "。",
+        watch_price=round(watch_price, 2) if watch_price else None,
+        metrics={
+            "close": round(close, 2),
+            "pct_chg": round(pct, 2),
+            "high_pct": round(high_pct, 1),
+            "vol_ratio": round(vol, 2),
+            "close_pos": round(close_pos, 2),
+            "upper_shadow": round(upper, 2),
+            "leave_high": round(leave_high, 4),
+            "ret_5": round(ret_5, 1),
+            "ret_20": round(ret_20, 1),
+            "yday_high": round(yday_high, 2),
+            "today_high": round(high, 2),
+            "ma20": round(ma20, 2) if ma20 else None,
+            "left_high": round(left_high, 2) if left_high else None,
+            "shadow_days": shadow_days,
+        },
+    )
+
+
 def _wudao_day_volume_ratio(bars: Bars, i: int) -> float:
     """第 i 根的**量比** = 当日量 ÷ 近 20 日均量（不含当日），口径与 `_wudao_day_geom` 一致。
 
