@@ -610,7 +610,17 @@ export default function Sectors() {
                 取数中…（该板块第一次打开时要向开盘红现取）
               </div>
             ) : members && members.members.length > 0 ? (
-              <MemberTable members={members.members} />
+              <>
+                {/* 有成分股时也要显示 note：**当天名单还没发布**时后端会回落到
+                    「最近一天的名单 + 本地的当日行情」，不标出来就会被当成当天的名单
+                    （见 api/sector._fallback_members） */}
+                {members.note && (
+                  <div className="border-b border-line-soft bg-ink-850/60 px-4 py-1.5 text-[12px] leading-relaxed text-fg-dim">
+                    {members.note}
+                  </div>
+                )}
+                <MemberTable members={members.members} />
+              </>
             ) : (
               <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
                 {members?.note
