@@ -429,6 +429,8 @@ export interface SchedulerStatus {
   late_retry_time: string
   /** 当天板块成分股的预取时刻：开盘红要到晚上才发布当天名单 */
   members_collect_time: string
+  /** 它的兜底时刻：22:00 撞上「还没发布」时再试一次（正常日子几乎不花请求） */
+  members_retry_time: string
   catchup_on_start: boolean
   next_run_time: string | null
   late_next_run_time: string | null
