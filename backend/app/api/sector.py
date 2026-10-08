@@ -32,6 +32,7 @@ from app.models import (
     SectorDaily,
     SectorMember,
     StockConcept,
+    StockDaily,
 )
 from app.schemas import (
     FundFlowHistoryOut,
@@ -1191,7 +1192,7 @@ def _read_members(session: Session, code: str, trade_date: date) -> list[SectorM
 
 
 def _board_members(code: str, trade_date: date) -> tuple[list[SectorMember], str | None]:
-    """读库；库里没有就现取一次再读。返回（成分股, 取不到的原因）。
+    """读库；库里没有就现取一次再读；还没有就**用最近一天的名单 + 当日本地行情**顶上。
 
     现取与读库各开一个新的 session：现取那次是**另一个事务**写的，
     用请求自带的 session 接着读看不到（SQLite 在 WAL 下的读事务是一个快照）。
@@ -1201,6 +1202,7 @@ def _board_members(code: str, trade_date: date) -> tuple[list[SectorMember], str
     if cached:
         return cached, None
 
+    failed: Exception | None = None
     try:
         SectorCollector().collect_members(trade_date, code)
     except (TypeError, AttributeError, NameError):
@@ -1210,10 +1212,85 @@ def _board_members(code: str, trade_date: date) -> tuple[list[SectorMember], str
         raise
     except Exception as exc:  # noqa: BLE001 - 取不到不该让板块页整个 500
         logger.warning("板块 %s %s 成分股取数失败：%s", code, trade_date, exc)
-        return [], "开盘红的成分股当日要等盘后更新，这次没取到（历史日期不受影响）"
+        failed = exc
 
     with session_scope() as reader:
         rows = _read_members(reader, code, trade_date)
     if rows:
         return rows, None
-    return [], "开盘红的成分股当日要等盘后更新，这次没取到（历史日期不受影响）"
+
+    # 当天这份还没发布（开盘红要到晚上）→ 回落到最近一天的名单，行情换成当日
+    return _fallback_members(code, trade_date, failed)
+
+
+def _fallback_members(
+    code: str, trade_date: date, failed: Exception | None
+) -> tuple[list[SectorMember], str | None]:
+    """当天名单还没发布时的回落：**名单取最近可用的一天，行情用本地日线当日**。
+
+    依据（2026-10-08 实测，见设计文档 §8.80）：开盘红的板块成分名单**跨日几乎不变** ——
+    锂电池 09-29 713 只 / 09-30 713 只、重合 **712**；房地产服务 5 / 5 完全一致；
+    地产链 399 / 398、重合 398。而行情（收盘价 / 涨跌幅 / 成交额）我们自己收盘后就有
+    （`stock_daily`），所以「当天名单还没发布」不必让页面空着 —— 用最近一天的名单
+    配上当日行情，一收盘就能看，代价只是名单可能差 1~2 只（note 里写清楚）。
+
+    ⚠️ **换手率不给**：它是逐股的当日值，开盘红没发布前我们手上没有同口径的数
+    （拿昨天的顶上就是假数据）。停牌/当日无行情的票，行情那几格也留空。
+
+    ⚠️ 返回的是**未入库的 ORM 对象**（只是内存里换掉行情字段）—— 不写库、不污染缓存：
+    开盘红那份发布之后，下一次打开就会读到当天真正的名单与行情。
+    """
+    with session_scope() as session:
+        fallback_day = session.scalar(
+            select(func.max(SectorMember.trade_date)).where(
+                SectorMember.sector_code == code,
+                SectorMember.trade_date < trade_date,
+            )
+        )
+        rows = _read_members(session, code, fallback_day) if fallback_day else []
+        if not rows:
+            reason = (
+                f"开盘红成分股接口报错：{failed}"
+                if failed is not None
+                else "开盘红的成分股当日要等盘后更新，这次没取到"
+            )
+            return [], f"{reason}（历史日期不受影响）"
+        quotes = {
+            row_code: (close, pct_chg, amount)
+            for row_code, close, pct_chg, amount in session.execute(
+                select(
+                    StockDaily.code,
+                    StockDaily.close,
+                    StockDaily.pct_chg,
+                    StockDaily.amount,
+                ).where(
+                    StockDaily.trade_date == trade_date,
+                    StockDaily.code.in_([row.code for row in rows]),
+                )
+            ).all()
+        }
+
+    items = []
+    for row in rows:
+        quote = quotes.get(row.code)
+        item = SectorMember(
+            trade_date=trade_date,
+            sector_code=code,
+            code=row.code,
+            name=row.name,
+            close=quote[0] if quote else None,
+            pct_chg=quote[1] if quote else None,
+            amount=quote[2] if quote else None,
+            # 换手率是同口径的当日值，我们没有 → 留空，不拿昨天的顶
+            turnover=None,
+        )
+        items.append(item)
+    # 按**当日**涨跌幅降序（名单自带的那天涨幅在这里没有意义）。拿不到行情的排最后
+    items.sort(key=lambda item: (item.pct_chg is None, -(item.pct_chg or 0.0)))
+    listed = sum(1 for item in items if item.pct_chg is not None)
+    note = (
+        f"名单为 {fallback_day} 的（成员变动很小），行情为 {trade_date} 当日"
+        f"（{listed}/{len(items)} 只取到当日行情）；开盘红当晚才发布当天名单，"
+        f"发布后会自动换成本日名单"
+    )
+    return items, note
