@@ -4,8 +4,8 @@
 
 1. **日线** `/api/qt/stock/kline/get`：`jobs/scan_patterns._sync_stock_eastmoney` 给池外
    候选补近端日线，`scripts/backfill_history.py` 往回补多年历史写进 `history.db`。
-2. **快照** `/api/qt/clist/get`：`jobs/scan_patterns._wudao_candidate_codes` 的「涨幅榜」
-   那一路（`fetch_board_spot`）。
+2. **快照** `/api/qt/clist/get`：`jobs/scan_patterns._spot_rows` 的「涨幅榜」那一路
+   （`fetch_board_spot`，创业板口径与全市场口径各一页）。
 
 ## 这两条路的可用性**不一样**，别混为一谈（2026-09-29 实测）
 
@@ -43,9 +43,16 @@ _UT = "fa5fd1943c7b386f172d6893dbfba10b"
 _CLIST_URL = "https://82.push2.eastmoney.com/api/qt/clist/get"
 # 与日线那个不是同一个 token（网页端各自带各自的）
 _CLIST_UT = "bd1d9ddb04089700cf9c27f6f7426281"
-# 创业板 + 科创板。**东财的 `fs` 用空格分隔，不是 `+`** —— 照 akshare 的写法抄，
+# 沪深 A 股全部（含科创板与北交所）—— 与 akshare `stock_zh_a_spot_em` 的 `fs` 同一个
+# **全市场**口径。**东财的 `fs` 用空格分隔，不是 `+`** —— 照 akshare 的写法抄，
 # 别按 URL 习惯改成 `+`（虽然实测两者都能通，但没必要多一个变量）。
-_BOARD_ONLY_FS = "m:0 t:80,m:1 t:23"
+_ALL_A_FS = "m:0 t:6,m:0 t:80,m:1 t:2,m:1 t:23,m:0 t:81 s:2048"
+# 创业板。悟道候选的「创业板口径」要的是**创业板自己**按涨幅降序的一页 ——
+# 原型那边是「先按板块筛、再取前 100」（`spot = spot[is_chinext]` 在 `.head(100)` 之前）。
+_CYB_FS = "m:0 t:80"
+# 口径名 → `fs`。两块是**分开请求**的：一个口径要创业板自己的榜、另一个要全市场的榜，
+# 服务端每页只给约 100 行，混着请求会互相挤掉（见 `scan_patterns._spot_rows`）。
+_SPOT_FS = {"cyb": _CYB_FS, "all": _ALL_A_FS}
 
 _TIMEOUT = 20.0
 _RETRIES = 3
@@ -168,8 +175,12 @@ def fetch_daily(code: str, *, days: int) -> list[dict]:
     return rows
 
 
-def fetch_board_spot(*, limit: int = 100) -> list[tuple[str, float]]:
-    """东财快照：创业板 + 科创板里按涨幅降序的前 `limit` 只，返回 `[(6 位代码, 涨幅%), …]`。
+def fetch_board_spot(*, limit: int = 100, board: str = "cyb") -> list[tuple[str, float]]:
+    """东财快照：`board` 那个口径里按涨幅降序的前 `limit` 只，返回 `[(6 位代码, 涨幅%), …]`。
+
+    `board` 传口径名：`"cyb"` = **创业板自己**的榜 / `"all"` = **全市场（沪深 A + 科创
+    + 北交所）**的榜。窗口不在这一层筛 —— 源不该知道「候选池收哪些板、窗口多少」，
+    调用方按自己的口径过滤（见 `_SPOT_FS` 与 `scan_patterns._spot_rows`）。
 
     **一次请求，绝不翻页。** 这是这个函数存在的全部理由 ——
 
@@ -179,15 +190,15 @@ def fetch_board_spot(*, limit: int = 100) -> list[tuple[str, float]]:
     （> 10 分钟，期间连 `push2his` 的其它路径一起被拒；`push2ex` 不受影响）。
     后果是「涨幅榜」这一路时好时坏，候选池从约 80 只掉到 39~54 只。
 
-    而这一路实际需要的只是「这两块板里最热的几十只」——`fs` 收窄到两块板、
-    `fid=f3` 让服务端按涨幅降序排，**一次请求**就能拿到，请求数 56 → 1。
+    `fid=f3` 让服务端按涨幅降序排，**一次请求**就能拿到原型要的那一页，请求数 56 → 2
+    （两个口径各一页；「先按板筛再取前 100」这件事只能靠 `fs` 收窄来做，见 `_SPOT_FS`）。
 
     ⚠️ 服务端**每页上限约 100 行**（见模块说明），所以 `limit` 要大于 100 是没用的；
-    目标池只有 80 个位置、而涨幅这一路优先级最高会先占满，所以一页足够。
+    原型的窗口正好取前 100，一页够。
 
     网络失败重试 `_RETRIES` 次后抛 `RuntimeError`（调用方按「这条源挂了」处理，
-    见 `scan_patterns._wudao_candidate_codes` 的 `except`）。停牌股东财给的 `f3`
-    是字符串 `"-"`，**直接跳过**，不当成 0。
+    见 `scan_patterns._spot_rows`）。停牌股东财给的 `f3` 是字符串 `"-"`，**直接跳过**，
+    不当成 0。
     """
     import requests
 
@@ -209,7 +220,7 @@ def fetch_board_spot(*, limit: int = 100) -> list[tuple[str, float]]:
                     "fltt": "2",
                     "invt": "2",
                     "fid": "f3",  # 按涨跌幅排
-                    "fs": _BOARD_ONLY_FS,
+                    "fs": _SPOT_FS.get(board, _CYB_FS),
                     "fields": "f12,f14,f3",
                 },
                 timeout=_TIMEOUT,
