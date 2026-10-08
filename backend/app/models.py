@@ -244,18 +244,20 @@ class SectorDaily(Base):
 
     ⚠️ 开盘红的板块行只反解出**代码 / 名称 / 涨跌幅 / 成交额**四列，其余列要么
     换个口径就不是同一个含义、要么没有验证手段（详见 `sources/kaipanhong.py`
-    顶部说明）。所以 `net_inflow` / `up_count` / `down_count` / `member_count` /
-    `leader_name` / `leader_pct_chg` 在切换后是**大片 None**，页面显示 `—` ——
+    顶部说明）。所以 `up_count` / `down_count` 仍是**恒为 None**，页面显示 `—` ——
     宁可空着，也不填一个猜的数。
 
-    ⚠️ 但其中**两列的写入方不是采集器**，用它之前要知道（它们是「别的 job 往同一张表
-    补的一列」，而本表的每日采集是整天替换 —— 采集器必须把它们原样带回去，
+    ⚠️ 但其中**几列的写入方不是采集器**，用它之前要知道（它们是「别的代码 path 往
+    同一张表补的列」，而本表的每日采集是整天替换 —— 采集器必须把它们原样带回去，
     见 `jobs/collect_sectors._kept_external`）：
 
     - `net_inflow`：`jobs/collect_board_flow.py` 算的（板块成分股 × 逐股主力净流入）
     - `member_count`：同一个 job 顺手存的（它本来就要拉全部板块的成分名单，
       不存等于白拉）。**它是「宽泛板块」的判据** —— 资金流三个视图按
       `Settings.board_flow_max_members` 把成员过多的板块剔掉
+    - `leader_name` / `leader_pct_chg`：**「龙一~龙五」**，`collect_members` 顺手写的
+      （2026-10-08 加）。依据是开盘红成分股接口返回的**原始顺序**前 5 只 —— 与短线侠
+      板块轮动页的「领涨」行逐位一致，机制与实测见 `collect_sectors._write_leaders`
     """
 
     __tablename__ = "sector_daily"
@@ -282,7 +284,11 @@ class SectorDaily(Base):
     up_count: Mapped[int | None] = mapped_column(Integer)
     down_count: Mapped[int | None] = mapped_column(Integer)
     member_count: Mapped[int | None] = mapped_column(Integer)
-    leader_name: Mapped[str | None] = mapped_column(String(32))
+    # 领涨股。**开盘红口径**：`collect_members` 把成分股接口的前 5 只（龙一~龙五）
+    # 用「、」连成一个字符串写进来，`leader_pct_chg` 是龙一的当日涨幅。
+    # ⚠️ 声明 128 是给「五个名字 + 分隔符」留位（实测最长约 30 字）。SQLite **不强制**
+    # VARCHAR 长度、而本项目的库只自动新增列、不改型，所以老库里标的是 VARCHAR(32) 也存得下。
+    leader_name: Mapped[str | None] = mapped_column(String(128))
     leader_pct_chg: Mapped[float | None] = mapped_column(Float)
 
 
