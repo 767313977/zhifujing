@@ -1,31 +1,30 @@
-"""东财直连 HTTP：日线（`push2his`）与快照（`push2`）。
+"""东财直连 HTTP 日线（`push2his`）。**零 iFinD 配额**。
 
-本站有两个地方走它，都是**零 iFinD 配额**：
+走它的地方：`jobs/scan_patterns._sync_stock_eastmoney`（给候选池外的票补近端日线）、
+`scripts/backfill_history.py`（往回补多年历史写进 `history.db`）。
 
-1. **日线** `/api/qt/stock/kline/get`：`jobs/scan_patterns._sync_stock_eastmoney` 给池外
-   候选补近端日线，`scripts/backfill_history.py` 往回补多年历史写进 `history.db`。
-2. **快照** `/api/qt/clist/get`：`jobs/scan_patterns._spot_rows` 的「涨幅榜」那一路
-   （`fetch_board_spot`，创业板口径与全市场口径各一页）。
+## 这条路目前**被东财路径级拒绝**（2026-09-29 实测）
 
-## 这两条路的可用性**不一样**，别混为一谈（2026-09-29 实测）
+`/api/qt/stock/kline/get`：同一台主机、同一秒，`stock/get`、`trends2/get`、
+`fflow/daykline/get` 全是 200，唯独这一条秒断（`RemoteDisconnected`）。换 4 台主机
+（`push2his` / `push2` / `82.push2` / `push2delay`）× 7 种参数与请求头变体全一样，
+akshare 自己的 `stock_zh_a_hist` 也失败。**本机与云端一致，跟网络、代理、IP 都无关。**
 
-| 路 | 状态 | 关键约束 |
-| --- | --- | --- |
-| 快照 clist | 可用 | 但**每次请求都吃这个 IP 的配额**；连发就进惩罚期（实测 **> 10 分钟**），期间连同集群别的路径一起被拒 → 所以只发一次，**绝不翻页** |
-| 日线 kline | **被路径级拒绝** | 同一台主机、同一秒：`stock/get`、`trends2/get`、`fflow/daykline/get` 全是 200，唯独 `stock/kline/get` 秒断（`RemoteDisconnected`）。换 4 台主机（`push2his` / `push2` / `82.push2` / `push2delay`）× 7 种参数与请求头变体全一样，akshare 自己的 `stock_zh_a_hist` 也失败。**本机与云端一致，跟网络、代理、IP 都无关** |
-
-所以日线那一路**现在是死的**，靠腾讯接住（`_sync_stock_tencent`；`backfill_history.py`
-默认源也是腾讯）。留着它是因为它一旦恢复就自动可用，而且失败很快（约 50ms，不拖时间）。
+所以它**现在是死的**，靠腾讯接住（`scan_patterns._sync_stock_tencent`；
+`backfill_history.py` 默认源也是腾讯）。留着它是因为它一旦恢复就自动可用，
+而且失败很快（约 50ms，不拖时间）。
 
 ⚠️ 这里原先写的是「云端连不上东财直连」—— **那个判断是错的**：本机一样连不上，
 而且原因不是网络层，是**这条路径本身**。照那个说法去查网络/代理，方向全错。
 
-### 快照那一页的上限
-
-`clist` 服务端**每页最多给约 100 行**，`pz` 传多大都差不多（实测 `pz=1000` 与 `pz=50000`
-的响应体都是约 4.9 KB）。akshare 的 `stock_zh_a_spot_em` 正是 `pz=100` + 翻页凑全市场，
-它那句 `per_page_num = len(diff)`（拿**实际**行数而不是请求的 `pz` 去算页数）就是这个
-上限的旁证。
+> 2026-10-08 前这里还有第二条路：**快照** `/api/qt/clist/get`（`fetch_board_spot`，
+> 给悟道候选池取「涨幅榜」）。候选池改成读本地 `stock_daily` 之后它没有调用者了，
+> 连同它的 `fs` 常量一起删掉 —— 当时那一路的约束记在这里备查：**每次请求都吃这个 IP
+> 的配额**，连发几十次会进惩罚期（> 10 分钟，期间连同集群别的路径一起被拒），
+> 而且**每页最多约 100 行**（`pz` 传多大都差不多，实测 `pz=1000` 与 `pz=50000`
+> 的响应体都是约 4.9 KB）。akshare 的 `stock_zh_a_spot_em` 就是 `pz=100` + 翻页凑
+> 全市场（56 次），既是 IP 惩罚期的来源，也是「一页只有 100 行」的来源。
+> 需要它的时候从 git 历史里取。
 """
 
 import logging
@@ -39,21 +38,6 @@ _URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 # 东财网页端自己用的固定 token，不是密钥
 _UT = "fa5fd1943c7b386f172d6893dbfba10b"
 
-# ---- 快照（push2 的 clist）----
-_CLIST_URL = "https://82.push2.eastmoney.com/api/qt/clist/get"
-# 与日线那个不是同一个 token（网页端各自带各自的）
-_CLIST_UT = "bd1d9ddb04089700cf9c27f6f7426281"
-# 沪深 A 股全部（含科创板与北交所）—— 与 akshare `stock_zh_a_spot_em` 的 `fs` 同一个
-# **全市场**口径。**东财的 `fs` 用空格分隔，不是 `+`** —— 照 akshare 的写法抄，
-# 别按 URL 习惯改成 `+`（虽然实测两者都能通，但没必要多一个变量）。
-_ALL_A_FS = "m:0 t:6,m:0 t:80,m:1 t:2,m:1 t:23,m:0 t:81 s:2048"
-# 创业板。悟道候选的「创业板口径」要的是**创业板自己**按涨幅降序的一页 ——
-# 原型那边是「先按板块筛、再取前 100」（`spot = spot[is_chinext]` 在 `.head(100)` 之前）。
-_CYB_FS = "m:0 t:80"
-# 口径名 → `fs`。两块是**分开请求**的：一个口径要创业板自己的榜、另一个要全市场的榜，
-# 服务端每页只给约 100 行，混着请求会互相挤掉（见 `scan_patterns._spot_rows`）。
-_SPOT_FS = {"cyb": _CYB_FS, "all": _ALL_A_FS}
-
 _TIMEOUT = 20.0
 _RETRIES = 3
 
@@ -62,7 +46,7 @@ def clear_proxies() -> None:
     """把进程里的代理环境变量清掉。
 
     本机环境变量里可能挂着代理（装过 VPN/抓包工具留下的），而东财是**直连可达**的 ——
-    带上代理反而会被拒。放在源模块里而不是各调用点，是为了两条线都别忘了清。
+    带上代理反而会被拒。放在源模块里而不是调用点，是为了别在调用处漏了清。
     """
     for key in (
         "HTTP_PROXY",
@@ -172,77 +156,5 @@ def fetch_daily(code: str, *, days: int) -> list[dict]:
                 "pct_chg": float(parts[8] or 0),
             }
         )
-    return rows
-
-
-def fetch_board_spot(*, limit: int = 100, board: str = "cyb") -> list[tuple[str, float]]:
-    """东财快照：`board` 那个口径里按涨幅降序的前 `limit` 只，返回 `[(6 位代码, 涨幅%), …]`。
-
-    `board` 传口径名：`"cyb"` = **创业板自己**的榜 / `"all"` = **全市场（沪深 A + 科创
-    + 北交所）**的榜。窗口不在这一层筛 —— 源不该知道「候选池收哪些板、窗口多少」，
-    调用方按自己的口径过滤（见 `_SPOT_FS` 与 `scan_patterns._spot_rows`）。
-
-    **一次请求，绝不翻页。** 这是这个函数存在的全部理由 ——
-
-    原来用的是 akshare 的 `stock_zh_a_spot_em()`：它是 `pz=100` **翻页**拉全市场
-    5561 只（56 次请求）、再按涨幅排序取前 100。2026-09-29 实测：单页请求在干净的 IP
-    上返回 200，但连发几十次后**第 1 页就开始断**，进入 `push2*` 集群的惩罚期
-    （> 10 分钟，期间连 `push2his` 的其它路径一起被拒；`push2ex` 不受影响）。
-    后果是「涨幅榜」这一路时好时坏，候选池从约 80 只掉到 39~54 只。
-
-    `fid=f3` 让服务端按涨幅降序排，**一次请求**就能拿到原型要的那一页，请求数 56 → 2
-    （两个口径各一页；「先按板筛再取前 100」这件事只能靠 `fs` 收窄来做，见 `_SPOT_FS`）。
-
-    ⚠️ 服务端**每页上限约 100 行**（见模块说明），所以 `limit` 要大于 100 是没用的；
-    原型的窗口正好取前 100，一页够。
-
-    网络失败重试 `_RETRIES` 次后抛 `RuntimeError`（调用方按「这条源挂了」处理，
-    见 `scan_patterns._spot_rows`）。停牌股东财给的 `f3` 是字符串 `"-"`，**直接跳过**，
-    不当成 0。
-    """
-    import requests
-
-    clear_proxies()
-    last_err: Exception | None = None
-    payload = None
-    session = requests.Session()
-    session.trust_env = False
-    for _ in range(_RETRIES):
-        try:
-            resp = session.get(
-                _CLIST_URL,
-                params={
-                    "pn": "1",
-                    "pz": str(limit),
-                    "po": "1",  # 降序
-                    "np": "1",
-                    "ut": _CLIST_UT,
-                    "fltt": "2",
-                    "invt": "2",
-                    "fid": "f3",  # 按涨跌幅排
-                    "fs": _SPOT_FS.get(board, _CYB_FS),
-                    "fields": "f12,f14,f3",
-                },
-                timeout=_TIMEOUT,
-                proxies={"http": None, "https": None},
-                headers={"Referer": "https://quote.eastmoney.com/", "User-Agent": "Mozilla/5.0"},
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-            break
-        except Exception as exc:  # noqa: BLE001 - 网络异常一律重试
-            last_err = exc
-    if payload is None:
-        raise RuntimeError(f"东财快照失败：{last_err}")
-
-    rows: list[tuple[str, float]] = []
-    for item in (payload.get("data") or {}).get("diff") or []:
-        code = str(item.get("f12") or "").strip().zfill(6)
-        if not code or code == "000000":
-            continue
-        try:
-            rows.append((code, float(item.get("f3"))))
-        except (TypeError, ValueError):
-            continue  # 停牌等：f3 是 "-"
     return rows
 
