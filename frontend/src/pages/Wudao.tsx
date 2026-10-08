@@ -157,6 +157,12 @@ export default function Wudao() {
               </a>{' '}
               移植进本站形态引擎（数字逐条照抄源码），这个页面按它原来的三张选股页摆出当天名单。
             </p>
+            <p>
+              候选口径也与他一致（2026-10-08 对齐）：辉宾两页只在当天
+              <b className="font-normal text-fg-muted">创业板候选前 50 只</b>
+              里挑，华宝早期再加 35 只主板候选，黑白选股在两块板的候选前 60 只里 ——
+              所以名单不会比他多出一堆来。
+            </p>
             <p className="text-fg-dim">
               ⚠️ 四个池子的回测都是「短周期略有指向、胜率不到 50%、四档中位数全负」——
               <b className="font-normal text-fg-muted">当清单看，不是买点信号</b>；
