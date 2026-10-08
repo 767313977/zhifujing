@@ -560,6 +560,9 @@ class SchedulerStatus(BaseModel):
     # 当天板块成分股的预取时刻（见 config.members_collect_hour）：开盘红要到晚上才
     # 发布当天成分股，所以它比上面那两趟都晚
     members_collect_time: str
+    # 它的兜底时刻（见 config.members_retry_hour）：22:00 撞上「还没发布」时再试一次；
+    # 正常日子那一趟几乎不花请求（已在库的板块全跳过）
+    members_retry_time: str
     catchup_on_start: bool
     next_run_time: str | None
     late_next_run_time: str | None
