@@ -8447,6 +8447,8 @@ cookie 带 `Secure` 时，浏览器在明文 http 上**根本不发送**它 —�
 
 全站真正碰这个集群的**只有一处** —— `scan_patterns._wudao_candidate_codes` 的涨幅榜；
 其余 akshare 调用全是 `push2ex` / 同花顺 / 新浪 / 腾讯。
+⚠️ **2026-10-08 起这一处也没了**：悟道候选池改读本地日线，`fetch_board_spot` 与
+`sources/ths_rank.py` 一并删除（见 §8.84.1）。下面这段是当时（09-29）的记录，留着备查。
 
 #### 改了什么
 
