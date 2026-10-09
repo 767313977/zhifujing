@@ -94,6 +94,7 @@ def lookup(
             )
         )
 
+    # 涨停：`limit_pool` 主键含 `pool_type`，同一票同一天最多一行 → 行数即「涨停天数」。
     limit_up_count = (
         session.scalar(
             select(func.count())
@@ -102,8 +103,15 @@ def lookup(
         )
         or 0
     )
+    # 龙虎榜：**按「上榜天数」数，不按行数**。`lhb` 的主键是 (trade_date, code, reason)，
+    # 同一天有几个上榜原因就是几行（实测库里 21236 行里有 2557 个「票-日」是多行、最多 6 行）
+    # —— `count(*)` 会把它们当成「上榜 N 次」。去重后与 `limit_up_count`（因主键含
+    # `pool_type`，本身即天数）口径一致。
     lhb_count = (
-        session.scalar(select(func.count()).select_from(Lhb).where(Lhb.code == code)) or 0
+        session.scalar(
+            select(func.count(func.distinct(Lhb.trade_date))).where(Lhb.code == code)
+        )
+        or 0
     )
     # 上面两个计数的**分母窗口**（两张表各自覆盖的交易日数）。必须一起返回：
     # 它们数的是「库里已有的那些天」，不是历史累计 —— 不写窗口就容易被读成
