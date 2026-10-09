@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { StockAnalysis, StockNews } from '../api/types'
@@ -33,6 +33,10 @@ export default function StockAnalysisPage() {
   const [error, setError] = useState<string | null>(null)
   const [news, setNews] = useState<StockNews | null>(null)
   const [newsLoading, setNewsLoading] = useState(false)
+  // 最近一次请求的票。新闻请求是**单独发、可能慢**的：连查两只票时，先那只的响应
+  // 可能后到，会把后那只的新闻**覆盖**掉，`finally` 也会提前把加载态关掉（显示成
+  // 「暂无新闻」）。所有回调都先比对这个值，只认当前这只票的结果。
+  const newsCodeRef = useRef<string | null>(null)
 
   const run = useCallback(async (raw: string) => {
     const q = raw.trim()
@@ -49,19 +53,25 @@ export default function StockAnalysisPage() {
       // 失败也不弹错误条 —— 那一块自己显示原因就够了
       setNews(null)
       setNewsLoading(true)
+      newsCodeRef.current = found.code
       api
         .stockNews(found.code)
-        .then(setNews)
-        .catch((err: Error) =>
+        .then((data) => {
+          if (newsCodeRef.current === found.code) setNews(data)
+        })
+        .catch((err: Error) => {
+          if (newsCodeRef.current !== found.code) return
           setNews({
             code: found.code,
             name: found.name,
             rows: [],
             hidden: 0,
             note: `新闻取不到：${err.message}`,
-          }),
-        )
-        .finally(() => setNewsLoading(false))
+          })
+        })
+        .finally(() => {
+          if (newsCodeRef.current === found.code) setNewsLoading(false)
+        })
     } catch (err) {
       // 解析不出 / 匹配到多只时后端给的就是一句能直接读的话，原样显示；
       // **不清空上一次的结果** —— 敲错一个字不该把刚查到的东西抹掉
@@ -161,14 +171,14 @@ export default function StockAnalysisPage() {
                 </div>
                 <div className="flex flex-wrap items-baseline gap-2">
                   <span className="text-fg-dim">复盘关联</span>
-                  {/* ⚠️ 这两个计数是**库里有数据的那些天**里数的，不是历史累计 ——
-                      必须把分母窗口一起显示，否则会被读成「这只票一辈子涨停 12 次」。
-                      两张表窗口不一定一样，所以分开标。 */}
+                  {/* ⚠️ 这两个计数是**库里有数据的那些天**里、按**去重交易日**数的「天数」，
+                      不是行数也不是历史累计 —— 必须把分母窗口一起显示，否则会被读成
+                      「这只票一辈子涨停 12 次」。两张表窗口不一定一样，所以分开标。 */}
                   <span
                     className="num text-fg-muted"
                     title={`窗口＝库里已有数据的天数，不是历史累计（涨停池表覆盖 ${result.limit_up_days} 天、龙虎榜表覆盖 ${result.lhb_days} 天）`}
                   >
-                    涨停 {result.limit_up_count} 次 · 龙虎榜 {result.lhb_count} 次
+                    涨停 {result.limit_up_count} 天 · 龙虎榜 {result.lhb_count} 天
                   </span>
                   <span className="num text-[12px] text-fg-dim">
                     （窗口 {result.limit_up_days} / {result.lhb_days} 个交易日）

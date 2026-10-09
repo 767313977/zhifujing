@@ -861,7 +861,8 @@ export interface StockAnalysis {
   industry: string | null
   /** 最近一次涨停时挂的精选板块（做过什么题材），只覆盖涨停过的票 */
   sectors: string[]
-  /** 上过涨停池 / 上过龙虎榜的次数。⚠️ 不是历史累计，是下面两个窗口内的计数 */
+  /** 上过涨停池 / 上过龙虎榜的**天数**（去重交易日，不是行数、更不是历史累计）。
+   *  ⚠️ 数的是下面两个窗口内的那些天，页面必须把窗口一起显示 */
   limit_up_count: number
   lhb_count: number
   /** 上面两个计数的**分母窗口**：`limit_pool` / `lhb` 各自覆盖的交易日数。
