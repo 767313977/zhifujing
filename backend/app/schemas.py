@@ -749,6 +749,8 @@ class StockNewsOut(ApiModel):
     code: str
     name: str | None = None
     rows: list[StockNewsRow] = Field(default_factory=list)
+    #: 被筛掉的「只在正文表格里提到代码」的名单类稿件条数（界面上要标出来，不静默丢）
+    hidden: int = 0
     note: str | None = None
 
 
