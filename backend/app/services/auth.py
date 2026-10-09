@@ -38,6 +38,12 @@ SESSION_DAYS = 30
 # 而 WAL 下的写是要拿写锁的 —— 用「最多每天推一次」换掉那堆无谓的写。
 SESSION_TOUCH_DAYS = 1
 
+# 「最近访问」（`AppUser.last_seen_at`）的写库节流，单位小时。
+# 为什么需要它：这一列要回答「**谁最近在用**」，所以每个带会话的请求都得刷一次；
+# 但和上面同一个理由 —— 不节流就是每个请求一次写。1 小时足够看出「这人在用」，
+# 一天最多也就被同一人多写 24 次。
+SEEN_TOUCH_HOURS = 1
+
 # scrypt 参数。n 是 CPU/内存开销的主旋钮（n=2^15 约 32MB、单次约 50~100ms，
 # 对「一天登录几次」的站足够，也不至于把 2 核小机器打满）。
 # ⚠️ 参数会**写进哈希串**，所以以后想调大，老密码仍然能验（见 verify_password）。
@@ -150,7 +156,7 @@ def create_session(db: Session, user: AppUser, user_agent: str | None = None) ->
             user_agent=(user_agent or "")[:200] or None,
         )
     )
-    user.last_login_at = now
+    user.last_seen_at = now
     # 顺手清掉这个人已经过期的会话：不清理的话表会随着「登录过多少次」一直长，
     # 而清理时机几乎不花钱（登录本来就是低频操作）
     db.execute(
@@ -176,9 +182,18 @@ def resolve_session(db: Session, token: str | None) -> AppUser | None:
     user = db.get(AppUser, row.user_id)
     if user is None or user.disabled_at is not None:
         return None
+    touched = False
     # 滑动续期（节流：只在剩得不多时才写库，见 SESSION_TOUCH_DAYS 的说明）
     if row.expires_at - now < timedelta(days=SESSION_DAYS - SESSION_TOUCH_DAYS):
         row.expires_at = now + timedelta(days=SESSION_DAYS)
+        touched = True
+    # 「最近访问」（节流见 SEEN_TOUCH_HOURS）：这一列要回答「**谁最近在用**」，
+    # 所以每个带会话的请求都刷一次 —— 只在登录那一刻写是不够的，会话滑动续期
+    # 会让会员**永远不用重新登录**（见 `models.AppUser.last_seen_at` 的说明）。
+    if user.last_seen_at is None or now - user.last_seen_at >= timedelta(hours=SEEN_TOUCH_HOURS):
+        user.last_seen_at = now
+        touched = True
+    if touched:
         db.commit()
     return user
 

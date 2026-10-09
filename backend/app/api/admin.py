@@ -154,7 +154,7 @@ def kline_recent(
 def patterns_scan(
     trade_date: date | None = Query(None, alias="date"),
 ) -> dict:
-    """手动跑一遍形态扫描（含辉宾「明天盯 / 今天可买」）。"""
+    """手动跑一遍形态扫描（含辉宾「明天盯 / 明天预案」）。"""
     from app.jobs.scan_patterns import scan
 
     try:
@@ -300,7 +300,7 @@ def list_users(session: Session = Depends(get_db)) -> list[MemberOut]:
             username=user.username,
             is_admin=user.is_admin,
             created_at=user.created_at,
-            last_login_at=user.last_login_at,
+            last_seen_at=user.last_seen_at,
             disabled_at=user.disabled_at,
             invite_code=invites.get(user.id),
         )
