@@ -699,7 +699,7 @@ class StockDdeOut(BaseModel):
     note: str | None = None
 
 
-class WudaoPhase(BaseModel):
+class WudaoPhase(ApiModel):
     """悟道「阶段判定」：8 个标签之一 + 一眼看懂的说明。
 
     判定在 `services/patterns.classify_phase`（与「明天盯 / 今天可买」共用同一批判据），
@@ -729,6 +729,31 @@ class WudaoPhase(BaseModel):
     #: 关键价位：样板=今高、启动=昨高，其余为 None
     watch_price: float | None = None
     metrics: dict[str, float | None] = Field(default_factory=dict)
+
+
+class StockAnalysis(ApiModel):
+    """个股分析页（`/api/analysis/lookup`）的返回：解析结果 + 阶段判定 + 旁证。
+
+    「旁证」是原型那个框里「技术 / 新闻 / 基本面三面合议」的站内可做部分：
+    技术面＝`phase`，基本面＝`industry`（做什么生意），题材/复盘＝`sectors` + 计数。
+    **新闻那一面本站没有源，不编。**
+    """
+
+    code: str
+    name: str | None = None
+    #: 判定用的那根日线是哪天（原型的框也会把日期显示出来）
+    trade_date: date | None = None
+    close: float | None = None
+    pct_chg: float | None = None
+    #: 阶段判定；日线不足 25 根时是 None
+    phase: WudaoPhase | None = None
+    #: 所属同花顺三级行业（「房地产-房地产-住宅开发」这种路径），做什么生意
+    industry: str | None = None
+    #: 最近一次涨停时挂的开盘红精选板块 —— 做过什么题材。只覆盖涨停过的票
+    sectors: list[str] = Field(default_factory=list)
+    #: 复盘关联：历史上过涨停池 / 上过龙虎榜的次数
+    limit_up_count: int = 0
+    lhb_count: int = 0
 
 
 class StockProfile(BaseModel):

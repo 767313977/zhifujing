@@ -9,6 +9,7 @@ import PatternTrack from './pages/PatternTrack'
 import Sectors from './pages/Sectors'
 import SentimentPage from './pages/Sentiment'
 import Settings from './pages/Settings'
+import StockAnalysisPage from './pages/StockAnalysis'
 import StockDetail from './pages/StockDetail'
 import WatchlistPage from './pages/Watchlist'
 import Wudao from './pages/Wudao'
@@ -106,6 +107,15 @@ export default function App() {
             element={
               <RequireAuth>
                 <Wudao />
+              </RequireAuth>
+            }
+          />
+          {/* 个股分析：输代码/名称/首字母出结论（移植自原型的「查票分析」） */}
+          <Route
+            path="/stock-analysis"
+            element={
+              <RequireAuth>
+                <StockAnalysisPage />
               </RequireAuth>
             }
           />
