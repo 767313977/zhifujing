@@ -51,11 +51,19 @@ function Stat({ label, value }: { label: string; value: number }) {
   )
 }
 
-/** 行业列只显示末段；完整三级路径放标题栏（与形态页同一套处理）。 */
+/**
+ * 行业列只显示末段；完整三级路径放标题栏（与形态页同一套处理）。
+ *
+ * ⚠️ 末尾的 `Ⅰ/Ⅱ/Ⅲ` 是同花顺标级别用的记号（`电子-半导体-集成电路Ⅲ`），
+ * **与后端 `_sector_of` 同一规则地去掉** —— 两处不同步的话，「板块」列与「行业」列
+ * 会只差一个后缀，看起来像同一个字段显示了两个不同的值。
+ */
 function industryLast(industry: string | null): string {
   if (!industry) return '—'
   const parts = industry.split('-')
-  return parts[parts.length - 1] || '—'
+  const raw = (parts[parts.length - 1] || '').trim()
+  const trimmed = raw.replace(/[ⅠⅡⅢⅣⅤ]+$/, '').trim()
+  return trimmed || raw || '—'
 }
 
 export default function AnomalyPage() {
