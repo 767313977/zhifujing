@@ -69,6 +69,20 @@ def _is_trade_day(day: date) -> bool:
         )
 
 
+def _previous_trade_day(day: date) -> date | None:
+    """`day` 之前最近的一个交易日（不含 `day` 本身）。日历为空时返回 None。
+
+    给「成分股当日还没发布」的回落用（见 `_run_members`）。
+    """
+    with session_scope() as session:
+        return session.scalar(
+            select(TradeCalendar.trade_date)
+            .where(TradeCalendar.trade_date < day)
+            .order_by(TradeCalendar.trade_date.desc())
+            .limit(1)
+        )
+
+
 # 尾部链路的去重标记（写在 `collect_log`），每个交易日一条。
 #
 # 尾部指的是采集之后那一串：日线增量 → 历史回补 → 形态扫描 → 简报/形态推送 →
@@ -431,11 +445,34 @@ class DailyScheduler:
 
         if result.get("aborted"):
             logger.warning(
-                "%s 中止：开盘红 %s 的成分股还没发布（连着 %d 个板块取不到），"
-                "本轮不预取 —— 之后打开板块会各自重试，兜底那一趟还会再试一遍",
+                "%s 中止：开盘红 %s 的成分股还没发布（连着 %d 个板块取不到）",
                 reason,
                 today,
                 result.get("failed", 0),
+            )
+            # 当日取不到就**改补「最近可用的一天」**（2026-10-09 修）。
+            # 页面本来就支持「拿最近一份名单 + 当日行情」回落（`api/sector._fallback_members`），
+            # 缺的只是那份名单从没被缓存 —— 于是只有**被点开过**的板块才有行，其余永久空白，
+            # 面板只能显示一句说明（用户报的「板块成分股还是不显示」就是这个）。
+            # 为什么不能只等「当日」：实测它发布得很晚 —— 2026-10-08 连 22:42 都还是
+            # `errcode=1020`，而这一趟固定 22:00 / 22:30 跑，等于每晚必空。
+            # 补最近可用日之后，每个板块都有名单可回落，页面一打开就能看到票。
+            prev = _previous_trade_day(today)
+            if prev is None:
+                return
+            try:
+                fallback = SectorCollector(self.settings).collect_all_members(prev)
+            except Exception:  # noqa: BLE001 - 回落失败也不能中断调度
+                logger.exception("%s 回落补 %s 失败", reason, prev)
+                return
+            logger.info(
+                "%s 回落：%s 还没发布，改补最近可用日 %s —— 共 %d 个板块，写入 %d 行，失败 %d 个",
+                reason,
+                today,
+                prev,
+                fallback.get("boards", 0),
+                fallback.get("written", 0),
+                fallback.get("failed", 0),
             )
             return
         logger.info(
