@@ -41,6 +41,8 @@ from app.schemas import (
     StockDailyRow,
     StockDdeOut,
     StockDdeRow,
+    StockNewsOut,
+    StockNewsRow,
     StockProfile,
     StockThemeItem,
     StockThemes,
@@ -49,6 +51,7 @@ from app.services import limit_rules
 from app.services.auth import current_user
 from app.services.patterns import build_bars
 from app.services.stock_phase import load_phase
+from app.sources.em_news import fetch_stock_news
 from app.sources.ifind import IfindError, normalize_code
 from app.sources.kaipanhong import TAXONOMY_SELECTED
 
@@ -574,6 +577,34 @@ def dde(
         name=_resolve_name(session, code),
         days=len(rows),
         rows=[StockDdeRow.model_validate(row) for row in rows],
+        note=note,
+    )
+
+
+@router.get("/{code}/news", response_model=StockNewsOut)
+def news(
+    code: str,
+    limit: int = Query(20, ge=1, le=50, description="返回最近 N 条"),
+    session: Session = Depends(get_db),
+) -> StockNewsOut:
+    """个股新闻（**东财口径**，按发布时间倒序）。
+
+    **每次打开都现取、不落库**：这条源没有配额、一次请求就够，而新闻的价值全在「新」——
+    落库还得再定一套过期策略，不值。取不到时把原因写进 `note`（页面照常显示其它内容），这里**不把它当 500**：
+    个股页少一块新闻不该让整页报错。空列表与「源挂了」分得开 —— 前者是「真没搜到」。
+    """
+    code = _code(code)
+    name = _resolve_name(session, code)
+    try:
+        rows = fetch_stock_news(code, name=name, limit=limit)
+    except Exception as exc:  # noqa: BLE001 - 源挂了不该让整页 500
+        logger.warning("取 %s 的个股新闻失败：%s", code, exc)
+        return StockNewsOut(code=code, name=name, rows=[], note=f"新闻源没返回数据：{exc}")
+    note = None if rows else "东财这条源没搜到这只票的新闻（小盘股 / 次新常见）"
+    return StockNewsOut(
+        code=code,
+        name=name,
+        rows=[StockNewsRow.model_validate(row) for row in rows],
         note=note,
     )
 

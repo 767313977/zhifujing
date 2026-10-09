@@ -731,12 +731,34 @@ class WudaoPhase(ApiModel):
     metrics: dict[str, float | None] = Field(default_factory=dict)
 
 
+class StockNewsRow(ApiModel):
+    """一条个股新闻。"""
+
+    #: 发布时间，东财原样给（"2026-08-26 09:59:14"）
+    published_at: str
+    title: str
+    summary: str
+    #: 文章来源，如「界面新闻」
+    source: str
+    url: str
+
+
+class StockNewsOut(ApiModel):
+    """个股新闻列表。`rows` 为空时看 `note` 是「真没搜到」还是「源没返回」。"""
+
+    code: str
+    name: str | None = None
+    rows: list[StockNewsRow] = Field(default_factory=list)
+    note: str | None = None
+
+
 class StockAnalysis(ApiModel):
     """个股分析页（`/api/analysis/lookup`）的返回：解析结果 + 阶段判定 + 旁证。
 
     「旁证」是原型那个框里「技术 / 新闻 / 基本面三面合议」的站内可做部分：
     技术面＝`phase`，基本面＝`industry`（做什么生意），题材/复盘＝`sectors` + 计数。
-    **新闻那一面本站没有源，不编。**
+    **新闻另走一个接口**（`GET /api/stock/{code}/news`，东财口径）—— 它要出外网、还可能取不到，
+    塞进这里会让整页一起等、一起失败。
     """
 
     code: str

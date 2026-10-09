@@ -754,6 +754,30 @@ export interface WudaoPhase {
   metrics: Record<string, number | null>
 }
 
+/** 一条个股新闻（东财口径）。 */
+export interface StockNewsRow {
+  /** 发布时间，东财原样给（"2026-08-26 09:59:14"） */
+  published_at: string
+  title: string
+  summary: string
+  /** 文章来源，如「界面新闻」 */
+  source: string
+  url: string
+}
+
+/**
+ * 个股新闻列表（`/api/stock/{code}/news`）。
+ *
+ * `rows` 为空时看 `note`：**「真没搜到」与「源没返回」是两回事** ——
+ * 页面要把这句话显示出来，别让用户以为这只票没有新闻。
+ */
+export interface StockNews {
+  code: string
+  name: string | null
+  rows: StockNewsRow[]
+  note: string | null
+}
+
 /**
  * 个股分析的返回（`/api/analysis/lookup`）：把「代码 / 名称 / 拼音首字母」解析成结论。
  *
