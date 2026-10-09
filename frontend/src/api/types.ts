@@ -515,15 +515,20 @@ export interface PatternStock {
   /**
    * 所属的**开盘红精选板块**（口径 = 个股页「所属题材」：这只票**最近一次涨停**
    * 是因为哪个板块，不是它属于哪些概念）。开盘红没有非涨停个股的板块归属，
-   * 所以从未涨停过的票这里是空数组 —— 实测覆盖约 75%，页面留空而不是拿别的顶。
+   * 所以从未涨停过的票这里是空数组 —— 实测覆盖约 75%。
+   *
+   * ⚠️ 接口这一层**不拿别的口径来顶**，页面上也是**两列分开、谁都不回落**：
+   * 悟道页与形态页是「板块」「行业」各一列，个股页是「精选板块」「所属行业」两行。
+   * （2026-10-09 曾短暂试过回落，看过效果后改成拆两列 —— 别再加回来。）
    */
   sectors: string[]
   /**
    * 所属**同花顺行业**，**三级路径**（`房地产-房地产-住宅开发`）。来自建池时顺手带回来的
    * `stock_basic.industry`（7 天一次、覆盖全 A），所以基本不会空。
    *
-   * ⚠️ 与 `sectors` **不是一个口径**，页面是**两列**、不合并：这个答「公司做什么生意」，
-   * `sectors` 答「最近一次涨停是因为哪个题材」。列里只显示第一级，完整路径放 tooltip。
+   * ⚠️ 与 `sectors` **不是一个口径**：这个答「公司做什么生意」，
+   * `sectors` 答「最近一次涨停是因为哪个题材」。两处**各占一列**、只显示第一级、
+   * 完整路径放 tooltip。
    */
   industry: string | null
   score: number
@@ -728,9 +733,12 @@ export interface StockThemes {
 /**
  * 悟道「阶段判定」——一只票当天处于哪一档（移植自 yangban-desk 的 8 个标签）。
  *
- * 与形态选股的「明天盯 / 今天可买」**同一批判据**，所以这里显示「明天盯」时，
- * 悟道之路页的名单里也一定有它；反过来它没出现在名单里，可能是被更靠前的阶段占了
- * （比如 `diverge` 压过 `sample`）。
+ * 与形态选股的「明天盯 / 明天预案」**共用同一批判据**（`_wudao_is_sample` 等）。
+ *
+ * ⚠️ 但**不等价**（2026-10-09 起）：名单只收创业板 + 科创板，且出口另有一道
+ * `_wudao_leave_ok`（收盘离开最高 ≤ 2.9%）—— 两处都故意没进这里。所以这里显示
+ * 「明天盯 / 明天预案」时，名单里**可能没有它**（实测 09-28：31 只里只有 6 只在名单）。
+ * 反过来进名单的票必然过了原型判据，但标签仍可能被更靠前的阶段抢走（如 `start`）。
  */
 export interface WudaoPhase {
   /** silent / wake / sample / start / digest / diverge / dump / unknown */
@@ -835,12 +843,15 @@ export interface StockNews {
  * 个股分析的返回（`/api/analysis/lookup`）：把「代码 / 名称 / 拼音首字母」解析成结论。
  *
  * 移植自原型 yangban-desk 的「查票分析」框。`phase` 与悟道之路那几张名单
- * **共用同一批判据**，所以两处不会打架。
+ * **共用同一批判据**，但**不等价**：名单只收创业板 + 科创板、且出口多一道收盘过滤
+ * （`_wudao_leave_ok`），所以这一页说「明天盯 / 明天预案」时名单里可能没有它。
+ * 详见 `api/analysis.py` 的模块说明。
  */
 export interface StockAnalysis {
   code: string
   name: string | null
-  /** 判定用的那根日线是哪天 */
+  /** 该股**最新一行**日线是哪天。通常也就是阶段判定用的那根 —— 只有那一行是
+   *  停牌残行（被 `load_phase` 剔掉）时，判定会退到再往前一根，而这里仍显示最新那天 */
   trade_date: string | null
   close: number | null
   pct_chg: number | null
@@ -850,9 +861,13 @@ export interface StockAnalysis {
   industry: string | null
   /** 最近一次涨停时挂的精选板块（做过什么题材），只覆盖涨停过的票 */
   sectors: string[]
-  /** 历史上过涨停池 / 上过龙虎榜的次数 */
+  /** 上过涨停池 / 上过龙虎榜的次数。⚠️ 不是历史累计，是下面两个窗口内的计数 */
   limit_up_count: number
   lhb_count: number
+  /** 上面两个计数的**分母窗口**：`limit_pool` / `lhb` 各自覆盖的交易日数。
+   *  页面必须显示出来 —— 不写窗口会被读成「这只票一辈子涨停 12 次」 */
+  limit_up_days: number
+  lhb_days: number
 }
 
 export interface StockProfile {
@@ -1050,7 +1065,8 @@ export interface Member {
   username: string
   is_admin: boolean
   created_at: string
-  last_login_at: string | null
+  /** 最近访问（任何带会话的请求都会按 1 小时节流刷新）—— 不是「最近登录」 */
+  last_seen_at: string | null
   disabled_at: string | null
   /** 他是拿哪个邀请码进来的（可追来源） */
   invite_code: string | null

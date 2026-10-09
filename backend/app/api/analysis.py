@@ -3,13 +3,28 @@
 移植自原型 yangban-desk 的「查票分析」框（它那个框下面直接挂阶段标签 + 日期）。
 站内落点是一个独立页面 `/stock-analysis`，导航里跟在「悟道之路」后面。
 
-结论本身来自 `services/patterns.classify_phase` —— 与悟道那几张名单**共用同一批判据**，
-所以这里说「明天盯」时，悟道之路的名单里一定有它；反过来它没进名单，说明被更靠前的
-阶段占了（例如「吵起来了」压过「明天盯」），`phase` 的文本里会说清是哪一条。
+结论本身来自 `services/patterns.classify_phase` —— 与悟道那几张名单**共用同一批判据**
+（`_wudao_is_sample` / `_wudao_is_diverge_or_dump` / `_wudao_day_geom`）。
 
-⚠️ 原型那个框写着「技术 / 新闻 / 基本面三面合议」—— **本站没有个股新闻源**，
-所以「新闻」这一面是空的、不编；「基本面」只给行业（要看市值/市盈率走个股页）；
-「技术面」就是这里的阶段判定。
+⚠️ **但两处已经不完全等价了，别再按旧说法理解**（2026-10-09）：
+
+- **板块**：名单只收**创业板 + 科创板**（`is_wudao_board`），这里是**全市场都判** ——
+  所以查一只主板票也可能显示「明天盯 / 明天预案」，而名单里永远不会有它（这是**有意的**：
+  个股页就该能查任何票）。
+- **收盘过滤**：名单出口另有一道 `_wudao_leave_ok`（收盘离开最高 ≤ 2.9%，见 §8.88.3）。
+  它**故意没有**并进 `_wudao_is_sample` —— 那个判据还被「洗完可盯」共用，并进去会一起砍掉。
+  实测（2026-09-28）：这里判「明天盯」的 31 只里**只有 6 只在名单**；差的 25 只中 18 只是
+  板块不符，剩下 7 只（板块合法的 13 只里的 **54%**）就是被这道过滤挡掉的。
+- 反过来：**进名单的票必然通过了原型判据**，但它的阶段标签仍可能被更靠前的阶段抢走
+  （`classify_phase` 的优先级：启动 > 吵/出货 > 明天盯 > 休息中 > 刚有人气 > 没动静）。
+
+⚠️ 原型那个框写着「技术 / 新闻 / 基本面三面合议」，照实说我们这版是什么：
+
+- **技术面** = 这里的阶段判定（`classify_phase`）；
+- **新闻面** = **另一个接口**（`GET /api/stock/{code}/news`，东财口径，每次现取），
+  页面自己再发一次请求，**不在**这条返回里 —— 它慢且可能失败，不该拖住结论（见 §8.86）；
+- **基本面** = 只有**所属行业** + 涨停/龙虎榜计数，**没有**盈利 / 估值 / 现金流那一套
+  （想看市值等去个股页）。所以「基本面」这个词是**借来的**，别当它真做了基本面分析。
 """
 
 import logging
@@ -90,6 +105,13 @@ def lookup(
     lhb_count = (
         session.scalar(select(func.count()).select_from(Lhb).where(Lhb.code == code)) or 0
     )
+    # 上面两个计数的**分母窗口**（两张表各自覆盖的交易日数）。必须一起返回：
+    # 它们数的是「库里已有的那些天」，不是历史累计 —— 不写窗口就容易被读成
+    # 「这只票一辈子涨停 12 次」。两张表分开给，因为窗口不一定一样。
+    limit_up_days = (
+        session.scalar(select(func.count(func.distinct(LimitPool.trade_date)))) or 0
+    )
+    lhb_days = session.scalar(select(func.count(func.distinct(Lhb.trade_date)))) or 0
 
     return StockAnalysis(
         code=code,
@@ -102,4 +124,6 @@ def lookup(
         sectors=sectors,
         limit_up_count=int(limit_up_count),
         lhb_count=int(lhb_count),
+        limit_up_days=int(limit_up_days),
+        lhb_days=int(lhb_days),
     )

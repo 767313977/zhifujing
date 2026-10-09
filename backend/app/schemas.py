@@ -702,8 +702,13 @@ class StockDdeOut(BaseModel):
 class WudaoPhase(ApiModel):
     """悟道「阶段判定」：8 个标签之一 + 一眼看懂的说明。
 
-    判定在 `services/patterns.classify_phase`（与「明天盯 / 今天可买」共用同一批判据），
+    判定在 `services/patterns.classify_phase`（与「明天盯 / 明天预案」共用同一批判据），
     这里只是把它搬给前端。
+
+    ⚠️ **但不等于名单**（2026-10-09 起）：名单只收创业板 + 科创板、且出口另有一道
+    `_wudao_leave_ok`（收盘离开最高 ≤ 2.9%）—— 两处都故意没进 `classify_phase`。
+    所以这里显示「明天盯 / 明天预案」时，悟道页的名单里**可能没有它**（实测 09-28：
+    判「明天盯」的 31 只里只有 6 只在名单）。见 `api/analysis.py` 的模块说明。
     """
 
     #: silent / wake / sample / start / digest / diverge / dump / unknown
@@ -808,6 +813,9 @@ class StockAnalysis(ApiModel):
     技术面＝`phase`，基本面＝`industry`（做什么生意），题材/复盘＝`sectors` + 计数。
     **新闻另走一个接口**（`GET /api/stock/{code}/news`，东财口径）—— 它要出外网、还可能取不到，
     塞进这里会让整页一起等、一起失败。
+
+    ⚠️ 三面是**并列参考，不做自动合议**（没有哪一步把它们综合成一个判断）——
+    页面文案别再写成「合议」。
     """
 
     code: str
@@ -822,9 +830,15 @@ class StockAnalysis(ApiModel):
     industry: str | None = None
     #: 最近一次涨停时挂的开盘红精选板块 —— 做过什么题材。只覆盖涨停过的票
     sectors: list[str] = Field(default_factory=list)
-    #: 复盘关联：历史上过涨停池 / 上过龙虎榜的次数
+    #: 复盘关联：上过涨停池 / 龙虎榜的次数。
+    #: ⚠️ 这两个是**在库里已有数据的天数内**数的，不是「历史累计」—— 所以必须带上
+    #: 下面两个窗口天数，页面要显示出来，否则会被读成「这只票一辈子涨停 12 次」。
     limit_up_count: int = 0
     lhb_count: int = 0
+    #: `limit_pool` / `lhb` 两张表各自覆盖的交易日数（= 上面两个计数的分母窗口）。
+    #: 两张表分开给，因为它们的窗口不一定一样（补数失败、某天缺采都会造成差异）。
+    limit_up_days: int = 0
+    lhb_days: int = 0
 
 
 class StockProfile(BaseModel):
@@ -949,7 +963,13 @@ class PatternStockOut(BaseModel):
     # 归属接口（见设计文档 8.32.4），所以从未涨停过的票这里是**空**的。
     # 实测：最新命中日的 1973 只里 1466 只有（**74.3%**），池内整体 75.2%。
     # 取的是「该股出现过的最近一天」而不是「命中当天」—— 当天口径只有那几十只涨停股
-    # 有值，等于整列空着。空就是空，**不拿行业或别的口径去顶**。
+    # 有值，等于整列空着。
+    #
+    # ⚠️ **接口这一层绝不拿行业或其他口径来顶**（空就是空，口径要干净）。
+    # 页面上也是**两列/两行分开**，谁都不回落：悟道页与形态页是「板块」「行业」各一列，
+    # 个股页是「精选板块」「所属行业」两行。
+    # （2026-10-09 曾短暂试过「板块空时在悟道页回落显示行业」这一版，看过效果后
+    #   用户改成「拆成两列」，于是回落的代码已撤掉 —— 别再加回来。）
     sectors: list[str] = []
     # 所属**同花顺行业**，来自 `stock_basic.industry`（2026-09-29 起由建池那条路顺手带回来，
     # 7 天一次、覆盖全 A）。
@@ -1237,7 +1257,9 @@ class MemberOut(ApiModel):
     username: str
     is_admin: bool
     created_at: datetime
-    last_login_at: datetime | None
+    # 「最近访问」—— 任何带会话的请求都会按 1 小时节流刷新（见 models.AppUser.last_seen_at）。
+    # ⚠️ 不要理解成「最近登录」：会话是滑动续期的，会员可以一直不重新登录。
+    last_seen_at: datetime | None
     disabled_at: datetime | None
     # 他是拿哪个邀请码进来的（来源可追）
     invite_code: str | None = None
