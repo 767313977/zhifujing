@@ -174,8 +174,8 @@ export default function Wudao() {
             </p>
             <p>
               清单的<b className="font-normal text-fg-muted">扫描范围按形态各定</b>（2026-10-08 优化）：
-              「明天盯 / 今天可买」只看当天<b className="font-normal text-fg-muted">创业板里冲高过 4.5% 的票</b>
-              （几十只量级，用的就是判定要的那份日线，不再依赖行情快照）；
+              「明天盯 / 今天可买」只看当天<b className="font-normal text-fg-muted">创业板 + 沪深主板里冲高过 4.5% 的票</b>
+              （几十到一两百只，用的就是判定要的那份日线，不再依赖行情快照）；
               「洗完可盯」「华宝早期」「黑白选股」<b className="font-normal text-fg-muted">不限池子、扫全市场</b> —— 它们的票今天往往很安静
               （洗盘、连阳初期涨幅只有 1~3%），拿「今天强势」当候选等于把它们全筛掉。
             </p>
