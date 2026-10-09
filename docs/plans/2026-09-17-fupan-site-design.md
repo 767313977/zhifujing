@@ -10050,6 +10050,20 @@ Edge 的窗口边不算在 `innerWidth` 里）。操作区按最宽那一档建�
 **没做**（可选）：把 22:00 那趟再往后挪（如 23:30）去赌「当日」名单 —— 发布时间不可靠，
 而回落已经能保证页面有票，暂时不值当。
 
+## 8.99 「胜率跟踪」页去掉「悟道池子成绩单」（2026-10-09）
+
+用户截图说「这个去掉」→ 指的是「胜率跟踪」页顶部的**悟道池子成绩单**那一块
+（`PatternTrack.tsx` 的 `<Panel title="悟道池子成绩单">`）。
+
+- 删掉：那个面板 + `PoolStandingTable` / `HorizonCell` / `RateCell` / `hasSamples`
+  四个组件（约 140 行）、`standing` state、以及 `api.poolStanding` 那次请求
+  —— 现在这一页只请求 `patternTrack`（不再 `Promise.all` 两个）、
+  `PoolHorizon` / `PoolStandingOut` 两个类型引用与 `fmtInt` 也一并从 import 里去掉。
+- **「循环明细」那块不动**（它是这一页原来的主体：某天选出的 50 只逐日涨跌）。
+- **后端 `GET /api/patterns/standing` 保留**：前端不再调，但成绩单的口径与数字在
+  §3 / 《策略》里还有引用，删接口会把那些引用变成悬空。要真删再说。
+
+
 
 
 
