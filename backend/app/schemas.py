@@ -731,6 +731,53 @@ class WudaoPhase(ApiModel):
     metrics: dict[str, float | None] = Field(default_factory=dict)
 
 
+class PoolHorizon(ApiModel):
+    """一个收益档位的统计量（收益都是**百分数**，1.23 = +1.23%）。"""
+
+    days: int
+    samples: int = 0
+    mean: float | None = None
+    median: float | None = None
+    up_pct: float | None = None
+    #: 相对**同一天全市场等权平均**的超额（与回测脚本、形态页跟踪同一口径）
+    excess: float | None = None
+    #: 跑赢同日全市场的比例
+    beat_pct: float | None = None
+
+
+class PoolStanding(ApiModel):
+    """一个悟道池子的「成绩单」：**每天照这个池子全买，之后会怎样**。"""
+
+    pattern: str
+    name: str
+    #: 窗口内全部命中条数 / 去重只数 / 有命中的扫描日数
+    hits: int = 0
+    stocks: int = 0
+    scan_days: int = 0
+    returns: list[PoolHorizon] = Field(default_factory=list)
+    #: 破位率的样本数（到线率那一列用 `touch_samples`，两者可能不等）
+    samples: int = 0
+    #: 到线率：命中后 N 日内**收盘**站上「要过的那条线」的比例。池子没有这条线时是 null
+    touch: float | None = None
+    touch_samples: int = 0
+    #: 破位率：同期**收盘**跌破「作废位」的比例
+    stop: float | None = None
+    #: 破位用的是哪个位 —— 「作废位」还是「命中日最低价（代理）」。两种口径不能看起来一样
+    stop_source: str = ""
+
+
+class PoolStandingOut(ApiModel):
+    """悟道池子的成绩单（`/api/patterns/standing`）。"""
+
+    start: str
+    #: 窗口里实际有命中的扫描日数（样本还少时会等于 1，页面要如实显示）
+    cohorts: int
+    scan_days: list[str] = Field(default_factory=list)
+    track_days: int
+    line_days: int
+    pools: list[PoolStanding] = Field(default_factory=list)
+
+
 class StockNewsRow(ApiModel):
     """一条个股新闻。"""
 

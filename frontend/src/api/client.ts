@@ -27,6 +27,7 @@ import type {
   PatternSummary,
   PatternTrack,
   PatternTrackDetail,
+  PoolStandingOut,
   PromotionSeries,
   ReviewNote,
   RotationLeaderDay,
@@ -321,6 +322,18 @@ export const api = {
    */
   analysisLookup: (q: string) =>
     request<StockAnalysis>(`/analysis/lookup?q=${encodeURIComponent(q)}`),
+
+  /**
+   * 悟道六池的「成绩单」：收益（1/3/5/10 日）+ 到线率 + 破位率。
+   *
+   * 与 `patternTrack` 的分工：那个问「全形态混合的评分前 50 只后来怎么样」，
+   * 这个问「**这个池子**后来怎么样」—— 几百只的安静型池子进不了前 50，只能按池子算。
+   * ⚠️ 统计起点是 2026-10-08（池子的候选范围定稿那天），样本会随每天扫描慢慢攒。
+   */
+  poolStanding: (cohorts = 30, trackDays = 10, lineDays = 5) =>
+    request<PoolStandingOut>(
+      `/patterns/standing?cohorts=${cohorts}&track_days=${trackDays}&line_days=${lineDays}`,
+    ),
 
   // --- 形态选股 ---
   patternCatalog: () => request<PatternMeta[]>('/patterns/catalog'),

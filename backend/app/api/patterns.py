@@ -27,6 +27,7 @@ from app.schemas import (
     PatternSummary,
     PatternTrackDetail,
     PatternTrackOut,
+    PoolStandingOut,
 )
 from app.services import pattern_track
 from app.services.patterns import PATTERNS
@@ -276,6 +277,47 @@ def track(
     result = PatternTrackOut.model_validate(
         pattern_track.track(
             db, start=start, cohorts=cohorts, top=top, track_days=track_days
+        )
+    )
+    _TRACK_CACHE[key] = (datetime.now(), result)
+    return result
+
+
+@router.get("/standing", response_model=PoolStandingOut)
+def standing(
+    db: Session = Depends(get_db),
+    cohorts: int = Query(pattern_track.DEFAULT_COHORTS, ge=1, le=120),
+    track_days: int = Query(max(pattern_track.HORIZONS), ge=1, le=60),
+    line_days: int = Query(5, ge=1, le=30),
+) -> PoolStandingOut:
+    """悟道六池的「成绩单」：收益（1/3/5/10 日）+ 到线率 + 破位率。
+
+    与 `/track` 的分工：那边问的是「**全形态混合的评分前 50 只**后来怎么样」，
+    这边问的是「**这个池子**后来怎么样」—— 悟道那些池子（尤其几百只的安静型池子）
+    本来也进不了前 50，只能按池子单独算。这也是「这个池子值不值得留」的唯一依据。
+
+    - **收益**：命中日收盘 → 之后第 n 个交易日（n ∈ 1/3/5/10），按涨跌幅逐日复利；
+      超额减掉**它自己那天**的全市场等权平均（与回测脚本、`/track` 同一口径）。
+    - **到线率**：命中后 `line_days` 个交易日内**收盘**站上「要过的那条线」
+      （样板池的今高、洗盘池的洗盘高）的比例 —— 回答「这一步到底有没有发生」。
+    - **破位率**：同期**收盘**跌破「作废位」的比例；作废位优先取 `key_levels` 里那个
+      （`wash_low` / `start_low`），没有的池子退回用**命中日最低价**当代理，
+      `stop_source` 会写明用的是哪一种（页面上照原样显示）。
+
+    ⚠️ 统计起点由 `Settings.pool_track_start` 定（＝2026-10-08，候选池定稿那天）：
+    更早的命中是**另一套候选口径**下的名单，混进来等于把两个分布平均。
+    样本会随每天的扫描自然攒起来（`cohorts` 就是实际有命中的扫描日数，示例：刚上线时是 1）；
+    想要更早的日子，正确做法是用现在的判定把那些天**重扫一遍**（幂等、零配额）。
+    """
+    start = get_settings().pool_track_start
+    key = ("standing", cohorts, track_days, line_days, start, *_track_version(db))
+    cached = _TRACK_CACHE.get(key)
+    if cached is not None and datetime.now() - cached[0] < _TRACK_TTL:
+        return cached[1]
+
+    result = PoolStandingOut.model_validate(
+        pattern_track.pool_standing(
+            db, start=start, cohorts=cohorts, hold_days=track_days, line_days=line_days
         )
     )
     _TRACK_CACHE[key] = (datetime.now(), result)
