@@ -506,6 +506,26 @@ def _ensure_wudao_kline(
             "skipped_quota": 0,
         }
 
+    return _sync_codes_three_levels(need, settings, label="悟道候选")
+
+
+def _sync_codes_three_levels(need: set[str], settings: Settings, *, label: str) -> dict:
+    """把一批票的近端日线补齐：**东财 → 腾讯 → iFinD**（免费在前、吃配额在后）。
+
+    从 `_ensure_wudao_kline` 抽出来给两处共用：那里补的是「扫描目标日的悟道候选」，
+    `backfill_top_kline` 补的是「形态命中评分前 N 只」—— **判据不同、补法相同**。
+
+    **三道闸门**（为同时省时间与配额；阈值见 `Settings` 的注释）：
+
+    - **东财熔断**：连续失败 `wudao_em_breaker_failures` 次就本轮不再试它。
+      云端连不上东财直连（1.7 / 8.51.3 记过），而这里是**逐只**补 —— 不熔断的话每只都要
+      等一次约 10 秒的超时。实测 09-24：48 只候选白等约 8 分钟，且最终全部落到 iFinD。
+    - **腾讯熔断**：同一个道理 —— 这条线也有可能整轮不通（接口变动 / 该机器不可达）。
+    - **iFinD 上限**：每轮最多补 `wudao_ifind_fallback_max` 只，超出的**本轮不补**
+      （当天就没有这些候选的形态信号）。这是刻意的「配额 ↔ 覆盖」取舍，不静默：
+      跳过的只数进 `skipped_quota`，日志与采集日志里都会写出来。
+      **有了腾讯这一级，它其实很少再触发** —— 只有在腾讯也整轮不通时才轮得到它顶上来。
+    """
     from app.jobs.collect_daily import DailyCollector
     from app.sources.ifind import IfindError
 
@@ -540,10 +560,11 @@ def _ensure_wudao_kline(
                     em_dead = True
                     logger.warning(
                         "补日线(东财) 连续失败 %d 次（最近一只 %s：%s），"
-                        "本轮剩余候选不再试东财，改由腾讯 / iFinD 兜底",
+                        "本轮剩余%s不再试东财，改由腾讯 / iFinD 兜底",
                         em_failures,
                         code,
                         exc,
+                        label,
                     )
                 else:
                     logger.warning("补日线(东财) %s 失败：%s", code, exc)
@@ -562,10 +583,11 @@ def _ensure_wudao_kline(
                     tx_dead = True
                     logger.warning(
                         "补日线(腾讯) 连续失败 %d 次（最近一只 %s：%s），"
-                        "本轮剩余候选不再试腾讯，改由 iFinD 兜底（受上限约束）",
+                        "本轮剩余%s不再试腾讯，改由 iFinD 兜底（受上限约束）",
                         tx_failures,
                         code,
                         exc,
+                        label,
                     )
                 else:
                     logger.warning("补日线(腾讯) %s 失败：%s", code, exc)
@@ -591,9 +613,10 @@ def _ensure_wudao_kline(
             failed += 1
     if skipped_quota:
         logger.warning(
-            "补日线：%d 只候选因 iFinD 兜底到上限（%d 只）本轮未补 —— "
-            "它们当天没有形态信号；想让覆盖更全就调大 `WUDAO_IFIND_FALLBACK_MAX`",
+            "补日线：%d 只%s因 iFinD 兜底到上限（%d 只）本轮未补 —— "
+            "想让覆盖更全就调大 `WUDAO_IFIND_FALLBACK_MAX`",
             skipped_quota,
+            label,
             settings.wudao_ifind_fallback_max,
         )
     return {
@@ -605,6 +628,60 @@ def _ensure_wudao_kline(
         "via_ifind": via_ifind,
         "skipped_quota": skipped_quota,
     }
+
+
+def _latest_hit_date() -> date | None:
+    """库里最新的 `pattern_hit` 日期 —— 与形态页默认视图取的那天一致。"""
+    with session_scope() as session:
+        return session.scalar(select(func.max(PatternHit.trade_date)))
+
+
+def backfill_top_kline(
+    day: date | None = None, *, limit: int = 50, settings: Settings | None = None
+) -> dict:
+    """把「形态选股」评分前 `limit` 只的日线**补到最近交易日**（默认 50，与页面同一口径）。
+
+    2026-10-09 用户要求「每天把形态选股的 50 支票数据补齐」。形态页那张 K 线读的就是
+    `stock_daily` —— 某只的最后一根若早于最近交易日，图上**最新几天就是断的**。
+
+    与 `_ensure_wudao_kline` 有两点不同（所以单独一个函数、不并进去）：
+
+    - 补的是**页面真正会显示的那 50 只**（按票归并取最高分，`_backfill_hit_dde` 同口径），
+      不是扫描的候选池；
+    - 补到的是**最近交易日**（`_latest_trade_date()`，取自全本交易日历），不是扫描目标日
+      —— 所以扫描停在旧日期时（本机库常年落后于线上）也照样往上补。
+
+    `day=None` 时用库里最新的 `pattern_hit` 日期（与页面默认视图一致）。走免费源为主
+    （东财 → 腾讯），iFinD 只在两级都不可用时兜底，所以**常态零 iFinD 配额**。
+    """
+    settings = settings or get_settings()
+    target = day or _latest_hit_date()
+    if target is None:
+        return {"codes": 0, "pending": 0, "want": None}
+    codes = _top_hit_codes(target, limit)
+    if not codes:
+        return {"codes": 0, "pending": 0, "want": None}
+
+    want = _latest_trade_date()
+    last = _last_bars(set(codes))
+    # 缺的判据只有一条：**最后一根 < 最近交易日**（根数在这里不是问题 —— 能进前 50
+    # 的票本来就够它命中的那个形态用了）。
+    need = {code for code in codes if last.get(code) is None or last[code] < want}
+    if not need:
+        return {"codes": len(codes), "pending": 0, "want": want.isoformat()}
+    info = _sync_codes_three_levels(need, settings, label=f"{target} 命中前 {limit}")
+    return {"codes": len(codes), "pending": len(need), "want": want.isoformat(), **info}
+
+
+def _top_hit_codes(day: date, limit: int) -> list[str]:
+    """某日命中里按股票归并、评分降序的前 `limit` 只 —— 与页面同一口径。
+
+    直接用 `collect_dde.top_hit_codes`（`_backfill_hit_dde` 那一步也用它，
+    口径只有一份；两边选出的集合实测完全相同，见那个函数的 docstring）。
+    """
+    from app.jobs.collect_dde import top_hit_codes
+
+    return top_hit_codes(day, limit)
 
 
 def scan(

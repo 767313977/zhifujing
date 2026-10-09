@@ -460,6 +460,11 @@ class DailyScheduler:
         # 而形态扫描是全市场日线的下游，先让历史落库再算，两者不抢
         self._backfill_kline(today)
         self._scan_patterns(today)
+        # 命中前 N 只的**日线**补齐：形态页那张 K 线读的就是 `stock_daily`，某只的最后
+        # 一根早于最近交易日，图上最新几天就是断的（2026-10-09 用户要求）。
+        # 排在形态扫描之后 —— 要先有命中才谈得上「前 50 只」。走免费源为主、
+        # 常态零 iFinD 配额，所以**不像 DDE 那一步需要按配额让路**。
+        self._backfill_hit_kline(today)
         self._push_brief(today)
         # 单独推送的形态：加新形态就在 `PUSH_PATTERNS` 里登记，然后在这里补一行
         self._push_pattern("limit_surge_flat", today)
@@ -496,6 +501,39 @@ class DailyScheduler:
             result.get("rows"),
             result.get("codes"),
             result.get("cost_seconds"),
+        )
+
+    def _backfill_hit_kline(self, trade_date: date) -> None:
+        """把当日命中评分前 N 只（`Settings.kline_hit_top_n`，默认 50）的**日线**补到最近交易日。
+
+        与 `_backfill_hit_dde` 同一口径取票（`collect_dde.top_hit_codes`，就是页面上
+        「评分前 50」那批）。为什么要有这一步：形态页那张 K 线读的就是 `stock_daily`，
+        某只的最后一根早于最近交易日，图上最新几天就是断的。
+
+        **不需要让路阈值**（与 DDE 那一步不同）：补法走东财 → 腾讯（都免费），iFinD 只
+        在两级都不可用时兜底 —— 正常日子 **0 次 iFinD 调用**，不占用基础采集的额度。
+        已经到最近交易日的票不发请求（`backfill_top_kline` 先查最后一根），重启重跑不重复花钱。
+        失败只记日志（这是增强项）。
+        """
+        from app.jobs.scan_patterns import backfill_top_kline
+
+        try:
+            result = backfill_top_kline(trade_date, limit=self.settings.kline_hit_top_n)
+        except Exception:  # noqa: BLE001 - 日线补齐是增强，不该影响调度
+            logger.exception("命中日线补齐失败")
+            return
+        logger.info(
+            "命中日线补齐 %s：命中 %s 只 / 需补 %s 只 → 补 %s 只"
+            "（东财 %s / 腾讯 %s / iFinD %s，失败 %s），目标日 %s",
+            trade_date,
+            result.get("codes"),
+            result.get("pending"),
+            result.get("synced"),
+            result.get("via_eastmoney"),
+            result.get("via_tencent"),
+            result.get("via_ifind"),
+            result.get("failed"),
+            result.get("want"),
         )
 
     def _collect_kline(self, trade_date: date) -> None:
