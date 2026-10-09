@@ -21,7 +21,8 @@
 1. **市值门槛用总市值**：本站 `limit_pool` / `stock_universe` 都只有 `total_mv`，
    没有流通市值，所以门槛是「总市值 ≥ 40 亿」而不是原型的「流通市值 ≥ 40 亿」。
 2. **板块用同花顺行业末段**：原型用它自己的东财行业，本站没有那一套，取
-   `stock_basic.industry`（如 `电子-半导体-集成电路`）的**最后一段**（`集成电路`）。
+   `stock_basic.industry`（如 `电子-半导体-集成电路Ⅲ`）的**最后一段**（`集成电路`），
+   并去掉结尾的 `Ⅰ/Ⅱ/Ⅲ` 级别记号（见 `_strip_level`）。
 3. **炸板 reason 留空**：`limit_reason` 只覆盖涨停股（同花顺涨停池），炸板池本来
    就没有对应数据 —— 不拿别的东西顶（混口径比空着更糟）。
 
@@ -66,6 +67,10 @@ TYPE_BIG_YANG = "中大阳线异动"
 FILTER_TEXT = "主板(含002) / 非ST / 总市值≥40亿（本站口径；原型用流通市值）"
 SOURCE_TEXT = "东财涨停/炸板池(limit_pool) + 本地日线 · 板块=同花顺行业末段"
 
+# 同花顺行业末段结尾的**级别记号**（它自己用来标 Ⅰ/Ⅱ/Ⅲ 级）。展示与分组都要去掉，
+# 见 `_strip_level` —— 罗马数字在这张表上没有信息量，还容易让「板块」看起来像脏数据。
+_LEVEL_MARKS = "ⅠⅡⅢⅣⅤ"
+
 
 def _is_mainboard(code: str) -> bool:
     """是不是主板（含 002 中小板）。判据见 `_MAINBOARD_PREFIXES` 的说明。"""
@@ -94,12 +99,27 @@ def _board(consecutive: int | None) -> str:
     return "首板" if consecutive == 1 else f"{consecutive}连板"
 
 
+def _strip_level(text: str) -> str:
+    """去掉同花顺行业名结尾的**级别后缀**（`IT服务Ⅲ` → `IT服务`，`证券Ⅱ` → `证券`）。
+
+    同花顺三级路径的最后一段自带 `Ⅰ/Ⅱ/Ⅲ` 标级别（如 `计算机-计算机应用-IT服务Ⅲ`），
+    那个后缀只是它内部的分级记号，摆在这张表上没有任何信息量（2026-10-09 用户要求去掉）。
+    ⚠️ **前端「行业」列有一份等价实现**（`pages/Anomaly.tsx` 的 `industryLast`）——
+    两处必须同规则，否则「板块」列与「行业」列会出现只差一个后缀的假不一致。
+    """
+    stripped = text.rstrip(_LEVEL_MARKS).strip()
+    # 全是级别记号（不会真的发生）时退回原文，别给出空字符串
+    return stripped or text
+
+
 def _sector_of(industry: str | None) -> str:
-    """同花顺三级行业路径取**最后一段**当板块分组键；拿不到落「其他」。"""
+    """同花顺三级行业路径取**最后一段**当板块分组键；拿不到落「其他」。
+
+    最后一段要去掉级别后缀（见 `_strip_level`）。
+    """
     if not industry:
         return "其他"
-    last = industry.split("-")[-1].strip()
-    return last or "其他"
+    return _strip_level(industry.split("-")[-1].strip()) or "其他"
 
 
 def _cap(total_mv: float | None) -> float | None:
