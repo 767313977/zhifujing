@@ -1,6 +1,6 @@
 """个股「阶段判定」的取数壳：`code` → `PhaseVerdict`。
 
-判定本身在 `services/patterns.classify_phase`（与形态选股的「明天盯 / 今天可买」
+判定本身在 `services/patterns.classify_phase`（与形态选股的「明天盯 / 明天预案」
 **共用同一批判据**）；这里只管把库里最近 `PHASE_BARS` 根日线取出来、剔掉没法用的行、
 转成 `Bars`，然后交给它。
 

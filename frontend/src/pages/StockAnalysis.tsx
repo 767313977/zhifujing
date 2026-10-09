@@ -13,11 +13,18 @@ import { fmtNum, fmtPct, toneOf } from '../lib/format'
  *
  * 一个输入框把「代码 / 名称 / 拼音首字母」解析成结论 —— 手边想到什么就敲什么
  * （`300654` / `世纪天鸿` / `sjth` 都行）。结论本身来自 `services/patterns.classify_phase`，
- * 与「悟道之路」那几张名单**共用同一批判据**，所以两处不会打架。
+ * 与「悟道之路」那几张名单**共用同一批判据**。
  *
- * 「技术 / 新闻 / 基本面三面合议」三面都齐了：技术＝结论卡，基本面＝行业 + 复盘关联，
- * 新闻＝下面单独一块（**东财口径**，每次分析现取）。新闻是**慢且可能失败**的那一面，
- * 所以独立请求、独立的加载与失败提示，不拖累结论。
+ * ⚠️ 但**不能因此说「两处不会打架」**（2026-10-09 起）：名单只收创业板 + 科创板、
+ * 且出口多一道 `_wudao_leave_ok`（收盘离开最高 ≤ 2.9%），两处都**故意**没进这里 ——
+ * 所以这一页说「明天盯 / 明天预案」时，名单里**可能没有它**（实测 09-28：31 只里只有 6 只在名单）。
+ * 详见 `api/analysis.py` 的模块说明。
+ *
+ * 「技术 / 新闻 / 基本面」三面都摆出来了：技术＝结论卡，基本面＝行业 + 复盘关联，
+ * 新闻＝下面单独一块（**东财口径**，每次分析现取）。⚠️ 三面是**并列展示、不是真的合议**
+ * （没有任何一步把三者综合成一个判断）；而「基本面」这一面其实只有**行业名 + 两个计数**，
+ * 没有盈利/估值/现金流 —— 页面文案别把它说成做过基本面分析。
+ * 新闻是**慢且可能失败**的那一面，所以独立请求、独立的加载与失败提示，不拖累结论。
  */
 export default function StockAnalysisPage() {
   const [query, setQuery] = useState('')
@@ -104,9 +111,14 @@ export default function StockAnalysisPage() {
               )}
             </form>
             <p className="text-[12px] leading-relaxed text-fg-dim">
-              分析里带技术 / 新闻 / 基本面三面合议（旁证）：技术面＝下面的结论卡，
-              基本面＝行业与复盘关联，新闻＝东财那条源（每次分析现取；只列标题里出现这只票的，
-              名单类稿件按条数标出、不混在里面）。
+              分析里带技术 / 新闻 / 基本面三面<b className="font-normal text-fg-muted">并列参考</b>
+              （各看各的，<b className="font-normal text-fg-muted">不做自动合议</b>）：
+              技术面＝下面的结论卡，基本面＝行业与复盘关联，新闻＝东财那条源（每次分析现取；
+              只列标题里出现这只票的，名单类稿件按条数标出、不混在里面）。
+              <br />
+              结论卡这套模板是<b className="font-normal text-fg-muted">按 20cm 强势票校准的</b>
+              （创业板 / 科创板那种），随手查的普通票多半会显示「没动静 / 对不上」——
+              那是模板不匹配，不等于这只票有问题。
             </p>
           </div>
         </Panel>
@@ -147,10 +159,19 @@ export default function StockAnalysisPage() {
                     {result.sectors.length > 0 ? result.sectors.join('、') : '—（没涨停过就没有）'}
                   </span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-baseline gap-2">
                   <span className="text-fg-dim">复盘关联</span>
-                  <span className="num text-fg-muted">
+                  {/* ⚠️ 这两个计数是**库里有数据的那些天**里数的，不是历史累计 ——
+                      必须把分母窗口一起显示，否则会被读成「这只票一辈子涨停 12 次」。
+                      两张表窗口不一定一样，所以分开标。 */}
+                  <span
+                    className="num text-fg-muted"
+                    title={`窗口＝库里已有数据的天数，不是历史累计（涨停池表覆盖 ${result.limit_up_days} 天、龙虎榜表覆盖 ${result.lhb_days} 天）`}
+                  >
                     涨停 {result.limit_up_count} 次 · 龙虎榜 {result.lhb_count} 次
+                  </span>
+                  <span className="num text-[12px] text-fg-dim">
+                    （窗口 {result.limit_up_days} / {result.lhb_days} 个交易日）
                   </span>
                 </div>
               </div>
@@ -175,7 +196,7 @@ export default function StockAnalysisPage() {
 }
 
 /**
- * 新闻那一块（「三面合议」里的新闻面）。
+ * 新闻那一块（「三面并列」里的新闻面）。
  *
  * 三条状态都要说清楚：加载中 / 有内容 / 空（**且区分「真没搜到」与「源没返回」**）——
  * 把后者显示成「暂无新闻」会让人以为这只票很干净。
