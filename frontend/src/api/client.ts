@@ -307,6 +307,8 @@ export const api = {
    *
    * 后端**每次打开都现取、不落库**（新闻的价值全在「新」，而这条源没有配额）；
    * 取不到时 `rows` 为空、`note` 说明原因 —— 别把两者混成「这只票没有新闻」。
+   * `hidden` 是「只在正文里提到代码」的名单类稿件的条数（有标题命中时被筛掉），
+   * 页面上要标出来，别静默丢。
    */
   stockNews: (code: string, limit = 20) =>
     request<StockNews>(`/stock/${code}/news?limit=${limit}`),

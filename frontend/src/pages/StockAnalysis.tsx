@@ -45,7 +45,15 @@ export default function StockAnalysisPage() {
       api
         .stockNews(found.code)
         .then(setNews)
-        .catch((err: Error) => setNews({ code: found.code, name: found.name, rows: [], note: `新闻取不到：${err.message}` }))
+        .catch((err: Error) =>
+          setNews({
+            code: found.code,
+            name: found.name,
+            rows: [],
+            hidden: 0,
+            note: `新闻取不到：${err.message}`,
+          }),
+        )
         .finally(() => setNewsLoading(false))
     } catch (err) {
       // 解析不出 / 匹配到多只时后端给的就是一句能直接读的话，原样显示；
@@ -97,7 +105,8 @@ export default function StockAnalysisPage() {
             </form>
             <p className="text-[12px] leading-relaxed text-fg-dim">
               分析里带技术 / 新闻 / 基本面三面合议（旁证）：技术面＝下面的结论卡，
-              基本面＝行业与复盘关联，新闻＝东财那条源（每次分析现取，取不到会写明原因）。
+              基本面＝行业与复盘关联，新闻＝东财那条源（每次分析现取；只列标题里出现这只票的，
+              名单类稿件按条数标出、不混在里面）。
             </p>
           </div>
         </Panel>
@@ -170,6 +179,8 @@ export default function StockAnalysisPage() {
  *
  * 三条状态都要说清楚：加载中 / 有内容 / 空（**且区分「真没搜到」与「源没返回」**）——
  * 把后者显示成「暂无新闻」会让人以为这只票很干净。
+ * `hidden` 要标出来：那些是「只在正文表格里提到代码」的名单类稿件，有标题命中的新闻时
+ * 后端把它们筛掉了 —— 不写一句，看起来就像源少给了数据。
  * 标题直接链到东财原文，`noopener` 必须带（`noreferrer` 是它的现代写法）。
  */
 function NewsPanel({ news, loading }: { news: StockNews | null; loading: boolean }) {
@@ -180,6 +191,9 @@ function NewsPanel({ news, loading }: { news: StockNews | null; loading: boolean
         <span className="text-[13px] text-fg-dim">
           东财口径
           {news && news.rows.length > 0 && <span className="num ml-2">{news.rows.length} 条</span>}
+          {news && news.hidden > 0 && (
+            <span className="num ml-2">另隐去 {news.hidden} 条只在正文提到代码的名单稿</span>
+          )}
         </span>
       }
       delay={75}

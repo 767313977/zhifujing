@@ -775,6 +775,13 @@ export interface StockNews {
   code: string
   name: string | null
   rows: StockNewsRow[]
+  /**
+   * 被筛掉的「只在正文表格里提到代码」的名单类稿件条数。
+   *
+   * 有标题命中的新闻时，名单类稿件**不进 `rows`**，但条数会带出来 —— 界面上要标一句
+   * 「另隐去 N 条」，否则看起来像源少给了数据。
+   */
+  hidden: number
   note: string | null
 }
 

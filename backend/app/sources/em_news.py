@@ -57,23 +57,44 @@ def _link(url: object) -> str:
     return text
 
 
-def fetch_stock_news(code: str, *, name: str | None = None, limit: int = 20) -> list[NewsItem]:
-    """这只票最近的 `limit` 条新闻，按**相关性 + 时间**排序。
+@dataclass(frozen=True)
+class NewsResult:
+    """一次取数的结果。
 
-    取不到（接口变动 / 网络）就抛，由调用方决定怎么显示 —— 空列表与「源挂了」
-    是两回事：前者是「真没搜到」（小票、次新常见），后者要能在日志里看见。
+    ⚠️ `hidden` 必须一路带到界面上（**不能静默丢弃**）：筛掉的那些是「只在正文表格里
+    提到代码」的名单类稿件，用户有权知道它们存在、也有权知道不是源没给。
+    """
 
-    ⚠️ **排序不是纯按时间**：东财的搜索是**全文匹配**，于是「创业板最新筹码集中股名单」
-    「股东户数降幅榜」这类**只在正文表格里列到代码**的稿子也算命中，而且它们天天发、
-    常常最新 —— 纯按时间排，一只票的新闻面会被这种稿子占满（实测 300654 前 5 条全是）。
-    所以先按时间倒序，再把「**标题里出现名称或代码**」的稳定排到前面：
-    没有一条标题命中时，顺序就等于纯按时间（不会更糟）。
+    items: list[NewsItem]
+    #: 因为「有标题命中的新闻」而被隐去的条数（没有标题命中时不筛、这里就是 0）
+    hidden: int
+
+
+def fetch_stock_news(
+    code: str, *, name: str | None = None, limit: int = 20
+) -> NewsResult:
+    """这只票的新闻，按**相关性 + 时间**排序，**取不到就抛**。
+
+    空列表与「源挂了」是两回事：前者是「真没搜到」（小票、次新常见），后者要能在日志里
+    看见 —— 所以这里不吞异常，交给调用方决定怎么显示。
+
+    ⚠️ **筛一道、不是只排序**（2026-10-09 用户定的方案）：东财的搜索是**全文匹配**，
+    「创业板最新筹码集中股名单」「股东户数降幅榜」这类**只在正文表格里列到代码**的稿子
+    也算命中，而且天天发、常常最新 —— 只排序的话，一只票的新闻面照样会被它们垫满尾部
+    （实测 300654 只有 2 条是真正讲它的）。现在的规则：
+
+    · **有**标题命中名称/代码的 → **只给这些**（按时间倒序），其余进 `hidden` 计数；
+    · **一条标题命中都没有** → 退回给全部（按时间倒序）。
+
+    这样「讲这只票的新闻」永远排在最前且不掺名单稿，而真正没有个股新闻的票（次新、小票）
+    也不会突然变成空白 —— 那种时候名单稿至少还是条线索。代价要认：命中的少时列表会短
+    （300654 就只剩 2 条），所以界面上标了「另隐去 N 条」。
     """
     import akshare as ak
 
     df = ak.stock_news_em(symbol=str(code).zfill(6))
     if df is None or getattr(df, "empty", True):
-        return []
+        return NewsResult(items=[], hidden=0)
 
     rows: list[NewsItem] = []
     for rec in df.to_dict("records"):
@@ -93,10 +114,11 @@ def fetch_stock_news(code: str, *, name: str | None = None, limit: int = 20) -> 
             )
         )
 
-    # 两次稳定排序：先时间倒序，再把标题命中的那批提到前面（组内仍是时间倒序）
     rows.sort(key=lambda item: item.published_at, reverse=True)
-    rows.sort(key=lambda item: 0 if _mentions(item.title, code, name) else 1)
-    return rows[:limit]
+    hits = [item for item in rows if _mentions(item.title, code, name)]
+    if not hits:
+        return NewsResult(items=rows[:limit], hidden=0)
+    return NewsResult(items=hits[:limit], hidden=len(rows) - len(hits))
 
 
 def _mentions(title: str, code: str, name: str | None) -> bool:
