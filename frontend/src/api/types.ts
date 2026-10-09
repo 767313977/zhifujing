@@ -137,6 +137,50 @@ export interface PromotionSeries {
   overall_rates: (number | null)[]
 }
 
+/**
+ * 个股异动图谱里的一行（对应后端 `AnomalyRowOut`）。
+ *
+ * `sector` 是**板块分组键**（同花顺行业末段，如「集成电路」），`industry` 是完整
+ * 三级路径（`电子-半导体-集成电路`），页面按前者分组、后者放 tooltip。
+ * `cap` 单位是**亿元**（后端已换算），不是元。
+ */
+export interface AnomalyRow {
+  sector: string
+  /** 交易日 YYYY-MM-DD */
+  date: string
+  /** 封板时间 HH:MM，或「收盘」（中大阳线） */
+  time: string
+  code: string
+  name: string
+  /** 涨停 / 涨停炸板 / 中大阳线异动 */
+  type: string
+  /** 首板 / N连板；炸板与中大阳线为空串 */
+  board: string
+  pct: number | null
+  /** 总市值（亿元，1 位小数） */
+  cap: number | null
+  industry: string | null
+  reason: string | null
+  /** 同批异动标签（同一天同一板块的全部行，含自己） */
+  cohort: string[]
+  /** 所在 (交易日, 板块) 是不是窗口内该板块的题材启动日 */
+  theme_start: boolean
+}
+
+export interface AnomalyMap {
+  start: string
+  end: string
+  days: number
+  generated_at: string
+  /** 过滤口径文案，原样展示 */
+  filter: string
+  source: string
+  /** 板块下拉选项（已按命中条数降序） */
+  sectors: string[]
+  theme_start_days: number
+  rows: AnomalyRow[]
+}
+
 export interface LhbItem {
   trade_date: string
   code: string

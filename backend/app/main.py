@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import (
     admin,
     analysis,
+    anomaly_map,
     auth as auth_api,
     funds,
     limit,
@@ -130,6 +131,7 @@ app.include_router(analysis.router)
 app.include_router(watchlist.router)
 app.include_router(note.router)
 app.include_router(patterns.router)
+app.include_router(anomaly_map.router)
 app.include_router(admin.router)
 
 
