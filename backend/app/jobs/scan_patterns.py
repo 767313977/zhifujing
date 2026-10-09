@@ -457,6 +457,12 @@ def _ensure_wudao_kline(
     池外候选第一次补完就再也不刷新了（根数早就够），于是它们会一直拿几天前的
     K 线出「今天的信号」。
 
+    ⚠️ **后一条只在「扫的就是库里最新的那个交易日」时才算**（2026-10-09 加）：
+    它的本意是「别拿几天前的 K 线出**今天**的信号」，而**历史重扫**（用现在的判定把
+    过去的日子重算一遍，见 §8.87.4）时，候选的最后一根本来就晚于那天 —— 照原判据
+    会把**每一个候选**都当成「停在过去」，几百只票逐只去补（补回来的还都是库里已有的行）。
+    所以历史重扫只保留「根数不够」那一条。
+
     **三道闸门**（后两道 2026-09-24 加，为同时省时间与配额；阈值见 `Settings` 的注释）：
 
     - **东财熔断**：连续失败 `wudao_em_breaker_failures` 次就本轮不再试它。
@@ -475,10 +481,14 @@ def _ensure_wudao_kline(
     # 两个判据：**根数不够**（池外新股，从没补过）与**停在过去**（补过、之后没再刷）。
     # 少了后一条就是 8.64 那个 bug：池外候选第一次补完就再也不刷新了，
     # 于是 09-24 那天用 09-22 的 K 线出信号，命中列表上的「最新价」是两天前的。
+    # ⚠️ 后一条只在「扫最新交易日」时才算（历史重扫见 docstring）：
+    with session_scope() as session:
+        data_latest = session.scalar(select(func.max(StockDaily.trade_date)))
+    fresh_scan = data_latest is not None and trade_date >= data_latest
     need = {
         c
         for c in codes
-        if counts.get(c, 0) < WUDAO_MIN_BARS or last.get(c) != trade_date
+        if counts.get(c, 0) < WUDAO_MIN_BARS or (fresh_scan and last.get(c) != trade_date)
     }
     if not need:
         return {

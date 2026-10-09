@@ -550,6 +550,9 @@ def _line_rate(
       （与判定本身「收盘 ≥ 昨高 × 0.98」同一取向）。
     · **两端都要有行**才算样本（命中日 + 窗口里至少一天）：长期停牌、退市的票不该按
       「没破位」计入，那会把破位率压低（与 `_curves` 同一条规矩）。
+    · **窗口得先走完**才算样本（2026-10-09 加）：只有 1 天可看的命中，破位的「机会」
+      天然比走完 5 天的少，混在一起会把比例压低。这与 `_curves`「没走到第 n 个交易日
+      就不返回那个点」是同一条规矩 —— 宁可这列先空着，也不出一个掺了半截窗口的数。
     · 作废位优先用纪律里那个（`wash_low` / `start_low`）；池子没有的话退回
       **命中日最低价**当代理，并在 `stop_source` 里写明用的是哪种 —— 页面照原样显示。
     """
@@ -567,6 +570,10 @@ def _line_rate(
         session.scalars(select(TradeCalendar.trade_date).order_by(TradeCalendar.trade_date))
     )
     position = {day: index for index, day in enumerate(calendar)}
+    data_end = session.scalar(select(func.max(StockDaily.trade_date)))
+    if data_end is None or data_end not in position:
+        return blank
+    elapsed = position[data_end]
     scan_positions = [position[day] for day, _ in hits if day in position]
     if not scan_positions:
         return blank
@@ -592,6 +599,8 @@ def _line_rate(
         entry = bars.get(day)
         if start is None or entry is None:
             continue  # 命中日本身没有行 —— 不计入样本（见上面第二条）
+        if start + days > elapsed:
+            continue  # 窗口还没走完 —— 不编造（见上面第三条）
         window = calendar[start + 1 : start + days + 1]
         closes = [
             bars[when][0]
