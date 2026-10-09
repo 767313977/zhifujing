@@ -118,7 +118,7 @@ export default function MembersPanel() {
                 <th className="!text-left">角色</th>
                 <th className="!text-left">来源邀请码</th>
                 <th>注册时间</th>
-                <th>最后登录</th>
+                <th>最近访问</th>
                 <th />
               </tr>
             </thead>
@@ -143,7 +143,7 @@ export default function MembersPanel() {
                     {member.invite_code ?? '—'}
                   </td>
                   <td className="num text-fg-dim">{fmtDateTime(member.created_at)}</td>
-                  <td className="num text-fg-dim">{fmtDateTime(member.last_login_at)}</td>
+                  <td className="num text-fg-dim">{fmtDateTime(member.last_seen_at)}</td>
                   <td className="!text-right">
                     {resetFor === member.id ? (
                       <span className="flex items-center justify-end gap-2">

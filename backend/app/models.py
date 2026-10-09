@@ -474,7 +474,16 @@ class AppUser(Base):
     # 只有管理员能碰 /api/admin/*（那几个接口会触发采集、烧 iFinD 配额）
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
-    last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # 「**最近访问**」—— 任何带会话的请求都会（按 1 小时节流）刷新它，不是「最近登录」。
+    #
+    # ⚠️ 为什么非改不可：会话是**滑动续期 30 天**的（`auth.resolve_session`），会员只要
+    # 一直在用就**永远不用重新登录** —— 只记「登录那一刻」的话，这一列会一直停在注册那天
+    # （2026-10-09 用户就是看到三位会员全停在 09-28 才发现的）。
+    #
+    # ⚠️ 列名沿用了历史上的 `last_login_at`：库里已经有这一列，而项目没上 Alembic、
+    # `db._add_missing_columns` **只加列不改名**（见 db.py 的说明）。改名要手工上线上库，
+    # 不值得 —— 所以属性叫 `last_seen_at`、物理列还叫 `last_login_at`，读原表时别被名字骗了。
+    last_seen_at: Mapped[datetime | None] = mapped_column("last_login_at", DateTime)
     # 停用而不是删号：删号会让「谁用哪个邀请码进来的」断链。
     # **非空即停用**（与 invite_code.disabled_at 同一套约定）
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime)
