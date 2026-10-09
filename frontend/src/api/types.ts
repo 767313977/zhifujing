@@ -754,6 +754,52 @@ export interface WudaoPhase {
   metrics: Record<string, number | null>
 }
 
+/**
+ * 一个收益档位的统计量（`/api/patterns/standing` 用）。
+ *
+ * 收益都是**百分数**（1.23 = +1.23%）。`excess` 是相对**同一天**全市场等权平均的超额 ——
+ * 没有它，「涨了 5%」可能只是那几天大盘在涨。
+ */
+export interface PoolHorizon {
+  days: number
+  samples: number
+  mean: number | null
+  median: number | null
+  up_pct: number | null
+  excess: number | null
+  beat_pct: number | null
+}
+
+/** 一个悟道池子的「成绩单」：每天照这个池子全买，之后会怎样。 */
+export interface PoolStanding {
+  pattern: string
+  name: string
+  /** 窗口内全部命中条数 / 去重只数 / 有命中的扫描日数 */
+  hits: number
+  stocks: number
+  scan_days: number
+  returns: PoolHorizon[]
+  /** 破位率的样本数（到线率那一列用 `touch_samples`） */
+  samples: number
+  /** 到线率：命中后 N 日内**收盘**站上「要过的那条线」的比例；池子没有这条线时是 null */
+  touch: number | null
+  touch_samples: number
+  /** 破位率：同期**收盘**跌破「作废位」的比例 */
+  stop: number | null
+  /** 破位用的是哪个位（「作废位」/「命中日最低价（代理）」）—— 两种口径不能看起来一样 */
+  stop_source: string
+}
+
+export interface PoolStandingOut {
+  start: string
+  /** 窗口里**实际有命中**的扫描日数（样本还少时会等于 1） */
+  cohorts: number
+  scan_days: string[]
+  track_days: number
+  line_days: number
+  pools: PoolStanding[]
+}
+
 /** 一条个股新闻（东财口径）。 */
 export interface StockNewsRow {
   /** 发布时间，东财原样给（"2026-08-26 09:59:14"） */

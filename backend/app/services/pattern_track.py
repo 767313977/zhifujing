@@ -46,6 +46,7 @@
 
 import logging
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date
 
 import numpy as np
@@ -120,52 +121,60 @@ def _picks(session: Session, days: list[date], top: int) -> dict[date, list[Pick
     return picked
 
 
-def _curves(
-    session: Session,
-    picks: dict[date, list[str]],
-    track_days: int,
-) -> dict[date, dict[int, tuple[np.ndarray, float]]]:
-    """每个循环在每个 n 上的收益，以及**它自己那天**的全市场均值。
+@dataclass
+class _Matrix:
+    """窗口内的行情矩阵 —— **一次取数、多个口径复用**（见 `_matrix`）。"""
 
-    返回 `{循环日: {第 n 个交易日: (个股收益数组, 全市场均值)}}`。数组与
-    `picks[day]` 一一对应（只保留两端都有行的），全市场均值算不出来时是 nan。
+    calendar: list[date]
+    index: dict[date, int]
+    date_pos: dict[date, int]
+    code_pos: dict[str, int]
+    #: `(窗口日, 股票)` 的复权增长因子（`1 + pct/100`）与「有没有这一行」
+    growth: np.ndarray
+    present: np.ndarray
+    #: 库里有行情的最后一天在 `calendar` 里的位置（决定各循环能走多远）
+    end_pos: int
+
+
+def _matrix(session: Session, scan_days: list[date], track_days: int) -> _Matrix | None:
+    """把各循环要用的那一段行情一次性拉成矩阵（取不到就是 None，调用方跳过）。
+
+    为什么要独立出来（2026-10-09）：`pool_standing` 要对**六个池子**各算一遍收益，
+    每遍都自己拉一次日线的话，同一份数据要读六次（30 个循环 × 30 天的并集约 30 万行、
+    实测一次约 1.5s）。拆成「拉一次 + 各口径自己算」之后只读一次。
+
+    ⚠️ 两个坑都在 `needed` 那几行里：
+      1. 必须按「**最后一天真有行情**」封顶，不能只按交易日历 —— 日历是预置到年底的，
+         只按日历切的话，最近那几个循环「还没走到」的日子会拿到 growth=1（没有行 =
+         涨跌幅记 0），曲线会凭空多出一段平线，页面显示成「30/30 走完了」。
+      2. 取**并集**而不是「最早循环 → 最晚到期日」那一整段：库里早期只有零星几天扫描
+         （05-14、07-01、07-10 …），整段连续日期的跨度是 95 个交易日，而各循环真正用到
+         的只有 40 来个 —— 多出来的那 55 天要白拉 30 万行（实测 2.4s → 1.5s 的差别）。
+         代价是各循环的日期在矩阵里不再连续，所以下面按日历逐个查位置，不能按偏移量取。
     """
-    empty: dict = {}
-    if not picks:
-        return empty
-
-    # 交易日历：跟踪天数是「几个交易日」，得按日历往后数，不能用日历天加
+    if not scan_days:
+        return None
     calendar = list(
         session.scalars(select(TradeCalendar.trade_date).order_by(TradeCalendar.trade_date))
     )
     index = {day: i for i, day in enumerate(calendar)}
-    scan_days = [day for day in picks if day in index]
-    if not scan_days:
+    days = [day for day in scan_days if day in index]
+    if not days:
         logger.warning("命中记录的日期都不在交易日历里，跳过跟踪统计")
-        return empty
+        return None
 
-    # 需要的行情 = 各循环自己那一段（`[循环日, 循环日+track_days]`）的**并集**。
-    #
-    # ⚠️ 两个坑都在这一行里：
-    #   1. 必须按「**最后一天真有行情**」封顶，不能只按交易日历 —— 日历是预置到年底的，
-    #      只按日历切的话，最近那几个循环「还没走到」的日子会拿到 growth=1（没有行 =
-    #      涨跌幅记 0），曲线会凭空多出一段平线，页面显示成「30/30 走完了」。
-    #   2. 取**并集**而不是「最早循环 → 最晚到期日」那一整段：库里早期只有零星几天扫描
-    #      （05-14、07-01、07-10 …），整段连续日期的跨度是 95 个交易日，而各循环真正用到
-    #      的只有 40 来个 —— 多出来的那 55 天要白拉 30 万行（实测 2.4s → 1.5s 的差别）。
-    #      代价是各循环的日期在矩阵里不再连续，所以下面按日历逐个查位置，不能按偏移量取。
     data_end = session.scalar(select(func.max(StockDaily.trade_date)))
     if data_end is None or data_end not in index:
         logger.warning("库里没有日线数据，跳过跟踪统计")
-        return empty
+        return None
     end_pos = index[data_end]
     needed: set[date] = set()
-    for day in scan_days:
+    for day in days:
         start = index[day]
         needed.update(calendar[start : min(start + track_days, end_pos) + 1])
     dates = sorted(needed)
     if not dates:
-        return empty
+        return None
     date_pos = {day: i for i, day in enumerate(dates)}
 
     # 一次把窗口内的日线拉出来，就地压成两张矩阵：涨跌幅、有没有这一行（停牌行也会
@@ -195,30 +204,54 @@ def _curves(
         if pct_value is not None:
             pct[when, position] = float(pct_value)
 
-    growth = 1.0 + pct / 100.0
+    return _Matrix(
+        calendar=calendar,
+        index=index,
+        date_pos=date_pos,
+        code_pos=code_pos,
+        growth=1.0 + pct / 100.0,
+        present=present,
+        end_pos=end_pos,
+    )
+
+
+def _curves_from(
+    matrix: _Matrix,
+    picks: dict[date, list[str]],
+    track_days: int,
+) -> dict[date, dict[int, tuple[np.ndarray, float]]]:
+    """在一份已经拉好的矩阵上算收益曲线（口径见 `_curves`）。
+
+    返回 `{循环日: {第 n 个交易日: (个股收益数组, 全市场均值)}}`。数组与
+    `picks[day]` 一一对应（只保留两端都有行的），全市场均值算不出来时是 nan。
+    """
     curves: dict[date, dict[int, tuple[np.ndarray, float]]] = {}
-    for day in scan_days:
-        calendar_pos = index[day]
-        start = date_pos[day]
-        picked = np.array([code_pos.get(code, -1) for code, _, _ in picks[day]], dtype=np.int64)
+    for day in [day for day in picks if day in matrix.index]:
+        start = matrix.date_pos.get(day)
+        if start is None:
+            continue  # 这一天的行情不在矩阵里（调用方没把它算进 `scan_days`）
+        calendar_pos = matrix.index[day]
+        picked = np.array(
+            [matrix.code_pos.get(code, -1) for code, _, _ in picks[day]], dtype=np.int64
+        )
         index_in = picked[picked >= 0]
-        entry_present = present[start]
+        entry_present = matrix.present[start]
         has_entry = entry_present[index_in] if index_in.size else np.array([], dtype=bool)
         curve: dict[int, tuple[np.ndarray, float]] = {}
         # 累乘推进而不是每个 n 重算一遍乘积：30 个循环 × 30 个点要算 900 次，
         # 每次重乘等于把整个矩阵乘 900 遍
-        accumulated = np.ones(len(codes), dtype=np.float64)
+        accumulated = np.ones(matrix.growth.shape[1], dtype=np.float64)
         for step in range(1, track_days + 1):
             shift = calendar_pos + step
-            if shift > end_pos:
+            if shift > matrix.end_pos:
                 break  # 这一天的行情还没到（或还没采），循环到这儿为止
-            when = calendar[shift]
-            position = date_pos.get(when)
+            when = matrix.calendar[shift]
+            position = matrix.date_pos.get(when)
             if position is None:
-                continue  # 不该发生：`needed` 已包含每个循环的整段区间
-            accumulated = accumulated * growth[position]
+                continue  # 不该发生：`_matrix` 已按并集把整段区间都取进来了
+            accumulated = accumulated * matrix.growth[position]
             total = accumulated - 1.0
-            if not present[position].any():
+            if not matrix.present[position].any():
                 # 这一天**整个市场一行都没有**：复利会把它当成 0 涨跌，等于凭空抹掉一天
                 # 的真实波动，而曲线看上去还是连续的 —— 所以宁可把循环停在这里，页面
                 # 显示「进度 N/30」。补上那天的日线之后这里自然接得上。
@@ -226,12 +259,17 @@ def _curves(
                 # ⚠️ 拦的只是「交易日、但一行都没有」：**休市日根本不在交易日历里**
                 # （2026-09-25 中秋就是，它不会被当成缺口、也不需要补），真会走到这里的
                 # 是「配额让路跳过了整天的日线采集」或「那次采集失败」。
-                logger.debug("%s 的第 %d 个交易日（%s）整个市场没有日线，循环统计到此前为止", day, step, when)
+                logger.debug(
+                    "%s 的第 %d 个交易日（%s）整个市场没有日线，循环统计到此前为止",
+                    day,
+                    step,
+                    when,
+                )
                 break
-            usable = entry_present & present[position]
+            usable = entry_present & matrix.present[position]
             market = float(total[usable].mean()) if usable.any() else float("nan")
             if index_in.size:
-                ok = has_entry & present[position, index_in]
+                ok = has_entry & matrix.present[position, index_in]
                 values = total[index_in[ok]]
             else:
                 values = np.array([])
@@ -239,6 +277,22 @@ def _curves(
         if curve:
             curves[day] = curve
     return curves
+
+
+def _curves(
+    session: Session,
+    picks: dict[date, list[str]],
+    track_days: int,
+) -> dict[date, dict[int, tuple[np.ndarray, float]]]:
+    """每个循环在每个 n 上的收益，以及**它自己那天**的全市场均值。
+
+    口径说明见 `_matrix` / `_curves_from`（2026-10-09 拆成两半，好让 `pool_standing`
+    六个池子共用同一份矩阵）。**签名与返回结构与拆分前一致**。
+    """
+    matrix = _matrix(session, list(picks), track_days)
+    if matrix is None:
+        return {}
+    return _curves_from(matrix, picks, track_days)
 
 
 def _stats(values: np.ndarray, market: float) -> dict:
@@ -446,3 +500,201 @@ def detail(
             for code, name, score in picks
         ],
     }
+
+
+# ---------------------------------------------------------------- 悟道池子「成绩单」
+
+#: 要单独发成绩单的池子。形态页那份跟踪是**全形态混合的评分前 50**，回答不了
+#: 「这个池子值不值得留」—— 「缩量洗盘中」一天几百只，本来也进不了前 50。
+POOL_KEYS: tuple[str, ...] = (
+    "wudao_sample",
+    "wudao_start",
+    "wudao_wash2",
+    "huabao_early",
+    "pile_wash_ready",
+    "pile_wash_wash",
+)
+
+#: 收益档位（交易日）。与形态页那份一样给四档：短周期有没有指向、中期会不会还回去。
+HORIZONS: tuple[int, ...] = (1, 3, 5, 10)
+
+#: 「要过的那条线」（到线率）与「作废位」（破位率）在 `key_levels` 里的字段名，
+#: 按顺序取第一个存在的。线上方的语义：watch_high=今高/洗盘高、breakout=昨高/洗盘高、
+#: wash_high=洗盘高；wash_low / start_low 就是纪律里写明的那两个「作废位」。
+_LINE_FIELDS = ("watch_high", "breakout", "wash_high")
+_STOP_FIELDS = ("wash_low", "start_low")
+
+#: 破位率的两种口径 —— **必须回给前端显示**，两种看起来一样就没法解释数字了。
+STOP_FROM_LEVEL = "作废位"
+STOP_FROM_LOW = "命中日最低价（代理）"
+
+
+def _levels(key_levels: dict | None) -> tuple[float | None, float | None]:
+    """从 `key_levels` 里取出（要过的线, 作废位）。缺失就是 None。"""
+    data = key_levels or {}
+    line = next((float(data[key]) for key in _LINE_FIELDS if data.get(key)), None)
+    stop = next((float(data[key]) for key in _STOP_FIELDS if data.get(key)), None)
+    return line, stop
+
+
+def _line_rate(
+    session: Session,
+    hits: dict[tuple[date, str], tuple[float | None, float | None]],
+    days: int,
+) -> dict:
+    """到线率 / 破位率：命中后 `days` 个交易日里，**收盘**站上「线」、跌破「作废位」的比例。
+
+    三个口径细节，错一个数字就没法解释：
+
+    · 用**收盘**而不是最高/最低 —— 站上一条线要收盘站住才算数，影线穿一下不算
+      （与判定本身「收盘 ≥ 昨高 × 0.98」同一取向）。
+    · **两端都要有行**才算样本（命中日 + 窗口里至少一天）：长期停牌、退市的票不该按
+      「没破位」计入，那会把破位率压低（与 `_curves` 同一条规矩）。
+    · 作废位优先用纪律里那个（`wash_low` / `start_low`）；池子没有的话退回
+      **命中日最低价**当代理，并在 `stop_source` 里写明用的是哪种 —— 页面照原样显示。
+    """
+    blank = {
+        "samples": 0,
+        "touch": None,
+        "touch_samples": 0,
+        "stop": None,
+        "stop_source": STOP_FROM_LOW,
+    }
+    if not hits:
+        return blank
+
+    calendar = list(
+        session.scalars(select(TradeCalendar.trade_date).order_by(TradeCalendar.trade_date))
+    )
+    position = {day: index for index, day in enumerate(calendar)}
+    scan_positions = [position[day] for day, _ in hits if day in position]
+    if not scan_positions:
+        return blank
+    end_pos = min(max(scan_positions) + days, len(calendar) - 1)
+    first, last = calendar[min(scan_positions)], calendar[end_pos]
+
+    series: dict[str, dict[date, tuple[float | None, float | None]]] = defaultdict(dict)
+    rows = session.execute(
+        select(StockDaily.code, StockDaily.trade_date, StockDaily.close, StockDaily.low).where(
+            StockDaily.code.in_({code for _, code in hits}),
+            StockDaily.trade_date >= first,
+            StockDaily.trade_date <= last,
+        )
+    ).all()
+    for code, when, close, low in rows:
+        series[code][when] = (close, low)
+
+    touched = touch_total = stopped = stop_total = 0
+    has_stop_level = any(stop is not None for _, stop in hits.values())
+    for (day, code), (line, stop) in hits.items():
+        start = position.get(day)
+        bars = series.get(code) or {}
+        entry = bars.get(day)
+        if start is None or entry is None:
+            continue  # 命中日本身没有行 —— 不计入样本（见上面第二条）
+        window = calendar[start + 1 : start + days + 1]
+        closes = [
+            bars[when][0]
+            for when in window
+            if when in bars and bars[when][0] is not None
+        ]
+        if not closes:
+            continue
+        if line is not None:
+            touch_total += 1
+            if any(value >= line for value in closes):
+                touched += 1
+        floor = stop if stop is not None else entry[1]
+        if floor is None:
+            continue
+        stop_total += 1
+        if any(value < floor for value in closes):
+            stopped += 1
+
+    return {
+        # `samples` 是**破位率**的样本数（到线率那一列用 `touch_samples`，两者可能不等：
+        # 池子没有「要过的线」时不算到线，但破位照样算）
+        "samples": stop_total,
+        "touch": round(touched / touch_total * 100, 1) if touch_total else None,
+        "touch_samples": touch_total,
+        "stop": round(stopped / stop_total * 100, 1) if stop_total else None,
+        "stop_source": STOP_FROM_LEVEL if has_stop_level else STOP_FROM_LOW,
+    }
+
+
+def pool_standing(
+    session: Session,
+    *,
+    start: date,
+    cohorts: int = DEFAULT_COHORTS,
+    hold_days: int = max(HORIZONS),
+    line_days: int = 5,
+) -> dict:
+    """按池子发成绩单：收益（1/3/5/10 日）+ 到线率 + 破位率。
+
+    一句话说清它回答什么：**「每天照这个池子全买，之后会怎样」**。形态页那份跟踪回答的是
+    「评分前 50 只怎么样」，而悟道这些池子（尤其是几百只的安静型池子）根本进不了前 50，
+    必须按池子单独算 —— 这也是「这个池子值不值得留」的唯一依据。
+
+    ⚠️ `start` 要传 `Settings.pool_track_start`（＝2026-10-08，候选池定稿那天）：
+    更早的命中是**另一套候选口径**下的名单，混进来会把两个分布平均掉。
+    想统计更早的日子，正确做法是用现在的判定把那些天**重扫一遍**（幂等、零配额），
+    不是把起点往前挪。
+
+    六池共用**同一份行情矩阵**（`_matrix` 拉一次、`_curves_from` 各算一遍），
+    否则同一份 30 万行要读六次。
+    """
+    names = {pattern.key: pattern.name for pattern in PATTERNS}
+    scan_days = _scan_dates(session, cohorts, start)
+    base = {
+        "start": start.isoformat(),
+        "cohorts": len(scan_days),
+        "scan_days": [day.isoformat() for day in scan_days],
+        "track_days": hold_days,
+        "line_days": line_days,
+    }
+    if not scan_days:
+        return {**base, "pools": []}
+
+    rows = session.execute(
+        select(
+            PatternHit.trade_date,
+            PatternHit.code,
+            PatternHit.name,
+            PatternHit.pattern,
+            PatternHit.score,
+            PatternHit.key_levels,
+        ).where(PatternHit.trade_date.in_(scan_days), PatternHit.pattern.in_(POOL_KEYS))
+    ).all()
+
+    picks: dict[str, dict[date, list[Pick]]] = defaultdict(lambda: defaultdict(list))
+    levels: dict[str, dict[tuple[date, str], tuple[float | None, float | None]]] = defaultdict(dict)
+    for day, code, name, pattern, score, key_levels in rows:
+        picks[pattern][day].append((code, name, float(score)))
+        levels[pattern][(day, code)] = _levels(key_levels)
+
+    matrix = _matrix(session, scan_days, hold_days)
+    pools: list[dict] = []
+    for key in POOL_KEYS:
+        pool_picks = picks.get(key) or {}
+        entry = {
+            "pattern": key,
+            "name": names.get(key, key),
+            "hits": sum(len(items) for items in pool_picks.values()),
+            "stocks": len({code for items in pool_picks.values() for code, _, _ in items}),
+            "scan_days": len(pool_picks),
+            "returns": [],
+            **(_line_rate(session, levels.get(key) or {}, line_days)),
+        }
+        if matrix is not None and pool_picks:
+            curves = _curves_from(matrix, pool_picks, hold_days)
+            for horizon in HORIZONS:
+                stat = _pooled_stats(
+                    [curve[horizon] for curve in curves.values() if horizon in curve]
+                )
+                entry["returns"].append({"days": horizon, **stat})
+        else:
+            for horizon in HORIZONS:
+                entry["returns"].append({"days": horizon, **_stats(np.array([]), float("nan"))})
+        pools.append(entry)
+    return {**base, "pools": pools}
