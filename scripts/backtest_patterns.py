@@ -374,10 +374,10 @@ def main() -> int:
         default="all",
         choices=("all", "wudao"),
         help=(
-            "wudao = 只扫创业板 + 沪深主板（即「明天盯 / 今天可买」的候选板块，见 "
-            "scan_patterns.is_wudao_board）。悟道家族（wudao_* / pile_wash_* / "
-            "huabao_early）的候选池就是这两块，拿全市场跑会得到另一批票的信号、"
-            "数字不代表生产 —— 见设计文档 §8.83 / §8.84"
+            "wudao = 只扫创业板 + 沪深主板 + 科创板（＝沪深 A 股，不含北交所；即「明天盯 / "
+            "今天可买」的候选板块，见 scan_patterns.is_wudao_board）。悟道家族（wudao_* / "
+            "pile_wash_* / huabao_early）的候选池就是这三块，拿全市场跑会得到另一批票的"
+            "信号、数字不代表生产 —— 见设计文档 §8.83 / §8.84"
         ),
     )
     parser.add_argument("--history", action="store_true", help="用长历史库 history.db")
@@ -395,7 +395,7 @@ def main() -> int:
         from app.jobs.scan_patterns import is_wudao_board
 
         codes = [code for code in codes if is_wudao_board(code)]
-        logger.info("只扫创业板 + 沪深主板：%d 只（与悟道候选池同板块口径）", len(codes))
+        logger.info("只扫创业板 + 沪深主板 + 科创板：%d 只（与悟道候选池同板块口径）", len(codes))
     if args.stocks:
         codes = codes[: args.stocks]
     if not codes:
