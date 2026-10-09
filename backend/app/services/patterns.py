@@ -2239,6 +2239,12 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
     优先级照原型：**启动 > 吵起来了 / 像出货 > 明天盯 > 休息中 > 刚有人气 > 没动静**。
     这也是「明明冲高回落了、为什么没进明天盯」的答案 —— 它被更靠前的阶段占了
     （`_wudao_sample` 那边同样先过 `_wudao_is_diverge_or_dump`）。
+
+    ⚠️ **一处对原型的修正**（2026-10-09）：「没动静」之前加了一道**缩量大涨兜底**
+    （`pct >= 9.5` 或 `pct >= 4 且 high_pct >= 6` → `wake`）。原型直接按 `vol < 0.85`
+    判「没动静」，会把**缩量涨停 / 一字板**（量比常 0.3~0.8）说成「几乎没人气」——
+    与当日涨停的事实矛盾（实测本机库 2026-09 快照有 4 只）。这类归 `wake` 但文案另写
+    （见下面 `thin_up` 分支）。
     """
     n = len(bars)
     if n < 25:
@@ -2259,6 +2265,11 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
     today_sample = _wudao_is_sample(bars, i)
     broke_yday_high = high > yday_high and close >= yday_high * 0.98
 
+    # 「缩量大涨」兜底：在落到「没动静」之前，先把**当日涨幅大但没量**的挡下来。
+    # 不挡的话，缩量涨停 / 一字板（量比常常 0.3~0.8）会一路掉进 `silent`，被说成
+    # 「几乎没人气」—— 与它当天涨停的事实直接矛盾（实测本机库 2026-09 快照有 4 只这样）。
+    # 归到 `wake`（人气刚回来），但文案另写一句，别沿用 wake 那句「量开始回来」。
+    thin_up = False
     if yday_sample and broke_yday_high and vol >= WUDAO_START_VOL and pct > 0:
         phase = "start"
     elif _wudao_is_diverge_or_dump(bars, i):
@@ -2270,6 +2281,9 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
         phase = "digest"
     elif vol >= 1.2 and (pct >= 4 or high_pct >= 6) and not today_sample:
         phase = "wake"
+    elif pct >= 9.5 or (pct >= 4 and high_pct >= 6):
+        phase = "wake"
+        thin_up = True
     elif vol < 0.85:
         phase = "silent"
     else:
@@ -2402,7 +2416,13 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
     elif phase == "digest":
         text = f"前几天已经拉过一截，今天量缩（量比 {vol:.2f}）、涨跌不大，像在歇口气。"
     elif phase == "wake":
-        text = f"量开始回来（量比 {vol:.2f}），价格也动了，但还没走出「冲高再回落」的样子。"
+        if thin_up:
+            text = (
+                f"今天涨 {pct:.1f}%、量比 {vol:.2f} —— 量能没跟上（封板/一字也会锁着量）。"
+                "别按「放量启动」看待，等明天看量能能不能接上。"
+            )
+        else:
+            text = f"量开始回来（量比 {vol:.2f}），价格也动了，但还没走出「冲高再回落」的样子。"
     elif phase == "silent":
         text = f"量比只有 {vol:.2f}，几乎没人气；这种票很少第二天就起飞。"
     else:
