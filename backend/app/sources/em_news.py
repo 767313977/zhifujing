@@ -43,6 +43,20 @@ def _clean(text: object) -> str:
     return _TAG.sub("", str(text or "")).replace("\u200b", "").strip()
 
 
+def _link(url: object) -> str:
+    """新闻链接。
+
+    东财给的是 `http://finance.eastmoney.com/a/xxxx.html` —— 本站是 https，
+    浏览器实测这条链接能用，但站内出现 http 链接没必要（新窗口打开会有不安全提示）。
+    同一个地址换成 https 实测 200，所以统一升到 https；不是东财那个域名的原样返回，
+    别把别家的链接也改了。
+    """
+    text = _clean(url)
+    if text.startswith("http://finance.eastmoney.com/"):
+        return "https://" + text[len("http://") :]
+    return text
+
+
 def fetch_stock_news(code: str, *, name: str | None = None, limit: int = 20) -> list[NewsItem]:
     """这只票最近的 `limit` 条新闻，按**相关性 + 时间**排序。
 
@@ -75,7 +89,7 @@ def fetch_stock_news(code: str, *, name: str | None = None, limit: int = 20) -> 
                 title=title,
                 summary=summary,
                 source=_clean(rec.get("文章来源")),
-                url=_clean(rec.get("新闻链接")),
+                url=_link(rec.get("新闻链接")),
             )
         )
 
