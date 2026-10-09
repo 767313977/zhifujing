@@ -40,6 +40,7 @@ import type {
   SectorSeries,
   SectorTaxonomy,
   Sentiment,
+  StockAnalysis,
   StockDailyRow,
   StockDde,
   StockProfile,
@@ -299,6 +300,15 @@ export const api = {
    */
   stockDde: (code: string, days = 60) =>
     request<StockDde>(`/stock/${code}/dde?days=${days}`),
+
+  /**
+   * 个股分析：把「代码 / 名称 / 拼音首字母」解析成结论（阶段判定 + 旁证）。
+   *
+   * 解析不出或匹配到多只时后端返回 400，`detail` 就是给用户看的那句话
+   * （如「「平安」匹配到多只：…，请输入完整代码」）—— 直接显示，不用自己拼文案。
+   */
+  analysisLookup: (q: string) =>
+    request<StockAnalysis>(`/analysis/lookup?q=${encodeURIComponent(q)}`),
 
   // --- 形态选股 ---
   patternCatalog: () => request<PatternMeta[]>('/patterns/catalog'),

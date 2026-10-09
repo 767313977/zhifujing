@@ -754,6 +754,30 @@ export interface WudaoPhase {
   metrics: Record<string, number | null>
 }
 
+/**
+ * 个股分析的返回（`/api/analysis/lookup`）：把「代码 / 名称 / 拼音首字母」解析成结论。
+ *
+ * 移植自原型 yangban-desk 的「查票分析」框。`phase` 与悟道之路那几张名单
+ * **共用同一批判据**，所以两处不会打架。
+ */
+export interface StockAnalysis {
+  code: string
+  name: string | null
+  /** 判定用的那根日线是哪天 */
+  trade_date: string | null
+  close: number | null
+  pct_chg: number | null
+  /** 阶段判定；日线不足 25 根时是 null */
+  phase: WudaoPhase | null
+  /** 所属同花顺三级行业（做什么生意） */
+  industry: string | null
+  /** 最近一次涨停时挂的精选板块（做过什么题材），只覆盖涨停过的票 */
+  sectors: string[]
+  /** 历史上过涨停池 / 上过龙虎榜的次数 */
+  limit_up_count: number
+  lhb_count: number
+}
+
 export interface StockProfile {
   code: string
   name: string | null

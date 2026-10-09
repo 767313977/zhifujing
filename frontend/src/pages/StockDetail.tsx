@@ -7,7 +7,6 @@ import type {
   StockDdeRow,
   StockProfile,
   StockThemes,
-  WudaoPhase,
 } from '../api/types'
 import AdjustMenu from '../components/AdjustMenu'
 import Alert from '../components/Alert'
@@ -16,6 +15,7 @@ import type { ChartOption } from '../components/EChart'
 import KLineChart from '../components/KLineChart'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
+import PhasePanel from '../components/PhasePanel'
 import Segmented from '../components/Segmented'
 import {
   AXIS_LABEL,
@@ -549,87 +549,5 @@ function Cell({
       </div>
       {sub && <div className="num mt-1 text-[13px] text-fg-dim">{sub}</div>}
     </div>
-  )
-}
-
-/**
- * 「阶段判定」那一档的颜色。
- *
- * 只分三档、只用站内已有的色：能动手（accent）/ 只观察（up）/ 别碰（down 或弱色）。
- * 别为 8 个阶段各配一个颜色 —— 颜色多了反而看不出哪一档要动手。
- */
-const PHASE_TONE: Record<string, string> = {
-  start: 'text-accent',
-  sample: 'text-up',
-  wake: 'text-fg',
-  digest: 'text-fg',
-  diverge: 'text-down',
-  dump: 'text-down',
-  silent: 'text-fg-muted',
-  unknown: 'text-fg-muted',
-}
-
-/**
- * 悟道「阶段判定」卡片（移植自 yangban-desk 的 8 个标签）。
- *
- * 数字全由后端算好（`services/patterns.classify_phase`，与形态选股共用判据），
- * 这里只排版。`metrics` 里几个关键量放在标题栏，免得正文太长还得找。
- */
-function PhasePanel({ phase }: { phase: WudaoPhase }) {
-  const tone = PHASE_TONE[phase.phase] ?? 'text-fg'
-  const m = phase.metrics
-  return (
-    <Panel
-      title="阶段判定"
-      meta={
-        <span className="num text-[13px]">
-          量比 {fmtNum(m.vol_ratio, 2)}
-          <span className="mx-2">·</span>
-          冲高 {fmtNum(m.high_pct, 1, '%')}
-          <span className="mx-2">·</span>
-          上影 {fmtNum(m.upper_shadow, 2)}
-          <span className="mx-2">·</span>
-          近 5 日 {fmtPct(m.ret_5)}
-        </span>
-      }
-      delay={55}
-    >
-      <div className="space-y-2 px-4 py-3.5 text-[13px] leading-relaxed">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span className={`text-[15px] font-medium ${tone}`}>{phase.label}</span>
-          <span className="text-fg-muted">{phase.action}</span>
-          {phase.watch_price != null && (
-            <span className="num text-fg">
-              关键价 {fmtNum(phase.watch_price, 2)}
-            </span>
-          )}
-          <span className="text-fg-dim">像不像：{phase.fit_label}</span>
-        </div>
-        <p className="text-fg-muted">{phase.text}</p>
-        <p className="text-fg-dim">{phase.fit_text}</p>
-        <div className="grid gap-x-6 gap-y-1 border-t border-line-soft pt-2 text-[12px] text-fg-dim md:grid-cols-2">
-          <p>
-            <span className="text-fg-muted">{phase.shadow_label}</span>
-            <span className="mx-1">·</span>
-            {phase.shadow_text}
-          </p>
-          <p>
-            <span className="text-fg-muted">{phase.pressure_label}</span>
-            <span className="mx-1">·</span>
-            {phase.pressure_text}
-          </p>
-          <p>
-            <span className="text-fg-muted">计划</span>
-            <span className="mx-1">·</span>
-            {phase.plan_text}
-          </p>
-          <p>
-            <span className="text-fg-muted">风险</span>
-            <span className="mx-1">·</span>
-            {phase.risk_text}
-          </p>
-        </div>
-      </div>
-    </Panel>
   )
 }
