@@ -43,6 +43,7 @@ import type {
   StockAnalysis,
   StockDailyRow,
   StockDde,
+  StockNews,
   StockProfile,
   StockThemes,
   WatchlistRow,
@@ -300,6 +301,15 @@ export const api = {
    */
   stockDde: (code: string, days = 60) =>
     request<StockDde>(`/stock/${code}/dde?days=${days}`),
+
+  /**
+   * 个股新闻（**东财口径**，按发布时间倒序）。
+   *
+   * 后端**每次打开都现取、不落库**（新闻的价值全在「新」，而这条源没有配额）；
+   * 取不到时 `rows` 为空、`note` 说明原因 —— 别把两者混成「这只票没有新闻」。
+   */
+  stockNews: (code: string, limit = 20) =>
+    request<StockNews>(`/stock/${code}/news?limit=${limit}`),
 
   /**
    * 个股分析：把「代码 / 名称 / 拼音首字母」解析成结论（阶段判定 + 旁证）。
