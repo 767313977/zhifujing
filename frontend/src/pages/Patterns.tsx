@@ -490,7 +490,8 @@ export default function Patterns() {
               共 {fmtInt(summary?.total_stocks ?? 0)} 只命中
               <span className="ml-3 text-fg-dim">
                 点形态名筛选（单选，再点一次取消）；徽标是该形态的全市场命中家数。致富＝悟道样板/启动
-                ＋洗完（只扫强势小池的创业板与科创板），悟道之路＝强达型与华宝早期（全池扫）；
+                ＋洗完（只扫创业板与科创板，且样板/启动另限「今天冲高过」的候选池），
+                悟道之路＝强达型与华宝早期（同样只扫创业板与科创板）；
                 <Link to="/wudao" className="text-fg-dim underline decoration-line underline-offset-2 hover:text-fg">
                   悟道之路单独一页
                 </Link>

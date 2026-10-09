@@ -505,7 +505,7 @@ function PoolStandingTable({ standing }: { standing: PoolStandingOut }) {
       <div className="border-t border-line-soft px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
         样本＝窗口内全部命中（逐日不去重）；超额＝减掉同一天全市场等权平均；收益按涨跌幅
         逐日复利（前复权口径）。到线 / 破位都用收盘：到线＝收盘站上关键线（样板池＝今高、
-        洗盘池＝洗盘高；「今天可买」那条线当天已过，这里算的是站住），破位＝收盘跌破作废位
+        洗盘池＝洗盘高；「明天预案」那条线当天已过，这里算的是站住），破位＝收盘跌破作废位
         （池子没有作废位的用命中日最低价当代理，单元格里标「代理」）。统计从 {standing.start}{' '}
         起 —— 池子的候选范围那天才定稿，更早的命中是另一套口径，混进来数字就不好解释了。
       </div>
