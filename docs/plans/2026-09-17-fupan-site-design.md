@@ -9939,6 +9939,17 @@ Edge 的窗口边不算在 `innerWidth` 里）。操作区按最宽那一档建�
 补后各 506 根），**0 次 iFinD 调用**；`002382 / 002439 / 002852` 的最后一根均由
 09-28 变成 10-09 → 图上不再断。
 
+**顺手修掉一个一直是坏的兜底**（2026-10-09，跑 `--top 50` 时暴露）：
+`scan_patterns.py` 只 `from datetime import date`，而 `_sync_stock_tencent` 里用了
+`timedelta` —— 于是**腾讯那一级从来没成功过**，每次都在日志里报
+`name 'timedelta' is not defined` 后**静默落到 iFinD**（等于白花配额）。
+改成 `from datetime import date, timedelta` 后实测立刻通：
+`补日线(腾讯) 002238 → 68 行`。这条链的三级兜底（东财→腾讯→iFinD）**今天才真正齐**。
+
+**部署位置：云端**（用户定）。本机不再加 Trae 定时任务 —— 靠站点自身的每日链路
+（`_run_tail` 里的 `_backfill_hit_kline`）即可；本机要手动补就
+`python scripts/refresh_top_kline.py`。
+
 
 
 

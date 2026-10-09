@@ -44,7 +44,7 @@
 import logging
 import time
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import delete, func, select
 
