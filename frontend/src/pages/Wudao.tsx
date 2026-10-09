@@ -40,10 +40,11 @@ const SECTIONS: Section[] = [
     page: '辉宾选股',
     note:
       '主交易纪律：样板 → 启动。样板日是观察日、不是追高日；买点是启动日「盘中刚过昨高」那一下，' +
-      '收盘贴板才看见的默认不追。华宝早期是更早一档，只观察。',
+      '收盘贴板才看见的默认不追（所以这一格叫「明天预案」，不叫「今天可买」）。' +
+      '「明天盯」与「明天预案」另有一道过滤：收盘离当日最高不超过 2.9%（收盘太弱的不要）。华宝早期是更早一档，只观察。',
     pools: [
       { key: 'wudao_sample', title: '明天盯', levels: [['watch_high', '今高']] },
-      { key: 'wudao_start', title: '今天可买', levels: [['breakout', '昨高']] },
+      { key: 'wudao_start', title: '明天预案', levels: [['breakout', '昨高']] },
       { key: 'huabao_early', title: '华宝早期', levels: [['ma5', 'MA5']] },
     ],
   },
@@ -67,7 +68,9 @@ const SECTIONS: Section[] = [
     page: '黑白选股',
     note:
       '多日结构：堆量吸筹 → 放量拉升 → 缩量洗盘。「缩量洗盘中」是主观察（记下洗盘高、缩量别乱砍），' +
-      '「洗后可盯」才是可小仓试的那一档。已经主升完 / 回撤吐光的不在名单里。',
+      '「洗后可盯」才是可小仓试的那一档。缩量洗盘中另加一道位置门槛（现价 ≥ MA60×1.08）—— ' +
+      '不加它这个标签等于全市场平均，加了之后站上中期均线的那一半才有正向超额。' +
+      '已经主升完 / 回撤吐光的不在名单里。',
     pools: [
       {
         key: 'pile_wash_ready',
@@ -87,7 +90,8 @@ const POOL_LIMIT = 3000
 /**
  * 每张表最多渲染多少行。
  *
- * 「缩量洗盘中」「华宝早期」这类是全池扫出来的，一天几百只是常态（10-08：633 / 190），
+ * 「缩量洗盘中」「华宝早期」这类不限候选池（过了「创业板 + 科创板」这道板块关就全收），
+ * 一天上百只是常态（10-08 缩量洗盘中 633；2026-10-09 加位置门槛、去掉主板后仍有几十只），
  * 全塞进 DOM 既卡又没人翻 —— 按分数降序只渲染前这么多，**总数照旧显示在标题上**，
  * 并在表尾写明「还有多少只没显示」。想看得更多就调大这个数（数据本身是全的，
  * `POOL_LIMIT` 才是真正的取数上限）。
@@ -173,15 +177,18 @@ export default function Wudao() {
               移植进本站形态引擎（数字逐条照抄源码），这个页面按它原来的三张选股页摆出当天名单。
             </p>
             <p>
-              清单的<b className="font-normal text-fg-muted">扫描范围按形态各定</b>（2026-10-08 优化）：
-              「明天盯 / 今天可买」只看当天<b className="font-normal text-fg-muted">沪深 A 股（创业板 + 主板 + 科创板）里冲高过 4.5% 的票</b>
-              （一两百只，用的就是判定要的那份日线，不再依赖行情快照）；
-              「洗完可盯」「华宝早期」「黑白选股」<b className="font-normal text-fg-muted">不限池子、扫全市场</b> —— 它们的票今天往往很安静
-              （洗盘、连阳初期涨幅只有 1~3%），拿「今天强势」当候选等于把它们全筛掉。
+              清单的<b className="font-normal text-fg-muted">板块与候选范围</b>（2026-10-09 优化）：
+              <b className="font-normal text-fg-muted">六个池子都只收创业板 + 科创板</b>（300/301/302 + 688/689，
+              不含主板、不含北交所 —— 这套阈值是按 20cm 校准的，10cm 的主板天生对不上）；
+              其中「明天盯 / 明天预案」<b className="font-normal text-fg-muted">另限候选池</b>——
+              只看当天冲高过 4.5% 的票（一两百只，用的就是判定要的那份日线，不再依赖行情快照）；
+              「洗完可盯」「华宝早期」「黑白选股」则<b className="font-normal text-fg-muted">不限候选池</b> ——
+              它们的票今天往往很安静（洗盘、连阳初期涨幅只有 1~3%），拿「今天强势」当候选等于把它们全筛掉。
             </p>
             <p className="text-fg-dim">
-              ⚠️ 四个池子的回测都是「短周期略有指向、胜率不到 50%、四档中位数全负」——
-              <b className="font-normal text-fg-muted">当清单看，不是买点信号</b>；
+              ⚠️ 这些池子<b className="font-normal text-fg-muted">当清单看，不是买点信号</b>：
+              近一年（260 个交易日）实测，「明天盯」加了收盘过滤后过线率从 46% 提到 54%、破位率从 39% 降到 30%，
+              但收益仍是中性；「缩量洗盘中」加了位置门槛之后，留下的那一半才有 +1% 上下（5 日）的正超额。
               量比口径一律是「当日成交量 ÷ 近 20 日均量」，不与昨日比。
             </p>
           </div>
@@ -261,6 +268,7 @@ function PoolPanel({
                   <th>代码</th>
                   <th className="!text-left">名称</th>
                   <th className="!text-left">板块</th>
+                  <th className="!text-left">行业</th>
                   <th>收盘</th>
                   <th>涨跌幅</th>
                   <th>分数</th>
@@ -293,9 +301,30 @@ function PoolPanel({
                       )}
                     </td>
                     <td className="!text-left">
+                      {/* 板块＝「最近一次涨停是因为哪个题材」（开盘红涨停天梯）。
+                          **只有涨停过的票才有** —— 开盘红没有非涨停个股的题材归属接口，
+                          所以安静型池子这一列大半是「—」（10-09 实测：明天盯/明天预案 0%、
+                          华宝早期 ~47%、缩量洗盘中 ~45%）。空就是空，**不拿行业去顶**，
+                          行业在右边单独一列。 */}
                       <span className="text-[13px] text-fg-muted">
                         {row.sectors.length > 0 ? row.sectors.join('、') : '—'}
                       </span>
+                    </td>
+                    <td className="!text-left">
+                      {/* 同花顺行业，与上面的板块**不是一个口径**（这个答「做什么生意」）。
+                          值是三级路径、最长 19 字（「电力设备-其他电源设备-其他电源设备Ⅲ」），
+                          铺在列里太占宽 —— 只显示**第一级**，完整路径放 tooltip。
+                          建池 7 天一次、覆盖全 A，所以基本不会空。 */}
+                      {row.industry ? (
+                        <span
+                          className="whitespace-nowrap text-[13px] text-fg-muted"
+                          title={row.industry}
+                        >
+                          {row.industry.split('-')[0]}
+                        </span>
+                      ) : (
+                        <span className="text-[13px] text-fg-dim">—</span>
+                      )}
                     </td>
                     <td>
                       <span className="num">{fmtNum(row.close, 2)}</span>

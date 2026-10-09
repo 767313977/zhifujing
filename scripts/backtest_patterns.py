@@ -346,7 +346,7 @@ def _resolve_targets(name: str) -> dict[str, dict]:
     if name == "all-new":
         keys = list(NEW_KEYS)
     elif name == "all":
-        # 致富那两个（今天可买 / 明天盯）**不进全量回测**：它们的候选池是悟道同口径的
+        # 致富那两个（明天预案 / 明天盯）**不进全量回测**：它们的候选池是悟道同口径的
         # 强势小池（见 scan_patterns._candidate_codes），拿全市场跑出来的是
         # 另一个分布，结论没有意义
         keys = [p.key for p in PATTERNS if p.group != "致富"]
@@ -374,10 +374,10 @@ def main() -> int:
         default="all",
         choices=("all", "wudao"),
         help=(
-            "wudao = 只扫创业板 + 沪深主板 + 科创板（＝沪深 A 股，不含北交所；即「明天盯 / "
-            "今天可买」的候选板块，见 scan_patterns.is_wudao_board）。悟道家族（wudao_* / "
-            "pile_wash_* / huabao_early）的候选池就是这三块，拿全市场跑会得到另一批票的"
-            "信号、数字不代表生产 —— 见设计文档 §8.83 / §8.84"
+            "wudao = 只扫创业板 + 科创板（300/301/302 + 688/689，不含主板、不含北交所；"
+            "见 scan_patterns.is_wudao_board）。**悟道六池（wudao_* / pile_wash_* / "
+            "huabao_early）生产上都只收这两块**，所以拿全市场跑会得到另一批票的信号、"
+            "数字不代表生产 —— 见设计文档 §8.83 / §8.84 / §8.89"
         ),
     )
     parser.add_argument("--history", action="store_true", help="用长历史库 history.db")
@@ -395,7 +395,7 @@ def main() -> int:
         from app.jobs.scan_patterns import is_wudao_board
 
         codes = [code for code in codes if is_wudao_board(code)]
-        logger.info("只扫创业板 + 沪深主板 + 科创板：%d 只（与悟道候选池同板块口径）", len(codes))
+        logger.info("只扫创业板 + 科创板：%d 只（与悟道六池同板块口径）", len(codes))
     if args.stocks:
         codes = codes[: args.stocks]
     if not codes:

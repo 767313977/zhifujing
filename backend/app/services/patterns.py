@@ -371,10 +371,24 @@ BURST_SHRINK_GAP_CAP = 10.0  # 隔得太久说明「缩量回踩」这层关系�
 # 已一并删除 —— 那套横截面 RS 排名只服务于这一个形态。想要爆发股请看「突破后横盘」。
 
 # 悟道之路 · 致富选股（样板 → 启动）
-# 扫描侧只扫「强势/涨停/昨涨停/涨幅榜」创业板小池，与悟道名单对齐（见 jobs/scan_patterns.py）
+# 扫描侧：候选池 = **创业板 + 科创板**里当日冲高 ≥4.5% 的票（见 jobs/scan_patterns.py）
 # 量比口径与本地悟道之路一致：当日量 / 近 20 日均量（不是 5 日）
 WUDAO_SAMPLE_HIGH_PCT = 7.0
 WUDAO_SAMPLE_VOL = 1.3
+# 样板日「收盘离开最高」的上限（leave_high = (最高 − 收盘) / 最高）。
+# 2026-10-09 用主库全池实测（每票 260 根 ≈ 近一年）加的一道**过线概率过滤**：
+# 收盘离最高越近，明天越容易过今高 —— 四个四分桶的「次日过今高」一路单调
+# 56.4% / 46.2% / 33.8% / 19.6%，配 5 日到线 57% / 54% / 46% / 41%、
+# 破位 28% / 30% / 34% / 39%。取中位数 0.029 当门槛：
+#   5 日到线 46.3%→54.3%、5 日破位 38.9%→29.8%
+#   （**生产口径不去重** 19989→9524、保留 47.6%；同票 20 日去重后 12365→7500、保留 60.7%）。
+# ⚠️ 这条线的收益改善是**温和**的（5 日超额 −0.28%→−0.10%），
+# 大幅改善的是「过不过线」这件事本身，别把到线率当成收益承诺。
+#
+# ⚠️ 它**只作用在「明天盯 / 明天预案」两个出口**（`_wudao_leave_ok`），
+# **没有**并进 `_wudao_is_sample` —— 那个判据还被「洗完可盯」与个股页阶段判定共用，
+# 并进去会把它们一起砍掉约 43%（实测 2035→1161）、个股页 `sample` 标签 28→10。
+WUDAO_SAMPLE_MAX_LEAVE = 0.029
 WUDAO_START_VOL = 1.5
 WUDAO_DIVERGE_VOL = 2.5  # 与悟道：爆量冲高不收 → 吵/出货，不当明天盯
 WUDAO_MIN_BARS = 22  # 昨收 + 近 20 日均量 + 余量
@@ -391,9 +405,9 @@ WUDAO_WASH_MIN_BARS = 28  # 要取到 bars[-4]（样板前一根）
 # 回测（2026-10-08，`scripts/backtest_patterns.py --pattern wudao_wash2 --board wudao`
 # = 创业板 + 科创板 1908 只 × 2026-01~07，无未来函数、同票 20 日去重、基准 = 同日全市场平均）：
 #
-# ⚠️ **口径已变、这张表是旧池算的**：wash2 现在**全池扫**（`scan_patterns._in_wudao_pool`
-# 只把「明天盯 / 今天可买」限在小池），而 `--board wudao` 现在＝沪深 A 股。
-# 数字不再代表生产，要更新得按 `--pattern wudao_wash2`（全池）重跑。
+# ⚠️ **口径对上了**：wash2 现在只收**创业板 + 科创板**（`scan_patterns._in_wudao_pool`
+# 的板块闸门，不带候选池），与 `--board wudao` 同一个口径 → 这张表重新代表生产。
+# （2026-10-08 ~ 10-09 之间它一度是全池扫，那时这张表不算数。）
 #
 # | 持有 | 信号 | 均值 | 中位 | 胜率 | 超额 |
 # | 5 日 | 638 | +0.55% | −0.36% | 48.0% | **+0.41%** |
@@ -403,7 +417,7 @@ WUDAO_WASH_MIN_BARS = 28  # 要取到 bars[-4]（样板前一根）
 #
 # ⚠️ **读法：短周期略有指向、中期没有**。5 日 +0.41% 是噪声量级（胜率 48% 接近抛硬币），
 # 10/20 日超额在 ±0.3% 里打转，60 日为负、四档中位数全负 —— 它**不是高胜率信号**，
-# 定位与「明天盯 / 今天可买」相同：按这个形状捞一批票自己看。它的价值在纪律上
+# 定位与「明天盯 / 明天预案」相同：按这个形状捞一批票自己看。它的价值在纪律上
 # （洗盘日只观察、明天过洗高再进、破启动低作废），不在统计超额。
 # ⚠️ 样本只有 2026-01~07 一段行情（同 §8.67 那条老提醒），只能横向比、不能当长期能力。
 # ⚠️ **必须用 `--board wudao`**：拿全市场跑会得到另一批票的信号 —— 2026-10-08 实测
@@ -433,14 +447,24 @@ PILE_WASH_MAX_VOL_RATIO = 0.72  # 洗盘均量 / 拉升均量 ≤ 0.72
 PILE_WASH_KEEP_ABOVE_BASE = 1.05  # 洗盘末收盘 ≥ 前基 × 1.05
 PILE_WASH_MAX_GIVEBACK = 0.62  # 回吐 / 整段涨幅 的上限
 PILE_WASH_MAX_RANGE_PCT = 28.0  # 洗盘段振幅上限（%）
+# 「缩量洗盘中」的**位置门槛**（2026-10-09 加）：现价 / MA60（含当日）。
+# 加它的原因：单看「拉升 → 缩量横盘」这个结构，它就是**全市场平均** ——
+# 主库全池实测（每票 260 根 ≈ 近一年；n=6707 条命中）基线 5/10/20/60 日超额
+# +0.45/+0.37/+0.19/+0.92，也就是说这个标签**没有筛选力**（见设计文档 §8.87.6 第 ⑧ 条）。
+# 按「位置」一拆就分开了（阈值扫描见 §8.88）：
+#   收盘 ≥ MA60×1.08 的那一半（n=3284）：+1.08/+1.31/+1.31/+2.43
+#   另一半（n=3423）                  ：−0.16/−0.53/−0.88/−0.52
+# 门槛取 1.08（数据里的 3/4 分位 ≈1.077，取整到两位）。对半拆分（按日期）两半都为正：
+#   前半 +0.77/+0.65/+0.87；后半 +1.61/+2.43/+2.06（5/10/20 日）。
+PILE_WASH_MIN_POS_MA60 = 1.08
 PILE_READY_NEAR = 0.97  # 收盘 ≥ 洗盘高 × 0.97 算「贴近」
 PILE_READY_MIN_VOL = 1.15  # 贴近时要求的量比
 PILE_GONE_ABOVE = 1.18  # 突破后远离洗盘高这么多、且 5 日涨幅大 → 已主升完
 PILE_GONE_RET5 = 18.0
 #
 # 回测（2026-10-08，`scripts/backtest_patterns.py --pattern <key>`，全池 4945 只 × 2026-01~07，
-# 无未来函数、同票 20 日去重、基准 = 同日全市场平均）。它这套**不分板**（创业板 + 主板都扫），
-# 所以用默认的全市场池，不加 `--board wudao`：
+# 无未来函数、同票 20 日去重、基准 = 同日全市场平均）。它是**没加板块闸门**那一版的数字
+# （现在生产只收创业板 + 科创板，要比就得加 `--board wudao`）：
 #
 # | 形态 | 信号 | 5 日超额 | 10 日超额 | 20 日超额 | 60 日超额 | 胜率(5/10/20/60) |
 # | --- | --- | --- | --- | --- | --- | --- |
@@ -450,15 +474,16 @@ PILE_GONE_RET5 = 18.0
 # ⚠️ **读法与 wash2 一致：短周期略有指向、胜率不到 50%、四档中位数全负** —— 不是高胜率信号。
 # 它的用法本来就写在纪律里（`wash` 主观察、`ready` 才是「可小仓试」），当清单用。
 # ⚠️ 频率差异要知道：悟道那边只扫当天的强势候选（40~60 只）再截前 20/25 张卡片；
-# 我们按全池扫，所以「缩量洗盘中」一天能有几百只 —— 它本身就是「安静了很多天的票」，
-# 拿「今天有动静」的候选去筛反而会漏掉，这是我们**故意**跟它不一样的地方。
+# 我们**不限候选池**（过了「创业板 + 科创板」这道板块关就全收），所以「缩量洗盘中」
+# 一天仍有上百只 —— 它本身就是「安静了很多天的票」，拿「今天有动静」的候选去筛反而
+# 会漏掉，这是我们**故意**跟它不一样的地方。
 # ⚠️ 样本 2026-01~07 一段行情，只能横向比。
 
 # 悟道之路 · 华宝早期（2026-10-08 移植，见移植方案 §1.3）
 #
 # 更早一档的观察池：连阳 + 贴 5 日线 + 量由缩转放 + MACD 抬头。数字**照抄**
 # `yangban-desk/app/huabao_early.py`（commit fe32f80）。**只观察、不直接买** ——
-# 它自己的纪律是「真正动手仍要等走出明天盯 → 今天可买」。
+# 它自己的纪律是「真正动手仍要等走出明天盯 → 明天预案」。
 WUDAO_HUABAO_MIN_BARS = 30
 WUDAO_HUABAO_MAX_RET_20 = 32.0  # 20 日累计涨幅上限（超过 = 已经主升完）
 WUDAO_HUABAO_MAX_RET_5 = 22.0  # 5 日累计涨幅上限
@@ -474,14 +499,15 @@ WUDAO_HUABAO_YANG_MAX_VAR = 18.0  # 连阳段涨幅方差上限（别暴涨暴�
 WUDAO_HUABAO_MACD_MIN = -0.05
 #
 # 回测（2026-10-08，`scripts/backtest_patterns.py --pattern huabao_early`，全池 4945 只
-# × 2026-01~07，无未来函数、同票 20 日去重、基准 = 同日全市场平均）：
+# × 2026-01~07，无未来函数、同票 20 日去重、基准 = 同日全市场平均）——
+# 也是**没加板块闸门**那一版的数字（生产现在只收创业板 + 科创板）：
 #
 # | 形态 | 信号 | 5 日超额 | 10 日超额 | 20 日超额 | 60 日超额 | 胜率(5/10/20/60) |
 # | --- | --- | --- | --- | --- | --- | --- |
 # | 华宝早期 | 9917 | +0.02% | +0.35% | +0.43% | +0.35% | 47.1 / 48.5 / 42.4 / 30.4% |
 #
 # ⚠️ 与同批两个强达形态同读：**短周期略有指向、胜率不到 50%、四档中位数全负**。
-# 它的定位本来就更早一档（只观察，真正动手要等走出「明天盯 → 今天可买」），
+# 它的定位本来就更早一档（只观察，真正动手要等走出「明天盯 → 明天预案」），
 # 再加上我们**没做**它的资金流与分时两步（对方把「取不到资金流」当不淘汰处理），
 # 所以一天能有近百只 —— 当观察池用，别当买点清单。
 # ⚠️ 样本 2026-01~07 一段行情，只能横向比。
@@ -2006,7 +2032,13 @@ def _wudao_is_diverge_or_dump(bars: Bars, i: int) -> bool:
 
 
 def _wudao_is_sample(bars: Bars, i: int) -> bool:
-    """与悟道之路 `is_sample_day` 对齐：冲高约 ≥7%、量比≥1.3、收盘离开最高。"""
+    """与悟道之路 `is_sample_day` 对齐：冲高约 ≥7%、量比≥1.3、收盘离开最高。
+
+    ⚠️ 这里是**原型口径**，2026-10-09 那道「收盘离开最高 ≤ 0.029」的过线过滤
+    **没有并进来** —— 那个判据还被「洗完可盯」`_wudao_wash2` 与个股页阶段判定
+    `classify_phase` 共用，并进来会把它们一起砍掉（实测各 −43%、个股页标签减半）。
+    过滤只加在「明天盯 / 明天预案」两个出口，见 `_wudao_leave_ok`。
+    """
     if i < 1 or i >= len(bars):
         return False
     if i < 20:
@@ -2037,14 +2069,32 @@ def _wudao_is_sample(bars: Bars, i: int) -> bool:
     return True
 
 
+def _wudao_leave_ok(bars: Bars, i: int) -> bool:
+    """样板日的「过线概率」过滤：收盘离开最高 ≤ `WUDAO_SAMPLE_MAX_LEAVE`（见常量注释）。
+
+    2026-10-09 加。**只作用在「明天盯 / 明天预案」两个形态的出口**，故意不并进
+    `_wudao_is_sample` —— 见那个函数的 docstring。`i` 是样板日下标（「明天预案」
+    检查的是**昨天**那根）。
+    """
+    high = float(bars.high[i])
+    if high <= 0:
+        return True
+    return (high - float(bars.close[i])) / high <= WUDAO_SAMPLE_MAX_LEAVE
+
+
 def _wudao_sample(bars: Bars) -> Signal | None:
-    """明天盯：今日是样板日 —— 冲高回落有量，记下今高，今天不买。"""
+    """明天盯：今日是样板日 —— 冲高回落有量，记下今高，今天不买。
+
+    在原型 `_wudao_is_sample` 之上，另过一道 `_wudao_leave_ok`（收盘别离开最高太远）。
+    """
     if len(bars) < WUDAO_MIN_BARS:
         return None
     i = len(bars) - 1
     if _wudao_is_diverge_or_dump(bars, i):
         return None
     if not _wudao_is_sample(bars, i):
+        return None
+    if not _wudao_leave_ok(bars, i):
         return None
 
     prev_close = float(bars.close[i - 1])
@@ -2073,12 +2123,20 @@ def _wudao_sample(bars: Bars) -> Signal | None:
 
 
 def _wudao_start(bars: Bars) -> Signal | None:
-    """今天可买：昨是样板，今放量过昨高；买点是刚过昨高。"""
+    """明天预案：昨是样板，今放量过昨高。
+
+    2026-10-09 从「今天可买」改名 —— 判定在**收盘后**才跑，那条买点（刚过昨高）
+    当天早就过了，叫「今天可买」名不副实（成绩单也印证了：站住率 72%、但 5 日超额
+    −2.5%）。它其实是一份**明天按预案跟**的名单，动手仍要等明天真正站上昨高。
+    与「明天盯」一样，昨天的样板也要过 `_wudao_leave_ok`。
+    """
     if len(bars) < WUDAO_MIN_BARS + 1:
         return None
     i = len(bars) - 1
     y = i - 1
     if not _wudao_is_sample(bars, y):
+        return None
+    if not _wudao_leave_ok(bars, y):
         return None
 
     sample_high = float(bars.high[y])
@@ -2123,7 +2181,7 @@ WUDAO_PHASE_LABELS = {
     "silent": "没动静",
     "wake": "刚有人气",
     "sample": "明天盯",
-    "start": "今天可买",
+    "start": "明天预案",
     "digest": "休息中",
     "diverge": "吵起来了",
     "dump": "像出货",
@@ -2169,6 +2227,14 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
     ⚠️ 与 `PATTERNS` 里的 `wudao_sample` / `wudao_start` **共用同一批判据**
     （`_wudao_is_sample` / `_wudao_is_diverge_or_dump` / `_wudao_day_geom`）——
     别在这里另写一套：两边分叉过一次，回测数字就不再代表生产。
+
+    ⚠️ **但「共用判据」不等于「结果一致」**（2026-10-09 起，名单那侧多了两道过滤，
+    两处都**故意**没写进这里）：
+    - 名单只收**创业板 + 科创板**（`scan_patterns.is_wudao_board`），这里**全市场都判**
+      —— 主板票也会被贴上「明天盯」，而名单里永远不会有它；
+    - 名单出口另有一道 `_wudao_leave_ok`（收盘离开最高 ≤ 2.9%，见 §8.88.3）——
+      它没并进 `_wudao_is_sample`，因为那个判据还被「洗完可盯」共用。
+    实测 2026-09-28：这里判「明天盯」的 31 只里只有 6 只在名单。
 
     优先级照原型：**启动 > 吵起来了 / 像出货 > 明天盯 > 休息中 > 刚有人气 > 没动静**。
     这也是「明明冲高回落了、为什么没进明天盯」的答案 —— 它被更靠前的阶段占了
@@ -2299,7 +2365,7 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
         fit_text = "现在是刹车灯，不是油门。别当样板/启动去追。"
     else:
         fit_label, prefer = "还没到动手档", 0
-        fit_text = "还没走到「明天盯 / 今天可买」。先放着，别空耗仓位。"
+        fit_text = "还没走到「明天盯 / 明天预案」。先放着，别空耗仓位。"
 
     if phase == "sample":
         plan_text = (
@@ -2420,7 +2486,7 @@ def _wudao_wash2(bars: Bars) -> Signal | None:
     """洗完 → 明天可进（悟道之路「辉宾选股2」，2026-10-08 移植）。
 
     四段结构：**样板日 → 启动日 → 今日洗盘 → 明天放量过「洗高」**。
-    前两段的判定与「明天盯 / 今天可买」**完全同一套**（复用 `_wudao_is_sample` 与同组数字），
+    前两段的判定与「明天盯 / 明天预案」**完全同一套**（复用 `_wudao_is_sample` 与同组数字），
     第三段是本形态新增的：洗盘日要守住两个锚点（启动低 / 样板高）、收盘温和、不是继续主升。
 
     数字全部照抄 `yangban-desk/app/pattern_wash2.py`（commit fe32f80），逐条见文件上方常量。
@@ -2673,6 +2739,9 @@ def _pile_wash_phase(bars: Bars) -> tuple[str, dict] | None:
         "wash_high": wash_high,
         "wash_low": wash_low,
         "giveback": giveback,
+        # 位置维度（2026-10-09 加）：现价 / MA60。见 PILE_WASH_MIN_POS_MA60
+        "pos_ma60": float(bars.close[n - 1])
+        / max(float(np.mean(bars.close[max(0, n - 60) : n])), 1e-9),
         "surge_start_gap": last_i - s1,  # 拉升段结束距今几根（诊断用）
     }
     return phase, metrics
@@ -2685,6 +2754,10 @@ def _pile_wash_signal(bars: Bars, want: str) -> Signal | None:
         return None
     phase, m = result
     if phase != want or m["wash_high"] is None:
+        return None
+    # 位置门槛（2026-10-09 加）：只卡「缩量洗盘中」这一格 —— 单看结构它就是
+    # 全市场平均（安静型标签没有筛选力）。见 PILE_WASH_MIN_POS_MA60 的实测数字。
+    if want == "wash" and float(m["pos_ma60"]) < PILE_WASH_MIN_POS_MA60:
         return None
 
     wash_high = float(m["wash_high"])
@@ -2725,7 +2798,11 @@ def _pile_wash_ready(bars: Bars) -> Signal | None:
 
 
 def _pile_wash_wash(bars: Bars) -> Signal | None:
-    """缩量洗盘中：拉升后横着、量掉回拉升期 —— 主观察，记下洗盘高，缩量别乱砍。"""
+    """缩量洗盘中：拉升后横着、量掉回拉升期 —— 主观察，记下洗盘高，缩量别乱砍。
+
+    2026-10-09 起多一道**位置门槛**（现价 ≥ MA60×1.08）：单看结构它等于全市场平均，
+    只在「现价站在中期均线上方」这一半里才留，理由与实测见 `PILE_WASH_MIN_POS_MA60`。
+    """
     return _pile_wash_signal(bars, "wash")
 
 
@@ -4340,12 +4417,12 @@ def _jade_pillar(bars: Bars) -> Signal | None:
 CANDLE_GROUP = "单 K 蜡烛形态"
 # 2026-10-08：从悟道之路（yangban-desk）搬过来的形态里，**不是辉宾那两页**的单独一组。
 # 强达型 = 它的「黑白选股」，华宝早期 = 「辉宾选股」里的早期池 —— 品类不同，混进「致富」
-# 会让人以为它们也是「明天盯 / 今天可买」那一套。
-# （`wudao_wash2` 留在「致富」：它是辉宾1 的续做，与「明天盯 / 今天可买」前后相接。）
+# 会让人以为它们也是「明天盯 / 明天预案」那一套。
+# （`wudao_wash2` 留在「致富」：它是辉宾1 的续做，与「明天盯 / 明天预案」前后相接。）
 WUDAO_GROUP = "悟道之路"
 
 PATTERNS: tuple[Pattern, ...] = (
-    Pattern("wudao_start", "今天可买", "致富", _wudao_start),
+    Pattern("wudao_start", "明天预案", "致富", _wudao_start),
     Pattern("wudao_sample", "明天盯", "致富", _wudao_sample),
     # 2026-10-08 移植自 yangban-desk「辉宾选股2」（洗完 → 明天可进）
     Pattern("wudao_wash2", "洗完可盯", "致富", _wudao_wash2),
