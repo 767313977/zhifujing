@@ -2240,11 +2240,15 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
     这也是「明明冲高回落了、为什么没进明天盯」的答案 —— 它被更靠前的阶段占了
     （`_wudao_sample` 那边同样先过 `_wudao_is_diverge_or_dump`）。
 
-    ⚠️ **一处对原型的修正**（2026-10-09）：「没动静」之前加了一道**缩量大涨兜底**
-    （`pct >= 9.5` 或 `pct >= 4 且 high_pct >= 6` → `wake`）。原型直接按 `vol < 0.85`
-    判「没动静」，会把**缩量涨停 / 一字板**（量比常 0.3~0.8）说成「几乎没人气」——
-    与当日涨停的事实矛盾（实测本机库 2026-09 快照有 4 只）。这类归 `wake` 但文案另写
-    （见下面 `thin_up` 分支）。
+    ⚠️ **三处对原型的修正**（2026-10-09）—— 都是「标签与当日事实自相矛盾」，都做过实测：
+
+    1. **缩量大涨兜底**：`pct >= 9.5` 或 `pct >= 4 且 high_pct >= 6` → `wake`。
+       原型直接按 `vol < 0.85` 判「没动静」，会把**缩量涨停 / 一字板**（量比常 0.3~0.8）
+       说成「几乎没人气」（实测 4 只）。这类归 `wake`、文案另写（见 `thin_up` 分支）。
+    2. **大跌兜底**（对称的下跌侧）：`pct <= -5` → `unknown`（对不上）。不加的话
+       缩量大跌（含跌停）会掉进「没动静」（实测 262 只当日 ≤ -5%）。
+    3. **`digest` 补下界**：`-3 <= pct <= 0`。原来只写 `pct <= 0`，跌停也会进
+       「休息中」，与它自己的文案「涨跌不大，像在歇口气」直接冲突（实测 7 只、含 4 只跌停）。
     """
     n = len(bars)
     if n < 25:
@@ -2277,13 +2281,21 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
         phase = "dump" if (vol >= 1.4 and pct < 2 and upper >= 0.3) else "diverge"
     elif today_sample:
         phase = "sample"
-    elif pct <= 0 and vol <= 1.15 and ret_5 >= 8:
+    elif -3 <= pct <= 0 and vol <= 1.15 and ret_5 >= 8:
+        # 「涨跌不大」才有下界 —— 原来只写 `pct <= 0`，跌停（-10%）也会进「休息中」，
+        # 与它自己的文案「今天量缩、涨跌不大，像在歇口气」直接冲突
+        # （实测本机 2026-09 快照 7 只，含 4 只跌停：002909/603230/605058/600815）。
         phase = "digest"
     elif vol >= 1.2 and (pct >= 4 or high_pct >= 6) and not today_sample:
         phase = "wake"
     elif pct >= 9.5 or (pct >= 4 and high_pct >= 6):
         phase = "wake"
         thin_up = True
+    elif pct <= -5:
+        # 当日大跌兜底：与上面「缩量大涨」对称。不加的话，缩量大跌（含跌停，量比常
+        # 0.2~0.8）会掉进「没动静」，文案「几乎没人气」与跌停的事实矛盾
+        # （实测 262 只当日 ≤ -5%）。归「对不上」—— 它的文案带数字、不假装成别的状态。
+        phase = "unknown"
     elif vol < 0.85:
         phase = "silent"
     else:
