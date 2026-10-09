@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import Account from './pages/Account'
+import AnomalyPage from './pages/Anomaly'
 import Dashboard from './pages/Dashboard'
 import Funds from './pages/Funds'
 import LimitReview from './pages/LimitReview'
@@ -107,6 +108,15 @@ export default function App() {
             element={
               <RequireAuth>
                 <Wudao />
+              </RequireAuth>
+            }
+          />
+          {/* 个股异动：复刻原型的「豆包异动图谱」，数据全来自本站库 */}
+          <Route
+            path="/anomaly"
+            element={
+              <RequireAuth>
+                <AnomalyPage />
               </RequireAuth>
             }
           />

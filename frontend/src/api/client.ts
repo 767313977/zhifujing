@@ -1,5 +1,6 @@
 import type {
   AdminStatus,
+  AnomalyMap,
   DdeBoard,
   DdeOrder,
   EtfFlowBoard,
@@ -246,6 +247,15 @@ export const api = {
 
   promotion: (days = 15) =>
     request<PromotionSeries>(`/limit/promotion?days=${days}`),
+
+  /**
+   * 个股异动图谱：最近 `days` 个交易日里的涨停 / 涨停炸板 / 中大阳线异动，
+   * 按同花顺行业末段分组。**整块一次取回，筛选/搜索都在前端内存里做**，不再发请求。
+   *
+   * 数据全部来自本站库（涨停池 + 本地日线），不联网、不花配额；口径见后端
+   * `api/anomaly_map.py`。
+   */
+  anomalyMap: (days = 22) => request<AnomalyMap>(`/anomaly-map?days=${days}`),
 
   watchlist: () => request<WatchlistRow[]>('/watchlist'),
 

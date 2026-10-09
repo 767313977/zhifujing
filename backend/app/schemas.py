@@ -520,6 +520,59 @@ class LimitThemes(BaseModel):
     stocks: list[LimitStockTheme]
 
 
+# --------------------------------------------------------------- 个股异动
+
+# 口径与三处「与原型不同」的差异见 `api/anomaly_map.py` 的模块说明。
+
+
+class AnomalyRowOut(ApiModel):
+    """异动图谱里的一行。
+
+    `sector` 是**板块分组键**（同花顺行业末段），`industry` 是完整三级路径 ——
+    页面按前者分组、后者放 tooltip。`date` / `time` / `generated_at` 一律给字符串：
+    这一屏不做日期运算，接口直接给「显示用」的形态，前端不再自己格式化。
+    """
+
+    sector: str
+    #: 交易日 YYYY-MM-DD
+    date: str
+    #: 封板时间（HH:MM）或「收盘」（中大阳线）
+    time: str
+    code: str
+    name: str
+    #: 涨停 / 涨停炸板 / 中大阳线异动
+    type: str
+    #: 连板标签：首板 / N连板；炸板与中大阳线为空串
+    board: str
+    pct: float | None
+    #: 总市值（**亿元**，保留 1 位）
+    cap: float | None
+    industry: str | None
+    reason: str | None
+    #: 同批异动（同一天同一板块的全部行），标签形如「名称(涨停@09:31)」，含自己
+    cohort: list[str]
+    #: 该行所在 (交易日, 板块) 是不是窗口内该板块的题材启动日
+    theme_start: bool
+
+
+class AnomalyMapOut(ApiModel):
+    """个股异动图谱（`/api/anomaly-map`）。"""
+
+    start: str
+    end: str
+    days: int
+    generated_at: str
+    #: 过滤口径文案（前端原样展示，别在前端再拼一遍）
+    filter: str
+    #: 数据来源文案
+    source: str
+    #: 板块下拉的选项（已按命中条数降序）
+    sectors: list[str]
+    #: 被标记为题材启动日的 (交易日, 板块) 对数
+    theme_start_days: int
+    rows: list[AnomalyRowOut]
+
+
 # --------------------------------------------------------------- 数据管理
 
 

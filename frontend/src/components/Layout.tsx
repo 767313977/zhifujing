@@ -28,6 +28,9 @@ const NAV: NavItem[] = [
   // `wudao_*` / `pile_wash_*` / `huabao_early`），所以这里通向站内 `/wudao`；
   // 仓库地址挪到那个页面里当「出处」链接。别再改回外链。
   { to: '/wudao', label: '悟道之路' },
+  // 个股异动（2026-10-09 用户要求加在「悟道之路」与「个股分析」**之间**）：
+  // 复刻原型的「豆包异动图谱」，数据全来自本站库（涨停池 + 本地日线），不外链。
+  { to: '/anomaly', label: '个股异动' },
   // 个股分析（2026-10-09 用户要求「单独做个页面，放在悟道之路的右侧」）：
   // 就是把原型那个「查票分析」框搬进站内 —— 输代码 / 名称 / 拼音首字母，出阶段判定。
   { to: '/stock-analysis', label: '个股分析' },
@@ -160,6 +163,12 @@ export default function Layout({ children, toolbar }: LayoutProps) {
             下次真正挤不下时再按 135 行那套办法实测，并记得先怀疑操作区而不是导航。
             操作区按最宽那一档（258px）建模；真到了再挤不下的时候，先动的是这里的
             密度（字号/内边距），别去改 `xl:flex-nowrap`。
+
+            ✅ **2026-10-09 加第 12 项「个股异动」**（插在「悟道之路」与「个股分析」之间，
+            同为 4 个字）：再 +60px → 约 697 / 696 / 696。三档可用仍按 910 / 762 / 1018 算，
+            余量 213 / 66 / 322 —— **1280 那档只剩 66px，是这一版三档里最紧的一档**。
+            同样是推算、没重新上 headless 量；真挤不下时先用上面 2026-10-08 那套
+            `msedge --headless` 复核，别先动导航密度（操作区才是更可能的元凶）。
           */}
           <nav className="no-scrollbar flex h-[52px] min-w-0 grow basis-0 items-stretch gap-1 overflow-x-auto overflow-y-hidden lg:gap-0">
             {items.map((item) => (
