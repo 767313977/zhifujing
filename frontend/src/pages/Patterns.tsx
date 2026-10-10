@@ -7,6 +7,7 @@ import KLineChart from '../components/KLineChart'
 import type { KeyLevel } from '../components/KLineChart'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
+import { phaseTone } from '../components/PhasePanel'
 import Segmented from '../components/Segmented'
 import SortTh from '../components/SortTh'
 import { fmtAmount, fmtInt, fmtPct, toneOf } from '../lib/format'
@@ -630,6 +631,13 @@ export default function Patterns() {
                     <SortTh sortKey="code" align="left" {...hitSort}>
                       代码 / 名称
                     </SortTh>
+                    {/* 「阶段判定」是 8 档枚举、没有单一可比值，不排序 */}
+                    <th
+                      className="!text-left"
+                      title="悟道阶段判定（与个股页／个股分析页同一判据，取最近 130 根日线算）。日线不足 25 根的票留空「—」"
+                    >
+                      阶段判定
+                    </th>
                     {/* 「板块」是一串名字、没有单一可比值，不排序（与「命中形态」同理） */}
                     <th
                       className="!text-left"
@@ -701,6 +709,20 @@ export default function Patterns() {
                           <span className="num text-fg-dim">{stock.code}</span>
                           <span className="ml-2 text-fg">{stock.name ?? '—'}</span>
                         </Link>
+                      </td>
+                      <td className="!text-left">
+                        {/* 阶段判定只显示一个词（如「刚有人气」），颜色沿用卡片那一档
+                            的色调（`phaseTone`，与 PhasePanel 同一个来源）；日线不够时留空 */}
+                        {stock.phase_label ? (
+                          <span
+                            className={`whitespace-nowrap text-[13px] ${phaseTone(stock.phase)}`}
+                            title={stock.phase ?? undefined}
+                          >
+                            {stock.phase_label}
+                          </span>
+                        ) : (
+                          <span className="text-fg-dim">—</span>
+                        )}
                       </td>
                       <td className="!text-left">
                         {/* 实测每只票恰好一个板块、名字最长 8 字（VR/AR/MR），所以不用截断；

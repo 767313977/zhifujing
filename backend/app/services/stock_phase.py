@@ -11,6 +11,7 @@
 """
 
 import logging
+from collections.abc import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -63,3 +64,23 @@ def load_phase(session: Session, code: str) -> PhaseVerdict | None:
         return None
     bars: Bars = build_bars(usable)
     return classify_phase(bars)
+
+
+def load_phases(session: Session, codes: Iterable[str]) -> dict[str, PhaseVerdict]:
+    """一次算一批票的阶段判定（形态选股命中列表那种「一屏多只票」的场景）。
+
+    返回 `{code: 判定}`；**日线不够 25 根的票不在结果里**，调用方按「没有」处理。
+
+    内部**逐只复用 `load_phase`**，刻意不另写一条批量 SQL：列表页与个股页对同一只
+    票必须给出同一个判定，共用同一条代码路径是唯一不会漂移的办法（本模块开头那段
+    说的就是这个坑）。成本随只数线性涨 —— 命中列表默认 50 只；「点进一个形态看全部」
+    时最多到 3000 只（`/hits` 的 `limit` 上限），那是用户主动点开的一次操作，秒级
+    可以接受。真嫌慢的话，正解是在扫描时把判定一起落进 `pattern_hit`，而不是在这里
+    写第二条取数路径。
+    """
+    out: dict[str, PhaseVerdict] = {}
+    for code in codes:
+        verdict = load_phase(session, code)
+        if verdict is not None:
+            out[code] = verdict
+    return out

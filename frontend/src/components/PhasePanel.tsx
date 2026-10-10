@@ -20,6 +20,14 @@ const PHASE_TONE: Record<string, string> = {
 }
 
 /**
+ * 阶段 key → 色调类名。卡片与**形态选股命中列表的那一列**共用，免得同一个阶段
+ * 在两个页面配出两种颜色（`null`／未知 key 一律落到常规前景色）。
+ */
+export function phaseTone(phase: string | null | undefined): string {
+  return (phase ? PHASE_TONE[phase] : undefined) ?? 'text-fg'
+}
+
+/**
  * 悟道「阶段判定」卡片（移植自 yangban-desk 的 8 个标签）。
  *
  * 数字全由后端算好（`services/patterns.classify_phase`，与形态选股共用判据），
@@ -39,7 +47,7 @@ export default function PhasePanel({
   title?: string
   delay?: number
 }) {
-  const tone = PHASE_TONE[phase.phase] ?? 'text-fg'
+  const tone = phaseTone(phase.phase)
   const m = phase.metrics
   return (
     <Panel

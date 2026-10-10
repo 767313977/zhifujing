@@ -31,6 +31,7 @@ from app.schemas import (
 )
 from app.services import pattern_track
 from app.services.patterns import PATTERNS
+from app.services.stock_phase import load_phases
 
 router = APIRouter(prefix="/api/patterns", tags=["patterns"])
 
@@ -239,7 +240,17 @@ def hits(
                     stock.score = item.score
                     break
         result.sort(key=lambda stock: stock.score, reverse=True)
-    return result[:limit]
+    page = result[:limit]
+    # 阶段判定：与个股页／个股分析页**同一个取数壳**（`stock_phase.load_phase`），
+    # 保证同一只票在两处给出同一个判定。**只对真正返回的行算**（默认 50 只；
+    # 按形态过滤时最多 3000，见 `load_phases` 的说明），不白算被 limit 截掉的那些。
+    phases = load_phases(db, [stock.code for stock in page])
+    for stock in page:
+        verdict = phases.get(stock.code)
+        if verdict is not None:
+            stock.phase = verdict.phase
+            stock.phase_label = verdict.label
+    return page
 
 
 @router.get("/track", response_model=PatternTrackOut)
