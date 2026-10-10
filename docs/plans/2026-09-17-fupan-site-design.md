@@ -7160,7 +7160,7 @@ ORDER BY MAX(score) DESC LIMIT 50
 60 个交易日 = 84 个日历天，一段装得下（同 8.68.17），所以**一只票 1 次调用**。
 每天 50 次 × 约 22 个交易日 ≈ **1100 次/月**。不便宜，所以：
 
-- 挂在 `_scan_dde` **之后**（全市场扫描那条路才是「今天全池」的地基，先跑完它）；
+- 挂在 `_scan_dde` **之前**（2026-10-10 改，理由见本节末尾「顺序调整」）；
 - **跟着 `_scan_dde` 的让路阈值走**：`quota_level >= QuotaLevel.PAUSE_KLINE`（用量 80%）
   时直接跳过 —— 配额紧张先停这条增强项，别挤基础采集；
 - 由 `Settings.dde_hit_top_n`（50）/ `dde_hit_days`（60）控制，调大就是更贵。
@@ -7186,7 +7186,7 @@ ORDER BY MAX(score) DESC LIMIT 50
 | 文件 | 内容 |
 | --- | --- |
 | `app/jobs/collect_dde.py` | `recent_trade_days` / `dde_coverage` / `dde_segments` / `collect_stock_dde_window` / `top_hit_codes` / `backfill_top_hits`；常量 `SEGMENT_DAYS=90`、`MIN_SEGMENT_DAYS=20`、`FILL_RATIO=0.9` |
-| `app/jobs/scheduler.py` | `_backfill_hit_dde`，在 `_run_daily` 里 `_scan_dde` 之后调用 |
+| `app/jobs/scheduler.py` | `_backfill_hit_dde`，在 `_run_daily` 里 `_scan_dde` **之前**调用（2026-10-10 改） |
 | `app/config.py` | `dde_hit_top_n: int = 50`、`dde_hit_days: int = 60` |
 | `scripts/backfill_dde.py` | 重构为调用上面那几个共用函数，CLI/优先级/闸门留脚本 |
 
@@ -7216,6 +7216,19 @@ ORDER BY MAX(score) DESC LIMIT 50
 ⚠️ **`quota_status(day)` 只统计到 `day` 那天为止** —— 传 09-24 进去会看到「剩 2095」，
 那是因为 09-25 / 09-26 的调用不在窗口里（09-25 是中秋，非交易日，那两天是首轮
 `backfill_dde` 在跑：518 + 801 次）。**看真实余量要不传参**（默认取今天）。
+
+#### 顺序调整：命中前 N 只的 DDE 补齐移到 `_scan_dde` 之前（2026-10-10）
+
+原顺序是 `_scan_dde`（全市场）→ `_backfill_hit_dde`（命中前 50 只）。两步都吃 iFinD
+配额、共用同一道让路阈值（80%）；用户要求「每天**先**补齐形态选股命中列表的前 50 只」，
+于是把命中补齐**提到全市场扫描之前** —— 配额万一被吃掉时，先保住当天真正要看的这 50 只、
+让全市场扫描（增强项）让路，而不是反过来。
+
+写库顺序不受影响：命中补齐按区间补历史走 `fill_only`（只写库里没有的日期，区间行来源
+会取整），`_scan_dde` 随后用 `upsert_fill` 把「当天」覆盖成全市场扫描的**精确值**
+（`upsert_fill` 非空即覆盖），所以最终「当天」那一行仍是精确值。
+
+`_collect_board_flow` 仍排在 `_scan_dde` **之后**（它要用扫描写下的逐股净流入），顺序不变。
 
 ### 8.68.19 K 线默认改成「向前复权 + 成交量复权」（2026-09-26）
 
