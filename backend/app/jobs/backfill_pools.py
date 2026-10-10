@@ -46,7 +46,8 @@
   （`所属东财行业` 会让整条查询返回 0 行）。同花顺给的是「房地产-房地产-住宅开发」
   这种三级路径，与东财的单级名称不同名，所以**历史段与最近 15 天的这一列不是同一套分类**。
 - `涨速` 没有对应指标。
-- 其余字段一一对应，时间统一成 `HH:MM:SS`（东财也是这个格式）。
+- 其余字段一一对应，时间统一成 `HHMMSS`（6 位无冒号，与东财当日采集那条路一致；
+  读取端 `api/anomaly_map._seal_time` 也按这个格式解析）。
 
 ## 实测对账（2026-09-10 / 15 / 17 / 18 四天、逐只比）
 
@@ -139,7 +140,13 @@ def _int(record: dict, keyword: str, day: date | None = None) -> int | None:
 
 
 def _clock(record: dict, keyword: str, day: date) -> str | None:
-    """epoch 毫秒 → `09:27:39`。转换失败返回 None（宁可空着也别写个假时间）。"""
+    """epoch 毫秒 → `092739`（**HHMMSS，6 位无冒号**）。转换失败返回 None。
+
+    ⚠️ 必须与读取端对齐：`api/anomaly_map._seal_time` 与前端都按 `HHMMSS` 解析
+    （`value[:2]` / `Number(value)`），东财（当日采集那条路）给的也是 `HHMMSS`。
+    这里若输出 `HH:MM:SS`，回补那几天的首封时间会显示错乱、封板时间分布图全 0
+    （2026-10-10 修）。
+    """
     millis = _num(record, keyword, day)
     if millis is None:
         return None
@@ -147,7 +154,7 @@ def _clock(record: dict, keyword: str, day: date) -> str | None:
         stamp = datetime.fromtimestamp(millis / 1000, _BEIJING)
     except (OverflowError, OSError, ValueError):
         return None
-    return stamp.strftime("%H:%M:%S")
+    return stamp.strftime("%H%M%S")
 
 
 def _code(record: dict) -> str | None:

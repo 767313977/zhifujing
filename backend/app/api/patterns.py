@@ -10,6 +10,8 @@
 前端在截断时会给提示（`HIT_LIMIT`）。
 """
 
+import threading
+from collections import OrderedDict
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -47,12 +49,54 @@ _META = {pattern.key: pattern for pattern in PATTERNS}
 # 一次部署就生效，历史行留着也无害。
 _KEYS = tuple(_META)
 
-# `/track` 的结果缓存。它是全站最重的一个读接口（30 个循环 × 30 天要从 `stock_daily`
-# 拉 40 多万行压成矩阵，实测 2.4 秒），而**它依赖的数据一天只变一次**（当天采集跑完）。
-# 缓存键里带上「数据版本」= (最新命中日, 最新日线日)，所以采集一写库就自动失效，
-# 不需要靠 TTL 猜；TTL 只是顺手限制内存（键最多 4×2×2 种组合，本来也不会涨）。
-_TRACK_CACHE: dict[tuple, tuple[datetime, PatternTrackOut]] = {}
+# `/track` / `/standing` 的结果缓存。这是全站最重的一类读接口（30 个循环 × 30 天要从
+# `stock_daily` 拉 40 多万行压成矩阵，实测 2.4 秒），而**它依赖的数据一天只变一次**
+# （当天采集跑完）。所以缓存键里带上「数据版本」= (最新命中日, 最新日线日)，
+# 采集一写库就自动失效，不需要靠 TTL 猜。
+#
+# ⚠️ 旧实现是个**无上限的普通 dict，且过期条目从不删除** —— 而键里带着 cohorts / top /
+# track_days（用户可传），组合远不止注释里写的「4×2×2」，每个组合都是一份压出来的大对象，
+# 反复换参数就能把内存堆满。这里换成**带上限的 LRU**（2026-10-11 修）：命中提到队首，
+# 满了淘汰最久未用的那条。
 _TRACK_TTL = timedelta(minutes=10)
+_TRACK_CACHE_MAX = 32
+
+
+class _LruCache:
+    """够用就好的 LRU + TTL：`get` 命中即算「刚用过」，`set` 满了丢最久未用的那条。
+
+    单独写一个而不是引依赖：全站就这处用得上，几十行足够。加锁是因为同步接口跑在线程池
+    里，多个请求会同时读写同一个 OrderedDict。
+    """
+
+    def __init__(self, max_entries: int, ttl: timedelta) -> None:
+        self.max_entries = max_entries
+        self.ttl = ttl
+        self._items: OrderedDict[tuple, tuple[datetime, object]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key: tuple):
+        with self._lock:
+            item = self._items.get(key)
+            if item is None:
+                return None
+            stamp, value = item
+            if datetime.now() - stamp >= self.ttl:
+                # 过期即删：LRU 管「条数上限」，这里管「数据版本没变但结果已该重算」
+                del self._items[key]
+                return None
+            self._items.move_to_end(key)
+            return value
+
+    def set(self, key: tuple, value: object) -> None:
+        with self._lock:
+            self._items[key] = (datetime.now(), value)
+            self._items.move_to_end(key)
+            while len(self._items) > self.max_entries:
+                self._items.popitem(last=False)
+
+
+_TRACK_CACHE = _LruCache(_TRACK_CACHE_MAX, _TRACK_TTL)
 
 
 def _track_version(db: Session) -> tuple[date | None, date | None]:
@@ -282,15 +326,15 @@ def track(
     start = get_settings().pattern_track_start
     key = (cohorts, top, track_days, start, *_track_version(db))
     cached = _TRACK_CACHE.get(key)
-    if cached is not None and datetime.now() - cached[0] < _TRACK_TTL:
-        return cached[1]
+    if cached is not None:
+        return cached
 
     result = PatternTrackOut.model_validate(
         pattern_track.track(
             db, start=start, cohorts=cohorts, top=top, track_days=track_days
         )
     )
-    _TRACK_CACHE[key] = (datetime.now(), result)
+    _TRACK_CACHE.set(key, result)
     return result
 
 
@@ -323,15 +367,15 @@ def standing(
     start = get_settings().pool_track_start
     key = ("standing", cohorts, track_days, line_days, start, *_track_version(db))
     cached = _TRACK_CACHE.get(key)
-    if cached is not None and datetime.now() - cached[0] < _TRACK_TTL:
-        return cached[1]
+    if cached is not None:
+        return cached
 
     result = PoolStandingOut.model_validate(
         pattern_track.pool_standing(
             db, start=start, cohorts=cohorts, hold_days=track_days, line_days=line_days
         )
     )
-    _TRACK_CACHE[key] = (datetime.now(), result)
+    _TRACK_CACHE.set(key, result)
     return result
 
 

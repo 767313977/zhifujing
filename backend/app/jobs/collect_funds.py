@@ -11,6 +11,7 @@ EDB 按区间返回，但区间不能开太大（见 EDB_CHUNK_DAYS），
 """
 
 import logging
+import re
 from datetime import date, timedelta
 
 from app.db import session_scope, upsert, upsert_fill, upsert_many
@@ -56,6 +57,28 @@ MARGIN_INDICATORS = {
 # 「北向成交为零」，在图上看起来像资金突然撤离。
 HSGT_INDICATORS = {"sh": "沪股通:当日成交金额", "sz": "深股通:当日成交金额"}
 
+# 1 个「单位」等于多少元 —— 用来把 EDB 列名里的单位归一。
+# **只列能确定的**：认不出的单位一律拒绝写入（见 `_value`），不猜。
+_UNIT_TO_YUAN = {
+    "元": 1.0,
+    "万元": 1e4,
+    "十万元": 1e5,
+    "百万元": 1e6,
+    "千万元": 1e7,
+    "亿元": 1e8,
+    "十亿元": 1e9,
+}
+
+# 库里各表的单位（**不能改成元**：`api/funds.py` 固定按 ×1e8 / ×1e6 换算成元展示，
+# 改这里会让读端差几个数量级）：
+# - margin_daily 存**亿元**（见 models.MarginDaily）
+# - hsgt_daily 存**百万元**（见 models.HsgtDaily）
+_YUAN_PER_YI = 1e8
+_YUAN_PER_MILLION = 1e6
+
+# 从列名里抠单位，形如 `上交所:融资买入额（单位：亿元）`。半角/全角冒号都认。
+_UNIT_RE = re.compile(r"单位[:：]\s*([^）)\s]+)")
+
 
 def _day(raw: object) -> date | None:
     text = str(raw or "").strip()
@@ -67,17 +90,66 @@ def _day(raw: object) -> date | None:
         return None
 
 
-def _value(row: dict, prefix: str) -> float | None:
-    """按列名**前缀**取 EDB 的值。
-
-    列名带单位后缀（`上交所:融资买入额（单位：亿元）`），而单位偶尔会变
-    （亿元 / 万元 / 百万元）。写死全名会在单位调整后**静默取不到值** ——
-    那种错很难发现，界面上只是空着。
-    """
+def _cell(row: dict, prefix: str) -> tuple[str, float | None] | None:
+    """按列名**前缀**找到那一列，返回 `(列名, 原始数值)`。没找到返回 None。"""
     for key, raw in row.items():
-        if str(key).startswith(prefix):
-            return to_float(raw)
+        text = str(key)
+        if text.startswith(prefix):
+            return text, to_float(raw)
     return None
+
+
+def _present(row: dict, prefix: str) -> bool:
+    """该前缀的列是否存在且有值（**不做单位换算**）。
+
+    给 `_edb_chunk` 的「整列是否缺失」判断用：即便单位认不出来、值没法归一，
+    「这列在不在」也是另一回事，混用会让补问逻辑误判。
+    """
+    found = _cell(row, prefix)
+    return found is not None and found[1] is not None
+
+
+def _unit_factor(column: str) -> float | None:
+    """从列名里解析单位，返回「1 单位 = 多少元」；认不出返回 None。
+
+    先按标准写法 `（单位：亿元）` 抠；抠不到再退一步，直接在列名里找已知单位词
+    （如 `上交所:融资余额（亿元）`）。**只认明确写出来的单位**，找不到就 None
+    （调用方据此拒绝写入）—— 不猜。
+    """
+    match = _UNIT_RE.search(column)
+    if match:
+        return _UNIT_TO_YUAN.get(match.group(1))
+    # 按长度降序匹配，免得「百万元」被「万元」抢先命中
+    for token in sorted(_UNIT_TO_YUAN, key=len, reverse=True):
+        if token in column:
+            return _UNIT_TO_YUAN[token]
+    return None
+
+
+def _value(row: dict, prefix: str, *, target_yuan: float) -> float | None:
+    """按列名**前缀**取 EDB 的值，并把上游单位**归一成库里的单位**。
+
+    列名带单位后缀（`上交所:融资买入额（单位：亿元）`），而单位**会变**
+    （亿元 / 万元 / 百万元）。写死全名会在单位调整后静默取不到值；而按固定系数
+    换算、不解析单位，则会在单位变化时静默差 10²~10⁴ 倍，还会经 `upsert_fill`
+    把 30 天回看窗口整段改写成新单位。所以：**从列名解析出单位再换算**；
+    **认不出单位就拒绝写入**（返回 None 并记 warning）—— 不瞎猜。
+    """
+    found = _cell(row, prefix)
+    if found is None:
+        return None
+    column, number = found
+    if number is None:
+        return None
+    factor = _unit_factor(column)
+    if factor is None:
+        logger.warning(
+            "EDB 列 %r 的单位无法识别（缺「单位：X」后缀或单位不在已知表内），"
+            "本次拒绝写入该值，避免写错数量级",
+            column,
+        )
+        return None
+    return number * factor / target_yuan
 
 
 def _merge_rows(base: list[dict], extra: list[dict]) -> list[dict]:
@@ -118,7 +190,7 @@ def _edb_chunk(
     )
     _, rows = ifind.edb_data(query)
     missing = [
-        name for name in indicators if not any(_value(row, name) is not None for row in rows)
+        name for name in indicators if not any(_present(row, name) for row in rows)
     ]
     if not missing:
         return rows
@@ -156,7 +228,11 @@ def collect_margin(ifind: IfindClient, end: date, days: int = EDB_LOOKBACK_DAYS)
         if day is None:
             continue
         for market, (balance, buy, securities) in MARGIN_INDICATORS.items():
-            values = (_value(row, balance), _value(row, buy), _value(row, securities))
+            values = (
+                _value(row, balance, target_yuan=_YUAN_PER_YI),
+                _value(row, buy, target_yuan=_YUAN_PER_YI),
+                _value(row, securities, target_yuan=_YUAN_PER_YI),
+            )
             if all(value is None for value in values):
                 # 该所当天还没披露（实测深市比沪市晚一天）。**整行跳过，不写 0** ——
                 # 写 0 会让「今天两融增加多少」在深市数据到达前后给出两个矛盾的答案
@@ -187,7 +263,7 @@ def collect_hsgt(ifind: IfindClient, end: date, days: int = EDB_LOOKBACK_DAYS) -
         if day is None:
             continue
         for channel, name in HSGT_INDICATORS.items():
-            value = _value(row, name)
+            value = _value(row, name, target_yuan=_YUAN_PER_MILLION)
             if value is None:
                 continue
             records.append({"trade_date": day, "channel": channel, "turnover": value})

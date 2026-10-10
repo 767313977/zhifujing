@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 # 一直用就一直不用重登，闲置满 30 天才失效。
 COOKIE_NAME = "fupan_session"
 SESSION_DAYS = 30
+# 会话的**绝对**上限：从 created_at 起算 90 天，超过一律作废（2026-10-11 加）。
+# 上面那 30 天是**滑动**的，只保证「在用就不过期」—— 于是被盗的 cookie 只要每 30 天
+# 用一次就能永久续命。绝对上限把这条后路堵掉，代价是每 90 天必须重新登录一次。
+SESSION_ABSOLUTE_DAYS = 90
 # 滑动续期的写库节流：expires_at 只剩不到这个天数时才推。
 # 不节流的话**每个请求都要写一次库**（一次页面加载十几个请求），
 # 而 WAL 下的写是要拿写锁的 —— 用「最多每天推一次」换掉那堆无谓的写。
@@ -51,6 +55,11 @@ _SCRYPT_N = 2**15
 _SCRYPT_R = 8
 _SCRYPT_P = 1
 _SCRYPT_DKLEN = 32
+
+# 同时在跑的 scrypt 上限（2026-10-11 加）。scrypt 每次要吃 128*n*r = 32 MiB，而同步接口
+# 跑在 40 个线程的线程池里 —— 一波并发登录（或改密码 / 注册）能让内存瞬时冲到 ~1.3 GB。
+# 用全局信号量把「同时算密码哈希」限到 4 个：代价是极端并发下登录会略微排队，换来的是内存不炸。
+_SCRYPT_SLOTS = threading.Semaphore(4)
 
 MIN_PASSWORD_LENGTH = 8
 
@@ -84,14 +93,15 @@ def hash_password(password: str) -> str:
     不会出现「改了参数所有人都登不进」这种只能靠回滚解决的事故。
     """
     salt = secrets.token_bytes(16)
-    digest = _scrypt(
-        password.encode(),
-        salt=salt,
-        n=_SCRYPT_N,
-        r=_SCRYPT_R,
-        p=_SCRYPT_P,
-        dklen=_SCRYPT_DKLEN,
-    )
+    with _SCRYPT_SLOTS:
+        digest = _scrypt(
+            password.encode(),
+            salt=salt,
+            n=_SCRYPT_N,
+            r=_SCRYPT_R,
+            p=_SCRYPT_P,
+            dklen=_SCRYPT_DKLEN,
+        )
     return f"scrypt${_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}${salt.hex()}${digest.hex()}"
 
 
@@ -105,14 +115,15 @@ def verify_password(password: str, stored: str) -> bool:
         scheme, n, r, p, salt_hex, digest_hex = stored.split("$")
         if scheme != "scrypt":
             return False
-        digest = _scrypt(
-            password.encode(),
-            salt=bytes.fromhex(salt_hex),
-            n=int(n),
-            r=int(r),
-            p=int(p),
-            dklen=len(digest_hex) // 2,
-        )
+        with _SCRYPT_SLOTS:
+            digest = _scrypt(
+                password.encode(),
+                salt=bytes.fromhex(salt_hex),
+                n=int(n),
+                r=int(r),
+                p=int(p),
+                dklen=len(digest_hex) // 2,
+            )
     except (ValueError, TypeError):
         # 串被改坏 / 是旧格式：当验不过处理，不要抛出去（那会变成 500）
         logger.warning("密码哈希串无法解析，按验证失败处理")
@@ -186,7 +197,12 @@ def resolve_session(db: Session, token: str | None) -> AppUser | None:
     if row is None:
         return None
     now = datetime.now()
-    if row.expires_at < now:
+    # 两道过期：① 滑动的 expires_at；② 从 created_at 起算的**绝对**上限
+    # （见 SESSION_ABSOLUTE_DAYS —— 挡「被盗 cookie 每月刷一次续命」）
+    expired = row.expires_at < now or now - row.created_at >= timedelta(
+        days=SESSION_ABSOLUTE_DAYS
+    )
+    if expired:
         db.delete(row)
         db.commit()
         return None
@@ -281,7 +297,12 @@ def require_login(request: Request) -> None:
 
     ⚠️ 将来要加「不需要登录」的接口，**必须来 PUBLIC_PATHS 加白名单**。
     """
-    path = request.url.path
+    # 直接读 ASGI scope 里的 path，而不是 `request.url.path`：后者会经过 Starlette
+    # 的 Host 重建逻辑，历史上（<1.0.1）能被伪造的 Host 头影响、从而绕过路径判断
+    # （CVE-2026-48710）。线上 Starlette 已是 1.6.0，那条 CVE 不成立 —— 这里是**加固**，
+    # 顺手把依赖钉到 `>=1.0.1`（见 requirements.txt）。scope 里的 path 是框架解析出来的
+    # 原始路径，不经过 URL 重建，白名单判断因此只认这一份。
+    path = request.scope["path"]
     if not path.startswith("/api/"):
         # 前端产物 / SPA 回退 / /assets：登录页本身也得打得开
         return
@@ -365,6 +386,14 @@ class RateLimiter:
 # 10 分钟内失败 5 次 → 锁 10 分钟
 login_limiter = RateLimiter(limit=5, window_sec=600, lock_sec=600)
 
+# 按**用户名**的登录限流，与按 IP 的 `login_limiter` **并存**（任一命中就拒绝）。
+# 为什么多这一道：按 IP 计数换个 IP 就绕过了（分布式爆破几乎不受限），而「同一个用户名
+# 在 10 分钟内失败 5 次」跟来源 IP 无关，两端都卡才挡得住。参数与 `login_limiter` 一致，
+# **不改变后者的语义**。
+# ⚠️ 用户名不存在也照记一笔（见 api/auth.login）：按名计数必须与「这个人存不存在」无关，
+# 否则它本身就成了「哪些用户名有效」的探测口。
+login_user_limiter = RateLimiter(limit=5, window_sec=600, lock_sec=600)
+
 # 限流器里允许积压的 key 数（见 RateLimiter.fail 里的清理）
 _MAX_RATE_KEYS = 1000
 
@@ -372,6 +401,17 @@ _MAX_RATE_KEYS = 1000
 def guard_rate(key: str) -> None:
     """被锁就抛 429（带剩余秒数）。"""
     wait = login_limiter.retry_after(key)
+    if wait is not None:
+        raise HTTPException(
+            status_code=429,
+            detail=f"尝试过于频繁，请 {int(wait) + 1} 秒后再试",
+            headers={"Retry-After": str(int(wait) + 1)},
+        )
+
+
+def guard_user_rate(username: str) -> None:
+    """按用户名的登录限流闸（被锁就抛 429），与按 IP 的 `guard_rate` 并存。"""
+    wait = login_user_limiter.retry_after(username)
     if wait is not None:
         raise HTTPException(
             status_code=429,
@@ -414,6 +454,7 @@ class Cooldown:
 __all__ = [
     "COOKIE_NAME",
     "SESSION_DAYS",
+    "SESSION_ABSOLUTE_DAYS",
     "MIN_PASSWORD_LENGTH",
     "DUMMY_PASSWORD_HASH",
     "Cooldown",
@@ -424,8 +465,10 @@ __all__ = [
     "delete_session",
     "delete_user_sessions",
     "guard_rate",
+    "guard_user_rate",
     "hash_password",
     "login_limiter",
+    "login_user_limiter",
     "require_admin",
     "require_login",
     "resolve_session",

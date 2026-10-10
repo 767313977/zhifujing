@@ -42,10 +42,16 @@ logger = logging.getLogger(__name__)
 
 _TIMEOUT = 15.0
 
+# 北交所代码前缀。与 `sources/ifind._BJ_PREFIXES` 保持一致（43/83/87/88/920）——
+# 北交所的腾讯前缀是 `bj`，不是 `sh`/`sz`；漏了它会把北交所票拼成 sz/sh 取不到数据。
+_BJ_PREFIXES = ("43", "83", "87", "88", "920")
+
 
 def tx_symbol(code: str) -> str:
-    """腾讯的代码写法：沪市 `sh`、深市 `sz`。"""
+    """腾讯的代码写法：沪市 `sh`、深市 `sz`、北交所 `bj`。"""
     c = str(code).zfill(6)
+    if c.startswith(_BJ_PREFIXES):
+        return "bj" + c
     return ("sh" if c.startswith(("5", "6", "9")) else "sz") + c
 
 

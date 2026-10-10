@@ -140,17 +140,28 @@ def _is_rate_limited(text: str) -> bool:
 
 
 def _parse_body(text: str) -> Any:
-    """响应可能是纯 JSON，也可能是 SSE 帧，两种都要能解。"""
+    """响应可能是纯 JSON，也可能是 SSE 帧，两种都要能解。
+
+    ⚠️ `json.loads` 抛的是 `json.JSONDecodeError`（`ValueError` 的子类），它**不是**
+    `IfindError` —— 漏出去会让「页面现取 DDE」之类只 `except IfindError` 的调用方变成
+    500。所以这里把解析失败统一转成 `IfindError`（数据源层对外只承诺这一种失败口径）。
+    """
     text = (text or "").strip()
     if not text:
         return None
     if text[0] in "{[":
-        return json.loads(text)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise IfindError(f"无法解析 iFinD 响应: {text[:200]}") from exc
     for line in text.splitlines():
         if line.startswith("data:"):
             payload = line[len("data:") :].strip()
             if payload and payload != "[DONE]":
-                return json.loads(payload)
+                try:
+                    return json.loads(payload)
+                except json.JSONDecodeError as exc:
+                    raise IfindError(f"无法解析 iFinD 响应: {text[:200]}") from exc
     raise IfindError(f"无法解析 iFinD 响应: {text[:200]}")
 
 
@@ -293,13 +304,13 @@ class IfindClient:
                 "params": {"name": tool, "arguments": params},
             }
             try:
-                response, body = self._post(server, payload)
-                # 一次 _post 就是一次真实发出、可能被计费的 tools/call。
-                # 计数点必须在这里（_do 之内、retry_call 之内）而不是 call() 外层：
-                # 外层只数到「一次调用」，把重试全漏掉，而重试同样在花配额。
-                # 漏记会让配额守卫低估用量，低估是危险的方向。
+                # 一次 _post 就是一次真实发出、可能被计费的 tools/call。计数点必须在
+                # **发出之前**（_do 之内、retry_call 之内）：放在 `_post` 之后的话，
+                # 已发出但读超时 / 连接中断的请求不会被计入，配额被低估 —— 而低估
+                # 是危险的方向（守卫会以为还有额度可用）。重试也在这里，一并计入。
                 # 计量是数据源层的唯一一处例外：它必须与真实请求同生共死。
                 record_call(server, tool)
+                response, body = self._post(server, payload)
                 if response.status_code == 429:
                     raise IfindRateLimitError(f"iFinD HTTP 429: {response.text[:120]}")
                 if isinstance(body, dict) and "error" in body:
@@ -582,3 +593,21 @@ class IfindClient:
             params["time_end"] = time_end
         answer, _ = self._nl("news", "search_notice", params)
         return answer
+
+
+# 进程内复用的 iFinD 客户端。`IfindClient` 每次新建都会**重新握手 MCP 会话**、并
+# **各有一份令牌桶** —— 在「逐只 / 逐段」的循环里每只都 new 一个，等于连接会话不关
+# （旧会话在服务端白白挂着）、限速互相不知情（实际速率可能翻倍触发 429）。
+# 需要多次调用的地方（`collect_dde` 的逐只 / 逐段补齐、`scan_dde` 的全市场扫描）
+# 统一从这里取，复用同一个实例即可共享会话与限速。
+_shared_client: "IfindClient | None" = None
+_shared_client_lock = threading.Lock()
+
+
+def get_shared_client(settings: Settings | None = None) -> "IfindClient":
+    """取进程内复用的 `IfindClient`（第一次调用时创建）。"""
+    global _shared_client
+    with _shared_client_lock:
+        if _shared_client is None:
+            _shared_client = IfindClient(settings)
+        return _shared_client

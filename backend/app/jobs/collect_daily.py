@@ -22,7 +22,7 @@ from datetime import date, timedelta
 from sqlalchemy import func, select
 
 from app.config import Settings, get_settings
-from app.db import session_scope, upsert
+from app.db import session_scope, upsert, upsert_fill
 from app.models import (
     CollectLog,
     IndexDaily,
@@ -104,6 +104,28 @@ STOCK_FULL_DAYS = 250
 # 每日同步只回看最近几天，够覆盖当日即可
 STOCK_DAILY_DAYS = 10
 
+# `run()` 写入的步骤任务名。`has_collected` 只认这些步骤的状态（见它的说明）——
+# 别的任务（题材 / 板块资金流 / DDE 推送 / 简报推送…）失败不代表基础采集没完成。
+# **不含 `calendar`**：那一步是 `_step(None, "calendar", ...)`，trade_date 落的是 NULL、
+# 按天查不到它，而且日历不属于「某一天采没采」。
+RUN_STEP_TASKS = (
+    "index",
+    "limit_pool",
+    "reasons",
+    "lhb",
+    "sentiment",
+    "etf",
+    "lhb_institution",
+    "sectors",
+    "watchlist",
+    "margin",
+    "hsgt",
+)
+
+# 自选股同步的熔断阈值：连着这么多只都失败就中止本轮（见 `sync_watchlist`）。
+# 单只 iFinD 超时最长约 3 分钟，不熔断的话几十只票能把采集锁占几个小时。
+WATCHLIST_CONSECUTIVE_FAILURES = 3
+
 
 class CollectionBusy(RuntimeError):
     """已有采集任务在运行。"""
@@ -113,6 +135,17 @@ class CollectionBusy(RuntimeError):
 # 每个 DailyCollector 实例各有自己的令牌桶，两个采集器并发跑等于实际请求
 # 速率翻倍，会直接触发 iFinD 429，所以整个采集过程必须串行。
 _collect_lock = threading.Lock()
+
+# 采集锁持有超过这么久就打一条 warning（含当前步骤名）—— 用来发现「卡在某个没有
+# 超时的请求上」。akshare 那类内部不带 timeout 的调用正是主要目标（见
+# `sources/akshare_source` 的限时包裹）：连接半开时它会一直等，把锁占死，
+# 之后每一趟采集都 `CollectionBusy`，直到手动重启。
+LOCK_HOLD_WARN_SECONDS = 600.0
+
+# 当前正在执行的采集步骤名（`_step` 进/出时更新），供上面的告警读。
+# 只覆盖 `DailyCollector` 的步骤；调度器尾部链路的步骤不经过这里，读到的会是
+# 最后一个采集步骤或 None，够定位「卡在哪一步」就行。
+_current_step: str | None = None
 
 
 @contextmanager
@@ -125,11 +158,26 @@ def collect_guard(who: str = "采集") -> Iterator[None]:
     if not _collect_lock.acquire(blocking=False):
         raise CollectionBusy("已有采集任务在运行，请等它结束再试")
     logger.info("%s 取得采集锁", who)
+    started = time.monotonic()
+
+    def _watchdog() -> None:
+        # 计时到点仍在跑就打一条；正常结束会在 finally 里 cancel 掉
+        logger.warning(
+            "%s 已持有采集锁超过 %d 秒（当前步骤：%s），可能卡在某个没有超时的请求上",
+            who,
+            int(LOCK_HOLD_WARN_SECONDS),
+            _current_step or "未知（不在 run() 的步骤里）",
+        )
+
+    watchdog = threading.Timer(LOCK_HOLD_WARN_SECONDS, _watchdog)
+    watchdog.daemon = True
+    watchdog.start()
     try:
         yield
     finally:
+        watchdog.cancel()
         _collect_lock.release()
-        logger.info("%s 释放采集锁", who)
+        logger.info("%s 释放采集锁（持有 %.1fs）", who, time.monotonic() - started)
 
 
 def _require_today(trade_date: date, what: str) -> None:
@@ -304,12 +352,18 @@ def _lhb_rows(trade_date: date, records: list[dict]) -> list[dict]:
                 pass
         return trade_date
 
-    return [
-        {
-            "trade_date": _day(r.get("上榜日")),
-            "code": str(r["代码"]).zfill(6),
+    # 按主键 (trade_date, code, reason) 去重：接口偶尔会吐重复行，同一批里带重复
+    # 主键在 SQLite 的批量写入上行为未定义（`upsert_many` 会报错）。后出现的覆盖先出现的。
+    rows: dict[tuple, dict] = {}
+    for r in records:
+        day = _day(r.get("上榜日"))
+        code = str(r["代码"]).zfill(6)
+        reason = str(r.get("上榜原因") or "未知")
+        rows[(day, code, reason)] = {
+            "trade_date": day,
+            "code": code,
             # 同一股票可能因多条上榜原因重复出现，所以 reason 进主键
-            "reason": str(r.get("上榜原因") or "未知"),
+            "reason": reason,
             "name": r.get("名称"),
             "close": r.get("收盘价"),
             "pct_chg": r.get("涨跌幅"),
@@ -318,8 +372,7 @@ def _lhb_rows(trade_date: date, records: list[dict]) -> list[dict]:
             "sell_amount": r.get("龙虎榜卖出额"),
             "interpretation": r.get("解读"),
         }
-        for r in records
-    ]
+    return list(rows.values())
 
 
 def _stock_rows(records: list[dict], trade_dates: set[date]) -> list[dict]:
@@ -375,6 +428,23 @@ class DailyCollector:
                 .limit(1)
             )
 
+    def _calendar_max(self) -> date | None:
+        """日历表里**最大**的日期（不按今天过滤，可能是未来日期）。"""
+        with session_scope() as session:
+            return session.scalar(select(func.max(TradeCalendar.trade_date)))
+
+    def calendar_needs_refresh(self) -> bool:
+        """交易日历是否需要（重新）拉取。
+
+        - 表为空：全新部署，必须补（同 `calendar_empty`）
+        - 表里**最大日期早于今天**：跨年时上游还没发布次年日历，akshare 的日历
+          又只覆盖到已知的那一年 —— 不刷新就会**永久停更**：所有任务都判成
+          「今天不是交易日」而整条定时链一次都跑不起来，且无法自愈。
+          改成「最大日期早于今天就刷新一次」，上游一发布次年日历就能自己补上。
+        """
+        latest = self._calendar_max()
+        return latest is None or latest < date.today()
+
     def latest_trade_date(self) -> date:
         """取不晚于今天的最近交易日。
 
@@ -416,18 +486,20 @@ class DailyCollector:
 
         判据是**两个条件同时成立**：
         1. 情绪表有当天的行 —— 首页「今日复盘」有数据可看；
-        2. 当天的 `collect_log` 里**没有** `failed` 的步骤。
+        2. `run()` **各步骤**当天**最新**一条状态里没有 `failed`。
 
-        ⚠️ **为什么不能只看情绪表**（2026-09-27 修）：情绪排在链路**中部**
-        （见 `run()`：它后面还有 ETF、龙虎榜机构席位、题材、板块、自选股、两融、
-        北向）。只看情绪的话，ETF 失败后这一天再也不会被重试 —— 而 ETF 份额是
-        「最新-交易日」快照，数据源次日只给新一天，**漏了当天就永久补不回来**。
-        原来的注释写「情绪是采集流程的最后一步」是错的（情绪曾经在最后，后来被
-        前移，为了 ETF 卡死时首页仍能显示复盘）。
+        ⚠️ **只看 `run()` 的步骤、且只看每步最新一条**（2026-10-10 修）：原来的判据
+        是「当天**任意一条** `failed`」，于是**与基础采集无关的任务失败也会把整条
+        `run()` 拖着重跑** —— 开盘红天梯 17:30 才更新（当天先记 `failed`）、简报推送
+        失败、DDE 推送失败，都会写 `failed`；之后每次重启都会重跑 `run()`
+        （约 50 次 iFinD 调用 + 自选每只 1 次），而**重跑根本修不好这些**。
+        收窄到 `run()` 步骤的最新状态后，那些尾部 / 推送任务的失败不再触发重跑；
+        而基础步骤真失败时仍会重跑（各步都是幂等 upsert，不会写坏数据）。
 
-        代价：有步骤失败时，重启/补采会把整条链再跑一遍（各步都是幂等 upsert，
-        不会写坏数据），会多花一点配额。**这个代价是刻意接受的** —— 静默丢数
-        比多花几十次调用严重得多，而且只发生在「当天确实有步骤失败」的时候。
+        为什么「只看情绪表」也不行（2026-09-27 修）：情绪排在链路**中部**，它后面
+        还有 ETF、龙虎榜机构席位、题材、板块、自选股、两融、北向 —— 只看情绪的话，
+        ETF 失败后这一天再也不会被重试，而 ETF 份额是「最新-交易日」快照，
+        **漏了当天就永久补不回来**。
         """
         with session_scope() as session:
             if not session.scalar(
@@ -436,12 +508,19 @@ class DailyCollector:
                 .where(MarketSentiment.trade_date == day)
             ):
                 return False
-            failed = session.scalar(
-                select(func.count())
-                .select_from(CollectLog)
-                .where(CollectLog.trade_date == day, CollectLog.status == "failed")
+            # 每个 `run()` 步骤取**当天最新**一条日志的状态
+            latest_ids = (
+                select(func.max(CollectLog.id))
+                .where(
+                    CollectLog.trade_date == day,
+                    CollectLog.task.in_(RUN_STEP_TASKS),
+                )
+                .group_by(CollectLog.task)
             )
-        return not failed
+            statuses = session.scalars(
+                select(CollectLog.status).where(CollectLog.id.in_(latest_ids))
+            ).all()
+        return not any(status == "failed" for status in statuses)
 
     # -------------------------------------------------------------------- 步骤
 
@@ -453,6 +532,10 @@ class DailyCollector:
     def collect_index(self, trade_date: date) -> int:
         _require_today(trade_date, "指数快照")
         records = self.ifind.index_quotes(INDEX_SYMBOLS, INDEX_INDICATORS)
+        if not records:
+            # 0 行是明确的取数失败（这个接口不会「正常返回 0 行」），记 failed 让上层
+            # 重试；不能当 ok —— 否则索引全空、行情全空，页面却是「这天没数据」
+            raise IfindError(f"指数快照返回 0 行（{trade_date}），疑似接口异常")
         if len(records) < len(INDEX_SYMBOLS):
             returned = {pick_text(r, "证券代码") for r in records}
             # iFinD 对不认识的代码静默丢弃，不校验就会以为采全了
@@ -535,6 +618,12 @@ class DailyCollector:
 
             try:
                 records = fetch(trade_date)
+                if pool_type == "up" and not records:
+                    # 涨停池返回空 ≠「当天 0 家涨停」—— A 股每个交易日必有涨停。
+                    # 空表只可能是来源返回 data=null（还没发布 / 接口坏了）。
+                    # 记 failed（而不是 ok-0）：「涨停数」才不会被写成 0，也不会
+                    # 让 `has_collected` 误以为这天采全了、不再重试。
+                    raise RuntimeError("涨停池返回空（疑似来源 data=null，不是 0 家涨停）")
                 rows = to_rows(trade_date, records)
             except Exception as exc:  # noqa: BLE001 - 单池失败不阻塞其他池
                 message = f"{type(exc).__name__}: {exc}"
@@ -608,6 +697,11 @@ class DailyCollector:
 
         分块请求并在每块后校验完整性：iFinD 的区间过大会**抽样丢弃**而不是
         砍掉末尾，漏掉的交易日会让 K 线出现静默空洞，必须主动报警。
+
+        ⚠️ **只补缺的交易日**（2026-10-10 修）：原来每块都无条件重拉，一只票
+        `days=250` 就是 6 次调用、`days=500` 是 11 次，**本地明明已有也照拉** ——
+        会员点一次「同步」白烧几十次配额。现在先查库里已有哪些交易日，只对
+        「还缺着的日子」所在的块发请求；一块都不缺就一次接口都不打。
         """
         code = str(code).strip().zfill(6)
         end = self.latest_trade_date()
@@ -617,13 +711,31 @@ class DailyCollector:
         if not trade_dates:
             return 0
 
+        with session_scope() as session:
+            have = set(
+                session.scalars(
+                    select(StockDaily.trade_date).where(
+                        StockDaily.code == code,
+                        StockDaily.trade_date >= start,
+                        StockDaily.trade_date <= end,
+                    )
+                )
+            )
+        needed = trade_dates - have
+        if not needed:
+            # 全都有：一次接口都不打（这正是「每天采集顺带刷一次」能承受的前提）
+            return 0
+
         symbol = to_ths_symbol(code)
         written = 0
         for chunk_start, chunk_end in _date_chunks(start, end, STOCK_CHUNK_DAYS):
+            # 这一块里「缺着、且落在本块」的交易日；空则整块跳过，不发请求
+            want = {d for d in needed if chunk_start <= d <= chunk_end}
+            if not want:
+                continue
             records = self.ifind.stock_history(symbol, chunk_start, chunk_end)
             rows = _stock_rows(records, trade_dates) if records else []
-            expected = {d for d in trade_dates if chunk_start <= d <= chunk_end}
-            missing = expected - {row["trade_date"] for row in rows}
+            missing = want - {row["trade_date"] for row in rows}
             if missing:
                 logger.warning(
                     "%s 在 %s~%s 缺 %d 个交易日，疑似被抽样截断",
@@ -635,7 +747,10 @@ class DailyCollector:
             if not rows:
                 continue
             with session_scope() as session:
-                written += upsert(session, StockDaily, rows)
+                # upsert_fill 而不是 upsert：上游偶发缺列（开/高/低/收/量）时，
+                # merge 会把已采到的非空值刷成 NULL —— 缺数据能等下次补，
+                # 抹掉的数据只能重新回补，代价完全不同（2026-10-10 修）
+                written += upsert_fill(session, StockDaily, rows)
                 # 顺手把名称记进 stock_basic，自选股列表才能显示中文名
                 name = next((r["name"] for r in rows if r["name"]), None)
                 if name:
@@ -660,6 +775,11 @@ class DailyCollector:
         「当天已完成」，这一天再也不会重试。所以：**全部失败**直接抛 `IfindError`
         （`_step` 记 failed、`/api/watchlist/sync` 回 400），**部分失败**把「失败 N 只」
         写进步骤 message（经 `_step_note`，见 `_step`）。
+
+        ⚠️ **连续失败要熔断**（2026-10-10 加）：单只 iFinD 超时最长可达约 3 分钟，
+        几十只票连着超时会让整轮持锁几个小时（其它采集全部 `CollectionBusy`）。
+        所以连着 `WATCHLIST_CONSECUTIVE_FAILURES` 只都失败就**中止本轮**并抛错 ——
+        源整体不可用时没必要一只只耗下去。
         """
         if codes is None:
             with session_scope() as session:
@@ -669,16 +789,31 @@ class DailyCollector:
 
         written = 0
         failed: list[str] = []
+        consecutive = 0
+        aborted = False
         for code in codes:
             try:
                 written += self.sync_stock(code, days=days)
+                consecutive = 0
             except Exception as exc:  # noqa: BLE001 - 单只失败不影响其它自选股
                 failed.append(code)
+                consecutive += 1
                 logger.warning("同步自选股 %s 失败: %s", code, exc)
-        if failed and len(failed) == len(codes):
-            # 全失败多半是 iFinD 整体不可用（401 / 配额 / 网络），绝不能返回 0 还记 ok
+                if consecutive >= WATCHLIST_CONSECUTIVE_FAILURES:
+                    logger.warning(
+                        "自选股连续 %d 只同步失败，中止本轮（已成功 %d 只 / 共 %d 只）",
+                        consecutive,
+                        len(codes) - len(failed),
+                        len(codes),
+                    )
+                    aborted = True
+                    break
+        if aborted or (failed and len(failed) == len(codes)):
+            # 熔断 / 全失败多半是 iFinD 整体不可用（401 / 配额 / 网络），
+            # 绝不能返回 0 还记 ok —— 抛出来让 `_step` 记 failed、好重试
             raise IfindError(
-                f"自选股 {len(codes)} 只全部同步失败：{failed[:5]}"
+                f"自选股同步失败（成功 {len(codes) - len(failed)}/{len(codes)} 只）："
+                f"{failed[:5]}"
             )
         if failed:
             # 部分失败：借 `_step_note` 把话带到 collect_log.message（页面可见）
@@ -697,28 +832,31 @@ class DailyCollector:
         家数取值严格依赖三池的采集状态：某池当日 `pool_*` 日志不是 ok
         （失败或超出数据源窗口），对应计数写 None 而非 0 ——
         0 会被读成「当天没有跌停」，与事实相反。
+
+        ⚠️ **历史回补不能把已有情绪抹空**（2026-10-10 修）：`history=True` 时
+        涨跌家数 / 涨跌超 5% 家数 / 打板效应本来就取不到（只有当日值），固定算 None；
+        若照旧用 `upsert`（= merge）写库，**None 会把库里已有的值覆盖成空**，
+        而且不可逆。所以这一处改用 `upsert_fill`（None 不覆盖已有非空值）。
+        另外三池状态改成「当天全部日志里**取最优**（ok > skipped）」：历史回补跑到
+        一个已超出三池窗口的日子会补写一条 `skipped`，不能让它把更早采到的 `ok`
+        顶掉（顶掉后涨停/跌停/炸板数会被算成 None）。
         """
         if not history:
             _require_today(trade_date, "情绪指标")
 
         with session_scope() as session:
-            # 只认每个池**最新**一条日志：同一日期可能被采集多次，
-            # 旧日志里残留的 ok 会让已超期的池被误判为有数据。
-            latest_ids = (
-                select(func.max(CollectLog.id))
-                .where(
+            # 每池取**最优**状态（ok 优先于 skipped/failed），而不是只看最新一条：
+            # 只认最新的话，回补时补写的 skipped 会把先前的 ok 顶掉（见 docstring）。
+            # ok 存在时 LimitPool 里就有那天的行，重算得到的计数仍然是对的。
+            statuses = session.execute(
+                select(CollectLog.task, CollectLog.status).where(
                     CollectLog.trade_date == trade_date,
                     CollectLog.task.in_([f"pool_{name}" for name in POOL_TYPES]),
                 )
-                .group_by(CollectLog.task)
-            )
+            ).all()
             ok_pools = {
                 task.removeprefix("pool_")
-                for task, status in session.execute(
-                    select(CollectLog.task, CollectLog.status).where(
-                        CollectLog.id.in_(latest_ids)
-                    )
-                )
+                for task, status in statuses
                 if status == "ok"
             }
             pools = session.execute(
@@ -746,11 +884,24 @@ class DailyCollector:
             if pool_type == "up" and value:
                 consecutive.append(int(value))
 
-        activity = {} if history else self.ak.market_activity()
+        # 乐咕的涨跌家数与打板效应都**只有当日值**，且任一失败都不该让整条情绪不落库
+        # ——各自动 try，互不影响（2026-10-10 修）
+        activity: dict = {}
+        if not history:
+            try:
+                activity = self.ak.market_activity()
+            except Exception as exc:  # noqa: BLE001 - 涨跌家数失败不该拖垮整条情绪
+                logger.warning("涨跌家数取数失败（%s）：%s", trade_date, exc)
         # 涨跌超 5% 的家数：乐咕那份宽度没有分档，只能问 iFinD 选股（每次 1 问，
         # 取 `matched` 当计数——实测「涨幅大于5%的A股股票」matched=550）。
         # 与涨跌家数一样**只有当日值**，所以 history=True 时留空
         up5_count, down5_count = (None, None) if history else self._five_percent_counts(trade_date)
+        yesterday_avg: float | None = None
+        if not history:
+            try:
+                yesterday_avg = self._yesterday_limit_effect(trade_date)
+            except Exception as exc:  # noqa: BLE001 - 打板效应失败不该拖垮整条情绪
+                logger.warning("昨日涨停今日均涨取数失败（%s）：%s", trade_date, exc)
         amount_values = [a for a in amounts if a]
         payload = build_sentiment(
             trade_date,
@@ -764,10 +915,11 @@ class DailyCollector:
             up5_count=up5_count,
             down5_count=down5_count,
             total_amount=sum(amount_values) if amount_values else None,
-            yesterday_limit_today_avg=None if history else self._yesterday_limit_effect(trade_date),
+            yesterday_limit_today_avg=yesterday_avg,
         )
         with session_scope() as session:
-            return upsert(session, MarketSentiment, [payload])
+            # upsert_fill：历史回补算出来的 None 不覆盖库里已有值（见 docstring）
+            return upsert_fill(session, MarketSentiment, [payload])
 
     # ------------------------------------------------------------------ 衍生值
 
@@ -885,11 +1037,13 @@ class DailyCollector:
             )
 
     def _step(self, trade_date: date | None, name: str, fn) -> dict:
+        global _current_step
         started = time.monotonic()
         status, row_count, message = "ok", 0, None
         # 步骤自己可以往 `_step_note` 写一句说明（如自选股「失败 3 只」）——
         # 成功但部分失败时用它填 message，让 `collect_log` 直接可见。
         self._step_note = None
+        _current_step = name  # 供采集锁的「持有过久」告警读出卡在了哪一步
         try:
             row_count = fn()
             if self._step_note:
@@ -900,6 +1054,7 @@ class DailyCollector:
             logger.exception("采集步骤 %s 失败", name)
         finally:
             self._step_note = None
+            _current_step = None
 
         cost = round(time.monotonic() - started, 2)
         # ⚠️ 落库的计数必须是**整数**：`collect_log.rows` 是 Integer 列，而有的步骤返回的是

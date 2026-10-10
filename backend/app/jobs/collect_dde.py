@@ -29,7 +29,7 @@ from sqlalchemy import func, select
 from app.db import session_scope, upsert_fill
 from app.models import PatternHit, StockDde, TradeCalendar
 from app.services.patterns import PATTERNS
-from app.sources.ifind import IfindClient, IfindError, normalize_code
+from app.sources.ifind import get_shared_client, normalize_code
 from app.sources.markdown_table import pick_float, pick_text
 
 logger = logging.getLogger(__name__)
@@ -192,7 +192,8 @@ def _store(
 def collect_stock_dde(code: str, days: int = DEFAULT_DAYS) -> tuple[int, bool]:
     """抓最近 `days` 个交易日并落库。返回（写入行数, 是否被来源截断）。"""
     symbol = normalize_code(code)
-    answer, rows = IfindClient().stock_performance(_query(symbol, days))
+    # 复用同一个 client：逐只/逐段的循环里每次 new 一个会重复握手、且限速各算各的
+    answer, rows = get_shared_client().stock_performance(_query(symbol, days))
 
     # 被截断时必须说出去：只拿到最近 100 行，画出来的窗口比用户要的短
     truncated = _truncated(answer)
@@ -220,7 +221,7 @@ def collect_stock_dde_range(
     被截断时把区间切半重来（`collect_stock_dde_window` 就是这么做的）。
     """
     symbol = normalize_code(code)
-    answer, rows = IfindClient().stock_performance(range_query(symbol, start, end))
+    answer, rows = get_shared_client().stock_performance(range_query(symbol, start, end))
     truncated = _truncated(answer)
     return (
         _store(

@@ -22,6 +22,7 @@
 
 import logging
 import threading
+import time
 from datetime import date, datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -60,6 +61,12 @@ MEMBERS_RETRY_JOB_ID = "prefetch_members_retry"
 # akshare + 一次开盘啦请求，而成分股一轮最多约 370 个板块请求 —— 无限回溯的代价
 # 随天数线性膨胀。取最近 5 个交易日（约一周），足够覆盖「周末整天关机」这种情况。
 CATCHUP_LOOKBACK_TRADING_DAYS = 5
+
+# 15:05 主采集拿不到采集锁时的重试（见 `_run_daily`）：会员自选同步 / 个股同步 /
+# 定时采集共用同一把 `collect_guard`，别人正持锁时直接放弃会让「只能当天取」的
+# 涨跌家数等指标**永久缺一天**。所以隔几分钟重试若干次，都失败再明确记日志放弃。
+COLLECT_LOCK_RETRIES = 4
+COLLECT_LOCK_RETRY_SECONDS = 180
 
 # `_run_late` 里按日期取的这三步（见 `DailyCollector.run_late`）。用来去
 # `collect_log` 里判断某天是否漏采 —— 只有这三项「当天不给就永久缺」。
@@ -406,9 +413,14 @@ class DailyScheduler:
             # 交易日历为空时 `is_trade_day` 保守返回 False，于是**全新部署的库**
             # 在这里直接 return —— 日历永远采不到，整条定时链一次都跑不起来
             # （2026-09-27 修；日志还会显示成「今天不是交易日」，很有误导性）。
-            # 先把「空日历」与「今天确实休市」分开：空日历就补一次再判断。
-            if collector.calendar_empty():
-                logger.info("%s：交易日历为空，先补一次日历再判断", reason)
+            # ⚠️ 另有「跨年停更」（2026-10-10 加）：日历最大日期早于今天（上游还没
+            # 发布次年日历）时同样被判成「不是交易日」，而且**无法自愈** —— 所以
+            # 判据从「日历表为空」放宽成「为空**或**已落后」，每天都补一次，上游一
+            # 发布次年日历就能自己恢复。两种都先补一次再判断。
+            if collector.calendar_needs_refresh():
+                logger.info(
+                    "%s：交易日历为空或已落后（最大日期早于今天），先补一次再判断", reason
+                )
                 try:
                     collector.collect_calendar()
                 except Exception:  # noqa: BLE001 - 补不到就照旧跳过，别让调度崩掉
@@ -422,15 +434,37 @@ class DailyScheduler:
         if collector.has_collected(today):
             logger.info("%s 跳过：%s 已有数据", reason, today)
         else:
-            try:
-                with collect_guard(reason):
-                    result = collector.run(today)
-            except CollectionBusy as exc:
-                logger.warning("%s 跳过：%s", reason, exc)
-                return
-            except Exception:  # noqa: BLE001 - 定时任务绝不能因异常中断调度
-                logger.exception("%s 失败", reason)
-                return
+            # 拿不到采集锁时**延后重试**（2026-10-10 修）：会员自选同步 / 个股同步 /
+            # 定时采集共用一把锁，15:05 这一趟若被别的任务占着，直接放弃会让
+            # 「只能当天取」的涨跌家数永久缺一天。隔几分钟重试若干次，都失败再放弃。
+            result = None
+            for attempt in range(1, COLLECT_LOCK_RETRIES + 1):
+                try:
+                    with collect_guard(reason):
+                        result = collector.run(today)
+                    break
+                except CollectionBusy as exc:
+                    if attempt >= COLLECT_LOCK_RETRIES:
+                        logger.warning(
+                            "%s 放弃：重试 %d 次仍拿不到采集锁（%s），"
+                            "本轮采集未执行 —— 只能当天取的指标会缺一天",
+                            reason,
+                            attempt,
+                            exc,
+                        )
+                        return
+                    logger.warning(
+                        "%s 拿不到采集锁（第 %d/%d 次），%d 秒后重试：%s",
+                        reason,
+                        attempt,
+                        COLLECT_LOCK_RETRIES,
+                        COLLECT_LOCK_RETRY_SECONDS,
+                        exc,
+                    )
+                    time.sleep(COLLECT_LOCK_RETRY_SECONDS)
+                except Exception:  # noqa: BLE001 - 定时任务绝不能因异常中断调度
+                    logger.exception("%s 失败", reason)
+                    return
 
             self._last_run = datetime.now()
             self._last_result = result
@@ -794,8 +828,13 @@ class DailyScheduler:
         from app.jobs.collect_kline import KlineCollector, has_bars
         from app.jobs.collect_universe import UniverseCollector
 
-        if has_bars(trade_date):
-            logger.info("日线 %s 已在库里，跳过", trade_date)
+        try:
+            if has_bars(trade_date):
+                logger.info("日线 %s 已在库里，跳过", trade_date)
+                return
+        except Exception:  # noqa: BLE001 - 守卫查询失败（如 database is locked）不能拖垮尾部
+            logger.exception("检查日线是否已在库失败")
+            self._tail_failures.append("collect_kline")
             return
 
         try:
@@ -841,7 +880,12 @@ class DailyScheduler:
         from app.jobs.collect_kline import KlineCollector
         from app.services.usage import quota_status
 
-        usage = quota_status()
+        try:
+            usage = quota_status()
+        except Exception:  # noqa: BLE001 - 守卫查询失败不能拖垮尾部（见 _collect_kline）
+            logger.exception("读取配额用量失败，跳过历史回补")
+            self._tail_failures.append("backfill_kline")
+            return
         if usage["usage_ratio"] >= self.settings.kline_backfill_max_ratio:
             logger.info(
                 "历史回补跳过：本周期已用 %s/%s（%.0f%%），到 %.0f%% 就停手，等配额重置",
@@ -876,21 +920,33 @@ class DailyScheduler:
         单独一步而不是塞进 `run()`：`run()` 也是「手动采集」和回补的入口，
         在那里推送会让每次手动补数都发一条消息。
 
-        失败只记日志。推送依赖的是 Trae 注入的短效 Token（见 push_brief 模块说明），
-        服务重启后会自动重试一次，所以这里不做别的兜底。
+        **失败要能被尾部链路感知**（2026-10-10 修）：`push()` 内部把发送失败
+        **吞成返回 `status="failed"`、不抛异常**，原来这里只看异常，于是失败也被
+        记成 ok、重启后不会重发。现在把 `failed` 也登记进 `self._tail_failures`
+        （这天尾部记 `partial`），重启 / 次日会再试 —— `already_pushed` 只认 `ok`，
+        不会挡住重试。
         """
         # 延迟导入：push_brief 要读 collect_daily 的指数口径，模块级导入会成环
         from app.jobs.push_brief import already_pushed, push
 
         if not self.settings.feishu_push_enabled:
             return
-        if already_pushed(trade_date):
-            logger.info("简报 %s 已推送过，跳过", trade_date)
+        try:
+            if already_pushed(trade_date):
+                logger.info("简报 %s 已推送过，跳过", trade_date)
+                return
+        except Exception:  # noqa: BLE001 - 守卫查询失败不能拖垮尾部
+            logger.exception("检查简报是否已推送失败")
+            self._tail_failures.append("push_brief")
             return
         try:
             result = push(trade_date, self.settings)
         except Exception:  # noqa: BLE001 - 推送失败绝不能影响调度
             logger.exception("推送 %s 简报失败", trade_date)
+            self._tail_failures.append("push_brief")
+            return
+        if result.get("status") == "failed":
+            logger.warning("简报 %s 推送失败：%s", trade_date, result.get("reason") or "")
             self._tail_failures.append("push_brief")
             return
         logger.info("简报 %s：%s %s", trade_date, result.get("status"), result.get("reason") or "")
@@ -901,6 +957,8 @@ class DailyScheduler:
         与复盘简报**分成两条消息**：这条回答的是「今天买什么」，混在复盘里会被淹掉。
         每个形态**各有各的去重任务名**（见 `PUSH_PATTERNS`）—— 共用一条记录的话，
         哪天简报先发成功、这条就被顶掉了，而两者的发送条件本来就不一样。
+
+        失败处理同 `_push_brief`：`push_pattern_brief` 也是返回 `failed` 而不抛。
         """
         # 延迟导入：与 `_push_brief` 同理，避免模块级循环依赖
         from app.jobs.push_brief import PUSH_PATTERNS, already_pushed, push_pattern_brief
@@ -908,13 +966,24 @@ class DailyScheduler:
         task = PUSH_PATTERNS[pattern][1]
         if not self.settings.feishu_push_enabled:
             return
-        if already_pushed(trade_date, task):
-            logger.info("%s %s 已推送过，跳过", pattern, trade_date)
+        try:
+            if already_pushed(trade_date, task):
+                logger.info("%s %s 已推送过，跳过", pattern, trade_date)
+                return
+        except Exception:  # noqa: BLE001 - 守卫查询失败不能拖垮尾部
+            logger.exception("检查 %s 是否已推送失败", pattern)
+            self._tail_failures.append("push_pattern")
             return
         try:
             result = push_pattern_brief(pattern, trade_date, self.settings)
         except Exception:  # noqa: BLE001 - 推送失败绝不能影响调度
             logger.exception("推送 %s 的 %s 失败", trade_date, pattern)
+            self._tail_failures.append("push_pattern")
+            return
+        if result.get("status") == "failed":
+            logger.warning(
+                "%s %s 推送失败：%s", pattern, trade_date, result.get("reason") or ""
+            )
             self._tail_failures.append("push_pattern")
             return
         logger.info(
@@ -936,7 +1005,12 @@ class DailyScheduler:
         from app.jobs.scan_dde import run as run_dde_scan
         from app.services.usage import QuotaLevel, level_label, quota_level
 
-        level = quota_level(trade_date, self.settings)
+        try:
+            level = quota_level(trade_date, self.settings)
+        except Exception:  # noqa: BLE001 - 守卫查询失败不能拖垮尾部（如 database is locked）
+            logger.exception("读取配额档位失败，跳过 DDE 扫描")
+            self._tail_failures.append("scan_dde")
+            return
         if level >= QuotaLevel.PAUSE_KLINE:
             logger.warning("DDE 扫描跳过：%s", level_label(level))
             return
@@ -970,7 +1044,12 @@ class DailyScheduler:
         from app.jobs.collect_dde import backfill_top_hits
         from app.services.usage import QuotaLevel, level_label, quota_level
 
-        level = quota_level(trade_date, self.settings)
+        try:
+            level = quota_level(trade_date, self.settings)
+        except Exception:  # noqa: BLE001 - 守卫查询失败不能拖垮尾部（如 database is locked）
+            logger.exception("读取配额档位失败，跳过命中 DDE 补齐")
+            self._tail_failures.append("backfill_hit_dde")
+            return
         if level >= QuotaLevel.PAUSE_KLINE:
             logger.warning("命中 DDE 补齐跳过：%s", level_label(level))
             return
@@ -1036,7 +1115,11 @@ class DailyScheduler:
 
         if not self.settings.feishu_push_enabled:
             return
-        last = last_calibration_reminder()
+        try:
+            last = last_calibration_reminder()
+        except Exception:  # noqa: BLE001 - 守卫查询失败不能拖垮尾部（如 database is locked）
+            logger.exception("读取上次对账提醒日期失败，跳过本次提醒")
+            return
         if last is not None and (trade_date - last).days < CALIBRATION_INTERVAL_DAYS:
             return
         try:

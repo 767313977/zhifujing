@@ -10,7 +10,9 @@
 """
 
 import logging
+import threading
 from collections.abc import Callable
+from concurrent.futures import Future, TimeoutError as FuturesTimeoutError
 from datetime import date
 
 import akshare as ak
@@ -61,6 +63,33 @@ def _records(df: pd.DataFrame) -> list[dict]:
     ]
 
 
+def _call_bounded(fn: Callable[[], pd.DataFrame], description: str, timeout: float) -> pd.DataFrame:
+    """在**守护线程**里执行 `fn`，最多等 `timeout` 秒。
+
+    akshare 内部大量直接 `requests.get/post` 且**不带 timeout**，而它又跑在全局采集锁
+    里 —— 半开连接会让它一直等，把锁占死（之后每一趟采集都 `CollectionBusy`，只能
+    重启）。这里给它加一层限时：超时抛 `TimeoutError`，让上层照常记 failed、把锁让出来。
+
+    用普通守护线程（不是线程池）：超时后那个线程可能还挂在 socket 上，守护线程不会
+    拖住进程退出；用线程池的话，挂住的 worker 还会占着池子、让后续调用排队。
+    """
+    future: Future = Future()
+
+    def _run() -> None:
+        try:
+            future.set_result(fn())
+        except BaseException as exc:  # noqa: BLE001 - 原样交给调用方
+            future.set_exception(exc)
+
+    threading.Thread(target=_run, name="akshare-call", daemon=True).start()
+    try:
+        return future.result(timeout=timeout)
+    except FuturesTimeoutError as exc:
+        raise TimeoutError(
+            f"{description} 超时（{timeout}s，akshare 内部无超时）"
+        ) from exc
+
+
 class AkshareSource:
     """iFinD 缺口的数据源。线程安全（限速器有锁保护）。"""
 
@@ -71,7 +100,7 @@ class AkshareSource:
     def _call(self, fn: Callable[[], pd.DataFrame], description: str) -> pd.DataFrame:
         def _do() -> pd.DataFrame:
             self._bucket.acquire()
-            return fn()
+            return _call_bounded(fn, description, self.settings.http_timeout)
 
         return retry_call(
             _do,
