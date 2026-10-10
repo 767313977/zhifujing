@@ -470,6 +470,14 @@ class DailyScheduler:
         **没有「今天采过没有」那道守卫**（与 `_run_daily` 不同）：这几类数据很小、
         写库是幂等的（同一天覆盖写），重复触发最多多花 1 次 akshare + 2 次 EDB，
         不值得再为它加一套去重标记。
+
+        ⚠️ **整趟包进采集锁**（2026-10-10 修）：这一趟里的两融 / 北向走 iFinD EDB，
+        而 `_run_daily` 那趟也在花 iFinD 配额 —— 两个 `DailyCollector` **各有各的令牌桶**，
+        并发跑等于实际请求速率翻倍，直接触发 iFinD 429（`collect_daily` 顶部「整个采集
+        过程必须串行」说的就是这件事，但当时只有 `_run_daily` 自己包了；`_catch_up`
+        又会把这两趟**同时**起线程）。
+        拿不到锁就跳过：**不会真丢** —— `_catch_up_late` 会回看最近 5 个交易日，
+        下一天的这一趟会把它补上。
         """
         today = date.today()
         try:
@@ -478,6 +486,16 @@ class DailyScheduler:
             logger.warning("%s 跳过：%s", reason, exc)
             return
 
+        try:
+            with collect_guard(f"{reason} 收盘后"):
+                self._run_late_unguarded(collector, today, reason)
+        except CollectionBusy as exc:
+            logger.warning("%s 跳过：%s（等下一趟或次日回看补采）", reason, exc)
+
+    def _run_late_unguarded(
+        self, collector: DailyCollector, today: date, reason: str
+    ) -> None:
+        """`_run_late` 的主体。单独一个方法只为让上面那个 `with` 包得干净。"""
         # 先把最近漏掉的补上（不受今天是否交易日影响：今天休市也可能漏着上一交易日的）。
         # 放在这里而不是 `_run_late` 末尾：跨天重启时今天可能已经跑过、但漏的那天还没有。
         self._catch_up_late(collector, today, reason)
@@ -591,8 +609,21 @@ class DailyScheduler:
         **不需要「今天采过没有」那道守卫**：`collect_all_members(only_missing=True)`
         本身就是幂等跳过；也正因为如此，22:30 那趟兜底在正常日子只会打一条
         「都已在库，无需重取」，不必做成条件调度。
+
+        ⚠️ **也包进采集锁**（2026-10-10 修）：它自己不花 iFinD 配额（全是开盘啦），
+        但一轮 370 多次请求撞上 `_run_daily` 尾部的几百次请求会互相挤（而 `_catch_up`
+        本来是**同时**起三个线程的）。采集锁的语义是「整条采集链串行」，这里同样适用。
+        拿不到锁就跳过：22:30 那趟兜底会再来，次日回看也会补。
         """
         today = date.today()
+        try:
+            with collect_guard(reason):
+                self._run_members_unguarded(today, reason)
+        except CollectionBusy as exc:
+            logger.warning("%s 跳过：%s（22:30 兜底或次日回看会补）", reason, exc)
+
+    def _run_members_unguarded(self, today: date, reason: str) -> None:
+        """`_run_members` 的主体。单独一个方法只为让上面那个 `with` 包得干净。"""
         # 先补最近几天漏掉的（跨天重启时那天的名单就永久缺，见 `_catch_up_members`）。
         # 这里**不给「今天」写 collect_log**：`has_collected` 把当天任何一条
         # `status="failed"` 都当成「当天没采完」→ 会让基础采集白跑一遍，而成分股预取

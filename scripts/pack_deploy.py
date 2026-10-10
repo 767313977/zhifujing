@@ -17,16 +17,20 @@
 
 用法::
 
-    python scripts/pack_deploy.py                # 完整包（含数据库，首次部署用）
-    python scripts/pack_deploy.py --no-db        # 只打代码（日常更新用）
+    python scripts/pack_deploy.py                 # 只打代码（**默认，日常更新用**）
+    python scripts/pack_deploy.py --with-db       # 连数据库一起打（**只在首次部署一台新机器时用**）
     python scripts/pack_deploy.py --out D:\\fupan.tar.gz
 
-为什么日常更新要用 `--no-db`：
+为什么**默认不带数据库**（2026-10-10 改，原来是反过来的）：
 
 - 数据库是**数据**不是代码，云端每天自己采集生成，更新代码不该碰它；
 - 完整包解压时会用**本机数据库覆盖服务器数据库**，把服务器最新采集的数据
-  退回成本机旧数据 —— 更新代码时这是错的；
+  退回成本机旧数据（用户、邀请码、笔记、自选股全在里面）—— 那是**不可逆**的；
 - 数据库 116 MB 占了包的绝大部分，省掉它之后包只有几百 KB，上传秒完成。
+
+⚠️ 改默认值的理由就是「默认值会被手滑用上」：以前默认是**带库**，不带库要靠人记得
+敲 `--no-db`，敲漏一次就把线上数据退回本机旧库。现在反过来了 —— 要带库得**显式**
+写 `--with-db`。`--no-db` 仍被接受（空操作，只为兼容 `push.ps1` 里已有的命令行）。
 
 **不收「未跟踪且未被忽略」的文件**（2026-10-10 加）：
 
@@ -192,9 +196,14 @@ def main() -> int:
         help=f"输出文件，缺省 {DEFAULT_OUT_DIR}/fupan-<日期>.tar.gz",
     )
     parser.add_argument(
+        "--with-db",
+        action="store_true",
+        help="连数据库一起打进包（**只在首次部署一台新机器时用**：解压会覆盖服务器上的库）",
+    )
+    parser.add_argument(
         "--no-db",
         action="store_true",
-        help="只打代码、不含数据库。代码更新时用它：不会用本机库覆盖服务器最新数据",
+        help="（空操作，已废弃）不带数据库 —— **现在这是默认行为**，留着只为兼容旧命令行",
     )
     parser.add_argument(
         "--allow-untracked",
@@ -246,7 +255,7 @@ def main() -> int:
                 tar.add(src, arcname=f"{ARCHIVE_ROOT}/{item}")
                 files += 1
 
-        if not args.no_db:
+        if args.with_db:
             snapshot = Path(tmp) / "fupan.db"
             snapshot_db(snapshot)
             tar.add(snapshot, arcname=f"{ARCHIVE_ROOT}/backend/data/fupan.db")
@@ -258,7 +267,9 @@ def main() -> int:
         print(f"  ⚠️ 跳过 {len(skipped)} 个未跟踪文件（不属于仓库，可能是别人在写的代码）：")
         for path in skipped:
             print(f"      {path}")
-    if args.no_db:
+    if args.with_db:
+        print("  ⚠️ 包里**带了数据库** —— 解压会覆盖服务器上的库（用户 / 邀请码 / 笔记 / 自选股）")
+    else:
         print("（代码包，不含数据库 —— 解压不会覆盖服务器已有的数据）")
     print(f"传到服务器：scp \"{out}\" <用户>@<服务器IP>:~")
     print(f"然后在服务器上：tar xzf {out.name} -C /opt && cd /opt/fupan && sudo bash deploy/install.sh")

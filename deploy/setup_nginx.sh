@@ -28,7 +28,8 @@
 # ⚠️ 两个 off 都是 2026-09-28 定的，因为**站点自己有了登录体系**（设计见文档 §8.69）：
 # `/api/*` 全部要求登录、只放行 login / register / health，邀请码是注册的唯一门。
 # 所以 nginx 那层密码不再是必需的；而 8080 在明文 http 上**登录不了**
-# （cookie 带 `Secure`），留着只让人困惑。
+# （后端对「明文 + 公网」直接 403，见 app/api/auth._require_secure_transport），
+# 留着只让人困惑。
 # 想看当前线上到底是什么样：`sudo nginx -T | grep -n -e listen -e auth_basic`。
 
 # 跑之前先在腾讯云控制台的「防火墙」里放行端口：8080；开 HTTPS 还要 80 和 443。
@@ -70,11 +71,12 @@ ALT_DOMAINS="${ALT_DOMAINS:-}"
 AUTH="${AUTH:-off}"
 # 有域名时，要不要**额外**留一个 8080 明文兜底入口：on / off。
 #
-# **默认 off**（2026-09-28 起，见设计文档 §8.69.7）：站点开始要登录密码了，而会话
-# cookie 带着 `Secure` —— 浏览器在明文 http 上根本不发它，于是 8080 只会变成
-# 「页面打得开、但登录不了」的困惑入口，还平白留一条明文链路。
+# **默认 off**（2026-09-28 起，见设计文档 §8.69.7）：站点开始要登录密码了，而
+# 后端对「明文 http + 公网」直接拒登录（403，见 app/api/auth._require_secure_transport），
+# 于是 8080 只会变成「页面打得开、但登录不了」的困惑入口，还平白留一条明文链路。
 # 应急（证书过期 / DNS 挂了）才开；不带 DOMAIN 的那套纯 IP 模式不受这个开关影响
-# （那边 8080 就是唯一的入口）。
+# （那边 8080 就是唯一的入口）—— ⚠️ 但**纯 IP 模式本来就是明文 + 公网**，登录同样
+# 会被后端 403，只能看页面；要用就得先有域名 + 证书（那才有 https）。
 FALLBACK_8080="${FALLBACK_8080:-off}"
 CERT_EMAIL="${CERT_EMAIL:-}"
 HTPASSWD="/etc/nginx/.htpasswd"
@@ -159,17 +161,20 @@ log "写鉴权 + 反代片段（$PROXY_SNIPPET）"
 install -d /etc/nginx/snippets
 if [[ "$AUTH" == "on" ]]; then
   cat > "$PROXY_SNIPPET" <<'NGINX'
-# 全站要密码。**别删这几行** —— 后端本身没有任何鉴权，这层是唯一的门。
+# 全站要密码（nginx 层）。⚠️ 后端**自己也有登录体系**（/api/* 一律要登录，见
+# app/api/auth.py），这层是额外加在外面的一道门，两者独立：删了这几行不会变成
+# 「谁都能进」，只会少掉 nginx 这道 Basic Auth。
 auth_basic "fupan";
 auth_basic_user_file /etc/nginx/.htpasswd;
 NGINX
 else
-  # 把「这里没有鉴权」写进配置本体（而不是只改脚本）：以后在服务器上翻到这份
+  # 把「这一层没设密码」写进配置本体（而不是只改脚本）：以后在服务器上翻到这份
   # 配置时，能立刻看出是**故意的**，不会当成哪次改漏了。
   cat > "$PROXY_SNIPPET" <<'NGINX'
-# ⚠️ 全站**没有鉴权**（AUTH=off，2026-09-28 起按用户要求取消密码）。后端本身
-# 也没有任何鉴权，所以任何知道域名的人都能看自选股 / 复盘笔记，还能
-# POST /api/admin/collect **触发采集** —— 那会白烧 iFinD 配额。
+# ⚠️ 这一层**没设密码**（AUTH=off，2026-09-28 起按用户要求取消 nginx Basic Auth）。
+# 注意措辞：**不是「全站没有鉴权」** —— 后端自己有登录体系（/api/* 一律要登录，
+# 见 app/api/auth.py），自选股 / 复盘笔记要登录才看得到，POST /api/admin/collect
+# 也一样；这里取消的只是 nginx 那道额外的 Basic Auth。
 # 想加回来：重跑一次带 `AUTH=on` 的 setup_nginx.sh，或把下面两行补在这里：
 #     auth_basic "fupan";
 #     auth_basic_user_file /etc/nginx/.htpasswd;
@@ -277,16 +282,17 @@ server {
 NGINX
 
   # 8080 明文兜底入口，**默认不开**（2026-09-28 起，见设计文档 §8.69.7）：
-  # 站点开始要登录密码了，而会话 cookie 带着 `Secure` —— 浏览器在明文 http 上
-  # **根本不会发它**，于是 8080 变成「页面打得开、但登录不了」，只让人困惑，
-  # 还平白留一条明文入口。真要应急（证书挂了/DNS 挂了）就临时开：
+  # 站点开始要登录密码了，而**明文 http + 公网**会被后端拒登录（403，见
+  # app/api/auth._require_secure_transport），于是 8080 变成「页面打得开、但登录
+  # 不了」，只让人困惑，还平白留一条明文入口。真要应急（证书挂了/DNS 挂了）就临时开：
   #     sudo DOMAIN=... FALLBACK_8080=on bash deploy/setup_nginx.sh
   if [[ "$FALLBACK_8080" == "on" ]]; then
     log "保留 8080 明文兜底入口（FALLBACK_8080=on）"
     cat >> "$SITE" <<'NGINX'
 
 # 8080：明文兜底入口（DNS 挂了 / 证书过期了还能进来修）。
-# ⚠️ 在它上面**登录不了**（cookie 带 Secure，明文 http 不发）——
+# ⚠️ 在它上面**登录不了**（明文 http + 公网会被后端 403，见
+# app/api/auth._require_secure_transport）——
 # 它的用途只是「能打开页面确认服务活着 / 看 nginx 报错」。
 server {
     listen 8080 default_server;

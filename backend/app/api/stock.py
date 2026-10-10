@@ -48,7 +48,7 @@ from app.schemas import (
     StockThemes,
 )
 from app.services import limit_rules
-from app.services.auth import Cooldown, current_user
+from app.services.auth import Cooldown, RateLimiter, current_user
 from app.services.patterns import build_bars
 from app.services.stock_phase import load_phase
 from app.sources.em_news import fetch_stock_news
@@ -67,6 +67,25 @@ router = APIRouter(prefix="/api/stock", tags=["个股"])
 # 且每日采集会兜底刷新，量级与本接口单只票不同。）
 SYNC_COOLDOWN_SEC = 60
 _sync_cooldown = Cooldown(SYNC_COOLDOWN_SEC)
+
+# 「现取一次 DDE」的按用户限流（2026-10-10 加）。这个接口在库里没有最近交易日的数据时
+# 会现取一次（`collect_stock_dde`，花 1 次 iFinD 配额），而**空结果不缓存** —— 传一个
+# 无效代码（如 999999）反复请求就是无限次配额消耗，写个循环能把当月配额刷光。
+#
+# ⚠️ 为什么不用上面的 `Cooldown`（同 key N 秒只放行一次）：正常翻股票是**连着看好几只**，
+# 每只都合法地要现取一次，「每请求冷 60 秒」会把第 2 只起直接掐掉。所以用**滑动窗口**：
+# 10 分钟最多 30 次。`RateLimiter` 本来是给登录爆破用的（失败累计到阈值就锁），这里把它
+# 当「放行计数器」使 —— 每次真的现取记一笔，超了就锁一段时间，期间只返回缓存。
+#
+# ⚠️ 也**不做「空结果负缓存」**：攻击是枚举**不同**代码，负缓存只挡得住重复同一个，
+# 属于看着有用、实际挡不住的防御。
+DDE_FETCH_LIMIT = 30
+DDE_FETCH_WINDOW_SEC = 600
+_dde_fetch_limiter = RateLimiter(
+    limit=DDE_FETCH_LIMIT,
+    window_sec=DDE_FETCH_WINDOW_SEC,
+    lock_sec=DDE_FETCH_WINDOW_SEC,
+)
 
 # 可选的 K 线周期。周/月由本地日线重采样（`_resample`），不额外取数
 PERIODS = ("day", "week", "month")
@@ -529,12 +548,15 @@ def _read_dde(session: Session, code: str, days: int) -> list[StockDde]:
     return list(reversed(rows))
 
 
-def _stock_dde(code: str, days: int) -> tuple[list[StockDde], str | None]:
+def _stock_dde(code: str, days: int, user_id: int) -> tuple[list[StockDde], str | None]:
     """读库；缓存过期就现取一次再读。返回（数据, 取不到的原因）。
 
     与 `api/sector.py` 的 `_board_members` 同一套：现取那次是**另一个事务**写的，
     用请求自带的 session 接着读看不到（SQLite WAL 下读事务是一个快照），
     所以每次都要重新开一个 session 去读。
+
+    `user_id` 只用于**现取的限流**（见 `DDE_FETCH_LIMIT`）：限流键取用户而不是 IP，
+    因为这里花的是「账号的配额」，跟请求从哪个 IP 来无关。
     """
     with session_scope() as reader:
         cached = _read_dde(reader, code, days)
@@ -543,6 +565,19 @@ def _stock_dde(code: str, days: int) -> tuple[list[StockDde], str | None]:
     # 已经有数据、且最新一行就是最近交易日 → 直接用缓存，不花配额
     if cached and latest and cached[-1].trade_date >= latest:
         return cached, None
+
+    # 要真花钱了，先过限流闸（记一笔放在**取数之前**：无论取数成不成，配额都已经花了）
+    key = f"dde:{user_id}"
+    wait = _dde_fetch_limiter.retry_after(key)
+    if wait is not None:
+        logger.warning(
+            "个股 %s 的 DDE 现取被限流（用户 %s 还要等 %.0f 秒）", code, user_id, wait
+        )
+        return cached, (
+            f"取数过于频繁（每 {DDE_FETCH_WINDOW_SEC // 60} 分钟最多 {DDE_FETCH_LIMIT} 次），"
+            f"请 {int(wait) + 1} 秒后再试"
+        )
+    _dde_fetch_limiter.fail(key)
 
     try:
         _, truncated = collect_stock_dde(code, days)
@@ -570,6 +605,7 @@ def dde(
         DDE_DAYS, ge=5, le=DDE_MAX_DAYS, description="返回最近 N 个交易日，按日期升序"
     ),
     session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
 ) -> StockDdeOut:
     """个股的 **DDE 与主力净流入**（iFinD 口径，日频）。
 
@@ -578,9 +614,13 @@ def dde(
 
     **数据是按需抓的**：库里没有最近交易日的数据时现取一次并落库（与板块成分股同一套），
     之后读库。每次现取花 1 次 iFinD 配额 —— 别在这个接口外面套全市场循环。
+
+    ⚠️ **现取按用户限流**（`DDE_FETCH_LIMIT`，10 分钟 30 次）：空结果不落库，所以
+    无效代码反复请求原本每次都能花掉 1 次配额。被限流时**不报错**，照常返回缓存 +
+    一句说明（`note`）。
     """
     code = _code(code)
-    rows, note = _stock_dde(code, days)
+    rows, note = _stock_dde(code, days, user.id)
     return StockDdeOut(
         code=code,
         name=_resolve_name(session, code),

@@ -133,6 +133,17 @@ def validate_password(password: str) -> None:
         )
 
 
+#: 登录时「这个用户不存在」那条路要拿它去验（见 `services.auth.verify_password` 的说明）。
+#:
+#: 为什么需要（2026-10-10 修）：原来给不存在的用户传的是**空串**，而空串在
+#: `stored.split("$")` 那步就解包失败、直接走 except 返回 False —— **scrypt 根本没跑**，
+#: 于是「用户名存不存在」能从响应快慢上看出来（`api/auth.login` 的注释写着「照常走一次
+#: 哈希校验」，实际上没有）。这里在导入时算**一次**固定哈希，之后每条不存在的用户名
+#: 都会真的跑一遍同样开销的 scrypt，两条路耗时对齐。
+#: ⚠️ 它只是一串谁也猜不到原文的随机密码的哈希，不承担任何密码学作用。
+DUMMY_PASSWORD_HASH = hash_password(secrets.token_urlsafe(16))
+
+
 # ---------------------------------------------------------------- 会话
 
 
@@ -404,7 +415,9 @@ __all__ = [
     "COOKIE_NAME",
     "SESSION_DAYS",
     "MIN_PASSWORD_LENGTH",
+    "DUMMY_PASSWORD_HASH",
     "Cooldown",
+    "RateLimiter",
     "client_ip",
     "create_session",
     "current_user",
