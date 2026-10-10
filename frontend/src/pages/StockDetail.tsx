@@ -143,6 +143,9 @@ export default function StockDetail() {
   const [profile, setProfile] = useState<StockProfile | null>(null)
   const [themes, setThemes] = useState<StockThemes | null>(null)
   const [dde, setDde] = useState<StockDde | null>(null)
+  // DDE 请求本身失败的原因（网络 / 超时 / 5xx）。null 表示请求成功 —— 此时 `dde`
+  // 为 null 或 rows 为空都只是「这只票没数据」，与「取数失败」是两件事（2026-10-10 修）
+  const [ddeError, setDdeError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -180,16 +183,23 @@ export default function StockDetail() {
   const load = useCallback(
     async (target: string, isCancelled: () => boolean = () => false) => {
       // 题材要现取，可能失败（比如首次打开、本地还没名称），不该拖垮整页；
-      // DDE 同理 —— 它的失败原因后端会放在 note 里，这里兜住的只是传输/服务端层面的错
-      const [p, themeData, ddeData] = await Promise.all([
+      // DDE 同理 —— 它的失败原因后端会放在 note 里，这里兜住的只是传输/服务端层面的错。
+      // 兜住之后要**记下失败原因**：`dde` 变 null 既可能是「请求失败」也可能是「本来没数据」，
+      // 不区分就会被下面同一句文案盖住（2026-10-10 修）
+      const ddeRequest = api.stockDde(target).then(
+        (data) => ({ data, error: null as string | null }),
+        (err: Error) => ({ data: null, error: err.message }),
+      )
+      const [p, themeData, ddeResult] = await Promise.all([
         api.stockProfile(target),
         api.stockThemes(target).catch(() => null),
-        api.stockDde(target).catch(() => null),
+        ddeRequest,
       ])
       if (isCancelled()) return p
       setProfile(p)
       setThemes(themeData)
-      setDde(ddeData)
+      setDde(ddeResult.data)
+      setDdeError(ddeResult.error)
       return p
     },
     [],
@@ -203,6 +213,7 @@ export default function StockDetail() {
     setProfile(null)
     setThemes(null)
     setDde(null)
+    setDdeError(null)
     setError(null)
     ;(async () => {
       try {
@@ -460,6 +471,12 @@ export default function StockDetail() {
           {profile === null ? (
             <div className="flex h-[240px] items-center justify-center text-[14px] text-fg-dim">
               <span className="pulse-soft">加载中…</span>
+            </div>
+          ) : ddeError ? (
+            // 请求本身失败（网络 / 超时 / 5xx）：与「本来就没数据」分开说 ——
+            // 原来 `dde` 为 null 会落到下面那句「暂时没有 DDE 数据」，把取数失败读成了没数据
+            <div className="px-4 py-10 text-center text-[14px] text-danger">
+              DDE 取数失败：{ddeError}（可重试）
             </div>
           ) : !dde || dde.rows.length === 0 ? (
             // note 有值就是取数失败的原因（iFinD 报错、或这只票本来就没数据），原样显示，
