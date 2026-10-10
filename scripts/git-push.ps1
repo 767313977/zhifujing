@@ -24,6 +24,13 @@
 
   重试只是重发同一笔提交，**不会重复提交、也不用重新 commit**。
 
+  ### 失败日志
+
+  每一次运行的**每一次尝试**都往 `%USERPROFILE%\.git-push.log` 追一行
+  （时间戳 / 结果 / 耗时 / 报错签名），**成功也记** —— 只有失败记录的话没有分母，
+  算不出「某时段的失败率」。攒几天后按小时聚合，就能看出坏窗口集中在什么时段、
+  每次持续多久（2026-10-09 加，为的是先有数据再决定要不要换通道）。
+
   ⚠️ 本文件必须存成 **UTF-8 带 BOM**。PowerShell 5.1 对没有 BOM 的 .ps1 会按系统
   ANSI（中文机器上是 GBK）解码：中文注释先变乱码，接着乱码字节会把字符串的引号
   吃掉、直接解析失败（踩过一次）。改动后请确认编码没有退回去。
@@ -39,12 +46,32 @@ $ErrorActionPreference = 'Continue'
 # 用**脚本所在位置**推仓库根，而不是当前目录 —— 这样从任何目录调用都成立
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
+# 失败日志（见文件头「失败日志」段）：放用户目录，不进仓库、不干扰 git status。
+# 记不上也不能让推送失败，所以整段包了 try。
+$logPath = Join-Path $env:USERPROFILE '.git-push.log'
+
+function Write-PushLog([string]$line) {
+  try {
+    $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    Add-Content -Path $logPath -Value "$stamp | $line" -Encoding UTF8
+  } catch { }
+}
+
+# 报错签名截断：git 的报错可能很长（还会带 URL），日志里只留前 160 字
+function Get-Sig([string]$text) {
+  $one = (($text -split "`n") | Where-Object { $_ } | Select-Object -Last 1)
+  if ($null -eq $one) { return '' }
+  if ($one.Length -gt 160) { return $one.Substring(0, 160) + '...' }
+  return $one
+}
+
 # 分支没有上游时，重试 5 次也没用（那是配置问题不是链路问题），提前退出并给命令
 $branch = (& git -C $repo rev-parse --abbrev-ref HEAD 2>$null)
 & git -C $repo rev-parse --abbrev-ref '@{u}' *> $null
 if ($LASTEXITCODE -ne 0) {
   Write-Host "当前分支（$branch）没有上游分支，重试解决不了，先跑一次：" -ForegroundColor Red
   Write-Host "    git push -u origin $branch"
+  Write-PushLog ("RESULT NOUPSTREAM branch={0}" -f $branch)
   exit 1
 }
 
@@ -67,25 +94,37 @@ function Invoke-PushOnce {
   return $null   # $null 表示这一次超时了
 }
 
+$runStarted = Get-Date
+
 for ($i = 1; $i -le $MaxTry; $i++) {
   Write-Host ("[{0}/{1}] push {2}（单次限时 {3}s）…" -f $i, $MaxTry, $branch, $TimeoutSec)
+  $sw = [Diagnostics.Stopwatch]::StartNew()
   $r = Invoke-PushOnce
+  $sw.Stop()
+  $secs = [math]::Round($sw.Elapsed.TotalSeconds, 1)
 
   if ($null -eq $r) {
     Write-Host ("      超时 {0}s，已掐断" -f $TimeoutSec) -ForegroundColor Yellow
+    Write-PushLog ("attempt {0}/{1} TIMEOUT {2}s" -f $i, $MaxTry, $secs)
   } elseif ($r.code -eq 0) {
     ($r.out -split "`n") | Where-Object { $_ } | ForEach-Object { "      $_" }
     Write-Host "      推送成功" -ForegroundColor Green
+    Write-PushLog ("attempt {0}/{1} OK {2}s" -f $i, $MaxTry, $secs)
     # 再确认一次真的同步了，免得只看 git 的输出
     (& git -C $repo status -sb) | ForEach-Object { "      $_" }
+    $total = [math]::Round(((Get-Date) - $runStarted).TotalSeconds, 1)
+    Write-PushLog ("RESULT OK attempts={0} total={1}s" -f $i, $total)
     exit 0
   } else {
-    $last = ($r.out -split "`n" | Where-Object { $_ } | Select-Object -Last 1)
+    $last = Get-Sig $r.out
     Write-Host ("      失败 exit={0}：{1}" -f $r.code, $last) -ForegroundColor Yellow
+    Write-PushLog ("attempt {0}/{1} FAIL {2}s :: {3}" -f $i, $MaxTry, $secs, $last)
   }
 
   if ($i -lt $MaxTry) { Start-Sleep -Seconds $BackoffSec }
 }
 
 Write-Host ("试满 {0} 次仍未推上去。稍后再跑一次这条命令即可。" -f $MaxTry) -ForegroundColor Red
+$total = [math]::Round(((Get-Date) - $runStarted).TotalSeconds, 1)
+Write-PushLog ("RESULT FAIL attempts={0} total={1}s" -f $MaxTry, $total)
 exit 1
