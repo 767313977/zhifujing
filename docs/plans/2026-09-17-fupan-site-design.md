@@ -10377,8 +10377,44 @@ CREATE TABLE screen_result (
 ⚠️ 线上特意用 `sudo -u fupan` 执行：库是 WAL 模式，若换个用户去连，SQLite 可能要写
 `-wal` / `-shm`，而那两个文件属主是 `fupan` —— 轻则失败，重则留下属主错乱的文件让服务起不来。
 
-**顺带发现（未处理）**：查日志时看到线上正被漏洞扫描器扫（`/.git/config`、`/.env`、`/webui/` 等），
+**顺带发现**：查日志时看到线上正被漏洞扫描器扫（`/.git/config`、`/.env`、`/webui/` 等），
 **全部返回 200** —— 但那是 SPA 兜底吐的 `index.html`（与 `/docs` 同一机制），**没有实际泄漏**。
-要不要把这些明显是探测的路径改成 404，待定。
+用户随后拍板「把这些明显是探测的路径改成 404」，见下一节。
+
+### 2026-10-10 SPA 兜底：扫描器探测路径改成 404
+
+`spa_fallback` 会把**任何**非 `/api` 路径都回 `index.html` + **200**，于是漏洞扫描器探测
+`/.git/config`、`/.env`、`/webui/` 时看到的是一片 200。**没有泄漏**（回的是 index.html，
+那些路径在 `dist/` 里根本不存在），但 200 会让扫描器认为「这里有东西」继续深挖，日志也被刷得
+没法看。用户要求把这些路径改成 404。
+
+**判据**（`main._is_scan_probe`，刻意保守，只挡「前端路由**不可能**出现」的形状）：
+
+1. 任一路径段**以点开头** —— 覆盖 `.git` / `.env` / `.svn` / `.DS_Store`，也顺带挡住
+   `/assets../.git/config` 这种畸形路径（中间那段是 `.git`）；
+2. **26 个**扫描器常见目录/文件名（`wp-*` / `phpmyadmin` / `webui` / `cgi-bin` / `actuator` /
+   `vendor` / `backup` / `config` / `server-status` …）；
+3. **20 个**我们本来就不提供的扩展名（`.php` / `.sql` / `.zip` / `.bak` / `.yml` / `.sh` …）。
+
+⚠️ **后缀表里绝对不能有 `.svg` / `.png` / `.js` / `.css`** —— `dist/` 里真有 `favicon.svg`、
+`wechat-qr.png`、`assets/*`，挡了页面直接白板。
+⚠️ 第 1 条会连 `.well-known/` 一起挡掉。本站 ACME 证书由 nginx（webroot）在边缘签，请求不会
+走到这里，所以没影响；将来若改成由本服务出证书，要回看这条。
+
+**验证**（直接调用路由函数，不启服务、不跑 lifespan）：
+
+| 类别 | 条数 | 结果 |
+| --- | --- | --- |
+| 必须保持 200 | 24 | 全部 `FileResponse` ✓ |
+| 必须 404 | 23 | 全部 404 ✓ |
+
+「必须保持 200」那 24 条是按 `App.tsx` **逐条抄下来的全部前端路由**（`/login` `/sentiment`
+`/sectors` `/limit-up` `/funds` `/patterns` `/patterns/track` `/watchlist` `/stock/:code`
+`/wudao` `/anomaly` `/stock-analysis` `/settings` `/account`），加上 `dist/` 里的真文件
+（`favicon.svg`、`wechat-qr.png`、`assets/*`）、一个未知深路径，以及 `/docs` / `/openapi.json`
+/ `/redoc`（这三条本来就被兜底接走，行为不变）。
+
+**行为变化**：只有「明显是探测的路径」从「200 + index.html」变成「404」。前端路由、静态资源、
+`/docs` 那几条一律不变。
 
 

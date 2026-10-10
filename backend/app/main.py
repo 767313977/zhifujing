@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import (
     admin,
+    ai,
     analysis,
     anomaly_map,
     auth as auth_api,
@@ -141,6 +142,7 @@ app.include_router(watchlist.router)
 app.include_router(note.router)
 app.include_router(patterns.router)
 app.include_router(anomaly_map.router)
+app.include_router(ai.router)
 app.include_router(admin.router)
 
 
@@ -157,6 +159,48 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+#: SPA 兜底要**直接 404**（而不是回落 `index.html`）的路径特征。
+#:
+#: 为什么要有这个：兜底会把任何非 `/api` 路径都回一个 `index.html` + **200**，
+#: 于是线上被漏洞扫描器扫到时看到的是一片 200（实测日志：`/.git/config`、
+#: `/settings/.env`、`/webui/`、`/assets../.git/config` 全是 200）。虽然**没有实际
+#: 泄漏** —— 回的是 index.html，那几段路径在 `dist/` 里根本不存在 —— 但「200」会让
+#: 扫描器认为这里有东西、继续深挖，日志也被刷得没法看。
+#:
+#: 判据刻意保守，只挡「前端路由**不可能**出现」的形状：
+#: 1. 任一路径段**以点开头**（`.git` / `.env` / `.svn` / `.DS_Store`…）；
+#: 2. 一组扫描器常见的目录/文件名（下面这个集合）；
+#: 3. 我们本来就不提供的扩展名（`.php` / `.sql` / `.zip`…）。
+#:
+#: ⚠️ **别把 `.svg` / `.png` / `.js` / `.css` 放进后缀表** —— `dist/` 里真有
+#: `favicon.svg` / `wechat-qr.png` / `assets/*`，挡了它们页面直接白板。
+#: ⚠️ 第 1 条会连 `.well-known/` 一起挡掉。本站的 ACME 证书是 nginx（webroot）在
+#: 边缘签的，请求不会走到这里，所以没有影响；将来若改成由本服务出证书再回看这条。
+_SCAN_SEGMENTS = frozenset(
+    {
+        "wp-admin", "wp-login", "wp-content", "wp-includes", "wp-config", "wordpress",
+        "phpmyadmin", "pma", "myadmin", "webui", "cgi-bin", "actuator", "druid",
+        "solr", "jenkins", "console", "server-status", "vendor", "backup", "backups",
+        "config", "administrator", "telescope", "aws", "ssh", "env",
+    }
+)
+_SCAN_SUFFIXES = (
+    ".php", ".asp", ".aspx", ".jsp", ".cgi", ".sql", ".bak", ".old", ".orig",
+    ".zip", ".tar.gz", ".tgz", ".log", ".ini", ".yml", ".yaml", ".env",
+    ".sh", ".py", ".rb",
+)
+
+
+def _is_scan_probe(full_path: str) -> bool:
+    """这个非 `/api` 路径是不是扫描器探测？是就让兜底直接 404。"""
+    segments = [seg for seg in full_path.split("/") if seg]
+    if any(seg.startswith(".") for seg in segments):
+        return True
+    if any(seg.lower() in _SCAN_SEGMENTS for seg in segments):
+        return True
+    return full_path.lower().endswith(_SCAN_SUFFIXES)
+
+
 if FRONTEND_DIST.exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
@@ -165,6 +209,9 @@ if FRONTEND_DIST.exists():
         """单页应用回退：非 /api 路径一律交给前端路由。"""
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="接口不存在")
+        # 扫描器探测（判据见 `_is_scan_probe`）：直接 404，别回 index.html 让它看到 200
+        if _is_scan_probe(full_path):
+            raise HTTPException(status_code=404, detail="Not Found")
         # resolve 掉 ../ 后必须仍在 dist 目录内，否则 /..%2F..%2F.env 这类请求
         # 能穿越出 dist 读到项目根的 .env（含 iFinD token）甚至数据库文件。
         # 同文件的 /assets 用 StaticFiles 自带穿越防护，这里手写的必须自己校验。
