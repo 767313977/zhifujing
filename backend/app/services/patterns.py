@@ -794,6 +794,37 @@ KNEAD_MIN_BODY = 0.05
 KNEAD_CLOSE_GAP_MAX = 0.012  # 两根收盘价的相对差上限：再大就谈不上「收盘价相近」
 KNEAD_CLOSE_GAP_IDEAL = 0.003  # 到这个差以内给满分
 
+# 金叉大阳（2026-10-10 用户给的通达信公式，原样落成生产函数）
+#
+#   买入:=CROSS(MA(C,3),MA(C,5)) AND 涨幅>=4 AND RSI6<60 AND 上影/振幅<=0.2;
+#
+# 四条是**布尔与**，命中即成立，所以底分给 60（高过 MIN_SCORE=50）、余下 40 分按
+# 「过线多少」分级，只用来排序 —— 否则每个命中都是同一个分数，清单没法看。
+#
+# 回测（`scripts/backtest_patterns.py --pattern ma_cross_big_yang --board wudao`，
+# 2026-10-10，1908 只 · 250 个交易日 · 559 条信号）：
+#
+# | 持有 | 信号 | 均值 | 中位 | 胜率 | 超额 |
+# | --- | --- | --- | --- | --- | --- |
+# | 5 日 | 559 | −0.89% | −1.50% | 39.0% | −0.13% |
+# | 10 日 | 559 | 0.00% | −0.78% | 47.2% | +1.15% |
+# | 20 日 | 559 | −0.86% | −4.00% | 40.3% | +1.38% |
+# | 60 日 | 537 | +1.30% | −7.87% | 37.6% | +2.49% |
+#
+# 同池同窗口的同类对比（10/20/60 日超额）：金叉共振 +0.35 / −0.07 / −0.95、
+# 玉柱擎天 +0.10 / +0.53 / +1.99、放量上涨 −0.45 / −0.32 / −0.71 —— 三个都比它差。
+# ⚠️ 但四档**中位数全负、胜率不到 50%**，收益是右尾驱动（最好 10 日 +82.5%、
+# 60 日 +213%），所以定位与「洗后可盯」同档：一份清单，不是买点信号。
+GCB_GAIN_MIN = 0.04  # 信号日涨幅门槛（公式里的 4%）
+GCB_GAIN_IDEAL = 0.08  # 涨幅到这给满分（单边）
+GCB_RSI_MAX = 60.0  # RSI6 上限（公式里的「低 RSI」）
+GCB_RSI_IDEAL = 45.0  # RSI6 低到这给满分
+GCB_UPPER_MAX = 0.2  # 上影 / 振幅 的上限（公式里的「短上影」）
+GCB_MIN_BARS = 30  # 够算 MA5 与 Wilder RSI6 的预热
+# 公式里分母写的是 `H-L+0.0001`（防一字板除零），这里照抄 —— 不加这个的话
+# 振幅为 0 的样本会除零，整只票的扫描会抛异常
+GCB_SPAN_EPS = 0.0001
+
 
 # ---------------------------------------------------------------- 数据结构
 
@@ -4541,6 +4572,108 @@ def _jade_pillar(bars: Bars) -> Signal | None:
     )
 
 
+def _wilder_rsi(close: np.ndarray, period: int = 6) -> np.ndarray:
+    """Wilder 平滑 RSI，与通达信 `SMA(X,N,1)` 同口径。
+
+    公式里 `RSI6:=SMA(MAX(C-LC,0),6,1)/SMA(ABS(C-LC),6,1)*100` —— 分母
+    `SMA(ABS(涨跌),6,1)` 恒等于 `SMA(涨,6,1) + SMA(跌,6,1)`（SMA 是线性的），
+    所以这就是标准 Wilder RSI，递推式 `Y[i] = Y[i-1] + (X[i] - Y[i-1]) / N`。
+
+    首根没有 RSI（公式里 `REF(C,1)` 不存在）；`total == 0`（整段没有波动）也返回
+    NaN —— NaN 参与比较恒为 False，等于那一条不通过，比随手给 0 或 100 安全
+    （实际上「今日涨幅 ≥4%」已经让分母不可能为 0，这条只是兜底）。
+    """
+    n = close.size
+    out = np.full(n, np.nan)
+    if n < period + 1:
+        return out
+    delta = np.diff(close)
+    gain = np.where(delta > 0.0, delta, 0.0)
+    loss = np.where(delta < 0.0, -delta, 0.0)
+    alpha = 1.0 / period
+    up = np.empty(n)
+    down = np.empty(n)
+    up[0] = down[0] = 0.0
+    for i in range(1, n):
+        up[i] = up[i - 1] + alpha * (gain[i - 1] - up[i - 1])
+        down[i] = down[i - 1] + alpha * (loss[i - 1] - down[i - 1])
+    total = up + down
+    out[1:] = np.divide(
+        100.0 * up[1:], total[1:], out=np.full(n - 1, np.nan), where=total[1:] > 0
+    )
+    return out
+
+
+def _ma_cross_big_yang(bars: Bars) -> Signal | None:
+    """金叉大阳：MA3 上穿 MA5 的当天，收出一根「低 RSI 的短上影大阳」。
+
+    逐字落自用户给的通达信公式（2026-10-10）：
+
+        买入 := CROSS(MA(C,3),MA(C,5)) AND 涨幅>=4% AND RSI6<60 AND 上影/振幅<=0.2;
+
+    四条要一起看：
+    - **金叉**（MA3 上穿 MA5）给「短期动能刚切」这个时点，且必须是**今天**穿上去的
+      （`CROSS` 的定义：今天 MA3 > MA5 且昨天 MA3 ≤ MA5），不是「已经在多头排列」；
+    - **涨幅 ≥4%** 把「金叉但只是横盘抖动」滤掉 —— 要的是一根真的大阳；
+    - **上影 ≤ 振幅 20%** 要求这根大阳是**收上去**的，而不是冲高被打回来的长上影；
+    - **RSI6 < 60** 是反向约束：涨了 4% 还没到超买，后面的空间没被透支。
+
+    ⚠️ 公式里的涨幅取 `C/REF(C,1)-1`（真实收益率），这里直接用 `pct_chg`：
+    本模块的 `close` 是前复权净值序列，`close[i]/close[i-1]-1` 与 `pct_chg`
+    **完全相等**（见 `build_bars`），所以两者同口径。
+
+    ⚠️ 上影比的分母带一个 `1e-4` 的尾巴，是照抄公式 `H-L+0.0001` 的写法
+    （防一字板除零）；一字板会因此算出 0、判成「短上影」，与公式一致。
+
+    ⚠️ 这是布尔与形态，没有「更像」的分级空间，所以底分 60（高过 `MIN_SCORE`）
+    保证命中全部入库，剩下 40 分按过线幅度分级、只用于排序。
+    """
+    if len(bars) < GCB_MIN_BARS:
+        return None
+    ma3 = _align(_ma_series(bars.close, 3), 3, len(bars))
+    ma5 = _align(_ma_series(bars.close, 5), 5, len(bars))
+    if not (
+        np.isfinite(ma3[-1])
+        and np.isfinite(ma5[-1])
+        and np.isfinite(ma3[-2])
+        and np.isfinite(ma5[-2])
+    ):
+        return None
+    if not (ma3[-1] > ma5[-1] and ma3[-2] <= ma5[-2]):  # CROSS(MA3, MA5)
+        return None
+
+    gain = float(bars.pct_chg[-1]) / 100.0
+    if gain < GCB_GAIN_MIN:
+        return None
+
+    _, _, _, _, _, upper, _, span = _candle(bars)
+    upper_ratio = upper / (span + GCB_SPAN_EPS)
+    if upper_ratio > GCB_UPPER_MAX:
+        return None
+
+    rsi6 = float(_wilder_rsi(bars.close, 6)[-1])
+    if not (rsi6 < GCB_RSI_MAX):  # NaN 也走这里（见 `_wilder_rsi`）
+        return None
+
+    score = 60.0
+    score += _gate_score(gain, GCB_GAIN_MIN, GCB_GAIN_IDEAL) * 15
+    score += _gate_score(upper_ratio, GCB_UPPER_MAX, 0.0) * 10
+    score += _gate_score(rsi6, GCB_RSI_MAX, GCB_RSI_IDEAL) * 15
+
+    return Signal(
+        "ma_cross_big_yang",
+        min(score, 100.0),
+        {"support": float(ma5[-1])},
+        {
+            "gain": round(gain, 4),
+            "rsi6": round(rsi6, 1),
+            "upper_ratio": round(upper_ratio, 3),
+            "ma3": round(float(ma3[-1]), 2),
+            "ma5": round(float(ma5[-1]), 2),
+        },
+    )
+
+
 # ---------------------------------------------------------------- 注册表
 
 # 蜡烛形态的分组名。抽成常量有两个原因：一是它比其它组名长得多
@@ -4618,6 +4751,10 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("pile_wash_wash", "缩量洗盘中", WUDAO_GROUP, _pile_wash_wash),
     # 2026-10-08 同批：华宝早期（连阳贴均、量抬头）—— 只观察，不动手
     Pattern("huabao_early", "华宝早期", WUDAO_GROUP, _huabao_early),
+    # 2026-10-10 用户给的通达信公式（金叉 + 4% 大阳 + 短上影 + RSI6<60）。
+    # 回测数字与同类对比见文件上方阈值块（结论：右尾驱动的清单，不是买点）。
+    # 板块关在 `scan_patterns.WUDAO_BOARD_KEYS`：只出创业板 + 科创板（回测口径）。
+    Pattern("ma_cross_big_yang", "金叉大阳", "趋势", _ma_cross_big_yang),
 )
 
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}

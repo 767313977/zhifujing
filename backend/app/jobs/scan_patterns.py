@@ -22,6 +22,10 @@
 **板块：六个池子都只收创业板 + 科创板**（`is_wudao_board`，2026-10-09 去掉主板；
 边界变化的来历见那个元组的注释）。
 
+**金叉大阳**（2026-10-10 加，用户给的通达信公式）**板块同上**（见 `WUDAO_BOARD_KEYS`），
+候选池不限 —— 它的回测就是在 wudao 池上做的。它不是悟道家族的池子，所以**不进
+`pattern_track.POOL_KEYS`**（成绩单不取它，那六个是「悟道之路」专属）。
+
 **候选池（「今天出过线」）只对「明天盯 / 明天预案」用**，其余四个池子**不限候选池**
 —— 这是按每个形态「它的票今天长得什么样」定的，别再统一收窄（10-08 收过一次，代价见下）：
 
@@ -73,7 +77,8 @@ from app.services.patterns import (
     usable_bar,
 )
 # 悟道六池的 key。借用成绩单那边那份（`pattern_track.POOL_KEYS` 就是这六个池子）——
-# 板块闸门要卡的就是它们，别再各写一份、免得加池子时漏掉一处。
+# 板块闸门要卡的就是它们（外加金叉大阳，见 `WUDAO_BOARD_KEYS`），别各写一份、
+# 免得加池子时漏掉一处。
 from app.services.pattern_track import POOL_KEYS as WUDAO_POOL_KEYS
 from app.sources.ifind import IfindError
 
@@ -92,7 +97,7 @@ _MIN_DAY_COVERAGE = 0.9
 
 # ---- 悟道各池的口径。2026-10-09 定稿，改动前先读模块顶部的表 ----
 
-# **只有这两个形态另限候选池**（六个池子都要过板块关，见 `WUDAO_POOL_KEYS` 与模块顶部）
+# **只有这两个形态另限候选池**（要过板块关的形态见 `WUDAO_BOARD_KEYS` 与模块顶部）
 WUDAO_CAND_KEYS = frozenset({"wudao_sample", "wudao_start"})
 
 # 候选窗口（按**当日冲高幅度** = 最高价 / 昨收 − 1，单位 %）：
@@ -308,13 +313,24 @@ def _candidate_codes(trade_date: date) -> set[str]:
     return codes
 
 
+#: 要过「只出创业板 + 科创板」这道板块关的形态。
+#:
+#: **刻意与 `WUDAO_POOL_KEYS` 分开**：那个元组还兼着「悟道成绩单取数」（见
+#: `pattern_track.POOL_KEYS`），而这里只管板块关 —— 金叉大阳不是悟道家族的池子。
+#:
+#: 金叉大阳（2026-10-10 用户给的通达信公式）回测就是在 wudao 池上做的：4% 大阳在
+#: 20cm 板和 10cm 主板不是同一件事，拿全市场跑会得到另一批票、数字也不代表生产
+#: （见 `scripts/backtest_patterns.py --board` 的说明），所以把板块锁死。
+WUDAO_BOARD_KEYS: tuple[str, ...] = (*WUDAO_POOL_KEYS, "ma_cross_big_yang")
+
+
 def _in_wudao_pool(
     pattern: str, code: str, cands: set[str], huabao_skip: set[str]
 ) -> bool:
     """这条悟道信号允不允许落库。
 
-    **六个池子（悟道家族）都先过板块关**：`is_wudao_board` = 创业板 + 科创板
-    （2026-10-09 用户要求去掉主板，见那个元组的注释）。
+    **六个池子（悟道家族）＋ 金叉大阳都先过板块关**：`is_wudao_board` = 创业板 + 科创板
+    （2026-10-09 用户要求去掉主板，见那个元组的注释；金叉大阳见 `WUDAO_BOARD_KEYS`）。
 
     板块过了之后再看两道：
     - 「明天盯 / 明天预案」另外**限候选池**（今天冲高 ≥ `WUDAO_CAND_MIN_HIGH` 的票）；
@@ -322,7 +338,7 @@ def _in_wudao_pool(
       用「今天强势」当候选等于把它们全筛掉，见模块顶部那张表），
       华宝早期另外排掉同一只票上已经命中的样板/启动。
     """
-    if pattern in WUDAO_POOL_KEYS and not is_wudao_board(code):
+    if pattern in WUDAO_BOARD_KEYS and not is_wudao_board(code):
         return False
     if pattern in WUDAO_CAND_KEYS:
         return code in cands
