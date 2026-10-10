@@ -494,7 +494,10 @@ export default function StockDetail() {
                   {dde.note}
                 </div>
               )}
-              <div className="grid grid-cols-2 overflow-hidden">
+              {/* 三格：DDE 那两个数 + 自由流通市值（2026-10-10 用户要求加在 5日DDE 之后）。
+                  自由流通市值不是 DDE 指标，是「这只票流通盘多大」的旁证 —— 同样一笔净流入，
+                  落在小流通盘上意义大得多。数据来自 profile（建池时取回，加列不花调用次数） */}
+              <div className="grid grid-cols-3 overflow-hidden">
                 <Cell
                   label="主力净流入额"
                   value={fmtAmount(latestDde?.net_inflow)}
@@ -505,6 +508,7 @@ export default function StockDetail() {
                   value={fmtAmount(latestDde?.dde)}
                   tone={toneOf(latestDde?.dde)}
                 />
+                <Cell label="自由流通市值" value={fmtAmount(profile?.free_float_mv)} />
               </div>
               <div className="px-2 pt-2">
                 <div className="mb-1 text-[12px] text-fg-dim">
