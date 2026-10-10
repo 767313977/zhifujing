@@ -12,7 +12,6 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import (
     admin,
-    ai,
     analysis,
     anomaly_map,
     auth as auth_api,
@@ -142,7 +141,6 @@ app.include_router(watchlist.router)
 app.include_router(note.router)
 app.include_router(patterns.router)
 app.include_router(anomaly_map.router)
-app.include_router(ai.router)
 app.include_router(admin.router)
 
 
