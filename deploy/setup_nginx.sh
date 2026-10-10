@@ -196,6 +196,20 @@ proxy_set_header X-Forwarded-Proto $scheme;
 # 而后台其实还在采，这种「假失败」最难排查。
 proxy_read_timeout 600s;
 proxy_send_timeout 600s;
+
+# 安全响应头（2026-10-10 外部审查）。⚠️ 必须与 proxy_pass **同层**（都在 location
+# 里）：nginx 里 add_header 是「当前层有就**整体覆盖**父层」的规则，放在外层父块
+# 会被这一层的其它 add_header 顶掉 —— 只有放进片段、跟 proxy_pass 在一起才真正下发。
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+# CSP 取保守值，别把 SPA 打坏：
+#   - style-src 带 'unsafe-inline' 是**因为前端有内联 style**（不是偷懒）；要收紧得先改前端。
+#   - img-src / font-src 放 data: —— 图标、字体可能是内联 data URL。
+#   - connect-src 'self' —— 页面只打本站 /api。
+#   - ECharts 画的是 canvas，不需要额外的 script / worker 源。
+add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:; frame-ancestors 'self'; base-uri 'self'; object-src 'none'" always;
 NGINX
 
 # 后端端口走 __占位符__ 而不是 $BACKEND_PORT：这段定界符带引号（里面有 nginx
@@ -255,11 +269,35 @@ HOOK
   cat > "$SITE" <<'NGINX'
 # 80：只做两件事 —— 给 ACME 校验放行、其余全部 301 到 https
 server {
-    listen 80 default_server;
+    listen 80;
     server_name __SERVER_NAMES__;
 
     location /.well-known/acme-challenge/ { root __WEBROOT__; }
     location / { return 301 https://$host$request_uri; }
+}
+
+# 80 默认块：非本站 Host 直接关连接（2026-10-10 加固）。
+# 为什么要单列一块：80 上原来只有一个块、还是 default_server，等于任何 Host（直接拿
+# IP 访问、或伪造 Host）都会被 301 引到 https 再落到本站后端 —— 加这块后非本站 Host
+# 在 80 上就直接 444（nginx 关连接，不给任何响应体/状态行）。
+server {
+    listen 80 default_server;
+    server_name _;
+
+    # ⚠️ ACME 校验必须照常放行：签发/续期时 Host 就是本站域名、正常会落到上面那块，
+    # 这里再留一份是兜底，别让校验路径被 444 挡死。
+    location /.well-known/acme-challenge/ { root __WEBROOT__; }
+    # 其余路径：444（关连接）
+    location / { return 444; }
+}
+
+# 443 默认块：SNI/域名对不上本站的，在 TLS 握手阶段就拒绝，连证书都不返回。
+# ssl_reject_handshake 需要 nginx >= 1.19.4（线上 1.24 可用）；更老的版本要退回
+# `return 444;`（那样得先给它配一张证书）。
+server {
+    listen 443 ssl http2 default_server;
+    server_name _;
+    ssl_reject_handshake on;
 }
 
 # 443：正式入口
