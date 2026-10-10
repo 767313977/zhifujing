@@ -51,21 +51,6 @@ function Stat({ label, value }: { label: string; value: number }) {
   )
 }
 
-/**
- * 行业列只显示末段；完整三级路径放标题栏（与形态页同一套处理）。
- *
- * ⚠️ 末尾的 `Ⅰ/Ⅱ/Ⅲ` 是同花顺标级别用的记号（`电子-半导体-集成电路Ⅲ`），
- * **与后端 `_sector_of` 同一规则地去掉** —— 两处不同步的话，「板块」列与「行业」列
- * 会只差一个后缀，看起来像同一个字段显示了两个不同的值。
- */
-function industryLast(industry: string | null): string {
-  if (!industry) return '—'
-  const parts = industry.split('-')
-  const raw = (parts[parts.length - 1] || '').trim()
-  const trimmed = raw.replace(/[ⅠⅡⅢⅣⅤ]+$/, '').trim()
-  return trimmed || raw || '—'
-}
-
 export default function AnomalyPage() {
   const [data, setData] = useState<AnomalyMap | null>(null)
   const [loading, setLoading] = useState(true)
@@ -249,9 +234,6 @@ export default function AnomalyPage() {
                   <th>连板</th>
                   <th>涨幅%</th>
                   <th>总市值</th>
-                  <th className="!text-left" title="同花顺行业完整三级路径（悬停看全）">
-                    行业
-                  </th>
                   <th className="!text-left" title="同花顺涨停原因（limit_reason），只有涨停股有">
                     涨停原因
                   </th>
@@ -271,7 +253,12 @@ export default function AnomalyPage() {
                     className={row.theme_start ? 'bg-ok/10' : ''}
                   >
                     <td className="!text-left">
-                      <span className="text-fg-muted">{row.sector}</span>
+                      {/* 板块＝同花顺行业路径的末段（去掉 Ⅰ/Ⅱ/Ⅲ 级别记号），
+                          完整路径放悬停提示 —— 2026-10-09 用户指出原先并排的「行业」
+                          列显示的就是同一个值（重复），那一列已删。 */}
+                      <span className="text-fg-muted" title={row.industry ?? undefined}>
+                        {row.sector}
+                      </span>
                       {row.theme_start && (
                         <span className="ml-1.5 border border-ok/40 px-1 py-[1px] text-[11px] text-ok">
                           题材启动日
@@ -309,14 +296,6 @@ export default function AnomalyPage() {
                     <td>
                       <span className="num text-fg-muted">
                         {row.cap == null ? '—' : `${row.cap.toFixed(1)}亿`}
-                      </span>
-                    </td>
-                    <td className="!text-left">
-                      <span
-                        className="whitespace-nowrap text-[13px] text-fg-muted"
-                        title={row.industry ?? undefined}
-                      >
-                        {industryLast(row.industry)}
                       </span>
                     </td>
                     <td className="!text-left">
