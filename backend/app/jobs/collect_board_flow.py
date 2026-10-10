@@ -51,6 +51,11 @@ BOARD_FLOW_TASK = "board_flow"
 # 全市场正常是 5000+ 只，卡 1000 只留足余量
 MIN_COVERAGE = 1000
 
+# 逐板块循环的熔断阈值：连着这么多个板块都取不到就**中断本轮**（见 `aggregate`）。
+# 板块成分股要逐个板块请求、一轮约 370 次；开盘啦整体不可用时没必要把请求全耗完，
+# 早停早让出采集锁。
+MAX_CONSECUTIVE_FAILURES = 10
+
 
 def _prev_trade_date(day: date) -> date | None:
     with session_scope() as session:
@@ -141,13 +146,27 @@ def aggregate(day: date, settings: Settings | None = None) -> dict:
     failed = 0
     empty = 0
     unmatched: list[str] = []
-    for code, name in boards:
+    consecutive = 0
+    for index, (code, name) in enumerate(boards, 1):
         calls += 1
         try:
             members = source.board_members(code, member_day)
+            consecutive = 0
         except Exception as exc:  # noqa: BLE001 - 单个板块取不到不该让整轮失败
             failed += 1
+            consecutive += 1
             logger.debug("板块 %s %s 成分股取不到：%s", code, name, exc)
+            if consecutive >= MAX_CONSECUTIVE_FAILURES:
+                # 连着这么多板块都取不到，多半是开盘啦整体不可用 —— 中断本轮，
+                # 别把剩下几百次请求白耗掉（也要及时让出采集锁）
+                logger.warning(
+                    "板块成分股连续 %d 个取不到（%s），中断本轮（已处理 %d/%d）",
+                    consecutive,
+                    exc,
+                    index,
+                    len(boards),
+                )
+                break
             continue
 
         codes = [str(item["code"]).strip() for item in members if item.get("code")]

@@ -52,7 +52,7 @@ from app.db import session_scope, upsert_fill, upsert_many
 from app.jobs.collect_universe import crawl_prefixes
 from app.jobs.push_brief import already_pushed, send_elements
 from app.models import CollectLog, StockBasic, StockDaily, StockDde, TradeCalendar
-from app.sources.ifind import IfindClient
+from app.sources.ifind import get_shared_client
 from app.sources.markdown_table import pick_float, pick_text, to_float
 
 logger = logging.getLogger(__name__)
@@ -124,7 +124,7 @@ def collect_market(day: date) -> tuple[int, int]:
         return 0, 0
 
     raw, calls = crawl_prefixes(
-        IfindClient(), lambda prefix: _query(prefix, day), str(day)
+        get_shared_client(), lambda prefix: _query(prefix, day), str(day)
     )
     rows: list[dict] = []
     named: list[dict] = []

@@ -10,7 +10,7 @@
 """
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -51,6 +51,7 @@ from app.services import limit_rules
 from app.services.auth import Cooldown, RateLimiter, current_user
 from app.services.patterns import build_bars
 from app.services.stock_phase import load_phase
+from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.em_news import fetch_stock_news
 from app.sources.ifind import IfindError, normalize_code
 from app.sources.kaipanhong import TAXONOMY_SELECTED
@@ -87,6 +88,38 @@ _dde_fetch_limiter = RateLimiter(
     lock_sec=DDE_FETCH_WINDOW_SEC,
 )
 
+# 个股新闻的 TTL 缓存 + 按用户限流（2026-10-11 加）。新闻这条源没有配额，但
+# **每次打开都现取**等于让任何人拿它当爬虫去打外部站点；而新闻的价值以分钟计，
+# 缓存 10 分钟完全够用。限流只挡「缓存未命中时的现取」，命中缓存不计数。
+#
+# ⚠️ 缓存键含用户可传的 6 位代码，理论上组合极大 → 必须**有上限**（见 _cache_news）：
+# 不然反复换假代码就能把内存堆满。expired 条目在写新值时顺手清掉。
+NEWS_TTL_SEC = 600
+NEWS_CACHE_MAX = 256
+NEWS_FETCH_LIMIT = 30
+NEWS_FETCH_WINDOW_SEC = 600
+_news_cache: dict[tuple[str, int], tuple[datetime, StockNewsOut]] = {}
+_news_fetch_limiter = RateLimiter(
+    limit=NEWS_FETCH_LIMIT,
+    window_sec=NEWS_FETCH_WINDOW_SEC,
+    lock_sec=NEWS_FETCH_WINDOW_SEC,
+)
+
+
+def _cache_news(key: tuple[str, int], value: StockNewsOut) -> None:
+    """写新闻缓存并维持上限：先清过期，再超就丢最旧的一条（只是内存兜底）。"""
+    now = datetime.now()
+    ttl = timedelta(seconds=NEWS_TTL_SEC)
+    _news_cache[key] = (now, value)
+    if len(_news_cache) > NEWS_CACHE_MAX:
+        for stale_key, (stamp, _) in list(_news_cache.items()):
+            if now - stamp >= ttl:
+                _news_cache.pop(stale_key, None)
+    if len(_news_cache) > NEWS_CACHE_MAX:
+        oldest = min(_news_cache, key=lambda k: _news_cache[k][0])
+        _news_cache.pop(oldest, None)
+
+
 # 可选的 K 线周期。周/月由本地日线重采样（`_resample`），不额外取数
 PERIODS = ("day", "week", "month")
 
@@ -112,31 +145,23 @@ def _code(raw: str) -> str:
 def _resolve_name(session: Session, code: str) -> str | None:
     """这只股票叫什么。iFinD 的题材问句只认名称，所以必须先有名字。
 
-    按可信度依次从自选股、股票基础信息、本地日线里找。
+    **只信库里的客观数据**（`stock_basic` / `stock_daily`），**不看** `watchlist.name`：
+    那一列是用户自己 POST/PATCH 填的，而这个名字会被个股页、DDE、新闻、题材、
+    新闻过滤词 `_mentions`、iFinD 题材问句一起用 —— 让会员填的名字变成「全站可见」
+    的股票名，等于把展示层字段开成了可写的（2026-10-11 收紧）。
+
+    顺序：`stock_basic`（权威的当前简称）→ `stock_daily`（日线里落的历史名称）。
     """
-    # ⚠️ 自选股从 2026-09-28 起按用户隔离（主键变成 `(user_id, code)`），所以
-    # 不能再用 `session.get(Watchlist, code)` —— 那个写法会报「主键值个数不对」。
-    # 而且**名字本来就不是「谁的」数据**（600519 对谁都叫茅台），取任意一条即可。
-    watchlist_name = session.scalars(
-        select(Watchlist.name)
-        .where(Watchlist.code == code, Watchlist.name.is_not(None))
-        .limit(1)
-    ).first()
     basic = session.get(StockBasic, code)
+    if basic and basic.name:
+        return basic.name
     latest = session.scalars(
         select(StockDaily.name)
         .where(StockDaily.code == code, StockDaily.name.is_not(None))
         .order_by(StockDaily.trade_date.desc())
         .limit(1)
     ).first()
-    for candidate in (
-        watchlist_name,
-        basic.name if basic else None,
-        latest,
-    ):
-        if candidate:
-            return candidate
-    return None
+    return latest
 
 
 def _pct_chg_5d(recent: list[StockDaily]) -> float | None:
@@ -361,11 +386,25 @@ def _limit_flags(items: list[dict], code: str, name: str | None) -> dict[date, d
     prev_close: float | None = None
     for item in items:
         out[item["trade_date"]] = {
+            # ⚠️ 必须把 `trade_date` 传进去：主板 ST 的涨跌幅 2026-07-06 起从 5% 改成 10%，
+            # 不传日期就只能按默认（当前口径）判，历史那段 ST 的 5% 板会被漏标。
             "is_limit_up": limit_rules.is_limit_up(
-                item["pct_chg"], item["close"], item["high"], code, name, prev_close
+                item["pct_chg"],
+                item["close"],
+                item["high"],
+                code,
+                name,
+                prev_close,
+                trade_date=item["trade_date"],
             ),
             "is_limit_down": limit_rules.is_limit_down(
-                item["pct_chg"], item["close"], item["low"], code, name, prev_close
+                item["pct_chg"],
+                item["close"],
+                item["low"],
+                code,
+                name,
+                prev_close,
+                trade_date=item["trade_date"],
             ),
         }
         prev_close = item["close"]
@@ -582,8 +621,9 @@ def _stock_dde(code: str, days: int, user_id: int) -> tuple[list[StockDde], str 
     try:
         _, truncated = collect_stock_dde(code, days)
     except IfindError as exc:
+        # 细节只进日志：`exc` 里可能带上游主机名 / 响应片段，不该回给前端
         logger.warning("个股 %s 的 DDE 取数失败：%s", code, exc)
-        return cached, f"iFinD 取数失败：{exc}"
+        return cached, "iFinD 取数失败，请稍后再试"
 
     with session_scope() as reader:
         rows = _read_dde(reader, code, days)
@@ -635,31 +675,56 @@ def news(
     code: str,
     limit: int = Query(20, ge=1, le=50, description="返回最近 N 条"),
     session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
 ) -> StockNewsOut:
     """个股新闻（**东财口径**，按发布时间倒序，只留讲这只票的那几条）。
 
-    **每次打开都现取、不落库**：这条源没有配额、一次请求就够，而新闻的价值全在「新」——
-    落库还得再定一套过期策略，不值。取不到时把原因写进 `note`（页面照常显示其它内容），这里**不把它当 500**：
+    **缓存 + 限流**（2026-10-11 加，见 `NEWS_TTL_SEC`）：这条源没有配额、一次请求就够，
+    但原来每次打开都现取 —— 那就等于把外部站点开放给人当爬虫。现在同一 `(代码, 条数)`
+    在 10 分钟内直接吃缓存，未命中才现取，并按用户限流现取的次数。
+
+    ⚠️ 取不到时把原因写进 `note`（页面照常显示其它内容），**不把它当 500**：
     个股页少一块新闻不该让整页报错。空列表与「源挂了」分得开 —— 前者是「真没搜到」。
 
     ⚠️ `hidden` 要带给前端：被筛掉的是「只在正文表格里提到代码」的名单类稿件，
     不**静默**丢 —— 界面上写「另隐去 N 条」（规则见 `sources/em_news.fetch_stock_news`）。
     """
     code = _code(code)
+    key = (code, limit)
+    cached = _news_cache.get(key)
+    if cached is not None and datetime.now() - cached[0] < timedelta(seconds=NEWS_TTL_SEC):
+        return cached[1]
+
+    # 缓存没命中、要真去打外部源了 → 先过按用户限流（命中缓存不计数）
+    user_key = f"news:{user.id}"
+    wait = _news_fetch_limiter.retry_after(user_key)
+    if wait is not None:
+        raise HTTPException(
+            status_code=429,
+            detail=f"新闻刷新过于频繁，请 {int(wait) + 1} 秒后再试",
+            headers={"Retry-After": str(int(wait) + 1)},
+        )
+    _news_fetch_limiter.fail(user_key)
+
     name = _resolve_name(session, code)
     try:
         found = fetch_stock_news(code, name=name, limit=limit)
     except Exception as exc:  # noqa: BLE001 - 源挂了不该让整页 500
+        # 细节只进日志（可能带上游主机名 / 响应片段），对外给通用文案
         logger.warning("取 %s 的个股新闻失败：%s", code, exc)
-        return StockNewsOut(code=code, name=name, rows=[], note=f"新闻源没返回数据：{exc}")
+        return StockNewsOut(
+            code=code, name=name, rows=[], note="新闻源暂时没返回数据，请稍后再试"
+        )
     note = None if found.items else "东财这条源没搜到这只票的新闻（小盘股 / 次新常见）"
-    return StockNewsOut(
+    result = StockNewsOut(
         code=code,
         name=name,
         rows=[StockNewsRow.model_validate(row) for row in found.items],
         hidden=found.hidden,
         note=note,
     )
+    _cache_news(key, result)
+    return result
 
 
 @router.get("/{code}/themes", response_model=StockThemes)
@@ -720,19 +785,36 @@ def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
     return StockThemes(code=code, name=name, board_date=board_date, themes=items)
 
 
+def _guard_quota() -> None:
+    """手动同步的配额闸：配额紧张到 80% 就停手动同步。
+
+    `PAUSE_KLINE`（已用 ≥80%）本来就要停形态选股的全市场日线更新，手动同步比它更
+    非必需 —— 一起让路，把剩下的额度留给指数 / 情绪主线。日常采集仍会兜底刷新。
+    """
+    level = quota_level()
+    if level >= QuotaLevel.PAUSE_KLINE:
+        raise HTTPException(
+            status_code=429,
+            detail=f"iFinD 配额已用到 80%，暂停手动同步（{level_label(level)}）",
+            headers={"Retry-After": "3600"},
+        )
+
+
 @router.post("/{code}/sync")
 def sync(
     code: str,
-    days: int = Query(STOCK_FULL_DAYS, ge=5, le=500, description="回看的交易日数"),
+    days: int = Query(STOCK_FULL_DAYS, ge=5, le=250, description="回看的交易日数"),
     user: AppUser = Depends(current_user),
 ) -> dict:
     """同步该股日线到本地缓存。首次打开个股页时调用。
 
     ⚠️ **按用户冷却 `SYNC_COOLDOWN_SEC` 秒**（见模块顶部的说明）：本站唯一的成本
     就是 iFinD 调用，一次 sync 真发十几次请求，不挡连点 / 脚本刷就会白烧配额。
-    冷却在**成功之后**才记账 —— 失败（iFinD 出错 / 采集正忙）不消耗冷却，前端下次
-    打开还能重试（前端也是「成功才标记」的口径，见 StockDetail.tsx）。
+    冷却**只在真去取过数时**才记账（成功或 `IfindError`）—— `CollectionBusy`（采集
+    正忙）根本没发起取数，不占冷却，前端可立刻重试（与自选同步同一口径，2026-10-11 统一）。
     """
+    _guard_quota()
+
     wait = _sync_cooldown.remaining(f"user:{user.id}")
     if wait is not None:
         raise HTTPException(
@@ -744,8 +826,12 @@ def sync(
         with collect_guard("个股同步"):
             written = DailyCollector().sync_stock(_code(code), days=days)
     except CollectionBusy as exc:
+        # 采集正忙：没发起取数，不占冷却
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except IfindError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        # 真去取过数了（配额已经花掉）→ 占用冷却；对外只说人话，细节进日志
+        logger.warning("个股 %s 同步失败（用户 %s）：%s", code, user.id, exc)
+        _sync_cooldown.touch(f"user:{user.id}")
+        raise HTTPException(status_code=400, detail="同步失败，请稍后再试") from exc
     _sync_cooldown.touch(f"user:{user.id}")
     return {"rows": written}

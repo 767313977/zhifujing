@@ -188,15 +188,23 @@ def login(
 ) -> MeOut:
     _require_secure_transport(request)
     ip = auth.client_ip(request)
+    # 用户名先归一化，限流与查库都用这一份
+    username = payload.username.strip()
+    # **两道限流并存**：按 IP（login_limiter）与按用户名（login_user_limiter），
+    # 任一命中就拒绝。只有按 IP 的话，换个 IP 就能绕开、分布式爆破几乎不受限。
     auth.guard_rate(ip)
+    auth.guard_user_rate(username)
 
-    user = db.scalar(select(AppUser).where(AppUser.username == payload.username.strip()))
+    user = db.scalar(select(AppUser).where(AppUser.username == username))
     # 没这个用户也照走一次**同样开销**的哈希校验。⚠️ 这里必须给**假哈希**而不是空串
     # （`services.auth.DUMMY_PASSWORD_HASH`）：空串会卡在解析那步直接返回 False、
     # **scrypt 根本不跑**，于是「有没有这个人」就从响应快慢上漏出去了（2026-10-10 修）
     stored = user.password_hash if user is not None else auth.DUMMY_PASSWORD_HASH
     if user is None or not auth.verify_password(payload.password, stored):
+        # 两条限流**都**记一笔 —— 用户名不存在也照记，否则按名计数本身就成了
+        # 「哪些用户名有效」的探测口（见 services/auth.login_user_limiter）
         auth.login_limiter.fail(ip)
+        auth.login_user_limiter.fail(username)
         raise HTTPException(status_code=401, detail="用户名或密码不对")
     if user.disabled_at is not None:
         raise HTTPException(status_code=403, detail="这个账号已被停用")
@@ -204,6 +212,7 @@ def login(
     token = auth.create_session(db, user, request.headers.get("user-agent"))
     db.commit()
     auth.login_limiter.reset(ip)
+    auth.login_user_limiter.reset(username)
     _set_cookie(response, token, request)
     return MeOut.model_validate(user)
 

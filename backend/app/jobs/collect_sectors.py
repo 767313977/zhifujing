@@ -36,6 +36,11 @@ PROBE_BOARDS = 3
 # （实测与短线侠板块轮动页逐位一致，见 `_write_leaders`）。
 LEADER_COUNT = 5
 
+# 成分股预取逐板块循环的熔断阈值：连着这么多个板块都失败就中断本轮（见
+# `collect_all_members`）。它比 PROBE_BOARDS 宽松 —— PROBE_BOARDS 判的是「当天名单
+# 还没发布」（一行都没写就放弃），这里判的是「已经写了一些、然后源整体挂了」。
+MAX_CONSECUTIVE_FAILURES = 20
+
 # 一次取数拿到的板块数不得少于「已知板块数」的这个比例，否则**整天都不写**。
 #
 # 这是防「静默截断」的闸门。开盘红历史接口的 `Count` 只报当页条数（50/50/…/20），
@@ -150,6 +155,7 @@ class SectorCollector:
         """
         baseline = known if known is not None else self.known_counts()
         written = 0
+        truncated: list[str] = []
         for taxonomy in TAXONOMIES:
             boards = self.kph.board_ranking(trade_date, taxonomy)
             expected = baseline.get(taxonomy, 0)
@@ -162,9 +168,11 @@ class SectorCollector:
                     len(boards),
                     expected,
                 )
+                truncated.append(f"{taxonomy}({len(boards)}/{expected})")
                 continue
             if not boards:
                 logger.warning("开盘红 %s %s 取到 0 个板块，跳过", taxonomy, trade_date)
+                truncated.append(f"{taxonomy}(0)")
                 continue
 
             # 别人写的列要先捞出来（整天替换会连它一起删掉，见 `_kept_external`）。
@@ -206,6 +214,13 @@ class SectorCollector:
                     )
                 )
                 written += upsert_many(session, SectorDaily, rows)
+        if truncated:
+            # 完整性闸门触发 → 这天的板块不完整，**抛错**让调用方（`_step`）记 failed
+            # 而不是 ok，好重试（2026-10-10 修）。已写入的另一些口径不回滚（各自事务
+            # 已提交）——「缺一个口径」比「整天空着」好，但不能记成 ok 让人以为采全了。
+            raise RuntimeError(
+                f"{trade_date} 板块取数不完整（疑翻页截断）：{'、'.join(truncated)}"
+            )
         return written
 
     # ------------------------------------------------------------ 历史回补
@@ -249,12 +264,21 @@ class SectorCollector:
             known = self.refresh_sector_list(end)
 
         written = 0
+        skipped = 0
         for index, day in enumerate(day_list, 1):
-            written += self.collect_day(day, known)
+            # 单天不完整（完整性闸门触发）不该中断整轮回补 —— 逐天兜住，
+            # 该天记「跳过」，其余交易日照常补（2026-10-10 修）
+            try:
+                written += self.collect_day(day, known)
+            except Exception as exc:  # noqa: BLE001 - 单天失败不拖垮整轮回补
+                skipped += 1
+                logger.warning("板块回补 %s 跳过：%s", day, exc)
             if index % PROGRESS_EVERY == 0:
                 logger.info("板块回补进度 %d/%d（最新 %s）", index, len(day_list), day)
-        logger.info("板块回补完成：%d 个交易日，%d 行", len(day_list), written)
-        return {"days": len(day_list), "written": written}
+        logger.info(
+            "板块回补完成：%d 个交易日，%d 行（跳过 %d 天）", len(day_list), written, skipped
+        )
+        return {"days": len(day_list), "written": written, "skipped": skipped}
 
     # ------------------------------------------------------------ 成分股
 
@@ -372,11 +396,14 @@ class SectorCollector:
 
         written = 0
         failed = 0
+        consecutive = 0
         for index, code in enumerate(todo, 1):
             try:
                 written += self.collect_members(trade_date, code)
+                consecutive = 0
             except Exception as exc:  # noqa: BLE001 - 单个板块不该拖垮整轮
                 failed += 1
+                consecutive += 1
                 if failed >= PROBE_BOARDS and written == 0:
                     logger.warning(
                         "开盘红 %s 的成分股连着 %d 个板块都取不到（%s），当天名单应该还"
@@ -393,6 +420,18 @@ class SectorCollector:
                         "failed": failed,
                         "aborted": True,
                     }
+                if consecutive >= MAX_CONSECUTIVE_FAILURES:
+                    # 已经写了一些、然后源整体挂了：连续这么多都取不到就中断本轮，
+                    # 别把剩下几百次请求白耗掉（也要及时让出采集锁）
+                    logger.warning(
+                        "开盘红 %s 的成分股连续 %d 个板块取不到，中断本轮"
+                        "（已写 %d 行 / 待取 %d 个板块）",
+                        trade_date,
+                        consecutive,
+                        written,
+                        len(todo) - index,
+                    )
+                    break
             if index % PROGRESS_EVERY == 0:
                 logger.info("成分股预取进度 %d/%d（已写 %d 行）", index, len(todo), written)
         logger.info(

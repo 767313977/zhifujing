@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
 from app.db import get_db
-from app.models import Lhb, LimitPool, LimitReason, StockConcept
+from app.models import Lhb, LimitPool, LimitReason, StockConcept, TradeCalendar
 from app.schemas import (
     LadderLevel,
     LhbOut,
@@ -243,12 +243,22 @@ def promotion(
     只能得出 N-1 天的晋级率。窗口内最早那天只当基数、不出现在结果里，
     这样不会因为「前一日无数据」而算出一堆假的 0%。
     """
+    # 日期序列取**交易日历**，不取 limit_pool 自己的日期（2026-10-10 修）：
+    # 池子缺一天时（回补没跑到、上游那天没数据），原来会把「T-2」当成「昨日」，
+    # 于是 T-1 那批的晋级率被算到 T 上，整条曲线错位。用日历就没有这个问题 ——
+    # 缺的那天池子是空的，基数 0、晋级率记 None（如实呈现「那天没数据」）。
+    anchor = session.scalar(
+        select(func.max(LimitPool.trade_date)).where(LimitPool.pool_type == "up")
+    )
+    if anchor is None:
+        return PromotionSeries(
+            dates=[], levels=[], overall_counts=[], overall_promoted=[], overall_rates=[]
+        )
     recent = list(
         session.scalars(
-            select(LimitPool.trade_date)
-            .distinct()
-            .where(LimitPool.pool_type == "up")
-            .order_by(LimitPool.trade_date.desc())
+            select(TradeCalendar.trade_date)
+            .where(TradeCalendar.trade_date <= anchor)
+            .order_by(TradeCalendar.trade_date.desc())
             .limit(days + 1)
         )
     )

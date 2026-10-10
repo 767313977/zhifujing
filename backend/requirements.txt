@@ -7,4 +7,8 @@ pydantic-settings==2.15.0
 pypinyin==0.55.0
 requests==2.34.2
 SQLAlchemy==2.0.54
+# 本仓库第一次显式钉 starlette：fastapi 只是「>=」依赖它，而 require_login 的路径判断
+# 依赖 `request.scope`（旧版曾用可被 Host 头影响的 URL 重建，见 CVE-2026-48710）。
+# 线上已是 1.6.0，这里给个下限，防止哪天被解析回旧版本。
+starlette>=1.0.1
 uvicorn[standard]==0.53.0

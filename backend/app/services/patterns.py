@@ -84,6 +84,10 @@ PLATFORM_DAYS = 30
 # 30 日振幅上限。实测全市场分位：10% 分位 = 12.9%、20% 分位 = 17.2%，
 # 取 15% 只留 421 只候选、当天只有 6 只命中，偏严；放宽到 18% 留 681 只
 PLATFORM_MAX_RANGE = 0.18
+# 平台宽度 ≤ 这个值就算「够窄」、拿满那 40 分（越窄越好，单方向）。原写法把
+# `PLATFORM_MAX_RANGE - width` 喂给 `_band_score`，宽度 ≤3% 时正好落在 cap 上拿 0 分 ——
+# 与注释「平台越窄越好」相反（2026-10-10 改成单方向的 `_gate_score`）。
+PLATFORM_IDEAL_RANGE = 0.03
 PLATFORM_VOL_MULT = 1.5
 # 收盘高出平台上沿太多就不再是「突破」了，那是追高。
 # 没有这条的话，一只票突破后会连着好几天留在榜上，越涨分越高（其实越危险）
@@ -747,6 +751,12 @@ DIAMOND_MIDDLE_EDGE = 1.6  # 中段振幅至少要达到两端的这个倍数（
 
 # 蜡烛形态（单根 / 两根 / 三根）
 CANDLE_BODY_MAX = 0.35  # 小实体：实体 / 全日振幅 的上限
+# 实体占振幅的**下限**：实体要看得见，不能是十字星（与 `KNEAD_MIN_BODY` 同一思路）。
+# ⚠️ 必需而非保险：前复权把「开 = 收」算成 `open × (net/close)`，真实数据上几乎必然留一个
+# 1e-13 量级的浮点尾巴，`body <= 0` / `open == close` 这种位精确比较挡不住 —— 于是
+# 「影线 ≥ 实体 × 2」在实体趋近 0 时被白送（锤子线 shadow_ratio 出现过 5e13），或
+# 「今日实体 / 昨日实体」爆成 1e12 直接满分。取 0.05，与 `KNEAD_MIN_BODY` 同值。
+CANDLE_MIN_BODY = 0.05
 CANDLE_SHADOW_MULT = 2.0  # 长影线至少是实体的多少倍
 CANDLE_SHORT_SHADOW = 0.3  # 另一侧影线占振幅的上限
 CANDLE_PRIOR_DAYS = 5
@@ -825,6 +835,58 @@ GCB_MIN_BARS = 30  # 够算 MA5 与 Wilder RSI6 的预热
 # 振幅为 0 的样本会除零，整只票的扫描会抛异常
 GCB_SPAN_EPS = 0.0001
 
+# 做T买点（2026-10-10 用户给的「V5 日线做T」主图公式）
+#
+# 原式是一张主图叠加指标，同时有买（深B / ★B / 双B）和卖（卖T）两侧。**这里只落
+# 买方向**：站点扫的是「今天有什么买点」，卖出侧是持仓纪律、要看自己手里的票，
+# 不属于全市场扫描。三档是层层包含的（双B ⊂ ★B ⊂ 深B），一根 K 线只报最高那档。
+#
+# 回测（`python scripts/backtest_patterns.py --pattern t_buy`，
+# 4945 只 · 260 个交易日 · 5250 条信号）：
+#
+# | 持有 | 信号 | 均值 | 中位 | 胜率 | 基准均值 | 超额 |
+# | --- | --- | --- | --- | --- | --- | --- |
+# | 5 日 | 5250 | −1.53% | −2.48% | 34.0% | −1.08% | −0.46% |
+# | 10 日 | 5249 | −2.44% | −4.17% | 34.4% | −2.72% | +0.28% |
+# | 20 日 | 5248 | −6.19% | −8.19% | 28.1% | −6.64% | +0.45% |
+# | 60 日 | 5062 | −4.98% | −5.74% | 34.7% | −6.76% | +1.78% |
+#
+# ⚠️ **四档中位数全负、胜率 28~35%，只有 10/60 日超额微正** —— 它是个「越跌越买」
+# 的清单，与「均线粘合 / 地量见底」同档，**别当买点信号用**。样本区间（2026-04~07）
+# 是单边下跌，基准 5/20/60 日 −1.1%/−6.6%/−6.8%，抄底型信号在这段天生吃亏；
+# 但中位比基准还低 1.4~1.6 个点，说明不只是行情的原因。
+# 原式是用户点名要的，先按它落库；收紧方案（只留 ★B/双B、或给底背离补一条
+# 「MA20 走平/上翘」）等看过实际命中再定。明细里的 `tier` 只改排序分、不改命中
+# —— 三档层层包含，见 `_t_buy`。
+T_BUY_MIN_BARS = 150  # 120 日背离窗 + 5 日观察窗 + EMA26 预热，再留余量
+T_BUY_DIVERGE_DAYS = 120  # 原式的 `C120L / DIF120L / V120H` 那一档窗口
+T_BUY_OBSERVE_DAYS = 5  # `SUM(底观察,5)>0`
+T_BUY_CROSS_DAYS = 3  # `EXIST(MA3金叉MA5,3)`
+T_BUY_NEAR_TOL = 0.02  # 贴近 120 日新低：`C<=C120L*1.02`
+T_BUY_SHORT_TOL = 0.01  # 短窗那两档的容差：`*1.01`（低）/ `*0.99`（高）
+T_BUY_DIF_RATIO = 0.85  # 背离时的 DIF 比较系数（`DIF>DIF120L*0.85`）
+T_BUY_VOL_RATIO = 0.5  # 背离时量能要缩到同窗最高量的这个比例以下
+T_BUY_HIST_RATIO = 0.8  # MACD 柱背离系数（原式直接写的 0.8，与 DIF 那档不同）
+T_BUY_GAP_DIP = -2.0  # 底背要求的乖离上界（必须在 MA20 下方）
+T_BUY_GAP_BASE = -3.0  # 基买的乖离上界（比底背更深）
+# 乖离掉到这个深度，档位分之外的那 16 分给满（只影响排序）。
+# ⚠️ 2026-10-10 从 −8 收到 −12：10-09 那天的命中里，`双B + 距MA20 ≤ −8%` 直接撞到
+# 100.0 分并列，榜内前段没有区分度 —— 满分区下移之后榜单才排得开（上限 96）。
+T_BUY_GAP_IDEAL = -12.0
+T_BUY_STRONG = 5.0  # 强空/强多的分界（`涨幅<-5%` 时不给双零金与基买）
+T_BUY_OVERDROP = -15.0  # 超跌：乖离阈值
+T_BUY_SHRINK = 0.7  # 缩量：量 < 20 日均量 × 该系数
+T_BUY_MACD_DAYS = 30  # `COUNT(金叉 AND DIF<0,30)` 的窗口
+T_BUY_MACD_REPEAT = 2  # 该窗口内至少金叉这么多次才算「零下二金」
+T_BUY_COOLDOWN = 5  # 买点冷却（低于这个间隔的重复信号丢掉）
+T_BUY_COOLDOWN_DEEP = 7  # 超跌状态下的冷却（原式 `IF(超跌,7,5)`）
+T_BUY_BASE_SCORE = 60.0  # 命中即入库（> MIN_SCORE），后 36 分（档位 20 + 乖离 16）只用于排序
+T_BUY_GAP_SCORE = 16.0  # 乖离那一档最多贡献的分
+#: 三档的相对强弱：深B 是全集、★B 多一条 MA3 上穿 MA5、双B 要求就穿在今天。
+#: ⚠️ 2026-10-10 从 0/12/24 收到 0/10/20：原来 60+24+16 正好压在 100，让「双B + 深乖离」
+#: 一片并列满分。收窄之后同上限只到 96，留出区分空间（档位仍是排序用的，不改是否命中）。
+T_BUY_TIER_SCORE = {"深B": 0.0, "★B": 10.0, "双B": 20.0}
+
 
 # ---------------------------------------------------------------- 数据结构
 
@@ -853,7 +915,9 @@ class Signal:
     pattern: str
     score: float
     key_levels: dict[str, float] = field(default_factory=dict)
-    detail: dict[str, float | int] = field(default_factory=dict)
+    #: 明细字段基本是数字，但「档位 / 触发」这类短标签直接给 str 更省事 ——
+    #: 前端 `detailText` 对非数字原样透传。
+    detail: dict[str, float | int | str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -907,6 +971,14 @@ def build_bars(records: list[dict]) -> Bars:
 
     锚点取「最新一根的收盘价」：前复权的通行定义就是以最新价为基准，
     这样最近的关键位（突破价等）可以直接当作真实价格看。
+
+    ## 成交量也要按同一比例缩放
+
+    ⚠️ 价格前复权了、量却用原始值，会让「量比」在送转之后整体虚高（10 转 10 约翻倍），
+    凭空触发放量类形态、又把缩量类压掉（2026-10-10 修）。除权日股本变了，绝对量本来就
+    不该直接跨日比。做法与个股接口 `_adjusted(vol_adjust=True)` 同一口径：
+    **量 ÷ (复权价 / 原始价)**（= `volume / ratio`）—— 除权日之后复权价相对原始价缩小，
+    量相应放大，跨除权日才可比。成交额 `amount` **不缩放**（钱是钱，与接口一致）。
     """
     if not records:
         raise ValueError("build_bars 收到空序列")
@@ -924,6 +996,8 @@ def build_bars(records: list[dict]) -> Bars:
 
     # 日内比例换算。close 理论上不会为 0，真出现就整根丢掉意义，直接置 1 避免除零
     ratio = np.divide(net, close, out=np.ones_like(net), where=close != 0)
+    # 成交量按同一比例**反向**缩放（见 docstring）。ratio 为 0 是病态数据，退回 1 别除爆
+    volume_ratio = np.where(ratio != 0, ratio, 1.0)
 
     return Bars(
         dates=[r["date"] for r in records],
@@ -931,7 +1005,7 @@ def build_bars(records: list[dict]) -> Bars:
         high=np.array([float(r["high"]) for r in records]) * ratio,
         low=np.array([float(r["low"]) for r in records]) * ratio,
         close=net,
-        volume=np.array([float(r["volume"] or 0.0) for r in records]),
+        volume=np.array([float(r["volume"] or 0.0) for r in records]) / volume_ratio,
         amount=np.array([float(r["amount"] or 0.0) for r in records]),
         pct_chg=pct,
     )
@@ -1026,6 +1100,61 @@ def _align(series: np.ndarray | None, window: int, length: int) -> np.ndarray:
     return out
 
 
+def _rolling(values: np.ndarray, window: int, mode: str) -> np.ndarray:
+    """滑动窗口归约，**对齐到窗口右端**：`out[i]` 是 `values[i-window+1 … i]` 的归约值，
+    前面不够 window 根的部分填 NaN。
+
+    `mode` 取 `min` / `max` / `sum`，就是通达信的 `LLV` / `HHV` / `SUM`。窗口内的
+    NaN 会传染（`min`/`max`/`sum` 都返回 NaN），这与 `_ma_series` 的口径一致：
+    数据不够就是不够，不假装算得出来。
+    """
+    out = np.full(values.size, np.nan)
+    if values.size < window:
+        return out
+    windows = np.lib.stride_tricks.sliding_window_view(values, window)
+    if mode == "min":
+        out[window - 1 :] = windows.min(axis=1)
+    elif mode == "max":
+        out[window - 1 :] = windows.max(axis=1)
+    else:
+        out[window - 1 :] = windows.sum(axis=1)
+    return out
+
+
+def _shift(values: np.ndarray, bars: int) -> np.ndarray:
+    """`REF(values, bars)`：整体后移 `bars` 根，前面补 NaN。"""
+    out = np.full(values.size, np.nan)
+    if bars < values.size:
+        out[bars:] = values[: values.size - bars]
+    return out
+
+
+def _cross(fast: np.ndarray, slow: np.ndarray) -> np.ndarray:
+    """`CROSS(fast, slow)`：今天 `fast > slow` 且昨天 `fast <= slow`。
+
+    NaN 参与比较恒为 False，所以预热段自然不算金叉。
+    """
+    out = np.zeros(fast.size, dtype=bool)
+    out[1:] = (fast[1:] > slow[1:]) & (fast[:-1] <= slow[:-1])
+    return out
+
+
+def _barslast(flags: np.ndarray) -> np.ndarray:
+    """`BARSLAST(flags)`：距上一次成立（含当根）的周期数。
+
+    **从未成立过返回 `inf`。** 公式里它只用在「上次信号距今 > 冷却天数」这一处，
+    `inf` 就等于「冷却已满足」—— 第一次出现当然该算信号，不该被冷却挡住。
+    """
+    out = np.full(flags.size, np.inf)
+    last = -1
+    for i in range(flags.size):
+        if flags[i]:
+            last = i
+        if last >= 0:
+            out[i] = i - last
+    return out
+
+
 def _rising(series: np.ndarray, lookback: int) -> bool:
     return series.size > lookback and series[-1] > series[-1 - lookback]
 
@@ -1099,6 +1228,12 @@ def _new_high(bars: Bars) -> Signal | None:
         usable = min(window, len(bars) - 1)
         if usable < NEW_HIGH_MIN_WINDOW:
             continue
+        # ⚠️ 历史长度不够这个档时**不能**照给它的基础分（2026-10-10 修）：61 根的次新股
+        # 创 60 日新高，若套 250 日档的 92 分会凭空挤进「评分前 50」，污染胜率样本；老股
+        # 同样只是 60 日新高、只拿 55。差 1 根仍放行（库里历史正好 250 根 → 250 日档实际
+        # 按 249 根判，见顶部常量注释），差更多就说明根本没这么长的历史，跳过这把档。
+        if window - usable > 1:
+            continue
         prior = float(bars.close[-usable - 1 : -1].max())
         if bars.close[-1] <= prior:
             continue
@@ -1145,7 +1280,7 @@ def _platform_breakout(bars: Bars) -> Signal | None:
         return None
 
     # 平台越窄越好、放量越足越好、突破幅度适中
-    score = _band_score(PLATFORM_MAX_RANGE - width, 0.02, 0.12, 0.15) * 40
+    score = _gate_score(width, PLATFORM_MAX_RANGE, PLATFORM_IDEAL_RANGE) * 40
     score += _band_score(ratio, PLATFORM_VOL_MULT, 4.0, 8.0) * 35
     score += _band_score(excess, 0.005, 0.04, 0.10) * 25
 
@@ -1956,7 +2091,7 @@ def _n_shape(bars: Bars) -> Signal | None:
     if size < 30:
         return None
 
-    close, high, low, open_ = bars.close, bars.high, bars.low, bars.open
+    close, low, open_ = bars.close, bars.low, bars.open
     volume, pct = bars.volume, bars.pct_chg
     best: Signal | None = None
 
@@ -2191,7 +2326,10 @@ def _wudao_sample(bars: Bars) -> Signal | None:
 
     score = _band_score(high_pct, WUDAO_SAMPLE_HIGH_PCT, 12.0, 18.0) * 40
     score += _band_score(vol, WUDAO_SAMPLE_VOL, 2.5, 6.0) * 35
-    score += _band_score(leave, 0.028, 0.08, 0.20) * 25
+    # 收盘离最高越近越好（2026-10-09 那道「leave ≤ 2.9%」过滤的实测结论，见常量注释）。
+    # 原来是 `_band_score(leave, 0.028, 0.08, 0.20)`：峰值落在 5.4%，越小反而越低分 ——
+    # 与「越近越容易过今高」正好相反（2026-10-10 改成单方向的 `_gate_score`）。
+    score += _gate_score(leave, WUDAO_SAMPLE_MAX_LEAVE, 0.0) * 25
     score = max(score, 55.0)
 
     return Signal(
@@ -2325,14 +2463,14 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
       它没并进 `_wudao_is_sample`，因为那个判据还被「洗完可盯」共用。
     实测 2026-09-28：这里判「明天盯」的 31 只里只有 6 只在名单。
 
-    优先级照原型：**启动 > 吵起来了 / 像出货 > 明天盯 > 休息中 > 刚有人气 > 走弱 > 没动静**。
-    这也是「明明冲高回落了、为什么没进明天盯」的答案 —— 它被更靠前的阶段占了
-    （`_wudao_sample` 那边同样先过 `_wudao_is_diverge_or_dump`）。
+    优先级在原型基础上把「走弱」提前到「刚有人气」之前：**启动 > 吵起来了 / 像出货 >
+    明天盯 > 休息中 > 走弱 > 刚有人气 > 没动静**。这也是「明明冲高回落了、为什么没进明天盯」
+    的答案 —— 它被更靠前的阶段占了（`_wudao_sample` 那边同样先过 `_wudao_is_diverge_or_dump`）。
 
     阈值都在文件顶部 `WUDAO_WAKE_*` / `WUDAO_DIGEST_*` / `WUDAO_WEAK_PCT` / `WUDAO_SILENT_VOL`
     那一段（2026-10-10 从函数体里抽出来集中的），别在下面的分支里再写裸数字。
 
-    ⚠️ **对原型的三处修正 + 新增一档**（都做过实测，都是「标签与当日事实自相矛盾」）：
+    ⚠️ **对原型的四处修正 + 新增一档**（都做过实测，都是「标签与当日事实自相矛盾」）：
 
     1. **缩量大涨兜底**（2026-10-09）：`pct >= 9.5` 或（`pct >= 4` 且 `high_pct >= 6`）→ `wake`。
        原型直接按 `vol < 0.85` 判「没动静」，会把**缩量涨停 / 一字板**（量比常 0.3~0.8）
@@ -2344,6 +2482,10 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
        `pct <= -5 → unknown` 的兜底**收编**成了一个正式档（≤ -5 的大跌同样归 `weak`）。
     3. **`digest` 补下界**（2026-10-09）：`-3 <= pct <= 0`。原来只写 `pct <= 0`，跌停也会进
        「休息中」，与它自己的文案「涨跌不大，像在歇口气」直接冲突（实测 7 只、含 4 只跌停）。
+    4. **`weak` 提到 `wake` 之前**（2026-10-10）：wake 里有条按 `high_pct >= 6` 判的支路，
+       会把**高开 ≥6% 却收跌 ≤ -3%** 的票判成「刚有人气」（量回来了、价格也动了），与事实
+       正好相反。让 `weak` 先判，这类一律归「走弱」。wake 与 thin 两条支路都要求 pct 为正，
+       所以搬动不影响它们。
 
     `weak` 与 `digest` 的分工：`weak` **只看跌幅**（在跌就算走弱，放量缩量都算）；
     `digest` 是「涨过一截之后缩量歇气」（还要求近 5 日涨过 `WUDAO_DIGEST_RET5`）。
@@ -2369,7 +2511,9 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
     broke_yday_high = high > yday_high and close >= yday_high * 0.98
 
     # ---- 决策链：从上往下问，**第一个成立的就是结论** ----
-    # 顺序（= 优先级）：启动 > 吵/出货 > 明天盯 > 休息中 > 刚有人气 > 走弱 > 没动静 > 兜底。
+    # 顺序（= 优先级）：启动 > 吵/出货 > 明天盯 > 休息中 > 走弱 > 刚有人气 > 没动静 > 兜底。
+    # 「走弱」刻意排在「刚有人气」**之前**（2026-10-10 调序）：高开 ≥6%（`high_pct` 达标）
+    # 却收跌 ≤ -3% 的票，原先把 wake 排前面会判成「刚有人气」，与 wake 的语义相反。
     # 两个「兜底」都刻意放在**量能判据之前**：只看量的话，缩量涨停（量比 0.3~0.8）与
     # 缩量下跌都会掉进 `silent`、被说成「几乎没人气」，与当天涨停 / 大跌的事实冲突
     # （实测分别 4 只、102 只）。阈值见文件顶部 `WUDAO_WAKE_*` 那一段。
@@ -2392,6 +2536,11 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
     ):
         # 「休息中」= 前面涨过一截、今天缩量且涨跌不大。下界与「走弱」接上（见 docstring）
         phase = "digest"
+    elif pct <= WUDAO_WEAK_PCT:
+        # 「走弱」：**只看跌幅**，放量缩量都算（2026-10-10 新增，取代原先
+        # `pct <= -5 → unknown` 的临时兜底 —— 那一版把 -5%~-3% 这段漏给了「没动静」）。
+        # 排在这里是为了压住下面那条按 `high_pct` 判的 wake（见上「调序」说明）
+        phase = "weak"
     elif vol >= WUDAO_WAKE_VOL and (pct >= WUDAO_WAKE_PCT or high_pct >= WUDAO_WAKE_HIGH_PCT):
         # 「刚有人气」：量回来了、价格也动了（今天是不是样板日已在上面拦掉，不必再判）
         phase = "wake"
@@ -2400,10 +2549,6 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
         # 只是文案另写（`thin_up`）。能走到这里说明上面那条量能条件不成立。
         phase = "wake"
         thin_up = True
-    elif pct <= WUDAO_WEAK_PCT:
-        # 「走弱」：**只看跌幅**，放量缩量都算（2026-10-10 新增，取代原先
-        # `pct <= -5 → unknown` 的临时兜底 —— 那一版把 -5%~-3% 这段漏给了「没动静」）
-        phase = "weak"
     elif vol < WUDAO_SILENT_VOL:
         phase = "silent"
     else:
@@ -2651,7 +2796,8 @@ def _wudao_wash2(bars: Bars) -> Signal | None:
     i = len(bars) - 1
     s, st, w = i - 2, i - 1, i  # 样板 / 启动 / 今日洗盘
 
-    # ① 样板日：与「明天盯」同一判定（含吵了/出货的否决）
+    # ① 样板日：与「明天盯」共用 `_wudao_is_sample`（但**不含**吵了/出货的否决 ——
+    #    那道 `_wudao_is_diverge_or_dump` 只加在「明天盯 / 明天预案」两个出口，这里没有）
     if not _wudao_is_sample(bars, s):
         return None
     sample_high = float(bars.high[s])
@@ -2694,7 +2840,10 @@ def _wudao_wash2(bars: Bars) -> Signal | None:
     clean = abs(wash_pct) <= 2.0 and vol_vs <= 1.05
     score = 62.0 if clean else 54.0
     score += _band_score(start_vol, WUDAO_START_VOL, 3.0, 8.0) * 18
-    score += _band_score(abs(wash_pct), 0.0, 3.0, 8.0) * 12  # 洗盘越温和越高
+    # 洗盘越温和越高（单方向）。原来是 `_band_score(abs(wash_pct), 0.0, 3.0, 8.0)`：
+    # `_band_score` 对 value<=0 直接给 0 分 —— 恰好把最温和的「平盘洗」打成 0，
+    # 与注释相反（2026-10-10 改成 `_gate_score`）。上面已否决 |wash_pct|>3。
+    score += _gate_score(abs(wash_pct), WUDAO_WASH_MAX_ABS_PCT, 0.0) * 12
     if vol_vs <= 1.05:
         score += 8
 
@@ -3466,12 +3615,18 @@ def _downtrend_breakout(bars: Bars) -> Signal | None:
 
     为什么只认摆动高点（zigzag）而不是窗口最高价：后者连出来是水平线，
     那就把「下降趋势突破」偷换成了「平台突破」，两者含义完全不同。
+
+    ⚠️ 只用**已确认**的摆动点（2026-10-10 修）：`zigzag` 末尾那个极值是**尚未被反向
+    确认**的（假设趋势延续，见其 docstring）。它常常就是今天这根冲高的高点 —— 混进来
+    之后最高点看着没在降低（`np.diff >= 0`）或把趋势线的斜率带偏，反弹一突破就被系统性
+    漏报。所以这里把 `pivots[-1]` 丢掉，只用前面那些已确认的。
     """
     if len(bars) < TRENDLINE_DAYS:
         return None
+    pivots = _recent_pivots(bars, TRENDLINE_DAYS)
     highs = [
         (index, price)
-        for index, price, direction in _recent_pivots(bars, TRENDLINE_DAYS)
+        for index, price, direction in pivots[:-1]  # 丢掉末尾未确认的那个
         if direction > 0
     ]
     if len(highs) < TRENDLINE_MIN_PIVOTS:
@@ -4205,7 +4360,11 @@ def _engulf_shape(bars: Bars) -> tuple[float, float] | None:
         return None  # 昨天必须是阴线
     if close <= open_:
         return None  # 今天必须是阳线
-    if prev_body <= 0 or prev_span <= 0 or span <= 0:
+    if prev_span <= 0 or span <= 0:
+        return None
+    # 昨、今实体都要看得见。⚠️ 昨日若是十字星（含前复权留下的 1e-15 尾巴），
+    # `body / prev_body` 会爆成 1e12 直接满分 —— 必须用实体占振幅的下限挡掉（2026-10-10）
+    if prev_body < prev_span * CANDLE_MIN_BODY or body < span * CANDLE_MIN_BODY:
         return None
     if not (open_ <= prev_close and close >= prev_open):
         return None  # 今日实体没包住昨日实体
@@ -4284,12 +4443,14 @@ def _hammer(bars: Bars) -> Signal | None:
 
     下影线的含义是「盘中砸下去又被买回来」；没有前置下跌的话，同样的形状
     出现在上涨中段只是普通回踩，不具备反转含义 —— 所以前置跌幅是否决条件。
-    实体为 0（十字星）单独排除：那是另一种含义，不按锤子线算。
+    实体要**看得见**（占振幅 ≥ `CANDLE_MIN_BODY`），把十字星排除在锤子线之外 ——
+    那是另一种含义；用实体下限而不是 `body <= 0`，是因为前复权会给「开 = 收」留一个
+    1e-15 的尾巴，位精确的「实体为 0」判不出来（2026-10-10 修，见 `CANDLE_MIN_BODY`）。
     """
     if len(bars) < CANDLE_PRIOR_DAYS + 2:
         return None
     _, _, _, _, body, upper, lower, span = _candle(bars)
-    if span <= 0 or body <= 0:
+    if span <= 0 or body < span * CANDLE_MIN_BODY:
         return None
     if body > span * CANDLE_BODY_MAX or upper > span * CANDLE_SHORT_SHADOW:
         return None
@@ -4320,11 +4481,12 @@ def _inverted_hammer(bars: Bars) -> Signal | None:
 
     形状与锤子线相反（冲高被打回来），但在跌势末端两者含义接近 ——
     都表示「这个位置的抛压已经衰竭」，所以判据只把上下影对调。
+    与锤子线同样用实体占振幅的下限排除十字星（理由见 `_hammer` / `CANDLE_MIN_BODY`）。
     """
     if len(bars) < CANDLE_PRIOR_DAYS + 2:
         return None
     _, _, _, _, body, upper, lower, span = _candle(bars)
-    if span <= 0 or body <= 0:
+    if span <= 0 or body < span * CANDLE_MIN_BODY:
         return None
     if body > span * CANDLE_BODY_MAX or lower > span * CANDLE_SHORT_SHADOW:
         return None
@@ -4674,6 +4836,154 @@ def _ma_cross_big_yang(bars: Bars) -> Signal | None:
     )
 
 
+def _t_buy(bars: Bars) -> Signal | None:
+    """做T买点：用户「V5 日线做T」主图公式里的 B 点，报 深B / ★B / 双B 三档。
+
+    逐条落自通达信原式（2026-10-10）的**买方向**：
+
+        底背   := SUM(底观察,5)>0 AND C>REF(HHV(H,3),1) AND 乖离<-2
+        零下二金:= 金叉 AND 零下 AND COUNT(金叉 AND DIF<0,30)>=2 AND DIF>LLV(DIF,30)*0.85
+        双零金 := 金叉 AND 零下 AND NOT(零下二金)
+        基买   := (绿缩 OR 红攻) AND 乖离<-3 AND 缩量 AND MA5升
+        买0    := IF(超跌, 底背 OR 零下二金,
+                     底背 OR 零下二金 OR (双零金 AND NOT(强空)) OR (基买 AND NOT(强空)))
+        买T    := 买0 AND REF(BARSLAST(买0),1) > IF(超跌,7,5)
+        深B    := 买T AND 阳线
+        ★B     := EXIST(MA3金叉MA5,3) AND 买T AND C>=MA5 AND 阳线
+        双B    := ★B AND MA3金叉MA5
+
+    三档**层层包含**（双B ⊂ ★B ⊂ 深B），所以一根 K 线只会报最高那一档 ——
+    与公式里 `显示深B := 深B AND NOT(★B)` 那套互斥写法是同一个结果。
+
+    几处口径说明：
+
+    - `阳线` 就按原式取 `C>=O`，**不复用** `_huabao_is_yang`（那个还要求涨幅 ≥0）。
+    - `BARSLAST` 在「买0 从未出现过」时按冷却已满足处理（见 `_barslast`）。
+    - 超跌（乖离<-15）当天只留「底背离 / 零下二金」两条，冷却也从 5 天放宽到 7 天 ——
+      这两条原式就是 `IF(超跌,…)` 的两个分支，照抄。
+    - `MACD.DIF/DEA/柱` 用 `_ema` 现算，与 `_macd_tail`（悟道口径）同一套数字。
+    """
+    n = len(bars)
+    if n < T_BUY_MIN_BARS:
+        return None
+
+    close = bars.close.astype(float)
+    open_ = bars.open.astype(float)
+    high = bars.high.astype(float)
+    low = bars.low.astype(float)
+    volume = bars.volume.astype(float)
+
+    ma3 = _align(_ma_series(close, 3), 3, n)
+    ma5 = _align(_ma_series(close, 5), 5, n)
+    ma20 = _align(_ma_series(close, 20), 20, n)
+    if not (np.isfinite(ma3[-1]) and np.isfinite(ma5[-1]) and np.isfinite(ma20[-1])):
+        return None
+
+    gap = np.divide(close - ma20, ma20, out=np.full(n, np.nan), where=ma20 > 0) * 100.0
+    dif = _ema(close, 12) - _ema(close, 26)
+    dea = _ema(dif, 9)
+    macd = (dif - dea) * 2.0
+
+    vol_ma20 = _align(_ma_series(volume, 20), 20, n)
+    shrink = volume < vol_ma20 * T_BUY_SHRINK
+
+    # ---- 底背离：120 日那两档 + 10 日那两档 + MACD 柱那一档（原式的 `底观察`）----
+    close_lo = _rolling(close, T_BUY_DIVERGE_DAYS, "min")
+    dif_lo = _rolling(dif, T_BUY_DIVERGE_DAYS, "min")
+    vol_hi = _rolling(volume, T_BUY_DIVERGE_DAYS, "max")
+    low3_lo = _rolling(low, 3, "min")
+    low10_lo = _shift(_rolling(low, 10, "min"), 3)
+    dif10_lo = _shift(_rolling(dif, 10, "min"), 3)
+    vol10_hi = _shift(_rolling(volume, 10, "max"), 3)
+    close10_lo = _rolling(close, 10, "min")
+    macd10_lo = _rolling(macd, 10, "min")
+
+    near_low = close <= close_lo * (1 + T_BUY_NEAR_TOL)
+    near_low_short = low3_lo <= low10_lo * (1 + T_BUY_SHORT_TOL)
+    bottom_obs = (
+        (near_low & (dif > dif_lo * T_BUY_DIF_RATIO))
+        | (near_low & (volume < vol_hi * T_BUY_VOL_RATIO))
+        | (near_low_short & (dif > dif10_lo))
+        | (near_low_short & (volume < vol10_hi * T_BUY_VOL_RATIO))
+        | (
+            (close <= close10_lo * (1 + T_BUY_SHORT_TOL))
+            & (macd > macd10_lo * T_BUY_HIST_RATIO)
+        )
+    )
+    dip = (
+        (_rolling(bottom_obs.astype(float), T_BUY_OBSERVE_DAYS, "sum") > 0)
+        & (close > _shift(_rolling(high, 3, "max"), 1))
+        & (gap < T_BUY_GAP_DIP)
+    )
+
+    # ---- 金叉体系 ----
+    gold = _cross(dif, dea)
+    below = (dif < 0) & (dea < 0)
+    gold2_low = (
+        gold
+        & below
+        & (
+            _rolling((gold & (dif < 0)).astype(float), T_BUY_MACD_DAYS, "sum")
+            >= T_BUY_MACD_REPEAT
+        )
+        & (dif > _rolling(dif, T_BUY_MACD_DAYS, "min") * T_BUY_DIF_RATIO)
+    )
+    gold_only_low = gold & below & ~gold2_low
+
+    # ---- 基买：MACD 柱转向 + 乖离更深 + 缩量 + MA5 抬头 ----
+    macd_wake = ((macd < 0) & (macd > _shift(macd, 1))) | (
+        (macd > 0) & (macd > _shift(macd, 1)) & (dif > _shift(dif, 1))
+    )
+    base_buy = macd_wake & (gap < T_BUY_GAP_BASE) & shrink & (ma5 > _shift(ma5, 3))
+
+    pct = bars.pct_chg.astype(float)
+    weak = pct < -T_BUY_STRONG
+    overdropped = gap < T_BUY_OVERDROP
+
+    core = dip | gold2_low
+    extra = (gold_only_low & ~weak) | (base_buy & ~weak)
+    buy0 = np.where(overdropped, core, core | extra)
+    cooldown = np.where(overdropped, T_BUY_COOLDOWN_DEEP, T_BUY_COOLDOWN)
+
+    if not (buy0[-1] and _shift(_barslast(buy0), 1)[-1] > cooldown[-1]):
+        return None
+    if not close[-1] >= open_[-1]:  # 阳线（原式 `阳线:=C>=O`）
+        return None
+
+    fresh_cross = _cross(ma3, ma5)
+    star = bool(_rolling(fresh_cross.astype(float), T_BUY_CROSS_DAYS, "sum")[-1] > 0) and (
+        close[-1] >= ma5[-1]
+    )
+    tier = "双B" if (star and fresh_cross[-1]) else ("★B" if star else "深B")
+
+    score = T_BUY_BASE_SCORE + T_BUY_TIER_SCORE[tier]
+    score += _gate_score(float(gap[-1]), T_BUY_GAP_DIP, T_BUY_GAP_IDEAL) * T_BUY_GAP_SCORE
+
+    fired = [
+        label
+        for flag, label in (
+            (dip[-1], "底背离"),
+            (gold2_low[-1], "零下二金"),
+            (gold_only_low[-1] and not weak[-1], "双零金"),
+            (base_buy[-1] and not weak[-1], "基买"),
+        )
+        if flag
+    ]
+    ratio = float(volume[-1] / vol_ma20[-1]) if vol_ma20[-1] > 0 else 0.0
+
+    return Signal(
+        "t_buy",
+        min(score, 100.0),
+        {"support": float(ma20[-1])},
+        {
+            "tier": tier,
+            "trigger": " + ".join(fired) if fired else "—",
+            "ma20_gap": round(float(gap[-1]), 2),
+            "vol_ratio_20": round(ratio, 2),
+        },
+    )
+
+
 # ---------------------------------------------------------------- 注册表
 
 # 蜡烛形态的分组名。抽成常量有两个原因：一是它比其它组名长得多
@@ -4755,6 +5065,10 @@ PATTERNS: tuple[Pattern, ...] = (
     # 回测数字与同类对比见文件上方阈值块（结论：右尾驱动的清单，不是买点）。
     # 板块关在 `scan_patterns.WUDAO_BOARD_KEYS`：只出创业板 + 科创板（回测口径）。
     Pattern("ma_cross_big_yang", "金叉大阳", "趋势", _ma_cross_big_yang),
+    # 2026-10-10 用户给的「V5 日线做T」主图公式的买点（深B / ★B / 双B 三档）。
+    # 只落买方向；不限板块（判据是乖离 + MACD + 量能，与 20cm 无关），
+    # 回测数字见上面 T_BUY_* 那段注释。
+    Pattern("t_buy", "做T买点", "做T", _t_buy),
 )
 
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}

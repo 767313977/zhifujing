@@ -4,6 +4,8 @@
 所以「取一只票」必须同时给用户 id —— 这里统一用 `session.get(Watchlist, (user.id, code))`。
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -16,7 +18,10 @@ from app.schemas import WatchlistIn, WatchlistRow
 from app.services import auth
 from app.services.auth import current_user
 from app.services.stock_lookup import LookupError, resolve_code
+from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.ifind import IfindError, normalize_code
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/watchlist", tags=["自选股"])
 
@@ -24,6 +29,11 @@ router = APIRouter(prefix="/api/watchlist", tags=["自选股"])
 # 的补救 —— 而每次点都在花 iFinD 调用次数，所以要挡一下连点。
 SYNC_COOLDOWN_SEC = 600
 _sync_cooldown = auth.Cooldown(SYNC_COOLDOWN_SEC)
+
+# 每个用户最多能放多少只自选。没有上限时，一个登录用户就能把全站 iFinD 配额
+# 用「加自选 + 同步」这条链路烧光（加进来自动同步、每次同步都是一批调用），
+# 而配额是全账号共享的 —— 个人使用的站，100 只足够复盘。
+MAX_WATCHLIST = 100
 
 
 def _normalize_code(raw: str) -> str:
@@ -129,6 +139,29 @@ def add_watchlist(
         # 重复加入当成功处理，前端连点不会报错
         return _row(session, existing, _latest_quotes(session, [code]).get(code))
 
+    # 代码必须真在 `stock_basic` 里。`resolve_code` 对 6 位数字是**不查库直接放行**的
+    # （它是通用解析器，改名/别处都要用，不该在这里收紧），所以「库里有没有这只票」
+    # 只能在这一层兜住：不查的话，加一个 999999 之类的假代码进去，随后的同步就会
+    # 拿它去问 iFinD —— 全是白花的配额（2026-10-11 加，见自选配额收紧）。
+    if session.get(StockBasic, code) is None:
+        raise HTTPException(
+            status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
+        )
+
+    # 条数上限（见 MAX_WATCHLIST）：先数再加。加自选会连带同步、而同步是花配额的，
+    # 没有上限时一个账号就能靠这条链路把全站额度烧光。
+    count = (
+        session.scalar(
+            select(func.count()).select_from(Watchlist).where(Watchlist.user_id == user.id)
+        )
+        or 0
+    )
+    if count >= MAX_WATCHLIST:
+        raise HTTPException(
+            status_code=400,
+            detail=f"自选最多 {MAX_WATCHLIST} 只，你现在有 {count} 只，先删掉一些再加",
+        )
+
     row = Watchlist(
         user_id=user.id,
         code=code,
@@ -190,11 +223,26 @@ def remove_watchlist(
     return {"ok": True}
 
 
+def _guard_quota() -> None:
+    """手动同步的配额闸：配额紧张到 80% 就停手动同步。
+
+    `PAUSE_KLINE`（已用 ≥80%）本来就要停「形态选股的全市场日线更新」，手动同步比它
+    更非必需 —— 一起让路，把剩下的额度留给指数 / 情绪这些主线。日常采集仍会兜底刷新。
+    """
+    level = quota_level()
+    if level >= QuotaLevel.PAUSE_KLINE:
+        raise HTTPException(
+            status_code=429,
+            detail=f"iFinD 配额已用到 80%，暂停手动同步（{level_label(level)}）",
+            headers={"Retry-After": "3600"},
+        )
+
+
 @router.post("/sync")
 def sync_watchlist(
     user: AppUser = Depends(current_user),
     session: Session = Depends(get_db),
-    days: int = Query(250, ge=5, le=500, description="回看的交易日数"),
+    days: int = Query(250, ge=5, le=250, description="回看的交易日数"),
 ) -> dict:
     """同步**自己**自选股的日线到本地缓存。
 
@@ -203,6 +251,8 @@ def sync_watchlist(
     ⚠️ 只同步自己的票、不跑全表：会员点一下就让服务器去同步全市场是没道理的，
     那也正是「谁的请求谁付账」这条最简单的分寸。全表的同步由每日采集负责。
     """
+    _guard_quota()
+
     wait = _sync_cooldown.remaining(f"user:{user.id}")
     if wait is not None:
         raise HTTPException(
@@ -216,13 +266,17 @@ def sync_watchlist(
     if not codes:
         return {"rows": 0}
 
-    _sync_cooldown.touch(f"user:{user.id}")
     try:
         with collect_guard("自选股同步"):
             collector = DailyCollector()
             written = collector.sync_watchlist(days=days, codes=codes)
     except CollectionBusy as exc:
+        # 采集正忙：这一步**根本没发起取数**，所以不占冷却 —— 否则白白要人等 10 分钟
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except IfindError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        # 真去取过数了（配额已经花掉）→ 占用冷却；对外只说人话，细节进日志
+        logger.warning("自选股同步失败（用户 %s）：%s", user.id, exc)
+        _sync_cooldown.touch(f"user:{user.id}")
+        raise HTTPException(status_code=400, detail="同步失败，请稍后再试") from exc
+    _sync_cooldown.touch(f"user:{user.id}")
     return {"rows": written}

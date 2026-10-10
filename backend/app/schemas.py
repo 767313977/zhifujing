@@ -1307,9 +1307,11 @@ class MeOut(ApiModel):
 
 
 class InviteIn(BaseModel):
-    note: str | None = None
+    # 长度 / 数量上限（2026-10-11 加）：以前两者都没有上限，一个管理员请求就能塞超长 note
+    # 或让循环次数失控。note 按「人写得出来的量」给 2000；count 由 admin 侧再夹到 20。
+    note: str | None = Field(None, max_length=2000)
     # 一次生成几个。发一群人时省得点很多次
-    count: int = 1
+    count: int = Field(1, ge=1, le=1000)
 
 
 class InviteOut(ApiModel):
@@ -1337,7 +1339,9 @@ class MemberOut(ApiModel):
 
 
 class ResetPasswordIn(BaseModel):
-    new_password: str
+    # 上限必须与 `LoginIn.password` **一致**（都是 128）：否则管理员能重置出一个超长密码，
+    # 而登录入口在 128 就把它拒了 —— 那个账号从此永远登不进去（2026-10-11 加）。
+    new_password: str = Field(..., max_length=128)
 
 
 class DisabledIn(BaseModel):

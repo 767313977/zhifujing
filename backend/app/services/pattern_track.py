@@ -490,10 +490,16 @@ def detail(
     # 「当天全市场没涨跌」，而实际是「我们只采了几十只」。`track()` 用的是同一条规则
     # （`_COMPLETE_DAY_RATIO`），两边进度才对得上。（休市日不在这里 —— 它不在交易日历里。）
     if days:
+        # ⚠️ 阈值要用**市场级**的最大行数（2026-10-10 修）：只按 `days` 里的最大值算的话，
+        # 当这整个窗口恰好都是「采集没跑完」的残缺日（线上收盘后到采集跑完之间就是这样），
+        # 最大行数也只有几十 → 阈值随之变小 → 判成「都完整」而不截断，进度就比 `track()` 大。
+        # `track()` 的 `_matrix` 把命中日（扫描日，通常是完整的）也算进 `needed` 再取最大，
+        # 所以这里同样把 `day` 并进来取最大，两边的进度才对得上。
+        count_days = [day, *days]
         counts = dict(
             session.execute(
                 select(StockDaily.trade_date, func.count())
-                .where(StockDaily.trade_date.in_(days))
+                .where(StockDaily.trade_date.in_(count_days))
                 .group_by(StockDaily.trade_date)
             ).all()
         )
@@ -576,7 +582,7 @@ def _line_rate(
 ) -> dict:
     """到线率 / 破位率：命中后 `days` 个交易日里，**收盘**站上「线」、跌破「作废位」的比例。
 
-    三个口径细节，错一个数字就没法解释：
+    四个口径细节，错一个数字就没法解释：
 
     · 用**收盘**而不是最高/最低 —— 站上一条线要收盘站住才算数，影线穿一下不算
       （与判定本身「收盘 ≥ 昨高 × 0.98」同一取向）。
@@ -585,6 +591,10 @@ def _line_rate(
     · **窗口得先走完**才算样本（2026-10-09 加）：只有 1 天可看的命中，破位的「机会」
       天然比走完 5 天的少，混在一起会把比例压低。这与 `_curves`「没走到第 n 个交易日
       就不返回那个点」是同一条规矩 —— 宁可这列先空着，也不出一个掺了半截窗口的数。
+    · **复权口径必须统一**（2026-10-10 加）：`key_levels` 是命中日锚定的**前复权价**
+      （= 命中日原始价），而窗口里的库内收盘是**不复权**价 —— 窗口内除权（送转）会让
+      两者错基准、误记破位或未到线。所以窗口收盘用真实涨跌幅（已按除权调整）从命中日
+      收盘逐日复利出「命中日口径」的等价价再比（见下面循环里的说明）。
     · 作废位优先用纪律里那个（`wash_low` / `start_low`）；池子没有的话退回
       **命中日最低价**当代理，并在 `stop_source` 里写明用的是哪种 —— 页面照原样显示。
     """
@@ -612,16 +622,22 @@ def _line_rate(
     end_pos = min(max(scan_positions) + days, len(calendar) - 1)
     first, last = calendar[min(scan_positions)], calendar[end_pos]
 
-    series: dict[str, dict[date, tuple[float | None, float | None]]] = defaultdict(dict)
+    series: dict[str, dict[date, tuple[float | None, float | None, float | None]]] = defaultdict(dict)
     rows = session.execute(
-        select(StockDaily.code, StockDaily.trade_date, StockDaily.close, StockDaily.low).where(
+        select(
+            StockDaily.code,
+            StockDaily.trade_date,
+            StockDaily.close,
+            StockDaily.low,
+            StockDaily.pct_chg,
+        ).where(
             StockDaily.code.in_({code for _, code in hits}),
             StockDaily.trade_date >= first,
             StockDaily.trade_date <= last,
         )
     ).all()
-    for code, when, close, low in rows:
-        series[code][when] = (close, low)
+    for code, when, close, low, pct_value in rows:
+        series[code][when] = (close, low, pct_value)
 
     touched = touch_total = stopped = stop_total = 0
     has_stop_level = any(stop is not None for _, stop in hits.values())
@@ -634,11 +650,23 @@ def _line_rate(
         if start + days > elapsed:
             continue  # 窗口还没走完 —— 不编造（见上面第三条）
         window = calendar[start + 1 : start + days + 1]
-        closes = [
-            bars[when][0]
-            for when in window
-            if when in bars and bars[when][0] is not None
-        ]
+        # ⚠️ 口径必须统一（2026-10-10 修）：`key_levels`（要过的线 / 作废位）是**命中日
+        # 锚定的前复权价**（`build_bars` 锚在最后一根收盘 = 命中日，所以它就是命中日原始价），
+        # 而 `stock_daily` 存的是**不复权**收盘价 —— 窗口里一旦除权（尤其送转），直接比就会
+        # 误记破位 / 「未到线」。这里用真实涨跌幅（iFinD 已按除权调整）从命中日收盘**逐日复利**
+        # 出「命中日口径」的等价收盘价，与 `key_levels` 同基准（与 `_curves` 同一套复利口径）。
+        # 停牌日涨跌幅为空 → 记 0、不算一跳；缺行则跳过（两端都要有行，见第二条）。
+        closes: list[float] = []
+        entry_close = entry[0]
+        if entry_close is not None:
+            cumulative = 1.0
+            for when in window:
+                bar = bars.get(when)
+                if bar is None:
+                    continue
+                if bar[2] is not None:
+                    cumulative *= 1.0 + bar[2] / 100.0
+                closes.append(entry_close * cumulative)
         if not closes:
             continue
         if line is not None:

@@ -317,6 +317,28 @@ class KaipanhongSource:
                 MAX_PAGES,
             )
 
+        # 去重（按代码、保留首次出现，顺序不乱 —— 龙一~龙五取的就是原始顺序的前 5 只）。
+        # 这个接口越界会**重复吐尾部**（见模块顶部对照表），成员数恰为 MEMBER_PAGE_SIZE
+        # 的整数倍时，最后一页会整页重复 —— 不去重就会被下游（板块成交额求和）重复累加。
+        seen: set[str] = set()
+        unique: list[dict] = []
+        for member in members:
+            code = member["code"]
+            if code and code in seen:
+                continue
+            if code:
+                seen.add(code)
+            unique.append(member)
+        if len(unique) != len(members):
+            logger.info(
+                "开盘红成分股 %s %s 去重：%d → %d 行",
+                plate_id,
+                trade_date,
+                len(members),
+                len(unique),
+            )
+        members = unique
+
         if isinstance(reported, int) and reported != len(members):
             logger.warning(
                 "开盘红成分股 %s %s 对不上账：接口说 %d 只，实际取到 %d 只",

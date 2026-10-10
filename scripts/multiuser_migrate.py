@@ -55,7 +55,9 @@ from app.models import (  # noqa: E402
     UserSession,
     Watchlist,
 )
-from app.services.auth import hash_password  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
+
+from app.services.auth import hash_password, validate_password  # noqa: E402
 
 # 要从单列主键改成复合主键的两张表。
 #
@@ -230,6 +232,16 @@ def main() -> int:
     # 建缺的表：新库会直接按新结构建；老库上已存在的表不受影响
     # （补列/改主键由下面那个事务负责，不走 init_db 的自动补列）
     Base.metadata.create_all(engine)
+
+    if args.admin_password:
+        # 命令行传进来的密码也要过一遍长度校验（2026-10-10 加）：不走这道闸就能建出
+        # 一个短密码的管理员 —— 而管理员能触发采集、白烧 iFinD 配额，恰恰是最不该
+        # 被爆破的那个账号。随机生成的密码由 MIN_PASSWORD_LENGTH 兜底，不查。
+        try:
+            validate_password(args.admin_password)
+        except HTTPException as exc:
+            log(f"管理员密码不合规：{exc.detail}")
+            return 1
 
     admin_id, plain_password = ensure_admin(args.admin_user, args.admin_password)
 

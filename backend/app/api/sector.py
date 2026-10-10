@@ -15,7 +15,8 @@
 """
 
 import logging
-from datetime import date
+import threading
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, func, select
@@ -33,6 +34,7 @@ from app.models import (
     SectorMember,
     StockConcept,
     StockDaily,
+    TradeCalendar,
 )
 from app.schemas import (
     FundFlowHistoryOut,
@@ -75,6 +77,66 @@ HEAT_LAGGARDS = 6
 COMPARE_LIMIT = 8
 # 对比图的归一化基准
 COMPARE_BASE = 100.0
+
+# 板块成分股「现取」只允许最近 N 个交易日（2026-10-11 加）。`date` 是任意可传的，
+# 每个没缓存的日子都会触发一次开盘红请求（外部源）—— 传一串历史日期就等于把这个
+# 接口当爬虫用。更早的日子若缓存里已有照常能读，只是**不再为它去打外部源**。
+MEMBERS_LOOKBACK_DAYS = 10
+# 「刚取过、但没结果」的短时记忆：开盘红当日的成分要等盘后才有，盘间连点会反复触发
+# 外部请求（空结果不落库）。记一笔短 TTL，TTL 内直接走回落、不再打源。
+_EMPTY_FETCH_TTL = timedelta(seconds=120)
+_empty_fetches: dict[tuple[str, date], datetime] = {}
+_empty_lock = threading.Lock()
+# 开盘红限速器（令牌桶）**必须复用同一个实例**：以前每次请求都 `SectorCollector()`，
+# 于是每个请求各带一个桶、各算各的，限速形同虚设。这里进程内建一个、大家共用。
+_collector_lock = threading.Lock()
+_collector: SectorCollector | None = None
+
+
+def _sector_collector() -> SectorCollector:
+    """进程内唯一的采集器（懒建 + 双检锁）。它带的是开盘红限速桶，必须共享。"""
+    global _collector
+    if _collector is None:
+        with _collector_lock:
+            if _collector is None:
+                _collector = SectorCollector()
+    return _collector
+
+
+def _recent_fetch_window(session: Session) -> date | None:
+    """「最近 N 个交易日」里**最早**的那天；交易日历不够 N 天就取现有的最早一天。"""
+    days = list(
+        session.scalars(
+            select(TradeCalendar.trade_date)
+            .where(TradeCalendar.trade_date <= date.today())
+            .order_by(TradeCalendar.trade_date.desc())
+            .limit(MEMBERS_LOOKBACK_DAYS)
+        )
+    )
+    return days[-1] if days else None
+
+
+def _recently_empty(key: tuple[str, date]) -> bool:
+    """这个 (板块, 日期) 最近刚取过且没结果吗？"""
+    with _empty_lock:
+        stamp = _empty_fetches.get(key)
+        if stamp is None:
+            return False
+        if datetime.now() - stamp >= _EMPTY_FETCH_TTL:
+            _empty_fetches.pop(key, None)
+            return False
+        return True
+
+
+def _mark_empty(key: tuple[str, date]) -> None:
+    """记下「刚取过没结果」，顺手清过期键（键数有界，这里只是兜底）。"""
+    with _empty_lock:
+        now = datetime.now()
+        for stale_key, stamp in list(_empty_fetches.items()):
+            if now - stamp >= _EMPTY_FETCH_TTL:
+                _empty_fetches.pop(stale_key, None)
+        _empty_fetches[key] = now
+
 
 # 地域里原先只滤带「省 / 自治区 / 自贸区」的，直辖市与「深圳 / 武汉」这类没滤 ——
 # 理由是「它们排不进当天前 10（实测最高的地域板块「广东省」排第 15）」，而矩阵每天只看
@@ -1196,15 +1258,34 @@ def _board_members(code: str, trade_date: date) -> tuple[list[SectorMember], str
 
     现取与读库各开一个新的 session：现取那次是**另一个事务**写的，
     用请求自带的 session 接着读看不到（SQLite 在 WAL 下的读事务是一个快照）。
+
+    ⚠️ 现取有三道闸（2026-10-11 加）：① 只查最近 `MEMBERS_LOOKBACK_DAYS` 个交易日；
+    ② 空结果短时记忆（`_EMPTY_FETCH_TTL`），盘间连点不再反复打源；③ 复用进程内唯一的
+    采集器（见 `_sector_collector`），令牌桶才有意义。
     """
     with session_scope() as reader:
         cached = _read_members(reader, code, trade_date)
+        # 只有要现取时才去查「最近 N 个交易日」的窗口，命中缓存就不必多查一次
+        oldest_fetchable = None if cached else _recent_fetch_window(reader)
     if cached:
         return cached, None
 
+    key = (code, trade_date)
+    if oldest_fetchable is not None and trade_date < oldest_fetchable:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"板块成分股只支持查最近 {MEMBERS_LOOKBACK_DAYS} 个交易日，"
+                "更早的日期不再现取（缓存里已有的仍可查看）"
+            ),
+        )
+    if _recently_empty(key):
+        # 刚取过、没结果：短时内直接走回落，别再打一次外部源
+        return _fallback_members(code, trade_date, None)
+
     failed: Exception | None = None
     try:
-        SectorCollector().collect_members(trade_date, code)
+        _sector_collector().collect_members(trade_date, code)
     except (TypeError, AttributeError, NameError):
         # 这三类基本只可能是**代码写错了**（字段名拼错、None 当对象用），不是数据源
         # 的问题。一起吞掉的话页面只会显示「当日没取到」，真 bug 查不出来 ——
@@ -1219,7 +1300,8 @@ def _board_members(code: str, trade_date: date) -> tuple[list[SectorMember], str
     if rows:
         return rows, None
 
-    # 当天这份还没发布（开盘红要到晚上）→ 回落到最近一天的名单，行情换成当日
+    # 当天这份还没发布（开盘红要到晚上）→ 记一笔「刚取过没结果」，回落最近一天的名单
+    _mark_empty(key)
     return _fallback_members(code, trade_date, failed)
 
 
@@ -1249,8 +1331,9 @@ def _fallback_members(
         )
         rows = _read_members(session, code, fallback_day) if fallback_day else []
         if not rows:
+            # 不把 failed 详情回给前端（可能带上游主机名 / 响应片段）—— 它已在调用方进了日志
             reason = (
-                f"开盘红成分股接口报错：{failed}"
+                "开盘红成分股接口暂时不可用"
                 if failed is not None
                 else "开盘红的成分股当日要等盘后更新，这次没取到"
             )
