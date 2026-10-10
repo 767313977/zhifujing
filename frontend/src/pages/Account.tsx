@@ -78,6 +78,7 @@ export default function Account() {
               value={oldPassword}
               onChange={(event) => setOldPassword(event.target.value)}
               autoComplete="current-password"
+              maxLength={128}
               className={INPUT}
               required
             />
@@ -92,6 +93,7 @@ export default function Account() {
               value={newPassword}
               onChange={(event) => setNewPassword(event.target.value)}
               autoComplete="new-password"
+              maxLength={128}
               className={INPUT}
               required
             />
@@ -107,6 +109,7 @@ export default function Account() {
               value={repeat}
               onChange={(event) => setRepeat(event.target.value)}
               autoComplete="new-password"
+              maxLength={128}
               className={INPUT}
               required
             />

@@ -81,7 +81,7 @@ function buildColumns(
       // 和 Link 各推一次历史 —— 退回来要按两下。Patterns 页记过这个坑。
       render: (s) => (
         <Link
-          to={`/stock/${s.code}`}
+          to={`/stock/${encodeURIComponent(s.code)}`}
           className="num text-fg-muted transition-colors hover:text-accent"
         >
           {s.code}
@@ -98,7 +98,7 @@ function buildColumns(
       // 摆两遍只是重复（撤掉时的实测见设计文档 8.36.1）。
       render: (s) => (
         <Link
-          to={`/stock/${s.code}`}
+          to={`/stock/${encodeURIComponent(s.code)}`}
           className="text-fg transition-colors hover:text-accent"
         >
           {s.name ?? '—'}

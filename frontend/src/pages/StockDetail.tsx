@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
@@ -197,6 +197,12 @@ export default function StockDetail() {
 
   useEffect(() => {
     let cancelled = false
+    // 切票先清掉上一只票的概况 / 题材 / DDE / 阶段判定 —— 否则新票加载中（尤其失败时）
+    // 页面上留着的还是上一只票的数据，连「加入自选」按钮操作的也会是旧票
+    //（按钮在 profile 为 null 时禁用，所以顺带挡掉了误操作旧票）。2026-10-10 修。
+    setProfile(null)
+    setThemes(null)
+    setDde(null)
     setError(null)
     ;(async () => {
       try {
@@ -252,7 +258,7 @@ export default function StockDetail() {
         event.key === 'ArrowLeft' ? prev : event.key === 'ArrowRight' ? next : null
       if (!target) return
       event.preventDefault()
-      navigate(`/stock/${target}`)
+      navigate(`/stock/${encodeURIComponent(target)}`)
       // 换票后回到顶部：否则会停在上只票看到一半的位置，看着却是另一只票的内容
       window.scrollTo({ top: 0 })
     }
@@ -284,6 +290,9 @@ export default function StockDetail() {
    * 盘中打开时通常就是昨天（见后端 `collect_dde.CLOSE_READY`），所以界面上不写「今日」。
    */
   const latestDde = dde && dde.rows.length > 0 ? dde.rows[dde.rows.length - 1] : null
+  // 缓存图表 option：否则每次父组件重渲染（如 loading 变化）都会造一份新对象，
+  // EChart 的 setOption(notMerge) 就整图重建一次（2026-10-10 修）
+  const ddeOption = useMemo(() => (dde ? buildDdeOption(dde.rows) : null), [dde])
   /**
    * 所属题材（并进概况格的「所属题材」那一格，2026-10-10 用户要求）。
    *
@@ -422,17 +431,22 @@ export default function StockDetail() {
                 {kline.syncing ? '正在补 2 年历史（周/月 K 要的长周期）…' : '加载中…'}
               </span>
             </div>
+          ) : kline.bars.length > 0 ? (
+            <div className="px-2 pt-2">
+              {/* 有数据、但补长历史那一步失败时，保留日线继续画，只在图上方说明原因 ——
+                  不能因为一次补数失败就把整张图换成一句报错（2026-10-10 修） */}
+              {kline.error && (
+                <div className="num mb-1 px-2 text-[13px] text-danger">{kline.error}</div>
+              )}
+              <KLineChart bars={kline.bars} height={420} />
+            </div>
           ) : kline.error ? (
             <div className="px-4 py-10 text-center text-[14px] text-danger">
               {kline.error}
             </div>
-          ) : kline.bars.length === 0 ? (
+          ) : (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               没有取到该股的日线 —— 同步失败（比如采集正忙）或该股当日无行情，稍后刷新重试
-            </div>
-          ) : (
-            <div className="px-2 pt-2">
-              <KLineChart bars={kline.bars} height={420} />
             </div>
           )}
         </Panel>
@@ -485,7 +499,7 @@ export default function StockDetail() {
                 <div className="mb-1 text-[12px] text-fg-dim">
                   柱 = 主力净流入额（红=净流入 绿=净流出）· 线 = 5日DDE
                 </div>
-                <EChart option={buildDdeOption(dde.rows)} height={240} />
+                {ddeOption && <EChart option={ddeOption} height={240} />}
               </div>
             </>
           )}

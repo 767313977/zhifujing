@@ -15,6 +15,7 @@ import type { ReactNode } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { api, UNAUTHORIZED_EVENT } from '../api/client'
 import type { Me } from '../api/types'
+import { clearStockList } from './stockNav'
 
 interface AuthValue {
   /** 当前用户；null = 没登录（或还在确认，见 `checking`） */
@@ -71,8 +72,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await api.logout()
     } finally {
-      // 后端失败（比如网断了）也要把本地状态清掉：这时的目标是「别再显示成已登录」
+      // 后端失败（比如网断了）也要把本地状态清掉：这时的目标是「别再显示成已登录」——
+      // 登出是**尽力而为**的，服务端那次失败（会话可能已失效、或请求没发出去）不该让
+      // 用户卡在已登录界面。
       setMe(null)
+      // 详情页「← → 切换」用的列表存在 sessionStorage 里，是上一个用户点过的上下文，
+      // 登出时清掉，别带给下一个登录的人（2026-10-10 修）
+      clearStockList()
+      // 未登录时进登录页不能用 push，否则用户按返回又回到需要登录的页面
       navigate('/login', { replace: true })
     }
   }, [navigate])

@@ -90,22 +90,66 @@ async function request<T>(
   // Chrome 103+ / Safari 16.4+，而本站会在手机套壳浏览器（微信 / QQ / 夸克）里打开，
   // 手写这几行到处都能跑。
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  let response: Response
+  // 区分「超时」与「调用方主动取消」：两者都会让 fetch 抛 AbortError，但只有前者
+  // 该被翻成「超时」给用户看。
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
+  // 合并调用方的 signal（而不是让 `signal: controller.signal` 把它覆盖掉）：调用方
+  // 传了 signal 时（如切票要取消旧请求），任一 abort 都要能取消这次请求 —— 直接覆盖
+  // 会把调用方的 signal 丢掉，旧请求就永远取消不掉。`AbortSignal.any` 兼容性不够，手写。
+  const callerSignal = init?.signal ?? null
+  const abortFromCaller = () => controller.abort()
+  if (callerSignal) {
+    if (callerSignal.aborted) controller.abort()
+    else callerSignal.addEventListener('abort', abortFromCaller)
+  }
   try {
     // `credentials: 'same-origin'`：登录态在 HttpOnly cookie 里，不带它就等于没登录。
     // 同源请求浏览器默认也会带，但显式写出来 —— 将来若改成跨域部署，这里不会静默失效。
-    response = await fetch(`${BASE}${path}`, {
+    const response = await fetch(`${BASE}${path}`, {
       credentials: 'same-origin',
       ...init,
       signal: controller.signal,
     })
+    if (!response.ok) {
+      // 后端把可读原因放在 detail 里（如「暂无数据，请先执行采集」）。
+      // HTTP/2 下 statusText 恒为空，只拼状态码会显示成「504 」这种半截文案，所以空时
+      // 兜底成「HTTP 504」（2026-10-10 用户看到的就是「504 」）。
+      let detail = response.statusText
+        ? `${response.status} ${response.statusText}`
+        : `HTTP ${response.status}`
+      try {
+        const body = (await response.json()) as { detail?: unknown }
+        const fromDetail = formatDetail(body.detail)
+        if (fromDetail) detail = fromDetail
+      } catch {
+        // 响应不是 JSON，保留状态文本
+      }
+      if (response.status === 401) {
+        // 会话**在使用中**失效（闲置过期 / 在别处改了密码 / 被停用）时，页面早就渲染出来了，
+        // RequireAuth 不会再跑。靠这个事件让 AuthProvider 清掉用户，下一次渲染自动跳登录页。
+        // （这里不再抛专门的错误类型：没有调用方按类型分支，跳转全靠上面这个事件。）
+        window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+        throw new Error(detail)
+      }
+      throw new Error(detail)
+    }
+    // 读**响应体**也要在超时保护内：`fetch` resolve 只代表收到了响应头，弱网下 body
+    // 传到一半卡住时 `response.json()` 会一直挂着，页面永远「加载中」。所以这里不提前
+    // `clearTimeout`，等 body 读完由 finally 一起清（2026-10-10 修）。
+    return (await response.json()) as T
   } catch (err) {
     // 这里接住的是**没拿到响应**的失败：超时 / 连接被重置 / 断网 / DNS 失败。
     // 不接的话浏览器把它抛成 `TypeError: Failed to fetch` 直接显示在页面上
     //（2026-10-10 用户看到的就是这句）—— 对着英文原文没法判断该做什么，而且看着像
     // 服务器在超时，实际是**请求根本没走完**。所以翻成人话，并带上出错的接口名。
     if (err instanceof DOMException && err.name === 'AbortError') {
+      // 调用方主动取消（切票 / 卸载）时原样抛出，交给上层按「这次请求不再需要」处理，
+      // 别谎报成超时。
+      if (!timedOut) throw err
       throw new Error(`请求超时（${timeoutMs / 1000} 秒无响应）：${path}`)
     }
     if (err instanceof TypeError) {
@@ -114,26 +158,40 @@ async function request<T>(
     throw err
   } finally {
     clearTimeout(timer)
+    if (callerSignal) callerSignal.removeEventListener('abort', abortFromCaller)
   }
-  if (!response.ok) {
-    // 后端把可读原因放在 detail 里（如「暂无数据，请先执行采集」）
-    let detail = `${response.status} ${response.statusText}`
-    try {
-      const body = (await response.json()) as { detail?: string }
-      if (body.detail) detail = body.detail
-    } catch {
-      // 响应不是 JSON，保留状态文本
-    }
-    if (response.status === 401) {
-      // 会话**在使用中**失效（闲置过期 / 在别处改了密码 / 被停用）时，页面早就渲染出来了，
-      // RequireAuth 不会再跑。靠这个事件让 AuthProvider 清掉用户，下一次渲染自动跳登录页。
-      // （这里不再抛专门的错误类型：没有调用方按类型分支，跳转全靠上面这个事件。）
-      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
-      throw new Error(detail)
-    }
-    throw new Error(detail)
+}
+
+/**
+ * 把后端的 `detail` 拼成给人看的文案。
+ *
+ * - 字符串：原样返回（业务错误都是这种，如「暂无数据，请先执行采集」）。
+ * - 数组：FastAPI 422 校验错误的形态，每项是 `{loc, msg, type}`。直接 `String()` 会
+ *   显示成 `[object Object]`（2026-10-10 用户看到的就是这个），所以把 `loc` 与 `msg` 拼起来。
+ * - 其它：返回 null，让调用方退回状态码文案。
+ */
+function formatDetail(detail: unknown): string | null {
+  if (typeof detail === 'string' && detail) return detail
+  if (Array.isArray(detail)) {
+    const lines = detail
+      .map((item) => {
+        if (typeof item === 'string') return item
+        if (item && typeof item === 'object') {
+          const { loc, msg } = item as { loc?: unknown; msg?: unknown }
+          // loc 形如 ['body', 'username']，去掉来源前缀（body/query/path）只留下字段名
+          const where = Array.isArray(loc)
+            ? loc
+                .filter((part) => part !== 'body' && part !== 'query' && part !== 'path')
+                .join('.')
+            : ''
+          return [where, typeof msg === 'string' ? msg : ''].filter(Boolean).join('：')
+        }
+        return ''
+      })
+      .filter(Boolean)
+    if (lines.length > 0) return lines.join('；')
   }
-  return (await response.json()) as T
+  return null
 }
 
 /** POST / PUT / PATCH 带 JSON body。抽出来只为少写三行样板。 */
@@ -314,10 +372,10 @@ export const api = {
     }),
 
   removeWatchlist: (code: string) =>
-    request<{ ok: boolean }>(`/watchlist/${code}`, { method: 'DELETE' }),
+    request<{ ok: boolean }>(`/watchlist/${encodeURIComponent(code)}`, { method: 'DELETE' }),
 
   updateWatchlistNote: (code: string, note: string) =>
-    request<WatchlistRow>(`/watchlist/${code}`, {
+    request<WatchlistRow>(`/watchlist/${encodeURIComponent(code)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, note }),
@@ -326,7 +384,8 @@ export const api = {
   syncWatchlist: (days = 250) =>
     request<{ rows: number }>(`/watchlist/sync?days=${days}`, { method: 'POST' }, LONG_TIMEOUT_MS),
 
-  stockProfile: (code: string) => request<StockProfile>(`/stock/${code}`),
+  stockProfile: (code: string) =>
+    request<StockProfile>(`/stock/${encodeURIComponent(code)}`),
 
   /**
    * 个股 K 线。
@@ -343,11 +402,12 @@ export const api = {
     const { days = 120, fq = 'none', volAdjust = false, period = 'day' } = options
     const vol = volAdjust ? '&vol_adjust=1' : ''
     return request<StockDailyRow[]>(
-      `/stock/${code}/daily?days=${days}&period=${period}&fq=${fq}${vol}`,
+      `/stock/${encodeURIComponent(code)}/daily?days=${days}&period=${period}&fq=${fq}${vol}`,
     )
   },
 
-  stockThemes: (code: string) => request<StockThemes>(`/stock/${code}/themes`),
+  stockThemes: (code: string) =>
+    request<StockThemes>(`/stock/${encodeURIComponent(code)}/themes`),
 
   /**
    * 个股的 **DDE 与主力净流入**（iFinD 口径，日频，单位元）。
@@ -356,7 +416,7 @@ export const api = {
    * 库里没有最近交易日的数据时后端会**现取一次**（花 1 次配额），之后读库。
    */
   stockDde: (code: string, days = 60) =>
-    request<StockDde>(`/stock/${code}/dde?days=${days}`),
+    request<StockDde>(`/stock/${encodeURIComponent(code)}/dde?days=${days}`),
 
   /**
    * 个股新闻（**东财口径**，按发布时间倒序）。
@@ -367,7 +427,7 @@ export const api = {
    * 页面上要标出来，别静默丢。
    */
   stockNews: (code: string, limit = 20) =>
-    request<StockNews>(`/stock/${code}/news?limit=${limit}`),
+    request<StockNews>(`/stock/${encodeURIComponent(code)}/news?limit=${limit}`),
 
   /**
    * 个股分析：把「代码 / 名称 / 拼音首字母」解析成结论（阶段判定 + 旁证）。
@@ -438,7 +498,7 @@ export const api = {
 
   syncStock: (code: string, days = 250) =>
     request<{ rows: number }>(
-      `/stock/${code}/sync?days=${days}`,
+      `/stock/${encodeURIComponent(code)}/sync?days=${days}`,
       { method: 'POST' },
       LONG_TIMEOUT_MS,
     ),

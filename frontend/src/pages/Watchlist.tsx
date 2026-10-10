@@ -126,6 +126,7 @@ export default function WatchlistPage() {
                 if (event.key === 'Enter') void add()
               }}
               placeholder="输入代码 / 名称 / 拼音首字母"
+              maxLength={32}
               className="num min-w-0 flex-1 border border-line bg-ink-850 px-3 py-2 text-[14px] text-fg outline-none placeholder:text-fg-dim focus:border-fg-dim"
             />
             <button
@@ -180,14 +181,14 @@ export default function WatchlistPage() {
                     >
                       <td className="!text-left">
                         <Link
-                          to={`/stock/${row.code}`}
+                          to={`/stock/${encodeURIComponent(row.code)}`}
                           className="num text-accent hover:underline"
                         >
                           {row.code}
                         </Link>
                       </td>
                       <td className="!text-left">
-                        <Link to={`/stock/${row.code}`} className="text-fg hover:underline">
+                        <Link to={`/stock/${encodeURIComponent(row.code)}`} className="text-fg hover:underline">
                           {row.name ?? '—'}
                         </Link>
                       </td>
@@ -289,6 +290,7 @@ function NoteEditor({
           if (event.key === 'Enter') event.currentTarget.blur()
         }}
         placeholder="写点备注"
+        maxLength={2000}
         className="w-full border border-transparent bg-transparent py-[2px] pr-12 pl-1 text-[13px] text-fg-muted outline-none transition-colors placeholder:text-fg-dim hover:border-line focus:border-line focus:bg-ink-850"
       />
       {state !== 'idle' && (

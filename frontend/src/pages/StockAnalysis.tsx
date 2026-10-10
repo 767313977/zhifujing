@@ -151,7 +151,7 @@ export default function StockAnalysisPage() {
               // 与 meta 里那条「看完整个股页」是同一个去处 —— 名字本来就最像可点的东西
               title={
                 <Link
-                  to={`/stock/${result.code}`}
+                  to={`/stock/${encodeURIComponent(result.code)}`}
                   title="打开个股页"
                   className="transition-colors hover:text-accent"
                 >
@@ -164,7 +164,7 @@ export default function StockAnalysisPage() {
                   <span className="mx-2">·</span>
                   <span className={toneOf(result.pct_chg)}>{fmtPct(result.pct_chg)}</span>
                   <Link
-                    to={`/stock/${result.code}`}
+                    to={`/stock/${encodeURIComponent(result.code)}`}
                     className="ml-3 text-fg-dim transition-colors hover:text-accent"
                   >
                     看完整个股页（K 线 / 资金）→
@@ -227,6 +227,14 @@ export default function StockAnalysisPage() {
 }
 
 /**
+ * 只放行 http(s) 链接。来源（东财）的 url 字段没有清洗，别的协议（比如 `javascript:`）
+ * 直接进 `<a href>` 是注入面 —— 不合法就不渲染成链接，标题照常显示。
+ */
+function isHttpUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url)
+}
+
+/**
  * 新闻那一块（「三面并列」里的新闻面）。
  *
  * 三条状态都要说清楚：加载中 / 有内容 / 空（**且区分「真没搜到」与「源没返回」**）——
@@ -261,14 +269,18 @@ function NewsPanel({ news, loading }: { news: StockNews | null; loading: boolean
           {news.rows.map((row) => (
             <li key={`${row.published_at}-${row.url}`} className="px-4 py-2.5">
               <div className="flex flex-wrap items-baseline gap-x-2">
-                <a
-                  href={row.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[13px] text-fg transition-colors hover:text-accent"
-                >
-                  {row.title}
-                </a>
+                {isHttpUrl(row.url) ? (
+                  <a
+                    href={row.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[13px] text-fg transition-colors hover:text-accent"
+                  >
+                    {row.title}
+                  </a>
+                ) : (
+                  <span className="text-[13px] text-fg">{row.title}</span>
+                )}
                 <span className="num text-[12px] text-fg-dim">
                   {row.published_at}
                   <span className="mx-1.5">·</span>
