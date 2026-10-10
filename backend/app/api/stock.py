@@ -10,6 +10,7 @@
 """
 
 import logging
+import threading
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -99,6 +100,11 @@ NEWS_CACHE_MAX = 256
 NEWS_FETCH_LIMIT = 30
 NEWS_FETCH_WINDOW_SEC = 600
 _news_cache: dict[tuple[str, int], tuple[datetime, StockNewsOut]] = {}
+# 护住 `_news_cache` 的整段「写入 + 清过期 + 淘汰」。FastAPI 的同步接口跑在线程池里，
+# 多个请求会并发写同一个缓存 —— 淘汰那段 `min(_news_cache, ...)` 是**裸迭代 dict**，
+# 一边迭代一边被别的线程插入 / 删除就会抛 `RuntimeError: dictionary changed size
+# during iteration`，那次请求直接 500。这里全是内存操作，粒度粗一点无所谓。
+_news_cache_lock = threading.Lock()
 _news_fetch_limiter = RateLimiter(
     limit=NEWS_FETCH_LIMIT,
     window_sec=NEWS_FETCH_WINDOW_SEC,
@@ -107,17 +113,22 @@ _news_fetch_limiter = RateLimiter(
 
 
 def _cache_news(key: tuple[str, int], value: StockNewsOut) -> None:
-    """写新闻缓存并维持上限：先清过期，再超就丢最旧的一条（只是内存兜底）。"""
+    """写新闻缓存并维持上限：先清过期，再超就丢最旧的一条（只是内存兜底）。
+
+    ⚠️ 整段用 `_news_cache_lock` 串起来（为什么见锁的定义）；淘汰同时用**快照写法**
+    （`list(_news_cache.items())`）—— 两层保险，即便将来误删了锁也不会再裸迭代 dict 而 500。
+    """
     now = datetime.now()
     ttl = timedelta(seconds=NEWS_TTL_SEC)
-    _news_cache[key] = (now, value)
-    if len(_news_cache) > NEWS_CACHE_MAX:
-        for stale_key, (stamp, _) in list(_news_cache.items()):
-            if now - stamp >= ttl:
-                _news_cache.pop(stale_key, None)
-    if len(_news_cache) > NEWS_CACHE_MAX:
-        oldest = min(_news_cache, key=lambda k: _news_cache[k][0])
-        _news_cache.pop(oldest, None)
+    with _news_cache_lock:
+        _news_cache[key] = (now, value)
+        if len(_news_cache) > NEWS_CACHE_MAX:
+            for stale_key, (stamp, _) in list(_news_cache.items()):
+                if now - stamp >= ttl:
+                    _news_cache.pop(stale_key, None)
+        if len(_news_cache) > NEWS_CACHE_MAX:
+            oldest = min(list(_news_cache.items()), key=lambda kv: kv[1][0])
+            _news_cache.pop(oldest[0], None)
 
 
 # 可选的 K 线周期。周/月由本地日线重采样（`_resample`），不额外取数
@@ -613,6 +624,11 @@ def _stock_dde(code: str, days: int, user_id: int) -> tuple[list[StockDde], str 
     if cached and latest and cached[-1].trade_date >= latest:
         return cached, None
 
+    # 要真花钱了，先过**配额闸**（≥80% 就 429，文案与手动同步一致）。
+    # ⚠️ 放在「缓存命中」判断**之后**：配额闸挡的是「现取」，不是「看盘」—— 库里已有
+    # 最近交易日数据的票必须照常返回，否则配额一紧张，用户连翻自己盯的票看 K 都被拒。
+    _guard_quota()
+
     # 要真花钱了，先过限流闸（记一笔放在**取数之前**：无论取数成不成，配额都已经花了）
     key = f"dde:{user_id}"
     wait = _dde_fetch_limiter.retry_after(key)
@@ -666,8 +682,19 @@ def dde(
     ⚠️ **现取按用户限流**（`DDE_FETCH_LIMIT`，10 分钟 30 次）：空结果不落库，所以
     无效代码反复请求原本每次都能花掉 1 次配额。被限流时**不报错**，照常返回缓存 +
     一句说明（`note`）。
+
+    ⚠️ **还先挡两道**（2026-10-11 加，与自选同一套口径）：
+    1. 代码必须真在 `stock_basic` 里（`_code()` 只保证 6 位数字，999999 也能过）——
+       查不到就 400，别拿假代码去消耗 iFinD 配额；
+    2. 真去现取前过 `_guard_quota()`（配额 ≥80% 就 429）—— 闸在 `_stock_dde` 里，
+       **只在现取时触发**，缓存命中的请求不受影响。
     """
     code = _code(code)
+    # 代码必须真在库里，文案与 `api/watchlist.add_watchlist` 对齐（同一套口径，不另造）
+    if session.get(StockBasic, code) is None:
+        raise HTTPException(
+            status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
+        )
     rows, note = _stock_dde(code, days, user.id)
     return StockDdeOut(
         code=code,
@@ -794,10 +821,13 @@ def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
 
 
 def _guard_quota() -> None:
-    """手动同步的配额闸：配额紧张到 80% 就停手动同步。
+    """手动同步 / DDE 现取 的配额闸：配额紧张到 80% 就停手动同步。
 
-    `PAUSE_KLINE`（已用 ≥80%）本来就要停形态选股的全市场日线更新，手动同步比它更
-    非必需 —— 一起让路，把剩下的额度留给指数 / 情绪主线。日常采集仍会兜底刷新。
+    `PAUSE_KLINE`（已用 ≥80%）本来就要停形态选股的全市场日线更新，手动同步 / DDE
+    现取比它更非必需 —— 一起让路，把剩下的额度留给指数 / 情绪主线。日常采集仍会兜底刷新。
+
+    调用点：`/{code}/sync`（每次都调）与 `_stock_dde`（**只在真去现取时**调，缓存命中
+    不经过这里，见那里的说明）。
     """
     level = quota_level()
     if level >= QuotaLevel.PAUSE_KLINE:

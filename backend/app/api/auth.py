@@ -190,10 +190,12 @@ def login(
     ip = auth.client_ip(request)
     # 用户名先归一化，限流与查库都用这一份
     username = payload.username.strip()
-    # **两道限流并存**：按 IP（login_limiter）与按用户名（login_user_limiter），
-    # 任一命中就拒绝。只有按 IP 的话，换个 IP 就能绕开、分布式爆破几乎不受限。
+    # **两道限流并存**：按 IP（login_limiter）与按「用户名 + IP」（login_user_limiter），
+    # 任一命中就拒绝。只有按 IP 的话，换个 IP 就能绕开、分布式爆破几乎不受限；
+    # 而按用户名 + IP（不是裸用户名）是为了**防止拿别人的用户名锁号** ——
+    # 裸用户名的话，任何人连错 5 次就能把管理员锁 10 分钟（见 services.auth.login_user_key）。
     auth.guard_rate(ip)
-    auth.guard_user_rate(username)
+    auth.guard_user_rate(username, ip)
 
     user = db.scalar(select(AppUser).where(AppUser.username == username))
     # 没这个用户也照走一次**同样开销**的哈希校验。⚠️ 这里必须给**假哈希**而不是空串
@@ -203,8 +205,11 @@ def login(
     if user is None or not auth.verify_password(payload.password, stored):
         # 两条限流**都**记一笔 —— 用户名不存在也照记，否则按名计数本身就成了
         # 「哪些用户名有效」的探测口（见 services/auth.login_user_limiter）
+        # ⚠️ `fail` / `reset` 必须与上面的 `guard_user_rate` 用**同一把键**
+        # （`login_user_key(username, ip)`）：查询查组合键、记账记裸用户名的话，
+        # 两边永远对不上，这道防线等于被悄悄关掉（比不加更弱）。
         auth.login_limiter.fail(ip)
-        auth.login_user_limiter.fail(username)
+        auth.login_user_limiter.fail(auth.login_user_key(username, ip))
         raise HTTPException(status_code=401, detail="用户名或密码不对")
     if user.disabled_at is not None:
         raise HTTPException(status_code=403, detail="这个账号已被停用")
@@ -212,7 +217,7 @@ def login(
     token = auth.create_session(db, user, request.headers.get("user-agent"))
     db.commit()
     auth.login_limiter.reset(ip)
-    auth.login_user_limiter.reset(username)
+    auth.login_user_limiter.reset(auth.login_user_key(username, ip))
     _set_cookie(response, token, request)
     return MeOut.model_validate(user)
 

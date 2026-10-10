@@ -386,10 +386,17 @@ class RateLimiter:
 # 10 分钟内失败 5 次 → 锁 10 分钟
 login_limiter = RateLimiter(limit=5, window_sec=600, lock_sec=600)
 
-# 按**用户名**的登录限流，与按 IP 的 `login_limiter` **并存**（任一命中就拒绝）。
+# 按**用户名 + IP** 的登录限流，与按 IP 的 `login_limiter` **并存**（任一命中就拒绝）。
 # 为什么多这一道：按 IP 计数换个 IP 就绕过了（分布式爆破几乎不受限），而「同一个用户名
-# 在 10 分钟内失败 5 次」跟来源 IP 无关，两端都卡才挡得住。参数与 `login_limiter` 一致，
-# **不改变后者的语义**。
+# 在 10 分钟内失败 5 次」只在**同一个来源 IP 上**才算数，两端都卡才挡得住。参数与
+# `login_limiter` 一致，**不改变后者的语义**。
+#
+# ⚠️ 2026-10-11 修：key 原来**只按用户名**，于是任何人只要对已知用户名连错 5 次就能
+# 把它锁 10 分钟 —— 反复做等于「锁号」攻击，管理员一直登不进去（已登录的会话不受影响）。
+# 改成「用户名|IP」后，攻击者只能锁住「自己那个 IP 下的该用户名」，锁不到别的 IP / 别人。
+# ⚠️ 这一改动要求**记账的三处 key 完全一致**（见 guard_user_rate / login_user_key）：
+# api/auth.py 里 `guard_user_rate`、`login_user_limiter.fail`、`login_user_limiter.reset`
+# 必须用同一个 `login_user_key(username, ip)`，只改其中一处等于把这道防线关掉。
 # ⚠️ 用户名不存在也照记一笔（见 api/auth.login）：按名计数必须与「这个人存不存在」无关，
 # 否则它本身就成了「哪些用户名有效」的探测口。
 login_user_limiter = RateLimiter(limit=5, window_sec=600, lock_sec=600)
@@ -409,9 +416,24 @@ def guard_rate(key: str) -> None:
         )
 
 
-def guard_user_rate(username: str) -> None:
-    """按用户名的登录限流闸（被锁就抛 429），与按 IP 的 `guard_rate` 并存。"""
-    wait = login_user_limiter.retry_after(username)
+def login_user_key(username: str, ip: str | None = None) -> str:
+    """`login_user_limiter` 的限流键：**用户名 + IP**。
+
+    单独拎成函数是为了让「查（guard_user_rate）」与「记账（fail / reset）」用**同一个
+    键**——三处任何一处不一致，这道防线都会失效（记账记在 A 键、查询查 B 键 = 永不命中）。
+    `ip` 为 None 时退化成只按用户名（兼容还没补传 ip 的旧调用）。见 login_user_limiter 说明。
+    """
+    return f"{username}|{ip}" if ip else username
+
+
+def guard_user_rate(username: str, ip: str | None = None) -> None:
+    """按「用户名 + IP」的登录限流闸（被锁就抛 429），与按 IP 的 `guard_rate` 并存。
+
+    ⚠️ `ip` 应传 `client_ip(request)` 的结果（`api/auth.login` 补传）。不传时退化成
+    只按用户名 —— 那等于回到「任何人能凭用户名锁号」的老样子，所以是**过渡兼容**，
+    不是推荐用法。记账侧（`fail` / `reset`）必须同样用 `login_user_key(username, ip)`。
+    """
+    wait = login_user_limiter.retry_after(login_user_key(username, ip))
     if wait is not None:
         raise HTTPException(
             status_code=429,
@@ -468,6 +490,7 @@ __all__ = [
     "guard_user_rate",
     "hash_password",
     "login_limiter",
+    "login_user_key",
     "login_user_limiter",
     "require_admin",
     "require_login",
