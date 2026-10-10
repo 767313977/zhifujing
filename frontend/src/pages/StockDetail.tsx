@@ -375,8 +375,6 @@ export default function StockDetail() {
           )}
         </Panel>
 
-        {profile?.phase && <PhasePanel phase={profile.phase} />}
-
         <Panel
           title="所属题材"
           meta={
@@ -519,6 +517,10 @@ export default function StockDetail() {
             </>
           )}
         </Panel>
+
+        {/* 阶段判定放在资金流向之后（2026-10-10 用户要求）：先看资金与流通盘，
+            再看这只票处在哪一档 */}
+        {profile?.phase && <PhasePanel phase={profile.phase} delay={110} />}
 
         <Panel
           title="涨停记录"
