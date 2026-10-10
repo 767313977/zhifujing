@@ -9110,7 +9110,7 @@ Edge 的窗口边不算在 `innerWidth` 里）。操作区按最宽那一档建�
     云资源 <服务器IP>）。页脚已按管局要求**悬挂备案号并链接到工信部官网**
     （`Layout` 的 footer；管局原话「否则将被管局责令更改」，别删）。
   - ⚠️ **公安联网备案是另一件事**：不拦访问、不拦端口、不影响解析，只要求「服务开通 30 日内」
-    去 https://beian.mps.gov.cn 提交（数据码 `6bb7acd3d2c20e6a0985c6d5110d1687`）。
+    去 https://beian.mps.gov.cn 提交（**数据码不在此记录** —— 仓库是公开的，需要时去公安备案后台查）。
     **不需要等它**才能用站点。
   - ✅ **HTTPS 已上线（2026-09-28）**：`zhifujing.top` 与 `www.zhifujing.top` 一起签进
     **同一张** Let's Encrypt 证书（`/etc/letsencrypt/live/zhifujing.top/`，ECDSA，
@@ -9118,7 +9118,7 @@ Edge 的窗口边不算在 `innerWidth` 里）。操作区按最宽那一档建�
     `/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh`。跑的命令：
 
         sudo DOMAIN=zhifujing.top ALT_DOMAINS="www.zhifujing.top" \
-             CERT_EMAIL=767313977@qq.com bash deploy/setup_nginx.sh
+             CERT_EMAIL=<你的邮箱> bash deploy/setup_nginx.sh
 
     - **`ALT_DOMAINS` 是这次新加的**（`setup_nginx.sh` 里的可选变量）：空格分隔的额外域名，
       一起进 `server_name`、并逐个 `-d` 签进同一张证书（主域名必须排第一 —— certbot 拿
