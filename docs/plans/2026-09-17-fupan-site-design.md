@@ -10277,3 +10277,51 @@ Edge 的窗口边不算在 `innerWidth` 里）。操作区按最宽那一档建�
   「当前判定」口径分开，是个产品取舍，尚未拍板。
 - **`unknown` 桶仍偏大**（44%），里面既有「不涨不跌、量比正常」的普通票，也有其它不匹配的形态；
   本次只把下跌那一块分出去（`weak`），**没有动其余阈值**。
+
+### 2026-10-10 对外介绍页：GitHub Pages + 两家搜索引擎验证
+
+**起因**：用户说「GitHub 的私有仓库无法被公开搜索引擎索引，帮我设置一下能被搜到」。先核对事实 ——
+仓库**本来就是 public**（匿名访问仓库页与 README 都是 200、API `private: false`、无 `X-Robots-Tag`、
+`github.com/robots.txt` 不屏蔽仓库主页），所以「不能索引」这个前提不成立，真实问题只是**还没被收录**。
+顺带把仓库元数据补齐（原先 description / topics / homepage **三个字段全空**）：
+description 一句话、17 个 topics、homepage 指向介绍页。
+
+**为什么不能在仓库页上直接做验证**（实测，三种路径同一文件）：
+
+| 路径 | 结果 |
+| --- | --- |
+| `github.com/767313977/zhifujing/README.md` | **404** ← 搜索引擎「HTML 文件」法要的就是这个形状 |
+| `github.com/767313977/zhifujing/blob/master/README.md` | 200 |
+| `github.com/767313977/zhifujing/raw/master/README.md` | 200（跳 raw.githubusercontent.com） |
+
+即 GitHub **不按 `/owner/repo/<file>` 吐文件** → HTML 文件法必然失败；HTML 标签法要改 `github.com`
+那个页面的 `<head>`（改不了）、DNS 法要 `github.com` 的域名控制权（不是我们的）—— 三种都不成立，
+**Bing 的三种方式同理**。所以「让项目能被搜到」必须落在**自己可控的域**上。
+
+**做法**：建一个**独立的 `gh-pages` 分支**（孤儿分支，只含 `index.html` + `.nojekyll`），
+GitHub Pages 发布到 `https://767313977.github.io/zhifujing/`。
+
+- 单文件、零外部依赖、深色主题，含一张内联 SVG 架构图；带 `description` / `keywords` / Open Graph / canonical；
+- **只发布这一个页面** —— 仓库里的 `docs/策略.md`、设计文档、后端源码在该域下**全 404**（逐个抽查确认），
+  不把策略与决策日志变成公开网页；
+- 推送 `gh-pages` 分支时 GitHub **自动启用了 Pages**（对 `gh-pages` 分支的老行为，`build_type: legacy`），
+  源正好是 `gh-pages /`，没再手动配；
+- 页面源文件就在这个分支上，改页面 = 切到 `gh-pages` 改 `index.html` 再推。
+
+**验证**（都落在自己可控的域上，所以能过）：
+
+| 引擎 | 方式 | 文件 | 实测 |
+| --- | --- | --- | --- |
+| Google Search Console | HTML 文件 | `google091d3bde4c21110e.html` | 53 字节，线上与本地**逐字节一致**，已点「请求编入索引」 |
+| Bing Webmaster Tools | XML 文件 | `BingSiteAuth.xml` | 85 字节，线上与本地**逐字节一致** |
+
+两个文件都用 **Contents API 按字节原样写入**（`[IO.File]::ReadAllBytes` → base64 → `gh api -X PUT`），
+既不切本地分支、也不经过任何会改编码的环节。
+
+⚠️ **这两个验证文件别删**：两家都会定期回来复查，文件不在了验证会失效。
+
+**遗留**：Bing 站点列表里那条 `https://github.com/767313977/zhifujing`（早期「手动添加网站」留下的）
+**验证不了**（同上面的 404 原因），应在列表里删掉，只留 Pages 那个。
+
+**顺带**：README 顶部加了一行介绍页链接（给新站一条站内入链 —— 入链是引擎发现新页面的主要途径）。
+
