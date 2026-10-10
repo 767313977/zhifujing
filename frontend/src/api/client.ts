@@ -59,19 +59,6 @@ const BASE = '/api'
  */
 export const UNAUTHORIZED_EVENT = 'fupan:unauthorized'
 
-/**
- * 未登录 / 会话过期。
- *
- * **单独一个错误类型**是必要的：调用方（`RequireAuth`）要靠它决定「跳登录页」，
- * 而不是把「请先登录」当成普通业务错误，在页面上显示成一行红字。
- */
-export class UnauthorizedError extends Error {
-  constructor(message = '请先登录') {
-    super(message)
-    this.name = 'UnauthorizedError'
-  }
-}
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // `credentials: 'same-origin'`：登录态在 HttpOnly cookie 里，不带它就等于没登录。
   // 同源请求浏览器默认也会带，但显式写出来 —— 将来若改成跨域部署，这里不会静默失效。
@@ -88,8 +75,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (response.status === 401) {
       // 会话**在使用中**失效（闲置过期 / 在别处改了密码 / 被停用）时，页面早就渲染出来了，
       // RequireAuth 不会再跑。靠这个事件让 AuthProvider 清掉用户，下一次渲染自动跳登录页。
+      // （这里不再抛专门的错误类型：没有调用方按类型分支，跳转全靠上面这个事件。）
       window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
-      throw new UnauthorizedError(detail)
+      throw new Error(detail)
     }
     throw new Error(detail)
   }
@@ -307,7 +295,7 @@ export const api = {
   /**
    * 个股的 **DDE 与主力净流入**（iFinD 口径，日频，单位元）。
    *
-   * `days` 是「最近 N 个交易日」（后端 5~250，默认 60）。这两个指标只有 iFinD 有；
+   * `days` 是「最近 N 个交易日」（后端 5~100，默认 60）。这两个指标只有 iFinD 有；
    * 库里没有最近交易日的数据时后端会**现取一次**（花 1 次配额），之后读库。
    */
   stockDde: (code: string, days = 60) =>
@@ -339,6 +327,9 @@ export const api = {
    * 与 `patternTrack` 的分工：那个问「全形态混合的评分前 50 只后来怎么样」，
    * 这个问「**这个池子**后来怎么样」—— 几百只的安静型池子进不了前 50，只能按池子算。
    * ⚠️ 统计起点是 2026-10-08（池子的候选范围定稿那天），样本会随每天扫描慢慢攒。
+   *
+   * **当前前端无界面调用（保留后端契约）**：`/api/patterns/standing` 后端仍在，
+   * 但站内已没有页面展示这张成绩单，保留此方法与类型只为不漏掉接口。
    */
   poolStanding: (cohorts = 30, trackDays = 10, lineDays = 5) =>
     request<PoolStandingOut>(
@@ -437,7 +428,11 @@ export const api = {
 
   // --- 登录与会员（设计见文档 §8.69）---
 
-  /** 「我是谁」。未登录会抛 UnauthorizedError，由 RequireAuth 兜住跳登录页。 */
+  /**
+   * 「我是谁」。未登录时 `request` 会派发 `UNAUTHORIZED_EVENT`，由 `AuthProvider`
+   * 清空用户 → 下一次渲染 `RequireAuth` 自动跳登录页；本调用自身也会失败（被
+   * `AuthProvider` 的 catch 当作「没登录」处理）。
+   */
   authMe: () => request<Me>('/auth/me'),
 
   login: (username: string, password: string) =>

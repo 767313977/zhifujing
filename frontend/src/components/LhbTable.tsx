@@ -69,9 +69,12 @@ export default function LhbTable({ items, loading = false, delay = 340 }: LhbTab
               </tr>
             </thead>
             <tbody>
-              {shown.map((item, index) => (
+              {shown.map((item) => (
                 <tr
-                  key={`${item.code}-${item.reason}-${index}`}
+                  // 用 code+reason 作稳定 key：同股多原因是不同的行（reason 区分它们），
+                  // 不再带 index —— 点列头排序后顺序一变、index 跟着变，React 会把整行
+                  // 卸载重建（本来只该挪位置）
+                  key={`${item.code}-${item.reason}`}
                   // 上榜原因与解读被截断，完整内容放在行 tooltip 里，信息不丢
                   title={[
                     `${item.name ?? ''} ${item.code}`,

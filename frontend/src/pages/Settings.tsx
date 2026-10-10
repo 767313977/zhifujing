@@ -432,8 +432,10 @@ export default function Settings() {
                   </tr>
                 </thead>
                 <tbody>
-                  {logRows.map((log, index) => (
-                    <LogRow key={`${log.created_at}-${log.task}-${index}`} log={log} />
+                  {logRows.map((log) => (
+                    // created_at 是入库时间（带微秒），与 task 组合足以唯一；不再带 index，
+                    // 否则点列头排序后顺序变化会让所有行重挂载
+                    <LogRow key={`${log.created_at}-${log.task}`} log={log} />
                   ))}
                 </tbody>
               </table>

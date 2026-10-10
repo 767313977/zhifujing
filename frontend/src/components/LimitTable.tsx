@@ -126,7 +126,7 @@ function buildColumns(
       ? [
           {
             key: 'board',
-            label: '开盘啦板块',
+            label: '开盘红板块',
             align: 'left' as const,
             narrowHidden: true,
             render: (s: LimitStock) => (

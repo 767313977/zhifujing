@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
@@ -152,6 +152,16 @@ export default function StockDetail() {
 
   const navigate = useNavigate()
   /**
+   * 当前路由参数 code 的最新值。← → 切票只改路由参数、组件**不卸载**，而
+   * `toggleWatch` 的回调只依赖 profile/load（不含 code）—— 它 `await` 之后如果用户
+   * 已经切走，回调里 `profile` 仍是旧票，用这个 ref 比对「自选请求回来时是否还在
+   * 同一只票」，不在就丢掉这次 `setProfile`（否则概况/题材会显示成上一只票）。
+   */
+  const codeRef = useRef(code)
+  useEffect(() => {
+    codeRef.current = code
+  }, [code])
+  /**
    * 上一次是从哪份列表点进来的（形态命中 / 自选 / 板块成分股…）。
    * 挂载时读一次就够：详情页自己不会改写它，切股票也只是在同一份列表里位移。
    */
@@ -164,7 +174,8 @@ export default function StockDetail() {
    * @param isCancelled 判断「这次请求还算不算数」。三次请求回来的顺序不保证，
    *   ← → 快速连按时上一只票的响应可能晚于当前这只到达 —— 不判的话概况/题材/DDE
    *   会**显示成另一只票**（K 线在 hook 里有自己的守卫，不会错；这三块原来没有，
-   *   见 2026-09-27 的修复）。页面内的用户动作（如 `toggleWatch`）不用传。
+   *   见 2026-09-27 的修复）。页面内的用户动作（`toggleWatch`）也要判：它 await 期间
+   *   用户可能已经切票，传 `() => codeRef.current !== target` 即可与路由参数比对。
    */
   const load = useCallback(
     async (target: string, isCancelled: () => boolean = () => false) => {
@@ -259,7 +270,9 @@ export default function StockDetail() {
         await api.addWatchlist(profile.code, profile.name ?? undefined)
         setNotice('已加入自选')
       }
-      await load(profile.code)
+      // 用 codeRef 兜住「点完自选立刻切票」：请求回来时若已不在 profile.code 这只票上，
+      // load 会丢弃这次 setProfile，别把上一只票的概况/题材盖到新票上
+      await load(profile.code, () => codeRef.current !== profile.code)
     } catch (err) {
       setError((err as Error).message)
     }

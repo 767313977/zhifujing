@@ -44,9 +44,13 @@ export default function SectorFlowMatrix({ data, loading, onSelect }: Props) {
   }
 
   return (
+    /* 只用 overflow-x：行数是「前 N 名」、由 data.top 定，本来就不多，不需要纵向滚动。
+       因为 overflow-x 会把本容器变成两个方向上的滚动容器（另一轴 visible 会算成
+       auto），thead 上的 `top-0` 粘的是这个容器、而容器纵向不滚动 → 写了也粘不住，
+       所以这里**不加** sticky（左侧「排名」列的 left-0 仍有效，那是横向用的）。 */
     <div className="overflow-x-auto">
       <table className="border-collapse">
-        <thead className="sticky top-0 z-20">
+        <thead>
           <tr>
             <th className="sticky left-0 z-30 border-r border-b border-line-soft bg-ink-850 px-2 py-1.5 text-left font-normal whitespace-nowrap text-fg-dim">
               排名

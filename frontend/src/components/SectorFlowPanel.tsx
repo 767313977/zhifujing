@@ -256,7 +256,7 @@ export default function SectorFlowPanel({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line-soft px-3 py-2">
         <Segmented value={taxonomy} items={TAXONOMIES} onChange={onTaxonomy} />
         <span className="text-[13px] text-fg-dim">
-          开盘啦{label}口径（与站内板块同一套名字）· 单位亿元 ·
+          开盘红{label}口径（与站内板块同一套名字）· 单位亿元 ·
           净流入 = 成分股主力净流入之和 · 红=净流入 绿=净流出
         </span>
         {/* 剔掉哪些板块要写出来：否则「人工智能怎么不见了」会被当成 bug。
@@ -284,7 +284,7 @@ export default function SectorFlowPanel({
         <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
       ) : empty ? (
         <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
-          这一天没有资金流数据。净流入是拿「开盘啦成分股 × 逐股主力净流入」现算的，
+          这一天没有资金流数据。净流入是拿「开盘红成分股 × 逐股主力净流入」现算的，
           只算当天、补不了历史，所以要从改造那天起一天天累积 ——
           每天收盘后（17:30）自动算一次
         </div>
