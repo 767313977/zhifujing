@@ -54,15 +54,67 @@ import type {
 const BASE = '/api'
 
 /**
+ * 默认请求超时（毫秒）。**必须要有超时**：`fetch` 本身不会超时，弱网下一条请求挂住
+ * 就是**永久等待** —— 页面停在「请稍候…」或空白页，用户只能自己刷新（2026-10-10 修）。
+ */
+const DEFAULT_TIMEOUT_MS = 30_000
+
+/**
+ * 长任务的超时（10 分钟）。与线上 nginx 的 `proxy_read_timeout 600s` 对齐 —— 超过它
+ * nginx 也会先掐，给到同一个上限就够。用在**真的会跑很久**的三个接口上：
+ * 历史回补、自选同步、单只同步（后两个要按年的跨度去问 iFinD）。
+ */
+const LONG_TIMEOUT_MS = 600_000
+
+/**
+ * 「确认登录态」用的超时，单独给一个**更短**的值。
+ *
+ * 这一步挡在**整页渲染之前**（见 `lib/auth.tsx` 的 RequireAuth：没确认完就渲染一个
+ * 空白 div），所以这里等 30 秒 = 白屏 30 秒。10 秒足够一个正常请求跑完，
+ * 超了就当「没登录」去登录页，比干等强。
+ */
+const AUTH_CHECK_TIMEOUT_MS = 10_000
+
+/**
  * 收到 401 时发的自定义事件。定义在这里（而不是 lib/auth.tsx）是为了**避免循环导入**：
  * auth.tsx 要用 api，而这个事件要用在 api 里 —— 只能有一个方向。
  */
 export const UNAUTHORIZED_EVENT = 'fupan:unauthorized'
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  // `credentials: 'same-origin'`：登录态在 HttpOnly cookie 里，不带它就等于没登录。
-  // 同源请求浏览器默认也会带，但显式写出来 —— 将来若改成跨域部署，这里不会静默失效。
-  const response = await fetch(`${BASE}${path}`, { credentials: 'same-origin', ...init })
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<T> {
+  // 为什么手写 AbortController、不用更短的 `AbortSignal.timeout()`：后者要
+  // Chrome 103+ / Safari 16.4+，而本站会在手机套壳浏览器（微信 / QQ / 夸克）里打开，
+  // 手写这几行到处都能跑。
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let response: Response
+  try {
+    // `credentials: 'same-origin'`：登录态在 HttpOnly cookie 里，不带它就等于没登录。
+    // 同源请求浏览器默认也会带，但显式写出来 —— 将来若改成跨域部署，这里不会静默失效。
+    response = await fetch(`${BASE}${path}`, {
+      credentials: 'same-origin',
+      ...init,
+      signal: controller.signal,
+    })
+  } catch (err) {
+    // 这里接住的是**没拿到响应**的失败：超时 / 连接被重置 / 断网 / DNS 失败。
+    // 不接的话浏览器把它抛成 `TypeError: Failed to fetch` 直接显示在页面上
+    //（2026-10-10 用户看到的就是这句）—— 对着英文原文没法判断该做什么，而且看着像
+    // 服务器在超时，实际是**请求根本没走完**。所以翻成人话，并带上出错的接口名。
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error(`请求超时（${timeoutMs / 1000} 秒无响应）：${path}`)
+    }
+    if (err instanceof TypeError) {
+      throw new Error(`网络中断或超时，请重试：${path}`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
   if (!response.ok) {
     // 后端把可读原因放在 detail 里（如「暂无数据，请先执行采集」）
     let detail = `${response.status} ${response.statusText}`
@@ -89,12 +141,17 @@ function send<T>(
   method: 'POST' | 'PUT' | 'PATCH',
   path: string,
   body?: unknown,
+  timeoutMs?: number,
 ): Promise<T> {
-  return request<T>(path, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
+  return request<T>(
+    path,
+    {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+    timeoutMs,
+  )
 }
 
 function withDate(path: string, date?: string | null): string {
@@ -267,7 +324,7 @@ export const api = {
     }),
 
   syncWatchlist: (days = 250) =>
-    request<{ rows: number }>(`/watchlist/sync?days=${days}`, { method: 'POST' }),
+    request<{ rows: number }>(`/watchlist/sync?days=${days}`, { method: 'POST' }, LONG_TIMEOUT_MS),
 
   stockProfile: (code: string) => request<StockProfile>(`/stock/${code}`),
 
@@ -380,7 +437,11 @@ export const api = {
     ),
 
   syncStock: (code: string, days = 250) =>
-    request<{ rows: number }>(`/stock/${code}/sync?days=${days}`, { method: 'POST' }),
+    request<{ rows: number }>(
+      `/stock/${code}/sync?days=${days}`,
+      { method: 'POST' },
+      LONG_TIMEOUT_MS,
+    ),
 
   note: (date: string) => request<ReviewNote>(`/note/${date}`),
 
@@ -401,6 +462,7 @@ export const api = {
     request<{ days: number; failed_steps: number }>(
       `/admin/backfill?start=${start}${end ? `&end=${end}` : ''}`,
       { method: 'POST' },
+      LONG_TIMEOUT_MS,
     ),
 
   // --- 资金面 ---
@@ -432,8 +494,11 @@ export const api = {
    * 「我是谁」。未登录时 `request` 会派发 `UNAUTHORIZED_EVENT`，由 `AuthProvider`
    * 清空用户 → 下一次渲染 `RequireAuth` 自动跳登录页；本调用自身也会失败（被
    * `AuthProvider` 的 catch 当作「没登录」处理）。
+   *
+   * ⚠️ 用**更短**的超时（`AUTH_CHECK_TIMEOUT_MS`）：它挡在整页渲染之前，
+   * 干等多久就是白屏多久（2026-10-10 修）。
    */
-  authMe: () => request<Me>('/auth/me'),
+  authMe: () => request<Me>('/auth/me', undefined, AUTH_CHECK_TIMEOUT_MS),
 
   login: (username: string, password: string) =>
     send<Me>('POST', '/auth/login', { username, password }),

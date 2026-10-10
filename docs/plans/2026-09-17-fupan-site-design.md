@@ -10453,5 +10453,63 @@ CREATE TABLE screen_result (
 | 加 `--allow-dirty` 强行打包 | 91 个文件；输出列出「跳过 2 个未跟踪文件」 |
 | 包内容核对 | `api/ai.py`、`services/ai.py` **已排除**；`.env`、`frontend/dist/*`、`main.py` 均在包内 |
 
+### 2026-10-10 弱网下的 `Failed to fetch`：前端加超时、nginx 开 HTTP/2
+
+用户报「网站登录超时」，截图里页面顶部弹的是浏览器原文 **`Failed to fetch`**。
+排查结论与三处修改：
+
+**先排除服务端**（实测）：
+
+| 路径 | 耗时 |
+| --- | --- |
+| 服务器 → 应用本体（`127.0.0.1:8000`） | **0.002 s** |
+| 服务器 → nginx（TLS） | **0.008 s** |
+| 服务器 → 公网域名（出去再回来） | **0.091 s** |
+| 本机 → 公网域名 | **1.5 s**（health）/ **6.6 s**（登录 POST） |
+
+服务器 `load average 0.01`、CPU 空闲、内存充足，近 3 天日志里**零 500 / 零
+`database is locked` / 零 traceback**。所以最后一行那个 1.5 秒是**本机到服务器那段网络**
+的问题（与 GitHub 推送丢包同一类），**不是网站**。
+
+**日志里的真相是另一件事**：09:17 连续 5 次 `401`（用户名或密码不对，后端故意不区分
+「没这个人」）→ 第 6 次变 `429`（限流锁 10 分钟，10 分钟内失败 5 次就锁）；10:04 又 3 次
+401 → 10:05 才 200。**`Failed to fetch` 与这些 401 无关** —— 它是**请求没走完**
+（连接被重置 / 断网 / 超时），后端日志里根本没有对应记录，这正好解释了「查不到超时」。
+
+**修改 ①：前端加请求超时 + 把浏览器原文翻成人话**（`api/client.ts`）
+
+`fetch` **默认不会超时**。弱网下一条请求挂住就是**永久等待** —— 页面停在「请稍候…」
+或白屏，用户只能手动刷新（2026-10-10 用户看到的就是这个）。现在：
+
+- 默认超时 **30 s**；用**手写 `AbortController`**，不用更短的 `AbortSignal.timeout()` ——
+  后者要 Chrome 103+ / Safari 16.4+，而本站会在微信 / QQ / 夸克这类套壳浏览器里打开；
+- 长任务（历史回补 / 自选同步 / 单只同步）给 **600 s**，与 nginx 的 `proxy_read_timeout`
+  对齐（再长也是 nginx 先掐）；
+- 超时 →「请求超时（N 秒无响应）：`/api/xxx`」；`TypeError`（就是 `Failed to fetch`）
+  →「网络中断或超时，请重试：`/api/xxx`」—— **带上接口名**，一眼能看出是哪个请求挂了。
+
+**修改 ②：「确认登录态」用更短的超时**（`client.ts` 的 `AUTH_CHECK_TIMEOUT_MS = 10 s`）
+
+`RequireAuth` 在确认完登录态之前渲染的是一个**空白 `div`**（原注释写「通常几十毫秒」）。
+而那个 promise 在弱网下可能**永不 settle** → `checking` 永远为 `true` →
+**页面永久白屏**。现在 10 秒超时后落进 `AuthProvider` 的 catch、当成「没登录」跳登录页。
+
+**修改 ③：nginx 开 HTTP/2**（`deploy/setup_nginx.sh`，**已应用到线上**）
+
+原来只有 `listen 443 ssl;`。HTTP/1.1 下浏览器对同一域名**最多 6 条连接**、且不能多路复用，
+而一次页面加载要发十几个 `/api/*` 请求 —— 弱网时请求排队、连接被重置，前端就报
+`Failed to fetch`。
+
+```nginx
+listen 443 ssl http2;   # 线上是 nginx 1.24；≥1.25.1 要改成 listen 443 ssl; + http2 on;
+```
+
+线上做法：`sed` 那一行 → `nginx -t` 通过 → `systemctl reload nginx`。核验：服务器上
+`openssl s_client -alpn h2` 回 `ALPN protocol: h2`，`curl --http2` 得 `http_version=2`。
+
+⚠️ 前端那两条（① ②）**当天没能上线** —— 工作区里有另一处未提交的在制品，`pack_deploy.py`
+的闸（见上一节）拒绝打包。等那端收尾后随下一次部署上去。
+
+
 
 

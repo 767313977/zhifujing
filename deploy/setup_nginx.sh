@@ -259,7 +259,12 @@ server {
 
 # 443：正式入口
 server {
-    listen 443 ssl;
+    # **开 HTTP/2**（2026-10-10 加）：一次页面加载要发十几个 `/api/*` 请求，而
+    # HTTP/1.1 下浏览器对同一个域名最多只开 6 条连接、且不能多路复用 —— 弱网时请求
+    # 排队 / 连接被重置，前端就报 `Failed to fetch`（用户 2026-10-10 报的正是这个）。
+    # ⚠️ 写法随 nginx 版本：`listen ... http2` 是 1.24 及更早的写法，线上就是 1.24；
+    # nginx ≥ 1.25.1 把它拆成了 `listen 443 ssl;` + `http2 on;`，升级后要改回来。
+    listen 443 ssl http2;
     server_name __SERVER_NAMES__;
 
     ssl_certificate     /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;
