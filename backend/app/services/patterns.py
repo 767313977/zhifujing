@@ -4959,13 +4959,17 @@ def _t_buy(bars: Bars) -> Signal | None:
     score = T_BUY_BASE_SCORE + T_BUY_TIER_SCORE[tier]
     score += _gate_score(float(gap[-1]), T_BUY_GAP_DIP, T_BUY_GAP_IDEAL) * T_BUY_GAP_SCORE
 
+    # 「为什么算」要跟 `买0` 的分支一致：超跌那天原式是
+    # `买0 := IF(超跌, 底背 OR 零下二金, …)` —— **双零金与基买被整段排除**，
+    # 所以明细里也不能把它们列成原因（2026-10-11 审 `_t_buy` 时修）。
+    deep = bool(overdropped[-1])
     fired = [
         label
         for flag, label in (
             (dip[-1], "底背离"),
             (gold2_low[-1], "零下二金"),
-            (gold_only_low[-1] and not weak[-1], "双零金"),
-            (base_buy[-1] and not weak[-1], "基买"),
+            (gold_only_low[-1] and not weak[-1] and not deep, "双零金"),
+            (base_buy[-1] and not weak[-1] and not deep, "基买"),
         )
         if flag
     ]
