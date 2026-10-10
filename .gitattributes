@@ -1,0 +1,11 @@
+# 行尾约定（2026-10-10 加）
+#
+# 为什么需要：Windows 工作区默认 `core.autocrlf=true` → 检出的文件是 CRLF，而
+# `scripts/pack_deploy.py` 是**按工作区的原始字节**把文件收进 tar 的。于是 shell
+# 脚本带着 CRLF 上到 Linux，`set -euo pipefail` 会被读成 `pipefail\r`，bash 直接
+# 报「invalid option name」，安装脚本一上来就崩（2026-10-10 部署时就这么炸过一次，
+# 当时在服务器上手工去掉 CR 才装完）。
+#
+# 只钉 `*.sh`：其它文件（.py / .md / .json / .env）带 CRLF 无害，不必动 —— 全量
+# 改行尾会在工作区产生一大片无意义的 diff，反而不好审。
+*.sh text eol=lf
