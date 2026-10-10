@@ -284,6 +284,22 @@ export default function StockDetail() {
    * 盘中打开时通常就是昨天（见后端 `collect_dde.CLOSE_READY`），所以界面上不写「今日」。
    */
   const latestDde = dde && dde.rows.length > 0 ? dde.rows[dde.rows.length - 1] : null
+  /**
+   * 所属题材（并进概况格的「所属题材」那一格，2026-10-10 用户要求）。
+   *
+   * 原来是一整块带板块涨跌幅的 Panel，压成两行：名称一行、**同序**对应的涨跌幅一行。
+   * 口径没变：板块归属来自开盘红的涨停天梯，**只覆盖涨停股**，非涨停股没有归属
+   * 接口，如实留空「—」（`themes` 为空且不在同步中时）。
+   */
+  const themeItems = themes?.themes ?? []
+  const themeNames = themeItems.length
+    ? themeItems.map((theme) => theme.concept).join('、')
+    : syncing
+      ? '同步中…'
+      : '—'
+  const themePcts = themeItems.length
+    ? themeItems.map((theme) => fmtPct(theme.pct_chg)).join('、')
+    : undefined
   const toolbar = (
     <>
       {/* 从列表点进来才有这份上下文；直接输 URL 打开时不显示，
@@ -331,11 +347,12 @@ export default function StockDetail() {
           }
           delay={40}
         >
-          {/* 12 格 = 用户 2026-09-26 给的完整清单（「实际管收率」「自留流通市值」按
-              实际换手率 / 自由流通市值理解）。**全部有数据源了** —— 市值 / 自由流通股 /
-              预测市盈率由建池时那次选股接口一并取回（加列不加调用次数，见设计文档 8.68.13）。
-              12 能被 2/3/4 整除，所以各档列数下都不会剩半行空格。
-              缺值的格子（还没跑过建池、或不在全 A 名单里）按站点惯例显示「—」。 */}
+          {/* 12 格（仍能被 2/3/4 整除，各档列数下都不剩半行空格）。
+              与 2026-09-26 那份清单相比，2026-10-10 把「实际换手率」换成了「所属题材」
+              —— 实际换手率移到资金流向（DDE）面板的自由流通市值旁边，所属题材从一整块
+              Panel 压进这一格。
+              市值 / 自由流通股 / 预测市盈率由建池时那次选股接口一并取回（加列不加调用
+              次数，见设计文档 8.68.13）。缺值的格子按站点惯例显示「—」。 */}
           <div className="grid grid-cols-2 overflow-hidden md:grid-cols-3 xl:grid-cols-4">
             <Cell label="开盘价" value={fmtNum(latest?.open, 2)} />
             <Cell
@@ -357,7 +374,7 @@ export default function StockDetail() {
               sub={`龙虎榜 ${profile?.lhb_count ?? 0} 次`}
             />
             <Cell label="换手率" value={fmtNum(latest?.turnover, 2, '%')} />
-            <Cell label="实际换手率" value={fmtNum(profile?.actual_turnover, 2, '%')} />
+            <Cell label="所属题材" value={themeNames} sub={themePcts} />
             <Cell label="总市值" value={fmtAmount(profile?.total_mv)} />
             <Cell label="自由流通市值" value={fmtAmount(profile?.free_float_mv)} />
             <Cell label="动态市盈率" value={fmtNum(profile?.pe_forecast, 2)} />
@@ -371,53 +388,6 @@ export default function StockDetail() {
               高 {fmtNum(latest.high, 2)}
               <span className="mx-2">·</span>
               低 {fmtNum(latest.low, 2)}
-            </div>
-          )}
-        </Panel>
-
-        <Panel
-          title="所属题材"
-          meta={
-            <span className="num">
-              {themes && themes.themes.length > 0
-                ? `${themes.themes.length} 个板块 · 板块涨跌幅为 ${
-                    themes.board_date ?? '—'
-                  }`
-                : '开盘红精选板块'}
-            </span>
-          }
-          delay={70}
-        >
-          {syncing ? (
-            <div className="px-4 py-6 text-center text-[13px] text-fg-dim">
-              同步日线后再取题材…
-            </div>
-          ) : themes && themes.themes.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5 px-4 py-3">
-              {themes.themes.map((theme) => (
-                <span
-                  key={theme.concept}
-                  className={[
-                    'flex items-baseline gap-1.5 border px-2 py-1 text-[13px]',
-                    theme.board_code
-                      ? 'border-line-soft bg-ink-850'
-                      : // 对不上板块表的是历史遗留的旧口径名字，弱化显示
-                        'border-line-soft/60 text-fg-dim',
-                  ].join(' ')}
-                >
-                  <span className={theme.board_code ? 'text-fg' : ''}>{theme.concept}</span>
-                  {theme.pct_chg != null && (
-                    <span className={`num ${toneOf(theme.pct_chg)}`}>
-                      {fmtPct(theme.pct_chg)}
-                    </span>
-                  )}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <div className="px-4 py-6 text-center text-[13px] text-fg-dim">
-              该股近期没有涨停过。板块归属来自开盘红的涨停天梯，只覆盖涨停股 ——
-              非涨停个股没有可用的归属接口，所以这里如实留空
             </div>
           )}
         </Panel>
@@ -492,10 +462,12 @@ export default function StockDetail() {
                   {dde.note}
                 </div>
               )}
-              {/* 三格：DDE 那两个数 + 自由流通市值（2026-10-10 用户要求加在 5日DDE 之后）。
-                  自由流通市值不是 DDE 指标，是「这只票流通盘多大」的旁证 —— 同样一笔净流入，
-                  落在小流通盘上意义大得多。数据来自 profile（建池时取回，加列不花调用次数） */}
-              <div className="grid grid-cols-3 overflow-hidden">
+              {/* 四格：DDE 那两个数 + 自由流通市值 + 实际换手率（2026-10-10 用户要求
+                  把实际换手率移到自由流通市值旁边）。后两个都不是 DDE 指标，是「这笔
+                  资金流落在多大的盘子上」的旁证 —— 同样一笔净流入，流通盘小、换手高，
+                  意义差很多。都来自 profile（建池时取回，加列不花调用次数）。
+                  窄屏两列、宽屏一列排开（四格在手机上挤成一列会截断标签） */}
+              <div className="grid grid-cols-2 overflow-hidden md:grid-cols-4">
                 <Cell
                   label="主力净流入额"
                   value={fmtAmount(latestDde?.net_inflow)}
@@ -507,6 +479,7 @@ export default function StockDetail() {
                   tone={toneOf(latestDde?.dde)}
                 />
                 <Cell label="自由流通市值" value={fmtAmount(profile?.free_float_mv)} />
+                <Cell label="实际换手率" value={fmtNum(profile?.actual_turnover, 2, '%')} />
               </div>
               <div className="px-2 pt-2">
                 <div className="mb-1 text-[12px] text-fg-dim">
