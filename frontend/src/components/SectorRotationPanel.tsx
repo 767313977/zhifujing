@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type {
   RotationColumn,
   RotationLeader,
@@ -194,12 +194,22 @@ export default function SectorRotationPanel({
   // 后端按「两个窗口里较大的那个」取数（一次请求就够），这里各切各的：
   // 矩阵看 `days` 列、上榜统计看 `ladderDays` 列。**切片比再发一个请求便宜得多**。
   const columns = allColumns.slice(0, days)
-  const ladderColumns = allColumns.slice(0, ladderDays)
+  // 上榜次数那一块的中间量也 memo —— 理由见下面 `ladderOption` 的注释
+  const ladderColumns = useMemo(() => allColumns.slice(0, ladderDays), [allColumns, ladderDays])
   const ranks = Array.from({ length: data?.top ?? 0 }, (_, index) => index)
   const hint = METRICS.find((item) => item.key === metric)?.hint ?? ''
-  // 上榜次数（把矩阵转置）。数据量很小（最多 60 列 × 30 行），每次渲染重算就好，
-  // 不值得为它上一次 useMemo
-  const ladder = buildLadder(ladderColumns)
+  // 上榜次数（把矩阵转置）与它那张折线图的 option **一起 memo**（2026-10-11 改）。
+  // 这里原来写的是「数据量小、每次渲染重算就好」—— 那个判断只看了**算得多贵**，
+  // 漏了**重建多贵**：鼠标划过矩阵任意格子都会 `setState(hovered)`，于是重渲染时
+  // 造出一个新的 option 对象，而 `EChart` 用的是 `setOption(option, true)`
+  // （notMerge = 整图重建），悬停一次就把底部那张折线图整张重建一次。
+  // ⚠️ 三者必须一起 memo：只 memo option 的话，`ladderColumns` / `ladder` 每次都是
+  // 新数组，依赖一变 option 照样重建，等于没 memo。
+  const ladder = useMemo(() => buildLadder(ladderColumns), [ladderColumns])
+  const ladderOption = useMemo(
+    () => buildLadderOption(ladderColumns, ladder, data?.top ?? 10),
+    [ladderColumns, ladder, data?.top],
+  )
 
   return (
     <div>
@@ -390,10 +400,7 @@ export default function SectorRotationPanel({
                   {ladderColumns.length} 列 · 圆点才是真上榜，线只是跨过没上榜的日子
                 </span>
               </div>
-              <EChart
-                option={buildLadderOption(ladderColumns, ladder, data?.top ?? 10)}
-                height={200}
-              />
+              <EChart option={ladderOption} height={200} />
             </div>
           )}
         </>
