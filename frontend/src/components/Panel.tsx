@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 
 interface PanelProps {
-  title: string
+  /** 面板标题。多数是纯文字；个股分析页把票名做成可点跳个股页的链接（故为 ReactNode） */
+  title: ReactNode
   /** 标题右侧的补充信息（数量、口径说明等） */
   meta?: ReactNode
   children: ReactNode
