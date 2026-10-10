@@ -5,7 +5,35 @@ import type { AnomalyMap, AnomalyRow } from '../api/types'
 import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
+import SortTh from '../components/SortTh'
 import { fmtPct, toneOf } from '../lib/format'
+import { useSort } from '../lib/sort'
+import type { SortSpecs } from '../lib/sort'
+
+/**
+ * 连板列的排序值：`首板` 当 1，`N连板` 取 N，空值当缺数据（排最后）。
+ *
+ * 不直接拿字符串排 —— 那样 `10连板` 会排在 `2连板` 前面（字符串比较逐位来）。
+ */
+function boardValue(board: string): number | null {
+  if (board === '首板') return 1
+  const matched = /^(\d+)/.exec(board)
+  return matched ? Number(matched[1]) : null
+}
+
+/** 各列的排序口径。文字列显式 `first: 'asc'`，数值列默认先看最大的（见 lib/sort.ts）。 */
+const SORTS: SortSpecs<AnomalyRow> = {
+  sector: { value: (row) => row.sector, first: 'asc' },
+  date: { value: (row) => row.date },
+  // 「--」是后端给的「没有封板时间」，归一成缺数据 —— 否则它会排到 09:xx 前面
+  time: { value: (row) => (row.time === '--' ? null : row.time), first: 'asc' },
+  code: { value: (row) => row.code, first: 'asc' },
+  name: { value: (row) => row.name, first: 'asc' },
+  type: { value: (row) => row.type, first: 'asc' },
+  board: { value: (row) => boardValue(row.board) },
+  pct: { value: (row) => row.pct },
+  cap: { value: (row) => row.cap },
+}
 
 /**
  * 个股异动：把最近若干个交易日的涨停 / 涨停炸板 / 中大阳线摊成一张图。
@@ -118,6 +146,12 @@ export default function AnomalyPage() {
     })
   }, [data, sector, type, onlyTheme, query])
 
+  // 排序只作用在**筛完之后**的行上（与「显示 N / M 条」同步）。
+  // 默认给 `date desc`：后端就是这个顺序（日期降序，同一天内按板块/时间/代码），
+  // 而 lib/sort.ts 用的是稳定排序，同一天的行**保持后端给的顺序**，所以首屏与不排完全一致，
+  // 只是「日期」列头上多一个 ▼，让人知道现在按什么排。
+  const [sort, shown] = useSort(visible, SORTS, { key: 'date', dir: 'desc' })
+
   const allCount = data?.rows.length ?? 0
   const dirty = sector !== '' || type !== '' || onlyTheme || query !== ''
   const reset = () => {
@@ -200,7 +234,8 @@ export default function AnomalyPage() {
             重置
           </button>
           <span className="num ml-auto text-[13px] text-fg-dim">
-            显示 {visible.length} / {allCount} 条
+            显示 {shown.length} / {allCount} 条
+            <span className="ml-2 text-fg-dim/70">点表头排序</span>
           </span>
         </div>
 
@@ -220,33 +255,40 @@ export default function AnomalyPage() {
             <table className="grid-table">
               <thead>
                 <tr>
-                  <th
-                    className="!text-left"
+                  <SortTh
+                    sortKey="sector"
+                    align="left"
+                    {...sort}
                     title="同花顺行业路径的最后一段（如「电子-半导体-集成电路」→「集成电路」）。与原型用东财行业不同，本站取 stock_basic.industry"
                   >
                     板块
-                  </th>
-                  <th className="!text-left">日期</th>
-                  <th className="!text-left">时间</th>
-                  <th className="!text-left">代码</th>
-                  <th className="!text-left">名称</th>
-                  <th className="!text-left">类型</th>
-                  <th>连板</th>
-                  <th>涨幅%</th>
-                  <th>总市值</th>
-                  <th className="!text-left" title="同花顺涨停原因（limit_reason），只有涨停股有">
+                  </SortTh>
+                  <SortTh sortKey="date" align="left" {...sort}>日期</SortTh>
+                  <SortTh sortKey="time" align="left" {...sort}>时间</SortTh>
+                  <SortTh sortKey="code" align="left" {...sort}>代码</SortTh>
+                  <SortTh sortKey="name" align="left" {...sort}>名称</SortTh>
+                  <SortTh sortKey="type" align="left" {...sort}>类型</SortTh>
+                  <SortTh sortKey="board" {...sort}>连板</SortTh>
+                  <SortTh sortKey="pct" {...sort}>涨幅%</SortTh>
+                  <SortTh sortKey="cap" {...sort} title="总市值（本站没有流通市值）">
+                    总市值
+                  </SortTh>
+                  {/* 「涨停原因」与「同批异动」不挂排序（SortTh 不给 sortKey 就是普通表头）：
+                      前者是自由文本、后者是一串标签，按拼音排没有意义，
+                      挂上箭头会让人点了没反应。 */}
+                  <SortTh align="left" title="同花顺涨停原因（limit_reason），只有涨停股有">
                     涨停原因
-                  </th>
-                  <th
-                    className="!text-left"
+                  </SortTh>
+                  <SortTh
+                    align="left"
                     title="同一天、同一板块的全部异动（含自己），标签形如「名称(涨停@09:31)」"
                   >
                     同批异动
-                  </th>
+                  </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {visible.map((row: AnomalyRow) => (
+                {shown.map((row: AnomalyRow) => (
                   <tr
                     key={`${row.date}-${row.code}-${row.type}`}
                     // 题材启动日的整行淡绿底：这一类是「这个板块刚开始动」，值得一眼捞出来
