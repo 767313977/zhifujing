@@ -9107,7 +9107,7 @@ Edge 的窗口边不算在 `innerWidth` 里）。操作区按最宽那一档建�
 
 - **域名备案与 HTTPS（2026-09-28 已上线）**：
   - **ICP 备案已通过**：陕ICP备2026027279号（-1，服务名「个人工具分享」，域名 `zhifujing.top`，
-    云资源 124.222.150.187）。页脚已按管局要求**悬挂备案号并链接到工信部官网**
+    云资源 <服务器IP>）。页脚已按管局要求**悬挂备案号并链接到工信部官网**
     （`Layout` 的 footer；管局原话「否则将被管局责令更改」，别删）。
   - ⚠️ **公安联网备案是另一件事**：不拦访问、不拦端口、不影响解析，只要求「服务开通 30 日内」
     去 https://beian.mps.gov.cn 提交（数据码 `6bb7acd3d2c20e6a0985c6d5110d1687`）。
@@ -9142,7 +9142,7 @@ Edge 的窗口边不算在 `innerWidth` 里）。操作区按最宽那一档建�
       `set-cookie` 里带着 `HttpOnly; SameSite=lax; Secure`（`Secure` 说明
       `X-Forwarded-Proto` 那行确实生效了）；
       `http://zhifujing.top/` → **301** 到 `https://zhifujing.top/`；
-      `http://124.222.150.187:8080/` → **连不上**（端口已收掉）。
+      `http://<服务器IP>:8080/` → **连不上**（端口已收掉）。
     - ⚠️ **`certbot renew --dry-run` 会先睡一段随机时间**（本次日志里是 374 秒，
       `Non-interactive renewal: random delay of ...`）—— 看着像卡死，其实在等。
       别把它当故障去 kill：我 kill 掉本地 ssh 之后远端进程还在，再跑就报
