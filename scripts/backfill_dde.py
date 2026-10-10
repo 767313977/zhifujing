@@ -128,7 +128,9 @@ def main() -> int:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    settings = get_settings()
+    # 调用只为副作用：`get_settings()` 会顺手把 `backend/data` 建出来（见 config.py）。
+    # 不要赋给变量 —— 之后没人用它，留着会被 pyflakes/ruff 报 F841。
+    get_settings()
 
     trade_days = recent_trade_days(args.days)
     if not trade_days:

@@ -64,6 +64,15 @@ class Settings(BaseSettings):
     # 计入或漏计；真赶上月末订阅就填 28，误差一两天，守卫宁可早让路。
     ifind_cycle_start_day: int = Field(default=17, ge=1, le=28)
 
+    # iFinD 的 TLS 证书链不标准（自签 / 缺中间证书），官方参考实现同样关闭校验，
+    # 所以默认 `verify=False`（见 `sources/ifind._post` 与 `_download_csv`）。
+    # ⚠️ 请求头带着 `Authorization: <token>`，关校验意味着链路上可能被中间人读走 token。
+    # 想收紧就自己抓一份证书链、把 **绝对路径** 填在这里（留空 = 保持现状 verify=False）：
+    #     openssl s_client -showcerts -connect api-mcp.51ifind.com:8643 </dev/null
+    # 把输出里所有 `-----BEGIN CERTIFICATE-----` 段（含中间证书）存成一个 .pem 即可。
+    # 代价：证书轮换后要重新抓，否则请求会因校验失败而失败。
+    ifind_ca_file: str = ""
+
     # --- akshare（仅用 push2ex 集群）---
     akshare_rate_limit: float = 1.0
     # 同花顺 q.10jqka.com.cn 与东财 push2 是两个站点，频控互不影响。
