@@ -1037,6 +1037,13 @@ class PatternStockOut(BaseModel):
     # 英文名撞车（都叫 industry）是来源的锅：`limit_pool.industry` 也是同花顺行业，
     # 而开盘红那套在 `sectors` 里。
     industry: str | None = None
+    #: 阶段判定（`services.patterns.classify_phase`）—— 与个股页／个股分析页同一个判据
+    #: （取数壳 `services.stock_phase`）。2026-10-10 用户要求列在「代码 / 名称」后面。
+    #:
+    #: 只带 key 与中文标签：整块 `WudaoPhase` 有十几个字段，一屏几百行太重，而列表里
+    #: 只显示一个词。**日线不足 25 根时为 None**（次新 / 刚缓存），页面按惯例显示「—」。
+    phase: str | None = None
+    phase_label: str | None = None
     score: float
     patterns: list[PatternHitItem]
 

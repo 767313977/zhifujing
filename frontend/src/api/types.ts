@@ -575,6 +575,12 @@ export interface PatternStock {
    * 完整路径放 tooltip。
    */
   industry: string | null
+  /**
+   * 阶段判定（`classify_phase`）的 key 与中文标签 —— 与个股页／个股分析页同一判据。
+   * 列表里只显示 `phase_label` 一个词（如「刚有人气」）。**日线不足 25 根时为 null**。
+   */
+  phase: string | null
+  phase_label: string | null
   score: number
   patterns: PatternHitItem[]
 }
