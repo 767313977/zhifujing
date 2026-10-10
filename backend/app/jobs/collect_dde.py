@@ -353,6 +353,11 @@ def backfill_top_hits(
 
     已经补够的**不发请求**（先看 `dde_coverage`）—— 否则尾部链路在部署日重启几次
     就白花 `limit`×次。
+
+    ⚠️ **提前中止也算失败**（2026-10-10 明确）：下面失败率过高时会 `break` 放弃本轮，
+    它只体现在返回的 `failed` 上 —— 调度器（`scheduler._backfill_hit_dde`）现在把
+    「`failed > 0`」当成这一步失败登记进尾部记录，所以提前中止不再静默（否则那几十只
+    票永远补不回来也没人知道）。
     """
     codes = top_hit_codes(day, limit)
     if not codes:

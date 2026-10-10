@@ -43,7 +43,7 @@ from datetime import date, timedelta
 from sqlalchemy import delete, func, select
 
 from app.config import Settings, get_settings
-from app.db import session_scope, upsert_many
+from app.db import session_scope, upsert_many_fill
 from app.jobs.collect_universe import crawl_prefixes, load_codes
 from app.models import CollectLog, LimitPool, StockDaily, StockUniverse, TradeCalendar
 from app.services.usage import QuotaLevel, quota_level
@@ -458,17 +458,18 @@ class KlineCollector:
             logger.warning("%s 一只都没取到行情，可能不是交易日或问法失效", day)
             return 0, calls
 
-        # ⚠️ `upsert_many` 会把「这一批里带了的列」一律覆盖：来源这次不返回某列时
-        # 整批都是 None，重采某天会把库里已经存好的量/额/换手率**全抹成空**。
-        # 所以整列全空就干脆不带这一列 —— 逐行的 None 不动（那一行本来就该是空的）。
-        # 2026-09-27 修（原来只有 `_basics` 对 name 做了这种保护）。
+        # 整列全空就干脆不带这一列 —— 这是两层保护里靠前的一层。
+        # 靠后的一层是写入改用 `upsert_many_fill`（见 `db.py`）：它保证「**个别行**
+        # 漏字段」时也不会把库里已存的量/额/换手率刷成 NULL（`upsert_many` 会 ——
+        # 2026-10-10 修，之前只靠这一层整列 pop，覆盖不了逐行缺值）。
+        # 保留整列 pop 是为了少传参数，并让「来源整列没给」这件事更显式。
         for column in ("name", "volume", "amount", "turnover"):
             if not any(row[column] is not None for row in rows):
                 for row in rows:
                     row.pop(column)
 
         with session_scope() as session:
-            return upsert_many(session, StockDaily, rows), calls
+            return upsert_many_fill(session, StockDaily, rows), calls
 
     def _latest_trade_date(self) -> date:
         with session_scope() as session:

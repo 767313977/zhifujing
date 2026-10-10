@@ -556,7 +556,14 @@ class CollectLog(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     trade_date: Mapped[date | None] = mapped_column(Date)
     task: Mapped[str] = mapped_column(String(32))
-    # ok / partial / failed
+    # 实际取值：ok / partial / failed / skipped / empty（注释原来只写了
+    # `ok / partial / failed`，与库里实际出现过的值不符，2026-10-10 按实对齐）：
+    # - ok      完整成功
+    # - partial 跑过但有步骤失败（尾部链路用，见 `scheduler._mark_tail`）——
+    #           表示「当天的活跑过了」，`tail_done` 据此**不整条重跑**（可见性优先于自动重跑）
+    # - failed  这一步失败（`_step` 捕获异常即记）
+    # - skipped 正常跳过（超数据源窗口 / 配额让路 / 依赖缺失）
+    # - empty   取到 0 行但不算失败（开盘红当日名单还没发布、DDE 无命中等）
     status: Mapped[str] = mapped_column(String(16))
     rows: Mapped[int | None] = mapped_column(Integer)
     message: Mapped[str | None] = mapped_column(Text)
@@ -751,3 +758,12 @@ Index("ix_stock_daily_code", StockDaily.code)
 Index("ix_limit_pool_type", LimitPool.trade_date, LimitPool.pool_type)
 Index("ix_pattern_hit_date", PatternHit.trade_date, PatternHit.pattern, PatternHit.score)
 Index("ix_lhb_code", Lhb.code)
+
+# 「按 code 取某只票的历史序列」的复合索引（2026-10-10 加）。三张表的主键都是
+# `(trade_date, code)` 或含 `trade_date` 打头，按 code 查吃不到主键（会退化成全表
+# SCAN）；单列 `ix_stock_daily_code` 也只解决「定位」、解决不了 `ORDER BY trade_date`
+#（会多一步 `USE TEMP B-TREE FOR ORDER BY`，`stock_daily` 250 万行时很贵）。
+# 复合索引让「按 code 过滤 + 按日期排序」一次走索引。
+Index("ix_stock_daily_code_date", StockDaily.code, StockDaily.trade_date)
+Index("ix_stock_concept_code_date", StockConcept.code, StockConcept.trade_date)
+Index("ix_stock_dde_code_date", StockDde.code, StockDde.trade_date)
