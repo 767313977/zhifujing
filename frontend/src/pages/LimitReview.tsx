@@ -397,7 +397,12 @@ export default function LimitReview() {
 
           <Panel
             title="涨停板块分布"
-            meta={<span className="num">按开盘啦精选板块，未归到板块的不计入</span>}
+            meta={
+              <span className="num">
+                {/* 全站统称「开盘红」；这里留一次出处说明（它是开盘啦团队的新版 App） */}
+                按开盘红精选板块（开盘啦团队的新版 App），未归到板块的不计入
+              </span>
+            }
             delay={200}
           >
             {loading ? (

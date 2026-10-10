@@ -141,9 +141,12 @@ export default function PatternTrackPage() {
             </div>
           ) : (
             <>
+              {/* 表头不加 `sticky top-0`：本容器只用 overflow-x，overflow-x 会让它
+                  同时成为纵向的滚动容器，而这里纵向不滚动（高度随内容）→ sticky 粘不住，
+                  是空操作。去掉以免误导；左侧「股票名称」列的 left-0 仍有效（横向用）。 */}
               <div className="overflow-x-auto">
                 <table className="border-collapse">
-                  <thead className="sticky top-0 z-20">
+                  <thead>
                     <tr>
                       <th className="sticky left-0 z-30 border-r border-b border-line-soft bg-ink-850 px-2 py-1.5 text-left font-normal whitespace-nowrap text-fg-dim">
                         股票名称

@@ -36,7 +36,7 @@ const METRICS: { key: RotationMetric; label: string; hint: string }[] = [
   {
     key: 'strength',
     label: '强度',
-    hint: '开盘啦的强度值（它 App 里那张板块榜就是按这个排的），上万即强势',
+    hint: '开盘红的强度值（它 App 里那张板块榜就是按这个排的），上万即强势',
   },
   { key: 'pct_chg', label: '涨幅', hint: '按当日涨跌幅排' },
   {
@@ -233,10 +233,15 @@ export default function SectorRotationPanel({
         <>
           {/* 不加 max-height：整块矩阵（每天前 10 名 + 领涨行）一次性显示完。
               原来卡了 430px，10 行加领涨行装不下，看第 1~4 名要滚动 —— 而「看头部」
-              恰恰是这张表的主要用法。横向仍留给 `overflow-x`：20~60 列在窄屏放不下。 */}
+              恰恰是这张表的主要用法。横向仍留给 `overflow-x`：20~60 列在窄屏放不下。
+
+              表头也**不加** `sticky top-0`：容器由 `overflow-x` 变成滚动容器后，
+              `top-0` 粘的是这个容器，而这里纵向按设计不滚动（上面刚说的原因），
+              写了反而是个误导性的空操作。左侧「排名」列的 `left-0` 仍保留 ——
+              那是横向滚动时把排名钉住用的。 */}
           <div className="overflow-x-auto">
             <table className="border-collapse">
-              <thead className="sticky top-0 z-20">
+              <thead>
                 <tr>
                   <th className="sticky left-0 z-30 border-r border-b border-line-soft bg-ink-850 px-2 py-1.5 text-left font-normal whitespace-nowrap text-fg-dim">
                     排名

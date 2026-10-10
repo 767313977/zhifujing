@@ -31,7 +31,7 @@ function StockChip({ stock }: { stock: LimitStock }) {
     `${stock.name} ${stock.code}`,
     // chip 上只放得下一个标签，所以显示开盘啦精选板块；同花顺行业移到 tooltip
     // 里留着 —— 两个口径的措辞不同（芯片 vs 半导体），都看得到比只看一个好
-    stock.board ? `开盘啦板块 ${stock.board}` : null,
+    stock.board ? `开盘红板块 ${stock.board}` : null,
     stock.industry ? `同花顺行业 ${stock.industry}` : null,
     `首次封板 ${fmtSealTime(stock.first_seal_time)}`,
     `最后封板 ${fmtSealTime(stock.last_seal_time)}`,

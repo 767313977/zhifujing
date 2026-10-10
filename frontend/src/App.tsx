@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import Funds from './pages/Funds'
 import LimitReview from './pages/LimitReview'
 import Login from './pages/Login'
+import NotFound from './pages/NotFound'
 import Patterns from './pages/Patterns'
 import PatternTrack from './pages/PatternTrack'
 import Sectors from './pages/Sectors'
@@ -142,6 +143,17 @@ export default function App() {
             element={
               <RequireAuth>
                 <Account />
+              </RequireAuth>
+            }
+          />
+          {/* 兜底路由：后端对任意非 /api 路径都回退 index.html，没有这条时
+              未知 URL 会渲染 null（全黑空页）。与其它页面一样套 RequireAuth ——
+              未登录用户先去登录，登录后才看得到这个提示（别绕过鉴权）。 */}
+          <Route
+            path="*"
+            element={
+              <RequireAuth>
+                <NotFound />
               </RequireAuth>
             }
           />

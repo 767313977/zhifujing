@@ -809,6 +809,10 @@ export interface WudaoPhase {
 /**
  * 一个收益档位的统计量（`/api/patterns/standing` 用）。
  *
+ * ⚠️ **当前前端无界面调用（保留后端契约）**：下面这三个类型（`PoolHorizon` /
+ * `PoolStanding` / `PoolStandingOut`）对应的成绩单页已从站内撤掉，但后端接口仍在，
+ * 保留类型是为了让这份前端契约与后端 `schemas.py` 保持一致，别当成漏删的僵尸代码。
+ *
  * 收益都是**百分数**（1.23 = +1.23%）。`excess` 是相对**同一天**全市场等权平均的超额 ——
  * 没有它，「涨了 5%」可能只是那几天大盘在涨。
  */

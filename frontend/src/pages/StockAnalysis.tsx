@@ -37,6 +37,10 @@ export default function StockAnalysisPage() {
   // 可能后到，会把后那只的新闻**覆盖**掉，`finally` 也会提前把加载态关掉（显示成
   // 「暂无新闻」）。所有回调都先比对这个值，只认当前这只票的结果。
   const newsCodeRef = useRef<string | null>(null)
+  // 主查询的序号守卫。newsCodeRef 只护得住新闻那一块，护不住 `result`（结论卡）——
+  // 连查两只票时先发的若后返回，会把页面上的结论覆盖成**另一只票**。每次 run 自增一次，
+  // 回调先比对序号，只认最新那次请求（新闻那三条状态也一起受它保护）。
+  const runSeqRef = useRef(0)
 
   const run = useCallback(async (raw: string) => {
     const q = raw.trim()
@@ -44,10 +48,14 @@ export default function StockAnalysisPage() {
       setError('请输入股票代码、名称或拼音首字母')
       return
     }
+    const seq = ++runSeqRef.current
     setLoading(true)
     setError(null)
     try {
       const found = await api.analysisLookup(q)
+      // 这次请求已经不是最新的了（用户又查了别的）：整个结果都作废，
+      // 连下面新闻的几条状态也别动，否则会把新票的新闻覆盖/关掉
+      if (seq !== runSeqRef.current) return
       setResult(found)
       // 新闻单独再发一次：它要出外网、慢且可能失败，别让它拖住结论；
       // 失败也不弹错误条 —— 那一块自己显示原因就够了
@@ -73,11 +81,14 @@ export default function StockAnalysisPage() {
           if (newsCodeRef.current === found.code) setNewsLoading(false)
         })
     } catch (err) {
+      // 过期的那次请求失败了也不该弹错（用户已经在看新票了）
+      if (seq !== runSeqRef.current) return
       // 解析不出 / 匹配到多只时后端给的就是一句能直接读的话，原样显示；
       // **不清空上一次的结果** —— 敲错一个字不该把刚查到的东西抹掉
       setError((err as Error).message)
     } finally {
-      setLoading(false)
+      // 只有最新那次请求才负责关加载态，否则会把新票的「分析中…」提前关掉
+      if (seq === runSeqRef.current) setLoading(false)
     }
   }, [])
 
