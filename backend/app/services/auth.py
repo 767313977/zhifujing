@@ -223,13 +223,23 @@ def delete_user_sessions(db: Session, user_id: int, keep: str | None = None) -> 
 
 
 def client_ip(request: Request) -> str:
-    """取客户端 IP。**优先 X-Forwarded-For**：线上是 nginx 反代，
-    直连地址永远是 127.0.0.1，按它限流等于全站共用一个桶。
-    ⚠️ 这个头是客户端可伪造的 —— 限流只是「提高爆破成本」，不承担安全边界。
+    """取客户端 IP。**取 X-Forwarded-For 的最右一段**。
+
+    线上是 nginx 反代，直连地址永远是 127.0.0.1，按它限流等于全站共用一个桶，所以要
+    用 XFF。但 `deploy/setup_nginx.sh` 用的是 `$proxy_add_x_forwarded_for` —— 它会把
+    **客户端自带的 XFF 原样保留在最左边**、再把 nginx 看到的真实 IP **追加到末尾**。
+    于是最左段是攻击者可控的：取 `split(",")[0]` 的话，伪造一个不同的最左段就等于换一个
+    限流桶，限流形同虚设（2026-10-10 修）。可信代理在最后一跳，只有**最右段**是 nginx
+    实际看到的地址，取它才不是客户端说了算。
+
+    ⚠️ 即便如此，限流仍只是「提高爆破成本」，不承担安全边界（真正的边界是邀请码）。
+    本机直连（没有 nginx）时这个头可能不存在，回落到 `request.client.host`。
     """
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        parts = [part.strip() for part in forwarded.split(",") if part.strip()]
+        if parts:
+            return parts[-1]
     return request.client.host if request.client else "unknown"
 
 

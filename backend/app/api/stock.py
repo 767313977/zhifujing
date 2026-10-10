@@ -48,7 +48,7 @@ from app.schemas import (
     StockThemes,
 )
 from app.services import limit_rules
-from app.services.auth import current_user
+from app.services.auth import Cooldown, current_user
 from app.services.patterns import build_bars
 from app.services.stock_phase import load_phase
 from app.sources.em_news import fetch_stock_news
@@ -58,6 +58,15 @@ from app.sources.kaipanhong import TAXONOMY_SELECTED
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/stock", tags=["个股"])
+
+# 手动同步的**按用户冷却**。本站唯一的成本就是 iFinD 调用，而一次 `sync` 会真发十几次
+# tools/call（`days` 上限 500，见 `sync` 的签名）—— 不加冷却的话连点 / 脚本刷能在一分钟
+# 内烧掉成百上千次配额。取 60 秒：把按用户的手动同步限到 ≤1 次/分钟，足以挡住连点与刷；
+# 而正常使用（同一天补几只票）不受影响 —— 单看一只票的日 K 通常要花一分多钟，真要连开
+# 多只也不会卡在 60 秒内。（`/api/watchlist/sync` 那边是 600 秒，因为它一次刷全部自选、
+# 且每日采集会兜底刷新，量级与本接口单只票不同。）
+SYNC_COOLDOWN_SEC = 60
+_sync_cooldown = Cooldown(SYNC_COOLDOWN_SEC)
 
 # 可选的 K 线周期。周/月由本地日线重采样（`_resample`），不额外取数
 PERIODS = ("day", "week", "month")
@@ -675,8 +684,22 @@ def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
 def sync(
     code: str,
     days: int = Query(STOCK_FULL_DAYS, ge=5, le=500, description="回看的交易日数"),
+    user: AppUser = Depends(current_user),
 ) -> dict:
-    """同步该股日线到本地缓存。首次打开个股页时调用。"""
+    """同步该股日线到本地缓存。首次打开个股页时调用。
+
+    ⚠️ **按用户冷却 `SYNC_COOLDOWN_SEC` 秒**（见模块顶部的说明）：本站唯一的成本
+    就是 iFinD 调用，一次 sync 真发十几次请求，不挡连点 / 脚本刷就会白烧配额。
+    冷却在**成功之后**才记账 —— 失败（iFinD 出错 / 采集正忙）不消耗冷却，前端下次
+    打开还能重试（前端也是「成功才标记」的口径，见 StockDetail.tsx）。
+    """
+    wait = _sync_cooldown.remaining(f"user:{user.id}")
+    if wait is not None:
+        raise HTTPException(
+            status_code=429,
+            detail=f"刚同步过，请 {int(wait) + 1} 秒后再试",
+            headers={"Retry-After": str(int(wait) + 1)},
+        )
     try:
         with collect_guard("个股同步"):
             written = DailyCollector().sync_stock(_code(code), days=days)
@@ -684,4 +707,5 @@ def sync(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except IfindError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _sync_cooldown.touch(f"user:{user.id}")
     return {"rows": written}
