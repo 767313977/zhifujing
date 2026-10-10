@@ -52,6 +52,58 @@ MEMBERS_JOB_ID = "prefetch_members"
 # 正常日子这一趟几乎不花请求（已在库的板块全跳过）。
 MEMBERS_RETRY_JOB_ID = "prefetch_members_retry"
 
+# 「错过 17:30 / 22:00」的回看上限（单位：交易日）。本机常年关机，重启往往发生在
+# 次日 —— 那一天的**龙虎榜 / 机构席位 / 涨停题材**（`_run_late`）与**板块成分股**
+# （`_run_members`）如果不回头补，就**永久缺**（这几项数据源都只按日给，没有
+# 「下次自动补回来」的窗口；两融 / 北向有 30 天回看能自愈，故不在此列）。
+# 但补采必须有上限，否则每天开机都会把最近 N 天重打一遍：收盘后那三项是一次
+# akshare + 一次开盘啦请求，而成分股一轮最多约 370 个板块请求 —— 无限回溯的代价
+# 随天数线性膨胀。取最近 5 个交易日（约一周），足够覆盖「周末整天关机」这种情况。
+CATCHUP_LOOKBACK_TRADING_DAYS = 5
+
+# `_run_late` 里按日期取的这三步（见 `DailyCollector.run_late`）。用来去
+# `collect_log` 里判断某天是否漏采 —— 只有这三项「当天不给就永久缺」。
+LATE_TASKS = ("lhb", "lhb_institution", "themes")
+
+# 成分股预取写进 `collect_log` 的任务名（`_run_members` 自己写、`_catch_up_members` 读）。
+MEMBERS_TASK = "members"
+
+
+def _recent_trade_days(end: date, count: int) -> list[date]:
+    """`end` 之前（不含 `end`）最近的 `count` 个交易日，由近及远。"""
+    with session_scope() as session:
+        return list(
+            session.scalars(
+                select(TradeCalendar.trade_date)
+                .where(TradeCalendar.trade_date < end)
+                .order_by(TradeCalendar.trade_date.desc())
+                .limit(count)
+            )
+        )
+
+
+def _logged_tasks(day: date, tasks: tuple[str, ...], status: str | None) -> set[str]:
+    """该日 `collect_log` 里命中的任务名。`status=None` 表示不限状态（任意记录都算）。"""
+    with session_scope() as session:
+        statement = select(CollectLog.task).where(
+            CollectLog.trade_date == day, CollectLog.task.in_(tasks)
+        )
+        if status is not None:
+            statement = statement.where(CollectLog.status == status)
+        return set(session.scalars(statement))
+
+
+def _record_log(day: date, task: str, status: str, rows: int, message: str | None) -> None:
+    """`scheduler` 自己写的采集日志（成分股预取这类不走 `DailyCollector._log` 的任务）。
+    记录失败只告警：它的作用是给回看留一个终态标记，写不进去最多多跑一遍。"""
+    try:
+        with session_scope() as session:
+            session.add(
+                CollectLog(trade_date=day, task=task, status=status, rows=rows, message=message)
+            )
+    except Exception:  # noqa: BLE001 - 见 docstring
+        logger.warning("写采集日志失败：%s %s", task, day, exc_info=True)
+
 
 def _is_trade_day(day: date) -> bool:
     """该日是否交易日（直接查日历表）。
@@ -103,7 +155,15 @@ TAIL_TASK = "daily_tail"
 
 
 def tail_done(day: date) -> bool:
-    """该日的尾部链路是否已经完整跑过一遍。"""
+    """该日的尾部链路是否已经完整跑过一遍。
+
+    ⚠️ **`partial` 也算「跑过」**（2026-10-10 加）。尾部链里有要花 iFinD 配额的
+    DDE 扫描、以及 370 多次开盘啦请求的板块资金流，**重复跑一遍代价很大**；而
+    `ok` 与 `partial` 都表示「这一天整条尾巴已经走过一遍」。所以这里刻意不把
+    `partial` 排除 —— **可见性优先于自动重跑**：某步失败只记进 `collect_log`
+    （在数据管理页看得到，见 `_mark_tail`），不在同一个 tick 里反复重跑整条尾巴。
+    代价是失败那一步当天不会自动补，需等次日新一轮或手动重采。
+    """
     with session_scope() as session:
         return bool(
             session.scalar(
@@ -112,26 +172,38 @@ def tail_done(day: date) -> bool:
                 .where(
                     CollectLog.trade_date == day,
                     CollectLog.task == TAIL_TASK,
-                    CollectLog.status == "ok",
+                    CollectLog.status.in_(("ok", "partial")),
                 )
             )
         )
 
 
-def _mark_tail(day: date, reason: str) -> None:
+def _mark_tail(day: date, reason: str, failures: list[str] | None = None) -> None:
     """记下「这天的尾部跑完了」。
+
+    `failures` 是本次尾部链路里失败的步骤名：**为空才 `status="ok"`**，否则记
+    `partial` 并把失败步骤列进 `message`（数据管理页一眼能看出这天缺了什么，
+    取值见 `CollectLog.status`）。原来无条件写 `ok` —— 某步静默失败时这一天
+    看着像完整采过，`tail_done` 又据此判定「跑过了」，缺口再没人补。
 
     记录本身失败只告警：它的唯一作用是抑制重复触发，写不进去最多退回旧行为
     （重启再跑一遍），不该把一次已经跑完的采集标成失败。
     """
+    failed = list(dict.fromkeys(failures or []))  # 去重且保序
+    if failed:
+        status = "partial"
+        message = f"尾部链路部分失败（{reason}）：{'、'.join(failed)}"
+    else:
+        status = "ok"
+        message = f"尾部链路完成（{reason}）"
     try:
         with session_scope() as session:
             session.add(
                 CollectLog(
                     trade_date=day,
                     task=TAIL_TASK,
-                    status="ok",
-                    message=f"尾部链路完成（{reason}）",
+                    status=status,
+                    message=message,
                 )
             )
     except Exception:  # noqa: BLE001 - 见 docstring：记录失败不能影响采集
@@ -144,6 +216,12 @@ class DailyScheduler:
         self._scheduler: BackgroundScheduler | None = None
         self._last_run: datetime | None = None
         self._last_result: dict | None = None
+        # 本轮尾部链路失败的**步骤名**。尾部各步都自己 try/except 吞异常（一步失败
+        # 不能让整条尾巴断掉），于是外面无从知道「这天其实缺了东西」—— 让它们在
+        # except 分支里把步骤名登记到这里，`_run_tail` 结束时据此把记录记成
+        # `partial`（见 `_mark_tail`）。用实例属性而不是加参数：各步的签名与行为
+        # 保持不动（见任务约束）。尾部链在采集锁内串行执行，不会有并发写这个问题。
+        self._tail_failures: list[str] = []
 
     # ---------------------------------------------------------------- 生命周期
 
@@ -400,6 +478,10 @@ class DailyScheduler:
             logger.warning("%s 跳过：%s", reason, exc)
             return
 
+        # 先把最近漏掉的补上（不受今天是否交易日影响：今天休市也可能漏着上一交易日的）。
+        # 放在这里而不是 `_run_late` 末尾：跨天重启时今天可能已经跑过、但漏的那天还没有。
+        self._catch_up_late(collector, today, reason)
+
         if not collector.is_trade_day(today):
             logger.info("%s 跳过：%s 不是交易日", reason, today)
             return
@@ -420,6 +502,84 @@ class DailyScheduler:
         else:
             logger.info("%s 完成：%s", reason, result.get("trade_date"))
 
+    def _catch_up_late(self, collector: DailyCollector, today: date, reason: str) -> None:
+        """把最近几天漏采的「收盘后那一趟」补上（上限 `CATCHUP_LOOKBACK_TRADING_DAYS`）。
+
+        **为什么要有**：`_run_late` 只看 `date.today()`，而本机常年关机、重启跨天，
+        17:30 那一趟一旦错过，龙虎榜 / 机构席位 / 涨停题材当天就**永久缺** ——
+        它们的数据源都按日期给、没有「下次自动补回来」的窗口（两融 / 北向有 30 天
+        回看，故不在此列，也不做无谓重采）。
+
+        **判据用 `collect_log`**：某天这三项只要没**全部**落 `ok`，就认为那天漏了，
+        整跑一遍 `run_late(day)`（这些步骤都幂等）。只补最近 5 个交易日 —— 上限的
+        理由见 `CATCHUP_LOOKBACK_TRADING_DAYS`（避免无限回溯每天重打一遍）。
+
+        `run_late` 会连两融 / 北向一起跑（各有 1 次 EDB 调用），只有确实漏采的日子
+        才会走到，且被 5 天上限兜住 —— 为「不漏」付出的这点配额是可以接受的。
+        """
+        for day in _recent_trade_days(today, CATCHUP_LOOKBACK_TRADING_DAYS):
+            if _logged_tasks(day, LATE_TASKS, "ok") >= set(LATE_TASKS):
+                continue
+            try:
+                result = collector.run_late(day)
+            except Exception:  # noqa: BLE001 - 补历史失败不该中断调度
+                logger.exception("%s：回看补采 %s 的收盘后数据失败", reason, day)
+                continue
+            failed = [
+                name
+                for name, step in result.get("steps", {}).items()
+                if step.get("status") != "ok"
+            ]
+            logger.info(
+                "%s：回看补采 %s 的收盘后数据（本次失败 %s）",
+                reason,
+                day,
+                failed or "无",
+            )
+
+    def _catch_up_members(self, today: date, reason: str) -> None:
+        """把最近几天漏采的「板块成分股预取」补上（上限同上）。
+
+        **为什么要有**：`_run_members` 只看当天，跨天重启时那天的成分股名单就永久缺
+        （`api/sector` 只能回落到更早一天，页面显示的不是当天那份）。开盘红的成分股
+        接口**历史与当日同一条路径**（`sources/kaipanhong._post` 按日期切历史域名），
+        所以传历史日期能真取到那天的名单。
+
+        **判据用 `collect_log`**：`_run_members` / 本方法各写一条 `members` 记录，
+        某天**没有**这条记录才去补 —— 有记录（哪怕 `empty`/`failed`）就不再重试。
+        这道闸门是必需的：否则「当天名单一直没发布」的日子会每晚重打约 370 个板块
+        请求（`collect_all_members` 内部 `only_missing` 只能跳过已在库的板块）。
+        """
+        for day in _recent_trade_days(today, CATCHUP_LOOKBACK_TRADING_DAYS):
+            if _logged_tasks(day, (MEMBERS_TASK,), None):
+                continue
+            try:
+                result = SectorCollector(self.settings).collect_all_members(day)
+            except Exception:  # noqa: BLE001 - 补历史失败不该中断调度
+                logger.exception("%s：回看补采 %s 的成分股失败", reason, day)
+                _record_log(day, MEMBERS_TASK, "failed", 0, "回看预取异常")
+                continue
+            if result.get("aborted"):
+                # 那天名单没发布（连 PROBE_BOARDS 个板块都取不到）：记 empty 收口，
+                # 免得每晚为它重打一轮请求
+                _record_log(day, MEMBERS_TASK, "empty", 0, "回看时开盘红该日名单未发布")
+            else:
+                _record_log(
+                    day,
+                    MEMBERS_TASK,
+                    "ok",
+                    result.get("written", 0),
+                    f"回看补采 {result.get('boards', 0)} 个板块，失败 {result.get('failed', 0)} 个",
+                )
+            logger.info(
+                "%s：回看补采 %s 的成分股 —— %d 个板块，写入 %d 行，失败 %d 个",
+                reason,
+                day,
+                result.get("boards", 0),
+                result.get("written", 0),
+                result.get("failed", 0),
+            )
+
     def _run_members(self, reason: str = "板块成分股预取") -> None:
         """22:00 那一趟（+ 22:30 兜底）：把当天的**板块成分股**一次性预取进库。
 
@@ -433,6 +593,11 @@ class DailyScheduler:
         「都已在库，无需重取」，不必做成条件调度。
         """
         today = date.today()
+        # 先补最近几天漏掉的（跨天重启时那天的名单就永久缺，见 `_catch_up_members`）。
+        # 这里**不给「今天」写 collect_log**：`has_collected` 把当天任何一条
+        # `status="failed"` 都当成「当天没采完」→ 会让基础采集白跑一遍，而成分股预取
+        # 失败本不该有那个后果。漏没漏由次日回看时补记（历史日不受 `has_collected` 影响）。
+        self._catch_up_members(today, reason)
         if not _is_trade_day(today):
             logger.info("%s 跳过：%s 不是交易日", reason, today)
             return
@@ -490,6 +655,9 @@ class DailyScheduler:
         由 `_run_daily` 在**采集锁内**调用（见那里的说明）。
         """
         today = trade_date
+        # 每次运行先清空失败清单：各步在 except 分支里往这里登记步骤名，末尾据此
+        # 决定记 `ok` 还是 `partial`（见 `_mark_tail`）。
+        self._tail_failures = []
         # 推送与采集解耦：上面「已有数据」分支会跳过采集，但简报该发还是要发 ——
         # 否则那天采过一遍之后就不会再有简报了。
         self._collect_kline(today)
@@ -517,8 +685,9 @@ class DailyScheduler:
         self._collect_board_flow(today)
         self._maybe_remind_calibration(today)
         # 整条尾巴走完才落记录。中途被重启打断（部署）的话记录不写，
-        # 下一次启动会重跑一遍 —— 宁可多跑一次，也不要把没跑完的当成跑过了
-        _mark_tail(today, reason)
+        # 下一次启动会重跑一遍 —— 宁可多跑一次，也不要把没跑完的当成跑过了。
+        # 有步骤失败时记 `partial`（失败步骤名进 message），不再一律写 `ok`。
+        _mark_tail(today, reason, self._tail_failures)
 
     def _scan_patterns(self, trade_date: date) -> None:
         """全市场形态扫描。
@@ -532,6 +701,7 @@ class DailyScheduler:
             result = scan(trade_date, self.settings)
         except Exception:  # noqa: BLE001 - 形态是增强，不该影响简报与采集
             logger.exception("形态扫描失败")
+            self._tail_failures.append("scan_patterns")
             return
         logger.info(
             "形态扫描完成：%s 条命中 / %s 只票，用时 %ss",
@@ -550,7 +720,8 @@ class DailyScheduler:
         **不需要让路阈值**（与 DDE 那一步不同）：补法走东财 → 腾讯（都免费），iFinD 只
         在两级都不可用时兜底 —— 正常日子 **0 次 iFinD 调用**，不占用基础采集的额度。
         已经到最近交易日的票不发请求（`backfill_top_kline` 先查最后一根），重启重跑不重复花钱。
-        失败只记日志（这是增强项）。
+        失败**登记进 `self._tail_failures`**（原来成功/失败都不落痕）：让它在这天的
+        尾部记录里可见，而不是只躺在日志里（见 `_mark_tail`）。
         """
         from app.jobs.scan_patterns import backfill_top_kline
 
@@ -558,6 +729,7 @@ class DailyScheduler:
             result = backfill_top_kline(trade_date, limit=self.settings.kline_hit_top_n)
         except Exception:  # noqa: BLE001 - 日线补齐是增强，不该影响调度
             logger.exception("命中日线补齐失败")
+            self._tail_failures.append("backfill_hit_kline")
             return
         logger.info(
             "命中日线补齐 %s：命中 %s 只 / 需补 %s 只 → 补 %s 只"
@@ -572,6 +744,10 @@ class DailyScheduler:
             result.get("failed"),
             result.get("want"),
         )
+        if result.get("failed"):
+            # 逐只补齐失败的票（来源无数据 / 三级源都不可用）只在日志里出现，
+            # 登记进失败清单让它在这天的尾部记录里也可见
+            self._tail_failures.append("backfill_hit_kline")
 
     def _collect_kline(self, trade_date: date) -> None:
         """全市场日线：按需重建股票池，再做当日增量。
@@ -594,11 +770,13 @@ class DailyScheduler:
             logger.info("股票池：%s（%s）", pool.get("status"), pool.get("codes"))
         except Exception:  # noqa: BLE001 - 建池失败不该挡住日线：旧池还能用
             logger.exception("股票池重建失败，沿用旧池")
+            self._tail_failures.append("collect_kline")
 
         try:
             result = KlineCollector(self.settings).collect(trade_date)
         except Exception:  # noqa: BLE001 - 日线失败不影响已经采到的基础数据
             logger.exception("日线采集失败")
+            self._tail_failures.append("collect_kline")
             return
         if result.get("status") == "skipped":
             logger.info("日线跳过：%s", result.get("reason"))
@@ -646,6 +824,7 @@ class DailyScheduler:
             )
         except Exception:  # noqa: BLE001 - 历史回补失败不该影响别的步骤
             logger.exception("历史回补失败")
+            self._tail_failures.append("backfill_kline")
             return
         if result.get("status") == "skipped":
             logger.info("历史回补跳过：%s", result.get("reason"))
@@ -678,6 +857,7 @@ class DailyScheduler:
             result = push(trade_date, self.settings)
         except Exception:  # noqa: BLE001 - 推送失败绝不能影响调度
             logger.exception("推送 %s 简报失败", trade_date)
+            self._tail_failures.append("push_brief")
             return
         logger.info("简报 %s：%s %s", trade_date, result.get("status"), result.get("reason") or "")
 
@@ -701,6 +881,7 @@ class DailyScheduler:
             result = push_pattern_brief(pattern, trade_date, self.settings)
         except Exception:  # noqa: BLE001 - 推送失败绝不能影响调度
             logger.exception("推送 %s 的 %s 失败", trade_date, pattern)
+            self._tail_failures.append("push_pattern")
             return
         logger.info(
             "%s %s：%s %s",
@@ -729,6 +910,7 @@ class DailyScheduler:
             result = run_dde_scan(trade_date, self.settings)
         except Exception:  # noqa: BLE001 - 扫描失败绝不能影响调度
             logger.exception("DDE 扫描失败")
+            self._tail_failures.append("scan_dde")
             return
         logger.info("DDE 扫描 %s：%s", trade_date, result)
 
@@ -742,6 +924,11 @@ class DailyScheduler:
         成本 = N 次 iFinD 调用/交易日（默认 50 ≈ 1100 次/月，约占一个周期额度的 16%），
         所以跟着 `_scan_dde` 的让路阈值走：配额紧张时先停它，别去挤基础采集。
         已经补够的票不发请求（见 `backfill_top_hits`），重启重跑不会重复花钱。
+
+        失败**登记进 `self._tail_failures`**（原来成功/失败都不落痕）：`backfill_top_hits`
+        内部把「逐只失败」吞掉、并在高失败率时**提前 break**（见那条 `logger.warning`
+        "命中 DDE 补齐提前停止"），它只体现在返回的 `failed` 上 —— 不登记的话这天
+        尾部仍记 `ok`，那几十只票永远补不回来也没人知道。
         """
         from app.jobs.collect_dde import backfill_top_hits
         from app.services.usage import QuotaLevel, level_label, quota_level
@@ -758,6 +945,7 @@ class DailyScheduler:
             )
         except Exception:  # noqa: BLE001 - 这是增强项，不该影响调度
             logger.exception("命中 DDE 补齐失败")
+            self._tail_failures.append("backfill_hit_dde")
             return
         logger.info(
             "命中 DDE 补齐 %s：命中 %s 只 / 需补 %s 只 → 写 %s 行（%s 次调用，失败 %s），窗口 %s",
@@ -769,6 +957,8 @@ class DailyScheduler:
             result.get("failed"),
             result.get("window"),
         )
+        if result.get("failed"):
+            self._tail_failures.append("backfill_hit_dde")
 
     def _collect_board_flow(self, trade_date: date) -> None:
         """板块资金流：开盘啦成分股 × 逐股净流入（见 `collect_board_flow` 模块）。
@@ -782,6 +972,7 @@ class DailyScheduler:
             result = aggregate(trade_date, self.settings)
         except Exception:  # noqa: BLE001 - 板块资金流是增强，不该影响调度
             logger.exception("板块资金流聚合失败")
+            self._tail_failures.append("collect_board_flow")
             return
         logger.info(
             "板块资金流 %s：%s 个板块 → 写 %s 行（名单 %s，逐股覆盖 %s 只，用时 %ss）",

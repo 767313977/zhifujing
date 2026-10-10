@@ -38,7 +38,7 @@ from app.jobs import collect_funds
 from app.services.sentiment import build_sentiment
 from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.akshare_source import AkshareSource
-from app.sources.ifind import IfindClient, from_ths_symbol, to_ths_symbol
+from app.sources.ifind import IfindClient, IfindError, from_ths_symbol, to_ths_symbol
 from app.sources.markdown_table import pick_float, pick_int, pick_text, to_float, to_int
 
 logger = logging.getLogger(__name__)
@@ -358,6 +358,10 @@ class DailyCollector:
         self.settings = settings or get_settings()
         self.ifind = IfindClient(self.settings)
         self.ak = AkshareSource(self.settings)
+        # 步骤自己写的一句说明（如自选股「失败 3 只」）。`_step` 在每个步骤开始时
+        # 清零、结束后读走写进 `collect_log.message` —— 部分失败不该让整步记 failed，
+        # 但也不能只躺在日志里。见 `sync_watchlist` 与 `_step`。
+        self._step_note: str | None = None
 
     # ------------------------------------------------------------------ 交易日
 
@@ -650,6 +654,12 @@ class DailyCollector:
 
         ⚠️ 并集必须 `distinct()`：自选股从 2026-09-28 起按用户隔离，同一只票在表里
         会有多行。不去重就会同一只票同步好几遍 —— 那是纯浪费 iFinD 调用次数。
+
+        ⚠️ **失败要报出来**（2026-10-10 修）：原来逐只 `except` 只打日志、最终照旧
+        返回行数 —— 全失败时返回 0、这一步仍记 `ok`，而 `has_collected` 据此判定
+        「当天已完成」，这一天再也不会重试。所以：**全部失败**直接抛 `IfindError`
+        （`_step` 记 failed、`/api/watchlist/sync` 回 400），**部分失败**把「失败 N 只」
+        写进步骤 message（经 `_step_note`，见 `_step`）。
         """
         if codes is None:
             with session_scope() as session:
@@ -658,11 +668,21 @@ class DailyCollector:
             return 0
 
         written = 0
+        failed: list[str] = []
         for code in codes:
             try:
                 written += self.sync_stock(code, days=days)
             except Exception as exc:  # noqa: BLE001 - 单只失败不影响其它自选股
+                failed.append(code)
                 logger.warning("同步自选股 %s 失败: %s", code, exc)
+        if failed and len(failed) == len(codes):
+            # 全失败多半是 iFinD 整体不可用（401 / 配额 / 网络），绝不能返回 0 还记 ok
+            raise IfindError(
+                f"自选股 {len(codes)} 只全部同步失败：{failed[:5]}"
+            )
+        if failed:
+            # 部分失败：借 `_step_note` 把话带到 collect_log.message（页面可见）
+            self._step_note = f"失败 {len(failed)} 只（共 {len(codes)} 只）：{failed[:5]}"
         return written
 
     def collect_sentiment(self, trade_date: date, *, history: bool = False) -> int:
@@ -867,12 +887,19 @@ class DailyCollector:
     def _step(self, trade_date: date | None, name: str, fn) -> dict:
         started = time.monotonic()
         status, row_count, message = "ok", 0, None
+        # 步骤自己可以往 `_step_note` 写一句说明（如自选股「失败 3 只」）——
+        # 成功但部分失败时用它填 message，让 `collect_log` 直接可见。
+        self._step_note = None
         try:
             row_count = fn()
+            if self._step_note:
+                message = self._step_note
         except Exception as exc:  # noqa: BLE001 - 单步失败必须不阻塞后续步骤
             status = "failed"
             message = f"{type(exc).__name__}: {exc}"
             logger.exception("采集步骤 %s 失败", name)
+        finally:
+            self._step_note = None
 
         cost = round(time.monotonic() - started, 2)
         # ⚠️ 落库的计数必须是**整数**：`collect_log.rows` 是 Integer 列，而有的步骤返回的是
