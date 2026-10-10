@@ -70,6 +70,7 @@ from app.services.patterns import (
     build_bars,
     evaluate,
     is_st,
+    usable_bar,
 )
 # 悟道六池的 key。借用成绩单那边那份（`pattern_track.POOL_KEYS` 就是这六个池子）——
 # 板块闸门要卡的就是它们，别再各写一份、免得加池子时漏掉一处。
@@ -245,23 +246,22 @@ def _load_bars(
 
     grouped: dict[str, list[dict]] = defaultdict(list)
     for code, name, day, open_, high, low, close, volume, amount, pct in rows:
-        # 涨跌幅为空的行在采集时就已经滤掉了，这里再挡一道：
-        # 少了它 build_bars 会把停牌日当成 0% 涨跌，前复权序列直接失真
-        if close is None or pct is None:
+        record = {
+            "date": day,
+            "name": name,
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+            "amount": amount,
+            "pct_chg": pct,
+        }
+        # 缺任一项（尤其停牌残行「只有收盘价、开高低为空」）都不能当一根 K 线：
+        # `build_bars` 里 `float(None)` 会直接抛，整轮扫描失败。口径与 `load_phase` 一致。
+        if not usable_bar(record):
             continue
-        grouped[code].append(
-            {
-                "date": day,
-                "name": name,
-                "open": open_,
-                "high": high,
-                "low": low,
-                "close": close,
-                "volume": volume,
-                "amount": amount,
-                "pct_chg": pct,
-            }
-        )
+        grouped[code].append(record)
     return grouped
 
 
