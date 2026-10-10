@@ -8106,7 +8106,7 @@ cookie 带 `Secure` 时，浏览器在明文 http 上**根本不发送**它 —�
 - 两处数据库备份：本机 `backend/data/fupan.db-bak-*`（405 MB）、云端
   `/opt/fupan/backend/data/fupan.db-bak-*`（421 MB）。确认没问题后可以删。
   ⚠️ 名字带 `-bak-` 才匹配得上 `.gitignore` 的 `*.db-*`，别改成常见的 `.db.bak`。
-- 管理员账号 `fupan`（本机 id=1、云端 id=1 各一份），密码是迁移时指定的那个。
+- 管理员账号（用户名不在此记录；本机 id=1、云端 id=1 各一份），密码是迁移时指定的那个。
 - 本机那只自选（300897）在管理员名下；**云端那份库原本就没有自选股**（从没在云端
   加过），所以云端迁移后是空的 —— 不是迁移漏了。
 
@@ -10548,6 +10548,16 @@ listen 443 ssl http2;   # 线上是 nginx 1.24；≥1.25.1 要改成 listen 443 
 `pack_deploy.py` 的闸会拒绝打包。提交时用「退回 HEAD → 只重放自己的 hunk → 暂存 → 还原
 工作区」把它排除在本次提交之外。等那端收尾后随下一次部署一起上。
 
+### 2026-10-10 安全加固（外部审查报告）
+
+- nginx 加了**默认拒绝**：新增 80 / 443 的 default server 块，非本站 Host 直接 `444`
+  （443 用 `ssl_reject_handshake`）；80 端仍放行 `/.well-known/acme-challenge/`，不影响 ACME 校验。
+- 站点 location 加了一组**安全响应头**：HSTS、X-Content-Type-Options、X-Frame-Options、
+  Referrer-Policy、CSP（CSP 取保守值，`style-src` 保留 `'unsafe-inline'` 以兼容前端内联样式）。
+- `README.md` 口径校正：路由表补齐、行数、回测 / 全市场日线的「不做」表述等。
+- 从本文件移除了**管理员用户名**这个标识（同段的邮箱、备案号等按用户要求保留原样）。
+
+完整清单见外部审查报告，本文件只记结论。
 
 
 
