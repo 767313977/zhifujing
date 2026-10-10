@@ -400,7 +400,7 @@ WUDAO_MIN_BARS = 22  # 昨收 + 近 20 日均量 + 余量
 WUDAO_WASH_MAX_ABS_PCT = 3.0  # 洗盘日 |涨跌幅| 上限
 WUDAO_WASH_MAX_BODY_PCT = 3.5  # 实体（相对启动收盘）上限；只在当日 pct > 2 时才否决
 WUDAO_WASH_MAX_VS_START_CLOSE = 1.04  # 洗盘收盘 / 启动收盘 的上限倍数
-WUDAO_WASH_MIN_BARS = 28  # 要取到 bars[-4]（样板前一根）
+WUDAO_WASH_MIN_BARS = 28  # 最远用到 bars[-3]（样板日 = i−2）；再留余量给样板日的 20 日均量
 #
 # 回测（2026-10-08，`scripts/backtest_patterns.py --pattern wudao_wash2 --board wudao`
 # = 创业板 + 科创板 1908 只 × 2026-01~07，无未来函数、同票 20 日去重、基准 = 同日全市场平均）：
@@ -496,7 +496,15 @@ WUDAO_HUABAO_HUG_MAX_UPPER = 0.45  # 上影上限；超过它时当日涨幅必�
 WUDAO_HUABAO_HUG_MAX_PCT = 9.5  # 单日涨幅上限（别天天接近一字板）
 WUDAO_HUABAO_YANG_AVG = (0.4, 6.5)  # 连阳段平均涨幅区间（%）
 WUDAO_HUABAO_YANG_MAX_VAR = 18.0  # 连阳段涨幅方差上限（别暴涨暴跌混着）
-WUDAO_HUABAO_MACD_MIN = -0.05
+WUDAO_HUABAO_MACD_MIN_RATIO = -0.0015
+# ⚠️ 2026-10-10 口径变更：原常量 `WUDAO_HUABAO_MACD_MIN = -0.05` 是**绝对元值**
+# （MACD 由前复权序列算出、随价位等比缩放），于是「MACD 是否抬头」的判定跟股价水平
+# 绑在一起：低价股 MACD 天然小，-0.05 相对它已是深水区，高价股则轻松过关。改成相对量
+# `macd[-1] / close[-1]`（同一比值在整体等比缩放价格下不变），阈值 -0.0015。
+# 依据（本机库 2026-09-28 全量实跑，`_huabao_early` 其余条件都过的 49 个候选）：
+#   旧绝对口径放过 45 只；新相对口径 -0.0015 放过 44 只，仅 601825（close 8.61、
+#   macd −0.0327）掉出 —— 它是被绝对口径「低价股宽进」放进来的。
+#   换成相对口径能验证尺度不变：候选里整体 ×0.3 后绝对口径有 2 只翻转、相对口径 0 只。
 #
 # 回测（2026-10-08，`scripts/backtest_patterns.py --pattern huabao_early`，全池 4945 只
 # × 2026-01~07，无未来函数、同票 20 日去重、基准 = 同日全市场平均）——
@@ -806,6 +814,25 @@ class Pattern:
 
 
 # ---------------------------------------------------------------- 复权
+
+
+#: 一行日线要能当「一根 K 线」用，这几个字段都必须有值。
+#: iFinD 对停牌日会给一行「只有收盘价、其余全空」的**残行**，`build_bars` 里
+#: `float(r["open"])` 遇到它直接抛 `TypeError`（`float(None)` 不行）。
+BAR_REQUIRED_FIELDS = ("open", "high", "low", "close", "pct_chg")
+
+
+def usable_bar(bar: dict) -> bool:
+    """一行日线能不能当一根 K 线用：`BAR_REQUIRED_FIELDS` 五项都要非空。
+
+    2026-10-10 从 `services.stock_phase.load_phase` 抽成公共函数，供三处共用
+    （`scan_patterns._load_bars` / `scripts.backtest_patterns._load_history` /
+    `stock_phase.load_phase`）—— 原来那两处只滤 `close / pct_chg` 两项，遇到
+    「收盘价有值、开高低为空」的残行会把 `None` 喂进 `build_bars`，整轮扫描崩掉；
+    `load_phase` 那一处本来就滤了五项（注释写明「`float(None)` 会直接抛 500」），
+    以它为准统一。调用方要先把自己的行**转成 dict** 再传进来。
+    """
+    return all(bar.get(field) is not None for field in BAR_REQUIRED_FIELDS)
 
 
 def build_bars(records: list[dict]) -> Bars:
@@ -2949,13 +2976,22 @@ def _huabao_vol_wake(bars: Bars, streak_start: int, streak_end: int) -> bool:
 
 
 def _huabao_macd_ok(bars: Bars) -> bool:
-    """MACD 抬头：`expanding and dif_up and macd[-1] > -0.05`（照抄它的 `_macd_ok`）。"""
+    """MACD 抬头：`expanding and dif_up and macd[-1] / close[-1] > -0.0015`。
+
+    ⚠️ 2026-10-10 口径变更：第三条原为绝对元值 `macd[-1] > -0.05`，MACD 由前复权
+    序列算出、随价位等比缩放，绝对阈值使判定与股价水平相关 —— 已改成相对量
+    `macd[-1] / close[-1]`（见 `WUDAO_HUABAO_MACD_MIN_RATIO` 那段注释的实跑依据）。
+    `expanding` / `dif_up` 两条不变（它们是同一序列内的比较，本来就不受尺度影响）。
+    """
     macd, dif = _macd_tail(bars, 3)
     if len(macd) < 2 or len(dif) < 2:
         return False
     expanding = macd[-1] > macd[0] or (macd[-1] > 0 and macd[-1] >= macd[-2])
     dif_up = dif[-1] >= dif[0]
-    return expanding and dif_up and macd[-1] > WUDAO_HUABAO_MACD_MIN
+    close = float(bars.close[-1])
+    if close <= 0:
+        return False
+    return expanding and dif_up and macd[-1] / close > WUDAO_HUABAO_MACD_MIN_RATIO
 
 
 def _huabao_early(bars: Bars) -> Signal | None:
@@ -2982,7 +3018,10 @@ def _huabao_early(bars: Bars) -> Signal | None:
         return None
     close = float(bars.close[n - 1])
     high_20 = float(np.max(bars.high[max(0, n - 20) : n]))
-    if ret_20 > 18 and close >= high_20 * 0.97 and ret_20 > WUDAO_HUABAO_LATE_RET_20:
+    # 贴 20 日高、且已经涨得太晚（`ret_20 > 25`）→ 不算早期。
+    # 原来这里还带一个 `ret_20 > 18` 的前置条件，但它被 `ret_20 > 25` 蕴含（冗余），
+    # 2026-10-10 删掉那一段（逻辑等价，docstring 一直只写了 `> 25`，现在代码与它一致）。
+    if close >= high_20 * 0.97 and ret_20 > WUDAO_HUABAO_LATE_RET_20:
         return None
 
     streak, start = _huabao_yang_streak(bars)

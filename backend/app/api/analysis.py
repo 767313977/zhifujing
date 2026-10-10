@@ -71,9 +71,12 @@ def lookup(
     name = (basic[0] if basic else None) or code
     industry = basic[1] if basic else None
 
+    # 「最近一根」要滤掉停牌残行（iFinD 给的那种只有收盘价、`pct_chg` 为空的行）——
+    # 同页的阶段判定 `load_phase` 也是这么滤的，不滤这边会取到残行、日期与阶段判定
+    # 对不上（页面会出现「结论是今天、K 线日期却是昨天」）。2026-10-10 加。
     latest = session.scalar(
         select(StockDaily)
-        .where(StockDaily.code == code)
+        .where(StockDaily.code == code, StockDaily.pct_chg.is_not(None))
         .order_by(StockDaily.trade_date.desc())
         .limit(1)
     )

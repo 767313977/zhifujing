@@ -13,6 +13,16 @@
 3. **和同一天全市场的平均收益比**（横截面基准）—— 否则「涨了 8%」可能只是
    那几天大盘在涨，跟形态没关系。
 
+## 持有期口径：按交易日（2026-10-10 从「按行」改为「按交易日」）
+
+`stock_daily` 里没有停牌日的行，于是原来的 `close[t + h]` 取的是**第 h 行**，
+不是「第 h 个交易日」—— 停牌空洞会把实际持有期拉长（例：000010 2026-04-23，
+按行 5 日 −25.68% vs 按日历 −21.89%；9-28 窗口内 5092 只里 406 只 ≥100 根的池内票
+存在日期空洞）。线上 `pattern_track._curves_from` 是按 `TradeCalendar` 定位、**不受**
+空洞影响，所以回测必须与它同口径：用数据自身的日期并集建一条交易日轴，按全局位置
+判「第 h 个交易日」。这是**口径变更** —— 文档里 2026-10-10 之前的回测数字仍是旧口径
+（见 `docs/plans/2026-09-17-fupan-site-design.md` 末尾那一节）。
+
 零 iFinD 配额：全部用库里已有的日线在本地算。
 
 ## 数据来源：两个库
@@ -87,6 +97,7 @@ from app.services.patterns import (  # noqa: E402
     Bars,
     build_bars,
     is_st,
+    usable_bar,
 )
 
 logger = logging.getLogger("backtest")
@@ -160,6 +171,42 @@ def _as_hit(signal) -> dict | None:
     if signal is None or signal.score < MIN_SCORE:
         return None
     return {**signal.detail, "score": round(signal.score, 1)}
+
+
+def _forward_outcomes(
+    bars: Bars,
+    date_index: dict,
+    g: int,
+    all_dates: list,
+    entry: float,
+) -> list[float | None]:
+    """按**交易日**对齐算 `HORIZONS` 各档收益（`close[目标日] / entry − 1`）。
+
+    **2026-10-10 从「按行」改为「按交易日」**，理由：`stock_daily` 没有停牌日的行，
+    原来的 `close[t + h]` 取到的是**第 h 行**而不是「第 h 个交易日」，停牌空洞会把
+    实际持有期拉长（例：000010 2026-04-23 按行 5 日 −25.68% vs 按日历 −21.89%）；
+    而线上 `pattern_track._curves_from` 是按 `TradeCalendar` 定位、不受空洞影响，
+    回测必须与它同口径。
+
+    「第 h 个交易日」用数据自身的日期并集（`all_dates`）来定位：`g` 是命中日在
+    `all_dates` 里的全局位置，`all_dates[g + h]` 就是目标交易日；再用该股的
+    `date_index` 把目标交易日换回这只票的行号。目标日**该股停牌（没行）**时该档返回
+    `None` —— 线上对这种票也是「这一档不算样本」，而不是拿一个假的 0% 顶进去。
+    """
+    outcomes: list[float | None] = []
+    for h in HORIZONS:
+        target = g + h
+        if target >= len(all_dates):
+            outcomes.append(None)
+            continue
+        j = date_index.get(all_dates[target])
+        outcomes.append(None if j is None else float(bars.close[j]) / entry - 1)
+    return outcomes
+
+
+def _fmt_pct(value: float | None) -> str:
+    """命中明细里的一档收益；该档该股停牌（None）时显示「—」。"""
+    return "—" if value is None else f"{value * 100:>+6.1f}%"
 
 
 # ---------------------------------------------------------------- 廉价预筛
@@ -258,23 +305,22 @@ def _load_history(engine, codes: list[str], bars: int) -> tuple[date, dict[str, 
 
     grouped: dict[str, list[dict]] = defaultdict(list)
     for code, name, day, open_, high, low, close, volume, amount, pct in rows:
-        # 涨跌幅为空的行在采集时就已经滤掉了，这里再挡一道：少了它 `build_bars`
-        # 会把停牌日当成 0% 涨跌，前复权序列直接失真
-        if close is None or pct is None:
+        record = {
+            "date": day,
+            "name": name,
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+            "amount": amount,
+            "pct_chg": pct,
+        }
+        # 与 `_load_bars` 同口径：缺任一项（尤其停牌残行）都不能当一根 K 线，
+        # 否则 `build_bars` 的 `float(None)` 会抛
+        if not usable_bar(record):
             continue
-        grouped[code].append(
-            {
-                "date": day,
-                "name": name,
-                "open": open_,
-                "high": high,
-                "low": low,
-                "close": close,
-                "volume": volume,
-                "amount": amount,
-                "pct_chg": pct,
-            }
-        )
+        grouped[code].append(record)
     return latest, dict(grouped)
 
 
@@ -302,12 +348,16 @@ class Tally:
 
     def add(
         self,
-        outcomes: list[float],
+        outcomes: list[float | None],
         bench_means: list[float],
         month: str,
         sample: dict | None = None,
     ) -> None:
+        # 某一档为 None = 该股在那一档的目标交易日停牌（没行），**该档不计样本** ——
+        # 与线上 `pattern_track`「两端都要有行」同口径（2026-10-10）。
         for index, value in enumerate(outcomes):
+            if value is None:
+                continue
             self.returns[index].append(value)
             self.bench[index] += bench_means[index]
             self.counts[index] += 1
@@ -446,22 +496,34 @@ def main() -> int:
     targets = _resolve_targets(args.pattern)
     logger.info("目标形态 %d 个：%s", len(targets), ", ".join(targets))
 
-    # 基准：每个交易日 → 全市场在该日之后 N 日的平均收益。
+    # **交易日轴**：取数据自身的日期并集。持有期一律按**交易日**对齐（见 `_forward_outcomes`
+    # 与模块顶部「持有期口径」一节）—— 停牌日的行在库里是缺的，只有一条全局日期轴才能
+    # 把「第 h 个交易日」和「第 h 行」区分开。
+    all_dates = sorted({day for bars in bars_by_code.values() for day in bars.dates})
+    global_pos = {day: i for i, day in enumerate(all_dates)}
+    logger.info("交易日轴：%d 个交易日（%s ~ %s）", len(all_dates), all_dates[0], all_dates[-1])
+
+    # 基准：每个交易日 → 全市场在该日之后**第 h 个交易日**的平均收益。
     # 必须按**同一天**比，否则「形态命中组涨了 6%」可能只是那段时间大盘在涨。
     #
     # 这里只累加 sum 与 count（而不是把每天的收益都存成一个列表）：5 年 × 全池会攒下
     # 上千万个浮点数，存列表峰值能吃掉好几个 GB，而报告只需要那个均值。
+    # 口径与命中样本一致：按交易日对齐，目标日停牌的票不计入该日基准。
     bench_sum: dict[int, dict[object, float]] = {h: defaultdict(float) for h in HORIZONS}
     bench_count: dict[int, dict[object, int]] = {h: defaultdict(int) for h in HORIZONS}
     for bars in bars_by_code.values():
-        n = len(bars)
-        for i in range(n - max(HORIZONS)):
+        date_index = {day: i for i, day in enumerate(bars.dates)}
+        for i, day in enumerate(bars.dates):
             entry = float(bars.close[i])
             if entry <= 0:
                 continue
-            day = bars.dates[i]
-            for h in HORIZONS:
-                bench_sum[h][day] += float(bars.close[i + h]) / entry - 1
+            g = global_pos[day]
+            for h, value in zip(
+                HORIZONS, _forward_outcomes(bars, date_index, g, all_dates, entry)
+            ):
+                if value is None:
+                    continue
+                bench_sum[h][day] += value
                 bench_count[h][day] += 1
     bench: dict[int, dict[object, float]] = {
         h: {day: bench_sum[h][day] / count for day, count in bench_count[h].items() if count}
@@ -475,7 +537,13 @@ def main() -> int:
 
     for done, (code, bars) in enumerate(bars_by_code.items(), start=1):
         n = len(bars)
-        for t in range(MIN_BARS, n - max(HORIZONS)):
+        date_index = {day: i for i, day in enumerate(bars.dates)}
+        for t in range(MIN_BARS, n):
+            day = bars.dates[t]
+            g = global_pos[day]
+            if g + max(HORIZONS) >= len(all_dates):
+                # 命中日之后不足 `max(HORIZONS)` 个交易日了。日期升序，可以直接停这一只票。
+                break
             sample: Bars | None = None
             for key, target in targets.items():
                 screen = target["screen"]
@@ -494,9 +562,9 @@ def main() -> int:
                 if entry <= 0:
                     continue
                 last_hit[(key, code)] = t
-                day = bars.dates[t]
+                outcomes = _forward_outcomes(bars, date_index, g, all_dates, entry)
                 tallies[key].add(
-                    [float(bars.close[t + h]) / entry - 1 for h in HORIZONS],
+                    outcomes,
                     [bench[h].get(day, 0.0) for h in HORIZONS],
                     str(day)[:7],
                     {
@@ -504,9 +572,7 @@ def main() -> int:
                         "name": grouped[code][-1].get("name") or "",
                         "date": day,
                         "hit": hit,
-                        "outcomes": {
-                            h: float(bars.close[t + h]) / entry - 1 for h in HORIZONS
-                        },
+                        "outcomes": dict(zip(HORIZONS, outcomes)),
                     },
                 )
         if done % 1000 == 0:
@@ -572,8 +638,8 @@ def _report_single(key: str, tally: Tally, samples: int) -> None:
             print(
                 f"  {item['date']} {item['code']} {str(item.get('name') or ''):<6} "
                 f"分数{item['hit'].get('score', 0):>5.1f}"
-                f"  → 5日{out[5] * 100:>+6.1f}% 10日{out[10] * 100:>+6.1f}% "
-                f"20日{out[20] * 100:>+6.1f}%"
+                f"  → 5日{_fmt_pct(out.get(5))} 10日{_fmt_pct(out.get(10))} "
+                f"20日{_fmt_pct(out.get(20))}"
             )
 
 

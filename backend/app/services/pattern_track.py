@@ -40,6 +40,11 @@
 循环也停在那一天之前 —— 复利会把那种日子当成 0 涨跌，等于凭空抹掉一天的真实波动，而
 曲线看上去还是连续的。等那天补上日线，这里自然就接上了。
 
+⚠️ **2026-10-10 起这条守卫放宽为「覆盖够」**：不再只拦「一行都没有」，而是拦
+**采得不全**的日子（判据见 `_COMPLETE_DAY_RATIO`）。原因是原来那版把只采了几十只的
+残缺日当成完整交易日，`market` 就用这几十只算「全市场」。线上「收盘后到采集跑完」的
+窗口里会短暂出现这种日子。
+
 ⚠️ **休市日不属于上面那种情况**：它根本不在 `trade_calendar` 里（2026-09-25 中秋就是），
 所以既不会被当成缺口，也不需要补。这也意味着库里的日线只到 09-24 是**完整的**。
 """
@@ -62,6 +67,20 @@ logger = logging.getLogger(__name__)
 DEFAULT_COHORTS = 30
 DEFAULT_TOP = 50
 DEFAULT_TRACK_DAYS = 30
+
+#: 一个窗口交易日「算不算采全了」的判据（2026-10-10 加，口径变更）。
+#:
+#: 原来只要求那天「有 ≥1 行行情」就当完整交易日 —— 于是采集没跑完的窗口里，
+#: 09-29(53 行)、09-30、10-08、10-09(各 50 行) 这种**只采了几十只**的日子也被当成
+#: 全市场，`market = total[usable].mean()` 就拿这几十只算「全市场等权基准」，
+#: 会凭空得到一个偏得很远的超额。线上「收盘后到采集跑完」的窗口里会短暂出现。
+#:
+#: 判据：某日行数 < **窗口内单日最大行数 × 0.5** 就视为不完整（完整日 ≈ 全池 5000+，
+#: 残缺日只有几十）。**用最大值而不是中位数**：本机库那个窗口里 6 个交易日竟有 4 个是
+#: 残缺日（09-24/09-28 完整、其余 4 天各约 50 行），中位数会落在 ~51、×0.5 之后连残缺日
+#: 都算「完整」，守卫失效；最大值反映的是全市场规模，残缺日一定远低于它。停牌较多的
+#: 正常日仍有 5000 行上下，不会被误伤。
+_COMPLETE_DAY_RATIO = 0.5
 
 # **统计起点**由 `Settings.pattern_track_start` 传进来（用户 2026-09-27 要求
 # 「每个循环从 9 月 24 日开始统计」）：从那天起，每个有命中记录的交易日就是一个循环。
@@ -132,6 +151,9 @@ class _Matrix:
     #: `(窗口日, 股票)` 的复权增长因子（`1 + pct/100`）与「有没有这一行」
     growth: np.ndarray
     present: np.ndarray
+    #: 每个窗口交易日**采全了没有**（判据见 `_COMPLETE_DAY_RATIO`）—— 采得不全的那天
+    #: 不能拿来算全市场基准，各循环遇到它就停下（2026-10-10 加）
+    complete: np.ndarray
     #: 库里有行情的最后一天在 `calendar` 里的位置（决定各循环能走多远）
     end_pos: int
 
@@ -204,6 +226,13 @@ def _matrix(session: Session, scan_days: list[date], track_days: int) -> _Matrix
         if pct_value is not None:
             pct[when, position] = float(pct_value)
 
+    # 每个窗口交易日的覆盖只数 → 判断有没有采全（见 `_COMPLETE_DAY_RATIO`）。
+    # `counts.max()` 取的是窗口里最全的那天（≈ 全池 5000+）；残缺日通常只有几十只，
+    # 一定低于它的一半。空窗口时 max 会报错，故先兜一个 0。
+    counts = present.sum(axis=1)
+    threshold = int(counts.max()) * _COMPLETE_DAY_RATIO if counts.size else 0.0
+    complete = counts >= threshold
+
     return _Matrix(
         calendar=calendar,
         index=index,
@@ -211,6 +240,7 @@ def _matrix(session: Session, scan_days: list[date], track_days: int) -> _Matrix
         code_pos=code_pos,
         growth=1.0 + pct / 100.0,
         present=present,
+        complete=complete,
         end_pos=end_pos,
     )
 
@@ -251,19 +281,21 @@ def _curves_from(
                 continue  # 不该发生：`_matrix` 已按并集把整段区间都取进来了
             accumulated = accumulated * matrix.growth[position]
             total = accumulated - 1.0
-            if not matrix.present[position].any():
-                # 这一天**整个市场一行都没有**：复利会把它当成 0 涨跌，等于凭空抹掉一天
-                # 的真实波动，而曲线看上去还是连续的 —— 所以宁可把循环停在这里，页面
-                # 显示「进度 N/30」。补上那天的日线之后这里自然接得上。
+            if not matrix.complete[position]:
+                # 这一天**没采全**（不是「一行都没有」，也包括只采了几十只那种）：
+                # 拿它算「全市场等权」就是拿几十只票代表全市场，超额会偏得很远；而复利
+                # 又会把它当成真实交易日推进。所以宁可把循环停在这里，页面显示「进度 N/30」。
+                # 补全那天的日线之后这里自然接得上。
                 #
-                # ⚠️ 拦的只是「交易日、但一行都没有」：**休市日根本不在交易日历里**
+                # ⚠️ 拦的只是「交易日、但覆盖不够」：**休市日根本不在交易日历里**
                 # （2026-09-25 中秋就是，它不会被当成缺口、也不需要补），真会走到这里的
-                # 是「配额让路跳过了整天的日线采集」或「那次采集失败」。
+                # 是「配额让路跳过了整天的日线采集」「那次采集失败」或「采集还没跑完」。
                 logger.debug(
-                    "%s 的第 %d 个交易日（%s）整个市场没有日线，循环统计到此前为止",
+                    "%s 的第 %d 个交易日（%s）覆盖不足（%d 行），循环统计到此前为止",
                     day,
                     step,
                     when,
+                    int(matrix.present[position].sum()),
                 )
                 break
             usable = entry_present & matrix.present[position]
@@ -453,21 +485,21 @@ def detail(
     stop = min(start + track_days, index[data_end])
     days = calendar[start + 1 : stop + 1]
 
-    # 再按**整个市场有没有数据**截断：某天一行都没有（交易日历里有、但采集被配额让路
-    # 跳过或失败）就停在它之前。不这么做的话，那天会显示成整列「—」，读起来像「当天
-    # 全市场没涨跌」，而实际是「我们没这天的数据」。`track()` 用的是同一条规则，
-    # 两边进度才对得上。（休市日不在这里 —— 它根本不在交易日历里。）
+    # 再按**整个市场采全了没有**截断：某天覆盖不足（交易日历里有、但采集被配额让路跳过、
+    # 失败、或还没跑完）就停在它之前。不这么做的话，那天会显示成整列「—」，读起来像
+    # 「当天全市场没涨跌」，而实际是「我们只采了几十只」。`track()` 用的是同一条规则
+    # （`_COMPLETE_DAY_RATIO`），两边进度才对得上。（休市日不在这里 —— 它不在交易日历里。）
     if days:
-        covered = {
-            when
-            for (when,) in session.execute(
-                select(StockDaily.trade_date)
+        counts = dict(
+            session.execute(
+                select(StockDaily.trade_date, func.count())
                 .where(StockDaily.trade_date.in_(days))
                 .group_by(StockDaily.trade_date)
             ).all()
-        }
+        )
+        threshold = (max(counts.values()) if counts else 0) * _COMPLETE_DAY_RATIO
         for offset, when in enumerate(days):
-            if when not in covered:
+            if counts.get(when, 0) < threshold:
                 days = days[:offset]
                 break
 

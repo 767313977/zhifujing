@@ -16,7 +16,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import StockDaily
-from app.services.patterns import Bars, PhaseVerdict, build_bars, classify_phase
+from app.services.patterns import (
+    Bars,
+    PhaseVerdict,
+    build_bars,
+    classify_phase,
+    usable_bar,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,31 +42,24 @@ def load_phase(session: Session, code: str) -> PhaseVerdict | None:
         )
     )
     # 只留能当一根 K 线用的行：iFinD 对停牌日会给一行「只有收盘价、其余全空」的残行，
-    # `build_bars` 里 `float(None)` 会直接抛 500（与 `api/stock._adjusted` 同一个口径）。
-    usable = [
-        item
+    # `build_bars` 里 `float(None)` 会直接抛 500。判据抽成了公共的 `usable_bar`
+    # （2026-10-10），与 `scan_patterns._load_bars` / `backtest_patterns._load_history`
+    # 同一口径（与 `api/stock._adjusted` 也是同一套）。
+    records = [
+        {
+            "date": item.trade_date,
+            "open": item.open,
+            "high": item.high,
+            "low": item.low,
+            "close": item.close,
+            "volume": item.volume,
+            "amount": item.amount,
+            "pct_chg": item.pct_chg,
+        }
         for item in reversed(rows)
-        if item.close is not None
-        and item.pct_chg is not None
-        and item.open is not None
-        and item.high is not None
-        and item.low is not None
     ]
+    usable = [record for record in records if usable_bar(record)]
     if not usable:
         return None
-    bars: Bars = build_bars(
-        [
-            {
-                "date": item.trade_date,
-                "open": item.open,
-                "high": item.high,
-                "low": item.low,
-                "close": item.close,
-                "volume": item.volume,
-                "amount": item.amount,
-                "pct_chg": item.pct_chg,
-            }
-            for item in usable
-        ]
-    )
+    bars: Bars = build_bars(usable)
     return classify_phase(bars)
