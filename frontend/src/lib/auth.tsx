@@ -47,7 +47,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         // 401（没登录）与网络错误都当作「没登录」：这一层只决定要不要跳登录页，
-        // 不该把后端不可用也变成白屏
+        // 不该把后端不可用也变成白屏。
+        // ⚠️ 网络错误也要能走到这里 —— `authMe` 带 10 秒超时（见 api/client.ts 的
+        // AUTH_CHECK_TIMEOUT_MS），否则弱网下这个 promise 永不 settle，下面的
+        // `checking` 就永远是 true、RequireAuth 渲染的空白页就永远白着（2026-10-10 修）。
         if (alive) {
           setMe(null)
           setChecking(false)
@@ -100,7 +103,10 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation()
 
   if (checking) {
-    // 刻意留白而不是「加载中…」：这一步通常几十毫秒，闪一行字比空着更烦
+    // 刻意留白而不是「加载中…」：这一步通常几十毫秒，闪一行字比空着更烦。
+    // ⚠️ 这个白屏**必须有上限** —— 网络断了时会一直停在这里。上限在 `authMe` 的
+    // 10 秒超时上（见 api/client.ts 的 AUTH_CHECK_TIMEOUT_MS）：超了就落进上面的
+    // catch、当成「没登录」，于是跳登录页，而不是无限白着（2026-10-10 修）。
     return <div className="min-h-screen" />
   }
   if (me === null) {
