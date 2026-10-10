@@ -14,8 +14,14 @@
   覆盖）。按协议判断则两边自动都对。
   ⚠️ 依赖 nginx 转发 `X-Forwarded-Proto`（见 deploy/setup_nginx.sh），
   否则云端也会被判成 http、cookie 少一个 Secure。
+- **明文 http 下拒绝登录 / 注册 / 改密码**（2026-10-10 加，见
+  `_require_secure_transport`）：因为上面那条按协议给 `Secure`，走 http 时 cookie
+  不带 Secure、浏览器照存 —— 于是 `http://<公网 IP>:8080` 那条**明文**路其实能正常登录，
+  密码明文过网（`deploy/setup_nginx.sh` 里那句「8080 登录不了」是错的：不是代码比注释
+  严，是**代码比注释松**）。现在明文 + 公网直接 403，本机与内网放行。
 """
 
+import ipaddress
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -31,6 +37,50 @@ from app.services import auth
 router = APIRouter(prefix="/api/auth", tags=["登录"])
 
 USERNAME_MAX = 32
+
+#: 明文 http 下**放行**的主机名：本机调试用。
+#: 内网地址（192.168.x.x / 10.x / 172.16-31.x）也放行，判据见 `_is_local_or_private`。
+_LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _is_local_or_private(host: str) -> bool:
+    """本机或内网地址？
+
+    ⚠️ 只有 IP 判得了私有段，**域名一律按「非内网」处理** —— 一个域名解析到哪儿
+    这里看不到，不该靠猜。
+    """
+    if host in _LOCAL_HOSTS:
+        return True
+    try:
+        return ipaddress.ip_address(host).is_private
+    except ValueError:
+        return False
+
+
+def _require_secure_transport(request: Request) -> None:
+    """别让密码走明文公网。
+
+    为什么要有这道闸：cookie 的 `Secure` 是按**请求协议**给的（见模块开头），所以走
+    http 时它不带 `Secure`、浏览器照存 —— 结果是 `http://<公网 IP>:8080` 那条**明文**路
+    能正常登录，密码明文过网。`deploy/setup_nginx.sh` 里写着「8080 登录不了」，实际
+    登得了（2026-10-10 修：让行为与那句注释对齐）。
+
+    为什么只拦「公网 + 明文」：本地开发就是 `http://127.0.0.1`，内网是自家的网，
+    这两处没必要逼人上证书；而往公网发明文密码是纯亏。
+    ⚠️ 影响：公网 8080 兜底入口从此**只能看页面 / 查 nginx 报错，不能登录** —— 那本来
+    就是它的用途。域名 / 证书出问题时请走 SSH 修，别用明文登录。
+    """
+    if request.url.scheme == "https":
+        return
+    if _is_local_or_private((request.url.hostname or "").lower()):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=(
+            "当前是明文 http，登录会把密码明文发出去。请改用 https 打开本站"
+            "（本机调试用 http://127.0.0.1 可以）"
+        ),
+    )
 
 
 def _normalize_username(raw: str) -> str:
@@ -63,10 +113,30 @@ def register(
     db: Session = Depends(get_db),
 ) -> MeOut:
     """用邀请码注册。成功即登录（不让刚注册的人再去登一次）。"""
+    _require_secure_transport(request)
     ip = auth.client_ip(request)
     auth.guard_rate(ip)
     username = _normalize_username(payload.username)
     auth.validate_password(payload.password)
+
+    # **先确认邀请码可用，再动用户名**（2026-10-10 修）。下面 `db.flush()` 才是用户名
+    # 唯一性的判定点，而它原本排在「消耗邀请码」之前 —— 于是一个**手持无效邀请码**的人
+    # 也能靠「用户名已被占用」这条错误把用户名一个个试出来。
+    # 这里只是一次**预检**：真正的判据仍是后面那句原子的 UPDATE ... WHERE used_by IS NULL
+    # （并发下靠它保证「一个码只注册一个账号」），所以那条不变式不受影响。
+    code = payload.invite_code.strip()
+    if (
+        db.scalar(
+            select(InviteCode.code).where(
+                InviteCode.code == code,
+                InviteCode.used_by.is_(None),
+                InviteCode.disabled_at.is_(None),
+            )
+        )
+        is None
+    ):
+        auth.login_limiter.fail(ip)
+        raise HTTPException(status_code=400, detail="邀请码无效或已被使用")
 
     user = AppUser(
         username=username,
@@ -88,7 +158,7 @@ def register(
     consumed = db.execute(
         update(InviteCode)
         .where(
-            InviteCode.code == payload.invite_code.strip(),
+            InviteCode.code == code,
             InviteCode.used_by.is_(None),
             InviteCode.disabled_at.is_(None),
         )
@@ -116,13 +186,15 @@ def login(
     response: Response,
     db: Session = Depends(get_db),
 ) -> MeOut:
+    _require_secure_transport(request)
     ip = auth.client_ip(request)
     auth.guard_rate(ip)
 
     user = db.scalar(select(AppUser).where(AppUser.username == payload.username.strip()))
-    # 没这个用户也照走一次哈希校验（空串必然验不过），免得「有没有这个人」
-    # 从响应快慢上漏出去
-    stored = user.password_hash if user is not None else ""
+    # 没这个用户也照走一次**同样开销**的哈希校验。⚠️ 这里必须给**假哈希**而不是空串
+    # （`services.auth.DUMMY_PASSWORD_HASH`）：空串会卡在解析那步直接返回 False、
+    # **scrypt 根本不跑**，于是「有没有这个人」就从响应快慢上漏出去了（2026-10-10 修）
+    stored = user.password_hash if user is not None else auth.DUMMY_PASSWORD_HASH
     if user is None or not auth.verify_password(payload.password, stored):
         auth.login_limiter.fail(ip)
         raise HTTPException(status_code=401, detail="用户名或密码不对")
@@ -164,9 +236,17 @@ def change_password(
     ⚠️ 改密码还有效的旧会话等于「怀疑密码泄露却什么也没做」，所以除当前这一个
     之外全删。当前这个留着，免得刚改完就被踢出去、还得再登一次。
     """
+    # 这个接口一次发**两个**密码，所以和登录一样要过这两道闸（2026-10-10 加）：
+    # 明文公网不许发；旧密码试错也计入按 IP 的限流（否则可以用它当密码爆破口）。
+    _require_secure_transport(request)
+    ip = auth.client_ip(request)
+    auth.guard_rate(ip)
+
     if not auth.verify_password(payload.old_password, user.password_hash):
+        auth.login_limiter.fail(ip)
         raise HTTPException(status_code=400, detail="旧密码不对")
     auth.validate_password(payload.new_password)
+    auth.login_limiter.reset(ip)
 
     row = db.get(AppUser, user.id)
     if row is None:  # 会话有效但账号没了（理论上不会发生）

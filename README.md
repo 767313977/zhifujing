@@ -25,7 +25,7 @@
 
 ## 技术栈
 
-- **后端**：Python 3.13、FastAPI、SQLAlchemy 2.0、SQLite（WAL）、APScheduler（交易日 17:30 定时采集）
+- **后端**：Python 3.13、FastAPI、SQLAlchemy 2.0、SQLite（WAL）、APScheduler（交易日 15:05 采集 + 17:30 / 19:30 收盘后补采 + 22:00 / 22:30 成分股预取）
 - **前端**：React 19、Vite、TypeScript、Tailwind v4、ECharts 6（按需注册，见 `frontend/src/components/EChart.tsx`）
 - **数据源**：iFinD 为主，akshare / 开盘红 / 同花顺数据中心补缺
 
@@ -97,7 +97,10 @@ IFIND_CYCLE_START_DAY=17
 # 可选：飞书群自定义机器人的 webhook，用来推每日简报与形态命中
 FEISHU_WEBHOOK_URL=
 
-# 可选：监听地址与端口（0.0.0.0 才能用手机打开，但本服务自身没有鉴权）
+# 可选：监听地址与端口（0.0.0.0 才能让同一 WiFi 下的手机打开）
+# ⚠️ 后端自己有登录体系（/api/* 一律要登录），但在**明文 http + 公网地址**上会
+# 直接拒登录 / 注册（api/auth.py 的 _require_secure_transport）—— 局域网里用没问题，
+# 别把它挂到公网上。
 HOST=127.0.0.1
 PORT=8000
 ```
@@ -147,14 +150,17 @@ sudo systemctl restart fupan
 
 ## 部署
 
-`deploy/install.sh` 写 systemd 服务（后端绑 127.0.0.1），`deploy/setup_nginx.sh` 配 nginx + Basic Auth，
+`deploy/install.sh` 写 systemd 服务（后端绑 127.0.0.1），`deploy/setup_nginx.sh` 配 nginx 反向代理
+（它的 `AUTH` 默认 **off**：站点的门由**后端自己那套登录体系**把着，见设计文档 §8.69），
 带上 `DOMAIN` 与 `CERT_EMAIL` 时会顺带签 Let's Encrypt 证书、配 80 跳转 443、装续期钩子。
 
-**后端自身没有任何鉴权**，对外必须挡一层带密码的反向代理 —— 否则谁扫到都能看你的自选股与笔记，
-还能触发采集白烧 iFinD 配额。
+**鉴权在后端**（2026-09-28 起）：`/api/*` 一律要求登录（只放行 login / register / health），
+注册要一次性邀请码，所以 nginx 那层不必再加一道密码。想加也行 —— 重跑 `setup_nginx.sh`
+时带 `AUTH=on`。
 
 一键推送脚本（打包 → 上传 → 远端安装）**没有入库**：它含服务器密码，属于本机私产。
-自己写的话，`scripts/pack_deploy.py` 已经把打包那步做好了（`--no-db` 出代码包，不含数据库）。
+自己写的话，`scripts/pack_deploy.py` 已经把打包那步做好了（**默认出代码包、不含数据库**；
+只有首次部署一台新机器才加 `--with-db`）。
 
 ## 文档
 

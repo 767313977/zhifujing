@@ -684,9 +684,12 @@ class AdminStatus(BaseModel):
 
 
 class WatchlistIn(BaseModel):
-    code: str
-    name: str | None = None
-    note: str | None = None
+    # 长度上限（2026-10-10 加）：这些字段以前没有上限，一个登录用户就能塞进来
+    # 任意大的字符串（备注是 TEXT，只进不出地占库）。上限按「人写得出来的量」给。
+    # `code` 收的是代码 / 名称 / 拼音首字母，32 够。
+    code: str = Field(..., max_length=32)
+    name: str | None = Field(None, max_length=64)
+    note: str | None = Field(None, max_length=2000)
 
 
 class WatchlistRow(BaseModel):
@@ -955,8 +958,10 @@ class StockThemes(BaseModel):
 
 
 class NoteIn(BaseModel):
-    market_view: str | None = None
-    next_plan: str | None = None
+    # 长度上限（2026-10-10 加，理由同 WatchlistIn）：复盘笔记是自由文本，
+    # 按「一天写满两屏」量级给 20000 字，正常写根本碰不到。
+    market_view: str | None = Field(None, max_length=20000)
+    next_plan: str | None = Field(None, max_length=20000)
 
 
 class NoteOut(ApiModel):
@@ -1275,19 +1280,22 @@ class DdeBoard(BaseModel):
 
 
 class RegisterIn(BaseModel):
-    invite_code: str
-    username: str
-    password: str
+    # 长度上限（2026-10-10 加）：这些入参以前完全没有上限，而 `hash_password` 对超长
+    # 输入照样跑满 scrypt —— 一个几十 MB 的「密码」就是一次白送的 DoS。
+    # 口令给 128（远比正常口令宽），用户名与 `api/auth.USERNAME_MAX` 对齐。
+    invite_code: str = Field(..., max_length=64)
+    username: str = Field(..., max_length=32)
+    password: str = Field(..., max_length=128)
 
 
 class LoginIn(BaseModel):
-    username: str
-    password: str
+    username: str = Field(..., max_length=32)
+    password: str = Field(..., max_length=128)
 
 
 class PasswordIn(BaseModel):
-    old_password: str
-    new_password: str
+    old_password: str = Field(..., max_length=128)
+    new_password: str = Field(..., max_length=128)
 
 
 class MeOut(ApiModel):

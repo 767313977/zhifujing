@@ -6,6 +6,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -138,7 +139,19 @@ def add_watchlist(
     )
 
     session.add(row)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # 前端连点 / 双击时，两个并发请求都会在上面 `session.get` 那步看到「不存在」，
+        # 于是都走到这里 —— 后者撞上 `(user_id, code)` 唯一约束。这**不是错误**：
+        # 结果与串行路径完全一样（那一行已经在库里），所以按「已存在」返回，
+        # 而不是把一个 500 丢给用户（2026-10-10 修）。
+        session.rollback()
+        existing = session.get(Watchlist, (user.id, code))
+        if existing is None:
+            # 理论上不会走到：唯一约束只可能被同一把主键挡下
+            raise
+        return _row(session, existing, _latest_quotes(session, [code]).get(code))
     session.refresh(row)
     return _row(session, row, None)
 

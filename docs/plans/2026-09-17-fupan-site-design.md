@@ -2450,6 +2450,11 @@ sessionStorage 只在当前标签页有效），换来的是不可能与导航�
   没有任何鉴权，只剩「域名没被传播」这一层模糊保护。用户明确要求如此（风险已当面
   说明：任何知道域名的人都能 `POST /api/admin/collect` 触发采集、白烧配额）。
   想加回密码：跑一次带 `AUTH=on` 的 `setup_nginx.sh`（`.htpasswd` 还在，密码不变）。
+  ⚠️ **2026-10-10 再补**：上面这两段已过时 —— 「整站没有任何鉴权」是**错的说法**。
+  站点从 §8.69 起就有**后端自己的登录体系**：`/api/*` 一律要求登录，只放行
+  `login` / `register` / `health`；取消的只是 nginx 那道额外的 Basic Auth。
+  任何知道域名的人看到的只是登录页，看不到自选股 / 笔记，也触发不了采集。
+  （见本文件「2026-10-10 安全与健壮性修复」一节。）
 
 反代脚本留在 `deploy/setup_nginx.sh`（可重复跑，密码文件已存在时会跳过）。
 
@@ -10509,6 +10514,39 @@ listen 443 ssl http2;   # 线上是 nginx 1.24；≥1.25.1 要改成 listen 443 
 
 ⚠️ 前端那两条（① ②）**当天没能上线** —— 工作区里有另一处未提交的在制品，`pack_deploy.py`
 的闸（见上一节）拒绝打包。等那端收尾后随下一次部署上去。
+
+### 2026-10-10 安全与健壮性修复（外部评审 11 条）
+
+外部给了一份代码评审清单（中等 5 条 + 较低 6 条）。逐条核实**全部为真**（其中 3 条要修正
+严重性、2 条会改变使用方式），按用户「**全修 + 4 选 a + 5 改默认**」全部落地。
+
+**中等 5 条**
+
+| # | 问题 | 修法 |
+| --- | --- | --- |
+| 1 | **DDE 现取可刷配额**：接口在库里没有最近交易日数据时现取一次（花 1 次 iFinD 配额），而**空结果不缓存** —— 传无效代码（如 999999）反复请求就是无限次配额消耗 | `api/stock.py` 加**按用户**滑动窗口限流 `RateLimiter(limit=30, window_sec=600, lock_sec=600)`。被限流**不报错**，照常返回缓存 + 一句 `note`。**刻意不用** `Cooldown`（每请求冷 60s 会掐掉正常连翻几只）；**不做**空结果负缓存（攻击是枚举**不同**代码，负缓存挡不住） |
+| 2 | **登录时序泄漏 + 用户名可探测**：不存在用户走 `verify_password(pw, "")`，空串在 `split("$")` 那步就失败返回、**scrypt 根本没跑** → 响应快慢泄漏「有没有这个人」；注册时先 `db.flush()` 判用户名唯一性、**之后**才消耗邀请码 → 手持**无效**邀请码的人也能用「用户名已被占用」逐个试探 | `services/auth.py` 加模块级 `DUMMY_PASSWORD_HASH = hash_password(secrets.token_urlsafe(16))`，登录对不存在的用户拿它跑**同样开销**的 scrypt；`api/auth.register` **先预检邀请码可用**再动用户名（原子的 `UPDATE ... WHERE used_by IS NULL` 不变式不变） |
+| 3 | **采集任务不互斥**：`_run_late` / `_run_members` 没包 `collect_guard`，而 `_catch_up` 同时起 3 个线程 → 两个 `DailyCollector` 各有令牌桶，实际速率翻倍 → iFinD 429 | `jobs/scheduler.py` 两处都包 `collect_guard`（主体抽成 `_run_late_unguarded` / `_run_members_unguarded`）。拿不到锁**跳过**，靠回看补采，不会真丢 |
+| 4 | **明文 http 下密码明文过网**：cookie 的 `Secure` 按请求协议给，走 http 时不带 → `http://<公网IP>:8080` 其实**能登录**（`setup_nginx.sh` 里「8080 登录不了」是错的：**代码比注释松**） | 选 **a**：`api/auth.py` 加 `_require_secure_transport` —— 明文 + 公网直接 **403**（本机 / 内网放行），login / register / change_password 三处都过这道闸 |
+| 5 | **打包默认覆盖云端库**：`pack_deploy.py` 默认**带库**，不带库要靠人记得敲 `--no-db`，敲漏一次就把线上数据（用户 / 邀请码 / 笔记 / 自选股）退回本机旧库、**不可逆** | 改**默认**：默认**只打代码**，带库要**显式** `--with-db`（`--no-db` 保留为空操作，兼容旧命令行）。理由就是「默认值会被手滑用上」 |
+
+**较低 6 条**
+
+| # | 问题 | 修法 |
+| --- | --- | --- |
+| 6 | SQLite **无等锁超时**（默认 5s）：尾部采集在一个事务里连写几千行时，别的**写**请求（登录建会话 / 存笔记 / 加自选）会 `database is locked` → 500 | `db.py` `connect_args` 加 `timeout=15`（**读不受影响**：WAL 下读不被写阻塞，只影响少数写路径） |
+| 7 | **时区跟随系统**：判「今天是不是交易日」「过没过采集时刻」用进程本地时间；`timedatectl` 那步只在有 `systemd-timedated` 时才跑 | `deploy/install.sh` 的 systemd unit 加 `Environment=TZ=Asia/Shanghai`，钉死在**服务进程**上 |
+| 8 | **连点加自选 500**：并发两个请求都看到「不存在」，后者撞 `(user_id, code)` 唯一约束 | `api/watchlist.py` 接 `IntegrityError` → `rollback` 后按「已存在」返回（结果与串行路径完全一致） |
+| 9 | **入参无长度上限**：尤其密码，`hash_password` 对超长输入照样跑满 scrypt → 一次白送的 DoS | `schemas.py` 给 `WatchlistIn` / `NoteIn` / `RegisterIn` / `LoginIn` / `PasswordIn` 补 `max_length` |
+| 10 | **改密码无限流**：`PUT /password` 的旧密码试错不计登录限流，可当密码爆破口 | `api/auth.py` 的 `change_password` 过 `_require_secure_transport` + `guard_rate`，旧密码不对时 `login_limiter.fail(ip)` |
+| 11 | **注释过时**：「后端没有任何鉴权 / 全站没有鉴权 / 8080 登录不了（cookie 带 Secure）」与实际不符 | 改 `README.md` / `config.py` / `install.sh` / `setup_nginx.sh` / 本文件 §2447 等处的口径：**鉴权在后端**，`AUTH=off` 取消的只是 nginx 那道额外的 Basic Auth |
+
+**验证**：后端改动文件 `py_compile` 全过 + `import app.main` OK + 前端 `npm run build` 通过。
+
+⚠️ **同上：这批也上不了线** —— 工作区里有另一端的未提交在制品（`main.py` 的 `ai` 接线、
+`config.py` 的 OpenAI 段、`schemas.py` 的 `AiChat*`、未跟踪的 `api/ai.py` / `services/ai.py`），
+`pack_deploy.py` 的闸会拒绝打包。提交时用「退回 HEAD → 只重放自己的 hunk → 暂存 → 还原
+工作区」把它排除在本次提交之外。等那端收尾后随下一次部署一起上。
 
 
 

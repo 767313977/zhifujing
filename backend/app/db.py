@@ -17,7 +17,14 @@ settings = get_settings()
 engine = create_engine(
     f"sqlite:///{settings.db_path}",
     # FastAPI 请求线程与采集线程共用 engine
-    connect_args={"check_same_thread": False},
+    #
+    # `timeout=15`：SQLite 的**写锁等待**上限（Python `sqlite3` 的默认只有 5 秒）。
+    # 尾部那几趟采集会在一个事务里连写几千行，这期间别的**写**请求（登录建会话、
+    # 存笔记、加自选）拿不到写锁 —— 5 秒会直接抛 `database is locked` 变成 500，
+    # 15 秒足够骑过那几波写。⚠️ **读请求不受影响**：WAL 下读不会被写阻塞，
+    # 所以这里影响的只是少数写路径。不给更大是因为「等太久」比「快点报错」更难排查：
+    # 上限要留着（2026-10-10 加）。
+    connect_args={"check_same_thread": False, "timeout": 15},
     future=True,
 )
 

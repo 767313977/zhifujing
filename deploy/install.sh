@@ -5,7 +5,8 @@
 #       然后在 /opt/fupan 下执行：sudo bash deploy/install.sh
 #
 # 跑完这台机器就自己按交易日的采集时刻（`config.collect_hour/minute`）采集并推送到飞书了，
-# 不依赖本机开机。当前是 17:30。
+# 不依赖本机开机。当前**收盘后**是 15:05，另有 17:30 / 19:30 收盘后那一趟、22:00 / 22:30
+# 成分股预取（都在 config.py 里，上面这句只是给第一次看这脚本的人一个方向感）。
 #
 # 可覆盖的环境变量：APP_DIR（默认 /opt/fupan）、APP_USER（默认 fupan）、SERVICE（默认 fupan）
 set -euo pipefail
@@ -95,6 +96,12 @@ User=$APP_USER
 Group=$APP_USER
 WorkingDirectory=$APP_DIR/backend
 Environment=PYTHONUNBUFFERED=1
+# 时区也钉在**服务进程**上（2026-10-10 加）：代码判「今天是不是交易日」「过没过采集
+# 时刻」用的是进程本地时间（date.today / datetime.now）。上面那段 timedatectl 只在
+# 系统带 systemd-timedated 时才跑（脚本里套了 command -v）—— 万一哪台机器没有它，
+# 启动补采会把北京时间当 UTC 判、差 8 小时直接跳过。这里钉死之后，无论系统时钟怎么配，
+# date.today() 都是北京日期。
+Environment=TZ=Asia/Shanghai
 # 云端**永远**是采集机。这条守卫是必需的，不是重复设置：本机那份 .env 里写着
 # SCHEDULER_ENABLED=false（本机只当看图机，见仓库根 .env 的注释），而 .env 会被
 # pack_deploy 打进包里推过来 —— systemd 的环境变量优先级高于 .env，所以它不会
@@ -107,10 +114,12 @@ RestartSec=10
 TimeoutStopSec=30
 
 # 只绑 127.0.0.1：这台机器不需要对外暴露任何端口，采集与推送全是出站请求。
-# 以后要在外网看网页，另配反向代理 + 鉴权，**不要**把这行改成 0.0.0.0。
+# 以后要在外网看网页，另配反向代理（deploy/setup_nginx.sh 那套），**不要**把这行改成 0.0.0.0。
 # 注意 .env 里的 HOST=0.0.0.0 是给本机用的（让同一 WiFi 下的手机能打开）——
 # 这条命令显式指定了 --host，所以不受它影响；但**也别把它改成 python -m app.main**，
-# 那样会去读 .env，等于把这个没有鉴权的服务挂到公网上。
+# 那样会去读 .env，等于把这个服务直接挂到公网上 —— 后端 2026-09-28 起有登录体系，
+# 但公网 IP + 明文 http 那条路会让密码明文过网（api/auth.py 的 _require_secure_transport
+# 会直接拒登录，页面开着也进不去）。
 #
 # （写注释时注意：这个 heredoc 故意没加引号，变量要展开；所以注释里**不能出现反引号**，
 #   反引号在 bash 里是命令替换，会被真的执行一次 —— 踩过。）
