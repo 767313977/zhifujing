@@ -147,7 +147,17 @@ export default function StockAnalysisPage() {
         {result && (
           <>
             <Panel
-              title={`${result.name ?? result.code}  ${result.code}`}
+              // 票名／代码做成可点链接，直接跳个股页（2026-10-10 用户要求）。
+              // 与 meta 里那条「看完整个股页」是同一个去处 —— 名字本来就最像可点的东西
+              title={
+                <Link
+                  to={`/stock/${result.code}`}
+                  title="打开个股页"
+                  className="transition-colors hover:text-accent"
+                >
+                  {result.name ?? result.code}  {result.code}
+                </Link>
+              }
               meta={
                 <span className="num text-[13px]">
                   {result.trade_date ?? '—'}
