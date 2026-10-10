@@ -393,6 +393,27 @@ WUDAO_START_VOL = 1.5
 WUDAO_DIVERGE_VOL = 2.5  # 与悟道：爆量冲高不收 → 吵/出货，不当明天盯
 WUDAO_MIN_BARS = 22  # 昨收 + 近 20 日均量 + 余量
 
+# ---- 阶段判定（`classify_phase`）决策链的阈值（2026-10-10 集中到这里）----
+#
+# 这些数原先是散在函数体里的魔数。它们被回测脚本、《策略》与设计文档逐条引用过，
+# 散着写必然「改一处、漏一处」。名字按「哪个分支、什么含义」起，别用缩写。
+#
+# ⚠️ 改动这里的任何一个数，回测/跟踪里的历史数字就不再代表生产（同 §8.88 那几条）。
+WUDAO_WAKE_VOL = 1.2  # 「刚有人气」：量比 ≥ 这个，且涨幅/冲高达标
+WUDAO_WAKE_PCT = 4.0  #   —— 涨幅 ≥ 这个
+WUDAO_WAKE_HIGH_PCT = 6.0  #   —— 或冲高 ≥ 这个
+WUDAO_THIN_UP_PCT = 9.5  # 缩量大涨兜底：涨幅 ≥ 这个也算「刚有人气」（涨停/一字量比常 0.3~0.8）
+WUDAO_DIGEST_PCT_LO = -3.0  # 「休息中」：涨跌幅下界（下侧正好与「走弱」接上，不留缝）
+WUDAO_DIGEST_VOL = 1.15  #   —— 量比 ≤ 这个
+WUDAO_DIGEST_RET5 = 8.0  #   —— 且近 5 日至少涨过这么多，否则不叫「歇口气」
+WUDAO_WEAK_PCT = -3.0  # 「走弱」：跌幅 ≤ 这个（2026-10-10 新增的一档，见 classify_phase）
+WUDAO_SILENT_VOL = 0.85  # 「没动静」：量比 < 这个
+WUDAO_DUMP_VOL = 1.4  # 「像出货」（在「吵/出货」里再分档）：量比 ≥ 这个
+WUDAO_DUMP_PCT = 2.0  #   —— 且涨幅 < 这个
+WUDAO_DUMP_UPPER = 0.3  #   —— 且上影 ≥ 这个
+WUDAO_DIVERGE_UPPER = 0.25  # 爆量冲高不收：上影 ≥ 这个
+WUDAO_DIVERGE_CLOSE_POS = 0.7  #   —— 或收盘位置 ≤ 这个
+
 # 悟道之路 · 辉宾选股2「洗完 → 明天可进」（2026-10-08 移植，见 docs/plans/2026-10-08-yangban-port.md）
 #
 # 数字**照抄** `yangban-desk/app/pattern_wash2.py`（commit fe32f80）：洗盘日要像金丹 9/16 ——
@@ -2047,15 +2068,21 @@ def _wudao_day_geom(bars: Bars, i: int) -> tuple[float, float, float, float]:
 
 
 def _wudao_is_diverge_or_dump(bars: Bars, i: int) -> bool:
-    """与悟道 classify 一致：吵起来了 / 像出货 压过「明天盯」。"""
+    """与悟道 classify 一致：吵起来了 / 像出货 压过「明天盯」。
+
+    两个形态共用一组阈值（见顶部 `WUDAO_DIVERGE_*` / `WUDAO_DUMP_*`）：
+    - 形态①：**爆量**冲高不收（量比 ≥ 2.5 且上影大 / 收盘不在高位）；
+    - 形态②：量不小（≥ 1.4）、涨不动（< 2%）、留下长上影（≥ 0.3）—— `classify_phase`
+      再把这一类贴上「像出货」的标签。
+    """
     if i < 20:
         return False
     vol, pct, close_pos, upper = _wudao_day_geom(bars, i)
-    if vol >= WUDAO_DIVERGE_VOL and (upper >= 0.25 or close_pos <= 0.7):
+    if vol >= WUDAO_DIVERGE_VOL and (
+        upper >= WUDAO_DIVERGE_UPPER or close_pos <= WUDAO_DIVERGE_CLOSE_POS
+    ):
         return True
-    if vol >= 1.4 and pct < 2 and upper >= 0.3:
-        return True
-    return False
+    return vol >= WUDAO_DUMP_VOL and pct < WUDAO_DUMP_PCT and upper >= WUDAO_DUMP_UPPER
 
 
 def _wudao_is_sample(bars: Bars, i: int) -> bool:
@@ -2204,6 +2231,8 @@ def _wudao_start(bars: Bars) -> Signal | None:
 # 8 个阶段的展示名与建议动作 —— 与原型 `PHASE_LABELS` / `PHASE_DO` 逐条一致。
 # 这是**给单只票的一句话结论**（个股页「阶段判定」卡片用），不是选股信号；
 # 选股走的是注册进上面 `PATTERNS` 的那些形态。
+# （`weak` 是本站在原型 8 档之外**新增**的第 9 档，2026-10-10 —— 原型没有「在跌」
+#   这一档，下跌只能落到「没动静 / 对不上」，见 `classify_phase` 的说明。）
 WUDAO_PHASE_LABELS = {
     "silent": "没动静",
     "wake": "刚有人气",
@@ -2212,6 +2241,7 @@ WUDAO_PHASE_LABELS = {
     "digest": "休息中",
     "diverge": "吵起来了",
     "dump": "像出货",
+    "weak": "走弱",
     "unknown": "对不上",
 }
 
@@ -2223,6 +2253,7 @@ WUDAO_PHASE_DO = {
     "digest": "有仓看分时均价；没仓别抄",
     "diverge": "只卖不加",
     "dump": "减仓走人，别接",
+    "weak": "有仓逢反抽减，没仓不接",
     "unknown": "空仓，等对上模板再说",
 }
 
@@ -2263,19 +2294,29 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
       它没并进 `_wudao_is_sample`，因为那个判据还被「洗完可盯」共用。
     实测 2026-09-28：这里判「明天盯」的 31 只里只有 6 只在名单。
 
-    优先级照原型：**启动 > 吵起来了 / 像出货 > 明天盯 > 休息中 > 刚有人气 > 没动静**。
+    优先级照原型：**启动 > 吵起来了 / 像出货 > 明天盯 > 休息中 > 刚有人气 > 走弱 > 没动静**。
     这也是「明明冲高回落了、为什么没进明天盯」的答案 —— 它被更靠前的阶段占了
     （`_wudao_sample` 那边同样先过 `_wudao_is_diverge_or_dump`）。
 
-    ⚠️ **三处对原型的修正**（2026-10-09）—— 都是「标签与当日事实自相矛盾」，都做过实测：
+    阈值都在文件顶部 `WUDAO_WAKE_*` / `WUDAO_DIGEST_*` / `WUDAO_WEAK_PCT` / `WUDAO_SILENT_VOL`
+    那一段（2026-10-10 从函数体里抽出来集中的），别在下面的分支里再写裸数字。
 
-    1. **缩量大涨兜底**：`pct >= 9.5` 或 `pct >= 4 且 high_pct >= 6` → `wake`。
+    ⚠️ **对原型的三处修正 + 新增一档**（都做过实测，都是「标签与当日事实自相矛盾」）：
+
+    1. **缩量大涨兜底**（2026-10-09）：`pct >= 9.5` 或（`pct >= 4` 且 `high_pct >= 6`）→ `wake`。
        原型直接按 `vol < 0.85` 判「没动静」，会把**缩量涨停 / 一字板**（量比常 0.3~0.8）
        说成「几乎没人气」（实测 4 只）。这类归 `wake`、文案另写（见 `thin_up` 分支）。
-    2. **大跌兜底**（对称的下跌侧）：`pct <= -5` → `unknown`（对不上）。不加的话
-       缩量大跌（含跌停）会掉进「没动静」（实测 262 只当日 ≤ -5%）。
-    3. **`digest` 补下界**：`-3 <= pct <= 0`。原来只写 `pct <= 0`，跌停也会进
+    2. **新增 `weak`（走弱）档**（2026-10-10）：`pct <= -3` → `weak`。原型没有「在跌」
+       这一档，下跌只能落到「没动静 / 对不上」—— 实测 2026-09-28 前 1500 只里
+       **102 只（6.8%）跌 3%~5%、量比 0.4~0.8 被判「没动静」**（文案还写着「几乎没人气」）。
+       下界取 -3 与 `digest` 的下界**正好接上**，不留缝；这也把原先那条
+       `pct <= -5 → unknown` 的兜底**收编**成了一个正式档（≤ -5 的大跌同样归 `weak`）。
+    3. **`digest` 补下界**（2026-10-09）：`-3 <= pct <= 0`。原来只写 `pct <= 0`，跌停也会进
        「休息中」，与它自己的文案「涨跌不大，像在歇口气」直接冲突（实测 7 只、含 4 只跌停）。
+
+    `weak` 与 `digest` 的分工：`weak` **只看跌幅**（在跌就算走弱，放量缩量都算）；
+    `digest` 是「涨过一截之后缩量歇气」（还要求近 5 日涨过 `WUDAO_DIGEST_RET5`）。
+    所以两者不会抢：跌幅 ≤ -3 一律 `weak`，`digest` 只在 -3%~0 这一段、且前面刚涨过时才成立。
     """
     n = len(bars)
     if n < 25:
@@ -2296,34 +2337,43 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
     today_sample = _wudao_is_sample(bars, i)
     broke_yday_high = high > yday_high and close >= yday_high * 0.98
 
-    # 「缩量大涨」兜底：在落到「没动静」之前，先把**当日涨幅大但没量**的挡下来。
-    # 不挡的话，缩量涨停 / 一字板（量比常常 0.3~0.8）会一路掉进 `silent`，被说成
-    # 「几乎没人气」—— 与它当天涨停的事实直接矛盾（实测本机库 2026-09 快照有 4 只这样）。
-    # 归到 `wake`（人气刚回来），但文案另写一句，别沿用 wake 那句「量开始回来」。
+    # ---- 决策链：从上往下问，**第一个成立的就是结论** ----
+    # 顺序（= 优先级）：启动 > 吵/出货 > 明天盯 > 休息中 > 刚有人气 > 走弱 > 没动静 > 兜底。
+    # 两个「兜底」都刻意放在**量能判据之前**：只看量的话，缩量涨停（量比 0.3~0.8）与
+    # 缩量下跌都会掉进 `silent`、被说成「几乎没人气」，与当天涨停 / 大跌的事实冲突
+    # （实测分别 4 只、102 只）。阈值见文件顶部 `WUDAO_WAKE_*` 那一段。
     thin_up = False
     if yday_sample and broke_yday_high and vol >= WUDAO_START_VOL and pct > 0:
+        # 昨天是样板日、今天放量过昨高 → 启动
         phase = "start"
     elif _wudao_is_diverge_or_dump(bars, i):
+        dump_like = vol >= WUDAO_DUMP_VOL and pct < WUDAO_DUMP_PCT and upper >= WUDAO_DUMP_UPPER
         # 原型是两条（吵起来了 / 像出货），标签要分开；判据在共用的那个函数里
-        phase = "dump" if (vol >= 1.4 and pct < 2 and upper >= 0.3) else "diverge"
+        phase = "dump" if dump_like else "diverge"
     elif today_sample:
+        # 今天自己就是样板日。`_wudao_is_sample` 内部要求 `pct >= -3`，
+        # 所以下跌日走不到这里，不必另判
         phase = "sample"
-    elif -3 <= pct <= 0 and vol <= 1.15 and ret_5 >= 8:
-        # 「涨跌不大」才有下界 —— 原来只写 `pct <= 0`，跌停（-10%）也会进「休息中」，
-        # 与它自己的文案「今天量缩、涨跌不大，像在歇口气」直接冲突
-        # （实测本机 2026-09 快照 7 只，含 4 只跌停：002909/603230/605058/600815）。
+    elif (
+        WUDAO_DIGEST_PCT_LO <= pct <= 0
+        and vol <= WUDAO_DIGEST_VOL
+        and ret_5 >= WUDAO_DIGEST_RET5
+    ):
+        # 「休息中」= 前面涨过一截、今天缩量且涨跌不大。下界与「走弱」接上（见 docstring）
         phase = "digest"
-    elif vol >= 1.2 and (pct >= 4 or high_pct >= 6) and not today_sample:
+    elif vol >= WUDAO_WAKE_VOL and (pct >= WUDAO_WAKE_PCT or high_pct >= WUDAO_WAKE_HIGH_PCT):
+        # 「刚有人气」：量回来了、价格也动了（今天是不是样板日已在上面拦掉，不必再判）
         phase = "wake"
-    elif pct >= 9.5 or (pct >= 4 and high_pct >= 6):
+    elif pct >= WUDAO_THIN_UP_PCT or (pct >= WUDAO_WAKE_PCT and high_pct >= WUDAO_WAKE_HIGH_PCT):
+        # 缩量大涨兜底：涨幅够大但量没跟上（涨停 / 一字板常这样），仍归「刚有人气」，
+        # 只是文案另写（`thin_up`）。能走到这里说明上面那条量能条件不成立。
         phase = "wake"
         thin_up = True
-    elif pct <= -5:
-        # 当日大跌兜底：与上面「缩量大涨」对称。不加的话，缩量大跌（含跌停，量比常
-        # 0.2~0.8）会掉进「没动静」，文案「几乎没人气」与跌停的事实矛盾
-        # （实测 262 只当日 ≤ -5%）。归「对不上」—— 它的文案带数字、不假装成别的状态。
-        phase = "unknown"
-    elif vol < 0.85:
+    elif pct <= WUDAO_WEAK_PCT:
+        # 「走弱」：**只看跌幅**，放量缩量都算（2026-10-10 新增，取代原先
+        # `pct <= -5 → unknown` 的临时兜底 —— 那一版把 -5%~-3% 这段漏给了「没动静」）
+        phase = "weak"
+    elif vol < WUDAO_SILENT_VOL:
         phase = "silent"
     else:
         phase = "unknown"
@@ -2365,9 +2415,11 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
         shadow_text = "最近不是天天冲高回落，形态相对干净一些。"
         noisy = False
 
-    high_60 = float(np.max(bars.high[max(0, n - 60) :])) if n >= 30 else None
-    high_120 = float(np.max(bars.high[max(0, n - 120) :])) if n >= 30 else high_60
-    left_high = max([x for x in (high_60, high_120) if x], default=None)
+    # 左侧压力 = 「近 60 / 120 日最高」。**只算 120 日这个就够** —— 60 日窗口是它的
+    # 子集，取 120 日必然 ≥ 60 日，原先那两个变量再 max() 一次是纯冗余（2026-10-10 删）。
+    # `n >= 30` 是本来的经验下限（不足两根月线就不谈左侧压力），保持原样：
+    # 它意味着 25~29 根时 `left_high=None`、下面那几段压力文案整块不出现。
+    left_high = float(np.max(bars.high[max(0, n - 120) :])) if n >= 30 else None
     low_20 = float(np.min(bars.low[n - 20 :]))
     ma20 = float(np.mean(bars.close[n - 20 :]))
     ma60 = float(np.mean(bars.close[n - 60 :])) if n >= 60 else None
@@ -2416,6 +2468,9 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
     elif phase in ("diverge", "dump"):
         fit_label, prefer = "不像启动模板", 0
         fit_text = "现在是刹车灯，不是油门。别当样板/启动去追。"
+    elif phase == "weak":
+        fit_label, prefer = "在往下走", 0
+        fit_text = "不符合任何动手模板，而且今天在跌。别当机会看，等它重新走出样板日。"
     else:
         fit_label, prefer = "还没到动手档", 0
         fit_text = "还没走到「明天盯 / 明天预案」。先放着，别空耗仓位。"
@@ -2438,6 +2493,8 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
         plan_text = "只减不加。没仓就别上车。"
     elif phase == "digest":
         plan_text = "有仓用分时均价：跌破减/清。没仓别抄。"
+    elif phase == "weak":
+        plan_text = "有仓：反抽不过昨高就减；没仓：不接飞刀。"
     else:
         plan_text = WUDAO_PHASE_DO[phase]
 
@@ -2454,6 +2511,8 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
         )
     elif phase == "digest":
         text = f"前几天已经拉过一截，今天量缩（量比 {vol:.2f}）、涨跌不大，像在歇口气。"
+    elif phase == "weak":
+        text = f"今天跌 {pct:.1f}%、量比 {vol:.2f}，在走弱；没重新走出样板日之前不值得看。"
     elif phase == "wake":
         if thin_up:
             text = (
@@ -2473,6 +2532,8 @@ def classify_phase(bars: Bars) -> PhaseVerdict | None:
         action = "极小仓；更稳是等回踩分时均价"
 
     risk_bits: list[str] = []
+    if phase == "weak":
+        risk_bits.append("今天在往下走，别在下跌里找买点")
     if pressure_bits:
         risk_bits.append("左侧/均线压力，冲高易滞涨")
     if noisy:

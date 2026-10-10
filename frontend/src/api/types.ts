@@ -791,7 +791,7 @@ export interface StockThemes {
  * 反过来进名单的票必然过了原型判据，但标签仍可能被更靠前的阶段抢走（如 `start`）。
  */
 export interface WudaoPhase {
-  /** silent / wake / sample / start / digest / diverge / dump / unknown */
+  /** silent / wake / sample / start / digest / diverge / dump / weak / unknown */
   phase: string
   label: string
   /** 现在该怎么做 */

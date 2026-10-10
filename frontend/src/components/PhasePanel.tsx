@@ -15,6 +15,7 @@ const PHASE_TONE: Record<string, string> = {
   digest: 'text-fg',
   diverge: 'text-down',
   dump: 'text-down',
+  weak: 'text-down',
   silent: 'text-fg-muted',
   unknown: 'text-fg-muted',
 }
