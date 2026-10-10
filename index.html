@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>致富经 · A 股每日复盘与找票站点（FastAPI + SQLite + React）</title>
+<meta name="description" content="个人自用的 A 股每日复盘与找票站点：收盘后自动把行情、涨停、板块、资金流数据采进本地 SQLite，在浏览器里看复盘、按形态找票、记笔记。技术栈 FastAPI + SQLite + React + ECharts。">
+<meta name="keywords" content="A股,股票复盘,选股,涨停复盘,连板,板块轮动,资金流向,DDE,形态选股,阶段判定,量化,技术分析,FastAPI,React,SQLite,ECharts,TypeScript,iFinD,akshare">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://767313977.github.io/zhifujing/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="致富经">
+<meta property="og:title" content="致富经 · A 股每日复盘与找票站点">
+<meta property="og:description" content="收盘后自动采集 A 股行情、涨停、板块、资金流到本地 SQLite；浏览器里做每日复盘、形态选股、个股阶段判定。FastAPI + SQLite + React。">
+<meta property="og:url" content="https://767313977.github.io/zhifujing/">
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:#0e1116; --surface:#151a21; --surface-2:#1b222b; --line:#272e38; --line-soft:#1f2731;
+    --fg:#e6e9ee; --fg-muted:#a7b0bd; --fg-dim:#6f7a89;
+    --accent:#e0533d;
+    --radius:10px; --radius-lg:14px;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      color-scheme:light;
+      --bg:#f6f7f9; --surface:#ffffff; --surface-2:#f0f2f5; --line:#e2e5ea; --line-soft:#eceff3;
+      --fg:#1b2027; --fg-muted:#525c69; --fg-dim:#7b8593;
+    }
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:var(--font); font-size:15px; line-height:1.75;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:900px; margin:0 auto; padding:0 24px}
+  code,.num{font-family:var(--mono)}
+
+  header.hero{padding:72px 0 44px; border-bottom:1px solid var(--line-soft)}
+  .eyebrow{
+    display:inline-block; font-size:12px; letter-spacing:.16em;
+    color:var(--fg-dim); border:1px solid var(--line); border-radius:999px; padding:4px 12px;
+  }
+  h1{margin:20px 0 0; font-size:38px; line-height:1.25; letter-spacing:-.01em; font-weight:650}
+  h1 .sub{display:block; margin-top:10px; font-size:17px; font-weight:400; color:var(--fg-muted); letter-spacing:0}
+  .lede{margin:22px 0 0; max-width:62ch; color:var(--fg-muted)}
+  .actions{display:flex; flex-wrap:wrap; gap:12px; margin-top:28px}
+  .btn{
+    display:inline-block; padding:10px 18px; border-radius:var(--radius);
+    border:1px solid var(--line); background:var(--surface); color:var(--fg); font-size:14px;
+  }
+  .btn:hover{border-color:var(--accent); color:var(--accent); text-decoration:none}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  .btn.primary:hover{filter:brightness(1.08); color:#fff}
+
+  section{padding:52px 0; border-bottom:1px solid var(--line-soft)}
+  h2{margin:0 0 6px; font-size:22px; font-weight:600}
+  .hint{margin:0 0 24px; color:var(--fg-dim); font-size:13.5px}
+  h3{margin:26px 0 8px; font-size:15.5px; font-weight:600}
+  p{margin:0 0 14px; color:var(--fg-muted)}
+  li b,p b,td b{color:var(--fg); font-weight:600}
+
+  .grid{display:grid; gap:14px}
+  @media(min-width:640px){ .grid.g2{grid-template-columns:1fr 1fr} .grid.g3{grid-template-columns:repeat(3,1fr)} }
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg); padding:18px 20px}
+  .card h4{margin:0 0 6px; font-size:15px; font-weight:600}
+  .card p{margin:0; font-size:13.5px; color:var(--fg-muted)}
+  .k{font-family:var(--mono); font-size:12.5px; color:var(--fg-dim)}
+
+  table{width:100%; border-collapse:collapse; font-size:13.5px; margin:0 0 14px}
+  th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--line-soft); vertical-align:top}
+  th{color:var(--fg-dim); font-weight:500; font-size:12.5px}
+  td:last-child{color:var(--fg-muted)}
+
+  .stack{display:flex; flex-wrap:wrap; gap:8px; margin:0 0 14px}
+  .tag{
+    font-family:var(--mono); font-size:12.5px; color:var(--fg-muted);
+    border:1px solid var(--line); background:var(--surface); border-radius:999px; padding:4px 11px;
+  }
+
+  figure{margin:0}
+  svg.diagram{width:100%; height:auto; display:block}
+  svg.diagram .d-box{fill:var(--surface); stroke:var(--line); stroke-width:1}
+  svg.diagram .d-focal{fill:var(--surface); stroke:var(--accent); stroke-opacity:.55; stroke-width:1}
+  svg.diagram .d-a{stroke:var(--fg-dim); stroke-width:1.4; fill:none}
+  svg.diagram .d-arrow{fill:var(--fg-dim)}
+  svg.diagram text{font-family:var(--font); font-size:15px; fill:var(--fg)}
+  svg.diagram text.d-t2{font-family:var(--mono); font-size:12.5px; fill:var(--fg-dim)}
+  figcaption{margin-top:12px; font-size:12.5px; color:var(--fg-dim)}
+
+  footer{padding:40px 0 64px; font-size:13px}
+  footer p{margin:0 0 8px; color:var(--fg-dim); font-size:13px}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow">个人项目 · A 股复盘工具</span>
+    <h1>致富经
+      <span class="sub">个人自用的 A 股每日复盘与找票站点</span>
+    </h1>
+    <p class="lede">
+      收盘后自动把当天的<strong>行情、涨停、板块、资金</strong>数据采进本地 SQLite，
+      然后在浏览器里做复盘、按形态找票、记笔记。
+      <strong>这是给自己用的工具，不是产品</strong> —— 没有多用户、没有权限体系，也不打算做成 SaaS。
+    </p>
+    <div class="actions">
+      <a class="btn primary" href="https://github.com/767313977/zhifujing">GitHub 仓库</a>
+      <a class="btn" href="https://github.com/767313977/zhifujing/blob/master/docs/%E7%AD%96%E7%95%A5.md">选池策略速查</a>
+      <a class="btn" href="https://github.com/767313977/zhifujing#readme">跑起来</a>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>它能干什么</h2>
+    <p class="hint">九个页面，覆盖「当天发生了什么 → 为什么 → 明天盯什么」这条链路。</p>
+    <div class="grid g3">
+      <div class="card"><h4>今日复盘</h4><p>指数卡片、成交额、涨跌家数、情绪温度、板块热力、涨停梯队、龙虎榜、复盘笔记。</p></div>
+      <div class="card"><h4>涨停复盘</h4><p>连板晋级率、涨停梯队、题材共振、首封时间分布，明细里带<b>涨停原因</b>。</p></div>
+      <div class="card"><h4>情绪周期</h4><p>近 60 日涨停数 / 炸板率 / 连板高度，叠加指数曲线看周期位置。</p></div>
+      <div class="card"><h4>板块题材</h4><p>板块排行与成分股、轮动矩阵、多板块强弱对比，以及板块资金流向与累计净流入曲线。</p></div>
+      <div class="card"><h4>形态选股</h4><p>全市场日线形态扫描（均线多头、N 日新高、平台突破、放量上涨…），命中可推送到飞书。</p></div>
+      <div class="card"><h4>个股详情</h4><p>概况、所属题材、日/周/月 K（蜡烛 + 均线 + 量）、资金流向 DDE、悟道<b>阶段判定</b>。</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>技术栈</h2>
+    <p class="hint">后端负责采集与计算，前端只读接口 —— 两层之间只有一张 SQLite。</p>
+    <h3>后端</h3>
+    <div class="stack">
+      <span class="tag">Python 3.13</span><span class="tag">FastAPI</span>
+      <span class="tag">SQLAlchemy 2.0</span><span class="tag">SQLite (WAL)</span>
+      <span class="tag">APScheduler</span>
+    </div>
+    <h3>前端</h3>
+    <div class="stack">
+      <span class="tag">React 19</span><span class="tag">Vite</span>
+      <span class="tag">TypeScript</span><span class="tag">Tailwind CSS v4</span>
+      <span class="tag">ECharts 6</span>
+    </div>
+    <h3>数据源</h3>
+    <table>
+      <tr><th>数据</th><th>来源</th></tr>
+      <tr><td>指数、个股行情、选股、新闻公告</td><td>iFinD</td></tr>
+      <tr><td>涨停 / 跌停 / 炸板三池、龙虎榜、交易日历</td><td>akshare</td></tr>
+      <tr><td>板块分类 / 成分股 / 涨停天梯</td><td>开盘红</td></tr>
+      <tr><td>涨停原因、板块资金流</td><td>同花顺数据中心</td></tr>
+      <tr><td>指数量价、均线、背离</td><td>本地计算（零配额）</td></tr>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>架构：采集与页面彻底解耦</h2>
+    <p class="hint">外部数据源的脆弱性被锁在最底下一层，接口一变只改那一层。</p>
+    <figure>
+      <svg class="diagram" viewBox="0 0 720 452" role="img" aria-label="数据流：外部数据源经 sources 采集层限速重试后，由 services 计算层解析计算，写入 SQLite，再由 FastAPI 只读接口供 React 页面使用">
+        <defs>
+          <marker id="ar" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+            <path class="d-arrow" d="M1 1 L7 4 L1 7 Z"></path>
+          </marker>
+        </defs>
+        <rect class="d-box" x="60" y="16" width="600" height="58" rx="10"></rect>
+        <text x="80" y="41">外部数据源</text>
+        <text class="d-t2" x="80" y="61">iFinD · akshare · 开盘红 · 同花顺数据中心</text>
+
+        <rect class="d-box" x="60" y="106" width="600" height="58" rx="10"></rect>
+        <text x="80" y="131">sources/ 采集层</text>
+        <text class="d-t2" x="80" y="151">限速 · 重试 · 分片 · 降级</text>
+
+        <rect class="d-box" x="60" y="196" width="600" height="58" rx="10"></rect>
+        <text x="80" y="221">services/ 计算层</text>
+        <text class="d-t2" x="80" y="241">情绪 · 板块 · 形态 · 技术指标 · 配额计量</text>
+
+        <rect class="d-focal" x="60" y="286" width="600" height="58" rx="10"></rect>
+        <text x="80" y="311">SQLite</text>
+        <text class="d-t2" x="80" y="331">唯一的数据落点（WAL）</text>
+
+        <rect class="d-box" x="60" y="376" width="600" height="58" rx="10"></rect>
+        <text x="80" y="401">FastAPI 只读接口 → React 页面</text>
+        <text class="d-t2" x="80" y="421">页面绝不实时拉外部接口</text>
+
+        <g class="d-a" marker-end="url(#ar)">
+          <path d="M360 74 L360 100"></path>
+          <path d="M360 164 L360 190"></path>
+          <path d="M360 254 L360 280"></path>
+          <path d="M360 344 L360 370"></path>
+        </g>
+      </svg>
+      <figcaption>两条硬约束：页面只读 SQLite；所有外部接口调用都封在 <span class="num">sources/</span> 一层。</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>几个工程上的取舍</h2>
+    <p class="hint">这些不是设计时想到的，是踩过坑之后改成的 —— 项目里有一份近万行的决策日志逐条记着。</p>
+    <div class="grid g2">
+      <div class="card">
+        <h4>配额是最稀缺的资源</h4>
+        <p>数据源个人版有调用次数上限且账号级共享。用量到 <span class="k">80% / 90% / 95%</span>
+        分三档让路：先停形态日线、再停概念兜底、最后只保指数与涨停三池这条主线。</p>
+      </div>
+      <div class="card">
+        <h4>免费源三级兜底</h4>
+        <p>补日线走 <span class="k">东财 → 腾讯 → iFinD</span>，前两级免费、失败即熔断切换，
+        正常日子零配额消耗。</p>
+      </div>
+      <div class="card">
+        <h4>复权口径不能含糊</h4>
+        <p>库里存不复权价，区间收益一律按<b>每日涨跌幅逐日复利</b>算 —— 直接比收盘价，
+        除权那天会凭空多出一个 −30% 的假样本。</p>
+      </div>
+      <div class="card">
+        <h4>阈值必须带实测依据</h4>
+        <p>每个关键阈值旁边都写着它是怎么定的、实测前后差多少，以及改动之后哪些历史数字不再可比。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>选池策略</h2>
+    <p>
+      「明天盯 / 明天预案 / 洗完可盯 / 洗后可盯」等六个池子，每一个都写了
+      <b>是什么、有什么证据、该怎么用、已知局限</b>，含回测与线上成绩单的实际数字。
+      想直接用、或想知道某个池子值不值得看，先翻那一份。
+    </p>
+    <div class="actions">
+      <a class="btn" href="https://github.com/767313977/zhifujing/blob/master/docs/%E7%AD%96%E7%95%A5.md">打开《策略》</a>
+      <a class="btn" href="https://github.com/767313977/zhifujing/blob/master/docs/plans/2026-09-17-fupan-site-design.md">设计文档（决策日志）</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>数据版权归各数据源所有，本项目只做<b>本地缓存与个人研究</b>用途，不对外提供数据服务。</p>
+    <p>仓库里不含任何密钥、服务器地址或账号。所有数据与结论仅供个人复盘参考，<b>不构成任何投资建议</b>。</p>
+    <p><a href="https://github.com/767313977/zhifujing">github.com/767313977/zhifujing</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
