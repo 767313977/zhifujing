@@ -322,12 +322,23 @@ class IfindClient:
                 self._drop_session(server)
                 raise
 
-        return retry_call(
-            _do,
-            retries=self.settings.http_retries,
-            backoff=self.settings.http_backoff,
-            description=f"iFinD {server}.{tool}",
-        )
+        # requests 的网络类异常（连接失败 / 超时 / DNS / HTTPError）默认**原样上抛**，
+        # 而调用方大多只 `except IfindError`（`api/stock` 的 dde/sync、`api/admin`、
+        # `jobs/scheduler` 等）—— 漏出去就是 500（2026-10-10 修）。数据源层对外只承诺
+        # IfindError 一种失败口径，这里统一收口。放在 call() 这一层：会话握手
+        # （_ensure_session）、tools/call（_do）、raise_for_status 全在里面，一处即可覆盖，
+        # 且重试仍由 retry_call 在包装之前完成（ConnectionError 照样退避重试）。
+        # 已确认没有任何调用方依赖 requests 的异常类型；IfindError/IfindRateLimitError
+        # 不属于 RequestException，会原样穿过这里，既有特判不受影响。
+        try:
+            return retry_call(
+                _do,
+                retries=self.settings.http_retries,
+                backoff=self.settings.http_backoff,
+                description=f"iFinD {server}.{tool}",
+            )
+        except requests.RequestException as exc:
+            raise IfindError(f"iFinD 请求失败（{server}.{tool}）：{exc}") from exc
 
     # ------------------------------------------------- 结构化行情（实时/高频）
 

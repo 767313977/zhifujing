@@ -76,6 +76,15 @@ app = FastAPI(
     title="致富经",
     version="0.3.0",
     lifespan=lifespan,
+    # **关掉在线文档**（`/docs`、`/redoc`、`/openapi.json`）。这三条路由在**根路径**上，
+    # 而下面的 require_login 只拦 `/api/` 前缀 —— 于是它们一直是免登录的：实测
+    # `curl https://.../openapi.json` 返回 200，把整套 API（含 `/api/admin/*` 的参数
+    # 与 schema）白送出去（2026-10-10 修）。这是个人站，**不需要在线文档**，且此前
+    # 没有任何前端 / 部署脚本依赖 `/openapi.json`（已搜 frontend/ 与 deploy/）。
+    # 直接关掉比把三条路由逐个塞进白名单更省事，也不会漏掉将来 FastAPI 新增的文档路由。
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
     # **全站登录关卡**。挂成 app 级依赖而不是逐个路由挂：20 多个 `/api/*` 路由，
     # 一个一个挂漏掉一个就是一个洞，将来新加路由也容易忘。这里是白名单制、
     # **默认拒绝**（名单在 services/auth.PUBLIC_PATHS）。
@@ -137,12 +146,15 @@ app.include_router(admin.router)
 
 @app.get("/api/health")
 def health() -> dict:
-    return {
-        "status": "ok",
-        "db": str(settings.db_path),
-        "ifind_token": bool(settings.ifind_auth_token),
-        "frontend_built": FRONTEND_DIST.exists(),
-    }
+    """探活接口。**只回最小状态**。
+
+    这里原来带回 `db`（数据库**绝对路径**）、`ifind_token`、`frontend_built`，那是给
+    部署排查用的；但它挂在**免登录**的探活口上，等于对外泄露服务器路径与配置
+    （2026-10-10 修）。前端与 `deploy/*.sh` / `_deploy_check.py` 都只按 200 判活、
+    不读这些字段（已搜），需要细节看启动日志 —— db 路径与「未配置 token / 未构建前端」
+    的告警都已经记在那里。
+    """
+    return {"status": "ok"}
 
 
 if FRONTEND_DIST.exists():
