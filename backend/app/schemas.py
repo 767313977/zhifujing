@@ -764,7 +764,7 @@ class WudaoPhase(ApiModel):
     判「明天盯」的 31 只里只有 6 只在名单）。见 `api/analysis.py` 的模块说明。
     """
 
-    #: silent / wake / sample / start / digest / diverge / dump / unknown
+    #: silent / wake / sample / start / digest / diverge / dump / weak / unknown
     phase: str
     label: str
     #: 现在该怎么做（原型 `PHASE_DO`）
