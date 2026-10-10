@@ -132,6 +132,14 @@ FQ_MODES = ("none", "qfq", "hfq")
 # 开上去只会让图里悄悄少画一段，所以宁可在接口层就挡住（`collect_dde._TRUNCATED_HINTS`）。
 DDE_MAX_DAYS = 100
 
+# 会员手动同步（`POST /{code}/sync`）能要的最多交易日数。**500 是前端「补长历史」要的**：
+# 周/月 K 由日线重采样，而月 K 要算 MA20 就需要约 420 个交易日 ≈ 2 年 ——
+# 2026-10-11 曾把它收到 250，结果前端每次补长历史都吃 422（`klinePeriod.ts` 传的就是 500），
+# 月 K 的均线永远出不来。放回 500 的成本已经不高：`sync_stock` 现在**只补缺的交易日**
+# （本地已有的日历日一块都不发请求），加上 80% 的配额闸、10 分钟冷却与自选 100 只上限，
+# 一次冷启动约 11 次调用、之后重复同步几乎为 0。
+SYNC_MAX_DAYS = 500
+
 
 def _code(raw: str) -> str:
     code = normalize_code(raw)
@@ -803,7 +811,7 @@ def _guard_quota() -> None:
 @router.post("/{code}/sync")
 def sync(
     code: str,
-    days: int = Query(STOCK_FULL_DAYS, ge=5, le=250, description="回看的交易日数"),
+    days: int = Query(STOCK_FULL_DAYS, ge=5, le=SYNC_MAX_DAYS, description="回看的交易日数"),
     user: AppUser = Depends(current_user),
 ) -> dict:
     """同步该股日线到本地缓存。首次打开个股页时调用。
