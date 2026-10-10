@@ -230,8 +230,8 @@ akshare   ─┘                                                          │
 | `market_sentiment` | trade_date | **物化**情绪快照（见下） |
 | `watchlist` | code | 自选股 + 备注 + 标签 |
 | `review_note` | trade_date | 复盘笔记：市场观点、次日计划 |
-| `screen_preset` | id | 保存的选股条件（自然语言 + 结构化条件）← 代码已删，表留着，见 8.65 |
-| `screen_result` | id, code | 选股结果快照 ← 同上 |
+| `screen_preset` | id | 保存的选股条件（自然语言 + 结构化条件）← 代码已删（§8.65）；**表已于 2026-10-10 DROP** |
+| `screen_result` | id, code | 选股结果快照 ← 同上（**2026-10-10 DROP**） |
 | `collect_log` | id | 采集日志：任务、状态、耗时、错误 |
 
 **`market_sentiment` 物化字段**（情绪曲线要快速读 60 天，实时计算太慢）：
@@ -6186,6 +6186,8 @@ ETF、**DDE 扫描**）与概念兜底都已经停了。
 1. **两张空表 `screen_preset` / `screen_result` 不删**。与当年那张没人读的
    `sector_fund_flow`（953 行老数据）同一个处理：删表不可逆，而没人读的旧表无害。
    `db.py` 的补列迁移只遍历 `base.metadata`，它们不在模型里也不会报错。
+   > **2026-10-10 改**：用户要求清掉，两张表已在**本机与线上两个库**里 DROP（都是 0 行）。
+   > DDL 留档在本文档「2026-10-10 DROP 两张孤儿空表」一节，要恢复直接执行那条建表语句。
 2. **`IfindClient.search_stocks` 不能删** —— 它还被 `collect_daily` 用来数当天的涨跌家数
    （`{day}涨幅大于5%的A股股票` 的 `matched`）。删之前先确认过调用方，不是「页面上没人用了」就删。
 
@@ -10324,4 +10326,59 @@ GitHub Pages 发布到 `https://767313977.github.io/zhifujing/`。
 **验证不了**（同上面的 404 原因），应在列表里删掉，只留 Pages 那个。
 
 **顺带**：README 顶部加了一行介绍页链接（给新站一条站内入链 —— 入链是引擎发现新页面的主要途径）。
+
+### 2026-10-10 DROP 两张孤儿空表（`screen_preset` / `screen_result`）
+
+§8.65 当年**刻意留下**了这两张表（选股器 2026-09-25 删掉后留下的空表），理由是「删表不可逆，
+而没人读的旧表无害」。这次用户要求清掉，**本机与线上两个库都删了**。
+
+**先确认「删掉是安全的」**（两条都实测过）：
+
+- 全仓库搜 `screen_preset` / `screen_result` / `ScreenPreset` / `ScreenResult`：**只剩文档里的文字**，
+  **没有任何代码引用** —— 也就是 `models.py` 里没有对应模型，`init_db()` 的 `create_all`
+  **不会**把它们重建出来（§8.65 也记了：`db.py` 的补列迁移只遍历 `base.metadata`）。
+- 两个库里两张表**都是 0 行**。
+
+**为什么这次「不可逆」不成立**：既然 0 行，删掉丢的只是建表语句。所以把 DDL 原样留档，
+要恢复直接执行：
+
+```sql
+CREATE TABLE screen_preset (
+        id INTEGER NOT NULL,
+        name VARCHAR(64) NOT NULL,
+        kind VARCHAR(16) NOT NULL,
+        conditions JSON NOT NULL,
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY (id),
+        UNIQUE (name)
+)
+```
+```sql
+CREATE TABLE screen_result (
+        id INTEGER NOT NULL,
+        preset_id INTEGER,
+        "query" TEXT,
+        code VARCHAR(16) NOT NULL,
+        name VARCHAR(32),
+        industry VARCHAR(128),
+        extra JSON,
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY (id)
+)
+```
+
+**执行**（脚本都带「非 0 行就拒绝删」的守卫）：
+
+| 位置 | 方式 | 结果 |
+| --- | --- | --- |
+| 本机 `backend/data/fupan.db`（460 MB） | 直接连 sqlite3 | 30 → **28 张表**，`pragma integrity_check = ok` |
+| 线上 `/opt/fupan/backend/data/fupan.db`（523 MB） | scp 脚本 → **`sudo -u fupan`** 跑服务自己的 venv python | 0 行 → DROP，28 张表，`integrity_check = ok` |
+
+⚠️ 线上特意用 `sudo -u fupan` 执行：库是 WAL 模式，若换个用户去连，SQLite 可能要写
+`-wal` / `-shm`，而那两个文件属主是 `fupan` —— 轻则失败，重则留下属主错乱的文件让服务起不来。
+
+**顺带发现（未处理）**：查日志时看到线上正被漏洞扫描器扫（`/.git/config`、`/.env`、`/webui/` 等），
+**全部返回 200** —— 但那是 SPA 兜底吐的 `index.html`（与 `/docs` 同一机制），**没有实际泄漏**。
+要不要把这些明显是探测的路径改成 404，待定。
+
 
