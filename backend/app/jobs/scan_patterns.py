@@ -76,6 +76,9 @@ from app.services.patterns import (
     is_st,
     usable_bar,
 )
+# 按交易日历截断「最近一段连续日线」的公共实现放在 `services.stock_phase`
+# （个股页的阶段判定也用它，两处口径必须一份）。
+from app.services.stock_phase import trim_contiguous_tail
 # 悟道六池的 key。借用成绩单那边那份（`pattern_track.POOL_KEYS` 就是这六个池子）——
 # 板块闸门要卡的就是它们（外加金叉大阳，见 `WUDAO_BOARD_KEYS`），别各写一份、
 # 免得加池子时漏掉一处。
@@ -210,6 +213,12 @@ def _load_bars(
     当成**相邻的交易日**，等于喂进去一条带空洞的 K 线，正是这套引擎最怕的输入。
 
     辉宾池外候选必须先经 `_ensure_wudao_kline` 补成连续近端，再放进这份名单。
+
+    取到行之后**还要按交易日历截断**：只保留「从最新一天往前连续」的那一段
+    （`services.stock_phase.trim_contiguous_tail`）。前面那句「不能把库里全拿来扫」
+    说的是同一件事 —— 形态引擎把相邻两行当相邻交易日，带空洞的序列会拼出假形态。
+    代价是**可用历史变短**：有缺口的票窗口缩水，形态命中更保守（宁可根数不够不判，
+    也不拿空洞拼）。查询窗口（`SCAN_BARS`）**不会**因为截断而调小 —— 先取够再截。
     """
     codes = list(codes)
     if not codes:
@@ -249,24 +258,35 @@ def _load_bars(
             .order_by(StockDaily.code, StockDaily.trade_date)
         ).all()
 
-    grouped: dict[str, list[dict]] = defaultdict(list)
+    # 先把某只票的所有行（含停牌残行）收好，再统一「按交易日历截成最近一段连续 + 剔残行」。
+    # 顺序要紧：先用**行本身**判连续性（残行证明那天在库里是有行的，停牌不该误截掉），
+    # 之后 `usable_bar` 再把不能当 K 线用的残行剔掉。
+    raw: dict[str, list[dict]] = defaultdict(list)
     for code, name, day, open_, high, low, close, volume, amount, pct in rows:
-        record = {
-            "date": day,
-            "name": name,
-            "open": open_,
-            "high": high,
-            "low": low,
-            "close": close,
-            "volume": volume,
-            "amount": amount,
-            "pct_chg": pct,
-        }
+        raw[code].append(
+            {
+                "date": day,
+                "name": name,
+                "open": open_,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume,
+                "amount": amount,
+                "pct_chg": pct,
+            }
+        )
+
+    # 本地窗口内的「交易日 → 升序序号」（相邻交易日序号差 1），供截断用。
+    day_index = {day: i for i, day in enumerate(sorted(dates))}
+    grouped: dict[str, list[dict]] = {}
+    for code, records in raw.items():
+        records = trim_contiguous_tail(records, day_index)
         # 缺任一项（尤其停牌残行「只有收盘价、开高低为空」）都不能当一根 K 线：
         # `build_bars` 里 `float(None)` 会直接抛，整轮扫描失败。口径与 `load_phase` 一致。
-        if not usable_bar(record):
-            continue
-        grouped[code].append(record)
+        usable = [record for record in records if usable_bar(record)]
+        if usable:
+            grouped[code] = usable
     return grouped
 
 

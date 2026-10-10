@@ -93,7 +93,7 @@ try:
         if not rows:
             continue
         print(
-            f"    腾讯 x 库 的比值（应全为 1 或同一定值）与字段差异统计："
+            "    腾讯 x 库 的比值（应全为 1 或同一定值）与字段差异统计："
         )
         mism: dict[str, int] = {}
         for r in rows:

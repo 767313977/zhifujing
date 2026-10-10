@@ -5,7 +5,7 @@
 否则前端要为每个字段记住一个单位，迟早出错。
 """
 
-from datetime import date, timedelta
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select

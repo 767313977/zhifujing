@@ -591,7 +591,13 @@ class DailyCollector:
         因为情绪指标必须区分「该池当日真的 0 家」与「该池当日取不到数」：
         前者是 0，后者必须是 None。超出数据源窗口的池记为 `skipped`。
 
-        只有三池全部失败才抛错，让上层 `_step` 记成失败；部分失败不阻塞。
+        抛错规则（上层 `_step` 据此把这一步记成 failed，从而当天会重试）：
+        **涨停池（`up`）失败即抛** —— 涨停池是这条链的核心（`limit_pool` 这一步的
+        状态被 `has_collected` 用来判「这天采全没有」，涨停家数 / 龙头 / 题材的入口
+        都建立在它上面），取不到就等于这天没采全；而它返回空表又会被误读成「0 家涨停」，
+        所以不能静默放过。跌停池 / 炸板池失败**不阻塞**（缺它们不至于让整个涨停复盘塌掉）。
+        三池**全部真失败**时也抛（兜底）。三池**全部超期跳过（skipped）**不算失败 ——
+        那天本来就取不到，重试也没用。
         """
         jobs = (
             ("up", "涨停池", self.ak.limit_up_pool, _limit_up_rows),
@@ -601,6 +607,7 @@ class DailyCollector:
         cutoff = self._pool_window_cutoff()
         written = 0
         failures: list[str] = []
+        failed_types: list[str] = []
 
         for pool_type, label, fetch, to_rows in jobs:
             task = f"pool_{pool_type}"
@@ -633,6 +640,7 @@ class DailyCollector:
                     round(time.monotonic() - started, 2),
                 )
                 failures.append(f"{label}({message})")
+                failed_types.append(pool_type)
                 continue
 
             with session_scope() as session:
@@ -643,9 +651,12 @@ class DailyCollector:
                 round(time.monotonic() - started, 2),
             )
 
-        # 只有三池**全部真失败**才算这一步失败；全部超期跳过不算失败
-        if len(failures) == len(jobs):
-            raise RuntimeError(f"{trade_date} 三池全部采集失败: {'; '.join(failures)}")
+        # 涨停池（`up`）失败即算这一步失败（当天会重试）；跌停 / 炸板失败可容忍，
+        # 只有「三池全部真失败」才兜底抛。全部超期跳过（skipped）不算失败。
+        if "up" in failed_types or len(failures) == len(jobs):
+            raise RuntimeError(
+                f"{trade_date} 涨停池采集失败（或三池全败）: {'; '.join(failures)}"
+            )
         return written
 
     def collect_lhb(self, trade_date: date) -> int:

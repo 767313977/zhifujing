@@ -17,7 +17,7 @@ import json
 import logging
 import re
 import threading
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
 import requests
@@ -26,11 +26,15 @@ import urllib3
 from app.config import Settings, get_settings
 from app.services.usage import record_call
 from app.sources.base import TokenBucket, chunked, retry_call
-from app.sources.markdown_table import parse_tables, to_int, to_text
+from app.sources.markdown_table import parse_tables, to_int
 
 logger = logging.getLogger(__name__)
 
-# iFinD 使用自签或非标准证书链，官方参考实现同样关闭校验
+# iFinD 使用自签或非标准证书链，官方参考实现同样关闭校验。
+# 默认 `verify=False`（见 `_post` / `_download_csv`）：请求头带着 `Authorization: <token>`，
+# 这意味着链路上可能被中间人读走 token。想收紧就在配置 `IFIND_CA_FILE` 里填自抓的证书链
+# 路径（`openssl s_client -showcerts -connect api-mcp.51ifind.com:8643 </dev/null`，
+# 把输出里所有 `-----BEGIN CERTIFICATE-----` 段存成一个 .pem）；留空则维持关校验。
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 SERVERS = {
@@ -253,7 +257,8 @@ class IfindClient:
             url,
             json=payload,
             headers=self._headers(server),
-            verify=False,
+            # 默认关校验（证书链不标准）；配了 CA 路径就用它校验。见文件顶部那段的说明。
+            verify=self.settings.ifind_ca_file or False,
             timeout=self.settings.http_timeout,
         )
         return response, _parse_body(response.text)
@@ -526,7 +531,8 @@ class IfindClient:
         try:
             response = requests.get(
                 url,
-                verify=False,
+                # 默认关校验（证书链不标准）；配了 CA 路径就用它校验。见文件顶部那段的说明。
+                verify=self.settings.ifind_ca_file or False,
                 timeout=CSV_TIMEOUT,
                 # 必须显式绕开环境代理：与 `__init__` 里给主会话设 `trust_env=False`
                 # 同一个理由（开代理的机器上 iFinD 会被拖死 / 401）。这里漏过一次 ——
