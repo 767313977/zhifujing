@@ -109,7 +109,7 @@ export default function PatternPanel({
                     </td>
                     <td className="!text-left">
                       <Link
-                        to={`/stock/${stock.code}`}
+                        to={`/stock/${encodeURIComponent(stock.code)}`}
                         className="transition-colors hover:text-accent"
                       >
                         <span className="num text-fg-dim">{stock.code}</span>

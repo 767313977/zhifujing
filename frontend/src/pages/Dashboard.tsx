@@ -22,6 +22,7 @@ import PatternPanel from '../components/PatternPanel'
 import SectorHeatPanel from '../components/SectorHeatPanel'
 import SentimentPanel from '../components/SentimentPanel'
 import WatchlistPanel from '../components/WatchlistPanel'
+import { useAuth } from '../lib/auth'
 
 interface DashboardData {
   overview: MarketOverview
@@ -37,6 +38,10 @@ interface DashboardData {
 }
 
 export default function Dashboard() {
+  const { me } = useAuth()
+  // 采集状态整个 `/admin/*` 都是管理员接口，普通会员调必 403 —— 只有管理员才问它，
+  // 免得每个会员进来都白跑一次（2026-10-10 修）
+  const isAdmin = me?.is_admin ?? false
   const [date, setDate] = useState<string | null>(null)
   const [dates, setDates] = useState<string[]>([])
   const [status, setStatus] = useState<AdminStatus | null>(null)
@@ -100,11 +105,18 @@ export default function Dashboard() {
     [],
   )
 
-  // 首次进入先取可用日期与采集状态，再取页面数据
+  // 首次进入先取可用日期，再取页面数据
   useEffect(() => {
     api.dates().then(setDates).catch(() => setDates([]))
-    api.adminStatus().then(setStatus).catch(() => setStatus(null))
   }, [])
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setStatus(null)
+      return
+    }
+    api.adminStatus().then(setStatus).catch(() => setStatus(null))
+  }, [isAdmin])
 
   useEffect(() => {
     let stale = false
@@ -120,9 +132,11 @@ export default function Dashboard() {
 
   const toolbar = (
     <>
-      <span className="num hidden text-[13px] text-fg-dim lg:inline">
-        {status ? `${status.data_days} 个交易日` : '—'}
-      </span>
+      {isAdmin && (
+        <span className="num hidden text-[13px] text-fg-dim lg:inline">
+          {status ? `${status.data_days} 个交易日` : '—'}
+        </span>
+      )}
       <select
         value={date ?? ''}
         onChange={(event) => setDate(event.target.value || null)}

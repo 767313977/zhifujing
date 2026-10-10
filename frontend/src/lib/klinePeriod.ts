@@ -135,18 +135,26 @@ export function useKLine(code: string, { fq: fixedFq }: { fq?: FqMode } = {}): K
         // 本会话不再重复）—— 这是「取数窗口」之外唯一会花配额的地方。
         if (view !== 'day' && spanDays(rows) < LONG_SPAN_DAYS && !hasLongHistory(code)) {
           setSyncing(true)
-          await api.syncStock(code, LONG_SYNC_DAYS)
-          // 成功才标记（失败时下次打开还能再试），并且顺手把日线的那份标记也打上：
-          // 这次补的是「2 年」，比个股页挂载时那次 250 天的更全
-          markLongHistory(code)
-          markSynced(code)
-          rows = await api.stockDaily(code, query)
+          try {
+            await api.syncStock(code, LONG_SYNC_DAYS)
+            // 成功才标记（失败时下次打开还能再试），并且顺手把日线的那份标记也打上：
+            // 这次补的是「2 年」，比个股页挂载时那次 250 天的更全
+            markLongHistory(code)
+            markSynced(code)
+            rows = await api.stockDaily(code, query)
+          } catch (err) {
+            // 补长历史失败（60 秒冷却的 429 / 采集期间的 409）时**保留已经拿到的日线**，
+            // 继续用它画图；只有连第一次取数都失败（外层 catch）时才置空。否则整张图会
+            // 退化成一句报错，明明有数据可看（2026-10-10 修）。
+            if (!stale) setError((err as Error).message)
+          } finally {
+            if (!stale) setSyncing(false)
+          }
         }
         // 周/月的横轴带上年份：2 年的跨度里 `09-30` 会撞上两个
         if (!stale) setBars(dailyBars(rows, { withYear: view !== 'day' }))
       } catch (err) {
-        // 与「这只票本来就没有日线」分开：两者都落成空数组的话，图上那句
-        // 「暂无数据」会把接口报错说成「数据源没有这只票」
+        // 连第一次日线都没取到：这时确实没有数据可画，才置空并显示报错
         if (!stale) {
           setBars([])
           setError((err as Error).message)

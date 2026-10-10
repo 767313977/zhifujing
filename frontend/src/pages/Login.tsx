@@ -113,6 +113,7 @@ export default function Login() {
                     autoComplete="off"
                     spellCheck={false}
                     placeholder="站长给你的那串"
+                    maxLength={64}
                     className={`num ${INPUT}`}
                     required
                   />
@@ -129,6 +130,7 @@ export default function Login() {
                   onChange={(event) => setUsername(event.target.value)}
                   autoComplete="username"
                   spellCheck={false}
+                  maxLength={32}
                   className={INPUT}
                   required
                 />
@@ -145,6 +147,7 @@ export default function Login() {
                   onChange={(event) => setPassword(event.target.value)}
                   // 注册是新密码（让浏览器/密码管理器提议一个），登录是已有密码
                   autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
+                  maxLength={128}
                   className={INPUT}
                   required
                 />

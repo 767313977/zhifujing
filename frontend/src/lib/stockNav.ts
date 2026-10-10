@@ -52,6 +52,18 @@ export function readStockList(): string[] {
 }
 
 /**
+ * 清掉记住的列表。登出时调用 —— 列表是「上一个登录的人点过什么」，
+ * 换人登录后不该还留着（2026-10-10 修）。
+ */
+export function clearStockList(): void {
+  try {
+    sessionStorage.removeItem(KEY)
+  } catch {
+    // 隐私模式下 sessionStorage 可能直接抛错，忽略即可
+  }
+}
+
+/**
  * 标记这只票本次会话已经补过历史日线。
  *
  * 用来兜住「历史本来就短」的票（次新股）：它们的 `day_count` 永远到不了阈值，

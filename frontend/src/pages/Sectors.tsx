@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import * as echarts from 'echarts/core'
 import { api } from '../api/client'
 import type {
   FundFlowHistoryOut,
@@ -508,6 +509,17 @@ export default function Sectors() {
     [compareCodes],
   )
 
+  // 缓存两张走势图的 option：否则父组件每次重渲染都造新对象，EChart 的
+  // setOption(notMerge) 会整图重建一次（2026-10-10 修）
+  const seriesOption = useMemo(
+    () => (series ? buildSeriesOption(series) : null),
+    [series],
+  )
+  const compareOption = useMemo(
+    () => (compare ? buildCompareOption(compare) : null),
+    [compare],
+  )
+
   const toolbar = (
     <>
       <div className="flex items-stretch border border-line">
@@ -729,7 +741,7 @@ export default function Sectors() {
                 </div>
               ) : series && series.dates.length > 0 ? (
                 <div className="px-2 pt-2">
-                  <EChart option={buildSeriesOption(series)} height={220} />
+                  {seriesOption && <EChart option={seriesOption} height={220} />}
                 </div>
               ) : (
                 <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
@@ -792,7 +804,7 @@ export default function Sectors() {
               </div>
             ) : compare && compare.series.length > 0 ? (
               <div className="px-2 pt-2">
-                <EChart option={buildCompareOption(compare)} height={280} />
+                {compareOption && <EChart option={compareOption} height={280} />}
                 <div className="flex flex-wrap gap-1.5 px-2 pb-2 pt-1">
                   {compare.series.map((item) => (
                     <button
@@ -1093,7 +1105,7 @@ function buildSeriesOption(series: SectorSeries): ChartOption {
         const pct = series.pct_chg[index]
         const amount = series.amount[index]
         return [
-          `${series.dates[index]}`,
+          `${echarts.format.encodeHTML(String(series.dates[index] ?? ''))}`,
           `涨跌幅 ${pct == null ? '—' : fmtPct(pct)}`,
           `成交额 ${amount == null ? '—' : fmtAmount(amount)}`,
         ].join('<br/>')
@@ -1154,11 +1166,16 @@ function buildCompareOption(data: SectorCompare): ChartOption {
         if (!items?.length) return ''
         const lines = items.map((item) => {
           const value = typeof item.value === 'number' ? item.value : null
-          return `${item.marker ?? ''}${item.seriesName} ${
+          // seriesName 是板块名（外部数据），marker 是 ECharts 自己生成的色块 HTML，
+          // 只转义前者
+          return `${item.marker ?? ''}${echarts.format.encodeHTML(item.seriesName ?? '')} ${
             value == null ? '—' : fmtPct(value - data.base)
           }`
         })
-        return [`${data.dates[items[0].dataIndex]}`, ...lines].join('<br/>')
+        return [
+          `${echarts.format.encodeHTML(String(data.dates[items[0].dataIndex] ?? ''))}`,
+          ...lines,
+        ].join('<br/>')
       },
     },
     xAxis: {

@@ -106,7 +106,10 @@ export default function PatternTrackPage() {
     return () => {
       stale = true
     }
-  }, [picked])
+    // 依赖里带上 `cohorts`：切换循环数时上面那段 effect 会把 detail 清空，若这里只依赖
+    // `picked`（各档循环的「最近那个筛选日」往往是同一天、值没变），就不会重新拉取，
+    // 明细会停在「这个循环还没有命中记录」的误报上（2026-10-10 修）。
+  }, [picked, cohorts])
 
   const summary = data?.summary
   const toolbar = (
@@ -169,7 +172,7 @@ export default function PatternTrackPage() {
                       <tr key={row.code}>
                         <td className="sticky left-0 z-10 border-r border-b border-line-soft bg-ink-900 px-2 py-1 whitespace-nowrap">
                           <Link
-                            to={`/stock/${row.code}`}
+                            to={`/stock/${encodeURIComponent(row.code)}`}
                             className="text-fg hover:underline"
                             title={`${row.code} · ${row.score} 分`}
                           >

@@ -311,14 +311,14 @@ export default function AnomalyPage() {
                     <td className="num !text-left">{row.time}</td>
                     <td className="!text-left">
                       <Link
-                        to={`/stock/${row.code}`}
+                        to={`/stock/${encodeURIComponent(row.code)}`}
                         className="num text-fg-dim hover:text-accent"
                       >
                         {row.code}
                       </Link>
                     </td>
                     <td className="!text-left">
-                      <Link to={`/stock/${row.code}`} className="text-fg hover:text-accent">
+                      <Link to={`/stock/${encodeURIComponent(row.code)}`} className="text-fg hover:text-accent">
                         {row.name}
                       </Link>
                     </td>

@@ -23,7 +23,7 @@ import { rememberStockList } from '../lib/stockNav'
  * 「单 K 蜡烛形态」（5 个汉字 + 1 个字母）留的。再加更长的分组名时要一起调，
  * 否则标签会折行、把每个分组的高度撑成两行。
  */
-const GROUP_ORDER = ['致富', '悟道之路', '趋势', '突破', '量价', '几何', '单 K 蜡烛形态']
+const GROUP_ORDER = ['致富', '悟道之路', '做T', '趋势', '突破', '量价', '几何', '单 K 蜡烛形态']
 
 /**
  * 默认视图（没选形态）一次取多少只。
@@ -160,6 +160,12 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   vol_ratio_20: ['量比(20日)', false],
   leave_high: ['离开最高', true],
   sample_high: ['样板高', false],
+
+  // ---- 做T买点（t_buy）----
+  // tier / trigger 是短标签（"双B" / "底背离 + 基买"），走 detailText 的字符串分支原样显示
+  tier: ['档位', false],
+  trigger: ['触发', false],
+  ma20_gap: ['距 MA20', true],
 
   // ---- 2026-09-25 新增形态（键与 backend/app/services/patterns.py 的 detail 一一对应）----
   // 键是全局共用的，所以新增时要**先看有没有语义相同的旧键**（能共用就共用，
@@ -493,6 +499,7 @@ export default function Patterns() {
                 点形态名筛选（单选，再点一次取消）；徽标是该形态的全市场命中家数。致富＝悟道样板/启动
                 ＋洗完（只扫创业板与科创板，且样板/启动另限「今天冲高过」的候选池），
                 悟道之路＝强达型与华宝早期（同样只扫创业板与科创板）；金叉大阳（趋势）也只扫这两块；
+                做T＝用户的「V5 日线做T」买点，深B/★B/双B 三档（全市场扫，档位在明细里看）；
                 <Link to="/wudao" className="text-fg-dim underline decoration-line underline-offset-2 hover:text-fg">
                   悟道之路单独一页
                 </Link>
@@ -703,7 +710,7 @@ export default function Patterns() {
                             交给事件冒泡到上面那行的 onClick（见 selectStock）。
                             在这里再碰一次 router 会和 Link 的导航打架 */}
                         <Link
-                          to={`/stock/${stock.code}`}
+                          to={`/stock/${encodeURIComponent(stock.code)}`}
                           className="hover:text-accent"
                         >
                           <span className="num text-fg-dim">{stock.code}</span>

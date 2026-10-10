@@ -30,7 +30,7 @@ export default function StockLink({
 }) {
   return (
     <Link
-      to={`/stock/${code}`}
+      to={`/stock/${encodeURIComponent(code)}`}
       title={title}
       className={`transition-colors hover:text-accent ${className}`}
     >

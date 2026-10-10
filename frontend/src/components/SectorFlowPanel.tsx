@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+import * as echarts from 'echarts/core'
 import type {
   FundFlowHistoryOut,
   FundFlowItem,
@@ -64,7 +66,7 @@ function buildOption(items: FundFlowItem[], inflow: boolean): ChartOption {
         const item = items[index]
         if (!item) return ''
         return [
-          `<b>${item.name}</b>`,
+          `<b>${echarts.format.encodeHTML(item.name)}</b>`,
           `净额 ${fmtNum(item.net_amount, 2, ' 亿')}`,
           `涨跌幅 ${fmtPct(item.pct_chg)}`,
           // 流入 / 流出只有同花顺那套口径才有拆分，开盘啦口径下恒为空 ——
@@ -75,7 +77,7 @@ function buildOption(items: FundFlowItem[], inflow: boolean): ChartOption {
           // leader_name 现在是**开盘红口径的「龙一~龙五」**（顿号分隔），所以涨幅要
           // 标成「龙一」的：不标就会被读成最后一个名字的涨幅（2026-10-08 改）
           item.leader_name
-            ? `领涨 ${item.leader_name}${
+            ? `领涨 ${echarts.format.encodeHTML(item.leader_name)}${
                 item.leader_pct_chg == null ? '' : `（龙一 ${fmtPct(item.leader_pct_chg)}）`
               }`
             : '',
@@ -161,8 +163,10 @@ function buildHistoryOption(history: FundFlowHistoryOut): ChartOption {
           .filter((row) => row.value != null)
           .sort((left, right) => (right.value ?? 0) - (left.value ?? 0))
         return [
-          `<b>${history.dates[index] ?? ''}</b>`,
-          ...rows.map((row) => `${row.name} ${fmtNum(row.value, 2, ' 亿')}`),
+          `<b>${echarts.format.encodeHTML(history.dates[index] ?? '')}</b>`,
+          ...rows.map(
+            (row) => `${echarts.format.encodeHTML(row.name)} ${fmtNum(row.value, 2, ' 亿')}`,
+          ),
         ].join('<br/>')
       },
     },
@@ -234,12 +238,24 @@ export default function SectorFlowPanel({
   pageDate,
 }: Props) {
   // 后端已按净额降序；这里切两头。**只用有净额的行** —— 净额为空的排不到任何一边，
-  // 混进来只会顶掉真实的榜首
-  const valid = (data?.items ?? []).filter(
-    (item): item is FundFlowItem & { net_amount: number } => item.net_amount != null,
+  // 混进来只会顶掉真实的榜首。
+  // 用 useMemo 固定引用：下面两个图表 option 依赖它，引用一变图表就整图重建
+  const valid = useMemo(
+    () =>
+      (data?.items ?? []).filter(
+        (item): item is FundFlowItem & { net_amount: number } => item.net_amount != null,
+      ),
+    [data],
   )
-  const inflow = valid.slice(0, TOP)
-  const outflow = [...valid.slice(-TOP)].reverse()
+  const inflow = useMemo(() => valid.slice(0, TOP), [valid])
+  const outflow = useMemo(() => [...valid.slice(-TOP)].reverse(), [valid])
+  // 缓存 option：否则父组件每次重渲染都会造新对象，EChart(setOption notMerge) 整图重建
+  const inflowOption = useMemo(() => buildOption(inflow, true), [inflow])
+  const outflowOption = useMemo(() => buildOption(outflow, false), [outflow])
+  const historyOption = useMemo(
+    () => (history ? buildHistoryOption(history) : null),
+    [history],
+  )
   const label = TAXONOMIES.find((item) => item.key === taxonomy)?.label ?? ''
   const empty = !loading && valid.length === 0
   // 库里几个交易日：曲线要 2 天以上才连得起来
@@ -293,14 +309,14 @@ export default function SectorFlowPanel({
           <div>
             <div className="mb-1 text-[13px] text-fg-dim">净流入前 {TOP}</div>
             <EChart
-              option={buildOption(inflow, true)}
+              option={inflowOption}
               height={inflow.length * BAR_HEIGHT + 24}
             />
           </div>
           <div>
             <div className="mb-1 text-[13px] text-fg-dim">净流出前 {TOP}</div>
             <EChart
-              option={buildOption(outflow, false)}
+              option={outflowOption}
               height={outflow.length * BAR_HEIGHT + 24}
             />
           </div>
@@ -342,8 +358,8 @@ export default function SectorFlowPanel({
           </div>
           {historyLoading ? (
             <div className="py-8 text-center text-[14px] text-fg-dim">加载中…</div>
-          ) : history && curveDays >= 2 ? (
-            <EChart option={buildHistoryOption(history)} height={360} />
+          ) : historyOption && curveDays >= 2 ? (
+            <EChart option={historyOption} height={360} />
           ) : (
             <div className="py-8 text-center text-[14px] text-fg-dim">
               库里只有 1 个交易日的数据，曲线至少要两天才能连起来 ——
