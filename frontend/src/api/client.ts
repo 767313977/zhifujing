@@ -1,6 +1,9 @@
 import type {
   AdminStatus,
   AnomalyMap,
+  AuctionList,
+  AuctionQuery,
+  AuctionTrend,
   DdeBoard,
   DdeOrder,
   EtfFlowBoard,
@@ -360,6 +363,37 @@ export const api = {
    */
   ladderBoard: (date?: string) =>
     request<LadderBoard>(date ? `/limit/ladder-board?date=${date}` : '/limit/ladder-board'),
+
+  /**
+   * 竞价强度主表（集合竞价，`/api/auction`）。
+   *
+   * 缺省取**最新有竞价数据的一天**、按**竞价金额降序**。区间筛选含端点，金额单位是**元**。
+   * `limit` 上限 1000（后端 le=1000）。
+   */
+  auctionList: (options: AuctionQuery = {}) => {
+    const q = new URLSearchParams()
+    if (options.date) q.set('date', options.date)
+    if (options.sort) q.set('sort', options.sort)
+    if (options.order) q.set('order', options.order)
+    if (options.minPct != null) q.set('min_pct', String(options.minPct))
+    if (options.maxPct != null) q.set('max_pct', String(options.maxPct))
+    if (options.minAmount != null) q.set('min_amount', String(options.minAmount))
+    if (options.maxAmount != null) q.set('max_amount', String(options.maxAmount))
+    if (options.minRatio != null) q.set('min_ratio', String(options.minRatio))
+    if (options.maxRatio != null) q.set('max_ratio', String(options.maxRatio))
+    if (options.minTurnover != null) q.set('min_turnover', String(options.minTurnover))
+    if (options.maxTurnover != null) q.set('max_turnover', String(options.maxTurnover))
+    if (options.minBoards != null) q.set('min_boards', String(options.minBoards))
+    if (options.limit != null) q.set('limit', String(options.limit))
+    return request<AuctionList>(`/auction?${q.toString()}`)
+  },
+
+  /** 有竞价数据的交易日（由近及远），给页面日期选择器用。 */
+  auctionDates: () => request<string[]>('/auction/dates'),
+
+  /** 全市场竞价量能走势（逐分钟累计成交额合计）。数据是**累计值**，读的是斜率。 */
+  auctionTrend: (date?: string | null) =>
+    request<AuctionTrend>(withDate('/auction/trend', date)),
 
   /**
    * 个股异动图谱：最近 `days` 个交易日里的涨停 / 涨停炸板 / 中大阳线异动，

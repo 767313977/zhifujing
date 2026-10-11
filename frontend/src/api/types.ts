@@ -153,6 +153,85 @@ export interface LadderBoard {
   rows: LadderBoardRow[]
 }
 
+// ---------------------------------------------------------------- 竞价强度（集合竞价）
+
+/**
+ * 一只票的集合竞价快照（`/api/auction`）。**金额单位一律「元」**。
+ *
+ * 数据来自腾讯批量行情、交易日 9:15–9:26 逐分钟采样（后端 `jobs/collect_auction.py`）。
+ * 取不到的字段是 null，显示「—」，不补 0。参考图里还有 净额 / 承接强度 / 北向 /
+ * 人气排名 几列，那些**数据源层面拿不到**（北向净流入已停披露、承接强度是外部工具专有），
+ * 本站在界面与接口上都不提供，别拿别的口径顶上。
+ */
+export interface AuctionRow {
+  code: string
+  name: string | null
+  /** 竞价成交价（= 当日开盘价） */
+  price: number | null
+  pre_close: number | null
+  /** 竞价涨幅（%） */
+  pct_chg: number | null
+  /** 今开 */
+  open: number | null
+  /** 开盘涨幅（%）= (今开 / 昨收 − 1) */
+  open_pct: number | null
+  /** 竞价成交额（元） */
+  amount: number | null
+  /** 竞价成交量（股） */
+  volume: number | null
+  /** 竞价换手率（%） */
+  turnover: number | null
+  /** 竞价量比 */
+  volume_ratio: number | null
+  float_mv: number | null
+  total_mv: number | null
+  limit_up: number | null
+  limit_down: number | null
+  /** 昨日连板数（当日 9:25 时今日的池还没有）。非涨停股为 null */
+  consecutive: number | null
+}
+
+export interface AuctionList {
+  trade_date: string
+  /** 当日有竞价数据的全市场只数（不受筛选 / 截断影响） */
+  total: number
+  /** 本次实际返回的行数 */
+  shown: number
+  rows: AuctionRow[]
+}
+
+/** 全市场竞价量能曲线的一个点：该时刻累计成交额合计（元）。 */
+export interface AuctionTrendPoint {
+  time: string
+  amount: number
+}
+
+export interface AuctionTrend {
+  trade_date: string
+  points: AuctionTrendPoint[]
+}
+
+export type AuctionSort = 'amount' | 'pct' | 'ratio' | 'turnover' | 'float_mv' | 'price'
+
+/** 竞价强度主表的查询参数（对应页面顶部那排筛选）。区间都是**含端点**的。 */
+export interface AuctionQuery {
+  date?: string | null
+  sort?: AuctionSort
+  order?: 'asc' | 'desc'
+  minPct?: number
+  maxPct?: number
+  /** 竞价金额（元） */
+  minAmount?: number
+  maxAmount?: number
+  minRatio?: number
+  maxRatio?: number
+  minTurnover?: number
+  maxTurnover?: number
+  /** 昨日连板数下限（几板） */
+  minBoards?: number
+  limit?: number
+}
+
 /** 某一档连板的晋级情况。各数组与 PromotionSeries.dates 一一对应。 */
 export interface PromotionLevel {
   level: number

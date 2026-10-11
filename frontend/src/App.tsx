@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import Account from './pages/Account'
 import AnomalyPage from './pages/Anomaly'
+import AuctionPage from './pages/Auction'
 import Dashboard from './pages/Dashboard'
 import Funds from './pages/Funds'
 import LimitReview from './pages/LimitReview'
@@ -52,6 +53,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <Sectors />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/auction"
+            element={
+              <RequireAuth>
+                <AuctionPage />
               </RequireAuth>
             }
           />

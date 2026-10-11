@@ -15,6 +15,9 @@ const NAV: NavItem[] = [
   { to: '/', label: '今日复盘', end: true },
   { to: '/sentiment', label: '情绪周期' },
   { to: '/sectors', label: '板块题材' },
+  // 竞价强度（2026-10-11 用户要求「放在涨停复盘前边」）：集合竞价的涨幅 / 金额 /
+  // 量比 / 换手，数据来自腾讯批量行情逐分钟采样（见后端 jobs/collect_auction.py）。
+  { to: '/auction', label: '竞价强度' },
   { to: '/limit-up', label: '涨停复盘' },
   { to: '/funds', label: '资金面' },
   // ⚠️ `end: true` 是必须的：下面 `胜率跟踪` 挂在 `/patterns/track` 下，不写的话
