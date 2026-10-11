@@ -115,6 +115,44 @@ export interface LimitPool {
   stocks: LimitStock[]
 }
 
+/**
+ * 涨停股票池里的一只票 —— 在 `LimitStock` 上多一个 `status`。
+ *
+ * 行内会**同时**出现今日涨停（晋级）与今日炸板（失败）的票，这是这个池子的价值所在；
+ * `status` 就是用来一眼区分两者的。炸板 / 未晋级的票往往没有题材数据
+ * （`reason` / `board` / `seal_amount` 等多为 null），展示时留空即可，别拿别的口径顶上。
+ */
+export interface LadderBoardStock extends LimitStock {
+  /** up=今日涨停（晋级）｜broken=今日炸板（失败）｜other=今日两者都不是 */
+  status: 'up' | 'broken' | 'other'
+}
+
+/** 按**昨日**连板档分组的一行：这一档昨天有几家、今天晋级几家。 */
+export interface LadderBoardRow {
+  /** 昨日连板档；0 = 昨日非涨停（首板行） */
+  level: number
+  /** 展示用标签（「8进9」「首板」） */
+  label: string
+  /** 候选数（昨日该档全部家数） */
+  base: number
+  /** 其中今日晋级数 */
+  promoted: number
+  /** 晋级率（百分数）；base 为 0 时是 null */
+  rate: number | null
+  stocks: LadderBoardStock[]
+}
+
+/**
+ * 涨停股票池（`/api/limit/ladder-board`）：按昨日连板档分组，看每一档今天的成败。
+ *
+ * `prev_date` 是对比基准日（上一交易日），为 null 说明**没有昨日涨停池**，晋级率无从算起。
+ */
+export interface LadderBoard {
+  trade_date: string
+  prev_date: string | null
+  rows: LadderBoardRow[]
+}
+
 /** 某一档连板的晋级情况。各数组与 PromotionSeries.dates 一一对应。 */
 export interface PromotionLevel {
   level: number

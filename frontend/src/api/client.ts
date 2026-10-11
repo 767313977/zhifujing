@@ -16,6 +16,7 @@ import type {
   InstitutionOrder,
   Invite,
   KPeriod,
+  LadderBoard,
   LimitPool,
   LimitThemes,
   LhbItem,
@@ -350,6 +351,15 @@ export const api = {
 
   promotion: (days = 15) =>
     request<PromotionSeries>(`/limit/promotion?days=${days}`),
+
+  /**
+   * 涨停股票池：按**昨日**连板档分组，看每一档今天晋级 / 失败的情况。
+   *
+   * 与 `limitPool` 的分工：那个答「今天涨停的是谁」，这个答「昨天那批票今天怎么样了」——
+   * 行内**同时**含今日涨停（晋级）与今日炸板（失败），正是它的价值。`date` 缺省取最新交易日。
+   */
+  ladderBoard: (date?: string) =>
+    request<LadderBoard>(date ? `/limit/ladder-board?date=${date}` : '/limit/ladder-board'),
 
   /**
    * 个股异动图谱：最近 `days` 个交易日里的涨停 / 涨停炸板 / 中大阳线异动，

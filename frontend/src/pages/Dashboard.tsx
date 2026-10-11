@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type {
   AdminStatus,
+  LadderBoard,
   LhbItem,
   LimitPool,
   MarketOverview,
@@ -15,9 +16,9 @@ import type {
 import Alert from '../components/Alert'
 import DivergenceNote from '../components/DivergenceNote'
 import IndexStrip from '../components/IndexStrip'
-import LadderBoard from '../components/LadderBoard'
 import Layout from '../components/Layout'
 import LhbTable from '../components/LhbTable'
+import LimitPoolBoard from '../components/LimitPoolBoard'
 import LimitTable from '../components/LimitTable'
 import NotePanel from '../components/NotePanel'
 import PatternPanel from '../components/PatternPanel'
@@ -50,6 +51,8 @@ const EMPTY_HEAT: SectorHeat = {
 /** 各次级区块自己的错误信息；null = 该区块取数成功 */
 interface SectionErrors {
   up: string | null
+  /** 涨停股票池（按昨日档分组）单独一块，与涨停明细的 `up` 分开成败 */
+  board: string | null
   down: string | null
   broken: string | null
   lhb: string | null
@@ -60,6 +63,7 @@ interface SectionErrors {
 interface DashboardData {
   overview: MarketOverview
   up: LimitPool
+  board: LadderBoard | null
   down: LimitPool
   broken: LimitPool
   lhb: LhbItem[]
@@ -115,9 +119,11 @@ export default function Dashboard() {
         }
       }
       try {
-        const [overview, upR, downR, brokenR, lhbR, heatR, watchR] = await Promise.all([
+        const [overview, upR, boardR, downR, brokenR, lhbR, heatR, watchR] = await Promise.all([
           api.overview(target),
           soft(api.limitPool('up', target), emptyPool('up')),
+          // 涨停股票池按昨日档分组，与「涨停明细」是两份不同的数据，各自独立成败
+          soft(api.ladderBoard(target ?? undefined), null as LadderBoard | null),
           soft(api.limitPool('down', target), emptyPool('down')),
           soft(api.limitPool('broken', target), emptyPool('broken')),
           soft(api.lhb(target), [] as LhbItem[]),
@@ -142,6 +148,7 @@ export default function Dashboard() {
         setData({
           overview,
           up: upR.value,
+          board: boardR.value,
           down: downR.value,
           broken: brokenR.value,
           lhb: lhbR.value,
@@ -149,6 +156,7 @@ export default function Dashboard() {
           watchlist: watchR.value,
           sectionErrors: {
             up: upR.error,
+            board: boardR.error,
             down: downR.error,
             broken: brokenR.error,
             lhb: lhbR.error,
@@ -265,28 +273,32 @@ export default function Dashboard() {
             )
           )}
 
+          {/* 涨停股票池（按昨日档分组）与涨停明细是两份数据，各自独立成败 */}
+          {data.sectionErrors.board ? (
+            // 失败未关：显示错误条；已关：整个区块不渲染。失败回落的是 null，
+            // 照常渲染的话会被误读成「没有候选票」（2026-10-11 修）。
+            // 下面涨停明细/跌停/炸板/龙虎榜/自选是同一套处理，不再重复注释
+            !dismissed.board ? (
+              <SectionError
+                title="涨停股票池"
+                message={data.sectionErrors.board}
+                onClose={() => dismiss('board')}
+              />
+            ) : null
+          ) : (
+            <LimitPoolBoard data={data.board} loading={loading} delay={200} />
+          )}
+
           {data.sectionErrors.up ? (
-            // 失败未关：显示错误条；已关：整个区块不渲染。失败回落的是 emptyPool 空表，
-            // 照常渲染的话「0 家涨停 / 当日无数据」会被误读成当天的行情结论（2026-10-11 修）。
-            // 下面跌停/炸板/龙虎榜/自选四个区块是同一套处理，不再重复注释
             !dismissed.up ? (
               <SectionError
-                title="涨停梯队与涨停明细"
+                title="涨停明细"
                 message={data.sectionErrors.up}
                 onClose={() => dismiss('up')}
               />
             ) : null
           ) : (
-            <>
-              <LadderBoard
-                ladder={data.up.ladder ?? []}
-                total={data.up.total}
-                loading={loading}
-                delay={200}
-              />
-
-              <LimitTable type="up" stocks={data.up.stocks} loading={loading} delay={260} />
-            </>
+            <LimitTable type="up" stocks={data.up.stocks} loading={loading} delay={260} />
           )}
 
           {/* 跌停/炸板不并排：这两张表都有 12 列，并排后单列容器装不下，
