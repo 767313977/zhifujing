@@ -59,33 +59,54 @@ def retry_call(
     retries: int = 3,
     backoff: float = 2.0,
     description: str = "请求",
+    # 异常类型 / 类型元组 / 回调 (exc) -> bool；None 表示保持旧行为「一律重试」
+    retry_on: "type[Exception] | tuple[type[Exception], ...] | Callable[[Exception], bool] | None" = None,
 ) -> T:
     """指数退避重试：2s → 4s → 8s。
 
     akshare 的东财接口存在偶发 RemoteDisconnected，iFinD 也偶有超时，
     都靠这层兜住。
+
+    `retry_on` 决定哪些异常才重试：
+    - None（默认）：**一律重试**，保持旧行为 —— 没有区分错误类型的数据源照旧；
+    - 异常类型 / 元组：只重试这些类型；
+    - 回调：按 `retry_on(exc)` 的真假决定。
+    参数错 / 认证错 / 「上游还没发布」这类**确定性错误**重试多少次都是同一个结果，
+    只会白持锁、白等退避、白发一次计费请求，数据源应显式传入判定（见 ifind /
+    akshare 的龙虎榜）。拿不准则留给默认（都重试），宁可慢也别漏采。
     """
     if retries < 1:
         # 配置成 0 的话循环一次都不进、`last_exc` 停在 None，下面那句 assert 会抛
         # **AssertionError** —— 那种报错完全看不出是配置问题（2026-09-27 修）
         raise ValueError(f"retries 必须 ≥ 1，收到 {retries}")
+
+    def _retryable(exc: Exception) -> bool:
+        if retry_on is None:
+            return True
+        if isinstance(retry_on, type) or isinstance(retry_on, tuple):
+            return isinstance(exc, retry_on)
+        return bool(retry_on(exc))
+
     last_exc: Exception | None = None
     for attempt in range(retries):
         try:
             return fn()
         except Exception as exc:  # noqa: BLE001 - 需要捕获任意数据源异常并重试
             last_exc = exc
-            if attempt < retries - 1:
-                delay = backoff * (2**attempt)
-                logger.warning(
-                    "%s 第 %d/%d 次失败: %s，%.1fs 后重试",
-                    description,
-                    attempt + 1,
-                    retries,
-                    exc,
-                    delay,
-                )
-                time.sleep(delay)
+            # 确定性错误立刻上抛：不白等退避，也不再发第二次（会被计费的）请求。
+            # 最后一次失败同样不必 sleep，直接抛
+            if not _retryable(exc) or attempt == retries - 1:
+                raise
+            delay = backoff * (2**attempt)
+            logger.warning(
+                "%s 第 %d/%d 次失败: %s，%.1fs 后重试",
+                description,
+                attempt + 1,
+                retries,
+                exc,
+                delay,
+            )
+            time.sleep(delay)
     assert last_exc is not None
     raise last_exc
 

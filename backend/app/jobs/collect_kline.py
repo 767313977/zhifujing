@@ -250,6 +250,16 @@ class KlineCollector:
                 continue
             written += got
             calls += used
+            if got == 0 and self._is_trade_day(day):
+                # 交易日却 0 行，只可能是来源抽风（问法失效 / 接口空返回 / 整批残行），
+                # **不是「这天没数据」**。当成功处理的话整轮记 ok、这天进 fetched，
+                # 但 `_needs_day` 按库里 0 行仍判缺 → 之后每个交易日都把它重刷一遍
+                # （一天约 13 次调用），而日志里一点痕迹都没有。记 failed：
+                # 整轮变 partial、坏日浮上水面；次日仍会按缺日重采（不进 fetched，
+                # max_days 的计数也不会被它占掉）。非交易日的 0 行才是正常的，照旧算成功。
+                failed.append(f"{day} 返回 0 行（交易日）")
+                logger.warning("%s 是交易日但取到 0 行，记为失败", day)
+                continue
             fetched.append(day)
             logger.info("%s 写入 %d 行（%d 次调用）", day, got, used)
 
@@ -329,6 +339,11 @@ class KlineCollector:
                 continue
             written += got
             calls += used
+            if got == 0 and self._is_trade_day(day):
+                # 与 `collect` 同一判据：交易日 0 行是来源抽风，不能当成功（见那里的注释）
+                failed.append(f"{day} 返回 0 行（交易日）")
+                logger.warning("%s 是交易日但近端取到 0 行，记为失败", day)
+                continue
             fetched.append(day)
             logger.info("%s 近端写入 %d 行（%d 次调用）", day, got, used)
 
@@ -482,6 +497,23 @@ class KlineCollector:
         if found is None:
             raise IfindError("交易日历为空，先采集交易日历")
         return found
+
+    def _is_trade_day(self, day: date) -> bool:
+        """该日是否在交易日历内。
+
+        直接复用 `DailyCollector.is_trade_day` 的现成判定（同一张 TradeCalendar 表、
+        同一个「日历没数据保守返回 False」口径），不在本文件另造日历查询。
+        该方法不使用采集器的实例状态；DailyCollector 构造成本不低（会各建一个
+        iFinD/akshare 客户端但**不发网络请求**），所以懒加载并缓存，且只在
+        「取到 0 行」这种罕见分支才会走到。
+        """
+        daily = getattr(self, "_daily", None)
+        if daily is None:
+            from app.jobs.collect_daily import DailyCollector
+
+            daily = DailyCollector(self.settings)
+            self._daily = daily
+        return daily.is_trade_day(day)
 
     def _window_start(self, end: date, full: bool) -> date:
         if not full:

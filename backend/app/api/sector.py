@@ -27,6 +27,7 @@ from app.config import get_settings
 from app.db import get_db, session_scope
 from app.jobs.collect_sectors import SectorCollector
 from app.models import (
+    AppUser,
     LimitPool,
     NON_THEME_EXCLUDE,
     SectorBasic,
@@ -36,6 +37,7 @@ from app.models import (
     StockDaily,
     TradeCalendar,
 )
+from app.services.auth import RateLimiter, current_user
 from app.schemas import (
     FundFlowHistoryOut,
     FundFlowItem,
@@ -87,6 +89,20 @@ MEMBERS_LOOKBACK_DAYS = 10
 _EMPTY_FETCH_TTL = timedelta(seconds=120)
 _empty_fetches: dict[tuple[str, date], datetime] = {}
 _empty_lock = threading.Lock()
+# 成分股现取的**按用户**滑动窗口限流（2026-10-11 加），与 `api/stock.py` 的 DDE
+# 现取同一套 `RateLimiter` 用法：每次缓存未命中都会打一次开盘红外部请求，而
+# (板块 × 日期) 组合可枚举 —— 约 370 个板块 × 近 10 天 ≈ 3700 个请求，不挡的话
+# 这个接口就是现成的爬虫。取每 10 分钟 20 次：正常复盘一次翻五六个板块、每板块
+# 当天只触发 1 次现取，20 次绰绰有余；遍历式抓取第 21 次起被锁 10 分钟。
+# ⚠️ 只挡「真去外部取数」的路径：读库缓存、命中空结果 TTL、日期超窗的 400 都不计数。
+# 它与上面的全局限速桶（所有用户共享的每秒速率）是两个维度，不冲突。
+MEMBERS_FETCH_LIMIT = 20
+MEMBERS_FETCH_WINDOW_SEC = 600
+_members_fetch_limiter = RateLimiter(
+    limit=MEMBERS_FETCH_LIMIT,
+    window_sec=MEMBERS_FETCH_WINDOW_SEC,
+    lock_sec=MEMBERS_FETCH_WINDOW_SEC,
+)
 # 开盘红限速器（令牌桶）**必须复用同一个实例**：以前每次请求都 `SectorCollector()`，
 # 于是每个请求各带一个桶、各算各的，限速形同虚设。这里进程内建一个、大家共用。
 _collector_lock = threading.Lock()
@@ -104,7 +120,11 @@ def _sector_collector() -> SectorCollector:
 
 
 def _recent_fetch_window(session: Session) -> date | None:
-    """「最近 N 个交易日」里**最早**的那天；交易日历不够 N 天就取现有的最早一天。"""
+    """「最近 N 个交易日」里**最早**的那天；交易日历不够 N 天就取现有的最早一天。
+
+    日历为空时返回 None —— 这表示「窗口无法确定」，调用方必须**保守拒绝现取**，
+    不能把 None 当成「没有日期限制」（见 `_board_members`）。
+    """
     days = list(
         session.scalars(
             select(TradeCalendar.trade_date)
@@ -1198,6 +1218,7 @@ def members(
     code: str = Query(..., description="板块代码"),
     trade_date: date = Depends(resolve_trade_date),
     session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
 ) -> SectorMembers:
     """板块成分股，按当日涨跌幅降序。
 
@@ -1211,7 +1232,7 @@ def members(
     if board is None:
         raise HTTPException(status_code=404, detail=f"未知板块代码 {code}")
 
-    rows, note = _board_members(code, trade_date)
+    rows, note = _board_members(code, trade_date, user.id)
     limit_up = _limit_up_state(session, trade_date)
     items = [
         SectorMemberItem(
@@ -1253,15 +1274,19 @@ def _read_members(session: Session, code: str, trade_date: date) -> list[SectorM
     )
 
 
-def _board_members(code: str, trade_date: date) -> tuple[list[SectorMember], str | None]:
+def _board_members(
+    code: str, trade_date: date, user_id: int
+) -> tuple[list[SectorMember], str | None]:
     """读库；库里没有就现取一次再读；还没有就**用最近一天的名单 + 当日本地行情**顶上。
 
     现取与读库各开一个新的 session：现取那次是**另一个事务**写的，
     用请求自带的 session 接着读看不到（SQLite 在 WAL 下的读事务是一个快照）。
 
-    ⚠️ 现取有三道闸（2026-10-11 加）：① 只查最近 `MEMBERS_LOOKBACK_DAYS` 个交易日；
-    ② 空结果短时记忆（`_EMPTY_FETCH_TTL`），盘间连点不再反复打源；③ 复用进程内唯一的
-    采集器（见 `_sector_collector`），令牌桶才有意义。
+    ⚠️ 现取有五道闸（2026-10-11 加）：① 交易日历为空（新空库）时保守拒绝，
+    窗口算不出来就不放任任意历史日期打外部源；② 只查最近 `MEMBERS_LOOKBACK_DAYS`
+    个交易日；③ 空结果短时记忆（`_EMPTY_FETCH_TTL`），盘间连点不再反复打源；
+    ④ 按用户滑动窗口限流（`_members_fetch_limiter`），挡枚举式抓取；
+    ⑤ 复用进程内唯一的采集器（见 `_sector_collector`），令牌桶才有意义。
     """
     with session_scope() as reader:
         cached = _read_members(reader, code, trade_date)
@@ -1271,7 +1296,13 @@ def _board_members(code: str, trade_date: date) -> tuple[list[SectorMember], str
         return cached, None
 
     key = (code, trade_date)
-    if oldest_fetchable is not None and trade_date < oldest_fetchable:
+    if oldest_fetchable is None:
+        # 交易日历为空 / 还没采到：无法确定「最近 N 个交易日」窗口。
+        # 以前这里静默放行（下面的 `< oldest_fetchable` 判断整条失效），任意历史
+        # 日期都会去打开盘红 —— 新空库时等于把外部源当任意日期爬虫。保守拒绝，
+        # 与「日期超窗」同一返回风格；等日历采集跑完自然恢复。
+        raise HTTPException(status_code=400, detail="交易日历尚未就绪，稍后再试")
+    if trade_date < oldest_fetchable:
         raise HTTPException(
             status_code=400,
             detail=(
@@ -1282,6 +1313,22 @@ def _board_members(code: str, trade_date: date) -> tuple[list[SectorMember], str
     if _recently_empty(key):
         # 刚取过、没结果：短时内直接走回落，别再打一次外部源
         return _fallback_members(code, trade_date, None)
+
+    # 真要发外部请求了，先过按用户限流（只此路径计数）。记一笔放在**取数之前**：
+    # 无论取成功还是源端报错，这次外部请求都已经发出去了 —— 与 DDE 现取同口径。
+    limiter_key = f"members:{user_id}"
+    wait = _members_fetch_limiter.retry_after(limiter_key)
+    if wait is not None:
+        logger.warning(
+            "板块 %s %s 成分股现取被限流（用户 %s 还要等 %.0f 秒）",
+            code,
+            trade_date,
+            user_id,
+            wait,
+        )
+        # 不报错、不打源：直接走「最近一天名单 + 本地行情」的回落，页面不空
+        return _fallback_members(code, trade_date, None)
+    _members_fetch_limiter.fail(limiter_key)
 
     failed: Exception | None = None
     try:

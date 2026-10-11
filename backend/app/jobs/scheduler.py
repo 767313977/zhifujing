@@ -452,6 +452,24 @@ class DailyScheduler:
                             attempt,
                             exc,
                         )
+                        # **给尾部链路留一个可见、可补的缺口**（2026-10-11 修）：
+                        # 以前这里直接 return，而 tail 闸门在更后面 —— 当天的形态扫描 /
+                        # 飞书简报 / DDE 推送一条都不跑，且次日不重扫历史，永久缺失，
+                        # 数据管理页还什么都看不出来。写一条 `failed`（tail_done 只认
+                        # ok/partial，failed 不挡补跑）：① 页面上看得到这天尾巴没跑；
+                        # ② 17:30 / 19:30 的收盘后任务（`_run_late_unguarded` 末尾）会
+                        # 据此把当天尾部补掉 —— 那时锁早释放了。
+                        # ⚠️ 只记「尾部未跑」，别假装基础采集成功（日线那些仍缺）。
+                        try:
+                            _record_log(
+                                today,
+                                TAIL_TASK,
+                                "failed",
+                                0,
+                                f"{reason}：主采集重试 {attempt} 次仍拿不到锁，尾部未跑，等收盘后任务补",
+                            )
+                        except Exception:  # noqa: BLE001 - 记账失败不能盖住主流程
+                            logger.warning("写尾部缺口记录失败", exc_info=True)
                         return
                     logger.warning(
                         "%s 拿不到采集锁（第 %d/%d 次），%d 秒后重试：%s",
@@ -553,6 +571,23 @@ class DailyScheduler:
             logger.warning("%s 完成但部分步骤失败：%s", reason, failed)
         else:
             logger.info("%s 完成：%s", reason, result.get("trade_date"))
+
+        # **顺手补当天的尾部链路**（2026-10-11 修）。15:05 那趟若在锁上重试
+        # `COLLECT_LOCK_RETRIES` 次仍失败，会直接放弃、尾部不跑（形态扫描 / 飞书简报 /
+        # DDE 推送当天永久缺，次日也不重扫）。这里是当天最晚的两个定时触发点之一
+        #（17:30 / 19:30），此刻锁必已释放，而本方法本就在采集锁内，直接补即可。
+        # ⚠️ 两道判据缺一不可：
+        #   - `tail_done`：正常跑过（ok/partial）就别重复 —— 尾部一遍要花十几次
+        #     iFinD 调用 + 三百多次开盘红请求，还会再推一条飞书；
+        #   - `has_collected`：只在「当天基础数据确实采到了」时才补 —— 否则形态扫描
+        #     扫的是昨天的日线、还会把昨天的结论再推一遍。基础数据都没采到时宁可留缺口，
+        #     等启动补采 / 次日回看，也不能推错。
+        if not tail_done(today) and collector.has_collected(today):
+            logger.info("%s：当天尾部链路还没跑（基础数据已在），顺手补上", reason)
+            try:
+                self._run_tail(today, f"{reason} 兼补尾部")
+            except Exception:  # noqa: BLE001 - 补尾部失败不该拖垮收盘后这一趟
+                logger.exception("%s：补当天尾部链路失败", reason)
 
     def _catch_up_late(self, collector: DailyCollector, today: date, reason: str) -> None:
         """把最近几天漏采的「收盘后那一趟」补上（上限 `CATCHUP_LOOKBACK_TRADING_DAYS`）。

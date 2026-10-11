@@ -89,11 +89,19 @@ def status(session: Session = Depends(get_db)) -> AdminStatus:
         scheduler.status()
         if scheduler is not None
         else {
+            # 调度器不存在（理论上不可达，纯防御）：字段必须与
+            # `schemas.SchedulerStatus` 一一对应，缺一个 model_validate 就 500
             "enabled": False,
             "running": False,
-            "collect_time": "—",
+            "collect_time": "",
+            # 收盘后那两趟 / 成分股两趟的时刻与下次运行时间，没有调度器时无从谈起
+            "late_collect_time": "",
+            "late_retry_time": "",
+            "members_collect_time": "",
+            "members_retry_time": "",
             "catchup_on_start": False,
             "next_run_time": None,
+            "late_next_run_time": None,
             "last_run": None,
             "last_result": None,
         }

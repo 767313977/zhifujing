@@ -250,23 +250,22 @@ def delete_user_sessions(db: Session, user_id: int, keep: str | None = None) -> 
 
 
 def client_ip(request: Request) -> str:
-    """取客户端 IP。**取 X-Forwarded-For 的最右一段**。
+    """限流用的客户端 IP。
 
-    线上是 nginx 反代，直连地址永远是 127.0.0.1，按它限流等于全站共用一个桶，所以要
-    用 XFF。但 `deploy/setup_nginx.sh` 用的是 `$proxy_add_x_forwarded_for` —— 它会把
-    **客户端自带的 XFF 原样保留在最左边**、再把 nginx 看到的真实 IP **追加到末尾**。
-    于是最左段是攻击者可控的：取 `split(",")[0]` 的话，伪造一个不同的最左段就等于换一个
-    限流桶，限流形同虚设（2026-10-10 修）。可信代理在最后一跳，只有**最右段**是 nginx
-    实际看到的地址，取它才不是客户端说了算。
+    **直接用 `request.client.host`，不要自己去解析 `X-Forwarded-For`**（2026-10-11 改）。
+    uvicorn 0.53 默认 `proxy_headers=True`、`forwarded_allow_ips="127.0.0.1,::1"`，
+    它的 ProxyHeadersMiddleware 已经把「只信可信一跳」整套逻辑做完了：
 
-    ⚠️ 即便如此，限流仍只是「提高爆破成本」，不承担安全边界（真正的边界是邀请码）。
-    本机直连（没有 nginx）时这个头可能不存在，回落到 `request.client.host`。
+    - **nginx 反代**（线上，对端是 127.0.0.1，可信）：按 XFF 链把 `client` 改写成
+      **第一个不可信地址**。nginx 用 `$proxy_add_x_forwarded_for` 会把真实客户端 IP
+      追加在链尾，所以这里拿到的就是访客真实 IP —— 访客自己在请求里伪造的最左段
+      不可信，会被跳过。
+    - **直连后端**（对端不是本机，不可信）：整个 XFF 头被忽略，`client` 就是 TCP 对端。
+
+    旧实现「无条件取裸 XFF 的最右段」在直连场景下是个洞：攻击者每请求换一个
+    `X-Forwarded-For` 就等于换一个限流桶，按 IP 的登录限流形同虚设；
+    配合能伪造的 `Host` 头还能绕开「明文公网拒登录」。
     """
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        parts = [part.strip() for part in forwarded.split(",") if part.strip()]
-        if parts:
-            return parts[-1]
     return request.client.host if request.client else "unknown"
 
 

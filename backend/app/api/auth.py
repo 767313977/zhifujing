@@ -69,10 +69,16 @@ def _require_secure_transport(request: Request) -> None:
     这两处没必要逼人上证书；而往公网发明文密码是纯亏。
     ⚠️ 影响：公网 8080 兜底入口从此**只能看页面 / 查 nginx 报错，不能登录** —— 那本来
     就是它的用途。域名 / 证书出问题时请走 SSH 修，别用明文登录。
+
+    ⚠️ **内网判定必须看「连接对端 IP」，不能看 `Host` 头**（2026-10-11 修）：
+    Host 是客户端可以随便填的 —— 直连后端时请求行打公网 IP、头里塞
+    `Host: 127.0.0.1` 就能被当成本机访问，这道闸就废了。对端 IP 由
+    uvicorn 的 ProxyHeadersMiddleware 给出（见 `services.auth.client_ip`），
+    nginx 链路下已还原成真实客户端、直连场景下就是真实对端，客户端说了不算。
     """
     if request.url.scheme == "https":
         return
-    if _is_local_or_private((request.url.hostname or "").lower()):
+    if _is_local_or_private(auth.client_ip(request)):
         return
     raise HTTPException(
         status_code=403,

@@ -90,6 +90,14 @@ class IfindRateLimitError(IfindError):
     """iFinD 限流。属于**可重试**错误，交由 retry_call 退避后重试。"""
 
 
+class IfindAuthError(IfindError):
+    """iFinD 认证 / 授权失败（HTTP 401/403，如 token 失效、无权访问）。
+
+    与限流相反：换配置之前再发多少次都是同一个结果，属于**不可重试**的确定性
+    错误 —— 重试只会白发计费请求、白等退避。
+    """
+
+
 # iFinD 限流时 HTTP 状态码仍是 200，错误藏在工具结果文本里，只能按文本识别
 _RATE_LIMIT_MARKERS = ("请求过于频繁", "status: 429")
 
@@ -318,6 +326,13 @@ class IfindClient:
                 response, body = self._post(server, payload)
                 if response.status_code == 429:
                     raise IfindRateLimitError(f"iFinD HTTP 429: {response.text[:120]}")
+                if response.status_code in (401, 403):
+                    # token 失效 / 无权访问：不重试（见 IfindAuthError 的说明），
+                    # 留给下面 except Exception 丢会话后原样上抛
+                    raise IfindAuthError(
+                        f"iFinD 认证/授权失败 HTTP {response.status_code}，"
+                        "请检查 IFIND_AUTH_TOKEN"
+                    )
                 if isinstance(body, dict) and "error" in body:
                     raise IfindError(
                         f"{tool} 返回错误: {json.dumps(body['error'], ensure_ascii=False)}"
@@ -338,6 +353,25 @@ class IfindClient:
                 self._drop_session(server)
                 raise
 
+        def _retryable(exc: Exception) -> bool:
+            """只对「下一次请求可能成功」的错误重试：
+
+            - `IfindRateLimitError`（429 / 文案限流）—— 退避后大概率恢复；
+            - 网络层超时 / 断连（`requests.Timeout` / `ConnectionError`，含其
+              ChunkedEncodingError 之类子类）—— 偶发抖动；
+            - HTTP 5xx —— 服务端临时故障。
+            其余**确定性错误**一律不重试：普通 `IfindError`（参数错、业务 code!=0、
+            无法解析响应）、`IfindAuthError`（401/403）、4xx —— 重试多少次都是同一个
+            结果，只会白持锁、白等 2/4 秒、白发被计费的 tools/call。
+            """
+            if isinstance(exc, IfindRateLimitError):
+                return True
+            if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+                return True
+            if isinstance(exc, requests.HTTPError) and exc.response is not None:
+                return exc.response.status_code >= 500
+            return False
+
         # requests 的网络类异常（连接失败 / 超时 / DNS / HTTPError）默认**原样上抛**，
         # 而调用方大多只 `except IfindError`（`api/stock` 的 dde/sync、`api/admin`、
         # `jobs/scheduler` 等）—— 漏出去就是 500（2026-10-10 修）。数据源层对外只承诺
@@ -352,6 +386,7 @@ class IfindClient:
                 retries=self.settings.http_retries,
                 backoff=self.settings.http_backoff,
                 description=f"iFinD {server}.{tool}",
+                retry_on=_retryable,
             )
         except requests.RequestException as exc:
             raise IfindError(f"iFinD 请求失败（{server}.{tool}）：{exc}") from exc

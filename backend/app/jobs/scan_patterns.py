@@ -316,9 +316,16 @@ def _candidate_codes(trade_date: date) -> set[str]:
         pct = float(pct)
         if not (WUDAO_CAND_MIN_PCT <= pct <= WUDAO_CAND_MAX_PCT):
             continue
-        # 昨收由当日收盘与官方涨跌幅反推（比再查一根 K 线便宜，且与 pct_chg 同源）
-        prev_close = float(close) / (1.0 + pct / 100.0)
-        if prev_close <= 0 or high is None:
+        # 昨收由当日收盘与官方涨跌幅反推（比再查一根 K 线便宜，且与 pct_chg 同源）。
+        # ⚠️ 分母守卫必须在除法**之前**：pct 恰好为 -100 时分母为 0，会直接
+        # ZeroDivisionError 把整轮扫描拖挂（原来的 `prev_close <= 0` 判断在除法之后，
+        # 根本拦不到）。A 股正常交易不可达 -100%（主板 ±10%、创业/科创 ±20%、
+        # 北交 ±30%），这里纯防御脏数据 / 退市整理期的极端值。
+        denominator = 1.0 + pct / 100.0
+        if denominator <= 0 or high is None:
+            continue
+        prev_close = float(close) / denominator
+        if prev_close <= 0:
             continue
         high_pct = (float(high) / prev_close - 1.0) * 100.0
         if not (WUDAO_CAND_MIN_HIGH <= high_pct <= WUDAO_CAND_MAX_HIGH):

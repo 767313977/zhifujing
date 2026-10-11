@@ -34,8 +34,14 @@ from app.schemas import (
 from app.services import pattern_track
 from app.services.patterns import PATTERNS
 from app.services.stock_phase import load_phases
+from app.sources.base import chunked
 
 router = APIRouter(prefix="/api/patterns", tags=["patterns"])
+
+# 单日命中去重后最多约等于全市场代码数（5300+）。老版本 SQLite 的单条 SQL 变量
+# 上限是 999，一次性 IN 这么多 code 会 OperationalError；3.32+ 放宽到 32766 才不炸。
+# 按 900 一批拆（给 999 留余量），结果在内存里合并，排序 / 去重语义不变。
+_IN_BATCH = 900
 
 _META = {pattern.key: pattern for pattern in PATTERNS}
 # 注册表里**当前存在**的 key，所有查询都必须带上这道过滤。
@@ -197,17 +203,27 @@ def hits(
     if not rows:
         return []
 
+    # 下面三处都是「按当天命中的全部 code 集合 IN 查」，集合可能到 5300+ 个，
+    # 必须分批（理由见 `_IN_BATCH`）；各批结果在内存里合并，与一次查全等价。
+    hit_codes = list({row.code for row in rows})
+
     # 日均成交额与市值是**股票的属性**，从股票池取；命中记录里不存这两项。
     # 少数票可能已经跌出池子（流动性降到门槛以下），那时给 null 而不是 0 ——
     # 「没有数据」和「是 0」是两件事
-    pool = {
-        code: (avg_amount, total_mv)
-        for code, avg_amount, total_mv in db.execute(
-            select(StockUniverse.code, StockUniverse.avg_amount, StockUniverse.total_mv).where(
-                StockUniverse.code.in_({row.code for row in rows})
-            )
-        ).all()
-    }
+    pool: dict[str, tuple] = {}
+    for batch in chunked(hit_codes, _IN_BATCH):
+        pool.update(
+            {
+                code: (avg_amount, total_mv)
+                for code, avg_amount, total_mv in db.execute(
+                    select(
+                        StockUniverse.code,
+                        StockUniverse.avg_amount,
+                        StockUniverse.total_mv,
+                    ).where(StockUniverse.code.in_(batch))
+                ).all()
+            }
+        )
 
     # 板块（口径与个股页「所属题材」一致，见 `PatternStockOut.sectors` 的说明）。
     #
@@ -215,11 +231,15 @@ def hits(
     # 只有涨停股有值，用当天口径的话这个列表里 97% 的行会是空的。
     # **一次查全、在内存里按 code 挑最新的那天**：写成「每只票一条相关子查询」会把这个
     # 接口从一次查询变成上千次（`code` 不是那张表主键的首列，每次都要扫）。
-    concept_rows = db.execute(
-        select(StockConcept.code, StockConcept.trade_date, StockConcept.concept).where(
-            StockConcept.code.in_({row.code for row in rows})
+    concept_rows = []
+    for batch in chunked(hit_codes, _IN_BATCH):
+        concept_rows.extend(
+            db.execute(
+                select(
+                    StockConcept.code, StockConcept.trade_date, StockConcept.concept
+                ).where(StockConcept.code.in_(batch))
+            ).all()
         )
-    ).all()
     latest_seen: dict[str, tuple[date, list[str]]] = {}
     for code, seen_on, concept in concept_rows:
         current = latest_seen.get(code)
@@ -231,13 +251,17 @@ def hits(
 
     # 同花顺行业（三级路径）。与上面的板块**不是一套分类**，见 `PatternStockOut.industry`。
     # 一次查全即可 —— 建池 7 天一次、覆盖全 A，所以基本没有查不到的行；查不到就是 None。
-    industries = dict(
-        db.execute(
-            select(StockBasic.code, StockBasic.industry).where(
-                StockBasic.code.in_({row.code for row in rows})
+    industries: dict[str, str | None] = {}
+    for batch in chunked(hit_codes, _IN_BATCH):
+        industries.update(
+            dict(
+                db.execute(
+                    select(StockBasic.code, StockBasic.industry).where(
+                        StockBasic.code.in_(batch)
+                    )
+                ).all()
             )
-        ).all()
-    )
+        )
 
     grouped: dict[str, PatternStockOut] = {}
     for row in rows:

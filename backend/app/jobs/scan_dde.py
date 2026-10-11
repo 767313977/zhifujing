@@ -451,6 +451,19 @@ def push(
     """
     if already_pushed(day, DDE_SCAN_TASK):
         return {"status": "skipped", "reason": "今天已经推过"}
+    # 与 `push_brief.push` 同一口径：开关关着、或两条通道（webhook / lark-cli 收件人）
+    # 都没配时，**不发也不记 failed** —— 以前没配 webhook 的部署这里会走 send_elements
+    # 然后落一条 dde_scan failed，「数据管理」页每天多一条红字，真故障反而被淹没。
+    # 记 skipped：`already_pushed` 只认 ok，既不影响去重，也不会挡住以后真配置后的推送。
+    if not settings.feishu_push_enabled:
+        _record(day, "skipped", 0, "飞书推送开关关闭（FEISHU_PUSH_ENABLED=false），跳过")
+        return {"status": "skipped", "reason": "推送已关闭（FEISHU_PUSH_ENABLED=false）"}
+    if not settings.feishu_webhook_url.strip() and not settings.feishu_target.strip():
+        _record(day, "skipped", 0, "未配置飞书推送通道（webhook / 收件人均为空），跳过")
+        return {
+            "status": "skipped",
+            "reason": "未配置 FEISHU_WEBHOOK_URL（群机器人）或 FEISHU_TARGET（收件人）",
+        }
     if not hits and not any(boards.values()):
         _record(day, "empty", 0, "无命中，未推送")
         return {"status": "empty"}

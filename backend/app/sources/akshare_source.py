@@ -63,6 +63,17 @@ def _records(df: pd.DataFrame) -> list[dict]:
     ]
 
 
+def _except_lhb_not_published(exc: Exception) -> bool:
+    """龙虎榜调用的重试判定：东财「还没发布」的那一种 TypeError 不重试。
+
+    没发布时 akshare 内部取 `data_json["result"]["pages"]`，而东财给的 `result`
+    是 null → `None[...]` 抛 `TypeError: 'NoneType' object is not subscriptable`。
+    这是**确定性**的：同一时刻重试 3 次（白等 2+4 秒）结果不会变，发布时间没到
+    就是没到。其余异常（断连 / 超时等）照旧重试，宁可慢也别漏采。
+    """
+    return not (isinstance(exc, TypeError) and "subscriptable" in str(exc))
+
+
 def _call_bounded(fn: Callable[[], pd.DataFrame], description: str, timeout: float) -> pd.DataFrame:
     """在**守护线程**里执行 `fn`，最多等 `timeout` 秒。
 
@@ -97,7 +108,13 @@ class AkshareSource:
         self.settings = settings or get_settings()
         self._bucket = TokenBucket(self.settings.akshare_rate_limit)
 
-    def _call(self, fn: Callable[[], pd.DataFrame], description: str) -> pd.DataFrame:
+    def _call(
+        self,
+        fn: Callable[[], pd.DataFrame],
+        description: str,
+        *,
+        retry_on: Callable[[Exception], bool] | None = None,
+    ) -> pd.DataFrame:
         def _do() -> pd.DataFrame:
             self._bucket.acquire()
             return _call_bounded(fn, description, self.settings.http_timeout)
@@ -107,6 +124,7 @@ class AkshareSource:
             retries=self.settings.http_retries,
             backoff=self.settings.http_backoff,
             description=description,
+            retry_on=retry_on,
         )
 
     # ------------------------------------------------------------------ 日历
@@ -163,12 +181,15 @@ class AkshareSource:
         真出故障时反而看不出来。
 
         只吞 TypeError，其它异常（网络、解析）照旧往上抛。
+        这一种 TypeError 已通过 `retry_on` 排除在重试之外（2026-10-11 修）：
+        以前要先白等 2+4 秒重试 3 次才落到这里，每天一次毫无意义。
         """
         ymd = _ymd(trade_date)
         try:
             df = self._call(
                 lambda: ak.stock_lhb_detail_em(start_date=ymd, end_date=ymd),
                 f"akshare 龙虎榜 {trade_date}",
+                retry_on=_except_lhb_not_published,
             )
         except TypeError as exc:
             if "subscriptable" not in str(exc):
@@ -205,6 +226,7 @@ class AkshareSource:
         （`'NoneType' object is not subscriptable`）。非交易日、以及交易日但
         无机构上榜，都会走到这条路径 —— 那是「没有」，不是取数失败，
         不该让整段补采中断。
+        这一种 TypeError 同样不重试（与 `lhb()` 共用 `_except_lhb_not_published`）。
         """
         try:
             df = self._call(
@@ -212,6 +234,7 @@ class AkshareSource:
                     start_date=_ymd(start), end_date=_ymd(end)
                 ),
                 f"akshare 龙虎榜机构统计 {start}~{end}",
+                retry_on=_except_lhb_not_published,
             )
         except TypeError as exc:
             logger.info("龙虎榜机构统计 %s~%s 无数据: %s", start, end, exc)

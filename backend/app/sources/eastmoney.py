@@ -29,6 +29,7 @@ akshare 自己的 `stock_zh_a_hist` 也失败。**本机与云端一致，跟网
 
 import logging
 import os
+import time
 from datetime import date, timedelta
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,25 @@ _UT = "fa5fd1943c7b386f172d6893dbfba10b"
 
 _TIMEOUT = 20.0
 _RETRIES = 3
+# 重试之间的最小退避（秒），线性 1s → 2s。这条路被东财秒断（见模块说明），
+# 失败很快；没有间隔时 3 次请求几乎同一瞬间打出去，跟「一次」没有区别
+_RETRY_BACKOFF = 1.0
+
+
+def _pct_or_none(raw: str | None) -> float | None:
+    """涨跌幅字段转 float；空 / `"-"`（东财对停牌、上市首日等缺失情形的写法）给 None。
+
+    不能像旧代码那样 `float(parts[8] or 0)`：缺失会被伪造成 **0.0% 涨跌幅**，
+    下游会把它当成一根真实的平盘 K 线（`usable_bar` 也不会当残行丢掉）。
+    解析不出来的其它脏值同样给 None，与「缺失即 None」的全库口径一致。
+    """
+    text = (raw or "").strip()
+    if not text or text == "-":
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
 
 
 def clear_proxies() -> None:
@@ -105,7 +125,7 @@ def fetch_daily(code: str, *, days: int) -> list[dict]:
     payload = None
     session = requests.Session()
     session.trust_env = False
-    for _ in range(_RETRIES):
+    for attempt in range(_RETRIES):
         try:
             resp = session.get(
                 _URL,
@@ -128,6 +148,10 @@ def fetch_daily(code: str, *, days: int) -> list[dict]:
             break
         except Exception as exc:  # noqa: BLE001 - 网络异常一律重试
             last_err = exc
+            # 最后一次失败不必再等；这条路失败只要约 50ms，不退避的话三次请求
+            # 几乎同一瞬间发出，重试等于没重试
+            if attempt < _RETRIES - 1:
+                time.sleep(_RETRY_BACKOFF * (attempt + 1))
     if payload is None:
         raise RuntimeError(f"东财直连失败：{last_err}")
 
@@ -153,7 +177,8 @@ def fetch_daily(code: str, *, days: int) -> list[dict]:
                 "low": float(parts[4]),
                 "volume": float(parts[5] or 0) * 100.0,  # 手 → 股
                 "amount": float(parts[6] or 0),
-                "pct_chg": float(parts[8] or 0),
+                # 空 / "-" 给 None（见 _pct_or_none），别伪造 0% 涨跌幅
+                "pct_chg": _pct_or_none(parts[8]),
             }
         )
     return rows

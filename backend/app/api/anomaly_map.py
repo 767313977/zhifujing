@@ -43,10 +43,16 @@ from app.db import SessionLocal, get_db
 from app.models import LimitPool, LimitReason, StockBasic, StockDaily, StockUniverse
 from app.schemas import AnomalyMapOut
 from app.services.patterns import is_st
+from app.sources.base import chunked
 
 router = APIRouter(prefix="/api", tags=["复盘"])
 
 logger = logging.getLogger(__name__)
+
+# 窗口内「涨停池 ∪ 中大阳线候选」去重后最多约全市场代码数（5300+），老版本 SQLite
+# 单条 SQL 变量上限 999，一次 IN 会 OperationalError（3.32+ 放宽到 32766 才不炸）。
+# 按 900 一批拆（给 999 留余量），结果内存合并；窗口（约 22 天）那种小 IN 不用管。
+_IN_BATCH = 900
 
 # 主板前缀**白名单**（含 002 中小板 / 001 / 003 深市主板）。
 # 白名单本身就是排除：300/301（创业板）、688/689（科创板）、8/4（北交所）、
@@ -210,23 +216,31 @@ def build_anomaly_map(session: Session | None = None, days: int = 22) -> dict:
         ).all()
 
         # 板块（同花顺行业）与股票池市值各查一次全量。涉及到的代码就是池子 ∪ 日线候选，
-        # `in_` 一次查回来即可 —— 逐票查市值是这份接口最容易写慢的地方。
-        codes = {row.code for row in pool_rows} | {row.code for row in daily_rows}
-        basics = {
-            row.code: (row.name, row.industry)
-            for row in db.execute(
-                select(StockBasic.code, StockBasic.name, StockBasic.industry).where(
-                    StockBasic.code.in_(codes)
+        # `in_` 查回来即可 —— 逐票查市值是这份接口最容易写慢的地方。集合可能到 5300+，
+        # 按 `_IN_BATCH` 分批（老 SQLite 单条变量上限 999），结果在内存里合并。
+        codes = list({row.code for row in pool_rows} | {row.code for row in daily_rows})
+        basics: dict[str, tuple[str | None, str | None]] = {}
+        mv_map: dict[str, float | None] = {}
+        for batch in chunked(codes, _IN_BATCH):
+            basics.update(
+                {
+                    row.code: (row.name, row.industry)
+                    for row in db.execute(
+                        select(
+                            StockBasic.code, StockBasic.name, StockBasic.industry
+                        ).where(StockBasic.code.in_(batch))
+                    ).all()
+                }
+            )
+            mv_map.update(
+                dict(
+                    db.execute(
+                        select(
+                            StockUniverse.code, StockUniverse.total_mv
+                        ).where(StockUniverse.code.in_(batch))
+                    ).all()
                 )
-            ).all()
-        }
-        mv_map = dict(
-            db.execute(
-                select(StockUniverse.code, StockUniverse.total_mv).where(
-                    StockUniverse.code.in_(codes)
-                )
-            ).all()
-        )
+            )
 
         rows: list[dict] = []
 
