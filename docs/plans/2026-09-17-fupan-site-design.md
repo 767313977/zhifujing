@@ -10647,3 +10647,18 @@ Linux 后 `set -euo pipefail` 被读成 `pipefail\r`，bash 直接报 `invalid o
 
 
 
+
+### 2026-10-11 第三轮全站体检（B 方案）：3 中 + 6 低 + 数据清洗
+
+体检方法同前两轮（静态门禁 → 并行审计 → 服务器取证 → 冒烟 → 逐条复核），16 项冒烟全过、部署后零 ERROR。本轮修复：
+
+- **个股页错误通道污染（中）**：概况 meta 与 DDE 面板原来共用页面级 `error` 判据，被 syncStock 409 / toggleWatch 失败污染（DDE 有数据却显示「取数失败」；关掉红条后永久「加载中」）。新增独立 `profileError`，只由概况 Promise.all 失败写入；补历史后的二次 load 失败仍只写页面级 error（那时概况已有数据）。
+- **封板时间旧格式清洗（中）**：`limit_pool` 的 first/last_seal_time 在 2026-08-27 前是 iFinD 回补写的 HH:MM:SS、之后是东财路径的 HHMMSS；anomaly_map 读端只认新格式（旧段显示 --），且 has_rows 跳过已入库日期、永不自愈。一次性 UPDATE 去冒号（线上 first 22755 / last 16756 行，本地同量），两库剩余含冒号 0。前端固定 days=22 不触发，属 API 层潜伏问题，清洗后彻底消除。
+- **sector_daily 补索引（中）**：主键 (trade_date, sector_code) 前导列帮不上「sector_code 等值打头」的 /series、/compare，每次开板块页全表扫（约 11 万行且随历史增长）。新增 ix_sector_daily_code_date，_add_missing_indexes 启动自动建。
+- **IfindParseError 可重试（低）**：HTTP 200 但 body 坏/空/非 JSON 对象，从不可重试改为可重试（网关抽风下次往往就好）；顺带收口 _content_text(None) 的 AttributeError 漏出（原来会把只 except IfindError 的调用方变 500）。
+- **锁耗尽噪声（低）**：15:05 锁重试耗尽写 daily_tail=failed 前先查 tail_done——持锁方已完成就不写；message 注明「稍后出现 ok/partial 以那条为准」。
+- **Dashboard dismiss 隐藏（低）**：次级区块错误条关掉后整个区块不渲染（原来渲染空表，「0 家涨停」会被误读成行情结论）。
+- **patterns 形态分支 IN 分批（低）**：or_(in_(batch)...) 按 900 分批，空集行为不变（上游已 return []）。
+- **usage 外推样本窗（低）**：今天零调用时不把今天计入分母（防日均被稀释、projected 偏低、报警偏晚）；非交易日不动（本来就不在日历样本里）。
+- **异动 40 亿门槛口径注明（低）**：StockDaily 无当日市值列（PRAGMA 实查 11 列），不改查询，FILTER_TEXT 如实注明两套市值来源（涨停/炸板当日东财值、中大阳建池快照值）。
+- **注册表单（低）**：密码 <8 位先本地报错、不发 POST。

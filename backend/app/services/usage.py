@@ -205,9 +205,20 @@ def quota_status(day: date | None = None, settings: Settings | None = None) -> d
     quota = settings.ifind_monthly_quota
     used = calls_between(start, today)
     passed, total = cycle_trade_days(today, start, end)
+    today_calls = calls_on(today)
 
     counting_since = first_record_day(start, today)
     sampled = trade_days_between(counting_since, today) if counting_since else 0
+    # 「今天」只有已经花过调用时才算一天样本：周期末的清晨 / 非交易日查询时当天
+    # 采集还没跑，used 里今天贡献为 0，把 0 计进分母会稀释日均 → projected 偏低 →
+    # 80/90% 让路比应有的更晚 —— 外推低估正是本模块要防的方向，宁保守。
+    # 注意：非交易日的今天本来就不在样本里（日历表没有这行），不能再减一天；
+    # 只有「今天是交易日 且 今天零调用」才把样本窗缩到上一交易日。counting_since
+    # 那天计入的既有语义不变 —— 它是最早有记录的日子、必有调用，不会被减到。
+    # sampled 减到 0 时下方 `>= PROJECTION_MIN_DAYS` 不成立，projected 留 None，
+    # 与现状 counting_since 为 None 时的行为一致，不会除零。
+    if counting_since and today_calls == 0 and trade_days_between(today, today):
+        sampled -= 1
     projected = None
     # 样本太小时外推没有意义（一天的量能放大成整周期天量），宁可不给
     if sampled >= PROJECTION_MIN_DAYS and total:
@@ -219,7 +230,7 @@ def quota_status(day: date | None = None, settings: Settings | None = None) -> d
         "monthly_quota": quota,
         "cycle_calls": used,
         "cycle_remaining": max(quota - used, 0),
-        "today_calls": calls_on(today),
+        "today_calls": today_calls,
         "cycle_trade_days_passed": passed,
         "cycle_trade_days_total": total,
         # 计量从哪天开始。它晚于周期起点时，cycle_calls 只是部分周期的消耗

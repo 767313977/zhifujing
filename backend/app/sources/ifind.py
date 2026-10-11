@@ -98,6 +98,18 @@ class IfindAuthError(IfindError):
     """
 
 
+class IfindParseError(IfindError):
+    """iFinD 响应解析失败（HTTP 200 但 body 坏 / 空 / 不是 JSON 对象）。
+
+    归为**可重试**（2026-10-11 加）：这类多半是网关抽风或响应被截断 ——
+    HTTP 层成功了、内容坏了，下一次请求往往就正常；它与「参数错 / 业务
+    code!=0」那种换什么都不变的确定性错误不是一回事。此前它与普通
+    IfindError 混在一起被划成不可重试，偶发坏 body 会从「重试自愈」
+    退化成「直接把错误抛给页面」（日线那类有次日按缺日重采兜底，
+    个股 DDE / 手动同步这类交互路径则是当场报错）。
+    """
+
+
 # iFinD 限流时 HTTP 状态码仍是 200，错误藏在工具结果文本里，只能按文本识别
 _RATE_LIMIT_MARKERS = ("请求过于频繁", "status: 429")
 
@@ -133,7 +145,7 @@ def _content_text(response: dict) -> str:
         item["text"] for item in content if isinstance(item, dict) and item.get("text")
     ]
     if not texts:
-        raise IfindError(
+        raise IfindParseError(
             f"iFinD 返回内容为空: {json.dumps(response, ensure_ascii=False)[:200]}"
         )
     return "\n".join(texts)
@@ -156,7 +168,9 @@ def _parse_body(text: str) -> Any:
 
     ⚠️ `json.loads` 抛的是 `json.JSONDecodeError`（`ValueError` 的子类），它**不是**
     `IfindError` —— 漏出去会让「页面现取 DDE」之类只 `except IfindError` 的调用方变成
-    500。所以这里把解析失败统一转成 `IfindError`（数据源层对外只承诺这一种失败口径）。
+    500。所以这里把解析失败统一转成 `IfindParseError`（IfindError 的子类，数据源层对外
+    仍只承诺 IfindError 一种失败口径；子类是为了让 retry_call 能把它与确定性错误区分开、
+    归入可重试，见 `IfindParseError` 的说明）。
     """
     text = (text or "").strip()
     if not text:
@@ -165,7 +179,7 @@ def _parse_body(text: str) -> Any:
         try:
             return json.loads(text)
         except json.JSONDecodeError as exc:
-            raise IfindError(f"无法解析 iFinD 响应: {text[:200]}") from exc
+            raise IfindParseError(f"无法解析 iFinD 响应: {text[:200]}") from exc
     for line in text.splitlines():
         if line.startswith("data:"):
             payload = line[len("data:") :].strip()
@@ -173,8 +187,8 @@ def _parse_body(text: str) -> Any:
                 try:
                     return json.loads(payload)
                 except json.JSONDecodeError as exc:
-                    raise IfindError(f"无法解析 iFinD 响应: {text[:200]}") from exc
-    raise IfindError(f"无法解析 iFinD 响应: {text[:200]}")
+                    raise IfindParseError(f"无法解析 iFinD 响应: {text[:200]}") from exc
+    raise IfindParseError(f"无法解析 iFinD 响应: {text[:200]}")
 
 
 def _extract(response: dict) -> tuple[dict, dict]:
@@ -186,7 +200,7 @@ def _extract(response: dict) -> tuple[dict, dict]:
     try:
         outer = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise IfindError(f"iFinD 返回无法解析: {text[:200]}") from exc
+        raise IfindParseError(f"iFinD 返回无法解析: {text[:200]}") from exc
 
     # 成功码可能是 int 也可能是字符串（`"0"`）—— 用 `str()` 归一后再比，
     # 只认 int 的话来源一旦改成字符串，**正常响应会被判成错误**（2026-09-27 修）
@@ -338,6 +352,15 @@ class IfindClient:
                         f"{tool} 返回错误: {json.dumps(body['error'], ensure_ascii=False)}"
                     )
                 response.raise_for_status()
+                if not isinstance(body, dict):
+                    # HTTP 200 但 body 不是 JSON 对象（空 / 截断 / 数组）。以前会掉进
+                    # 下面 `_content_text(body)` 的 `None.get` 抛 **AttributeError** ——
+                    # 它不属于 RequestException，会一路漏出 call() 末尾的统一收口，
+                    # 把「只 except IfindError」的调用方变成 500（2026-10-11 收口）。
+                    # 归为可重试的解析错：网关抽风 / 半截响应，下一次往往就正常了。
+                    raise IfindParseError(
+                        f"iFinD 响应不是 JSON 对象: {str(body)[:120]}"
+                    )
 
                 # 限流时 HTTP 仍是 200，错误在工具结果文本里。必须在此处（重试范围内）
                 # 判定，否则 _extract 在重试之外，429 会被当成解析失败而不重试。
@@ -357,14 +380,20 @@ class IfindClient:
             """只对「下一次请求可能成功」的错误重试：
 
             - `IfindRateLimitError`（429 / 文案限流）—— 退避后大概率恢复；
+            - `IfindParseError`（HTTP 200 但 body 坏 / 空 / 非 JSON 对象）——
+              网关抽风或响应被截断，下一次往往就正常（2026-10-11 从「不可重试」
+              改过来：它和参数错那种确定性失败不是一回事，不重试会让偶发坏 body
+              直接砸到页面上）；
             - 网络层超时 / 断连（`requests.Timeout` / `ConnectionError`，含其
               ChunkedEncodingError 之类子类）—— 偶发抖动；
             - HTTP 5xx —— 服务端临时故障。
-            其余**确定性错误**一律不重试：普通 `IfindError`（参数错、业务 code!=0、
-            无法解析响应）、`IfindAuthError`（401/403）、4xx —— 重试多少次都是同一个
+            其余**确定性错误**一律不重试：普通 `IfindError`（参数错、业务 code!=0）、
+            `IfindAuthError`（401/403）、4xx —— 重试多少次都是同一个
             结果，只会白持锁、白等 2/4 秒、白发被计费的 tools/call。
             """
             if isinstance(exc, IfindRateLimitError):
+                return True
+            if isinstance(exc, IfindParseError):
                 return True
             if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
                 return True

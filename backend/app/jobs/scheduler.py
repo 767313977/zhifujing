@@ -460,13 +460,23 @@ class DailyScheduler:
                         # ② 17:30 / 19:30 的收盘后任务（`_run_late_unguarded` 末尾）会
                         # 据此把当天尾部补掉 —— 那时锁早释放了。
                         # ⚠️ 只记「尾部未跑」，别假装基础采集成功（日线那些仍缺）。
+                        # 写之前先看一眼（2026-10-11 同日补）：**拿到锁的那一方**若已经
+                        # 把尾部跑完（ok/partial），这条 failed 就是与事实相反的噪声，
+                        # 不写。挡不住的只剩「赢家还在跑、12 分钟后才收尾」的罕见交错
+                        # —— 那时同日会先后出现 failed 与 ok 两条，message 已注明以后者为准。
+                        if tail_done(today):
+                            logger.info(
+                                "%s：持锁方已完成当天尾部链路，不再写缺口记录", reason
+                            )
+                            return
                         try:
                             _record_log(
                                 today,
                                 TAIL_TASK,
                                 "failed",
                                 0,
-                                f"{reason}：主采集重试 {attempt} 次仍拿不到锁，尾部未跑，等收盘后任务补",
+                                f"{reason}：主采集重试 {attempt} 次仍拿不到锁，尾部未跑，"
+                                "等收盘后任务补（若本日稍后出现 ok/partial 记录，以那条为准）",
                             )
                         except Exception:  # noqa: BLE001 - 记账失败不能盖住主流程
                             logger.warning("写尾部缺口记录失败", exc_info=True)

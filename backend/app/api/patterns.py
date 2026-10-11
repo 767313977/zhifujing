@@ -15,7 +15,7 @@ from collections import OrderedDict
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -182,7 +182,18 @@ def hits(
             select(PatternHit)
             .where(
                 PatternHit.trade_date == target,
-                PatternHit.code.in_(codes),
+                # codes 是「命中该形态的票」，单形态 + min_score=0 时可到全市场量级
+                # （5300+），老 SQLite 单条 SQL 变量上限 999、一次 IN 会 OperationalError
+                # —— 与下方三处「按 code 集合 IN 查」一样按 `_IN_BATCH`（900，给 999
+                # 留余量）分批再 OR 起来，各批结果在内存里合并，与一次 IN 全量等价。
+                # sorted 让分批稳定可复现（codes 来自 distinct 查询、顺序未定义）。
+                # 走到这里 codes 必非空 —— 空集在上面已经 `return []` 了。
+                or_(
+                    *[
+                        PatternHit.code.in_(batch)
+                        for batch in chunked(sorted(codes), _IN_BATCH)
+                    ]
+                ),
                 # 被删掉的形态的标签也要滤掉，否则那一行会多出一个「其他」组
                 PatternHit.pattern.in_(_KEYS),
                 # `min_score` 两种模式下都过滤行，口径一致（默认 0 时是空操作）

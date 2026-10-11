@@ -767,3 +767,12 @@ Index("ix_lhb_code", Lhb.code)
 Index("ix_stock_daily_code_date", StockDaily.code, StockDaily.trade_date)
 Index("ix_stock_concept_code_date", StockConcept.code, StockConcept.trade_date)
 Index("ix_stock_dde_code_date", StockDde.code, StockDde.trade_date)
+# sector_daily 的同款「按 code 取序列」索引（2026-10-11 加）。它的主键是
+# (trade_date, sector_code)、**trade_date 打头**，而这张表的高频查询全是
+# **sector_code 打头**：板块详情 /series（`sector_code == code AND trade_date <= T
+# ORDER BY trade_date DESC`）与板块对比 /compare（`sector_code IN (...) AND
+# trade_date BETWEEN`，都在 api/sector.py）—— 前导列对不上，主键帮不了忙，
+# 每次打开板块页都是全表扫（表约 11 万行且随历史增长）。复合索引让「按 code
+# 过滤 + 按日期排序/取范围」一次走索引；老库由 `db._add_missing_indexes`
+# 按索引名自动补建（幂等）。
+Index("ix_sector_daily_code_date", SectorDaily.sector_code, SectorDaily.trade_date)

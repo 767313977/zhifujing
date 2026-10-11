@@ -70,7 +70,15 @@ TYPE_LIMIT_UP = "涨停"
 TYPE_BROKEN = "涨停炸板"
 TYPE_BIG_YANG = "中大阳线异动"
 
-FILTER_TEXT = "主板(含002) / 非ST / 总市值≥40亿（本站口径；原型用流通市值）"
+# ⚠️ 同一个 40 亿门槛用的是**两套市值**：涨停 / 炸板来自 `limit_pool`（东财、当日值），
+# 中大阳来自 `stock_universe`（iFinD 建池快照、最多 7 天前）—— `stock_daily` 不存市值
+# （模型与实际库都确认过），没有「当日值」可换。边界票（40 亿上下波动）可能一类进了
+# 另一类没进，如实写进文案、不改查询。
+FILTER_TEXT = (
+    "主板(含002) / 非ST / 总市值≥40亿（本站口径；原型用流通市值）。"
+    "市值两套来源：涨停/炸板按当日东财值，中大阳按建池日快照（最多7天前），"
+    "边界票归类可能略有出入"
+)
 SOURCE_TEXT = "东财涨停/炸板池(limit_pool) + 本地日线 · 板块=同花顺行业末段"
 
 # 同花顺行业末段结尾的**级别记号**（它自己用来标 Ⅰ/Ⅱ/Ⅲ 级）。展示与分组都要去掉，
@@ -297,7 +305,8 @@ def build_anomaly_map(session: Session | None = None, days: int = 22) -> dict:
                 )
 
         # 3) 中大阳线异动：当日**未在涨停/炸板池**、日线涨幅 ≥5% 的票。
-        #    市值取 `stock_universe`（日线表不存市值）。
+        #    市值取 `stock_universe`（日线表不存市值）—— 与上面两类的 `limit_pool`
+        #    当日值是两套口径，边界票归类可能略有出入（已在 FILTER_TEXT 注明）。
         for row in daily_rows:
             day = row.trade_date
             if row.code in pool_codes.get(day, set()):
