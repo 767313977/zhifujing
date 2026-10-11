@@ -20,8 +20,10 @@ class IndexQuote(ApiModel):
     amount: float | None
     up_count: int | None
     down_count: int | None
-    limit_up_count: int | None
-    limit_down_count: int | None
+    # limit_up_count / limit_down_count 已删（2026-10-11）：那是 iFinD 高频接口
+    # 透传的涨停家数口径（实测仅上证有值，services/sentiment 自己都判它「严重
+    # 低估」不可用），与情绪区的东财涨停池口径并存、却从未被前端消费 —— 留着
+    # 只会哪天被误当成「涨停家数」用。库里的列保留（采集顺带写入，零额外配额）。
     # --- 以下由本地算法补上（`services/index_tech.py`，不落库）---
     ma5: float | None = None
     ma20: float | None = None

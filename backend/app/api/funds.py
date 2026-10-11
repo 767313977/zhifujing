@@ -175,14 +175,41 @@ def overview(
     )
 
 
-def _etf_net_inflow(session: Session, target: date, prev: date | None) -> float | None:
-    """ETF 当日净申赎（元）= Σ(份额变化 × 当日收盘价)。
+# 货币现金类的分类名（词典见 services/etf_category.py 的「货币现金」条目）。
+# 申赎计算要**整类剔除**这一类，理由见 `_money_fund_codes` 的 docstring。
+MONEY_CATEGORY = "货币现金"
 
+
+def _money_fund_codes(session: Session) -> set[str]:
+    """货币现金类 ETF 的代码集合。
+
+    **为什么申赎要整类剔除**（2026-10-11 核实，证据来自本地/线上库实测）：
+    iFinD 的 fund_profile 对场内货基给的 `shares` 不可信 ——
+    1. **单位不统一**：511880 银华日利 / 511990 华宝添益按「份」是对的
+       （11.4 亿份 / 9.8 亿份 × ~100 元 ≈ 1151 / 976 亿元，与实际规模相符），
+       但 511910 融通货币只给 96,000 份 × 100 元 = 960 万元，明显不是同一单位；
+    2. **覆盖漂移**：两大货基只在部分交易日出现（09-21 有、09-22/23 缺），
+       「缺席即跳过」意味着每天的申赎合计其实是一批随机子集的和；
+    3. 货基申赎本身是现金管理行为，不代表方向性资金，对复盘口径只有噪声。
+    剔除的只是**申赎金额**类计算；货基的 close / 涨跌幅 / 成交额没错，不受影响。
+    """
+    return set(
+        session.scalars(
+            select(EtfCategory.code).where(EtfCategory.category == MONEY_CATEGORY)
+        )
+    )
+
+
+def _etf_net_inflow(session: Session, target: date, prev: date | None) -> float | None:
+    """ETF 当日净申赎（元）= Σ(份额变化 × 当日收盘价)，**不含货币现金类**。
+
+    货基份额的单位与覆盖都不可信，计进去是噪声（见 `_money_fund_codes`）。
     没有前一日数据（首次采集）时返回 None 而不是 0 —— 「没得比」与
     「今天一分钱没进来」是两件事，后者是个结论，前者只是缺数据。
     """
     if prev is None:
         return None
+    money = _money_fund_codes(session)
     today = {
         row.code: row
         for row in session.scalars(select(EtfShare).where(EtfShare.trade_date == target))
@@ -194,6 +221,8 @@ def _etf_net_inflow(session: Session, target: date, prev: date | None) -> float 
     total = 0.0
     matched = False
     for code, row in today.items():
+        if code in money:
+            continue
         before = yesterday.get(code)
         if before is None or row.shares is None or before.shares is None or not row.close:
             continue
@@ -320,8 +349,13 @@ def _etf_flows(
     if not yesterday:
         return target, prev, [], False
 
+    # 货币现金类整类不进申赎榜：单只榜按净申赎排名，货基的错误份额变化会霸榜；
+    # 行业榜也会多出一行噪声。理由与证据见 `_money_fund_codes`（2026-10-11）。
+    money = _money_fund_codes(session)
     items: list[EtfFlowItem] = []
     for row in today:
+        if row.code in money:
+            continue
         before = yesterday.get(row.code)
         if before is None or row.shares is None or before.shares is None:
             continue
