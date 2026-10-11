@@ -137,6 +137,11 @@ class LimitStock(ApiModel):
     # **涨停原因**，来自同花顺涨停池的 `reason_type`（`limit_reason` 表），
     # 形如「房地产+城市更新+北京国资」。原样展示，不拆分。
     reason: str | None = None
+    # 「几天几板」：最近一段的**交易日跨度**与**涨停次数**（`5天3板` → 5 / 3）。
+    # 只在涨停次数 ≥ 2 时给（首板由 `consecutive` 表达，这里不重复）。
+    # 口径见 `api/limit._board_sequences`；目前只有涨停池（type=up）会填。
+    board_days: int | None = None
+    board_count: int | None = None
 
 
 class LadderLevel(BaseModel):

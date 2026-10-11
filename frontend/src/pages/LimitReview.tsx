@@ -44,6 +44,8 @@ export default function LimitReview() {
   const [themes, setThemes] = useState<LimitThemes | null>(null)
   // 点题材标签筛选涨停明细，null 表示不筛
   const [themeFilter, setThemeFilter] = useState<string | null>(null)
+  // 点行业标签再筛一层（同花顺行业口径，与上面的开盘啦板块是两个维度），null 表示不筛
+  const [industryFilter, setIndustryFilter] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -69,6 +71,7 @@ export default function LimitReview() {
       setLoading(true)
       setError(null)
       setThemeFilter(null)
+      setIndustryFilter(null)
       try {
         const [up, brokenPool, themeData] = await Promise.all([
           api.limitPool('up', target),
@@ -115,11 +118,29 @@ export default function LimitReview() {
     return map
   }, [themes])
 
-  /** 筛选后要展示的涨停股。用全量题材归属判断，与题材共振面板上的家数同口径。 */
+  /** 按**同花顺行业**聚合今日涨停家数（给涨停明细上方的行业筛选条用）。 */
+  const industryCounts = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const stock of stocks) {
+      if (!stock.industry) continue
+      map.set(stock.industry, (map.get(stock.industry) ?? 0) + 1)
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1])
+  }, [stocks])
+
+  /**
+   * 筛选后要展示的涨停股。两个条件是**同时**生效的：
+   * - `themeFilter` 按**开盘啦板块**（题材，`themeIndex` 那份全量归属）
+   * - `industryFilter` 按**同花顺行业**（涨停明细里那一列）
+   * 两个维度不互相替代，所以是「与」而不是「或」。
+   */
   const visibleStocks = useMemo(() => {
-    if (!themeFilter) return stocks
-    return stocks.filter((stock) => themeIndex[stock.code]?.includes(themeFilter))
-  }, [stocks, themeFilter, themeIndex])
+    return stocks.filter((stock) => {
+      if (themeFilter && !themeIndex[stock.code]?.includes(themeFilter)) return false
+      if (industryFilter && stock.industry !== industryFilter) return false
+      return true
+    })
+  }, [stocks, themeFilter, themeIndex, industryFilter])
 
   /** 首封时间分桶计数。 */
   const timeDistribution = useMemo(() => {
@@ -266,6 +287,41 @@ export default function LimitReview() {
         ))}
       </select>
     </>
+  )
+
+  /** 涨停明细上方的**行业**筛选条：点一下只留该行业、再点清除。与题材筛选可叠加。 */
+  const industryBar = (
+    <div className="flex flex-wrap gap-1.5 border-b border-line-soft px-3 py-2">
+      <button
+        type="button"
+        onClick={() => setIndustryFilter(null)}
+        className={[
+          'border px-2 py-[3px] text-[13px] transition-colors',
+          industryFilter === null
+            ? 'border-accent/50 text-accent'
+            : 'border-line text-fg-muted hover:text-fg',
+        ].join(' ')}
+      >
+        全部 {stocks.length}
+      </button>
+      {industryCounts.map(([name, count]) => (
+        <button
+          key={name}
+          type="button"
+          onClick={() => setIndustryFilter(name === industryFilter ? null : name)}
+          title={`${name} 今日有 ${count} 只涨停`}
+          className={[
+            'flex items-baseline gap-1.5 border px-2 py-[3px] text-[13px] transition-colors',
+            name === industryFilter
+              ? 'border-accent/50 text-accent'
+              : 'border-line text-fg-muted hover:text-fg',
+          ].join(' ')}
+        >
+          <span>{name}</span>
+          <span className="num text-fg">{count}</span>
+        </button>
+      ))}
+    </div>
   )
 
   return (
@@ -415,7 +471,13 @@ export default function LimitReview() {
           </Panel>
         </div>
 
-        <LimitTable type="up" stocks={visibleStocks} loading={loading} delay={240} />
+        <LimitTable
+          type="up"
+          stocks={visibleStocks}
+          loading={loading}
+          delay={240}
+          header={industryBar}
+        />
         <LimitTable
           type="broken"
           stocks={broken?.stocks ?? []}

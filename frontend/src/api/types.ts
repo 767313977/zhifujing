@@ -98,6 +98,12 @@ export interface LimitStock {
   board: string | null
   /** **涨停原因**（同花顺）：`房地产+城市更新+北京国资`。原样展示，不拆分。 */
   reason: string | null
+  /**
+   * 「几天几板」：最近一段的**交易日跨度**与**涨停次数**（`5天3板` → 5 / 3）。
+   * 只在涨停次数 ≥ 2 时给（首板由 `consecutive` 表达）；只有涨停池会填。
+   */
+  board_days: number | null
+  board_count: number | null
 }
 
 export interface LadderLevel {

@@ -128,41 +128,118 @@ def _reasons(session: Session, trade_date: date) -> dict[str, str]:
     )
 
 
+# 「几天几板」的回看上限（交易日）。够覆盖绝大多数连板 / 反包序列，再长也没意义
+BOARD_SEQ_LOOKBACK = 10
+
+
+def _board_sequences(
+    session: Session, trade_date: date, codes: list[str]
+) -> dict[str, tuple[int, int]]:
+    """`{code: (N天, M板)}` —— 「几天几板」口径。
+
+    定义（与常见短线口径一致）：
+    - 从该日往前看**连续的一段交易日**（含当日），**遇到连续 2 个非涨停日就断**；
+    - `M`（几板）= 这一段里涨停的天数；
+    - `N`（几天）= 从这一段里**最早那个涨停日**到当日的交易日数（首尾都算）；
+    - `M < 2` 的不返回：首板由 `consecutive` 表达，这里不重复。
+
+    例：涨停日落在 −4 / −2 / 0（其余是普通日）→ 段在第 3 个空档前截住，
+    `N=5`、`M=3` → 「5天3板」。
+
+    ⚠️ 段**按交易日历**走（不是自然日）：否则停牌会把跨度拉长成「10天3板」这种怪值。
+    """
+    if not codes:
+        return {}
+    days = list(
+        session.scalars(
+            select(TradeCalendar.trade_date)
+            .where(TradeCalendar.trade_date <= trade_date)
+            .order_by(TradeCalendar.trade_date.desc())
+            .limit(BOARD_SEQ_LOOKBACK + 1)
+        )
+    )
+    if not days or days[0] != trade_date:
+        return {}  # 当日不在日历里（数据异常），算不了
+
+    hits: dict[str, set[date]] = {}
+    for day, code in session.execute(
+        select(LimitPool.trade_date, LimitPool.code).where(
+            LimitPool.pool_type == "up",
+            LimitPool.trade_date.in_(days),
+            LimitPool.code.in_(codes),
+        )
+    ).all():
+        hits.setdefault(code, set()).add(day)
+
+    sequences: dict[str, tuple[int, int]] = {}
+    for code, hit_days in hits.items():
+        # block 按「今→古」排列；连续 2 个非涨停日就断
+        block: list[bool] = []
+        misses = 0
+        for day in days:
+            if day in hit_days:
+                block.append(True)
+                misses = 0
+            else:
+                misses += 1
+                if misses >= 2:
+                    break
+                block.append(False)
+        positions = [index for index, hit in enumerate(block) if hit]
+        if len(positions) < 2:
+            continue
+        # positions[-1] 是段里最早的涨停日 → 交易日跨度 = 它的下标 + 1
+        sequences[code] = (positions[-1] + 1, len(positions))
+    return sequences
+
+
 def _to_stock(
     row: LimitPool,
     boards: dict[str, str],
     reasons: dict[str, str],
     *,
     consecutive: int | None = None,
+    board_seq: tuple[int, int] | None = None,
 ) -> LimitStock:
     """开盘啦板块名与涨停原因都不在 `LimitPool` 里（那张表是东财口径），校验后补进去。
 
     `consecutive` 传了就以传入值为准：天梯按 `consecutive or 1` 分层、明细直接读原字段，
     不统一的话同一只票会「在天梯里是 1 板、在明细里是 —」（2026-09-27 修）。
+
+    `board_seq` 是「几天几板」的 `(N天, M板)`（见 `_board_sequences`），不传就不填。
     """
-    return LimitStock.model_validate(row).model_copy(
-        update={
-            "board": boards.get(row.code),
-            "reason": reasons.get(row.code),
-            "consecutive": row.consecutive if consecutive is None else consecutive,
-        }
-    )
+    update: dict[str, object] = {
+        "board": boards.get(row.code),
+        "reason": reasons.get(row.code),
+        "consecutive": row.consecutive if consecutive is None else consecutive,
+    }
+    if board_seq is not None:
+        update["board_days"] = board_seq[0]
+        update["board_count"] = board_seq[1]
+    return LimitStock.model_validate(row).model_copy(update=update)
 
 
 def _build_ladder(
-    rows: list[LimitPool], boards: dict[str, str], reasons: dict[str, str]
+    rows: list[LimitPool],
+    boards: dict[str, str],
+    reasons: dict[str, str],
+    sequences: dict[str, tuple[int, int]] | None = None,
 ) -> list[LadderLevel]:
     """按连板高度分层，高度从高到低。"""
     buckets: dict[int, list[LimitPool]] = {}
     for row in rows:
         buckets.setdefault(row.consecutive or 1, []).append(row)
+    sequences = sequences or {}
     return [
         LadderLevel(
             consecutive=level,
             count=len(items),
             # 明细也按这一层的层号显示（原字段为空的票否则会显示成「—」）
             stocks=[
-                _to_stock(item, boards, reasons, consecutive=level) for item in items
+                _to_stock(
+                    item, boards, reasons, consecutive=level, board_seq=sequences.get(item.code)
+                )
+                for item in items
             ],
         )
         for level, items in sorted(buckets.items(), reverse=True)
@@ -191,11 +268,13 @@ def limit_pool(
             )
         )
     )
-    # 只要涨停池查这两张表 —— `stock_concept` 与 `limit_reason` 都只覆盖涨停股，
-    # 跌停 / 炸板池本来就没有对应数据
+    # 只要涨停池查这几张表 —— `stock_concept` / `limit_reason` 只覆盖涨停股，
+    # 跌停 / 炸板池本来就没有对应数据（「几天几板」同理，只对涨停有意义）
+    sequences: dict[str, tuple[int, int]] = {}
     if pool_type == "up":
         boards = _boards(session, trade_date)
         reasons = _reasons(session, trade_date)
+        sequences = _board_sequences(session, trade_date, [row.code for row in rows])
     else:
         boards, reasons = {}, {}
     return LimitPoolOut(
@@ -203,8 +282,12 @@ def limit_pool(
         pool_type=pool_type,
         total=len(rows),
         # 梯队只对涨停有意义：跌停是「连续跌停」、炸板池没有连板数
-        ladder=_build_ladder(rows, boards, reasons) if pool_type == "up" else None,
-        stocks=[_to_stock(row, boards, reasons) for row in rows],
+        ladder=(
+            _build_ladder(rows, boards, reasons, sequences) if pool_type == "up" else None
+        ),
+        stocks=[
+            _to_stock(row, boards, reasons, board_seq=sequences.get(row.code)) for row in rows
+        ],
     )
 
 

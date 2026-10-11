@@ -14,6 +14,11 @@ interface LimitTableProps {
   delay?: number
   /** 首屏取数期间为真。不加这个的话，空列表会被显示成「当日无数据」 */
   loading?: boolean
+  /**
+   * 表格上方插一条（如按行业筛选的标签条）。只有涨停复盘页的涨停明细用；
+   * 取数中 / 无数据时不渲染 —— 那条本身是从数据里聚合出来的，空表给不出选项。
+   */
+  header?: ReactNode
 }
 
 interface Column {
@@ -194,6 +199,21 @@ function buildColumns(
       ),
       sortValue: (s) => s.consecutive,
     })
+    /* 「几天几板」（`5天3板`）：与「连板」是两个指标 —— 那个是**连续**几个板，
+       这个是**最近一段**（遇连续 2 个非涨停日就断）里的涨停次数与交易日跨度。
+       反包 / 断板再上的票只有这一列看得出来。数据只在 M≥2 时才有，没有就是「—」。 */
+    columns.push({
+      key: 'board_seq',
+      label: '几天几板',
+      render: (s) => (
+        <span className="num text-fg-muted">
+          {s.board_count != null
+            ? `${fmtInt(s.board_days)}天${fmtInt(s.board_count)}板`
+            : '—'}
+        </span>
+      ),
+      sortValue: (s) => s.board_count,
+    })
   }
 
   if (type !== 'broken') {
@@ -226,6 +246,19 @@ function buildColumns(
       render: (s) => <span className="num text-fg-muted">{fmtSealTime(s.first_seal_time)}</span>,
       sortValue: (s) => s.first_seal_time,
     })
+    /* 「最后封板」：涨停当天的**最后一次封板时间**。炸过板又回封的票，它与「首封」
+       差得多远就是回封成本。窄屏收起（与「行业 / 开盘红板块」同档的细节列）。 */
+    if (type === 'up') {
+      columns.push({
+        key: 'last_seal',
+        label: '最后封板',
+        narrowHidden: true,
+        render: (s) => (
+          <span className="num text-fg-muted">{fmtSealTime(s.last_seal_time)}</span>
+        ),
+        sortValue: (s) => s.last_seal_time,
+      })
+    }
   }
 
   columns.push({
@@ -289,6 +322,7 @@ export default function LimitTable({
   stocks,
   delay = 280,
   loading = false,
+  header,
 }: LimitTableProps) {
   const columns = buildColumns(type, {
     hasBoard: stocks.some((stock) => stock.board),
@@ -310,6 +344,9 @@ export default function LimitTable({
       }
       delay={delay}
     >
+      {/* 筛选条（如按行业）：取数中 / 空表时不渲染 —— 它本身是从数据里聚合出来的 */}
+      {!loading && stocks.length > 0 && header}
+
       {loading ? (
         <div className="px-4 py-8 text-center text-[14px] text-fg-dim">加载中…</div>
       ) : stocks.length === 0 ? (
