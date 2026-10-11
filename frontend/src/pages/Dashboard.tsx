@@ -265,12 +265,17 @@ export default function Dashboard() {
             )
           )}
 
-          {data.sectionErrors.up && !dismissed.up ? (
-            <SectionError
-              title="涨停梯队与涨停明细"
-              message={data.sectionErrors.up}
-              onClose={() => dismiss('up')}
-            />
+          {data.sectionErrors.up ? (
+            // 失败未关：显示错误条；已关：整个区块不渲染。失败回落的是 emptyPool 空表，
+            // 照常渲染的话「0 家涨停 / 当日无数据」会被误读成当天的行情结论（2026-10-11 修）。
+            // 下面跌停/炸板/龙虎榜/自选四个区块是同一套处理，不再重复注释
+            !dismissed.up ? (
+              <SectionError
+                title="涨停梯队与涨停明细"
+                message={data.sectionErrors.up}
+                onClose={() => dismiss('up')}
+              />
+            ) : null
           ) : (
             <>
               <LadderBoard
@@ -286,31 +291,37 @@ export default function Dashboard() {
 
           {/* 跌停/炸板不并排：这两张表都有 12 列，并排后单列容器装不下，
               会在 1280~1500px 这个常用宽度上溢出。整宽堆叠反而更稳。 */}
-          {data.sectionErrors.down && !dismissed.down ? (
-            <SectionError
-              title="跌停明细"
-              message={data.sectionErrors.down}
-              onClose={() => dismiss('down')}
-            />
+          {data.sectionErrors.down ? (
+            !dismissed.down ? (
+              <SectionError
+                title="跌停明细"
+                message={data.sectionErrors.down}
+                onClose={() => dismiss('down')}
+              />
+            ) : null
           ) : (
             <LimitTable type="down" stocks={data.down.stocks} loading={loading} delay={300} />
           )}
-          {data.sectionErrors.broken && !dismissed.broken ? (
-            <SectionError
-              title="炸板明细"
-              message={data.sectionErrors.broken}
-              onClose={() => dismiss('broken')}
-            />
+          {data.sectionErrors.broken ? (
+            !dismissed.broken ? (
+              <SectionError
+                title="炸板明细"
+                message={data.sectionErrors.broken}
+                onClose={() => dismiss('broken')}
+              />
+            ) : null
           ) : (
             <LimitTable type="broken" stocks={data.broken.stocks} loading={loading} delay={320} />
           )}
 
-          {data.sectionErrors.lhb && !dismissed.lhb ? (
-            <SectionError
-              title="龙虎榜"
-              message={data.sectionErrors.lhb}
-              onClose={() => dismiss('lhb')}
-            />
+          {data.sectionErrors.lhb ? (
+            !dismissed.lhb ? (
+              <SectionError
+                title="龙虎榜"
+                message={data.sectionErrors.lhb}
+                onClose={() => dismiss('lhb')}
+              />
+            ) : null
           ) : (
             <LhbTable items={data.lhb} loading={loading} delay={360} />
           )}
@@ -324,12 +335,14 @@ export default function Dashboard() {
             delay={380}
           />
 
-          {data.sectionErrors.watchlist && !dismissed.watchlist ? (
-            <SectionError
-              title="自选股表现"
-              message={data.sectionErrors.watchlist}
-              onClose={() => dismiss('watchlist')}
-            />
+          {data.sectionErrors.watchlist ? (
+            !dismissed.watchlist ? (
+              <SectionError
+                title="自选股表现"
+                message={data.sectionErrors.watchlist}
+                onClose={() => dismiss('watchlist')}
+              />
+            ) : null
           ) : (
             <WatchlistPanel rows={data.watchlist} delay={400} />
           )}

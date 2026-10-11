@@ -42,6 +42,12 @@ export default function Login() {
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    // 注册的密码长度客户端就能判，不合规则不发请求（后端 400 仍会兜底，这里省一次
+    // 无谓请求 + 反馈更快）。登录不校验：老账号的密码多短也是它
+    if (tab === 'register' && password.length < 8) {
+      setError('密码至少 8 位')
+      return
+    }
     setBusy(true)
     setError(null)
     try {

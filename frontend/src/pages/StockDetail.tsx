@@ -148,6 +148,11 @@ export default function StockDetail() {
   const [ddeError, setDdeError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 只代表「概况那批请求（stockProfile / stockThemes / stockDde 的 Promise.all）失败」。
+  // 补长历史（syncStock）与加自选的失败**只写上面的 error**：它们挂了不代表概况没取到，
+  // 共用一个状态会让 DDE 面板误报「资金流取数失败：采集正忙」；且顶部 Alert 关闭只清
+  // error，面板判据若也挂在 error 上，红条一关面板就永久「加载中…」（2026-10-11 修）
+  const [profileError, setProfileError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   // 周期、取数、按需补历史都在这个 hook 里（与形态页共用一套）
   const kline = useKLine(code)
@@ -215,26 +220,38 @@ export default function StockDetail() {
     setDde(null)
     setDdeError(null)
     setError(null)
+    setProfileError(null)
     ;(async () => {
       try {
         const p = await load(code, () => cancelled)
         // 本地没有缓存、或历史明显不全时自动补一次，之后走缓存。
         // alreadySynced 兜住「本来就短」的票，免得每次打开都再补一遍
         if (!cancelled && p.day_count < NEED_BARS && !alreadySynced(code)) {
-          setSyncing(true)
-          await api.syncStock(code, 250)
-          // 标记放在**成功之后**：采集正忙（409）或 iFinD 出错时这次补采是白跑的，
-          // 提前标记会让本会话内再打开这只票也不再重试 —— 表现就是「点进去没日K、
-          // 刷新也没用」，只能关掉标签页重开。失败就让它下次打开再试一次
-          markSynced(code)
-          if (!cancelled) {
-            await load(code, () => cancelled)
-            // 图的数据在 hook 里，得让它重取一次，否则补完还是空的
-            reloadKline()
+          // 补长历史这一段**自己兜错**：失败只写页面级 error（顶部红条提示即可），
+          // 不写 profileError —— 概况那批已经取到了，别让 DDE 面板跟着报
+          // 「资金流取数失败：采集正忙」并藏掉图表（2026-10-11 修）
+          try {
+            setSyncing(true)
+            await api.syncStock(code, 250)
+            // 标记放在**成功之后**：采集正忙（409）或 iFinD 出错时这次补采是白跑的，
+            // 提前标记会让本会话内再打开这只票也不再重试 —— 表现就是「点进去没日K、
+            // 刷新也没用」，只能关掉标签页重开。失败就让它下次打开再试一次
+            markSynced(code)
+            if (!cancelled) {
+              await load(code, () => cancelled)
+              // 图的数据在 hook 里，得让它重取一次，否则补完还是空的
+              reloadKline()
+            }
+          } catch (err) {
+            if (!cancelled) setError((err as Error).message)
           }
         }
       } catch (err) {
-        if (!cancelled) setError((err as Error).message)
+        // 走到这里只剩 load() 失败：概况那批整体没取到，页面红条与面板失败态一起给
+        if (!cancelled) {
+          setError((err as Error).message)
+          setProfileError((err as Error).message)
+        }
       } finally {
         if (!cancelled) setSyncing(false)
       }
@@ -359,9 +376,10 @@ export default function StockDetail() {
             <span className="num">
               {profile
                 ? `本地缓存 ${profile.day_count} 天 · ${profile.first_date ?? '—'} ~ ${profile.last_date ?? '—'}`
-                : // 概况接口失败时 profile 永远不会被赋值（错误在页面级 error 里），
-                  // 这里不能一直写「加载中…」，否则顶部 Alert 关掉后只剩一个永久转圈的假象
-                  error
+                : // 概况接口失败时 profile 永远不会被赋值，这里看 profileError 而不是
+                  // 页面级 error —— 后者还被补历史/加自选的失败共用、且会被 Alert 的关闭
+                  // 清掉，拿它当判据要么误报失败、要么关掉红条后永久「加载中…」
+                  profileError
                   ? '概况加载失败'
                   : '加载中…'}
               <Link to="/watchlist" className="ml-3 text-fg-dim hover:text-fg">
@@ -471,13 +489,15 @@ export default function StockDetail() {
           meta={<span className="num">iFinD 口径 · 主力净流入额与 5日DDE · 单位元</span>}
           delay={100}
         >
-          {/* 与 profile 同一个 Promise.all 里取回来的：profile 还没到且页面无错 = 在加载；
+          {/* 与 profile 同一个 Promise.all 里取回来的：profile 还没到且概况无错 = 在加载；
               但 profile 失败时 Promise.all 整批 reject、setDde/setDdeError 都不会执行，
               这时要跟着显示整体失败态，不能永远转圈（也别落到「暂无 DDE 数据」那句）。
-              注意 ddeError 只代表 DDE 自己的请求失败，和这里的页面级 error 是两件事 */}
-          {error ? (
+              判据用 profileError 而非页面级 error：后者被补历史（syncStock 409 采集正忙）、
+              加自选的失败共用，DDE 明明取到了数据却会误报失败并藏掉图表（2026-10-11 修）。
+              注意 ddeError 只代表 DDE 自己的请求失败，和 profileError 是两件事 */}
+          {profileError ? (
             <div className="px-4 py-10 text-center text-[14px] text-danger">
-              资金流取数失败：{error}（刷新页面重试）
+              资金流取数失败：{profileError}（刷新页面重试）
             </div>
           ) : profile === null ? (
             <div className="flex h-[240px] items-center justify-center text-[14px] text-fg-dim">
