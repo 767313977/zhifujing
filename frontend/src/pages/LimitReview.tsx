@@ -118,15 +118,30 @@ export default function LimitReview() {
     return map
   }, [themes])
 
+  /**
+   * 行业筛选条的**基数**：先应用**题材**（开盘啦板块）筛选、但**不含行业**本身。
+   *
+   * 为什么不是「当日全部涨停股」：那样 chip 上的家数不随题材变 —— 会出现
+   * 「点了题材『芯片』后，行业『银行』写着 5 只、点进去却是 0 只」。以题材筛后的
+   * 集合为基数，家数就等于「点下去真能看到几只」，也顺带避免了筛出空结果。
+   */
+  const industryBase = useMemo(
+    () =>
+      themeFilter
+        ? stocks.filter((stock) => themeIndex[stock.code]?.includes(themeFilter))
+        : stocks,
+    [stocks, themeFilter, themeIndex],
+  )
+
   /** 按**同花顺行业**聚合今日涨停家数（给涨停明细上方的行业筛选条用）。 */
   const industryCounts = useMemo(() => {
     const map = new Map<string, number>()
-    for (const stock of stocks) {
+    for (const stock of industryBase) {
       if (!stock.industry) continue
       map.set(stock.industry, (map.get(stock.industry) ?? 0) + 1)
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1])
-  }, [stocks])
+  }, [industryBase])
 
   /**
    * 筛选后要展示的涨停股。两个条件是**同时**生效的：
@@ -134,13 +149,13 @@ export default function LimitReview() {
    * - `industryFilter` 按**同花顺行业**（涨停明细里那一列）
    * 两个维度不互相替代，所以是「与」而不是「或」。
    */
-  const visibleStocks = useMemo(() => {
-    return stocks.filter((stock) => {
-      if (themeFilter && !themeIndex[stock.code]?.includes(themeFilter)) return false
-      if (industryFilter && stock.industry !== industryFilter) return false
-      return true
-    })
-  }, [stocks, themeFilter, themeIndex, industryFilter])
+  const visibleStocks = useMemo(
+    () =>
+      industryFilter
+        ? industryBase.filter((stock) => stock.industry === industryFilter)
+        : industryBase,
+    [industryBase, industryFilter],
+  )
 
   /** 首封时间分桶计数。 */
   const timeDistribution = useMemo(() => {
@@ -302,14 +317,14 @@ export default function LimitReview() {
             : 'border-line text-fg-muted hover:text-fg',
         ].join(' ')}
       >
-        全部 {stocks.length}
+        全部 {industryBase.length}
       </button>
       {industryCounts.map(([name, count]) => (
         <button
           key={name}
           type="button"
           onClick={() => setIndustryFilter(name === industryFilter ? null : name)}
-          title={`${name} 今日有 ${count} 只涨停`}
+          title={`${name} ${count} 只涨停`}
           className={[
             'flex items-baseline gap-1.5 border px-2 py-[3px] text-[13px] transition-colors',
             name === industryFilter
@@ -476,7 +491,14 @@ export default function LimitReview() {
           stocks={visibleStocks}
           loading={loading}
           delay={240}
-          header={industryBar}
+          // 只有当日真有涨停时才给筛选条：没有票时它给不出任何选项
+          header={stocks.length > 0 ? industryBar : undefined}
+          // 被筛空不是「当日无数据」，别让这两件事混成一句话
+          emptyText={
+            themeFilter || industryFilter
+              ? '没有同时符合题材与行业的票 —— 点上方标签清除筛选'
+              : '当日无数据'
+          }
         />
         <LimitTable
           type="broken"

@@ -15,10 +15,13 @@ interface LimitTableProps {
   /** 首屏取数期间为真。不加这个的话，空列表会被显示成「当日无数据」 */
   loading?: boolean
   /**
-   * 表格上方插一条（如按行业筛选的标签条）。只有涨停复盘页的涨停明细用；
-   * 取数中 / 无数据时不渲染 —— 那条本身是从数据里聚合出来的，空表给不出选项。
+   * 表格上方插一条（如按行业筛选的标签条）。只有涨停复盘页的涨停明细用。
+   * ⚠️ **空结果时也要渲染它** —— 否则筛到 0 只时标签条一起消失，用户没法从这里清除筛选。
+   * 调用方在「当日真的没有涨停」时应当不传（那时给不出任何选项）。
    */
   header?: ReactNode
+  /** 空态文案。默认「当日无数据」；被筛选筛空时调用方应换成「没有符合条件的票」 */
+  emptyText?: string
 }
 
 interface Column {
@@ -323,6 +326,7 @@ export default function LimitTable({
   delay = 280,
   loading = false,
   header,
+  emptyText = '当日无数据',
 }: LimitTableProps) {
   const columns = buildColumns(type, {
     hasBoard: stocks.some((stock) => stock.board),
@@ -344,13 +348,13 @@ export default function LimitTable({
       }
       delay={delay}
     >
-      {/* 筛选条（如按行业）：取数中 / 空表时不渲染 —— 它本身是从数据里聚合出来的 */}
-      {!loading && stocks.length > 0 && header}
+      {/* 筛选条（如按行业）：取数中不渲染；**空结果时照样渲染**，否则筛到 0 只就没法清除了 */}
+      {!loading && header}
 
       {loading ? (
         <div className="px-4 py-8 text-center text-[14px] text-fg-dim">加载中…</div>
       ) : stocks.length === 0 ? (
-        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">当日无数据</div>
+        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">{emptyText}</div>
       ) : (
         <div className="max-h-[440px] overflow-auto">
           <table className="grid-table">
