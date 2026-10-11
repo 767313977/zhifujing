@@ -1391,3 +1391,49 @@ class ResetPasswordIn(BaseModel):
 
 class DisabledIn(BaseModel):
     disabled: bool
+
+
+# ------------------------------------------------------------------ 竞价强度
+#
+# 数据来自 `auction_snapshot`（腾讯批量行情，逐分钟采样），见 `jobs/collect_auction.py`。
+# ⚠️ 参考图里那张表还有 净额 / 承接强度 / 北向 / 人气排名 几列，这些**数据源层面拿不到**
+#（北向净流入 2024-08 起已停止披露；承接强度是外部工具专有指标），本站一律不编。
+
+
+class AuctionRow(ApiModel):
+    """一只票的集合竞价快照（9:25 竞价结果 + 昨日连板数）。"""
+
+    code: str
+    name: str | None
+    price: float | None  # 竞价成交价（= 当日开盘价）
+    pre_close: float | None
+    pct_chg: float | None  # 竞价涨幅（%）
+    open: float | None  # 今开
+    open_pct: float | None  # 开盘涨幅（%）= (今开 / 昨收 − 1)
+    amount: float | None  # 竞价成交额（元）
+    volume: float | None  # 竞价成交量（股）
+    turnover: float | None  # 竞价换手率（%）
+    volume_ratio: float | None  # 竞价量比
+    float_mv: float | None
+    total_mv: float | None
+    limit_up: float | None
+    limit_down: float | None
+    # 昨日连板数（当日 9:25 时今日的池还没有）。非涨停股为 None
+    consecutive: int | None = None
+
+
+class AuctionListOut(BaseModel):
+    trade_date: date
+    total: int  # 当日有竞价数据的全市场只数（不受筛选 / 截断影响）
+    shown: int  # 本次实际返回的行数
+    rows: list[AuctionRow]
+
+
+class AuctionTrendPoint(BaseModel):
+    time: str  # HHMM
+    amount: float  # 该时刻全市场累计竞价成交额合计（元）
+
+
+class AuctionTrendOut(BaseModel):
+    trade_date: date
+    points: list[AuctionTrendPoint]

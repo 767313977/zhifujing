@@ -14,6 +14,7 @@ from app.api import (
     admin,
     analysis,
     anomaly_map,
+    auction,
     auth as auth_api,
     funds,
     limit,
@@ -132,6 +133,7 @@ async def cache_headers(request: Request, call_next):
 
 app.include_router(auth_api.router)
 app.include_router(market.router)
+app.include_router(auction.router)
 app.include_router(limit.router)
 app.include_router(funds.router)
 app.include_router(sector.router)

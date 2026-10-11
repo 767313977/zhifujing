@@ -36,7 +36,12 @@
 """
 
 import logging
+from collections.abc import Sequence
 from datetime import date
+
+import requests
+
+from app.sources.base import chunked
 
 logger = logging.getLogger(__name__)
 
@@ -172,3 +177,96 @@ def _to_shares(
             estimate = amount / vwap
             return raw * 100.0 if abs(raw * 100.0 - estimate) < abs(raw - estimate) else raw
     return raw * 100.0
+
+
+# --------------------------------------------------------------- 批量实时快照
+#
+# 走腾讯公开行情口 `qt.gtimg.cn`（**不是 akshare**）：一次可带多只、零配额、没有
+# 频控惩罚。给 `jobs/collect_auction.py` 的集合竞价采样用。
+#
+# 返回的是 `v_sh600000="字段1~字段2~…";` 这种按 `~` 分隔的**位置数组**，没有字段名。
+# 下面的下标是逐列与腾讯网页端对账出来的（2026-10-11 用 600000 / 300750 核对：
+# 现价 / 昨收 / 今开 / 成交额 / 换手 / 量比 / 涨停价 全部对上）。
+#
+# ⚠️ 竞价时段（9:15–9:25）这批字段含义与盘中不同：`现价` 是**虚拟开盘参考价**、
+# 成交量/额是**虚拟匹配量**（9:25 才出真实成交价与量），9:25 之后 `今开` 才被写入。
+# 采样任务逐分钟全存正是为了留住这个过程（见 `models.AuctionSnapshot.samples`）。
+_SPOT_URL = "http://qt.gtimg.cn/q="
+# 单次请求的代码数。腾讯未公开上限；50 只一批，响应约 20KB，全市场约 110 次。
+_SPOT_BATCH = 50
+_SPOT_TIMEOUT = 15.0
+# 用到的最靠后的下标是 51（均价），短于这个长度说明这行不是完整快照
+_SPOT_MIN_FIELDS = 52
+
+
+def _spot_num(parts: list[str], index: int) -> float | None:
+    """位置数组取值转 float：越界 / 空串 / 非数 → None（竞价时段不少列是空串）。"""
+    if index >= len(parts):
+        return None
+    text = parts[index].strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _parse_spot(payload: str) -> dict | None:
+    """解析一只票的快照行。字段不够（涨跌停 / 退市等异常行）返回 None。"""
+    parts = payload.split("~")
+    if len(parts) < _SPOT_MIN_FIELDS:
+        return None
+    code = parts[2].strip()
+    if not code:
+        return None
+    volume_hand = _spot_num(parts, 6)  # 成交量（手）
+    amount_wan = _spot_num(parts, 37)  # 成交额（万元）
+    float_mv_yi = _spot_num(parts, 44)  # 流通市值（亿元）
+    total_mv_yi = _spot_num(parts, 45)  # 总市值（亿元）
+    return {
+        "code": code,
+        "name": parts[1].strip() or None,
+        "price": _spot_num(parts, 3),
+        "pre_close": _spot_num(parts, 4),
+        "open": _spot_num(parts, 5),
+        "high": _spot_num(parts, 33),
+        "low": _spot_num(parts, 34),
+        # 库里的成交量一律是**股**，腾讯给的是手 → ×100（与 `fetch_daily` 的口径分开：
+        # 那条走 akshare、单位还不一致，这条直连固定是手）
+        "volume": volume_hand * 100 if volume_hand is not None else None,
+        "amount": amount_wan * 1e4 if amount_wan is not None else None,
+        "turnover": _spot_num(parts, 38),  # 换手率（%）
+        "volume_ratio": _spot_num(parts, 49),  # 量比
+        "float_mv": float_mv_yi * 1e8 if float_mv_yi is not None else None,
+        "total_mv": total_mv_yi * 1e8 if total_mv_yi is not None else None,
+        "limit_up": _spot_num(parts, 47),
+        "limit_down": _spot_num(parts, 48),
+        "avg_price": _spot_num(parts, 51),
+        "quote_time": parts[30].strip() or None,
+    }
+
+
+def fetch_spot(codes: Sequence[str]) -> list[dict]:
+    """批量实时快照：`codes` 为 6 位代码（自动补 sh/sz/bj 前缀）。
+
+    返回字段见 `_parse_spot`。取不到的票（停牌、退市、代码不存在）直接跳过；
+    整批网络 / HTTP 失败则抛出（由调用方决定是否重试）。
+    """
+    wanted = [str(code).zfill(6) for code in codes]
+    rows: list[dict] = []
+    for batch in chunked(wanted, _SPOT_BATCH):
+        symbols = ",".join(tx_symbol(code) for code in batch)
+        response = requests.get(_SPOT_URL + symbols, timeout=_SPOT_TIMEOUT)
+        response.raise_for_status()
+        # 腾讯返回 GBK；用 replace 兜住个别名字里的坏字节，不让整批解析失败
+        text = response.content.decode("gbk", errors="replace")
+        for chunk in text.split(";"):
+            chunk = chunk.strip()
+            if "=" not in chunk:
+                continue
+            payload = chunk.partition("=")[2].strip().strip('"')
+            parsed = _parse_spot(payload)
+            if parsed is not None:
+                rows.append(parsed)
+    return rows

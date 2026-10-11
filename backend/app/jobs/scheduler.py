@@ -31,6 +31,7 @@ from sqlalchemy import func, select
 
 from app.config import Settings, get_settings
 from app.db import session_scope
+from app.jobs.collect_auction import collect_auction
 from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
 from app.jobs.collect_sectors import SectorCollector
 from app.models import CollectLog, TradeCalendar
@@ -52,6 +53,8 @@ MEMBERS_JOB_ID = "prefetch_members"
 # 它的兜底重跑（见 config.members_retry_hour）：22:00 撞上「还没发布」时再给一次机会。
 # 正常日子这一趟几乎不花请求（已在库的板块全跳过）。
 MEMBERS_RETRY_JOB_ID = "prefetch_members_retry"
+# 集合竞价采样（交易日 9:15–9:26 每分钟一跑，见 `jobs/collect_auction.py`）。
+AUCTION_JOB_ID = "collect_auction"
 
 # 「错过 17:30 / 22:00」的回看上限（单位：交易日）。本机常年关机，重启往往发生在
 # 次日 —— 那一天的**龙虎榜 / 机构席位 / 涨停题材**（`_run_late`）与**板块成分股**
@@ -324,11 +327,23 @@ class DailyScheduler:
                 misfire_grace_time=3600,
                 coalesce=True,
             )
+        # 集合竞价采样：交易日 9:15–9:26 每分钟一次（见 jobs/collect_auction.py）。
+        # 固定在开盘前，与收盘后那几趟互不影响；单分钟失败只告警，下一分钟还会再跑。
+        scheduler.add_job(
+            self._run_auction,
+            CronTrigger(day_of_week="mon-fri", hour=9, minute="15-26", timezone=TIMEZONE),
+            id=AUCTION_JOB_ID,
+            name="集合竞价采样",
+            replace_existing=True,
+            # 晚到超过 90 秒就跳过这一分钟（下一分钟马上又来），别积压
+            misfire_grace_time=90,
+            coalesce=True,
+        )
         scheduler.start()
         self._scheduler = scheduler
         logger.info(
             "定时采集已启动：交易日 %02d:%02d（收盘后补采 %02d:%02d / 兜底 %02d:%02d，"
-            "成分股预取 %02d:%02d / 兜底 %02d:%02d）",
+            "成分股预取 %02d:%02d / 兜底 %02d:%02d；集合竞价 09:15–09:26 每分钟）",
             self.settings.collect_hour,
             self.settings.collect_minute,
             self.settings.late_collect_hour,
@@ -400,6 +415,19 @@ class DailyScheduler:
         }
 
     # -------------------------------------------------------------------- 执行
+
+    def _run_auction(self) -> None:
+        """跑一次集合竞价采样（见 `jobs/collect_auction.py`）。
+
+        单分钟失败只告警、不重试：下一分钟马上还有一次，而且竞价数据没有历史可补。
+        """
+        try:
+            count = collect_auction()
+        except Exception:  # noqa: BLE001 - 见 docstring
+            logger.warning("集合竞价采样异常", exc_info=True)
+            return
+        if count == 0:
+            logger.debug("集合竞价采样：本次无数据（非交易日 / 不在采样窗口）")
 
     def _run_daily(self, reason: str = "定时采集") -> None:
         today = date.today()

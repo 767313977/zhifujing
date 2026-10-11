@@ -776,3 +776,43 @@ Index("ix_stock_dde_code_date", StockDde.code, StockDde.trade_date)
 # 过滤 + 按日期排序/取范围」一次走索引；老库由 `db._add_missing_indexes`
 # 按索引名自动补建（幂等）。
 Index("ix_sector_daily_code_date", SectorDaily.sector_code, SectorDaily.trade_date)
+
+
+class AuctionSnapshot(Base):
+    """集合竞价快照（每交易日一只票一行，含逐分钟采样）。
+
+    来源：**腾讯批量行情**（`sources/tencent.fetch_spot`），不是 iFinD（零配额）。
+
+    为什么要逐分钟存：集合竞价的**过程**本身就是信息 —— 9:20 撤单截止前后的量跳变、
+    最后 1 分钟的急涌，都只能从时间序列里看出来（页面的「竞价量能走势」）；
+    只留 9:25 的终值就只剩一个数了。
+
+    - 上面那几列是 **9:25 竞价结果**（最后一帧），主表用
+    - `samples` 存 `[[HHMM, 价, 累计成交额(元)], …]`，竞价走势用
+    - `consecutive`（几板）不在这里，读接口按**昨日**涨停池现算（9:25 时当天的池还没有）
+
+    ⚠️ 竞价时段 `price` 是**虚拟开盘参考价**、`amount` 是**虚拟匹配额**，9:25 才结算成
+    真实成交价/额；`open`（今开）9:25 之前为空。
+    """
+
+    __tablename__ = "auction_snapshot"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    name: Mapped[str | None] = mapped_column(String(32))
+    # --- 9:25 竞价结果 ---
+    price: Mapped[float | None] = mapped_column(Float)  # 竞价成交价（= 当日开盘价）
+    pre_close: Mapped[float | None] = mapped_column(Float)
+    pct_chg: Mapped[float | None] = mapped_column(Float)  # 竞价涨幅（%）
+    open: Mapped[float | None] = mapped_column(Float)  # 今开
+    amount: Mapped[float | None] = mapped_column(Float)  # 竞价成交额（元）
+    volume: Mapped[float | None] = mapped_column(Float)  # 竞价成交量（股）
+    turnover: Mapped[float | None] = mapped_column(Float)  # 竞价换手率（%）
+    volume_ratio: Mapped[float | None] = mapped_column(Float)  # 竞价量比
+    float_mv: Mapped[float | None] = mapped_column(Float)  # 流通市值（元）
+    total_mv: Mapped[float | None] = mapped_column(Float)  # 总市值（元）
+    limit_up: Mapped[float | None] = mapped_column(Float)
+    limit_down: Mapped[float | None] = mapped_column(Float)
+    # 逐分钟：[[HHMM, price, amount], …]（amount 为当日累计成交额，元）
+    samples: Mapped[list | None] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
