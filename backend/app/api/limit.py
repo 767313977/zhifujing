@@ -9,8 +9,19 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
 from app.db import get_db
-from app.models import Lhb, LimitPool, LimitReason, StockConcept, TradeCalendar
+from app.models import (
+    Lhb,
+    LimitPool,
+    LimitReason,
+    StockBasic,
+    StockConcept,
+    StockDaily,
+    TradeCalendar,
+)
 from app.schemas import (
+    LadderBoardOut,
+    LadderBoardRow,
+    LadderBoardStock,
     LadderLevel,
     LhbOut,
     LimitPoolOut,
@@ -38,6 +49,30 @@ def _rate(promoted: int, total: int) -> float | None:
     if total == 0:
         return None
     return round(promoted / total * 100, 1)
+
+
+# 涨停股票池单行最多列几只。首板行常见上百只（实测约 120），4 列网格下
+# 120 只 ≈ 30 行；再多首屏太重。⚠️ 截断只影响**列表**，`base` / `rate` 仍按
+# 全量算 —— 晋级率不能因为列不下就变小。
+LADDER_BOARD_ROW_LIMIT = 120
+
+# 行内排序：晋级在前、炸板次之、未晋级最后
+_LADDER_STATUS_ORDER = {"up": 0, "broken": 1, "other": 2}
+
+
+def _prev_trade_date(session: Session, day: date) -> date | None:
+    """上一个交易日。
+
+    ⚠️ 按**交易日历**取，不按 `limit_pool` 自己的日期：池子缺一天时（回补没跑到、
+    上游那天没数据），拿池子的「上一个有数据的日子」会把 3 天前的批次当成「昨日」，
+    晋级率整个错位（`/limit/promotion` 里有同样的坑与修法）。
+    """
+    return session.scalar(
+        select(TradeCalendar.trade_date)
+        .where(TradeCalendar.trade_date < day)
+        .order_by(TradeCalendar.trade_date.desc())
+        .limit(1)
+    )
 
 
 def _boards(session: Session, trade_date: date) -> dict[str, str]:
@@ -171,6 +206,170 @@ def limit_pool(
         ladder=_build_ladder(rows, boards, reasons) if pool_type == "up" else None,
         stocks=[_to_stock(row, boards, reasons) for row in rows],
     )
+
+
+@router.get("/limit/ladder-board", response_model=LadderBoardOut)
+def ladder_board(
+    trade_date: date = Depends(resolve_trade_date),
+    session: Session = Depends(get_db),
+) -> LadderBoardOut:
+    """涨停股票池：按**昨日连板档**分组，标出今日「晋级 / 炸板 / 未晋级」。
+
+    与 `/limit/pool` 的 `ladder` 是两个视角，别混：那个答「今天的高度结构」
+    （按**今日**连板分层、只含今日涨停票）；这个答「昨天那批人今天接住了没有」——
+    基准是**昨日**涨停池，所以行内会混进今日炸板的票（这正是它的用处）。
+
+    口径与 `/limit/promotion` **对齐**（同一页两处数字必须一致）：
+    - `base` = 昨日该档**全部**家数；
+    - `promoted` = 其中今日涨停（即晋级到 k+1 板）的家数；
+    - `rate` = promoted / base。
+
+    `level=0` 是「首板」行：昨日非涨停、今日涨停或炸板的票 —— 看今天的首板成功率。
+    """
+    prev = _prev_trade_date(session, trade_date)
+    if prev is None:
+        return LadderBoardOut(trade_date=trade_date, prev_date=None, rows=[])
+
+    prev_rows = session.execute(
+        select(LimitPool.code, LimitPool.consecutive).where(
+            LimitPool.trade_date == prev, LimitPool.pool_type == "up"
+        )
+    ).all()
+    prev_levels = {code: (level or 1) for code, level in prev_rows}
+    if not prev_levels:
+        # 没有昨日涨停池就无从谈晋级。宁可给空，也不把今天那批全塞进「首板」行
+        # 冒充「昨日非涨停」—— 那会算出一个人造的高晋级率
+        return LadderBoardOut(trade_date=trade_date, prev_date=prev, rows=[])
+
+    up_rows = list(
+        session.scalars(
+            select(LimitPool).where(
+                LimitPool.trade_date == trade_date, LimitPool.pool_type == "up"
+            )
+        )
+    )
+    broken_rows = list(
+        session.scalars(
+            select(LimitPool).where(
+                LimitPool.trade_date == trade_date, LimitPool.pool_type == "broken"
+            )
+        )
+    )
+    up_by_code = {row.code: row for row in up_rows}
+    broken_by_code = {row.code: row for row in broken_rows}
+    # 今日连板档（与 `/limit/promotion` 的 `today.get(code)` 同源）
+    up_levels = {row.code: (row.consecutive or 1) for row in up_rows}
+    boards = _boards(session, trade_date)
+    reasons = _reasons(session, trade_date)
+
+    def status_of(code: str) -> str:
+        if code in up_by_code:
+            return "up"
+        if code in broken_by_code:
+            return "broken"
+        return "other"
+
+    def is_promoted(code: str, level: int) -> bool:
+        """是否从昨日 `level` 档**晋级**到 `level+1` 档。
+
+        ⚠️ 必须用**严格相等**，不能只看「今天在不在涨停池」——`/limit/promotion`
+        就是这么算的（`today.get(code) == level + 1`）。两处口径一旦分叉，同一页
+        上「晋级率」与曲线图会对不上。首板行 `level=0` 同样适用（= 今日 1 板）。
+        """
+        return up_levels.get(code) == level + 1
+
+    # 昨日档位 → 候选代码；按档位从高到低出行
+    buckets: dict[int, list[str]] = {}
+    for code, level in prev_levels.items():
+        buckets.setdefault(level, []).append(code)
+    # 首板行 = 今日涨停或炸板、且昨日不在涨停池的票
+    first_board = [
+        code for code in (*up_by_code, *broken_by_code) if code not in prev_levels
+    ]
+
+    # 「今日涨停也不是、炸板也不是」的候选（昨日有连板、今天没摸板）：
+    # `limit_pool` 里根本没有它们今天的行情，回落到日线取收盘 / 涨跌幅；
+    # 名称与行业回落到 `stock_basic`（`LimitPool` 不带名称）
+    other_codes = [code for code in prev_levels if status_of(code) == "other"]
+    daily: dict[str, StockDaily] = {}
+    basics: dict[str, tuple[str | None, str | None]] = {}
+    if other_codes:
+        daily = {
+            row.code: row
+            for row in session.scalars(
+                select(StockDaily).where(
+                    StockDaily.trade_date == trade_date,
+                    StockDaily.code.in_(other_codes),
+                )
+            )
+        }
+        basics = {
+            code: (name, industry)
+            for code, name, industry in session.execute(
+                select(StockBasic.code, StockBasic.name, StockBasic.industry).where(
+                    StockBasic.code.in_(other_codes)
+                )
+            ).all()
+        }
+
+    def make_stock(code: str) -> LadderBoardStock:
+        status = status_of(code)
+        if status == "up":
+            # 涨停票的 `consecutive` 用库里今天的值（= 昨日档 + 1），不覆盖
+            base = _to_stock(up_by_code[code], boards, reasons)
+        elif status == "broken":
+            # 炸板池没有题材数据（`limit_reason` / `stock_concept` 只覆盖涨停股），
+            # 也没有连板数/封单 —— 照实留空，不拿 industry 之类顶上混口径
+            base = _to_stock(broken_by_code[code], {}, {})
+        else:
+            # 昨日有连板、今天没摸板：涨停池与炸板池里都没有它，只能从日线 + 基础信息拼。
+            # 封单 / 封板时间 / 开板次数天然没有（今天根本没封过板），一律 None
+            row = daily.get(code)
+            name, industry = basics.get(code, (None, None))
+            base = LimitStock(
+                code=code,
+                name=name,
+                pct_chg=row.pct_chg if row else None,
+                price=row.close if row else None,
+                amount=row.amount if row else None,
+                float_mv=None,
+                total_mv=None,
+                turnover=row.turnover if row else None,
+                seal_amount=None,
+                first_seal_time=None,
+                last_seal_time=None,
+                open_times=None,
+                consecutive=None,
+                industry=industry,
+            )
+        return LadderBoardStock(**base.model_dump(), status=status)
+
+    def build_row(level: int, codes: list[str], label: str) -> LadderBoardRow:
+        promoted = sum(1 for code in codes if is_promoted(code, level))
+        stocks = [make_stock(code) for code in codes]
+        # 晋级在前、炸板次之、未晋级最后；同状态按涨跌幅降序（与参考图一致）
+        stocks.sort(
+            key=lambda s: (
+                _LADDER_STATUS_ORDER.get(s.status, 9),
+                -(s.pct_chg if s.pct_chg is not None else -999.0),
+            )
+        )
+        return LadderBoardRow(
+            level=level,
+            label=label,
+            base=len(codes),
+            promoted=promoted,
+            rate=_rate(promoted, len(codes)),
+            stocks=stocks[:LADDER_BOARD_ROW_LIMIT],
+        )
+
+    rows = [
+        build_row(level, buckets[level], f"{level}进{level + 1}")
+        for level in sorted(buckets, reverse=True)
+    ]
+    if first_board:
+        rows.append(build_row(0, first_board, "首板"))
+    return LadderBoardOut(trade_date=trade_date, prev_date=prev, rows=rows)
 
 
 @router.get("/lhb", response_model=list[LhbOut])

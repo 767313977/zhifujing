@@ -151,9 +151,52 @@ class LimitPoolOut(BaseModel):
     trade_date: date
     pool_type: str
     total: int
-    # 梯队分层只对涨停有意义（跌停是「连续跌停」、炸板没有连板数）
+    # 梯队分层只对涨停有意义：跌停是「连续跌停」、炸板没有连板数
     ladder: list[LadderLevel] | None
     stocks: list[LimitStock]
+
+
+# ------------------------------------------------------------------ 涨停股票池
+
+
+class LadderBoardStock(LimitStock):
+    """涨停股票池里的一只票：比通用 `LimitStock` 多一个**今日状态**。
+
+    行是按**昨日**连板档分组的，所以行内会同时出现「今天还在涨停的」和
+    「今天炸板的」——`status` 就是用来区分它们的。
+    """
+
+    #: `up` = 今日涨停（晋级成功）｜`broken` = 今日炸板（失败）｜`other` = 今日两者都不是
+    status: str
+
+
+class LadderBoardRow(BaseModel):
+    """涨停股票池的一行 = 「昨日该连板档」的一批候选票。
+
+    ⚠️ 基准是**昨日**的涨停池，不是今日：
+    `level=3` 这一行读作「3进4」——昨日 3 板的那批票，今天接住了几只。
+    这与 `/limit/pool` 的 `ladder`（按**今日**连板高度分层、只含今日涨停票）
+    是两个视角，别混。
+    """
+
+    #: 昨日连板档。**0 表示「昨日非涨停」**（今日首板行）
+    level: int
+    #: 展示用标签：`3进4` / 首板行固定 `首板`
+    label: str
+    #: 候选数 = **昨日该档全部**家数（与 `/limit/promotion` 的分母同一口径）
+    base: int
+    #: 其中今日涨停晋级数
+    promoted: int
+    #: 晋级率（百分比）。base 为 0 时 null，别写成 0 —— 0 会被读成「全军覆没」
+    rate: float | None
+    stocks: list[LadderBoardStock]
+
+
+class LadderBoardOut(BaseModel):
+    trade_date: date
+    #: 对比基准日（上一交易日）。为空说明库里没有昨日涨停池，晋级无从谈起
+    prev_date: date | None
+    rows: list[LadderBoardRow]
 
 
 class PromotionLevel(BaseModel):
