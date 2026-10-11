@@ -7,7 +7,9 @@ import type {
   MarketOverview,
   PatternStock,
   PatternSummary,
+  PoolType,
   SectorHeat,
+  SectorHeatGroup,
   WatchlistRow,
 } from '../api/types'
 import Alert from '../components/Alert'
@@ -24,6 +26,37 @@ import SentimentPanel from '../components/SentimentPanel'
 import WatchlistPanel from '../components/WatchlistPanel'
 import { useAuth } from '../lib/auth'
 
+/** 次级区块取数失败时的占位：空池子 / 空热力，保证主内容渲染时类型仍完整 */
+function emptyPool(poolType: PoolType): LimitPool {
+  return { trade_date: '', pool_type: poolType, total: 0, ladder: null, stocks: [] }
+}
+
+const EMPTY_HEAT_GROUP: SectorHeatGroup = {
+  taxonomy: '',
+  total: 0,
+  rising: 0,
+  falling: 0,
+  average: null,
+  leaders: [],
+  laggards: [],
+}
+
+const EMPTY_HEAT: SectorHeat = {
+  trade_date: '',
+  selected: EMPTY_HEAT_GROUP,
+  industry: EMPTY_HEAT_GROUP,
+}
+
+/** 各次级区块自己的错误信息；null = 该区块取数成功 */
+interface SectionErrors {
+  up: string | null
+  down: string | null
+  broken: string | null
+  lhb: string | null
+  heat: string | null
+  watchlist: string | null
+}
+
 interface DashboardData {
   overview: MarketOverview
   up: LimitPool
@@ -32,9 +65,19 @@ interface DashboardData {
   lhb: LhbItem[]
   heat: SectorHeat
   watchlist: WatchlistRow[]
+  sectionErrors: SectionErrors
   patterns: PatternStock[]
   patternSummary: PatternSummary | null
   patternError: string | null
+}
+
+/** 次级接口失败时在它原来的位置显示一块错误条（可关），不拖白整页 */
+function SectionError({ title, message, onClose }: { title: string; message: string; onClose: () => void }) {
+  return (
+    <Alert onClose={onClose}>
+      {title}加载失败：{message}（其余内容不受影响，可稍后刷新重试）
+    </Alert>
+  )
 }
 
 export default function Dashboard() {
@@ -48,6 +91,10 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // 被手动关掉的次级区块错误条（切日期重新取数时清空）
+  const [dismissed, setDismissed] = useState<Partial<Record<keyof SectionErrors, boolean>>>({})
+  const dismiss = (key: keyof SectionErrors) =>
+    setDismissed((prev) => ({ ...prev, [key]: true }))
 
   /**
    * @param isStale 判断这次请求还算不算数。切日期时两个请求的返回顺序不保证，
@@ -57,16 +104,26 @@ export default function Dashboard() {
     async (target: string | null, isStale: () => boolean = () => false) => {
       setLoading(true)
       setError(null)
+      // 次级接口各自兜底：失败记错误、回落空值，不拖白整页。
+      // overview 不走这里 —— 它是整页的主数据（指数条、情绪、涨跌家数，且 trade_date
+      // 是笔记等区块的日期锚点），没它整页无意义，它的失败仍走外层 catch 的整页错误。
+      const soft = async <T,>(promise: Promise<T>, fallback: T) => {
+        try {
+          return { value: await promise, error: null as string | null }
+        } catch (err) {
+          return { value: fallback, error: (err as Error).message }
+        }
+      }
       try {
-        const [overview, up, down, broken, lhb, heat, watchlist] = await Promise.all([
+        const [overview, upR, downR, brokenR, lhbR, heatR, watchR] = await Promise.all([
           api.overview(target),
-          api.limitPool('up', target),
-          api.limitPool('down', target),
-          api.limitPool('broken', target),
-          api.lhb(target),
-          api.sectorHeat(target),
+          soft(api.limitPool('up', target), emptyPool('up')),
+          soft(api.limitPool('down', target), emptyPool('down')),
+          soft(api.limitPool('broken', target), emptyPool('broken')),
+          soft(api.lhb(target), [] as LhbItem[]),
+          soft(api.sectorHeat(target), EMPTY_HEAT),
           // 自选股是最新行情，不随所选日期变，所以单独取一次即可
-          api.watchlist(),
+          soft(api.watchlist(), [] as WatchlistRow[]),
         ])
         // 形态：榜单只取前 8 只（首页只列 8 行，没必要把 350 多只的明细都传过来），
         // 但家数用 summary 的全量结果。两者故意不同口径 —— 面板上有「全部 →」说明
@@ -84,12 +141,20 @@ export default function Dashboard() {
         if (isStale()) return
         setData({
           overview,
-          up,
-          down,
-          broken,
-          lhb,
-          heat,
-          watchlist,
+          up: upR.value,
+          down: downR.value,
+          broken: brokenR.value,
+          lhb: lhbR.value,
+          heat: heatR.value,
+          watchlist: watchR.value,
+          sectionErrors: {
+            up: upR.error,
+            down: downR.error,
+            broken: brokenR.error,
+            lhb: lhbR.error,
+            heat: heatR.error,
+            watchlist: watchR.error,
+          },
           patterns,
           patternSummary,
           patternError,
@@ -124,6 +189,8 @@ export default function Dashboard() {
     // （只有 IndexStrip / 情绪 / 板块热力 / 形态 / 自选 / 笔记这几块没接
     //  `loading`，不清的话它们会继续显旧日期的值，与下方「加载中」的表混在一起）
     setData(null)
+    // 新一轮取数：上一轮被关掉的错误条标记也清掉
+    setDismissed({})
     void load(date, () => stale)
     return () => {
       stale = true
@@ -184,29 +251,72 @@ export default function Dashboard() {
             />
           )}
 
-          {/* 板块热力排在涨停梯队之前：先看「哪个方向在涨」，再看「涨停梯队里谁接力」 */}
-          {(data.heat.selected.total > 0 || data.heat.industry.total > 0) && (
-            <SectorHeatPanel heat={data.heat} delay={160} />
+          {/* 板块热力排在涨停梯队之前：先看「哪个方向在涨」，再看「涨停梯队里谁接力」。
+              次级接口失败时在原位置显示错误条（可关，关掉后该区块优雅隐藏） */}
+          {data.sectionErrors.heat && !dismissed.heat ? (
+            <SectionError
+              title="板块热力"
+              message={data.sectionErrors.heat}
+              onClose={() => dismiss('heat')}
+            />
+          ) : (
+            (data.heat.selected.total > 0 || data.heat.industry.total > 0) && (
+              <SectorHeatPanel heat={data.heat} delay={160} />
+            )
           )}
 
-          <LadderBoard
-            ladder={data.up.ladder ?? []}
-            total={data.up.total}
-            loading={loading}
-            delay={200}
-          />
+          {data.sectionErrors.up && !dismissed.up ? (
+            <SectionError
+              title="涨停梯队与涨停明细"
+              message={data.sectionErrors.up}
+              onClose={() => dismiss('up')}
+            />
+          ) : (
+            <>
+              <LadderBoard
+                ladder={data.up.ladder ?? []}
+                total={data.up.total}
+                loading={loading}
+                delay={200}
+              />
 
-          <LimitTable type="up" stocks={data.up.stocks} loading={loading} delay={260} />
+              <LimitTable type="up" stocks={data.up.stocks} loading={loading} delay={260} />
+            </>
+          )}
 
           {/* 跌停/炸板不并排：这两张表都有 12 列，并排后单列容器装不下，
               会在 1280~1500px 这个常用宽度上溢出。整宽堆叠反而更稳。 */}
-          <LimitTable type="down" stocks={data.down.stocks} loading={loading} delay={300} />
-          <LimitTable type="broken" stocks={data.broken.stocks} loading={loading} delay={320} />
+          {data.sectionErrors.down && !dismissed.down ? (
+            <SectionError
+              title="跌停明细"
+              message={data.sectionErrors.down}
+              onClose={() => dismiss('down')}
+            />
+          ) : (
+            <LimitTable type="down" stocks={data.down.stocks} loading={loading} delay={300} />
+          )}
+          {data.sectionErrors.broken && !dismissed.broken ? (
+            <SectionError
+              title="炸板明细"
+              message={data.sectionErrors.broken}
+              onClose={() => dismiss('broken')}
+            />
+          ) : (
+            <LimitTable type="broken" stocks={data.broken.stocks} loading={loading} delay={320} />
+          )}
 
-          <LhbTable items={data.lhb} loading={loading} delay={360} />
+          {data.sectionErrors.lhb && !dismissed.lhb ? (
+            <SectionError
+              title="龙虎榜"
+              message={data.sectionErrors.lhb}
+              onClose={() => dismiss('lhb')}
+            />
+          ) : (
+            <LhbTable items={data.lhb} loading={loading} delay={360} />
+          )}
 
           {/* 形态排在这里：前面几块回答「今天发生了什么」，这一块回答「明天盯什么」，
-              再往后才是自己的票 */}
+              再往后才是自己的票（它本来就有独立的 error 态，维持原样） */}
           <PatternPanel
             summary={data.patternSummary}
             stocks={data.patterns}
@@ -214,7 +324,15 @@ export default function Dashboard() {
             delay={380}
           />
 
-          <WatchlistPanel rows={data.watchlist} delay={400} />
+          {data.sectionErrors.watchlist && !dismissed.watchlist ? (
+            <SectionError
+              title="自选股表现"
+              message={data.sectionErrors.watchlist}
+              onClose={() => dismiss('watchlist')}
+            />
+          ) : (
+            <WatchlistPanel rows={data.watchlist} delay={400} />
+          )}
 
           <NotePanel tradeDate={data.overview.trade_date} delay={430} />
         </div>

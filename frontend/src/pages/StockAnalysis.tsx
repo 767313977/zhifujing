@@ -107,6 +107,9 @@ export default function StockAnalysisPage() {
               className="flex flex-wrap items-center gap-2"
               onSubmit={(event) => {
                 event.preventDefault()
+                // 按钮在 loading 时已禁用，但表单回车照样会触发 submit —— 在这里早退，
+                // 避免加载中连按回车发出重复查询（runSeq 的竞态守卫照旧保留）
+                if (loading) return
                 void run(query)
               }}
             >
@@ -115,7 +118,9 @@ export default function StockAnalysisPage() {
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="如 300654 / 世纪天鸿 / sjth"
                 autoFocus
-                className="num w-64 border border-line bg-transparent px-3 py-2 text-[14px] text-fg outline-none placeholder:text-fg-dim focus:border-line-soft"
+                // 提交期间一并禁用输入框：回车键在禁用元素上不会触发 submit
+                disabled={loading}
+                className="num w-64 border border-line bg-transparent px-3 py-2 text-[14px] text-fg outline-none placeholder:text-fg-dim focus:border-line-soft disabled:cursor-not-allowed disabled:opacity-50"
               />
               <button
                 type="submit"

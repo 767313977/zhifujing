@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { WatchlistRow } from '../api/types'
@@ -25,6 +25,8 @@ export default function WatchlistPage() {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [code, setCode] = useState('')
+  // 「加入」请求进行中：连点按钮或连按回车不能发多个 POST
+  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -44,16 +46,21 @@ export default function WatchlistPage() {
 
   const add = useCallback(async () => {
     const trimmed = code.trim()
-    if (!trimmed) return
+    // busy 守卫：回车连按（按钮已禁用时回车仍会触发）走到这里也要挡住
+    if (!trimmed || submitting) return
     try {
+      setSubmitting(true)
       await api.addWatchlist(trimmed)
       setCode('')
       setNotice('已加入自选，本地还没有行情 —— 点「同步行情」拉取')
       await reload()
     } catch (err) {
       setError((err as Error).message)
+    } finally {
+      // 成功失败都复位，失败时用户可以改完再提交
+      setSubmitting(false)
     }
-  }, [code, reload])
+  }, [code, reload, submitting])
 
   const remove = useCallback(
     async (target: string) => {
@@ -127,14 +134,16 @@ export default function WatchlistPage() {
               }}
               placeholder="输入代码 / 名称 / 拼音首字母"
               maxLength={32}
-              className="num min-w-0 flex-1 border border-line bg-ink-850 px-3 py-2 text-[14px] text-fg outline-none placeholder:text-fg-dim focus:border-fg-dim"
+              disabled={submitting}
+              className="num min-w-0 flex-1 border border-line bg-ink-850 px-3 py-2 text-[14px] text-fg outline-none placeholder:text-fg-dim focus:border-fg-dim disabled:cursor-not-allowed disabled:opacity-40"
             />
             <button
               type="button"
               onClick={() => void add()}
-              className="shrink-0 border border-line px-5 py-2 text-[14px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg"
+              disabled={submitting}
+              className="shrink-0 border border-line px-5 py-2 text-[14px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
             >
-              加入
+              {submitting ? '加入中…' : '加入'}
             </button>
           </div>
         </Panel>
@@ -260,10 +269,19 @@ function NoteEditor({
 }) {
   const [value, setValue] = useState(row.note ?? '')
   const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  // 「已保存」复原定时器：卸载（切页 / 列表刷新卸载旧行）时清掉，别对已卸载组件 setState
+  const savedTimer = useRef<number | null>(null)
 
   useEffect(() => {
     setValue(row.note ?? '')
   }, [row.note])
+
+  // 卸载清理
+  useEffect(() => {
+    return () => {
+      if (savedTimer.current !== null) window.clearTimeout(savedTimer.current)
+    }
+  }, [])
 
   const save = async () => {
     if (value === (row.note ?? '')) return
@@ -273,7 +291,11 @@ function NoteEditor({
       await onSaved()
       setState('saved')
       // 提示只闪一下：单元格很窄，常驻会一直占着位置
-      window.setTimeout(() => setState('idle'), 1600)
+      if (savedTimer.current !== null) window.clearTimeout(savedTimer.current)
+      savedTimer.current = window.setTimeout(() => {
+        savedTimer.current = null
+        setState('idle')
+      }, 1600)
     } catch (err) {
       setState('idle')
       onError((err as Error).message)

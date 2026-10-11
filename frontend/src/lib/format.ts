@@ -2,9 +2,19 @@
 
 const DASH = '—'
 
+/**
+ * 缺值判定：null / undefined 与**非有限数**（NaN、Infinity）都算缺值。
+ *
+ * 后端理论上只给 JSON 数字，但解析链路万一吐出 NaN（比如脏数据参与了除法），
+ * 原来只判 null 会把「NaN%」「NaN亿」直接印到页面上 —— 非有限数一律走占位符。
+ */
+function isMissing(value: number | null | undefined): value is null | undefined {
+  return value == null || !Number.isFinite(value)
+}
+
 /** 金额：自动降到亿 / 万。成交额动辄千亿，原值不可读。 */
 export function fmtAmount(value: number | null | undefined): string {
-  if (value == null) return DASH
+  if (isMissing(value)) return DASH
   const abs = Math.abs(value)
   if (abs >= 1e12) return `${(value / 1e12).toFixed(2)}万亿`
   if (abs >= 1e8) return `${(value / 1e8).toFixed(2)}亿`
@@ -14,7 +24,7 @@ export function fmtAmount(value: number | null | undefined): string {
 
 /** 涨跌幅：始终带符号，便于一眼分辨方向。 */
 export function fmtPct(value: number | null | undefined, digits = 2): string {
-  if (value == null) return DASH
+  if (isMissing(value)) return DASH
   return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}%`
 }
 
@@ -23,12 +33,12 @@ export function fmtNum(
   digits = 2,
   suffix = '',
 ): string {
-  if (value == null) return DASH
+  if (isMissing(value)) return DASH
   return `${value.toFixed(digits)}${suffix}`
 }
 
 export function fmtInt(value: number | null | undefined): string {
-  if (value == null) return DASH
+  if (isMissing(value)) return DASH
   return String(value)
 }
 
@@ -61,10 +71,10 @@ export function fmtDateTime(value: string | null | undefined): string {
 
 /**
  * A 股惯例：红涨绿跌。
- * 0 与空值走中性色，不要误染色。
+ * 0、空值与非有限数走中性色，不要误染色（NaN > 0 === false 会被染成跌色）。
  */
 export function toneOf(value: number | null | undefined): string {
-  if (value == null || value === 0) return 'text-fg-muted'
+  if (isMissing(value) || value === 0) return 'text-fg-muted'
   return value > 0 ? 'text-up' : 'text-down'
 }
 
@@ -75,6 +85,7 @@ export function breadthRatio(
 ): number {
   const u = up ?? 0
   const d = down ?? 0
-  if (u + d === 0) return 0.5
+  // 非有限数（NaN/Infinity）或两边都没数据时给中性的一半，别让色条算出 NaN 宽度
+  if (!Number.isFinite(u) || !Number.isFinite(d) || u + d === 0) return 0.5
   return u / (u + d)
 }

@@ -12,7 +12,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { api, UNAUTHORIZED_EVENT } from '../api/client'
 import type { Me } from '../api/types'
 import { clearStockList } from './stockNav'
@@ -71,17 +71,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     try {
       await api.logout()
-    } finally {
-      // 后端失败（比如网断了）也要把本地状态清掉：这时的目标是「别再显示成已登录」——
-      // 登出是**尽力而为**的，服务端那次失败（会话可能已失效、或请求没发出去）不该让
-      // 用户卡在已登录界面。
-      setMe(null)
-      // 详情页「← → 切换」用的列表存在 sessionStorage 里，是上一个用户点过的上下文，
-      // 登出时清掉，别带给下一个登录的人（2026-10-10 修）
-      clearStockList()
-      // 未登录时进登录页不能用 push，否则用户按返回又回到需要登录的页面
-      navigate('/login', { replace: true })
+    } catch (err) {
+      // 后端失败（网断了、后台标签里登出请求 30s 超时…）只记一条：登出是**尽力而为**
+      // 的，服务端那次失败不能让 rejection 冒泡成 Unhandled Promise rejection，
+      // 也不能挡住下面的本地清理与跳转（不等它、不阻塞）。
+      console.warn('登出请求失败，仍按已登出处理：', err)
     }
+    // 无论服务端成功与否都把本地状态清掉：目标是「别再显示成已登录」——
+    // 会话可能已失效、或请求根本没发出去，不该让用户卡在已登录界面。
+    setMe(null)
+    // 详情页「← → 切换」用的列表存在 sessionStorage 里，是上一个用户点过的上下文，
+    // 登出时清掉，别带给下一个登录的人（2026-10-10 修）
+    clearStockList()
+    // 未登录时进登录页不能用 push，否则用户按返回又回到需要登录的页面
+    navigate('/login', { replace: true })
   }, [navigate])
 
   return (
@@ -123,16 +126,42 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 }
 
 /**
+ * 非管理员落到管理员页面时看到的简单提示页（带回首页链接）。
+ *
+ * 之前是**静默跳首页**：会员手输 `/settings` 后只会觉得「怎么回家了，站点是不是坏了」。
+ * 刻意停在这一页把原因说清楚，而不是弹个 2-3 秒再跳 —— 少一个定时器、也不会读到一半被跳走。
+ * 不用 Layout：auth 层引 Layout 会和 UserMenu → useAuth 形成循环依赖，
+ * 这个无导航的居中卡片反而最贴合「你走错门了」的场景。
+ */
+function AdminForbidden() {
+  return (
+    <div className="flex min-h-screen items-center justify-center px-6">
+      <div className="panel w-full max-w-md px-8 py-10 text-center">
+        <div className="text-[17px] font-medium text-fg">需要管理员权限</div>
+        <p className="mt-2 text-[14px] leading-relaxed text-fg-dim">
+          「数据管理」仅对管理员开放，当前账号没有访问权限。
+        </p>
+        <Link
+          to="/"
+          className="mt-6 inline-block border border-accent/60 bg-accent/10 px-4 py-2 text-[13px] text-accent transition-colors hover:bg-accent/20"
+        >
+          返回首页
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+/**
  * 管理员专属页面（目前只有「数据管理」）。
  *
- * 非管理员直接回首页 —— 不这么做的话，会员手输 `/settings` 会看到一个满屏
- * 「403 需要管理员权限」的页面（接口全被后端挡住了，但页面本身渲染出来了），
- * 那既难看又让人以为站点坏了。
+ * 已登录但不是管理员：给一个明确的「需要管理员权限」提示页（见 AdminForbidden），
+ * 不再静默跳首页；未登录的情况交给 RequireAuth，登录后若仍非管理员还是会落到提示页。
  */
 export function RequireAdmin({ children }: { children: ReactNode }) {
-  const { me } = useAuth()
-  if (me !== null && !me.is_admin) {
-    return <Navigate to="/" replace />
-  }
+  const { me, checking } = useAuth()
+  // 身份还没确认时与 RequireAuth 保持一致的留白，避免登录页 / 提示页闪一下
+  if (checking) return <div className="min-h-screen" />
+  if (me !== null && !me.is_admin) return <AdminForbidden />
   return <RequireAuth>{children}</RequireAuth>
 }

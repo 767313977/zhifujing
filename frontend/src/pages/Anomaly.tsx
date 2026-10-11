@@ -11,6 +11,29 @@ import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'
 
 /**
+ * 表格最多渲染多少行。这一页最多约 2000 行、11 列，全量进 DOM 切筛选都卡；
+ * 排序 / 筛选仍在全量数据上做，只截断渲染（做法同 Patterns / Wudao 页）。
+ */
+const RENDER_LIMIT = 200
+
+/** 搜索防抖时长（ms）：每次敲字都 filter+sort 两千行没必要，也省得输入卡顿 */
+const SEARCH_DEBOUNCE_MS = 200
+
+/**
+ * 小防抖：值停下来之后才把最新值交出去。
+ * 用 useEffect 定时器而不是 useDeferredValue —— 这页的诉求是明确的「敲字后等一小下」，
+ * 时间可控，也不依赖渲染调度的心情。
+ */
+function useDebounced<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay)
+    return () => window.clearTimeout(timer)
+  }, [value, delay])
+  return debounced
+}
+
+/**
  * 连板列的排序值：`首板` 当 1，`N连板` 取 N，空值当缺数据（排最后）。
  *
  * 不直接拿字符串排 —— 那样 `10连板` 会排在 `2连板` 前面（字符串比较逐位来）。
@@ -89,6 +112,8 @@ export default function AnomalyPage() {
   const [type, setType] = useState('')
   const [onlyTheme, setOnlyTheme] = useState(false)
   const [query, setQuery] = useState('')
+  // 筛选只认防抖后的关键字：输入框照常即时响应，filter+sort 等敲字停顿后再跑
+  const debouncedQuery = useDebounced(query, SEARCH_DEBOUNCE_MS)
 
   useEffect(() => {
     let stale = false
@@ -126,7 +151,7 @@ export default function AnomalyPage() {
 
   const visible = useMemo(() => {
     const rows = data?.rows ?? []
-    const keyword = query.trim().toLowerCase()
+    const keyword = debouncedQuery.trim().toLowerCase()
     return rows.filter((row) => {
       if (sector && row.sector !== sector) return false
       if (type && row.type !== type) return false
@@ -144,13 +169,17 @@ export default function AnomalyPage() {
         .toLowerCase()
       return haystack.includes(keyword)
     })
-  }, [data, sector, type, onlyTheme, query])
+  }, [data, sector, type, onlyTheme, debouncedQuery])
 
   // 排序只作用在**筛完之后**的行上（与「显示 N / M 条」同步）。
   // 默认给 `date desc`：后端就是这个顺序（日期降序，同一天内按板块/时间/代码），
   // 而 lib/sort.ts 用的是稳定排序，同一天的行**保持后端给的顺序**，所以首屏与不排完全一致，
   // 只是「日期」列头上多一个 ▼，让人知道现在按什么排。
   const [sort, shown] = useSort(visible, SORTS, { key: 'date', dir: 'desc' })
+
+  // 排序结果不截断，只把前 RENDER_LIMIT 行放进 DOM
+  const rendered = shown.slice(0, RENDER_LIMIT)
+  const hiddenRows = shown.length - rendered.length
 
   const allCount = data?.rows.length ?? 0
   const dirty = sector !== '' || type !== '' || onlyTheme || query !== ''
@@ -288,7 +317,7 @@ export default function AnomalyPage() {
                 </tr>
               </thead>
               <tbody>
-                {shown.map((row: AnomalyRow) => (
+                {rendered.map((row: AnomalyRow) => (
                   <tr
                     key={`${row.date}-${row.code}-${row.type}`}
                     // 题材启动日的整行淡绿底：这一类是「这个板块刚开始动」，值得一眼捞出来
@@ -364,6 +393,11 @@ export default function AnomalyPage() {
                 ))}
               </tbody>
             </table>
+            {hiddenRows > 0 && (
+              <div className="border-t border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+                另有 {hiddenRows} 行未显示，可用上方筛选或搜索缩小范围
+              </div>
+            )}
           </div>
         )}
       </Panel>

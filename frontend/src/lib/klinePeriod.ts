@@ -120,7 +120,12 @@ export function useKLine(code: string, { fq: fixedFq }: { fq?: FqMode } = {}): K
 
   useEffect(() => {
     if (!code) {
+      // code 变空串（形态页拖评分滑块把当前票筛掉）时要把整套加载态一起复位 ——
+      // 只清 bars 的话，loading/syncing 可能还停在 true，页面永远显示「加载日线…」
       setBars([])
+      setLoading(false)
+      setSyncing(false)
+      setError(null)
       return
     }
     let stale = false

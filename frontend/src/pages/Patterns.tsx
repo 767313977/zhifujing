@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { PatternMeta, PatternStock, PatternSummary } from '../api/types'
@@ -46,6 +46,15 @@ const HIT_LIMIT = 50
  * 校验；真超过这个数（单形态一天三千只以上）会照旧弹截断提示，不会静默少给。
  */
 const PATTERN_LIMIT = 3000
+
+/**
+ * 命中表**实际渲染**多少行（与 `PATTERN_LIMIT` 是两件事：那个管取数，这个管 DOM）。
+ *
+ * 形态视图最多取回 3000 只，全量进 DOM 时一次渲染几千行、十几列，切评分滑块都会卡。
+ * 排序与筛选仍在全量 `shown` 上做，这里只截断渲染（做法照搬 Wudao 页的 RENDER_LIMIT）。
+ * 这张表 11 列、行密，200 行约是 520px 滚动容器十几屏，够翻也不卡；想多看就用筛选缩小。
+ */
+const RENDER_LIMIT = 200
 
 /**
  * 命中列表各列的排序口径。
@@ -252,6 +261,13 @@ export default function Patterns() {
   const kline = useKLine(active ?? '', { fq: 'qfq' })
   // 「复制代码」的瞬时反馈：成功后按钮文案换成「已复制」，1.6 秒复原
   const [copied, setCopied] = useState(false)
+  // 反馈复原定时器：卸载时清掉，否则页面已经没了还会触发一次 setState
+  const copiedTimer = useRef<number | null>(null)
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
+    }
+  }, [])
 
   // 写回 URL。replace 而不是 push：点一行就塞一条历史的话，退出这页要按很多次返回
   useEffect(() => {
@@ -356,6 +372,10 @@ export default function Patterns() {
   // 排序与筛选是两个独立动作，先筛后排才符合直觉
   const [hitSort, shown] = useSort(visible, HIT_SORTS, { key: 'score' })
 
+  // 只把前 RENDER_LIMIT 行放进 DOM（排序结果本身不截断，← → 翻票与复制代码仍用全量）
+  const rendered = useMemo(() => shown.slice(0, RENDER_LIMIT), [shown])
+  const hiddenCount = shown.length - rendered.length
+
   /**
    * 把当前筛选结果的代码复制下来（每行一个），方便导进同花顺的自选股。
    *
@@ -383,7 +403,12 @@ export default function Patterns() {
       return
     }
     setCopied(true)
-    window.setTimeout(() => setCopied(false), 1600)
+    // 连点复制时以最后一次为准：先清旧定时器，避免文案提前复原
+    if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
+    copiedTimer.current = window.setTimeout(() => {
+      copiedTimer.current = null
+      setCopied(false)
+    }, 1600)
   }, [visible])
 
   /**
@@ -683,13 +708,14 @@ export default function Patterns() {
                   </tr>
                 </thead>
                 <tbody>
-                  {shown.map((stock) => (
+                  {rendered.map((stock) => (
                     <tr
                       key={stock.code}
                       onClick={() => {
                         selectStock(stock.code)
                         // 顺手把这份命中列表也存下，个股页就能用 ← → 前后翻。
-                        // 存的是 shown（已排序）—— 翻页顺序跟着屏幕上的顺序走才不别扭
+                        // 存的是 shown（已排序、未截断的全量）—— 翻页顺序跟着排序走，
+                        // 且不会因为渲染截断而翻不到第 201 只
                         rememberStockList(shown.map((item) => item.code))
                       }}
                       className={`cursor-pointer ${
@@ -793,6 +819,11 @@ export default function Patterns() {
                   ))}
                 </tbody>
               </table>
+              {hiddenCount > 0 && (
+                <div className="border-t border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+                  另有 {fmtInt(hiddenCount)} 只未显示，可用上方筛选缩小范围
+                </div>
+              )}
             </div>
           )}
         </Panel>

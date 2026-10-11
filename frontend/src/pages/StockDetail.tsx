@@ -359,7 +359,11 @@ export default function StockDetail() {
             <span className="num">
               {profile
                 ? `本地缓存 ${profile.day_count} 天 · ${profile.first_date ?? '—'} ~ ${profile.last_date ?? '—'}`
-                : '加载中…'}
+                : // 概况接口失败时 profile 永远不会被赋值（错误在页面级 error 里），
+                  // 这里不能一直写「加载中…」，否则顶部 Alert 关掉后只剩一个永久转圈的假象
+                  error
+                  ? '概况加载失败'
+                  : '加载中…'}
               <Link to="/watchlist" className="ml-3 text-fg-dim hover:text-fg">
                 ← 回自选
               </Link>
@@ -467,8 +471,15 @@ export default function StockDetail() {
           meta={<span className="num">iFinD 口径 · 主力净流入额与 5日DDE · 单位元</span>}
           delay={100}
         >
-          {/* 与 profile 同一个 Promise.all 里取回来的，所以「还没到」就等于「在加载」 */}
-          {profile === null ? (
+          {/* 与 profile 同一个 Promise.all 里取回来的：profile 还没到且页面无错 = 在加载；
+              但 profile 失败时 Promise.all 整批 reject、setDde/setDdeError 都不会执行，
+              这时要跟着显示整体失败态，不能永远转圈（也别落到「暂无 DDE 数据」那句）。
+              注意 ddeError 只代表 DDE 自己的请求失败，和这里的页面级 error 是两件事 */}
+          {error ? (
+            <div className="px-4 py-10 text-center text-[14px] text-danger">
+              资金流取数失败：{error}（刷新页面重试）
+            </div>
+          ) : profile === null ? (
             <div className="flex h-[240px] items-center justify-center text-[14px] text-fg-dim">
               <span className="pulse-soft">加载中…</span>
             </div>

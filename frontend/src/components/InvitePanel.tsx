@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { Invite } from '../api/types'
 import Alert from './Alert'
@@ -25,6 +25,14 @@ export default function InvitePanel() {
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
+  // 「已复制」反馈的复原定时器：卸载时清掉，避免对已卸载组件 setState
+  const copiedTimer = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
+    }
+  }, [])
 
   const load = useCallback(async () => {
     try {
@@ -62,7 +70,12 @@ export default function InvitePanel() {
     document.body.removeChild(box)
     if (ok) {
       setCopied(code)
-      window.setTimeout(() => setCopied(null), 1500)
+      // 连点不同邀请码时以最后一次为准，先清旧定时器
+      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
+      copiedTimer.current = window.setTimeout(() => {
+        copiedTimer.current = null
+        setCopied(null)
+      }, 1500)
     } else {
       setError('复制失败：浏览器不允许，手动选中那串码吧')
     }

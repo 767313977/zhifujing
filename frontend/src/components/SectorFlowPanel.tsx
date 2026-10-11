@@ -247,8 +247,24 @@ export default function SectorFlowPanel({
       ),
     [data],
   )
-  const inflow = useMemo(() => valid.slice(0, TOP), [valid])
-  const outflow = useMemo(() => [...valid.slice(-TOP)].reverse(), [valid])
+  // 必须按符号分榜：valid 整体按净额降序，当有效板块不足 20 个时，
+  // 原来的 slice(0,10) / slice(-10) 会让正净额板块同时进两张图 ——
+  // 「净流出」图里混入染红（这里是跌色）的正条，方向就被读反了。
+  // 不足 TOP 个就少画几个（图高随条数变）；净额恰为 0 的两边都不收。
+  const inflow = useMemo(
+    () => valid.filter((item) => item.net_amount > 0).slice(0, TOP),
+    [valid],
+  )
+  const outflow = useMemo(
+    () =>
+      valid
+        .filter((item) => item.net_amount < 0)
+        // 降序列表里最负的在末尾：取末尾 TOP 个再 reverse，最负的排最显眼的榜首位置，
+        // 视觉方向与原来一致
+        .slice(-TOP)
+        .reverse(),
+    [valid],
+  )
   // 缓存 option：否则父组件每次重渲染都会造新对象，EChart(setOption notMerge) 整图重建
   const inflowOption = useMemo(() => buildOption(inflow, true), [inflow])
   const outflowOption = useMemo(() => buildOption(outflow, false), [outflow])
