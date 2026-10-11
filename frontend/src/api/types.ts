@@ -8,8 +8,6 @@ export interface IndexQuote {
   amount: number | null
   up_count: number | null
   down_count: number | null
-  limit_up_count: number | null
-  limit_down_count: number | null
   /** 5 日 / 20 日均线与「站上还是跌破」，后端按本地日线现算 */
   ma5: number | null
   ma20: number | null
@@ -989,7 +987,7 @@ export interface FundFlowOverview {
   institution_net: number | null
   /** 上机构榜的股票数 */
   institution_count: number
-  /** ETF 净申赎估算；没有上一交易日数据时为 null */
+  /** ETF 净申赎估算（不含货币现金类）；没有上一交易日数据时为 null */
   etf_net_inflow: number | null
 }
 
