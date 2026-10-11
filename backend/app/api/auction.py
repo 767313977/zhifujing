@@ -45,18 +45,6 @@ def _prev_trade_date(session: Session, day: date) -> date | None:
     )
 
 
-@router.get("/auction/dates", response_model=list[date])
-def auction_dates(session: Session = Depends(get_db)) -> list[date]:
-    """有竞价数据的交易日，由近及远（给页面的日期选择器）。"""
-    return list(
-        session.scalars(
-            select(AuctionSnapshot.trade_date)
-            .group_by(AuctionSnapshot.trade_date)
-            .order_by(AuctionSnapshot.trade_date.desc())
-        )
-    )
-
-
 @router.get("/auction", response_model=AuctionListOut)
 def auction_list(
     trade_date: date | None = Query(None, alias="date"),

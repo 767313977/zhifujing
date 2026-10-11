@@ -157,7 +157,9 @@ export default function AuctionPage() {
   const [order, setOrder] = useState<'asc' | 'desc'>('desc')
 
   useEffect(() => {
-    api.auctionDates().then(setDates).catch(() => setDates([]))
+    // 日期候选用**交易日历**（`/market/dates`，与其它页同一个来源），不是「有竞价数据的日子」——
+    // 后者在刚上线那阵子是空的、根本没得选。选了没采样的日子就显示「当日还没有竞价数据」。
+    api.dates().then(setDates).catch(() => setDates([]))
   }, [])
 
   // 总量走势只随日期变（与筛选无关，是全市场口径）

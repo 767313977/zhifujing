@@ -6,6 +6,11 @@ import StockLink from './StockLink'
 interface LimitPoolBoardProps {
   /** 首屏取数期间 / 取数失败回落时为 null */
   data: LadderBoard | null
+  /** 面板数据对应的交易日（= 页面所选日期）。缺省回落 `data.trade_date` */
+  tradeDate?: string | null
+  /** 翻到上一 / 下一交易日。不给就禁用那一侧（已到最早 / 最晚就是 undefined） */
+  onPrev?: () => void
+  onNext?: () => void
   delay?: number
   /** 首屏取数期间为真。不加这个的话，空行会被显示成「暂无数据」 */
   loading?: boolean
@@ -96,76 +101,108 @@ function StockCell({ stock }: { stock: LadderBoardStock }) {
  * 按**昨日**连板档分组（「8进9」「首板」），每档一行：左边档位、中间晋级率、
  * 右边这一档的**候选票**——行内同时含今日涨停（晋级）与今日炸板（失败），
  * 与「涨停梯队」只看今日涨停票不同，这里能看出「昨天那批票今天怎么样了」。
+ *
+ * 标题栏右侧的日期可以**前后翻交易日**（← →）：改的是**整页**的所选日期
+ * （回调用 Dashboard 传进来，与顶部那个日期下拉是同一个状态，不另开一份）。
  */
 export default function LimitPoolBoard({
   data,
+  tradeDate = null,
+  onPrev,
+  onNext,
   delay = 200,
   loading = false,
 }: LimitPoolBoardProps) {
-  if (loading) {
-    return (
-      <Panel title="涨停股票池" delay={delay}>
-        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">加载中…</div>
-      </Panel>
-    )
-  }
-
-  if (!data || data.rows.length === 0) {
-    return (
-      <Panel title="涨停股票池" delay={delay}>
-        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">
-          {data && data.prev_date == null ? '缺上一交易日涨停池，无法计算晋级' : '暂无数据'}
-        </div>
-      </Panel>
-    )
-  }
-
-  const rows = data.rows
+  const rows = data?.rows ?? []
   // 只数 = 各行**实际列出的** stocks 之和，而不是 base 之和 ——
   // 首板行的 base 可能 >120（后端按行截断），拿它求和会显示一个屏幕上并不存在的只数。
   // 口径注释清楚：这是「本屏列出的只数」。
   const total = rows.reduce((sum, row) => sum + row.stocks.length, 0)
+  const anchor = tradeDate ?? data?.trade_date ?? null
+
+  // 翻页按钮：到头的那个 `disabled`（调用方不给回调就是到头）
+  const navButton =
+    'rounded-[2px] border border-line px-1.5 text-[13px] leading-[18px] text-fg-muted ' +
+    'transition-colors enabled:hover:border-fg-dim enabled:hover:text-fg ' +
+    'disabled:cursor-not-allowed disabled:opacity-30'
 
   return (
     <Panel
       title="涨停股票池"
-      meta={<span className="num">【{data.trade_date}】共 {total} 只 · {rows.length} 档</span>}
+      meta={
+        <span className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onPrev}
+            disabled={!onPrev}
+            className={navButton}
+            title="上一交易日"
+          >
+            ←
+          </button>
+          {anchor && (
+            <span className="num">
+              【{anchor}】
+              {data ? `共 ${total} 只 · ${rows.length} 档` : ''}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={!onNext}
+            className={navButton}
+            title="下一交易日"
+          >
+            →
+          </button>
+        </span>
+      }
       delay={delay}
     >
-      {/* 表头：只为对齐，视觉上极轻（照抄涨停梯队的表头样式） */}
-      <div className="flex items-center gap-4 border-b border-line-soft bg-ink-850/60 px-4 py-1.5 text-[12px] tracking-[0.1em] text-fg-dim">
-        <span className="w-14 shrink-0">进度</span>
-        <span className="w-24 shrink-0">晋级率</span>
-        <span>个股</span>
-      </div>
-
-      {rows.map((row) => (
-        <div
-          key={`${row.level}-${row.label}`}
-          className="flex items-start gap-4 border-b border-line-soft px-4 py-2.5 transition-colors last:border-b-0 hover:bg-ink-850/50"
-        >
-          {/* 进度：3 个字（8进9 / 首板），w-14 刚好放得下 */}
-          <div className={`w-14 shrink-0 pt-0.5 text-[16px] leading-none font-semibold ${levelText(row.level)}`}>
-            {row.label}
-          </div>
-
-          {/* 晋级率：promoted/base=rate% */}
-          <div className={`num w-24 shrink-0 pt-1 text-[14px] ${rateText(row.rate)}`}>
-            {row.rate == null
-              ? '—'
-              : `${row.promoted}/${row.base}=${fmtNum(row.rate, 1)}%`}
-          </div>
-
-          {/* 个股：多列网格，限高滚动 —— 首板行可能上百只，不能把页面撑爆 */}
-          <div className="min-w-0 flex-1 max-h-[640px] overflow-auto">
-            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 md:grid-cols-3 xl:grid-cols-4">
-              {row.stocks.map((stock) => (
-                <StockCell key={stock.code} stock={stock} />
-              ))}
-            </div>
-          </div>
+      {loading ? (
+        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">加载中…</div>
+      ) : !data || rows.length === 0 ? (
+        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">
+          {data && data.prev_date == null ? '缺上一交易日涨停池，无法计算晋级' : '暂无数据'}
         </div>
-      ))}
+      ) : (
+        <>
+          {/* 表头：只为对齐，视觉上极轻（照抄涨停梯队的表头样式） */}
+          <div className="flex items-center gap-4 border-b border-line-soft bg-ink-850/60 px-4 py-1.5 text-[12px] tracking-[0.1em] text-fg-dim">
+            <span className="w-14 shrink-0">进度</span>
+            <span className="w-24 shrink-0">晋级率</span>
+            <span>个股</span>
+          </div>
+
+          {rows.map((row) => (
+            <div
+              key={`${row.level}-${row.label}`}
+              className="flex items-start gap-4 border-b border-line-soft px-4 py-2.5 transition-colors last:border-b-0 hover:bg-ink-850/50"
+            >
+              {/* 进度：3 个字（8进9 / 首板），w-14 刚好放得下 */}
+              <div className={`w-14 shrink-0 pt-0.5 text-[16px] leading-none font-semibold ${levelText(row.level)}`}>
+                {row.label}
+              </div>
+
+              {/* 晋级率：promoted/base=rate% */}
+              <div className={`num w-24 shrink-0 pt-1 text-[14px] ${rateText(row.rate)}`}>
+                {row.rate == null
+                  ? '—'
+                  : `${row.promoted}/${row.base}=${fmtNum(row.rate, 1)}%`}
+              </div>
+
+              {/* 个股：多列网格，限高滚动 —— 首板行可能上百只，不能把页面撑爆 */}
+              <div className="min-w-0 flex-1 max-h-[640px] overflow-auto">
+                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 md:grid-cols-3 xl:grid-cols-4">
+                  {row.stocks.map((stock) => (
+                    <StockCell key={stock.code} stock={stock} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
     </Panel>
   )
 }

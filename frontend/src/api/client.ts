@@ -388,9 +388,6 @@ export const api = {
     return request<AuctionList>(`/auction?${q.toString()}`)
   },
 
-  /** 有竞价数据的交易日（由近及远），给页面日期选择器用。 */
-  auctionDates: () => request<string[]>('/auction/dates'),
-
   /** 全市场竞价量能走势（逐分钟累计成交额合计）。数据是**累计值**，读的是斜率。 */
   auctionTrend: (date?: string | null) =>
     request<AuctionTrend>(withDate('/auction/trend', date)),

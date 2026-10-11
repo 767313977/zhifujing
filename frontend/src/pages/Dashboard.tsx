@@ -205,6 +205,14 @@ export default function Dashboard() {
     }
   }, [date, load])
 
+  // 「涨停股票池」面板的日期前后翻：以**面板实际数据的交易日**为锚，在 dates（升序）里取邻居。
+  // 锚取不到（还没取到数 / 不在 dates 里）时两侧都禁用 —— 宁可按钮不可点，也别翻到别的日期。
+  const boardAnchor = data?.board?.trade_date ?? null
+  const boardIndex = boardAnchor ? dates.indexOf(boardAnchor) : -1
+  const boardPrev = boardIndex > 0 ? dates[boardIndex - 1] : null
+  const boardNext =
+    boardIndex >= 0 && boardIndex < dates.length - 1 ? dates[boardIndex + 1] : null
+
   const toolbar = (
     <>
       {isAdmin && (
@@ -286,7 +294,14 @@ export default function Dashboard() {
               />
             ) : null
           ) : (
-            <LimitPoolBoard data={data.board} loading={loading} delay={200} />
+            <LimitPoolBoard
+              data={data.board}
+              tradeDate={boardAnchor}
+              onPrev={boardPrev ? () => setDate(boardPrev) : undefined}
+              onNext={boardNext ? () => setDate(boardNext) : undefined}
+              loading={loading}
+              delay={200}
+            />
           )}
 
           {data.sectionErrors.up ? (
