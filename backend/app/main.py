@@ -123,11 +123,20 @@ async def cache_headers(request: Request, call_next):
     服务器上已经被删了，页面只能从缓存里拼出旧版 —— **实测 2026-09-26 踩过**：
     部署后云端三个产物与本机逐字节一致、`index.html` 也确实指向新哈希，
     但用户刷新仍是旧界面。`no-cache` 是「可以存、但每次必须校验」，正好够用。
+
+    ⚠️ **长缓存只给成功响应**（2026-10-12 修）：原先不看状态码，于是资源被误删时
+    返回的 **404 也被打上 `immutable, max-age=1 年`** —— 浏览器把「这个文件不存在」
+    缓存一整年。文件恢复后页面**仍然白屏**，只有硬刷新/清缓存才恢复（当天线上事故
+    的第二层原因）。非 2xx/304 一律 `no-store`。
     """
     response = await call_next(request)
     path = request.url.path
     if path.startswith("/assets/"):
-        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        if response.status_code in (200, 304):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            # 404/500 之类**绝不能**长缓存：内容随时会变（文件补回来、故障恢复）
+            response.headers["Cache-Control"] = "no-store"
     elif not path.startswith("/api/"):
         # 接口不碰（默认就不缓存）：只覆盖 index.html 与 SPA 回退出来的那些静态文件
         response.headers["Cache-Control"] = "no-cache"
