@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api } from '../api/client'
 import type {
+  AuctionBoardItem,
   AuctionBoards,
   AuctionList,
   AuctionRow,
@@ -17,6 +18,8 @@ import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
 import { AXIS_LABEL, AXIS_LINE, CHART, GRID, SPLIT_LINE, TOOLTIP, withAlpha } from '../lib/chart'
 import { fmtAmount, fmtInt, fmtNum, fmtPct, toneOf } from '../lib/format'
+import { useSort } from '../lib/sort'
+import type { SortSpecs } from '../lib/sort'
 
 /**
  * 筛选快捷档位 —— 全是「下限」，点一下生效、再点一下取消（对应参考图顶部那排按钮）。
@@ -37,6 +40,11 @@ interface Column {
   narrowHidden?: boolean
   /** 后端排序字段。不给 = 这列不可排序 */
   sortKey?: AuctionSort
+  /**
+   * 首次点这一列时的方向。默认 `desc`（绝大多数列「越大越值得看」）；
+   * **排名类要 `asc`** —— 点一下先看第 1 名，而不是倒数第一。
+   */
+  first?: 'asc' | 'desc'
   render: (row: AuctionRow) => ReactNode
 }
 
@@ -67,8 +75,9 @@ function buildColumns(): Column[] {
     {
       key: 'rank',
       label: '排名',
-      // 全市场竞价涨幅位次；悬停看**板块内**（同花顺行业最后一级）位次。
-      // 不给排序：位次本身就是「排序结果」，点它排一遍只会原地打转
+      sortKey: 'rank',
+      first: 'asc',
+      // 全市场竞价涨幅位次；悬停看**板块内**（同花顺行业最后一级）位次
       render: (r) => (
         <span
           className="num text-fg-muted"
@@ -95,6 +104,7 @@ function buildColumns(): Column[] {
     {
       key: 'amount_ratio',
       label: '竞价额占比',
+      sortKey: 'amount_ratio',
       // 相对比例才有可比性：大盘股竞价 1 亿看似多，占比可能极低。>5% 明显放量、>10% 超强
       render: (r) => (
         <span className="num text-fg-muted" title="竞价成交额 ÷ 昨日全天成交额（分母只覆盖流动性池）">
@@ -111,9 +121,9 @@ function buildColumns(): Column[] {
     },
     {
       key: 'auction_ratio',
-      // 自算：当日竞价量 ÷ 前 5 个交易日竞价量均值（同花顺口径）。不给排序 ——
-      // 它是读接口时现算的，服务端没有这一列可排；历史不足 3 天时为「—」。
+      // 自算：当日竞价量 ÷ 前 5 个交易日竞价量均值（同花顺口径）；历史不足 3 天时为「—」。
       label: '竞价量比',
+      sortKey: 'auction_ratio',
       render: (r) => <span className="num text-fg-muted">{fmtNum(r.auction_ratio, 2)}</span>,
     },
     {
@@ -125,6 +135,7 @@ function buildColumns(): Column[] {
     {
       key: 'free_turnover',
       label: '真实换手',
+      sortKey: 'free_turnover',
       // 分母换成**自由流通股**（剔除大股东/限售等不动的筹码）—— 普通换手率会低估
       render: (r) => (
         <span
@@ -142,6 +153,7 @@ function buildColumns(): Column[] {
     {
       key: 'seal_ratio',
       label: '封成比',
+      sortKey: 'seal_ratio',
       // 打板核心：涨停价上的封单额 ÷ 自由流通市值。只在**竞价就封在涨停价上**时有值
       render: (r) => (
         <span
@@ -157,6 +169,7 @@ function buildColumns(): Column[] {
     {
       key: 'amplitude',
       label: '波动率',
+      sortKey: 'amplitude',
       narrowHidden: true,
       // 9:15–9:26 竞价价的振幅：高开但几乎不动 = 一致性强；上下大幅波动 = 分歧大
       render: (r) => (
@@ -171,6 +184,7 @@ function buildColumns(): Column[] {
     {
       key: 'cancel_rate',
       label: '撤单率',
+      sortKey: 'cancel_rate',
       // 9:20 是不可撤单的截止线：撤得越少越真，负值 = 挂单还在增加
       render: (r) => (
         <span
@@ -184,6 +198,7 @@ function buildColumns(): Column[] {
     {
       key: 'committee_diff',
       label: '委差',
+      sortKey: 'committee_diff',
       narrowHidden: true,
       // 未匹配量差 = 委买总量 − 委卖总量；正 = 未匹配的买盘更多。库里是股，显示成「手」
       render: (r) => (
@@ -198,6 +213,7 @@ function buildColumns(): Column[] {
     {
       key: 'prev',
       label: '昨日',
+      sortKey: 'prev_boards',
       // 昨日状态：N板（含 1 板 = 首板）/ 炸板 / —；悬停看昨日全天换手率。
       // 「炸板」查的是昨日的炸板池，与涨停池互斥，所以不会有「既是 N 板又炸板」。
       render: (r) => (
@@ -234,6 +250,24 @@ function buildColumns(): Column[] {
 const COLUMNS = buildColumns()
 const NARROW = (column: Column) => (column.narrowHidden ? 'max-xl:hidden' : '')
 
+/** 排序键 → 首次点击方向（只收录显式声明了 `first` 的列）。 */
+const SORT_FIRST: Record<string, 'asc' | 'desc'> = {}
+for (const column of COLUMNS) {
+  if (column.sortKey && column.first) SORT_FIRST[column.sortKey] = column.first
+}
+
+/**
+ * 板块榜的排序口径。数据只有 ≤20 行，**直接在前端排**（和后端给的默认顺序一致：
+ * 平均竞价涨幅降序）—— 不值得为它再跑一趟服务端排序。
+ */
+const BOARD_SORTS: SortSpecs<AuctionBoardItem> = {
+  industry: { value: (item) => item.industry, first: 'asc' },
+  count: { value: (item) => item.count },
+  avg_pct: { value: (item) => item.avg_pct },
+  amount: { value: (item) => item.amount },
+  limit_count: { value: (item) => item.limit_count },
+}
+
 /** 一个筛选档位按钮。`active` 高亮；再点一下由调用方取消。 */
 function Chip({
   active,
@@ -264,6 +298,9 @@ export default function AuctionPage() {
   const [data, setData] = useState<AuctionList | null>(null)
   const [trend, setTrend] = useState<AuctionTrend | null>(null)
   const [boards, setBoards] = useState<AuctionBoards | null>(null)
+
+  // 板块榜在前端排（数据少）；默认按平均竞价涨幅降序，与后端给的一致
+  const [boardSort, boardItems] = useSort(boards?.items ?? [], BOARD_SORTS, { key: 'avg_pct' })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -356,8 +393,8 @@ export default function AuctionPage() {
       return
     }
     setSort(key as AuctionSort)
-    // 数值列先看最大的那头，与全站表格一致
-    setOrder('desc')
+    // 首次方向：默认「先看最大的那头」；排名类显式声明了 asc（先看第 1 名）
+    setOrder(SORT_FIRST[key] ?? 'desc')
   }
 
   const trendOption = useMemo<ChartOption>(() => {
@@ -448,22 +485,32 @@ export default function AuctionPage() {
         {boards && boards.items.length > 0 && (
           <Panel
             title="板块竞价强度"
-            meta={<span className="num">同花顺行业（末级）· 按平均竞价涨幅排序 · 只列 ≥3 只的</span>}
+            meta={<span className="num">同花顺行业（末级）· 只列 ≥3 只的 · 点列头排序</span>}
             delay={60}
           >
             <div className="max-h-[360px] overflow-auto">
               <table className="grid-table">
                 <thead>
                   <tr>
-                    <th className="!text-left">板块</th>
-                    <th>只数</th>
-                    <th>平均竞价涨幅</th>
-                    <th>竞价额</th>
-                    <th>竞价涨停</th>
+                    <SortTh align="left" sortKey="industry" {...boardSort}>
+                      板块
+                    </SortTh>
+                    <SortTh sortKey="count" {...boardSort}>
+                      只数
+                    </SortTh>
+                    <SortTh sortKey="avg_pct" {...boardSort}>
+                      平均竞价涨幅
+                    </SortTh>
+                    <SortTh sortKey="amount" {...boardSort}>
+                      竞价额
+                    </SortTh>
+                    <SortTh sortKey="limit_count" {...boardSort}>
+                      竞价涨停
+                    </SortTh>
                   </tr>
                 </thead>
                 <tbody>
-                  {boards.items.map((item) => (
+                  {boardItems.map((item) => (
                     <tr key={item.industry}>
                       <td className="!text-left">{item.industry}</td>
                       <td className="num text-fg-muted">{item.count}</td>

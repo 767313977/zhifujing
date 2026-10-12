@@ -49,6 +49,20 @@ SORT_FIELDS = {
     "price": AuctionSnapshot.price,
 }
 
+# 排序键 → 在 `_metrics` 结果里的字段名。这些列**库里没有、要现算**，所以按它们排序时
+# 必须把当日**全部**票算出来再排（见 `auction_list` 的注释）。`auction_ratio` 与
+# `prev_boards` 不在这张表里（前者来自 `_auction_ratios`、后者来自昨日涨停池），单独判。
+DERIVED_SORTS = {
+    "rank": "rank",
+    "industry_rank": "industry_rank",
+    "amplitude": "amplitude",
+    "free_turnover": "free_turnover",
+    "amount_ratio": "amount_ratio",
+    "seal_ratio": "seal_ratio",
+    "cancel_rate": "cancel_rate",
+    "committee_diff": "committee_diff",
+}
+
 
 def _latest_date(session: Session) -> date | None:
     return session.scalar(select(func.max(AuctionSnapshot.trade_date)))
@@ -295,7 +309,14 @@ def _metrics(
 @router.get("/auction", response_model=AuctionListOut)
 def auction_list(
     trade_date: date | None = Query(None, alias="date"),
-    sort: str = Query("amount", description="amount/pct/ratio/turnover/float_mv/price"),
+    sort: str = Query(
+        "amount",
+        description=(
+            "amount/pct/ratio/turnover/float_mv/price，或派生列 "
+            "rank/industry_rank/amplitude/free_turnover/amount_ratio/seal_ratio/"
+            "cancel_rate/committee_diff/auction_ratio/prev_boards"
+        ),
+    ),
     order: str = Query("desc", description="desc/asc"),
     min_pct: float | None = Query(None, description="竞价涨幅下限（%）"),
     max_pct: float | None = Query(None, description="竞价涨幅上限（%）"),
@@ -355,27 +376,52 @@ def auction_list(
         hit = [code for code, level in boards.items() if level >= min_boards]
         conditions.append(AuctionSnapshot.code.in_(hit))
 
-    column = SORT_FIELDS.get(sort, AuctionSnapshot.amount)
-    direction = column.asc() if order == "asc" else column.desc()
-    rows = list(
-        session.scalars(
-            select(AuctionSnapshot)
-            .where(*conditions)
-            # 排序值相等（多为 null）时按代码兜底，保证分页稳定
-            .order_by(direction.nullslast(), AuctionSnapshot.code)
-            .limit(limit)
-        )
-    )
+    # 排序：普通列交给数据库（快路径，只取 limit 行）；**派生列**要现算，得先把当日的票
+    # 全取回来算完再排 —— 只排返回的那 300 行会得到「假的前几名」（比如封成比最高的票
+    # 可能压根没进这 300 行）。
+    derived = DERIVED_SORTS.get(sort)
+    if sort in ("auction_ratio", "prev_boards"):
+        derived = sort
 
     total = session.scalar(
         select(func.count())
         .select_from(AuctionSnapshot)
         .where(AuctionSnapshot.trade_date == trade_date)
     )
-    # 竞价量比（自算）：需要前几个交易日的竞价量，所以按**返回的这批票**现算
-    ratios = _auction_ratios(session, trade_date, rows)
-    # 派生指标（波动率 / 真实换手 / 占比 / 排名 / 昨日筹码）
-    metrics = _metrics(session, trade_date, rows)
+
+    if derived is None:
+        column = SORT_FIELDS.get(sort, AuctionSnapshot.amount)
+        direction = column.asc() if order == "asc" else column.desc()
+        rows = list(
+            session.scalars(
+                select(AuctionSnapshot)
+                .where(*conditions)
+                # 排序值相等（多为 null）时按代码兜底，保证分页稳定
+                .order_by(direction.nullslast(), AuctionSnapshot.code)
+                .limit(limit)
+            )
+        )
+        # 竞价量比（自算）：需要前几个交易日的竞价量
+        ratios = _auction_ratios(session, trade_date, rows)
+        # 派生指标（波动率 / 真实换手 / 占比 / 排名 / 昨日筹码）
+        metrics = _metrics(session, trade_date, rows)
+    else:
+        candidates = list(session.scalars(select(AuctionSnapshot).where(*conditions)))
+        ratios = _auction_ratios(session, trade_date, candidates)
+        metrics = _metrics(session, trade_date, candidates)
+
+        def key_of(row: AuctionSnapshot):
+            if derived == "auction_ratio":
+                return ratios.get(row.code)
+            if derived == "prev_boards":
+                return boards.get(row.code)
+            return (metrics.get(row.code) or {}).get(derived)
+
+        valued = [row for row in candidates if key_of(row) is not None]
+        blank = [row for row in candidates if key_of(row) is None]
+        # 缺值恒排最后（不随升降序翻转），与前端 `useSort` 的约定一致
+        valued.sort(key=key_of, reverse=order != "asc")
+        rows = (valued + blank)[:limit]
 
     def to_row(row: AuctionSnapshot) -> AuctionRow:
         open_pct = (

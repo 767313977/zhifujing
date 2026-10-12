@@ -270,7 +270,24 @@ export interface AuctionBoards {
   items: AuctionBoardItem[]
 }
 
-export type AuctionSort = 'amount' | 'pct' | 'ratio' | 'turnover' | 'float_mv' | 'price'
+export type AuctionSort =
+  | 'amount'
+  | 'pct'
+  | 'ratio'
+  | 'turnover'
+  | 'float_mv'
+  | 'price'
+  // 派生列：库里没有、要现算。按它们排序时服务端会把**当日全部**票算出来再排
+  | 'rank'
+  | 'industry_rank'
+  | 'amplitude'
+  | 'free_turnover'
+  | 'amount_ratio'
+  | 'seal_ratio'
+  | 'cancel_rate'
+  | 'committee_diff'
+  | 'auction_ratio'
+  | 'prev_boards'
 
 /** 竞价强度主表的查询参数（对应页面顶部那排筛选）。区间都是**含端点**的。 */
 export interface AuctionQuery {
