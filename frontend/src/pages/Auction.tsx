@@ -416,7 +416,19 @@ export default function AuctionPage() {
                   {data.rows.map((row) => (
                     <tr key={row.code}>
                       {COLUMNS.map((column) => (
-                        <td key={column.key} className={NARROW(column)}>
+                        <td
+                          key={column.key}
+                          // `grid-table` 的 td 默认右对齐，左对齐的列必须显式 `!text-left`
+                          // （表头走 SortTh 的 align，两边都用同一个字段才不会错位）
+                          className={
+                            [
+                              column.align === 'left' ? '!text-left' : '',
+                              NARROW(column),
+                            ]
+                              .filter(Boolean)
+                              .join(' ') || undefined
+                          }
+                        >
                           {column.render(row)}
                         </td>
                       ))}
