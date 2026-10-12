@@ -68,6 +68,45 @@ function amplitudeTone(value: number | null): string {
   return value <= 1 ? 'text-accent' : 'text-fg-muted'
 }
 
+/**
+ * 真实成交占比（需求方口径）：≥70% 可信度高（加粗）、<50% 判定为诱多假竞价。
+ *
+ * 9:20 之前可以撤单、对倒成本极低，诱多竞价的成交额多集中在那一段；9:20 之后不能撤单，
+ * 那段时间的成交才接近真金白银。
+ */
+function realRatioTone(value: number | null): string {
+  if (value == null) return 'text-fg-muted'
+  if (value >= 70) return 'text-up font-semibold'
+  return value < 50 ? 'text-down' : 'text-fg'
+}
+
+/** 情绪温度计配色：≥2% 亢奋（红）、<0 退潮（绿）。 */
+function moodTone(value: number | null): string {
+  if (value == null) return 'text-fg-muted'
+  if (value >= 2) return 'text-up font-semibold'
+  return value < 0 ? 'text-down' : 'text-fg'
+}
+
+/** 情绪带里的一格：小标题 + 数值 +（可悬停的）口径说明。 */
+function Stat({
+  label,
+  value,
+  tone,
+  hint,
+}: {
+  label: string
+  value: string
+  tone?: string
+  hint?: string
+}) {
+  return (
+    <div className="min-w-0" title={hint}>
+      <div className="truncate text-[12px] text-fg-dim">{label}</div>
+      <div className={`num text-[15px] ${tone ?? 'text-fg'}`}>{value}</div>
+    </div>
+  )
+}
+
 function buildColumns(): Column[] {
   return [
     {
@@ -207,6 +246,46 @@ function buildColumns(): Column[] {
       ),
     },
     {
+      key: 'real_ratio',
+      label: '真实占比',
+      sortKey: 'real_ratio',
+      // 9:20 之后不能撤单，那段成交才接近真金白银。>70% 可信、<50% 基本是诱多假竞价
+      render: (r) => (
+        <span
+          className={`num ${realRatioTone(r.real_ratio)}`}
+          title="9:20 后成交额 ÷ 总竞价额。9:20 前可撤单、对倒成本极低；≥70% 可信度高、<50% 基本可判为诱多"
+        >
+          {fmtNum(r.real_ratio, 1, '%')}
+        </span>
+      ),
+    },
+    {
+      key: 'amount_before_920',
+      label: '9:20前额',
+      narrowHidden: true,
+      render: (r) => (
+        <span
+          className="num text-fg-muted"
+          title="9:15–9:20 的成交额（可撤单期，对倒成本低）。⚠️ 竞价期是虚拟匹配额，撤单会回撤 → 可能为负"
+        >
+          {fmtAmount(r.amount_before_920)}
+        </span>
+      ),
+    },
+    {
+      key: 'amount_after_920',
+      label: '9:20后额',
+      narrowHidden: true,
+      render: (r) => (
+        <span
+          className="num text-fg-muted"
+          title="9:20–9:25 的成交额（不可撤单期，接近真金白银）"
+        >
+          {fmtAmount(r.amount_after_920)}
+        </span>
+      ),
+    },
+    {
       key: 'amplitude',
       label: '波动率',
       sortKey: 'amplitude',
@@ -283,6 +362,21 @@ function buildColumns(): Column[] {
       narrowHidden: true,
       sortKey: 'float_mv',
       render: (r) => <span className="num text-fg-muted">{fmtAmount(r.float_mv)}</span>,
+    },
+    {
+      key: 'free_float_ratio',
+      label: '自由流通盘',
+      sortKey: 'free_float_ratio',
+      narrowHidden: true,
+      // 自由流通市值 ÷ 总市值：越低越容易被资金控盘，那种票的竞价异动参考性要打折扣
+      render: (r) => (
+        <span
+          className="num text-fg-muted"
+          title="自由流通市值 ÷ 总市值。越低越容易被资金控盘，竞价异动的参考性要打折"
+        >
+          {fmtNum(r.free_float_ratio, 1, '%')}
+        </span>
+      ),
     },
   ]
 }
@@ -514,6 +608,42 @@ export default function AuctionPage() {
       {error && <Alert onClose={() => setError(null)}>{error}</Alert>}
 
       <div className="space-y-4">
+        {/* 市场级情绪带：盘前先回答「今天该不该出手」，再逐个看票。
+            口径是**全市场**，不受下方筛选影响 */}
+        {data?.summary && (
+          <Panel
+            title="竞价情绪"
+            meta={<span className="num">全市场口径 · 不受下方筛选影响</span>}
+            delay={20}
+          >
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3 px-3.5 py-3 md:grid-cols-4">
+              <Stat
+                label={`情绪温度计 · 昨日 ${data.summary.prev_limit_count} 只涨停的今日平均竞价`}
+                value={fmtPct(data.summary.prev_limit_avg_pct)}
+                tone={moodTone(data.summary.prev_limit_avg_pct)}
+                hint="昨日涨停股今日的平均竞价涨幅。≥2% 情绪亢奋（高开胜率与溢价都高）；<0 退潮期，个股竞价再好看也易炸板"
+              />
+              <Stat
+                label="昨日连板梯队"
+                value={`1板 ${data.summary.prev_board_1} · 2板 ${data.summary.prev_board_2} · 3板+ ${data.summary.prev_board_3plus} · 最高 ${data.summary.prev_max_board}板`}
+                hint="竞价是盘前，今日梯队还不存在，所以这里给的是昨日结构：有 2 板接力 = 梯队完整；只剩最高板 = 情绪断层"
+              />
+              <Stat
+                label="竞价涨跌家数"
+                value={`涨 ${data.summary.up_count} · 跌 ${data.summary.down_count}`}
+                tone={data.summary.up_count > data.summary.down_count ? 'text-up' : 'text-down'}
+                hint="一眼看出是普涨还是结构性行情（避免赚了指数不赚钱）"
+              />
+              <Stat
+                label="竞价即涨停"
+                value={fmtInt(data.summary.limit_count)}
+                tone={data.summary.limit_count > 0 ? 'text-up' : 'text-fg'}
+                hint="竞价价 ≥ 涨停价（竞价就封，≠ 收盘涨停）。竞价涨停家数多 = 打板氛围好"
+              />
+            </div>
+          </Panel>
+        )}
+
         {trend && trend.points.length > 0 && (
           <Panel
             title="竞价量能走势"
@@ -745,6 +875,11 @@ export default function AuctionPage() {
           「真实换手」分母用自由流通股（剔除大股东/限售等不动的筹码），悬停看自由流通市值；
           「竞价额占比」分母是昨日全天成交额（只覆盖流动性池约 3000 只），≥5% 标红、≥10% 加粗；
           「封成比」≥1% 标红、≥3% 加粗（打板口径）；
+          「真实占比」= 9:20 后成交额 ÷ 总竞价额：9:20 前可撤单、对倒成本极低，诱多竞价多集中在
+          那一段；≥70% 标红加粗（可信）、低于 50% 标绿（基本可判为诱多假竞价）。它旁边两列
+          「9:20前额 / 9:20后额」就是这把尺子的分子分母。⚠️ 竞价期的累计成交额是**虚拟匹配额**，
+          撤单会让它回撤 → 前后两段的差可能为负，照实显示、不钳到 0；
+          「自由流通盘」= 自由流通市值 ÷ 总市值，越低越容易被资金控盘（异动参考性打折）；
           「昨日」是上一交易日的涨停池/炸板池状态，悬停看昨日全天换手。
           「封成比」「撤单率」「委差」三项取的是竞价挂单 / 委差（9:20 前后各一帧）——
           ⚠️ 腾讯在竞价时段是否真给这几个字段尚未核实，若为空说明它开盘前不填，届时会撤掉。

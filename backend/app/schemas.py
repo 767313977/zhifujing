@@ -1460,6 +1460,45 @@ class AuctionRow(ApiModel):
     #: **开盘后涨幅（%）** = 9:31 现价 ÷ 昨收 − 1。判断高开之后是**站住了还是被砸**。
     #: ⚠️ 由 9:31 的补采帧提供，该帧上线（2026-10-12 之后）的日子才有；之前为空
     post_open_pct: float | None = None
+    #: **9:15–9:20 的成交额（元）** = 帧 0920 的累计额 − 帧 0915 的累计额。
+    #: ⚠️ 竞价期这个累计额是**虚拟匹配额**，9:20 前撤单会让它**回撤** → 差值可能为负，照实给
+    amount_before_920: float | None = None
+    #: **9:20–9:25 的成交额（元）** = 竞价终值 − 帧 0920 的累计额。
+    #: 9:20 之后不能撤单，这一段才接近真金白银
+    amount_after_920: float | None = None
+    #: **真实成交占比（%）** = 9:20 后成交额 ÷ 总竞价额。需求方口径：>70% 可信度高；
+    #: <50% 基本可判为诱多假竞价
+    real_ratio: float | None = None
+    #: **自由流通盘占比（%）** = 自由流通市值 ÷ 总市值。越低越容易被资金控盘，
+    #: 那种票的竞价异动参考性要打折扣
+    free_float_ratio: float | None = None
+
+
+class AuctionSummary(BaseModel):
+    """竞价强度的**市场级**概览（页面顶部那条情绪带）。
+
+    与主表不同：这里的口径**不受筛选 / 截断影响**，一律按全市场算。
+    """
+
+    trade_date: date
+    #: 上一交易日（按交易日历）
+    prev_trade_date: date | None = None
+    #: 昨日涨停家数
+    prev_limit_count: int = 0
+    #: **短线情绪温度计**：昨日所有涨停股今日的**平均竞价涨幅（%）**。
+    #: >2% 情绪亢奋（高开的胜率与溢价都高）；<0 退潮期（个股竞价再好看也易炸板）
+    prev_limit_avg_pct: float | None = None
+    #: 昨日连板梯队。⚠️ 竞价是**盘前**，今日的梯队还不存在，所以这里看的是**昨日**结构
+    prev_board_1: int = 0
+    prev_board_2: int = 0
+    prev_board_3plus: int = 0
+    prev_max_board: int = 0
+    #: 全市场竞价涨跌家数（按竞价涨幅）
+    up_count: int = 0
+    down_count: int = 0
+    flat_count: int = 0
+    #: **竞价即涨停**家数（竞价价 ≥ 涨停价）
+    limit_count: int = 0
 
 
 class AuctionListOut(BaseModel):
@@ -1467,6 +1506,8 @@ class AuctionListOut(BaseModel):
     total: int  # 当日有竞价数据的全市场只数（不受筛选 / 截断影响）
     shown: int  # 本次实际返回的行数
     rows: list[AuctionRow]
+    #: 市场级概览（情绪带）。当日没有竞价数据时为 None
+    summary: AuctionSummary | None = None
 
 
 class AuctionTrendPoint(BaseModel):

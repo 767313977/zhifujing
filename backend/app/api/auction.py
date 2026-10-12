@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import (
+    SAMPLE_AMOUNT,
     SAMPLE_ASK1_PRICE,
     SAMPLE_ASK1_VOLUME,
     SAMPLE_BID1_PRICE,
@@ -31,6 +32,7 @@ from app.schemas import (
     AuctionBoardsOut,
     AuctionListOut,
     AuctionRow,
+    AuctionSummary,
     AuctionTrendOut,
     AuctionTrendPoint,
 )
@@ -61,6 +63,8 @@ DERIVED_SORTS = {
     "seal_ratio": "seal_ratio",
     "cancel_rate": "cancel_rate",
     "committee_diff": "committee_diff",
+    "real_ratio": "real_ratio",
+    "free_float_ratio": "free_float_ratio",
 }
 
 #: 既不在 `SORT_FIELDS`（库列）也不在 `DERIVED_SORTS`（`_metrics` 现算）里的派生排序键，
@@ -162,6 +166,26 @@ def _frame_last(samples: list | None, index: int) -> object:
         if len(frame) > index:
             return frame[index]
     return None
+
+
+def _frame_upto(samples: list | None, hhmm: str, index: int) -> object:
+    """**不超过 `hhmm` 的最后一帧**的第 `index` 列（取「某时刻的累计值」）。
+
+    与 `_frame_at`（要精确命中某一分钟）不同：某一分钟没采到（如 0915 那帧丢了、
+    或晚到被 coalesce 挤掉）时，这里仍能拿到邻近的那一帧，而不是直接返回 None ——
+    「9:20 前/后成交拆分」这种按时刻取值的场景，缺一帧不该让整列作废。
+    越界 / 老格式 → None。
+    """
+    hit = None
+    for frame in samples or []:
+        if not frame:
+            continue
+        stamp = frame[0]
+        if stamp is None or str(stamp) > hhmm:
+            break
+        if len(frame) > index:
+            hit = frame
+    return hit[index] if hit is not None and len(hit) > index else None
 
 
 def _open_volume(samples: list | None, hhmm: str, limit_up, limit_down) -> float | None:
@@ -305,6 +329,32 @@ def _metrics(
         shares = free_shares.get(row.code)
         prev_amount, prev_turnover = prev_daily.get(row.code, (None, None))
         free_mv = shares * row.price if shares and row.price else None
+        # --- 9:20 前/后成交拆分（2026-10-13 加）---
+        # 9:20 之前可以撤单、对倒成本极低，诱多竞价的成交额多集中在这一段；9:20 之后
+        # 不能撤单，那一段才接近真金白银。用逐分钟**累计额**在 0915 / 0920 / 终值 三处
+        # 的差算出来（`_frame_upto` 容忍某分钟缺帧）。
+        # ⚠️ 竞价期的累计额是**虚拟匹配额**，撤单会让它回撤 → 差值可能为负，照实给，
+        # 不钳到 0（钳了就看不出「挂单在撤」这件事）。
+        total_amount = (
+            row.amount if row.amount is not None else _frame_last(row.samples, SAMPLE_AMOUNT)
+        )
+        at_0920 = _frame_upto(row.samples, "0920", SAMPLE_AMOUNT)
+        at_0915 = _frame_upto(row.samples, "0915", SAMPLE_AMOUNT)
+        amount_before_920 = (
+            round(float(at_0920) - float(at_0915), 2)
+            if at_0920 is not None and at_0915 is not None
+            else None
+        )
+        amount_after_920 = (
+            round(float(total_amount) - float(at_0920), 2)
+            if total_amount is not None and at_0920 is not None
+            else None
+        )
+        real_ratio = (
+            round(float(amount_after_920) / float(total_amount) * 100, 2)
+            if amount_after_920 is not None and total_amount
+            else None
+        )
         # **9:20 撤单率（%）** = (9:20 挂单量 − 9:21 挂单量) ÷ 9:20 挂单量 × 100。
         # 9:20 之后不能撤单，之前挂的很多是假单；撤得越少越真。负值 = 挂单还在**增加**。
         # 只在两帧都取到「涨停/跌停价上的挂单量」时才算 —— 普通票本来就没有这个量。
@@ -347,8 +397,102 @@ def _metrics(
             "committee_diff": _frame_last(row.samples, SAMPLE_COMMITTEE),
             "cancel_rate": cancel_rate,
             "seal_ratio": seal_ratio,
+            "amount_before_920": amount_before_920,
+            "amount_after_920": amount_after_920,
+            "real_ratio": real_ratio,
+            # 自由流通盘占比 = 自由流通市值 ÷ 总市值（两者都在手：free_mv 由自由流通股 ×
+            # 竞价价算得，total_mv 来自腾讯快照）。越低越容易被资金控盘
+            "free_float_ratio": (
+                round(free_mv / row.total_mv * 100, 2) if free_mv and row.total_mv else None
+            ),
         }
     return metrics
+
+
+def _summary(session: Session, trade_date: date, prev: date | None) -> AuctionSummary:
+    """市场级概览（页面顶部那条情绪带）。**不受筛选 / 截断影响**，一律全市场口径。
+
+    - **情绪温度计** = 昨日涨停股今日的平均竞价涨幅 —— 比涨跌家数精准得多：>2% 亢奋、
+      <0 退潮（退潮期里个股竞价再好看也容易炸板）
+    - 竞价涨跌家数 / 竞价即涨停家数：一眼看出是普涨还是结构性行情
+    - 昨日连板梯队：竞价是**盘前**，今日梯队还不存在，所以给的是昨日结构（判断有没有
+      2 板接力、还是只有最高板孤零零）
+    """
+    up = (
+        session.scalar(
+            select(func.count())
+            .select_from(AuctionSnapshot)
+            .where(AuctionSnapshot.trade_date == trade_date, AuctionSnapshot.pct_chg > 0)
+        )
+        or 0
+    )
+    down = (
+        session.scalar(
+            select(func.count())
+            .select_from(AuctionSnapshot)
+            .where(AuctionSnapshot.trade_date == trade_date, AuctionSnapshot.pct_chg < 0)
+        )
+        or 0
+    )
+    flat = (
+        session.scalar(
+            select(func.count())
+            .select_from(AuctionSnapshot)
+            .where(AuctionSnapshot.trade_date == trade_date, AuctionSnapshot.pct_chg == 0)
+        )
+        or 0
+    )
+    # 竞价即涨停：竞价价 ≥ 涨停价（两列都非空才可能命中，NULL 比较在 SQL 里不算真）
+    limit = (
+        session.scalar(
+            select(func.count())
+            .select_from(AuctionSnapshot)
+            .where(
+                AuctionSnapshot.trade_date == trade_date,
+                AuctionSnapshot.price >= AuctionSnapshot.limit_up,
+            )
+        )
+        or 0
+    )
+    summary = AuctionSummary(
+        trade_date=trade_date,
+        up_count=up,
+        down_count=down,
+        flat_count=flat,
+        limit_count=limit,
+    )
+    if prev is None:
+        return summary
+
+    summary.prev_trade_date = prev
+    pool = session.execute(
+        select(LimitPool.code, LimitPool.consecutive).where(
+            LimitPool.trade_date == prev, LimitPool.pool_type == "up"
+        )
+    ).all()
+    summary.prev_limit_count = len(pool)
+    if not pool:
+        return summary
+
+    levels = [int(consecutive or 1) for _, consecutive in pool]
+    summary.prev_board_1 = sum(1 for level in levels if level <= 1)
+    summary.prev_board_2 = sum(1 for level in levels if level == 2)
+    summary.prev_board_3plus = sum(1 for level in levels if level >= 3)
+    summary.prev_max_board = max(levels)
+
+    pcts = [
+        pct
+        for pct in session.scalars(
+            select(AuctionSnapshot.pct_chg).where(
+                AuctionSnapshot.trade_date == trade_date,
+                AuctionSnapshot.code.in_([code for code, _ in pool]),
+            )
+        )
+        if pct is not None
+    ]
+    if pcts:
+        summary.prev_limit_avg_pct = round(sum(pcts) / len(pcts), 2)
+    return summary
 
 
 @router.get("/auction", response_model=AuctionListOut)
@@ -359,7 +503,8 @@ def auction_list(
         description=(
             "amount/pct/ratio/turnover/float_mv/price，或派生列 "
             "rank/industry_rank/amplitude/free_turnover/amount_ratio/seal_ratio/"
-            "cancel_rate/committee_diff/auction_ratio/prev_boards/post_open_pct"
+            "cancel_rate/committee_diff/auction_ratio/prev_boards/post_open_pct/"
+            "real_ratio/free_float_ratio"
         ),
     ),
     order: str = Query("desc", description="desc/asc"),
@@ -521,6 +666,10 @@ def auction_list(
             cancel_rate=metric.get("cancel_rate"),
             seal_ratio=metric.get("seal_ratio"),
             post_open_pct=_post_open_pct(row),
+            amount_before_920=metric.get("amount_before_920"),
+            amount_after_920=metric.get("amount_after_920"),
+            real_ratio=metric.get("real_ratio"),
+            free_float_ratio=metric.get("free_float_ratio"),
         )
 
     return AuctionListOut(
@@ -528,6 +677,8 @@ def auction_list(
         total=total or 0,
         shown=len(rows),
         rows=[to_row(row) for row in rows],
+        # 市场级情绪带：全市场口径，与上面的筛选 / 截断无关
+        summary=_summary(session, trade_date, prev),
     )
 
 

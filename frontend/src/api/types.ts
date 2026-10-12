@@ -231,6 +231,53 @@ export interface AuctionRow {
    * ⚠️ 由 9:31 的补采帧提供，该帧上线之后的日子才有值（之前为空）。
    */
   post_open_pct: number | null
+  /**
+   * **9:15–9:20 的成交额（元）** = 帧 0920 累计额 − 帧 0915 累计额。
+   * ⚠️ 竞价期这个累计额是**虚拟匹配额**，9:20 前撤单会让它回撤 → 差值可能为负。
+   */
+  amount_before_920: number | null
+  /** **9:20–9:25 的成交额（元）** = 竞价终值 − 帧 0920。9:20 后不能撤单，这段接近真金白银 */
+  amount_after_920: number | null
+  /**
+   * **真实成交占比（%）** = 9:20 后成交额 ÷ 总竞价额。
+   * >70% 可信度高；<50% 基本可判为诱多假竞价（9:20 前可撤单、对倒成本极低）。
+   */
+  real_ratio: number | null
+  /** **自由流通盘占比（%）** = 自由流通市值 ÷ 总市值。越低越容易被资金控盘 */
+  free_float_ratio: number | null
+}
+
+/**
+ * 竞价强度的**市场级**概览（页面顶部那条情绪带）。
+ * 与主表不同：口径**不受筛选 / 截断影响**，一律按全市场算。
+ */
+export interface AuctionSummary {
+  trade_date: string
+  /** 上一交易日（按交易日历） */
+  prev_trade_date: string | null
+  /** 昨日涨停家数 */
+  prev_limit_count: number
+  /**
+   * **短线情绪温度计（%）**：昨日所有涨停股今日的平均竞价涨幅。
+   * >2% 情绪亢奋（高开胜率与溢价都高）；<0 退潮期（个股竞价再好看也易炸板）。
+   */
+  prev_limit_avg_pct: number | null
+  /** 昨日连板梯队：1 板家数 */
+  prev_board_1: number
+  /** 昨日 2 板家数 */
+  prev_board_2: number
+  /** 昨日 3 板及以上家数 */
+  prev_board_3plus: number
+  /** 昨日最高连板数 */
+  prev_max_board: number
+  /** 全市场竞价上涨家数 */
+  up_count: number
+  /** 全市场竞价下跌家数 */
+  down_count: number
+  /** 全市场竞价平盘家数 */
+  flat_count: number
+  /** **竞价即涨停**家数（竞价价 ≥ 涨停价） */
+  limit_count: number
 }
 
 export interface AuctionList {
@@ -240,6 +287,8 @@ export interface AuctionList {
   /** 本次实际返回的行数 */
   shown: number
   rows: AuctionRow[]
+  /** 市场级概览（情绪带）。当日没有竞价数据时为 null */
+  summary: AuctionSummary | null
 }
 
 /** 全市场竞价量能曲线的一个点：该时刻累计成交额合计（元）。 */
@@ -295,6 +344,8 @@ export type AuctionSort =
   | 'auction_ratio'
   | 'prev_boards'
   | 'post_open_pct'
+  | 'real_ratio'
+  | 'free_float_ratio'
 
 /** 竞价强度主表的查询参数（对应页面顶部那排筛选）。区间都是**含端点**的。 */
 export interface AuctionQuery {
