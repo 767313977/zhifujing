@@ -27,6 +27,7 @@ import type {
   Me,
   Member,
   PoolType,
+  PatternCount,
   PatternMeta,
   PatternStock,
   PatternSummary,
@@ -527,6 +528,27 @@ export const api = {
   patternSummary: (date?: string | null) => request<PatternSummary>(
     withDate('/patterns/summary', date),
   ),
+
+  /**
+   * chip 徽标的「再加上它会剩多少只」。
+   *
+   * `patterns` 是**当前已选**的形态：后端对每个候选形态返回「已选 ∪ 这个」的交集
+   * 只数（没选形态时＝各自的全市场家数）。与 `/hits` 共用同一套交集定义，所以
+   * 徽标上的数字和点进去看到的行数天然一致。
+   */
+  patternPreview: (
+    date?: string | null,
+    minScore = 0,
+    patterns?: string[] | null,
+  ) => {
+    const pick = (patterns ?? [])
+      .filter(Boolean)
+      .map((key) => `&pattern=${encodeURIComponent(key)}`)
+      .join('')
+    return request<PatternCount[]>(
+      withDate(`/patterns/preview?min_score=${minScore}${pick}`, date),
+    )
+  },
 
   /**
    * 每个筛选日的「评分前 `top` 只」在其后 `trackDays` 个交易日里的走势。

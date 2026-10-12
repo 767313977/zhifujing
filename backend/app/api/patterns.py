@@ -130,6 +130,116 @@ def catalog() -> list[PatternMeta]:
     ]
 
 
+def _intersection_codes(
+    db: Session, target: date, keys: list[str], min_score: float = 0.0
+) -> list[str]:
+    """命中**全部** `keys` 的 code 列表（多选=**交集**）。
+
+    `having count(distinct pattern) = len(keys)` 一步求交 —— 不用把每个形态的 code
+    集合都取回内存再求交。`/hits` 与 `/preview` 共用这一条定义，免得两处口径漂移。
+
+    ⚠️ 先**去重**再比个数：判据是「命中的不同形态个数 = 传入个数」，重复的 key 会让
+    右边多算一个、把本该非空的结果打成空。**去重必须在这一层**（两个调用方都靠它），
+    调用方各自去重早晚会漏一处 —— `?pattern=a&pattern=a` 这种手工拼的 URL 不该悄悄
+    变成「0 只」。
+    """
+    uniq = list(dict.fromkeys(keys))
+    if not uniq:
+        return []
+    return list(
+        db.scalars(
+            select(PatternHit.code)
+            .where(
+                PatternHit.trade_date == target,
+                PatternHit.pattern.in_(uniq),
+                PatternHit.score >= min_score,
+            )
+            .group_by(PatternHit.code)
+            .having(func.count(func.distinct(PatternHit.pattern)) == len(uniq))
+        )
+    )
+
+
+@router.get("/preview", response_model=list[PatternCount])
+def preview(
+    db: Session = Depends(get_db),
+    trade_date: date | None = Query(None, alias="date"),
+    min_score: float = Query(0.0, ge=0.0, le=100.0),
+    pattern: list[str] | None = Query(
+        None, description="当前已选形态（可重复传多个）。不传 = 默认视图"
+    ),
+) -> list[PatternCount]:
+    """每个形态「**再加上它会剩多少只**」—— 筛选条 chip 徽标专用的交集预览。
+
+    徽标要回答的不是「这个形态全市场有多少只」，而是「以当前选择为前提，再点它会
+    剩多少只」：交集很容易筛到 0 只（选了「放量上涨」再点「阳包阴」可能一只都不剩），
+    点之前就该看得出来。
+
+    - **没选任何形态**：每个形态的预览值就是它自己的全市场命中家数（与 `/summary`
+      的 `by_pattern` 同口径，这里照样算一遍，好让前端一条口径走到底）。
+    - **选了 k 个**：先求出命中这 k 个形态的**全部** code（`_intersection_codes`），
+      再数这些 code 里各命中了哪些形态 —— 对候选 X 这个数就是 `|已选 ∩ X|`。
+      已选中的形态自己也在结果里（值等于当前交集数），徽标不会因为「已选中」而空掉。
+    - **交集为空**：全部候选都返回 0（正是要显示的效果），不做特殊处理。
+
+    只发两条查询（求交 + 分组计数），与候选形态个数无关；与 `/hits` 共用
+    `_intersection_codes` 这一条定义，所以徽标数点进去的行数不会打架。
+    """
+    target = trade_date or _latest_date(db)
+    if target is None:
+        return []
+
+    picked = [key for key in (pattern or []) if key]
+    unknown = [key for key in picked if key not in _META]
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"未知形态 {', '.join(unknown)}，可选：{', '.join(_META)}",
+        )
+
+    counts: dict[str, int] = {}
+    if picked:
+        codes = _intersection_codes(db, target, picked, min_score)
+        # codes 为空 → counts 保持全 0（交集为空，任何候选都还是 0）
+        for batch in chunked(sorted(codes), _IN_BATCH):
+            rows = db.execute(
+                select(
+                    PatternHit.pattern,
+                    func.count(func.distinct(PatternHit.code)),
+                )
+                .where(
+                    PatternHit.trade_date == target,
+                    PatternHit.pattern.in_(_KEYS),
+                    PatternHit.score >= min_score,
+                    PatternHit.code.in_(batch),
+                )
+                .group_by(PatternHit.pattern)
+            ).all()
+            for key, n in rows:
+                counts[key] = counts.get(key, 0) + n
+    else:
+        rows = db.execute(
+            select(PatternHit.pattern, func.count(func.distinct(PatternHit.code)))
+            .where(
+                PatternHit.trade_date == target,
+                PatternHit.pattern.in_(_KEYS),
+                PatternHit.score >= min_score,
+            )
+            .group_by(PatternHit.pattern)
+        ).all()
+        counts = {key: n for key, n in rows}
+
+    return [
+        PatternCount(
+            pattern=p.key,
+            pattern_name=p.name,
+            group=p.group,
+            stocks=counts.get(p.key, 0),
+        )
+        for p in PATTERNS
+    ]
+
+
 @router.get("/hits", response_model=list[PatternStockOut])
 def hits(
     db: Session = Depends(get_db),
@@ -174,21 +284,8 @@ def hits(
                 status_code=400,
                 detail=f"未知形态 {', '.join(unknown)}，可选：{', '.join(_META)}",
             )
-        # **交集**：先按所选形态捞出候选行，再按 code 数「命中了几个不同形态」，
-        # 只有个数正好等于所选形态数的那些 code 才通过（`having` 一步到位，
-        # 不用把每个形态的 code 集合都取回内存再求交）。
-        codes = list(
-            db.scalars(
-                select(PatternHit.code)
-                .where(
-                    PatternHit.trade_date == target,
-                    PatternHit.pattern.in_(picked),
-                    PatternHit.score >= min_score,
-                )
-                .group_by(PatternHit.code)
-                .having(func.count(func.distinct(PatternHit.pattern)) == len(picked))
-            )
-        )
+        # **交集**：命中全部所选形态的票才留下（定义见 `_intersection_codes`）
+        codes = _intersection_codes(db, target, picked, min_score)
         if not codes:
             return []
         rows = db.scalars(

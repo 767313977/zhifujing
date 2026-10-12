@@ -1,7 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { PatternMeta, PatternStock, PatternSummary } from '../api/types'
+import type { PatternCount, PatternMeta, PatternStock, PatternSummary } from '../api/types'
 import Alert from '../components/Alert'
 import KLineChart from '../components/KLineChart'
 import type { KeyLevel } from '../components/KLineChart'
@@ -260,7 +260,9 @@ export default function Patterns() {
   const [catalog, setCatalog] = useState<PatternMeta[]>([])
   const [hits, setHits] = useState<PatternStock[]>([])
   const [summary, setSummary] = useState<PatternSummary | null>(null)
-  // 选中的形态：**多选**（并集）。空数组 = 默认视图（全市场按评分取前 HIT_LIMIT 只）
+  // chip 徽标的「再加上它会剩多少只」（后端按当前选择算好的交集家数）
+  const [preview, setPreview] = useState<PatternCount[]>([])
+  // 选中的形态：**多选**（交集）。空数组 = 默认视图（全市场按评分取前 HIT_LIMIT 只）
   const [picked, setPicked] = useState<string[]>(() => splitPatterns(params.get('patterns')))
   const [minScore, setMinScore] = useState(0)
   const [active, setActive] = useState<string | null>(() => readActive())
@@ -310,19 +312,23 @@ export default function Patterns() {
       setError(null)
       try {
         // 没选形态：全市场按评分取前 `HIT_LIMIT` 只（默认视图）。
-        // 选了形态：取这些形态的**全部**命中（`PATTERN_LIMIT`，多个之间取并集），
+        // 选了形态：取这些形态的**全部**命中（`PATTERN_LIMIT`，多个之间取**交集**），
         // 评分与排序由后端换成所选形态里的最高分 —— 见 `api.patternHits` 与后端 `/hits`
-        const [list, sum] = await Promise.all([
+        const [list, sum, prev] = await Promise.all([
           api.patternHits(target, 0, only.length > 0 ? PATTERN_LIMIT : HIT_LIMIT, only),
           api.patternSummary(target),
+          // 徽标数据：跟着 `only` 走，所以每次切形态都重算（与命中列表同一次请求里发出）
+          api.patternPreview(target, 0, only),
         ])
         if (isStale()) return
         setHits(list)
         setSummary(sum)
+        setPreview(prev)
       } catch (err) {
         if (isStale()) return
         setHits([])
         setSummary(null)
+        setPreview([])
         setError((err as Error).message)
       } finally {
         if (!isStale()) setLoading(false)
@@ -336,6 +342,7 @@ export default function Patterns() {
     // 先清空：旧日期/旧形态的命中留在表里会被当成新的一屏看（与 `Funds` 同一处理）
     setHits([])
     setSummary(null)
+    setPreview([])
     void load(date, picked, () => stale)
     return () => {
       stale = true
@@ -361,6 +368,21 @@ export default function Patterns() {
     for (const item of summary?.by_pattern ?? []) map[item.pattern] = item.stocks
     return map
   }, [summary])
+
+  /**
+   * chip 徽标数字：优先用 `/preview` 的交集家数（「再加上它会剩多少只」），
+   * 它拿不到时退回 `/summary` 的全市场家数。
+   *
+   * 为什么要有 fallback：`/preview` 与命中列表在同一个 `Promise.all` 里发出，
+   * 正常情况下同时到；万一它单独失败（或还没到），退回全市场家数总比徽标集体空成
+   * 0 好。注意 `?? ` 只对 null/undefined 生效 —— 交集真的是 0 只时 `0 ?? x` 仍是 0，
+   * 那正是要显示的结果（提示这个组合没票）。
+   */
+  const previewOf = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const item of preview) map[item.pattern] = item.stocks
+    return map
+  }, [preview])
 
   /** 当前选中形态的中文名（标题与提示都要用；清单还没拉到时退回 key） */
   const pickedNames = useMemo(
@@ -550,7 +572,9 @@ export default function Patterns() {
               {summary?.trade_date ? `${summary.trade_date} · ` : ''}
               共 {fmtInt(summary?.total_stocks ?? 0)} 只命中
               <span className="ml-3 text-fg-dim">
-                点形态名筛选（可多选，只显示同时满足全部所选形态的票；再点一次取消）；徽标是该形态的全市场命中家数。致富＝悟道样板/启动
+                点形态名筛选（可多选，只显示同时满足全部所选形态的票；再点一次取消）；
+                没选形态时徽标是该形态的全市场家数，选了之后变成「再加上它会剩多少只」
+                （标红＝加上它筛不到票）。致富＝悟道样板/启动
                 ＋洗完（只扫创业板与科创板，且样板/启动另限「今天冲高过」的候选池），
                 悟道之路＝强达型与华宝早期（同样只扫创业板与科创板）；金叉大阳（趋势）也只扫这两块；
                 做T＝用户的「V5 日线做T」买点，深B/★B/双B 三档（全市场扫，档位在明细里看）；
@@ -568,20 +592,38 @@ export default function Patterns() {
                 <span className="w-24 shrink-0 text-[13px] text-fg-dim">{group}</span>
                 {items.map((item) => {
                   const on = picked.includes(item.key)
-                  const count = countOf[item.key] ?? 0
+                  // 数字优先取 `/preview` 的交集家数（「再加上它会剩多少只」），
+                  // 拿不到时退回 `/summary` 的全市场家数（见 `previewOf` 的说明）
+                  const count = previewOf[item.key] ?? countOf[item.key] ?? 0
+                  // 已选了别的形态时，徽标算的是「再点它会剩多少只」；为 0 说明这个
+                  // 组合筛不到票 —— 标红，点之前就知道没戏（点进去就是空列表）
+                  const empty = !on && picked.length > 0 && count === 0
                   return (
                     <button
                       key={item.key}
                       type="button"
                       onClick={() => toggle(item.key)}
+                      title={
+                        picked.length > 0
+                          ? `再加上「${item.name}」后剩 ${count} 只`
+                          : `「${item.name}」全市场命中 ${count} 只`
+                      }
                       className={`num border px-2 py-[2px] text-[13px] transition-colors ${
                         on
                           ? 'border-accent bg-accent/10 text-accent'
-                          : 'border-line text-fg-muted hover:border-fg-dim hover:text-fg'
+                          : empty
+                            ? 'border-line text-fg-dim opacity-60 hover:border-fg-dim hover:text-fg'
+                            : 'border-line text-fg-muted hover:border-fg-dim hover:text-fg'
                       }`}
                     >
                       {item.name}
-                      <span className="ml-1.5 text-[13px] text-fg-dim">{count}</span>
+                      <span
+                        className={`ml-1.5 text-[13px] ${
+                          on ? 'text-accent' : empty ? 'text-danger' : 'text-fg-dim'
+                        }`}
+                      >
+                        {count}
+                      </span>
                     </button>
                   )
                 })}
