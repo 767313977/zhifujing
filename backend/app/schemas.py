@@ -1457,6 +1457,9 @@ class AuctionRow(ApiModel):
     #: **封成比（%）** = 涨停价上的封单额 ÷ 自由流通市值。只在**竞价就封在涨停价上**时有值
     #: （打板核心指标：>1% 较强、>3% 超强）
     seal_ratio: float | None = None
+    #: **开盘后涨幅（%）** = 9:31 现价 ÷ 昨收 − 1。判断高开之后是**站住了还是被砸**。
+    #: ⚠️ 由 9:31 的补采帧提供，该帧上线（2026-10-12 之后）的日子才有；之前为空
+    post_open_pct: float | None = None
 
 
 class AuctionListOut(BaseModel):

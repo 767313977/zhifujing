@@ -827,6 +827,12 @@ class AuctionSnapshot(Base):
     total_mv: Mapped[float | None] = mapped_column(Float)  # 总市值（元）
     limit_up: Mapped[float | None] = mapped_column(Float)
     limit_down: Mapped[float | None] = mapped_column(Float)
+    # **开盘后（9:31 那一帧）的现价**。「开盘后涨幅」= 它 ÷ 昨收 − 1 —— 用来判断
+    # 高开之后是**站住了还是被砸**（A 股开盘价 = 竞价成交价，所以「开盘涨幅」与「竞价涨幅」
+    # 恒等、没用；有信息量的是开盘**之后**这一档）。
+    # ⚠️ 由 9:31 的补采帧单独写入（那一帧**不碰**竞价结果列），所以它是**逐步**才有的：
+    # 该帧上线之前的日子为空。
+    post_open_price: Mapped[float | None] = mapped_column(Float)
     # 逐分钟：[[HHMM, price, amount], …]（amount 为当日累计成交额，元）
     samples: Mapped[list | None] = mapped_column(JSON)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

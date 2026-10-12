@@ -93,8 +93,8 @@ def collect_auction(now: datetime | None = None) -> int:
 
     with session_scope() as session:
         if not result_frame:
-            # 9:31 那一帧：**只刷量比**。必须限定在「已存在的行」上 —— 否则
-            # `upsert_many` 会把没有竞价结果的票插成「只有量比、其余全空」的脏行。
+            # 9:31 那一帧：**只刷量比 + 开盘后现价**。必须限定在「已存在的行」上 —— 否则
+            # `upsert_many` 会把没有竞价结果的票插成「只有这两列、其余全空」的脏行。
             known = set(
                 session.scalars(
                     select(AuctionSnapshot.code).where(AuctionSnapshot.trade_date == day)
@@ -105,9 +105,12 @@ def collect_auction(now: datetime | None = None) -> int:
                     "trade_date": day,
                     "code": item["code"],
                     "volume_ratio": item["volume_ratio"],
+                    # 开盘后的现价 → 「开盘后涨幅」（它 ÷ 昨收 − 1）：判断高开有没有站住
+                    "post_open_price": item["price"],
                 }
                 for item in quotes
-                if item["code"] in known and item["volume_ratio"] is not None
+                if item["code"] in known
+                and (item["volume_ratio"] is not None or item["price"] is not None)
             ]
         else:
             # 已有的逐分钟序列：读回来往后追加（`upsert_many` 是整列覆盖，不读会丢掉前面几帧）

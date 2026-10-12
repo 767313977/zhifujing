@@ -226,6 +226,11 @@ export interface AuctionRow {
   cancel_rate: number | null
   /** **封成比（%）** = 涨停价上的封单额 ÷ 自由流通市值。只在竞价就封在涨停价上时有值 */
   seal_ratio: number | null
+  /**
+   * **开盘后涨幅（%）** = 9:31 现价 ÷ 昨收 − 1 —— 看高开之后是站住了还是被砸。
+   * ⚠️ 由 9:31 的补采帧提供，该帧上线之后的日子才有值（之前为空）。
+   */
+  post_open_pct: number | null
 }
 
 export interface AuctionList {
@@ -289,6 +294,7 @@ export type AuctionSort =
   | 'committee_diff'
   | 'auction_ratio'
   | 'prev_boards'
+  | 'post_open_pct'
 
 /** 竞价强度主表的查询参数（对应页面顶部那排筛选）。区间都是**含端点**的。 */
 export interface AuctionQuery {

@@ -192,6 +192,18 @@ def _amplitude(samples: list | None, pre_close: float | None) -> float | None:
     return round((max(prices) - min(prices)) / pre_close * 100, 2)
 
 
+def _post_open_pct(row: AuctionSnapshot) -> float | None:
+    """**开盘后涨幅（%）** = 9:31 现价 ÷ 昨收 − 1。
+
+    A 股开盘价 = 集合竞价成交价，所以「开盘涨幅」与「竞价涨幅」恒等、没有信息量；
+    有信息量的是**开盘之后**这一档（高开是被接住还是一路砸）。9:31 那一帧上线之前的
+    日子没有这个值 → 返回 None。
+    """
+    if row.post_open_price is None or not row.pre_close:
+        return None
+    return round((row.post_open_price / row.pre_close - 1) * 100, 2)
+
+
 def _metrics(
     session: Session, trade_date: date, rows: list[AuctionSnapshot]
 ) -> dict[str, dict]:
@@ -314,7 +326,7 @@ def auction_list(
         description=(
             "amount/pct/ratio/turnover/float_mv/price，或派生列 "
             "rank/industry_rank/amplitude/free_turnover/amount_ratio/seal_ratio/"
-            "cancel_rate/committee_diff/auction_ratio/prev_boards"
+            "cancel_rate/committee_diff/auction_ratio/prev_boards/post_open_pct"
         ),
     ),
     order: str = Query("desc", description="desc/asc"),
@@ -394,7 +406,7 @@ def auction_list(
     # 全取回来算完再排 —— 只排返回的那 300 行会得到「假的前几名」（比如封成比最高的票
     # 可能压根没进这 300 行）。
     derived = DERIVED_SORTS.get(sort)
-    if sort in ("auction_ratio", "prev_boards"):
+    if sort in ("auction_ratio", "prev_boards", "post_open_pct"):
         derived = sort
 
     total = session.scalar(
@@ -429,6 +441,8 @@ def auction_list(
                 return ratios.get(row.code)
             if derived == "prev_boards":
                 return boards.get(row.code)
+            if derived == "post_open_pct":
+                return _post_open_pct(row)
             return (metrics.get(row.code) or {}).get(derived)
 
         valued = [row for row in candidates if key_of(row) is not None]
@@ -467,6 +481,7 @@ def auction_list(
             committee_diff=metric.get("committee_diff"),
             cancel_rate=metric.get("cancel_rate"),
             seal_ratio=metric.get("seal_ratio"),
+            post_open_pct=_post_open_pct(row),
         )
 
     return AuctionListOut(
