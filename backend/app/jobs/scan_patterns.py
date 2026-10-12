@@ -53,7 +53,7 @@ from datetime import date, timedelta
 from sqlalchemy import delete, func, select
 
 from app.config import Settings, get_settings
-from app.db import session_scope, upsert_many
+from app.db import session_scope, upsert_many, upsert_many_fill
 from app.jobs.collect_universe import load_codes
 from app.models import (
     CollectLog,
@@ -474,7 +474,11 @@ def _sync_stock_tencent(code: str, *, days: int = _WUDAO_SYNC_DAYS) -> int:
     for row in rows:
         row["name"] = name or str(code).zfill(6)
     with session_scope() as session:
-        return upsert_many(session, StockDaily, rows)
+        # 用 **fill 版**（2026-10-12 修）：腾讯判不出成交量单位时会给 `volume=None`
+        #（原来那套「一律 ×100」的猜法会写脏数据，见 `sources/tencent._to_shares`），
+        # 而这一路每天都在给池外候选补日线 —— 用会覆盖的 `upsert_many` 会把 iFinD
+        # 已经写好的 `volume` 刷成空。fill 版只保留「新的非空值覆盖」的语义。
+        return upsert_many_fill(session, StockDaily, rows)
 
 
 def _sync_note(sync_info: dict) -> str:

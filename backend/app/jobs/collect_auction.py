@@ -36,7 +36,56 @@ RESULT_LAST = "0926"
 # 只补量比的那一帧（见模块说明）。腾讯开盘前不填量比，9:26 前取到恒为 0。
 RATIO_SAMPLE = "0931"
 
+#: 采样窗口内**计划**采的那几刻（HHMM，升序）。见 `_frame_hhmm`。
+PLANNED_MINUTES = [f"09{minute:02d}" for minute in range(15, 27)] + [RATIO_SAMPLE]
+
 _CST = timezone(timedelta(hours=8))
+
+
+def _frame_hhmm(moment: datetime) -> str | None:
+    """这一趟**计划**采哪一分钟：窗口内「不超过 `moment` 的最后一刻」，窗口外返回 None。
+
+    为什么不用实际运行时刻（2026-10-12 修）：定时任务允许晚到 90 秒
+    （`misfire_grace_time=90`）。晚到时按实际时刻取「几点几分」，9:26 那次会被
+    算成 0927 而跳过、9:31 那次会被算成 0932 而丢掉量比（腾讯开盘前不填量比，
+    这一帧丢了当天就一直是空）。窗口内相邻两刻最多差 5 分钟，而晚到上限 90 秒，
+    所以「最后一刻 ≤ 现在」总是恰好落在计划的那一分钟上。
+    """
+    limit = moment.strftime("%H%M")
+    hit: str | None = None
+    for candidate in PLANNED_MINUTES:
+        if candidate > limit:
+            break
+        hit = candidate
+    return hit
+
+
+def _is_today_quote(item: dict, day: date) -> bool:
+    """这一行的**行情时间**是不是 `day`。
+
+    9:15 刚开始、或停牌的票，腾讯可能还在返回**昨天的**快照 —— 那样会把昨天全天的
+    成交额当成竞价额写进库，而且从数字上看不出错（2026-10-12 修：行情时间一直解析了
+    却没用上）。行情时间取不到的（个别票字段缺失）**放行**，避免误杀好数据。
+    """
+    raw = item.get("quote_time")
+    if not raw:
+        return True
+    digits = "".join(ch for ch in str(raw) if ch.isdigit())
+    if len(digits) < 8:
+        return True
+    return digits[:8] == day.strftime("%Y%m%d")
+
+
+def _positive(value: float | None) -> float | None:
+    """价格类的清洗：**≤0 一律当缺值**。
+
+    没有虚拟成交价的票腾讯给的是 0。直接拿去算竞价涨幅会得到 **−100%** —— 那不是
+    「跌了百分之百」而是「没有数据」，既会排到升序第一，又把所在板块的平均涨幅拉下去
+    （2026-10-12 修）。
+    """
+    if value is None or value <= 0:
+        return None
+    return value
 
 
 def now_cst() -> datetime:
@@ -69,11 +118,13 @@ def collect_auction(now: datetime | None = None) -> int:
     """
     moment = now or now_cst()
     day = moment.date()
-    hhmm = moment.strftime("%H%M")
-    result_frame = RESULT_FIRST <= hhmm <= RESULT_LAST
-    ratio_frame = hhmm == RATIO_SAMPLE
-    if not (result_frame or ratio_frame):
+    # 定帧用**计划**时刻，不用实际运行时刻（见 `_frame_hhmm` 的说明）
+    hhmm = _frame_hhmm(moment)
+    if hhmm is None:
         return 0
+    # `hhmm` 一定落在 `PLANNED_MINUTES` 里（要么 None 已提前返回），所以除了 9:15–9:26
+    # 那一段，剩下的就是唯一的 9:31 量比帧 —— 不用再单独判一次。
+    result_frame = RESULT_FIRST <= hhmm <= RESULT_LAST
     if not _is_trade_day(day):
         return 0
 
@@ -91,6 +142,13 @@ def collect_auction(now: datetime | None = None) -> int:
         logger.warning("竞价采样：%s %s 返回 0 行", day, hhmm)
         return 0
 
+    # 丢掉**行情时间不是今天**的行：9:15 刚开始或停牌的票，腾讯可能还在返回昨天的
+    # 快照 —— 那会把昨天全天的成交额当成竞价额写库（见 `_is_today_quote`）。
+    quotes = [item for item in quotes if _is_today_quote(item, day)]
+    if not quotes:
+        logger.warning("竞价采样：%s %s 的行全是旧快照（行情时间不是今天），跳过", day, hhmm)
+        return 0
+
     with session_scope() as session:
         if not result_frame:
             # 9:31 那一帧：**只刷量比 + 开盘后现价**。必须限定在「已存在的行」上 —— 否则
@@ -100,18 +158,24 @@ def collect_auction(now: datetime | None = None) -> int:
                     select(AuctionSnapshot.code).where(AuctionSnapshot.trade_date == day)
                 )
             )
-            rows: list[dict] = [
-                {
-                    "trade_date": day,
-                    "code": item["code"],
-                    "volume_ratio": item["volume_ratio"],
-                    # 开盘后的现价 → 「开盘后涨幅」（它 ÷ 昨收 − 1）：判断高开有没有站住
-                    "post_open_price": item["price"],
-                }
-                for item in quotes
-                if item["code"] in known
-                and (item["volume_ratio"] is not None or item["price"] is not None)
-            ]
+            rows: list[dict] = []
+            for item in quotes:
+                if item["code"] not in known:
+                    continue
+                volume_ratio = item["volume_ratio"]
+                # 开盘后的现价 → 「开盘后涨幅」（它 ÷ 昨收 − 1）：看高开有没有被接住。
+                # ≤0 当缺值（停牌 / 无成交时腾讯给 0，见 `_positive`）。
+                post_open_price = _positive(item["price"])
+                if volume_ratio is None and post_open_price is None:
+                    continue
+                rows.append(
+                    {
+                        "trade_date": day,
+                        "code": item["code"],
+                        "volume_ratio": volume_ratio,
+                        "post_open_price": post_open_price,
+                    }
+                )
         else:
             # 已有的逐分钟序列：读回来往后追加（`upsert_many` 是整列覆盖，不读会丢掉前面几帧）
             existing = {
@@ -125,7 +189,9 @@ def collect_auction(now: datetime | None = None) -> int:
             rows = []
             for item in quotes:
                 code = item["code"]
-                price = item["price"]
+                # ≤0 当缺值：没有虚拟成交价的票腾讯给 0，直接算会得到 −100% 的竞价涨幅
+                # （见 `_positive`）。样本里也一并存清洗后的值。
+                price = _positive(item["price"])
                 pre_close = item["pre_close"]
                 samples = list(existing.get(code) or [])
                 # 逐分钟帧：下标见 `models.SAMPLE_*`（写读两端共用一份，别自己数位置）。
@@ -160,8 +226,11 @@ def collect_auction(now: datetime | None = None) -> int:
                         "amount": item["amount"],
                         "volume": item["volume"],
                         "turnover": item["turnover"],
-                        # 这一帧的量比一定是 0（开盘前腾讯不填），等 9:31 那帧补
-                        "volume_ratio": item["volume_ratio"],
+                        # 竞价几帧**不写量比**：腾讯开盘前不填（返回的是 0）。写 0 会让
+                        # 9:25–9:31 这段最常看的时间整列显示 0.00、「量比 ≥2」筛选全空，
+                        # 而且 9:31 那帧没采到就一直是 0。真正的量比由 9:31 那帧补。
+                        # （2026-10-12 修）
+                        "volume_ratio": None,
                         "float_mv": item["float_mv"],
                         "total_mv": item["total_mv"],
                         "limit_up": item["limit_up"],
