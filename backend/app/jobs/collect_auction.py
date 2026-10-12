@@ -19,6 +19,7 @@
 """
 
 import logging
+import time
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select
@@ -116,6 +117,7 @@ def collect_auction(now: datetime | None = None) -> int:
 
     `now` 可注入（测试用）；缺省取当前本地时间。
     """
+    started = time.monotonic()
     moment = now or now_cst()
     day = moment.date()
     # 定帧用**计划**时刻，不用实际运行时刻（见 `_frame_hhmm` 的说明）
@@ -194,6 +196,11 @@ def collect_auction(now: datetime | None = None) -> int:
                 price = _positive(item["price"])
                 pre_close = item["pre_close"]
                 samples = list(existing.get(code) or [])
+                # 同一分钟重跑（晚到 / 手动触发）时**替换**那一帧，而不是再追加一条：
+                # 追加会让序列里出现两条相同的 0921，而撤单率 / 封成比那种「按分钟取帧」
+                # 的算法会取到错的那条。`_frame_hhmm` 用计划时刻定帧，晚到 90 秒内同一
+                # 计划分钟会命中两次，所以这里必须幂等（2026-10-12 修）。
+                samples = [frame for frame in samples if frame[0] != hhmm]
                 # 逐分钟帧：下标见 `models.SAMPLE_*`（写读两端共用一份，别自己数位置）。
                 # 后 5 列是 2026-10-12 加的（未匹配量差 / 9:20 撤单 / 封成比用）——
                 # ⚠️ 老行只有前 3 个，读端按固定下标取、越界当 None。
@@ -240,5 +247,15 @@ def collect_auction(now: datetime | None = None) -> int:
                 )
         upsert_many(session, AuctionSnapshot, rows)
 
-    logger.info("竞价采样 %s %s：%d 只", day, hhmm, len(rows))
+    elapsed = time.monotonic() - started
+    logger.info("竞价采样 %s %s：%d 只，耗时 %.1f 秒", day, hhmm, len(rows), elapsed)
+    if elapsed > 60:
+        # 全市场约 110 个请求。定时任务是 `coalesce=True` + 单实例，一轮超过 60 秒就会
+        # 把下一分钟那一帧挤掉（缺帧在 `samples` 里看得出来）。记一条告警便于事后对账。
+        logger.warning(
+            "竞价采样 %s %s 耗时 %.1f 秒（> 60 秒），下一分钟那一帧可能被跳过",
+            day,
+            hhmm,
+            elapsed,
+        )
     return len(rows)
