@@ -239,7 +239,7 @@ function buildColumns(
       key: 'last_seal',
       label: '末封',
       render: (s) => <span className="num text-fg-muted">{fmtSealTime(s.last_seal_time)}</span>,
-      // 封板时间是 `09:31:00` 这种定长写法，按字符串排就等价于按时间排
+      // 封板时间是**零填充的紧凑串** `093101`（不是 `09:31:00`）。定长，按字符串排即等价于按时间排
       sortValue: (s) => s.last_seal_time,
     })
   } else {

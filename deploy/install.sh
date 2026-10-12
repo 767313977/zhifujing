@@ -133,6 +133,14 @@ UNIT
 
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
+# 收紧敏感文件的权限（2026-10-12 加）：
+# - `.env` 里有 iFinD token / 飞书 webhook / OpenAI key，包里解出来的文件位通常是 644
+#   （线上实测还见过 666），同机其它账号能直接读走。
+# - `backend/data` 目录 700：库文件本身按 umask 一般是 644，但目录不可进入，
+#   其它账号就遍历/读取不到（SQLite 的 -wal / -shm 也跟着一起挡住）。
+chmod 600 "$APP_DIR/.env"
+chmod 700 "$APP_DIR/backend/data" 2>/dev/null || true
+
 log "启动服务"
 systemctl daemon-reload
 systemctl enable "$SERVICE"

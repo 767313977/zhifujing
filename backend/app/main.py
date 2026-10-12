@@ -102,8 +102,11 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # 只放行前端**实际用到**的方法与请求头（2026-10-12 收紧）。站点本体与后端同源，
+    # 这层 CORS 只服务本地 5173 的开发调试；原来写 `*` 等于任何来源都能跨域打这些接口
+    #（虽未开 `allow_credentials`、影响有限，但没有必要留着这个敞口）。
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type"],
 )
 
 

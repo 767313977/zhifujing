@@ -186,7 +186,9 @@ def add_watchlist(
             raise
         return _row(session, existing, _latest_quotes(session, [code]).get(code))
     session.refresh(row)
-    return _row(session, row, None)
+    # 与「重复加入」「改备注」两个分支保持一致：带上最新行情。以前这里硬传 None，
+    # 结果刚加进去的那只票前端看不到现价（2026-10-12 修）。
+    return _row(session, row, _latest_quotes(session, [row.code]).get(row.code))
 
 
 @router.patch("/{code}", response_model=WatchlistRow)

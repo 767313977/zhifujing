@@ -57,7 +57,6 @@ interface SectionErrors {
   broken: string | null
   lhb: string | null
   heat: string | null
-  watchlist: string | null
 }
 
 interface DashboardData {
@@ -68,7 +67,6 @@ interface DashboardData {
   broken: LimitPool
   lhb: LhbItem[]
   heat: SectorHeat
-  watchlist: WatchlistRow[]
   sectionErrors: SectionErrors
   patterns: PatternStock[]
   patternSummary: PatternSummary | null
@@ -97,6 +95,11 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   // 被手动关掉的次级区块错误条（切日期重新取数时清空）
   const [dismissed, setDismissed] = useState<Partial<Record<keyof SectionErrors, boolean>>>({})
+  // 自选股：最新行情，**不随所选日期变**，所以与主数据分开、只在挂载时取一次
+  //（放进 `load()` 会在每次切日期时白打一次 —— 2026-10-12 修）
+  const [watchlist, setWatchlist] = useState<WatchlistRow[]>([])
+  const [watchError, setWatchError] = useState<string | null>(null)
+  const [watchDismissed, setWatchDismissed] = useState(false)
   const dismiss = (key: keyof SectionErrors) =>
     setDismissed((prev) => ({ ...prev, [key]: true }))
 
@@ -119,7 +122,7 @@ export default function Dashboard() {
         }
       }
       try {
-        const [overview, upR, boardR, downR, brokenR, lhbR, heatR, watchR] = await Promise.all([
+        const [overview, upR, boardR, downR, brokenR, lhbR, heatR] = await Promise.all([
           api.overview(target),
           soft(api.limitPool('up', target), emptyPool('up')),
           // 涨停股票池按昨日档分组，与「涨停明细」是两份不同的数据，各自独立成败
@@ -128,8 +131,6 @@ export default function Dashboard() {
           soft(api.limitPool('broken', target), emptyPool('broken')),
           soft(api.lhb(target), [] as LhbItem[]),
           soft(api.sectorHeat(target), EMPTY_HEAT),
-          // 自选股是最新行情，不随所选日期变，所以单独取一次即可
-          soft(api.watchlist(), [] as WatchlistRow[]),
         ])
         // 形态：榜单只取前 8 只（首页只列 8 行，没必要把 350 多只的明细都传过来），
         // 但家数用 summary 的全量结果。两者故意不同口径 —— 面板上有「全部 →」说明
@@ -153,7 +154,6 @@ export default function Dashboard() {
           broken: brokenR.value,
           lhb: lhbR.value,
           heat: heatR.value,
-          watchlist: watchR.value,
           sectionErrors: {
             up: upR.error,
             board: boardR.error,
@@ -161,7 +161,6 @@ export default function Dashboard() {
             broken: brokenR.error,
             lhb: lhbR.error,
             heat: heatR.error,
-            watchlist: watchR.error,
           },
           patterns,
           patternSummary,
@@ -181,6 +180,22 @@ export default function Dashboard() {
   // 首次进入先取可用日期，再取页面数据
   useEffect(() => {
     api.dates().then(setDates).catch(() => setDates([]))
+  }, [])
+
+  // 自选股只取一次（不随日期变，见上面 state 处的说明）
+  useEffect(() => {
+    let alive = true
+    api
+      .watchlist()
+      .then((rows) => {
+        if (alive) setWatchlist(rows)
+      })
+      .catch((err: Error) => {
+        if (alive) setWatchError(err.message)
+      })
+    return () => {
+      alive = false
+    }
   }, [])
 
   useEffect(() => {
@@ -362,16 +377,16 @@ export default function Dashboard() {
             delay={380}
           />
 
-          {data.sectionErrors.watchlist ? (
-            !dismissed.watchlist ? (
+          {watchError ? (
+            !watchDismissed ? (
               <SectionError
                 title="自选股表现"
-                message={data.sectionErrors.watchlist}
-                onClose={() => dismiss('watchlist')}
+                message={watchError}
+                onClose={() => setWatchDismissed(true)}
               />
             ) : null
           ) : (
-            <WatchlistPanel rows={data.watchlist} delay={400} />
+            <WatchlistPanel rows={watchlist} delay={400} />
           )}
 
           <NotePanel tradeDate={data.overview.trade_date} delay={430} />

@@ -202,6 +202,16 @@ export interface KeyLevel {
   kind: 'breakout' | 'support'
 }
 
+/**
+ * 不传 `keyLevels` 时用的**稳定空数组**。
+ *
+ * 不能拿 `keyLevels = []` 当默认参数：那每次调用都会生成一个新数组引用，把下面
+ * `useMemo` 的依赖打破 —— 组件每重渲染一次就重算 option、`EChart` 用
+ * `setOption(..., true)` 把整张 K 线（蜡烛 + 成交量 + 标注线）重建一遍。
+ * 个股详情页没传 keyLevels，于是点「加入自选」之类都会触发整图重建（2026-10-12 修）。
+ */
+const NO_KEY_LEVELS: KeyLevel[] = []
+
 interface Props {
   bars: KLineBar[]
   height?: number
@@ -229,7 +239,7 @@ interface Props {
  * —— A 股的红涨青跌覆盖（ECharts 默认是欧美惯例）、主图与副图的轴联动、
  * 成交量柱跟随涨跌染色 —— 复制出去迟早会有一份忘了改。
  */
-export default function KLineChart({ bars, height = 420, keyLevels = [] }: Props) {
+export default function KLineChart({ bars, height = 420, keyLevels = NO_KEY_LEVELS }: Props) {
   const option = useMemo<ChartOption>(() => {
     if (bars.length === 0) return {}
     const dates = bars.map((bar) => bar.label)

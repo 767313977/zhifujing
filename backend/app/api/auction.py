@@ -6,9 +6,9 @@
 """
 
 import logging
-from datetime import date
+from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -62,6 +62,11 @@ DERIVED_SORTS = {
     "cancel_rate": "cancel_rate",
     "committee_diff": "committee_diff",
 }
+
+#: 既不在 `SORT_FIELDS`（库列）也不在 `DERIVED_SORTS`（`_metrics` 现算）里的派生排序键，
+#: 各自有单独的数据来源：竞价量比 / 昨日连板数 / 开盘后涨幅。提到这里是为了让入口处的
+#: 白名单校验（`auction_list` 开头）能一处写全，不必在下面再判一次。
+EXTRA_SORTS = ("auction_ratio", "prev_boards", "post_open_pct")
 
 
 def _latest_date(session: Session) -> date | None:
@@ -204,6 +209,34 @@ def _post_open_pct(row: AuctionSnapshot) -> float | None:
     return round((row.post_open_price / row.pre_close - 1) * 100, 2)
 
 
+#: code → 同花顺行业（三级路径全名）的进程内缓存。这张表约 5500 行，而 `/auction`、
+#: `/auction/boards` 每次请求都要用它做「全市场 / 行业内」分组。行业归属只在新股上市、
+#: 改名或分类调整时变，进程内缓存 6 小时足够。
+_INDUSTRY_TTL = timedelta(hours=6)
+_industry_cache: tuple[datetime, dict[str, str]] | None = None
+
+
+def _industry_by_code(session: Session) -> dict[str, str]:
+    """全 A 的 `code → 同花顺行业（三级全名）`，带 TTL 的进程内缓存。
+
+    以前三个接口每次请求都 `select` 整张 `stock_basic`（约 5500 行）读进内存 ——
+    竞价强度是主力页，读放大明显（2026-10-12 修）。空值（没有行业的）不进 map，
+    调用方 `.get()` 拿到 None 即「无归属」，与逐行判断等价。
+    """
+    global _industry_cache
+    now = datetime.now()
+    if _industry_cache is None or now - _industry_cache[0] > _INDUSTRY_TTL:
+        mapping = {
+            code: name
+            for code, name in session.execute(
+                select(StockBasic.code, StockBasic.industry)
+            ).all()
+            if name
+        }
+        _industry_cache = (now, mapping)
+    return _industry_cache[1]
+
+
 def _metrics(
     session: Session, trade_date: date, rows: list[AuctionSnapshot]
 ) -> dict[str, dict]:
@@ -230,7 +263,7 @@ def _metrics(
     ranks = _rank_map([pct for pct in market.values() if pct is not None])
     # 行业归属取 stock_basic 的**同花顺行业**（全 A 都有），不能借涨停池那套
     # （`limit_pool.industry` / `stock_concept` 只覆盖涨停股）
-    industries = dict(session.execute(select(StockBasic.code, StockBasic.industry)).all())
+    industries = _industry_by_code(session)
     by_industry: dict[str, list[float]] = {}
     for code, pct_chg in market.items():
         industry = industries.get(code)
@@ -350,6 +383,14 @@ def auction_list(
     缺省取库中**最新有竞价数据的一天**、按**竞价金额降序**。筛选参数对应参考图
     顶部那排筛选项（竞价涨幅 / 竞价金额 / 量比 / 换手 / 连板）。
     """
+    # 未知的 sort / order 直接 400，而不是静默回退（2026-10-12 修）：静默回退会让
+    # 打错字的调用方拿到一份「看似合法、其实按成交额排」的结果，最难发现。
+    # 放在**最前面** —— 否则库里没有竞价数据时会先走下面的「空结果」早退，校验被跳过。
+    if sort not in SORT_FIELDS and sort not in DERIVED_SORTS and sort not in EXTRA_SORTS:
+        raise HTTPException(status_code=400, detail=f"不支持的排序字段：{sort}")
+    if order not in ("asc", "desc"):
+        raise HTTPException(status_code=400, detail="order 只能是 asc 或 desc")
+
     if trade_date is None:
         trade_date = _latest_date(session)
         if trade_date is None:
@@ -395,10 +436,8 @@ def auction_list(
         # 与板块面板**同一口径**，否则点了「出版」筛出来的和面板上那个数对不上
         hit = [
             code
-            for code, name in session.execute(
-                select(StockBasic.code, StockBasic.industry)
-            ).all()
-            if name and name.split("-")[-1] == industry
+            for code, name in _industry_by_code(session).items()
+            if name.split("-")[-1] == industry
         ]
         conditions.append(AuctionSnapshot.code.in_(hit))
 
@@ -406,7 +445,7 @@ def auction_list(
     # 全取回来算完再排 —— 只排返回的那 300 行会得到「假的前几名」（比如封成比最高的票
     # 可能压根没进这 300 行）。
     derived = DERIVED_SORTS.get(sort)
-    if sort in ("auction_ratio", "prev_boards", "post_open_pct"):
+    if sort in EXTRA_SORTS:
         derived = sort
 
     total = session.scalar(
@@ -548,7 +587,7 @@ def auction_boards(
         if trade_date is None:
             return AuctionBoardsOut(trade_date=date.today(), items=[])
 
-    industries = dict(session.execute(select(StockBasic.code, StockBasic.industry)).all())
+    industries = _industry_by_code(session)
     buckets: dict[str, dict] = {}
     for code, pct_chg, amount, price, limit_up in session.execute(
         select(

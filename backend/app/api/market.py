@@ -80,9 +80,14 @@ def overview(
             )
         )
         history.reverse()
+        # `closes` 与 `amounts` 必须**按位置一一对应**（`index_tech` 里 MA / 量比都是
+        # 按位置取窗口的）。以前只过滤了 close 的 None，amount 没过 —— 一旦某天
+        # `close` 为空而 `amount` 有值，两个列表就会错位、均线量比静默算错。
+        # 用同一个掩码一起过（2026-10-12 修）。
+        usable = [item for item in history if item.close is not None]
         tech = index_tech(
-            [item.close for item in history if item.close is not None],
-            [item.amount for item in history],
+            [item.close for item in usable],
+            [item.amount for item in usable],
             row.pct_chg,
         )
         quotes.append(IndexQuote.model_validate(row).model_copy(update=tech))

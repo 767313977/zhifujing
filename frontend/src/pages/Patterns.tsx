@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { PatternMeta, PatternStock, PatternSummary } from '../api/types'
@@ -357,15 +357,20 @@ export default function Patterns() {
     [picked, catalog],
   )
 
+  // 评分滑块拖动时 `minScore` 每一帧都在变，而下面要「过滤 3000 条 + 排序 3000 条」，
+  // 每帧都做会拖出可见的卡顿。用 deferred 值：滑块与数字即时跟手，重活等 React
+  // 空闲再算，拖动过程中的中间值会被自动跳过（2026-10-12）。
+  const deferredMinScore = useDeferredValue(minScore)
+
   const visible = useMemo(() => {
     return hits.filter((stock) => {
-      if (stock.score < minScore) return false
+      if (stock.score < deferredMinScore) return false
       if (!picked) return true
       // 后端在形态模式下返回的就是「命中该形态的全部票」，所以这里通常全过；
       // 留一道是兜底（也保证每行是按**全部**命中形态判的，不是按展示用的截断列表）
       return stock.patterns.some((item) => item.pattern === picked)
     })
-  }, [hits, picked, minScore])
+  }, [hits, picked, deferredMinScore])
 
   // 首屏按评分降序（与后端给的一致，所以看到的顺序没变，但列头能正确亮出
   // 当前排的是哪一列）；点列头改成别的口径。**排的是 visible，不是 hits** ——

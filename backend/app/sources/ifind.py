@@ -30,6 +30,9 @@ from app.sources.markdown_table import parse_tables, to_int
 
 logger = logging.getLogger(__name__)
 
+#: 「没配 CA、TLS 不校验」的告警只打一次（`IfindClient` 会被反复 new，见 `get_shared_client`）
+_INSECURE_WARNED = False
+
 # iFinD 使用自签或非标准证书链，官方参考实现同样关闭校验。
 # 默认 `verify=False`（见 `_post` / `_download_csv`）：请求头带着 `Authorization: <token>`，
 # 这意味着链路上可能被中间人读走 token。想收紧就在配置 `IFIND_CA_FILE` 里填自抓的证书链
@@ -253,6 +256,16 @@ class IfindClient:
         # iFinD MCP 常被拖死或 401；采集卡在 ETF 等步骤时整条链停住、情绪算不出。
         self._http = requests.Session()
         self._http.trust_env = False
+        # 没配 CA 路径时 TLS 证书是不校验的（见文件顶部），而请求头里带着账号级 token。
+        # 每个进程只提醒一次，免得刷屏；要消除它：export IFIND_CA_FILE=<自抓证书链>。
+        global _INSECURE_WARNED
+        if not self.settings.ifind_ca_file and not _INSECURE_WARNED:
+            _INSECURE_WARNED = True
+            logger.warning(
+                "iFinD 走的是**不校验证书**的连接，而请求头里带着账号 token —— "
+                "链路上存在被中间人读取的风险。建议配置 IFIND_CA_FILE 指向自抓证书链"
+                "（见 sources/ifind.py 顶部说明）。"
+            )
 
     # ------------------------------------------------------------------ 底层
 

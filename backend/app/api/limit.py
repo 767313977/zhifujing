@@ -365,10 +365,14 @@ def ladder_board(
     buckets: dict[int, list[str]] = {}
     for code, level in prev_levels.items():
         buckets.setdefault(level, []).append(code)
-    # 首板行 = 今日涨停或炸板、且昨日不在涨停池的票
-    first_board = [
-        code for code in (*up_by_code, *broken_by_code) if code not in prev_levels
-    ]
+    # 首板行 = 今日涨停或炸板、且昨日不在涨停池的票。
+    # 用 `dict.fromkeys` 保序去重：正常数据下两池互斥，但上游重复给行时同一只票会
+    # 在这里落两次，导致首板家数虚高、行内重复（2026-10-12 修，与 anomaly_map 去重同因）。
+    first_board = list(
+        dict.fromkeys(
+            code for code in (*up_by_code, *broken_by_code) if code not in prev_levels
+        )
+    )
 
     # 「今日涨停也不是、炸板也不是」的候选（昨日有连板、今天没摸板）：
     # `limit_pool` 里根本没有它们今天的行情，回落到日线取收盘 / 涨跌幅；

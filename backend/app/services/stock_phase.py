@@ -26,12 +26,17 @@ from app.services.patterns import (
     classify_phase,
     usable_bar,
 )
+from app.sources.base import chunked
 
 logger = logging.getLogger(__name__)
 
 #: 取多少根日线。`classify_phase` 至少要 25 根，而它里面的 `high_120`（左侧压力）
 #: 想看满 120 —— 留一点余量，但别太多（这是一次同步查询，个股页每次都要跑）。
 PHASE_BARS = 130
+
+#: 批量取日线时的 IN 分片大小（`load_phases`）。SQLite 单条 SQL 的变量上限现代编译值是
+#: 32766，但按 900 分批更稳，也与 `api/patterns.py` 的 `_IN_BATCH` 同口径。
+_PHASE_IN_BATCH = 900
 
 #: 交易日历的「日期 → 升序序号」表；进程内缓存一次，见 `_trade_day_index`。
 _TRADE_DAY_INDEX: dict[date, int] | None = None
@@ -95,16 +100,12 @@ def trim_contiguous_tail(records: list[dict], trade_day_index: dict[date, int]) 
     return records[cut:]
 
 
-def load_phase(session: Session, code: str) -> PhaseVerdict | None:
-    """取最近的日线算阶段判定。根数不够（次新 / 刚缓存）返回 None，调用方不显示这块。"""
-    rows = list(
-        session.scalars(
-            select(StockDaily)
-            .where(StockDaily.code == code)
-            .order_by(StockDaily.trade_date.desc())
-            .limit(PHASE_BARS)
-        )
-    )
+def _verdict_from_rows(rows: list[StockDaily]) -> PhaseVerdict | None:
+    """把一只票的一段日线（**顺序不限**，内部按交易日升序）算成阶段判定。
+
+    `load_phase`（个股页）与 `load_phases`（列表页）共用这一条路径 —— 列表页与个股页
+    对同一只票必须给出同一个判定，共用同一段代码是唯一不会漂移的办法（见模块开头）。
+    """
     records = [
         {
             "date": item.trade_date,
@@ -116,7 +117,7 @@ def load_phase(session: Session, code: str) -> PhaseVerdict | None:
             "amount": item.amount,
             "pct_chg": item.pct_chg,
         }
-        for item in reversed(rows)
+        for item in sorted(rows, key=lambda item: item.trade_date)
     ]
     # 先按交易日历截成「最近一段连续」（有缺口的票窗口会缩水，见 `trim_contiguous_tail`
     # 的代价说明），再剔残行 —— 顺序见那个函数的 docstring。
@@ -136,21 +137,47 @@ def load_phase(session: Session, code: str) -> PhaseVerdict | None:
     return classify_phase(bars)
 
 
+def load_phase(session: Session, code: str) -> PhaseVerdict | None:
+    """取最近的日线算阶段判定。根数不够（次新 / 刚缓存）返回 None，调用方不显示这块。"""
+    rows = list(
+        session.scalars(
+            select(StockDaily)
+            .where(StockDaily.code == code)
+            .order_by(StockDaily.trade_date.desc())
+            .limit(PHASE_BARS)
+        )
+    )
+    return _verdict_from_rows(rows)
+
+
 def load_phases(session: Session, codes: Iterable[str]) -> dict[str, PhaseVerdict]:
     """一次算一批票的阶段判定（形态选股命中列表那种「一屏多只票」的场景）。
 
     返回 `{code: 判定}`；**日线不够 25 根的票不在结果里**，调用方按「没有」处理。
 
-    内部**逐只复用 `load_phase`**，刻意不另写一条批量 SQL：列表页与个股页对同一只
-    票必须给出同一个判定，共用同一条代码路径是唯一不会漂移的办法（本模块开头那段
-    说的就是这个坑）。成本随只数线性涨 —— 命中列表默认 50 只；「点进一个形态看全部」
-    时最多到 3000 只（`/hits` 的 `limit` 上限），那是用户主动点开的一次操作，秒级
-    可以接受。真嫌慢的话，正解是在扫描时把判定一起落进 `pattern_hit`，而不是在这里
-    写第二条取数路径。
+    2026-10-12 由「逐只 `load_phase`」改成**批量取数**：以前 `/hits` 点进一个形态看全部
+    时最多 3000 只 → 3000 条 SQL（N+1）。现在按 `_PHASE_IN_BATCH` 分批把日线一次取回、
+    按 code 分组，再交给与 `load_phase` **完全同一个** `_verdict_from_rows` 来算 ——
+    判定口径一字未改，查询数从 3000 降到个位数。
     """
+    ordered = list(codes)
     out: dict[str, PhaseVerdict] = {}
-    for code in codes:
-        verdict = load_phase(session, code)
+    if not ordered:
+        return out
+    # code → 该票的日线（按交易日**降序**攒，取前 PHASE_BARS 根即最近那批，与 load_phase 的 limit 同）
+    grouped: dict[str, list[StockDaily]] = {}
+    for batch in chunked(ordered, _PHASE_IN_BATCH):
+        for row in session.scalars(
+            select(StockDaily)
+            .where(StockDaily.code.in_(batch))
+            .order_by(StockDaily.trade_date.desc())
+        ):
+            grouped.setdefault(row.code, []).append(row)
+    for code in ordered:
+        rows = grouped.get(code)
+        if not rows:
+            continue
+        verdict = _verdict_from_rows(rows[:PHASE_BARS])
         if verdict is not None:
             out[code] = verdict
     return out

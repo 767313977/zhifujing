@@ -1,22 +1,43 @@
+import { Suspense, lazy } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
-import Account from './pages/Account'
-import AnomalyPage from './pages/Anomaly'
-import AuctionPage from './pages/Auction'
-import Dashboard from './pages/Dashboard'
-import Funds from './pages/Funds'
-import LimitReview from './pages/LimitReview'
-import Login from './pages/Login'
-import NotFound from './pages/NotFound'
-import Patterns from './pages/Patterns'
-import PatternTrack from './pages/PatternTrack'
-import Sectors from './pages/Sectors'
-import SentimentPage from './pages/Sentiment'
-import Settings from './pages/Settings'
-import StockAnalysisPage from './pages/StockAnalysis'
-import StockDetail from './pages/StockDetail'
-import WatchlistPage from './pages/Watchlist'
-import Wudao from './pages/Wudao'
 import { AuthProvider, RequireAdmin, RequireAuth } from './lib/auth'
+
+/**
+ * 页面**按需加载**（2026-10-12）。
+ *
+ * 以前 16 个页面全是静态 import，整站（含 ECharts）被打进**单个约 1.07 MB** 的
+ * `index-*.js`，首屏要把它整包下完才开始渲染。改成 `lazy` 之后，每个页面各自成块：
+ * 首屏只加载当前路由（外加很小的公共壳），其余页面在点进去时才拉。
+ *
+ * `AuthProvider` / `RequireAuth` 保持**静态导入** —— 它们要在第一次渲染就参与
+ * 鉴权判定，不能异步。
+ */
+const Account = lazy(() => import('./pages/Account'))
+const AnomalyPage = lazy(() => import('./pages/Anomaly'))
+const AuctionPage = lazy(() => import('./pages/Auction'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Funds = lazy(() => import('./pages/Funds'))
+const LimitReview = lazy(() => import('./pages/LimitReview'))
+const Login = lazy(() => import('./pages/Login'))
+const NotFound = lazy(() => import('./pages/NotFound'))
+const Patterns = lazy(() => import('./pages/Patterns'))
+const PatternTrack = lazy(() => import('./pages/PatternTrack'))
+const Sectors = lazy(() => import('./pages/Sectors'))
+const SentimentPage = lazy(() => import('./pages/Sentiment'))
+const Settings = lazy(() => import('./pages/Settings'))
+const StockAnalysisPage = lazy(() => import('./pages/StockAnalysis'))
+const StockDetail = lazy(() => import('./pages/StockDetail'))
+const WatchlistPage = lazy(() => import('./pages/Watchlist'))
+const Wudao = lazy(() => import('./pages/Wudao'))
+
+/** 页面代码块还没下完时的占位（切页很快，通常一闪而过） */
+function PageFallback() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center text-[14px] text-fg-dim">
+      加载中…
+    </div>
+  )
+}
 
 /**
  * 路由。**除了 `/login`，所有页面都要登录**（设计见文档 §8.69）。
@@ -30,143 +51,145 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route
-            path="/"
-            element={
-              <RequireAuth>
-                <Dashboard />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/sentiment"
-            element={
-              <RequireAuth>
-                <SentimentPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/sectors"
-            element={
-              <RequireAuth>
-                <Sectors />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/auction"
-            element={
-              <RequireAuth>
-                <AuctionPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/limit-up"
-            element={
-              <RequireAuth>
-                <LimitReview />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/funds"
-            element={
-              <RequireAuth>
-                <Funds />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/patterns"
-            element={
-              <RequireAuth>
-                <Patterns />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/patterns/track"
-            element={
-              <RequireAuth>
-                <PatternTrack />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/watchlist"
-            element={
-              <RequireAuth>
-                <WatchlistPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/stock/:code"
-            element={
-              <RequireAuth>
-                <StockDetail />
-              </RequireAuth>
-            }
-          />
-          {/* 悟道之路：移植过来的选股池（判定逻辑在 services/patterns.py） */}
-          <Route
-            path="/wudao"
-            element={
-              <RequireAuth>
-                <Wudao />
-              </RequireAuth>
-            }
-          />
-          {/* 个股异动：复刻原型的「豆包异动图谱」，数据全来自本站库 */}
-          <Route
-            path="/anomaly"
-            element={
-              <RequireAuth>
-                <AnomalyPage />
-              </RequireAuth>
-            }
-          />
-          {/* 个股分析：输代码/名称/首字母出结论（移植自原型的「查票分析」） */}
-          <Route
-            path="/stock-analysis"
-            element={
-              <RequireAuth>
-                <StockAnalysisPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <RequireAdmin>
-                <Settings />
-              </RequireAdmin>
-            }
-          />
-          <Route
-            path="/account"
-            element={
-              <RequireAuth>
-                <Account />
-              </RequireAuth>
-            }
-          />
-          {/* 兜底路由：后端对任意非 /api 路径都回退 index.html，没有这条时
-              未知 URL 会渲染 null（全黑空页）。与其它页面一样套 RequireAuth ——
-              未登录用户先去登录，登录后才看得到这个提示（别绕过鉴权）。 */}
-          <Route
-            path="*"
-            element={
-              <RequireAuth>
-                <NotFound />
-              </RequireAuth>
-            }
-          />
-        </Routes>
+        <Suspense fallback={<PageFallback />}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route
+              path="/"
+              element={
+                <RequireAuth>
+                  <Dashboard />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/sentiment"
+              element={
+                <RequireAuth>
+                  <SentimentPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/sectors"
+              element={
+                <RequireAuth>
+                  <Sectors />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/auction"
+              element={
+                <RequireAuth>
+                  <AuctionPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/limit-up"
+              element={
+                <RequireAuth>
+                  <LimitReview />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/funds"
+              element={
+                <RequireAuth>
+                  <Funds />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/patterns"
+              element={
+                <RequireAuth>
+                  <Patterns />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/patterns/track"
+              element={
+                <RequireAuth>
+                  <PatternTrack />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/watchlist"
+              element={
+                <RequireAuth>
+                  <WatchlistPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/stock/:code"
+              element={
+                <RequireAuth>
+                  <StockDetail />
+                </RequireAuth>
+              }
+            />
+            {/* 悟道之路：移植过来的选股池（判定逻辑在 services/patterns.py） */}
+            <Route
+              path="/wudao"
+              element={
+                <RequireAuth>
+                  <Wudao />
+                </RequireAuth>
+              }
+            />
+            {/* 个股异动：复刻原型的「豆包异动图谱」，数据全来自本站库 */}
+            <Route
+              path="/anomaly"
+              element={
+                <RequireAuth>
+                  <AnomalyPage />
+                </RequireAuth>
+              }
+            />
+            {/* 个股分析：输代码/名称/首字母出结论（移植自原型的「查票分析」） */}
+            <Route
+              path="/stock-analysis"
+              element={
+                <RequireAuth>
+                  <StockAnalysisPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <RequireAdmin>
+                  <Settings />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/account"
+              element={
+                <RequireAuth>
+                  <Account />
+                </RequireAuth>
+              }
+            />
+            {/* 兜底路由：后端对任意非 /api 路径都回退 index.html，没有这条时
+                未知 URL 会渲染 null（全黑空页）。与其它页面一样套 RequireAuth ——
+                未登录用户先去登录，登录后才看得到这个提示（别绕过鉴权）。 */}
+            <Route
+              path="*"
+              element={
+                <RequireAuth>
+                  <NotFound />
+                </RequireAuth>
+              }
+            />
+          </Routes>
+        </Suspense>
       </AuthProvider>
     </BrowserRouter>
   )

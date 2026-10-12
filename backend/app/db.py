@@ -83,10 +83,13 @@ def _add_missing_columns(base) -> list[str]:
                     # 走到这里的两种情形：① 列根本没默认值；② 默认值是 `default=_now` 这类
                     # **可调用**对象 —— SQLite 的 DEFAULT 只收**常量**，函数默认值写不进去。
                     # 都跳过并告警，让启动继续，留人工迁移。
-                    logger.warning(
+                    # ⚠️ 用 **error** 级别（2026-10-12 从 warning 升上来）：这是「启动时会
+                    # 静默跳过、运行期一读该列就 500」的隐患，被淹没在普通告警里最难发现。
+                    # 不直接 fail-fast 是有意的 —— 一个漏迁移的列不该把整个服务拦在门外。
+                    logger.error(
                         "表 %s 新增了非空列 %s，但没有可用的常量默认值（SQLite 的 "
                         "ADD COLUMN 只接受常量 DEFAULT，`default=_now` 这类函数默认值不行），"
-                        "需要手工迁移",
+                        "**该列未创建**，读它的接口会报错，需要手工迁移",
                         table.name,
                         column.name,
                     )

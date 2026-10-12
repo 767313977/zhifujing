@@ -599,7 +599,9 @@ export default function AuctionPage() {
                       <td className={`num ${toneOf(item.avg_pct)}`}>{fmtPct(item.avg_pct)}</td>
                       <td className="num text-fg-muted">{fmtAmount(item.amount)}</td>
                       <td className={`num ${item.limit_count > 0 ? 'text-up' : 'text-fg-dim'}`}>
-                        {item.limit_count || '—'}
+                        {/* 0 家就是「0」，不是「没有数据」——`limit_count` 是必填数字。
+                            用 fmtInt 统一：0 → 「0」，缺值才给「—」（2026-10-12 修） */}
+                        {fmtInt(item.limit_count)}
                       </td>
                     </tr>
                   ))}
