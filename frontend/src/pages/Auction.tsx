@@ -48,6 +48,26 @@ interface Column {
   render: (row: AuctionRow) => ReactNode
 }
 
+/** 封成比的强弱配色（需求方口径）：≥3% 超强（加粗）、≥1% 较强，其余弱化。 */
+function sealTone(value: number | null): string {
+  if (value == null) return 'text-fg-muted'
+  if (value >= 3) return 'text-up font-semibold'
+  return value >= 1 ? 'text-up' : 'text-fg-muted'
+}
+
+/** 竞价额占比（需求方口径）：≥10% 超强、≥5% 明显放量，其余弱化。 */
+function amountRatioTone(value: number | null): string {
+  if (value == null) return 'text-fg-muted'
+  if (value >= 10) return 'text-up font-semibold'
+  return value >= 5 ? 'text-up' : 'text-fg-muted'
+}
+
+/** 竞价波动率：≤1% 说明 9:15–9:26 几乎没动、资金一致性强（方向另看「竞价涨幅」）。 */
+function amplitudeTone(value: number | null): string {
+  if (value == null) return 'text-fg-muted'
+  return value <= 1 ? 'text-accent' : 'text-fg-muted'
+}
+
 function buildColumns(): Column[] {
   return [
     {
@@ -77,15 +97,24 @@ function buildColumns(): Column[] {
       label: '排名',
       sortKey: 'rank',
       first: 'asc',
-      // 全市场竞价涨幅位次；悬停看**板块内**（同花顺行业最后一级）位次
+      // 全市场竞价涨幅位次（第 1 名在前）。板块内的位次在右边那一列
       render: (r) => (
-        <span
-          className="num text-fg-muted"
-          title={
-            r.industry_rank != null ? `板块内（同花顺行业）第 ${r.industry_rank} 名` : undefined
-          }
-        >
+        <span className="num text-fg-muted" title="全市场竞价涨幅位次">
           {r.rank != null ? `#${fmtInt(r.rank)}` : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'industry_rank',
+      label: '板块内排名',
+      sortKey: 'industry_rank',
+      first: 'asc',
+      narrowHidden: true,
+      // 所属**同花顺行业（末级）**内的竞价涨幅位次；「排名」那列是全市场口径。
+      // 板块集体爆发时优先看板块内前几名，后排跟风股的持续性差
+      render: (r) => (
+        <span className="num text-fg-muted" title="同花顺行业（末级）内的竞价涨幅位次">
+          {r.industry_rank != null ? `#${fmtInt(r.industry_rank)}` : '—'}
         </span>
       ),
     },
@@ -105,9 +134,12 @@ function buildColumns(): Column[] {
       key: 'amount_ratio',
       label: '竞价额占比',
       sortKey: 'amount_ratio',
-      // 相对比例才有可比性：大盘股竞价 1 亿看似多，占比可能极低。>5% 明显放量、>10% 超强
+      // 相对比例才有可比性：大盘股竞价 1 亿看似多，占比可能极低。≥5% 明显放量、≥10% 超强
       render: (r) => (
-        <span className="num text-fg-muted" title="竞价成交额 ÷ 昨日全天成交额（分母只覆盖流动性池）">
+        <span
+          className={`num ${amountRatioTone(r.amount_ratio)}`}
+          title="竞价成交额 ÷ 昨日全天成交额（≥5% 明显放量、≥10% 超强；分母只覆盖流动性池）"
+        >
           {fmtNum(r.amount_ratio, 2, '%')}
         </span>
       ),
@@ -157,10 +189,8 @@ function buildColumns(): Column[] {
       // 打板核心：涨停价上的封单额 ÷ 自由流通市值。只在**竞价就封在涨停价上**时有值
       render: (r) => (
         <span
-          className={`num ${
-            r.seal_ratio != null && r.seal_ratio >= 1 ? 'text-up' : 'text-fg-muted'
-          }`}
-          title="涨停价上的封单额 ÷ 自由流通市值（>1% 较强、>3% 超强）"
+          className={`num ${sealTone(r.seal_ratio)}`}
+          title="涨停价上的封单额 ÷ 自由流通市值（≥1% 较强、≥3% 超强）"
         >
           {fmtNum(r.seal_ratio, 2, '%')}
         </span>
@@ -171,11 +201,11 @@ function buildColumns(): Column[] {
       label: '波动率',
       sortKey: 'amplitude',
       narrowHidden: true,
-      // 9:15–9:26 竞价价的振幅：高开但几乎不动 = 一致性强；上下大幅波动 = 分歧大
+      // 9:15–9:26 竞价价的振幅：≤1% = 全程几乎没动、一致性强；上下大幅波动 = 分歧大
       render: (r) => (
         <span
-          className="num text-fg-muted"
-          title="9:15–9:26 竞价最高价与最低价之差 ÷ 昨收"
+          className={`num ${amplitudeTone(r.amplitude)}`}
+          title="9:15–9:26 竞价最高价与最低价之差 ÷ 昨收；≤1% 说明几乎没动、一致性强"
         >
           {fmtNum(r.amplitude, 2, '%')}
         </span>
@@ -696,9 +726,11 @@ export default function AuctionPage() {
 
         <p className="px-1 text-[12px] leading-relaxed text-fg-dim">
           数据来源：腾讯批量行情，交易日 9:15–9:26 逐分钟采样（零 iFinD 配额）。
-          「排名」是全市场竞价涨幅位次，悬停看板块内位次；「波动率」= 竞价全程（最高−最低）÷ 昨收；
+          「排名」是全市场竞价涨幅位次，「板块内排名」是同花顺行业（末级）内的位次；
+          「波动率」= 竞价全程（最高−最低）÷ 昨收，≤1% 标金（几乎没动、一致性强）；
           「真实换手」分母用自由流通股（剔除大股东/限售等不动的筹码），悬停看自由流通市值；
-          「竞价额占比」分母是昨日全天成交额（只覆盖流动性池约 3000 只，其余为空）；
+          「竞价额占比」分母是昨日全天成交额（只覆盖流动性池约 3000 只），≥5% 标红、≥10% 加粗；
+          「封成比」≥1% 标红、≥3% 加粗（打板口径）；
           「昨日」是上一交易日的涨停池/炸板池状态，悬停看昨日全天换手。
           「封成比」「撤单率」「委差」三项取的是竞价挂单 / 委差（9:20 前后各一帧）——
           ⚠️ 腾讯在竞价时段是否真给这几个字段尚未核实，若为空说明它开盘前不填，届时会撤掉。
