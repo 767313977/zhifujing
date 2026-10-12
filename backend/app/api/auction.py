@@ -13,8 +13,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import AuctionSnapshot, LimitPool, TradeCalendar
-from app.schemas import AuctionListOut, AuctionRow, AuctionTrendOut, AuctionTrendPoint
+from app.models import AuctionSnapshot, LimitPool, StockBasic, StockDaily, TradeCalendar
+from app.schemas import (
+    AuctionBoardItem,
+    AuctionBoardsOut,
+    AuctionListOut,
+    AuctionRow,
+    AuctionTrendOut,
+    AuctionTrendPoint,
+)
 
 router = APIRouter(prefix="/api", tags=["复盘"])
 
@@ -95,6 +102,116 @@ def _auction_ratios(
         if mean > 0:
             ratios[row.code] = round(row.volume / mean, 2)
     return ratios
+
+
+def _rank_map(values: list[float]) -> dict[float, int]:
+    """值 → 名次（1 起，**并列同名次**，降序）。"""
+    return {value: index + 1 for index, value in enumerate(sorted(set(values), reverse=True))}
+
+
+def _amplitude(samples: list | None, pre_close: float | None) -> float | None:
+    """**竞价价格波动率（%）** = (全程最高价 − 最低价) ÷ 昨收 × 100。
+
+    用逐分钟竞价价（`samples` 的第 2 列）。只在**至少有 2 帧**且昨收有效时给值 ——
+    只有 1 帧就谈不上「波动」。⚠️ 老行 `samples` 是 3 元组，下标取值、越界当 None。
+    """
+    prices = [s[1] for s in (samples or []) if len(s) > 1 and s[1]]
+    if len(prices) < 2 or not pre_close:
+        return None
+    return round((max(prices) - min(prices)) / pre_close * 100, 2)
+
+
+def _metrics(
+    session: Session, trade_date: date, rows: list[AuctionSnapshot]
+) -> dict[str, dict]:
+    """给这批票算派生指标：波动率 / 自由流通市值 / 真实竞价换手 / 竞价额占比 / 排名 / 昨日筹码。
+
+    ⚠️ **排名必须按全市场算** —— 只拿返回的这 300 行去排，位次是错的。所以要额外查一次
+    当日**全部**票的竞价涨幅与行业归属。
+
+    「昨日首板 / 连板」不在这里 —— 它就是 `AuctionRow.consecutive`（昨日涨停池的连板数）；
+    这里只补「昨日炸板」（查昨日的炸板池，与涨停池互斥）和「昨日换手」。
+    """
+    prev = _prev_trade_date(session, trade_date)
+    codes = [row.code for row in rows]
+
+    # --- 全市场涨幅排名 + 行业内排名 ---
+    market = {
+        code: pct_chg
+        for code, pct_chg in session.execute(
+            select(AuctionSnapshot.code, AuctionSnapshot.pct_chg).where(
+                AuctionSnapshot.trade_date == trade_date
+            )
+        ).all()
+    }
+    ranks = _rank_map([pct for pct in market.values() if pct is not None])
+    # 行业归属取 stock_basic 的**同花顺行业**（全 A 都有），不能借涨停池那套
+    # （`limit_pool.industry` / `stock_concept` 只覆盖涨停股）
+    industries = dict(session.execute(select(StockBasic.code, StockBasic.industry)).all())
+    by_industry: dict[str, list[float]] = {}
+    for code, pct_chg in market.items():
+        industry = industries.get(code)
+        if industry and pct_chg is not None:
+            by_industry.setdefault(industry, []).append(pct_chg)
+    industry_ranks = {name: _rank_map(values) for name, values in by_industry.items()}
+
+    # --- 自由流通股（同花顺口径，覆盖全 A；建池时写进 stock_basic）---
+    free_shares = dict(
+        session.execute(
+            select(StockBasic.code, StockBasic.free_float_shares).where(
+                StockBasic.code.in_(codes)
+            )
+        ).all()
+    )
+
+    # --- 昨日：全天成交额 / 换手率（日线）+ 是否炸板（炸板池）---
+    prev_daily: dict[str, tuple[float | None, float | None]] = {}
+    prev_broken: set[str] = set()
+    if prev is not None:
+        prev_daily = {
+            code: (amount, turnover)
+            for code, amount, turnover in session.execute(
+                select(StockDaily.code, StockDaily.amount, StockDaily.turnover).where(
+                    StockDaily.trade_date == prev, StockDaily.code.in_(codes)
+                )
+            ).all()
+        }
+        prev_broken = set(
+            session.scalars(
+                select(LimitPool.code).where(
+                    LimitPool.trade_date == prev, LimitPool.pool_type == "broken"
+                )
+            )
+        )
+
+    metrics: dict[str, dict] = {}
+    for row in rows:
+        shares = free_shares.get(row.code)
+        prev_amount, prev_turnover = prev_daily.get(row.code, (None, None))
+        metrics[row.code] = {
+            "amplitude": _amplitude(row.samples, row.pre_close),
+            # 自由流通市值用**竞价价**（当日筹码的实时计价基准）
+            "free_float_mv": shares * row.price if shares and row.price else None,
+            # 真实竞价换手 = 竞价量 ÷ 自由流通股（普通换手率的分母含大量不动的筹码，会低估）
+            "free_turnover": (
+                round(row.volume / shares * 100, 3) if shares and row.volume is not None else None
+            ),
+            # 竞价额占昨日全天成交额的比例 —— 绝对金额在大/小盘之间没有可比性
+            "amount_ratio": (
+                round(row.amount / prev_amount * 100, 2)
+                if row.amount and prev_amount
+                else None
+            ),
+            "rank": ranks.get(row.pct_chg) if row.pct_chg is not None else None,
+            "industry_rank": (
+                industry_ranks.get(industries.get(row.code) or "", {}).get(row.pct_chg)
+                if row.pct_chg is not None
+                else None
+            ),
+            "prev_broken": row.code in prev_broken,
+            "prev_turnover": prev_turnover,
+        }
+    return metrics
 
 
 @router.get("/auction", response_model=AuctionListOut)
@@ -179,6 +296,8 @@ def auction_list(
     )
     # 竞价量比（自算）：需要前几个交易日的竞价量，所以按**返回的这批票**现算
     ratios = _auction_ratios(session, trade_date, rows)
+    # 派生指标（波动率 / 真实换手 / 占比 / 排名 / 昨日筹码）
+    metrics = _metrics(session, trade_date, rows)
 
     def to_row(row: AuctionSnapshot) -> AuctionRow:
         open_pct = (
@@ -186,6 +305,7 @@ def auction_list(
             if row.open is not None and row.pre_close
             else None
         )
+        metric = metrics.get(row.code) or {}
         return AuctionRow(
             code=row.code,
             name=row.name,
@@ -204,6 +324,14 @@ def auction_list(
             limit_down=row.limit_down,
             consecutive=boards.get(row.code),
             auction_ratio=ratios.get(row.code),
+            amplitude=metric.get("amplitude"),
+            free_float_mv=metric.get("free_float_mv"),
+            free_turnover=metric.get("free_turnover"),
+            amount_ratio=metric.get("amount_ratio"),
+            rank=metric.get("rank"),
+            industry_rank=metric.get("industry_rank"),
+            prev_broken=bool(metric.get("prev_broken")),
+            prev_turnover=metric.get("prev_turnover"),
         )
 
     return AuctionListOut(
@@ -246,3 +374,70 @@ def auction_trend(
             for key, value in sorted(totals.items())
         ],
     )
+
+
+@router.get("/auction/boards", response_model=AuctionBoardsOut)
+def auction_boards(
+    trade_date: date | None = Query(None, alias="date"),
+    min_count: int = Query(3, ge=1, description="板块内至少几只才进榜"),
+    limit: int = Query(20, ge=1, le=100),
+    session: Session = Depends(get_db),
+) -> AuctionBoardsOut:
+    """板块竞价强度：按**同花顺行业（最后一级）**聚合当日的竞价数据。
+
+    回答的是「**这个方向整体强不强**」—— 个股高开但板块无动于衷，多半是孤票；
+    个股高开 + 板块整体高开，才是资金共振。给四个数：只数 / 平均竞价涨幅 /
+    总竞价额 / 竞价涨停家数。
+
+    ⚠️ 分组用 `stock_basic.industry`（同花顺三级路径，取**最后一级**），与页面上
+    「开盘红板块」不是一个体系 —— 后者只覆盖涨停股、没法给全市场分组。
+    「竞价涨停」判据是**竞价价 ≥ 涨停价**（竞价即封），≠ 收盘涨停。
+    """
+    if trade_date is None:
+        trade_date = _latest_date(session)
+        if trade_date is None:
+            return AuctionBoardsOut(trade_date=date.today(), items=[])
+
+    industries = dict(session.execute(select(StockBasic.code, StockBasic.industry)).all())
+    buckets: dict[str, dict] = {}
+    for code, pct_chg, amount, price, limit_up in session.execute(
+        select(
+            AuctionSnapshot.code,
+            AuctionSnapshot.pct_chg,
+            AuctionSnapshot.amount,
+            AuctionSnapshot.price,
+            AuctionSnapshot.limit_up,
+        ).where(AuctionSnapshot.trade_date == trade_date)
+    ).all():
+        industry = industries.get(code)
+        if not industry:
+            continue  # 没有行业归属的（新股 / 未进池）不进榜，不塞进「其他」
+        name = industry.split("-")[-1]
+        bucket = buckets.setdefault(
+            name, {"count": 0, "pct_sum": 0.0, "pct_n": 0, "amount": 0.0, "limit": 0}
+        )
+        bucket["count"] += 1
+        if pct_chg is not None:
+            bucket["pct_sum"] += pct_chg
+            bucket["pct_n"] += 1
+        if amount:
+            bucket["amount"] += amount
+        if price is not None and limit_up and price >= limit_up:
+            bucket["limit"] += 1
+
+    items = [
+        AuctionBoardItem(
+            industry=name,
+            count=bucket["count"],
+            avg_pct=(
+                round(bucket["pct_sum"] / bucket["pct_n"], 2) if bucket["pct_n"] else None
+            ),
+            amount=bucket["amount"] or None,
+            limit_count=bucket["limit"],
+        )
+        for name, bucket in buckets.items()
+        if bucket["count"] >= min_count
+    ]
+    # 平均涨幅降序；没有涨幅的排最后
+    items.sort(key=lambda item: (item.avg_pct is None, -(item.avg_pct or 0.0), -item.count))
+    return AuctionBoardsOut(trade_date=trade_date, items=items[:limit])

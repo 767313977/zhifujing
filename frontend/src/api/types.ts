@@ -200,6 +200,22 @@ export interface AuctionRow {
    * （口径同同花顺）。采样历史不足 3 天时为 null —— 我们的采样从 2026-10-12 才开始。
    */
   auction_ratio: number | null
+  /** **竞价价格波动率（%）** = 9:15–9:26 竞价最高价与最低价之差 ÷ 昨收 */
+  amplitude: number | null
+  /** **自由流通市值（元）** = 自由流通股 × 竞价价 */
+  free_float_mv: number | null
+  /** **真实竞价换手（%）** = 竞价量 ÷ 自由流通股（分母剔除不动筹码，比普通换手率更真） */
+  free_turnover: number | null
+  /** **竞价成交额占比（%）** = 竞价额 ÷ 昨日全天成交额 */
+  amount_ratio: number | null
+  /** **竞价涨幅排名**：全市场位次（1 起、并列同名次） */
+  rank: number | null
+  /** **板块内（同花顺行业）竞价涨幅排名** */
+  industry_rank: number | null
+  /** **昨日是否炸板**（与 `consecutive` 互斥） */
+  prev_broken: boolean
+  /** **昨日全天换手率（%）** */
+  prev_turnover: number | null
 }
 
 export interface AuctionList {
@@ -220,6 +236,29 @@ export interface AuctionTrendPoint {
 export interface AuctionTrend {
   trade_date: string
   points: AuctionTrendPoint[]
+}
+
+/**
+ * 一个**同花顺行业（最后一级）**的竞价强度汇总（`/api/auction/boards`）。
+ *
+ * 用于判断「是个股独立行情还是板块共振」—— 个股高开 + 板块整体高开才有持续性。
+ * ⚠️ 与页面上的「开盘红板块」不是一套分类：那个只覆盖涨停股，没法给全市场分组。
+ */
+export interface AuctionBoardItem {
+  industry: string
+  /** 该行业只数 */
+  count: number
+  /** 平均竞价涨幅（%） */
+  avg_pct: number | null
+  /** 竞价成交额合计（元） */
+  amount: number | null
+  /** **竞价即涨停**的家数（竞价价 ≥ 涨停价，≠ 收盘涨停） */
+  limit_count: number
+}
+
+export interface AuctionBoards {
+  trade_date: string
+  items: AuctionBoardItem[]
 }
 
 export type AuctionSort = 'amount' | 'pct' | 'ratio' | 'turnover' | 'float_mv' | 'price'

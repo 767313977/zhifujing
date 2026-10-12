@@ -224,6 +224,14 @@ def _parse_spot(payload: str) -> dict | None:
     amount_wan = _spot_num(parts, 37)  # 成交额（万元）
     float_mv_yi = _spot_num(parts, 44)  # 流通市值（亿元）
     total_mv_yi = _spot_num(parts, 45)  # 总市值（亿元）
+    # --- 竞价明细用（买一 / 委差）---
+    # `10` 是**买一量（手）**：一字板时它 + `9`（买一价 = 涨停价）就是「涨停价上的
+    # 封单」，可算封成比；`50` 是**委差**（委买总量 − 委卖总量），用于看 9:20 撤单与
+    # 未匹配量差。⚠️ 这两者在**竞价时段是否真有值**尚未核实（腾讯开盘前不少字段是空的），
+    # 所以采样任务先把它们存下来，事后一看便知。
+    bid1_hand = _spot_num(parts, 10)
+    ask1_hand = _spot_num(parts, 20)
+    committee_hand = _spot_num(parts, 50)
     return {
         "code": code,
         "name": parts[1].strip() or None,
@@ -244,6 +252,10 @@ def _parse_spot(payload: str) -> dict | None:
         "limit_down": _spot_num(parts, 48),
         "avg_price": _spot_num(parts, 51),
         "quote_time": parts[30].strip() or None,
+        "bid1_price": _spot_num(parts, 9),
+        "bid1_volume": bid1_hand * 100 if bid1_hand is not None else None,
+        "ask1_volume": ask1_hand * 100 if ask1_hand is not None else None,
+        "committee_diff": committee_hand * 100 if committee_hand is not None else None,
     }
 
 

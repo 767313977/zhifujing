@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api } from '../api/client'
-import type { AuctionList, AuctionRow, AuctionSort, AuctionTrend } from '../api/types'
+import type {
+  AuctionBoards,
+  AuctionList,
+  AuctionRow,
+  AuctionSort,
+  AuctionTrend,
+} from '../api/types'
 import Alert from '../components/Alert'
 import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
@@ -59,6 +65,22 @@ function buildColumns(): Column[] {
       render: (r) => <span className={`num ${toneOf(r.pct_chg)}`}>{fmtPct(r.pct_chg)}</span>,
     },
     {
+      key: 'rank',
+      label: '排名',
+      // 全市场竞价涨幅位次；悬停看**板块内**（同花顺行业最后一级）位次。
+      // 不给排序：位次本身就是「排序结果」，点它排一遍只会原地打转
+      render: (r) => (
+        <span
+          className="num text-fg-muted"
+          title={
+            r.industry_rank != null ? `板块内（同花顺行业）第 ${r.industry_rank} 名` : undefined
+          }
+        >
+          {r.rank != null ? `#${fmtInt(r.rank)}` : '—'}
+        </span>
+      ),
+    },
+    {
       key: 'open_pct',
       label: '开盘涨幅',
       narrowHidden: true,
@@ -69,6 +91,16 @@ function buildColumns(): Column[] {
       label: '竞价金额',
       sortKey: 'amount',
       render: (r) => <span className="num">{fmtAmount(r.amount)}</span>,
+    },
+    {
+      key: 'amount_ratio',
+      label: '竞价额占比',
+      // 相对比例才有可比性：大盘股竞价 1 亿看似多，占比可能极低。>5% 明显放量、>10% 超强
+      render: (r) => (
+        <span className="num text-fg-muted" title="竞价成交额 ÷ 昨日全天成交额（分母只覆盖流动性池）">
+          {fmtNum(r.amount_ratio, 2, '%')}
+        </span>
+      ),
     },
     {
       key: 'ratio',
@@ -91,11 +123,47 @@ function buildColumns(): Column[] {
       render: (r) => <span className="num">{fmtNum(r.turnover, 2, '%')}</span>,
     },
     {
-      key: 'boards',
-      label: '昨日连板',
+      key: 'free_turnover',
+      label: '真实换手',
+      // 分母换成**自由流通股**（剔除大股东/限售等不动的筹码）—— 普通换手率会低估
       render: (r) => (
-        <span className={r.consecutive ? 'num font-semibold text-up' : 'num text-fg-dim'}>
-          {r.consecutive ? `${fmtInt(r.consecutive)}板` : '—'}
+        <span
+          className="num text-fg-muted"
+          title={
+            r.free_float_mv != null
+              ? `竞价量 ÷ 自由流通股（自由流通市值 ${fmtAmount(r.free_float_mv)}）`
+              : '竞价量 ÷ 自由流通股'
+          }
+        >
+          {fmtNum(r.free_turnover, 3, '%')}
+        </span>
+      ),
+    },
+    {
+      key: 'amplitude',
+      label: '波动率',
+      narrowHidden: true,
+      // 9:15–9:26 竞价价的振幅：高开但几乎不动 = 一致性强；上下大幅波动 = 分歧大
+      render: (r) => (
+        <span
+          className="num text-fg-muted"
+          title="9:15–9:26 竞价最高价与最低价之差 ÷ 昨收"
+        >
+          {fmtNum(r.amplitude, 2, '%')}
+        </span>
+      ),
+    },
+    {
+      key: 'prev',
+      label: '昨日',
+      // 昨日状态：N板（含 1 板 = 首板）/ 炸板 / —；悬停看昨日全天换手率。
+      // 「炸板」查的是昨日的炸板池，与涨停池互斥，所以不会有「既是 N 板又炸板」。
+      render: (r) => (
+        <span
+          className={`num ${r.consecutive ? 'font-semibold text-up' : 'text-fg-muted'}`}
+          title={r.prev_turnover != null ? `昨日全天换手 ${r.prev_turnover.toFixed(2)}%` : undefined}
+        >
+          {r.consecutive ? `${fmtInt(r.consecutive)}板` : r.prev_broken ? '炸板' : '—'}
         </span>
       ),
     },
@@ -153,6 +221,7 @@ export default function AuctionPage() {
   const [dates, setDates] = useState<string[]>([])
   const [data, setData] = useState<AuctionList | null>(null)
   const [trend, setTrend] = useState<AuctionTrend | null>(null)
+  const [boards, setBoards] = useState<AuctionBoards | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -170,7 +239,7 @@ export default function AuctionPage() {
     api.dates().then(setDates).catch(() => setDates([]))
   }, [])
 
-  // 总量走势只随日期变（与筛选无关，是全市场口径）
+  // 走势与板块榜都只随**日期**变（与上面的筛选无关，都是全市场口径）
   useEffect(() => {
     let stale = false
     api
@@ -180,6 +249,14 @@ export default function AuctionPage() {
       })
       .catch(() => {
         if (!stale) setTrend(null)
+      })
+    api
+      .auctionBoards(date)
+      .then((value) => {
+        if (!stale) setBoards(value)
+      })
+      .catch(() => {
+        if (!stale) setBoards(null)
       })
     return () => {
       stale = true
@@ -325,6 +402,42 @@ export default function AuctionPage() {
           </Panel>
         )}
 
+        {/* 板块竞价强度：判断「个股独立行情」还是「板块共振」——个股高开 + 板块整体高开才有持续性 */}
+        {boards && boards.items.length > 0 && (
+          <Panel
+            title="板块竞价强度"
+            meta={<span className="num">同花顺行业（末级）· 按平均竞价涨幅排序 · 只列 ≥3 只的</span>}
+            delay={60}
+          >
+            <div className="max-h-[360px] overflow-auto">
+              <table className="grid-table">
+                <thead>
+                  <tr>
+                    <th className="!text-left">板块</th>
+                    <th>只数</th>
+                    <th>平均竞价涨幅</th>
+                    <th>竞价额</th>
+                    <th>竞价涨停</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {boards.items.map((item) => (
+                    <tr key={item.industry}>
+                      <td className="!text-left">{item.industry}</td>
+                      <td className="num text-fg-muted">{item.count}</td>
+                      <td className={`num ${toneOf(item.avg_pct)}`}>{fmtPct(item.avg_pct)}</td>
+                      <td className="num text-fg-muted">{fmtAmount(item.amount)}</td>
+                      <td className={`num ${item.limit_count > 0 ? 'text-up' : 'text-fg-dim'}`}>
+                        {item.limit_count || '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        )}
+
         <Panel
           title="竞价强度"
           meta={
@@ -450,11 +563,14 @@ export default function AuctionPage() {
 
         <p className="px-1 text-[12px] leading-relaxed text-fg-dim">
           数据来源：腾讯批量行情，交易日 9:15–9:26 逐分钟采样（零 iFinD 配额）。
-          「昨日连板」取上一交易日涨停池口径 —— 竞价时当天的池还没有。
-          「开盘量比」取开盘后 9:31 那一帧（腾讯开盘前不填量比）；
-          「竞价量比」是本机自算：当日竞价量 ÷ 前 5 个交易日的竞价量均值（口径同同花顺），
-          采样历史不足 3 天时为空。参考图里的 净额 / 承接强度 / 北向 / 人气排名 本站不提供：
-          北向净流入已停止披露、承接强度属外部工具专有指标，取不到就不编。
+          「排名」是全市场竞价涨幅位次，悬停看板块内位次；「波动率」= 竞价全程（最高−最低）÷ 昨收；
+          「真实换手」分母用自由流通股（剔除大股东/限售等不动的筹码），悬停看自由流通市值；
+          「竞价额占比」分母是昨日全天成交额（只覆盖流动性池约 3000 只，其余为空）；
+          「昨日」是上一交易日的涨停池/炸板池状态，悬停看昨日全天换手。
+          「开盘量比」取开盘后 9:31 那一帧（腾讯开盘前不填量比）；「竞价量比」是本机自算：
+          当日竞价量 ÷ 前 5 个交易日竞价量均值（口径同同花顺），采样历史不足 3 天时为空。
+          参考图里的 净额 / 承接强度 / 北向 / 人气排名 本站不提供：北向净流入已停止披露、
+          承接强度属外部工具专有指标，取不到就不编。
         </p>
       </div>
     </Layout>

@@ -1429,6 +1429,24 @@ class AuctionRow(ApiModel):
     # 口径取自同花顺对「竞价量比」的定义；历史不足 3 天时留空（我们的采样从
     # 2026-10-12 才开始，前几天必然是空的）。见 `api/auction._auction_ratios`。
     auction_ratio: float | None = None
+    # --- 派生指标（见 api/auction._metrics）---
+    #: **竞价价格波动率（%）** = 9:15–9:26 竞价最高价与最低价之差 ÷ 昨收。
+    #: 高开但波动极小 = 资金一致性强；上下大幅波动 = 分歧大、开盘易跳水。
+    amplitude: float | None = None
+    #: **自由流通市值（元）** = 自由流通股 × 竞价价（同花顺自由流通口径）
+    free_float_mv: float | None = None
+    #: **真实竞价换手（%）** = 竞价量 ÷ 自由流通股。普通换手率的分母含大量不动的筹码，会低估
+    free_turnover: float | None = None
+    #: **竞价成交额占比（%）** = 竞价额 ÷ 昨日全天成交额。绝对金额在大/小盘之间不可比
+    amount_ratio: float | None = None
+    #: **竞价涨幅排名**：全市场位次（1 起、并列同名次）
+    rank: int | None = None
+    #: **板块内（同花顺行业）竞价涨幅排名**
+    industry_rank: int | None = None
+    #: **昨日是否炸板**（昨日在炸板池里）。与 `consecutive`（昨日涨停池的连板数）互斥
+    prev_broken: bool = False
+    #: **昨日全天换手率（%）**
+    prev_turnover: float | None = None
 
 
 class AuctionListOut(BaseModel):
@@ -1446,3 +1464,22 @@ class AuctionTrendPoint(BaseModel):
 class AuctionTrendOut(BaseModel):
     trade_date: date
     points: list[AuctionTrendPoint]
+
+
+class AuctionBoardItem(BaseModel):
+    """一个**同花顺行业（最后一级）**的竞价强度汇总。
+
+    ⚠️ 与页面上「开盘红板块」不是同一套分类：那个只覆盖涨停股，没法给全市场分组，
+    所以板块聚合只能用同花顺行业（`stock_basic.industry`，全 A 都有）。
+    """
+
+    industry: str
+    count: int  # 该行业的只数
+    avg_pct: float | None  # 平均竞价涨幅（%）
+    amount: float | None  # 竞价成交额合计（元）
+    limit_count: int  # **竞价即涨停**的家数（竞价价 ≥ 涨停价，不是收盘是否涨停）
+
+
+class AuctionBoardsOut(BaseModel):
+    trade_date: date
+    items: list[AuctionBoardItem]

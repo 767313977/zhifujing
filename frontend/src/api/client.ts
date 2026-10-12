@@ -1,6 +1,7 @@
 import type {
   AdminStatus,
   AnomalyMap,
+  AuctionBoards,
   AuctionList,
   AuctionQuery,
   AuctionTrend,
@@ -391,6 +392,13 @@ export const api = {
   /** 全市场竞价量能走势（逐分钟累计成交额合计）。数据是**累计值**，读的是斜率。 */
   auctionTrend: (date?: string | null) =>
     request<AuctionTrend>(withDate('/auction/trend', date)),
+
+  /**
+   * 板块竞价强度：按**同花顺行业（最后一级）**聚合当日竞价数据
+   * （只数 / 平均竞价涨幅 / 总竞价额 / 竞价涨停家数）。
+   */
+  auctionBoards: (date?: string | null, limit = 20) =>
+    request<AuctionBoards>(withDate(`/auction/boards?limit=${limit}`, date)),
 
   /**
    * 个股异动图谱：最近 `days` 个交易日里的涨停 / 涨停炸板 / 中大阳线异动，

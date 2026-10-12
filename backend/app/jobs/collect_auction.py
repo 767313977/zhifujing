@@ -125,7 +125,19 @@ def collect_auction(now: datetime | None = None) -> int:
                 price = item["price"]
                 pre_close = item["pre_close"]
                 samples = list(existing.get(code) or [])
-                samples.append([hhmm, price, item["amount"]])
+                # 逐分钟：`[HHMM, 价, 累计成交额, 委差, 买一价, 买一量]`。
+                # 后三列是 2026-10-12 加的（为「未匹配量差 / 9:20 撤单 / 封成比」留证据）。
+                # ⚠️ 老行仍是 3 元组 —— 读端必须**按下标取、越界给 None**，别假设长度。
+                samples.append(
+                    [
+                        hhmm,
+                        price,
+                        item["amount"],
+                        item["committee_diff"],
+                        item["bid1_price"],
+                        item["bid1_volume"],
+                    ]
+                )
                 rows.append(
                     {
                         "trade_date": day,
