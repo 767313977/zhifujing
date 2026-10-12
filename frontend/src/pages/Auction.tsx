@@ -309,6 +309,8 @@ export default function AuctionPage() {
   const [minAmount, setMinAmount] = useState<number | null>(null) // 亿元
   const [minRatio, setMinRatio] = useState<number | null>(null)
   const [minBoards, setMinBoards] = useState<number | null>(null)
+  // 从「板块竞价强度」点进来的行业（同花顺行业末级名）；null = 不筛
+  const [industryFilter, setIndustryFilter] = useState<string | null>(null)
   const [sort, setSort] = useState<AuctionSort>('amount')
   const [order, setOrder] = useState<'asc' | 'desc'>('desc')
 
@@ -355,6 +357,8 @@ export default function AuctionPage() {
           minAmount: minAmount != null ? minAmount * 1e8 : undefined,
           minRatio: minRatio ?? undefined,
           minBoards: minBoards ?? undefined,
+          // 板块面板点「只数」筛进来的行业（与面板同一口径：同花顺行业末级名）
+          industry: industryFilter ?? undefined,
           limit: ROW_LIMIT,
         })
         if (isStale()) return
@@ -367,7 +371,7 @@ export default function AuctionPage() {
         if (!isStale()) setLoading(false)
       }
     },
-    [date, sort, order, minPct, minAmount, minRatio, minBoards],
+    [date, sort, order, minPct, minAmount, minRatio, minBoards, industryFilter],
   )
 
   useEffect(() => {
@@ -383,6 +387,7 @@ export default function AuctionPage() {
     setMinAmount(null)
     setMinRatio(null)
     setMinBoards(null)
+    setIndustryFilter(null)
     setSort('amount')
     setOrder('desc')
   }
@@ -485,7 +490,24 @@ export default function AuctionPage() {
         {boards && boards.items.length > 0 && (
           <Panel
             title="板块竞价强度"
-            meta={<span className="num">同花顺行业（末级）· 只列 ≥3 只的 · 点列头排序</span>}
+            meta={
+              industryFilter ? (
+                <span className="num">
+                  已按「{industryFilter}」筛选下方表
+                  <button
+                    type="button"
+                    onClick={() => setIndustryFilter(null)}
+                    className="ml-2 text-fg-dim transition-colors hover:text-fg"
+                  >
+                    清除 ✕
+                  </button>
+                </span>
+              ) : (
+                <span className="num">
+                  同花顺行业（末级）· 只列 ≥3 只的 · 点一行筛个股 · 点列头排序
+                </span>
+              )
+            }
             delay={60}
           >
             <div className="max-h-[360px] overflow-auto">
@@ -511,9 +533,29 @@ export default function AuctionPage() {
                 </thead>
                 <tbody>
                   {boardItems.map((item) => (
-                    <tr key={item.industry}>
-                      <td className="!text-left">{item.industry}</td>
-                      <td className="num text-fg-muted">{item.count}</td>
+                    <tr
+                      key={item.industry}
+                      // 整行可点：在**下方主表**里筛出这个板块的个股；再点一次取消
+                      onClick={() =>
+                        setIndustryFilter(item.industry === industryFilter ? null : item.industry)
+                      }
+                      title={`点一下在下面筛出「${item.industry}」的 ${item.count} 只个股`}
+                      className={`cursor-pointer transition-colors ${
+                        item.industry === industryFilter ? 'bg-ink-850' : ''
+                      }`}
+                    >
+                      <td className={`!text-left ${item.industry === industryFilter ? 'text-accent' : ''}`}>
+                        {item.industry}
+                      </td>
+                      <td
+                        className={`num ${
+                          item.industry === industryFilter
+                            ? 'text-accent'
+                            : 'text-fg-muted underline decoration-dotted underline-offset-2'
+                        }`}
+                      >
+                        {item.count}
+                      </td>
                       <td className={`num ${toneOf(item.avg_pct)}`}>{fmtPct(item.avg_pct)}</td>
                       <td className="num text-fg-muted">{fmtAmount(item.amount)}</td>
                       <td className={`num ${item.limit_count > 0 ? 'text-up' : 'text-fg-dim'}`}>
@@ -600,7 +642,9 @@ export default function AuctionPage() {
             </div>
           ) : data.shown === 0 ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
-              没有符合条件的票，放宽上面的筛选试试。
+              {industryFilter
+                ? `「${industryFilter}」在当前筛选下没有个股 —— 点上面板块面板右上角的「清除 ✕」或放宽筛选。`
+                : '没有符合条件的票，放宽上面的筛选试试。'}
             </div>
           ) : (
             <div className="max-h-[600px] overflow-auto">

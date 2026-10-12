@@ -305,6 +305,8 @@ export interface AuctionQuery {
   maxTurnover?: number
   /** 昨日连板数下限（几板） */
   minBoards?: number
+  /** 只看该同花顺行业（**末级名**，如「出版」）—— 板块面板点「只数」筛进来时用 */
+  industry?: string
   limit?: number
 }
 

@@ -327,6 +327,9 @@ def auction_list(
     min_turnover: float | None = Query(None, description="竞价换手下限（%）"),
     max_turnover: float | None = Query(None, description="竞价换手上限（%）"),
     min_boards: int | None = Query(None, ge=1, description="昨日连板数下限（几板）"),
+    industry: str | None = Query(
+        None, description="只看该同花顺行业（**末级名**，如「出版」）—— 板块面板点进来时用"
+    ),
     limit: int = Query(200, ge=1, le=1000),
     session: Session = Depends(get_db),
 ) -> AuctionListOut:
@@ -374,6 +377,17 @@ def auction_list(
         # 连板数不在表里，转成「昨日该档以上的代码集合」再过滤。
         # 集合规模不大（昨日涨停通常几十只），IN 不构成压力
         hit = [code for code, level in boards.items() if level >= min_boards]
+        conditions.append(AuctionSnapshot.code.in_(hit))
+    if industry:
+        # 行业归属也不在 `auction_snapshot` 里（取 `stock_basic` 的**末级**名）。
+        # 与板块面板**同一口径**，否则点了「出版」筛出来的和面板上那个数对不上
+        hit = [
+            code
+            for code, name in session.execute(
+                select(StockBasic.code, StockBasic.industry)
+            ).all()
+            if name and name.split("-")[-1] == industry
+        ]
         conditions.append(AuctionSnapshot.code.in_(hit))
 
     # 排序：普通列交给数据库（快路径，只取 limit 行）；**派生列**要现算，得先把当日的票

@@ -385,6 +385,7 @@ export const api = {
     if (options.minTurnover != null) q.set('min_turnover', String(options.minTurnover))
     if (options.maxTurnover != null) q.set('max_turnover', String(options.maxTurnover))
     if (options.minBoards != null) q.set('min_boards', String(options.minBoards))
+    if (options.industry) q.set('industry', options.industry)
     if (options.limit != null) q.set('limit', String(options.limit))
     return request<AuctionList>(`/auction?${q.toString()}`)
   },
