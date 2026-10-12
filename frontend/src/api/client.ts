@@ -502,16 +502,23 @@ export const api = {
   patternCatalog: () => request<PatternMeta[]>('/patterns/catalog'),
 
   /**
-   * 命中列表。`pattern` 传了就只看该形态、且**不再按 50 截断**（后端会把它全部
-   * 返回，评分与排序也换成该形态自己的分数）；不传则是「全市场按评分取前 limit 只」。
+   * 命中列表。`patterns` 传了就只看这些形态（**可多选，取并集**）、且**不再按 50
+   * 截断**（后端会把它们全部返回，评分与排序也换成所选形态里的最高分）；
+   * 不传则是「全市场按评分取前 limit 只」。
+   *
+   * 多选靠**重复的 query 参数**传（`?pattern=a&pattern=b`）—— 与后端的
+   * `list[str]` 入参对应；用逗号拼成一个值会被后端当成一个「未知形态」而 400。
    */
   patternHits: (
     date?: string | null,
     minScore = 0,
     limit = 50,
-    pattern?: string | null,
+    patterns?: string[] | null,
   ) => {
-    const pick = pattern ? `&pattern=${pattern}` : ''
+    const pick = (patterns ?? [])
+      .filter(Boolean)
+      .map((key) => `&pattern=${encodeURIComponent(key)}`)
+      .join('')
     return request<PatternStock[]>(
       withDate(`/patterns/hits?min_score=${minScore}&limit=${limit}${pick}`, date),
     )

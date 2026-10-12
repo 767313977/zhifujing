@@ -117,7 +117,10 @@ export default function Wudao() {
     Promise.all([
       api.patternSummary(null),
       ...pools.map((pool) =>
-        api.patternHits(null, 0, POOL_LIMIT, pool.key).then((rows) => [pool.key, rows] as const),
+        // 这一页每个池子只取**一个**形态：传单元素数组（接口是多选口径，取并集）
+        api
+          .patternHits(null, 0, POOL_LIMIT, [pool.key])
+          .then((rows) => [pool.key, rows] as const),
       ),
     ])
       .then(([sum, ...rows]) => {

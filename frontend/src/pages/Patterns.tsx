@@ -57,6 +57,17 @@ const PATTERN_LIMIT = 3000
 const RENDER_LIMIT = 200
 
 /**
+ * 解析 URL 里的 `patterns`（逗号分隔的形态 key 列表）。
+ *
+ * 形态筛选是**多选**（取并集），所以链接参数也用列表；空串与重复项一并清掉，
+ * 免得手改 URL 时多出一个匹配不上的空 key（它会让列表永远是空的）。
+ */
+function splitPatterns(value: string | null): string[] {
+  if (!value) return []
+  return Array.from(new Set(value.split(',').map((item) => item.trim()).filter(Boolean)))
+}
+
+/**
  * 命中列表各列的排序口径。
  *
  * ⚠️ **默认视图**（没选形态）下排序只在那 50 条之内（后端按评分给的前 50），
@@ -249,8 +260,8 @@ export default function Patterns() {
   const [catalog, setCatalog] = useState<PatternMeta[]>([])
   const [hits, setHits] = useState<PatternStock[]>([])
   const [summary, setSummary] = useState<PatternSummary | null>(null)
-  // 形态筛选是**单选**：一次只看一个形态，不然十几个形态叠在一起没人能读
-  const [picked, setPicked] = useState<string | null>(() => params.get('patterns') || null)
+  // 选中的形态：**多选**（并集）。空数组 = 默认视图（全市场按评分取前 HIT_LIMIT 只）
+  const [picked, setPicked] = useState<string[]>(() => splitPatterns(params.get('patterns')))
   const [minScore, setMinScore] = useState(0)
   const [active, setActive] = useState<string | null>(() => readActive())
   const [loading, setLoading] = useState(true)
@@ -275,7 +286,7 @@ export default function Patterns() {
     if (date) next.set('date', date)
     else next.delete('date')
     // 「看图的那只票」刻意不写进 URL，原因见 ACTIVE_KEY 上面的说明
-    if (picked) next.set('patterns', picked)
+    if (picked.length > 0) next.set('patterns', picked.join(','))
     else next.delete('patterns')
     if (next.toString() !== params.toString()) setParams(next, { replace: true })
   }, [date, picked, params, setParams])
@@ -292,17 +303,17 @@ export default function Patterns() {
   const load = useCallback(
     async (
       target: string | null,
-      only: string | null,
+      only: string[],
       isStale: () => boolean = () => false,
     ) => {
       setLoading(true)
       setError(null)
       try {
         // 没选形态：全市场按评分取前 `HIT_LIMIT` 只（默认视图）。
-        // 选了形态：取该形态的**全部**命中（`PATTERN_LIMIT`），评分与排序由后端
-        // 换成该形态自己的分数 —— 见 `api.patternHits` 与后端 `/hits` 的说明。
+        // 选了形态：取这些形态的**全部**命中（`PATTERN_LIMIT`，多个之间取并集），
+        // 评分与排序由后端换成所选形态里的最高分 —— 见 `api.patternHits` 与后端 `/hits`
         const [list, sum] = await Promise.all([
-          api.patternHits(target, 0, only ? PATTERN_LIMIT : HIT_LIMIT, only),
+          api.patternHits(target, 0, only.length > 0 ? PATTERN_LIMIT : HIT_LIMIT, only),
           api.patternSummary(target),
         ])
         if (isStale()) return
@@ -352,10 +363,17 @@ export default function Patterns() {
   }, [summary])
 
   /** 当前选中形态的中文名（标题与提示都要用；清单还没拉到时退回 key） */
-  const pickedName = useMemo(
-    () => (picked ? (catalog.find((item) => item.key === picked)?.name ?? picked) : null),
+  const pickedNames = useMemo(
+    () => picked.map((key) => catalog.find((item) => item.key === key)?.name ?? key),
     [picked, catalog],
   )
+  /** 标题／提示里那一小串：单个就是名字，多个是「第一个 等 N 个形态」 */
+  const pickedLabel =
+    pickedNames.length === 0
+      ? null
+      : pickedNames.length === 1
+        ? pickedNames[0]
+        : `${pickedNames[0]} 等 ${pickedNames.length} 个形态`
 
   // 评分滑块拖动时 `minScore` 每一帧都在变，而下面要「过滤 3000 条 + 排序 3000 条」，
   // 每帧都做会拖出可见的卡顿。用 deferred 值：滑块与数字即时跟手，重活等 React
@@ -365,10 +383,10 @@ export default function Patterns() {
   const visible = useMemo(() => {
     return hits.filter((stock) => {
       if (stock.score < deferredMinScore) return false
-      if (!picked) return true
-      // 后端在形态模式下返回的就是「命中该形态的全部票」，所以这里通常全过；
+      if (picked.length === 0) return true
+      // 后端在形态模式下返回的就是「命中这些形态的全部票」，所以这里通常全过；
       // 留一道是兜底（也保证每行是按**全部**命中形态判的，不是按展示用的截断列表）
-      return stock.patterns.some((item) => item.pattern === picked)
+      return stock.patterns.some((item) => picked.includes(item.pattern))
     })
   }, [hits, picked, deferredMinScore])
 
@@ -420,10 +438,14 @@ export default function Patterns() {
    * 这一屏的「应有条数」与截断判定。
    *
    * - 默认视图：拿 summary 的**全市场去重只数**与列表长度比；
-   * - 形态视图：拿 `countOf[picked]`（该形态的去重只数）与列表长度比 ——
-   *   后端已按 `PATTERN_LIMIT` 取全，正常不会截断，但真超过就如实提示。
+   * - 形态视图：单选时拿 `countOf[key]`（该形态的去重只数）；**多选时拿不到并集只数**
+   *   （summary 只有每个形态各自的家数、没有集合），所以取选中形态里**最大**的那个当
+   *   **下界** —— 并集一定 ≥ 最大值，于是「下界 > 实际返回」必然真被截断，只会漏报、不会误报。
    */
-  const expected = picked ? (countOf[picked] ?? 0) : (summary?.total_stocks ?? 0)
+  const expected =
+    picked.length === 0
+      ? (summary?.total_stocks ?? 0)
+      : Math.max(...picked.map((key) => countOf[key] ?? 0))
   const truncated = expected > hits.length
 
   // 筛完之后当前看图的票可能已经不在列表里，自动切到第一条
@@ -488,9 +510,11 @@ export default function Patterns() {
     return levels
   }, [current])
 
-  /** 单选：点已选中的那个就取消，回到「全部」 */
+  /** 多选（并集）：点一下加入、再点一下移出；全移出就回到「全部」 */
   const toggle = (key: string) => {
-    setPicked((prev) => (prev === key ? null : key))
+    setPicked((prev) =>
+      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key],
+    )
   }
 
   const toolbar = (
@@ -526,7 +550,7 @@ export default function Patterns() {
               {summary?.trade_date ? `${summary.trade_date} · ` : ''}
               共 {fmtInt(summary?.total_stocks ?? 0)} 只命中
               <span className="ml-3 text-fg-dim">
-                点形态名筛选（单选，再点一次取消）；徽标是该形态的全市场命中家数。致富＝悟道样板/启动
+                点形态名筛选（可多选，命中任意一个即入选；再点一次取消）；徽标是该形态的全市场命中家数。致富＝悟道样板/启动
                 ＋洗完（只扫创业板与科创板，且样板/启动另限「今天冲高过」的候选池），
                 悟道之路＝强达型与华宝早期（同样只扫创业板与科创板）；金叉大阳（趋势）也只扫这两块；
                 做T＝用户的「V5 日线做T」买点，深B/★B/双B 三档（全市场扫，档位在明细里看）；
@@ -543,7 +567,7 @@ export default function Patterns() {
               <div key={group} className="flex flex-wrap items-center gap-2">
                 <span className="w-24 shrink-0 text-[13px] text-fg-dim">{group}</span>
                 {items.map((item) => {
-                  const on = picked === item.key
+                  const on = picked.includes(item.key)
                   const count = countOf[item.key] ?? 0
                   return (
                     <button
@@ -575,11 +599,11 @@ export default function Patterns() {
                 className="range-accent h-[3px] w-40"
               />
               <span className="num w-8 text-[13px] text-fg">{minScore}</span>
-              {(picked !== null || minScore > 0) && (
+              {(picked.length > 0 || minScore > 0) && (
                 <button
                   type="button"
                   onClick={() => {
-                    setPicked(null)
+                    setPicked([])
                     setMinScore(0)
                   }}
                   className="num border border-line px-2 py-[2px] text-[13px] text-fg-dim hover:border-fg-dim hover:text-fg"
@@ -592,12 +616,15 @@ export default function Patterns() {
         </Panel>
 
         <Panel
-          title={pickedName ? `命中列表 · ${pickedName}` : '命中列表'}
+          title={pickedLabel ? `命中列表 · ${pickedLabel}` : '命中列表'}
           meta={
             <span className="num">
-              {pickedName && (
+              {pickedLabel && (
                 <span className="text-accent">
-                  该形态共 {fmtInt(expected)} 只，已全部列出 ·{' '}
+                  {picked.length === 1
+                    ? `该形态共 ${fmtInt(expected)} 只，已全部列出`
+                    : `所选 ${picked.length} 个形态合计至少 ${fmtInt(expected)} 只，已全部列出`}
+                  {' · '}
                 </span>
               )}
               点列头排序 · 点一行看它的 K 线与关键位
@@ -628,9 +655,9 @@ export default function Patterns() {
               <span className="mt-[3px] h-[6px] w-[6px] shrink-0 bg-accent" />
               <span>
                 <span className="font-medium text-accent">列表被截断：</span>
-                {pickedName ? (
+                {pickedLabel ? (
                   <>
-                    「{pickedName}」当日共命中
+                    「{pickedLabel}」当日{picked.length === 1 ? '共命中' : '至少命中'}
                     <span className="num text-accent"> {fmtInt(expected)} </span>
                     只，这里只列出前
                     <span className="num text-fg"> {PATTERN_LIMIT} </span>
