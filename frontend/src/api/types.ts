@@ -177,10 +177,11 @@ export interface AuctionRow {
   pre_close: number | null
   /** 竞价涨幅（%） */
   pct_chg: number | null
-  /** 今开 */
+  /**
+   * 今开。⚠️ 与 `price` **恒等**（A 股开盘价 = 集合竞价成交价），所以接口**不给**
+   * 「开盘涨幅」——那一项与 `pct_chg` 恒等，是重复列（2026-10-12 撤）。
+   */
   open: number | null
-  /** 开盘涨幅（%）= (今开 / 昨收 − 1) */
-  open_pct: number | null
   /** 竞价成交额（元） */
   amount: number | null
   /** 竞价成交量（股） */

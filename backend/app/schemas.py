@@ -1413,8 +1413,9 @@ class AuctionRow(ApiModel):
     price: float | None  # 竞价成交价（= 当日开盘价）
     pre_close: float | None
     pct_chg: float | None  # 竞价涨幅（%）
-    open: float | None  # 今开
-    open_pct: float | None  # 开盘涨幅（%）= (今开 / 昨收 − 1)
+    # 今开。⚠️ 它与 `price` **恒等**（A 股开盘价 = 集合竞价成交价），所以**不提供**
+    # 「开盘涨幅」—— 那一项与 `pct_chg` 恒等，留着只是重复（2026-10-12 撤）
+    open: float | None
     amount: float | None  # 竞价成交额（元）
     volume: float | None  # 竞价成交量（股）
     turnover: float | None  # 竞价换手率（%）

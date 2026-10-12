@@ -438,11 +438,6 @@ def auction_list(
         rows = (valued + blank)[:limit]
 
     def to_row(row: AuctionSnapshot) -> AuctionRow:
-        open_pct = (
-            round((row.open / row.pre_close - 1) * 100, 2)
-            if row.open is not None and row.pre_close
-            else None
-        )
         metric = metrics.get(row.code) or {}
         return AuctionRow(
             code=row.code,
@@ -451,7 +446,6 @@ def auction_list(
             pre_close=row.pre_close,
             pct_chg=row.pct_chg,
             open=row.open,
-            open_pct=open_pct,
             amount=row.amount,
             volume=row.volume,
             turnover=row.turnover,
