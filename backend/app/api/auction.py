@@ -32,8 +32,6 @@ from app.schemas import (
     AuctionListOut,
     AuctionRow,
     AuctionSummary,
-    AuctionTrendOut,
-    AuctionTrendPoint,
 )
 
 router = APIRouter(prefix="/api", tags=["复盘"])
@@ -625,40 +623,6 @@ def auction_list(
         rows=[to_row(row) for row in rows],
         # 市场级情绪带：全市场口径，与上面的筛选 / 截断无关
         summary=_summary(session, trade_date, prev),
-    )
-
-
-@router.get("/auction/trend", response_model=AuctionTrendOut)
-def auction_trend(
-    trade_date: date | None = Query(None, alias="date"),
-    session: Session = Depends(get_db),
-) -> AuctionTrendOut:
-    """全市场竞价量能走势：逐分钟把各票的「累计成交额」求和。
-
-    参考图左上角那条「竞价走势」曲线。数据是**累计值**，所以曲线单调不降 ——
-    要读的是它的**斜率**（哪一分钟在放量）。
-    """
-    if trade_date is None:
-        trade_date = _latest_date(session)
-        if trade_date is None:
-            return AuctionTrendOut(trade_date=date.today(), points=[])
-
-    totals: dict[str, float] = {}
-    for samples in session.scalars(
-        select(AuctionSnapshot.samples).where(AuctionSnapshot.trade_date == trade_date)
-    ):
-        for sample in samples or []:
-            if len(sample) < 3 or sample[2] is None:
-                continue
-            key = str(sample[0])
-            totals[key] = totals.get(key, 0.0) + float(sample[2])
-
-    return AuctionTrendOut(
-        trade_date=trade_date,
-        points=[
-            AuctionTrendPoint(time=key, amount=round(value, 2))
-            for key, value in sorted(totals.items())
-        ],
     )
 
 

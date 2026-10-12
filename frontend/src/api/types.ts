@@ -279,17 +279,6 @@ export interface AuctionList {
   summary: AuctionSummary | null
 }
 
-/** 全市场竞价量能曲线的一个点：该时刻累计成交额合计（元）。 */
-export interface AuctionTrendPoint {
-  time: string
-  amount: number
-}
-
-export interface AuctionTrend {
-  trade_date: string
-  points: AuctionTrendPoint[]
-}
-
 /**
  * 一个**同花顺行业（最后一级）**的竞价强度汇总（`/api/auction/boards`）。
  *

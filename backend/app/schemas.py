@@ -1501,16 +1501,6 @@ class AuctionListOut(BaseModel):
     summary: AuctionSummary | None = None
 
 
-class AuctionTrendPoint(BaseModel):
-    time: str  # HHMM
-    amount: float  # 该时刻全市场累计竞价成交额合计（元）
-
-
-class AuctionTrendOut(BaseModel):
-    trade_date: date
-    points: list[AuctionTrendPoint]
-
-
 class AuctionBoardItem(BaseModel):
     """一个**同花顺行业（最后一级）**的竞价强度汇总。
 

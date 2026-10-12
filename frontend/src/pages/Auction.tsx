@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api } from '../api/client'
 import type {
@@ -7,16 +7,12 @@ import type {
   AuctionList,
   AuctionRow,
   AuctionSort,
-  AuctionTrend,
 } from '../api/types'
 import Alert from '../components/Alert'
-import EChart from '../components/EChart'
-import type { ChartOption } from '../components/EChart'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
-import { AXIS_LABEL, AXIS_LINE, CHART, GRID, SPLIT_LINE, TOOLTIP, withAlpha } from '../lib/chart'
 import { fmtAmount, fmtInt, fmtNum, fmtPct, toneOf } from '../lib/format'
 import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'
@@ -378,7 +374,6 @@ export default function AuctionPage() {
   const [date, setDate] = useState<string | null>(null)
   const [dates, setDates] = useState<string[]>([])
   const [data, setData] = useState<AuctionList | null>(null)
-  const [trend, setTrend] = useState<AuctionTrend | null>(null)
   const [boards, setBoards] = useState<AuctionBoards | null>(null)
 
   // 板块榜在前端排（数据少）；默认按平均竞价涨幅降序，与后端给的一致
@@ -402,17 +397,9 @@ export default function AuctionPage() {
     api.dates().then(setDates).catch(() => setDates([]))
   }, [])
 
-  // 走势与板块榜都只随**日期**变（与上面的筛选无关，都是全市场口径）
+  // 板块榜只随**日期**变（与上面的筛选无关，是全市场口径）
   useEffect(() => {
     let stale = false
-    api
-      .auctionTrend(date)
-      .then((value) => {
-        if (!stale) setTrend(value)
-      })
-      .catch(() => {
-        if (!stale) setTrend(null)
-      })
     api
       .auctionBoards(date)
       .then((value) => {
@@ -484,53 +471,6 @@ export default function AuctionPage() {
     setOrder(SORT_FIRST[key] ?? 'desc')
   }
 
-  const trendOption = useMemo<ChartOption>(() => {
-    if (!trend || trend.points.length === 0) return {}
-    const labels = trend.points.map((p) => `${p.time.slice(0, 2)}:${p.time.slice(2)}`)
-    const values = trend.points.map((p) => Number((p.amount / 1e8).toFixed(2)))
-    return {
-      grid: { ...GRID, top: 30 },
-      tooltip: {
-        ...TOOLTIP,
-        trigger: 'axis' as const,
-        valueFormatter: (value: unknown) => (value == null ? '—' : `${value} 亿`),
-      },
-      xAxis: {
-        type: 'category' as const,
-        data: labels,
-        boundaryGap: false,
-        axisLabel: AXIS_LABEL,
-        axisLine: AXIS_LINE,
-        axisTick: { show: false },
-      },
-      yAxis: {
-        type: 'value' as const,
-        name: '累计竞价额(亿)',
-        nameTextStyle: {
-          color: CHART.fgDim,
-          fontSize: 11,
-          fontFamily: AXIS_LABEL.fontFamily,
-        },
-        axisLabel: AXIS_LABEL,
-        splitLine: SPLIT_LINE,
-        axisLine: { show: false },
-      },
-      series: [
-        {
-          type: 'line' as const,
-          name: '累计竞价额',
-          data: values,
-          smooth: true,
-          symbol: 'circle',
-          symbolSize: 5,
-          lineStyle: { width: 1.8, color: CHART.accent },
-          itemStyle: { color: CHART.accent },
-          areaStyle: { color: withAlpha(CHART.accent, 0.12) },
-        },
-      ],
-    }
-  }, [trend])
-
   const toolbar = (
     <>
       <span className="num hidden text-[13px] text-fg-dim lg:inline">
@@ -588,18 +528,6 @@ export default function AuctionPage() {
                 tone={data.summary.limit_count > 0 ? 'text-up' : 'text-fg'}
                 hint="竞价价 ≥ 涨停价（竞价就封，≠ 收盘涨停）。竞价涨停家数多 = 打板氛围好"
               />
-            </div>
-          </Panel>
-        )}
-
-        {trend && trend.points.length > 0 && (
-          <Panel
-            title="竞价量能走势"
-            meta={<span className="num">全市场累计竞价成交额 · 读的是斜率</span>}
-            delay={40}
-          >
-            <div className="px-2 pt-2">
-              <EChart option={trendOption} height={200} />
             </div>
           </Panel>
         )}
@@ -828,6 +756,8 @@ export default function AuctionPage() {
           ⚠️ 「9:20 前/后成交拆分」与「真实成交占比」**已评估、做不出来**：腾讯在 9:25
           结算之前不给累计成交额（实测 0915–0925 每一帧都是 0，只有 0926 那一帧才一次性
           出现），所以任何基于「分段成交额」的占比都会恒等于 100%，属假指标，故不提供。
+          同一条原因，原先那条「竞价量能走势」曲线也已撤：它 0915–0924 全是 0、末端才跳变，
+          本来要读的「斜率」没有信息量。
           「封成比」「撤单率」「委差」三项取的是竞价挂单 / 委差（9:20 前后各一帧）——
           ⚠️ 腾讯在竞价时段是否真给这几个字段尚未核实，若为空说明它开盘前不填，届时会撤掉。
           「开盘量比」取开盘后 9:31 那一帧（腾讯开盘前不填量比）；「竞价量比」是本机自算：

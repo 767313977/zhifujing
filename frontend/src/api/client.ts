@@ -4,7 +4,6 @@ import type {
   AuctionBoards,
   AuctionList,
   AuctionQuery,
-  AuctionTrend,
   DdeBoard,
   DdeOrder,
   EtfFlowBoard,
@@ -389,10 +388,6 @@ export const api = {
     if (options.limit != null) q.set('limit', String(options.limit))
     return request<AuctionList>(`/auction?${q.toString()}`)
   },
-
-  /** 全市场竞价量能走势（逐分钟累计成交额合计）。数据是**累计值**，读的是斜率。 */
-  auctionTrend: (date?: string | null) =>
-    request<AuctionTrend>(withDate('/auction/trend', date)),
 
   /**
    * 板块竞价强度：按**同花顺行业（最后一级）**聚合当日竞价数据
