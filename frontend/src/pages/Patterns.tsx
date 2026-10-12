@@ -623,7 +623,11 @@ export default function Patterns() {
                 <span className="text-accent">
                   {picked.length === 1
                     ? `该形态共 ${fmtInt(expected)} 只，已全部列出`
-                    : `所选 ${picked.length} 个形态合计至少 ${fmtInt(expected)} 只，已全部列出`}
+                    : // 多选：没被截断时列表长度**就是**真实并集只数（取回来的即全集）；
+                      // 真被截断时上界未知，只能说「至少」（下界），此时下面还会弹截断提示
+                      truncated
+                      ? `所选 ${picked.length} 个形态合计至少 ${fmtInt(expected)} 只`
+                      : `所选 ${picked.length} 个形态合计 ${fmtInt(hits.length)} 只，已全部列出`}
                   {' · '}
                 </span>
               )}
