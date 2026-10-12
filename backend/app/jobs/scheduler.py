@@ -327,11 +327,13 @@ class DailyScheduler:
                 misfire_grace_time=3600,
                 coalesce=True,
             )
-        # 集合竞价采样：交易日 9:15–9:26 每分钟一次（见 jobs/collect_auction.py）。
+        # 集合竞价采样：交易日 9:15–9:26 每分钟一次 + 9:31 补一帧量比（见 jobs/collect_auction.py）。
         # 固定在开盘前，与收盘后那几趟互不影响；单分钟失败只告警，下一分钟还会再跑。
         scheduler.add_job(
             self._run_auction,
-            CronTrigger(day_of_week="mon-fri", hour=9, minute="15-26", timezone=TIMEZONE),
+            CronTrigger(
+                day_of_week="mon-fri", hour=9, minute="15-26,31", timezone=TIMEZONE
+            ),
             id=AUCTION_JOB_ID,
             name="集合竞价采样",
             replace_existing=True,
@@ -343,7 +345,7 @@ class DailyScheduler:
         self._scheduler = scheduler
         logger.info(
             "定时采集已启动：交易日 %02d:%02d（收盘后补采 %02d:%02d / 兜底 %02d:%02d，"
-            "成分股预取 %02d:%02d / 兜底 %02d:%02d；集合竞价 09:15–09:26 每分钟）",
+            "成分股预取 %02d:%02d / 兜底 %02d:%02d；集合竞价 09:15–09:26 每分钟 + 09:31 补量比）",
             self.settings.collect_hour,
             self.settings.collect_minute,
             self.settings.late_collect_hour,

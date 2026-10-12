@@ -2,14 +2,19 @@
 
 数据源是**腾讯批量行情**（`sources/tencent.fetch_spot`），零 iFinD 配额。
 
-为什么要逐分钟：集合竞价的**过程**本身就是信息（9:20 撤单截止前后的量跳变、
-最后 1 分钟的急涌），只留 9:25 的终值就只剩一个数了。每跑一次就往后追加一帧
-`[HHMM, 价, 累计成交额]`，同时把「9:25 竞价结果」那几列刷成当前帧 ——
-窗口在 9:26 截止，所以最后一帧正好是竞价终值、又没掺进开盘后的连续竞价。
+两个采样窗口，作用不同：
+- **9:15–9:26**（`RESULT_*`）：竞价**结果** —— 竞价价 / 昨收 / 竞价涨幅 / 竞价额 /
+  竞价量 / 换手 / 市值 / 涨跌停价，同时逐分钟追加 `samples`（竞价走势）。停在 9:26
+  是为了拿竞价终值、又不把开盘后的连续竞价掺进来。
+- **9:31**（`RATIO_SAMPLE`）：**只补 `volume_ratio`（量比）**。腾讯**开盘前不填量比**
+  （实测 9:26 前恒为 0，开盘后才有值），所以单独再采一帧；这一帧**不改**竞价价格/金额，
+  也不往 `samples` 里追加（那时的成交额已经含开盘后的连续交易，会污染走势）。
+
+为什么要逐分钟存过程：9:20 撤单截止前后的量跳变、最后 1 分钟的急涌，只留终值就看不到了。
 
 ⚠️ 与收盘采集**完全解耦**：
 - **不进 `collect_guard`** —— 那把锁是给「收盘后那几趟串行跑」用的，这里是每分钟一跑；
-- **不写 `collect_log`** —— 它不是「每日一采」（一天 12 次），写进去就是 12 条重复记录；
+- **不写 `collect_log`** —— 它不是「每日一采」（一天十几轮），写进去就是重复记录；
 - **无启动补采** —— 竞价数据没有历史可补（腾讯只给当日实时），错过就错过。
 """
 
@@ -24,10 +29,12 @@ from app.sources.tencent import fetch_spot
 
 logger = logging.getLogger(__name__)
 
-# 采样窗口（HHMM）。9:15 集合竞价开始、9:25 出开盘价，9:26 取最后一帧后收手 ——
-# 停在 9:26（而不是 9:30）是为了拿「竞价终值」又不把开盘后的连续竞价掺进来。
-FIRST_SAMPLE = "0915"
-LAST_SAMPLE = "0926"
+# 「竞价结果」列的采样窗口（HHMM）。9:15 集合竞价开始、9:25 出开盘价，9:26 收最后一帧。
+RESULT_FIRST = "0915"
+RESULT_LAST = "0926"
+
+# 只补量比的那一帧（见模块说明）。腾讯开盘前不填量比，9:26 前取到恒为 0。
+RATIO_SAMPLE = "0931"
 
 _CST = timezone(timedelta(hours=8))
 
@@ -63,7 +70,9 @@ def collect_auction(now: datetime | None = None) -> int:
     moment = now or now_cst()
     day = moment.date()
     hhmm = moment.strftime("%H%M")
-    if not (FIRST_SAMPLE <= hhmm <= LAST_SAMPLE):
+    result_frame = RESULT_FIRST <= hhmm <= RESULT_LAST
+    ratio_frame = hhmm == RATIO_SAMPLE
+    if not (result_frame or ratio_frame):
         return 0
     if not _is_trade_day(day):
         return 0
@@ -83,47 +92,66 @@ def collect_auction(now: datetime | None = None) -> int:
         return 0
 
     with session_scope() as session:
-        # 已有的逐分钟序列：读回来往后追加（`upsert_many` 是整列覆盖，不读会丢掉前面几帧）
-        existing = {
-            code: samples
-            for code, samples in session.execute(
-                select(AuctionSnapshot.code, AuctionSnapshot.samples).where(
-                    AuctionSnapshot.trade_date == day
+        if not result_frame:
+            # 9:31 那一帧：**只刷量比**。必须限定在「已存在的行」上 —— 否则
+            # `upsert_many` 会把没有竞价结果的票插成「只有量比、其余全空」的脏行。
+            known = set(
+                session.scalars(
+                    select(AuctionSnapshot.code).where(AuctionSnapshot.trade_date == day)
                 )
-            ).all()
-        }
-        rows: list[dict] = []
-        for item in quotes:
-            code = item["code"]
-            price = item["price"]
-            pre_close = item["pre_close"]
-            samples = list(existing.get(code) or [])
-            samples.append([hhmm, price, item["amount"]])
-            rows.append(
+            )
+            rows: list[dict] = [
                 {
                     "trade_date": day,
-                    "code": code,
-                    "name": item["name"],
-                    "price": price,
-                    "pre_close": pre_close,
-                    # 竞价涨幅：竞价价 / 昨收 − 1。昨收缺失时留 None，不伪造成 0
-                    "pct_chg": (
-                        round((price / pre_close - 1) * 100, 2)
-                        if price is not None and pre_close
-                        else None
-                    ),
-                    "open": item["open"],
-                    "amount": item["amount"],
-                    "volume": item["volume"],
-                    "turnover": item["turnover"],
+                    "code": item["code"],
                     "volume_ratio": item["volume_ratio"],
-                    "float_mv": item["float_mv"],
-                    "total_mv": item["total_mv"],
-                    "limit_up": item["limit_up"],
-                    "limit_down": item["limit_down"],
-                    "samples": samples,
                 }
-            )
+                for item in quotes
+                if item["code"] in known and item["volume_ratio"] is not None
+            ]
+        else:
+            # 已有的逐分钟序列：读回来往后追加（`upsert_many` 是整列覆盖，不读会丢掉前面几帧）
+            existing = {
+                code: samples
+                for code, samples in session.execute(
+                    select(AuctionSnapshot.code, AuctionSnapshot.samples).where(
+                        AuctionSnapshot.trade_date == day
+                    )
+                ).all()
+            }
+            rows = []
+            for item in quotes:
+                code = item["code"]
+                price = item["price"]
+                pre_close = item["pre_close"]
+                samples = list(existing.get(code) or [])
+                samples.append([hhmm, price, item["amount"]])
+                rows.append(
+                    {
+                        "trade_date": day,
+                        "code": code,
+                        "name": item["name"],
+                        "price": price,
+                        "pre_close": pre_close,
+                        # 竞价涨幅：竞价价 / 昨收 − 1。昨收缺失时留 None，不伪造成 0
+                        "pct_chg": (
+                            round((price / pre_close - 1) * 100, 2)
+                            if price is not None and pre_close
+                            else None
+                        ),
+                        "open": item["open"],
+                        "amount": item["amount"],
+                        "volume": item["volume"],
+                        "turnover": item["turnover"],
+                        # 这一帧的量比一定是 0（开盘前腾讯不填），等 9:31 那帧补
+                        "volume_ratio": item["volume_ratio"],
+                        "float_mv": item["float_mv"],
+                        "total_mv": item["total_mv"],
+                        "limit_up": item["limit_up"],
+                        "limit_down": item["limit_down"],
+                        "samples": samples,
+                    }
+                )
         upsert_many(session, AuctionSnapshot, rows)
 
     logger.info("竞价采样 %s %s：%d 只", day, hhmm, len(rows))
