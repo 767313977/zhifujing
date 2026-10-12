@@ -59,8 +59,8 @@ const RENDER_LIMIT = 200
 /**
  * 解析 URL 里的 `patterns`（逗号分隔的形态 key 列表）。
  *
- * 形态筛选是**多选**（取并集），所以链接参数也用列表；空串与重复项一并清掉，
- * 免得手改 URL 时多出一个匹配不上的空 key（它会让列表永远是空的）。
+ * 形态筛选是**多选、取交集**（只显示同时满足全部所选形态的票），所以链接参数也用列表；
+ * 空串与重复项一并清掉，免得手改 URL 时多出一个匹配不上的空 key（它会让列表永远是空的）。
  */
 function splitPatterns(value: string | null): string[] {
   if (!value) return []
@@ -384,9 +384,9 @@ export default function Patterns() {
     return hits.filter((stock) => {
       if (stock.score < deferredMinScore) return false
       if (picked.length === 0) return true
-      // 后端在形态模式下返回的就是「命中这些形态的全部票」，所以这里通常全过；
+      // 后端在形态模式下返回的就是「同时满足全部所选形态的票」，所以这里通常全过；
       // 留一道是兜底（也保证每行是按**全部**命中形态判的，不是按展示用的截断列表）
-      return stock.patterns.some((item) => picked.includes(item.pattern))
+      return picked.every((key) => stock.patterns.some((item) => item.pattern === key))
     })
   }, [hits, picked, deferredMinScore])
 
@@ -437,16 +437,16 @@ export default function Patterns() {
   /**
    * 这一屏的「应有条数」与截断判定。
    *
-   * - 默认视图：拿 summary 的**全市场去重只数**与列表长度比；
-   * - 形态视图：单选时拿 `countOf[key]`（该形态的去重只数）；**多选时拿不到并集只数**
-   *   （summary 只有每个形态各自的家数、没有集合），所以取选中形态里**最大**的那个当
-   *   **下界** —— 并集一定 ≥ 最大值，于是「下界 > 实际返回」必然真被截断，只会漏报、不会误报。
+   * - 默认视图：只有 `HIT_LIMIT`（50）条，拿 summary 的**全市场去重只数**与它比；
+   * - 形态视图：后端按 `PATTERN_LIMIT` 取全，所以**返回条数就是全集** —— 少于上限
+   *   说明已经全给出来了（交集没法从 summary 反推条数，也不需要），正好顶到上限才
+   *   可能还有更多、弹截断提示。
    */
-  const expected =
-    picked.length === 0
-      ? (summary?.total_stocks ?? 0)
-      : Math.max(...picked.map((key) => countOf[key] ?? 0))
-  const truncated = expected > hits.length
+  const expected = picked.length > 0 ? hits.length : (summary?.total_stocks ?? 0)
+  const truncated =
+    picked.length > 0
+      ? hits.length >= PATTERN_LIMIT
+      : (summary?.total_stocks ?? 0) > hits.length
 
   // 筛完之后当前看图的票可能已经不在列表里，自动切到第一条
   useEffect(() => {
@@ -550,7 +550,7 @@ export default function Patterns() {
               {summary?.trade_date ? `${summary.trade_date} · ` : ''}
               共 {fmtInt(summary?.total_stocks ?? 0)} 只命中
               <span className="ml-3 text-fg-dim">
-                点形态名筛选（可多选，命中任意一个即入选；再点一次取消）；徽标是该形态的全市场命中家数。致富＝悟道样板/启动
+                点形态名筛选（可多选，只显示同时满足全部所选形态的票；再点一次取消）；徽标是该形态的全市场命中家数。致富＝悟道样板/启动
                 ＋洗完（只扫创业板与科创板，且样板/启动另限「今天冲高过」的候选池），
                 悟道之路＝强达型与华宝早期（同样只扫创业板与科创板）；金叉大阳（趋势）也只扫这两块；
                 做T＝用户的「V5 日线做T」买点，深B/★B/双B 三档（全市场扫，档位在明细里看）；
@@ -623,11 +623,9 @@ export default function Patterns() {
                 <span className="text-accent">
                   {picked.length === 1
                     ? `该形态共 ${fmtInt(expected)} 只，已全部列出`
-                    : // 多选：没被截断时列表长度**就是**真实并集只数（取回来的即全集）；
-                      // 真被截断时上界未知，只能说「至少」（下界），此时下面还会弹截断提示
-                      truncated
-                      ? `所选 ${picked.length} 个形态合计至少 ${fmtInt(expected)} 只`
-                      : `所选 ${picked.length} 个形态合计 ${fmtInt(hits.length)} 只，已全部列出`}
+                    : truncated
+                      ? `所选 ${picked.length} 个形态同时满足的超过 ${fmtInt(PATTERN_LIMIT)} 只，只列出前 ${fmtInt(PATTERN_LIMIT)} 只`
+                      : `所选 ${picked.length} 个形态同时满足：${fmtInt(expected)} 只，已全部列出`}
                   {' · '}
                 </span>
               )}
@@ -661,8 +659,8 @@ export default function Patterns() {
                 <span className="font-medium text-accent">列表被截断：</span>
                 {pickedLabel ? (
                   <>
-                    「{pickedLabel}」当日{picked.length === 1 ? '共命中' : '至少命中'}
-                    <span className="num text-accent"> {fmtInt(expected)} </span>
+                    「{pickedLabel}」当日{picked.length === 1 ? '命中' : '同时满足的票'}超过
+                    <span className="num text-fg"> {PATTERN_LIMIT} </span>
                     只，这里只列出前
                     <span className="num text-fg"> {PATTERN_LIMIT} </span>
                     只。

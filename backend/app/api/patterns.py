@@ -136,7 +136,7 @@ def hits(
     trade_date: date | None = Query(None, alias="date"),
     min_score: float = Query(0.0, ge=0.0, le=100.0),
     pattern: list[str] | None = Query(
-        None, description="只看这些形态的全部命中（可重复传多个，取**并集**）"
+        None, description="只看命中这些形态的票（可重复传多个，取**交集**）"
     ),
     limit: int = Query(50, ge=1, le=3000),
 ) -> list[PatternStockOut]:
@@ -148,7 +148,8 @@ def hits(
       「今天最值得看的几十只」。
     - **传 `pattern`**：只返回命中这些形态的票，且**不再按 50 截断**（调用方传大
       `limit`）—— 「点进一个形态就该看到它的全部命中」，这是用户点名要的。
-      **可重复传多个**（2026-10-13 起），多个之间是**并集**：命中其中任意一个就留下。
+      **可重复传多个**（2026-10-13 起），多个之间是**交集**：必须**同时满足**全部所选
+      形态才留下（用户明确要的是「两个条件都满足」，不是并集）。
 
     ⚠️ 形态模式下**「评分」与排序都换成所选形态的分数**：一只票可能同时命中了别的
     更高分的形态，但那一屏讲的只是当前选中的这几个，拿别的高分来排序会让人对不上账。
@@ -173,6 +174,9 @@ def hits(
                 status_code=400,
                 detail=f"未知形态 {', '.join(unknown)}，可选：{', '.join(_META)}",
             )
+        # **交集**：先按所选形态捞出候选行，再按 code 数「命中了几个不同形态」，
+        # 只有个数正好等于所选形态数的那些 code 才通过（`having` 一步到位，
+        # 不用把每个形态的 code 集合都取回内存再求交）。
         codes = list(
             db.scalars(
                 select(PatternHit.code)
@@ -181,7 +185,8 @@ def hits(
                     PatternHit.pattern.in_(picked),
                     PatternHit.score >= min_score,
                 )
-                .distinct()
+                .group_by(PatternHit.code)
+                .having(func.count(func.distinct(PatternHit.pattern)) == len(picked))
             )
         )
         if not codes:
@@ -321,7 +326,7 @@ def hits(
         # 形态模式：把「评分」换成**所选形态里的最高分**再排一次。
         # 上面那句 max 取的是这只票的最高形态分；在当前这一屏里那不是它该显的分
         # （页面上每行的其它形态仍各自带自己的分数，见 `patterns` 数组）。
-        # 多选（并集）时一只票可能命中其中几个，取最高那个 —— 与单选口径一致
+        # 多选（交集）时一只票**必然**命中其中每一个，取最高那个 —— 与单选口径一致
         wanted = set(picked)
         for stock in result:
             scores = [item.score for item in stock.patterns if item.pattern in wanted]
