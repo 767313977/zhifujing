@@ -32,10 +32,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DIST = ROOT / "frontend" / "dist"
 
-# 产物之间的引用形式。vite 在默认 base 下产出 `/assets/<名字>`，
-# 名字里可能带子目录（配置过 rollup 输出结构时），所以允许斜杠。
+# 产物之间的引用形式。**vite 有三种写法，三种都必须认**（2026-10-12 修：原先只认
+# 带前导斜杠的第一种，于是按需加载出来的页面 chunk 全被当成旧产物删掉 —— 首页在、
+# 其它页面 404，整站白屏。线上实测事故）：
+#
+#   1) `/assets/index-abc.js`  —— index.html 里的 <script> / <link rel="modulepreload">
+#   2) `assets/index-abc.js`   —— 主 chunk 里**不带前导斜杠**的写法
+#   3) `"./Login-abc.js"`      —— 主 chunk 里动态 import / modulepreload 的**相对路径**
+#
+# 第 1、2 条合并成 `_REF`：前导 `/` 不在排除字符集里，所以带与不带都能命中，
+# 捕获的都是 `assets/` 之后的相对路径。第 3 条用 `_REL`，要相对**当前文件所在目录**
+# 解析（不是相对 assets），否则从主 chunk 里引出的页面文件会定位不到。
 # 不在行首锚定：CSS 里是 `url(/assets/x.woff2)`，JS 里是 `"/assets/x.js"`。
-_REF = re.compile(r"/assets/([A-Za-z0-9._/-]+)")
+_REF = re.compile(r"(?<![A-Za-z0-9_.-])assets/([A-Za-z0-9._/-]+)")
+_REL = re.compile(r"""["'`]\./([A-Za-z0-9._-]+\.(?:js|css|woff2?|svg|png))["'`]""")
 
 
 def referenced_files(dist: Path) -> set[str]:
@@ -55,9 +65,16 @@ def referenced_files(dist: Path) -> set[str]:
             text = current.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        for name in _REF.findall(text):
+        # 两种引用各按自己的基准解析：`assets/...` 相对 dist 根，`./x.js` 相对**当前
+        # 文件所在目录**（见上面三种写法的说明）。
+        candidates = [assets / name for name in _REF.findall(text)]
+        candidates += [current.parent / name for name in _REL.findall(text)]
+        for target in candidates:
+            try:
+                name = target.relative_to(assets).as_posix()
+            except ValueError:
+                continue  # 不在 assets 下（index.html 引 dist 根的文件），不是产物
             # 只认 assets 下真实存在的文件：正则也会捞到文档/注释里的示例路径
-            target = assets / name
             if name in seen or not target.is_file():
                 continue
             seen.add(name)

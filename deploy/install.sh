@@ -152,6 +152,28 @@ systemctl restart "$SERVICE"
 sleep 3
 systemctl --no-pager --lines=15 status "$SERVICE" || true
 
+# ------------------------------------------------- 前端产物自检（防白屏，2026-10-12 加）
+# 事故：上面的 clean_dist.py 因为引用正则不全，把**按需加载出来的页面文件全删了** ——
+# index.html 还在、其它页面全部 404、登录页都打不开，整站白屏。而当时的部署后核验
+# 只看了 index.html，所以没发现。
+#
+# 这一步从首页出发**真的去请求**每一层引用（页面 chunk / CSS / 字体），缺一个就报错，
+# 让「白屏」在部署时变成一次**显式失败**，而不是等用户打开页面才发现。
+# 允许重试 3 次：首次部署时服务刚起来，等它把端口绑上。
+log "前端产物自检"
+selfcheck_ok=0
+for _ in 1 2 3; do
+  if "$PYTHON" "$APP_DIR/scripts/check_dist.py" --base "http://127.0.0.1:8000"; then
+    selfcheck_ok=1
+    break
+  fi
+  sleep 3
+done
+if [[ "$selfcheck_ok" != "1" ]]; then
+  printf '\033[1;31m错误:\033[0m 前端产物自检未通过 —— 页面文件缺失，站点会白屏。\n' >&2
+  exit 1
+fi
+
 cat <<'DONE'
 
 跑起来了。接下来自己确认两件事：
