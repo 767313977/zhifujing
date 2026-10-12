@@ -54,7 +54,7 @@ fi
 log "安装系统依赖"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq "${PYTHON}-venv" python3-pip >/dev/null
+apt-get install -y -qq "${PYTHON}-venv" python3-pip ca-certificates >/dev/null
 
 if ! id -u "$APP_USER" >/dev/null 2>&1; then
   log "创建运行用户 $APP_USER"
@@ -107,6 +107,12 @@ Environment=TZ=Asia/Shanghai
 # pack_deploy 打进包里推过来 —— systemd 的环境变量优先级高于 .env，所以它不会
 # 把云端的定时任务一起关掉。删掉这条的后果很隐蔽：某次部署之后云端静悄悄不再采集。
 Environment=SCHEDULER_ENABLED=true
+# iFinD 的 TLS 证书校验（2026-10-12 加）。**必须放这里，不能只写 .env**：
+# 部署包会带一份本机的 .env 过来把它覆盖掉（与上面 SCHEDULER_ENABLED 同一个理由）
+# —— 实测在服务器上手动往 .env 里加 IFIND_CA_FILE，下一次部署就被冲掉，
+# 连接又悄悄变回不校验。systemd 环境变量优先级高于 .env，放这里才稳。
+# 路径用系统 CA 包：iFinD 那张证书是 DigiCert 签发的公共证书，用系统信任库即可校验。
+Environment=IFIND_CA_FILE=/etc/ssl/certs/ca-certificates.crt
 ExecStart=$APP_DIR/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=10
