@@ -68,18 +68,6 @@ function amplitudeTone(value: number | null): string {
   return value <= 1 ? 'text-accent' : 'text-fg-muted'
 }
 
-/**
- * 真实成交占比（需求方口径）：≥70% 可信度高（加粗）、<50% 判定为诱多假竞价。
- *
- * 9:20 之前可以撤单、对倒成本极低，诱多竞价的成交额多集中在那一段；9:20 之后不能撤单，
- * 那段时间的成交才接近真金白银。
- */
-function realRatioTone(value: number | null): string {
-  if (value == null) return 'text-fg-muted'
-  if (value >= 70) return 'text-up font-semibold'
-  return value < 50 ? 'text-down' : 'text-fg'
-}
-
 /** 情绪温度计配色：≥2% 亢奋（红）、<0 退潮（绿）。 */
 function moodTone(value: number | null): string {
   if (value == null) return 'text-fg-muted'
@@ -242,46 +230,6 @@ function buildColumns(): Column[] {
           title="涨停价上的封单额 ÷ 自由流通市值（≥1% 较强、≥3% 超强）"
         >
           {fmtNum(r.seal_ratio, 2, '%')}
-        </span>
-      ),
-    },
-    {
-      key: 'real_ratio',
-      label: '真实占比',
-      sortKey: 'real_ratio',
-      // 9:20 之后不能撤单，那段成交才接近真金白银。>70% 可信、<50% 基本是诱多假竞价
-      render: (r) => (
-        <span
-          className={`num ${realRatioTone(r.real_ratio)}`}
-          title="9:20 后成交额 ÷ 总竞价额。9:20 前可撤单、对倒成本极低；≥70% 可信度高、<50% 基本可判为诱多"
-        >
-          {fmtNum(r.real_ratio, 1, '%')}
-        </span>
-      ),
-    },
-    {
-      key: 'amount_before_920',
-      label: '9:20前额',
-      narrowHidden: true,
-      render: (r) => (
-        <span
-          className="num text-fg-muted"
-          title="9:15–9:20 的成交额（可撤单期，对倒成本低）。⚠️ 竞价期是虚拟匹配额，撤单会回撤 → 可能为负"
-        >
-          {fmtAmount(r.amount_before_920)}
-        </span>
-      ),
-    },
-    {
-      key: 'amount_after_920',
-      label: '9:20后额',
-      narrowHidden: true,
-      render: (r) => (
-        <span
-          className="num text-fg-muted"
-          title="9:20–9:25 的成交额（不可撤单期，接近真金白银）"
-        >
-          {fmtAmount(r.amount_after_920)}
         </span>
       ),
     },
@@ -875,12 +823,11 @@ export default function AuctionPage() {
           「真实换手」分母用自由流通股（剔除大股东/限售等不动的筹码），悬停看自由流通市值；
           「竞价额占比」分母是昨日全天成交额（只覆盖流动性池约 3000 只），≥5% 标红、≥10% 加粗；
           「封成比」≥1% 标红、≥3% 加粗（打板口径）；
-          「真实占比」= 9:20 后成交额 ÷ 总竞价额：9:20 前可撤单、对倒成本极低，诱多竞价多集中在
-          那一段；≥70% 标红加粗（可信）、低于 50% 标绿（基本可判为诱多假竞价）。它旁边两列
-          「9:20前额 / 9:20后额」就是这把尺子的分子分母。⚠️ 竞价期的累计成交额是**虚拟匹配额**，
-          撤单会让它回撤 → 前后两段的差可能为负，照实显示、不钳到 0；
           「自由流通盘」= 自由流通市值 ÷ 总市值，越低越容易被资金控盘（异动参考性打折）；
           「昨日」是上一交易日的涨停池/炸板池状态，悬停看昨日全天换手。
+          ⚠️ 「9:20 前/后成交拆分」与「真实成交占比」**已评估、做不出来**：腾讯在 9:25
+          结算之前不给累计成交额（实测 0915–0925 每一帧都是 0，只有 0926 那一帧才一次性
+          出现），所以任何基于「分段成交额」的占比都会恒等于 100%，属假指标，故不提供。
           「封成比」「撤单率」「委差」三项取的是竞价挂单 / 委差（9:20 前后各一帧）——
           ⚠️ 腾讯在竞价时段是否真给这几个字段尚未核实，若为空说明它开盘前不填，届时会撤掉。
           「开盘量比」取开盘后 9:31 那一帧（腾讯开盘前不填量比）；「竞价量比」是本机自算：

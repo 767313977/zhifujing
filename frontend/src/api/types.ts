@@ -231,18 +231,6 @@ export interface AuctionRow {
    * ⚠️ 由 9:31 的补采帧提供，该帧上线之后的日子才有值（之前为空）。
    */
   post_open_pct: number | null
-  /**
-   * **9:15–9:20 的成交额（元）** = 帧 0920 累计额 − 帧 0915 累计额。
-   * ⚠️ 竞价期这个累计额是**虚拟匹配额**，9:20 前撤单会让它回撤 → 差值可能为负。
-   */
-  amount_before_920: number | null
-  /** **9:20–9:25 的成交额（元）** = 竞价终值 − 帧 0920。9:20 后不能撤单，这段接近真金白银 */
-  amount_after_920: number | null
-  /**
-   * **真实成交占比（%）** = 9:20 后成交额 ÷ 总竞价额。
-   * >70% 可信度高；<50% 基本可判为诱多假竞价（9:20 前可撤单、对倒成本极低）。
-   */
-  real_ratio: number | null
   /** **自由流通盘占比（%）** = 自由流通市值 ÷ 总市值。越低越容易被资金控盘 */
   free_float_ratio: number | null
 }
@@ -344,7 +332,6 @@ export type AuctionSort =
   | 'auction_ratio'
   | 'prev_boards'
   | 'post_open_pct'
-  | 'real_ratio'
   | 'free_float_ratio'
 
 /** 竞价强度主表的查询参数（对应页面顶部那排筛选）。区间都是**含端点**的。 */
