@@ -1447,6 +1447,15 @@ class AuctionRow(ApiModel):
     prev_broken: bool = False
     #: **昨日全天换手率（%）**
     prev_turnover: float | None = None
+    #: **未匹配量差（委差，单位「股」）** = 委买总量 − 委卖总量，取竞价终值。
+    #: 正 = 未匹配的买盘更多。⚠️ 腾讯竞价时段是否填这个字段尚未核实，可能恒为空
+    committee_diff: float | None = None
+    #: **9:20 撤单率（%）** = (9:20 涨停/跌停价上的挂单量 − 9:21 的) ÷ 9:20 的 × 100。
+    #: 9:20 之后不能撤单，撤得越少越真；**负值**表示挂单还在增加。只在两帧都取到挂单量时有值
+    cancel_rate: float | None = None
+    #: **封成比（%）** = 涨停价上的封单额 ÷ 自由流通市值。只在**竞价就封在涨停价上**时有值
+    #: （打板核心指标：>1% 较强、>3% 超强）
+    seal_ratio: float | None = None
 
 
 class AuctionListOut(BaseModel):

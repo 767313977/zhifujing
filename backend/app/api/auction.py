@@ -13,7 +13,19 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import AuctionSnapshot, LimitPool, StockBasic, StockDaily, TradeCalendar
+from app.models import (
+    SAMPLE_ASK1_PRICE,
+    SAMPLE_ASK1_VOLUME,
+    SAMPLE_BID1_PRICE,
+    SAMPLE_BID1_VOLUME,
+    SAMPLE_COMMITTEE,
+    SAMPLE_PRICE,
+    AuctionSnapshot,
+    LimitPool,
+    StockBasic,
+    StockDaily,
+    TradeCalendar,
+)
 from app.schemas import (
     AuctionBoardItem,
     AuctionBoardsOut,
@@ -55,6 +67,11 @@ def _prev_trade_date(session: Session, day: date) -> date | None:
 # 「竞价量比」的回看天数与最小样本数（见 `_auction_ratios`）。
 RATIO_LOOKBACK = 5
 RATIO_MIN_DAYS = 3
+
+# 「9:20 撤单」的取样时刻：9:20 是不可撤单的截止线，取它**前后各一帧**算挂单量变化。
+# ⚠️ 两帧的**挂单量**都得有值才算得出（腾讯竞价时段是否真给这个字段尚未核实）。
+CANCEL_BEFORE = "0920"
+CANCEL_AFTER = "0921"
 
 
 def _auction_ratios(
@@ -109,13 +126,53 @@ def _rank_map(values: list[float]) -> dict[float, int]:
     return {value: index + 1 for index, value in enumerate(sorted(set(values), reverse=True))}
 
 
+def _frame_at(samples: list | None, hhmm: str, index: int) -> object:
+    """`hhmm` 那一帧的第 `index` 列；**没有这一帧 / 越界 / 老格式 → None**。
+
+    老行的 `samples` 只有前 3 列（2026-10-12 之前采的），所以一律越界当 None，别假设长度。
+    """
+    for frame in samples or []:
+        if len(frame) > index and frame[0] == hhmm:
+            return frame[index]
+    return None
+
+
+def _frame_last(samples: list | None, index: int) -> object:
+    """最后一帧的第 `index` 列（竞价终值）。越界 / 老格式 → None。"""
+    for frame in reversed(samples or []):
+        if len(frame) > index:
+            return frame[index]
+    return None
+
+
+def _open_volume(samples: list | None, hhmm: str, limit_up, limit_down) -> float | None:
+    """`hhmm` 那一帧**涨停/跌停价上的挂单量**（股）。
+
+    一字板时「买一」就是涨停价上的封单、跌停时「卖一」是跌停价上的封单，所以：
+    涨停挂单取买一量、跌停挂单取卖一量；两边都不是就返回 None（普通票没有「挂单」可言）。
+    """
+    bid_price = _frame_at(samples, hhmm, SAMPLE_BID1_PRICE)
+    bid_vol = _frame_at(samples, hhmm, SAMPLE_BID1_VOLUME)
+    ask_price = _frame_at(samples, hhmm, SAMPLE_ASK1_PRICE)
+    ask_vol = _frame_at(samples, hhmm, SAMPLE_ASK1_VOLUME)
+    if limit_up and bid_price and bid_price >= limit_up and bid_vol:
+        return float(bid_vol)
+    if limit_down and ask_price and ask_price <= limit_down and ask_vol:
+        return float(ask_vol)
+    return None
+
+
 def _amplitude(samples: list | None, pre_close: float | None) -> float | None:
     """**竞价价格波动率（%）** = (全程最高价 − 最低价) ÷ 昨收 × 100。
 
-    用逐分钟竞价价（`samples` 的第 2 列）。只在**至少有 2 帧**且昨收有效时给值 ——
-    只有 1 帧就谈不上「波动」。⚠️ 老行 `samples` 是 3 元组，下标取值、越界当 None。
+    用逐分钟竞价价（`SAMPLE_PRICE`）。只在**至少有 2 帧**且昨收有效时给值 ——
+    只有 1 帧就谈不上「波动」。
     """
-    prices = [s[1] for s in (samples or []) if len(s) > 1 and s[1]]
+    prices = [
+        frame[SAMPLE_PRICE]
+        for frame in (samples or [])
+        if len(frame) > SAMPLE_PRICE and frame[SAMPLE_PRICE]
+    ]
     if len(prices) < 2 or not pre_close:
         return None
     return round((max(prices) - min(prices)) / pre_close * 100, 2)
@@ -188,10 +245,27 @@ def _metrics(
     for row in rows:
         shares = free_shares.get(row.code)
         prev_amount, prev_turnover = prev_daily.get(row.code, (None, None))
+        free_mv = shares * row.price if shares and row.price else None
+        # **9:20 撤单率（%）** = (9:20 挂单量 − 9:21 挂单量) ÷ 9:20 挂单量 × 100。
+        # 9:20 之后不能撤单，之前挂的很多是假单；撤得越少越真。负值 = 挂单还在**增加**。
+        # 只在两帧都取到「涨停/跌停价上的挂单量」时才算 —— 普通票本来就没有这个量。
+        before = _open_volume(row.samples, CANCEL_BEFORE, row.limit_up, row.limit_down)
+        after = _open_volume(row.samples, CANCEL_AFTER, row.limit_up, row.limit_down)
+        cancel_rate = (
+            round((before - after) / before * 100, 2) if before and after is not None else None
+        )
+        # **封成比（%）** = 涨停价上的封单额 ÷ 自由流通市值。只在**竞价就封在涨停价上**
+        # 时有意义（打板核心指标：>1% 较强、>3% 超强）。
+        seal_ratio = None
+        if row.limit_up and row.price is not None and row.price >= row.limit_up and free_mv:
+            bid_price = _frame_last(row.samples, SAMPLE_BID1_PRICE)
+            bid_volume = _frame_last(row.samples, SAMPLE_BID1_VOLUME)
+            if bid_price and bid_volume:
+                seal_ratio = round(bid_price * bid_volume / free_mv * 100, 2)
         metrics[row.code] = {
             "amplitude": _amplitude(row.samples, row.pre_close),
             # 自由流通市值用**竞价价**（当日筹码的实时计价基准）
-            "free_float_mv": shares * row.price if shares and row.price else None,
+            "free_float_mv": free_mv,
             # 真实竞价换手 = 竞价量 ÷ 自由流通股（普通换手率的分母含大量不动的筹码，会低估）
             "free_turnover": (
                 round(row.volume / shares * 100, 3) if shares and row.volume is not None else None
@@ -210,6 +284,10 @@ def _metrics(
             ),
             "prev_broken": row.code in prev_broken,
             "prev_turnover": prev_turnover,
+            # 未匹配量差（委差，股）：委买总量 − 委卖总量，取竞价终值
+            "committee_diff": _frame_last(row.samples, SAMPLE_COMMITTEE),
+            "cancel_rate": cancel_rate,
+            "seal_ratio": seal_ratio,
         }
     return metrics
 
@@ -332,6 +410,9 @@ def auction_list(
             industry_rank=metric.get("industry_rank"),
             prev_broken=bool(metric.get("prev_broken")),
             prev_turnover=metric.get("prev_turnover"),
+            committee_diff=metric.get("committee_diff"),
+            cancel_rate=metric.get("cancel_rate"),
+            seal_ratio=metric.get("seal_ratio"),
         )
 
     return AuctionListOut(

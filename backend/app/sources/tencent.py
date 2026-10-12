@@ -254,6 +254,7 @@ def _parse_spot(payload: str) -> dict | None:
         "quote_time": parts[30].strip() or None,
         "bid1_price": _spot_num(parts, 9),
         "bid1_volume": bid1_hand * 100 if bid1_hand is not None else None,
+        "ask1_price": _spot_num(parts, 19),
         "ask1_volume": ask1_hand * 100 if ask1_hand is not None else None,
         "committee_diff": committee_hand * 100 if committee_hand is not None else None,
     }

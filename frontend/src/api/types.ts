@@ -216,6 +216,15 @@ export interface AuctionRow {
   prev_broken: boolean
   /** **昨日全天换手率（%）** */
   prev_turnover: number | null
+  /**
+   * **未匹配量差（委差，单位「股」）** = 委买总量 − 委卖总量（竞价终值）。正 = 未匹配的买盘更多。
+   * ⚠️ 腾讯竞价时段是否填这个字段尚未核实，可能恒为空。
+   */
+  committee_diff: number | null
+  /** **9:20 撤单率（%）**：(9:20 挂单量 − 9:21 的) ÷ 9:20 的。负值 = 挂单还在增加 */
+  cancel_rate: number | null
+  /** **封成比（%）** = 涨停价上的封单额 ÷ 自由流通市值。只在竞价就封在涨停价上时有值 */
+  seal_ratio: number | null
 }
 
 export interface AuctionList {

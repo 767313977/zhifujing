@@ -140,6 +140,21 @@ function buildColumns(): Column[] {
       ),
     },
     {
+      key: 'seal_ratio',
+      label: '封成比',
+      // 打板核心：涨停价上的封单额 ÷ 自由流通市值。只在**竞价就封在涨停价上**时有值
+      render: (r) => (
+        <span
+          className={`num ${
+            r.seal_ratio != null && r.seal_ratio >= 1 ? 'text-up' : 'text-fg-muted'
+          }`}
+          title="涨停价上的封单额 ÷ 自由流通市值（>1% 较强、>3% 超强）"
+        >
+          {fmtNum(r.seal_ratio, 2, '%')}
+        </span>
+      ),
+    },
+    {
       key: 'amplitude',
       label: '波动率',
       narrowHidden: true,
@@ -150,6 +165,33 @@ function buildColumns(): Column[] {
           title="9:15–9:26 竞价最高价与最低价之差 ÷ 昨收"
         >
           {fmtNum(r.amplitude, 2, '%')}
+        </span>
+      ),
+    },
+    {
+      key: 'cancel_rate',
+      label: '撤单率',
+      // 9:20 是不可撤单的截止线：撤得越少越真，负值 = 挂单还在增加
+      render: (r) => (
+        <span
+          className="num text-fg-muted"
+          title="(9:20 涨停/跌停价上的挂单量 − 9:21 的) ÷ 9:20 的；负值 = 挂单还在增加。需腾讯竞价时段给出挂单量"
+        >
+          {fmtNum(r.cancel_rate, 1, '%')}
+        </span>
+      ),
+    },
+    {
+      key: 'committee_diff',
+      label: '委差',
+      narrowHidden: true,
+      // 未匹配量差 = 委买总量 − 委卖总量；正 = 未匹配的买盘更多。库里是股，显示成「手」
+      render: (r) => (
+        <span
+          className="num text-fg-muted"
+          title="委买总量 − 委卖总量（未匹配量差），单位：手。需腾讯竞价时段给出委差"
+        >
+          {r.committee_diff != null ? fmtNum(r.committee_diff / 100, 0, '手') : '—'}
         </span>
       ),
     },
@@ -567,6 +609,8 @@ export default function AuctionPage() {
           「真实换手」分母用自由流通股（剔除大股东/限售等不动的筹码），悬停看自由流通市值；
           「竞价额占比」分母是昨日全天成交额（只覆盖流动性池约 3000 只，其余为空）；
           「昨日」是上一交易日的涨停池/炸板池状态，悬停看昨日全天换手。
+          「封成比」「撤单率」「委差」三项取的是竞价挂单 / 委差（9:20 前后各一帧）——
+          ⚠️ 腾讯在竞价时段是否真给这几个字段尚未核实，若为空说明它开盘前不填，届时会撤掉。
           「开盘量比」取开盘后 9:31 那一帧（腾讯开盘前不填量比）；「竞价量比」是本机自算：
           当日竞价量 ÷ 前 5 个交易日竞价量均值（口径同同花顺），采样历史不足 3 天时为空。
           参考图里的 净额 / 承接强度 / 北向 / 人气排名 本站不提供：北向净流入已停止披露、

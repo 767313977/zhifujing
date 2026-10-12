@@ -778,6 +778,18 @@ Index("ix_stock_dde_code_date", StockDde.code, StockDde.trade_date)
 Index("ix_sector_daily_code_date", SectorDaily.sector_code, SectorDaily.trade_date)
 
 
+# `samples` 每帧的下标。**写端（`jobs/collect_auction`）与读端（`api/auction`）共用这一份**，
+# 免得两头各写一遍数字、改一处忘一处。⚠️ 老行只有前 3 个，读端一律**越界当 None**。
+SAMPLE_TIME = 0
+SAMPLE_PRICE = 1
+SAMPLE_AMOUNT = 2  # 当日累计成交额（元）
+SAMPLE_COMMITTEE = 3  # 委差（股）：委买总量 − 委卖总量
+SAMPLE_BID1_PRICE = 4  # 买一价
+SAMPLE_BID1_VOLUME = 5  # 买一量（股）
+SAMPLE_ASK1_PRICE = 6  # 卖一价
+SAMPLE_ASK1_VOLUME = 7  # 卖一量（股）
+
+
 class AuctionSnapshot(Base):
     """集合竞价快照（每交易日一只票一行，含逐分钟采样）。
 
@@ -788,9 +800,9 @@ class AuctionSnapshot(Base):
     只留 9:25 的终值就只剩一个数了。
 
     - 上面那几列是 **9:25 竞价结果**（最后一帧），主表用
-    - `samples` 存逐分钟 `[[HHMM, 价, 累计成交额(元), 委差, 买一价, 买一量], …]`，
-      竞价走势 / 波动率 / 未匹配量差用。⚠️ 后 3 列是 2026-10-12 才加的，**老行是
-      3 元组** —— 读端按固定下标取、越界当 None，别假设长度。
+    - `samples` 存逐分钟 `[[HHMM, 价, 累计成交额(元), 委差, 买一价, 买一量, 卖一价, 卖一量], …]`
+      （下标见模块顶部的 `SAMPLE_*`），供竞价走势 / 波动率 / 未匹配量差 / 撤单 / 封成比。
+      ⚠️ 后 5 列是 2026-10-12 才加的，**老行只有前 3 个** —— 读端按固定下标取、越界当 None。
     - `consecutive`（几板）不在这里，读接口按**昨日**涨停池现算（9:25 时当天的池还没有）
 
     ⚠️ 竞价时段 `price` 是**虚拟开盘参考价**、`amount` 是**虚拟匹配额**，9:25 才结算成

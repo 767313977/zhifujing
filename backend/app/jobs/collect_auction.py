@@ -125,9 +125,9 @@ def collect_auction(now: datetime | None = None) -> int:
                 price = item["price"]
                 pre_close = item["pre_close"]
                 samples = list(existing.get(code) or [])
-                # 逐分钟：`[HHMM, 价, 累计成交额, 委差, 买一价, 买一量]`。
-                # 后三列是 2026-10-12 加的（为「未匹配量差 / 9:20 撤单 / 封成比」留证据）。
-                # ⚠️ 老行仍是 3 元组 —— 读端必须**按下标取、越界给 None**，别假设长度。
+                # 逐分钟帧：下标见 `models.SAMPLE_*`（写读两端共用一份，别自己数位置）。
+                # 后 5 列是 2026-10-12 加的（未匹配量差 / 9:20 撤单 / 封成比用）——
+                # ⚠️ 老行只有前 3 个，读端按固定下标取、越界当 None。
                 samples.append(
                     [
                         hhmm,
@@ -136,6 +136,8 @@ def collect_auction(now: datetime | None = None) -> int:
                         item["committee_diff"],
                         item["bid1_price"],
                         item["bid1_volume"],
+                        item["ask1_price"],
+                        item["ask1_volume"],
                     ]
                 )
                 rows.append(
