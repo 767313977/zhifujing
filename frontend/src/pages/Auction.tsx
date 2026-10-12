@@ -72,9 +72,17 @@ function buildColumns(): Column[] {
     },
     {
       key: 'ratio',
-      label: '量比',
+      // 改叫「开盘量比」：腾讯开盘前不填量比，这一列取的是 9:31 补采帧的值
+      label: '开盘量比',
       sortKey: 'ratio',
       render: (r) => <span className="num">{fmtNum(r.volume_ratio, 2)}</span>,
+    },
+    {
+      key: 'auction_ratio',
+      // 自算：当日竞价量 ÷ 前 5 个交易日竞价量均值（同花顺口径）。不给排序 ——
+      // 它是读接口时现算的，服务端没有这一列可排；历史不足 3 天时为「—」。
+      label: '竞价量比',
+      render: (r) => <span className="num text-fg-muted">{fmtNum(r.auction_ratio, 2)}</span>,
     },
     {
       key: 'turnover',
@@ -443,8 +451,10 @@ export default function AuctionPage() {
         <p className="px-1 text-[12px] leading-relaxed text-fg-dim">
           数据来源：腾讯批量行情，交易日 9:15–9:26 逐分钟采样（零 iFinD 配额）。
           「昨日连板」取上一交易日涨停池口径 —— 竞价时当天的池还没有。
-          参考图里的 净额 / 承接强度 / 北向 / 人气排名 本站不提供：北向净流入已停止披露、
-          承接强度属外部工具专有指标，取不到就不编。
+          「开盘量比」取开盘后 9:31 那一帧（腾讯开盘前不填量比）；
+          「竞价量比」是本机自算：当日竞价量 ÷ 前 5 个交易日的竞价量均值（口径同同花顺），
+          采样历史不足 3 天时为空。参考图里的 净额 / 承接强度 / 北向 / 人气排名 本站不提供：
+          北向净流入已停止披露、承接强度属外部工具专有指标，取不到就不编。
         </p>
       </div>
     </Layout>

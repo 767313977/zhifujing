@@ -1425,6 +1425,10 @@ class AuctionRow(ApiModel):
     limit_down: float | None
     # 昨日连板数（当日 9:25 时今日的池还没有）。非涨停股为 None
     consecutive: int | None = None
+    # **竞价量比（自算）**：当日竞价成交量 ÷ 前 5 个交易日的竞价成交量均值。
+    # 口径取自同花顺对「竞价量比」的定义；历史不足 3 天时留空（我们的采样从
+    # 2026-10-12 才开始，前几天必然是空的）。见 `api/auction._auction_ratios`。
+    auction_ratio: float | None = None
 
 
 class AuctionListOut(BaseModel):

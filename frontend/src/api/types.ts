@@ -195,6 +195,11 @@ export interface AuctionRow {
   limit_down: number | null
   /** 昨日连板数（当日 9:25 时今日的池还没有）。非涨停股为 null */
   consecutive: number | null
+  /**
+   * **竞价量比（自算）**：当日竞价成交量 ÷ 前 5 个交易日的竞价成交量均值
+   * （口径同同花顺）。采样历史不足 3 天时为 null —— 我们的采样从 2026-10-12 才开始。
+   */
+  auction_ratio: number | null
 }
 
 export interface AuctionList {

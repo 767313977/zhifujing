@@ -45,6 +45,58 @@ def _prev_trade_date(session: Session, day: date) -> date | None:
     )
 
 
+# 「竞价量比」的回看天数与最小样本数（见 `_auction_ratios`）。
+RATIO_LOOKBACK = 5
+RATIO_MIN_DAYS = 3
+
+
+def _auction_ratios(
+    session: Session, trade_date: date, rows: list[AuctionSnapshot]
+) -> dict[str, float]:
+    """`{code: 竞价量比}` —— 当日竞价量 ÷ 前 5 个交易日的竞价量均值。
+
+    口径取自同花顺对「竞价量比」的定义（其指标说明：竞价量比 = 竞价量 ÷ 前五日竞价量
+    平均值）。**自己算**是因为数据源不给：腾讯的「量比」开盘前不填（见
+    `jobs/collect_auction`，所以另有 9:31 补采帧取「开盘量比」），而 iFinD 全市场
+    单次只给 10 只、跑不动。
+
+    ⚠️ 分母只统计**有值**的那些天（停牌 / 采样缺失那天不计入），且至少要有
+    `RATIO_MIN_DAYS` 天才给结果；否则留空 —— 拿「1 天的均值」冒充基准更误导。
+    """
+    if not rows:
+        return {}
+    days = list(
+        session.scalars(
+            select(TradeCalendar.trade_date)
+            .where(TradeCalendar.trade_date < trade_date)
+            .order_by(TradeCalendar.trade_date.desc())
+            .limit(RATIO_LOOKBACK)
+        )
+    )
+    if len(days) < RATIO_MIN_DAYS:
+        return {}
+
+    history: dict[str, list[float]] = {}
+    for code, volume in session.execute(
+        select(AuctionSnapshot.code, AuctionSnapshot.volume).where(
+            AuctionSnapshot.trade_date.in_(days),
+            AuctionSnapshot.code.in_([row.code for row in rows]),
+        )
+    ).all():
+        if volume:
+            history.setdefault(code, []).append(volume)
+
+    ratios: dict[str, float] = {}
+    for row in rows:
+        volumes = history.get(row.code) or []
+        if len(volumes) < RATIO_MIN_DAYS or not row.volume:
+            continue
+        mean = sum(volumes) / len(volumes)
+        if mean > 0:
+            ratios[row.code] = round(row.volume / mean, 2)
+    return ratios
+
+
 @router.get("/auction", response_model=AuctionListOut)
 def auction_list(
     trade_date: date | None = Query(None, alias="date"),
@@ -125,6 +177,8 @@ def auction_list(
         .select_from(AuctionSnapshot)
         .where(AuctionSnapshot.trade_date == trade_date)
     )
+    # 竞价量比（自算）：需要前几个交易日的竞价量，所以按**返回的这批票**现算
+    ratios = _auction_ratios(session, trade_date, rows)
 
     def to_row(row: AuctionSnapshot) -> AuctionRow:
         open_pct = (
@@ -149,6 +203,7 @@ def auction_list(
             limit_up=row.limit_up,
             limit_down=row.limit_down,
             consecutive=boards.get(row.code),
+            auction_ratio=ratios.get(row.code),
         )
 
     return AuctionListOut(
