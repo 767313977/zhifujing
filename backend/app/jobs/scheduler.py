@@ -1148,7 +1148,8 @@ class DailyScheduler:
             logger.exception("读取配额档位失败，跳过命中 DDE 补齐")
             self._tail_failures.append("backfill_hit_dde")
             return
-        if level >= QuotaLevel.PAUSE_KLINE:
+        if level >= QuotaLevel.PAUSE_HIT_DDE:
+            # ⚠️ 这一档是**让路阶梯的第一级**（最贵的 70 次/天、纯增强）：额度一紧就先停它
             logger.warning("命中 DDE 补齐跳过：%s", level_label(level))
             # 落一条 skipped 记录（2026-10-13 加）：配额让路原来只写 logger.warning，
             # `collect_log` 里连一行都没有 → 数据管理页看不出这天缺了 DDE，而尾部仍记

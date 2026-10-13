@@ -1013,11 +1013,12 @@ class DailyCollector:
         盘前/凌晨/周末取到的都是上一交易日的快照，按「今天」写会造出假数据点。
         详见 `collect_funds.collect_etf`。
 
-        配额到 80% 就让路（与形态日线、DDE 扫描同档）：它属于增强项，
-        指数 / 涨停 / 板块 / 情绪那条主线才是复盘的地基。
+        配额让路的**第二级**就停它（`PAUSE_ENHANCE`，约 20 次/天）：纯增强、没有下游。
+        比它先停的只有「命中前 50 只的 DDE 补齐」（70 次/天）；全市场日线属于地基，
+        留在最后才停（顺序见 `services.usage.LEVEL_BUDGETS`）。
         """
         level = quota_level(date.today(), self.settings)
-        if level >= QuotaLevel.PAUSE_KLINE:
+        if level >= QuotaLevel.PAUSE_ENHANCE:
             logger.warning("ETF 采集跳过：%s", level_label(level))
             # 标成 skipped，别让数据管理页把它显示成 `etf ok rows=0`（2026-10-13 修）
             self._step_status = "skipped"

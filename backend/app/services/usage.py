@@ -29,51 +29,69 @@ logger = logging.getLogger(__name__)
 # 月末用量外推至少要有这么多个已过交易日的样本才给结果
 PROJECTION_MIN_DAYS = 3
 
-# 一次**完整**采集的日耗上界：指数 / 涨停三池 / 情绪 + 全市场日线 + DDE 扫描 +
-# 命中前 50 只补齐 + ETF + 板块。实测 10-08 ~ 10-12 是 181 / 175 / 154 次，取 200 留余量。
+# ---- 一次完整采集的**日耗梯度**（让路按这个顺序来，见 `LEVEL_BUDGETS`）----
 #
-# ⚠️ 为什么用**常数**而不是「近期实测日均」：让路一旦生效，当天用量立刻掉下来
-# （10-13 全被挡，只花了 20 次）—— 拿近期实测当需求，等于让守卫把自己造成的低谷
-# 当成新常态：第二天又判「够用」→ 放开 → 再挡回，来回抖。常数不会被子系统自己的
-# 行为带偏（代价是采集规模大变时要手动调一次）。
-FULL_DAY_CALLS = 200
+# 实测 10-08 ~ 10-12 的整天消耗：181 / 175 / 154。拆开看，最贵的不是「地基」而是几项
+# **纯增强** —— 所以让路必须「先停增强、最后才动地基」：
+#
+#   命中前 50 只的 DDE 补齐   70 次/天  ← 最贵，少了它只是个股页那一栏短一点
+#   ETF（份额 / 行情）        20 次/天  ← 纯增强，没有下游
+#   全市场日线                14 次/天  ← **地基**：形态选股、板块资金流都吃它
+#   DDE 全市场扫描            14 次/天  ← **地基**：板块资金流的逐股净流入来自它
+#   指数 / 涨停三池 / 情绪 / 板块 / 自选  约 82 次/天  ← 复盘主线，任何时候都保
+#
+# ⚠️ 2026-10-13 之前是**反的**：一到紧张档第一个停的就是「全市场日线」，于是当天形态
+# 扫描失败（`_require_bars` 报「日线还没采到」）、板块资金流跟着跳过 —— 10-12 那天
+# 净流入整列缺就是这么来的。
+FULL_DAY_CALLS = 200  # 满负荷
+HIT_DDE_DAILY = 70  # 「命中前 50 只的 DDE 补齐」
+ENHANCE_DAILY = 20  # ETF（概念兜底的量很小，并进这一档）
+BASE_DAILY = 28  # 全市场日线 + DDE 全市场扫描（两块地基）
+CORE_DAILY = 82  # 指数 / 涨停三池 / 情绪 / 板块 / 自选
 
 
 class QuotaLevel(IntEnum):
     """配额紧张程度，数值越大越紧张，判定一律用 `>=`。
 
-    ⚠️ **判据是「余下几个交易日够不够花」，不是「整周期已用多少」**（2026-10-13 改）。
-    按「已用比例」让路有两个盲点：不看**还剩多少额度**、也不看**还剩几个交易日**。
-    实测 10-13：整周期已用 80.8% → 判定让路，可当时剩 1725 次、本周期只剩 3 个交易日
-    （满打满算约 500 次）—— 明明够用，却把全市场日线全挡了，于是当天没有日线、
-    形态扫描失败、整站数据停在前一天。现在按 `need_ratio`（余下需求 ÷ 剩余额度）判。
+    判据是「**剩下的额度够不够按某一档的日耗撑完本周期余下的交易日**」（见
+    `LEVEL_BUDGETS`），不是「整周期已经用掉多少」 —— 后者既不看你还剩多少、也不看
+    还剩几天：实测 10-13 整周期已用 80.8%，可当时剩 1725 次、只剩 3 个交易日，明明
+    够用却把全市场日线停了。
+
+    ⚠️ 顺序是**先停增强、最后才停地基**（2026-10-13 改，理由见上面那张日耗表）。
     """
 
     NORMAL = 0
-    # 余下额度只够预估需求的 80%：停形态选股的全市场日线更新（形态结果不再刷新）
-    PAUSE_KLINE = 1
-    # 90%：停概念板块的 iFinD 兜底（记空值，次日由同花顺订正）
-    PAUSE_CONCEPT = 2
-    # 95%：只保留指数 + 涨停三池 + 情绪这条主线
-    CORE_ONLY = 3
+    # 停「命中前 50 只的 DDE 补齐」（70 次/天）
+    PAUSE_HIT_DDE = 1
+    # 再停 ETF 与概念兜底（约 20 次/天）
+    PAUSE_ENHANCE = 2
+    # 再停全市场日线 + DDE 全市场扫描（28 次/天）—— 地基，停了形态/板块资金流一起缺
+    PAUSE_KLINE = 3
+    # 只保留指数 + 涨停三池 + 情绪这条主线
+    CORE_ONLY = 4
 
 
-# 阈值与档位。顺序必须**从高到低**，第一个命中的就是当前档。
-#
-# 判据是 `need_ratio` = 余下交易日的预估需求 ÷ 剩余额度。语义与旧的「已用 80% 就
-# 留 20% 缓冲」是同一个尺度，只是从「看过去」改成「看余下」：0.8 表示剩余额度只
-# 覆盖得住预估需求的 80%（缺口 20%）。
-LEVEL_THRESHOLDS = (
-    (0.95, QuotaLevel.CORE_ONLY),
-    (0.90, QuotaLevel.PAUSE_CONCEPT),
-    (0.80, QuotaLevel.PAUSE_KLINE),
+#: 让路阶梯：`(这一档还能撑住的日耗, 档位)`，**从宽到窄**，第一个
+#: 「剩余额度 ≥ 日耗 × 余下交易日」成立的就是当前档（余下交易日 = 含今天）。
+#:
+#: 写成表而不是一串 if，是为了让「先停谁、后停谁」一眼看完 —— 调整顺序只动这里一处。
+#: 最后一档的日耗 = `FULL_DAY_CALLS − HIT_DDE_DAILY − ENHANCE_DAILY − BASE_DAILY`
+#: （= `CORE_DAILY`，也就是「连地基都停了、只剩主线」）。
+LEVEL_BUDGETS: tuple[tuple[int, QuotaLevel], ...] = (
+    (FULL_DAY_CALLS, QuotaLevel.NORMAL),
+    (FULL_DAY_CALLS - HIT_DDE_DAILY, QuotaLevel.PAUSE_HIT_DDE),
+    (FULL_DAY_CALLS - HIT_DDE_DAILY - ENHANCE_DAILY, QuotaLevel.PAUSE_ENHANCE),
+    (CORE_DAILY, QuotaLevel.PAUSE_KLINE),
+    (0, QuotaLevel.CORE_ONLY),
 )
 
 LEVEL_LABELS = {
     QuotaLevel.NORMAL: "正常",
-    QuotaLevel.PAUSE_KLINE: "剩余额度不足以覆盖余下交易日：已停全市场日线更新",
-    QuotaLevel.PAUSE_CONCEPT: "剩余额度不足：已停概念板块的 iFinD 兜底",
-    QuotaLevel.CORE_ONLY: "剩余额度告急：只保留指数 / 涨停三池 / 情绪",
+    QuotaLevel.PAUSE_HIT_DDE: "余下额度偏紧：已停命中前 50 只的 DDE 补齐",
+    QuotaLevel.PAUSE_ENHANCE: "余下额度不足：已停 ETF 与概念兜底",
+    QuotaLevel.PAUSE_KLINE: "余下额度告急：已停全市场日线与 DDE 扫描（形态 / 板块资金流当天会缺）",
+    QuotaLevel.CORE_ONLY: "余下额度只够主线：只保留指数 / 涨停三池 / 情绪",
 }
 
 
@@ -244,16 +262,14 @@ def quota_status(day: date | None = None, settings: Settings | None = None) -> d
     if sampled >= PROJECTION_MIN_DAYS and total:
         projected = round(used / sampled * total)
 
-    # 让路判据（2026-10-13 改）：**余下交易日的预估需求 ÷ 剩余额度**
+    # 让路判据（2026-10-13 改）：**剩下的额度够不够按某一档的日耗撑完余下交易日**
     days_left = trade_days_between(today, end)  # 含今天
     remaining = max(quota - used, 0)
+    level = _level_for(remaining, days_left)
+    # 满负荷的余下需求 ÷ 剩余额度：只给页面看（>1 = 满负荷撑不完，该让路了），
+    # 判档本身不用它
     need_calls = FULL_DAY_CALLS * days_left
-    if remaining > 0:
-        need_ratio: float | None = round(need_calls / remaining, 4)
-    else:
-        # 剩余为 0：还有交易日要采就是最紧张（None 交给 `quota_level` 处理），
-        # 周期已经过完（没有余下交易日）则无所谓
-        need_ratio = None if need_calls else 0.0
+    need_ratio = round(need_calls / remaining, 4) if remaining > 0 else None
 
     return {
         "cycle_start": start,
@@ -269,32 +285,36 @@ def quota_status(day: date | None = None, settings: Settings | None = None) -> d
         "sampled_trade_days": sampled,
         "projected_cycle_calls": projected,
         "usage_ratio": round(used / quota, 4) if quota else None,
-        # 让路判据的三个输入：余下交易日（含今天）、按满负荷估的需求、需求 ÷ 剩余
+        # 让路判据的输入与结果：余下交易日（含今天）、满负荷需求、需求 ÷ 剩余，
+        # 以及**当前档位**（页面直接显示，省得前端再拼一遍判据）
         "days_left": days_left,
         "need_calls": need_calls,
         "need_ratio": need_ratio,
+        "level": int(level),
+        "level_label": level_label(level),
         "by_tool": breakdown_between(start, today),
     }
 
 
-def quota_level(day: date | None = None, settings: Settings | None = None) -> QuotaLevel:
-    """按**余下交易日够不够花**判定紧张程度（见 `QuotaLevel` 的说明）。
+def _level_for(remaining: int, days_left: int) -> QuotaLevel:
+    """`LEVEL_BUDGETS` 里第一个「剩余额度 ≥ 日耗 × 余下交易日」的档位。
 
-    为什么分级让路而不是一刀切停机：配额是**全账号共享**的，形态选股把额度烧光之后，
-    第二天的**基础采集（指数、情绪、板块）也会一起挂**。复盘是核心、形态是增强，
-    紧张时必须让形态先停。
-
-    ⚠️ 判据是 `need_ratio`（余下需求 ÷ 剩余额度），不是整周期已用比例 —— 后者不看
-    还剩多少、也不看还剩几天，会在「明明够用」的时候把日线停掉（实测 10-13）。
+    `days_left = 0`（本周期已经没有交易日要采）时每档都成立 → 恒为 NORMAL ✓。
     """
-    ratio = quota_status(day, settings)["need_ratio"]
-    if ratio is None:
-        # 剩余额度为 0、而本周期还有交易日要采：最紧张
-        return QuotaLevel.CORE_ONLY
-    for threshold, level in LEVEL_THRESHOLDS:
-        if ratio >= threshold:
+    for daily, level in LEVEL_BUDGETS:
+        if remaining >= daily * days_left:
             return level
-    return QuotaLevel.NORMAL
+    return QuotaLevel.CORE_ONLY
+
+
+def quota_level(day: date | None = None, settings: Settings | None = None) -> QuotaLevel:
+    """当前档位（判据与顺序见 `QuotaLevel` / `LEVEL_BUDGETS`）。
+
+    ⚠️ 看的是「**剩下的额度够不够撑完本周期余下的交易日**」，不是「整周期已经用掉
+    多少」—— 后者既不看还剩多少、也不看还剩几天，会在明明够用的时候把日线停掉
+    （实测 10-13）。让路的顺序也是**先停增强、最后才停地基**。
+    """
+    return QuotaLevel(quota_status(day, settings)["level"])
 
 
 def level_label(level: QuotaLevel) -> str:

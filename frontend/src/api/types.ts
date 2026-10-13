@@ -748,8 +748,12 @@ export interface IfindQuota {
   days_left: number
   /** 余下交易日按满负荷估的调用数（常量 × days_left） */
   need_calls: number
-  /** 让路判据：`need_calls ÷ cycle_remaining`。≥0.8 开始让路；null = 剩余额度已是 0 */
+  /** 让路判据：`need_calls ÷ cycle_remaining`。仅展示用；None = 剩余额度已是 0 */
   need_ratio: number | null
+  /** 当前档位（0 = 正常，越大越紧张）。让路顺序见后端的 `QuotaLevel` */
+  level: number
+  /** 档位的说明文字（后端给，页面别再拼一遍） */
+  level_label: string
   by_tool: IfindToolUsage[]
 }
 

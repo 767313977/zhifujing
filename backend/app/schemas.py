@@ -720,6 +720,10 @@ class IfindQuota(BaseModel):
     days_left: int
     need_calls: int
     need_ratio: float | None
+    # 当前档位（见 `services.usage.QuotaLevel`）：数值越大越紧张，让路顺序是
+    # 「先停命中前 50 只 DDE 补齐 → ETF → 全市场日线+DDE 扫描 → 只留主线」
+    level: int
+    level_label: str
     by_tool: list[IfindToolUsage]
 
 

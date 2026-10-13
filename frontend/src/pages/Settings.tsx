@@ -124,16 +124,14 @@ export default function Settings() {
       ? 1
       : Math.min(100, usedPercent)
 
-  // 让路判据（2026-10-13 改）：看「余下交易日够不够花」，不是「已经用掉多少」。
+  // 让路判据（2026-10-13 改）：看「余下交易日够不够花」，不是已经用掉多少。
   // 只看 usage_ratio 会在明明够用的时候显示成紧张 —— 10-13 已用 80.8%，可剩余额度
-  // 覆盖余下需求还有一倍富余。null = 剩余额度已是 0（最紧张）。
+  // 覆盖余下需求还有一倍富余。`level > 0` 才是真的开始让路了。
   const needRatio = quota?.need_ratio ?? null
   const needTone =
-    needRatio == null
-      ? quota
-        ? 'text-danger'
-        : 'text-fg-dim'
-      : needRatio >= 0.8
+    quota == null
+      ? 'text-fg-dim'
+      : quota.level > 0
         ? 'text-danger'
         : 'text-fg-muted'
 
@@ -297,14 +295,19 @@ export default function Settings() {
                 <b className="font-normal text-fg-muted">「余下交易日够不够花」</b>，不是已经用掉多少
                 {quota && (
                   <>
-                    —— 本周期还剩 {quota.days_left} 个交易日，满打满算约需{' '}
+                    —— 本周期还剩 {quota.days_left} 个交易日，满负荷约需{' '}
                     {fmtInt(quota.need_calls)} 次、剩 {fmtInt(quota.cycle_remaining)} 次
-                    {needRatio != null && (
-                      <>（需求 ÷ 剩余 = {Math.round(needRatio * 100)}%，到 80% 才开始让路）</>
-                    )}
+                    {needRatio != null && <>（需求 ÷ 剩余 = {Math.round(needRatio * 100)}%）</>}
                   </>
                 )}
-                。
+                。不够时按
+                <b className="font-normal text-fg-muted">
+                  「命中前 50 只 DDE 补齐 → ETF → 全市场日线 + DDE 扫描 → 只留主线」
+                </b>
+                的顺序让路 —— 全市场日线是形态选股与板块资金流的地基，留到最后才停。
+                {quota && quota.level > 0 && (
+                  <b className="text-danger"> 当前：{quota.level_label}。</b>
+                )}
               </span>
             </div>
           </div>
