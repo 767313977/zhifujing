@@ -5063,10 +5063,11 @@ def _t_buy(bars: Bars) -> Signal | None:
 # 这里把 7 个子信号**各落成一个形态**（而不是合成一个「知行B1」）：它们在图上是
 # 七种不同的买点、分色画七种标签，合成一个就再也分不出是哪一种。
 #
-# 另有第 8 个形态 `zgnb_pull_super_10d`（「近 10 个交易日**出现过**超牛股回踩白线B1」，
-# 2026-10-13 用户要求）：它不是原式里的东西，而是给最稀有那一档加了滚动窗口 —— 那个
-# 信号全市场约 0.1 条/天，只看当天几乎恒为 0。判定与 `zgnb_pull_super` 完全同一条
-# （`_zgb1_signal(..., window=ZGNB_RECENT_DAYS)`），所以不会两处口径漂移。
+# **7 个都取「近 N 个交易日出现过」的窗口口径**（2026-10-13 用户要求，把原来的「当天」
+# 口径整组换掉）—— 原式画的是「当天出的信号」，但盘后只看当天太窄：这几个信号本身全市场
+# 只有几到几十只，而「一周里出过的那几只」才是「最近刚出现、还在消化」的票。窗口由各
+# `Pattern` 的 `window` 决定（常规 5 个交易日；「超牛股回踩白线B1」放宽到 10 —— 它约
+# 0.1 条/天，5 日常常一只都没有）。判定只有一份（`_zgb1_signal`），不会两处口径漂移。
 #
 # 与原文的差异（就近在代码里也注明）：
 # 1. 「宽幅板」要判**代码前缀**（原式 `STRFIND(CODE,'30',1)=1` 那一串）。`Bars` 原来
@@ -5078,17 +5079,20 @@ def _t_buy(bars: Bars) -> Signal | None:
 #
 # 回测（`python scripts/backtest_patterns.py --pattern zgnb_xxx`，2026-10-13，
 # 4846 只 · 260 个交易日（2025-09-08 ~ 2026-10-09）· 剔 ST 127 只；超额 = 该档收益
-# 减去同日全市场均值）：
+# 减去同日全市场均值）—— **这一版是改窗口口径之后的数字**（不是「当天出信号」那版）：
 #
 # | 信号 | 条数 | 5 日 | 10 日 | 20 日 | 60 日 | 胜率(5/10/20/60) |
 # | --- | --- | --- | --- | --- | --- | --- |
-# | 缩量拐头B1 `zgnb_turn` | 255 | −0.25 | +2.21 | +3.91 | −5.24 | 33/42/39/23 |
-# | 缩量B1 `zgnb_shrink` | 819 | +0.51 | +0.24 | +1.73 | −6.20 | 34/34/36/20 |
-# | 原始B1 `zgnb_origin` | 939 | −0.08 | −2.36 | −3.48 | −9.52 | 34/30/30/18 |
-# | 超级缩量B1 `zgnb_super_shrink` | 175 | −0.07 | +2.03 | +4.26 | −4.65 | 30/39/40/23 |
-# | 回踩白线B1 `zgnb_pull_white` | 131 | −0.39 | −2.37 | −4.61 | −8.91 | 31/33/31/18 |
-# | 超牛股回踩白线B1 `zgnb_pull_super` | 27 | +0.81 | +2.53 | +13.02 | −3.21 | 41/37/52/19 |
-# | 回踩黄线B1 `zgnb_pull_yellow` | 561 | −0.61 | −2.57 | −2.82 | −7.15 | 34/32/28/20 |
+# | 缩量拐头B1·近5日 `zgnb_turn` | 405 | +0.11 | +1.31 | +2.65 | −4.21 | 33/32/35/21 |
+# | 缩量B1·近5日 `zgnb_shrink` | 1062 | +0.53 | −0.09 | +0.64 | −5.72 | 34/31/33/20 |
+# | 原始B1·近5日 `zgnb_origin` | 1243 | −0.11 | −2.33 | −3.03 | −8.34 | 33/28/29/17 |
+# | 超级缩量B1·近5日 `zgnb_super_shrink` | 215 | +0.49 | +1.37 | +3.09 | −4.66 | 33/36/37/22 |
+# | 回踩白线B1·近5日 `zgnb_pull_white` | 173 | +0.13 | −1.82 | −3.13 | −7.82 | 34/33/31/20 |
+# | 超牛股回踩白线B1·近10日 `zgnb_pull_super` | 58 | −0.68 | −0.44 | +7.77 | −2.33 | 31/31/45/19 |
+# | 回踩黄线B1·近5日 `zgnb_pull_yellow` | 707 | −0.15 | −2.23 | −2.86 | −6.30 | 35/29/26/20 |
+#
+# （换成窗口口径前、按「当天出信号」回测的条数是 255/819/939/175/131/27/561 ——
+# 窗口版约 1.5~2 倍，符合预期；60 日超额仍无一为正。）
 #
 # ⚠️ **七条的中位数全负、胜率多在 30~40%，60 日超额没有一条为正**；样本区间
 # （2025-09 ~ 2026-10）整体是下跌/震荡市（基准 5/20/60 日约 −1.7%/−4.3%/−4.8%），
@@ -5098,10 +5102,14 @@ def _t_buy(bars: Bars) -> Signal | None:
 # 原式是用户点名要的，先按它落库；要收紧的话最该动的是「要求离区间低点更远」，
 # 或给 `move_ok` 补一条「大盘不在急跌段」。
 ZGNB_MIN_BARS = 170  # MA144 预热 + EVERY(…,20) + EVERY(…,13)
-#: 「近 N 个交易日里出现过」那个变体（`zgnb_pull_super_10d`）的窗口。取 10 ≈ 两周：
-#: 覆盖「上周出现、这几天在消化」的票，又不会把一个月前的信号翻出来。口径是
-#: **该窗口内任意一根成立**，报的是**最近一次**成立那根的分数与读数（明细里带 `ago`）。
-ZGNB_RECENT_DAYS = 10
+#: 整组都是「**近 N 个交易日出现过**」的口径（2026-10-13 用户要求把当天口径整组换掉）：
+#: 盘后只看「今天出的信号」太窄 —— 一周里出过的那几只才是「最近刚出现、还在消化」的票，
+#: 而原式这几个信号本身就偏稀（当天全市场只有几到几十只）。窗口内**任意一根**成立即算，
+#: 报的是**最近一次**成立那根的分数与读数（明细里的 `ago` 就是距今几个交易日）。
+ZGNB_RECENT_DAYS = 5
+#: 「超牛股回踩白线B1」单独用 10 个交易日：它比其余几个稀约 10 倍（全市场约 0.1 条/天），
+#: 5 日窗口常常一只都没有（10-09 当天 0 条）。
+ZGNB_RARE_RECENT_DAYS = 10
 #: 「宽幅板」（20cm）的代码前缀，对应原式那几个 `STRFIND(CODE,'xx',1)=1`：
 #: 30 创业板 / 68 科创板 / 4 与 8 北交所 / 9 沪 B。
 ZGNB_WIDE_PREFIXES = ("30", "68", "4", "8", "9")
@@ -5153,7 +5161,7 @@ def _zgb1_common(bars: Bars) -> dict:
     """「知行超级B1」的公共前置量 + 这一组形态的判定与排序加成（**逐根**，都是数组）。
 
     `evaluate` 会挨个调用这一组的每个 detect：每个都从零算一遍趋势白线 / 大哥黄线 /
-    KDJ / 3 日 RSI 的话，同一条序列要重算 8 遍 —— 这几条都是 Python 级递推（`_ema`
+    KDJ / 3 日 RSI 的话，同一条序列要重算 7 遍 —— 这几条都是 Python 级递推（`_ema`
     与 `_sma` 各几百次循环），全市场扫描会明显变慢。所以这里做**单条缓存**：只记住
     「上一次算过的那只票」，用 `is` 比较（同时持有强引用，不存在 id 被复用的问题）。
 
@@ -5170,11 +5178,10 @@ def _zgb1_common(bars: Bars) -> dict:
 
 
 def _compute_zgb1(bars: Bars) -> dict:
-    """逐条落自同花顺原式的判定，**铺成整条序列**（不是只判最后一根）。
+    """逐条落自同花顺原式的判定，**铺成整条序列的逐根数组**。
 
-    在册的 7 个形态都只看 `[-1]`；`zgnb_pull_super_10d`（近 10 个交易日出现过
-    超牛股回踩白线B1）要看窗口，所以判定必须逐根算 —— 顺带让「一份前置只算一次」
-    更划算：知行B1 那一组 8 个形态共用这一份数组。
+    7 个形态都是窗口口径（`_zgb1_signal` 看最近 N 根里有没有成立），所以判定必须
+    逐根算 —— 顺带让「一份前置只算一次」更划算：知行B1 那一组共用这一份数组。
     """
     n = len(bars)
     empty = {
@@ -5530,13 +5537,12 @@ def _zgb1_detail(fields: dict[str, np.ndarray], idx: int) -> dict[str, float]:
     }
 
 
-def _zgb1_signal(bars: Bars, key: str, *, window: int = 1) -> Signal | None:
-    """知行B1 各形态共用的出口。
+def _zgb1_signal(bars: Bars, key: str, *, window: int) -> Signal | None:
+    """知行B1 各形态共用的出口：**最近 `window` 个交易日里出现过** `key` 就算命中。
 
-    - `window=1`：**今天**这根成立才算（7 个在册形态）。
-    - `window=N`：最近 N 根里**任意一根**成立即算，报的是**最近一次**成立那根的
-      分数与读数（`zgnb_pull_super_10d` 用；明细里另附 `ago` = 距今几个交易日，
-      0 就是今天）。
+    ⚠️ 不是「今天这根成立」—— 整组都是窗口口径（见 `ZGNB_RECENT_DAYS` 的说明）。
+    报的也是**最近一次**成立那根（今天往往什么都没发生），分数与读数都取那一根，
+    明细里附 `ago` = 距今几个交易日（0 = 今天出的）。
     """
     common = _zgb1_common(bars)
     if not common["enough"]:
@@ -5548,54 +5554,47 @@ def _zgb1_signal(bars: Bars, key: str, *, window: int = 1) -> Signal | None:
     support = common["white"] if key in ZGNB_WHITE_SUPPORT_KEYS else common["yellow"]
     score = ZGNB_BASE_SCORE + float(common["extra"][key][idx])
     detail = _zgb1_detail(common["fields"], idx)
-    if window > 1:
-        detail["ago"] = -1 - idx
+    detail["ago"] = -1 - idx
     return Signal(key, min(score, 100.0), {"support": float(support[idx])}, detail)
 
 
 def _zgnb_turn(bars: Bars) -> Signal | None:
     """缩量拐头B1（原式 `超卖缩量拐头B`）：RSI 一天回升 ≥15 点，前一日还在超卖区。"""
-    return _zgb1_signal(bars, "zgnb_turn")
+    return _zgb1_signal(bars, "zgnb_turn", window=ZGNB_RECENT_DAYS)
 
 
 def _zgnb_shrink(bars: Bars) -> Signal | None:
     """缩量B1（原式 `超卖缩量B`）：超卖区里的缩量止跌。"""
-    return _zgb1_signal(bars, "zgnb_shrink")
+    return _zgb1_signal(bars, "zgnb_shrink", window=ZGNB_RECENT_DAYS)
 
 
 def _zgnb_origin(bars: Bars) -> Signal | None:
     """原始B1：白线在黄线上方的多头上行里，超卖 + 缩量 + 小实体。"""
-    return _zgb1_signal(bars, "zgnb_origin")
+    return _zgb1_signal(bars, "zgnb_origin", window=ZGNB_RECENT_DAYS)
 
 
 def _zgnb_super_shrink(bars: Bars) -> Signal | None:
     """超级缩量B1（原式 `超卖超缩量B`）：远期振幅 ≥45% 的票，超缩量。"""
-    return _zgb1_signal(bars, "zgnb_super_shrink")
+    return _zgb1_signal(bars, "zgnb_super_shrink", window=ZGNB_RECENT_DAYS)
 
 
 def _zgnb_pull_white(bars: Bars) -> Signal | None:
     """回踩白线B1（原式 `回踩白线B`）：强趋势股缩量回踩白线不破。"""
-    return _zgb1_signal(bars, "zgnb_pull_white")
+    return _zgb1_signal(bars, "zgnb_pull_white", window=ZGNB_RECENT_DAYS)
 
 
 def _zgnb_pull_super(bars: Bars) -> Signal | None:
-    """超牛股回踩白线B1（原式 `回踩超级B`）。"""
-    return _zgb1_signal(bars, "zgnb_pull_super")
+    """超牛股回踩白线B1（原式 `回踩超级B`）。
 
-
-def _zgnb_pull_super_recent(bars: Bars) -> Signal | None:
-    """近 10 个交易日里**出现过**「超牛股回踩白线B1」（2026-10-13 用户要求）。
-
-    为什么要这个变体：`zgnb_pull_super` 的条件很严 —— 全市场 4846 只 × 260 个交易日
-    只出 27 条（约 0.1 条/天），单看当天几乎恒为 0。而它的意义恰恰是「这只票最近刚
-    出现过超牛股回踩」，所以按 10 个交易日的窗口看才用得上。
+    ⚠️ 窗口单独放宽到 10 个交易日（`ZGNB_RARE_RECENT_DAYS`）：这一档全市场约
+    0.1 条/天，用 5 日窗口经常一只都招不出来（2026-10-13 用户要求）。
     """
-    return _zgb1_signal(bars, "zgnb_pull_super", window=ZGNB_RECENT_DAYS)
+    return _zgb1_signal(bars, "zgnb_pull_super", window=ZGNB_RARE_RECENT_DAYS)
 
 
 def _zgnb_pull_yellow(bars: Bars) -> Signal | None:
     """回踩黄线B1（原式 `回踩黄线B`）：回踩多空线（大哥黄线）不破。"""
-    return _zgb1_signal(bars, "zgnb_pull_yellow")
+    return _zgb1_signal(bars, "zgnb_pull_yellow", window=ZGNB_RECENT_DAYS)
 
 
 # ---------------------------------------------------------------- 注册表
@@ -5690,18 +5689,17 @@ PATTERNS: tuple[Pattern, ...] = (
     # 2026-10-13 用户给的「知行超级B1 V1203（ZGNB）」同花顺公式 —— 7 个子信号**各成一个形态**
     # （理由与差异见上面「知行超级B1」那一段）。全市场扫，不限板块：宽幅板（20cm）走的是
     # 公式自己的 `宽幅板` 分支（调 `振幅区间` 与 `放宽系数`），不是另一道板块闸门。
-    # 追加在末尾，理由同上：注册表顺序决定同组形态在筛选条里的排列，别打乱已有的。
-    Pattern("zgnb_turn", "缩量拐头B1", ZGNB_GROUP, _zgnb_turn),
-    Pattern("zgnb_shrink", "缩量B1", ZGNB_GROUP, _zgnb_shrink),
-    Pattern("zgnb_origin", "原始B1", ZGNB_GROUP, _zgnb_origin),
-    Pattern("zgnb_super_shrink", "超级缩量B1", ZGNB_GROUP, _zgnb_super_shrink),
-    Pattern("zgnb_pull_white", "回踩白线B1", ZGNB_GROUP, _zgnb_pull_white),
-    Pattern("zgnb_pull_super", "超牛股回踩白线B1", ZGNB_GROUP, _zgnb_pull_super),
-    # 2026-10-13 用户要求：上面那一档太稀有（全市场约 0.1 条/天），加一个「近 10 个
-    # 交易日出现过」的滚动窗口版本。判定复用同一条（只是 `window=ZGNB_RECENT_DAYS`），
-    # 排在它旁边，筛出来是「最近刚出现过、这几天在消化」的票。
-    Pattern("zgnb_pull_super_10d", "超牛股回踩白线B1·近10日", ZGNB_GROUP, _zgnb_pull_super_recent),
-    Pattern("zgnb_pull_yellow", "回踩黄线B1", ZGNB_GROUP, _zgnb_pull_yellow),
+    # ⚠️ **整组是窗口口径**（2026-10-13 用户要求，把原来的「当天」口径整组换掉）：
+    # 名字里的「近 N 日」就是这个窗口，含义是「最近 N 个交易日里出现过」，`ago` 明细
+    # 告诉你距今几天。所以**别把这些名字读成「今天出的信号」**。
+    Pattern("zgnb_turn", "缩量拐头B1·近5日", ZGNB_GROUP, _zgnb_turn),
+    Pattern("zgnb_shrink", "缩量B1·近5日", ZGNB_GROUP, _zgnb_shrink),
+    Pattern("zgnb_origin", "原始B1·近5日", ZGNB_GROUP, _zgnb_origin),
+    Pattern("zgnb_super_shrink", "超级缩量B1·近5日", ZGNB_GROUP, _zgnb_super_shrink),
+    Pattern("zgnb_pull_white", "回踩白线B1·近5日", ZGNB_GROUP, _zgnb_pull_white),
+    # 这一档单独用 10 日：全市场约 0.1 条/天，5 日窗口常常一只都没有
+    Pattern("zgnb_pull_super", "超牛股回踩白线B1·近10日", ZGNB_GROUP, _zgnb_pull_super),
+    Pattern("zgnb_pull_yellow", "回踩黄线B1·近5日", ZGNB_GROUP, _zgnb_pull_yellow),
 )
 
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}
