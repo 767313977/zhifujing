@@ -1164,32 +1164,33 @@ def _barslast(flags: np.ndarray) -> np.ndarray:
     return out
 
 
-def _count(flags: np.ndarray, window: int) -> int:
-    """`COUNT(cond, N)`：最近 N 根里成立了几根（只回最后一根）。"""
-    return int(np.count_nonzero(flags[-window:] if flags.size >= window else flags))
+def _count(flags: np.ndarray, window: int) -> np.ndarray:
+    """`COUNT(cond, N)` 铺成整条序列：`out[i]` = `flags[i-N+1 … i]` 里成立了几根。
 
-
-def _every(flags: np.ndarray, window: int) -> bool:
-    """`EVERY(cond, N)`：最近 N 根是否**都**成立。
-
-    窗口不足 N 根时按「已有的都成立」算（`_count` 同理）——「知行超级B1」的
-    N 最大 25 而它本身要求 170 根预热，正常不会走到这个分支。
+    就是 `_rolling(flags.astype(float), N, "sum")`，包一层只是让调用处仍照着公式写
+    `COUNT(...)`、省掉每处一遍 `astype(float)`。窗口不足 N 根的前几根是 NaN，
+    参与比较恒为 False（与 `_rolling` 同口径）。
     """
-    if flags.size == 0:
-        return False
-    return bool(np.all(flags[-window:] if flags.size >= window else flags))
+    return _rolling(flags.astype(float), window, "sum")
 
 
-def _hhvbars_last(values: np.ndarray, window: int) -> int:
-    """`HHVBARS(X,N)` 在**最后一根**上的值：窗口内最高值距今天多少根（0 = 今天最高）。
+def _every(flags: np.ndarray, window: int) -> np.ndarray:
+    """`EVERY(cond, N)` 铺成整条序列：最近 N 根是否**都**成立。"""
+    return _rolling(flags.astype(float), window, "sum") >= window
 
-    原式只拿它当偏移量（`REF(C,VDAY)`、`VDAY>=15`）且所有判定都只看最后一根，
-    所以只算最后一个点就够了 —— 不必像 `_rolling` 那样铺成整条序列。
+
+def _hhvbars(values: np.ndarray, window: int) -> np.ndarray:
+    """`HHVBARS(X,N)` 铺成整条序列：每根上「窗口内最高值距它多少根」（0 = 当根最高）。
+
+    前 `N-1` 根数据不足填 NaN（与 `_rolling` 同口径）。「知行超级B1」拿它当**逐根**的
+    位移（`REF(C,VDAY)` 里的 `VDAY`），所以不能只算最后一个点。
     """
-    if values.size == 0:
-        return 0
-    take = values[-window:] if values.size >= window else values
-    return int(take.size - 1 - np.argmax(take))
+    out = np.full(values.size, np.nan)
+    if values.size < window:
+        return out
+    windows = np.lib.stride_tricks.sliding_window_view(values, window)
+    out[window - 1 :] = window - 1 - windows.argmax(axis=1)
+    return out
 
 
 def _sma(values: np.ndarray, n: int, m: int) -> np.ndarray:
@@ -5062,6 +5063,11 @@ def _t_buy(bars: Bars) -> Signal | None:
 # 这里把 7 个子信号**各落成一个形态**（而不是合成一个「知行B1」）：它们在图上是
 # 七种不同的买点、分色画七种标签，合成一个就再也分不出是哪一种。
 #
+# 另有第 8 个形态 `zgnb_pull_super_10d`（「近 10 个交易日**出现过**超牛股回踩白线B1」，
+# 2026-10-13 用户要求）：它不是原式里的东西，而是给最稀有那一档加了滚动窗口 —— 那个
+# 信号全市场约 0.1 条/天，只看当天几乎恒为 0。判定与 `zgnb_pull_super` 完全同一条
+# （`_zgb1_signal(..., window=ZGNB_RECENT_DAYS)`），所以不会两处口径漂移。
+#
 # 与原文的差异（就近在代码里也注明）：
 # 1. 「宽幅板」要判**代码前缀**（原式 `STRFIND(CODE,'30',1)=1` 那一串）。`Bars` 原来
 #    不带代码，2026-10-13 加了 `code` 字段；扫描与回测都会传，个股页取 K 线不传
@@ -5092,6 +5098,10 @@ def _t_buy(bars: Bars) -> Signal | None:
 # 原式是用户点名要的，先按它落库；要收紧的话最该动的是「要求离区间低点更远」，
 # 或给 `move_ok` 补一条「大盘不在急跌段」。
 ZGNB_MIN_BARS = 170  # MA144 预热 + EVERY(…,20) + EVERY(…,13)
+#: 「近 N 个交易日里出现过」那个变体（`zgnb_pull_super_10d`）的窗口。取 10 ≈ 两周：
+#: 覆盖「上周出现、这几天在消化」的票，又不会把一个月前的信号翻出来。口径是
+#: **该窗口内任意一根成立**，报的是**最近一次**成立那根的分数与读数（明细里带 `ago`）。
+ZGNB_RECENT_DAYS = 10
 #: 「宽幅板」（20cm）的代码前缀，对应原式那几个 `STRFIND(CODE,'xx',1)=1`：
 #: 30 创业板 / 68 科创板 / 4 与 8 北交所 / 9 沪 B。
 ZGNB_WIDE_PREFIXES = ("30", "68", "4", "8", "9")
@@ -5108,19 +5118,48 @@ ZGNB_FACTOR_NARROW = 1.0
 ZGNB_BASE_SCORE = 60.0
 #: 「回踩白线」那两档的支撑就是白线；其余五档都要求站稳黄线（`C>=大哥黄线`），支撑取黄线。
 ZGNB_WHITE_SUPPORT_KEYS = ("zgnb_pull_white", "zgnb_pull_super")
+#: 明细字段：`(键, 小数位, 缩放)`。缩放 0.01 的是「百分数 ÷ 100 存成比率」那一类 ——
+#: 前端 `DETAIL_FIELDS` 的 `isRatio` 会再乘回 100 显示成百分号（两处要对齐）。
+_ZGNB_DETAIL_FIELDS = (
+    ("rsi3", 1, 1.0),
+    ("kdj_j", 1, 1.0),
+    ("amp20", 4, 0.01),
+    ("amp50", 4, 0.01),
+    ("vol_shrink", 3, 1.0),
+    ("dist_white", 4, 0.01),
+    ("dist_yellow", 4, 0.01),
+    ("dist_bbi", 4, 0.01),
+    ("day_amp", 4, 0.01),
+)
+
+
+def _zgb1_gate(values: np.ndarray, gate: float, ideal: float) -> np.ndarray:
+    """`_gate_score` 的**数组版**（逐元素同一条分段线性映射；NaN 原样传出）。
+
+    三个分支写成 clip：`ideal < gate` 是「越小越好」→ `clip((gate-v)/(gate-ideal))`，
+    反之「越大越好」→ `clip((v-gate)/(ideal-gate))`。
+    """
+    if gate == ideal:
+        return np.ones_like(values, dtype=float)
+    if ideal < gate:
+        return np.clip((gate - values) / (gate - ideal), 0.0, 1.0)
+    return np.clip((values - gate) / (ideal - gate), 0.0, 1.0)
+
 
 _ZGB1_MEMO: tuple[Bars, dict] | None = None
 
 
 def _zgb1_common(bars: Bars) -> dict:
-    """「知行超级B1」的公共前置量与 7 个子信号（只算**最后一根** K 线）。
+    """「知行超级B1」的公共前置量 + 这一组形态的判定与排序加成（**逐根**，都是数组）。
 
-    `evaluate` 会挨个调用 7 个 detect：每个都从零算一遍趋势白线 / 大哥黄线 / KDJ /
-    3 日 RSI 的话，同一条序列要重算 7 遍 —— 这几条都是 Python 级递推（`_ema` 与
-    `_sma` 各几百次循环），全市场扫描会明显变慢。所以这里做**单条缓存**：只记住
+    `evaluate` 会挨个调用这一组的每个 detect：每个都从零算一遍趋势白线 / 大哥黄线 /
+    KDJ / 3 日 RSI 的话，同一条序列要重算 8 遍 —— 这几条都是 Python 级递推（`_ema`
+    与 `_sma` 各几百次循环），全市场扫描会明显变慢。所以这里做**单条缓存**：只记住
     「上一次算过的那只票」，用 `is` 比较（同时持有强引用，不存在 id 被复用的问题）。
 
-    返回 `{"enough", "fired", "extra", "detail", "white", "yellow"}`。
+    返回 `{"enough", "fired", "extra", "fields", "white", "yellow"}`：`fired` 是
+    `键 → 逐根布尔数组`（在册形态只看 `[-1]`，窗口形态看最近 N 根），`extra` 是逐根的
+    排序加成，`fields` 是逐根的明细读数（好让窗口形态取「信号那根」而不是「今天」）。
     """
     global _ZGB1_MEMO
     if _ZGB1_MEMO is not None and _ZGB1_MEMO[0] is bars:
@@ -5131,15 +5170,20 @@ def _zgb1_common(bars: Bars) -> dict:
 
 
 def _compute_zgb1(bars: Bars) -> dict:
-    """逐条落自同花顺原式的判定（只判最后一根 K 线）。"""
+    """逐条落自同花顺原式的判定，**铺成整条序列**（不是只判最后一根）。
+
+    在册的 7 个形态都只看 `[-1]`；`zgnb_pull_super_10d`（近 10 个交易日出现过
+    超牛股回踩白线B1）要看窗口，所以判定必须逐根算 —— 顺带让「一份前置只算一次」
+    更划算：知行B1 那一组 8 个形态共用这一份数组。
+    """
     n = len(bars)
     empty = {
         "enough": False,
         "fired": {},
         "extra": {},
-        "detail": {},
-        "white": 0.0,
-        "yellow": 0.0,
+        "fields": {},
+        "white": np.zeros(0),
+        "yellow": np.zeros(0),
     }
     if n < ZGNB_MIN_BARS:
         return empty
@@ -5149,6 +5193,8 @@ def _compute_zgb1(bars: Bars) -> dict:
     high = bars.high.astype(float)
     low = bars.low.astype(float)
     volume = bars.volume.astype(float)
+    prev_close = _shift(close, 1)  # REF(C,1)
+    prev_vol = _shift(volume, 1)  # REF(V,1)
 
     # ---- 三条线：趋势白线（牵牛绳）/ 大哥黄线（多空线）/ BBI ----
     white = _ema(_ema(close, 10), 10)
@@ -5186,16 +5232,16 @@ def _compute_zgb1(bars: Bars) -> dict:
     needle = ((short_term <= 20.0) & (long_term >= 75.0)) | ((long_term - short_term) >= 70.0)
     jewel = (
         (_count(long_term >= 75.0, 8) >= 6)
-        and (_count(short_term <= 70.0, 7) >= 4)
-        and (_count(short_term <= 50.0, 8) >= 1)
+        & (_count(short_term <= 70.0, 7) >= 4)
+        & (_count(short_term <= 50.0, 8) >= 1)
     )
     trident = (
         _every(long_term >= 75.0, 8)
-        and (_count(short_term <= 50.0, 6) >= 2)
-        and (_count(short_term <= 20.0, 7) >= 1)
+        & (_count(short_term <= 50.0, 6) >= 2)
+        & (_count(short_term <= 20.0, 7) >= 1)
     )
-    fat_thin = (_count(close >= open_, 15) > 7) or (_count(close > _shift(close, 1), 11) > 5)
-    wash = (_count(needle, 10) >= 2) or jewel or trident
+    fat_thin = (_count(close >= open_, 15) > 7) | (_count(close > prev_close, 11) > 5)
+    wash = (_count(needle, 10) >= 2) | jewel | trident
 
     # ---- KDJ 与 3 日 RSI（就地复算）----
     llv_l9 = _rolling(low, 9, "min")
@@ -5208,25 +5254,27 @@ def _compute_zgb1(bars: Bars) -> dict:
     rsi = _wilder_rsi(close, 3)
 
     # ---- 量能四档 ----
-    v = float(volume[-1])
-    hhv20 = float(_rolling(volume, 20, "max")[-1])
-    hhv30 = float(_rolling(volume, 30, "max")[-1])
-    hhv50 = float(_rolling(volume, 50, "max")[-1])
-    shrink = (v < hhv20 * 0.416) or (v < hhv50 / 3.0)
-    pull_shrink = (v < hhv20 * 0.45) or (v < hhv50 / 3.0)
-    proper_shrink = (v < hhv20 * 0.618) or (v < hhv50 / 3.0)
-    super_shrink = (v < hhv30 / 4.0) or (v < hhv50 / 6.0)
+    hhv20 = _rolling(volume, 20, "max")
+    hhv30 = _rolling(volume, 30, "max")
+    hhv50 = _rolling(volume, 50, "max")
+    shrink = (volume < hhv20 * 0.416) | (volume < hhv50 / 3.0)
+    pull_shrink = (volume < hhv20 * 0.45) | (volume < hhv50 / 3.0)
+    proper_shrink = (volume < hhv20 * 0.618) | (volume < hhv50 / 3.0)
+    super_shrink = (volume < hhv30 / 4.0) | (volume < hhv50 / 6.0)
 
     # ---- 振幅与异动（N=20 / M=50）----
-    lo20 = float(_rolling(low, 20, "min")[-1])
-    lo50 = float(_rolling(low, 50, "min")[-1])
-    recent_amp = (float(_rolling(high, 20, "max")[-1]) - lo20) / lo20 * 100.0
-    near_move = (float(_rolling(high, 12, "max")[-1]) - float(llv_l14[-1])) / float(llv_l14[-1]) * 100.0
-    recent_move = recent_amp >= 15.0 or near_move >= 11.0
-    far_amp = (float(_rolling(high, 50, "max")[-1]) - lo50) / lo50 * 100.0
+    hi12 = _rolling(high, 12, "max")
+    hi20 = _rolling(high, 20, "max")
+    hi50 = _rolling(high, 50, "max")
+    lo20 = _rolling(low, 20, "min")
+    lo50 = _rolling(low, 50, "min")
+    recent_amp = (hi20 - lo20) / lo20 * 100.0
+    near_move = (hi12 - llv_l14) / llv_l14 * 100.0
+    recent_move = (recent_amp >= 15.0) | (near_move >= 11.0)
+    far_amp = (hi50 - lo50) / lo50 * 100.0
     far_move = far_amp >= 30.0
     super_move = recent_amp >= 60.0
-    move_ok = recent_move or far_move or wash
+    move_ok = recent_move | far_move | wash
 
     # ---- 宽幅板 ----
     wide = bars.code.startswith(ZGNB_WIDE_PREFIXES) or bool(
@@ -5235,234 +5283,274 @@ def _compute_zgb1(bars: Bars) -> dict:
     span_cap = ZGNB_RANGE_WIDE if wide else ZGNB_RANGE_NARROW
     factor = ZGNB_FACTOR_WIDE if wide else ZGNB_FACTOR_NARROW
 
-    # ---- 当日量价 ----
-    c0 = float(close[-1])
-    c1 = float(close[-2])
-    o0 = float(open_[-1])
-    l0 = float(low[-1])
-    day_amp = (float(high[-1]) - l0) / l0 * 100.0
-    day_chg = abs(c0 - c1) / c1 * 100.0 * factor
-    doji = (c0 > c1) and (abs(c0 - o0) / o0 * 100.0 * factor < 1.8)
-    body_pct = abs(c0 - o0) * 100.0 / o0
+    # ---- 当日量价（逐根）----
+    # ⚠️ 比率的**运算顺序照抄原式**（`ABS(C-REF(C,1))/REF(C,1)*100` 是先除后乘），
+    # 别顺手改写成 `(差*100)/分母` —— 浮点上两者差 1 个 ULP，而这一条判的是
+    # 「< 2.5」这种边界；实测改顺序后 `zgnb_shrink` 的回测信号从 819 变成 820。
+    day_amp = np.divide(high - low, low, out=np.full(n, np.nan), where=low > 0) * 100.0
+    day_chg = (
+        np.divide(np.abs(close - prev_close), prev_close, out=np.full(n, np.nan), where=prev_close > 0)
+        * 100.0
+        * factor
+    )
+    body_scaled = (
+        np.divide(np.abs(close - open_), open_, out=np.full(n, np.nan), where=open_ > 0)
+        * 100.0
+        * factor
+    )
+    doji = (close > prev_close) & (body_scaled < 1.8)
+    body_pct = np.divide(
+        np.abs(close - open_) * 100.0, open_, out=np.full(n, np.nan), where=open_ > 0
+    )
 
     # ---- 大绿棒：量峰那根是不是「大绿棒」，或那根已经离得够远 ----
-    vday = _hhvbars_last(volume, 40)
-    peak = -1 - vday
-    not_big_green = (close[peak] >= close[peak - 1]) or (close[peak] >= open_[peak])
+    # ⚠️ `VDAY` 是**逐根**的（每根各自看它前面 40 根的量峰），所以 `REF(C,VDAY)` 得用
+    # 花式下标去取 —— 原来只算最后一根是够用的（判定只看最后一根），现在要看窗口
+    # 就必须铺开。`peak` = 量峰那根的下标；`vday < 下标` 保证 `peak-1 ≥ 0`。
+    vday = _hhvbars(volume, 40)
+    peak = np.zeros(n, dtype=int)
+    known = np.isfinite(vday) & (vday < np.arange(n))
+    peak[known] = (np.arange(n)[known] - vday[known]).astype(int)
+    not_big_green = np.ones(n, dtype=bool)  # 数据不足的前段一律放行（那几根不在任何窗口里）
+    not_big_green[known] = (close[peak[known]] >= close[peak[known] - 1]) | (
+        close[peak[known]] >= open_[peak[known]]
+    )
     # `不是大绿棒 OR 大绿棒离得远`：后者要求「是大绿棒」，也就是前者的否定，
     # 所以整条等价于「不是大绿棒 或 量峰在 15 根以前」
-    green_ok = bool(not_big_green) or vday >= 15
+    green_ok = not_big_green | (vday >= 15)
 
-    # ---- 趋势、超牛股与回踩距离 ----
-    white0 = float(white[-1])
-    yellow0 = float(yellow[-1])
-    bbi0 = float(bbi[-1])
-    up_trend = (white0 >= yellow0) and (c0 >= yellow0 or (c0 > yellow0 * 0.975 and c0 > o0))
+    # ---- 趋势、超牛股与回踩距离（逐根）----
+    white_up = white >= _shift(white, 1)
+    yellow_notdown = yellow >= _shift(yellow, 1) * 0.999
+    up_trend = (white >= yellow) & ((close >= yellow) | ((close > yellow * 0.975) & (close > open_)))
     strong_trend = (
-        _every(yellow >= _shift(yellow, 1) * 0.999, 13)
-        and white0 >= float(white[-2])
-        and _every(white > yellow, 20)
-        and _every(white >= _shift(white, 1), 11)
-        and fat_thin
+        _every(yellow_notdown, 13)
+        & white_up
+        & _every(white > yellow, 20)
+        & _every(white_up, 11)
+        & fat_thin
     )
     super_bull = (
-        (_every(bbi >= _shift(bbi, 1) * 0.999, 20) or _count(bbi >= _shift(bbi, 1), 25) >= 23)
-        and (recent_amp >= 30.0 or far_amp > 80.0)
-        and float(_barslast(_cross(close, yellow))[-1]) > 12.0
+        (_every(bbi >= _shift(bbi, 1) * 0.999, 20) | (_count(bbi >= _shift(bbi, 1), 25) >= 23))
+        & ((recent_amp >= 30.0) | (far_amp > 80.0))
+        & (_barslast(_cross(close, yellow)) > 12.0)
     )
 
-    white_d = abs(c0 - white0) / c0 * 100.0
-    white_ld = abs(l0 - white0) / white0 * 100.0
-    bbi_d = abs(c0 - bbi0) / c0 * 100.0
-    bbi_ld = abs(l0 - bbi0) / bbi0 * 100.0
-    yellow_d = abs(c0 - yellow0) / yellow0 * 100.0
+    white_d = np.divide(np.abs(close - white), close, out=np.full(n, np.nan), where=close > 0) * 100.0
+    white_ld = np.divide(np.abs(low - white), white, out=np.full(n, np.nan), where=white > 0) * 100.0
+    bbi_d = np.divide(np.abs(close - bbi), close, out=np.full(n, np.nan), where=close > 0) * 100.0
+    bbi_ld = np.divide(np.abs(low - bbi), bbi, out=np.full(n, np.nan), where=bbi > 0) * 100.0
+    yellow_d = (
+        np.divide(np.abs(close - yellow), yellow, out=np.full(n, np.nan), where=yellow > 0) * 100.0
+    )
 
     pull_white = (
-        (c0 >= white0 and white_d <= 2.0)
-        or (c0 < white0 and white_d < 0.8)
-        or (
-            c0 >= bbi0
-            and bbi_d < 2.5
-            and bbi_ld < 1.0
-            and white_d <= 3.0
-            and day_chg < 1.0
-            and c0 > c1
+        ((close >= white) & (white_d <= 2.0))
+        | ((close < white) & (white_d < 0.8))
+        | (
+            (close >= bbi)
+            & (bbi_d < 2.5)
+            & (bbi_ld < 1.0)
+            & (white_d <= 3.0)
+            & (day_chg < 1.0)
+            & (close > prev_close)
         )
     )
-    white_support = c0 >= white0 and white_d < 1.5
-    strong_pull = (white_ld < 1.0 or bbi_ld < 0.5) and c0 > white0 and white_d <= 3.5
+    white_support = (close >= white) & (white_d < 1.5)
+    strong_pull = ((white_ld < 1.0) | (bbi_ld < 0.5)) & (close > white) & (white_d <= 3.5)
     pull_yellow = (
-        (c0 >= yellow0 and (yellow_d <= 1.5 or (yellow_d <= 2.0 and day_chg < 1.0)))
-        or (c0 < yellow0 and yellow_d <= 0.8)
+        ((close >= yellow) & ((yellow_d <= 1.5) | ((yellow_d <= 2.0) & (day_chg < 1.0))))
+        | ((close < yellow) & (yellow_d <= 0.8))
     )
 
-    # ---- 超卖读数的末值 ----
-    r0 = float(rsi[-1])
-    r1 = float(rsi[-2])
-    j0 = float(j[-1])
-    j1 = float(j[-2])
-    rs = r0 + j0
-    llv_j20 = float(_rolling(j, 20, "min")[-1])
-    llv_r14 = float(_rolling(rsi, 14, "min")[-1])
-    llv_rs15 = float(_rolling(rsi + j, 15, "min")[-1])
-    llv_rs25 = float(_rolling(rsi + j, 25, "min")[-1])
-    llv_v20 = float(_rolling(volume, 20, "min")[-1])
-    yellow_prev = float(yellow[-2])
-    ma60_prev = float(ma60[-2])
+    # ---- 超卖读数（逐根）----
+    rsi_prev = _shift(rsi, 1)  # REF(RSI,1)
+    j_prev = _shift(j, 1)  # REF(J,1)
+    yellow_prev = _shift(yellow, 1)
+    ma60_prev = _shift(ma60, 1)
+    rs = rsi + j
+    llv_j20 = _rolling(j, 20, "min")
+    llv_r14 = _rolling(rsi, 14, "min")
+    llv_rs15 = _rolling(rs, 15, "min")
+    llv_rs25 = _rolling(rs, 25, "min")
+    llv_v20 = _rolling(volume, 20, "min")
 
     fired = {
         # 超卖缩量拐头B：RSI 当天回升 ≥15 点，且前一日还在超卖区
         "zgnb_turn": (
             up_trend
-            and (r0 - 15.0) >= r1
-            and (r1 < 20.0 or j1 < 14.0)
-            and day_amp < span_cap + 0.5
-            and (day_chg < 2.3 or (doji and day_chg < 4.0))
-            and green_ok
-            and move_ok
-            and c0 >= yellow0
+            & ((rsi - 15.0) >= rsi_prev)
+            & ((rsi_prev < 20.0) | (j_prev < 14.0))
+            & (day_amp < span_cap + 0.5)
+            & ((day_chg < 2.3) | (doji & (day_chg < 4.0)))
+            & green_ok
+            & move_ok
+            & (close >= yellow)
         ),
         # 超卖缩量B
         "zgnb_shrink": (
             up_trend
-            and (j0 < 14.0 or r0 < 23.0)
-            and (rs < 55.0 or j0 <= llv_j20)
-            and day_amp < span_cap
-            and (day_chg < 2.5 or doji)
-            and green_ok
-            and (shrink or (proper_shrink and day_chg < 1.0))
-            and move_ok
+            & ((j < 14.0) | (rsi < 23.0))
+            & ((rs < 55.0) | (j <= llv_j20))
+            & (day_amp < span_cap)
+            & ((day_chg < 2.5) | doji)
+            & green_ok
+            & (shrink | (proper_shrink & (day_chg < 1.0)))
+            & move_ok
         ),
         # 原始B1
         "zgnb_origin": (
-            white0 > yellow0
-            and c0 >= yellow0 * 0.99
-            and yellow0 >= yellow_prev
-            and (j0 < 13.0 or r0 < 21.0)
-            and rs < llv_rs15 * 1.5
-            and proper_shrink
-            and green_ok
-            and (
-                body_pct < 1.5
-                or super_shrink
-                or (proper_shrink and v < llv_v20 * 1.1 and j0 <= llv_j20)
-                or (proper_shrink and (white_d < 1.8 or bbi_d < 1.5 or yellow_d < 2.8))
+            (white > yellow)
+            & (close >= yellow * 0.99)
+            & (yellow >= yellow_prev)
+            & ((j < 13.0) | (rsi < 21.0))
+            & (rs < llv_rs15 * 1.5)
+            & proper_shrink
+            & green_ok
+            & (
+                (body_pct < 1.5)
+                | super_shrink
+                | (proper_shrink & (volume < llv_v20 * 1.1) & (j <= llv_j20))
+                | (proper_shrink & ((white_d < 1.8) | (bbi_d < 1.5) | (yellow_d < 2.8)))
             )
-            and move_ok
+            & move_ok
         ),
         # 超卖超缩量B
         "zgnb_super_shrink": (
             up_trend
-            and (j0 < 14.0 or r0 < 23.0)
-            and rs < 60.0
-            and far_amp >= 45.0
-            and (
-                day_amp < span_cap
-                or (super_move and day_amp < span_cap + 3.2 and c0 > o0 and c0 > white0)
+            & ((j < 14.0) | (rsi < 23.0))
+            & (rs < 60.0)
+            & (far_amp >= 45.0)
+            & (
+                (day_amp < span_cap)
+                | (super_move & (day_amp < span_cap + 3.2) & (close > open_) & (close > white))
             )
-            and ((c0 < o0 and v < float(volume[-2]) and c0 >= yellow0) or c0 >= o0)
-            and (day_chg < 2.0 or doji)
-            and green_ok
-            and super_shrink
-            and move_ok
+            & (((close < open_) & (volume < prev_vol) & (close >= yellow)) | (close >= open_))
+            & ((day_chg < 2.0) | doji)
+            & green_ok
+            & super_shrink
+            & move_ok
         ),
         # 回踩白线B
         "zgnb_pull_white": (
             strong_trend
-            and (j0 < 30.0 or r0 < 40.0 or wash)
-            and rs < 70.0
-            and (day_amp < span_cap + 0.5 or white_d < 1.0 or bbi_d < 1.0)
-            and pull_white
-            and (day_chg < 2.0 or (day_chg < 5.0 and white_support))
-            and green_ok
-            and pull_shrink
-            and move_ok
-            and l0 <= c1
+            & ((j < 30.0) | (rsi < 40.0) | wash)
+            & (rs < 70.0)
+            & ((day_amp < span_cap + 0.5) | (white_d < 1.0) | (bbi_d < 1.0))
+            & pull_white
+            & ((day_chg < 2.0) | ((day_chg < 5.0) & white_support))
+            & green_ok
+            & pull_shrink
+            & move_ok
+            & (low <= prev_close)
         ),
         # 回踩超级B（超牛股回踩白线B1）
         "zgnb_pull_super": (
             super_bull
-            and (j0 < 35.0 or r0 < 45.0 or wash)
-            and rs < 80.0
-            and rs <= llv_rs25
-            and day_amp < span_cap + 1.0
-            and (day_chg < 2.5 or white_d < 2.0)
-            and strong_pull
-            and green_ok
-            and move_ok
-            and proper_shrink
+            & ((j < 35.0) | (rsi < 45.0) | wash)
+            & (rs < 80.0)
+            & (rs <= llv_rs25)
+            & (day_amp < span_cap + 1.0)
+            & ((day_chg < 2.5) | (white_d < 2.0))
+            & strong_pull
+            & green_ok
+            & move_ok
+            & proper_shrink
         ),
         # 回踩黄线B
         "zgnb_pull_yellow": (
-            white0 >= yellow0
-            and c0 >= yellow0 * 0.975
-            and (j0 < 13.0 or r0 < 18.0)
-            and pull_yellow
-            and green_ok
-            and (shrink or (proper_shrink and (j0 <= llv_j20 or r0 <= llv_r14)))
-            and yellow0 >= yellow_prev * 0.997
-            and float(ma60[-1]) >= ma60_prev
-            and recent_amp >= 11.9
-            and far_amp >= 19.5
+            (white >= yellow)
+            & (close >= yellow * 0.975)
+            & ((j < 13.0) | (rsi < 18.0))
+            & pull_yellow
+            & green_ok
+            & (shrink | (proper_shrink & ((j <= llv_j20) | (rsi <= llv_r14))))
+            & (yellow >= yellow_prev * 0.997)
+            & (ma60 >= ma60_prev)
+            & (recent_amp >= 11.9)
+            & (far_amp >= 19.5)
         ),
     }
 
     # 排序用的加成（0~40）。都取自原式自己已经算过的量：**过线越典型分越高**，
-    # 不改「是否命中」—— 与金叉大阳 / 做T买点同一套做法。
-    shrink_ratio = v / hhv20 if hhv20 > 0 else 1.0
+    # 不改「是否命中」—— 与金叉大阳 / 做T买点同一套做法。同样逐根算，因为
+    # `zgnb_pull_super_10d` 要报「最近一次成立那根」的分数。
+    shrink_ratio = np.divide(volume, hhv20, out=np.ones(n), where=hhv20 > 0)
     extra = {
-        "zgnb_turn": _gate_score(r0 - r1, 15.0, 30.0) * 20.0
-        + _gate_score(day_amp, span_cap + 0.5, 0.0) * 10.0
-        + _gate_score(day_chg, 2.3, 0.0) * 10.0,
-        "zgnb_shrink": _gate_score(rs, 55.0, 25.0) * 20.0
-        + _gate_score(shrink_ratio, 0.618, 0.2) * 10.0
-        + _gate_score(day_chg, 2.5, 0.0) * 10.0,
-        "zgnb_origin": _gate_score(rs, 40.0, 15.0) * 20.0
-        + _gate_score(shrink_ratio, 0.618, 0.2) * 10.0
-        + _gate_score(body_pct, 1.5, 0.0) * 10.0,
-        "zgnb_super_shrink": _gate_score(far_amp, 45.0, 120.0) * 20.0
-        + _gate_score(shrink_ratio, 0.25, 0.08) * 10.0
-        + _gate_score(day_chg, 2.0, 0.0) * 10.0,
-        "zgnb_pull_white": _gate_score(white_d, 3.5, 0.3) * 20.0
-        + _gate_score(shrink_ratio, 0.618, 0.2) * 10.0
-        + _gate_score(day_amp, span_cap + 0.5, 0.0) * 10.0,
-        "zgnb_pull_super": _gate_score(rs, 80.0, 25.0) * 20.0
-        + _gate_score(white_d, 3.5, 0.3) * 10.0
-        + _gate_score(shrink_ratio, 0.618, 0.2) * 10.0,
-        "zgnb_pull_yellow": _gate_score(yellow_d, 2.0, 0.0) * 20.0
-        + _gate_score(shrink_ratio, 0.618, 0.2) * 10.0
-        + _gate_score(recent_amp, 11.9, 40.0) * 10.0,
+        "zgnb_turn": _zgb1_gate(rsi - rsi_prev, 15.0, 30.0) * 20.0
+        + _zgb1_gate(day_amp, span_cap + 0.5, 0.0) * 10.0
+        + _zgb1_gate(day_chg, 2.3, 0.0) * 10.0,
+        "zgnb_shrink": _zgb1_gate(rs, 55.0, 25.0) * 20.0
+        + _zgb1_gate(shrink_ratio, 0.618, 0.2) * 10.0
+        + _zgb1_gate(day_chg, 2.5, 0.0) * 10.0,
+        "zgnb_origin": _zgb1_gate(rs, 40.0, 15.0) * 20.0
+        + _zgb1_gate(shrink_ratio, 0.618, 0.2) * 10.0
+        + _zgb1_gate(body_pct, 1.5, 0.0) * 10.0,
+        "zgnb_super_shrink": _zgb1_gate(far_amp, 45.0, 120.0) * 20.0
+        + _zgb1_gate(shrink_ratio, 0.25, 0.08) * 10.0
+        + _zgb1_gate(day_chg, 2.0, 0.0) * 10.0,
+        "zgnb_pull_white": _zgb1_gate(white_d, 3.5, 0.3) * 20.0
+        + _zgb1_gate(shrink_ratio, 0.618, 0.2) * 10.0
+        + _zgb1_gate(day_amp, span_cap + 0.5, 0.0) * 10.0,
+        "zgnb_pull_super": _zgb1_gate(rs, 80.0, 25.0) * 20.0
+        + _zgb1_gate(white_d, 3.5, 0.3) * 10.0
+        + _zgb1_gate(shrink_ratio, 0.618, 0.2) * 10.0,
+        "zgnb_pull_yellow": _zgb1_gate(yellow_d, 2.0, 0.0) * 20.0
+        + _zgb1_gate(shrink_ratio, 0.618, 0.2) * 10.0
+        + _zgb1_gate(recent_amp, 11.9, 40.0) * 10.0,
     }
 
-    detail = {
-        "rsi3": round(r0, 1),
-        "kdj_j": round(j0, 1),
-        "amp20": round(recent_amp / 100.0, 4),
-        "amp50": round(far_amp / 100.0, 4),
-        "vol_shrink": round(shrink_ratio, 3),
-        "dist_white": round(white_d / 100.0, 4),
-        "dist_yellow": round(yellow_d / 100.0, 4),
-        "dist_bbi": round(bbi_d / 100.0, 4),
-        "day_amp": round(day_amp / 100.0, 4),
+    # 明细读数：同样逐根存，好让窗口形态能取「信号那根」而不是「今天」的值
+    fields = {
+        "rsi3": rsi,
+        "kdj_j": j,
+        "amp20": recent_amp,
+        "amp50": far_amp,
+        "vol_shrink": shrink_ratio,
+        "dist_white": white_d,
+        "dist_yellow": yellow_d,
+        "dist_bbi": bbi_d,
+        "day_amp": day_amp,
     }
     return {
         "enough": True,
         "fired": fired,
         "extra": extra,
-        "detail": detail,
-        "white": white0,
-        "yellow": yellow0,
+        "fields": fields,
+        "white": white,
+        "yellow": yellow,
     }
 
 
-def _zgb1_signal(bars: Bars, key: str) -> Signal | None:
-    """7 个子信号共用的出口：取公共计算结果里的那一条。"""
+def _zgb1_detail(fields: dict[str, np.ndarray], idx: int) -> dict[str, float]:
+    """把 `fields` 上第 `idx` 根（负数下标）读成明细字典。"""
+    return {
+        name: round(float(fields[name][idx]) * scale, digits)
+        for name, digits, scale in _ZGNB_DETAIL_FIELDS
+    }
+
+
+def _zgb1_signal(bars: Bars, key: str, *, window: int = 1) -> Signal | None:
+    """知行B1 各形态共用的出口。
+
+    - `window=1`：**今天**这根成立才算（7 个在册形态）。
+    - `window=N`：最近 N 根里**任意一根**成立即算，报的是**最近一次**成立那根的
+      分数与读数（`zgnb_pull_super_10d` 用；明细里另附 `ago` = 距今几个交易日，
+      0 就是今天）。
+    """
     common = _zgb1_common(bars)
-    if not common["enough"] or not common["fired"].get(key):
+    if not common["enough"]:
         return None
+    hit = np.flatnonzero(common["fired"][key][-window:])
+    if hit.size == 0:
+        return None
+    idx = int(hit[-1]) - window  # 负数下标，指到整条序列上
     support = common["white"] if key in ZGNB_WHITE_SUPPORT_KEYS else common["yellow"]
-    score = ZGNB_BASE_SCORE + common["extra"].get(key, 0.0)
-    return Signal(key, min(score, 100.0), {"support": support}, dict(common["detail"]))
+    score = ZGNB_BASE_SCORE + float(common["extra"][key][idx])
+    detail = _zgb1_detail(common["fields"], idx)
+    if window > 1:
+        detail["ago"] = -1 - idx
+    return Signal(key, min(score, 100.0), {"support": float(support[idx])}, detail)
 
 
 def _zgnb_turn(bars: Bars) -> Signal | None:
@@ -5493,6 +5581,16 @@ def _zgnb_pull_white(bars: Bars) -> Signal | None:
 def _zgnb_pull_super(bars: Bars) -> Signal | None:
     """超牛股回踩白线B1（原式 `回踩超级B`）。"""
     return _zgb1_signal(bars, "zgnb_pull_super")
+
+
+def _zgnb_pull_super_recent(bars: Bars) -> Signal | None:
+    """近 10 个交易日里**出现过**「超牛股回踩白线B1」（2026-10-13 用户要求）。
+
+    为什么要这个变体：`zgnb_pull_super` 的条件很严 —— 全市场 4846 只 × 260 个交易日
+    只出 27 条（约 0.1 条/天），单看当天几乎恒为 0。而它的意义恰恰是「这只票最近刚
+    出现过超牛股回踩」，所以按 10 个交易日的窗口看才用得上。
+    """
+    return _zgb1_signal(bars, "zgnb_pull_super", window=ZGNB_RECENT_DAYS)
 
 
 def _zgnb_pull_yellow(bars: Bars) -> Signal | None:
@@ -5599,6 +5697,10 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("zgnb_super_shrink", "超级缩量B1", ZGNB_GROUP, _zgnb_super_shrink),
     Pattern("zgnb_pull_white", "回踩白线B1", ZGNB_GROUP, _zgnb_pull_white),
     Pattern("zgnb_pull_super", "超牛股回踩白线B1", ZGNB_GROUP, _zgnb_pull_super),
+    # 2026-10-13 用户要求：上面那一档太稀有（全市场约 0.1 条/天），加一个「近 10 个
+    # 交易日出现过」的滚动窗口版本。判定复用同一条（只是 `window=ZGNB_RECENT_DAYS`），
+    # 排在它旁边，筛出来是「最近刚出现过、这几天在消化」的票。
+    Pattern("zgnb_pull_super_10d", "超牛股回踩白线B1·近10日", ZGNB_GROUP, _zgnb_pull_super_recent),
     Pattern("zgnb_pull_yellow", "回踩黄线B1", ZGNB_GROUP, _zgnb_pull_yellow),
 )
 

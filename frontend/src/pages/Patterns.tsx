@@ -258,6 +258,8 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   dist_yellow: ['距黄线', true],
   dist_bbi: ['距BBI', true],
   day_amp: ['当日振幅', true],
+  // 只有「超牛股回踩白线B1·近10日」会给这个：0 = 信号就出在今天，3 = 3 个交易日前
+  ago: ['信号距今', false],
 }
 
 function detailText(key: string, value: number | string): string {
