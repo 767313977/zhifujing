@@ -1077,7 +1077,7 @@ class DailyScheduler:
         与形态日线同一档（80%），别等它把额度吃到影响次日的基础采集。
         """
         # 延迟导入：与 `_push_brief` 同理，避免模块级循环依赖
-        from app.jobs.scan_dde import run as run_dde_scan
+        from app.jobs.scan_dde import DDE_SCAN_TASK, run as run_dde_scan
         from app.services.usage import QuotaLevel, level_label, quota_level
 
         try:
@@ -1088,6 +1088,17 @@ class DailyScheduler:
             return
         if level >= QuotaLevel.PAUSE_KLINE:
             logger.warning("DDE 扫描跳过：%s", level_label(level))
+            # 与 `_backfill_hit_dde` 同理落一条 skipped：这两步是尾部链路里**唯一**
+            # 会因配额被整段跳过、且跳过后不留痕的步骤。全市场 DDE 只在当天抓得到
+            # （`scan_dde.collect_market` 只认最近交易日），当天不记下来就再也说不清
+            # 「这天为什么没有」。
+            _record_log(
+                trade_date,
+                DDE_SCAN_TASK,
+                "skipped",
+                0,
+                f"配额让路，未抓当天全市场 DDE：{level_label(level)}",
+            )
             return
         try:
             result = run_dde_scan(trade_date, self.settings)
@@ -1127,6 +1138,17 @@ class DailyScheduler:
             return
         if level >= QuotaLevel.PAUSE_KLINE:
             logger.warning("命中 DDE 补齐跳过：%s", level_label(level))
+            # 落一条 skipped 记录（2026-10-13 加）：配额让路原来只写 logger.warning，
+            # `collect_log` 里连一行都没有 → 数据管理页看不出这天缺了 DDE，而尾部仍记
+            # `ok`（跳过不进 `_tail_failures`）。10-12 就这么静默丢了一天全市场 DDE，
+            # 事后查库才发现只有 34 只。任务名与 `_tail_failures` 用同一个，便于对照。
+            _record_log(
+                trade_date,
+                "backfill_hit_dde",
+                "skipped",
+                0,
+                f"配额让路，未补命中前 {self.settings.dde_hit_top_n} 只的 DDE 历史：{level_label(level)}",
+            )
             return
         try:
             result = backfill_top_hits(
