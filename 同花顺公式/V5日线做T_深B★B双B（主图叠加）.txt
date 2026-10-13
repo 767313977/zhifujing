@@ -1,0 +1,137 @@
+﻿/* V5 日线做T · 深B/★B/双B 优先级版 · 修复卖T（同花顺版）*/
+/* 画线方式请选「主图坐标」；公式名用英文，如 V5T */
+
+/* ━━━━ 原趋势线体系 ━━━━ */
+短:EMA(EMA(C,10),10),COLORCYAN,LINETHICK2;
+MA1:=MA(CLOSE,60);
+MA2:=EMA(CLOSE,13);
+/* 原式这里还有一段「左上角显示 行业/地域/概念」：
+   Z1:=STRCAT(HYBLOCK,' '); Z2:=STRCAT(Z1,DYBLOCK); Z3:=STRCAT(Z2,' ');
+   DRAWTEXT_FIX(ISLASTBAR,0,0,0,STRCAT(Z3,GNBLOCK)),COLOR00C0C0;
+   ⚠️ 本版同花顺没有 HYBLOCK/DYBLOCK/GNBLOCK（报「变量<hyblock>未定义」），
+   所以整段撤掉 —— 它只画左上角一行板块文字，与信号无关。 */
+
+主:(MA(CLOSE,14)+MA(CLOSE,28)+MA(CLOSE,57)+MA(CLOSE,144))/4,COLORBLUE,LINETHICK2;
+
+/* 维加斯隧道 */
+E12:EMA(CLOSE,12),COLORFF00FF,DOTLINE;
+E144:EMA(C,144),COLORRED,DOTLINE;
+E169:EMA(C,169),COLORRED,DOTLINE;
+E288:EMA(C,288),COLORGREEN,DOTLINE;
+E338:EMA(C,338),COLORGREEN,DOTLINE;
+
+/* ━━━━ V5 日线做T 信号层 ━━━━ */
+MA5:=MA(C,5);
+MA20:=MA(C,20);
+乖离:=(C-MA20)/MA20*100;
+MA5升:=MA5>REF(MA5,3);
+
+/* MACD：就地算，免跨指标引用；也可换成 DIF:="MACD.DIF"; DEA:="MACD.DEA"; MACD柱:="MACD.MACD"; */
+DIF:=EMA(C,12)-EMA(C,26);
+DEA:=EMA(DIF,9);
+MACD柱:=2*(DIF-DEA);
+
+量MA20:=MA(V,20);
+缩量:=V<量MA20*0.7;
+
+/* 背离 4 通道 */
+C120L:=LLV(C,120); DIF120L:=LLV(DIF,120); V120H:=HHV(V,120);
+底背1:=C<=C120L*1.02 AND DIF>DIF120L*0.85;
+底背2:=C<=C120L*1.02 AND V<V120H*0.5;
+C120H:=HHV(C,120); DIF120H:=HHV(DIF,120);
+顶背1:=C>=C120H*0.98 AND DIF<DIF120H*0.85;
+顶背2:=C>=C120H*0.98 AND V<V120H*0.5;
+
+L10L:=REF(LLV(L,10),3); DIF10L:=REF(LLV(DIF,10),3); V10H:=REF(HHV(V,10),3);
+底背3:=LLV(L,3)<=L10L*1.01 AND DIF>DIF10L;
+底背4:=LLV(L,3)<=L10L*1.01 AND V<V10H*0.5;
+H10H:=REF(HHV(H,10),3); DIF10H:=REF(HHV(DIF,10),3);
+顶背3:=HHV(H,3)>=H10H*0.99 AND DIF<DIF10H;
+顶背4:=HHV(H,3)>=H10H*0.99 AND V<V10H*0.5;
+
+柱底背:=C<=LLV(C,10)*1.01 AND MACD柱>LLV(MACD柱,10)*0.8;
+柱顶背:=C>=HHV(C,10)*0.99 AND MACD柱<HHV(MACD柱,10)*0.8;
+
+底观察:=底背1 OR 底背2 OR 底背3 OR 底背4 OR 柱底背;
+顶观察:=顶背1 OR 顶背2 OR 顶背3 OR 顶背4 OR 柱顶背;
+
+突破买:=C>REF(HHV(H,3),1);
+突破卖:=C<REF(LLV(L,3),1);
+底背:=SUM(底观察,5)>0 AND 突破买 AND 乖离<-2;
+顶背:=SUM(顶观察,5)>0 AND 突破卖 AND 乖离>2;
+
+/* 金叉体系 */
+金叉:=CROSS(DIF,DEA);
+死叉:=CROSS(DEA,DIF);
+零下:=DIF<0 AND DEA<0;
+零上:=DIF>0 AND DEA>0;
+零下二金:=金叉 AND 零下 AND COUNT(金叉 AND DIF<0,30)>=2 AND DIF>LLV(DIF,30)*0.85;
+零上二死:=死叉 AND 零上 AND COUNT(死叉 AND DIF>0,30)>=2 AND DIF<HHV(DIF,30)*0.85;
+双零金:=金叉 AND 零下 AND NOT(零下二金);
+
+/* 基买 */
+绿缩:=MACD柱<0 AND MACD柱>REF(MACD柱,1);
+红攻:=MACD柱>0 AND MACD柱>REF(MACD柱,1) AND DIF>REF(DIF,1);
+基买:=(绿缩 OR 红攻) AND 乖离<-3 AND 缩量 AND MA5升;
+
+/* 趋势过滤 */
+涨幅:=(C-REF(C,1))/REF(C,1)*100;
+强多:=涨幅>5;
+强空:=涨幅<-5;
+超跌:=乖离<-15;
+超跌顶背:=顶背 AND 乖离>-8 AND MA5升;
+
+/* 信号合成 */
+买0:=IF(超跌,底背 OR 零下二金,底背 OR 零下二金 OR (双零金 AND NOT(强空)) OR (基买 AND NOT(强空)));
+卖0:=IF(超跌,(超跌顶背 AND NOT(强多)) OR (零上二死 AND NOT(强多)),(顶背 AND NOT(强多)) OR (零上二死 AND NOT(强多)));
+
+/* 冷却 */
+买冷却:=IF(超跌,7,5);
+卖冷却:=IF(超跌,3,5);
+买T:=买0 AND REF(BARSLAST(买0),1)>买冷却;
+卖T:=卖0 AND REF(BARSLAST(卖0),1)>卖冷却;
+
+/* 阳线过滤：排除收阴 */
+阳线:=C>=O;
+
+/* ★ MA3 金叉 MA5 + B 点（变量名不能以 ★ 开头，这里叫 星B） */
+MA3:=MA(C,3);
+MA3金叉MA5:=CROSS(MA3,MA5);
+
+/* 基础信号定义 */
+深B:=买T AND 阳线;
+星B:=EXIST(MA3金叉MA5,3) AND 买T AND C>=MA5 AND 阳线;
+双B:=星B AND MA3金叉MA5;
+
+/* 优先级互斥：重叠时只显示最高优先级 */
+显示深B:=深B AND NOT(星B);
+显示星B:=星B AND NOT(双B);
+显示双B:=双B;
+
+/* 信号标记 */
+DRAWICON(买T AND 阳线,L*0.97,1);
+DRAWICON(卖T,H*1.03,2);
+DRAWTEXT(卖T,H*1.05,'S'),COLORGREEN;
+
+/* 深B · 红色实心K · 优先级最高 */
+DRAWICON(显示深B,L*0.96,1);
+DRAWTEXT(显示深B,L*0.93,'深B'),COLORRED;
+STICKLINE(显示深B,O,C,3,0),COLORRED;
+STICKLINE(显示深B,H,L,0,0),COLORRED;
+
+/* ★B · 黄色实心K · 优先级次高 */
+DRAWICON(显示星B,L*0.96,1);
+DRAWTEXT(显示星B,L*0.93,'★B'),COLORYELLOW;
+STICKLINE(显示星B,O,C,3,0),COLORYELLOW;
+STICKLINE(显示星B,H,L,0,0),COLORYELLOW;
+
+/* 双B · 蓝色实心K · 优先级最低 */
+DRAWICON(显示双B,L*0.96,1);
+DRAWTEXT(显示双B,L*0.93,'双B'),COLORBLUE;
+STICKLINE(显示双B,O,C,3,0),COLORBLUE;
+STICKLINE(显示双B,H,L,0,0),COLORBLUE;
+
+/* 背景文字标注（洋红用十六进制 COLORFF00FF；本版没有 COLORMAGENTA 的证据）*/
+DRAWTEXT(超跌 AND ISLASTBAR,H*1.06,'超跌'),COLORFF00FF;
+DRAWTEXT(强多 AND ISLASTBAR,H*1.09,'多'),COLORRED;
+DRAWTEXT(强空 AND ISLASTBAR,H*1.09,'空'),COLORCYAN;

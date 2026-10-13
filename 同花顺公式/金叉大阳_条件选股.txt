@@ -1,0 +1,10 @@
+﻿/* 金叉大阳 · 条件选股（选股公式里不能有 STICKLINE / DRAWICON / DRAWTEXT）*/
+LC:=REF(C,1);
+RSI6:=SMA(MAX(C-LC,0),6,1)/SMA(ABS(C-LC),6,1)*100;
+
+金叉:=CROSS(MA(C,3),MA(C,5));
+涨幅:=(C/REF(C,1)-1)*100;
+上影比:=(H-MAX(C,O))/(H-L+0.0001);
+
+/* 唯一输出：条件为真时结果为 1，选股平台据此选票 */
+买入:金叉 AND 涨幅>=4 AND RSI6<60 AND 上影比<=0.2;

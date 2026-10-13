@@ -1,0 +1,28 @@
+/* 金叉大阳 · 主图叠加（由通达信公式改写；画线方式要选「主图坐标」）*/
+MA3:MA(C,3),colorwhite;
+MA5:MA(C,5),coloryellow;
+
+/* RSI6：Wilder 平滑，与通达信 SMA(X,6,1) 同口径 */
+LC:=REF(C,1);
+RSI6:=SMA(MAX(C-LC,0),6,1)/SMA(ABS(C-LC),6,1)*100;
+
+/* 条件 */
+金叉:=CROSS(MA(C,3),MA(C,5));
+涨幅:=(C/REF(C,1)-1)*100;
+大阳:=涨幅>=4;
+上影比:=(H-MAX(C,O))/(H-L+0.0001);
+短上影:=上影比<=0.2;
+低RSI:=RSI6<60;
+
+/* 进场信号：金叉 + 4% 大阳 + 短上影 + RSI6<60（想放宽就去掉「AND 短上影」）*/
+买入:=金叉 AND 大阳 AND 低RSI AND 短上影;
+
+/* 标注 */
+STICKLINE(买入,O,C,3,0),COLORRED;
+DRAWICON(买入,L*0.985,1);
+DRAWTEXT(买入,L*0.965,'买'),COLORRED;
+
+/* 可选：死叉卖点，不参与买入信号 */
+死叉:=CROSS(MA(C,5),MA(C,3));
+DRAWICON(死叉,H*1.015,2);
+DRAWTEXT(死叉,H*1.035,'卖'),COLORGREEN;

@@ -1,0 +1,160 @@
+/* ══════════ 知行超级B1 V1203（ZGNB）· 副图指标 · 同花顺版 ══════════
+   改写自通达信公式。画线方式请选「副图坐标」；公式名用英文，如 ZGNB。
+
+   ── 与原式的差异（每处都在下面就地标注）──
+   1) KDJ.J / KDJ.K 跨指标引用 → 就地用 RSV + SMA 复算 KDJ(9,3,3)，
+      口径与通达信 KDJ 默认参数一致；副图只画 J 与 RSI3（K/D 不画 = 「去除 KD」），
+      K 仍参与死叉判定。
+   2) CODELIKE(...) → 同花顺没有这个函数，改用 STRFIND(CODE,...) 判断 30/68/4/8/9 开头。
+      官方文档是 3 参数 STRFIND(串,子串,第N位起)；有些版本是 4 参数
+      STRFIND(CODE,'30',1,1)。用哪个见下方「板块判定」处的注释。
+   3) 颜色：通达信色值是 BGR、同花顺是 RGB，已按「红蓝互换」换算，每行都标了原值。
+   4) 持股分数：原式用 := （不显示），这里改成显示线并 ×10（0~5 分放大成 0~50）。
+   5) 注释：同花顺这个版本不认大括号注释，已全部换成斜杠星号注释（本文件已改好）。
+   6) 其余判定条件、阈值、周期数一律照抄，未作改动。
+
+   ── 副图布局 ──
+   上方：红色「金叉」 / 绿色「死叉」
+   下方（自上而下）：红 缩量B1、青 超级缩量B1、黄 缩量拐头B1、
+                    紫 回踩白线B1、绿 超牛股回踩白线B1、短黄 回踩黄线B1、白 原始B1
+   持股分数：4~5 分拿住、3 分考虑放飞、2~0 分考虑卖出，不破白线（牵牛绳）。
+   整体思路：上涨趋势中的回调 + KDJ/RSI 的 B1（或短线洗盘）+ 缩量 + 十字星，
+             以及强势股回踩白线缩量。
+
+   注：趋势白线 / 大哥黄线 是主图线，本副图只出信号、不画这两条线。
+   ═══════════════════════════════════════════════════════════ */
+
+/* 定义中短期周期数 */
+N:=20;
+M:=50;
+
+/* ── 以下 Z 哥公式（白/黄/长/短）── */
+趋势白线:=EMA(EMA(C,10),10);
+大哥黄线:=(MA(CLOSE,14)+MA(CLOSE,28)+MA(CLOSE,57)+MA(CLOSE,144))/4;
+短期:=100*(C-LLV(L,14))/(HHV(C,14)-LLV(L,14));
+长期:=100*(C-LLV(L,28))/(HHV(C,28)-LLV(L,28));
+BBI:=(MA(CLOSE,3)+MA(CLOSE,6)+MA(CLOSE,12)+MA(CLOSE,24))/4;
+
+/* 定义基础判定信息 */
+/* 原式：CODELIKE('68') OR CODELIKE('30') OR CODELIKE('4') OR CODELIKE('8') OR CODELIKE('9') OR EXIST(...) */
+/* 同花顺无 CODELIKE，改用 STRFIND(CODE,'xx',1)=1：从第 1 位起查找，返回 1 即开头命中 */
+/* 若你的版本是 4 参数形式，把每处 ,1)=1 改成 ,1,1)=1 即可 */
+宽幅板:=STRFIND(CODE,'30',1)=1 OR STRFIND(CODE,'68',1)=1 OR STRFIND(CODE,'4',1)=1 OR STRFIND(CODE,'8',1)=1 OR STRFIND(CODE,'9',1)=1 OR EXIST(C/REF(C,1)>1.15,200);
+振幅区间:=IF(宽幅板,8,5);
+放宽系数:=IF(宽幅板,0.9,1);
+当日振幅:=(HIGH-LOW)/LOW*100;
+当日涨跌幅:=ABS(CLOSE-REF(CLOSE,1))/REF(CLOSE,1)*100*放宽系数;
+上涨十字星:=C>REF(C,1) AND (ABS(C-O)/O*100*放宽系数)<1.8;
+单针下20:=(短期<=20 AND 长期>=75) OR ((长期-短期)>=70);
+聚宝盆:=COUNT(长期>=75,8)>=6 AND COUNT(短期<=70,7)>=4 AND COUNT(短期<=50,8)>=1;
+双叉戟:=EVERY(长期>=75,8) AND COUNT(短期<=50,6)>=2 AND COUNT(短期<=20,7)>=1;
+红肥绿瘦:=COUNT(C>=O,15)>7 OR COUNT(C>REF(C,1),11)>5;
+
+/* 定义大绿棒和缩量条件 */
+VDAY:=HHVBARS(VOL,40);
+不是大绿棒:=REF(C,VDAY)>=REF(C,VDAY+1) OR REF(C,VDAY)>=REF(O,VDAY);
+大绿棒:=NOT(不是大绿棒);
+大绿棒离得远:=VDAY>=15 AND 大绿棒;
+缩量:=(VOL<HHV(VOL,20)*0.416) OR (VOL<HHV(VOL,50)/3);
+回踩缩量:=(VOL<HHV(VOL,20)*0.45) OR (VOL<HHV(VOL,50)/3);
+适当缩量:=(VOL<HHV(VOL,20)*0.618) OR (VOL<HHV(VOL,50)/3);
+超缩量:=(VOL<HHV(VOL,30)/4) OR (VOL<HHV(VOL,50)/6);
+
+/* KDJ 就地计算（替换 KDJ.J / KDJ.K 跨指标引用；参数 9,3,3 与通达信一致） */
+RSV:=(CLOSE-LLV(LOW,9))/(HHV(HIGH,9)-LLV(LOW,9))*100;
+K:=SMA(RSV,3,1);
+D:=SMA(K,3,1);
+J:=3*K-2*D;
+
+/* 3日RSI（与原式一致：Wilder 平滑 SMA(X,3,1)） */
+LC:=REF(CLOSE,1);
+TEMP1:=MAX(CLOSE-LC,0);
+TEMP2:=ABS(CLOSE-LC);
+RSI:=SMA(TEMP1,3,1)/SMA(TEMP2,3,1)*100;
+
+/* 定义振幅 */
+LOWN:=LLV(LOW,N);
+HIGHN:=HHV(HIGH,N);
+近期振幅:=(HIGHN-LOWN)/LOWN*100;
+近期异动:=近期振幅>=15 OR (HHV(H,12)-LLV(L,14))/LLV(L,14)*100>=11;
+LOWM:=LLV(LOW,M);
+HIGHM:=HHV(HIGH,M);
+远期振幅:=(HIGHM-LOWM)/LOWM*100;
+远期异动:=远期振幅>=30;
+超级异动:=近期振幅>=60;
+洗盘异动:=(COUNT(单针下20,10)>=2) OR (聚宝盆) OR 双叉戟;
+
+/* 定义趋势股 */
+做上涨趋势:=趋势白线>=大哥黄线 AND (C>=大哥黄线 OR (C>大哥黄线*0.975 AND C>O));
+强趋势股:=EVERY(大哥黄线>=REF(大哥黄线,1)*0.999,13) AND 趋势白线>=REF(趋势白线,1) AND EVERY(趋势白线>大哥黄线,20) AND EVERY(趋势白线>=REF(趋势白线,1),11) AND 红肥绿瘦;
+超牛股:=(EVERY(BBI>=REF(BBI,1)*0.999,20) OR COUNT(BBI>=REF(BBI,1),25)>=23) AND (近期振幅>=30 OR 远期振幅>80) AND BARSLAST(CROSS(C,大哥黄线))>12;
+
+/* 定义回踩白线 */
+距离白线:=ABS(C-趋势白线)/C*100;
+L距离白线:=(ABS(L-趋势白线)/趋势白线)*100;
+距离BBI:=ABS(C-BBI)/C*100;
+L距离BBI:=(ABS(L-BBI)/BBI)*100;
+回踩白线:=(C>=趋势白线 AND 距离白线<=2) OR (C<趋势白线 AND 距离白线<0.8) OR (C>=BBI AND 距离BBI<2.5 AND L距离BBI<1 AND 距离白线<=3 AND 当日涨跌幅<1 AND C>REF(C,1));
+白线支撑:=C>=趋势白线 AND 距离白线<1.5;
+强势回踩不破:=(L距离白线<1 OR L距离BBI<0.5) AND (C>趋势白线) AND (距离白线<=3.5);
+
+/* 定义回踩黄线 */
+距离黄线:=(ABS(C-大哥黄线)/大哥黄线)*100;
+回踩黄线:=(C>=大哥黄线 AND (距离黄线<=1.5 OR (距离黄线<=2 AND 当日涨跌幅<1))) OR (C<大哥黄线 AND 距离黄线<=0.8);
+
+/* 计算持股阶段分数，防卖飞 */
+持股出现死叉:=(J<=K) AND (REF(J,1)>REF(K,1));
+出现金叉:=J>K AND REF(J,1)<=REF(K,1);
+下跌:=C<REF(C,1);
+放量:=V>REF(V,1) AND 下跌;
+死叉:=J<=K;
+破线:=C<趋势白线;
+转势:=(趋势白线-REF(趋势白线,1))<0;
+X:=IF(下跌,0,1)+IF(放量,0,1)+IF(破线,0,1)+IF(死叉,0,1)+IF(转势,0,1);
+分数:=X;
+
+/* 判定买入提示 */
+超卖缩量拐头B:=做上涨趋势 AND (RSI-15)>=REF(RSI,1) AND (REF(RSI,1)<20 OR REF(J,1)<14) AND 当日振幅<(振幅区间+0.5) AND (当日涨跌幅<2.3 OR (上涨十字星 AND 当日涨跌幅<4)) AND (不是大绿棒 OR 大绿棒离得远) AND (近期异动 OR 远期异动 OR 洗盘异动) AND C>=大哥黄线;
+超卖缩量B:=做上涨趋势 AND (J<14 OR RSI<23) AND (RSI+J<55 OR J=LLV(J,20)) AND 当日振幅<振幅区间 AND (当日涨跌幅<2.5 OR 上涨十字星) AND (不是大绿棒 OR 大绿棒离得远) AND (缩量 OR (适当缩量 AND 当日涨跌幅<1)) AND (近期异动 OR 远期异动 OR 洗盘异动);
+原始B1:=趋势白线>大哥黄线 AND C>=大哥黄线*0.99 AND 大哥黄线>=REF(大哥黄线,1) AND (J<13 OR RSI<21) AND (RSI+J)<LLV(RSI+J,15)*1.5 AND 适当缩量 AND (不是大绿棒 OR 大绿棒离得远) AND (ABS(C-O)*100/O<1.5 OR (超缩量 OR (适当缩量 AND V<LLV(V,20)*1.1 AND J=LLV(J,20))) OR (适当缩量 AND (距离白线<1.8 OR 距离BBI<1.5 OR 距离黄线<2.8))) AND (近期异动 OR 远期异动 OR 洗盘异动);
+超卖超缩量B:=做上涨趋势 AND (J<14 OR RSI<23) AND RSI+J<60 AND 远期振幅>=45 AND (当日振幅<振幅区间 OR (超级异动 AND 当日振幅<振幅区间+3.2 AND C>O AND C>趋势白线)) AND ((C<O AND V<REF(V,1) AND C>=大哥黄线) OR (C>=O)) AND (当日涨跌幅<2 OR 上涨十字星) AND (不是大绿棒 OR 大绿棒离得远) AND 超缩量 AND (近期异动 OR 远期异动 OR 洗盘异动);
+回踩白线B:=强趋势股 AND (J<30 OR RSI<40 OR 洗盘异动) AND RSI+J<70 AND (当日振幅<振幅区间+0.5 OR 距离白线<1 OR 距离BBI<1) AND 回踩白线 AND (当日涨跌幅<2 OR (当日涨跌幅<5 AND 白线支撑)) AND (不是大绿棒 OR 大绿棒离得远) AND 回踩缩量 AND (近期异动 OR 远期异动 OR 洗盘异动) AND L<=REF(C,1);
+回踩超级B:=超牛股 AND (J<35 OR RSI<45 OR 洗盘异动) AND RSI+J<80 AND (RSI+J)=LLV(RSI+J,25) AND 当日振幅<振幅区间+1 AND (当日涨跌幅<2.5 OR 距离白线<2) AND 强势回踩不破 AND (不是大绿棒 OR 大绿棒离得远) AND (近期异动 OR 远期异动 OR 洗盘异动) AND 适当缩量;
+回踩黄线B:=趋势白线>=大哥黄线 AND C>=大哥黄线*0.975 AND (J<13 OR RSI<18) AND 回踩黄线 AND (不是大绿棒 OR 大绿棒离得远) AND (缩量 OR (适当缩量 AND (J=LLV(J,20) OR RSI=LLV(RSI,14)))) AND 大哥黄线>=REF(大哥黄线,1)*0.997 AND MA(C,60)>=REF(MA(C,60),1) AND 近期振幅>=11.9 AND 远期振幅>=19.5;
+选股:=超卖缩量拐头B OR 超卖缩量B OR 原始B1 OR 超卖超缩量B OR 回踩白线B OR 回踩超级B OR 回踩黄线B;
+
+/* ─────────── 副图线型：标准 J + RSI3（去除 KD）─────────── */
+J线:J,COLORD94FAE;                      /* 原通达信 COLORAE4FD9（BGR）→ 同花顺 RGB 互换 */
+RSI3:RSI,COLOR19A0FF;                   /* 原通达信 COLORFFA019（BGR）→ 同花顺 RGB 互换 */
+持股分数:分数*10,COLORWHITE,DOTLINE;      /* 0~5 分放大 10 倍，4~5 拿住 / 3 放飞 / 0~2 卖 */
+
+/* ─────────── 副图上方：KDJ 金叉（红）/ 死叉（绿）─────────── */
+DRAWTEXT(出现金叉,88,'金叉'),COLORRED;
+DRAWTEXT(持股出现死叉,95,'死叉'),COLORGREEN;
+
+/* ─────────── 副图下方：七个 B1 信号 ─────────── */
+/* 文字按 8 格间距排开（副图很矮，原来 5 格会互相压字）；数字就是纵坐标 */
+DRAWTEXT(超卖缩量B,52,'缩量B1'),COLORRED;
+DRAWTEXT(超卖超缩量B,44,'超级缩量B1'),COLORCYAN;
+DRAWTEXT(超卖缩量拐头B,36,'缩量拐头B1'),COLORYELLOW;
+DRAWTEXT(回踩白线B,28,'回踩白线B1'),COLORFF00FF;
+DRAWTEXT(回踩超级B,20,'超牛股回踩白线B1'),COLORGREEN;
+DRAWTEXT(回踩黄线B,12,'回踩黄线B1'),COLORFFC800;   /* 短黄：若显示成蓝紫，改成 COLOR00C8FF */
+DRAWTEXT(原始B1,4,'原始B1'),COLORWHITE;
+
+/* ─────────── 箭头：当前用「文字箭头」方案 ─────────── */
+/* 同一天多个信号时只画一个 ↑（位置 y=62 的空带），文字在下面分档照样认得出 */
+DRAWTEXT(选股,62,'↑'),COLORRED;
+/* 若改用图形化图标，把上面这行注释掉、启用下面 7 行 */
+/* DRAWICON(超卖缩量B,62,1); */
+/* DRAWICON(超卖超缩量B,62,1); */
+/* DRAWICON(超卖缩量拐头B,62,1); */
+/* DRAWICON(回踩白线B,62,1); */
+/* DRAWICON(回踩超级B,62,1); */
+/* DRAWICON(回踩黄线B,62,1); */
+/* DRAWICON(原始B1,62,1); */
+
+/* 原始B1 的信号日期：月日（如 1013）*/
+DRAWNUMBER(原始B1,70,ROUND(MONTH*100+DAY));
+/* 想看完整年月日，把上一行换成这行：*/
+/* DRAWNUMBER(原始B1,70,ROUND(YEAR*10000+MONTH*100+DAY)); */

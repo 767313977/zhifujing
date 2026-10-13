@@ -1,0 +1,84 @@
+/* ══════════ 知行超级B1 V1203（ZGNB）· 条件选股 · 同花顺版 ══════════
+   与「知行超级B1_技术指标（副图）」同逻辑，去掉所有画线语句，只留最后的选股条件。
+   同花顺「条件选股」里新建公式（公式类型选 选股），粘贴即可；公式名用英文如 ZGNBXG。
+   改动点同副图版：KDJ 就地复算、CODELIKE 换成 STRFIND(CODE,...)、大括号注释换成斜杠星号注释。
+   ═══════════════════════════════════════════════════════════════ */
+
+N:=20;
+M:=50;
+
+/* ── 以下 Z 哥公式（白/黄/长/短）── */
+趋势白线:=EMA(EMA(C,10),10);
+大哥黄线:=(MA(CLOSE,14)+MA(CLOSE,28)+MA(CLOSE,57)+MA(CLOSE,144))/4;
+短期:=100*(C-LLV(L,14))/(HHV(C,14)-LLV(L,14));
+长期:=100*(C-LLV(L,28))/(HHV(C,28)-LLV(L,28));
+BBI:=(MA(CLOSE,3)+MA(CLOSE,6)+MA(CLOSE,12)+MA(CLOSE,24))/4;
+
+/* 板块判定：同花顺无 CODELIKE，改 STRFIND(CODE,'xx',1)=1；4 参数版把每处 ,1)=1 改成 ,1,1)=1 */
+宽幅板:=STRFIND(CODE,'30',1)=1 OR STRFIND(CODE,'68',1)=1 OR STRFIND(CODE,'4',1)=1 OR STRFIND(CODE,'8',1)=1 OR STRFIND(CODE,'9',1)=1 OR EXIST(C/REF(C,1)>1.15,200);
+振幅区间:=IF(宽幅板,8,5);
+放宽系数:=IF(宽幅板,0.9,1);
+当日振幅:=(HIGH-LOW)/LOW*100;
+当日涨跌幅:=ABS(CLOSE-REF(CLOSE,1))/REF(CLOSE,1)*100*放宽系数;
+上涨十字星:=C>REF(C,1) AND (ABS(C-O)/O*100*放宽系数)<1.8;
+单针下20:=(短期<=20 AND 长期>=75) OR ((长期-短期)>=70);
+聚宝盆:=COUNT(长期>=75,8)>=6 AND COUNT(短期<=70,7)>=4 AND COUNT(短期<=50,8)>=1;
+双叉戟:=EVERY(长期>=75,8) AND COUNT(短期<=50,6)>=2 AND COUNT(短期<=20,7)>=1;
+红肥绿瘦:=COUNT(C>=O,15)>7 OR COUNT(C>REF(C,1),11)>5;
+
+VDAY:=HHVBARS(VOL,40);
+不是大绿棒:=REF(C,VDAY)>=REF(C,VDAY+1) OR REF(C,VDAY)>=REF(O,VDAY);
+大绿棒:=NOT(不是大绿棒);
+大绿棒离得远:=VDAY>=15 AND 大绿棒;
+缩量:=(VOL<HHV(VOL,20)*0.416) OR (VOL<HHV(VOL,50)/3);
+回踩缩量:=(VOL<HHV(VOL,20)*0.45) OR (VOL<HHV(VOL,50)/3);
+适当缩量:=(VOL<HHV(VOL,20)*0.618) OR (VOL<HHV(VOL,50)/3);
+超缩量:=(VOL<HHV(VOL,30)/4) OR (VOL<HHV(VOL,50)/6);
+
+/* KDJ 就地计算（替换 KDJ.J / KDJ.K 跨指标引用） */
+RSV:=(CLOSE-LLV(LOW,9))/(HHV(HIGH,9)-LLV(LOW,9))*100;
+K:=SMA(RSV,3,1);
+D:=SMA(K,3,1);
+J:=3*K-2*D;
+
+/* 3日RSI */
+LC:=REF(CLOSE,1);
+TEMP1:=MAX(CLOSE-LC,0);
+TEMP2:=ABS(CLOSE-LC);
+RSI:=SMA(TEMP1,3,1)/SMA(TEMP2,3,1)*100;
+
+LOWN:=LLV(LOW,N);
+HIGHN:=HHV(HIGH,N);
+近期振幅:=(HIGHN-LOWN)/LOWN*100;
+近期异动:=近期振幅>=15 OR (HHV(H,12)-LLV(L,14))/LLV(L,14)*100>=11;
+LOWM:=LLV(LOW,M);
+HIGHM:=HHV(HIGH,M);
+远期振幅:=(HIGHM-LOWM)/LOWM*100;
+远期异动:=远期振幅>=30;
+超级异动:=近期振幅>=60;
+洗盘异动:=(COUNT(单针下20,10)>=2) OR (聚宝盆) OR 双叉戟;
+
+做上涨趋势:=趋势白线>=大哥黄线 AND (C>=大哥黄线 OR (C>大哥黄线*0.975 AND C>O));
+强趋势股:=EVERY(大哥黄线>=REF(大哥黄线,1)*0.999,13) AND 趋势白线>=REF(趋势白线,1) AND EVERY(趋势白线>大哥黄线,20) AND EVERY(趋势白线>=REF(趋势白线,1),11) AND 红肥绿瘦;
+超牛股:=(EVERY(BBI>=REF(BBI,1)*0.999,20) OR COUNT(BBI>=REF(BBI,1),25)>=23) AND (近期振幅>=30 OR 远期振幅>80) AND BARSLAST(CROSS(C,大哥黄线))>12;
+
+距离白线:=ABS(C-趋势白线)/C*100;
+L距离白线:=(ABS(L-趋势白线)/趋势白线)*100;
+距离BBI:=ABS(C-BBI)/C*100;
+L距离BBI:=(ABS(L-BBI)/BBI)*100;
+回踩白线:=(C>=趋势白线 AND 距离白线<=2) OR (C<趋势白线 AND 距离白线<0.8) OR (C>=BBI AND 距离BBI<2.5 AND L距离BBI<1 AND 距离白线<=3 AND 当日涨跌幅<1 AND C>REF(C,1));
+白线支撑:=C>=趋势白线 AND 距离白线<1.5;
+强势回踩不破:=(L距离白线<1 OR L距离BBI<0.5) AND (C>趋势白线) AND (距离白线<=3.5);
+
+距离黄线:=(ABS(C-大哥黄线)/大哥黄线)*100;
+回踩黄线:=(C>=大哥黄线 AND (距离黄线<=1.5 OR (距离黄线<=2 AND 当日涨跌幅<1))) OR (C<大哥黄线 AND 距离黄线<=0.8);
+
+超卖缩量拐头B:=做上涨趋势 AND (RSI-15)>=REF(RSI,1) AND (REF(RSI,1)<20 OR REF(J,1)<14) AND 当日振幅<(振幅区间+0.5) AND (当日涨跌幅<2.3 OR (上涨十字星 AND 当日涨跌幅<4)) AND (不是大绿棒 OR 大绿棒离得远) AND (近期异动 OR 远期异动 OR 洗盘异动) AND C>=大哥黄线;
+超卖缩量B:=做上涨趋势 AND (J<14 OR RSI<23) AND (RSI+J<55 OR J=LLV(J,20)) AND 当日振幅<振幅区间 AND (当日涨跌幅<2.5 OR 上涨十字星) AND (不是大绿棒 OR 大绿棒离得远) AND (缩量 OR (适当缩量 AND 当日涨跌幅<1)) AND (近期异动 OR 远期异动 OR 洗盘异动);
+原始B1:=趋势白线>大哥黄线 AND C>=大哥黄线*0.99 AND 大哥黄线>=REF(大哥黄线,1) AND (J<13 OR RSI<21) AND (RSI+J)<LLV(RSI+J,15)*1.5 AND 适当缩量 AND (不是大绿棒 OR 大绿棒离得远) AND (ABS(C-O)*100/O<1.5 OR (超缩量 OR (适当缩量 AND V<LLV(V,20)*1.1 AND J=LLV(J,20))) OR (适当缩量 AND (距离白线<1.8 OR 距离BBI<1.5 OR 距离黄线<2.8))) AND (近期异动 OR 远期异动 OR 洗盘异动);
+超卖超缩量B:=做上涨趋势 AND (J<14 OR RSI<23) AND RSI+J<60 AND 远期振幅>=45 AND (当日振幅<振幅区间 OR (超级异动 AND 当日振幅<振幅区间+3.2 AND C>O AND C>趋势白线)) AND ((C<O AND V<REF(V,1) AND C>=大哥黄线) OR (C>=O)) AND (当日涨跌幅<2 OR 上涨十字星) AND (不是大绿棒 OR 大绿棒离得远) AND 超缩量 AND (近期异动 OR 远期异动 OR 洗盘异动);
+回踩白线B:=强趋势股 AND (J<30 OR RSI<40 OR 洗盘异动) AND RSI+J<70 AND (当日振幅<振幅区间+0.5 OR 距离白线<1 OR 距离BBI<1) AND 回踩白线 AND (当日涨跌幅<2 OR (当日涨跌幅<5 AND 白线支撑)) AND (不是大绿棒 OR 大绿棒离得远) AND 回踩缩量 AND (近期异动 OR 远期异动 OR 洗盘异动) AND L<=REF(C,1);
+回踩超级B:=超牛股 AND (J<35 OR RSI<45 OR 洗盘异动) AND RSI+J<80 AND (RSI+J)=LLV(RSI+J,25) AND 当日振幅<振幅区间+1 AND (当日涨跌幅<2.5 OR 距离白线<2) AND 强势回踩不破 AND (不是大绿棒 OR 大绿棒离得远) AND (近期异动 OR 远期异动 OR 洗盘异动) AND 适当缩量;
+回踩黄线B:=趋势白线>=大哥黄线 AND C>=大哥黄线*0.975 AND (J<13 OR RSI<18) AND 回踩黄线 AND (不是大绿棒 OR 大绿棒离得远) AND (缩量 OR (适当缩量 AND (J=LLV(J,20) OR RSI=LLV(RSI,14)))) AND 大哥黄线>=REF(大哥黄线,1)*0.997 AND MA(C,60)>=REF(MA(C,60),1) AND 近期振幅>=11.9 AND 远期振幅>=19.5;
+
+选股:超卖缩量拐头B OR 超卖缩量B OR 原始B1 OR 超卖超缩量B OR 回踩白线B OR 回踩超级B OR 回踩黄线B;
