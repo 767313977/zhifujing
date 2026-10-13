@@ -298,6 +298,7 @@ export default function Settings() {
                     —— 本周期还剩 {quota.days_left} 个交易日，满负荷约需{' '}
                     {fmtInt(quota.need_calls)} 次、剩 {fmtInt(quota.cycle_remaining)} 次
                     {needRatio != null && <>（需求 ÷ 剩余 = {Math.round(needRatio * 100)}%）</>}
+                    ；判档按「还要采 {Math.max(quota.days_left - 1, 0)} 天」算（今天那轮已经在跑）
                   </>
                 )}
                 。不够时按
