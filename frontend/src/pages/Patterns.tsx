@@ -258,7 +258,8 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   dist_yellow: ['距黄线', true],
   dist_bbi: ['距BBI', true],
   day_amp: ['当日振幅', true],
-  // 只有「超牛股回踩白线B1·近10日」会给这个：0 = 信号就出在今天，3 = 3 个交易日前
+  // 知行B1 这一组（7 个形态）都会给：0 = 信号就出在今天，3 = 3 个交易日前。
+  // 它们是「近 N 个交易日出现过」的窗口口径，`ago` 就是那个「最近一次」距今几天。
   ago: ['信号距今', false],
 }
 
@@ -604,6 +605,8 @@ export default function Patterns() {
                 ＋洗完（只扫创业板与科创板，且样板/启动另限「今天冲高过」的候选池），
                 悟道之路＝强达型与华宝早期（同样只扫创业板与科创板）；金叉大阳（趋势）也只扫这两块；
                 做T＝用户的「V5 日线做T」买点，深B/★B/双B 三档（全市场扫，档位在明细里看）；
+                知行B1＝同花顺「知行超级B1」的 7 个子信号，取「近 N 个交易日出现过」的窗口
+                口径（常规 5 日、超牛股那一档 10 日），明细里的「信号距今」＝最近一次距今几天；
                 <Link to="/wudao" className="text-fg-dim underline decoration-line underline-offset-2 hover:text-fg">
                   悟道之路单独一页
                 </Link>

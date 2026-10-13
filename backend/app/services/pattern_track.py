@@ -31,6 +31,13 @@
 同一只票在同一个循环里只出现一次；但它连上三个循环就算三个样本（2026-09-27 用户定）
 —— 这回答的是「每天照这份清单买会怎样」。同时给出去重后的只数，便于知道重复程度。
 
+⚠️ **例外：窗口形态只算信号日那一次**（2026-10-13 加）。知行B1 那 7 个形态是「近 N 个
+交易日出现过」的口径 —— 同一个信号会在命中记录里连挂 5 天（超牛股那一档 10 天），
+照上面那条「不去重」计入，等于把**一笔**信号按 5~10 个不同入场日重复统计：样本数被
+放大、胜率也跟着变「稳」，可它其实只有一个独立观测。判据是命中明细里的 `ago`
+（0 = 信号就出在那天）：只留 `ago = 0` 的行，等价于按 (代码, 形态, 信号日) 去重，
+入场日也回到信号当天 —— 与其它形态同口径。其它形态的明细里没有 `ago`，不受影响。
+
 ## 未走完的循环不编造数据
 
 第 n 个交易日的行情还没到（或该股当天没有行）时，那个点**不返回**：`progress` 只记到
@@ -55,7 +62,7 @@ from dataclasses import dataclass
 from datetime import date
 
 import numpy as np
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import PatternHit, StockDaily, TradeCalendar
@@ -111,6 +118,10 @@ def _scan_dates(session: Session, cohorts: int, start: date) -> list[date]:
 def _picks(session: Session, days: list[date], top: int) -> dict[date, list[Pick]]:
     """每个循环的「评分前 `top` 只」，按票归并取最高分（名称取自命中记录的快照）。
 
+    ⚠️ **窗口形态只留信号日那一行**（`ago = 0`，见模块说明的「样本口径」）：
+    知行B1 是「近 N 个交易日出现过」的口径，同一个信号会连挂 5~10 天，不去重就会被
+    按不同入场日重复计入。`json_extract` 让这道过滤留在 SQL 里，不把明细 JSON 拉回来。
+
     ⚠️ 并列分数时的取舍与 `/hits` **不保证逐只一致**（那边是纯 SQL `order by score
     desc`、没有 tie-break，本身也是任意的；这里显式按代码升序兜底，至少**同一天同
     一份数据每次结果相同**）。差一两只不影响统计，但别拿「第 50 位是谁」去对账。
@@ -118,9 +129,13 @@ def _picks(session: Session, days: list[date], top: int) -> dict[date, list[Pick
     best: dict[tuple[date, str], Pick] = {}
     if not days:
         return {}
+    # `detail` 里没有 `ago` 的（非窗口形态）→ json_extract 给 NULL → 一律保留
+    ago = func.json_extract(PatternHit.detail, "$.ago")
     rows = session.execute(
         select(PatternHit.trade_date, PatternHit.code, PatternHit.name, PatternHit.score).where(
-            PatternHit.trade_date.in_(days), PatternHit.pattern.in_(_KEYS)
+            PatternHit.trade_date.in_(days),
+            PatternHit.pattern.in_(_KEYS),
+            or_(ago.is_(None), ago == 0),
         )
     ).all()
     for day, code, name, score in rows:
