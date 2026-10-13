@@ -903,6 +903,11 @@ class Bars:
     volume: np.ndarray
     amount: np.ndarray
     pct_chg: np.ndarray
+    #: 六位股票代码。**只有少数形态用得上**（「知行超级B1」要按代码前缀判 20cm 板块），
+    #: 所以默认空串 —— 个股页的 K 线取数、阶段判定那几处不跑形态，不传也不会报错；
+    #: 扫描与回测会传（见 `scan_patterns` / `scripts.backtest_patterns`）。不传时
+    #: 依赖代码的判据会退化成「只按非代码条件判」，所以**能传就要传**。
+    code: str = ""
 
     def __len__(self) -> int:
         return int(self.close.size)
@@ -951,11 +956,14 @@ def usable_bar(bar: dict) -> bool:
     return all(bar.get(field) is not None for field in BAR_REQUIRED_FIELDS)
 
 
-def build_bars(records: list[dict]) -> Bars:
+def build_bars(records: list[dict], code: str = "") -> Bars:
     """把一只票的**不复权**日线记录转成前复权序列。
 
     `records` 必须按交易日升序，每项含 `date / open / high / low / close /
     volume / amount / pct_chg`（值为 None 的请调用方先过滤掉）。
+
+    `code` 原样存进 `Bars.code`，只有「知行超级B1」这类要按代码前缀判板块的形态用得上
+    （见 `Bars.code`）。
 
     ## 为什么用涨跌幅而不是「前复权价」
 
@@ -1008,6 +1016,7 @@ def build_bars(records: list[dict]) -> Bars:
         volume=np.array([float(r["volume"] or 0.0) for r in records]) / volume_ratio,
         amount=np.array([float(r["amount"] or 0.0) for r in records]),
         pct_chg=pct,
+        code=code,
     )
 
 
@@ -1152,6 +1161,60 @@ def _barslast(flags: np.ndarray) -> np.ndarray:
             last = i
         if last >= 0:
             out[i] = i - last
+    return out
+
+
+def _count(flags: np.ndarray, window: int) -> int:
+    """`COUNT(cond, N)`：最近 N 根里成立了几根（只回最后一根）。"""
+    return int(np.count_nonzero(flags[-window:] if flags.size >= window else flags))
+
+
+def _every(flags: np.ndarray, window: int) -> bool:
+    """`EVERY(cond, N)`：最近 N 根是否**都**成立。
+
+    窗口不足 N 根时按「已有的都成立」算（`_count` 同理）——「知行超级B1」的
+    N 最大 25 而它本身要求 170 根预热，正常不会走到这个分支。
+    """
+    if flags.size == 0:
+        return False
+    return bool(np.all(flags[-window:] if flags.size >= window else flags))
+
+
+def _hhvbars_last(values: np.ndarray, window: int) -> int:
+    """`HHVBARS(X,N)` 在**最后一根**上的值：窗口内最高值距今天多少根（0 = 今天最高）。
+
+    原式只拿它当偏移量（`REF(C,VDAY)`、`VDAY>=15`）且所有判定都只看最后一根，
+    所以只算最后一个点就够了 —— 不必像 `_rolling` 那样铺成整条序列。
+    """
+    if values.size == 0:
+        return 0
+    take = values[-window:] if values.size >= window else values
+    return int(take.size - 1 - np.argmax(take))
+
+
+def _sma(values: np.ndarray, n: int, m: int) -> np.ndarray:
+    """通达信 / 同花顺的 `SMA(X,N,M)`：`Y[i] = (M*X[i] + (N-M)*Y[i-1]) / N`。
+
+    与 `_ema`（`alpha = 2/(span+1)`）不是一回事，别混用：KDJ 的 `K`/`D` 与
+    「知行超级B1」的 3 日 RSI 用的都是这个带权递推。首个**有效**样本直接当初值，
+    之前的填 NaN；NaN 不参与递推（保持上一个值）—— 否则一个一字板让 `RSV` 的分母
+    为 0，后面整条 KDJ 都会变成 NaN。
+
+    ⚠️ 3 日 RSI 等价于 `_wilder_rsi(close, 3)`（`SMA` 是线性的，分母
+    `SMA(ABS(涨跌),3,1) = SMA(涨,3,1) + SMA(跌,3,1)`），两处口径已经对齐。
+    """
+    out = np.full(values.size, np.nan)
+    if values.size == 0:
+        return out
+    weight = m / n
+    prev = np.nan
+    for i in range(values.size):
+        x = float(values[i])
+        if not math.isfinite(x):
+            out[i] = prev
+            continue
+        prev = x if not math.isfinite(prev) else weight * x + (1.0 - weight) * prev
+        out[i] = prev
     return out
 
 
@@ -4988,6 +5051,455 @@ def _t_buy(bars: Bars) -> Signal | None:
     )
 
 
+# ---------------------------------------------------------------- 知行超级B1
+
+# 「知行超级B1 V1203（ZGNB）」（2026-10-13 用户给的同花顺公式；副图 / 主图叠加 /
+# 条件选股三份同逻辑）。原式的 `选股` 是 7 个子信号取或：
+#
+#   选股 := 超卖缩量拐头B OR 超卖缩量B OR 原始B1 OR 超卖超缩量B
+#           OR 回踩白线B OR 回踩超级B OR 回踩黄线B;
+#
+# 这里把 7 个子信号**各落成一个形态**（而不是合成一个「知行B1」）：它们在图上是
+# 七种不同的买点、分色画七种标签，合成一个就再也分不出是哪一种。
+#
+# 与原文的差异（就近在代码里也注明）：
+# 1. 「宽幅板」要判**代码前缀**（原式 `STRFIND(CODE,'30',1)=1` 那一串）。`Bars` 原来
+#    不带代码，2026-10-13 加了 `code` 字段；扫描与回测都会传，个股页取 K 线不传
+#    （那里不跑形态）。
+# 2. `SMA(X,N,M)`（KDJ 的 K/D）与 3 日 RSI 就地复算 —— 同花顺版已经把跨指标引用
+#    去掉了，这里用 `_sma` / `_wilder_rsi(close, 3)` 对齐口径。
+# 3. `BARSLAST(CROSS(C,大哥黄线))>12`：从未上穿过按「已满足」处理（`_barslast` 给 inf）。
+#
+# 回测（`python scripts/backtest_patterns.py --pattern zgnb_xxx`，2026-10-13，
+# 4846 只 · 260 个交易日（2025-09-08 ~ 2026-10-09）· 剔 ST 127 只；超额 = 该档收益
+# 减去同日全市场均值）：
+#
+# | 信号 | 条数 | 5 日 | 10 日 | 20 日 | 60 日 | 胜率(5/10/20/60) |
+# | --- | --- | --- | --- | --- | --- | --- |
+# | 缩量拐头B1 `zgnb_turn` | 255 | −0.25 | +2.21 | +3.91 | −5.24 | 33/42/39/23 |
+# | 缩量B1 `zgnb_shrink` | 819 | +0.51 | +0.24 | +1.73 | −6.20 | 34/34/36/20 |
+# | 原始B1 `zgnb_origin` | 939 | −0.08 | −2.36 | −3.48 | −9.52 | 34/30/30/18 |
+# | 超级缩量B1 `zgnb_super_shrink` | 175 | −0.07 | +2.03 | +4.26 | −4.65 | 30/39/40/23 |
+# | 回踩白线B1 `zgnb_pull_white` | 131 | −0.39 | −2.37 | −4.61 | −8.91 | 31/33/31/18 |
+# | 超牛股回踩白线B1 `zgnb_pull_super` | 27 | +0.81 | +2.53 | +13.02 | −3.21 | 41/37/52/19 |
+# | 回踩黄线B1 `zgnb_pull_yellow` | 561 | −0.61 | −2.57 | −2.82 | −7.15 | 34/32/28/20 |
+#
+# ⚠️ **七条的中位数全负、胜率多在 30~40%，60 日超额没有一条为正**；样本区间
+# （2025-09 ~ 2026-10）整体是下跌/震荡市（基准 5/20/60 日约 −1.7%/−4.3%/−4.8%），
+# 抄底型信号在这种行情里天生吃亏 —— 定位与「做T买点 / 地量见底」同档：
+# **一份左侧观察清单，不是买点信号**。10/20 日超额为正的三条（缩量拐头B1 /
+# 缩量B1 / 超级缩量B1）是右尾驱动（20 日最好一单 +88%~+176%），别当胜率读。
+# 原式是用户点名要的，先按它落库；要收紧的话最该动的是「要求离区间低点更远」，
+# 或给 `move_ok` 补一条「大盘不在急跌段」。
+ZGNB_MIN_BARS = 170  # MA144 预热 + EVERY(…,20) + EVERY(…,13)
+#: 「宽幅板」（20cm）的代码前缀，对应原式那几个 `STRFIND(CODE,'xx',1)=1`：
+#: 30 创业板 / 68 科创板 / 4 与 8 北交所 / 9 沪 B。
+ZGNB_WIDE_PREFIXES = ("30", "68", "4", "8", "9")
+#: 另一条宽幅判据 `EXIST(C/REF(C,1)>1.15,200)`：近 200 日有过 >15% 的单日涨幅。
+#: 本模块的 `pct_chg` 就是真实收益率（百分数），所以直接比 15.0。
+ZGNB_WIDE_DAYS = 200
+ZGNB_WIDE_PCT = 15.0
+ZGNB_RANGE_WIDE = 8.0  # 振幅区间（宽幅板）
+ZGNB_RANGE_NARROW = 5.0  # 振幅区间（非宽幅板）
+ZGNB_FACTOR_WIDE = 0.9  # 放宽系数（宽幅板）
+ZGNB_FACTOR_NARROW = 1.0
+#: 7 个子信号都是**布尔与**，命中即入库；底分 60（> `MIN_SCORE`），余下 40 分只用于
+#: 排序 —— 不给梯度的话每个命中都是同一个分数，清单没法看（做法同金叉大阳 / 做T买点）。
+ZGNB_BASE_SCORE = 60.0
+#: 「回踩白线」那两档的支撑就是白线；其余五档都要求站稳黄线（`C>=大哥黄线`），支撑取黄线。
+ZGNB_WHITE_SUPPORT_KEYS = ("zgnb_pull_white", "zgnb_pull_super")
+
+_ZGB1_MEMO: tuple[Bars, dict] | None = None
+
+
+def _zgb1_common(bars: Bars) -> dict:
+    """「知行超级B1」的公共前置量与 7 个子信号（只算**最后一根** K 线）。
+
+    `evaluate` 会挨个调用 7 个 detect：每个都从零算一遍趋势白线 / 大哥黄线 / KDJ /
+    3 日 RSI 的话，同一条序列要重算 7 遍 —— 这几条都是 Python 级递推（`_ema` 与
+    `_sma` 各几百次循环），全市场扫描会明显变慢。所以这里做**单条缓存**：只记住
+    「上一次算过的那只票」，用 `is` 比较（同时持有强引用，不存在 id 被复用的问题）。
+
+    返回 `{"enough", "fired", "extra", "detail", "white", "yellow"}`。
+    """
+    global _ZGB1_MEMO
+    if _ZGB1_MEMO is not None and _ZGB1_MEMO[0] is bars:
+        return _ZGB1_MEMO[1]
+    computed = _compute_zgb1(bars)
+    _ZGB1_MEMO = (bars, computed)
+    return computed
+
+
+def _compute_zgb1(bars: Bars) -> dict:
+    """逐条落自同花顺原式的判定（只判最后一根 K 线）。"""
+    n = len(bars)
+    empty = {
+        "enough": False,
+        "fired": {},
+        "extra": {},
+        "detail": {},
+        "white": 0.0,
+        "yellow": 0.0,
+    }
+    if n < ZGNB_MIN_BARS:
+        return empty
+
+    close = bars.close.astype(float)
+    open_ = bars.open.astype(float)
+    high = bars.high.astype(float)
+    low = bars.low.astype(float)
+    volume = bars.volume.astype(float)
+
+    # ---- 三条线：趋势白线（牵牛绳）/ 大哥黄线（多空线）/ BBI ----
+    white = _ema(_ema(close, 10), 10)
+    yellow = (
+        _align(_ma_series(close, 14), 14, n)
+        + _align(_ma_series(close, 28), 28, n)
+        + _align(_ma_series(close, 57), 57, n)
+        + _align(_ma_series(close, 144), 144, n)
+    ) / 4.0
+    bbi = (
+        _align(_ma_series(close, 3), 3, n)
+        + _align(_ma_series(close, 6), 6, n)
+        + _align(_ma_series(close, 12), 12, n)
+        + _align(_ma_series(close, 24), 24, n)
+    ) / 4.0
+    ma60 = _align(_ma_series(close, 60), 60, n)
+    if not (np.isfinite(yellow[-1]) and np.isfinite(ma60[-1])):
+        return empty
+
+    # ---- 短期 / 长期（原式是「LLV 取最低价、HHV 取收盘价」的混搭，照抄）----
+    llv_l14 = _rolling(low, 14, "min")
+    llv_l28 = _rolling(low, 28, "min")
+    span14 = _rolling(close, 14, "max") - llv_l14
+    span28 = _rolling(close, 28, "max") - llv_l28
+    # 分母为 0（连续一字板让窗口内高低点重合）时给 NaN，与 `_ma_series` 的口径一致：
+    # 算不出来就是算不出来，不假装有一个数
+    short_term = np.divide(
+        100.0 * (close - llv_l14), span14, out=np.full(n, np.nan), where=span14 > 0
+    )
+    long_term = np.divide(
+        100.0 * (close - llv_l28), span28, out=np.full(n, np.nan), where=span28 > 0
+    )
+
+    # ---- 洗盘异动的三个构件（单针下20 / 聚宝盆 / 双叉戟）与红肥绿瘦 ----
+    needle = ((short_term <= 20.0) & (long_term >= 75.0)) | ((long_term - short_term) >= 70.0)
+    jewel = (
+        (_count(long_term >= 75.0, 8) >= 6)
+        and (_count(short_term <= 70.0, 7) >= 4)
+        and (_count(short_term <= 50.0, 8) >= 1)
+    )
+    trident = (
+        _every(long_term >= 75.0, 8)
+        and (_count(short_term <= 50.0, 6) >= 2)
+        and (_count(short_term <= 20.0, 7) >= 1)
+    )
+    fat_thin = (_count(close >= open_, 15) > 7) or (_count(close > _shift(close, 1), 11) > 5)
+    wash = (_count(needle, 10) >= 2) or jewel or trident
+
+    # ---- KDJ 与 3 日 RSI（就地复算）----
+    llv_l9 = _rolling(low, 9, "min")
+    span9 = _rolling(high, 9, "max") - llv_l9
+    rsv = np.divide(100.0 * (close - llv_l9), span9, out=np.full(n, np.nan), where=span9 > 0)
+    k = _sma(rsv, 3, 1)
+    d = _sma(k, 3, 1)
+    j = 3.0 * k - 2.0 * d
+    # 原式 `SMA(MAX(C-LC,0),3,1)/SMA(ABS(C-LC),3,1)*100` 就是 3 日 Wilder RSI
+    rsi = _wilder_rsi(close, 3)
+
+    # ---- 量能四档 ----
+    v = float(volume[-1])
+    hhv20 = float(_rolling(volume, 20, "max")[-1])
+    hhv30 = float(_rolling(volume, 30, "max")[-1])
+    hhv50 = float(_rolling(volume, 50, "max")[-1])
+    shrink = (v < hhv20 * 0.416) or (v < hhv50 / 3.0)
+    pull_shrink = (v < hhv20 * 0.45) or (v < hhv50 / 3.0)
+    proper_shrink = (v < hhv20 * 0.618) or (v < hhv50 / 3.0)
+    super_shrink = (v < hhv30 / 4.0) or (v < hhv50 / 6.0)
+
+    # ---- 振幅与异动（N=20 / M=50）----
+    lo20 = float(_rolling(low, 20, "min")[-1])
+    lo50 = float(_rolling(low, 50, "min")[-1])
+    recent_amp = (float(_rolling(high, 20, "max")[-1]) - lo20) / lo20 * 100.0
+    near_move = (float(_rolling(high, 12, "max")[-1]) - float(llv_l14[-1])) / float(llv_l14[-1]) * 100.0
+    recent_move = recent_amp >= 15.0 or near_move >= 11.0
+    far_amp = (float(_rolling(high, 50, "max")[-1]) - lo50) / lo50 * 100.0
+    far_move = far_amp >= 30.0
+    super_move = recent_amp >= 60.0
+    move_ok = recent_move or far_move or wash
+
+    # ---- 宽幅板 ----
+    wide = bars.code.startswith(ZGNB_WIDE_PREFIXES) or bool(
+        np.any(bars.pct_chg[-ZGNB_WIDE_DAYS:] > ZGNB_WIDE_PCT)
+    )
+    span_cap = ZGNB_RANGE_WIDE if wide else ZGNB_RANGE_NARROW
+    factor = ZGNB_FACTOR_WIDE if wide else ZGNB_FACTOR_NARROW
+
+    # ---- 当日量价 ----
+    c0 = float(close[-1])
+    c1 = float(close[-2])
+    o0 = float(open_[-1])
+    l0 = float(low[-1])
+    day_amp = (float(high[-1]) - l0) / l0 * 100.0
+    day_chg = abs(c0 - c1) / c1 * 100.0 * factor
+    doji = (c0 > c1) and (abs(c0 - o0) / o0 * 100.0 * factor < 1.8)
+    body_pct = abs(c0 - o0) * 100.0 / o0
+
+    # ---- 大绿棒：量峰那根是不是「大绿棒」，或那根已经离得够远 ----
+    vday = _hhvbars_last(volume, 40)
+    peak = -1 - vday
+    not_big_green = (close[peak] >= close[peak - 1]) or (close[peak] >= open_[peak])
+    # `不是大绿棒 OR 大绿棒离得远`：后者要求「是大绿棒」，也就是前者的否定，
+    # 所以整条等价于「不是大绿棒 或 量峰在 15 根以前」
+    green_ok = bool(not_big_green) or vday >= 15
+
+    # ---- 趋势、超牛股与回踩距离 ----
+    white0 = float(white[-1])
+    yellow0 = float(yellow[-1])
+    bbi0 = float(bbi[-1])
+    up_trend = (white0 >= yellow0) and (c0 >= yellow0 or (c0 > yellow0 * 0.975 and c0 > o0))
+    strong_trend = (
+        _every(yellow >= _shift(yellow, 1) * 0.999, 13)
+        and white0 >= float(white[-2])
+        and _every(white > yellow, 20)
+        and _every(white >= _shift(white, 1), 11)
+        and fat_thin
+    )
+    super_bull = (
+        (_every(bbi >= _shift(bbi, 1) * 0.999, 20) or _count(bbi >= _shift(bbi, 1), 25) >= 23)
+        and (recent_amp >= 30.0 or far_amp > 80.0)
+        and float(_barslast(_cross(close, yellow))[-1]) > 12.0
+    )
+
+    white_d = abs(c0 - white0) / c0 * 100.0
+    white_ld = abs(l0 - white0) / white0 * 100.0
+    bbi_d = abs(c0 - bbi0) / c0 * 100.0
+    bbi_ld = abs(l0 - bbi0) / bbi0 * 100.0
+    yellow_d = abs(c0 - yellow0) / yellow0 * 100.0
+
+    pull_white = (
+        (c0 >= white0 and white_d <= 2.0)
+        or (c0 < white0 and white_d < 0.8)
+        or (
+            c0 >= bbi0
+            and bbi_d < 2.5
+            and bbi_ld < 1.0
+            and white_d <= 3.0
+            and day_chg < 1.0
+            and c0 > c1
+        )
+    )
+    white_support = c0 >= white0 and white_d < 1.5
+    strong_pull = (white_ld < 1.0 or bbi_ld < 0.5) and c0 > white0 and white_d <= 3.5
+    pull_yellow = (
+        (c0 >= yellow0 and (yellow_d <= 1.5 or (yellow_d <= 2.0 and day_chg < 1.0)))
+        or (c0 < yellow0 and yellow_d <= 0.8)
+    )
+
+    # ---- 超卖读数的末值 ----
+    r0 = float(rsi[-1])
+    r1 = float(rsi[-2])
+    j0 = float(j[-1])
+    j1 = float(j[-2])
+    rs = r0 + j0
+    llv_j20 = float(_rolling(j, 20, "min")[-1])
+    llv_r14 = float(_rolling(rsi, 14, "min")[-1])
+    llv_rs15 = float(_rolling(rsi + j, 15, "min")[-1])
+    llv_rs25 = float(_rolling(rsi + j, 25, "min")[-1])
+    llv_v20 = float(_rolling(volume, 20, "min")[-1])
+    yellow_prev = float(yellow[-2])
+    ma60_prev = float(ma60[-2])
+
+    fired = {
+        # 超卖缩量拐头B：RSI 当天回升 ≥15 点，且前一日还在超卖区
+        "zgnb_turn": (
+            up_trend
+            and (r0 - 15.0) >= r1
+            and (r1 < 20.0 or j1 < 14.0)
+            and day_amp < span_cap + 0.5
+            and (day_chg < 2.3 or (doji and day_chg < 4.0))
+            and green_ok
+            and move_ok
+            and c0 >= yellow0
+        ),
+        # 超卖缩量B
+        "zgnb_shrink": (
+            up_trend
+            and (j0 < 14.0 or r0 < 23.0)
+            and (rs < 55.0 or j0 <= llv_j20)
+            and day_amp < span_cap
+            and (day_chg < 2.5 or doji)
+            and green_ok
+            and (shrink or (proper_shrink and day_chg < 1.0))
+            and move_ok
+        ),
+        # 原始B1
+        "zgnb_origin": (
+            white0 > yellow0
+            and c0 >= yellow0 * 0.99
+            and yellow0 >= yellow_prev
+            and (j0 < 13.0 or r0 < 21.0)
+            and rs < llv_rs15 * 1.5
+            and proper_shrink
+            and green_ok
+            and (
+                body_pct < 1.5
+                or super_shrink
+                or (proper_shrink and v < llv_v20 * 1.1 and j0 <= llv_j20)
+                or (proper_shrink and (white_d < 1.8 or bbi_d < 1.5 or yellow_d < 2.8))
+            )
+            and move_ok
+        ),
+        # 超卖超缩量B
+        "zgnb_super_shrink": (
+            up_trend
+            and (j0 < 14.0 or r0 < 23.0)
+            and rs < 60.0
+            and far_amp >= 45.0
+            and (
+                day_amp < span_cap
+                or (super_move and day_amp < span_cap + 3.2 and c0 > o0 and c0 > white0)
+            )
+            and ((c0 < o0 and v < float(volume[-2]) and c0 >= yellow0) or c0 >= o0)
+            and (day_chg < 2.0 or doji)
+            and green_ok
+            and super_shrink
+            and move_ok
+        ),
+        # 回踩白线B
+        "zgnb_pull_white": (
+            strong_trend
+            and (j0 < 30.0 or r0 < 40.0 or wash)
+            and rs < 70.0
+            and (day_amp < span_cap + 0.5 or white_d < 1.0 or bbi_d < 1.0)
+            and pull_white
+            and (day_chg < 2.0 or (day_chg < 5.0 and white_support))
+            and green_ok
+            and pull_shrink
+            and move_ok
+            and l0 <= c1
+        ),
+        # 回踩超级B（超牛股回踩白线B1）
+        "zgnb_pull_super": (
+            super_bull
+            and (j0 < 35.0 or r0 < 45.0 or wash)
+            and rs < 80.0
+            and rs <= llv_rs25
+            and day_amp < span_cap + 1.0
+            and (day_chg < 2.5 or white_d < 2.0)
+            and strong_pull
+            and green_ok
+            and move_ok
+            and proper_shrink
+        ),
+        # 回踩黄线B
+        "zgnb_pull_yellow": (
+            white0 >= yellow0
+            and c0 >= yellow0 * 0.975
+            and (j0 < 13.0 or r0 < 18.0)
+            and pull_yellow
+            and green_ok
+            and (shrink or (proper_shrink and (j0 <= llv_j20 or r0 <= llv_r14)))
+            and yellow0 >= yellow_prev * 0.997
+            and float(ma60[-1]) >= ma60_prev
+            and recent_amp >= 11.9
+            and far_amp >= 19.5
+        ),
+    }
+
+    # 排序用的加成（0~40）。都取自原式自己已经算过的量：**过线越典型分越高**，
+    # 不改「是否命中」—— 与金叉大阳 / 做T买点同一套做法。
+    shrink_ratio = v / hhv20 if hhv20 > 0 else 1.0
+    extra = {
+        "zgnb_turn": _gate_score(r0 - r1, 15.0, 30.0) * 20.0
+        + _gate_score(day_amp, span_cap + 0.5, 0.0) * 10.0
+        + _gate_score(day_chg, 2.3, 0.0) * 10.0,
+        "zgnb_shrink": _gate_score(rs, 55.0, 25.0) * 20.0
+        + _gate_score(shrink_ratio, 0.618, 0.2) * 10.0
+        + _gate_score(day_chg, 2.5, 0.0) * 10.0,
+        "zgnb_origin": _gate_score(rs, 40.0, 15.0) * 20.0
+        + _gate_score(shrink_ratio, 0.618, 0.2) * 10.0
+        + _gate_score(body_pct, 1.5, 0.0) * 10.0,
+        "zgnb_super_shrink": _gate_score(far_amp, 45.0, 120.0) * 20.0
+        + _gate_score(shrink_ratio, 0.25, 0.08) * 10.0
+        + _gate_score(day_chg, 2.0, 0.0) * 10.0,
+        "zgnb_pull_white": _gate_score(white_d, 3.5, 0.3) * 20.0
+        + _gate_score(shrink_ratio, 0.618, 0.2) * 10.0
+        + _gate_score(day_amp, span_cap + 0.5, 0.0) * 10.0,
+        "zgnb_pull_super": _gate_score(rs, 80.0, 25.0) * 20.0
+        + _gate_score(white_d, 3.5, 0.3) * 10.0
+        + _gate_score(shrink_ratio, 0.618, 0.2) * 10.0,
+        "zgnb_pull_yellow": _gate_score(yellow_d, 2.0, 0.0) * 20.0
+        + _gate_score(shrink_ratio, 0.618, 0.2) * 10.0
+        + _gate_score(recent_amp, 11.9, 40.0) * 10.0,
+    }
+
+    detail = {
+        "rsi3": round(r0, 1),
+        "kdj_j": round(j0, 1),
+        "amp20": round(recent_amp / 100.0, 4),
+        "amp50": round(far_amp / 100.0, 4),
+        "vol_shrink": round(shrink_ratio, 3),
+        "dist_white": round(white_d / 100.0, 4),
+        "dist_yellow": round(yellow_d / 100.0, 4),
+        "dist_bbi": round(bbi_d / 100.0, 4),
+        "day_amp": round(day_amp / 100.0, 4),
+    }
+    return {
+        "enough": True,
+        "fired": fired,
+        "extra": extra,
+        "detail": detail,
+        "white": white0,
+        "yellow": yellow0,
+    }
+
+
+def _zgb1_signal(bars: Bars, key: str) -> Signal | None:
+    """7 个子信号共用的出口：取公共计算结果里的那一条。"""
+    common = _zgb1_common(bars)
+    if not common["enough"] or not common["fired"].get(key):
+        return None
+    support = common["white"] if key in ZGNB_WHITE_SUPPORT_KEYS else common["yellow"]
+    score = ZGNB_BASE_SCORE + common["extra"].get(key, 0.0)
+    return Signal(key, min(score, 100.0), {"support": support}, dict(common["detail"]))
+
+
+def _zgnb_turn(bars: Bars) -> Signal | None:
+    """缩量拐头B1（原式 `超卖缩量拐头B`）：RSI 一天回升 ≥15 点，前一日还在超卖区。"""
+    return _zgb1_signal(bars, "zgnb_turn")
+
+
+def _zgnb_shrink(bars: Bars) -> Signal | None:
+    """缩量B1（原式 `超卖缩量B`）：超卖区里的缩量止跌。"""
+    return _zgb1_signal(bars, "zgnb_shrink")
+
+
+def _zgnb_origin(bars: Bars) -> Signal | None:
+    """原始B1：白线在黄线上方的多头上行里，超卖 + 缩量 + 小实体。"""
+    return _zgb1_signal(bars, "zgnb_origin")
+
+
+def _zgnb_super_shrink(bars: Bars) -> Signal | None:
+    """超级缩量B1（原式 `超卖超缩量B`）：远期振幅 ≥45% 的票，超缩量。"""
+    return _zgb1_signal(bars, "zgnb_super_shrink")
+
+
+def _zgnb_pull_white(bars: Bars) -> Signal | None:
+    """回踩白线B1（原式 `回踩白线B`）：强趋势股缩量回踩白线不破。"""
+    return _zgb1_signal(bars, "zgnb_pull_white")
+
+
+def _zgnb_pull_super(bars: Bars) -> Signal | None:
+    """超牛股回踩白线B1（原式 `回踩超级B`）。"""
+    return _zgb1_signal(bars, "zgnb_pull_super")
+
+
+def _zgnb_pull_yellow(bars: Bars) -> Signal | None:
+    """回踩黄线B1（原式 `回踩黄线B`）：回踩多空线（大哥黄线）不破。"""
+    return _zgb1_signal(bars, "zgnb_pull_yellow")
+
+
 # ---------------------------------------------------------------- 注册表
 
 # 蜡烛形态的分组名。抽成常量有两个原因：一是它比其它组名长得多
@@ -4999,6 +5511,9 @@ CANDLE_GROUP = "单 K 蜡烛形态"
 # 会让人以为它们也是「明天盯 / 明天预案」那一套。
 # （`wudao_wash2` 留在「致富」：它是辉宾1 的续做，与「明天盯 / 明天预案」前后相接。）
 WUDAO_GROUP = "悟道之路"
+# 2026-10-13：「知行超级B1」的 7 个子信号单独一组。它们是同一张同花顺公式里的
+# 七种买点，混进「趋势」或「量价」会让人看不出彼此是一家（原式在图上也是分色画的）。
+ZGNB_GROUP = "知行B1"
 
 PATTERNS: tuple[Pattern, ...] = (
     Pattern("wudao_start", "明天预案", "致富", _wudao_start),
@@ -5073,6 +5588,18 @@ PATTERNS: tuple[Pattern, ...] = (
     # 只落买方向；不限板块（判据是乖离 + MACD + 量能，与 20cm 无关），
     # 回测数字见上面 T_BUY_* 那段注释。
     Pattern("t_buy", "做T买点", "做T", _t_buy),
+
+    # 2026-10-13 用户给的「知行超级B1 V1203（ZGNB）」同花顺公式 —— 7 个子信号**各成一个形态**
+    # （理由与差异见上面「知行超级B1」那一段）。全市场扫，不限板块：宽幅板（20cm）走的是
+    # 公式自己的 `宽幅板` 分支（调 `振幅区间` 与 `放宽系数`），不是另一道板块闸门。
+    # 追加在末尾，理由同上：注册表顺序决定同组形态在筛选条里的排列，别打乱已有的。
+    Pattern("zgnb_turn", "缩量拐头B1", ZGNB_GROUP, _zgnb_turn),
+    Pattern("zgnb_shrink", "缩量B1", ZGNB_GROUP, _zgnb_shrink),
+    Pattern("zgnb_origin", "原始B1", ZGNB_GROUP, _zgnb_origin),
+    Pattern("zgnb_super_shrink", "超级缩量B1", ZGNB_GROUP, _zgnb_super_shrink),
+    Pattern("zgnb_pull_white", "回踩白线B1", ZGNB_GROUP, _zgnb_pull_white),
+    Pattern("zgnb_pull_super", "超牛股回踩白线B1", ZGNB_GROUP, _zgnb_pull_super),
+    Pattern("zgnb_pull_yellow", "回踩黄线B1", ZGNB_GROUP, _zgnb_pull_yellow),
 )
 
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}

@@ -175,6 +175,9 @@ def _upto(bars: Bars, end: int) -> Bars:
         volume=bars.volume[:end],
         amount=bars.amount[:end],
         pct_chg=bars.pct_chg[:end],
+        # 代码要一起带过去：「知行超级B1」的 `宽幅板` 按代码前缀判 20cm，
+        # 丢了它整条判据就退化成「只看近 200 日有没有 >15% 的单日涨幅」
+        code=bars.code,
     )
 
 
@@ -496,7 +499,9 @@ def main() -> int:
         logger.info("剔除 %d 只 ST 票（与线上扫描同口径）", len(st_dropped))
 
     bars_by_code = {
-        code: build_bars(records) for code, records in grouped.items() if len(records) >= MIN_BARS
+        code: build_bars(records, code)
+        for code, records in grouped.items()
+        if len(records) >= MIN_BARS
     }
     if not bars_by_code:
         raise SystemExit("没有可用的日线序列")

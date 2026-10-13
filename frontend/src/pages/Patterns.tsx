@@ -19,11 +19,24 @@ import { rememberStockList } from '../lib/stockNav'
 /**
  * 形态分组的展示顺序。后端给的 catalog 就是按这个顺序排的，这里只做兜底。
  *
+ * ⚠️ 后端新增分组时**必须同步加到这里**：`indexOf` 找不到会给 -1，那一组会被排到
+ * 最前面（「知行B1」2026-10-13 就是这么加的）。
+ *
  * ⚠️ 分组名长度会直接影响筛选条那个标签列：`w-24` 是按最长的一组
  * 「单 K 蜡烛形态」（5 个汉字 + 1 个字母）留的。再加更长的分组名时要一起调，
  * 否则标签会折行、把每个分组的高度撑成两行。
  */
-const GROUP_ORDER = ['致富', '悟道之路', '做T', '趋势', '突破', '量价', '几何', '单 K 蜡烛形态']
+const GROUP_ORDER = [
+  '致富',
+  '悟道之路',
+  '做T',
+  '知行B1',
+  '趋势',
+  '突破',
+  '量价',
+  '几何',
+  '单 K 蜡烛形态',
+]
 
 /**
  * 默认视图（没选形态）一次取多少只。
@@ -234,6 +247,17 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   prior_drop: ['前置跌幅', true],
   star_recover: ['收复实体', true],
   steady: ['实体不缩水', false],
+
+  // ---- 知行超级B1（2026-10-13，7 个子信号共用同一份明细）----
+  // `vol_shrink`（缩量到）复用上面已有的键，口径一致：当日量 / 20 日最高量。
+  rsi3: ['3日RSI', false],
+  kdj_j: ['KDJ-J', false],
+  amp20: ['20日振幅', true],
+  amp50: ['50日振幅', true],
+  dist_white: ['距白线', true],
+  dist_yellow: ['距黄线', true],
+  dist_bbi: ['距BBI', true],
+  day_amp: ['当日振幅', true],
 }
 
 function detailText(key: string, value: number | string): string {

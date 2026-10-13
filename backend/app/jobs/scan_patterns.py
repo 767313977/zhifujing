@@ -808,7 +808,7 @@ def scan(
         if len(records) < WUDAO_MIN_BARS:
             skipped += 1
             continue
-        bars_map[code] = build_bars(records)
+        bars_map[code] = build_bars(records, code)
 
     # 先把每只票的形态全算出来，再决定哪条能落库 —— 华宝早期要排掉**同一只票**上已经
     # 命中的样板/启动（原型 `_early_card_from` 开头就把 start/sample/diverge/dump 退回），
