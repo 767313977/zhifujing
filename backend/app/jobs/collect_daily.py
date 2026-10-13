@@ -415,6 +415,9 @@ class DailyCollector:
         # 清零、结束后读走写进 `collect_log.message` —— 部分失败不该让整步记 failed，
         # 但也不能只躺在日志里。见 `sync_watchlist` 与 `_step`。
         self._step_note: str | None = None
+        # 步骤可以把自己标成 `skipped`（如配额让路）。不标的话 `_step` 一律记 ok，
+        # 页面就把「没采」显示成「采了 0 行」—— 2026-10-13 的 ETF 就是这么被骗过的。
+        self._step_status: str | None = None
 
     # ------------------------------------------------------------------ 交易日
 
@@ -1016,6 +1019,9 @@ class DailyCollector:
         level = quota_level(date.today(), self.settings)
         if level >= QuotaLevel.PAUSE_KLINE:
             logger.warning("ETF 采集跳过：%s", level_label(level))
+            # 标成 skipped，别让数据管理页把它显示成 `etf ok rows=0`（2026-10-13 修）
+            self._step_status = "skipped"
+            self._step_note = f"配额让路：{level_label(level)}"
             return 0
         return collect_funds.collect_etf(self.ak, self.ifind)
 
@@ -1054,9 +1060,14 @@ class DailyCollector:
         # 步骤自己可以往 `_step_note` 写一句说明（如自选股「失败 3 只」）——
         # 成功但部分失败时用它填 message，让 `collect_log` 直接可见。
         self._step_note = None
+        self._step_status = None
         _current_step = name  # 供采集锁的「持有过久」告警读出卡在了哪一步
         try:
             row_count = fn()
+            if self._step_status:
+                # 步骤自己声明「跳过了」：记 skipped 而不是 ok（否则页面把「没采」
+                # 显示成「采了 0 行」，真出故障时看不出来）
+                status = self._step_status
             if self._step_note:
                 message = self._step_note
         except Exception as exc:  # noqa: BLE001 - 单步失败必须不阻塞后续步骤
@@ -1065,6 +1076,7 @@ class DailyCollector:
             logger.exception("采集步骤 %s 失败", name)
         finally:
             self._step_note = None
+            self._step_status = None
             _current_step = None
 
         cost = round(time.monotonic() - started, 2)

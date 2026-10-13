@@ -969,6 +969,18 @@ class DailyScheduler:
                 usage["usage_ratio"] * 100,
                 self.settings.kline_backfill_max_ratio * 100,
             )
+            # 落一条 skipped（2026-10-13 加）：与日线/DDE 同理，跳过原来只在日志里。
+            # 若走到下面 `KlineCollector` 自己那道让路，它已经写过一条 `kline skipped`，
+            # 这里不重复记。
+            _record_log(
+                trade_date,
+                "backfill_kline",
+                "skipped",
+                0,
+                f"到停手线就停（已用 {usage['cycle_calls']}/{usage['monthly_quota']}，"
+                f"{usage['usage_ratio'] * 100:.0f}% ≥ "
+                f"{self.settings.kline_backfill_max_ratio * 100:.0f}%），等配额重置",
+            )
             return
 
         try:

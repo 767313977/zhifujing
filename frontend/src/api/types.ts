@@ -742,7 +742,14 @@ export interface IfindQuota {
   sampled_trade_days: number
   /** 按样本期日均外推到整周期，样本不足（<3 个交易日）时为 null */
   projected_cycle_calls: number | null
+  /** 已用比例。**只用于展示** —— 让路判据已经改成 `need_ratio`（见下） */
   usage_ratio: number | null
+  /** 本周期余下的交易日数（含今天） */
+  days_left: number
+  /** 余下交易日按满负荷估的调用数（常量 × days_left） */
+  need_calls: number
+  /** 让路判据：`need_calls ÷ cycle_remaining`。≥0.8 开始让路；null = 剩余额度已是 0 */
+  need_ratio: number | null
   by_tool: IfindToolUsage[]
 }
 

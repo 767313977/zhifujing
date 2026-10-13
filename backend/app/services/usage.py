@@ -29,12 +29,28 @@ logger = logging.getLogger(__name__)
 # 月末用量外推至少要有这么多个已过交易日的样本才给结果
 PROJECTION_MIN_DAYS = 3
 
+# 一次**完整**采集的日耗上界：指数 / 涨停三池 / 情绪 + 全市场日线 + DDE 扫描 +
+# 命中前 50 只补齐 + ETF + 板块。实测 10-08 ~ 10-12 是 181 / 175 / 154 次，取 200 留余量。
+#
+# ⚠️ 为什么用**常数**而不是「近期实测日均」：让路一旦生效，当天用量立刻掉下来
+# （10-13 全被挡，只花了 20 次）—— 拿近期实测当需求，等于让守卫把自己造成的低谷
+# 当成新常态：第二天又判「够用」→ 放开 → 再挡回，来回抖。常数不会被子系统自己的
+# 行为带偏（代价是采集规模大变时要手动调一次）。
+FULL_DAY_CALLS = 200
+
 
 class QuotaLevel(IntEnum):
-    """配额紧张程度，数值越大越紧张，判定一律用 `>=`。"""
+    """配额紧张程度，数值越大越紧张，判定一律用 `>=`。
+
+    ⚠️ **判据是「余下几个交易日够不够花」，不是「整周期已用多少」**（2026-10-13 改）。
+    按「已用比例」让路有两个盲点：不看**还剩多少额度**、也不看**还剩几个交易日**。
+    实测 10-13：整周期已用 80.8% → 判定让路，可当时剩 1725 次、本周期只剩 3 个交易日
+    （满打满算约 500 次）—— 明明够用，却把全市场日线全挡了，于是当天没有日线、
+    形态扫描失败、整站数据停在前一天。现在按 `need_ratio`（余下需求 ÷ 剩余额度）判。
+    """
 
     NORMAL = 0
-    # 80%：停形态选股的全市场日线更新（形态结果不再刷新，历史仍可看）
+    # 余下额度只够预估需求的 80%：停形态选股的全市场日线更新（形态结果不再刷新）
     PAUSE_KLINE = 1
     # 90%：停概念板块的 iFinD 兜底（记空值，次日由同花顺订正）
     PAUSE_CONCEPT = 2
@@ -42,7 +58,11 @@ class QuotaLevel(IntEnum):
     CORE_ONLY = 3
 
 
-# 阈值与档位。顺序必须**从高到低**，第一个命中的就是当前档
+# 阈值与档位。顺序必须**从高到低**，第一个命中的就是当前档。
+#
+# 判据是 `need_ratio` = 余下交易日的预估需求 ÷ 剩余额度。语义与旧的「已用 80% 就
+# 留 20% 缓冲」是同一个尺度，只是从「看过去」改成「看余下」：0.8 表示剩余额度只
+# 覆盖得住预估需求的 80%（缺口 20%）。
 LEVEL_THRESHOLDS = (
     (0.95, QuotaLevel.CORE_ONLY),
     (0.90, QuotaLevel.PAUSE_CONCEPT),
@@ -51,9 +71,9 @@ LEVEL_THRESHOLDS = (
 
 LEVEL_LABELS = {
     QuotaLevel.NORMAL: "正常",
-    QuotaLevel.PAUSE_KLINE: "已停形态选股的全市场日线更新（配额用掉 80%）",
-    QuotaLevel.PAUSE_CONCEPT: "已停概念板块的 iFinD 兜底（配额用掉 90%）",
-    QuotaLevel.CORE_ONLY: "只保留指数 / 涨停三池 / 情绪（配额用掉 95%）",
+    QuotaLevel.PAUSE_KLINE: "剩余额度不足以覆盖余下交易日：已停全市场日线更新",
+    QuotaLevel.PAUSE_CONCEPT: "剩余额度不足：已停概念板块的 iFinD 兜底",
+    QuotaLevel.CORE_ONLY: "剩余额度告急：只保留指数 / 涨停三池 / 情绪",
 }
 
 
@@ -224,6 +244,17 @@ def quota_status(day: date | None = None, settings: Settings | None = None) -> d
     if sampled >= PROJECTION_MIN_DAYS and total:
         projected = round(used / sampled * total)
 
+    # 让路判据（2026-10-13 改）：**余下交易日的预估需求 ÷ 剩余额度**
+    days_left = trade_days_between(today, end)  # 含今天
+    remaining = max(quota - used, 0)
+    need_calls = FULL_DAY_CALLS * days_left
+    if remaining > 0:
+        need_ratio: float | None = round(need_calls / remaining, 4)
+    else:
+        # 剩余为 0：还有交易日要采就是最紧张（None 交给 `quota_level` 处理），
+        # 周期已经过完（没有余下交易日）则无所谓
+        need_ratio = None if need_calls else 0.0
+
     return {
         "cycle_start": start,
         "cycle_end": end,
@@ -238,20 +269,28 @@ def quota_status(day: date | None = None, settings: Settings | None = None) -> d
         "sampled_trade_days": sampled,
         "projected_cycle_calls": projected,
         "usage_ratio": round(used / quota, 4) if quota else None,
+        # 让路判据的三个输入：余下交易日（含今天）、按满负荷估的需求、需求 ÷ 剩余
+        "days_left": days_left,
+        "need_calls": need_calls,
+        "need_ratio": need_ratio,
         "by_tool": breakdown_between(start, today),
     }
 
 
 def quota_level(day: date | None = None, settings: Settings | None = None) -> QuotaLevel:
-    """按当前计量周期的已用比例判定紧张程度。
+    """按**余下交易日够不够花**判定紧张程度（见 `QuotaLevel` 的说明）。
 
-    为什么要分级让路而不是一刀切停机：配额是**全账号共享**的，
-    形态选股把额度烧光之后，第二天的**基础采集（指数、情绪、板块）也会一起挂**。
-    复盘是核心、形态是增强，紧张时必须让形态先停。
+    为什么分级让路而不是一刀切停机：配额是**全账号共享**的，形态选股把额度烧光之后，
+    第二天的**基础采集（指数、情绪、板块）也会一起挂**。复盘是核心、形态是增强，
+    紧张时必须让形态先停。
+
+    ⚠️ 判据是 `need_ratio`（余下需求 ÷ 剩余额度），不是整周期已用比例 —— 后者不看
+    还剩多少、也不看还剩几天，会在「明明够用」的时候把日线停掉（实测 10-13）。
     """
-    ratio = quota_status(day, settings)["usage_ratio"]
+    ratio = quota_status(day, settings)["need_ratio"]
     if ratio is None:
-        return QuotaLevel.NORMAL
+        # 剩余额度为 0、而本周期还有交易日要采：最紧张
+        return QuotaLevel.CORE_ONLY
     for threshold, level in LEVEL_THRESHOLDS:
         if ratio >= threshold:
             return level

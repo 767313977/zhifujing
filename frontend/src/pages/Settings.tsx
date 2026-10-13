@@ -124,6 +124,19 @@ export default function Settings() {
       ? 1
       : Math.min(100, usedPercent)
 
+  // 让路判据（2026-10-13 改）：看「余下交易日够不够花」，不是「已经用掉多少」。
+  // 只看 usage_ratio 会在明明够用的时候显示成紧张 —— 10-13 已用 80.8%，可剩余额度
+  // 覆盖余下需求还有一倍富余。null = 剩余额度已是 0（最紧张）。
+  const needRatio = quota?.need_ratio ?? null
+  const needTone =
+    needRatio == null
+      ? quota
+        ? 'text-danger'
+        : 'text-fg-dim'
+      : needRatio >= 0.8
+        ? 'text-danger'
+        : 'text-fg-muted'
+
   const toolbar = (
     <button
       type="button"
@@ -229,6 +242,11 @@ export default function Settings() {
             />
             <Cell label="剩余" value={quota ? `${fmtInt(quota.cycle_remaining)} 次` : '—'} />
             <Cell
+              label={quota ? `余下 ${quota.days_left} 个交易日预估` : '余下交易日预估'}
+              value={quota ? `需 ${fmtInt(quota.need_calls)} 次` : '—'}
+              tone={needTone}
+            />
+            <Cell
               label="今日已用"
               value={quota ? `${fmtInt(quota.today_calls)} 次` : '—'}
             />
@@ -275,8 +293,18 @@ export default function Settings() {
               <span>
                 额度是<b className="font-normal text-fg-muted">账号级共享</b>的，采集与形态选股共用。
                 计量窗口按<b className="font-normal text-fg-muted">订阅周期</b>滚动（iFinD
-                后台的「计量区间」），不是自然月。超过 80% 会自动停掉形态选股的全市场更新，
-                优先保住基础采集。
+                后台的「计量区间」），不是自然月。让路判据看的是
+                <b className="font-normal text-fg-muted">「余下交易日够不够花」</b>，不是已经用掉多少
+                {quota && (
+                  <>
+                    —— 本周期还剩 {quota.days_left} 个交易日，满打满算约需{' '}
+                    {fmtInt(quota.need_calls)} 次、剩 {fmtInt(quota.cycle_remaining)} 次
+                    {needRatio != null && (
+                      <>（需求 ÷ 剩余 = {Math.round(needRatio * 100)}%，到 80% 才开始让路）</>
+                    )}
+                  </>
+                )}
+                。
               </span>
             </div>
           </div>

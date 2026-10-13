@@ -833,7 +833,7 @@ def _guard_quota() -> None:
     if level >= QuotaLevel.PAUSE_KLINE:
         raise HTTPException(
             status_code=429,
-            detail=f"iFinD 配额已用到 80%，暂停手动同步（{level_label(level)}）",
+            detail=f"iFinD 配额不足，暂停手动同步（{level_label(level)}）",
             headers={"Retry-After": "3600"},
         )
 

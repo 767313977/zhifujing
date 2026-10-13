@@ -46,7 +46,7 @@ from app.config import Settings, get_settings
 from app.db import session_scope, upsert_many_fill
 from app.jobs.collect_universe import crawl_prefixes, load_codes
 from app.models import CollectLog, LimitPool, StockDaily, StockUniverse, TradeCalendar
-from app.services.usage import QuotaLevel, quota_level
+from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.ifind import IfindClient, IfindError
 from app.sources.markdown_table import pick_float, pick_text
 
@@ -202,16 +202,17 @@ class KlineCollector:
           永远推进不到更深的历史 —— 之前就是这么写的，等于 `--days` 没用。
           走完一轮若还有没补齐的天，会数出来放进 `pending_days`（只查库、不花调用）。
         """
+        end = trade_date or self._latest_trade_date()
         level = quota_level(settings=self.settings)
         if level >= QuotaLevel.PAUSE_KLINE:
-            # 配额紧张时形态选股先让路：它每天要几十次调用，
-            # 而基础采集（指数/情绪/板块）不能停
-            return {
-                "status": "skipped",
-                "reason": "配额已达 80%，按分级让路停掉全市场日线更新",
-            }
+            # 配额紧张时的分级让路（判据见 `services.usage.QuotaLevel`）。
+            # ⚠️ 落一条 skipped 记录（2026-10-13 加）：原来只 `logger.info`，
+            # `collect_log` 里连一行都没有 —— 10-13 那天就是靠「今天没有 kline 这一行」
+            # 才反推出日线被跳过的，数据管理页上完全看不见。
+            reason = f"配额让路，本轮不采全市场日线：{level_label(level)}"
+            _record(end, "skipped", 0, reason)
+            return {"status": "skipped", "reason": reason}
 
-        end = trade_date or self._latest_trade_date()
         universe = self._codes()
         if not universe:
             raise IfindError("股票池为空，先建池（UniverseCollector.collect）")

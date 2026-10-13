@@ -713,8 +713,13 @@ class IfindQuota(BaseModel):
     sampled_trade_days: int
     # 按样本期的日均用量外推到整周期。样本不足（<3 个交易日）时为 None
     projected_cycle_calls: int | None
-    # 已用比例，用于页面变色与配额守卫
+    # 已用比例。**只用于页面展示**（让路判据已改成 `need_ratio`，见下）
     usage_ratio: float | None
+    # 让路判据的三个输入：余下交易日（含今天）、按满负荷估的需求、需求 ÷ 剩余额度。
+    # `need_ratio` 为 None 表示剩余额度已经是 0（最紧张）
+    days_left: int
+    need_calls: int
+    need_ratio: float | None
     by_tool: list[IfindToolUsage]
 
 
