@@ -74,18 +74,20 @@ const PATTERN_LIMIT = 3000
 const WINDOWS = [1, 5, 10, 20]
 
 /**
- * 交易所板块筛选的候选。**依据是代码号段**（见 `lib/format.boardOf`），
- * 与后端 `scan_patterns.is_wudao_board`（悟道六池的板块关）是同一套口径。
+ * 交易所板块筛选的候选。**依据是代码号段**（见 `lib/format.boardOf`），与后端
+ * `scan_patterns.is_pattern_board`（形态落库闸门）是同一套范围。
  *
- * **默认只勾创业板 + 科创板**（2026-10-14 用户要求「只选科创板和创业板」）：
- * 这两块是 20cm，也是本页几个形态样例的所在；要看主板 / 北交所自己勾上。
+ * **默认勾主板 + 创业板 + 科创板**：2026-10-14 用户先要求「只选科创板和创业板」，
+ * 当天又要求「把主板板块闸门也放开」—— 后端那道关现在是这三块（不含北交所）。
+ * 这里的默认值必须跟着后端走，否则新进来的主板命中会被前端默认筛掉、用户看不到。
  */
-const BOARDS: Board[] = ['创业板', '科创板', '主板', '北交所']
-const DEFAULT_BOARDS: Board[] = ['创业板', '科创板']
+const BOARDS: Board[] = ['主板', '创业板', '科创板', '北交所']
+const DEFAULT_BOARDS: Board[] = ['主板', '创业板', '科创板']
 
 /**
- * 解析 URL 里的 `boards`（逗号分隔）。**空值 / 全是非法值一律回落到默认**（创业板 + 科创板）
- * —— 拿不准时给「用户要的那两块」，而不是空列表（空列表 = 一只都不显示，最难理解）。
+ * 解析 URL 里的 `boards`（逗号分隔）。**空值 / 全是非法值一律回落到默认**
+ * （`DEFAULT_BOARDS`，与后端那道闸门同一范围）—— 而不是空列表
+ * （空列表 = 一只都不显示，最难理解）。
  */
 function readBoards(raw: string | null): Board[] {
   if (raw === null) return DEFAULT_BOARDS

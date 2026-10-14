@@ -439,12 +439,13 @@ def main() -> int:
     parser.add_argument(
         "--board",
         default="all",
-        choices=("all", "wudao"),
+        choices=("all", "wudao", "prod"),
         help=(
-            "wudao = 只扫创业板 + 科创板（300/301/302 + 688/689，不含主板、不含北交所；"
-            "见 scan_patterns.is_wudao_board）。**悟道六池（wudao_* / pile_wash_* / "
-            "huabao_early）生产上都只收这两块**，所以拿全市场跑会得到另一批票的信号、"
-            "数字不代表生产 —— 见设计文档 §8.83 / §8.84 / §8.89"
+            "**要与生产对齐就跑 prod**（= 线上落库闸门 `scan_patterns.is_pattern_board`："
+            "主板 + 创业板 + 科创板，不含北交所；2026-10-14 起）；"
+            "wudao = 只创业板 + 科创板（`is_wudao_board`，悟道六池那一套，它们的阈值按 "
+            "20cm 校准；`patterns.py` 各段旧回测表就是这个口径）；"
+            "all = 池子里全部（含北交所）"
         ),
     )
     parser.add_argument("--history", action="store_true", help="用长历史库 history.db")
@@ -463,6 +464,11 @@ def main() -> int:
 
         codes = [code for code in codes if is_wudao_board(code)]
         logger.info("只扫创业板 + 科创板：%d 只（与悟道六池同板块口径）", len(codes))
+    elif args.board == "prod":
+        from app.jobs.scan_patterns import is_pattern_board
+
+        codes = [code for code in codes if is_pattern_board(code)]
+        logger.info("按线上落库闸门：%d 只（主板 + 创业板 + 科创板，不含北交所）", len(codes))
     if args.stocks:
         codes = codes[: args.stocks]
     if not codes:
