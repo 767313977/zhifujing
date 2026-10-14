@@ -1069,6 +1069,14 @@ class PatternStockOut(BaseModel):
     code: str
     name: str | None
     trade_date: date
+    #: 窗口模式（`/patterns/hits?days=N`）下这一轮**首次**命中的日期、以及这一轮持续了几个
+    #: 交易日、最后一天是哪天。单日模式下 `run_days` 恒为 1、`last_date` 等于 `trade_date`。
+    #:
+    #: 为什么要这个：像「堆量上涨后缩量」这种**状态型**形态，只要量能天天创新低就会天天
+    #: 命中（实测中红医疗连中 6 天），十天的名单里同一只票会占五六行。窗口模式把「同一只票
+    #: 同一轮」合并成一条、日期显示首次那天（2026-10-14 用户要求）。
+    run_days: int = 1
+    last_date: date | None = None
     close: float | None
     pct_chg: float | None
     amount: float | None

@@ -786,6 +786,16 @@ export interface PatternStock {
   code: string
   name: string | null
   trade_date: string
+  /**
+   * 窗口模式（`?days=N`）下**这一轮首次**命中的日期；单日模式下就等于信号当天。
+   * `run_days` = 这一轮持续了几个交易日、`last_date` = 最后一次命中是哪天。
+   *
+   * 为什么要这个：状态型形态（如「堆量上涨后缩量」）只要条件一直成立就天天命中，
+   * 看十天名单时同一只票会占五六行。窗口模式把它合并成一条、日期显示首次那天。
+   * 单日模式 `run_days` 恒为 1、`last_date` 等于 `trade_date`。
+   */
+  run_days: number
+  last_date: string | null
   close: number | null
   pct_chg: number | null
   /** 信号当天的成交额 */

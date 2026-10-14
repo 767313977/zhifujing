@@ -515,13 +515,17 @@ export const api = {
     minScore = 0,
     limit = 50,
     patterns?: string[] | null,
+    days = 1,
   ) => {
     const pick = (patterns ?? [])
       .filter(Boolean)
       .map((key) => `&pattern=${encodeURIComponent(key)}`)
       .join('')
+    // days > 1 = 窗口模式：后端把窗口内同一只票的重复命中合并成一条（首次那天为日期）。
+    // 只传 1 时不带这个参数，行为与以前完全一致
+    const win = days > 1 ? `&days=${days}` : ''
     return request<PatternStock[]>(
-      withDate(`/patterns/hits?min_score=${minScore}&limit=${limit}${pick}`, date),
+      withDate(`/patterns/hits?min_score=${minScore}&limit=${limit}${pick}${win}`, date),
     )
   },
 

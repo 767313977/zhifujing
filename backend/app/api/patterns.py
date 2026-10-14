@@ -20,7 +20,14 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
-from app.models import PatternHit, StockBasic, StockConcept, StockDaily, StockUniverse
+from app.models import (
+    PatternHit,
+    StockBasic,
+    StockConcept,
+    StockDaily,
+    StockUniverse,
+    TradeCalendar,
+)
 from app.schemas import (
     PatternCount,
     PatternHitItem,
@@ -240,6 +247,57 @@ def preview(
     ]
 
 
+def _hits_window(
+    db: Session, target: date, picked: list[str], min_score: float, days: int
+) -> tuple[list[PatternHit], dict[str, tuple[int, date]]]:
+    """窗口模式：把窗口内**同一只票的重复命中合并成一条**，日期取首次那天。
+
+    为什么需要：形态里有**状态型**的 —— 条件一直成立就天天命中。「堆量上涨后缩量」就是：
+    量能天天创新低就天天入选（实测中红医疗 8/14~8/25 连中 6 天），看十天名单时同一只票
+    占五六行，榜单直接被撑爆（用户 2026-10-14 点名的「去噪」）。
+
+    返回 `(代表行, 附加信息)`：代表行只保留**首次那天**命中的那些记录（各形态各一条），
+    附加信息给出 `{code: (窗口内命中的天数, 最后一次命中的日期)}` 供接口回填。
+
+    为什么不按「形态 × 票」各自串轮：十天窗口里同一只票走出两轮的情况很少，
+    按票合并更简单、也正好对上用户要的「同一只票只出一条」。
+    """
+    window = list(
+        db.scalars(
+            select(TradeCalendar.trade_date)
+            .where(TradeCalendar.trade_date <= target)
+            .order_by(TradeCalendar.trade_date.desc())
+            .limit(days)
+        ).all()
+    )[::-1]  # 升序
+    if not window:
+        return [], {}
+
+    rows = db.scalars(
+        select(PatternHit)
+        .where(
+            PatternHit.trade_date.in_(window),
+            PatternHit.pattern.in_(picked),
+            PatternHit.score >= min_score,
+        )
+        .order_by(PatternHit.trade_date, PatternHit.score.desc())
+    ).all()
+    if not rows:
+        return [], {}
+
+    first: dict[str, date] = {}
+    seen: dict[str, set[date]] = {}
+    last: dict[str, date] = {}
+    for row in rows:
+        # rows 按日期升序，所以第一条就是首次、最后一条就是最近那次
+        first.setdefault(row.code, row.trade_date)
+        seen.setdefault(row.code, set()).add(row.trade_date)
+        last[row.code] = row.trade_date
+
+    keep = [row for row in rows if row.trade_date == first[row.code]]
+    return keep, {code: (len(seen[code]), last[code]) for code in first}
+
+
 @router.get("/hits", response_model=list[PatternStockOut])
 def hits(
     db: Session = Depends(get_db),
@@ -247,6 +305,12 @@ def hits(
     min_score: float = Query(0.0, ge=0.0, le=100.0),
     pattern: list[str] | None = Query(
         None, description="只看命中这些形态的票（可重复传多个，取**交集**）"
+    ),
+    days: int = Query(
+        1,
+        ge=1,
+        le=60,
+        description="窗口天数：>1 时把窗口内同一只票的重复命中合并成一条（要配合 pattern 用）",
     ),
     limit: int = Query(50, ge=1, le=3000),
 ) -> list[PatternStockOut]:
@@ -269,6 +333,19 @@ def hits(
 
     ⚠️ 取「命中形态的票」之后要按 code 把当天的行**全部**查回来，不能直接按
     `pattern` 过滤行 —— 那样每只票的标签就只剩选中的那些了。
+
+    ## 窗口模式（`days > 1`，2026-10-14 用户要求）
+
+    形态里有**状态型**的：条件一直成立就天天命中，「堆量上涨后缩量」就是（量能天天
+    创新低就天天入选，实测中红医疗 8/14~8/25 连中 6 天）—— 看十天名单时同一只票占
+    五六行，榜单被撑爆。`days > 1` 时窗口内**同一只票只出一条**，`trade_date` 取
+    **首次**命中那天（用户点名要的就是「首次那天的日期」），并带上 `run_days` /
+    `last_date` 说明这一轮持续了多久。逻辑见 `_hits_window`。
+
+    ⚠️ 窗口模式**只在传了 `pattern` 时生效**（要合并得先确定是哪个形态在重复）；
+    没传 `pattern` 时 `days` 被忽略、行为与单日完全一致。窗口模式下每行只带**所选
+    形态**的标签（不再回查「当天命中的全部形态」）—— 各行的「当天」已经不是同一天了，
+    回查要按日期分组，代价不值；单日模式不受影响。
     """
     target = trade_date or _latest_date(db)
     if target is None:
@@ -284,6 +361,14 @@ def hits(
                 status_code=400,
                 detail=f"未知形态 {', '.join(unknown)}，可选：{', '.join(_META)}",
             )
+
+    # 窗口模式下要回填「这一轮持续了几天 / 最近哪天」；单日模式留空
+    run_info: dict[str, tuple[int, date]] = {}
+    if picked and days > 1:
+        rows, run_info = _hits_window(db, target, picked, min_score, days)
+        if not rows:
+            return []
+    elif picked:
         # **交集**：命中全部所选形态的票才留下（定义见 `_intersection_codes`）
         codes = _intersection_codes(db, target, picked, min_score)
         if not codes:
@@ -403,6 +488,9 @@ def hits(
                 code=row.code,
                 name=row.name,
                 trade_date=row.trade_date,
+                # 单日模式：这一轮就今天这一天（窗口模式下下面会覆盖掉）
+                run_days=1,
+                last_date=row.trade_date,
                 close=row.close,
                 pct_chg=row.pct_chg,
                 amount=row.amount,
@@ -417,6 +505,13 @@ def hits(
             existing.patterns.append(item)
             # 已经按分数降序取过，所以第一条就是最高分；这里只在必要时提升
             existing.score = max(existing.score, row.score)
+
+    # 窗口模式回填「这一轮持续了几天 / 最近哪天」（见 `_hits_window`）
+    for run_code, (run_days, run_last) in run_info.items():
+        run_stock = grouped.get(run_code)
+        if run_stock is not None:
+            run_stock.run_days = run_days
+            run_stock.last_date = run_last
 
     result = sorted(grouped.values(), key=lambda stock: stock.score, reverse=True)
     if picked:

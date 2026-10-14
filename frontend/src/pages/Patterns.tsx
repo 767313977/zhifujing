@@ -61,6 +61,18 @@ const HIT_LIMIT = 50
 const PATTERN_LIMIT = 3000
 
 /**
+ * 「近 N 日」窗口的候选值（1 = 只看当天）。
+ *
+ * 为什么要有这个（2026-10-14 用户要求）：形态里有**状态型**的 —— 条件一直成立就天天
+ * 命中。「堆量上涨后缩量」最典型：量能天天创新低就天天入选，实测中红医疗 8/14~8/25
+ * 连中 6 天。看十天名单时同一只票占五六行，榜单被撑爆。选了 >1 之后由后端把窗口内
+ * 同一只票的**重复命中合并成一条**、日期取**首次**那天（`run_days` 说明持续了几天）。
+ *
+ * ⚠️ 只在**选了形态**时生效：要合并得先确定是哪个形态在重复。
+ */
+const WINDOWS = [1, 5, 10, 20]
+
+/**
  * 命中表**实际渲染**多少行（与 `PATTERN_LIMIT` 是两件事：那个管取数，这个管 DOM）。
  *
  * 形态视图最多取回 3000 只，全量进 DOM 时一次渲染几千行、十几列，切评分滑块都会卡。
@@ -307,6 +319,11 @@ export default function Patterns() {
   // 选中的形态：**多选**（交集）。空数组 = 默认视图（全市场按评分取前 HIT_LIMIT 只）
   const [picked, setPicked] = useState<string[]>(() => splitPatterns(params.get('patterns')))
   const [minScore, setMinScore] = useState(0)
+  // 「近 N 日」窗口：>1 时后端把窗口内同一只票的重复命中合并成一条（见 `WINDOWS`）
+  const [days, setDays] = useState(() => {
+    const raw = Number(params.get('days'))
+    return WINDOWS.includes(raw) ? raw : 1
+  })
   const [active, setActive] = useState<string | null>(() => readActive())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -332,8 +349,11 @@ export default function Patterns() {
     // 「看图的那只票」刻意不写进 URL，原因见 ACTIVE_KEY 上面的说明
     if (picked.length > 0) next.set('patterns', picked.join(','))
     else next.delete('patterns')
+    // 「近 N 日」写进地址：换了窗口的名单是可以分享的（评分下限则故意不写，见上）
+    if (days > 1) next.set('days', String(days))
+    else next.delete('days')
     if (next.toString() !== params.toString()) setParams(next, { replace: true })
-  }, [date, picked, params, setParams])
+  }, [date, picked, days, params, setParams])
 
   useEffect(() => {
     api.dates().then(setDates).catch(() => setDates([]))
@@ -348,6 +368,7 @@ export default function Patterns() {
     async (
       target: string | null,
       only: string[],
+      win: number,
       isStale: () => boolean = () => false,
     ) => {
       setLoading(true)
@@ -356,8 +377,15 @@ export default function Patterns() {
         // 没选形态：全市场按评分取前 `HIT_LIMIT` 只（默认视图）。
         // 选了形态：取这些形态的**全部**命中（`PATTERN_LIMIT`，多个之间取**交集**），
         // 评分与排序由后端换成所选形态里的最高分 —— 见 `api.patternHits` 与后端 `/hits`
+        // `win` = 窗口天数（>1 时后端合并同一只票的重复命中，见 `WINDOWS`）
         const [list, sum, prev] = await Promise.all([
-          api.patternHits(target, 0, only.length > 0 ? PATTERN_LIMIT : HIT_LIMIT, only),
+          api.patternHits(
+            target,
+            0,
+            only.length > 0 ? PATTERN_LIMIT : HIT_LIMIT,
+            only,
+            win,
+          ),
           api.patternSummary(target),
           // 徽标数据：跟着 `only` 走，所以每次切形态都重算（与命中列表同一次请求里发出）
           api.patternPreview(target, 0, only),
@@ -385,13 +413,20 @@ export default function Patterns() {
     setHits([])
     setSummary(null)
     setPreview([])
-    void load(date, picked, () => stale)
+    void load(date, picked, days, () => stale)
     return () => {
       stale = true
     }
     // ⚠️ `picked` 必须在依赖里：切形态要**重新取数**（默认视图取前 50、
     // 形态视图取该形态的全部命中），这是 2026-09-27 那次改动的关键一步
-  }, [date, picked, load])
+    // `days` 同理：换窗口要重新取（>1 时后端合并同一只票的重复命中）
+  }, [date, picked, days, load])
+
+  // 没选形态时窗口模式无效（后端没 `pattern` 就忽略 `days`）—— 把状态拉回「当天」，
+  // 否则界面上留着「近10日」的选中态、列表其实是当天的，对不上账
+  useEffect(() => {
+    if (picked.length === 0 && days > 1) setDays(1)
+  }, [picked, days])
 
   const groups = useMemo(() => {
     const map = new Map<string, PatternMeta[]>()
@@ -674,7 +709,37 @@ export default function Patterns() {
               </div>
             ))}
             <div className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-2.5">
-              <span className="text-[13px] text-fg-dim">评分下限</span>
+              {/* 「近 N 日」= 窗口模式：后端把窗口内同一只票的重复命中合并成一条（见 WINDOWS）。
+                  没选形态时只能看当天 —— 合并得先确定是哪个形态在重复 */}
+              <span className="text-[13px] text-fg-dim">窗口</span>
+              {WINDOWS.map((value) => {
+                const off = picked.length === 0 && value > 1
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={off}
+                    onClick={() => setDays(value)}
+                    title={
+                      off
+                        ? '先选一个形态：合并重复命中得先确定是哪个形态在重复'
+                        : value === 1
+                          ? '只看当天命中的票'
+                          : `把近 ${value} 个交易日内同一只票的重复命中合并成一条，日期取首次那天`
+                    }
+                    className={`num border px-2 py-[2px] text-[13px] transition-colors ${
+                      days === value
+                        ? 'border-accent bg-accent/10 text-accent'
+                        : off
+                          ? 'cursor-not-allowed border-line text-fg-dim opacity-40'
+                          : 'border-line text-fg-muted hover:border-fg-dim hover:text-fg'
+                    }`}
+                  >
+                    {value === 1 ? '当天' : `近${value}日`}
+                  </button>
+                )
+              })}
+              <span className="ml-4 text-[13px] text-fg-dim">评分下限</span>
               <input
                 type="range"
                 min={0}
@@ -783,6 +848,9 @@ export default function Patterns() {
                     <SortTh sortKey="code" align="left" {...hitSort}>
                       代码 / 名称
                     </SortTh>
+                    {/* 只在窗口模式出现：那一屏各行的日期**各不相同**（取的是每只票
+                        首次命中那天），日期藏在表头会看不出这一行到底是哪天 */}
+                    {days > 1 && <th className="!text-left">信号日</th>}
                     {/* 「阶段判定」是 8 档枚举、没有单一可比值，不排序 */}
                     <th
                       className="!text-left"
@@ -863,6 +931,25 @@ export default function Patterns() {
                           <span className="ml-2 text-fg">{stock.name ?? '—'}</span>
                         </Link>
                       </td>
+                      {days > 1 && (
+                        <td className="!text-left">
+                          <span
+                            className="num text-[13px] text-fg-muted"
+                            title={
+                              stock.run_days > 1
+                                ? `首次命中 ${stock.trade_date}，这一轮到 ${stock.last_date} 共命中 ${stock.run_days} 个交易日`
+                                : `命中日 ${stock.trade_date}`
+                            }
+                          >
+                            {stock.trade_date.slice(5)}
+                          </span>
+                          {stock.run_days > 1 && (
+                            <span className="num ml-1 text-[13px] text-fg-dim">
+                              +{stock.run_days - 1}日
+                            </span>
+                          )}
+                        </td>
+                      )}
                       <td className="!text-left">
                         {/* 阶段判定只显示一个词（如「刚有人气」），颜色沿用卡片那一档
                             的色调（`phaseTone`，与 PhasePanel 同一个来源）；日线不够时留空 */}
