@@ -930,6 +930,40 @@ T_BUY_GAP_SCORE = 16.0  # 乖离那一档最多贡献的分
 #: 一片并列满分。收窄之后同上限只到 96，留出区分空间（档位仍是排序用的，不改是否命中）。
 T_BUY_TIER_SCORE = {"深B": 0.0, "★B": 10.0, "双B": 20.0}
 
+# ---- 上涨结构内的 B 点（2026-10-14 用户要求）----
+#
+# 用户口径（以近岸蛋白为例）：**缩量下跌之后放量起涨**，随后走出一串「上涨结构」，
+# 每一段的**高点高于前一段的高点、低点也高于前一段的低点**（higher high + higher low）。
+# 结构从放量那一段开始数：第 1 段、第 2 段…… 要选的是**在第 1 或第 2 段里出过 B 点**的票
+# （B 点 = 用户「V5 日线做T」主图里的 深B / ★B / 双B，见 `t_buy_state`）。
+#
+# 近岸蛋白 688137 的实测（用来校准这套切分）：
+#   缩量下跌到 7/24 的 33.20 → 8/4 放量起涨
+#   **结构 1**：8/3 低 34.99 → 8/14 高 71.00，回调到 8/19 的 54.80 确认
+#   **结构 2**：8/19 低 54.80 → 8/26 高 90.90，回调到 9/4 的 59.00 确认
+#   递推关系成立：90.90 > 71.00 且 54.80 > 34.99 ✓
+#
+# ⚠️ 编号是**从最后一段往前数**的（见 `_up_structure_b`）：只有「与上一段构成
+# 高点递增 + 低点递增」才继续往前接。这样「结构 1」天然就是放量那一段 ——
+# 前面那段下跌与它不构成递增关系，链子正好断在那里。
+UP_STRUCT_LEGS = 2  # 只认第 1、第 2 个上涨结构（用户指定）
+UP_STRUCT_MIN_BARS = T_BUY_MIN_BARS  # B 点那条公式要 150 根，结构判定在它之上
+#: 结构判定用的摆动阈值 = 通用阈值（`swing_threshold`）× 这个倍数。
+#:
+#: ⚠️ **必须放大**，否则切得比用户口径细一档：通用阈值是给「值得注意的一次摆动」
+#: 定的（6%~18%），而「上涨结构」要的是**能打断结构的那一级**回调。近岸蛋白实测：
+#: 通用阈值 11.3% 会把 8/11→8/13 那根 −16.5% 的回调当成一次独立摆动，于是
+#: 8/4~8/14 被拆成两段、段号整体偏大。用户口径要求 −16.5% **不**拆段、
+#: −22.8%（8/14→8/19）**要**拆段 —— 阈值必须落在 (16.5%, 22.8%]，
+#: 即倍数 ∈ (1.47, 2.02]。实测 ×1.6 / ×1.8 / ×2.0 都能还原，取中值 1.8。
+UP_STRUCT_SWING_MULT = 1.8
+UP_STRUCT_SWING_MIN = 0.12  # 倍数之后仍不低于这个：低波动股别切得太碎
+UP_STRUCT_SWING_MAX = 0.35  # 上限：再高就成了「一年两次」的级别
+UP_STRUCT_BASE_SCORE = 60.0  # 命中即入库（> MIN_SCORE），后 40 分只用于排序
+#: 三档 B 点的相对强弱，与 `T_BUY_TIER_SCORE` 同向但拉得更开（这里档位是主排序依据）
+UP_STRUCT_TIER_SCORE = {"深B": 5.0, "★B": 15.0, "双B": 25.0}
+UP_STRUCT_LEG_SCORE = 15.0  # 第 1 段满分；第 2 段打七折（越早入越值钱）
+
 
 # ---------------------------------------------------------------- 数据结构
 
@@ -5055,8 +5089,33 @@ def _ma_cross_big_yang(bars: Bars) -> Signal | None:
     )
 
 
-def _t_buy(bars: Bars) -> Signal | None:
-    """做T买点：用户「V5 日线做T」主图公式里的 B 点，报 深B / ★B / 双B 三档。
+@dataclass(slots=True)
+class TBuyState:
+    """`t_buy_state` 的逐根中间量，长度与 K 线一致。
+
+    为什么要抽出来：`_t_buy` 只判**最后一根**，而「上涨结构内的 B 点」要问的是
+    「**某一段区间里**出现过 B 点没有」—— 不抽的话就得把这套公式抄第二遍。
+    """
+
+    gap: np.ndarray  # 距 MA20 的乖离（%）
+    buy0: np.ndarray  # 原式的 `买0`
+    buy_t: np.ndarray  # 过了冷却的 `买T`
+    points: np.ndarray  # **任一一档 B 点**（就是「深B」，三档层层包含）
+    star_b: np.ndarray  # 「★B」
+    double_b: np.ndarray  # 「双B」
+    dip: np.ndarray
+    gold2_low: np.ndarray
+    gold_only_low: np.ndarray
+    base_buy: np.ndarray
+    weak: np.ndarray
+    overdropped: np.ndarray
+    ma20: np.ndarray
+    ma5: np.ndarray
+    vol_ma20: np.ndarray
+
+
+def t_buy_state(bars: Bars) -> TBuyState | None:
+    """用户「V5 日线做T」主图公式里的 B 点，**逐根**算一遍；根数不足返回 None。
 
     逐条落自通达信原式（2026-10-10）的**买方向**：
 
@@ -5164,45 +5223,191 @@ def _t_buy(bars: Bars) -> Signal | None:
     buy0 = np.where(overdropped, core, core | extra)
     cooldown = np.where(overdropped, T_BUY_COOLDOWN_DEEP, T_BUY_COOLDOWN)
 
-    if not (buy0[-1] and _shift(_barslast(buy0), 1)[-1] > cooldown[-1]):
-        return None
-    if not close[-1] >= open_[-1]:  # 阳线（原式 `阳线:=C>=O`）
+    buy_t = buy0 & (_shift(_barslast(buy0), 1) > cooldown)
+
+    # ---- 三档 B 点：层层包含（双B ⊂ ★B ⊂ 深B），所以「有没有 B 点」= `points` ----
+    points = buy_t & (close >= open_)  # 深B（原式 `深B:=买T AND 阳线`）
+    fresh_cross = _cross(ma3, ma5)
+    star_b = (
+        points
+        & (_rolling(fresh_cross.astype(float), T_BUY_CROSS_DAYS, "sum") > 0)
+        & (close >= ma5)
+    )
+    double_b = star_b & fresh_cross
+
+    return TBuyState(
+        gap=gap,
+        buy0=buy0,
+        buy_t=buy_t,
+        points=points,
+        star_b=star_b,
+        double_b=double_b,
+        dip=dip,
+        gold2_low=gold2_low,
+        gold_only_low=gold_only_low,
+        base_buy=base_buy,
+        weak=weak,
+        overdropped=overdropped,
+        ma20=ma20,
+        ma5=ma5,
+        vol_ma20=vol_ma20,
+    )
+
+
+def _t_buy(bars: Bars) -> Signal | None:
+    """做T买点：只判**最后一根**，报 深B / ★B / 双B 三档。
+
+    公式本身在 `t_buy_state`（那份 docstring 有逐条口径说明），这里只做判定与打分。
+
+    ⚠️ 门槛用 `points` 而不是 `buy_t`：`points` 就是「深B」，已经含了原式里的
+    `阳线`（`深B:=买T AND 阳线`）—— 只看 `buy_t` 的话收阴那天也会报出档位。
+    """
+    state = t_buy_state(bars)
+    if state is None or not state.points[-1]:
         return None
 
-    fresh_cross = _cross(ma3, ma5)
-    star = bool(_rolling(fresh_cross.astype(float), T_BUY_CROSS_DAYS, "sum")[-1] > 0) and (
-        close[-1] >= ma5[-1]
-    )
-    tier = "双B" if (star and fresh_cross[-1]) else ("★B" if star else "深B")
+    volume = bars.volume.astype(float)
+    tier = "双B" if state.double_b[-1] else ("★B" if state.star_b[-1] else "深B")
 
     score = T_BUY_BASE_SCORE + T_BUY_TIER_SCORE[tier]
-    score += _gate_score(float(gap[-1]), T_BUY_GAP_DIP, T_BUY_GAP_IDEAL) * T_BUY_GAP_SCORE
+    score += (
+        _gate_score(float(state.gap[-1]), T_BUY_GAP_DIP, T_BUY_GAP_IDEAL) * T_BUY_GAP_SCORE
+    )
 
     # 「为什么算」要跟 `买0` 的分支一致：超跌那天原式是
     # `买0 := IF(超跌, 底背 OR 零下二金, …)` —— **双零金与基买被整段排除**，
     # 所以明细里也不能把它们列成原因（2026-10-11 审 `_t_buy` 时修）。
-    deep = bool(overdropped[-1])
+    deep = bool(state.overdropped[-1])
     fired = [
         label
         for flag, label in (
-            (dip[-1], "底背离"),
-            (gold2_low[-1], "零下二金"),
-            (gold_only_low[-1] and not weak[-1] and not deep, "双零金"),
-            (base_buy[-1] and not weak[-1] and not deep, "基买"),
+            (state.dip[-1], "底背离"),
+            (state.gold2_low[-1], "零下二金"),
+            (state.gold_only_low[-1] and not state.weak[-1] and not deep, "双零金"),
+            (state.base_buy[-1] and not state.weak[-1] and not deep, "基买"),
         )
         if flag
     ]
-    ratio = float(volume[-1] / vol_ma20[-1]) if vol_ma20[-1] > 0 else 0.0
+    ratio = float(volume[-1] / state.vol_ma20[-1]) if state.vol_ma20[-1] > 0 else 0.0
 
     return Signal(
         "t_buy",
         min(score, 100.0),
-        {"support": float(ma20[-1])},
+        {"support": float(state.ma20[-1])},
         {
             "tier": tier,
             "trigger": " + ".join(fired) if fired else "—",
-            "ma20_gap": round(float(gap[-1]), 2),
+            "ma20_gap": round(float(state.gap[-1]), 2),
             "vol_ratio_20": round(ratio, 2),
+        },
+    )
+
+
+def _up_legs(
+    bars: Bars, threshold: float
+) -> list[tuple[int, int, float, float]]:
+    """把 ZigZag 摆动点切成「低点 → 高点」的**上涨段**。
+
+    `threshold` 由调用方传（结构判定要用**放大的**阈值，见 `UP_STRUCT_SWING_MULT`）。
+
+    返回 `[(低点索引, 高点索引, 低点价, 高点价)]`，按时间升序。摆动点严格交替，
+    所以「遇到低点先记下、遇到高点就配一段」走一遍即可。
+
+    ⚠️ ZigZag 末尾那个**还没被反向确认**的极值也会带上（见 `zigzag` 的说明）：
+    末尾方向是 +1 时，最后一段就是**正在进行中**的那一段，它的「高点」只是**目前为止**
+    的最高点（今天可能正在回调，只要幅度没超阈值 ZigZag 就不会翻向）。所以判「今天在
+    哪一段」只看它**是不是最后一段**，别去比高点索引。
+    """
+    low_pivot: tuple[int, float] | None = None
+    legs: list[tuple[int, int, float, float]] = []
+    for index, price, direction in zigzag(bars.high, bars.low, threshold):
+        if direction < 0:
+            low_pivot = (index, price)
+        elif low_pivot is not None:
+            legs.append((low_pivot[0], index, low_pivot[1], price))
+            low_pivot = None
+    return legs
+
+
+def _up_structure_b(bars: Bars) -> Signal | None:
+    """上涨结构内的 B 点：**今天出 B 点**，且今天所在的这个上涨结构是当前上升序列的
+    第 1 或第 2 段。
+
+    用户的定义与样例见文件上方那段（`UP_STRUCT_*`）。判定分三步：
+
+    1. 今天必须有一个 B 点（`t_buy_state` 的 `points`，含 深B/★B/双B 三档）。
+    2. ZigZag 的末尾方向必须是 **+1**（在上涨段里）；是 -1 说明今天落在下跌段，
+       直接不算 —— 这条同时把「回调超过阈值、结构已被破坏」的情况挡在外面。
+    3. 从倒数第二段往前数「高点递增 + 低点递增」，链子自然断在放量起涨处；
+       当前段**只比低点**（理由见下面的注释），段号 ≤ 2 才命中。
+
+    为什么是「今天出 B 点」而不是「结构里曾经出过」：形态引擎每次只看最后一个交易日
+    （`scan` 一天扫一次），所以「结构里出过 B 点」在**那天**就会被这一条抓到；
+    要历史名单就把那些天各扫一遍，不必把区间查询塞进引擎。
+    """
+    if len(bars) < UP_STRUCT_MIN_BARS:
+        return None
+
+    state = t_buy_state(bars)
+    if state is None or not state.points[-1]:
+        return None
+
+    threshold = min(
+        max(swing_threshold(bars) * UP_STRUCT_SWING_MULT, UP_STRUCT_SWING_MIN),
+        UP_STRUCT_SWING_MAX,
+    )
+    pivots = zigzag(bars.high, bars.low, threshold)
+    if not pivots or pivots[-1][2] != 1:
+        return None  # 末尾是下跌段：今天不在上涨结构里
+
+    legs = _up_legs(bars, threshold)
+    if not legs:
+        return None
+
+    # 段号：从当前这一段往回接「高点递增 + 低点递增」的链子，**链子起点就是「结构 1」**。
+    #
+    # ⚠️ 当前这一段（`legs[-1]`）是 ZigZag **尚未反向确认**的那一段，它的「高点」只是
+    # 目前为止的最高点：拿它去比前一段的高点会出错 —— 上涨结构 3 刚起步时还没创新高，
+    # 会被误判成「结构 1」（实测近岸蛋白 9/10 那一版就报了 1）。所以当前段**只比低点**。
+    last = len(legs) - 1
+    start = last
+    if last > 0 and legs[last][2] > legs[last - 1][2]:
+        start = last - 1
+        while (
+            start > 0
+            and legs[start][3] > legs[start - 1][3]
+            and legs[start][2] > legs[start - 1][2]
+        ):
+            start -= 1
+    number = last - start + 1
+    if number > UP_STRUCT_LEGS:
+        return None
+
+    # 「先有一段下跌」这道闸：结构 1 必须是**跌下来之后的第一次上涨** —— 它的低点要低于
+    # 前一段的低点。不加这一条时实测一天命中 6~188 只、9 月以来并集 **1166 只**，几乎
+    # 等于「出过 B 点」（对照 `t_buy` 自己单日 49~115 只）：链子一断段号就重置成 1，
+    # 而震荡里「某一段低点没抬高」太容易满足 —— 用户原话里的「经历一段时间的**下跌**
+    # 结构后」正是缺的这一条。
+    if start == 0 or legs[start][2] >= legs[start - 1][2]:
+        return None
+
+    low_index, _high_index, low_price, high_price = legs[-1]
+    tier = "双B" if state.double_b[-1] else ("★B" if state.star_b[-1] else "深B")
+    struct_days = len(bars) - low_index  # 这一段从低点走到今天，共几个交易日
+    struct_rise = float(high_price) / low_price - 1.0 if low_price > 0 else 0.0
+
+    score = UP_STRUCT_BASE_SCORE + UP_STRUCT_TIER_SCORE[tier]
+    score += UP_STRUCT_LEG_SCORE if number == 1 else UP_STRUCT_LEG_SCORE * 2 / 3
+
+    return Signal(
+        "up_structure_b",
+        min(score, 100.0),
+        {"struct_low": float(low_price), "struct_high": float(high_price)},
+        {
+            "tier": tier,
+            "struct_no": number,
+            "struct_days": struct_days,
+            "struct_rise": round(struct_rise, 3),
         },
     )
 
@@ -5841,6 +6046,9 @@ PATTERNS: tuple[Pattern, ...] = (
     # 只落买方向；不限板块（判据是乖离 + MACD + 量能，与 20cm 无关），
     # 回测数字见上面 T_BUY_* 那段注释。
     Pattern("t_buy", "做T买点", "做T", _t_buy),
+    # 用户定义的「上涨结构内的 B 点」（2026-10-14）：B 点必须落在当前上升序列的
+    # 第 1 或第 2 个上涨结构里（结构 = 高点递增 + 低点递增的那一串，见 UP_STRUCT_*）。
+    Pattern("up_structure_b", "上涨结构内的B点", "做T", _up_structure_b),
 
     # 2026-10-13 用户给的「知行超级B1 V1203（ZGNB）」同花顺公式 —— 7 个子信号**各成一个形态**
     # （理由与差异见上面「知行超级B1」那一段）。全市场扫，不限板块：宽幅板（20cm）走的是

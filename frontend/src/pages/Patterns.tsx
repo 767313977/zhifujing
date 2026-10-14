@@ -270,6 +270,12 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   vol_mult: ['堆量倍数', false],
   pile_rise: ['堆量涨幅', true],
   pile_gap: ['堆量后间隔', false],
+
+  // ---- 上涨结构内的 B 点（up_structure_b，2026-10-14 新增）----
+  // `tier`（档位：深B/★B/双B）与做T买点共用，不用重复定义。
+  struct_no: ['第几段结构', false],
+  struct_days: ['本段天数', false],
+  struct_rise: ['本段涨幅', true],
 }
 
 function detailText(key: string, value: number | string): string {
