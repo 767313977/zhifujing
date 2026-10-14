@@ -959,10 +959,20 @@ UP_STRUCT_MIN_BARS = T_BUY_MIN_BARS  # B 点那条公式要 150 根，结构判�
 UP_STRUCT_SWING_MULT = 1.8
 UP_STRUCT_SWING_MIN = 0.12  # 倍数之后仍不低于这个：低波动股别切得太碎
 UP_STRUCT_SWING_MAX = 0.35  # 上限：再高就成了「一年两次」的级别
-UP_STRUCT_BASE_SCORE = 60.0  # 命中即入库（> MIN_SCORE），后 40 分只用于排序
+UP_STRUCT_BASE_SCORE = 55.0  # 命中即入库（> MIN_SCORE），其余 41 分只用于排序
 #: 三档 B 点的相对强弱，与 `T_BUY_TIER_SCORE` 同向但拉得更开（这里档位是主排序依据）
-UP_STRUCT_TIER_SCORE = {"深B": 5.0, "★B": 15.0, "双B": 25.0}
-UP_STRUCT_LEG_SCORE = 15.0  # 第 1 段满分；第 2 段打七折（越早入越值钱）
+UP_STRUCT_TIER_SCORE = {"深B": 4.0, "★B": 10.0, "双B": 16.0}
+UP_STRUCT_LEG_SCORE = 9.0  # 结构 1 满分；结构 2 打 2/3（越早入越值钱）
+UP_STRUCT_GAP_SCORE = 16.0  # 连续项（B 点当天的乖离）最多贡献的分
+#: 分数上限，**各项加起来正好等于它**：55 + 16 + 9 + 16 = 96。
+#:
+#: 为什么不是 100：`t_buy` 2026-10-10 踩过同一个坑 —— 几项正好压在 100，会让最好那一档
+#: 一片并列满分、榜内没有区分度（见 `T_BUY_TIER_SCORE` 那段）。
+#:
+#: ⚠️ **光压上限并不解决并列**（并列只是从 100 挪到 96，每个桶的人数一个不变）：
+#: 真正管用的是上面那个**连续项**。没有它时分数只有 6 个取值（档位 3 × 段号 2），
+#: 实测 1056 条命中就挤在这 6 个桶里，前 40 名全是 100.0 —— 排序等于没排。
+UP_STRUCT_MAX_SCORE = 96.0
 
 
 # ---------------------------------------------------------------- 数据结构
@@ -5398,16 +5408,24 @@ def _up_structure_b(bars: Bars) -> Signal | None:
 
     score = UP_STRUCT_BASE_SCORE + UP_STRUCT_TIER_SCORE[tier]
     score += UP_STRUCT_LEG_SCORE if number == 1 else UP_STRUCT_LEG_SCORE * 2 / 3
+    # 连续项：B 点当天的乖离越深，「买在不亏的位置」这一条越硬。阈值直接复用 `_t_buy`
+    # 那一套（`T_BUY_GAP_DIP` / `T_BUY_GAP_IDEAL`）—— 同一个概念别攒出第二套口径。
+    score += (
+        _gate_score(float(state.gap[-1]), T_BUY_GAP_DIP, T_BUY_GAP_IDEAL)
+        * UP_STRUCT_GAP_SCORE
+    )
 
     return Signal(
         "up_structure_b",
-        min(score, 100.0),
+        min(score, UP_STRUCT_MAX_SCORE),
         {"struct_low": float(low_price), "struct_high": float(high_price)},
         {
             "tier": tier,
             "struct_no": number,
             "struct_days": struct_days,
             "struct_rise": round(struct_rise, 3),
+            # `ma20_gap` 与 `t_buy` 共用同一个 detail 键（前端标签也是现成的）
+            "ma20_gap": round(float(state.gap[-1]), 2),
         },
     )
 
