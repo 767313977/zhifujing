@@ -1007,13 +1007,13 @@ class DailyCollector:
         return collect_funds.collect_hsgt(self.ifind, trade_date)
 
     def collect_etf(self) -> int:
-        """ETF 份额与行情（同花顺清单 + iFinD 份额/行情，约 20 次 iFinD 调用）。
+        """ETF 份额与行情（同花顺清单 + iFinD 份额/行情，约 59 次 iFinD 调用）。
 
         **不接受目标日期**：落库日期由同花顺自带的「最新-交易日」决定 ——
         盘前/凌晨/周末取到的都是上一交易日的快照，按「今天」写会造出假数据点。
         详见 `collect_funds.collect_etf`。
 
-        配额让路的**第二级**就停它（`PAUSE_ENHANCE`，约 20 次/天）：纯增强、没有下游。
+        配额让路的**第二级**就停它（`PAUSE_ENHANCE`，约 59 次/天）：纯增强、没有下游。
         比它先停的只有「命中前 50 只的 DDE 补齐」（70 次/天）；全市场日线属于地基，
         留在最后才停（顺序见 `services.usage.LEVEL_BUDGETS`）。
         """
@@ -1270,12 +1270,12 @@ class DailyCollector:
         # 龙虎榜走 akshare，不占 iFinD 配额，任何档位都照采
         steps["lhb"] = self._step(target, "lhb", lambda: self.collect_lhb(target))
         # 情绪只依赖涨停池+指数，必须尽早落库：首页「今日复盘」以 market_sentiment
-        # 有没有数据为准。若把情绪放在 ETF（约 20 次 iFinD）之后，ETF 一卡死
+        # 有没有数据为准。若把情绪放在 ETF（约 59 次 iFinD）之后，ETF 一卡死
         # 页面会一直显示「暂无数据」，尽管指数/涨停其实已经采完。
         steps["sentiment"] = self._step(
             target, "sentiment", lambda: self.collect_sentiment(target)
         )
-        # ETF 换 iFinD 源之后要花约 20 次调用（配额让路在它自己内部判断），
+        # ETF 换 iFinD 源之后要花约 59 次调用（配额让路在它自己内部判断），
         # 龙虎榜机构席位仍是 akshare、零配额
         steps["etf"] = self._step(target, "etf", self.collect_etf)
         steps["lhb_institution"] = self._step(
