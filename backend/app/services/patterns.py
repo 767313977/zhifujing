@@ -473,7 +473,7 @@ WUDAO_WASH_MIN_BARS = 28  # 最远用到 bars[-3]（样板日 = i−2）；再�
 # 回测（2026-10-08，`scripts/backtest_patterns.py --pattern wudao_wash2 --board wudao`
 # = 创业板 + 科创板 1908 只 × 2026-01~07，无未来函数、同票 20 日去重、基准 = 同日全市场平均）：
 #
-# ⚠️ **口径对上了**：wash2 现在只收**创业板 + 科创板**（`scan_patterns._in_wudao_pool`
+# ⚠️ **口径对上了**：wash2 现在只收**创业板 + 科创板**（`scan_patterns._signal_allowed`
 # 的板块闸门，不带候选池），与 `--board wudao` 同一个口径 → 这张表重新代表生产。
 # （2026-10-08 ~ 10-09 之间它一度是全池扫，那时这张表不算数。）
 #
@@ -6079,7 +6079,7 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("huabao_early", "华宝早期", WUDAO_GROUP, _huabao_early),
     # 2026-10-10 用户给的通达信公式（金叉 + 4% 大阳 + 短上影 + RSI6<60）。
     # 回测数字与同类对比见文件上方阈值块（结论：右尾驱动的清单，不是买点）。
-    # 板块关在 `scan_patterns.WUDAO_BOARD_KEYS`：只出创业板 + 科创板（回测口径）。
+    # 板块关在 `scan_patterns.BOARD_GATED_KEYS`：只出创业板 + 科创板（回测口径）。
     Pattern("ma_cross_big_yang", "金叉大阳", "趋势", _ma_cross_big_yang),
     # 2026-10-10 用户给的「V5 日线做T」主图公式的买点（深B / ★B / 双B 三档）。
     # 只落买方向；不限板块（判据是乖离 + MACD + 量能，与 20cm 无关），

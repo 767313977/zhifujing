@@ -22,7 +22,7 @@
 **板块：六个池子都只收创业板 + 科创板**（`is_wudao_board`，2026-10-09 去掉主板；
 边界变化的来历见那个元组的注释）。
 
-**金叉大阳**（2026-10-10 加，用户给的通达信公式）**板块同上**（见 `WUDAO_BOARD_KEYS`），
+**金叉大阳**（2026-10-10 加，用户给的通达信公式）**板块同上**（见 `BOARD_GATED_KEYS`），
 候选池不限 —— 它的回测就是在 wudao 池上做的。它不是悟道家族的池子，所以**不进
 `pattern_track.POOL_KEYS`**（成绩单不取它，那六个是「悟道之路」专属）。
 
@@ -80,7 +80,7 @@ from app.services.patterns import (
 # （个股页的阶段判定也用它，两处口径必须一份）。
 from app.services.stock_phase import trim_contiguous_tail
 # 悟道六池的 key。借用成绩单那边那份（`pattern_track.POOL_KEYS` 就是这六个池子）——
-# 板块闸门要卡的就是它们（外加金叉大阳，见 `WUDAO_BOARD_KEYS`），别各写一份、
+# 板块闸门要卡的就是它们（外加金叉大阳，见 `BOARD_GATED_KEYS`），别各写一份、
 # 免得加池子时漏掉一处。
 from app.services.pattern_track import POOL_KEYS as WUDAO_POOL_KEYS
 from app.sources.ifind import IfindError
@@ -100,7 +100,7 @@ _MIN_DAY_COVERAGE = 0.9
 
 # ---- 悟道各池的口径。2026-10-09 定稿，改动前先读模块顶部的表 ----
 
-# **只有这两个形态另限候选池**（要过板块关的形态见 `WUDAO_BOARD_KEYS` 与模块顶部）
+# **只有这两个形态另限候选池**（要过板块关的形态见 `BOARD_GATED_KEYS` 与模块顶部）
 WUDAO_CAND_KEYS = frozenset({"wudao_sample", "wudao_start"})
 
 # 候选窗口（按**当日冲高幅度** = 最高价 / 昨收 − 1，单位 %）：
@@ -156,7 +156,7 @@ def is_wudao_board(code: str) -> bool:
 
     ⚠️ 名字故意不叫 `is_chinext` —— 这条边界改过好几轮（2026-09-29 只创业板、10-08 加了
     主板、同日又加科创板、10-09 把主板去掉），叫 `is_chinext` 会骗人。
-    调用点：候选池构建（`_candidate_codes`）与落库闸门（`_in_wudao_pool`，六个池子都过）。
+    调用点：候选池构建（`_candidate_codes`）与落库闸门（`_signal_allowed`，六个池子都过）。
     """
     c = str(code or "").strip().zfill(6)
     return c.startswith(_WUDAO_BOARD_PREFIXES)
@@ -342,22 +342,38 @@ def _candidate_codes(trade_date: date) -> set[str]:
 
 #: 要过「只出创业板 + 科创板」这道板块关的形态。
 #:
-#: **刻意与 `WUDAO_POOL_KEYS` 分开**：那个元组还兼着「悟道成绩单取数」（见
+#: **与 `WUDAO_POOL_KEYS` 分开**：那个元组还兼着「悟道成绩单取数」（见
 #: `pattern_track.POOL_KEYS`），而这里只管板块关 —— 金叉大阳不是悟道家族的池子。
 #:
 #: 金叉大阳（2026-10-10 用户给的通达信公式）回测就是在 wudao 池上做的：4% 大阳在
 #: 20cm 板和 10cm 主板不是同一件事，拿全市场跑会得到另一批票、数字也不代表生产
 #: （见 `scripts/backtest_patterns.py --board` 的说明），所以把板块锁死。
-WUDAO_BOARD_KEYS: tuple[str, ...] = (*WUDAO_POOL_KEYS, "ma_cross_big_yang")
+#:
+#: ⚠️ 名字里的 `WUDAO_` 是 2026-10-14 去掉的 —— 那天加了两个**不属于悟道家族**的形态：
+#: `pile_up_shrink`（堆量上涨后缩量）与 `up_structure_b`（上涨结构内的B点）。理由与
+#: 金叉大阳同一条：它们的样例（透景生命 300642 / 中红医疗 300981 / 善水科技 301190 /
+#: 近岸蛋白 688137 / 深科达 688328）**清一色是 20cm**，而实测十天名单里 **70~84% 是
+#: 主板票**、基本是噪声（2026-10-14 用户要求「只选科创板和创业板」）。
+#: ⚠️ 这不只是换个存法：DB 里那两个形态只留 20cm，**胜率跟踪与个股页跟着一起收窄**。
+#:
+#: ⚠️ **其余形态一律不动**：它们注释里的回测数字都是按各自的全市场口径标定的
+#: （见 `patterns.py` 各段阈值注释），换了池子那些数字就不再代表生产。
+BOARD_GATED_KEYS: tuple[str, ...] = (
+    *WUDAO_POOL_KEYS,
+    "ma_cross_big_yang",
+    "pile_up_shrink",
+    "up_structure_b",
+)
 
 
-def _in_wudao_pool(
+def _signal_allowed(
     pattern: str, code: str, cands: set[str], huabao_skip: set[str]
 ) -> bool:
-    """这条悟道信号允不允许落库。
+    """这条信号允不允许落库。
 
-    **六个池子（悟道家族）＋ 金叉大阳都先过板块关**：`is_wudao_board` = 创业板 + 科创板
-    （2026-10-09 用户要求去掉主板，见那个元组的注释；金叉大阳见 `WUDAO_BOARD_KEYS`）。
+    **先过板块关**：`is_wudao_board` = 创业板 + 科创板（2026-10-09 用户要求去掉主板，
+    见那个元组的注释）。要过这道关的形态见 `BOARD_GATED_KEYS` —— 除了悟道六池与
+    金叉大阳，2026-10-14 起还包括「堆量上涨后缩量」「上涨结构内的B点」。
 
     板块过了之后再看两道：
     - 「明天盯 / 明天预案」另外**限候选池**（今天冲高 ≥ `WUDAO_CAND_MIN_HIGH` 的票）；
@@ -365,7 +381,7 @@ def _in_wudao_pool(
       用「今天强势」当候选等于把它们全筛掉，见模块顶部那张表），
       华宝早期另外排掉同一只票上已经命中的样板/启动。
     """
-    if pattern in WUDAO_BOARD_KEYS and not is_wudao_board(code):
+    if pattern in BOARD_GATED_KEYS and not is_wudao_board(code):
         return False
     if pattern in WUDAO_CAND_KEYS:
         return code in cands
@@ -825,7 +841,7 @@ def scan(
         last = grouped[code][-1]
         for signal in sigs:
             # 「明天盯 / 明天预案」只收候选名单里的票（其余形态一律放行）
-            if not _in_wudao_pool(signal.pattern, code, wudao_cands, huabao_skip):
+            if not _signal_allowed(signal.pattern, code, wudao_cands, huabao_skip):
                 dropped_wudao += 1
                 continue
             by_pattern[signal.pattern] += 1
