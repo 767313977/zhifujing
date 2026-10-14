@@ -55,6 +55,23 @@ export function fmtShortDate(value: string | null | undefined): string {
 }
 
 /**
+ * 交易所板块。**依据是代码号段**（不是名字）：
+ * `30x` 创业板、`68x` 科创板、`4xx/8xx/92x` 北交所，其余 `60x/00x` 归主板。
+ *
+ * 与后端 `scan_patterns.is_wudao_board`（悟道六池的板块关 = 创业板 + 科创板）
+ * 以及 `LimitPoolBoard.marketOf`（同一号段口径的单字缩写版）用的是同一套依据。
+ */
+export type Board = '主板' | '创业板' | '科创板' | '北交所'
+
+export function boardOf(code: string): Board | null {
+  if (code.startsWith('30')) return '创业板'
+  if (code.startsWith('68')) return '科创板'
+  if (code.startsWith('4') || code.startsWith('8') || code.startsWith('92')) return '北交所'
+  if (code.startsWith('60') || code.startsWith('00')) return '主板'
+  return null
+}
+
+/**
  * ISO 时间戳 → `09-18 15:05`（不含年份、不含秒）。
  *
  * 用正则截字符串而不是 `new Date(value)`：后端给的是**不带时区**的本地时间串

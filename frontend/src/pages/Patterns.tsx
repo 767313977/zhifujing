@@ -10,7 +10,8 @@ import Panel from '../components/Panel'
 import { phaseTone } from '../components/PhasePanel'
 import Segmented from '../components/Segmented'
 import SortTh from '../components/SortTh'
-import { fmtAmount, fmtInt, fmtPct, toneOf } from '../lib/format'
+import { boardOf, fmtAmount, fmtInt, fmtPct, fmtShortDate, toneOf } from '../lib/format'
+import type { Board } from '../lib/format'
 import { K_VIEWS, useKLine } from '../lib/klinePeriod'
 import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'
@@ -71,6 +72,26 @@ const PATTERN_LIMIT = 3000
  * ⚠️ 只在**选了形态**时生效：要合并得先确定是哪个形态在重复。
  */
 const WINDOWS = [1, 5, 10, 20]
+
+/**
+ * 交易所板块筛选的候选。**依据是代码号段**（见 `lib/format.boardOf`），
+ * 与后端 `scan_patterns.is_wudao_board`（悟道六池的板块关）是同一套口径。
+ *
+ * **默认只勾创业板 + 科创板**（2026-10-14 用户要求「只选科创板和创业板」）：
+ * 这两块是 20cm，也是本页几个形态样例的所在；要看主板 / 北交所自己勾上。
+ */
+const BOARDS: Board[] = ['创业板', '科创板', '主板', '北交所']
+const DEFAULT_BOARDS: Board[] = ['创业板', '科创板']
+
+/**
+ * 解析 URL 里的 `boards`（逗号分隔）。**空值 / 全是非法值一律回落到默认**（创业板 + 科创板）
+ * —— 拿不准时给「用户要的那两块」，而不是空列表（空列表 = 一只都不显示，最难理解）。
+ */
+function readBoards(raw: string | null): Board[] {
+  if (raw === null) return DEFAULT_BOARDS
+  const names = raw.split(',').filter((name): name is Board => BOARDS.includes(name as Board))
+  return names.length > 0 ? names : DEFAULT_BOARDS
+}
 
 /**
  * 命中表**实际渲染**多少行（与 `PATTERN_LIMIT` 是两件事：那个管取数，这个管 DOM）。
@@ -324,6 +345,8 @@ export default function Patterns() {
     const raw = Number(params.get('days'))
     return WINDOWS.includes(raw) ? raw : 1
   })
+  // 交易所板块筛选：默认只勾创业板 + 科创板（见 `BOARDS`）
+  const [boards, setBoards] = useState<Board[]>(() => readBoards(params.get('boards')))
   const [active, setActive] = useState<string | null>(() => readActive())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -352,8 +375,12 @@ export default function Patterns() {
     // 「近 N 日」写进地址：换了窗口的名单是可以分享的（评分下限则故意不写，见上）
     if (days > 1) next.set('days', String(days))
     else next.delete('days')
+    // 板块：与默认（创业板 + 科创板）一致时不写进地址，少点噪声；改过才写
+    const asKey = (list: Board[]) => [...list].sort().join(',')
+    if (asKey(boards) !== asKey(DEFAULT_BOARDS)) next.set('boards', asKey(boards))
+    else next.delete('boards')
     if (next.toString() !== params.toString()) setParams(next, { replace: true })
-  }, [date, picked, days, params, setParams])
+  }, [date, picked, days, boards, params, setParams])
 
   useEffect(() => {
     api.dates().then(setDates).catch(() => setDates([]))
@@ -482,12 +509,16 @@ export default function Patterns() {
   const visible = useMemo(() => {
     return hits.filter((stock) => {
       if (stock.score < deferredMinScore) return false
+      // 板块关：先过这一道（默认只留创业板 + 科创板，见 `BOARDS`）。
+      // 号段认不出的极端情况保留而不是丢掉 —— 静默少几行比多几行难查得多
+      const board = boardOf(stock.code)
+      if (board !== null && !boards.includes(board)) return false
       if (picked.length === 0) return true
       // 后端在形态模式下返回的就是「同时满足全部所选形态的票」，所以这里通常全过；
       // 留一道是兜底（也保证每行是按**全部**命中形态判的，不是按展示用的截断列表）
       return picked.every((key) => stock.patterns.some((item) => item.pattern === key))
     })
-  }, [hits, picked, deferredMinScore])
+  }, [hits, picked, boards, deferredMinScore])
 
   // 首屏按评分降序（与后端给的一致，所以看到的顺序没变，但列头能正确亮出
   // 当前排的是哪一列）；点列头改成别的口径。**排的是 visible，不是 hits** ——
@@ -709,9 +740,35 @@ export default function Patterns() {
               </div>
             ))}
             <div className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-2.5">
-              {/* 「近 N 日」= 窗口模式：后端把窗口内同一只票的重复命中合并成一条（见 WINDOWS）。
+              {/* 板块：按代码号段判（见 lib/format.boardOf）。默认只勾创业板 + 科创板 —— 20cm */}
+              <span className="text-[13px] text-fg-dim">板块</span>
+              {BOARDS.map((name) => {
+                const on = boards.includes(name)
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() =>
+                      setBoards((prev) =>
+                        prev.includes(name)
+                          ? prev.filter((item) => item !== name)
+                          : [...prev, name],
+                      )
+                    }
+                    title={`${on ? '去掉' : '加上'}「${name}」（按代码号段判定，与悟道六池的板块关同一口径）`}
+                    className={`num border px-2 py-[2px] text-[13px] transition-colors ${
+                      on
+                        ? 'border-accent bg-accent/10 text-accent'
+                        : 'border-line text-fg-muted hover:border-fg-dim hover:text-fg'
+                    }`}
+                  >
+                    {name}
+                  </button>
+                )
+              })}
+              {/* 窗口：>1 时后端把窗口内同一只票的重复命中合并成一条（见 `WINDOWS`）。
                   没选形态时只能看当天 —— 合并得先确定是哪个形态在重复 */}
-              <span className="text-[13px] text-fg-dim">窗口</span>
+              <span className="ml-4 text-[13px] text-fg-dim">窗口</span>
               {WINDOWS.map((value) => {
                 const off = picked.length === 0 && value > 1
                 return (
@@ -941,7 +998,7 @@ export default function Patterns() {
                                 : `命中日 ${stock.trade_date}`
                             }
                           >
-                            {stock.trade_date.slice(5)}
+                            {fmtShortDate(stock.trade_date)}
                           </span>
                           {stock.run_days > 1 && (
                             <span className="num ml-1 text-[13px] text-fg-dim">
