@@ -964,6 +964,20 @@ UP_STRUCT_BASE_SCORE = 55.0  # 命中即入库（> MIN_SCORE），其余 41 分�
 UP_STRUCT_TIER_SCORE = {"深B": 4.0, "★B": 10.0, "双B": 16.0}
 UP_STRUCT_LEG_SCORE = 9.0  # 结构 1 满分；结构 2 打 2/3（越早入越值钱）
 UP_STRUCT_GAP_SCORE = 16.0  # 连续项（B 点当天的乖离）最多贡献的分
+#: 连续项的**理想区间**（%）：乖离 **−8% ~ −2%**（贴着 MA20 略偏下）最好 ——
+#: 太浅说明结构还没洗够，太深是接飞刀，跑到 MA20 上方就是追高。区间中心（−5%）满分，
+#: 两端降到 `EDGE_SCORE`，超过 `UP_STRUCT_GAP_CAP` 归零。
+#:
+#: ⚠️ 喂给 `_band_score` 之前要**整体平移 +8**（让它落进正数区间）：那个函数开头是
+#: `if value <= 0: return 0.0`，是给正数量（振幅、涨幅）写的；而乖离有**一半样本在
+#: 0 附近或为正**（实测 1056 条命中的乖离中位数是 **+0.37%**），直接喂进去会整片归零
+#: —— 那样只能散开 13%，剩下 56% 仍挤在 3 个桶里。平移 8 个点之后区间变成
+#: `(0, 6)`、上限变成 `14`，语义不变。**全文件只有这一处这么用**。
+#:
+#: （另一条路是不复用 `_band_score`、给负数单独写个钟形函数；选平移是为了不新增一套
+#: 「中间最好」的实现，`_band_score` 的注释里已经把那个坑写得很清楚了。）
+UP_STRUCT_GAP_IDEAL = (-8.0, -2.0)
+UP_STRUCT_GAP_CAP = 6.0
 #: 分数上限，**各项加起来正好等于它**：55 + 16 + 9 + 16 = 96。
 #:
 #: 为什么不是 100：`t_buy` 2026-10-10 踩过同一个坑 —— 几项正好压在 100，会让最好那一档
@@ -5408,10 +5422,17 @@ def _up_structure_b(bars: Bars) -> Signal | None:
 
     score = UP_STRUCT_BASE_SCORE + UP_STRUCT_TIER_SCORE[tier]
     score += UP_STRUCT_LEG_SCORE if number == 1 else UP_STRUCT_LEG_SCORE * 2 / 3
-    # 连续项：B 点当天的乖离越深，「买在不亏的位置」这一条越硬。阈值直接复用 `_t_buy`
-    # 那一套（`T_BUY_GAP_DIP` / `T_BUY_GAP_IDEAL`）—— 同一个概念别攒出第二套口径。
+    # 连续项：B 点当天的乖离落在这个钟形区间里给分（区间与平移的理由见
+    # `UP_STRUCT_GAP_IDEAL` 那段注释）—— `_band_score` 只收正数，所以整体抬 8 个点。
+    gap = float(state.gap[-1])
+    shift = -UP_STRUCT_GAP_IDEAL[0]
     score += (
-        _gate_score(float(state.gap[-1]), T_BUY_GAP_DIP, T_BUY_GAP_IDEAL)
+        _band_score(
+            gap + shift,
+            0.0,
+            UP_STRUCT_GAP_IDEAL[1] + shift,
+            UP_STRUCT_GAP_CAP + shift,
+        )
         * UP_STRUCT_GAP_SCORE
     )
 
