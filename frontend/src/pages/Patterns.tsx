@@ -261,6 +261,15 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   // 知行B1 这一组（7 个形态）都会给：0 = 信号就出在今天，3 = 3 个交易日前。
   // 它们是「近 N 个交易日出现过」的窗口口径，`ago` 就是那个「最近一次」距今几天。
   ago: ['信号距今', false],
+
+  // ---- 堆量上涨后缩量（pile_up_shrink，2026-10-14 新增）----
+  // `shrink`（缩量到）与 `drop`（回调幅度）与既有字段共用；
+  // 涨幅那个键特意叫 `pile_rise` 而不叫 `rise` —— `rise` 已经被 gap_fill
+  // （补缺口后的反弹幅度）占了，同名会串标签。
+  pile_days: ['堆量天数', false],
+  vol_mult: ['堆量倍数', false],
+  pile_rise: ['堆量涨幅', true],
+  pile_gap: ['堆量后间隔', false],
 }
 
 function detailText(key: string, value: number | string): string {

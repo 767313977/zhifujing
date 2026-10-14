@@ -2427,7 +2427,9 @@ def _pile_up_shrink(bars: Bars) -> Signal | None:
         {
             "pile_days": e - s + 1,
             "vol_mult": round(mult, 2),
-            "rise": round(rise, 3),
+            # 不叫 `rise`：那个键 `gap_fill`（缺口回补）已经占了，语义是「补缺口后的
+            # 反弹幅度」—— 前端 `DETAIL_FIELDS` 是**全局共用**的，同名会串标签
+            "pile_rise": round(rise, 3),
             "shrink": round(shrink, 4),
             "drop": round(drop, 4),
             "pile_gap": today - e,
