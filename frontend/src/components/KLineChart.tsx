@@ -110,14 +110,18 @@ const THS_SPLIT_LINE = {
  * 四个键全给：ECharts 的 data-item `itemStyle` 会与序列级的合并，只覆盖想改的那几个也
  * 可以，但那样「阳线空心」的 `color: 'transparent'` 会漏过来 —— 涨停日要的恰恰是实心。
  *
- * 颜色复用**强调金**（与关键位虚线同色）：画法上分得开（一个是实心蜡烛、一个是水平虚线），
- * 且语义都是「这里要留意」，不再为它新增一个令牌。
+ * 颜色用**同色相再深一档的涨色**（`CHART.limitUp`）：画法上分得开（一个是深红实心
+ * 蜡烛、其它是普通红/绿），语义上也不引入第三种颜色。
+ *
+ * ⚠️ 深色版这里用的是**强调金**。2026-10-13 改浅色时强调色从金换成了蓝 —— 若继续
+ * 复用 accent，涨停蜡烛会变成蓝柱，与「红涨」的语义直接打架，所以拆出独立的
+ * `limitUp` 令牌。改 accent 时别再顺手把它改回去。
  */
 const LIMIT_UP_ITEM_STYLE = {
-  color: CHART.accent,
-  color0: CHART.accent,
-  borderColor: CHART.accent,
-  borderColor0: CHART.accent,
+  color: CHART.limitUp,
+  color0: CHART.limitUp,
+  borderColor: CHART.limitUp,
+  borderColor0: CHART.limitUp,
 } as const
 
 /**

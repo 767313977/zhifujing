@@ -1,5 +1,5 @@
 import type { SectorHeat, SectorHeatItem } from '../api/types'
-import { withAlpha } from '../lib/chart'
+import { CHART, withAlpha } from '../lib/chart'
 import { fmtAmount, fmtPct, toneOf } from '../lib/format'
 import Panel from './Panel'
 
@@ -102,40 +102,34 @@ function Row({ label, items }: { label: string; items: SectorHeatItem[] }) {
 }
 
 /**
- * 卡片底色：方向用色相（红涨 / 青跌），强度用透明度。
+ * 卡片底色：方向用色相（红涨 / 绿跌），强度用透明度。
  *
  * 透明蒙层一律经 `withAlpha` 生成、不手写 RGB 字面量 ——
  * 之前这里写死过一份 `'201, 96, 85'`，改色时就得记着同步它，漏了就只剩这一处旧色。
  *
- * ## 2026-09-26 改法：亮色蒙层 → 同色相**深色**蒙层
+ * ## 2026-10-13 浅底版：深色蒙层 → 同色相**浅色**蒙层
  *
- * 卡里有两行字：主数字、「涨停 N」（后者是 `fg-dim`，全站最弱的一档）。亮色蒙层会
- * 抬背景亮度，把最弱那行直接压到 AA 线下 —— 实测：
+ * 深色版用的是同色相**深色**底（#4d1512 / #0a3032）配亮字；浅底上反过来 ——
+ * 用涨跌色本身低透明度叠在白卡上，两行字保持深色：
  *
- * | 蒙层 | α=0.16 | α=0.23 |
- * | --- | --- | --- |
- * | 涨色 `#ff7566` | fg 9.7 / fg-dim **4.2** | fg 8.5 / fg-dim **3.7** |
- * | 跌色 `#45bfc4` | fg 9.1 / fg-dim **4.0** | fg 7.8 / fg-dim **3.4** |
+ * | 项 | 全强度区间（α = 0.08~0.26） |
+ * | --- | --- |
+ * | 主数字 `text-fg` #1f2328 | 对最深一档（涨 α=0.26 → 约 #f6d5d2）仍在 9:1 以上 |
+ * | 「涨停 N」`text-fg-dim` #6e7781 | 全站最弱的一档，最深一档上约 4.3:1，与全站持平 |
  *
- * 所以蒙层改用同色相的**深色底**（下面两个常量）：深色底不抬亮度，两行字在
- * **整个强度区间**都过线（fg ≥10.6、fg-dim ≥4.6）。
+ * ⚠️ 这张表是**按当前涨跌色算的**：动了 `--color-up` / `--color-down` 就得重算 ——
+ * 别让注释里的数变成假的。
  *
- * ⚠️ 这张表是**按当前涨跌色实测的**。它是「蒙层为什么不能用亮色」的唯一依据，
- * 动了 `--color-up` / `--color-down` 就得重算 —— 别让注释里的数变成假的。
- * （更早一版涨色是 `#fe3330` 时，两行都更低，连主数字都保不住。）
- *
- * 两个基底的亮度是**对齐过的**（0.0216 vs 0.0241，差 1.12 倍）：否则同一强度下
- * 跌卡会比涨卡亮，「领跌」那排看着反而更热。
- *
- * 主数字用中性 `text-fg`、不再染色（用户 2026-09-26 拍板）：底色已经在表达方向与
- * 强弱，再染一次是重复信息，而且染成涨跌色就会往上面那张表的坑里走。同花顺自己的
- * 板块热力也是「彩块 + 白字」。下方「涨停 N」那行仍是 fg-dim，它有 4.6:1，够用。
+ * 主数字用中性 `text-fg`、不染色（用户 2026-09-26 拍板，浅色版沿用）：底色已经在
+ * 表达方向与强弱，再染一次是重复信息，而且小字染成涨跌色会掉对比度。
  */
-const HEAT_UP = '#4d1512'
-const HEAT_DOWN = '#0a3032'
+const HEAT_UP = CHART.up
+const HEAT_DOWN = CHART.down
 
 function heatColor(value: number | null): string | undefined {
   if (value == null || value === 0) return undefined
   const intensity = Math.min(Math.abs(value) / FULL_HEAT, 1)
-  return withAlpha(value > 0 ? HEAT_UP : HEAT_DOWN, 0.2 + intensity * 0.6)
+  // 浅底版：透明度比深色版低一档（深底靠亮色叠加要 0.2~0.8 才看得见，
+  // 浅底只要 0.08~0.26 就够分辨，再深就把弱化文字压到线下）
+  return withAlpha(value > 0 ? HEAT_UP : HEAT_DOWN, 0.08 + intensity * 0.18)
 }

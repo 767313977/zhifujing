@@ -124,7 +124,8 @@ function AmountTrend({
               style={{
                 bottom: `${(value / top) * BAR_AREA}px`,
                 height: 1,
-                backgroundColor: 'rgb(255 255 255 / 0.06)',
+                // 浅底版：网格线走令牌（深色版是白色 6% 蒙层，铺在白底上等于没有）
+                backgroundColor: 'var(--color-line-soft)',
               }}
             />
           ))}
