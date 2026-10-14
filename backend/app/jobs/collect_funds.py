@@ -4,10 +4,12 @@
 市场级数据，彼此独立、失败互不影响；而且数据源分两类（iFinD EDB 与 akshare），
 分开能让「哪块坏了」在采集日志里一眼看到。
 
-配额成本：两融 1 次 + 北向 1 次 + ETF 约 20 次 = **每天约 22 次 iFinD 调用**。
+配额成本：两融 1 次 + 北向 1 次 + ETF 约 59 次 = **每天约 61 次 iFinD 调用**。
 EDB 按区间返回，但区间不能开太大（见 EDB_CHUNK_DAYS），
 所以回补一年的历史是 3 段 × 2 项 = 6 次，仍然很便宜。
-（ETF 那 20 次是 2026-09-22 换源之后才有的，原委见 `collect_etf`。）
+（ETF 那 59 次是 2026-09-22 换源之后才有的；2026-10-14 按**实测的单批上限 30 只**
+重算 = 1745 只 ÷ 30。原来按 80 只/批写成「约 20 次」，那个批量其实早就超上限了 ——
+原委见 `ETF_BATCH` 与 `collect_etf`。）
 """
 
 import logging
@@ -23,11 +25,20 @@ from app.sources.markdown_table import pick_float, pick_text, to_float, to_int
 
 logger = logging.getLogger(__name__)
 
-# iFinD 基金工具的**单批只数**。实测 80 只 + 四个指标一次问能全给（80 行都对得上），
-# 而 **100 只会整批返回 0 行、且不带任何提示**（不是截断，是空）—— 所以这个数不能
-# 拍脑袋上调；真要调，先把 100 那档的坑复现一遍。`_fetch_etf_quotes` 里另有一层
-# 「整批为空就拆半重试」的自愈。
-ETF_BATCH = 80
+# iFinD 基金工具的**单批只数上限**。2026-10-14 实测：**30 只正常返回 30 行、
+# 31 只整批被拒**（同一批代码做前缀二分，31/32/33/34 全拒、30 通过）。
+#
+# ⚠️ 这里原来写 80，注释还写着「实测 80 只一次问能全给」—— 那是 2026-09-22 的量法，
+# 来源后来把上限收到 30 了。之所以一直没被发现，是因为**来源的拒绝提示被丢掉了**：
+# 它不说谎，回的是「查询问句中包含证券主体数量过多，请适当拆分后发起多次调用」，
+# 但 `_nl` 只把 markdown 表行返回给调用方，那句话没人看 —— 于是 80 只那一批
+# 表现为「静默返回空」，被拆半逻辑 80→40→20 兜了一整天，1745 只烧掉 **154 次**
+# 调用（模型里按 20 次算）。所以这个数**必须配一次实测**，失败时必须看
+# `answer` 说了什么（见 `_fetch_etf_quotes`）。
+ETF_BATCH = 30
+
+# 来源拒绝「一批问太多只」时的原话（2026-10-14 实测两条都出现过）。命中它才拆半重试。
+_TOO_MANY_HINTS = ("证券主体数量过多", "问句过长")
 
 # 一批里问的指标。**四个是实测的上限**：再多问两个就只剩一张表、份额整列消失
 # （见 `IfindClient.fund_profile` 的说明）。
@@ -279,38 +290,58 @@ def _batched(items: list[str], size: int) -> list[list[str]]:
     return [items[index : index + size] for index in range(0, len(items), size)]
 
 
+def _snippet(text: str | None, limit: int = 60) -> str:
+    """把来源的回答压成一行短摘要（日志用）。"""
+    return " ".join((text or "").split())[:limit]
+
+
 def _fetch_etf_quotes(
     ifind: IfindClient, codes: list[str]
 ) -> tuple[dict[str, dict], int]:
     """分批取 ETF 的份额与行情，返回（`{6 位代码: 原始行}`, 调用次数）。
 
-    批内一条都没回来时**拆半重试**：来源批量过大时是「整批静默返回空」而不是报错
-    （100 只那档实测就是如此），拆半是最省事的自愈方式，日志里也留得下痕迹。
+    批内一条都没回来时**先看来源说了什么**，再决定要不要拆半：
+
+    - 命中 `_TOO_MANY_HINTS`（来源在说「这批问太多只了」）→ 拆半重试，那是真的超上限；
+    - 没那句话 → 这批基金来源本来就没有数据（新上市 / 已清算 / 当天没成交），
+      再拆下去只是把这一批一只只问一遍，纯白花钱。**日志里必须留下 `answer`**：
+      2026-10-14 那次每批都空、却一行原因都没留，只能靠回溯代码才认定是超上限。
+
+    ⚠️ 2026-10-14 之前是**无条件拆半**，而当时的 `ETF_BATCH = 80` 本身就已超上限，
+    于是每一批都必然走 80→40→20 三次拆分 —— 上限问题被拆半逻辑「兜住了」，
+    一天烧 154 次调用，谁也没发现。
     """
     found: dict[str, dict] = {}
     queue = _batched(codes, ETF_BATCH)
     calls = 0
     while queue:
         batch = queue.pop(0)
-        _, rows = ifind.fund_profile("、".join(batch) + f" 的 {ETF_METRICS}")
+        answer, rows = ifind.fund_profile("、".join(batch) + f" 的 {ETF_METRICS}")
         calls += 1
-        if not rows:
-            if len(batch) > 1:
-                half = len(batch) // 2
-                logger.warning(
-                    "iFinD 基金批次 %d 只返回空（可能超单批上限），拆成 %d+%d 重试",
-                    len(batch),
-                    half,
-                    len(batch) - half,
-                )
-                queue[0:0] = [batch[:half], batch[half:]]
-            else:
-                logger.warning("iFinD 连单只基金 %s 都没返回", batch[0])
+        if rows:
+            for row in rows:
+                code = normalize_code(pick_text(row, "证券代码") or "")
+                if code:
+                    found[code] = row
             continue
-        for row in rows:
-            code = normalize_code(pick_text(row, "证券代码") or "")
-            if code:
-                found[code] = row
+        too_many = any(hint in (answer or "") for hint in _TOO_MANY_HINTS)
+        if too_many and len(batch) > 1:
+            half = len(batch) // 2
+            logger.warning(
+                "iFinD 基金批次 %d 只被来源拒绝，拆成 %d+%d 重试：%s",
+                len(batch),
+                half,
+                len(batch) - half,
+                _snippet(answer),
+            )
+            queue[0:0] = [batch[:half], batch[half:]]
+            continue
+        logger.warning(
+            "iFinD 基金批次 %d 只没回数据（%s）：%s",
+            len(batch),
+            "已拆到单只仍被拒" if too_many else "来源没说是超上限，按无数据跳过",
+            _snippet(answer) or "(空回答)",
+        )
     return found, calls
 
 
@@ -325,8 +356,8 @@ def collect_etf(ak: AkshareSource, ifind: IfindClient) -> int:
 
     分工的理由：**同花顺**能一次给全市场代码清单与「最新-交易日」（1725 行、
     零配额），但它是净值口径、**没有份额**；**iFinD** 有份额与行情，却一次只能
-    问几十只、列不全 1600 只。所以清单与日期用同花顺，份额/收盘价/涨跌幅/成交额
-    按批问 iFinD（80 只一批，约 20 次调用）。
+    问 30 只（`ETF_BATCH`，实测上限）、列不全 1745 只。所以清单与日期用同花顺，
+    份额/收盘价/涨跌幅/成交额按批问 iFinD（30 只一批，约 59 次调用）。
 
     **落库日期取同花顺自带的「最新-交易日」，不接受调用方指定。** ETF 份额只有
     当日快照，而这份快照是哪一天的数据由行情源决定：盘前、凌晨、周末、节假日
