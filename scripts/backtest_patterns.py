@@ -65,7 +65,7 @@ history.db 由 `scripts/backfill_history.py` 用腾讯补出来（零配额）�
 4 个形态，现在要跑注册表里全部（2026-09-27 起是 44 个），名字跟着覆盖面走。
 
     python scripts/backtest_patterns.py --pattern v_bottom            # 单个（短窗口）
-    python scripts/backtest_patterns.py --pattern all-new             # 25 个新形态
+    python scripts/backtest_patterns.py --pattern all-new             # 20 个新形态
     python scripts/backtest_patterns.py --pattern all                 # 注册表里全部
     python scripts/backtest_patterns.py --pattern all-new --history   # 换成 5 年长历史
     python scripts/backtest_patterns.py --pattern all-new --history --stocks 800   # 限样本试跑
@@ -149,9 +149,8 @@ NEW_KEYS = (
     "rising_wedge",
     "falling_wedge",
     "diamond",
-    # 「启明星 / 锤子线 / 倒锤子线」2026-10-14 撤下（噪声），不在这批里了
-    "bullish_engulfing",
-    "yang_wrap_yin",
+    # 「启明星 / 锤子线 / 倒锤子线」2026-10-14 撤下（噪声），不在这批里了；
+    # 同日「看涨吞没 / 阳包阴」按同一条线（信号量 ≥1000 且 |10 日超额| < 0.5%）也撤下
     "three_white_soldiers",
 )
 
