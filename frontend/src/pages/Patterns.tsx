@@ -273,12 +273,11 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   upper_slope: ['上轨斜率', true],
   lower_slope: ['下轨斜率', true],
   gap_ratio: ['末端间距', true],
-  // 单 K 蜡烛形态
-  shadow_ratio: ['影线/实体', false],
+  // 单 K 蜡烛形态（2026-10-14 撤下锤子线 / 倒锤子线 / 启明星时，把只被它们用到的
+  // `shadow_ratio` 与 `star_recover` 也删了）
   body_ratio: ['实体比', false],
   close_pos: ['收盘位置', true],
   prior_drop: ['前置跌幅', true],
-  star_recover: ['收复实体', true],
   steady: ['实体不缩水', false],
 
   // ---- 知行超级B1（2026-10-13，7 个子信号共用同一份明细）----

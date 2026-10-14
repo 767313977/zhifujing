@@ -149,10 +149,8 @@ NEW_KEYS = (
     "rising_wedge",
     "falling_wedge",
     "diamond",
-    "morning_star",
+    # 「启明星 / 锤子线 / 倒锤子线」2026-10-14 撤下（噪声），不在这批里了
     "bullish_engulfing",
-    "hammer",
-    "inverted_hammer",
     "yang_wrap_yin",
     "three_white_soldiers",
 )

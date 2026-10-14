@@ -797,18 +797,13 @@ CANDLE_BODY_MAX = 0.35  # 小实体：实体 / 全日振幅 的上限
 # 实体占振幅的**下限**：实体要看得见，不能是十字星（与 `KNEAD_MIN_BODY` 同一思路）。
 # ⚠️ 必需而非保险：前复权把「开 = 收」算成 `open × (net/close)`，真实数据上几乎必然留一个
 # 1e-13 量级的浮点尾巴，`body <= 0` / `open == close` 这种位精确比较挡不住 —— 于是
-# 「影线 ≥ 实体 × 2」在实体趋近 0 时被白送（锤子线 shadow_ratio 出现过 5e13），或
-# 「今日实体 / 昨日实体」爆成 1e12 直接满分。取 0.05，与 `KNEAD_MIN_BODY` 同值。
+# 「今日实体 / 昨日实体」会爆成 1e12 直接满分（`ENGULF_MIN_BODY` 那条就靠它兜底）。
+# 取 0.05，与 `KNEAD_MIN_BODY` 同值。
 CANDLE_MIN_BODY = 0.05
-CANDLE_SHADOW_MULT = 2.0  # 长影线至少是实体的多少倍
-CANDLE_SHORT_SHADOW = 0.3  # 另一侧影线占振幅的上限
 CANDLE_PRIOR_DAYS = 5
 CANDLE_PRIOR_DROP = 0.03  # 前置下跌幅度：反转类蜡烛要在跌势之后出现才有意义
 ENGULF_MIN_BODY = 1.3  # 今日实体 / 昨日实体 的下限
 ENGULF_MIN_CLOSE_POS = 0.6  # 今日收盘要落在全日振幅的这个位置以上（收在上半部）
-STAR_BIG_BODY = 0.015  # 启明星两侧大实体的最小幅度（相对价格）
-STAR_SMALL_BODY = 0.5  # 中间小实体 / 左侧实体 的上限
-STAR_RECOVER = 0.5  # 右侧收盘要收复左侧实体这么多
 SOLDIER_MIN_BODY = 0.3  # 红三兵每根实体占振幅的下限
 SOLDIER_MAX_SHADOW = 0.35  # 每根上影线占振幅的上限
 SOLDIER_MIN_GAIN = 0.03  # 三根累计涨幅下限
@@ -834,8 +829,8 @@ SOLDIER_MIN_GAIN = 0.03  # 三根累计涨幅下限
 # ⚠️ **结论与其它蜡烛形态一致：短周期没有预测力**（胜率不到 50%、中位为负、超额接近 0），
 # 20 / 60 日才略微转正。所以它的定位就是「按这个形状捞一批票自己看」，别当买点信号用。
 KNEAD_SHADOW_MULT = 1.5  # 主影线（昨天的上影 / 今天的下影）至少是实体的多少倍
-# 另一侧影线占振幅的上限。比 `CANDLE_SHORT_SHADOW`（0.3）松一档：这里是**两根都要**
-# 各自带一条长影线，再叠上小实体与收盘相近两条，按 0.3 卡会几乎没有信号
+# 另一侧影线占振幅的上限。**有意放松**：揉搓线是**两根都要**各自带一条长影线，再叠上
+# 小实体与「收盘相近」一共四条，卡太紧会几乎没有信号
 KNEAD_SHORT_SHADOW = 0.4
 # 实体占振幅的**下限**：实体要看得见，不能是十字星。
 # ⚠️ 这条是必需的，不是保险：只判上界（≤0.35）的话，「影线 ≥ 实体 × 1.5」在实体趋近 0
@@ -4686,123 +4681,6 @@ def _bullish_engulfing(bars: Bars) -> Signal | None:
     )
 
 
-def _hammer(bars: Bars) -> Signal | None:
-    """锤子线：长下影（≥2 倍实体）、上影极短、小实体，且出现在下跌之后。
-
-    下影线的含义是「盘中砸下去又被买回来」；没有前置下跌的话，同样的形状
-    出现在上涨中段只是普通回踩，不具备反转含义 —— 所以前置跌幅是否决条件。
-    实体要**看得见**（占振幅 ≥ `CANDLE_MIN_BODY`），把十字星排除在锤子线之外 ——
-    那是另一种含义；用实体下限而不是 `body <= 0`，是因为前复权会给「开 = 收」留一个
-    1e-15 的尾巴，位精确的「实体为 0」判不出来（2026-10-10 修，见 `CANDLE_MIN_BODY`）。
-    """
-    if len(bars) < CANDLE_PRIOR_DAYS + 2:
-        return None
-    _, _, _, _, body, upper, lower, span = _candle(bars)
-    if span <= 0 or body < span * CANDLE_MIN_BODY:
-        return None
-    if body > span * CANDLE_BODY_MAX or upper > span * CANDLE_SHORT_SHADOW:
-        return None
-    if lower < body * CANDLE_SHADOW_MULT:
-        return None
-    drop = _prior_drop(bars)
-    if drop < CANDLE_PRIOR_DROP:
-        return None
-
-    score = _gate_score(lower / body, CANDLE_SHADOW_MULT, 4.0) * 40
-    score += _gate_score(body / span, CANDLE_BODY_MAX, 0.05) * 30
-    score += _gate_score(drop, CANDLE_PRIOR_DROP, 0.15) * 30
-
-    return Signal(
-        "hammer",
-        min(score, 100.0),
-        {"support": float(bars.low[-1])},
-        {
-            "shadow_ratio": round(lower / body, 2),
-            "body_ratio": round(body / span, 3),
-            "prior_drop": round(drop, 4),
-        },
-    )
-
-
-def _inverted_hammer(bars: Bars) -> Signal | None:
-    """倒锤子线：长上影（≥2 倍实体）、下影极短、小实体，且出现在下跌之后。
-
-    形状与锤子线相反（冲高被打回来），但在跌势末端两者含义接近 ——
-    都表示「这个位置的抛压已经衰竭」，所以判据只把上下影对调。
-    与锤子线同样用实体占振幅的下限排除十字星（理由见 `_hammer` / `CANDLE_MIN_BODY`）。
-    """
-    if len(bars) < CANDLE_PRIOR_DAYS + 2:
-        return None
-    _, _, _, _, body, upper, lower, span = _candle(bars)
-    if span <= 0 or body < span * CANDLE_MIN_BODY:
-        return None
-    if body > span * CANDLE_BODY_MAX or lower > span * CANDLE_SHORT_SHADOW:
-        return None
-    if upper < body * CANDLE_SHADOW_MULT:
-        return None
-    drop = _prior_drop(bars)
-    if drop < CANDLE_PRIOR_DROP:
-        return None
-
-    score = _gate_score(upper / body, CANDLE_SHADOW_MULT, 4.0) * 40
-    score += _gate_score(body / span, CANDLE_BODY_MAX, 0.05) * 30
-    score += _gate_score(drop, CANDLE_PRIOR_DROP, 0.15) * 30
-
-    return Signal(
-        "inverted_hammer",
-        min(score, 100.0),
-        {"support": float(bars.low[-1])},
-        {
-            "shadow_ratio": round(upper / body, 2),
-            "body_ratio": round(body / span, 3),
-            "prior_drop": round(drop, 4),
-        },
-    )
-
-
-def _morning_star(bars: Bars) -> Signal | None:
-    """启明星：大阴 → 小实体（探底）→ 大阳，且右侧收盘要收复左侧实体一半以上。
-
-    中间那根不要求跳空（A 股跳空缺口少见，硬要求跳空会把一大半形态挡掉），
-    但要求它**实体很小** —— 小实体本身就是「多空在这个位置僵住」的表现。
-    """
-    if len(bars) < CANDLE_PRIOR_DAYS + 4:
-        return None
-    open1, _, _, close1, body1, _, _, span1 = _candle(bars, -3)
-    _, _, _, _, body2, _, _, span2 = _candle(bars, -2)
-    open3, _, _, close3, body3, _, _, span3 = _candle(bars)
-    if close1 >= open1 or body1 <= 0 or span1 <= 0:
-        return None  # 第一根必须是大阴
-    if body1 / close1 < STAR_BIG_BODY:
-        return None
-    if span2 <= 0 or body2 > body1 * STAR_SMALL_BODY:
-        return None  # 第二根必须是小实体
-    if close3 <= open3 or body3 <= 0 or span3 <= 0:
-        return None  # 第三根必须是大阳
-    if body3 / close3 < STAR_BIG_BODY * 0.6:
-        return None
-
-    midpoint = (open1 + close1) / 2
-    if close3 < midpoint:
-        return None
-    recover = (close3 - midpoint) / (open1 - close1)  # 收复左侧实体过半之后又多收复了多少
-    ratio_vol = _volume_ratio(bars, 5)
-    score = _gate_score(recover, 0.0, 0.4) * 35
-    score += _gate_score(body3 / body1, 0.5, 1.5) * 35
-    score += min(ratio_vol / 2.0, 1.0) * 30
-
-    return Signal(
-        "morning_star",
-        min(score, 100.0),
-        {"support": float(bars.low[-2])},
-        {
-            "star_recover": round(recover, 3),
-            "body_ratio": round(body3 / body1, 2),
-            "vol_ratio": round(ratio_vol, 2),
-        },
-    )
-
-
 def _three_white_soldiers(bars: Bars) -> Signal | None:
     """红三兵：连续三根阳线、实体扎实、收盘逐日抬高、上影短，三日累计涨幅 ≥3%。
 
@@ -5911,8 +5789,8 @@ ZGNB_GROUP = "知行B1"
 # | 突破 | 箱体突破 | 639 | −0.07% | +0.26% | +1.47% | +0.20% | 39.4% | −2.34% |
 # | 量价 | 缩量回踩 | 794 | +0.14% | +0.22% | −0.31% | +0.23% | 36.9% | −3.39% |
 # | 量价 | 地量见底 | 1324 | +0.03% | +0.19% | +0.19% | +0.34% | 52.6% | +0.58% |
-# | 单 K 蜡烛形态 | 倒锤子线 | 2804 | +0.25% | +0.05% | −0.10% | +0.38% | 41.2% | −2.18% |
-# | 单 K 蜡烛形态 | 启明星 | 3257 | +0.24% | +0.04% | +0.46% | +0.16% | 41.4% | −2.02% |
+# | 单 K 蜡烛形态 | 倒锤子线（**已撤下**） | 2804 | +0.25% | +0.05% | −0.10% | +0.38% | 41.2% | −2.18% |
+# | 单 K 蜡烛形态 | 启明星（**已撤下**） | 3257 | +0.24% | +0.04% | +0.46% | +0.16% | 41.4% | −2.02% |
 # | 悟道之路 | 洗后可盯 | 900 | +0.09% | −0.02% | −0.01% | +0.91% | 39.8% | −3.07% |
 # | 几何 | 三段式突破 | 31 | +0.16% | −0.03% | −0.27% | +3.26% | 35.5% | −1.97% |
 # | 几何 | 三重底 | 383 | +0.09% | −0.06% | −1.11% | +0.85% | 41.3% | −2.22% |
@@ -5926,7 +5804,7 @@ ZGNB_GROUP = "知行B1"
 # | 量价 | 量价底背离 | 1247 | −0.19% | −0.47% | −0.52% | +1.11% | 37.4% | −2.93% |
 # | 量价 | 堆量上涨后缩量 | 664 | +0.13% | −0.54% | −1.16% | −3.31% | 36.6% | −3.53% |
 # | 几何 | 下降楔形 | 607 | −0.24% | −0.66% | −1.10% | −1.27% | 51.2% | +0.31% |
-# | 单 K 蜡烛形态 | 锤子线 | 2734 | −0.58% | −0.81% | −0.71% | +0.68% | 36.0% | −3.63% |
+# | 单 K 蜡烛形态 | 锤子线（**已撤下**） | 2734 | −0.58% | −0.81% | −0.71% | +0.68% | 36.0% | −3.63% |
 # | 几何 | 菱形 | 821 | −0.23% | −0.85% | −1.48% | −3.50% | 36.1% | −3.32% |
 # | 几何 | 上升楔形 | 31 | −1.31% | −0.85% | −2.70% | −8.13% | 22.6% | −3.49% |
 # | 量价 | N 字选股 | 1906 | −0.39% | −0.88% | −0.95% | −1.37% | 36.9% | −3.42% |
@@ -5937,8 +5815,9 @@ ZGNB_GROUP = "知行B1"
 # | 做T | 上涨结构内的B点（**当天已撤下**） | 219 | −2.61% | **−2.99%** | −4.09% | −2.93% | **23.3%** | −8.45% |
 # | 几何 | 杯柄 | 12 | −3.07% | −4.96% | −4.77% | −4.05% | 16.7% | −10.95% |
 #
-# 读表提醒：**中位普遍为负**（右尾驱动），所以看胜率与中位比看均值更重要；
-# 「倒锤子线 / 启明星 / 锤子线」这类单 K 蜡烛形态信号量大但超额≈0，属于噪声。
+# 读表提醒：**中位普遍为负**（右尾驱动），所以看胜率与中位比看均值更重要。
+# ⚠️ 带「**已撤下**」的行只作依据留存 —— 「倒锤子线 / 启明星 / 锤子线」这类单 K 蜡烛
+# 形态信号量上千条但 10 日超额≈0（噪声），2026-10-14 已从注册表删掉。
 PATTERNS: tuple[Pattern, ...] = (
     Pattern("wudao_start", "明天预案", "致富", _wudao_start),
     Pattern("wudao_sample", "明天盯", "致富", _wudao_sample),
@@ -5989,10 +5868,11 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("rising_wedge", "上升楔形", "几何", _rising_wedge),
     Pattern("falling_wedge", "下降楔形", "几何", _falling_wedge),
     Pattern("diamond", "菱形", "几何", _diamond),
-    Pattern("morning_star", "启明星", CANDLE_GROUP, _morning_star),
+    # ⚠️ 「锤子线 / 倒锤子线 / 启明星」2026-10-14 **撤下**：新口径下信号量上千条
+    # （2734 / 2804 / 3257）而 10 日超额≈0（−0.81% / +0.05% / +0.04%），是噪声 ——
+    # 判定函数、专属阈值（`CANDLE_SHADOW_MULT` / `CANDLE_SHORT_SHADOW` / `STAR_*`）、
+    # 前端 detail 标签一并删了。同组的「红三兵」10 日超额 +1.61%，保留。
     Pattern("bullish_engulfing", "看涨吞没", CANDLE_GROUP, _bullish_engulfing),
-    Pattern("hammer", "锤子线", CANDLE_GROUP, _hammer),
-    Pattern("inverted_hammer", "倒锤子线", CANDLE_GROUP, _inverted_hammer),
     Pattern("yang_wrap_yin", "阳包阴", CANDLE_GROUP, _yang_wrap_yin),
     Pattern("three_white_soldiers", "红三兵", CANDLE_GROUP, _three_white_soldiers),
     # 2026-09-27 用户给的定义（两根 K 的组合，同样挂在蜡烛组下）
