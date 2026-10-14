@@ -6011,6 +6011,11 @@ WUDAO_GROUP = "悟道之路"
 # 七种买点，混进「趋势」或「量价」会让人看不出彼此是一家（原式在图上也是分色画的）。
 ZGNB_GROUP = "知行B1"
 
+# ⚠️ **板块**：2026-10-14 起，下面**所有形态**在扫描侧都只出**创业板 + 科创板**
+# （闸门在 `scan_patterns._signal_allowed`，用户要求「只选科创板和创业板」）。
+# 因此本文件各段阈值注释里的**回测表是过闸门之前算的（全市场口径）** —— 现在它们
+# 只代表「判据本身有多强」，不再代表生产口径。要在新口径下重算，用
+# `scripts/backtest_patterns.py --board wudao`。
 PATTERNS: tuple[Pattern, ...] = (
     Pattern("wudao_start", "明天预案", "致富", _wudao_start),
     Pattern("wudao_sample", "明天盯", "致富", _wudao_sample),
@@ -6079,10 +6084,11 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("huabao_early", "华宝早期", WUDAO_GROUP, _huabao_early),
     # 2026-10-10 用户给的通达信公式（金叉 + 4% 大阳 + 短上影 + RSI6<60）。
     # 回测数字与同类对比见文件上方阈值块（结论：右尾驱动的清单，不是买点）。
-    # 板块关在 `scan_patterns.BOARD_GATED_KEYS`：只出创业板 + 科创板（回测口径）。
+    # 板块关见 `PATTERNS` 上方那段：所有形态只出创业板 + 科创板（回测口径）。
     Pattern("ma_cross_big_yang", "金叉大阳", "趋势", _ma_cross_big_yang),
     # 2026-10-10 用户给的「V5 日线做T」主图公式的买点（深B / ★B / 双B 三档）。
-    # 只落买方向；不限板块（判据是乖离 + MACD + 量能，与 20cm 无关），
+    # 只落买方向。⚠️ 原来这里是「不限板块」（判据是乖离 + MACD + 量能，与 20cm 无关），
+    # 2026-10-14 起所有形态统一收窄到创业板 + 科创板，这条也跟着收了。
     # 回测数字见上面 T_BUY_* 那段注释。
     Pattern("t_buy", "做T买点", "做T", _t_buy),
     # 用户定义的「上涨结构内的 B 点」（2026-10-14）：B 点必须落在当前上升序列的
