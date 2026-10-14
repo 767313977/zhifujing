@@ -360,6 +360,49 @@ BURST_SHRINK_IDEAL_RATIO = 0.3  # 缩到爆量日的 30% 算「缩量到位」�
 BURST_SHRINK_GAP_IDEAL = (1.0, 5.0)  # 爆量日到缩量日间隔（交易日）的理想区间
 BURST_SHRINK_GAP_CAP = 10.0  # 隔得太久说明「缩量回踩」这层关系已经散了
 
+# 堆量上涨后缩量（2026-10-14 用户要求；举了中红医疗 / 近岸蛋白 / 善水科技 三只样例）
+#
+# 形态：先有一段**持续的**放量推升（「堆量」，不是单日爆量），之后量能塌缩到那一轮的
+# 一小部分、价格也从高点回落 —— **要选出来的是缩量那一天**。
+#
+# 三只样例的实测数（基线 = 堆量段开始之前 60 个交易日的均量）：
+#
+#   中红医疗 300981：7/30~8/7 堆量（均量 5.5× 基线，区间 +25%），8/25 缩到堆量峰值的 19.8%
+#   近岸蛋白 688137：8/4~8/26 堆量（6.3×，+137%），9/7 缩到 38.0%
+#   善水科技 301190：7/20~8/25 堆量（3.2×，+46%），9/18 缩到 19.7%
+#
+# ⚠️ **「缩量」的分母用堆量段的「峰值」而不是「均量」**：近岸蛋白那一轮的**均量**只
+# 缩到 89%（几乎没缩），可它的缩量日确实存在 —— 用均量当分母会把这只票直接筛掉。
+# 峰值才是「这一轮放量有多猛」的参照（而「是不是一段堆量」由上面那条均量倍数管）。
+#
+# ⚠️ **还要「今天是近 N 日最低量」**：只留「≤ 峰值的 45%」的话，横盘期量能一降就会
+# 命中，等于在地板上来回出信号；加上这一条才把时点钉在**缩量的那一刻**（三只样例当天
+# 都是近 10 日最低量）。代价是缩量若持续、量能天天创新低，会连着几天命中同一只票 ——
+# 胜率统计那边已按 (代码, 形态, 信号日) 去重（见 `pattern_track._picks`），不会重复计数。
+PILE_LOOKBACK = 45  # 往前找「堆量高点」最多看几个交易日
+# 堆量高点距今最多几个交易日 —— **这是最关键的收紧项**。
+#
+# 不加这一条时（首版实测）一天命中 143 只、十天并集 392 只：绝大多数是「堆量发生在
+# 35~44 个交易日之前」的老票，而那已经不是「这轮涨完在歇」了，是上个月的旧账。
+# 三只样例的间隔只有 **8 / 12 / 17** 个交易日，取 20 留一点余量。
+PILE_GAP_MAX = 20
+PILE_BASE_DAYS = 60  # 基线窗口（堆量段开始之前）的长度
+PILE_MIN_DAYS = 6  # 堆量段最短。比这还短就是单日爆量，那是 `burst_shrink_pullback`
+# 堆量段最长放到 30：善水科技那一轮是 **27 个交易日**（7/20~8/25），卡在 25 会被砍掉 ——
+# 而它的均量倍数只有 3.2（三只里最弱），一砍就把「涨幅 ≥ 18%」和「倍数 ≥ 2.8」两条
+# 赶到互相打架的位置上（见下面 `PILE_VOL_MULT` 那段）。
+PILE_MAX_DAYS = 30
+PILE_VOL_MULT = 2.8  # 堆量段均量 / 基线均量 的下限（三只样例 3.2 / 5.6 / 6.9）
+PILE_VOL_MULT_IDEAL = 5.0  # 到 5 倍算「够猛」，打分满分
+PILE_MIN_RISE = 0.18  # 堆量段涨幅下限（样例 25% / 116% / 46%）
+PILE_RISE_IDEAL = 0.60  # 涨幅到 60% 算满分
+SHRINK_VS_PEAK = 0.40  # 缩量日量 / 堆量段最大量 的上限（样例 19.8% / 38.0% / 19.7%）
+SHRINK_IDEAL = 0.20  # 缩到峰值两成算「缩量到位」，打分满分
+SHRINK_LOWEST_DAYS = 10  # 缩量日必须是近 N 个交易日里量最小的那天
+PILE_PULLBACK_MIN = 0.07  # 今天相对堆量段最高收盘的回撤下限（样例 8.0% / 26.7% / 12.2%）
+PILE_PULLBACK_IDEAL = (0.10, 0.32)  # 回撤的理想区间：太浅没洗够、太深就近破位了
+PILE_PULLBACK_CAP = 0.55  # 回撤超过它就与「缩量回调」无关了
+
 # 欧奈尔突破（O'Neil 的「枢轴点买入」）—— **2026-09-27 连同整套 RS 机制一起删除**
 #
 # 它来自《笑傲股市》，但只取技术面（缺 C/A 盈利项与 I 机构持仓）。删它的两条理由
@@ -2280,6 +2323,116 @@ def _burst_shrink_pullback(bars: Bars) -> Signal | None:
             },
         )
     return None
+
+
+def _pile_up_shrink(bars: Bars) -> Signal | None:
+    """堆量上涨后缩量：先有一段**持续的**放量推升（「堆量」），之后量能塌缩到那一轮的
+    一小部分、价格也从高点回落 —— **要选出来的是缩量那一天**。
+
+    与 `_burst_shrink_pullback` 的分工：那一条要的是**单日**爆量（一天顶前一天 2 倍）
+    之后的缩量，只回看 10 个交易日；这一条要的是**一段**堆量之后的缩量，回看 45 天。
+    两者时间尺度不同，不互相覆盖。
+
+    四步（阈值与三只样例的实测数见文件上方那段）：
+
+    1. 在最近 `PILE_LOOKBACK` 个交易日里找**收盘最高**的那天，当堆量段终点 `e`，
+       且它距今不超过 `PILE_GAP_MAX` 天（太远就成了上个月的旧账，不是「这轮在歇」）。
+       为什么锚「最高收盘」而不是「最大成交量」：中红医疗的最大量出在堆量段的
+       **第一天**（7/30），拿它当终点会漏掉后面十天的推升 —— 而堆量段都是推升到
+       区间最高点，终点天然就是它。
+    2. 从 `e` 往前试不同起点 `s`（长度 `PILE_MIN_DAYS` ~ `PILE_MAX_DAYS`），在
+       「均量 ≥ 基线 × `PILE_VOL_MULT` 且涨幅 ≥ `PILE_MIN_RISE`」的候选里取均量倍数
+       最大的一组 —— 「堆量」看的是**一段**的均量，不是某一天的量。
+    3. 今天：量 ≤ 堆量段峰值 × `SHRINK_VS_PEAK`，且是近 `SHRINK_LOWEST_DAYS` 天最低量。
+    4. 今天：收盘相对 `e` 的收盘回撤 ≥ `PILE_PULLBACK_MIN`。
+
+    只判「今天」，所以「近十个交易日」要靠调用方把那十天各扫一遍（`scan` 一天一次）。
+    """
+    size = len(bars)
+    if size < PILE_BASE_DAYS + PILE_MIN_DAYS + 1:
+        return None
+
+    volume = bars.volume
+    close = bars.close
+    today = size - 1
+    today_vol = float(volume[today])
+    if today_vol <= 0:
+        return None
+
+    # 前缀和：下面要试二十来个起点、每个都要算一次窗口均量，别每次都重新 np.mean
+    csum = np.concatenate(([0.0], np.cumsum(volume)))
+
+    def seg_mean(lo: int, hi: int) -> float:
+        if hi < lo or lo < 0:
+            return 0.0
+        return float(csum[hi + 1] - csum[lo]) / (hi - lo + 1)
+
+    # ① 堆量段终点：最近 PILE_LOOKBACK 天里收盘最高的那天（不含今天）
+    first = max(0, today - PILE_LOOKBACK)
+    if first >= today:
+        return None
+    e = int(first + np.argmax(close[first:today]))
+    # 堆量高点距今太远就不算「这一轮涨完在歇」了（见 `PILE_GAP_MAX`）—— 放最前面判，最省
+    if today - e > PILE_GAP_MAX:
+        return None
+
+    # ② 堆量段起点：取均量倍数最大的那一段
+    best: tuple[float, int, float] | None = None
+    for span in range(PILE_MIN_DAYS, PILE_MAX_DAYS + 1):
+        s = e - span + 1
+        if s - PILE_BASE_DAYS < 0 or float(close[s - 1]) <= 0:
+            continue
+        base = seg_mean(s - PILE_BASE_DAYS, s - 1)
+        if base <= 0:
+            continue
+        mult = seg_mean(s, e) / base
+        if mult < PILE_VOL_MULT:
+            continue
+        rise = float(close[e]) / float(close[s - 1]) - 1.0
+        if rise < PILE_MIN_RISE:
+            continue
+        if best is None or mult > best[0]:
+            best = (mult, s, rise)
+    if best is None:
+        return None
+    mult, s, rise = best
+
+    # ③ 今天缩量到位：相对堆量段峰值、且是近 N 天最低量
+    peak = float(volume[s : e + 1].max())
+    if peak <= 0:
+        return None
+    shrink = today_vol / peak
+    if shrink > SHRINK_VS_PEAK:
+        return None
+    lowest = float(volume[max(0, today - SHRINK_LOWEST_DAYS + 1) : today + 1].min())
+    if today_vol > lowest:
+        return None
+
+    # ④ 已从堆量段高点回落（缩量**回调**）
+    drop = 1.0 - float(close[today]) / float(close[e])
+    if drop < PILE_PULLBACK_MIN:
+        return None
+
+    # 打分只用来在命中之间排序：两道硬门槛过了就有保底分（`MIN_SCORE` 是 50）
+    score = 55.0
+    score += _gate_score(mult, PILE_VOL_MULT, PILE_VOL_MULT_IDEAL) * 15
+    score += _gate_score(rise, PILE_MIN_RISE, PILE_RISE_IDEAL) * 15
+    score += _gate_score(shrink, SHRINK_VS_PEAK, SHRINK_IDEAL) * 10
+    score += _band_score(drop, *PILE_PULLBACK_IDEAL, PILE_PULLBACK_CAP) * 5
+
+    return Signal(
+        "pile_up_shrink",
+        score,
+        {"pile_high": float(close[e])},
+        {
+            "pile_days": e - s + 1,
+            "vol_mult": round(mult, 2),
+            "rise": round(rise, 3),
+            "shrink": round(shrink, 4),
+            "drop": round(drop, 4),
+            "pile_gap": today - e,
+        },
+    )
 
 
 def _wudao_day_geom(bars: Bars, i: int) -> tuple[float, float, float, float]:
@@ -5632,6 +5785,7 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("breakout_flat", "突破后横盘", "量价", _breakout_flat),
     Pattern("n_shape", "N 字选股", "量价", _n_shape),
     Pattern("burst_shrink_pullback", "爆量后缩量回踩", "量价", _burst_shrink_pullback),
+    Pattern("pile_up_shrink", "堆量上涨后缩量", "量价", _pile_up_shrink),
 
     # ---- 以下为 2026-09-25 按用户给的形态清单补齐（分组名与清单一致）----
     #
