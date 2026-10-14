@@ -12,7 +12,23 @@
   **都没有区别**：链路正常时四档都是 1.1~1.2 秒，链路坏时四档全失败。所以这里
   不改任何 git 配置、不配代理，只做「限时 + 重试」这一件事。
 
-  本机侧也排查过：hosts 里没有 github 条目、WinHTTP 是直连无代理、没有 VPN 网卡。
+  ### ⚠️ 2026-10-14 更正：本机现在有代理虚拟网卡了
+
+  上面那句「没有 VPN 网卡」已经不成立 —— 本机多了 **`FastLink`** 虚拟网卡，它的
+  DNS 是 **198.18.0.2**，而 198.18.0.0/15 是代理软件的 **fake-IP 段**：
+  `Resolve-DnsName github.com` 现在返回 **198.18.0.37**（不是 GitHub 的真实 IP）。
+
+  这带来一个**新的失败模式**，与「链路丢包」表现相同但成因不同：
+  **隧道一断，DNS 缓存里还是那个假 IP，所有连它的请求都会一直超时**，
+  直到缓存过期或手动 `ipconfig /flushdns` 才会重新解析。
+
+  所以本脚本在「连接类失败」后会先 **flush DNS 再重试**（下面 $flushablePattern），
+  并把每次解析到的 IP 记进日志 —— 出问题时一眼能看出走的是假 IP 还是真实 IP。
+
+  真实 IP 直连是通的（2026-10-14 实测：`140.82.112~116.3` / `20.205.243.166` 六个
+  IP 的 443 全部可达，`curl --resolve github.com:443:140.82.112.3` 拉
+  `info/refs` 返回 200）。也就是说**如果隧道长期不稳，把真实 IP 写进 hosts 是可行的
+  兜底**（代价：万一哪天直连被墙，得再删掉）—— 这一步没做，要动系统配置时先问。
 
   ### 用法
 
@@ -94,7 +110,24 @@ function Invoke-PushOnce {
   return $null   # $null 表示这一次超时了
 }
 
+# 「连不上」这类失败的特征。命中就先 flush DNS 再重试 —— 见文件头那段：
+# 本机 DNS 走 FastLink 网卡的 fake-IP（198.18.0.2），隧道断开后缓存里仍是
+# 198.18.0.x 那个假 IP，光重试是连不上的，必须让它重新解析。
+$flushablePattern = 'Could not connect|Failed to connect|Connection was reset|Recv failure|Connection timed out'
+
+# 解析到的 github.com 地址。只为日志留痕：198.18. 开头 = 走代理假 IP，
+# 其它 = 真实 IP。解析失败也不能让脚本挂掉，所以包 try。
+function Get-GitHubIp {
+  try {
+    $ip = (Resolve-DnsName github.com -Type A -ErrorAction Stop |
+      Where-Object { $_.IPAddress } | Select-Object -First 1).IPAddress
+    if ($ip) { return $ip }
+  } catch { }
+  return '解析失败'
+}
+
 $runStarted = Get-Date
+Write-PushLog ("START branch={0} resolved={1}" -f $branch, (Get-GitHubIp))
 
 for ($i = 1; $i -le $MaxTry; $i++) {
   Write-Host ("[{0}/{1}] push {2}（单次限时 {3}s）…" -f $i, $MaxTry, $branch, $TimeoutSec)
@@ -119,6 +152,19 @@ for ($i = 1; $i -le $MaxTry; $i++) {
     $last = Get-Sig $r.out
     Write-Host ("      失败 exit={0}：{1}" -f $r.code, $last) -ForegroundColor Yellow
     Write-PushLog ("attempt {0}/{1} FAIL {2}s :: {3}" -f $i, $MaxTry, $secs, $last)
+  }
+
+  # 连不上 → 先清 DNS 缓存（本机是 fake-IP 场景，不清的话下一次必然还是连同一个假 IP）
+  if ($last -match $flushablePattern -or $null -eq $r) {
+    $before = Get-GitHubIp
+    ipconfig /flushdns *> $null
+    $after = Get-GitHubIp
+    if ($before -ne $after) {
+      Write-Host ("      已清 DNS 缓存：{0} → {1}" -f $before, $after) -ForegroundColor Yellow
+    } else {
+      Write-Host ("      已清 DNS 缓存（解析结果不变：{0}）" -f $after) -ForegroundColor DarkGray
+    }
+    Write-PushLog ("  dns-flush before={0} after={1}" -f $before, $after)
   }
 
   if ($i -lt $MaxTry) { Start-Sleep -Seconds $BackoffSec }
