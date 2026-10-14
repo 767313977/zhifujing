@@ -274,7 +274,9 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   lower_slope: ['下轨斜率', true],
   gap_ratio: ['末端间距', true],
   // 单 K 蜡烛形态（2026-10-14 撤下锤子线 / 倒锤子线 / 启明星时，把只被它们用到的
-  // `shadow_ratio` 与 `star_recover` 也删了）
+  // `shadow_ratio` 与 `star_recover` 也删了；同日给揉搓线补了下面两个）
+  upper_ratio: ['昨上影占比', true],
+  lower_ratio: ['今下影占比', true],
   body_ratio: ['实体比', false],
   close_pos: ['收盘位置', true],
   prior_drop: ['前置跌幅', true],

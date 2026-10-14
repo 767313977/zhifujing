@@ -807,40 +807,38 @@ ENGULF_MIN_CLOSE_POS = 0.6  # 今日收盘要落在全日振幅的这个位置�
 SOLDIER_MIN_BODY = 0.3  # 红三兵每根实体占振幅的下限
 SOLDIER_MAX_SHADOW = 0.35  # 每根上影线占振幅的上限
 SOLDIER_MIN_GAIN = 0.03  # 三根累计涨幅下限
-# 揉搓线（两根 K 的组合）—— 2026-09-27 用户给的定义
+# 揉搓线（两根 K 的组合）—— 2026-09-27 用户给的定义，2026-10-14 按用户新标准重写
 #
-# 昨天长上影、今天长下影，两根都是小实体、收盘价相近，合起来像一根十字线（螺旋桨）。
-# **顺序不能反**（用户点名强调）：先长下影、后长上影是另一回事，所以判据分别落在
-# 昨天（上影长 / 下影短）与今天（下影长 / 上影短）上，见 `_kneading_line`。
+# 昨天长上影、今天长下影，两根都是小实体，合起来像一根十字线（螺旋桨）。
+# **顺序不能反**（用户两次点名强调）：先长下影、后长上影是另一回事，所以判据分别落在
+# 昨天（长上影）与今天（长下影）上，见 `_kneading_line`。
 #
-# 频率（滚动切片：794 只 × 最近 80 个交易日 = 6.35 万截面）：**1.34%/天/票**，
-# 折合全市场每天约 71 只 —— 与 N 字选股同量级，是「一份清单」的规模，不是稀有信号。
-# （补上实体下限之前是 1.57%：多出来的是实体趋近 0 的退化样本，见下。）
+# 规模（2026-10-14 重算，新口径）：20cm 1877 只 × 260 个交易日共 **1374 条**（20 日去重后），
+# 约 5.3 条/天 —— 是「一份清单」的规模，不是稀有信号。
 #
-# 回测（`scripts/backtest_patterns.py --pattern kneading_line`，2995 只 · 250 个交易日）：
+# 回测（`scripts/backtest_patterns.py --pattern kneading_line --board wudao`，2026-10-14）：
 #
 # | 持有 | 信号 | 均值 | 中位 | 胜率 | 超额 |
 # | --- | --- | --- | --- | --- | --- |
-# | 5 日 | 4777 | −0.59% | −0.92% | 42.8% | −0.28% |
-# | 10 日 | 4777 | −0.68% | −1.86% | 40.5% | −0.32% |
-# | 20 日 | 4777 | −1.78% | −3.69% | 36.3% | +0.03% |
-# | 60 日 | 4777 | −3.37% | −7.73% | 32.6% | +1.01% |
+# | 5 日 | 1374 | −1.17% | −1.50% | 40.9% | −0.19% |
+# | 10 日 | 1374 | −1.07% | −2.30% | 41.5% | **+0.01%** |
+# | 20 日 | 1374 | −1.86% | −5.26% | 36.3% | +0.21% |
+# | 60 日 | 1374 | −2.43% | −8.90% | 33.1% | +0.51% |
 #
-# ⚠️ **结论与其它蜡烛形态一致：短周期没有预测力**（胜率不到 50%、中位为负、超额接近 0），
+# ⚠️ **结论与其它蜡烛形态一致：短周期没有预测力**（胜率 41%、中位 −2.3%、超额≈0），
 # 20 / 60 日才略微转正。所以它的定位就是「按这个形状捞一批票自己看」，别当买点信号用。
-KNEAD_SHADOW_MULT = 1.5  # 主影线（昨天的上影 / 今天的下影）至少是实体的多少倍
-# 另一侧影线占振幅的上限。**有意放松**：揉搓线是**两根都要**各自带一条长影线，再叠上
-# 小实体与「收盘相近」一共四条，卡太紧会几乎没有信号
-KNEAD_SHORT_SHADOW = 0.4
+# 这次重写（2026-10-14）按用户给的标准把形状判据改对了、也把众生药业那一对捞了进来，
+# 但**超额并没有变好**（10 日 −0.19% → +0.01%，20 日 +0.75% → +0.21%）——
+# 这是判据的固有性质，不是阈值没调好。
+# 2026-10-14 那三处改动的要点（理由与实测见上面那段）：删掉「收盘相近」否决
+# （众生那一对是 1.2016%，擦边 1.2% 被卡掉）、主影改按振幅算、去掉冗余的「另一侧影短」。
+KNEAD_LONG_SHADOW = 0.5  # 主影线（昨天的上影 / 今天的下影）占振幅的下限
 # 实体占振幅的**下限**：实体要看得见，不能是十字星。
-# ⚠️ 这条是必需的，不是保险：只判上界（≤0.35）的话，「影线 ≥ 实体 × 1.5」在实体趋近 0
-# 时被白送，实体 1e-12 的样本也能拿满分并排到列表最前 —— 实测过。
+# ⚠️ 这条是必需的，不是保险：只判上界（≤ `CANDLE_BODY_MAX`）的话，实体趋近 0 的样本
+# 也能满足「主影 ≥ 振幅一半」并排到列表最前 —— 实测过。
 # 也不能写成 `body <= 0` 排除十字星：前复权把「开 = 收」算成 `open × (net/close)`，
 # 真实数据上几乎必然是 1e-13 这种尾巴，位精确比较挡不住（2026-09-27 修）。
-# 取 0.05 与打分里那项「小实体的理想值」同一个数，避免两处各写一个。
 KNEAD_MIN_BODY = 0.05
-KNEAD_CLOSE_GAP_MAX = 0.012  # 两根收盘价的相对差上限：再大就谈不上「收盘价相近」
-KNEAD_CLOSE_GAP_IDEAL = 0.003  # 到这个差以内给满分
 
 # 金叉大阳（2026-10-10 用户给的通达信公式，原样落成生产函数）
 #
@@ -4728,50 +4726,46 @@ def _kneading_line(bars: Bars) -> Signal | None:
     """揉搓线：**昨天长上影、今天长下影**的两根小实体 K，合起来像一根螺旋桨。
 
     为什么必须两根一起看：单独一根带长影线的小实体已经有了名字（上影是倒锤子、
-    下影是锤子），而「先冲高被打回、再砸下去被接回」这一套连着的动作才是搓揉 ——
-    两根的收盘几乎停在同一个位置，等于价格被上下各拧了一遍、筹码换了手而位置没动。
+    下影是锤子），而「先冲高被打回、再砸下去被接回」这一套连着的动作才是搓揉。
 
-    ⚠️ **顺序不能反**（用户点名强调）：先长下影、后长上影是另一回事，所以这里对
-    **昨天（-2）** 要求上影长下影短、对**今天（-1）** 要求下影长上影短 ——
-    不是含糊的「两根各带一条长影线」。同理「另一侧影线要短」也是两条都要判，
-    否则昨天本身就是一根十字星，今天就谈不上是「长下影那根」。
+    ⚠️ **顺序不能反**（用户两次点名强调）：先长下影、后长上影是另一回事，所以这里对
+    **昨天（-2）** 要求长上影、对**今天（-1）** 要求长下影 —— 不是含糊的「两根各带一条
+    长影线」。
 
-    收盘价相近是**否决条件**：两根收盘差得远说明位置已经挪走了，不是同一个位置的搓揉。
-
-    实体有**上下两道**门槛：上界 `CANDLE_BODY_MAX`（0.35，「小实体」，与其它蜡烛形态
-    共用），下界 `KNEAD_MIN_BODY`（0.05，**实体要看得见**）。下界不是保险 ——
-    没有它的话「影线 ≥ 实体 × 1.5」在实体趋近 0 时会被白送，实体 1e-12 的样本也能
-    拿满分（那条路径靠 `body <= 0` 是挡不住的：前复权会留一个浮点尾巴，见常量注释）。
+    ⚠️ **2026-10-14 按用户新标准重写**：只判「形状 + 顺序」——
+    两根主影都 ≥ 振幅 × `KNEAD_LONG_SHADOW`，两根实体都落在
+    `[KNEAD_MIN_BODY, CANDLE_BODY_MAX] × 振幅`。原来的三条里：
+    「两根收盘价相近」**删掉**（众生药业那一对是 1.2016%，擦边 1.2% 被卡掉，而用户的
+    标准里没有这条）；「另一侧影线要短」也不单独判了（主影 ≥0.5 + 实体 ≤0.35 已蕴含
+    它 ≤0.15）；「主影 ≥ 实体 × 1.5」改成按振幅算（见常量注释）。
 
     ⚠️ 与前置趋势无关（与锤子线那类不同）：揉搓线讲的是**换手**，出现在哪一段都成立，
     所以这里不加前置涨跌幅门槛。
     """
     if len(bars) < 2:
         return None
-    _, _, _, prev_close, prev_body, prev_upper, prev_lower, prev_span = _candle(bars, -2)
-    _, _, _, close, body, upper, lower, span = _candle(bars)
-    if prev_span <= 0 or span <= 0 or prev_close <= 0:
+    _, _, _, _, prev_body, prev_upper, _prev_lower, prev_span = _candle(bars, -2)
+    _, _, _, _, body, _upper, lower, span = _candle(bars)
+    if prev_span <= 0 or span <= 0:
         return None
-    # 两根都是「看得见的小实体」
-    if prev_body < prev_span * KNEAD_MIN_BODY or prev_body > prev_span * CANDLE_BODY_MAX:
+    # 两根都是「看得见的小实体」（下界防退化、上界是「小」）
+    if not prev_span * KNEAD_MIN_BODY <= prev_body <= prev_span * CANDLE_BODY_MAX:
         return None
-    if body < span * KNEAD_MIN_BODY or body > span * CANDLE_BODY_MAX:
+    if not span * KNEAD_MIN_BODY <= body <= span * CANDLE_BODY_MAX:
         return None
-    # 顺序：昨天长上影 + 短下影，今天长下影 + 短上影
-    if prev_lower > prev_span * KNEAD_SHORT_SHADOW or upper > span * KNEAD_SHORT_SHADOW:
-        return None
-    if prev_upper < prev_body * KNEAD_SHADOW_MULT or lower < body * KNEAD_SHADOW_MULT:
-        return None
-    # 两根收盘价相近
-    gap = abs(close - prev_close) / prev_close
-    if gap > KNEAD_CLOSE_GAP_MAX:
+    # 形状 + 顺序：昨天长上影、今天长下影
+    if prev_upper < prev_span * KNEAD_LONG_SHADOW or lower < span * KNEAD_LONG_SHADOW:
         return None
 
-    score = _gate_score(gap, KNEAD_CLOSE_GAP_MAX, KNEAD_CLOSE_GAP_IDEAL) * 40
-    score += _gate_score(prev_upper / prev_body, KNEAD_SHADOW_MULT, 4.0) * 20
-    score += _gate_score(lower / body, KNEAD_SHADOW_MULT, 4.0) * 20
-    score += _gate_score(prev_body / prev_span, CANDLE_BODY_MAX, KNEAD_MIN_BODY) * 10
-    score += _gate_score(body / span, CANDLE_BODY_MAX, KNEAD_MIN_BODY) * 10
+    score = _gate_score(prev_upper / prev_span, KNEAD_LONG_SHADOW, 0.75) * 35
+    score += _gate_score(lower / span, KNEAD_LONG_SHADOW, 0.75) * 35
+    # 实体越小越像「螺旋桨」：均值越接近下界越给分（`_gate_score` 的 ideal < gate ⇒ 越小越好）
+    score += (
+        _gate_score(
+            (prev_body / prev_span + body / span) / 2, CANDLE_BODY_MAX, KNEAD_MIN_BODY
+        )
+        * 30
+    )
 
     return Signal(
         "kneading_line",
@@ -4782,9 +4776,8 @@ def _kneading_line(bars: Bars) -> Signal | None:
             "breakout": max(float(bars.high[-2]), float(bars.high[-1])),
         },
         {
-            "close_gap": round(gap, 4),
-            "upper_ratio": round(prev_upper / prev_body, 2),
-            "lower_ratio": round(lower / body, 2),
+            "upper_ratio": round(prev_upper / prev_span, 3),
+            "lower_ratio": round(lower / span, 3),
             "body_ratio": round((prev_body / prev_span + body / span) / 2, 3),
         },
     )
@@ -5794,7 +5787,7 @@ ZGNB_GROUP = "知行B1"
 # | 悟道之路 | 洗后可盯 | 900 | +0.09% | −0.02% | −0.01% | +0.91% | 39.8% | −3.07% |
 # | 几何 | 三段式突破 | 31 | +0.16% | −0.03% | −0.27% | +3.26% | 35.5% | −1.97% |
 # | 几何 | 三重底 | 383 | +0.09% | −0.06% | −1.11% | +0.85% | 41.3% | −2.22% |
-# | 单 K 蜡烛形态 | 揉搓线 | 1544 | −0.23% | −0.19% | +0.75% | +1.09% | 38.9% | −2.40% |
+# | 单 K 蜡烛形态 | 揉搓线（2026-10-14 重写判据） | 1374 | −0.19% | +0.01% | +0.21% | +0.51% | 41.5% | −2.30% |
 # | 几何 | 头肩底 | 440 | +0.39% | −0.20% | −1.71% | −3.49% | 35.5% | −3.42% |
 # | 量价 | 爆量后缩量回踩 | 4143 | +0.06% | −0.26% | −0.64% | −0.91% | 40.2% | −2.49% |
 # | 突破 | 平台突破 | 572 | −0.05% | −0.26% | −0.98% | −1.37% | 39.9% | −2.01% |
