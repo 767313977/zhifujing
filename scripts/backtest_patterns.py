@@ -416,7 +416,9 @@ def _resolve_targets(name: str) -> dict[str, dict]:
         # 另一个分布，结论没有意义
         keys = [p.key for p in PATTERNS if p.group != "致富"]
     else:
-        keys = [name]
+        # 支持逗号分隔的一串（`--pattern a,b,c`）：只重算几个形态时用它 ——
+        # 序列只切一遍，多带几个形态几乎不额外花时间，比跑 N 次省掉 N-1 次全池加载
+        keys = [item.strip() for item in name.split(",") if item.strip()]
     targets = {}
     for key in keys:
         if key not in _BY_KEY:
@@ -430,7 +432,7 @@ def main() -> int:
     parser.add_argument(
         "--pattern",
         default="three_stage",
-        help="形态 key / all-new（25 个新形态）/ all（除致富外全部）",
+        help="形态 key（可逗号分隔传多个）/ all-new（18 个新形态）/ all（除致富外全部）",
     )
     parser.add_argument("--samples", type=int, default=15, help="单个形态时打印多少条命中明细")
     parser.add_argument("--stocks", type=int, default=0, help="只用前 N 只票（0 = 全部）")
