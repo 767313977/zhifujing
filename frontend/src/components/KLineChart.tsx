@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import type { StockDailyRow } from '../api/types'
 import EChart from './EChart'
 import type { ChartOption } from './EChart'
-import { AXIS_LABEL, KLINE, TOOLTIP } from '../lib/chart'
+import { AXIS_LABEL, CHART, KLINE, TOOLTIP } from '../lib/chart'
 import { fmtAmount, fmtPct, fmtShortDate } from '../lib/format'
 
 /*
@@ -28,33 +28,14 @@ function weekdayOf(date: string): string {
 }
 
 /**
- * K 线自己的轴文字与 tooltip —— 在 `AXIS_LABEL` / `TOOLTIP` 的**基础上只换颜色**。
- * 字号、字体族、内边距这些一律不另抄一遍：改了 `chart.ts` 那边，这里跟着走。
- *
- * 2026-10-15：这张图改用 `KLINE` 那套深色令牌（用户「配色改成图一」），
- * 其余 8 个图表仍然吃浅色的 `CHART`。
- */
-const KLINE_AXIS_LABEL = { ...AXIS_LABEL, color: KLINE.fgDim }
-
-const KLINE_TOOLTIP = {
-  ...TOOLTIP,
-  // 黑底图上那块白底 tooltip 会像补丁；换成比图区亮一档的深灰，
-  // 边框用同一条网格色，与图一那种「浮在图上的一小块」观感一致
-  backgroundColor: '#1b2229',
-  borderColor: KLINE.line,
-  textStyle: { ...TOOLTIP.textStyle, color: KLINE.fg },
-  extraCssText: 'border-radius:0;box-shadow:0 6px 20px rgba(0,0,0,0.55)',
-}
-
-/**
  * tooltip 里的一行：左边中文标签（次文字色）、右边数值（等宽、右对齐）。
  *
  * 用 `table` 而不是 flex：tooltip 是 ECharts 注入的裸 HTML 片段，表格自带列对齐，
  * 不用再依赖样式表 —— 而两列**在不同行之间必须严格对齐**，否则数值会参差。
  */
-function tipRow(label: string, value: string, color: string = KLINE.fg): string {
+function tipRow(label: string, value: string, color: string = CHART.fg): string {
   return (
-    `<tr><td style="padding:1px 10px 1px 0;color:${KLINE.fgMuted}">${label}</td>` +
+    `<tr><td style="padding:1px 10px 1px 0;color:${CHART.fgMuted}">${label}</td>` +
     `<td style="padding:1px 0;text-align:right;font-variant-numeric:tabular-nums;` +
     `color:${color}">${value}</td></tr>`
   )
@@ -90,7 +71,7 @@ function tipHtml(bars: KLineBar[], index: number): string {
   add(
     '涨幅',
     bar.pct_chg == null ? null : fmtPct(bar.pct_chg),
-    (bar.pct_chg ?? 0) >= 0 ? KLINE.upText : KLINE.downText,
+    (bar.pct_chg ?? 0) >= 0 ? KLINE.up : KLINE.down,
   )
   add(
     '振幅',
@@ -104,7 +85,7 @@ function tipHtml(bars: KLineBar[], index: number): string {
   add(
     '开盘涨幅',
     prev && prev > 0 && bar.open != null ? fmtPct((bar.open / prev - 1) * 100) : null,
-    bar.open != null && prev != null && bar.open >= prev ? KLINE.upText : KLINE.downText,
+    bar.open != null && prev != null && bar.open >= prev ? KLINE.up : KLINE.down,
   )
 
   return (
@@ -113,14 +94,10 @@ function tipHtml(bars: KLineBar[], index: number): string {
   )
 }
 
-/**
- * 网格线。图一实测是 `#31393f` 的**点线** —— 在参考图上逐行扫过，连续段长 2~3px、
- * 约 4.7px 一个周期（旧注释写的是「同花顺是淡实线」，那是 2026-09-26 照另一张截图
- * 得出的结论，这次按用户给的图改成点线）。
- */
+/** 同花顺的网格是淡实线，不是本站其它图那种虚线。 */
 const THS_SPLIT_LINE = {
   show: true,
-  lineStyle: { color: KLINE.line, type: [2, 2] },
+  lineStyle: { color: CHART.line, type: 'solid' as const },
 }
 
 /**
@@ -133,36 +110,35 @@ const THS_SPLIT_LINE = {
  * 四个键全给：ECharts 的 data-item `itemStyle` 会与序列级的合并，只覆盖想改的那几个也
  * 可以，但那样「阳线空心」的 `color: 'transparent'` 会漏过来 —— 涨停日要的恰恰是实心。
  *
- * 颜色用 `KLINE.limitUp`（**强调金**）：画法上分得开（一个是金色实心蜡烛、其它是
- * 红/青），语义上也不引入第三种颜色。
+ * 颜色用**同色相再深一档的涨色**（`CHART.limitUp`）：画法上分得开（一个是深红实心
+ * 蜡烛、其它是普通红/绿），语义上也不引入第三种颜色。
  *
- * ⚠️ 这个金是**深色版旧约定**。2026-10-13 全站改浅色时「金对白只有 2.2:1、当蜡烛色
- * 太浅」，才换成「同色相再深一档的涨色」；2026-10-15 K 线图改回深底（用户「配色改成
- * 图一」），金在黑底上又成立了，所以这档跟着回退。浅色那套 `CHART.limitUp` 仍在 ——
- * 别的图表将来要画涨停标记就用 `CHART` 那一份。
+ * ⚠️ 深色版这里用的是**强调金**。2026-10-13 改浅色时强调色从金换成了蓝 —— 若继续
+ * 复用 accent，涨停蜡烛会变成蓝柱，与「红涨」的语义直接打架，所以拆出独立的
+ * `limitUp` 令牌。改 accent 时别再顺手把它改回去。
  */
 const LIMIT_UP_ITEM_STYLE = {
-  color: KLINE.limitUp,
-  color0: KLINE.limitUp,
-  borderColor: KLINE.limitUp,
-  borderColor0: KLINE.limitUp,
+  color: CHART.limitUp,
+  color0: CHART.limitUp,
+  borderColor: CHART.limitUp,
+  borderColor0: CHART.limitUp,
 } as const
 
 /**
  * 跌停那天的蜡烛：**整根实心绿**（用户 2026-09-26 要的，与涨停那套完全对称）。
  *
- * 绿而不是站点跌色（青 `#17def1`，见 `KLINE.down`）—— 两个理由：一是标记本来就该与
- * 普通柱**分色**，涨停用金也是这个道理；二是青还是绿**本来就是两回事**，全站「红涨青跌」
- * 的文案说的是青，这根绿蜡烛是例外，不会读成「跌得更多」。
+ * 绿而不是站点跌色（青 `#45bfc4`）—— 两个理由：一是标记本来就该与普通柱**分色**，
+ * 涨停用金也是这个道理；二是青还是绿**本来就是两回事**，全站「红涨青跌」的文案说的
+ * 是青，这根绿蜡烛是例外，不会读成「跌得更多」。
  *
  * 同上，四个键全给，否则「阳线空心」的 `transparent` 会漏过来 —— 而一字跌停
  * （开 = 收 = 最低）在 ECharts 眼里正是阳线，漏了就会画成一根空心柱。
  */
 const LIMIT_DOWN_ITEM_STYLE = {
-  color: KLINE.limitDown,
-  color0: KLINE.limitDown,
-  borderColor: KLINE.limitDown,
-  borderColor0: KLINE.limitDown,
+  color: CHART.limitDown,
+  color0: CHART.limitDown,
+  borderColor: CHART.limitDown,
+  borderColor0: CHART.limitDown,
 } as const
 
 /**
@@ -256,14 +232,15 @@ interface Props {
 /**
  * K 线图（蜡烛 + 成交量；**不画均线**，见文件顶部那段），个股详情页与形态选股页共用。
  *
- * 2026-09-26 起画法按**同花顺**那套来：阳线空心红 / 阴线实心青、图区比卡片沉一档。
+ * 2026-09-26 起画法按**同花顺**那套来：阳线空心红 / 阴线实心青、网格淡实线、
+ * 图区比卡片沉一档。
  *
- * ⚠️ **2026-10-15 配色改成 `KLINE`（深底 + 红涨青跌），不再吃站点的浅色 `CHART`**
- * （用户「配色改成图一」）。这是**唯一**一张深底的图：全站仍是浅色（2026-10-13 定的），
- * 另外 8 个图表继续用 `CHART`。两个令牌集的分工与全部采样依据见 `lib/chart.ts` 的
- * `KLINE` 注释。
+ * ⚠️ **2026-10-15：涨跌两色单独改吃 `KLINE`**（用户给了参考图，先要求「配色改成图一」，
+ * 随后明确「底色不要改黑色，只改K线」）。所以这张图现在是**红涨青跌**；而底色 / 网格 /
+ * 轴文字 / tooltip / 涨停跌停标记 / 关键位**一律仍是站点那套浅色 `CHART`**，
+ * 其余 8 个图表连涨跌两色也还是 `CHART`。两个色值与取值理由见 `lib/chart.ts` 的 `KLINE`。
  *
- * **涨停那天的蜡烛整根实心描金、跌停那天的整根实心绿**（日 K 才有，判据在后端，
+ * **涨停那天的蜡烛整根实心深红、跌停那天的整根实心绿**（日 K 才有，判据在后端，
  * 见 `LIMIT_UP_ITEM_STYLE` / `LIMIT_DOWN_ITEM_STYLE`）。
  *
  * 从 `StockDetail.tsx` 里抽出来而不是复制一份：这个图有三处容易写错的地方
@@ -286,16 +263,14 @@ export default function KLineChart({ bars, height = 420, keyLevels = NO_KEY_LEVE
     const volumes = bars.map((bar) => ({
       value: bar.volume,
       // 成交量柱跟随当日涨跌染色；涨跌幅缺失时用收盘价与开盘价比较。
-      //
-      // ⚠️ 这里用的是 `KLINE.upText` / `downText`（**亮的那档**），**与蜡烛的
-      // `KLINE.up` / `down` 不是同一个值**：图一里成交量柱本来就和蜡烛分两个色阶
-      // （柱子更亮），本次按用户「改成图一」照抄。本站 2026-09-26 曾把两档统一过一档，
-      // 那条统一**在 K 线图上被这次改动推翻**；别的图表不受影响（它们本来只有一档）。
+      // 与蜡烛**同一个红/青**（这两色 2026-10-15 换成了 `KLINE` 的红涨青跌，取自用户
+      // 给的参考图；同花顺在图上把柱子和蜡烛分了两个色阶，本站仍**统一用一档**）。
+      // 别的图表与站内表格数字仍是红绿，不受影响。
       itemStyle: {
         color:
           (bar.pct_chg ?? (bar.close ?? 0) - (bar.open ?? 0)) >= 0
-            ? KLINE.upText
-            : KLINE.downText,
+            ? KLINE.up
+            : KLINE.down,
       },
     }))
 
@@ -315,15 +290,12 @@ export default function KLineChart({ bars, height = 420, keyLevels = NO_KEY_LEVE
     const interval = Math.max(0, Math.floor(dates.length / (wideLabels ? 6 : 8)))
 
     return {
-      // 整块画布上深底（**不只两个 grid**）：grid 外面还留着 left 8 / right 14 / 顶 10px /
-      // 底部 4% 的边距，只给 grid 上底的话那圈边会露出卡片的白。图一就是整块黑。
-      // （旧注释写的是「铺在 grid 上而不是画布整体背景」—— 那是浅色版的做法：图区底只比
-      // 卡片白沉一档，整块上底反而会跟卡片圆角打架。深底版正好反过来。）
-      backgroundColor: KLINE.page,
       grid: [
+        // 图区铺「页面底」那一阶（比面板底更暗），同花顺那种图比卡片沉一档的观感。
+        // 铺在 grid 上而不是画布整体背景：画布整块上底会跟容器的圆角/内边距打架。
         // `top` 只留一点点：图例（均线那几条）已经去掉，把它让给蜡烛
         // 高度 58% → 52%（2026-10-15 用户要求「主图再压缩一点，副图大一点」）
-        { left: 8, right: 14, top: 10, height: '52%', containLabel: true, backgroundColor: KLINE.page },
+        { left: 8, right: 14, top: 10, height: '52%', containLabel: true, backgroundColor: CHART.page },
         {
           left: 8,
           right: 14,
@@ -335,11 +307,11 @@ export default function KLineChart({ bars, height = 420, keyLevels = NO_KEY_LEVE
           top: '60%',
           height: '36%',
           containLabel: true,
-          backgroundColor: KLINE.page,
+          backgroundColor: CHART.page,
         },
       ],
       tooltip: {
-        ...KLINE_TOOLTIP,
+        ...TOOLTIP,
         trigger: 'axis',
         axisPointer: { type: 'cross' },
         // 自己排版（同花顺那种「一行一天」的字段表），不用 ECharts 的自动列表 ——
@@ -356,8 +328,8 @@ export default function KLineChart({ bars, height = 420, keyLevels = NO_KEY_LEVE
           type: 'category',
           data: dates,
           gridIndex: 0,
-          axisLabel: { ...KLINE_AXIS_LABEL, interval },
-          axisLine: { lineStyle: { color: KLINE.line } },
+          axisLabel: { ...AXIS_LABEL, interval },
+          axisLine: { lineStyle: { color: CHART.line } },
           axisTick: { show: false },
         },
         {
@@ -365,7 +337,7 @@ export default function KLineChart({ bars, height = 420, keyLevels = NO_KEY_LEVE
           data: dates,
           gridIndex: 1,
           axisLabel: { show: false },
-          axisLine: { lineStyle: { color: KLINE.line } },
+          axisLine: { lineStyle: { color: CHART.line } },
           axisTick: { show: false },
         },
       ],
@@ -373,7 +345,7 @@ export default function KLineChart({ bars, height = 420, keyLevels = NO_KEY_LEVE
         {
           scale: true,
           gridIndex: 0,
-          axisLabel: KLINE_AXIS_LABEL,
+          axisLabel: AXIS_LABEL,
           splitLine: THS_SPLIT_LINE,
           axisLine: { show: false },
         },
@@ -384,7 +356,7 @@ export default function KLineChart({ bars, height = 420, keyLevels = NO_KEY_LEVE
           // 与站点其它地方同一口径：个股概况的成交量就是 `fmtAmount(volume) + '股'`
           //（如「2786.0万股」），DDE 图的纵轴也是直接拿 fmtAmount。
           axisLabel: {
-            ...KLINE_AXIS_LABEL,
+            ...AXIS_LABEL,
             fontSize: 11,
             formatter: (value: number) => `${fmtAmount(value)}股`,
           },
@@ -416,8 +388,9 @@ export default function KLineChart({ bars, height = 420, keyLevels = NO_KEY_LEVE
             // 阳线填 `transparent` 就是同花顺那种**空心阳线** —— 只留红色描边、
             // 体内透出背景色。ECharts 里 color 支持任意 CSS 颜色，透明即空心，
             // 不需要画两条线去凑。阴线保持实心青。
-            // 红/青的**具体值**取自图一（`KLINE.up` = `#d90000` 描边、`KLINE.down`
-            // = `#17def1` 实体），与成交量柱那两档不是同一个值，见上面 `volumes` 的注释。
+            // 红/青的具体值见 `lib/chart.ts` 的 `KLINE`（2026-10-15 按用户给的参考图
+            // 换成红涨青跌；涨 `#d90000`、跌 `#0e7490` —— 跌色是那支青压深到白底可读的
+            // 一档，原值 `#17def1` 对白只有 1.65:1）
             color: 'transparent',
             color0: KLINE.down,
             borderColor: KLINE.up,
@@ -439,7 +412,7 @@ export default function KLineChart({ bars, height = 420, keyLevels = NO_KEY_LEVE
                 silent: true,
                 label: {
                   position: 'insideEndTop' as const,
-                  color: KLINE.fgMuted,
+                  color: CHART.fgMuted,
                   fontSize: 11,
                   formatter: '{b}',
                 },
@@ -449,9 +422,7 @@ export default function KLineChart({ bars, height = 420, keyLevels = NO_KEY_LEVE
                   // 相邻价位分居左右两端（见上面 marks 的注释）
                   label: { position: MARK_LABEL_POSITIONS[index % MARK_LABEL_POSITIONS.length] },
                   lineStyle: {
-                    // 「突破」用强调金（深色版旧约定）、「支撑」用次级灰 —— 两条都压
-                    // `#10161a` 上，「突破」那条要一眼分得出，所以取金而不是蓝
-                    color: level.kind === 'breakout' ? KLINE.accent : KLINE.fgDim,
+                    color: level.kind === 'breakout' ? CHART.accent : CHART.fgDim,
                     type: 'dashed' as const,
                     width: 1,
                   },
