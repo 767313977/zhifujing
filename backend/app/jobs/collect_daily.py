@@ -122,6 +122,24 @@ RUN_STEP_TASKS = (
     "hsgt",
 )
 
+# `run()` 里**任何配额档位都会执行**的那几步（`run()` 中不在 `if not core_only:`
+# 之下的全部）。`has_collected` 用它们判「这一天到底跑完没有」：只要其中某一步
+# 当天**没有日志行**，就说明那次 `run()` 死在它之前（部署重启 / 进程被 kill，
+# 见 2026-10-15 的 `sectors` / `watchlist`）—— 缺席与 `failed` 一样算「没采完」。
+#
+# ⚠️ `sectors` / `watchlist` / `margin` / `hsgt` **不能**列进来：它们在
+# `CORE_ONLY` 档位本来就被 `run()` 整段跳过、不会有日志行，列进来会让
+# `has_collected` 在高配额档位恒为 `False`，每次重启都重跑一遍 `run()`。
+RUN_ALWAYS_TASKS = (
+    "index",
+    "limit_pool",
+    "reasons",
+    "lhb",
+    "sentiment",
+    "etf",
+    "lhb_institution",
+)
+
 # 自选股同步的熔断阈值：连着这么多只都失败就中止本轮（见 `sync_watchlist`）。
 # 单只 iFinD 超时最长约 3 分钟，不熔断的话几十只票能把采集锁占几个小时。
 WATCHLIST_CONSECUTIVE_FAILURES = 3
@@ -487,9 +505,18 @@ class DailyCollector:
     def has_collected(self, day: date) -> bool:
         """该日是否已完成一次采集（可以跳过重采）。
 
-        判据是**两个条件同时成立**：
+        判据是**三个条件同时成立**：
         1. 情绪表有当天的行 —— 首页「今日复盘」有数据可看；
-        2. `run()` **各步骤**当天**最新**一条状态里没有 `failed`。
+        2. `RUN_ALWAYS_TASKS` 每一步当天**都有**日志行 —— 缺任何一步，就说明那次
+           `run()` 没跑到那一步（见下面第 3 段的说明）；
+        3. `run()` **各步骤**当天**最新**一条状态里没有 `failed`。
+
+        ⚠️ **「缺席」与 `failed` 同等对待**（2026-10-15 修）：原来只查「有没有
+        `failed`」，而进程被部署重启杀掉时，还没轮到的那几步**连日志行都没有** ——
+        既非 `ok` 也非 `failed`，于是被判成「已采完」，缺口再没人补。当天实测：
+        `etf` / `sectors` / `watchlist` / `margin` / `hsgt` 一行日志都没有，
+        而 15:05 那趟在 `sentiment` 之后就被重启打断了（情绪排在链路中部，
+        所以第 1 条判据反而是满足的）。
 
         ⚠️ **只看 `run()` 的步骤、且只看每步最新一条**（2026-10-10 修）：原来的判据
         是「当天**任意一条** `failed`」，于是**与基础采集无关的任务失败也会把整条
@@ -512,18 +539,26 @@ class DailyCollector:
             ):
                 return False
             # 每个 `run()` 步骤取**当天最新**一条日志的状态
-            latest_ids = (
-                select(func.max(CollectLog.id))
-                .where(
-                    CollectLog.trade_date == day,
-                    CollectLog.task.in_(RUN_STEP_TASKS),
-                )
-                .group_by(CollectLog.task)
-            )
-            statuses = session.scalars(
-                select(CollectLog.status).where(CollectLog.id.in_(latest_ids))
-            ).all()
-        return not any(status == "failed" for status in statuses)
+            latest = {
+                task: status
+                for task, status in session.execute(
+                    select(CollectLog.task, CollectLog.status).where(
+                        CollectLog.id.in_(
+                            select(func.max(CollectLog.id))
+                            .where(
+                                CollectLog.trade_date == day,
+                                CollectLog.task.in_(RUN_STEP_TASKS),
+                            )
+                            .group_by(CollectLog.task)
+                        )
+                    )
+                ).all()
+            }
+        # 判据 2：档位无关的那几步必须**都出现过**
+        if not set(RUN_ALWAYS_TASKS) <= latest.keys():
+            return False
+        # 判据 3：出现过的步骤里不能有 failed（带配额的步骤只在真跑过时才在这张表里）
+        return not any(status == "failed" for status in latest.values())
 
     # -------------------------------------------------------------------- 步骤
 

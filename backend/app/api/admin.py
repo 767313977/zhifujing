@@ -138,7 +138,8 @@ def status(session: Session = Depends(get_db)) -> AdminStatus:
 #   1. 重启服务 —— `start()` 里的「启动补采」会在当天数据缺失或有失败步骤时补跑
 #      （`sudo systemctl restart fupan`）
 #   2. 要补历史某几天：`POST /api/admin/backfill`（那个还在，它是「补数」不是「采集」）
-# 判断依据见 `collect_daily.has_collected`：情绪表有当天数据**且**当天没有 failed 步骤。
+# 判断依据见 `collect_daily.has_collected`：情绪表有当天数据，且 `run()` 每一步
+# 当天**都有日志行**（缺席说明那次采集被中途打断）**且**没有 failed 步骤。
 
 
 @router.post("/kline/recent")

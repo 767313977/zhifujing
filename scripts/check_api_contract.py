@@ -47,6 +47,33 @@ CHECKS = [
         "get",
         "days",
     ),
+    # 日 / 周 / 月 K 各取多少根日线（`klinePeriod.ts` 的 `VIEW_DAYS` 对象字面量）。
+    # 三个值都会作为 `days` 发给同一个接口，所以逐项登记、都受 `[5, 500]` 约束 ——
+    # 之前只登记了 `LONG_SYNC_DAYS`，这三个值改了没人拦。
+    (
+        "日 K 取多少根日线",
+        "frontend/src/lib/klinePeriod.ts",
+        r"VIEW_DAYS[^\n]*\{\s*day:\s*(\d+)",
+        "/api/stock/{code}/daily",
+        "get",
+        "days",
+    ),
+    (
+        "周 K 取多少根日线",
+        "frontend/src/lib/klinePeriod.ts",
+        r"VIEW_DAYS[^\n]*day:\s*\d+,\s*week:\s*(\d+)",
+        "/api/stock/{code}/daily",
+        "get",
+        "days",
+    ),
+    (
+        "月 K 取多少根日线",
+        "frontend/src/lib/klinePeriod.ts",
+        r"VIEW_DAYS[^\n]*week:\s*\d+,\s*month:\s*(\d+)",
+        "/api/stock/{code}/daily",
+        "get",
+        "days",
+    ),
 ]
 
 
