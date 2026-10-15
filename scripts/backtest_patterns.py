@@ -65,7 +65,7 @@ history.db 由 `scripts/backfill_history.py` 用腾讯补出来（零配额）�
 4 个形态，现在要跑注册表里全部（2026-09-27 起是 44 个），名字跟着覆盖面走。
 
     python scripts/backtest_patterns.py --pattern v_bottom            # 单个（短窗口）
-    python scripts/backtest_patterns.py --pattern all-new             # 20 个新形态
+    python scripts/backtest_patterns.py --pattern all-new             # 18 个新形态
     python scripts/backtest_patterns.py --pattern all                 # 注册表里全部
     python scripts/backtest_patterns.py --pattern all-new --history   # 换成 5 年长历史
     python scripts/backtest_patterns.py --pattern all-new --history --stocks 800   # 限样本试跑
@@ -131,9 +131,8 @@ DEFAULT_HISTORY_BARS = 1300
 # 单独列出来是为了能一条命令跑完这一批
 NEW_KEYS = (
     "ma_squeeze",
-    "ascending_channel",
     "ma_golden_cross",
-    "weekly_bull",
+    # 「上升通道 / 周线多头」2026-10-15 撤下（用户要求），不在这批里了
     "downtrend_breakout",
     "gap_up_breakout",
     "gap_fill",

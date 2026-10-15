@@ -244,11 +244,10 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   ma20_rise: ['MA20 涨幅', true],
   ma10_rise: ['MA10 涨幅', true],
   days: ['持续天数', false],
-  daily_slope: ['轨斜率/日', true],
-  touches: ['触轨次数', false],
   cross_days_ago: ['金叉距今', false],
-  weeks: ['周线根数', false],
-  ma5_gap: ['距周 MA5', true],
+  // （`daily_slope` / `touches` / `weeks` / `ma5_gap` 2026-10-15 随「上升通道 / 周线多头」
+  //  撤下一起删了 —— 它们只被那两个形态用到；`touches_top` / `touches_bottom` 是箱体的，
+  //  名字像但不是一套，别顺手删）
   // 突破
   box_range: ['箱体振幅', true],
   touches_top: ['触顶次数', false],

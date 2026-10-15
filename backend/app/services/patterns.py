@@ -634,6 +634,8 @@ MIN_BARS = MA_PERIODS[-1] + MA_SLOPE_LOOKBACK
 #
 # 1. **有超额、且胜率/中位也正**的 4 个：V 型底、矩形箱体、周线多头、箱体突破 ——
 #    它们在自己那档持有期上是站得住的（周线多头与矩形箱体 20 日仍为正）。
+#    ⚠️ 「周线多头」已于 2026-10-15 撤下（用户要求）—— 这段里的名字**当时**是成立的，
+#    现在只剩 V 型底 / 矩形箱体 / 箱体突破 三个。
 #    缩量涨停的 10 日超额最高（+4.29%）但胜率只有 49%、中位 −0.35%，是**低胜率高赔率**，
 #    且信号只有 138 条（最少），结论比其它几个脆，20 日之后开始回吐。
 # 2. **超额接近 0（±0.5% 以内）**：启明星、看涨吞没、阳包阴、倒锤子线、三重底、锤子线 ——
@@ -678,27 +680,10 @@ SQUEEZE_MAX_SPREAD = 0.03  # MA5/10/20/60 的 (max/min − 1) 上限
 SQUEEZE_IDEAL_SPREAD = 0.008  # 收到这个宽度满分
 SQUEEZE_SLOPE_MAX = 0.02  # 粘合期内 MA20 的涨幅上限（已经在拉就不是粘合）
 
-# 上升通道
-CHANNEL_DAYS = 40
-CHANNEL_MIN_DAILY = 0.003  # 下轨斜率换成「每天涨百分之几」的下限（缓涨不算通道）
-CHANNEL_PARALLEL_TOL = 0.45  # 上下轨斜率差 / 上轨斜率 的上限，再大就是喇叭形
-CHANNEL_POSITION_IDEAL = (0.15, 0.55)  # 收盘在通道内的相对位置：贴近下轨才是买点
-CHANNEL_POSITION_MAX = 0.75  # 超过这个位置就不算「回踩到位」了（已在通道上部）
-CHANNEL_TOUCH_TOL = 0.03  # 轨被触碰的容差
-CHANNEL_MIN_TOUCHES = 2  # 每条轨至少被碰这么多次（不然只是"两条线正好夹住"）
-CHANNEL_TOUCH_FULL = 8  # 触碰这么多（上下合计）算通道很规整
-
 # 金叉共振（MA5 上穿 MA10，且 MA10 / MA20 同向）
 CROSS_LOOKBACK = 3  # 金叉要发生在最近这么多天内
 CROSS_MIN_MA10_RISE = 0.0  # MA10 五日斜率下限
 CROSS_MIN_MA20_RISE = -0.002  # MA20 允许略走平，但不能明显向下
-
-# 周线多头（日线聚合成周线后套均线多头）
-WEEKLY_BULL_MIN_BARS = 110  # 周线 20 根 + 斜率 4 根 ≈ 日线 110 根
-WEEKLY_BULL_SLOPE_WEEKS = 4
-WEEKLY_BULL_RISE_IDEAL = (0.005, 0.04)  # 周 MA10 四周涨幅的理想区间（太陡是加速末端）
-WEEKLY_BULL_RISE_CAP = 0.10
-WEEKLY_BULL_GAP_IDEAL = (0.005, 0.06)  # 当前价距周 MA5 的乖离
 
 # 下降趋势线突破
 TRENDLINE_DAYS = 60
@@ -3571,24 +3556,6 @@ def _linfit(values: np.ndarray) -> tuple[float, float]:
     return float(slope), float(intercept)
 
 
-def _weekly_closes(bars: Bars) -> np.ndarray:
-    """日线按自然周聚合成周线收盘序列（升序）。
-
-    最后一周可能不足 5 个交易日，照样算一根 —— 与真实周线一致（未收盘的周线也是 K 线）。
-    """
-    out: list[float] = []
-    current: tuple[int, int] | None = None
-    for index, day in enumerate(bars.dates):
-        iso = day.isocalendar()
-        key = (iso[0], iso[1])
-        if key != current:
-            out.append(float(bars.close[index]))
-            current = key
-        else:
-            out[-1] = float(bars.close[index])
-    return np.array(out, dtype=float)
-
-
 def _touches(values: np.ndarray, level: float, tol: float) -> int:
     """序列里「碰到 level」的次数（相对容差）。
 
@@ -3670,67 +3637,6 @@ def _ma_squeeze(bars: Bars) -> Signal | None:
     )
 
 
-def _ascending_channel(bars: Bars) -> Signal | None:
-    """上升通道：近 40 天的最低价拟合出一条向上、且与上轨大致平行的下轨，
-    今天收盘落在通道下半部（贴着下轨 = 低吸位）。
-
-    上下轨分别对 low / high 序列做最小二乘，不用两端极值连线（理由见 `_linfit`）。
-    """
-    if len(bars) < CHANNEL_DAYS:
-        return None
-    window_high = bars.high[-CHANNEL_DAYS:]
-    window_low = bars.low[-CHANNEL_DAYS:]
-    mean_close = float(np.mean(bars.close[-CHANNEL_DAYS:]))
-    if mean_close <= 0:
-        return None
-
-    high_slope, high_intercept = _linfit(window_high)
-    low_slope, low_intercept = _linfit(window_low)
-    high_daily = high_slope / mean_close
-    low_daily = low_slope / mean_close
-    if low_daily < CHANNEL_MIN_DAILY or high_daily <= 0:
-        return None
-    if abs(high_daily - low_daily) / high_daily > CHANNEL_PARALLEL_TOL:
-        return None  # 两轨不平行，那是喇叭形
-
-    last = CHANNEL_DAYS - 1
-    upper = float(high_intercept + high_slope * last)
-    lower = float(low_intercept + low_slope * last)
-    if upper <= lower or lower <= 0:
-        return None
-    close = float(bars.close[-1])
-    position = (close - lower) / (upper - lower)
-    if not (-0.03 <= position <= CHANNEL_POSITION_MAX):
-        return None  # 跌穿下轨，或已经冲到通道上部（那就不是"回踩到位"了）
-
-    index = np.arange(CHANNEL_DAYS, dtype=float)
-    upper_series = high_intercept + high_slope * index
-    lower_series = low_intercept + low_slope * index
-    upper_touch = int(np.sum(np.abs(window_high / upper_series - 1.0) <= CHANNEL_TOUCH_TOL))
-    lower_touch = int(np.sum(np.abs(window_low / lower_series - 1.0) <= CHANNEL_TOUCH_TOL))
-    # 两条轨各要真被碰到过：只要求「上下轨正好夹住价格」的话，随便一段趋势
-    # 都能拟合出两条线来 —— 实测那样全市场有 7% 的票同时"在上升通道里"
-    if upper_touch < CHANNEL_MIN_TOUCHES or lower_touch < CHANNEL_MIN_TOUCHES:
-        return None
-    touches = upper_touch + lower_touch
-
-    score = _band_score(position, *CHANNEL_POSITION_IDEAL, 1.05) * 55
-    score += min((low_daily - CHANNEL_MIN_DAILY) / 0.003, 1.0) * 25
-    score += min(touches / CHANNEL_TOUCH_FULL, 1.0) * 20
-
-    return Signal(
-        "ascending_channel",
-        min(score, 100.0),
-        {"support": lower, "breakout": upper},
-        {
-            "daily_slope": round(low_daily, 5),
-            "position": round(position, 3),
-            "days": CHANNEL_DAYS,
-            "touches": touches,
-        },
-    )
-
-
 def _ma_golden_cross(bars: Bars) -> Signal | None:
     """金叉共振：MA5 最近 3 天内上穿 MA10，同时 MA10 向上、MA20 不走弱。
 
@@ -3784,52 +3690,6 @@ def _ma_golden_cross(bars: Bars) -> Signal | None:
             "ma10_rise": round(rise10, 4),
             "ma20_rise": round(rise20, 4),
             "vol_ratio": round(ratio, 2),
-        },
-    )
-
-
-def _weekly_bull(bars: Bars) -> Signal | None:
-    """周线多头：日线聚合成周线后，周 MA5 > MA10 > MA20 且都在向上。
-
-    为什么值得单独看周线：日线多头排列在震荡里天天出信号，周线多头要求
-    **连续 20 周**的结构，频率低得多，是「大方向向上」的粗筛。
-    库里的日线约 250 根（≈1 年 ≈ 50 周），做不出 20 周以上的斜率，
-    所以不足 `WEEKLY_BULL_MIN_BARS` 根时直接跳过。
-    """
-    if len(bars) < WEEKLY_BULL_MIN_BARS:
-        return None
-    weekly = _weekly_closes(bars)
-    if weekly.size < 20 + WEEKLY_BULL_SLOPE_WEEKS:
-        return None
-    ma5 = _ma_series(weekly, 5)
-    ma10 = _ma_series(weekly, 10)
-    ma20 = _ma_series(weekly, 20)
-    if ma5 is None or ma10 is None or ma20 is None:
-        return None
-    if not (ma5[-1] > ma10[-1] > ma20[-1]):
-        return None
-
-    look = WEEKLY_BULL_SLOPE_WEEKS
-    base5, base10 = float(ma5[-1 - look]), float(ma10[-1 - look])
-    if base5 <= 0 or base10 <= 0:
-        return None
-    rise5 = float(ma5[-1] / base5 - 1)
-    rise10 = float(ma10[-1] / base10 - 1)
-    if rise5 <= 0 or rise10 <= 0:
-        return None
-    gap = float(weekly[-1] / ma5[-1] - 1) if ma5[-1] > 0 else 0.0
-
-    score = _band_score(rise10, *WEEKLY_BULL_RISE_IDEAL, WEEKLY_BULL_RISE_CAP) * 60
-    score += _band_score(gap, *WEEKLY_BULL_GAP_IDEAL, 0.15) * 40
-
-    return Signal(
-        "weekly_bull",
-        min(score, 100.0),
-        {"support": float(ma5[-1])},
-        {
-            "weeks": int(weekly.size),
-            "ma10_rise": round(rise10, 4),
-            "ma5_gap": round(gap, 4),
         },
     )
 
@@ -5667,7 +5527,6 @@ ZGNB_GROUP = "知行B1"
 # | 几何 | 三段式突破 | 61 | +0.14% | +0.84% | +0.40% | +0.14% | 44.3% | −1.92% |
 # | 趋势 | 均线多头排列 | 3625 | +0.60% | +0.82% | +1.30% | +0.14% | 42.8% | −1.63% |
 # | 悟道之路 | 缩量洗盘中 | 3683 | +0.90% | +0.77% | +0.52% | +1.24% | 41.4% | −2.49% |
-# | 趋势 | 周线多头 | 3740 | +0.31% | +0.77% | +0.61% | −0.89% | 43.7% | −1.69% |
 # | 突破 | 下降趋势线突破 | 5287 | +0.35% | +0.76% | +0.66% | +0.29% | 42.5% | −1.53% |
 # | 趋势 | 金叉大阳 | 1345 | −0.15% | +0.76% | +0.44% | +1.75% | 42.0% | −2.61% |
 # | 悟道之路 | 华宝早期 | 8279 | +0.17% | +0.70% | +0.69% | +0.92% | 43.1% | −1.18% |
@@ -5685,7 +5544,6 @@ ZGNB_GROUP = "知行B1"
 # | 悟道之路 | 洗后可盯 | 2046 | +0.26% | −0.00% | −0.28% | +0.51% | 39.7% | −2.70% |
 # | 突破 | 玉柱擎天 | 770 | −0.02% | −0.01% | −0.36% | −0.30% | 37.8% | −3.26% |
 # | 单 K 蜡烛形态 | 揉搓线 | 3359 | −0.21% | −0.04% | +0.25% | +0.79% | 39.0% | −2.32% |
-# | 趋势 | 上升通道 | 6174 | +0.38% | −0.04% | −0.42% | −1.17% | 38.2% | −3.26% |
 # | 量价 | 量价底背离 | 3572 | −0.04% | −0.17% | −0.16% | +1.41% | 35.9% | −2.70% |
 # | 趋势 | 均线粘合 | 1763 | −0.17% | −0.27% | −0.40% | −2.88% | 39.4% | −1.31% |
 # | 量价 | 爆量后缩量回踩 | 10237 | −0.07% | −0.35% | −0.64% | −0.77% | 40.0% | −2.20% |
@@ -5706,6 +5564,9 @@ ZGNB_GROUP = "知行B1"
 # ⚠️ 表里没有「看涨吞没 / 阳包阴 / 启明星 / 锤子线 / 倒锤子线」—— 它们都是单 K 蜡烛
 # 类，信号量上千条而 10 日超额≈0（噪声），2026-10-14 已从注册表删掉；同日还撤了
 # 「上涨结构内的B点」（219 条、10 日超额 −2.99%、胜率 23.3%，判据方向有问题）。
+# ⚠️ 2026-10-15 又撤了两个（用户要求）：**上升通道**（6174 条、10 日 −0.04%、胜率 38.2%，
+# 量最大而超额≈0）与**周线多头**（3740 条、10 日 +0.77%、胜率 43.7% —— 注意这条是
+# 少数**正**的，删它不是按「噪声」那条线删的，撤下前先问清用户的意思）。
 PATTERNS: tuple[Pattern, ...] = (
     Pattern("wudao_start", "明天预案", "致富", _wudao_start),
     Pattern("wudao_sample", "明天盯", "致富", _wudao_sample),
@@ -5735,12 +5596,14 @@ PATTERNS: tuple[Pattern, ...] = (
     #
     # 定位与「N 字选股」一致：按这个形状捞一批票自己看，不是高胜率信号。
     # 逐形态的回测数字（5/10/20/60 日超额、胜率）见文件上方阈值块开头那张表 ——
-    # 那一批里 V 型底 / 矩形箱体 / 周线多头 / 箱体突破 有正超额，蜡烛类接近 0，
+    # 那一批里 V 型底 / 矩形箱体 / 箱体突破 有正超额，蜡烛类接近 0，
     # 上升楔形与放量滞涨是**警示类**（负超额正是它们有效的证据）。
+    #
+    # ⚠️ 「上升通道」与「周线多头」2026-10-15 已撤下（用户要求，上面那句里原本还有
+    # 它们的名字）：判定函数、`CHANNEL_*` / `WEEKLY_BULL_*` 阈值、只被周线多头用到的
+    # `_weekly_closes`、前端明细标签、库里的历史命中都一并删了。
     Pattern("ma_squeeze", "均线粘合", "趋势", _ma_squeeze),
-    Pattern("ascending_channel", "上升通道", "趋势", _ascending_channel),
     Pattern("ma_golden_cross", "金叉共振", "趋势", _ma_golden_cross),
-    Pattern("weekly_bull", "周线多头", "趋势", _weekly_bull),
     Pattern("downtrend_breakout", "下降趋势线突破", "突破", _downtrend_breakout),
     Pattern("gap_up_breakout", "向上跳空缺口突破", "突破", _gap_up_breakout),
     Pattern("gap_fill", "缺口回补", "突破", _gap_fill),
