@@ -293,8 +293,12 @@ export default function KLineChart({ bars, height = 420, keyLevels = NO_KEY_LEVE
         {
           left: 8,
           right: 14,
-          top: '76%',
-          height: '16%',
+          // 成交量副图：起点 76% → 67%、高度 16% → 25%（2026-10-15 用户要求「副图变高」）。
+          // 主图停在「58% + 10px」，原来 58%~76% 那条约 18% 的带子整段空着 —— 现在把
+          // 大半让给成交量。**底边仍是 92%**（与改动前同一条，下边距不变），所以只动了
+          // 副图自己的 top / height，主图那一个 grid 一个数都没改。
+          top: '67%',
+          height: '25%',
           containLabel: true,
           backgroundColor: CHART.page,
         },
