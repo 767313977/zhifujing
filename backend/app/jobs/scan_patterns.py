@@ -111,6 +111,13 @@ PATTERN_TASK = "patterns"
 # 而 2026-09-24 那种抽风是 9% —— 卡在 90% 能拦住整片缺，又不至于因为几只停牌票就不让扫。
 _MIN_DAY_COVERAGE = 0.9
 
+# 形态选股**不收**的市值上限（**元**）：总市值超过它的票一律不出信号
+# （2026-10-15 用户要求「形态选股时候剔除掉市值 2000 亿以上的票」）。
+#
+# 2000 亿 = 2e11 元。口径与「缺失怎么办」见 `_over_cap_codes`。
+# **不含**这一段（`>`，不是 `>=`）：正好 2000 亿的票留下。
+PATTERN_MAX_TOTAL_MV = 2000e8
+
 # ---- 悟道各池的口径。2026-10-09 定稿，改动前先读模块顶部的表 ----
 
 # **只有这两个形态另限候选池**（板块关见模块顶部那张表与 `_signal_allowed`）
@@ -481,6 +488,31 @@ def _last_bars(codes: set[str]) -> dict[str, date]:
             .group_by(StockDaily.code)
         ).all()
     return {str(code).zfill(6): day for code, day in rows}
+
+
+def _over_cap_codes(cap: float) -> set[str]:
+    """总市值 **超过** `cap`（元）的代码。口径是 `stock_universe.total_mv`。
+
+    **不给 IN 名单**：直接问「哪些票在池子里且超线」，返回的是一个小集合（全 A 里
+    2000 亿以上约一两百只），调用方与自己的代码集求交即可 —— 这样也顺带绕开了
+    SQLite 单条 SQL 变量上限（池子 5000+，`IN` 一次会被撑爆，见 `api/patterns.py`
+    里 `_IN_BATCH` 的说明）。
+
+    ⚠️ **市值缺失的一律不当「超线」**：这里的动作是剔除，把「查不到」当「超线」会误杀
+    一批刚上市 / 新进池的票。宁可多留，不可错杀。
+
+    ⚠️ `total_mv` 是**建池那天**的快照，最多旧 7 天（建池七天才跑一次，见
+    `models.StockUniverse`）。别处读市值（`api/stock.py:_market_fields`）会按股价缩放到
+    最新交易日，**这里不缩**：2000 亿是一条很粗的线，7 天里刚好跨过去的票极少，
+    为它多查一趟不划算。
+    """
+    with session_scope() as session:
+        return {
+            str(code).zfill(6)
+            for code in session.scalars(
+                select(StockUniverse.code).where(StockUniverse.total_mv > cap)
+            )
+        }
 
 
 def _sync_stock_eastmoney(code: str, *, days: int = _WUDAO_SYNC_DAYS) -> int:
@@ -858,6 +890,20 @@ def scan(
     if st_codes:
         logger.info("%s：剔除 %d 只 ST 票（形态选股不收 ST）", target, len(st_codes))
 
+    # **大市值票一律不参与**（2026-10-15 用户要求「形态选股时候剔除掉市值 2000 亿以上的票」）。
+    # 与 ST 同一层：只从这一轮的 `grouped` 里拿掉，所以形态判定、候选池、致富那一支
+    # 一并不出它们的信号。阈值与「市值缺失怎么办」见 `PATTERN_MAX_TOTAL_MV` / `_over_cap_codes`。
+    mv_codes = set(grouped) & _over_cap_codes(PATTERN_MAX_TOTAL_MV)
+    for code in mv_codes:
+        grouped.pop(code, None)
+    if mv_codes:
+        logger.info(
+            "%s：剔除 %d 只总市值超 %.0f 亿的票（形态选股不收大市值）",
+            target,
+            len(mv_codes),
+            PATTERN_MAX_TOTAL_MV / 1e8,
+        )
+
     rows: list[dict] = []
     skipped = 0
     dropped_wudao = 0
@@ -912,8 +958,8 @@ def scan(
     pool_brief = f"候选 创{len(wudao_cands)}"
     logger.info(
         "形态扫描完成：%s，%d 只票 → %d 条命中"
-        "（跳过 %d / 悟道剔池外 %d / %s / 日线停在过去 %d / 剔除 ST %d / 补日线 %s），"
-        "用时 %ss",
+        "（跳过 %d / 悟道剔池外 %d / %s / 日线停在过去 %d / 剔除 ST %d / 剔除大市值 %d / "
+        "补日线 %s），用时 %ss",
         target,
         len(grouped),
         written,
@@ -922,6 +968,7 @@ def scan(
         pool_brief,
         len(stale),
         len(st_codes),
+        len(mv_codes),
         sync_info,
         cost,
     )
@@ -932,6 +979,7 @@ def scan(
         f"{len(grouped)} 只 / {written} 条命中 / {pool_brief}"
         + (f" / 日线停在过去剔除 {len(stale)} 只" if stale else "")
         + (f" / 剔除 ST {len(st_codes)} 只" if st_codes else "")
+        + (f" / 剔除大市值 {len(mv_codes)} 只" if mv_codes else "")
         + _sync_note(sync_info),
         cost,
     )
@@ -944,6 +992,8 @@ def scan(
         "stale": len(stale),
         # 因带 ST 被剔除的只数（2026-09-28 起的口径）
         "st_dropped": len(st_codes),
+        # 因总市值超 `PATTERN_MAX_TOTAL_MV` 被剔除的只数（2026-10-15 起的口径）
+        "mv_dropped": len(mv_codes),
         "wudao_cands": len(wudao_cands),
         "wudao_extras": len(extras),
         "wudao_sync": sync_info,
