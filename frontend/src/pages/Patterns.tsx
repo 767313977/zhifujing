@@ -69,7 +69,9 @@ const PATTERN_LIMIT = 3000
  * 连中 6 天。看十天名单时同一只票占五六行，榜单被撑爆。选了 >1 之后由后端把窗口内
  * 同一只票的**重复命中合并成一条**、日期取**首次**那天（`run_days` 说明持续了几天）。
  *
- * ⚠️ 只在**选了形态**时生效：要合并得先确定是哪个形态在重复。
+ * ⚠️ 2026-10-15 起**没选形态（默认视图）也能用**（用户看到它们灰着，要求放开）：
+ * 原先这三个按钮在没选形态时是 `disabled`（理由是「合并得先确定是哪个形态在重复」），
+ * 但默认视图一样会被状态型形态撑爆 —— 去重跟选不选形态无关。
  */
 const WINDOWS = [1, 5, 10, 20]
 
@@ -448,11 +450,9 @@ export default function Patterns() {
     // `days` 同理：换窗口要重新取（>1 时后端合并同一只票的重复命中）
   }, [date, picked, days, load])
 
-  // 没选形态时窗口模式无效（后端没 `pattern` 就忽略 `days`）—— 把状态拉回「当天」，
-  // 否则界面上留着「近10日」的选中态、列表其实是当天的，对不上账
-  useEffect(() => {
-    if (picked.length === 0 && days > 1) setDays(1)
-  }, [picked, days])
+  // 2026-10-15 之前这里有一句「没选形态就把 days 拉回 1」—— 那时后端没 `pattern` 会
+  // 忽略 `days`，留着「近10日」的选中态而列表其实是当天的，对不上账。现在后端两种模式
+  // 都认窗口了，这句撤销。
 
   const groups = useMemo(() => {
     const map = new Map<string, PatternMeta[]>()
@@ -769,35 +769,27 @@ export default function Patterns() {
                 )
               })}
               {/* 窗口：>1 时后端把窗口内同一只票的重复命中合并成一条（见 `WINDOWS`）。
-                  没选形态时只能看当天 —— 合并得先确定是哪个形态在重复 */}
+                  没选形态也能用（2026-10-15 起，原先这三个是禁用的） */}
               <span className="ml-4 text-[13px] text-fg-dim">窗口</span>
-              {WINDOWS.map((value) => {
-                const off = picked.length === 0 && value > 1
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    disabled={off}
-                    onClick={() => setDays(value)}
-                    title={
-                      off
-                        ? '先选一个形态：合并重复命中得先确定是哪个形态在重复'
-                        : value === 1
-                          ? '只看当天命中的票'
-                          : `把近 ${value} 个交易日内同一只票的重复命中合并成一条，日期取首次那天`
-                    }
-                    className={`num border px-2 py-[2px] text-[13px] transition-colors ${
-                      days === value
-                        ? 'border-accent bg-accent/10 text-accent'
-                        : off
-                          ? 'cursor-not-allowed border-line text-fg-dim opacity-40'
-                          : 'border-line text-fg-muted hover:border-fg-dim hover:text-fg'
-                    }`}
-                  >
-                    {value === 1 ? '当天' : `近${value}日`}
-                  </button>
-                )
-              })}
+              {WINDOWS.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setDays(value)}
+                  title={
+                    value === 1
+                      ? '只看当天命中的票'
+                      : `把近 ${value} 个交易日内同一只票的重复命中合并成一条，日期取首次那天`
+                  }
+                  className={`num border px-2 py-[2px] text-[13px] transition-colors ${
+                    days === value
+                      ? 'border-accent bg-accent/10 text-accent'
+                      : 'border-line text-fg-muted hover:border-fg-dim hover:text-fg'
+                  }`}
+                >
+                  {value === 1 ? '当天' : `近${value}日`}
+                </button>
+              ))}
               <span className="ml-4 text-[13px] text-fg-dim">评分下限</span>
               <input
                 type="range"

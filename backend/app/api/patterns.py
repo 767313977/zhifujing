@@ -290,11 +290,17 @@ def _hits_window(
     量能天天创新低就天天入选（实测中红医疗 8/14~8/25 连中 6 天），看十天名单时同一只票
     占五六行，榜单直接被撑爆（用户 2026-10-14 点名的「去噪」）。
 
-    返回 `(代表行, 附加信息)`：**每只留下的票、每个所选形态各出一条「首次命中」的记录**
-    （所以这些记录的 `trade_date` 各不相同 —— 每行的 `patterns` 要带得全所有所选形态，
-    前端会按「这一行是否包含全部所选形态」兜底过滤，缺一个就被筛掉）；接口取其中最早那天
-    当这一行的 `trade_date`（= 首次命中任意一个所选形态的那天）。附加信息给出
-    `{code: (窗口内命中过的天数, 最后一次命中的日期)}` 供接口回填。
+    返回 `(代表行, 附加信息)`，附加信息给出
+    `{code: (窗口内命中过的天数, 最后一次命中的日期)}` 供接口回填。代表行按模式分两种：
+
+    - **传了 `picked`（形态视图）**：每只留下的票、每个所选形态各出一条「首次命中」的记录
+      —— 这些记录的 `trade_date` 各不相同（各形态首次那天），每行的 `patterns` 才带得全
+      所有所选形态（前端按「这一行是否包含全部所选形态」兜底过滤，缺一个会被筛掉）；
+      接口取其中最早那天当这一行的 `trade_date`。
+    - **没传 `picked`（默认视图）**：不做交集，只按票去重 —— 代表行就是它**首次命中那天**
+      的全部命中（那天它中了哪几个形态，标签就显示哪几个）。这条路 2026-10-15 才放开
+      （原先「没选形态」时前端直接把窗口按钮禁掉，理由是「合并得先确定是哪个形态在
+      重复」）—— 但「同一只票只出一条」跟选不选形态无关，默认视图一样会被状态型撑爆。
 
     ## 多选时是「窗口内先后命中过每一个」（2026-10-14 补）
 
@@ -310,11 +316,13 @@ def _hits_window(
     if not window:
         return [], {}
 
+    uniq = list(dict.fromkeys(picked))
     rows = db.scalars(
         select(PatternHit)
         .where(
             PatternHit.trade_date.in_(window),
-            PatternHit.pattern.in_(picked),
+            # 默认视图（`uniq` 空）就是注册表里那些 key —— 与单日模式的 `else` 分支同口径
+            PatternHit.pattern.in_(uniq or _KEYS),
             PatternHit.score >= min_score,
         )
         .order_by(PatternHit.trade_date, PatternHit.score.desc())
@@ -322,9 +330,10 @@ def _hits_window(
     if not rows:
         return [], {}
 
-    uniq = list(dict.fromkeys(picked))
     hit_keys: dict[str, set[str]] = {}
     first_row: dict[str, dict[str, PatternHit]] = {}
+    first_rows: dict[str, list[PatternHit]] = {}
+    first_date: dict[str, date] = {}
     seen: dict[str, set[date]] = {}
     last: dict[str, date] = {}
     for row in rows:
@@ -333,16 +342,22 @@ def _hits_window(
         first_row.setdefault(row.code, {}).setdefault(row.pattern, row)
         seen.setdefault(row.code, set()).add(row.trade_date)
         last[row.code] = row.trade_date
+        # 「首次那天」的全部命中：第一次见到这只票就记下那天，之后落在同一天的都收进来
+        if first_date.setdefault(row.code, row.trade_date) == row.trade_date:
+            first_rows.setdefault(row.code, []).append(row)
 
     keep: list[PatternHit] = []
     run_info: dict[str, tuple[int, date]] = {}
-    for code, keys in hit_keys.items():
-        # `keys` 一定 `⊆ uniq`，所以个数相等就是「一个不漏」
-        if len(keys) < len(uniq):
-            continue
-        keep.extend(
-            sorted((first_row[code][key] for key in uniq), key=lambda row: row.trade_date)
-        )
+    for code in first_date:
+        if uniq:
+            # `hit_keys[code]` 一定 `⊆ uniq`，所以个数相等就是「一个不漏」
+            if len(hit_keys[code]) < len(uniq):
+                continue
+            keep.extend(
+                sorted((first_row[code][key] for key in uniq), key=lambda row: row.trade_date)
+            )
+        else:
+            keep.extend(first_rows[code])
         run_info[code] = (len(seen[code]), last[code])
     return keep, run_info
 
@@ -359,7 +374,7 @@ def hits(
         1,
         ge=1,
         le=60,
-        description="窗口天数：>1 时把窗口内同一只票的重复命中合并成一条（要配合 pattern 用）",
+        description="窗口天数：>1 时把窗口内同一只票的重复命中合并成一条（不选形态也生效）",
     ),
     limit: int = Query(50, ge=1, le=3000),
 ) -> list[PatternStockOut]:
@@ -391,10 +406,12 @@ def hits(
     **首次**命中那天（用户点名要的就是「首次那天的日期」），并带上 `run_days` /
     `last_date` 说明这一轮持续了多久。逻辑见 `_hits_window`。
 
-    ⚠️ 窗口模式**只在传了 `pattern` 时生效**（要合并得先确定是哪个形态在重复）；
-    没传 `pattern` 时 `days` 被忽略、行为与单日完全一致。窗口模式下每行只带**所选
-    形态**的标签（不再回查「当天命中的全部形态」）—— 各行的「当天」已经不是同一天了，
-    回查要按日期分组，代价不值；单日模式不受影响。
+    ⚠️ 窗口模式**对两种模式都生效**（2026-10-15 放开）：
+    - **传了 `pattern`**：窗口内每行的 `patterns` 只带**所选形态**的标签（不再回查「当天
+      命中的全部形态」）—— 各行的「当天」已经不是同一天了，回查要按日期分组，代价不值。
+    - **没传 `pattern`（默认视图）**：一样按票去重、日期取首次那天，代表行带回**那天**
+      命中的全部形态。原先这条路是**禁用**的（「合并得先确定是哪个形态在重复」），
+      2026-10-15 用户要求放开 —— 默认视图同样会被状态型形态撑爆。
 
     ⚠️ **多选在窗口模式下的口径**（2026-10-14 补）：交集从「同一天命中全部」放宽成
     **「窗口内先后命中过每一个」** —— 一只票第 1 天中 A、第 3 天中 B 也算数（原先会被
@@ -416,9 +433,10 @@ def hits(
                 detail=f"未知形态 {', '.join(unknown)}，可选：{', '.join(_META)}",
             )
 
-    # 窗口模式下要回填「这一轮持续了几天 / 最近哪天」；单日模式留空
+    # 窗口模式下要回填「这一轮持续了几天 / 最近哪天」；单日模式留空。
+    # 2026-10-15 起**没选形态（默认视图）也走窗口**，所以这里只看 `days` 不看 `picked`
     run_info: dict[str, tuple[int, date]] = {}
-    if picked and days > 1:
+    if days > 1:
         rows, run_info = _hits_window(db, target, picked, min_score, days)
         if not rows:
             return []
