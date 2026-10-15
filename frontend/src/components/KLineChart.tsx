@@ -289,16 +289,16 @@ export default function KLineChart({ bars, height = 420, keyLevels = NO_KEY_LEVE
         // 图区铺「页面底」那一阶（比面板底更暗），同花顺那种图比卡片沉一档的观感。
         // 铺在 grid 上而不是画布整体背景：画布整块上底会跟容器的圆角/内边距打架。
         // `top` 只留一点点：图例（均线那几条）已经去掉，把它让给蜡烛
-        { left: 8, right: 14, top: 10, height: '58%', containLabel: true, backgroundColor: CHART.page },
+        // 高度 58% → 52%（2026-10-15 用户要求「主图再压缩一点，副图大一点」）
+        { left: 8, right: 14, top: 10, height: '52%', containLabel: true, backgroundColor: CHART.page },
         {
           left: 8,
           right: 14,
-          // 成交量副图：起点 76% → 67%、高度 16% → 25%（2026-10-15 用户要求「副图变高」）。
-          // 主图停在「58% + 10px」，原来 58%~76% 那条约 18% 的带子整段空着 —— 现在把
-          // 大半让给成交量。**底边仍是 92%**（与改动前同一条，下边距不变），所以只动了
-          // 副图自己的 top / height，主图那一个 grid 一个数都没改。
-          top: '67%',
-          height: '25%',
+          // 成交量副图：起点 67% → 62%、高度 25% → 30%（同一天第二次按用户要求放大；上一次是
+          // 76%/16%，见 git 记录）。**底边一直是 92%** —— 主图压掉的那 6% 全部转给了副图，
+          // 下边距与两图之间的间隔都没有被挤。主图只剩 grid 0 那一行的 height 是 52%。
+          top: '62%',
+          height: '30%',
           containLabel: true,
           backgroundColor: CHART.page,
         },
