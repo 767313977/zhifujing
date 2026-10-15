@@ -294,11 +294,13 @@ export default function KLineChart({ bars, height = 420, keyLevels = NO_KEY_LEVE
         {
           left: 8,
           right: 14,
-          // 成交量副图：起点 67% → 62%、高度 25% → 30%（同一天第二次按用户要求放大；上一次是
-          // 76%/16%，见 git 记录）。**底边一直是 92%** —— 主图压掉的那 6% 全部转给了副图，
-          // 下边距与两图之间的间隔都没有被挤。主图只剩 grid 0 那一行的 height 是 52%。
-          top: '62%',
-          height: '30%',
+          // 成交量副图：起点 62% → 60%、高度 30% → 36%（2026-10-15 第三次按用户要求放大）。
+          // 变更史：76%/16% → 67%/25% → 62%/30% → 60%/36%，底边跟着 92% → 96%。
+          // **留 4% 是有意的**：再往下副图的横轴线就要贴着卡片的圆角了。下面那 8% 原来是
+          // 纯空白（副图横轴 `axisLabel: {show: false}`，`containLabel` 没东西可装）。
+          // 主图（grid 0 的 52%）这一次没动。
+          top: '60%',
+          height: '36%',
           containLabel: true,
           backgroundColor: CHART.page,
         },
