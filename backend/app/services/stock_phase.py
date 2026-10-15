@@ -11,11 +11,12 @@
 """
 
 import logging
+import threading
 from collections.abc import Iterable
 from datetime import date
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy import Row, func, select
+from sqlalchemy.orm import Session
 
 from app.db import session_scope
 from app.models import StockDaily, TradeCalendar
@@ -40,6 +41,41 @@ _PHASE_IN_BATCH = 900
 
 #: 交易日历的「日期 → 升序序号」表；进程内缓存一次，见 `_trade_day_index`。
 _TRADE_DAY_INDEX: dict[date, int] | None = None
+
+#: 判定结果的进程内缓存：`code → PhaseVerdict | None`（None = 这票没有可用的日线）。
+#:
+#: 为什么需要：一次「一屏几千只」的列表（形态页点进一个形态、`/hits` 取 3000 只）要把
+#: 每只票最近 `PHASE_BARS` 根日线读回来算一遍 —— 合计约 39 万行，实测 **14 秒**。而
+#: **同一份日线在同一天里算出来的判定就是同一个结果**，反复点不同形态只是把重叠度很高
+#: 的那批票重算几遍。所以按**数据版本**缓存：版本 = `max(stock_daily.trade_date)`，
+#: 采集一写库就变、缓存整体作废，不需要靠 TTL 猜 —— 与 `api/patterns._TRACK_CACHE`
+#: 同一个思路（那里缓存键里也带着「最新日线日」）。
+#:
+#: ⚠️ 已知取舍：版本只看「最新日线日」。当天**订正**某只票今天那根（重采把坏值改好）
+#: 不改这一天，那条判定会沿用到第二天；同一天里订正是少见情形，重启服务也会清空。
+#:
+#: ⚠️ 缓存里连 **None 也要存**：否则「本来就没有判定」的那批（次新、已退池、停牌到
+#: 没数据）每次请求都会被重新查一遍、重新算一遍。空库时不缓存（同 `_trade_day_index`
+#: 的空表处理）—— 免得把「什么都没有」永久钉住。
+_PHASE_CACHE: dict[str, PhaseVerdict | None] = {}
+_PHASE_CACHE_VERSION: date | None = None
+#: 接口跑在线程池里，多个请求会同时读写这份 dict；只有「命中读 / 写回」几微秒在锁内。
+_PHASE_CACHE_LOCK = threading.Lock()
+
+#: 算判定要取的列。用 **Core 列**而不是 ORM 实体：实体每行都要过一遍 SQLAlchemy 的
+#: 属性仪表（一屏 39 万行时这部分能占掉约 1/4 的耗时，见 `_compute_verdicts`）；
+#: `_verdict_from_rows` 只按属性名读这几项，两种入参都能吃。
+_BAR_COLS = (
+    StockDaily.code,
+    StockDaily.trade_date,
+    StockDaily.open,
+    StockDaily.high,
+    StockDaily.low,
+    StockDaily.close,
+    StockDaily.volume,
+    StockDaily.amount,
+    StockDaily.pct_chg,
+)
 
 
 def _trade_day_index(refresh: bool = False) -> dict[date, int]:
@@ -100,8 +136,12 @@ def trim_contiguous_tail(records: list[dict], trade_day_index: dict[date, int]) 
     return records[cut:]
 
 
-def _verdict_from_rows(rows: list[StockDaily]) -> PhaseVerdict | None:
+def _verdict_from_rows(rows: Iterable[StockDaily | Row]) -> PhaseVerdict | None:
     """把一只票的一段日线（**顺序不限**，内部按交易日升序）算成阶段判定。
+
+    `rows` 既可以是 ORM 的 `StockDaily`（个股页 `load_phase`），也可以是 Core 查出来的
+    `Row`（列表页 `_compute_verdicts`，见那里为什么不用实体）—— 只按属性名读九个字段，
+    两条路径都吃。
 
     `load_phase`（个股页）与 `load_phases`（列表页）共用这一条路径 —— 列表页与个股页
     对同一只票必须给出同一个判定，共用同一段代码是唯一不会漂移的办法（见模块开头）。
@@ -150,37 +190,30 @@ def load_phase(session: Session, code: str) -> PhaseVerdict | None:
     return _verdict_from_rows(rows)
 
 
-def load_phases(session: Session, codes: Iterable[str]) -> dict[str, PhaseVerdict]:
-    """一次算一批票的阶段判定（形态选股命中列表那种「一屏多只票」的场景）。
+def _compute_verdicts(session: Session, codes: list[str]) -> dict[str, PhaseVerdict | None]:
+    """按 code 取最近 `PHASE_BARS` 根日线算判定；**没有日线 / 算不出来的记 None**。
 
-    返回 `{code: 判定}`；**日线不够 25 根的票不在结果里**，调用方按「没有」处理。
+    None 是「这只票没有判定」的显式记号：缓存要能记住「算过了、就是没有」，否则每天
+    都会被同一批次新 / 已退池 / 停牌到没数据的票反复重查重算（见 `_PHASE_CACHE`）。
 
-    2026-10-12 由「逐只 `load_phase`」改成**批量取数**：以前 `/hits` 点进一个形态看全部
-    时最多 3000 只 → 3000 条 SQL（N+1）。现在按 `_PHASE_IN_BATCH` 分批把日线一次取回、
-    按 code 分组，再交给与 `load_phase` **完全同一个** `_verdict_from_rows` 来算 ——
-    判定口径一字未改，查询数从 3000 降到个位数。
+    两条关键实现（都是 2026-10-15 实测调出来的）：
 
-    2026-10-15 又修一层（那版批量取数**漏了每只票的根数限制**）：当时那条 SQL 按批把
-    「这批 code 的**全部历史**」读回来，到 Python 里才切前 `PHASE_BARS` 根 —— 一只票
-    几百根、3000 只就是几十万行撞进 ORM，实测默认视图取 3000 只时整条 `/hits` 要 **43 秒**
-    （其中取行与判定之外的部分只有几秒）。SQLite 的 `LIMIT` 是整条语句级的，写不出
-    「每只票各取 130 根」，所以改用**窗口函数**：按 `code` 分区、`trade_date` 降序编号，
-    只留编号 ≤ `PHASE_BARS` —— 正好走 `ix_stock_daily_code_date`，取回的行数与
-    `load_phase` 的 `limit(PHASE_BARS)` 完全一致（判定口径不变）。
+    1. **用窗口函数，每只票只取 `PHASE_BARS` 根**。SQLite 的 `LIMIT` 是整条语句级的，
+       写不出「每只票各取 130 根」，所以按 `code` 分区、`trade_date` 降序编号，只留
+       编号 ≤ `PHASE_BARS` —— 走 `ix_stock_daily_code_date`，与 `load_phase` 的
+       `limit(PHASE_BARS)` 同一个窗口。原先（2026-10-12 那版）是按批把整段历史读回来、
+       到 Python 里才切前 130 根：3000 只票要多搬进 ORM 几十万行，实测 7 秒起步。
+       ⚠️ `code.in_(batch)` 必须写在**窗口那一层**：放到外层去过滤的话，编号是先把
+       全市场编号完再筛，这批票的 rn 早就不 ≤ `PHASE_BARS`，只会剩下零星几行。
+    2. **取 Core 列而不是 ORM 实体**（`_BAR_COLS`）：实体每行都要过一遍 SQLAlchemy 的
+       属性仪表，一屏十几万行时占掉约 1/4 耗时（实测 1145 只：5.1 秒 → 3.9 秒），
+       判定结果逐只比对完全一致。
     """
-    ordered = list(codes)
-    out: dict[str, PhaseVerdict] = {}
-    if not ordered:
-        return out
-    # code → 该票的日线（**每只票只取最近 PHASE_BARS 根**，与 load_phase 的 limit 同口径）
-    #
-    # ⚠️ `code.in_(batch)` 必须写在**窗口函数那一层**（子查询里）：放到外层去过滤的话，
-    # 编号是先把全市场编号完再筛，这批票的 rn 早就不 ≤ PHASE_BARS 了，会只剩零星几行。
-    grouped: dict[str, list[StockDaily]] = {}
-    for batch in chunked(ordered, _PHASE_IN_BATCH):
+    grouped: dict[str, list[Row]] = {}
+    for batch in chunked(codes, _PHASE_IN_BATCH):
         recent = (
             select(
-                StockDaily,
+                *_BAR_COLS,
                 func.row_number()
                 .over(
                     partition_by=StockDaily.code,
@@ -191,14 +224,62 @@ def load_phases(session: Session, codes: Iterable[str]) -> dict[str, PhaseVerdic
             .where(StockDaily.code.in_(batch))
             .subquery()
         )
-        ranked = aliased(StockDaily, recent)
-        for row in session.scalars(select(ranked).where(recent.c.rn <= PHASE_BARS)):
+        for row in session.execute(select(recent).where(recent.c.rn <= PHASE_BARS)):
             grouped.setdefault(row.code, []).append(row)
-    for code in ordered:
+    out: dict[str, PhaseVerdict | None] = {}
+    for code in codes:
         rows = grouped.get(code)
-        if not rows:
-            continue
-        verdict = _verdict_from_rows(rows)
-        if verdict is not None:
-            out[code] = verdict
+        out[code] = _verdict_from_rows(rows) if rows else None
     return out
+
+
+def load_phases(session: Session, codes: Iterable[str]) -> dict[str, PhaseVerdict]:
+    """一次算一批票的阶段判定（形态选股命中列表那种「一屏多只票」的场景）。
+
+    返回 `{code: 判定}`；**日线不够 25 根的票不在结果里**，调用方按「没有」处理。
+
+    2026-10-12 由「逐只 `load_phase`」改成**批量取数**：以前 `/hits` 点进一个形态看全部
+    时最多 3000 只 → 3000 条 SQL（N+1）。现在按 `_PHASE_IN_BATCH` 分批把日线一次取回、
+    按 code 分组，再交给与 `load_phase` **完全同一个** `_verdict_from_rows` 来算 ——
+    判定口径一字未改，查询数从 3000 降到个位数。
+
+    2026-10-15 两次收尾（那版批量取数**漏了每只票的根数限制**，一屏 3000 只时整条
+    `/hits` 要 43 秒）：
+
+    - 取数改成窗口函数 + Core 列（见 `_compute_verdicts`）：整条 `/hits` 取 3000 只
+      **43 秒 → 18.8 秒**（其中判定本身就是 14 秒）；
+    - 结果按**数据版本**缓存（`_PHASE_CACHE`）—— 形态之间的票重叠度很高，同一天里
+      第二次点开几乎是白算，那 14 秒随后降到几百毫秒。
+    """
+    global _PHASE_CACHE, _PHASE_CACHE_VERSION
+
+    ordered = list(codes)
+    if not ordered:
+        return {}
+
+    # 数据版本 = 最新日线日。采集一写库它就变，缓存整体作废（同 `_TRACK_CACHE` 的思路）
+    version = session.scalar(select(func.max(StockDaily.trade_date)))
+    cached: dict[str, PhaseVerdict | None]
+    if version is None:
+        # 空库（还没采到日线）：照算，但一个字都不缓存（同 `_trade_day_index` 的空表处理）
+        cached = {}
+        pending = ordered
+    else:
+        with _PHASE_CACHE_LOCK:
+            if version != _PHASE_CACHE_VERSION:
+                _PHASE_CACHE, _PHASE_CACHE_VERSION = {}, version
+            cached = {code: _PHASE_CACHE[code] for code in ordered if code in _PHASE_CACHE}
+        pending = [code for code in ordered if code not in cached]
+
+    if pending:
+        fresh = _compute_verdicts(session, pending)
+        cached.update(fresh)
+        if version is not None:
+            with _PHASE_CACHE_LOCK:
+                # 算这一批的期间，采集可能刚好写库（版本已经变了）：那一批是按旧日线算的，
+                # 写进去会让下一天之前的请求都读到旧判定 —— 直接丢掉，宁可下次重算
+                if _PHASE_CACHE_VERSION == version:
+                    _PHASE_CACHE.update(fresh)
+
+    # 保持入参顺序（调用方按 code 逐个 `.get`，顺序不影响，但别在这里无谓改口径）
+    return {code: cached[code] for code in ordered if cached.get(code) is not None}
