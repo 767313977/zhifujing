@@ -62,6 +62,19 @@ _META = {pattern.key: pattern for pattern in PATTERNS}
 # 一次部署就生效，历史行留着也无害。
 _KEYS = tuple(_META)
 
+# 默认视图（没选形态）开窗口时，**每一天最多捞这么多行**（按分数降序取）。
+#
+# 为什么不干脆全捞：那要一次把 20 天 × 约 1100~2000 条命中（≈2~4 万行）都读进内存。
+# 实测能跑（不报错、也就零点几秒），但**每次点一下都白读九成** —— 返回的只有 `limit` 只，
+# 而默认视图的排序只看每只票**首次命中那天**的最高分。形态模式不需要这个上限：它已经按
+# 所选形态过滤过，本来就不大。
+#
+# ⚠️ 这是一条**近似**：理论上被砍掉的票有可能靠别处的分数挤进全局前 `limit`（它的首次
+# 命中日不在当天前 K 名，而压过它的那些票的首次命中日更早、于是不算这一天的成绩）。
+# K=600 远大于页面要的 50，实际要构造出这种局面很难；真要做到严格，就得先按天查一遍
+# 「code → 当天最高分」的聚合、定出首次命中日之后再回捞整行 —— 为这个量级不值得。
+_WINDOW_ROWS_PER_DAY = 600
+
 # `/track` / `/standing` 的结果缓存。这是全站最重的一类读接口（30 个循环 × 30 天要从
 # `stock_daily` 拉 40 多万行压成矩阵，实测 2.4 秒），而**它依赖的数据一天只变一次**
 # （当天采集跑完）。所以缓存键里带上「数据版本」= (最新命中日, 最新日线日)，
@@ -301,6 +314,8 @@ def _hits_window(
       的全部命中（那天它中了哪几个形态，标签就显示哪几个）。这条路 2026-10-15 才放开
       （原先「没选形态」时前端直接把窗口按钮禁掉，理由是「合并得先确定是哪个形态在
       重复」）—— 但「同一只票只出一条」跟选不选形态无关，默认视图一样会被状态型撑爆。
+      ⚠️ 这条路**逐日只取前 `_WINDOW_ROWS_PER_DAY` 条**（免得一次把几万行读进内存），
+      那条近似的边界写在常量那里。
 
     ## 多选时是「窗口内先后命中过每一个」（2026-10-14 补）
 
@@ -317,16 +332,34 @@ def _hits_window(
         return [], {}
 
     uniq = list(dict.fromkeys(picked))
-    rows = db.scalars(
-        select(PatternHit)
-        .where(
-            PatternHit.trade_date.in_(window),
-            # 默认视图（`uniq` 空）就是注册表里那些 key —— 与单日模式的 `else` 分支同口径
-            PatternHit.pattern.in_(uniq or _KEYS),
-            PatternHit.score >= min_score,
-        )
-        .order_by(PatternHit.trade_date, PatternHit.score.desc())
-    ).all()
+    if uniq:
+        rows = db.scalars(
+            select(PatternHit)
+            .where(
+                PatternHit.trade_date.in_(window),
+                PatternHit.pattern.in_(uniq),
+                PatternHit.score >= min_score,
+            )
+            .order_by(PatternHit.trade_date, PatternHit.score.desc())
+        ).all()
+    else:
+        # 默认视图：key 取注册表里那些（与单日模式的 `else` 分支同口径），但**逐日各取
+        # 前 `_WINDOW_ROWS_PER_DAY` 条**（理由见那个常量）。按天拆开查而不是一条 IN 包住
+        # 整个窗口：SQLite 的 `LIMIT` 是整条语句级的，要「每天前 K 条」只能逐日发。
+        rows: list[PatternHit] = []
+        for day in window:
+            rows.extend(
+                db.scalars(
+                    select(PatternHit)
+                    .where(
+                        PatternHit.trade_date == day,
+                        PatternHit.pattern.in_(_KEYS),
+                        PatternHit.score >= min_score,
+                    )
+                    .order_by(PatternHit.score.desc())
+                    .limit(_WINDOW_ROWS_PER_DAY)
+                ).all()
+            )
     if not rows:
         return [], {}
 
