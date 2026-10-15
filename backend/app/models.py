@@ -450,6 +450,36 @@ class MarketSentiment(Base):
     yesterday_limit_today_avg: Mapped[float | None] = mapped_column(Float)
 
 
+class FearGreedDaily(Base):
+    """A 股恐惧贪婪指数的六项**原始指标**（0-100 读数在读取时现算）。
+
+    只存原始值、不存分数：分数是「滚动分位」的派生值（见
+    `services/fear_greed.percentile_score`），窗口或分档口径改了只要重算，
+    不必重新回补数据；也就不存在「原始值与分数两套口径不一致」的风险。
+
+    ⚠️ 宽度这一项**不是**取 `market_sentiment.up_count` —— 那个字段只有当日值、
+    历史回补时留空（见它的注释），拿它做不了任何需要历史的分位。这里是从
+    `stock_daily.pct_chg` 按日反算的，口径是「库里有全市场日线的那批票」，
+    与乐咕乐股的全市宽度同源可比、绝对值可能略有出入，页面上如实说明。
+    """
+
+    __tablename__ = "fear_greed_daily"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    # 上证指数近 20 个交易日日对数收益率的标准差，年化后换成百分数（越大越恐慌）
+    volatility: Mapped[float | None] = mapped_column(Float)
+    # 上证指数 RSI(14)，Wilder 平滑
+    rsi14: Mapped[float | None] = mapped_column(Float)
+    # 两市成交额 / 前 20 个交易日均值（相对量能）
+    turnover_ratio: Mapped[float | None] = mapped_column(Float)
+    # 沪深两市融资余额 + 融券余额 合计的 20 日变化率（%）
+    margin_chg: Mapped[float | None] = mapped_column(Float)
+    # 上涨家数 /（上涨 + 下跌）× 100，%
+    breadth: Mapped[float | None] = mapped_column(Float)
+    # (涨停 - 跌停) / (涨停 + 跌停) × 100，%
+    limit_strength: Mapped[float | None] = mapped_column(Float)
+
+
 # ---- 会员与登录态（2026-09-28，设计见设计文档 §8.69）----
 #
 # 这三张表是「邀请码注册 + 登录」的全部存储。刻意**不引入任何第三方鉴权库**：

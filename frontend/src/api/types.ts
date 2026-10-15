@@ -36,6 +36,64 @@ export interface Sentiment {
   yesterday_limit_today_avg: number | null
 }
 
+/**
+ * 恐惧贪婪指数（0–100，越高越贪婪）。
+ *
+ * 分数是后端**读取时现算**的：六项原始指标各自按滚动 `window` 个交易日分位折算，
+ * 再等权平均。所以 `scores` 里为 null 的日子是「那天算不出分」（有效子指标不足 3 项），
+ * 图上留空隙 —— 别把它当 0 画，0 是「极度恐慌」，结论完全相反。
+ */
+export interface FearGreedBand {
+  /** 配色的稳定标识：extreme_fear / fear / neutral / greed / extreme_greed */
+  key: string
+  label: string
+  lower: number
+  upper: number
+}
+
+/** 六项子指标之一：原始值 + 它在窗口里的分位分。`score` 为 null 时该项当天无数据。 */
+export interface FearGreedSub {
+  key: string
+  label: string
+  value: number | null
+  score: number | null
+  /** 数值单位（`%` / `倍` / 空串），跟在数字后面 */
+  unit: string
+  /** 一句话口径说明，放 tooltip */
+  hint: string
+}
+
+export interface FearGreedLatest {
+  trade_date: string
+  score: number | null
+  level: string | null
+  /** 较上一个有效分数的变化量；没有上一个时为 null */
+  change: number | null
+  subs: FearGreedSub[]
+}
+
+/** 首页用的一小块读数。与 `FearGreedLatest` 同源，但不带六项明细。 */
+export interface FearGreedBrief {
+  trade_date: string
+  score: number | null
+  level: string | null
+  change: number | null
+  /** 五档阈值（后端给），首页据此画与情绪周期页完全一致的色带 */
+  bands: FearGreedBand[]
+}
+
+export interface FearGreed {
+  dates: string[]
+  scores: (number | null)[]
+  /** 分档阈值由后端给（唯一出处），前端不自己写 25/45/55/75 */
+  bands: FearGreedBand[]
+  /** 分位窗口（交易日） */
+  window: number
+  /** 表内总天数：说明读数背后有多少历史 */
+  coverage: number
+  latest: FearGreedLatest | null
+}
+
 /** 指数与个股广度是否背离。level 决定配色，detail 是判据里的原始数字 */
 export interface Divergence {
   level: 'weight_pull' | 'theme_active' | 'aligned'
@@ -60,6 +118,11 @@ export interface MarketOverview {
   divergence: Divergence | null
   /** 截至 trade_date 的近 30 个交易日成交额 */
   turnover: TurnoverSeries | null
+  /**
+   * 恐惧贪婪指数的当日简报：后端**截到 trade_date** 算（翻历史日期不会泄露未来）。
+   * 库里还没这天的数据、或那天算不出分时是 null
+   */
+  fear_greed: FearGreedBrief | null
 }
 
 /** 指数历史序列。各数组与 IndexHistory.dates 一一对应，缺失为 null。 */

@@ -804,6 +804,9 @@ class DailyScheduler:
         # 历史回补排在**形态扫描之前**：它只花固定几十次调用，
         # 而形态扫描是全市场日线的下游，先让历史落库再算，两者不抢
         self._backfill_kline(today)
+        # 恐惧贪婪指数：只读库、零 iFinD 配额。排在 `_collect_kline` **之后**是硬要求 ——
+        # 「市场宽度」要用当天的全市场个股日线反算，排在它之前会算到昨天的宽度。
+        self._collect_fear_greed(today)
         self._scan_patterns(today)
         # 命中前 N 只的**日线**补齐：形态页那张 K 线读的就是 `stock_daily`，某只的最后
         # 一根早于最近交易日，图上最新几天就是断的（2026-10-09 用户要求）。
@@ -831,6 +834,22 @@ class DailyScheduler:
         # 下一次启动会重跑一遍 —— 宁可多跑一次，也不要把没跑完的当成跑过了。
         # 有步骤失败时记 `partial`（失败步骤名进 message），不再一律写 `ok`。
         _mark_tail(today, reason, self._tail_failures)
+
+    def _collect_fear_greed(self, trade_date: date) -> None:
+        """恐惧贪婪指数：只读库、零 iFinD 配额，失败只登记不影响其它步骤。
+
+        `refresh()` 会重算最近 `REFRESH_DAYS` 个交易日，表为空时自动退回全量回补
+        （新库 / 新部署第一趟就自带完整历史），所以这里不必区分首次与日常。
+        """
+        from app.jobs.collect_fear_greed import refresh
+
+        try:
+            written = refresh()
+        except Exception:  # noqa: BLE001 - 恐贪是增强读数，不该拖垮尾部链
+            logger.exception("恐贪指数计算失败")
+            self._tail_failures.append("fear_greed")
+            return
+        logger.info("恐贪指数 %s：重算写入 %d 天", trade_date, written)
 
     def _scan_patterns(self, trade_date: date) -> None:
         """全市场形态扫描。

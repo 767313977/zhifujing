@@ -74,6 +74,16 @@ CHECKS = [
         "get",
         "days",
     ),
+    # 恐贪指数曲线取多少天。后端下限 20、上限 500（分母是「一年分位」的合成值，
+    # 取几天看不出形态，故下限不放 1）
+    (
+        "恐贪指数取多少天",
+        "frontend/src/api/client.ts",
+        r"fearGreed:\s*\(days\s*=\s*(\d+)\)",
+        "/api/market/fear-greed",
+        "get",
+        "days",
+    ),
 ]
 
 

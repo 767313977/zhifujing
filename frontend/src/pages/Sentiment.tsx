@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
-import type { IndexHistory, IndexSeries, Sentiment } from '../api/types'
+import type { FearGreed, IndexHistory, IndexSeries, Sentiment } from '../api/types'
 import Alert from '../components/Alert'
 import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
+import FearGreedPanel from '../components/FearGreedPanel'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import {
@@ -62,15 +63,23 @@ function axisTooltip(params: unknown): string {
 export default function SentimentPage() {
   const [history, setHistory] = useState<IndexHistory | null>(null)
   const [sentiment, setSentiment] = useState<Sentiment[]>([])
+  const [fearGreed, setFearGreed] = useState<FearGreed | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([api.indexHistory(120), api.sentimentSeries(60)])
-      .then(([historyData, sentimentData]) => {
+    Promise.all([
+      api.indexHistory(120),
+      api.sentimentSeries(60),
+      // 恐贪指数是增强读数：库里还没这天数据时接口返回 404，**不能**因此把整页
+      // 情绪指标打白。失败一律回落 null，由面板自己显示「暂无数据」
+      api.fearGreed(120).catch(() => null),
+    ])
+      .then(([historyData, sentimentData, fearGreedData]) => {
         setHistory(historyData)
         // 情绪指标只有数据源保留窗口内的日期才有值，其余为 null
         setSentiment(sentimentData.filter((item) => item.limit_up_count != null))
+        setFearGreed(fearGreedData)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -278,6 +287,10 @@ export default function SentimentPage() {
       )}
 
       <div className="space-y-4">
+        {/* 恐贪是本页的总读数，排在最前：先给「今天整体冷不冷」，再展开下面拆开的
+            指数走势与情绪明细 */}
+        <FearGreedPanel data={fearGreed} loading={loading} delay={40} />
+
         <Panel
           title="指数走势"
           meta={
@@ -286,7 +299,7 @@ export default function SentimentPage() {
               <span className="ml-3 text-fg-dim">首日归一为 100 · 灰色柱为两市成交额</span>
             </span>
           }
-          delay={40}
+          delay={80}
         >
           {loading ? (
             <div className="flex h-[320px] items-center justify-center text-[14px] text-fg-dim">
@@ -311,7 +324,7 @@ export default function SentimentPage() {
           </span>
         </div>
 
-        <Panel title="情绪指标" meta={<span className="num">{rangeLabel(emotionDates)}</span>} delay={120}>
+        <Panel title="情绪指标" meta={<span className="num">{rangeLabel(emotionDates)}</span>} delay={160}>
           {loading ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
           ) : sentiment.length === 0 ? (
@@ -325,7 +338,7 @@ export default function SentimentPage() {
           )}
         </Panel>
 
-        <Panel title="连板高度" meta={<span className="num">市场高度 · 最高连板数</span>} delay={180}>
+        <Panel title="连板高度" meta={<span className="num">市场高度 · 最高连板数</span>} delay={220}>
           {loading ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
           ) : sentiment.length === 0 ? (
@@ -338,7 +351,7 @@ export default function SentimentPage() {
         </Panel>
 
         {/* 补一段文字口径说明，避免只看图产生误读 */}
-        <div className="panel rise px-4 py-3 text-[13px] leading-relaxed text-fg-dim" style={{ animationDelay: '220ms' }}>
+        <div className="panel rise px-4 py-3 text-[13px] leading-relaxed text-fg-dim" style={{ animationDelay: '260ms' }}>
           <div className="mb-1.5 text-fg-muted">口径说明</div>
           <ul className="space-y-1">
             <li>
@@ -352,6 +365,16 @@ export default function SentimentPage() {
               · 指数涨跌家数与全市场涨跌家数<span className="text-fg-muted">无法回补</span>：
               前者的两个接口对同一指数同一天给出不同数值，后者数据源只提供当日值，
               因此本页不展示历史涨跌家数，避免混入口径不一致的序列
+            </li>
+            <li>
+              · 恐惧贪婪指数 = 波动率 / RSI / 相对换手率 / 融资融券 / 市场宽度 /
+              涨跌停强度，六项各自按滚动 <span className="num">250</span> 个交易日分位
+              折算成 0–100 后再等权平均，越高越贪婪；开头的几天分位历史不足，
+              分数为<span className="text-fg-muted">空</span>（图上断开，不是 0）
+            </li>
+            <li>
+              · 恐贪指数里的<span className="text-fg-muted">市场宽度</span>由全市场个股日线
+              现算（上涨家数占比），与本页「指数涨跌家数」是两个口径，数值不会完全对齐
             </li>
           </ul>
         </div>

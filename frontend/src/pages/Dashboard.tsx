@@ -15,6 +15,7 @@ import type {
 } from '../api/types'
 import Alert from '../components/Alert'
 import DivergenceNote from '../components/DivergenceNote'
+import { FearGreedBrief } from '../components/FearGreedPanel'
 import IndexStrip from '../components/IndexStrip'
 import Layout from '../components/Layout'
 import LhbTable from '../components/LhbTable'
@@ -274,6 +275,12 @@ export default function Dashboard() {
 
           {/* 判读条紧跟指数条：它的依据就是上面那排指数与下面的涨跌家数 */}
           <DivergenceNote data={data.overview.divergence} />
+
+          {/* 恐贪是「今天整体冷不冷」的总读数：先给结论，再展开下面的十几个明细数字。
+              算不出来（库里没这天数据 / 分位历史不足）时为 null，整块隐藏 */}
+          {data.overview.fear_greed && (
+            <FearGreedBrief data={data.overview.fear_greed} delay={100} />
+          )}
 
           {data.overview.sentiment && (
             <SentimentPanel

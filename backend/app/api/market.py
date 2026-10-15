@@ -1,5 +1,6 @@
 """大盘与情绪接口。"""
 
+import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,9 +9,13 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
 from app.db import get_db
-from app.models import IndexDaily, MarketSentiment
+from app.models import FearGreedDaily, IndexDaily, MarketSentiment
 from app.schemas import (
     DivergenceOut,
+    FearGreedBand,
+    FearGreedBrief,
+    FearGreedLatest,
+    FearGreedOut,
     IndexHistory,
     IndexQuote,
     IndexSeries,
@@ -18,12 +23,15 @@ from app.schemas import (
     SentimentOut,
     TurnoverSeries,
 )
+from app.services.fear_greed import WINDOW, bands, build_series, latest, slice_window
 from app.services.index_tech import (
     BENCHMARK_CODE,
     LOOKBACK_BARS,
     divergence,
     index_tech,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/market", tags=["复盘"])
 
@@ -40,6 +48,29 @@ INDEX_ORDER = [
 # 成交额柱状图的回看长度（交易日）。30 天 ≈ 一个半月，够看出量能在放大还是萎缩；
 # 再长柱子就细到分不出相邻两根了
 TURNOVER_BARS = 30
+
+# 恐贪曲线的默认回看长度（交易日）。120 ≈ 半年，够看出情绪从冷到热的整段摆动
+FEAR_GREED_DAYS = 120
+
+
+def _bands() -> list[FearGreedBand]:
+    """分档阈值（后端是唯一出处，首页色带与情绪周期页共用同一份）。"""
+    return [FearGreedBand(**band) for band in bands()]
+
+
+def _fear_greed_series(session: Session, until: date | None = None) -> list[dict]:
+    """读全表的原始值，折算成逐日读数。
+
+    **必须读全表**（而不是只读要展示的那段）：分位是「今天这个数在过去 250 个
+    交易日里排多高」，截断历史会把窗口喂瘦、算出来的分位偏高。表本身很小
+    （一天一行），全读的代价可以忽略。
+
+    `until` 用来对齐历史日期视图：翻到 9-10 那天时不能把 9-11 之后的读数算进来。
+    """
+    query = select(FearGreedDaily).order_by(FearGreedDaily.trade_date)
+    if until is not None:
+        query = query.where(FearGreedDaily.trade_date <= until)
+    return build_series(session.scalars(query))
 
 
 @router.get("/overview", response_model=MarketOverview)
@@ -135,12 +166,23 @@ def overview(
             pct_chg=[bench_pct.get(day) for day in days],
         )
 
+    # 恐贪指数的当日简报。**失败只吞掉**：它是增强读数，算不出来不该打挂整个首页
+    # （首页其它区块的取数逻辑与它完全无关）
+    fear_greed: FearGreedBrief | None = None
+    try:
+        head = latest(_fear_greed_series(session, until=trade_date))
+        if head is not None:
+            fear_greed = FearGreedBrief(**head, bands=_bands())
+    except Exception:  # noqa: BLE001 - 增强读数，失败不该影响首页
+        logger.exception("恐贪指数简报计算失败")
+
     return MarketOverview(
         trade_date=trade_date,
         indexes=quotes,
         sentiment=SentimentOut.model_validate(sentiment) if sentiment else None,
         divergence=DivergenceOut(**judge) if judge else None,
         turnover=turnover,
+        fear_greed=fear_greed,
     )
 
 
@@ -158,6 +200,37 @@ def sentiment_series(
         )
     )
     return [SentimentOut.model_validate(row) for row in reversed(rows)]
+
+
+@router.get("/fear-greed", response_model=FearGreedOut)
+def fear_greed(
+    days: int = Query(
+        FEAR_GREED_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
+    ),
+    session: Session = Depends(get_db),
+) -> FearGreedOut:
+    """A 股恐惧贪婪指数（0-100，越高越贪婪）的曲线 + 最新一天的分项明细。
+
+    分数**不落库**、读取时现算（见 `services/fear_greed.py`）：窗口与分档口径改了
+    只要重算，不必重新回补数据，也就不存在「原始值与分数两套口径对不上」的风险。
+
+    `days` 下限给到 20 而不是 1：这个指数是「过去一年分位」的合成值，只看几天
+    的曲线读不出任何形态，徒增误读。
+    """
+    series = _fear_greed_series(session)
+    if not series:
+        raise HTTPException(status_code=404, detail="暂无恐贪指数数据，请先执行采集或回补")
+
+    dates, scores = slice_window(series, days)
+    head = latest(series)
+    return FearGreedOut(
+        dates=dates,
+        scores=scores,
+        bands=_bands(),
+        window=WINDOW,
+        coverage=len(series),
+        latest=FearGreedLatest(**head, subs=series[-1]["subs"]) if head else None,
+    )
 
 
 @router.get("/dates", response_model=list[date])

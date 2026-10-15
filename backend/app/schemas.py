@@ -84,6 +84,80 @@ class TurnoverSeries(BaseModel):
     pct_chg: list[float | None]
 
 
+# ------------------------------------------------------------- 恐惧贪婪指数
+#
+# 口径与算法见 `services/fear_greed.py`：六项原始指标各自按**滚动 250 个交易日
+# 分位**折算成 0-100，再等权平均；越高越贪婪。原始值存在 `fear_greed_daily`
+# 表里，分数是读取时现算的 —— 所以改窗口或改分档不必回补数据。
+
+
+class FearGreedBand(BaseModel):
+    """一个档位的区间与名称。`key` 给前端映射配色，中文名给图例。"""
+
+    key: str
+    label: str
+    lower: float
+    upper: float
+
+
+class FearGreedSub(BaseModel):
+    """一项子指标：原始值 + 它在滚动窗口里的分位分。"""
+
+    key: str
+    label: str
+    value: float | None
+    score: float | None
+    # 值的单位（`%` / `倍` / 空串），前端拼在数字后面
+    unit: str
+    # 一句话口径说明，给 tooltip 用
+    hint: str
+
+
+class FearGreedLatest(BaseModel):
+    """最新一天的读数 + 六项明细。`change` 是较上一个**有效**分数的变化量。"""
+
+    trade_date: date
+    score: float | None
+    level: str | None
+    change: float | None
+    subs: list[FearGreedSub]
+
+
+class FearGreedBrief(BaseModel):
+    """首页用的一小块读数：读数 + 五档色带（不展开六项明细）。
+
+    色带的阈值一并带上（而不是让前端另写一份 25/45/55/75）：分档口径只有后端
+    一处，首页与情绪周期页画的色带、指针位置因此严格一致。
+    """
+
+    trade_date: date
+    score: float | None
+    level: str | None
+    change: float | None
+    bands: list[FearGreedBand]
+
+
+class FearGreedOut(BaseModel):
+    """恐贪指数序列（0-100，越高越贪婪），喂折线图。
+
+    `scores` 与 `dates` 严格等长，算不出来的日子是 null（图上留空隙，而不是画成 0 —
+    — 0 是「极度恐慌」，那是截然不同的结论）。
+
+    `bands` 是分档阈值（后端是唯一出处），前端据此画五档色带与分档横线。
+    六项明细只给最新一天：`days` 天内每天都带六个分项会让响应体从几 KB 涨到几百 KB，
+    而中间那些天的分项页面上并不展示。
+    """
+
+    dates: list[date]
+    scores: list[float | None]
+    bands: list[FearGreedBand]
+    # 分位窗口（交易日），口径说明里要写出来
+    window: int
+    # 表内总天数：说明这个读数背后有多少历史，也是「数据够不够用」的判据
+    coverage: int
+    latest: FearGreedLatest | None
+
+
 class MarketOverview(BaseModel):
     trade_date: date
     indexes: list[IndexQuote]
@@ -92,6 +166,9 @@ class MarketOverview(BaseModel):
     divergence: DivergenceOut | None = None
     # 成交额柱状图的尾巴（截至 trade_date），没有情绪数据时为 null
     turnover: TurnoverSeries | None = None
+    # 恐惧贪婪指数的当日简报。截至 `trade_date` 算（翻历史日期时不会泄露未来），
+    # 库里还没这天数据、或算不出分时为 null
+    fear_greed: FearGreedBrief | None = None
 
 
 class IndexSeries(BaseModel):

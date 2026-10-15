@@ -11,6 +11,7 @@ import type {
   FundFlowMatrixOut,
   EtfFlowOrder,
   EtfIndustryBoard,
+  FearGreed,
   FqMode,
   FundFlowOverview,
   FundsSeries,
@@ -235,6 +236,9 @@ export const api = {
 
   indexHistory: (days = 120) =>
     request<IndexHistory>(`/market/index-history?days=${days}`),
+
+  // 恐贪指数曲线。下限 20 天由后端把关（它是「一年分位」的合成值，几天看不出形态）
+  fearGreed: (days = 120) => request<FearGreed>(`/market/fear-greed?days=${days}`),
 
   limitPool: (type: PoolType, date?: string | null) =>
     request<LimitPool>(
