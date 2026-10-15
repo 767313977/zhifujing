@@ -13,6 +13,7 @@ from app.models import FearGreedDaily, IndexDaily, MarketSentiment
 from app.schemas import (
     DivergenceOut,
     FearGreedBand,
+    FearGreedBenchmark,
     FearGreedBrief,
     FearGreedLatest,
     FearGreedOut,
@@ -71,6 +72,35 @@ def _fear_greed_series(session: Session, until: date | None = None) -> list[dict
     if until is not None:
         query = query.where(FearGreedDaily.trade_date <= until)
     return build_series(session.scalars(query))
+
+
+def _benchmark_series(session: Session, dates: list[date]) -> FearGreedBenchmark | None:
+    """基准指数（上证指数）在 `dates` 上的收盘点位，与 `dates` 严格等长。
+
+    与 `/index-history` 的填充方式相同：先按日期位置建桶，再逐行填进去 —— 缺日留
+    None（指数采集漏了某天时图上断开，而不是把前一天的收盘价挪过来凑数）。
+
+    `BENCHMARK_CODE` 复用 `services/index_tech` 那一个（与恐贪自身的计算基准同源），
+    不在本地另写死一个代码：两处不一致的话，图上叠的线就跟恐贪的基准不是一回事了。
+    """
+    if not dates:
+        return None
+    rows = session.execute(
+        select(IndexDaily.trade_date, IndexDaily.close, IndexDaily.name)
+        .where(
+            IndexDaily.code == BENCHMARK_CODE,
+            IndexDaily.trade_date >= dates[0],
+            IndexDaily.trade_date <= dates[-1],
+        )
+    ).all()
+    if not rows:
+        return None
+    close_by_date = {row.trade_date: row.close for row in rows}
+    return FearGreedBenchmark(
+        code=BENCHMARK_CODE,
+        name=rows[0].name,
+        close=[close_by_date.get(day) for day in dates],
+    )
 
 
 @router.get("/overview", response_model=MarketOverview)
@@ -216,6 +246,9 @@ def fear_greed(
 
     `days` 下限给到 20 而不是 1：这个指数是「过去一年分位」的合成值，只看几天
     的曲线读不出任何形态，徒增误读。
+
+    响应里还带一条 `benchmark`（上证指数收盘点位，与 `dates` 等长），给折线图叠一条
+    对照线用：情绪读数与点位同屏才看得出「冷的时候点位在哪」。
     """
     series = _fear_greed_series(session)
     if not series:
@@ -230,6 +263,7 @@ def fear_greed(
         window=WINDOW,
         coverage=len(series),
         latest=FearGreedLatest(**head, subs=series[-1]["subs"]) if head else None,
+        benchmark=_benchmark_series(session, dates),
     )
 
 

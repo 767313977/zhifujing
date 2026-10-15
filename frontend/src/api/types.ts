@@ -82,6 +82,18 @@ export interface FearGreedBrief {
   bands: FearGreedBand[]
 }
 
+/**
+ * 叠在恐贪曲线上做对照的基准指数收盘点位。
+ *
+ * `close` 与 `FearGreed.dates` **严格等长**（后端已按序号对齐，缺日留 null），
+ * 前端直接按下标取用即可 —— 不要按日期 join，两边窗口差一天就会整体错位。
+ */
+export interface FearGreedBenchmark {
+  code: string
+  name: string
+  close: (number | null)[]
+}
+
 export interface FearGreed {
   dates: string[]
   scores: (number | null)[]
@@ -92,6 +104,8 @@ export interface FearGreed {
   /** 表内总天数：说明读数背后有多少历史 */
   coverage: number
   latest: FearGreedLatest | null
+  /** 叠加的基准指数（上证指数）收盘点位；库里该区间没有指数数据时为 null */
+  benchmark: FearGreedBenchmark | null
 }
 
 /** 指数与个股广度是否背离。level 决定配色，detail 是判据里的原始数字 */

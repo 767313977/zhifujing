@@ -8,6 +8,7 @@ import {
   AXIS_LINE,
   CHART,
   GRID,
+  LEGEND,
   SPLIT_LINE,
   TOOLTIP,
   withAlpha,
@@ -53,6 +54,27 @@ function bandOf(bands: FearGreedBand[], score: number | null): FearGreedBand | n
 function scoreColor(bands: FearGreedBand[], score: number | null): string {
   const band = bandOf(bands, score)
   return band ? bandColor(band.key) : 'var(--color-fg-dim)'
+}
+
+/** 曲线与图例里的系列名。tooltip 按名字找系列，不按下标找（下标会随叠加线的有无而变）。 */
+const SCORE_NAME = '恐惧贪婪指数'
+
+/**
+ * 指数点位是四位数，轴标签与 tooltip 都带千分位才读得快。
+ * `lib/format.ts` 的 `fmtNum` **不带**千分位，那是全站共用的，不能为这一处改它。
+ */
+function withComma(value: number): string {
+  return Math.round(value).toLocaleString('en-US')
+}
+
+/** tooltip 回传的值：普通折线是单个 y，带 visualMap 的折线可能包成 `[x, y]` —— 两种都收。 */
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number') return value
+  if (Array.isArray(value)) {
+    const last = value[value.length - 1]
+    return typeof last === 'number' ? last : null
+  }
+  return null
 }
 
 /**
@@ -193,24 +215,74 @@ export default function FearGreedPanel({
   const latest = data?.latest ?? null
   const option = useMemo<ChartOption>(() => {
     if (!data || data.dates.length === 0) return {}
+    const benchmark = data.benchmark
     const shortDates = data.dates.map(fmtShortDate)
-    const levelAt = (value: unknown) => {
-      if (typeof value !== 'number') return ''
-      const band = bandOf(data.bands, value)
-      return band ? `　${band.label}` : ''
-    }
     return {
-      grid: { ...GRID, top: 24 },
+      grid: { ...GRID, top: 30, bottom: 34 },
+      legend: {
+        ...LEGEND,
+        top: 0,
+        right: 0,
+        data: benchmark ? [SCORE_NAME, benchmark.name] : [SCORE_NAME],
+      },
+      // 底部缩放条：250 天全铺开太挤，默认只给最近约 120 天（start 52%），
+      // 往左拖能看更早。`bottom: 34` 是它跟 grid 之间让出来的高度
+      dataZoom: [
+        {
+          type: 'slider' as const,
+          xAxisIndex: 0,
+          bottom: 4,
+          height: 16,
+          start: 52,
+          end: 100,
+          brushSelect: false,
+          borderColor: CHART.line,
+          fillerColor: withAlpha(CHART.accent, 0.12),
+          dataBackground: {
+            lineStyle: { color: CHART.line },
+            areaStyle: { color: CHART.soft },
+          },
+          handleStyle: { color: CHART.ink, borderColor: CHART.fgDim },
+          textStyle: AXIS_LABEL,
+        },
+      ],
+      // 彩虹折线：线色跟着数值走（低位绿 → 中位灰 → 高位红），与五档色带同一套语义。
+      // 0/25/50/75/100 五个锚点正好落在各档中点，与 bands 的边界基本重合。
+      // 不写 `dimension`：让它取「最后一个非计算维度」（就是 y 值），
+      // 手写 1 反而可能在只有一维数据时越界
+      visualMap: {
+        type: 'continuous' as const,
+        show: false,
+        seriesIndex: 0,
+        min: 0,
+        max: 100,
+        inRange: {
+          color: [CHART.limitDown, CHART.down, CHART.fgDim, CHART.up, CHART.limitUp],
+        },
+      },
       tooltip: {
         ...TOOLTIP,
         trigger: 'axis' as const,
+        // 照截图那种多行：日期 / 指数值 / 情绪状态 / 指数名（收盘点位）
         formatter: (params: unknown) => {
-          const items = params as { axisValue: string; value: unknown }[]
+          const items = params as { axisValue: string; seriesName?: string; value: unknown }[]
           if (!items?.length) return ''
-          const value = items[0].value
-          return `${items[0].axisValue}<br/>恐惧贪婪指数：${
-            typeof value === 'number' ? `${value.toFixed(1)}${levelAt(value)}` : '—'
-          }`
+          const scoreItem = items.find((item) => item.seriesName === SCORE_NAME) ?? items[0]
+          const score = toNumber(scoreItem.value)
+          const rows = [
+            scoreItem.axisValue,
+            `● 指数值: ${score == null ? '—' : score.toFixed(1)}`,
+            `情绪状态: ${bandOf(data.bands, score)?.label ?? '—'}`,
+          ]
+          if (benchmark) {
+            const close = toNumber(
+              items.find((item) => item.seriesName === benchmark.name)?.value,
+            )
+            rows.push(
+              `● ${benchmark.name}（收盘点位）: ${close == null ? '—' : withComma(close)}`,
+            )
+          }
+          return rows.join('<br/>')
         },
       },
       axisPointer: {
@@ -224,43 +296,92 @@ export default function FearGreedPanel({
         axisLine: AXIS_LINE,
         axisTick: { show: false },
       },
-      yAxis: {
-        type: 'value' as const,
-        // 固定 0–100：分档线是绝对刻度，纵轴自适应会让「50 分」看起来忽高忽低
-        min: 0,
-        max: 100,
-        interval: 25,
-        axisLabel: { ...AXIS_LABEL, formatter: '{value}' },
-        splitLine: SPLIT_LINE,
-        axisLine: { show: false },
-      },
+      yAxis: [
+        {
+          type: 'value' as const,
+          // 固定 0–100：分档线是绝对刻度，纵轴自适应会让「50 分」看起来忽高忽低
+          min: 0,
+          max: 100,
+          interval: 25,
+          axisLabel: { ...AXIS_LABEL, formatter: '{value}' },
+          splitLine: SPLIT_LINE,
+          axisLine: { show: false },
+        },
+        // 叠加的指数线走右轴。**没有 benchmark 时整根轴不出现** —— 空轴会白占一条刻度
+        ...(benchmark
+          ? [
+              {
+                type: 'value' as const,
+                // 不从 0 起：指数动几百点在「从 0 到 4000」的轴上是一条平线，看不出对照
+                scale: true,
+                position: 'right' as const,
+                axisLabel: { ...AXIS_LABEL, formatter: (value: number) => withComma(value) },
+                splitLine: { show: false },
+                axisLine: { show: false },
+              },
+            ]
+          : []),
+      ],
       series: [
         {
           type: 'line' as const,
-          name: '恐惧贪婪指数',
+          name: SCORE_NAME,
           // 机器算不出的日子原样传 null（图上断开）：填 0 会被画成「极度恐慌」，
           // 那是个截然相反的结论
           data: data.scores,
           smooth: false,
           symbol: 'none' as const,
-          lineStyle: { width: 1.8, color: CHART.fg },
-          itemStyle: { color: CHART.fg },
-          areaStyle: { color: withAlpha(CHART.fgMuted, 0.1) },
+          // **只给线宽不给颜色**：线色由上面的 visualMap 逐段决定，再写死颜色会把它盖掉
+          lineStyle: { width: 2 },
+          // 五档淡色带：给整幅图铺出「哪一段冷、哪一段热」的底
+          markArea: {
+            silent: true,
+            data: data.bands.map((band) => [
+              { yAxis: band.lower, itemStyle: { color: withAlpha(bandColor(band.key), 0.06) } },
+              { yAxis: band.upper },
+            ]),
+          },
           // 分档横线：线画在档的**上界**上、颜色取它上面那一档 —— 于是「跌破 45
-          // 这条灰线」就进了中性，看图不必回查色带图例
+          // 这条灰线」就进了中性，看图不必回查色带图例。行尾的档名同理
           markLine: {
             silent: true,
             symbol: 'none' as const,
-            data: data.bands.slice(0, -1).map((band, i) => ({
-              yAxis: band.upper,
-              lineStyle: {
-                color: withAlpha(bandColor(data.bands[i + 1].key), 0.55),
-                type: 'dashed' as const,
-                width: 1,
-              },
-            })),
+            data: data.bands.slice(0, -1).map((band, i) => {
+              const above = data.bands[i + 1]
+              return {
+                yAxis: band.upper,
+                lineStyle: {
+                  color: withAlpha(bandColor(above.key), 0.55),
+                  type: 'dashed' as const,
+                  width: 1,
+                },
+                label: {
+                  ...AXIS_LABEL,
+                  show: true,
+                  position: 'end' as const,
+                  formatter: above.label,
+                  color: bandColor(above.key),
+                  fontSize: 11,
+                },
+              }
+            }),
           },
         },
+        ...(benchmark
+          ? [
+              {
+                type: 'line' as const,
+                name: benchmark.name,
+                yAxisIndex: 1,
+                // 与 dates 严格等长（后端已对齐），缺日留 null 图上断开
+                data: benchmark.close,
+                smooth: false,
+                symbol: 'none' as const,
+                lineStyle: { width: 1.6, color: CHART.accent },
+                itemStyle: { color: CHART.accent },
+              },
+            ]
+          : []),
       ],
     }
   }, [data])
@@ -341,7 +462,7 @@ export default function FearGreedPanel({
 
       {data.dates.length > 0 && (
         <div className="border-t border-line-soft px-2 pt-2">
-          <EChart option={option} height={260} />
+          <EChart option={option} height={300} />
         </div>
       )}
     </Panel>

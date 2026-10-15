@@ -5,16 +5,22 @@ import type {
   LineSeriesOption,
 } from 'echarts/charts'
 import {
+  DataZoomComponent,
   GridComponent,
   LegendComponent,
+  MarkAreaComponent,
   MarkLineComponent,
   TooltipComponent,
+  VisualMapComponent,
 } from 'echarts/components'
 import type {
+  DataZoomComponentOption,
   GridComponentOption,
   LegendComponentOption,
+  MarkAreaComponentOption,
   MarkLineComponentOption,
   TooltipComponentOption,
+  VisualMapComponentOption,
 } from 'echarts/components'
 import * as echarts from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -31,6 +37,12 @@ echarts.use([
   // 漏注册时 ECharts **静默忽略** markLine，不报错也不打 warning ——
   // 图表照常渲染，只是那条线永远不出现，靠肉眼看图很难发现是漏了配置
   MarkLineComponent,
+  // 下面三个同理，都是「配置写了但组件没注册就完全不生效」的那类：
+  // MarkArea 是恐贪曲线底下的五档淡色带，VisualMap 是让恐贪折线按数值变彩虹色，
+  // DataZoom 是恐贪图底部的缩放滑块。删任何一个都不会报错，只会白改一遍样式
+  MarkAreaComponent,
+  VisualMapComponent,
+  DataZoomComponent,
   TooltipComponent,
   CanvasRenderer,
 ])
@@ -39,10 +51,13 @@ export type ChartOption = echarts.ComposeOption<
   | BarSeriesOption
   | CandlestickSeriesOption
   | LineSeriesOption
+  | DataZoomComponentOption
   | GridComponentOption
   | LegendComponentOption
+  | MarkAreaComponentOption
   | MarkLineComponentOption
   | TooltipComponentOption
+  | VisualMapComponentOption
 >
 
 interface EChartProps {

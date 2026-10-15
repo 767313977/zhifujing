@@ -73,7 +73,7 @@ export default function SentimentPage() {
       api.sentimentSeries(60),
       // 恐贪指数是增强读数：库里还没这天数据时接口返回 404，**不能**因此把整页
       // 情绪指标打白。失败一律回落 null，由面板自己显示「暂无数据」
-      api.fearGreed(120).catch(() => null),
+      api.fearGreed(250).catch(() => null),
     ])
       .then(([historyData, sentimentData, fearGreedData]) => {
         setHistory(historyData)
@@ -370,7 +370,11 @@ export default function SentimentPage() {
               · 恐惧贪婪指数 = 波动率 / RSI / 相对换手率 / 融资融券 / 市场宽度 /
               涨跌停强度，六项各自按滚动 <span className="num">250</span> 个交易日分位
               折算成 0–100 后再等权平均，越高越贪婪；开头的几天分位历史不足，
-              分数为<span className="text-fg-muted">空</span>（图上断开，不是 0）
+              分数为<span className="text-fg-muted">空</span>（图上断开，不是 0）。
+              曲线取最近 <span className="num">250</span> 个交易日，默认只铺开最近约
+              120 天，往左拖底部的缩放条可以看更早；那条随数值变色的彩虹线就是本指数，
+              叠加的蓝色线是<span className="text-fg">上证指数收盘点位</span>
+              （与恐贪的计算基准同一条）
             </li>
             <li>
               · 恐贪指数里的<span className="text-fg-muted">市场宽度</span>由全市场个股日线

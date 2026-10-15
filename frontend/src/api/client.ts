@@ -237,8 +237,9 @@ export const api = {
   indexHistory: (days = 120) =>
     request<IndexHistory>(`/market/index-history?days=${days}`),
 
-  // 恐贪指数曲线。下限 20 天由后端把关（它是「一年分位」的合成值，几天看不出形态）
-  fearGreed: (days = 120) => request<FearGreed>(`/market/fear-greed?days=${days}`),
+  // 恐贪指数曲线。下限 20 天由后端把关（它是「一年分位」的合成值，几天看不出形态）。
+  // 默认取 250：与后端的分位窗口等长，图上才能看出完整的一轮情绪摆动（底部有缩放条）
+  fearGreed: (days = 250) => request<FearGreed>(`/market/fear-greed?days=${days}`),
 
   limitPool: (type: PoolType, date?: string | null) =>
     request<LimitPool>(

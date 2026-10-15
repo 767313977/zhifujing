@@ -137,6 +137,18 @@ class FearGreedBrief(BaseModel):
     bands: list[FearGreedBand]
 
 
+class FearGreedBenchmark(BaseModel):
+    """叠在恐贪曲线上做对照的基准指数收盘点位。
+
+    `close` 与 `FearGreedOut.dates` **严格等长**（缺日留 null），前端才能直接按序号对齐
+    两条线 —— 让前端按日期 join 的话，两边取数窗口差一天就会整体错位。
+    """
+
+    code: str
+    name: str
+    close: list[float | None]
+
+
 class FearGreedOut(BaseModel):
     """恐贪指数序列（0-100，越高越贪婪），喂折线图。
 
@@ -156,6 +168,8 @@ class FearGreedOut(BaseModel):
     # 表内总天数：说明这个读数背后有多少历史，也是「数据够不够用」的判据
     coverage: int
     latest: FearGreedLatest | None
+    # 叠加对照的基准指数（上证指数）收盘点位。库里该区间没有指数数据时为 null
+    benchmark: FearGreedBenchmark | None = None
 
 
 class MarketOverview(BaseModel):
