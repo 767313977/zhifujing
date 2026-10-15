@@ -47,23 +47,29 @@ _TRADE_DAY_INDEX: dict[date, int] | None = None
 #: 为什么需要：一次「一屏几千只」的列表（形态页点进一个形态、`/hits` 取 3000 只）要把
 #: 每只票最近 `PHASE_BARS` 根日线读回来算一遍 —— 合计约 39 万行，实测 **14 秒**。而
 #: **同一份日线在同一天里算出来的判定就是同一个结果**，反复点不同形态只是把重叠度很高
-#: 的那批票重算几遍。所以按**数据版本**缓存：版本 = `max(stock_daily.trade_date)`，
-#: 采集一写库就变、缓存整体作废，不需要靠 TTL 猜 —— 与 `api/patterns._TRACK_CACHE`
-#: 同一个思路（那里缓存键里也带着「最新日线日」）。
+#: 的那批票重算几遍。所以按**数据版本**缓存，采集一写库就整体作废，不需要靠 TTL 猜 ——
+#: 与 `api/patterns._TRACK_CACHE` 同一个思路（那里缓存键里也带着「最新日线日」）。
 #:
-#: ⚠️ 已知取舍：版本只看「最新日线日」。当天**订正**某只票今天那根（重采把坏值改好）
-#: 不改这一天，那条判定会沿用到第二天；同一天里订正是少见情形，重启服务也会清空。
+#: ⚠️ 版本 =(**最新日线日, 那一天的行数**)，不是只看日期（2026-10-15 修）：同一天里还会
+#: **陆续补进当天那根** —— 个股页首次打开时的同步、形态扫描给候选股补的日线都不改
+#: 「最新日期」。只看日期的话这些补进来的行会让缓存里的旧判定一直沿用到第二天，而
+#: `load_phase`（个股页）不走缓存、照实读库，于是**同一只票在形态列表与个股页显示不同的
+#: 阶段**（那个模块开头专门写了「两处必须一致」）。带上行数就能让「补过数据」也触发刷新。
+#:
+#: ⚠️ 仍然盖不住的一种改动：**原地订正**某只票已有的那行（重采把坏值改好）—— 行数不变。
+#: 判定只用最近 130 根，且同一天里重采订正是少见情形，重启服务也会清空；不为它上更重的
+#: 版本口径（比如整表校验和，那是每次请求都要扫全表）。
 #:
 #: ⚠️ 缓存里连 **None 也要存**：否则「本来就没有判定」的那批（次新、已退池、停牌到
 #: 没数据）每次请求都会被重新查一遍、重新算一遍。空库时不缓存（同 `_trade_day_index`
 #: 的空表处理）—— 免得把「什么都没有」永久钉住。
 _PHASE_CACHE: dict[str, PhaseVerdict | None] = {}
-_PHASE_CACHE_VERSION: date | None = None
+_PHASE_CACHE_VERSION: tuple[date, int] | None = None
 #: 接口跑在线程池里，多个请求会同时读写这份 dict；只有「命中读 / 写回」几微秒在锁内。
 _PHASE_CACHE_LOCK = threading.Lock()
 
 #: 算判定要取的列。用 **Core 列**而不是 ORM 实体：实体每行都要过一遍 SQLAlchemy 的
-#: 属性仪表（一屏 39 万行时这部分能占掉约 1/4 的耗时，见 `_compute_verdicts`）；
+#: 属性仪表（一屏十几万行时这部分能占掉约 1/4 的耗时，见 `_compute_verdicts`）；
 #: `_verdict_from_rows` 只按属性名读这几项，两种入参都能吃。
 _BAR_COLS = (
     StockDaily.code,
@@ -233,6 +239,25 @@ def _compute_verdicts(session: Session, codes: list[str]) -> dict[str, PhaseVerd
     return out
 
 
+def _phase_version(session: Session) -> tuple[date, int] | None:
+    """判定缓存的数据版本 = (**最新日线日**, 那一天的行数)；库还是空的时返回 None。
+
+    两个查询都走 `stock_daily` 的主键索引（`trade_date` 是首列）：`max` 是取索引尾、
+    计数是那一天的等值区间（约 5300 行），都不到 1 毫秒 —— 相对它省下的十几秒可以忽略。
+
+    为什么要带「那一天的行数」而不是只看日期：同一天里还会陆续补进当天那根（个股页
+    首次打开时的同步、形态扫描给候选股补的日线），日期不变、**行数会变**。详见
+    `_PHASE_CACHE` 那段说明。
+    """
+    latest = session.scalar(select(func.max(StockDaily.trade_date)))
+    if latest is None:
+        return None
+    rows_on_latest = session.scalar(
+        select(func.count()).select_from(StockDaily).where(StockDaily.trade_date == latest)
+    )
+    return latest, int(rows_on_latest or 0)
+
+
 def load_phases(session: Session, codes: Iterable[str]) -> dict[str, PhaseVerdict]:
     """一次算一批票的阶段判定（形态选股命中列表那种「一屏多只票」的场景）。
 
@@ -257,8 +282,8 @@ def load_phases(session: Session, codes: Iterable[str]) -> dict[str, PhaseVerdic
     if not ordered:
         return {}
 
-    # 数据版本 = 最新日线日。采集一写库它就变，缓存整体作废（同 `_TRACK_CACHE` 的思路）
-    version = session.scalar(select(func.max(StockDaily.trade_date)))
+    # 数据版本 = (最新日线日, 那天行数)：采集写库或当天补进新行都会让它变，缓存整体作废
+    version = _phase_version(session)
     cached: dict[str, PhaseVerdict | None]
     if version is None:
         # 空库（还没采到日线）：照算，但一个字都不缓存（同 `_trade_day_index` 的空表处理）
