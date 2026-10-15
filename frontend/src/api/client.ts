@@ -539,18 +539,24 @@ export const api = {
    * `patterns` 是**当前已选**的形态：后端对每个候选形态返回「已选 ∪ 这个」的交集
    * 只数（没选形态时＝各自的全市场家数）。与 `/hits` 共用同一套交集定义，所以
    * 徽标上的数字和点进去看到的行数天然一致。
+   *
+   * ⚠️ `days` 必须与 `/hits` 传一致（2026-10-14 补）：窗口模式下列表是**窗口口径**
+   * （同一只票去重、交集放宽成「窗口内先后命中过」），徽标还按单日算的话，
+   * 数字和行数就对不上了。
    */
   patternPreview: (
     date?: string | null,
     minScore = 0,
     patterns?: string[] | null,
+    days = 1,
   ) => {
     const pick = (patterns ?? [])
       .filter(Boolean)
       .map((key) => `&pattern=${encodeURIComponent(key)}`)
       .join('')
+    const win = days > 1 ? `&days=${days}` : ''
     return request<PatternCount[]>(
-      withDate(`/patterns/preview?min_score=${minScore}${pick}`, date),
+      withDate(`/patterns/preview?min_score=${minScore}${pick}${win}`, date),
     )
   },
 

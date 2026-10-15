@@ -137,13 +137,35 @@ def catalog() -> list[PatternMeta]:
     ]
 
 
+def _window_dates(db: Session, target: date, days: int) -> list[date]:
+    """`target` 及往前共 `days` 个交易日，**升序**。`days <= 1` 就是 `[target]`。
+
+    窗口一律按**交易日历**往前数（不是自然日），与 `_hits_window` 同源 ——
+    两处要是各数各的，「近 10 日」的名单和徽标就会差一两天。
+    """
+    if days <= 1:
+        return [target]
+    window = db.scalars(
+        select(TradeCalendar.trade_date)
+        .where(TradeCalendar.trade_date <= target)
+        .order_by(TradeCalendar.trade_date.desc())
+        .limit(days)
+    ).all()
+    return list(window)[::-1]
+
+
 def _intersection_codes(
-    db: Session, target: date, keys: list[str], min_score: float = 0.0
+    db: Session, dates: list[date], keys: list[str], min_score: float = 0.0
 ) -> list[str]:
-    """命中**全部** `keys` 的 code 列表（多选=**交集**）。
+    """在 `dates` 这几个交易日里命中**全部** `keys` 的 code 列表（多选=**交集**）。
 
     `having count(distinct pattern) = len(keys)` 一步求交 —— 不用把每个形态的 code
     集合都取回内存再求交。`/hits` 与 `/preview` 共用这一条定义，免得两处口径漂移。
+
+    - 单日模式传 `[target]`：交集 = **同一天**命中全部所选形态（2026-09-27 定的口径）。
+    - 窗口模式传窗口那几天：交集 = **窗口内先后命中过每一个**，不要求同一天
+      （2026-10-14 补 —— 原先窗口模式取的是「命中任意一个」，前端再拿首次那天的标签
+      去要求全部命中，一只票第 1 天中 A、第 3 天中 B 会被筛掉）。
 
     ⚠️ 先**去重**再比个数：判据是「命中的不同形态个数 = 传入个数」，重复的 key 会让
     右边多算一个、把本该非空的结果打成空。**去重必须在这一层**（两个调用方都靠它），
@@ -151,13 +173,13 @@ def _intersection_codes(
     变成「0 只」。
     """
     uniq = list(dict.fromkeys(keys))
-    if not uniq:
+    if not uniq or not dates:
         return []
     return list(
         db.scalars(
             select(PatternHit.code)
             .where(
-                PatternHit.trade_date == target,
+                PatternHit.trade_date.in_(dates),
                 PatternHit.pattern.in_(uniq),
                 PatternHit.score >= min_score,
             )
@@ -175,6 +197,12 @@ def preview(
     pattern: list[str] | None = Query(
         None, description="当前已选形态（可重复传多个）。不传 = 默认视图"
     ),
+    days: int = Query(
+        1,
+        ge=1,
+        le=60,
+        description="窗口天数，与 `/hits` 同口径（>1 时按窗口内先后命中过算）",
+    ),
 ) -> list[PatternCount]:
     """每个形态「**再加上它会剩多少只**」—— 筛选条 chip 徽标专用的交集预览。
 
@@ -188,6 +216,11 @@ def preview(
       再数这些 code 里各命中了哪些形态 —— 对候选 X 这个数就是 `|已选 ∩ X|`。
       已选中的形态自己也在结果里（值等于当前交集数），徽标不会因为「已选中」而空掉。
     - **交集为空**：全部候选都返回 0（正是要显示的效果），不做特殊处理。
+
+    ⚠️ **`days` 必须跟着 `/hits` 一起传**（2026-10-14 补）：徽标算的是「再点它会剩多少只」，
+    而列表在窗口模式下是**窗口口径**。徽标按单日算、列表按窗口算，数字和行数就会对不上
+    （用户 2026-10-14 报的那个不一致）。两个接口共用 `_window_dates` 与
+    `_intersection_codes`，所以只要参数一致，口径就一致。
 
     只发两条查询（求交 + 分组计数），与候选形态个数无关；与 `/hits` 共用
     `_intersection_codes` 这一条定义，所以徽标数点进去的行数不会打架。
@@ -204,9 +237,10 @@ def preview(
             detail=f"未知形态 {', '.join(unknown)}，可选：{', '.join(_META)}",
         )
 
+    window = _window_dates(db, target, days)
     counts: dict[str, int] = {}
     if picked:
-        codes = _intersection_codes(db, target, picked, min_score)
+        codes = _intersection_codes(db, window, picked, min_score)
         # codes 为空 → counts 保持全 0（交集为空，任何候选都还是 0）
         for batch in chunked(sorted(codes), _IN_BATCH):
             rows = db.execute(
@@ -215,7 +249,7 @@ def preview(
                     func.count(func.distinct(PatternHit.code)),
                 )
                 .where(
-                    PatternHit.trade_date == target,
+                    PatternHit.trade_date.in_(window),
                     PatternHit.pattern.in_(_KEYS),
                     PatternHit.score >= min_score,
                     PatternHit.code.in_(batch),
@@ -228,7 +262,7 @@ def preview(
         rows = db.execute(
             select(PatternHit.pattern, func.count(func.distinct(PatternHit.code)))
             .where(
-                PatternHit.trade_date == target,
+                PatternHit.trade_date.in_(window),
                 PatternHit.pattern.in_(_KEYS),
                 PatternHit.score >= min_score,
             )
@@ -256,20 +290,23 @@ def _hits_window(
     量能天天创新低就天天入选（实测中红医疗 8/14~8/25 连中 6 天），看十天名单时同一只票
     占五六行，榜单直接被撑爆（用户 2026-10-14 点名的「去噪」）。
 
-    返回 `(代表行, 附加信息)`：代表行只保留**首次那天**命中的那些记录（各形态各一条），
-    附加信息给出 `{code: (窗口内命中的天数, 最后一次命中的日期)}` 供接口回填。
+    返回 `(代表行, 附加信息)`：**每只留下的票、每个所选形态各出一条「首次命中」的记录**
+    （所以这些记录的 `trade_date` 各不相同 —— 每行的 `patterns` 要带得全所有所选形态，
+    前端会按「这一行是否包含全部所选形态」兜底过滤，缺一个就被筛掉）；接口取其中最早那天
+    当这一行的 `trade_date`（= 首次命中任意一个所选形态的那天）。附加信息给出
+    `{code: (窗口内命中过的天数, 最后一次命中的日期)}` 供接口回填。
+
+    ## 多选时是「窗口内先后命中过每一个」（2026-10-14 补）
+
+    与单日模式同一条交集定义（`_intersection_codes`），只是把「同一天」放宽成「窗口内」：
+    **窗口内命中过的不同形态个数 = 所选形态数**才留下。原先这里取的是「命中任意一个」，
+    而前端拿这一行（首次那天）的标签去要求全部命中 —— 一只票第 1 天中 A、第 3 天中 B
+    就会被前端筛掉（用户 2026-10-14 报的口径不一致）。
 
     为什么不按「形态 × 票」各自串轮：十天窗口里同一只票走出两轮的情况很少，
     按票合并更简单、也正好对上用户要的「同一只票只出一条」。
     """
-    window = list(
-        db.scalars(
-            select(TradeCalendar.trade_date)
-            .where(TradeCalendar.trade_date <= target)
-            .order_by(TradeCalendar.trade_date.desc())
-            .limit(days)
-        ).all()
-    )[::-1]  # 升序
+    window = _window_dates(db, target, days)
     if not window:
         return [], {}
 
@@ -285,17 +322,29 @@ def _hits_window(
     if not rows:
         return [], {}
 
-    first: dict[str, date] = {}
+    uniq = list(dict.fromkeys(picked))
+    hit_keys: dict[str, set[str]] = {}
+    first_row: dict[str, dict[str, PatternHit]] = {}
     seen: dict[str, set[date]] = {}
     last: dict[str, date] = {}
     for row in rows:
-        # rows 按日期升序，所以第一条就是首次、最后一条就是最近那次
-        first.setdefault(row.code, row.trade_date)
+        # rows 按日期升序，所以同一形态的第一条就是它的首次、最后一条就是最近那次
+        hit_keys.setdefault(row.code, set()).add(row.pattern)
+        first_row.setdefault(row.code, {}).setdefault(row.pattern, row)
         seen.setdefault(row.code, set()).add(row.trade_date)
         last[row.code] = row.trade_date
 
-    keep = [row for row in rows if row.trade_date == first[row.code]]
-    return keep, {code: (len(seen[code]), last[code]) for code in first}
+    keep: list[PatternHit] = []
+    run_info: dict[str, tuple[int, date]] = {}
+    for code, keys in hit_keys.items():
+        # `keys` 一定 `⊆ uniq`，所以个数相等就是「一个不漏」
+        if len(keys) < len(uniq):
+            continue
+        keep.extend(
+            sorted((first_row[code][key] for key in uniq), key=lambda row: row.trade_date)
+        )
+        run_info[code] = (len(seen[code]), last[code])
+    return keep, run_info
 
 
 @router.get("/hits", response_model=list[PatternStockOut])
@@ -346,6 +395,11 @@ def hits(
     没传 `pattern` 时 `days` 被忽略、行为与单日完全一致。窗口模式下每行只带**所选
     形态**的标签（不再回查「当天命中的全部形态」）—— 各行的「当天」已经不是同一天了，
     回查要按日期分组，代价不值；单日模式不受影响。
+
+    ⚠️ **多选在窗口模式下的口径**（2026-10-14 补）：交集从「同一天命中全部」放宽成
+    **「窗口内先后命中过每一个」** —— 一只票第 1 天中 A、第 3 天中 B 也算数（原先会被
+    前端按「这一行的标签要含全部所选形态」筛掉）。所以窗口模式下每行的 `patterns`
+    带的是所选形态**各自首次命中**那几次的记录。与 `/preview` 同口径（那里也要传 `days`）。
     """
     target = trade_date or _latest_date(db)
     if target is None:
@@ -370,7 +424,7 @@ def hits(
             return []
     elif picked:
         # **交集**：命中全部所选形态的票才留下（定义见 `_intersection_codes`）
-        codes = _intersection_codes(db, target, picked, min_score)
+        codes = _intersection_codes(db, [target], picked, min_score)
         if not codes:
             return []
         rows = db.scalars(

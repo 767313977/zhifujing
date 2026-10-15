@@ -412,8 +412,8 @@ export default function Patterns() {
             win,
           ),
           api.patternSummary(target),
-          // 徽标数据：跟着 `only` 走，所以每次切形态都重算（与命中列表同一次请求里发出）
-          api.patternPreview(target, 0, only),
+          // 徽标数据：跟着 `only` 与窗口走，所以每次切形态／切窗口都重算（与命中列表同一次请求里发出）
+          api.patternPreview(target, 0, only, win),
         ])
         if (isStale()) return
         setHits(list)
@@ -514,6 +514,8 @@ export default function Patterns() {
       if (picked.length === 0) return true
       // 后端在形态模式下返回的就是「同时满足全部所选形态的票」，所以这里通常全过；
       // 留一道是兜底（也保证每行是按**全部**命中形态判的，不是按展示用的截断列表）
+      // 窗口模式下后端放宽成「窗口内先后命中过每一个」，并把所选形态**各自首次命中**
+      // 那次都塞进 `patterns`，所以这一句照样成立（2026-10-14 修口径不一致）
       return picked.every((key) => stock.patterns.some((item) => item.pattern === key))
     })
   }, [hits, picked, boards, deferredMinScore])
