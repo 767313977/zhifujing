@@ -76,6 +76,24 @@ const PATTERN_LIMIT = 3000
 const WINDOWS = [1, 5, 10, 20]
 
 /**
+ * 「信号日」列头的提示文案（那一列只在窗口模式下出现）。
+ *
+ * ⚠️ 默认视图（没选形态）在**长窗口**下每天只读评分最高的前若干条（后端
+ * `_WINDOW_ROW_BUDGET` 按天数均分），所以少数票的「首次」会晚一两天 —— 10 日 / 20 日
+ * 这两档会碰到；5 日那档每天 3000 行高于实际单日行数、切不着。选中形态时走的是那批票
+ * 的全量（不受预算影响），所以那种情况下不提这句。
+ *
+ * 分档阈值写 10 是跟着后端的预算来的：10 日 → 每天 1500 行、20 日 → 750 行，
+ * 都低于实测单日约 2650 行；5 日 → 3000 行不切。后端改预算时这里要一起看。
+ */
+function signalDateTitle(days: number, hasPicked: boolean): string {
+  // 这是浏览器原生 title，**不要写 markdown 的 `**`** —— 会原样显示成星号
+  const base = '这一轮的信号日：该票在窗口内「首次」命中那天，「+N日」表示之后连续命中到哪天'
+  if (days < 10 || hasPicked) return base
+  return `${base}。注意：默认视图为了少读，长窗口下每天只取评分最高的前若干条，少数票的「信号日」可能比真正的首次晚一两天（选中某个形态时不受影响）`
+}
+
+/**
  * 交易所板块筛选的候选。**依据是代码号段**（见 `lib/format.boardOf`），与后端
  * `scan_patterns.is_pattern_board`（形态落库闸门）是同一套范围。
  *
@@ -901,7 +919,11 @@ export default function Patterns() {
                     </SortTh>
                     {/* 只在窗口模式出现：那一屏各行的日期**各不相同**（取的是每只票
                         首次命中那天），日期藏在表头会看不出这一行到底是哪天 */}
-                    {days > 1 && <th className="!text-left">信号日</th>}
+                    {days > 1 && (
+                      <th className="!text-left" title={signalDateTitle(days, picked.length > 0)}>
+                        信号日
+                      </th>
+                    )}
                     {/* 「阶段判定」是 8 档枚举、没有单一可比值，不排序 */}
                     <th
                       className="!text-left"
