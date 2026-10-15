@@ -71,7 +71,8 @@ function tipHtml(bars: KLineBar[], index: number): string {
   add(
     '涨幅',
     bar.pct_chg == null ? null : fmtPct(bar.pct_chg),
-    (bar.pct_chg ?? 0) >= 0 ? KLINE.up : KLINE.down,
+    // 文字用 `downText` 那一档：`KLINE.down` 的亮青在白底 tooltip 上只有 1.65:1
+    (bar.pct_chg ?? 0) >= 0 ? KLINE.up : KLINE.downText,
   )
   add(
     '振幅',
@@ -85,7 +86,7 @@ function tipHtml(bars: KLineBar[], index: number): string {
   add(
     '开盘涨幅',
     prev && prev > 0 && bar.open != null ? fmtPct((bar.open / prev - 1) * 100) : null,
-    bar.open != null && prev != null && bar.open >= prev ? KLINE.up : KLINE.down,
+    bar.open != null && prev != null && bar.open >= prev ? KLINE.up : KLINE.downText,
   )
 
   return (
@@ -101,7 +102,7 @@ const THS_SPLIT_LINE = {
 }
 
 /**
- * 涨停那天的蜡烛：**整根实心描金**（用户 2026-09-26 要的）。
+ * 涨停那天的蜡烛：**整根实心**（用户 2026-09-26 要的）。
  *
  * 判据在后端（`services/limit_rules.py`），前端只读 `is_limit_up` —— 板块限幅
  * （主板 10 / 创业板科创板 20 / 北交所 30 / 主板 ST 5）与「收盘价 = 当日最高价」
@@ -110,35 +111,31 @@ const THS_SPLIT_LINE = {
  * 四个键全给：ECharts 的 data-item `itemStyle` 会与序列级的合并，只覆盖想改的那几个也
  * 可以，但那样「阳线空心」的 `color: 'transparent'` 会漏过来 —— 涨停日要的恰恰是实心。
  *
- * 颜色用**同色相再深一档的涨色**（`CHART.limitUp`）：画法上分得开（一个是深红实心
- * 蜡烛、其它是普通红/绿），语义上也不引入第三种颜色。
- *
- * ⚠️ 深色版这里用的是**强调金**。2026-10-13 改浅色时强调色从金换成了蓝 —— 若继续
- * 复用 accent，涨停蜡烛会变成蓝柱，与「红涨」的语义直接打架，所以拆出独立的
- * `limitUp` 令牌。改 accent 时别再顺手把它改回去。
+ * ⚠️ **颜色 2026-10-15 改成跟普通阳线同一个 `KLINE.up`**（用户看完截图说「涨停那根颜色
+ * 跟普通阳线不统一」）：区分只剩**实心 vs 空心**这一条，不再另起一个色。更早的深色版
+ * 这里用强调**金**（`#e0b055`）、浅色版改成 `CHART.limitUp`（深红 `#a11712`）——
+ * 两版都是「再给一个色」，这次按用户要求收回。
  */
 const LIMIT_UP_ITEM_STYLE = {
-  color: CHART.limitUp,
-  color0: CHART.limitUp,
-  borderColor: CHART.limitUp,
-  borderColor0: CHART.limitUp,
+  color: KLINE.up,
+  color0: KLINE.up,
+  borderColor: KLINE.up,
+  borderColor0: KLINE.up,
 } as const
 
 /**
- * 跌停那天的蜡烛：**整根实心绿**（用户 2026-09-26 要的，与涨停那套完全对称）。
+ * 跌停那天的蜡烛：**整根实心**（用户 2026-09-26 要的，与涨停那套对称）。
  *
- * 绿而不是站点跌色（青 `#45bfc4`）—— 两个理由：一是标记本来就该与普通柱**分色**，
- * 涨停用金也是这个道理；二是青还是绿**本来就是两回事**，全站「红涨青跌」的文案说的
- * 是青，这根绿蜡烛是例外，不会读成「跌得更多」。
- *
- * 同上，四个键全给，否则「阳线空心」的 `transparent` 会漏过来 —— 而一字跌停
- * （开 = 收 = 最低）在 ECharts 眼里正是阳线，漏了就会画成一根空心柱。
+ * ⚠️ **颜色 2026-10-15 改成跟普通阴线同一个 `KLINE.down`**（与涨停那条同批改的：
+ * 原来用绿 `#05603a`，在「红涨青跌」的图里等于第三种颜色）。四个键仍要全给，否则
+ * 「阳线空心」的 `transparent` 会漏过来 —— 而**一字跌停**（开 = 收 = 最低）在 ECharts
+ * 眼里正是阳线，漏了就会画成一根空心柱；而「实心 vs 空心」也正是它唯一的区分手段。
  */
 const LIMIT_DOWN_ITEM_STYLE = {
-  color: CHART.limitDown,
-  color0: CHART.limitDown,
-  borderColor: CHART.limitDown,
-  borderColor0: CHART.limitDown,
+  color: KLINE.down,
+  color0: KLINE.down,
+  borderColor: KLINE.down,
+  borderColor0: KLINE.down,
 } as const
 
 /**
@@ -237,11 +234,11 @@ interface Props {
  *
  * ⚠️ **2026-10-15：涨跌两色单独改吃 `KLINE`**（用户给了参考图，先要求「配色改成图一」，
  * 随后明确「底色不要改黑色，只改K线」）。所以这张图现在是**红涨青跌**；而底色 / 网格 /
- * 轴文字 / tooltip / 涨停跌停标记 / 关键位**一律仍是站点那套浅色 `CHART`**，
+ * 轴文字 / tooltip / 关键位**一律仍是站点那套浅色 `CHART`**，
  * 其余 8 个图表连涨跌两色也还是 `CHART`。两个色值与取值理由见 `lib/chart.ts` 的 `KLINE`。
  *
- * **涨停那天的蜡烛整根实心深红、跌停那天的整根实心绿**（日 K 才有，判据在后端，
- * 见 `LIMIT_UP_ITEM_STYLE` / `LIMIT_DOWN_ITEM_STYLE`）。
+ * **涨停 / 跌停那天的蜡烛整根实心**（用的是涨/跌**同一个色**，只靠「实心 vs 空心」
+ * 区分；日 K 才有，判据在后端，见 `LIMIT_UP_ITEM_STYLE` / `LIMIT_DOWN_ITEM_STYLE`）。
  *
  * 从 `StockDetail.tsx` 里抽出来而不是复制一份：这个图有三处容易写错的地方
  * —— A 股的红涨青跌覆盖（ECharts 默认是欧美惯例）、主图与副图的轴联动、
