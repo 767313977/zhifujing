@@ -14,8 +14,8 @@ import logging
 from collections.abc import Iterable
 from datetime import date
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, aliased
 
 from app.db import session_scope
 from app.models import StockDaily, TradeCalendar
@@ -159,25 +159,46 @@ def load_phases(session: Session, codes: Iterable[str]) -> dict[str, PhaseVerdic
     时最多 3000 只 → 3000 条 SQL（N+1）。现在按 `_PHASE_IN_BATCH` 分批把日线一次取回、
     按 code 分组，再交给与 `load_phase` **完全同一个** `_verdict_from_rows` 来算 ——
     判定口径一字未改，查询数从 3000 降到个位数。
+
+    2026-10-15 又修一层（那版批量取数**漏了每只票的根数限制**）：当时那条 SQL 按批把
+    「这批 code 的**全部历史**」读回来，到 Python 里才切前 `PHASE_BARS` 根 —— 一只票
+    几百根、3000 只就是几十万行撞进 ORM，实测默认视图取 3000 只时整条 `/hits` 要 **43 秒**
+    （其中取行与判定之外的部分只有几秒）。SQLite 的 `LIMIT` 是整条语句级的，写不出
+    「每只票各取 130 根」，所以改用**窗口函数**：按 `code` 分区、`trade_date` 降序编号，
+    只留编号 ≤ `PHASE_BARS` —— 正好走 `ix_stock_daily_code_date`，取回的行数与
+    `load_phase` 的 `limit(PHASE_BARS)` 完全一致（判定口径不变）。
     """
     ordered = list(codes)
     out: dict[str, PhaseVerdict] = {}
     if not ordered:
         return out
-    # code → 该票的日线（按交易日**降序**攒，取前 PHASE_BARS 根即最近那批，与 load_phase 的 limit 同）
+    # code → 该票的日线（**每只票只取最近 PHASE_BARS 根**，与 load_phase 的 limit 同口径）
+    #
+    # ⚠️ `code.in_(batch)` 必须写在**窗口函数那一层**（子查询里）：放到外层去过滤的话，
+    # 编号是先把全市场编号完再筛，这批票的 rn 早就不 ≤ PHASE_BARS 了，会只剩零星几行。
     grouped: dict[str, list[StockDaily]] = {}
     for batch in chunked(ordered, _PHASE_IN_BATCH):
-        for row in session.scalars(
-            select(StockDaily)
+        recent = (
+            select(
+                StockDaily,
+                func.row_number()
+                .over(
+                    partition_by=StockDaily.code,
+                    order_by=StockDaily.trade_date.desc(),
+                )
+                .label("rn"),
+            )
             .where(StockDaily.code.in_(batch))
-            .order_by(StockDaily.trade_date.desc())
-        ):
+            .subquery()
+        )
+        ranked = aliased(StockDaily, recent)
+        for row in session.scalars(select(ranked).where(recent.c.rn <= PHASE_BARS)):
             grouped.setdefault(row.code, []).append(row)
     for code in ordered:
         rows = grouped.get(code)
         if not rows:
             continue
-        verdict = _verdict_from_rows(rows[:PHASE_BARS])
+        verdict = _verdict_from_rows(rows)
         if verdict is not None:
             out[code] = verdict
     return out
