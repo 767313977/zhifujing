@@ -807,6 +807,9 @@ class DailyScheduler:
         # 恐惧贪婪指数：只读库、零 iFinD 配额。排在 `_collect_kline` **之后**是硬要求 ——
         # 「市场宽度」要用当天的全市场个股日线反算，排在它之前会算到昨天的宽度。
         self._collect_fear_greed(today)
+        # 市场宽度温度计：同样只读库（stock_daily 窗口函数反算）、零配额，
+        # 依赖与恐贪相同（必须在 `_collect_kline` 之后）。
+        self._collect_breadth(today)
         self._scan_patterns(today)
         # 命中前 N 只的**日线**补齐：形态页那张 K 线读的就是 `stock_daily`，某只的最后
         # 一根早于最近交易日，图上最新几天就是断的（2026-10-09 用户要求）。
@@ -850,6 +853,22 @@ class DailyScheduler:
             self._tail_failures.append("fear_greed")
             return
         logger.info("恐贪指数 %s：重算写入 %d 天", trade_date, written)
+
+    def _collect_breadth(self, trade_date: date) -> None:
+        """市场宽度温度计：只读库（窗口函数反算 stock_daily）、零配额，失败只登记。
+
+        与恐贪同一个自愈策略：`refresh()` 重算最近若干个交易日，表为空时自动
+        退回全量回补（新部署第一趟就自带历史）。
+        """
+        from app.jobs.collect_breadth import refresh
+
+        try:
+            written = refresh()
+        except Exception:  # noqa: BLE001 - 宽度是增强读数，不该拖垮尾部链
+            logger.exception("市场宽度计算失败")
+            self._tail_failures.append("breadth")
+            return
+        logger.info("市场宽度 %s：重算写入 %d 天", trade_date, written)
 
     def _scan_patterns(self, trade_date: date) -> None:
         """全市场形态扫描。

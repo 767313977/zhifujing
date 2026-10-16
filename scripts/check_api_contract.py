@@ -84,6 +84,24 @@ CHECKS = [
         "get",
         "days",
     ),
+    # 市场宽度温度计曲线取多少天（年线上方占比是慢变量，默认 250 ≈ 一年）
+    (
+        "市场宽度取多少天",
+        "frontend/src/api/client.ts",
+        r"breadth:\s*\(days\s*=\s*(\d+)\)",
+        "/api/market/breadth",
+        "get",
+        "days",
+    ),
+    # 短线接力温度曲线取多少天
+    (
+        "接力温度取多少天",
+        "frontend/src/api/client.ts",
+        r"relayTemp:\s*\(days\s*=\s*(\d+)\)",
+        "/api/market/relay-temp",
+        "get",
+        "days",
+    ),
 ]
 
 

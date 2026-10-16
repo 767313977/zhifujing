@@ -4,13 +4,15 @@ import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
 from app.db import get_db
-from app.models import FearGreedDaily, IndexDaily, MarketSentiment
+from app.models import BreadthDaily, FearGreedDaily, IndexDaily, LimitPool, MarketSentiment
 from app.schemas import (
+    BreadthLatest,
+    BreadthOut,
     DivergenceOut,
     FearGreedBand,
     FearGreedBenchmark,
@@ -21,9 +23,13 @@ from app.schemas import (
     IndexQuote,
     IndexSeries,
     MarketOverview,
+    RelayTempBand,
+    RelayTempLatest,
+    RelayTempOut,
     SentimentOut,
     TurnoverSeries,
 )
+from app.services import relay_temp
 from app.services.fear_greed import WINDOW, bands, build_series, latest, slice_window
 from app.services.index_tech import (
     BENCHMARK_CODE,
@@ -52,6 +58,12 @@ TURNOVER_BARS = 30
 
 # 恐贪曲线的默认回看长度（交易日）。120 ≈ 半年，够看出情绪从冷到热的整段摆动
 FEAR_GREED_DAYS = 120
+
+# 市场宽度曲线的默认回看长度。250 ≈ 一年，年线上方占比这种慢变量要一年才看得出周期
+BREADTH_DAYS = 250
+
+# 接力温度曲线的默认回看长度（交易日）。与恐贪同长：打板生态的冷热摆动也是半年尺度
+RELAY_TEMP_DAYS = 120
 
 
 def _bands() -> list[FearGreedBand]:
@@ -264,6 +276,103 @@ def fear_greed(
         coverage=len(series),
         latest=FearGreedLatest(**head, subs=series[-1]["subs"]) if head else None,
         benchmark=_benchmark_series(session, dates),
+    )
+
+
+@router.get("/breadth", response_model=BreadthOut)
+def breadth(
+    days: int = Query(
+        BREADTH_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
+    ),
+    session: Session = Depends(get_db),
+) -> BreadthOut:
+    """市场宽度温度计：站上 MA20/60/250 的个股占比 + 创 60/250 日新高新低家数。
+
+    原始值由 `jobs/collect_breadth.py` 落库，这里只读不加工。
+    `above_ma250` 与 250 日新高新低在站内 K 线历史还不够一年时是 null（不满 N 根
+    K 线的票不进分母），随日线回补自然长出来 —— 前端断线展示，不补 0。
+    """
+    rows = list(session.scalars(select(BreadthDaily).order_by(BreadthDaily.trade_date)))
+    if not rows:
+        raise HTTPException(status_code=404, detail="暂无市场宽度数据，请先执行采集或回补")
+
+    tail = rows[-days:] if days < len(rows) else rows
+    last = rows[-1]
+    return BreadthOut(
+        dates=[row.trade_date for row in tail],
+        above_ma20=[row.above_ma20 for row in tail],
+        above_ma60=[row.above_ma60 for row in tail],
+        above_ma250=[row.above_ma250 for row in tail],
+        high60=[row.high60 for row in tail],
+        low60=[row.low60 for row in tail],
+        high250=[row.high250 for row in tail],
+        low250=[row.low250 for row in tail],
+        coverage=len(rows),
+        latest=BreadthLatest(
+            trade_date=last.trade_date,
+            above_ma20=last.above_ma20,
+            above_ma60=last.above_ma60,
+            above_ma250=last.above_ma250,
+            high60=last.high60,
+            low60=last.low60,
+            high250=last.high250,
+            low250=last.low250,
+            universe_count=last.universe_count,
+        ),
+    )
+
+
+@router.get("/relay-temp", response_model=RelayTempOut)
+def relay_temperature(
+    days: int = Query(
+        RELAY_TEMP_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
+    ),
+    session: Session = Depends(get_db),
+) -> RelayTempOut:
+    """短线接力温度（0-100，越高越热）：六项打板生态指标的固定阈值合成。
+
+    分数**不落库**、读取时现算（见 `services/relay_temp.py`）：六项原始值来自
+    `market_sentiment`（封板率 / 连板高度 / 昨涨停今均涨幅 / 涨跌停家数）与
+    `limit_pool`（首板晋级率），阈值改了不用回补数据。
+
+    多读 1 天情绪行：晋级率是「昨日首板 → 今日涨停」，窗口里最早那天也需要它的
+    前一交易日才能算出来。
+    """
+    rows = list(
+        session.scalars(
+            select(MarketSentiment)
+            .order_by(MarketSentiment.trade_date.desc())
+            .limit(days + 1)
+        )
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="暂无情绪数据，请先执行采集或回补")
+    rows.reverse()
+
+    pool_rows = session.execute(
+        select(LimitPool.trade_date, LimitPool.code, LimitPool.consecutive).where(
+            LimitPool.pool_type == "up",
+            LimitPool.trade_date >= rows[0].trade_date,
+        )
+    ).all()
+    up_pool: dict[date, set[str]] = {}
+    first_board: dict[date, set[str]] = {}
+    for day, code, consecutive in pool_rows:
+        up_pool.setdefault(day, set()).add(code)
+        if consecutive == 1:
+            first_board.setdefault(day, set()).add(code)
+
+    series = relay_temp.build_series(rows, up_pool, first_board)
+    dates, scores = relay_temp.slice_window(series, days)
+    head = relay_temp.latest(series)
+    return RelayTempOut(
+        dates=dates,
+        scores=scores,
+        bands=[RelayTempBand(**band) for band in relay_temp.bands()],
+        coverage=int(
+            session.scalar(select(func.count()).select_from(MarketSentiment)) or 0
+        ),
+        latest=RelayTempLatest(**head, subs=series[-1]["subs"]) if head else None,
     )
 
 

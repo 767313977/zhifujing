@@ -172,6 +172,99 @@ class FearGreedOut(BaseModel):
     benchmark: FearGreedBenchmark | None = None
 
 
+# ----------------------------------------------------------- 市场宽度温度计
+#
+# 原始值由 `jobs/collect_breadth.py` 落库（`breadth_daily` 表），读取侧不做二次
+# 加工 —— 与恐贪「原始值落库」同一个约定，但这里读的就是原始值本身。
+
+
+class BreadthLatest(BaseModel):
+    """最新一天的市场宽度读数（页面顶部的 chips）。"""
+
+    trade_date: date
+    above_ma20: float | None
+    above_ma60: float | None
+    above_ma250: float | None
+    high60: int | None
+    low60: int | None
+    high250: int | None
+    low250: int | None
+    universe_count: int | None
+
+
+class BreadthOut(BaseModel):
+    """市场宽度温度计序列：站上 MA20/60/250 的占比 + 创 60/250 日新高新低家数。
+
+    各数组与 `dates` **严格等长**，缺数的日子是 null：
+    - `above_ma250` 在站内 K 线历史还不够 250 个交易日时**整列为 null**（不满 N 根
+      K 线的票不进分母，见 `jobs/collect_breadth.py` 的口径说明）；
+    - 新高新低是**家数**（整数），不是占比。
+    """
+
+    dates: list[date]
+    above_ma20: list[float | None]
+    above_ma60: list[float | None]
+    above_ma250: list[float | None]
+    high60: list[int | None]
+    low60: list[int | None]
+    high250: list[int | None]
+    low250: list[int | None]
+    # 表内总天数：说明这条曲线背后有多少历史
+    coverage: int
+    latest: BreadthLatest | None
+
+
+# ------------------------------------------------------------- 短线接力温度
+#
+# 评分算法与分档见 `services/relay_temp.py`：六项打板生态指标各自按**固定阈值**
+# 折算成 0-100 再等权平均（不用滚动分位 —— 打板数据积累历史短，且这些量天然
+# 有刻度）。不建表，序列在 API 读取时现算。
+
+
+class RelayTempBand(BaseModel):
+    """一个档位的区间与名称（与 `FearGreedBand` 同构，前端复用配色映射）。"""
+
+    key: str
+    label: str
+    lower: float
+    upper: float
+
+
+class RelayTempSub(BaseModel):
+    """一项子指标：原始值 + 它按固定阈值折算的 0-100 分。"""
+
+    key: str
+    label: str
+    value: float | None
+    score: float | None
+    unit: str
+    hint: str
+
+
+class RelayTempLatest(BaseModel):
+    """最新一天的读数 + 六项明细。"""
+
+    trade_date: date
+    score: float | None
+    level: str | None
+    change: float | None
+    subs: list[RelayTempSub]
+
+
+class RelayTempOut(BaseModel):
+    """短线接力温度序列（0-100，越高越热），喂折线图。
+
+    `scores` 与 `dates` 严格等长，有效子指标不足的日子是 null（图上留空隙）。
+    没有 `window`：固定阈值映射，不看历史分位，也就无所谓窗口。
+    """
+
+    dates: list[date]
+    scores: list[float | None]
+    bands: list[RelayTempBand]
+    coverage: int
+    latest: RelayTempLatest | None
+
+
 class MarketOverview(BaseModel):
     trade_date: date
     indexes: list[IndexQuote]

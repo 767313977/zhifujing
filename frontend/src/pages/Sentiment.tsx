@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
-import type { FearGreed, IndexHistory, IndexSeries, Sentiment } from '../api/types'
+import type { Breadth, FearGreed, IndexHistory, IndexSeries, RelayTemp, Sentiment } from '../api/types'
 import Alert from '../components/Alert'
+import BreadthThermometerPanel from '../components/BreadthThermometerPanel'
 import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
 import FearGreedPanel from '../components/FearGreedPanel'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
+import RelayTempPanel from '../components/RelayTempPanel'
 import {
   AXIS_LABEL,
   AXIS_LINE,
@@ -64,6 +66,8 @@ export default function SentimentPage() {
   const [history, setHistory] = useState<IndexHistory | null>(null)
   const [sentiment, setSentiment] = useState<Sentiment[]>([])
   const [fearGreed, setFearGreed] = useState<FearGreed | null>(null)
+  const [breadth, setBreadth] = useState<Breadth | null>(null)
+  const [relayTemp, setRelayTemp] = useState<RelayTemp | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -71,15 +75,19 @@ export default function SentimentPage() {
     Promise.all([
       api.indexHistory(120),
       api.sentimentSeries(60),
-      // 恐贪指数是增强读数：库里还没这天数据时接口返回 404，**不能**因此把整页
-      // 情绪指标打白。失败一律回落 null，由面板自己显示「暂无数据」
+      // 恐贪 / 宽度 / 接力都是增强读数：库里还没数据时接口返回 404，**不能**因此把
+      // 整页情绪指标打白。失败一律回落 null，由面板自己显示「暂无数据」
       api.fearGreed(250).catch(() => null),
+      api.breadth(250).catch(() => null),
+      api.relayTemp(120).catch(() => null),
     ])
-      .then(([historyData, sentimentData, fearGreedData]) => {
+      .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData]) => {
         setHistory(historyData)
         // 情绪指标只有数据源保留窗口内的日期才有值，其余为 null
         setSentiment(sentimentData.filter((item) => item.limit_up_count != null))
         setFearGreed(fearGreedData)
+        setBreadth(breadthData)
+        setRelayTemp(relayTempData)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -291,6 +299,11 @@ export default function SentimentPage() {
             指数走势与情绪明细 */}
         <FearGreedPanel data={fearGreed} loading={loading} delay={40} />
 
+        {/* 宽度与接力是恐贪的两块补镜：一个看「指数涨有没有广度支撑」，一个看
+            「打板生态热不热」。都在恐贪之后、指数走势之前 —— 三个温度计连着读 */}
+        <BreadthThermometerPanel data={breadth} loading={loading} delay={60} />
+        <RelayTempPanel data={relayTemp} loading={loading} delay={70} />
+
         <Panel
           title="指数走势"
           meta={
@@ -379,6 +392,21 @@ export default function SentimentPage() {
             <li>
               · 恐贪指数里的<span className="text-fg-muted">市场宽度</span>由全市场个股日线
               现算（上涨家数占比），与本页「指数涨跌家数」是两个口径，数值不会完全对齐
+            </li>
+            <li>
+              · 市场宽度温度计 = 全市场个股收盘价站上 <span className="num">MA20 / MA60 /
+              MA250（年线）</span>的占比，上市不满 <span className="num">N</span> 根 K 线的
+              个股不进分母；上方占比越高越热。新高 / 新低为
+              <span className="text-fg">收盘价创 60 / 250 日新高新低的家数</span>，
+              柱为「60 日新高 − 新低」差值。年线占比（紫线）在回补初期历史不足，为
+              <span className="text-fg-muted">空</span>（图上断开，不是 0）
+            </li>
+            <li>
+              · 短线接力温度 = 封板率 / 连板高度 / 晋级率 / 昨涨停今表现 / 涨跌停强度 /
+              跌停压力，六项各自按<span className="text-fg">固定阈值</span>折算成 0–100
+              后等权平均（与恐贪的滚动分位不同，不看历史位置），≥3 项有效才出分；
+              晋级率 = 昨日首板今日仍涨停的家数 ÷ 昨日首板家数。曲线取最近
+              <span className="num">120</span> 个交易日
             </li>
           </ul>
         </div>

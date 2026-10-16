@@ -4,6 +4,7 @@ import type {
   AuctionBoards,
   AuctionList,
   AuctionQuery,
+  Breadth,
   DdeBoard,
   DdeOrder,
   EtfFlowBoard,
@@ -36,6 +37,7 @@ import type {
   PatternTrackDetail,
   PoolStandingOut,
   PromotionSeries,
+  RelayTemp,
   ReviewNote,
   RotationLeaderDay,
   RotationMetric,
@@ -240,6 +242,12 @@ export const api = {
   // 恐贪指数曲线。下限 20 天由后端把关（它是「一年分位」的合成值，几天看不出形态）。
   // 默认取 250：与后端的分位窗口等长，图上才能看出完整的一轮情绪摆动（底部有缩放条）
   fearGreed: (days = 250) => request<FearGreed>(`/market/fear-greed?days=${days}`),
+
+  // 市场宽度温度计曲线。默认 250 天 ≈ 一年：年线上方占比这种慢变量要一年才看得出周期
+  breadth: (days = 250) => request<Breadth>(`/market/breadth?days=${days}`),
+
+  // 短线接力温度曲线。默认与恐贪同长（120 ≈ 半年）
+  relayTemp: (days = 120) => request<RelayTemp>(`/market/relay-temp?days=${days}`),
 
   limitPool: (type: PoolType, date?: string | null) =>
     request<LimitPool>(

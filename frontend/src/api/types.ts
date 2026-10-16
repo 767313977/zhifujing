@@ -108,6 +108,84 @@ export interface FearGreed {
   benchmark: FearGreedBenchmark | null
 }
 
+/**
+ * 市场宽度温度计（`/market/breadth`）。
+ *
+ * 各数组与 `dates` **严格等长**，缺数的日子是 null：
+ * - `above_ma250` 在站内 K 线历史还不够 250 个交易日时**整列为 null**
+ *   （不满 N 根 K 线的票不进分母，后端口径如此），图上断线展示、别补 0；
+ * - 新高新低是**家数**（整数），不是占比。
+ */
+export interface BreadthLatest {
+  trade_date: string
+  above_ma20: number | null
+  above_ma60: number | null
+  above_ma250: number | null
+  high60: number | null
+  low60: number | null
+  high250: number | null
+  low250: number | null
+  /** 当日参与统计的有效票数（占比的分母量级） */
+  universe_count: number | null
+}
+
+export interface Breadth {
+  dates: string[]
+  /** 站上 MA20 / MA60 / MA250（年线）的个股占比，百分数 */
+  above_ma20: (number | null)[]
+  above_ma60: (number | null)[]
+  above_ma250: (number | null)[]
+  /** 创 60 / 250 日收盘新高、新低的家数 */
+  high60: (number | null)[]
+  low60: (number | null)[]
+  high250: (number | null)[]
+  low250: (number | null)[]
+  /** 表内总天数：说明这条曲线背后有多少历史 */
+  coverage: number
+  latest: BreadthLatest | null
+}
+
+/**
+ * 短线接力温度（`/market/relay-temp`，0-100，越高越热）。
+ *
+ * 与恐贪同构但**没有 `window`**：六项子指标按固定阈值折算（封板率直接用、
+ * 连板高度 8 板封顶、昨涨停溢价 [-5%,+5%] 映射等），不看历史分位。
+ * `scores` 里为 null 的日子是「有效子指标不足 3 项」，图上留空隙。
+ */
+export interface RelayTempBand {
+  /** 配色的稳定标识：frozen / cold / mild / hot / boiling */
+  key: string
+  label: string
+  lower: number
+  upper: number
+}
+
+export interface RelayTempSub {
+  key: string
+  label: string
+  value: number | null
+  score: number | null
+  unit: string
+  hint: string
+}
+
+export interface RelayTempLatest {
+  trade_date: string
+  score: number | null
+  level: string | null
+  change: number | null
+  subs: RelayTempSub[]
+}
+
+export interface RelayTemp {
+  dates: string[]
+  scores: (number | null)[]
+  bands: RelayTempBand[]
+  /** 情绪表总天数（曲线背后有多少历史） */
+  coverage: number
+  latest: RelayTempLatest | null
+}
+
 /** 指数与个股广度是否背离。level 决定配色，detail 是判据里的原始数字 */
 export interface Divergence {
   level: 'weight_pull' | 'theme_active' | 'aligned'

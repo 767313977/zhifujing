@@ -480,6 +480,37 @@ class FearGreedDaily(Base):
     limit_strength: Mapped[float | None] = mapped_column(Float)
 
 
+class BreadthDaily(Base):
+    """市场宽度温度计的原始日度值（**全市场个股日线反算**，读取侧不做二次加工）。
+
+    两组维度：
+    - `above_ma*`：当日收盘价站上 N 日均线的个股占比（%）。**不满 N 根 K 线的票
+      不进该档分母**（新股上市第 5 天就算「站上 250 日线」是假信号），所以三档
+      分母各自不同；历史还不够长的阶段 `above_ma250` 整列为 NULL。
+    - `high* / low*`：创 N 日收盘新高 / 新低的家数（close 等于含当日窗口的极值
+      即记为「创」）。新高新低差看指数新高有没有广度支撑。
+
+    口径与 `FearGreedDaily.breadth` 同源（都是 `stock_daily` 里当天有行情的全市场
+    批次），但恐贪那个只取「当日上涨占比」一个截面，这里要用到每只票过去一年的
+    K 线，计算在采集 job 里用窗口函数完成（见 `jobs/collect_breadth.py`）。
+    """
+
+    __tablename__ = "breadth_daily"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    # 站上 MA20 / MA60 / MA250（年线）的个股占比，百分数；历史不足时为 NULL
+    above_ma20: Mapped[float | None] = mapped_column(Float)
+    above_ma60: Mapped[float | None] = mapped_column(Float)
+    above_ma250: Mapped[float | None] = mapped_column(Float)
+    # 创 60 / 250 个交易日收盘新高、新低的家数
+    high60: Mapped[int | None] = mapped_column(Integer)
+    low60: Mapped[int | None] = mapped_column(Integer)
+    high250: Mapped[int | None] = mapped_column(Integer)
+    low250: Mapped[int | None] = mapped_column(Integer)
+    # 当日参与统计的有效票数（有收盘价且 K 线数 ≥ 20），说明占比的分母量级
+    universe_count: Mapped[int | None] = mapped_column(Integer)
+
+
 # ---- 会员与登录态（2026-09-28，设计见设计文档 §8.69）----
 #
 # 这三张表是「邀请码注册 + 登录」的全部存储。刻意**不引入任何第三方鉴权库**：
