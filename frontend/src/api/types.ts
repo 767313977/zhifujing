@@ -198,7 +198,7 @@ export interface FuturesBasisLatest {
   name: string | null
   /** (期货 − 现货) / 现货 × 100（%）。负值 = 贴水（对冲压力） */
   basis_pct: number | null
-  /** 年化基差（%）：basis × 365 / 距交割日天数，交割周换月有 2–3 天近似误差 */
+  /** 年化基差（%）：basis × 365 / 距交割日天数；距交割不足 8 天按下月合约算 */
   annual_pct: number | null
   days_to_expiry: number | null
 }

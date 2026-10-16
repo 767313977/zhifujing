@@ -520,8 +520,9 @@ class FuturesBasisDaily(Base):
     - `basis_pct` = (期货 − 现货) / 现货 × 100（%）。**负值 = 贴水**，
       贴水越深说明对冲需求越旺（中性策略的空头成本）
     - `annual_pct` = basis_pct × 365 / 距交割日天数（%）。交割日取交割月
-      第三个周五；主力连续近似当月合约，交割周换月那几天有 2–3 天近似误差
-      （口径写进 `jobs/collect_futures_basis.py` 与面板说明），原始基差不受影响
+      第三个周五；主力连续近似当月合约，距交割不足 8 天按下月合约算
+      （跟上主力按成交量提前约 7 天换月的节奏，口径写进
+      `jobs/collect_futures_basis.py` 与面板说明），原始基差不受换月口径影响
     """
 
     __tablename__ = "futures_basis_daily"

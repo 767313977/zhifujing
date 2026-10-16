@@ -448,9 +448,9 @@ export default function SentimentPage() {
               · 期指年化基差 = IF / IH / IC / IM 主力连续相对现货指数的基差年化：
               基差 =（期货 − 现货）÷ 现货，<span className="text-fg">负值 = 贴水</span>
               （中性策略的空头对冲成本，贴水越深越谨慎）；年化 = 基差 × 365 ÷ 距交割日
-              天数，交割日取交割月第三个周五，主力连续近似当月合约，
-              <span className="text-fg-muted">交割周换月有 2–3 天近似误差</span>
-              （顶部读数里的原始基差不受影响）。曲线取最近
+              天数，交割日取交割月第三个周五，主力连续近似当月合约、
+              <span className="text-fg-muted">距交割不足 8 天按下月合约算</span>
+              （跟上主力按成交量提前约 7 天换月的节奏；顶部读数里的原始基差不受影响）。曲线取最近
               <span className="num">250</span> 个交易日
             </li>
             <li>
