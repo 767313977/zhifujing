@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
-import type { Breadth, Erp, EtfNetFlow, FearGreed, FuturesBasis, IndexHistory, IndexSeries, IndustryBreadth, MarginTemp, NhNl, Obv, RelayTemp, Sentiment } from '../api/types'
+import type { Breadth, Erp, EtfNetFlow, FearGreed, FuturesBasis, IndexHistory, IndexSeries, IndustryBreadth, MarginTemp, NhNl, Northbound, Obv, RelayTemp, Sentiment } from '../api/types'
 import Alert from '../components/Alert'
 import BreadthThermometerPanel from '../components/BreadthThermometerPanel'
 import EChart from '../components/EChart'
@@ -13,6 +13,7 @@ import IndustryBreadthPanel from '../components/IndustryBreadthPanel'
 import Layout from '../components/Layout'
 import MarginTempPanel from '../components/MarginTempPanel'
 import NhNlPanel from '../components/NhNlPanel'
+import NorthboundPanel from '../components/NorthboundPanel'
 import ObvPanel from '../components/ObvPanel'
 import Panel from '../components/Panel'
 import RelayTempPanel from '../components/RelayTempPanel'
@@ -82,6 +83,7 @@ export default function SentimentPage() {
   const [etfNetFlow, setEtfNetFlow] = useState<EtfNetFlow | null>(null)
   const [marginTemp, setMarginTemp] = useState<MarginTemp | null>(null)
   const [industryBreadth, setIndustryBreadth] = useState<IndustryBreadth | null>(null)
+  const [northbound, setNorthbound] = useState<Northbound | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -90,8 +92,8 @@ export default function SentimentPage() {
       api.indexHistory(120),
       api.sentimentSeries(60),
       // 恐贪 / 宽度 / 接力 / 基差 / ERP / NH-NL / OBV / ETF 净申赎 / 两融杠杆温度 /
-      // 行业宽度 都是增强读数：库里还没数据时接口返回 404，**不能**因此把整页情绪
-      // 指标打白。失败一律回落 null，由面板自己显示「暂无数据」
+      // 行业宽度 / 北向活跃度 都是增强读数：库里还没数据时接口返回 404，**不能**因此
+      // 把整页情绪指标打白。失败一律回落 null，由面板自己显示「暂无数据」
       api.fearGreed(250).catch(() => null),
       api.breadth(250).catch(() => null),
       api.relayTemp(120).catch(() => null),
@@ -102,8 +104,9 @@ export default function SentimentPage() {
       api.etfNetFlow(250).catch(() => null),
       api.marginTemp(250).catch(() => null),
       api.industryBreadth().catch(() => null),
+      api.northboundActivity(250).catch(() => null),
     ])
-      .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData, futuresBasisData, erpData, nhNlData, obvData, etfNetFlowData, marginTempData, industryBreadthData]) => {
+      .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData, futuresBasisData, erpData, nhNlData, obvData, etfNetFlowData, marginTempData, industryBreadthData, northboundData]) => {
         setHistory(historyData)
         // 情绪指标只有数据源保留窗口内的日期才有值，其余为 null
         setSentiment(sentimentData.filter((item) => item.limit_up_count != null))
@@ -117,6 +120,7 @@ export default function SentimentPage() {
         setEtfNetFlow(etfNetFlowData)
         setMarginTemp(marginTempData)
         setIndustryBreadth(industryBreadthData)
+        setNorthbound(northboundData)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -350,7 +354,11 @@ export default function SentimentPage() {
 
         {/* 两融杠杆温度是「资金加到什么程度」那一条：ETF 净申赎看场内基金的申赎，
             两融看融资盘的水位与变化速度。紧跟 ETF 之后 */}
-        <MarginTempPanel data={marginTemp} loading={loading} delay={98} />
+        <MarginTempPanel data={marginTemp} loading={loading} delay={97} />
+
+        {/* 北向活跃度是「外资参与度」那一条（只有成交额、没有净流入）。
+            与两融同属资金面，紧挨着 */}
+        <NorthboundPanel data={northbound} loading={loading} delay={98} />
 
         {/* 行业宽度是「宽度拆到行业」那一层：前面全是时间序列，这个是当日横截面 ——
             分辨指数是靠少数行业扛着（结构行情）还是行业齐涨（共振）*/}
@@ -520,6 +528,17 @@ export default function SentimentPage() {
               <span className="text-fg">多数行业过半 = 行业共振，只有少数行业在上 = 结构性行情</span>。
               这是<span className="text-fg">当日横截面</span>（看谁强谁弱），不是时间序列：
               逐日算一年要好几秒、会把整页卡住
+            </li>
+            <li>
+              · 北向活跃度 = 沪深股通成交额 ÷ 两市成交额（%）——
+              <span className="text-fg">外资参与度</span>，越高说明外资交易越活跃。
+              用占比而不是成交额绝对值：绝对值随全市场量能潮起潮落。
+              <span className="text-fg">⚠️ 只有成交额、没有净流入</span> ——
+              2024-08-19 起交易所不再按日披露买卖金额，「北向净流入」在数据源层面
+              已经不存在，所以这条线只说「参与得多不多」、<span className="text-fg">不含方向</span>；
+              虚线是上证指数收盘点位。通道关闭日没有数据，图上<span className="text-fg">断开</span>
+              （是没数据，不是北向没交易）。曲线取最近
+              <span className="num">250</span> 个交易日
             </li>
           </ul>
         </div>

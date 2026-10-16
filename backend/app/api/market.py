@@ -15,6 +15,7 @@ from app.models import (
     EtfShare,
     FearGreedDaily,
     FuturesBasisDaily,
+    HsgtDaily,
     IndexDaily,
     LimitPool,
     MarginDaily,
@@ -47,6 +48,8 @@ from app.schemas import (
     MarketOverview,
     NhNlLatest,
     NhNlOut,
+    NorthboundLatest,
+    NorthboundOut,
     ObvLatest,
     ObvOut,
     RelayTempBand,
@@ -55,7 +58,15 @@ from app.schemas import (
     SentimentOut,
     TurnoverSeries,
 )
-from app.services import etf_flow, industry_breadth, margin_temp, nhnl, obv, relay_temp
+from app.services import (
+    etf_flow,
+    industry_breadth,
+    margin_temp,
+    nhnl,
+    northbound,
+    obv,
+    relay_temp,
+)
 from app.services.fear_greed import (
     WINDOW,
     bands,
@@ -123,6 +134,9 @@ MARGIN_TEMP_DAYS = 250
 # 不进分母（见 services/industry_breadth）
 INDUSTRY_MA_WINDOW = 20
 INDUSTRY_MA_LOOKBACK = 40
+
+# 北向活跃度曲线的默认回看长度。250 ≈ 一年，与 hsgt_daily 的深度（约 257 个交易日）相称
+NORTHBOUND_DAYS = 250
 
 
 def _bands() -> list[FearGreedBand]:
@@ -866,6 +880,81 @@ def industry_breadth_api(session: Session = Depends(get_db)) -> IndustryBreadthO
         overall=round(above / total * 100, 1) if total else None,
         median=industry_breadth.median_ratio(items),
         coverage=total,
+    )
+
+
+@router.get("/northbound-activity", response_model=NorthboundOut)
+def northbound_activity(
+    days: int = Query(
+        NORTHBOUND_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
+    ),
+    session: Session = Depends(get_db),
+) -> NorthboundOut:
+    """北向活跃度（外资参与度）：沪深股通成交额 ÷ 两市成交额（%）。
+
+    ⚠️ **只有成交额，没有净流入**：2024-08-19 起交易所不再按日披露买入 / 卖出金额，
+    「北向净流入」在数据源层面已经不存在（见 `models.HsgtDaily`）。所以这是
+    **活跃度 / 参与度，不含方向**。
+
+    原始值读 `hsgt_daily`（成交额，百万元）与 `market_sentiment.total_amount`
+    （元），占比**读取时现算**（见 `services/northbound.py`），不建新表。
+
+    日期骨架取 `market_sentiment`（与恐贪 / 宽度同一份）：**通道关闭日没有北向数据，
+    那个点记 null、图上断开** —— 断口是「没数据」，不是「北向没交易」。
+    """
+    rows = list(
+        session.execute(
+            select(MarketSentiment.trade_date, MarketSentiment.total_amount).order_by(
+                MarketSentiment.trade_date
+            )
+        ).all()
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="暂无两市成交额，请先执行采集或回补")
+
+    # 沪深股通成交额按日汇总（原始单位百万元，展示换算成亿元）
+    hsgt = {
+        day: float(total)
+        for day, total in session.execute(
+            select(HsgtDaily.trade_date, func.sum(HsgtDaily.turnover)).group_by(
+                HsgtDaily.trade_date
+            )
+        ).all()
+        if total is not None
+    }
+
+    dates = [day for day, _ in rows]
+    amounts = [amount for _, amount in rows]
+    turnovers = [hsgt.get(day) for day in dates]
+    ratios = northbound.ratio(turnovers, amounts)
+    turnover_yi = [
+        None if t is None else round(t * northbound.MILLION_TO_YI, 1) for t in turnovers
+    ]
+
+    tail = min(days, len(dates))
+    offset = len(dates) - tail
+
+    # 最新读数取**最后一个有北向数据的日子**：通道关闭或采集滞后时，末尾可能没有值，
+    # 直接取最后一天会让顶部读数变成一整排「—」
+    last = next((i for i in range(len(ratios) - 1, -1, -1) if ratios[i] is not None), None)
+    latest = (
+        None
+        if last is None
+        else NorthboundLatest(
+            trade_date=dates[last],
+            turnover=turnover_yi[last],
+            ratio=ratios[last],
+            ratio_ma5=northbound.mean_tail(ratios, last, 5),
+            ratio_ma20=northbound.mean_tail(ratios, last, 20),
+        )
+    )
+    return NorthboundOut(
+        dates=dates[offset:],
+        ratio=ratios[offset:],
+        turnover=turnover_yi[offset:],
+        coverage=sum(1 for t in turnovers if t is not None),
+        latest=latest,
+        benchmark=_benchmark_series(session, dates[offset:]),
     )
 
 

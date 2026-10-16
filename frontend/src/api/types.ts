@@ -406,6 +406,33 @@ export interface IndustryBreadth {
   coverage: number
 }
 
+/** 北向活跃度的最新读数。⚠️ 只有成交额、没有净流入（交易所 2024-08 起停披露） */
+export interface NorthboundLatest {
+  trade_date: string
+  /** 沪深股通成交额（亿元） */
+  turnover: number | null
+  /** 占两市成交额（%） */
+  ratio: number | null
+  /** 近 5 个交易日占比均值（%） */
+  ratio_ma5: number | null
+  /** 近 20 个交易日占比均值（%） */
+  ratio_ma20: number | null
+}
+
+/** 北向活跃度：沪深股通成交额占两市成交额的比例（%）。各数组与 dates 等长 */
+export interface Northbound {
+  dates: string[]
+  /** 北向成交额 ÷ 两市成交额（%） */
+  ratio: (number | null)[]
+  /** 沪深股通成交额（亿元） */
+  turnover: (number | null)[]
+  /** 有北向数据的交易日数（不是窗口长度） */
+  coverage: number
+  latest: NorthboundLatest | null
+  /** 上证指数收盘点位（与 dates 等长），叠图看参与度与点位的背离 */
+  benchmark: FearGreedBenchmark | null
+}
+
 /** 指数与个股广度是否背离。level 决定配色，detail 是判据里的原始数字 */
 export interface Divergence {
   level: 'weight_pull' | 'theme_active' | 'aligned'

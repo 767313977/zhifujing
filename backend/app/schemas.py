@@ -536,6 +536,42 @@ class IndustryBreadthOut(BaseModel):
     coverage: int
 
 
+# ---- 北向活跃度
+
+
+class NorthboundLatest(BaseModel):
+    """北向活跃度的最新读数。⚠️ 只有成交额、**没有净流入**（交易所 2024-08 起停披露）。"""
+
+    trade_date: date
+    # 沪深股通成交额（亿元）
+    turnover: float | None
+    # 占两市成交额（%）
+    ratio: float | None
+    # 近 5 个交易日占比均值（%）
+    ratio_ma5: float | None
+    # 近 20 个交易日占比均值（%）
+    ratio_ma20: float | None
+
+
+class NorthboundOut(BaseModel):
+    """北向活跃度：沪深股通**成交额**占两市成交额的比例（%）。
+
+    日期骨架取 `market_sentiment`；**通道关闭日没有北向数据，那个点记 null、图上断开**
+    —— 断口是「没数据」，不是「北向没交易」。
+    """
+
+    dates: list[date]
+    # 北向成交额 ÷ 两市成交额（%）
+    ratio: list[float | None]
+    # 沪深股通成交额（亿元）
+    turnover: list[float | None]
+    # 有北向数据的交易日数（不是窗口长度）
+    coverage: int
+    latest: NorthboundLatest | None
+    # 上证指数收盘点位（与 dates 等长），叠图看外资参与度与点位的背离
+    benchmark: FearGreedBenchmark | None
+
+
 class MarketOverview(BaseModel):
     trade_date: date
     indexes: list[IndexQuote]

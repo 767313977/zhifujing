@@ -156,6 +156,15 @@ CHECKS = [
         "get",
         "days",
     ),
+    # 北向活跃度曲线取多少天（默认 250 ≈ 一年，与 hsgt_daily 的深度相称）
+    (
+        "北向活跃度取多少天",
+        "frontend/src/api/client.ts",
+        r"northboundActivity:\s*\(days\s*=\s*(\d+)\)",
+        "/api/market/northbound-activity",
+        "get",
+        "days",
+    ),
 ]
 
 

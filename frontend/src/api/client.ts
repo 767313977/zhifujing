@@ -34,6 +34,7 @@ import type {
   Me,
   Member,
   NhNl,
+  Northbound,
   Obv,
   PoolType,
   PatternCount,
@@ -277,6 +278,10 @@ export const api = {
 
   // 行业宽度（当日横截面，无参数 —— 逐日算时间序列太慢，见后端端点说明）
   industryBreadth: () => request<IndustryBreadth>('/market/industry-breadth'),
+
+  // 北向活跃度曲线。默认 250 ≈ 一年（与 hsgt_daily 的深度相称）
+  northboundActivity: (days = 250) =>
+    request<Northbound>(`/market/northbound-activity?days=${days}`),
 
   limitPool: (type: PoolType, date?: string | null) =>
     request<LimitPool>(
