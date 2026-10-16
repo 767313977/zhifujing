@@ -503,6 +503,39 @@ class MarginTempOut(BaseModel):
     latest: MarginTempLatest | None
 
 
+# ---- 行业宽度
+
+
+class IndustryBreadthItem(BaseModel):
+    """一个一级行业的宽度。"""
+
+    industry: str
+    # 该行业当日有效家数（有收盘价且 K 线数 ≥ ma_window）
+    total: int
+    # 站上均线的家数
+    above: int
+    # 站上占比（%）
+    ratio: float | None
+
+
+class IndustryBreadthOut(BaseModel):
+    """行业宽度（当日横截面）：各一级行业「站上 MA20」的个股占比。
+
+    横截面读数，不是时间序列（逐日算 250 天要好几秒，会把整页卡住，见端点说明）。
+    """
+
+    trade_date: date
+    ma_window: int
+    # 按占比降序；占比不可比的行业排最后
+    items: list[IndustryBreadthItem]
+    # 全市场站上占比（各行业合计口径）
+    overall: float | None
+    # 各行业占比的中位数
+    median: float | None
+    # 纳入统计的个股数
+    coverage: int
+
+
 class MarketOverview(BaseModel):
     trade_date: date
     indexes: list[IndexQuote]

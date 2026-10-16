@@ -20,6 +20,7 @@ import type {
   FundsSeries,
   FuturesBasis,
   IndexHistory,
+  IndustryBreadth,
   InstitutionBoard,
   InstitutionOrder,
   Invite,
@@ -273,6 +274,9 @@ export const api = {
 
   // 两融杠杆温度曲线。默认 250 ≈ 一年（与 margin_daily 的深度相称）
   marginTemp: (days = 250) => request<MarginTemp>(`/market/margin-temp?days=${days}`),
+
+  // 行业宽度（当日横截面，无参数 —— 逐日算时间序列太慢，见后端端点说明）
+  industryBreadth: () => request<IndustryBreadth>('/market/industry-breadth'),
 
   limitPool: (type: PoolType, date?: string | null) =>
     request<LimitPool>(

@@ -382,6 +382,30 @@ export interface MarginTemp {
   latest: MarginTempLatest | null
 }
 
+/** 一个一级行业的宽度（当日横截面） */
+export interface IndustryBreadthItem {
+  industry: string
+  /** 该行业当日有效家数（有收盘价且 K 线数 ≥ ma_window） */
+  total: number
+  /** 站上均线的家数 */
+  above: number
+  /** 站上占比（%） */
+  ratio: number | null
+}
+
+/** 行业宽度：各一级行业「站上 MA20」的个股占比。items 按占比降序 */
+export interface IndustryBreadth {
+  trade_date: string
+  ma_window: number
+  items: IndustryBreadthItem[]
+  /** 全市场站上占比（各行业合计口径） */
+  overall: number | null
+  /** 各行业占比的中位数 */
+  median: number | null
+  /** 纳入统计的个股数 */
+  coverage: number
+}
+
 /** 指数与个股广度是否背离。level 决定配色，detail 是判据里的原始数字 */
 export interface Divergence {
   level: 'weight_pull' | 'theme_active' | 'aligned'

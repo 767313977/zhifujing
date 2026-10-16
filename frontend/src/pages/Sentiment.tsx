@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
-import type { Breadth, Erp, EtfNetFlow, FearGreed, FuturesBasis, IndexHistory, IndexSeries, MarginTemp, NhNl, Obv, RelayTemp, Sentiment } from '../api/types'
+import type { Breadth, Erp, EtfNetFlow, FearGreed, FuturesBasis, IndexHistory, IndexSeries, IndustryBreadth, MarginTemp, NhNl, Obv, RelayTemp, Sentiment } from '../api/types'
 import Alert from '../components/Alert'
 import BreadthThermometerPanel from '../components/BreadthThermometerPanel'
 import EChart from '../components/EChart'
@@ -9,6 +9,7 @@ import ErpPanel from '../components/ErpPanel'
 import EtfFlowPanel from '../components/EtfFlowPanel'
 import FearGreedPanel from '../components/FearGreedPanel'
 import FuturesBasisPanel from '../components/FuturesBasisPanel'
+import IndustryBreadthPanel from '../components/IndustryBreadthPanel'
 import Layout from '../components/Layout'
 import MarginTempPanel from '../components/MarginTempPanel'
 import NhNlPanel from '../components/NhNlPanel'
@@ -80,6 +81,7 @@ export default function SentimentPage() {
   const [obv, setObv] = useState<Obv | null>(null)
   const [etfNetFlow, setEtfNetFlow] = useState<EtfNetFlow | null>(null)
   const [marginTemp, setMarginTemp] = useState<MarginTemp | null>(null)
+  const [industryBreadth, setIndustryBreadth] = useState<IndustryBreadth | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -87,9 +89,9 @@ export default function SentimentPage() {
     Promise.all([
       api.indexHistory(120),
       api.sentimentSeries(60),
-      // 恐贪 / 宽度 / 接力 / 基差 / ERP / NH-NL / OBV / ETF 净申赎 / 两融杠杆温度
-      // 都是增强读数：库里还没数据时接口返回 404，**不能**因此把整页情绪指标打白。
-      // 失败一律回落 null，由面板自己显示「暂无数据」
+      // 恐贪 / 宽度 / 接力 / 基差 / ERP / NH-NL / OBV / ETF 净申赎 / 两融杠杆温度 /
+      // 行业宽度 都是增强读数：库里还没数据时接口返回 404，**不能**因此把整页情绪
+      // 指标打白。失败一律回落 null，由面板自己显示「暂无数据」
       api.fearGreed(250).catch(() => null),
       api.breadth(250).catch(() => null),
       api.relayTemp(120).catch(() => null),
@@ -99,8 +101,9 @@ export default function SentimentPage() {
       api.obv(250).catch(() => null),
       api.etfNetFlow(250).catch(() => null),
       api.marginTemp(250).catch(() => null),
+      api.industryBreadth().catch(() => null),
     ])
-      .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData, futuresBasisData, erpData, nhNlData, obvData, etfNetFlowData, marginTempData]) => {
+      .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData, futuresBasisData, erpData, nhNlData, obvData, etfNetFlowData, marginTempData, industryBreadthData]) => {
         setHistory(historyData)
         // 情绪指标只有数据源保留窗口内的日期才有值，其余为 null
         setSentiment(sentimentData.filter((item) => item.limit_up_count != null))
@@ -113,6 +116,7 @@ export default function SentimentPage() {
         setObv(obvData)
         setEtfNetFlow(etfNetFlowData)
         setMarginTemp(marginTempData)
+        setIndustryBreadth(industryBreadthData)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -348,6 +352,10 @@ export default function SentimentPage() {
             两融看融资盘的水位与变化速度。紧跟 ETF 之后 */}
         <MarginTempPanel data={marginTemp} loading={loading} delay={98} />
 
+        {/* 行业宽度是「宽度拆到行业」那一层：前面全是时间序列，这个是当日横截面 ——
+            分辨指数是靠少数行业扛着（结构行情）还是行业齐涨（共振）*/}
+        <IndustryBreadthPanel data={industryBreadth} loading={loading} delay={99} />
+
         <Panel
           title="指数走势"
           meta={
@@ -504,6 +512,14 @@ export default function SentimentPage() {
               不是余额水平的分位 —— 余额是长期上行的慢变量，绝对水平的分位几乎恒在 100 附近，
               没有信息量；分位窗口 <span className="num">120</span> 个交易日。曲线取最近
               <span className="num">250</span> 个交易日
+            </li>
+            <li>
+              · 行业宽度 = 每个一级行业里「<span className="text-fg">站上 MA20</span>」的
+              个股占比（按同花顺行业路径第一段分 31 个行业；与宽度温度计同一套「站上均线」
+              口径，不满 20 根 K 线的票不进分母）——
+              <span className="text-fg">多数行业过半 = 行业共振，只有少数行业在上 = 结构性行情</span>。
+              这是<span className="text-fg">当日横截面</span>（看谁强谁弱），不是时间序列：
+              逐日算一年要好几秒、会把整页卡住
             </li>
           </ul>
         </div>

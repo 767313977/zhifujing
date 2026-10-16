@@ -4,7 +4,7 @@ import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
@@ -19,6 +19,7 @@ from app.models import (
     LimitPool,
     MarginDaily,
     MarketSentiment,
+    StockDaily,
 )
 from app.schemas import (
     BreadthLatest,
@@ -39,6 +40,8 @@ from app.schemas import (
     IndexHistory,
     IndexQuote,
     IndexSeries,
+    IndustryBreadthItem,
+    IndustryBreadthOut,
     MarginTempLatest,
     MarginTempOut,
     MarketOverview,
@@ -52,7 +55,7 @@ from app.schemas import (
     SentimentOut,
     TurnoverSeries,
 )
-from app.services import etf_flow, margin_temp, nhnl, obv, relay_temp
+from app.services import etf_flow, industry_breadth, margin_temp, nhnl, obv, relay_temp
 from app.services.fear_greed import (
     WINDOW,
     bands,
@@ -114,6 +117,12 @@ ETF_FLOW_DAYS = 250
 # 两融杠杆温度曲线的默认回看长度。250 ≈ 一年，与站内 margin_daily 的深度（约 263
 # 个交易日）相称；温度本身的分位窗口只有 120 日（见 services/margin_temp）
 MARGIN_TEMP_DAYS = 250
+
+# 行业宽度：站上 MA20 的口径（与 breadth_daily.above_ma20 同一套），以及为算这个
+# 均线要往前取的交易日数。回看 40 天是给停牌 / 次新留余量 —— 不满 20 根 K 线的票
+# 不进分母（见 services/industry_breadth）
+INDUSTRY_MA_WINDOW = 20
+INDUSTRY_MA_LOOKBACK = 40
 
 
 def _bands() -> list[FearGreedBand]:
@@ -785,6 +794,78 @@ def margin_leverage_temp(
             chg20=chg20[last],
             temperature=temperatures[last],
         ),
+    )
+
+
+@router.get("/industry-breadth", response_model=IndustryBreadthOut)
+def industry_breadth_api(session: Session = Depends(get_db)) -> IndustryBreadthOut:
+    """行业宽度（**当日横截面**）：各一级行业里「站上 MA20」的个股占比。
+
+    原始值读 `stock_daily` × `stock_basic.industry`，占比**读取时现算**
+    （见 `services/industry_breadth.py`），不建新表。行业口径取同花顺行业路径的
+    第一段（31 个一级行业）；「站上 MA20」与 `breadth_daily.above_ma20` 同一套约定
+    （不满 20 根 K 线的票不进分母）。
+
+    ⚠️ 这是**横截面**读数（当日谁强谁弱），不是时间序列 —— 逐日算 250 天的行业占比
+    要好几秒（按票的 20 日窗口函数跑几十万行），而情绪周期页是 `Promise.all` 拉齐
+    后才渲染、会整页卡住。所以只取当日：窗口取目标日往前 40 个交易日、只聚合一天，
+    实测约 0.4 秒。
+    """
+    target = session.scalar(select(func.max(StockDaily.trade_date)))
+    if target is None:
+        raise HTTPException(status_code=404, detail="暂无个股日线，请先执行采集或回补")
+
+    # 目标日往前取 LOOKBACK 个交易日当 MA 窗口（只需当日的 20 日均线，多取的用于预热）
+    bars = list(
+        session.scalars(
+            select(StockDaily.trade_date)
+            .where(StockDaily.trade_date <= target)
+            .distinct()
+            .order_by(StockDaily.trade_date.desc())
+            .limit(INDUSTRY_MA_LOOKBACK)
+        )
+    )
+    start = min(bars)
+
+    # 裸 SQL：按票的 20 日窗口函数用 SQLAlchemy 表达式写会比这长得多。日期在 SQLite
+    # 里就是 'YYYY-MM-DD' 文本，与 isoformat() 直接可比。
+    rows = session.execute(
+        text(
+            """
+            WITH w AS (
+              SELECT d.trade_date, d.code, d.close,
+                     AVG(d.close) OVER (PARTITION BY d.code ORDER BY d.trade_date
+                                        ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS ma20,
+                     COUNT(d.close) OVER (PARTITION BY d.code ORDER BY d.trade_date
+                                          ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS n
+              FROM stock_daily d
+              WHERE d.trade_date >= :start AND d.trade_date <= :target
+            )
+            SELECT b.industry AS industry,
+                   COUNT(*) AS total,
+                   SUM(CASE WHEN w.close >= w.ma20 THEN 1 ELSE 0 END) AS above
+            FROM w JOIN stock_basic b ON b.code = w.code
+            WHERE w.trade_date = :target AND w.close IS NOT NULL AND w.n >= :window
+            GROUP BY b.industry
+            """
+        ),
+        {
+            "start": start.isoformat(),
+            "target": target.isoformat(),
+            "window": INDUSTRY_MA_WINDOW,
+        },
+    ).all()
+
+    items = industry_breadth.aggregate(rows)
+    total = sum(item["total"] for item in items)
+    above = sum(item["above"] for item in items)
+    return IndustryBreadthOut(
+        trade_date=target,
+        ma_window=INDUSTRY_MA_WINDOW,
+        items=[IndustryBreadthItem(**item) for item in items],
+        overall=round(above / total * 100, 1) if total else None,
+        median=industry_breadth.median_ratio(items),
+        coverage=total,
     )
 
 
