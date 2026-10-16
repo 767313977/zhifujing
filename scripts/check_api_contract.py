@@ -120,6 +120,24 @@ CHECKS = [
         "get",
         "days",
     ),
+    # NH-NL 新高新低扩散曲线取多少天（顶底背离要一段完整趋势，默认 250）
+    (
+        "NH-NL 取多少天",
+        "frontend/src/api/client.ts",
+        r"nhNl:\s*\(days\s*=\s*(\d+)\)",
+        "/api/market/nh-nl",
+        "get",
+        "days",
+    ),
+    # 量能潮 OBV 曲线取多少天（与后端成交额分位窗口等长，默认 250）
+    (
+        "量能潮取多少天",
+        "frontend/src/api/client.ts",
+        r"obv:\s*\(days\s*=\s*(\d+)\)",
+        "/api/market/obv",
+        "get",
+        "days",
+    ),
 ]
 
 

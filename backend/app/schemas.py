@@ -340,6 +340,85 @@ class ErpOut(BaseModel):
     latest: ErpLatest | None
 
 
+# ---------------------------------------------------------- NH-NL 新高新低扩散
+#
+# 原始值（创 60/250 日收盘新高新低家数）读 `breadth_daily`（宽度温度计采集 job
+# 落库的那张表），diff 与累计净值在 API 读取时现算（见 `services/nhnl.py`），不建新表。
+
+
+class NhNlLatest(BaseModel):
+    """最新一天的高新低读数（页面顶部的 chips）。"""
+
+    trade_date: date
+    high60: int | None
+    low60: int | None
+    # 新高 − 新低。任一侧缺数为 null（不补 0：0 是「打平」，是真实结论）
+    diff60: int | None
+    high250: int | None
+    low250: int | None
+    diff250: int | None
+
+
+class NhNlOut(BaseModel):
+    """NH-NL 新高新低扩散序列：每日差值 + 差值的累计净值（类 AD 线）。
+
+    各数组与 `dates` 严格等长；250 日口径在站内 K 线历史还不够 250 个交易日时
+    **整列为 null**（与宽度温度计同口径），图上断线展示。`benchmark` 是上证指数
+    收盘点位（与 `dates` 等长），叠在净值线上看顶底背离。
+    """
+
+    dates: list[date]
+    diff60: list[int | None]
+    diff250: list[int | None]
+    # diff 的逐日累计（从 0 起）；diff 缺数的日子为 null，累加器保持不动
+    cum60: list[float | None]
+    cum250: list[float | None]
+    # 表内总天数：说明这条曲线背后有多少历史
+    coverage: int
+    latest: NhNlLatest | None
+    benchmark: FearGreedBenchmark | None
+
+
+# ---------------------------------------------------------------- 量能潮 OBV
+#
+# 原始值是基准指数（上证指数，与恐贪基准同源）的日线涨跌幅与成交额，读
+# `index_daily`，OBV 与成交额分位在 API 读取时现算（见 `services/obv.py`），不建新表。
+
+
+class ObvLatest(BaseModel):
+    """最新一天的量能潮读数（页面顶部的 chips）。"""
+
+    trade_date: date
+    # 当日成交额（元）
+    amount: float | None
+    # 当日 OBV 变动额（元，带正负；平盘为 0）
+    obv_change: float | None
+    # OBV 累计净额（元，从 0 起累加）
+    obv: float | None
+    # 成交额在滚动 250 个交易日里的分位（0-100）
+    percentile: float | None
+
+
+class ObvOut(BaseModel):
+    """量能潮 OBV 序列：累计净额 + 成交额 + 成交额的滚动 250 日分位。
+
+    各数组与 `dates` 严格等长；成交额缺失的日子 `obv` 为 null（图上断线、
+    不补 0），分位历史不足（窗口内有效值 < 20）的日子 `percentile` 为 null。
+    """
+
+    dates: list[date]
+    obv: list[float | None]
+    # 当日变动额（元，带正负；平盘为 0，成交额缺失为 null）
+    obv_change: list[float | None]
+    amount: list[float | None]
+    percentile: list[float | None]
+    # 分位窗口（交易日），口径说明里要写出来
+    window: int
+    # 表内总天数：说明这条曲线背后有多少历史
+    coverage: int
+    latest: ObvLatest | None
+
+
 class MarketOverview(BaseModel):
     trade_date: date
     indexes: list[IndexQuote]

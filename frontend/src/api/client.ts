@@ -30,6 +30,8 @@ import type {
   MarketOverview,
   Me,
   Member,
+  NhNl,
+  Obv,
   PoolType,
   PatternCount,
   PatternMeta,
@@ -257,6 +259,12 @@ export const api = {
 
   // ERP 股债性价比曲线。默认 250：与后端分位窗口等长，股债性价比看的就是年度周期
   erp: (days = 250) => request<Erp>(`/market/erp?days=${days}`),
+
+  // NH-NL 新高新低扩散曲线。默认 250 ≈ 一年：顶底背离要一段完整趋势才看得出
+  nhNl: (days = 250) => request<NhNl>(`/market/nh-nl?days=${days}`),
+
+  // 量能潮 OBV 曲线。默认 250：与后端成交额分位窗口等长，量能潮汐是年度尺度
+  obv: (days = 250) => request<Obv>(`/market/obv?days=${days}`),
 
   limitPool: (type: PoolType, date?: string | null) =>
     request<LimitPool>(

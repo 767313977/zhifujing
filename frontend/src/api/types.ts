@@ -245,6 +245,70 @@ export interface Erp {
   latest: ErpLatest | null
 }
 
+/**
+ * NH-NL 新高新低扩散（`/market/nh-nl`）：创 60/250 日收盘新高家数 − 新低家数。
+ *
+ * 原始值与宽度温度计同一份（`breadth_daily`），diff 与累计净值由后端读取时现算。
+ * `cum*` 是 diff 的逐日累计（类 AD 线）—— 看顶底背离用：指数新高而净值线不新高
+ * = 顶背离。250 日口径在站内 K 线历史不足时**整列为 null**（图上断线，不是 0）。
+ */
+export interface NhNlLatest {
+  trade_date: string
+  high60: number | null
+  low60: number | null
+  /** 新高 − 新低。任一侧缺数为 null（0 是「打平」，不拿来填空） */
+  diff60: number | null
+  high250: number | null
+  low250: number | null
+  diff250: number | null
+}
+
+export interface NhNl {
+  dates: string[]
+  diff60: (number | null)[]
+  diff250: (number | null)[]
+  /** diff 的逐日累计（从 0 起）；diff 缺数的日子为 null，累加器保持不动 */
+  cum60: (number | null)[]
+  cum250: (number | null)[]
+  /** 表内总天数：曲线背后有多少历史 */
+  coverage: number
+  latest: NhNlLatest | null
+  /** 叠加的基准指数（上证指数）收盘点位，看背离用 */
+  benchmark: FearGreedBenchmark | null
+}
+
+/**
+ * 量能潮 OBV（`/market/obv`）：上涨日累加成交额、下跌日扣减的累计净额（元）。
+ *
+ * 基准指数是上证指数（与恐贪基准同源），OBV 与成交额分位由后端读取时现算。
+ * 用法：OBV 与指数点位的背离 —— 指数新高而 OBV 不新高 = 量能跟不上。
+ */
+export interface ObvLatest {
+  trade_date: string
+  /** 当日成交额（元） */
+  amount: number | null
+  /** 当日 OBV 变动额（元，带正负；平盘为 0） */
+  obv_change: number | null
+  /** OBV 累计净额（元，从 0 起累加） */
+  obv: number | null
+  /** 成交额在滚动 250 个交易日里的分位（0-100） */
+  percentile: number | null
+}
+
+export interface Obv {
+  dates: string[]
+  obv: (number | null)[]
+  /** 当日变动额（元，带正负；平盘为 0，成交额缺失为 null） */
+  obv_change: (number | null)[]
+  amount: (number | null)[]
+  percentile: (number | null)[]
+  /** 分位窗口（交易日） */
+  window: number
+  /** 表内总天数：曲线背后有多少历史 */
+  coverage: number
+  latest: ObvLatest | null
+}
+
 /** 指数与个股广度是否背离。level 决定配色，detail 是判据里的原始数字 */
 export interface Divergence {
   level: 'weight_pull' | 'theme_active' | 'aligned'

@@ -36,13 +36,17 @@ from app.schemas import (
     IndexQuote,
     IndexSeries,
     MarketOverview,
+    NhNlLatest,
+    NhNlOut,
+    ObvLatest,
+    ObvOut,
     RelayTempBand,
     RelayTempLatest,
     RelayTempOut,
     SentimentOut,
     TurnoverSeries,
 )
-from app.services import relay_temp
+from app.services import nhnl, obv, relay_temp
 from app.services.fear_greed import (
     WINDOW,
     bands,
@@ -88,8 +92,14 @@ RELAY_TEMP_DAYS = 120
 # 期指基差曲线的默认回看长度。250 ≈ 一年，贴水的季节性（分红季、对冲需求）要一年才完整
 FUTURES_BASIS_DAYS = 250
 
-# ERP 曲线的默认回看长度。250 与分位窗口同长：股债性价比是慢变量，看的就是年度周期
+# ERP 曲线的默认回看长度。250 ≈ 一年：股债性价比是慢变量，看的就是年度周期
 ERP_DAYS = 250
+
+# NH-NL 曲线的默认回看长度。250 ≈ 一年：顶底背离要一段完整的上升/下降趋势才看得出
+NHNL_DAYS = 250
+
+# 量能潮曲线的默认回看长度。250 与成交额分位窗口同长：量能的潮起潮落是年度尺度
+OBV_DAYS = 250
 
 
 def _bands() -> list[FearGreedBand]:
@@ -512,6 +522,118 @@ def erp(
             percentile=percentiles[-1],
             pe_ttm=last.pe_ttm,
             bond_yield=last.bond_yield,
+        ),
+    )
+
+
+@router.get("/nh-nl", response_model=NhNlOut)
+def nh_nl(
+    days: int = Query(
+        NHNL_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
+    ),
+    session: Session = Depends(get_db),
+) -> NhNlOut:
+    """NH-NL 新高新低扩散：创 60/250 日新高家数 − 新低家数，及差值的累计净值。
+
+    原始值直接读 `breadth_daily`（宽度温度计采集 job 落库的那张表），diff 与
+    累计净值**读取时现算**（见 `services/nhnl.py`），不建新表。250 日口径在站内
+    K 线历史还不够 250 个交易日时整列为 null（与宽度温度计同口径），图上断线、
+    不补 0。
+
+    累计净值（类 AD 线）是看顶底背离的那条：指数收盘创新高而净值线不创新高 =
+    顶背离。响应里带 `benchmark`（上证指数收盘点位，与 `dates` 等长）叠图对照。
+    """
+    rows = list(session.scalars(select(BreadthDaily).order_by(BreadthDaily.trade_date)))
+    if not rows:
+        raise HTTPException(status_code=404, detail="暂无市场宽度数据，请先执行采集或回补")
+
+    diff60 = [nhnl.diff(row.high60, row.low60) for row in rows]
+    diff250 = [nhnl.diff(row.high250, row.low250) for row in rows]
+    cum60 = nhnl.cumulative(diff60)
+    cum250 = nhnl.cumulative(diff250)
+
+    tail = rows[-days:] if days < len(rows) else rows
+    offset = len(rows) - len(tail)
+    dates = [row.trade_date for row in tail]
+    last = rows[-1]
+    return NhNlOut(
+        dates=dates,
+        diff60=diff60[offset:],
+        diff250=diff250[offset:],
+        cum60=cum60[offset:],
+        cum250=cum250[offset:],
+        coverage=len(rows),
+        latest=NhNlLatest(
+            trade_date=last.trade_date,
+            high60=last.high60,
+            low60=last.low60,
+            diff60=diff60[-1],
+            high250=last.high250,
+            low250=last.low250,
+            diff250=diff250[-1],
+        ),
+        benchmark=_benchmark_series(session, dates),
+    )
+
+
+@router.get("/obv", response_model=ObvOut)
+def volume_obv(
+    days: int = Query(
+        OBV_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
+    ),
+    session: Session = Depends(get_db),
+) -> ObvOut:
+    """量能潮 OBV：上涨日累加成交额、下跌日扣减的累计净额（上证指数口径）。
+
+    原始值读 `index_daily` 的基准指数（与恐贪基准同源），OBV 与成交额分位
+    **读取时现算**（见 `services/obv.py`），不建新表。分位是成交额在滚动 250
+    个交易日里的中位秩（与恐贪 / ERP 同一套 `percentile_score`），**必须读全表**
+    算分位再切展示窗口 —— 截断历史会把窗口喂瘦、算出来的分位偏高。
+
+    用法：OBV 与指数点位的背离 —— 指数新高而 OBV 不新高 = 量能跟不上。
+    """
+    rows = list(
+        session.scalars(
+            select(IndexDaily)
+            .where(IndexDaily.code == BENCHMARK_CODE)
+            .order_by(IndexDaily.trade_date)
+        )
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="暂无指数数据，请先执行采集或回补")
+
+    pcts = [row.pct_chg for row in rows]
+    amounts = [row.amount for row in rows]
+    obv_series = obv.build(pcts, amounts)
+    changes = obv.daily_change(pcts, amounts)
+
+    # 成交额分位：滚动 250 日窗口，与 ERP 端点同一套算法（窗口内过滤 None）
+    percentiles: list[float | None] = []
+    for i, value in enumerate(amounts):
+        if value is None:
+            percentiles.append(None)
+            continue
+        window = [v for v in amounts[max(0, i - WINDOW + 1) : i + 1] if v is not None]
+        percentiles.append(percentile_score(window, value))
+
+    tail = rows[-days:] if days < len(rows) else rows
+    offset = len(rows) - len(tail)
+    last_idx = len(rows) - 1
+    last = rows[-1]
+    return ObvOut(
+        dates=[row.trade_date for row in tail],
+        obv=obv_series[offset:],
+        obv_change=changes[offset:],
+        amount=amounts[offset:],
+        percentile=percentiles[offset:],
+        window=WINDOW,
+        coverage=len(rows),
+        latest=ObvLatest(
+            trade_date=last.trade_date,
+            amount=last.amount,
+            obv_change=changes[last_idx],
+            obv=obv_series[last_idx],
+            percentile=percentiles[last_idx],
         ),
     )
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
-import type { Breadth, Erp, FearGreed, FuturesBasis, IndexHistory, IndexSeries, RelayTemp, Sentiment } from '../api/types'
+import type { Breadth, Erp, FearGreed, FuturesBasis, IndexHistory, IndexSeries, NhNl, Obv, RelayTemp, Sentiment } from '../api/types'
 import Alert from '../components/Alert'
 import BreadthThermometerPanel from '../components/BreadthThermometerPanel'
 import EChart from '../components/EChart'
@@ -9,6 +9,8 @@ import ErpPanel from '../components/ErpPanel'
 import FearGreedPanel from '../components/FearGreedPanel'
 import FuturesBasisPanel from '../components/FuturesBasisPanel'
 import Layout from '../components/Layout'
+import NhNlPanel from '../components/NhNlPanel'
+import ObvPanel from '../components/ObvPanel'
 import Panel from '../components/Panel'
 import RelayTempPanel from '../components/RelayTempPanel'
 import {
@@ -72,6 +74,8 @@ export default function SentimentPage() {
   const [relayTemp, setRelayTemp] = useState<RelayTemp | null>(null)
   const [futuresBasis, setFuturesBasis] = useState<FuturesBasis | null>(null)
   const [erp, setErp] = useState<Erp | null>(null)
+  const [nhNl, setNhNl] = useState<NhNl | null>(null)
+  const [obv, setObv] = useState<Obv | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -79,15 +83,18 @@ export default function SentimentPage() {
     Promise.all([
       api.indexHistory(120),
       api.sentimentSeries(60),
-      // 恐贪 / 宽度 / 接力 / 基差 / ERP 都是增强读数：库里还没数据时接口返回 404，
-      // **不能**因此把整页情绪指标打白。失败一律回落 null，由面板自己显示「暂无数据」
+      // 恐贪 / 宽度 / 接力 / 基差 / ERP / NH-NL / OBV 都是增强读数：库里还没数据时
+      // 接口返回 404，**不能**因此把整页情绪指标打白。失败一律回落 null，
+      // 由面板自己显示「暂无数据」
       api.fearGreed(250).catch(() => null),
       api.breadth(250).catch(() => null),
       api.relayTemp(120).catch(() => null),
       api.futuresBasis(250).catch(() => null),
       api.erp(250).catch(() => null),
+      api.nhNl(250).catch(() => null),
+      api.obv(250).catch(() => null),
     ])
-      .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData, futuresBasisData, erpData]) => {
+      .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData, futuresBasisData, erpData, nhNlData, obvData]) => {
         setHistory(historyData)
         // 情绪指标只有数据源保留窗口内的日期才有值，其余为 null
         setSentiment(sentimentData.filter((item) => item.limit_up_count != null))
@@ -96,6 +103,8 @@ export default function SentimentPage() {
         setRelayTemp(relayTempData)
         setFuturesBasis(futuresBasisData)
         setErp(erpData)
+        setNhNl(nhNlData)
+        setObv(obvData)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -317,6 +326,12 @@ export default function SentimentPage() {
         <FuturesBasisPanel data={futuresBasis} loading={loading} delay={80} />
         <ErpPanel data={erp} loading={loading} delay={90} />
 
+        {/* NH-NL 与量能潮是「广度与量能」的两面：一个看指数新高有没有广度支撑
+            （顶底背离），一个看钱在往哪个方向走（量价背离）。都在指数走势之前 ——
+            看完它们再看指数，走势就不只是一个点位了 */}
+        <NhNlPanel data={nhNl} loading={loading} delay={92} />
+        <ObvPanel data={obv} loading={loading} delay={94} />
+
         <Panel
           title="指数走势"
           meta={
@@ -436,6 +451,22 @@ export default function SentimentPage() {
               分位是它在滚动 <span className="num">250</span> 个交易日里的位置
               （&gt;80% 是一年最便宜的一档，&lt;20% 最贵）。PE 来自 iFinD、
               国债收益率来自公开数据，曲线取最近 <span className="num">250</span> 个交易日
+            </li>
+            <li>
+              · NH-NL 新高新低扩散 = 创 <span className="num">60 / 250</span> 日收盘新高家数
+              − 新低家数（与宽度温度计同一份原始值）；图上的净值线是差值的
+              <span className="text-fg">逐日累计</span>（类 AD 线），虚线是
+              <span className="text-fg">上证指数收盘点位</span> —— 指数新高而净值线不新高 =
+              <span className="text-fg">顶背离</span>，指数新低而净值线不再下探 = 底背离。
+              250 日口径在站内历史不足一年时为空（图上断开，不是 0）
+            </li>
+            <li>
+              · 量能潮 OBV = 上涨日累加成交额、下跌日扣减的
+              <span className="text-fg">累计净额</span>（上证指数口径，与恐贪同一基准）——
+              指数新高而 OBV 不新高 = <span className="text-fg">量能跟不上</span>；
+              蓝线是成交额在滚动 <span className="num">250</span> 个交易日里的分位
+              （&gt;80% 是一年量能最大的一档，&lt;20% 最冷清）。曲线取最近
+              <span className="num">250</span> 个交易日
             </li>
           </ul>
         </div>
