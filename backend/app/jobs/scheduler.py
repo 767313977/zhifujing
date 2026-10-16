@@ -810,6 +810,9 @@ class DailyScheduler:
         # 市场宽度温度计：同样只读库（stock_daily 窗口函数反算）、零配额，
         # 依赖与恐贪相同（必须在 `_collect_kline` 之后）。
         self._collect_breadth(today)
+        # 平均股价（等权，自算）：同样只读库（stock_daily 全市场均值）、零配额，
+        # 依赖与宽度相同（必须在 `_collect_kline` 之后）
+        self._collect_avg_price(today)
         # 期指年化基差：走 akshare、零配额；不依赖当日采集结果（期货与现货源
         # 自己带当日收盘），但为了与宽度同一套「日历骨架」口径，也排在采集之后
         self._collect_futures_basis(today)
@@ -875,6 +878,23 @@ class DailyScheduler:
             self._tail_failures.append("breadth")
             return
         logger.info("市场宽度 %s：重算写入 %d 天", trade_date, written)
+
+    def _collect_avg_price(self, trade_date: date) -> None:
+        """平均股价（等权，自算）：只读库（stock_daily 全市场均值）、零配额，失败只登记。
+
+        与宽度 / 恐贪同一个自愈策略：`refresh()` 重算最近若干个交易日，这条序列还
+        不存在时自动退回全量回补。**必须在 `_collect_kline` 之后** —— 要用当天的
+        全市场个股日线。
+        """
+        from app.jobs.collect_avg_price import refresh
+
+        try:
+            written = refresh()
+        except Exception:  # noqa: BLE001 - 增强读数，不该拖垮尾部链
+            logger.exception("平均股价计算失败")
+            self._tail_failures.append("avg_price")
+            return
+        logger.info("平均股价 %s：重算写入 %d 天", trade_date, written)
 
     def _collect_futures_basis(self, trade_date: date) -> None:
         """期指年化基差：走 akshare、零配额，失败只登记不影响其它步骤。
