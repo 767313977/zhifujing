@@ -28,6 +28,7 @@ import type {
   LimitPool,
   LimitThemes,
   LhbItem,
+  MarginTemp,
   MarketOverview,
   Me,
   Member,
@@ -269,6 +270,9 @@ export const api = {
 
   // ETF 净申赎曲线。默认 250 ≈ 一年：份额的申赎潮与指数周期对齐
   etfNetFlow: (days = 250) => request<EtfNetFlow>(`/market/etf-net-subscription?days=${days}`),
+
+  // 两融杠杆温度曲线。默认 250 ≈ 一年（与 margin_daily 的深度相称）
+  marginTemp: (days = 250) => request<MarginTemp>(`/market/margin-temp?days=${days}`),
 
   limitPool: (type: PoolType, date?: string | null) =>
     request<LimitPool>(

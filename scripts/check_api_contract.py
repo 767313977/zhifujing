@@ -147,6 +147,15 @@ CHECKS = [
         "get",
         "days",
     ),
+    # 两融杠杆温度曲线取多少天（余额是慢变量，默认 250 ≈ 一年）
+    (
+        "两融杠杆温度取多少天",
+        "frontend/src/api/client.ts",
+        r"marginTemp:\s*\(days\s*=\s*(\d+)\)",
+        "/api/market/margin-temp",
+        "get",
+        "days",
+    ),
 ]
 
 

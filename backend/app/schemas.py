@@ -463,6 +463,46 @@ class EtfFlowOut(BaseModel):
     benchmark: FearGreedBenchmark | None
 
 
+# ---- 两融杠杆温度
+
+
+class MarginTempLatest(BaseModel):
+    """两融杠杆温度的最新一天读数。金额单位统一为**亿元**（原始口径，接口层不换算）。"""
+
+    trade_date: date
+    # 沪 + 深合计两融余额（亿元）
+    balance: float | None
+    # 较前一交易日的增减（亿元，带正负）
+    balance_chg: float | None
+    # 20 日变化率（%）
+    chg20: float | None
+    # 杠杆温度：20 日变化率在滚动窗口里的中位秩（0-100）
+    temperature: float | None
+
+
+class MarginTempOut(BaseModel):
+    """两融杠杆温度序列：余额走势 + 20 日变化率 + 分位温度。
+
+    各数组与 `dates` 严格等长。余额缺失（两所只要有一所没披露就跳过该日，避免把
+    「深市待披露」当成「深市归零」）的日子整点留 null，图上断线、不补 0。
+    """
+
+    dates: list[date]
+    # 沪深合计两融余额（亿元）
+    balance: list[float | None]
+    # 20 日变化率（%）
+    chg20: list[float | None]
+    # 温度：chg20 在滚动 `window` 个观测窗口里的中位秩（0-100）
+    temperature: list[float | None]
+    # 温度的分位窗口（交易日）
+    window: int
+    # 变化率回溯的观测数
+    chg_days: int
+    # 表内可用交易日数（不是窗口长度）
+    coverage: int
+    latest: MarginTempLatest | None
+
+
 class MarketOverview(BaseModel):
     trade_date: date
     indexes: list[IndexQuote]

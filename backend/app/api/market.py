@@ -17,6 +17,7 @@ from app.models import (
     FuturesBasisDaily,
     IndexDaily,
     LimitPool,
+    MarginDaily,
     MarketSentiment,
 )
 from app.schemas import (
@@ -38,6 +39,8 @@ from app.schemas import (
     IndexHistory,
     IndexQuote,
     IndexSeries,
+    MarginTempLatest,
+    MarginTempOut,
     MarketOverview,
     NhNlLatest,
     NhNlOut,
@@ -49,7 +52,7 @@ from app.schemas import (
     SentimentOut,
     TurnoverSeries,
 )
-from app.services import etf_flow, nhnl, obv, relay_temp
+from app.services import etf_flow, margin_temp, nhnl, obv, relay_temp
 from app.services.fear_greed import (
     WINDOW,
     bands,
@@ -107,6 +110,10 @@ OBV_DAYS = 250
 # ETF 净申赎曲线的默认回看长度。250 ≈ 一年：份额的申赎潮与指数的年度周期对齐，
 # 看的是「资金一年里是净进还是净出」以及它与指数的背离
 ETF_FLOW_DAYS = 250
+
+# 两融杠杆温度曲线的默认回看长度。250 ≈ 一年，与站内 margin_daily 的深度（约 263
+# 个交易日）相称；温度本身的分位窗口只有 120 日（见 services/margin_temp）
+MARGIN_TEMP_DAYS = 250
 
 
 def _bands() -> list[FearGreedBand]:
@@ -696,6 +703,88 @@ def etf_net_subscription(
         coverage=series.coverage,
         latest=latest,
         benchmark=_benchmark_series(session, series.dates),
+    )
+
+
+@router.get("/margin-temp", response_model=MarginTempOut)
+def margin_leverage_temp(
+    days: int = Query(
+        MARGIN_TEMP_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
+    ),
+    session: Session = Depends(get_db),
+) -> MarginTempOut:
+    """两融杠杆温度：沪深合计两融余额、20 日变化率与分位温度。
+
+    原始值读 `margin_daily`，余额 / 变化率 / 温度**读取时现算**
+    （见 `services/margin_temp.py`），不建新表。
+
+    **只在两个交易所都披露的日子算合计**：两所披露时点不同（实测深交所晚一天），
+    只有一所时相加会把「深市待披露」误报成「深市归零」—— 那个数字会小一大截、
+    看起来像两融骤降。回采会把这天补齐（`EDB_LOOKBACK_DAYS` 回看 30 天），所以这种
+    日子只可能出现在最新一两天，跳过去只是让曲线晚一天、不留永久缺口。
+
+    温度的分位**必须读全表**算再切展示窗口（与 OBV / ERP 同一套 `percentile_score`）——
+    截断历史会把窗口喂瘦、算出来的温度偏高。
+    """
+    rows = session.execute(
+        select(
+            MarginDaily.trade_date,
+            func.sum(
+                func.coalesce(MarginDaily.financing_balance, 0.0)
+                + func.coalesce(MarginDaily.securities_balance, 0.0)
+            ).label("total"),
+            func.count(MarginDaily.market).label("markets"),
+        )
+        .group_by(MarginDaily.trade_date)
+        .order_by(MarginDaily.trade_date)
+    ).all()
+    if not rows:
+        raise HTTPException(status_code=404, detail="暂无两融数据，请先执行采集或回补")
+
+    dates: list[date] = []
+    balances: list[float | None] = []
+    for day, total, markets in rows:
+        # 两所齐全、且合计为正才算数（合计为 0 是「两所都没数」，不是「真归零」）
+        ok = markets == 2 and total is not None and total > 0
+        dates.append(day)
+        balances.append(round(float(total), 1) if ok else None)
+
+    chg20 = margin_temp.change_rate(balances)
+
+    # 温度：chg20 在滚动 WINDOW 个观测窗口里的中位秩（窗口内过滤 None，与 OBV 同套路）
+    temperatures: list[float | None] = []
+    for i, value in enumerate(chg20):
+        if value is None:
+            temperatures.append(None)
+            continue
+        window = [v for v in chg20[max(0, i - margin_temp.WINDOW + 1) : i + 1] if v is not None]
+        temperatures.append(percentile_score(window, value))
+
+    tail = min(days, len(dates))
+    offset = len(dates) - tail
+    last = len(dates) - 1
+    balance = balances[last]
+    prev_balance = balances[last - 1] if last >= 1 else None
+    balance_chg = (
+        round(balance - prev_balance, 1)
+        if balance is not None and prev_balance is not None
+        else None
+    )
+    return MarginTempOut(
+        dates=dates[offset:],
+        balance=balances[offset:],
+        chg20=chg20[offset:],
+        temperature=temperatures[offset:],
+        window=margin_temp.WINDOW,
+        chg_days=margin_temp.CHG_DAYS,
+        coverage=sum(1 for value in balances if value is not None),
+        latest=MarginTempLatest(
+            trade_date=dates[last],
+            balance=balance,
+            balance_chg=balance_chg,
+            chg20=chg20[last],
+            temperature=temperatures[last],
+        ),
     )
 
 

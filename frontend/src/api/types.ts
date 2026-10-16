@@ -351,6 +351,37 @@ export interface EtfNetFlow {
   benchmark: FearGreedBenchmark | null
 }
 
+/** 两融杠杆温度的最新读数。金额单位为亿元 */
+export interface MarginTempLatest {
+  trade_date: string
+  /** 沪 + 深合计两融余额（亿元） */
+  balance: number | null
+  /** 较前一交易日的增减（亿元，带正负） */
+  balance_chg: number | null
+  /** 20 日变化率（%） */
+  chg20: number | null
+  /** 杠杆温度：20 日变化率在滚动窗口里的中位秩（0-100） */
+  temperature: number | null
+}
+
+/** 两融杠杆温度：余额走势 + 20 日变化率 + 分位温度。各数组与 dates 等长 */
+export interface MarginTemp {
+  dates: string[]
+  /** 沪深合计两融余额（亿元） */
+  balance: (number | null)[]
+  /** 20 日变化率（%） */
+  chg20: (number | null)[]
+  /** 温度：chg20 在滚动 window 个观测窗口里的中位秩（0-100） */
+  temperature: (number | null)[]
+  /** 温度的分位窗口（交易日） */
+  window: number
+  /** 变化率回溯的观测数 */
+  chg_days: number
+  /** 表内可用交易日数（不是窗口长度） */
+  coverage: number
+  latest: MarginTempLatest | null
+}
+
 /** 指数与个股广度是否背离。level 决定配色，detail 是判据里的原始数字 */
 export interface Divergence {
   level: 'weight_pull' | 'theme_active' | 'aligned'
