@@ -38,7 +38,7 @@ DEFAULT_BACKFILL_DAYS = 380
 REFRESH_DAYS = 30
 
 # 距交割不足这么多天就按下月合约年化（交割周换月，年化分母不能是个位数）
-ROLLOVER_MIN_DAYS = 3
+ROLLOVER_MIN_DAYS = 4
 
 # 品种配置：期货主力连续代码 / 现货指数代码 / 现货名称
 CONTRACTS: dict[str, dict[str, str]] = {
