@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
-import type { Breadth, Erp, FearGreed, FuturesBasis, IndexHistory, IndexSeries, NhNl, Obv, RelayTemp, Sentiment } from '../api/types'
+import type { Breadth, Erp, EtfNetFlow, FearGreed, FuturesBasis, IndexHistory, IndexSeries, NhNl, Obv, RelayTemp, Sentiment } from '../api/types'
 import Alert from '../components/Alert'
 import BreadthThermometerPanel from '../components/BreadthThermometerPanel'
 import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
 import ErpPanel from '../components/ErpPanel'
+import EtfFlowPanel from '../components/EtfFlowPanel'
 import FearGreedPanel from '../components/FearGreedPanel'
 import FuturesBasisPanel from '../components/FuturesBasisPanel'
 import Layout from '../components/Layout'
@@ -76,6 +77,7 @@ export default function SentimentPage() {
   const [erp, setErp] = useState<Erp | null>(null)
   const [nhNl, setNhNl] = useState<NhNl | null>(null)
   const [obv, setObv] = useState<Obv | null>(null)
+  const [etfNetFlow, setEtfNetFlow] = useState<EtfNetFlow | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -83,9 +85,9 @@ export default function SentimentPage() {
     Promise.all([
       api.indexHistory(120),
       api.sentimentSeries(60),
-      // 恐贪 / 宽度 / 接力 / 基差 / ERP / NH-NL / OBV 都是增强读数：库里还没数据时
-      // 接口返回 404，**不能**因此把整页情绪指标打白。失败一律回落 null，
-      // 由面板自己显示「暂无数据」
+      // 恐贪 / 宽度 / 接力 / 基差 / ERP / NH-NL / OBV / ETF 净申赎 都是增强读数：
+      // 库里还没数据时接口返回 404，**不能**因此把整页情绪指标打白。
+      // 失败一律回落 null，由面板自己显示「暂无数据」
       api.fearGreed(250).catch(() => null),
       api.breadth(250).catch(() => null),
       api.relayTemp(120).catch(() => null),
@@ -93,8 +95,9 @@ export default function SentimentPage() {
       api.erp(250).catch(() => null),
       api.nhNl(250).catch(() => null),
       api.obv(250).catch(() => null),
+      api.etfNetFlow(250).catch(() => null),
     ])
-      .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData, futuresBasisData, erpData, nhNlData, obvData]) => {
+      .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData, futuresBasisData, erpData, nhNlData, obvData, etfNetFlowData]) => {
         setHistory(historyData)
         // 情绪指标只有数据源保留窗口内的日期才有值，其余为 null
         setSentiment(sentimentData.filter((item) => item.limit_up_count != null))
@@ -105,6 +108,7 @@ export default function SentimentPage() {
         setErp(erpData)
         setNhNl(nhNlData)
         setObv(obvData)
+        setEtfNetFlow(etfNetFlowData)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -332,6 +336,10 @@ export default function SentimentPage() {
         <NhNlPanel data={nhNl} loading={loading} delay={92} />
         <ObvPanel data={obv} loading={loading} delay={94} />
 
+        {/* ETF 净申赎是「增量资金」那一条：OBV 说成交的钱往哪个方向走（存量博弈
+            也能放量），份额说场外有没有真的申购进来。紧跟量能潮之后 */}
+        <EtfFlowPanel data={etfNetFlow} loading={loading} delay={96} />
+
         <Panel
           title="指数走势"
           meta={
@@ -467,6 +475,17 @@ export default function SentimentPage() {
               蓝线是成交额在滚动 <span className="num">250</span> 个交易日里的分位
               （&gt;80% 是一年量能最大的一档，&lt;20% 最冷清）。曲线取最近
               <span className="num">250</span> 个交易日
+            </li>
+            <li>
+              · ETF 净申赎 = <span className="num">Σ(份额变化 × 当日收盘价)</span>，
+              <span className="text-fg">货币现金类整类剔除</span>（场内货基的份额单位与
+              覆盖都不可信，申赎本身也不代表方向性资金）；柱是单日净额、金线是它的
+              逐日累计，虚线是上证指数收盘点位 —— 指数新高而累计净额不新高 =
+              <span className="text-fg">增量资金跟不上</span>。
+              净额<span className="text-fg">只在两个覆盖达标的交易日之间</span>算
+              （快照日期取自行情源的「最新-交易日」，非交易日货基仍按自然日给净值、
+              跨境/QDII 常年滞后一天，这类碎片日不能当基准日）；覆盖不足的日子图上断开，是
+              <span className="text-fg">缺数据而不是零进出</span>
             </li>
           </ul>
         </div>

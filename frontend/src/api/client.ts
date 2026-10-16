@@ -13,6 +13,7 @@ import type {
   FundFlowMatrixOut,
   EtfFlowOrder,
   EtfIndustryBoard,
+  EtfNetFlow,
   FearGreed,
   FqMode,
   FundFlowOverview,
@@ -265,6 +266,9 @@ export const api = {
 
   // 量能潮 OBV 曲线。默认 250：与后端成交额分位窗口等长，量能潮汐是年度尺度
   obv: (days = 250) => request<Obv>(`/market/obv?days=${days}`),
+
+  // ETF 净申赎曲线。默认 250 ≈ 一年：份额的申赎潮与指数周期对齐
+  etfNetFlow: (days = 250) => request<EtfNetFlow>(`/market/etf-net-subscription?days=${days}`),
 
   limitPool: (type: PoolType, date?: string | null) =>
     request<LimitPool>(

@@ -14,10 +14,20 @@ EDB 按区间返回，但区间不能开太大（见 EDB_CHUNK_DAYS），
 
 import logging
 import re
+from collections import Counter
 from datetime import date, timedelta
 
+from sqlalchemy import select
+
 from app.db import session_scope, upsert, upsert_fill, upsert_many
-from app.models import EtfCategory, EtfShare, HsgtDaily, LhbInstitution, MarginDaily
+from app.models import (
+    EtfCategory,
+    EtfShare,
+    HsgtDaily,
+    LhbInstitution,
+    MarginDaily,
+    TradeCalendar,
+)
 from app.services.etf_category import classify
 from app.sources.akshare_source import AkshareSource
 from app.sources.ifind import IfindClient, normalize_code
@@ -47,6 +57,14 @@ ETF_METRICS = "基金份额、收盘价、成交额、涨跌幅"
 # 每次采集回看的日历天数。覆盖周末 + 最长节假日（8 天）后仍有大量余量 ——
 # 这样某天采集失败，下一次会自然把缺的补上，不必单独写回补逻辑。
 EDB_LOOKBACK_DAYS = 30
+
+# ETF 一次采集至少要写进这么多比例的行，否则整批丢弃。
+#
+# **宁可不写也不写半份快照。** 份额表是按「当日全市场」配对算净申赎的，
+# 半份快照（比如某一批 iFinD 被拒、只回了一半）落库后，第二天拿它当基准日
+# 只能配上那一半的代码，算出来的净申赎会明显偏小 —— 但**看起来是个正常数字**，
+# 比缺一天更危险。正常一次是 1700/1745 ≈ 97%，留到 60% 只挡真正的灾难。
+ETF_MIN_WRITE_RATIO = 0.6
 
 # 单次 EDB 查询的日历跨度上限。**必须分段**：iFinD 的自然语言 EDB 接口在
 # 区间过大时会**抽样**返回 —— 实测一次要 250 天只给回 106 天，而且缺口是
@@ -384,10 +402,19 @@ def collect_etf(ak: AkshareSource, ifind: IfindClient) -> int:
 
     quotes, calls = _fetch_etf_quotes(ifind, list(meta))
 
+    # 落库日期必须落在交易日历里（见下方 `off_calendar`）。日历表在本链路第一步
+    # 就采过（`collect_daily.run` 的 `calendar`），所以这里一定拿得到；
+    # 拿不到（手工单独调用）时跳过这道校验，宁可少一道也不把整批数据丢光。
+    with session_scope() as session:
+        calendar = set(session.scalars(select(TradeCalendar.trade_date)))
+    if not calendar:
+        logger.warning("交易日历为空，本次跳过「落库日期须是交易日」的校验")
+
     records: list[dict] = []
     categories: list[dict] = []
     unknown_date = 0
     missing_quote = 0
+    off_calendar = 0
     for code, info in meta.items():
         # 分类与日期、行情都无关，先写好 —— 别让缺数据连带把分类一起丢掉
         categories.append(
@@ -406,6 +433,15 @@ def collect_etf(ak: AkshareSource, ifind: IfindClient) -> int:
         if day is None:
             unknown_date += 1
             continue
+        if calendar and day not in calendar:
+            # 非交易日的快照一律不写（2026-10-16 修）：**货币基金的净值按自然日
+            # 公布**，周末/假期取回同花顺的「最新-交易日」就是当天（实测 09-27 周日、
+            # 10-07 国庆、10-11 周日各 14 行、全是货基）。这类行既不是本表口径
+            # （本表是「当日全市场快照」），又会把「上一交易日 → 当天」的配对
+            # 掐断 —— 份额表按日期配对算净申赎，中间插一个 14 行的假日期，
+            # 下一个正常日的基准日就变成它，能配上的只剩那 14 只。
+            off_calendar += 1
+            continue
         records.append(
             {
                 "trade_date": day,
@@ -423,10 +459,46 @@ def collect_etf(ak: AkshareSource, ifind: IfindClient) -> int:
         logger.warning("ETF 列表有 %d 只没有「最新-交易日」，已跳过（不猜日期）", unknown_date)
     if missing_quote:
         logger.warning("iFinD 没回 %d 只 ETF 的份额与行情，已跳过", missing_quote)
+    if off_calendar:
+        logger.warning(
+            "ETF 有 %d 只的「最新-交易日」不在交易日历里，已跳过（非交易日的净值快照）",
+            off_calendar,
+        )
     if not records:
         # 宁可不写也不写错日期：猜一个日期出来就会污染份额序列
         logger.warning("ETF 没取到任何带数据日期的行，本次不写份额")
         return 0
+
+    # 覆盖率守卫（见 `ETF_MIN_WRITE_RATIO`）：整批太薄就整批不写。
+    if len(records) < len(meta) * ETF_MIN_WRITE_RATIO:
+        logger.warning(
+            "ETF 本次只取到 %d/%d 只（不足 %.0f%%），整批不写 —— 半份快照会让下一次"
+            "配对只算到这一半的代码，得出一个偏小但看起来正常的净申赎",
+            len(records),
+            len(meta),
+            ETF_MIN_WRITE_RATIO * 100,
+        )
+        return 0
+
+    # 同一次采集里**跨日期**是正常的：跨境/QDII 基金的同花顺「最新-交易日」常年
+    # 比境内 ETF 晚一个交易日（实测 10-12 那 45 行与 10-13 的 1657 行**零交集**）。
+    # 各自按自己的日期落库，不在本地改齐 —— 改齐等于把 QDII 的份额挪到它还
+    # 没公布的那天，是编数据。读取端另有覆盖判据识别这种碎片日（见
+    # `services/etf_flow.usable_days`）。
+    spread = Counter(row["trade_date"] for row in records)
+    if len(spread) > 1:
+        main, main_count = spread.most_common(1)[0]
+        logger.info(
+            "ETF 本次写入跨 %d 个日期（主日期 %s %d 行；另 %s）—— 跨境/QDII 的"
+            "「最新-交易日」本就滞后一天",
+            len(spread),
+            main,
+            main_count,
+            ", ".join(
+                f"{day} {count} 行" for day, count in spread.most_common()[1:]
+            ),
+        )
+
     with session_scope() as session:
         # 分类用普通 upsert：它必须能被新词典**覆盖**（upsert_fill 只在
         # 新值为空时保留旧值，而分类永不为空，所以两者在这里等价，写 upsert 更直白）

@@ -138,6 +138,15 @@ CHECKS = [
         "get",
         "days",
     ),
+    # ETF 净申赎曲线取多少天（份额快照要去交易日历里筛，默认 250 ≈ 一年）
+    (
+        "ETF 净申赎取多少天",
+        "frontend/src/api/client.ts",
+        r"etfNetFlow:\s*\(days\s*=\s*(\d+)\)",
+        "/api/market/etf-net-subscription",
+        "get",
+        "days",
+    ),
 ]
 
 

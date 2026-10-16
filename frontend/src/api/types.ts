@@ -309,6 +309,48 @@ export interface Obv {
   latest: ObvLatest | null
 }
 
+/** ETF 净申赎：最近一个可算日的读数（页面顶部 chips）。金额单位一律是元 */
+export interface EtfNetFlowLatest {
+  trade_date: string
+  /** 当日净申赎（元，带正负；净赎回为负） */
+  net: number | null
+  /**
+   * 这笔净额跨了几个交易日：正常相邻两天为 1；> 1 说明中间有覆盖不足的日子
+   * （跨境/QDII 的滞后快照日），净额是「自上一个覆盖达标日以来」的累计
+   */
+  span: number | null
+  /** 窗口内逐日净申赎的累计（元，从窗口首日起算） */
+  cumulative: number | null
+  /** 近 5 个有数的交易日累计净申赎（元） */
+  sum5: number | null
+  /** 近 20 个有数的交易日累计净申赎（元） */
+  sum20: number | null
+}
+
+/**
+ * ETF 净申赎序列。`Σ(份额变化 × 当日收盘价)`，货币现金类整类剔除。
+ *
+ * **净额只在两个「覆盖达标」的交易日之间算**：快照日期来自行情源的
+ * 「最新-交易日」，而它不是全市场统一的一天（非交易日货基仍给自然日快照、
+ * 跨境/QDII 常年滞后一天）。覆盖不足的日子为 null，图上断开而不是画成 0。
+ */
+export interface EtfNetFlow {
+  dates: string[]
+  /** 单日净申赎（元，带正负） */
+  net: (number | null)[]
+  /** 每一天的净额所跨越的交易日数（1 = 相邻两天） */
+  span: (number | null)[]
+  /** 窗口内逐日累计（元，从 0 起；缺数的日子为 null，累加器保持不动） */
+  cumulative: (number | null)[]
+  /** 「覆盖达标」的行数下限，口径说明里要写出来 */
+  min_rows: number
+  /** 表内覆盖达标的交易日数（不是窗口长度） */
+  coverage: number
+  latest: EtfNetFlowLatest | null
+  /** 上证指数收盘点位（与 dates 等长），叠图看资金与点位的背离 */
+  benchmark: FearGreedBenchmark | null
+}
+
 /** 指数与个股广度是否背离。level 决定配色，detail 是判据里的原始数字 */
 export interface Divergence {
   level: 'weight_pull' | 'theme_active' | 'aligned'

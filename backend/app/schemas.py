@@ -419,6 +419,50 @@ class ObvOut(BaseModel):
     latest: ObvLatest | None
 
 
+# ---------------------------------------------------------------- ETF 净申赎
+#
+# 原始值是 `etf_share` 的逐日份额与收盘价；净申赎 = Σ(份额变化 × 当日收盘价)，
+# 读取时现算（见 `services/etf_flow.py`），不建新表。
+# **金额单位一律是元**（与 `api/funds` 的约定一致，前端负责换算成亿）。
+class EtfFlowLatest(BaseModel):
+    """最近一个可算日的净申赎读数（页面顶部的 chips）。"""
+
+    trade_date: date
+    # 当日净申赎（元，带正负；净赎回为负）
+    net: float | None
+    # 这笔净额跨了几个交易日：正常相邻两天为 1；> 1 说明中间有覆盖不足的日子
+    # （跨境/QDII 的滞后快照日），净额是「自上一个覆盖达标日以来」的累计
+    span: int | None
+    # 窗口内逐日净申赎的累计（元，从窗口首日起算）
+    cumulative: float | None
+    # 近 N 个有数的交易日累计净申赎（元），任一天缺数则为 null
+    sum5: float | None
+    sum20: float | None
+
+
+class EtfFlowOut(BaseModel):
+    """ETF 净申赎序列：单日净额 + 窗口内累计 + 基准指数。
+
+    各数组与 `dates` 严格等长。**日期按交易日历铺，净额只在两个「覆盖达标」的
+    交易日之间算**（达标 = 在日历里且快照不少于 `min_rows` 只）—— 覆盖不足的日子
+    整点留 null（图上断线、不补 0：断口是缺数据，0 是「一分钱没进」）。
+    """
+
+    dates: list[date]
+    # 单日净申赎（元，带正负）
+    net: list[float | None]
+    # 每一天的净额所跨越的交易日数（1 = 相邻两天）
+    span: list[int | None]
+    # 窗口内逐日累计（元，从 0 起；缺数的日子为 null，累加器保持不动）
+    cumulative: list[float | None]
+    # 「覆盖达标」的行数下限，口径说明里要写出来
+    min_rows: int
+    # 表内覆盖达标的交易日数（不是窗口长度）
+    coverage: int
+    latest: EtfFlowLatest | None
+    benchmark: FearGreedBenchmark | None
+
+
 class MarketOverview(BaseModel):
     trade_date: date
     indexes: list[IndexQuote]

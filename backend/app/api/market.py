@@ -12,6 +12,7 @@ from app.db import get_db
 from app.models import (
     BreadthDaily,
     ErpDaily,
+    EtfShare,
     FearGreedDaily,
     FuturesBasisDaily,
     IndexDaily,
@@ -24,6 +25,8 @@ from app.schemas import (
     DivergenceOut,
     ErpLatest,
     ErpOut,
+    EtfFlowLatest,
+    EtfFlowOut,
     FearGreedBand,
     FearGreedBenchmark,
     FearGreedBrief,
@@ -46,7 +49,7 @@ from app.schemas import (
     SentimentOut,
     TurnoverSeries,
 )
-from app.services import nhnl, obv, relay_temp
+from app.services import etf_flow, nhnl, obv, relay_temp
 from app.services.fear_greed import (
     WINDOW,
     bands,
@@ -100,6 +103,10 @@ NHNL_DAYS = 250
 
 # 量能潮曲线的默认回看长度。250 与成交额分位窗口同长：量能的潮起潮落是年度尺度
 OBV_DAYS = 250
+
+# ETF 净申赎曲线的默认回看长度。250 ≈ 一年：份额的申赎潮与指数的年度周期对齐，
+# 看的是「资金一年里是净进还是净出」以及它与指数的背离
+ETF_FLOW_DAYS = 250
 
 
 def _bands() -> list[FearGreedBand]:
@@ -635,6 +642,59 @@ def volume_obv(
             obv=obv_series[last_idx],
             percentile=percentiles[last_idx],
         ),
+    )
+
+
+@router.get("/etf-net-subscription", response_model=EtfFlowOut)
+def etf_net_subscription(
+    days: int = Query(
+        ETF_FLOW_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
+    ),
+    session: Session = Depends(get_db),
+) -> EtfFlowOut:
+    """ETF 净申赎：Σ(份额变化 × 当日收盘价)，及窗口内的累计净额。
+
+    原始值读 `etf_share` 的逐日份额与收盘价，净申赎**读取时现算**
+    （见 `services/etf_flow.py`），不建新表。
+
+    **只在两个「覆盖达标」的交易日之间算**，这是这张表面向申赎口径的关键：
+    快照的日期来自行情源的「最新-交易日」，而它**不是全市场统一的一天** ——
+    非交易日货基仍按自然日给净值快照（09-27/10-07/10-11 各 14 行），跨境/QDII
+    则常年比境内 ETF 晚一个交易日（10-12 的 45 行与 10-13 的 1657 行零交集）。
+    所以基准日取「上一个达标日」而不是紧邻的交易日，跨度如实由 `span` 标出。
+
+    货基（`货币现金` 类）整类剔除：份额单位与覆盖都不可信，计进去是噪声。
+
+    用法：累计净额与指数背离 —— 指数新高而累计净额不新高 = 增量资金跟不上了。
+    """
+    end = session.scalar(select(func.max(EtfShare.trade_date)))
+    if end is None:
+        raise HTTPException(status_code=404, detail="暂无 ETF 份额数据，请先执行采集或回补")
+
+    series = etf_flow.build_series(session, end, days)
+    if not series.dates:
+        raise HTTPException(status_code=404, detail="暂无 ETF 份额数据，请先执行采集或回补")
+
+    latest = None
+    if series.latest_index is not None:
+        index = series.latest_index
+        latest = EtfFlowLatest(
+            trade_date=series.dates[index],
+            net=series.net[index],
+            span=series.span[index],
+            cumulative=series.cumulative[index],
+            sum5=series.sums.get(5),
+            sum20=series.sums.get(20),
+        )
+    return EtfFlowOut(
+        dates=series.dates,
+        net=series.net,
+        span=series.span,
+        cumulative=series.cumulative,
+        min_rows=etf_flow.MIN_ROWS,
+        coverage=series.coverage,
+        latest=latest,
+        benchmark=_benchmark_series(session, series.dates),
     )
 
 
