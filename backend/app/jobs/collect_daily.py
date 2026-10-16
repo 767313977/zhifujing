@@ -1066,12 +1066,14 @@ class DailyCollector:
         盘前/凌晨/周末取到的都是上一交易日的快照，按「今天」写会造出假数据点。
         详见 `collect_funds.collect_etf`。
 
-        配额让路的**第二级**就停它（`PAUSE_ENHANCE`，约 59 次/天）。
-        比它先停的只有「命中前 50 只的 DDE 补齐」（70 次/天）；全市场日线属于地基，
+        配额让路的**第一级**就停它（`PAUSE_ENHANCE`，约 59 次/天）—— 让路链里最先
+        被牺牲的一项。它是目前**最便宜的纯增强**（59 次），而「命中前 50 只的 DDE
+        补齐」（70 次）有每天可见的下游（选股榜的 DDE 栏），所以排在它后面
+        （2026-10-16 对调，原委见 `services.usage` 的日耗表）。全市场日线属于地基，
         留在最后才停（顺序见 `services.usage.LEVEL_BUDGETS`）。
 
-        净申赎面板是它的下游，但缺一天只断一个点、累计线仍连续，不值得为它
-        把整个让路顺序往后挪（挪了要重算 `CORE_DAILY` 维持 `LEVEL_BUDGETS` 单调）。
+        净申赎面板是它的下游，但缺一天只断一个点、累计线仍连续 —— 这正是它敢排在
+        最前面的依据。
         """
         level = quota_level(date.today(), self.settings)
         if level >= QuotaLevel.PAUSE_ENHANCE:

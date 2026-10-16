@@ -34,11 +34,18 @@ PROJECTION_MIN_DAYS = 3
 # 实测 10-08 ~ 10-12 的整天消耗：181 / 175 / 154。拆开看，最贵的不是「地基」而是几项
 # **纯增强** —— 所以让路必须「先停增强、最后才动地基」：
 #
-#   命中前 50 只的 DDE 补齐   70 次/天  ← 最贵，少了它只是个股页那一栏短一点
-#   ETF（份额 / 行情）        59 次/天  ← 纯增强，没有下游
+#   ETF（份额 / 行情）        59 次/天  ← 纯增强，缺一天只让净申赎面板断一个点
+#   命中前 50 只的 DDE 补齐   70 次/天  ← 比 ETF 贵，但**选股榜前 50 只的 DDE 栏直接吃它**
 #   全市场日线                14 次/天  ← **地基**：形态选股、板块资金流都吃它
 #   DDE 全市场扫描            14 次/天  ← **地基**：板块资金流的逐股净流入来自它
 #   指数 / 涨停三池 / 情绪 / 板块 / 自选  约 43 次/天  ← 复盘主线，任何时候都保
+#
+# ⚠️ **2026-10-16：把 ETF 挪到最前面、命中 DDE 补齐退居第二。** 原顺序（2026-10-13
+# 起）是「命中 DDE 补齐先停」，理由是「少了它只是个股页那一栏短一点」—— 但实测
+# 2026-10-16 那天 top50 里仍有 **33 只**没补上，欠账是天天累积的：这一步在让路链里
+# 排第一，只要配额进入任何紧张档就第一个被牺牲，于是**用户每天真实要看的那个榜
+# 长期缺 DDE**。而 ETF 停了只影响净申赎面板的一个点（累计线仍连续）。两个都是纯增强，
+# 但前者有每天可见的下游、后者没有，所以把损失小的那个排在前面。
 #
 # ⚠️ 2026-10-13 之前是**反的**：一到紧张档第一个停的就是「全市场日线」，于是当天形态
 # 扫描失败（`_require_bars` 报「日线还没采到」）、板块资金流跟着跳过 —— 10-12 那天
@@ -50,9 +57,10 @@ PROJECTION_MIN_DAYS = 3
 # 修好批量之后 ETF 的真实日耗 = 1745 只 ÷ 30 ≈ **59 次**。
 #
 # 这个数不是摆设：**`ENHANCE_DAILY` 一动，`CORE_DAILY` 必须跟着动**，否则
-# `LEVEL_BUDGETS` 第 3、4 档就不再单调 —— `FULL − HIT − ENHANCE − BASE` 才是
+# `LEVEL_BUDGETS` 第 3、4 档就不再单调 —— `FULL − ENHANCE − HIT − BASE` 才是
 # 「连地基都停了」那一档该在的位置。这里保持
-# `CORE_DAILY = 200 − 70 − 59 − 28 = 43`。
+# `CORE_DAILY = 200 − 59 − 70 − 28 = 43`（这两项是相加关系、可交换，数值与
+# 2026-10-14 那版一致；变的只是先减谁 —— 那决定让路先停谁）。
 FULL_DAY_CALLS = 200  # 满负荷
 HIT_DDE_DAILY = 70  # 「命中前 50 只的 DDE 补齐」
 ENHANCE_DAILY = 59  # ETF（1745 只 ÷ 单批上限 30，2026-10-14 实测重算）
@@ -72,10 +80,10 @@ class QuotaLevel(IntEnum):
     """
 
     NORMAL = 0
-    # 停「命中前 50 只的 DDE 补齐」（70 次/天）
-    PAUSE_HIT_DDE = 1
-    # 再停 ETF 与概念兜底（约 59 次/天）
-    PAUSE_ENHANCE = 2
+    # 停 ETF（份额 / 行情，59 次/天）
+    PAUSE_ENHANCE = 1
+    # 再停「命中前 50 只的 DDE 补齐」（70 次/天）
+    PAUSE_HIT_DDE = 2
     # 再停全市场日线 + DDE 全市场扫描（28 次/天）—— 地基，停了形态/板块资金流一起缺
     PAUSE_KLINE = 3
     # 只保留指数 + 涨停三池 + 情绪这条主线
@@ -91,20 +99,20 @@ class QuotaLevel(IntEnum):
 #: 恒为正常档，把余额花光（额度不累积，留着没用）。
 #:
 #: 写成表而不是一串 if，是为了让「先停谁、后停谁」一眼看完 —— 调整顺序只动这里一处。
-#: 最后一档的日耗 = `FULL_DAY_CALLS − HIT_DDE_DAILY − ENHANCE_DAILY − BASE_DAILY`
+#: 最后一档的日耗 = `FULL_DAY_CALLS − ENHANCE_DAILY − HIT_DDE_DAILY − BASE_DAILY`
 #: （= `CORE_DAILY`，也就是「连地基都停了、只剩主线」）。
 LEVEL_BUDGETS: tuple[tuple[int, QuotaLevel], ...] = (
     (FULL_DAY_CALLS, QuotaLevel.NORMAL),
-    (FULL_DAY_CALLS - HIT_DDE_DAILY, QuotaLevel.PAUSE_HIT_DDE),
-    (FULL_DAY_CALLS - HIT_DDE_DAILY - ENHANCE_DAILY, QuotaLevel.PAUSE_ENHANCE),
+    (FULL_DAY_CALLS - ENHANCE_DAILY, QuotaLevel.PAUSE_ENHANCE),
+    (FULL_DAY_CALLS - ENHANCE_DAILY - HIT_DDE_DAILY, QuotaLevel.PAUSE_HIT_DDE),
     (CORE_DAILY, QuotaLevel.PAUSE_KLINE),
     (0, QuotaLevel.CORE_ONLY),
 )
 
 LEVEL_LABELS = {
     QuotaLevel.NORMAL: "正常",
-    QuotaLevel.PAUSE_HIT_DDE: "余下额度偏紧：已停命中前 50 只的 DDE 补齐",
-    QuotaLevel.PAUSE_ENHANCE: "余下额度不足：已停 ETF 与概念兜底",
+    QuotaLevel.PAUSE_ENHANCE: "余下额度偏紧：已停 ETF（份额 / 行情）",
+    QuotaLevel.PAUSE_HIT_DDE: "余下额度不足：已停 ETF 与命中前 50 只的 DDE 补齐",
     QuotaLevel.PAUSE_KLINE: "余下额度告急：已停全市场日线与 DDE 扫描（形态 / 板块资金流当天会缺）",
     QuotaLevel.CORE_ONLY: "余下额度只够主线：只保留指数 / 涨停三池 / 情绪",
 }
@@ -117,6 +125,8 @@ LEVEL_LABELS = {
 # **唯一一次用过**：2026-10-15。那天 `余下 200 ≥ 200 × 1` → 判**正常档**，会放全速跑
 # （实测约 170 次/天），跑完只剩零头给 10-16；而 10-16 是周期末、还要跑一整条主线。
 # 用户要求手动把它压到 ① 档（停命中前 50 只的 DDE 补齐，省约 70 次）。
+# （⚠️ 当时「① 档 = 命中 DDE 补齐」；2026-10-16 把 ETF 挪到 ① 档后，同一件事现在
+# 对应 **② 档** —— 照抄这条历史记录时别把档号弄反。）
 # 那天跑完就按下面这条规矩把条目删了 —— 下次要压档照着格式再加一行即可。
 #
 # 用法：`{日期: 档位}`，**只覆盖列出的那一天**，其余日期一律照常按阶梯自动判。
