@@ -29,6 +29,11 @@ dist-deploy/
 .env
 .env.local
 
+# Trae 工作区 MCP 配置。**必须排除**：它虽由 Trae 保护（模型改不了），
+# 但里面硬编码了 iFinD 的 Authorization token —— 一旦被 `git add .` 带上去，
+# 等于把密钥公开（本仓库是公开的）。
+.trae/mcp.json
+
 # 一键部署脚本（含服务器 SSH 密码，绝不能提交）
 push.ps1
 
