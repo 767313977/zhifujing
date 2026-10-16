@@ -131,6 +131,10 @@ def compute_range(start: date, end: date) -> list[dict]:
     rows: list[dict] = []
     for row in aggregated:
         day = row["trade_date"]
+        # 裸 SQL 的 trade_date 是 str，而 targets 里是 ORM 给的 date —— 不统一类型
+        # 的话 `day not in targets` 永远命中，静默写出 0 行（2026-10-16 线上踩到）
+        if not isinstance(day, date):
+            day = date.fromisoformat(str(day))
         if day not in targets:
             continue
         denom20 = row["denom20"] or 0
