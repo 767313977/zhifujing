@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
-import type { Breadth, FearGreed, IndexHistory, IndexSeries, RelayTemp, Sentiment } from '../api/types'
+import type { Breadth, Erp, FearGreed, FuturesBasis, IndexHistory, IndexSeries, RelayTemp, Sentiment } from '../api/types'
 import Alert from '../components/Alert'
 import BreadthThermometerPanel from '../components/BreadthThermometerPanel'
 import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
+import ErpPanel from '../components/ErpPanel'
 import FearGreedPanel from '../components/FearGreedPanel'
+import FuturesBasisPanel from '../components/FuturesBasisPanel'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import RelayTempPanel from '../components/RelayTempPanel'
@@ -68,6 +70,8 @@ export default function SentimentPage() {
   const [fearGreed, setFearGreed] = useState<FearGreed | null>(null)
   const [breadth, setBreadth] = useState<Breadth | null>(null)
   const [relayTemp, setRelayTemp] = useState<RelayTemp | null>(null)
+  const [futuresBasis, setFuturesBasis] = useState<FuturesBasis | null>(null)
+  const [erp, setErp] = useState<Erp | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -75,19 +79,23 @@ export default function SentimentPage() {
     Promise.all([
       api.indexHistory(120),
       api.sentimentSeries(60),
-      // 恐贪 / 宽度 / 接力都是增强读数：库里还没数据时接口返回 404，**不能**因此把
-      // 整页情绪指标打白。失败一律回落 null，由面板自己显示「暂无数据」
+      // 恐贪 / 宽度 / 接力 / 基差 / ERP 都是增强读数：库里还没数据时接口返回 404，
+      // **不能**因此把整页情绪指标打白。失败一律回落 null，由面板自己显示「暂无数据」
       api.fearGreed(250).catch(() => null),
       api.breadth(250).catch(() => null),
       api.relayTemp(120).catch(() => null),
+      api.futuresBasis(250).catch(() => null),
+      api.erp(250).catch(() => null),
     ])
-      .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData]) => {
+      .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData, futuresBasisData, erpData]) => {
         setHistory(historyData)
         // 情绪指标只有数据源保留窗口内的日期才有值，其余为 null
         setSentiment(sentimentData.filter((item) => item.limit_up_count != null))
         setFearGreed(fearGreedData)
         setBreadth(breadthData)
         setRelayTemp(relayTempData)
+        setFuturesBasis(futuresBasisData)
+        setErp(erpData)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -300,9 +308,14 @@ export default function SentimentPage() {
         <FearGreedPanel data={fearGreed} loading={loading} delay={40} />
 
         {/* 宽度与接力是恐贪的两块补镜：一个看「指数涨有没有广度支撑」，一个看
-            「打板生态热不热」。都在恐贪之后、指数走势之前 —— 三个温度计连着读 */}
+            「打板生态热不热」。都在恐贪之后、指数走势之前 —— 几个温度计连着读 */}
         <BreadthThermometerPanel data={breadth} loading={loading} delay={60} />
         <RelayTempPanel data={relayTemp} loading={loading} delay={70} />
+
+        {/* 基差与 ERP 是「钱怎么看后市」的两面：一个看期货对冲成本（负 = 贴水 = 谨慎），
+            一个看股票相对债券便不便宜（高 = 便宜）。紧跟在温度计之后 */}
+        <FuturesBasisPanel data={futuresBasis} loading={loading} delay={80} />
+        <ErpPanel data={erp} loading={loading} delay={90} />
 
         <Panel
           title="指数走势"
@@ -312,7 +325,7 @@ export default function SentimentPage() {
               <span className="ml-3 text-fg-dim">首日归一为 100 · 灰色柱为两市成交额</span>
             </span>
           }
-          delay={80}
+          delay={100}
         >
           {loading ? (
             <div className="flex h-[320px] items-center justify-center text-[14px] text-fg-dim">
@@ -407,6 +420,22 @@ export default function SentimentPage() {
               后等权平均（与恐贪的滚动分位不同，不看历史位置），≥3 项有效才出分；
               晋级率 = 昨日首板今日仍涨停的家数 ÷ 昨日首板家数。曲线取最近
               <span className="num">120</span> 个交易日
+            </li>
+            <li>
+              · 期指年化基差 = IF / IH / IC / IM 主力连续相对现货指数的基差年化：
+              基差 =（期货 − 现货）÷ 现货，<span className="text-fg">负值 = 贴水</span>
+              （中性策略的空头对冲成本，贴水越深越谨慎）；年化 = 基差 × 365 ÷ 距交割日
+              天数，交割日取交割月第三个周五，主力连续近似当月合约，
+              <span className="text-fg-muted">交割周换月有 2–3 天近似误差</span>
+              （顶部读数里的原始基差不受影响）。曲线取最近
+              <span className="num">250</span> 个交易日
+            </li>
+            <li>
+              · ERP 股债性价比 = 沪深300 盈利收益率（100 ÷ PE-TTM）− 10Y 国债收益率
+              （百分点），<span className="text-fg">越高 = 股票相对债券越便宜</span>；
+              分位是它在滚动 <span className="num">250</span> 个交易日里的位置
+              （&gt;80% 是一年最便宜的一档，&lt;20% 最贵）。PE 来自 iFinD、
+              国债收益率来自公开数据，曲线取最近 <span className="num">250</span> 个交易日
             </li>
           </ul>
         </div>

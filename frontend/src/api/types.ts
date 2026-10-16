@@ -186,6 +186,65 @@ export interface RelayTemp {
   latest: RelayTempLatest | null
 }
 
+/**
+ * 期指年化基差（`/market/futures-basis`）：IF / IH / IC / IM 四品种各一条年化线。
+ *
+ * 各序列数组与 `dates` **严格等长**，缺数的日子是 null（期现有一侧缺价的交易日
+ * 整天没采到），图上断线展示、别补 0 —— 0% 是「期现完全平水」，是个真实结论。
+ */
+export interface FuturesBasisLatest {
+  trade_date: string
+  code: string
+  name: string | null
+  /** (期货 − 现货) / 现货 × 100（%）。负值 = 贴水（对冲压力） */
+  basis_pct: number | null
+  /** 年化基差（%）：basis × 365 / 距交割日天数，交割周换月有 2–3 天近似误差 */
+  annual_pct: number | null
+  days_to_expiry: number | null
+}
+
+export interface FuturesBasisSeries {
+  code: string
+  name: string | null
+  annual_pct: (number | null)[]
+  basis_pct: (number | null)[]
+}
+
+export interface FuturesBasis {
+  dates: string[]
+  series: FuturesBasisSeries[]
+  /** 表内总天数（按交易日去重）：曲线背后有多少历史 */
+  coverage: number
+  latest: FuturesBasisLatest[]
+}
+
+/**
+ * ERP 股债性价比（`/market/erp`）：沪深300 盈利收益率 − 10Y 国债收益率（百分点）。
+ *
+ * **ERP 越高 = 股票相对债券越便宜**。分位是后端读取时现算的滚动 250 交易日
+ * 中位秩分位（与恐贪同一套），0–100。各数组与 `dates` 严格等长。
+ */
+export interface ErpLatest {
+  trade_date: string
+  erp: number | null
+  percentile: number | null
+  pe_ttm: number | null
+  bond_yield: number | null
+}
+
+export interface Erp {
+  dates: string[]
+  erp: (number | null)[]
+  percentile: (number | null)[]
+  pe_ttm: (number | null)[]
+  bond_yield: (number | null)[]
+  /** 分位窗口（交易日） */
+  window: number
+  /** 表内总天数：曲线背后有多少历史 */
+  coverage: number
+  latest: ErpLatest | null
+}
+
 /** 指数与个股广度是否背离。level 决定配色，detail 是判据里的原始数字 */
 export interface Divergence {
   level: 'weight_pull' | 'theme_active' | 'aligned'

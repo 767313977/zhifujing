@@ -511,6 +511,54 @@ class BreadthDaily(Base):
     universe_count: Mapped[int | None] = mapped_column(Integer)
 
 
+class FuturesBasisDaily(Base):
+    """期指年化基差的原始日度值（akshare 采集，读取侧不做二次加工）。
+
+    一行 = 一个交易日 × 一个期指品种（IF 沪深300 / IH 上证50 / IC 中证500 /
+    IM 中证1000）。期货价是主力连续合约收盘价，现货价是对应指数收盘价。
+
+    - `basis_pct` = (期货 − 现货) / 现货 × 100（%）。**负值 = 贴水**，
+      贴水越深说明对冲需求越旺（中性策略的空头成本）
+    - `annual_pct` = basis_pct × 365 / 距交割日天数（%）。交割日取交割月
+      第三个周五；主力连续近似当月合约，交割周换月那几天有 2–3 天近似误差
+      （口径写进 `jobs/collect_futures_basis.py` 与面板说明），原始基差不受影响
+    """
+
+    __tablename__ = "futures_basis_daily"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    # IF / IH / IC / IM
+    code: Mapped[str] = mapped_column(String(8), primary_key=True)
+    # 现货指数名：沪深300 / 上证50 / 中证500 / 中证1000
+    name: Mapped[str | None] = mapped_column(String(32))
+    future_close: Mapped[float | None] = mapped_column(Float)
+    spot_close: Mapped[float | None] = mapped_column(Float)
+    basis_pct: Mapped[float | None] = mapped_column(Float)
+    annual_pct: Mapped[float | None] = mapped_column(Float)
+    days_to_expiry: Mapped[int | None] = mapped_column(Integer)
+
+
+class ErpDaily(Base):
+    """ERP 股债性价比的原始日度值（沪深300 盈利收益率 − 10Y 国债收益率）。
+
+    - `pe_ttm`：沪深300 滚动市盈率（iFinD EDB，单位：倍）
+    - `bond_yield`：中国 10 年期国债收益率（akshare，单位：%）
+    - `erp` = 100 / PE − 10Y（百分点）。**ERP 越高 = 股票相对债券越便宜**；
+      历史分位（滚动 250 交易日）在读取时现算，复用恐贪的
+      `services/fear_greed.percentile_score`，所以改窗口不用回补数据
+    """
+
+    __tablename__ = "erp_daily"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    # 000300.SH / 沪深300（目前是固定一行口径，留着以防以后加中证 500 等）
+    index_code: Mapped[str | None] = mapped_column(String(16))
+    index_name: Mapped[str | None] = mapped_column(String(32))
+    pe_ttm: Mapped[float | None] = mapped_column(Float)
+    bond_yield: Mapped[float | None] = mapped_column(Float)
+    erp: Mapped[float | None] = mapped_column(Float)
+
+
 # ---- 会员与登录态（2026-09-28，设计见设计文档 §8.69）----
 #
 # 这三张表是「邀请码注册 + 登录」的全部存储。刻意**不引入任何第三方鉴权库**：

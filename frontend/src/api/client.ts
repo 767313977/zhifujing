@@ -7,6 +7,7 @@ import type {
   Breadth,
   DdeBoard,
   DdeOrder,
+  Erp,
   EtfFlowBoard,
   FundFlowHistoryOut,
   FundFlowMatrixOut,
@@ -16,6 +17,7 @@ import type {
   FqMode,
   FundFlowOverview,
   FundsSeries,
+  FuturesBasis,
   IndexHistory,
   InstitutionBoard,
   InstitutionOrder,
@@ -248,6 +250,13 @@ export const api = {
 
   // 短线接力温度曲线。默认与恐贪同长（120 ≈ 半年）
   relayTemp: (days = 120) => request<RelayTemp>(`/market/relay-temp?days=${days}`),
+
+  // 期指年化基差曲线。默认 250 天 ≈ 一年：贴水的季节性（分红季、对冲需求）要一年才完整
+  futuresBasis: (days = 250) =>
+    request<FuturesBasis>(`/market/futures-basis?days=${days}`),
+
+  // ERP 股债性价比曲线。默认 250：与后端分位窗口等长，股债性价比看的就是年度周期
+  erp: (days = 250) => request<Erp>(`/market/erp?days=${days}`),
 
   limitPool: (type: PoolType, date?: string | null) =>
     request<LimitPool>(

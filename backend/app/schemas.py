@@ -265,6 +265,81 @@ class RelayTempOut(BaseModel):
     latest: RelayTempLatest | None
 
 
+# ------------------------------------------------------------- 期指年化基差
+#
+# 原始值由 `jobs/collect_futures_basis.py` 落库（`futures_basis_daily` 表，
+# 一行 = 一天 × 一个品种），读取侧不做二次加工。
+
+
+class FuturesBasisLatest(BaseModel):
+    """最新一天一个品种的基差读数（页面顶部的 chips）。"""
+
+    trade_date: date
+    code: str
+    name: str | None
+    # (期货 − 现货) / 现货 × 100（%）。负值 = 贴水（对冲压力）
+    basis_pct: float | None
+    # 年化基差（%）：basis × 365 / 距交割日天数
+    annual_pct: float | None
+    days_to_expiry: int | None
+
+
+class FuturesBasisSeries(BaseModel):
+    """一个品种的年化 / 原始基差序列。各数组与 `FuturesBasisOut.dates` 严格等长，
+    缺数的日子是 null（期现有一侧缺价的交易日整天没采到，图上断线、不补 0）。"""
+
+    code: str
+    name: str | None
+    annual_pct: list[float | None]
+    basis_pct: list[float | None]
+
+
+class FuturesBasisOut(BaseModel):
+    """期指年化基差序列：IF / IH / IC / IM 四品种各一条年化线。"""
+
+    dates: list[date]
+    series: list[FuturesBasisSeries]
+    # 表内总天数（按 trade_date 去重）：说明曲线背后有多少历史
+    coverage: int
+    latest: list[FuturesBasisLatest]
+
+
+# --------------------------------------------------------------------- ERP
+#
+# 原始值由 `jobs/collect_erp.py` 落库（`erp_daily` 表）；历史分位读取时现算，
+# 复用恐贪的滚动 250 交易日中位秩分位（`services/fear_greed.percentile_score`）。
+
+
+class ErpLatest(BaseModel):
+    """最新一天的 ERP 读数（页面顶部的 chips）。"""
+
+    trade_date: date
+    erp: float | None
+    # 滚动 250 交易日分位（0-100）。ERP 越高 = 股票相对债券越便宜
+    percentile: float | None
+    pe_ttm: float | None
+    bond_yield: float | None
+
+
+class ErpOut(BaseModel):
+    """ERP 股债性价比序列：ERP（百分点）+ 它的滚动分位 + PE-TTM + 10Y 国债。
+
+    各数组与 `dates` 严格等长；PE 或国债缺一项的交易日整天没落库，
+    所以数组里没有半行 null 的日子（日期本身缺）。
+    """
+
+    dates: list[date]
+    erp: list[float | None]
+    percentile: list[float | None]
+    pe_ttm: list[float | None]
+    bond_yield: list[float | None]
+    # 分位窗口（交易日），口径说明里要写出来
+    window: int
+    # 表内总天数：说明这条曲线背后有多少历史
+    coverage: int
+    latest: ErpLatest | None
+
+
 class MarketOverview(BaseModel):
     trade_date: date
     indexes: list[IndexQuote]

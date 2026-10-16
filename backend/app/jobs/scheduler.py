@@ -810,6 +810,12 @@ class DailyScheduler:
         # 市场宽度温度计：同样只读库（stock_daily 窗口函数反算）、零配额，
         # 依赖与恐贪相同（必须在 `_collect_kline` 之后）。
         self._collect_breadth(today)
+        # 期指年化基差：走 akshare、零配额；不依赖当日采集结果（期货与现货源
+        # 自己带当日收盘），但为了与宽度同一套「日历骨架」口径，也排在采集之后
+        self._collect_futures_basis(today)
+        # ERP 股债性价比：PE 走 iFinD EDB（日常 1 次调用），挂尾部链、
+        # 失败只登记（增强读数）；国债走 akshare 零配额
+        self._collect_erp(today)
         self._scan_patterns(today)
         # 命中前 N 只的**日线**补齐：形态页那张 K 线读的就是 `stock_daily`，某只的最后
         # 一根早于最近交易日，图上最新几天就是断的（2026-10-09 用户要求）。
@@ -869,6 +875,38 @@ class DailyScheduler:
             self._tail_failures.append("breadth")
             return
         logger.info("市场宽度 %s：重算写入 %d 天", trade_date, written)
+
+    def _collect_futures_basis(self, trade_date: date) -> None:
+        """期指年化基差：走 akshare、零配额，失败只登记不影响其它步骤。
+
+        与宽度同一个自愈策略：`refresh()` 重算最近若干个交易日，表为空时自动
+        退回全量回补（新部署第一趟就自带历史）。
+        """
+        from app.jobs.collect_futures_basis import refresh
+
+        try:
+            written = refresh()
+        except Exception:  # noqa: BLE001 - 基差是增强读数，不该拖垮尾部链
+            logger.exception("期指基差计算失败")
+            self._tail_failures.append("futures_basis")
+            return
+        logger.info("期指基差 %s：重算写入 %d 行", trade_date, written)
+
+    def _collect_erp(self, trade_date: date) -> None:
+        """ERP 股债性价比：PE 走 iFinD EDB（日常 1 次调用），失败只登记。
+
+        配额或网络失败时整步跳过、次日自愈（`refresh()` 重算最近若干个交易日，
+        表为空时自动退回全量回补）—— 增强读数不该拖垮尾部链。
+        """
+        from app.jobs.collect_erp import refresh
+
+        try:
+            written = refresh()
+        except Exception:  # noqa: BLE001 - ERP 是增强读数，不该拖垮尾部链
+            logger.exception("ERP 计算失败")
+            self._tail_failures.append("erp")
+            return
+        logger.info("ERP %s：重算写入 %d 天", trade_date, written)
 
     def _scan_patterns(self, trade_date: date) -> None:
         """全市场形态扫描。

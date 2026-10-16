@@ -9,16 +9,29 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
 from app.db import get_db
-from app.models import BreadthDaily, FearGreedDaily, IndexDaily, LimitPool, MarketSentiment
+from app.models import (
+    BreadthDaily,
+    ErpDaily,
+    FearGreedDaily,
+    FuturesBasisDaily,
+    IndexDaily,
+    LimitPool,
+    MarketSentiment,
+)
 from app.schemas import (
     BreadthLatest,
     BreadthOut,
     DivergenceOut,
+    ErpLatest,
+    ErpOut,
     FearGreedBand,
     FearGreedBenchmark,
     FearGreedBrief,
     FearGreedLatest,
     FearGreedOut,
+    FuturesBasisLatest,
+    FuturesBasisOut,
+    FuturesBasisSeries,
     IndexHistory,
     IndexQuote,
     IndexSeries,
@@ -30,7 +43,14 @@ from app.schemas import (
     TurnoverSeries,
 )
 from app.services import relay_temp
-from app.services.fear_greed import WINDOW, bands, build_series, latest, slice_window
+from app.services.fear_greed import (
+    WINDOW,
+    bands,
+    build_series,
+    latest,
+    percentile_score,
+    slice_window,
+)
 from app.services.index_tech import (
     BENCHMARK_CODE,
     LOOKBACK_BARS,
@@ -64,6 +84,12 @@ BREADTH_DAYS = 250
 
 # 接力温度曲线的默认回看长度（交易日）。与恐贪同长：打板生态的冷热摆动也是半年尺度
 RELAY_TEMP_DAYS = 120
+
+# 期指基差曲线的默认回看长度。250 ≈ 一年，贴水的季节性（分红季、对冲需求）要一年才完整
+FUTURES_BASIS_DAYS = 250
+
+# ERP 曲线的默认回看长度。250 与分位窗口同长：股债性价比是慢变量，看的就是年度周期
+ERP_DAYS = 250
 
 
 def _bands() -> list[FearGreedBand]:
@@ -373,6 +399,120 @@ def relay_temperature(
             session.scalar(select(func.count()).select_from(MarketSentiment)) or 0
         ),
         latest=RelayTempLatest(**head, subs=series[-1]["subs"]) if head else None,
+    )
+
+
+@router.get("/futures-basis", response_model=FuturesBasisOut)
+def futures_basis(
+    days: int = Query(
+        FUTURES_BASIS_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
+    ),
+    session: Session = Depends(get_db),
+) -> FuturesBasisOut:
+    """期指年化基差：IF / IH / IC / IM 主力连续相对现货指数的年化基差（%）。
+
+    原始值由 `jobs/collect_futures_basis.py` 落库，这里只读不加工。
+    **负值 = 贴水**（对冲成本/压力）；年化在交割周换月有 2–3 天近似误差，
+    原始基差不受影响（口径见面板说明）。期现有一侧缺价的交易日整天没采到，
+    序列留 null，图上断线、不补 0。
+    """
+    rows = list(
+        session.scalars(
+            select(FuturesBasisDaily).order_by(
+                FuturesBasisDaily.trade_date, FuturesBasisDaily.code
+            )
+        )
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="暂无期指基差数据，请先执行采集或回补")
+
+    all_dates = sorted({row.trade_date for row in rows})
+    tail_dates = all_dates[-days:] if days < len(all_dates) else all_dates
+    wanted = set(tail_dates)
+
+    # 按品种分组对齐到 dates：某品种某天缺数留 null（与其它品种断线互不牵连）
+    by_code: dict[str, dict[date, FuturesBasisDaily]] = {}
+    for row in rows:
+        if row.trade_date in wanted:
+            by_code.setdefault(row.code, {})[row.trade_date] = row
+
+    series = [
+        FuturesBasisSeries(
+            code=code,
+            name=next(iter(day_map.values())).name,
+            annual_pct=[day_map[day].annual_pct if day in day_map else None for day in tail_dates],
+            basis_pct=[day_map[day].basis_pct if day in day_map else None for day in tail_dates],
+        )
+        for code, day_map in sorted(by_code.items())
+    ]
+
+    last_day = all_dates[-1]
+    latest = [
+        FuturesBasisLatest(
+            trade_date=row.trade_date,
+            code=row.code,
+            name=row.name,
+            basis_pct=row.basis_pct,
+            annual_pct=row.annual_pct,
+            days_to_expiry=row.days_to_expiry,
+        )
+        for row in rows
+        if row.trade_date == last_day
+    ]
+    return FuturesBasisOut(
+        dates=tail_dates,
+        series=series,
+        coverage=len(all_dates),
+        latest=latest,
+    )
+
+
+@router.get("/erp", response_model=ErpOut)
+def erp(
+    days: int = Query(
+        ERP_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
+    ),
+    session: Session = Depends(get_db),
+) -> ErpOut:
+    """ERP 股债性价比：沪深300 盈利收益率（100/PE-TTM）− 10Y 国债收益率（百分点）。
+
+    原始值由 `jobs/collect_erp.py` 落库；**历史分位读取时现算**（滚动 250 个
+    交易日中位秩，与恐贪同一套 `percentile_score`），改窗口不用回补数据。
+    ERP 越高 = 股票相对债券越便宜。
+    """
+    rows = list(session.scalars(select(ErpDaily).order_by(ErpDaily.trade_date)))
+    if not rows:
+        raise HTTPException(status_code=404, detail="暂无 ERP 数据，请先执行采集或回补")
+
+    # 分位必须读全表算（与恐贪同理），展示窗口只切最后 days 天
+    erp_values = [row.erp for row in rows]
+    percentiles: list[float | None] = []
+    for i, value in enumerate(erp_values):
+        if value is None:
+            percentiles.append(None)
+            continue
+        window = [v for v in erp_values[max(0, i - WINDOW + 1) : i + 1] if v is not None]
+        percentiles.append(percentile_score(window, value))
+
+    tail = rows[-days:] if days < len(rows) else rows
+    offset = len(rows) - len(tail)
+    tail_pct = percentiles[offset:]
+    last = rows[-1]
+    return ErpOut(
+        dates=[row.trade_date for row in tail],
+        erp=[row.erp for row in tail],
+        percentile=tail_pct,
+        pe_ttm=[row.pe_ttm for row in tail],
+        bond_yield=[row.bond_yield for row in tail],
+        window=WINDOW,
+        coverage=len(rows),
+        latest=ErpLatest(
+            trade_date=last.trade_date,
+            erp=last.erp,
+            percentile=percentiles[-1],
+            pe_ttm=last.pe_ttm,
+            bond_yield=last.bond_yield,
+        ),
     )
 
 

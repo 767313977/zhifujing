@@ -102,6 +102,24 @@ CHECKS = [
         "get",
         "days",
     ),
+    # 期指年化基差曲线取多少天（贴水的季节性是慢变量，默认 250 ≈ 一年）
+    (
+        "期指基差取多少天",
+        "frontend/src/api/client.ts",
+        r"futuresBasis:\s*\(days\s*=\s*(\d+)\)",
+        "/api/market/futures-basis",
+        "get",
+        "days",
+    ),
+    # ERP 股债性价比曲线取多少天（与后端分位窗口等长，默认 250）
+    (
+        "ERP 取多少天",
+        "frontend/src/api/client.ts",
+        r"erp:\s*\(days\s*=\s*(\d+)\)",
+        "/api/market/erp",
+        "get",
+        "days",
+    ),
 ]
 
 
