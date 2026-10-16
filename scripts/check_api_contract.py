@@ -165,6 +165,15 @@ CHECKS = [
         "get",
         "days",
     ),
+    # 中国波指（QVIX）曲线取多少天（默认 250，与分位窗口等长）
+    (
+        "中国波指取多少天",
+        "frontend/src/api/client.ts",
+        r"volatility:\s*\(days\s*=\s*(\d+)\)",
+        "/api/market/volatility",
+        "get",
+        "days",
+    ),
 ]
 
 

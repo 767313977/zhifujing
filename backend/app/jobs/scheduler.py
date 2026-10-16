@@ -819,6 +819,8 @@ class DailyScheduler:
         # ERP 股债性价比：PE 走 iFinD EDB（日常 1 次调用），挂尾部链、
         # 失败只登记（增强读数）；国债走 akshare 零配额
         self._collect_erp(today)
+        # 中国波指（QVIX）：走 akshare、零配额；接口一次给全历史，每次全量 upsert
+        self._collect_qvix(today)
         self._scan_patterns(today)
         # 命中前 N 只的**日线**补齐：形态页那张 K 线读的就是 `stock_daily`，某只的最后
         # 一根早于最近交易日，图上最新几天就是断的（2026-10-09 用户要求）。
@@ -895,6 +897,22 @@ class DailyScheduler:
             self._tail_failures.append("avg_price")
             return
         logger.info("平均股价 %s：重算写入 %d 天", trade_date, written)
+
+    def _collect_qvix(self, trade_date: date) -> None:
+        """中国波指（QVIX）：走 akshare、零 iFinD 配额，失败只登记不影响其它步骤。
+
+        与其它 akshare 尾部步骤同一个取舍：**不依赖当天采集结果**（隐含波动率来自
+        期权市场自己的链），挂在尾部只是为了和别的指标同一时刻刷新。
+        """
+        from app.jobs.collect_qvix import refresh
+
+        try:
+            written = refresh()
+        except Exception:  # noqa: BLE001 - 波动率是增强读数，不该拖垮尾部链
+            logger.exception("中国波指采集失败")
+            self._tail_failures.append("qvix")
+            return
+        logger.info("中国波指 %s：写入 %d 行", trade_date, written)
 
     def _collect_futures_basis(self, trade_date: date) -> None:
         """期指年化基差：走 akshare、零配额，失败只登记不影响其它步骤。

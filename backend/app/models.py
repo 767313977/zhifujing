@@ -511,6 +511,32 @@ class BreadthDaily(Base):
     universe_count: Mapped[int | None] = mapped_column(Integer)
 
 
+class VolatilityDaily(Base):
+    """中国波指（QVIX）日线：期权市场给出的隐含波动率，A 股的「恐慌指数」。
+
+    来源：**akshare 的 `index_option_50etf_qvix` / `index_option_300etf_qvix`**。
+    数据由**期权论坛**按方差互换思路合成，**不是**交易所官方 iVX（后者 2018 年已停更）——
+    所以加权方案不在我们手里，且依赖对方站点、改版就会断（取舍原委见
+    `jobs/collect_qvix.py`）。
+
+    ⚠️ 该接口**一次返回全历史**（50ETF 回溯到 2015-02-09），所以回补与日常增量是
+    同一件事：每次采集全量 upsert 一遍即可（几千行，很便宜），数据源修订历史也能同步。
+
+    单位是**百分数**（17.95 表示隐含波动率 17.95%）。**与指数反向** —— 指数跌、波动率升。
+    """
+
+    __tablename__ = "volatility_daily"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    code: Mapped[str] = mapped_column(String(16), primary_key=True)  # QVIX50 / QVIX300
+    name: Mapped[str | None] = mapped_column(String(32))
+    # 接口本来就给 OHLC，原样存下来（面板当前只用 close，但丢掉不可逆）
+    open: Mapped[float | None] = mapped_column(Float)
+    high: Mapped[float | None] = mapped_column(Float)
+    low: Mapped[float | None] = mapped_column(Float)
+    close: Mapped[float | None] = mapped_column(Float)
+
+
 class FuturesBasisDaily(Base):
     """期指年化基差的原始日度值（akshare 采集，读取侧不做二次加工）。
 

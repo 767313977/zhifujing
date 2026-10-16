@@ -64,6 +64,7 @@ import type {
   StockNews,
   StockProfile,
   StockThemes,
+  Volatility,
   WatchlistRow,
 } from './types'
 
@@ -282,6 +283,9 @@ export const api = {
   // 北向活跃度曲线。默认 250 ≈ 一年（与 hsgt_daily 的深度相称）
   northboundActivity: (days = 250) =>
     request<Northbound>(`/market/northbound-activity?days=${days}`),
+
+  // 中国波指（QVIX）曲线。默认 250 ≈ 一年（与分位窗口等长）
+  volatility: (days = 250) => request<Volatility>(`/market/volatility?days=${days}`),
 
   limitPool: (type: PoolType, date?: string | null) =>
     request<LimitPool>(

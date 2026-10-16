@@ -304,6 +304,51 @@ class FuturesBasisOut(BaseModel):
     latest: list[FuturesBasisLatest]
 
 
+# ------------------------------------------------------------------ 中国波指 QVIX
+#
+# 原始值由 `jobs/collect_qvix.py` 落库（`volatility_daily` 表）。**不是交易所官方
+# iVX**（那条 2018 年停更）—— 数据由期权论坛按方差互换思路合成，站内只落库与读取。
+
+
+class VolatilityLatest(BaseModel):
+    """最新一天一个品种的波动率读数（页面顶部的 chips）。"""
+
+    trade_date: date
+    code: str
+    name: str | None
+    # QVIX 收盘 = 隐含波动率（百分数，17.95 表示 17.95%）
+    close: float | None
+    # 较前一交易日的涨跌幅（%）—— 波动率自己的跳变幅度本身就是信息
+    chg: float | None
+    # 在滚动 window 个交易日里的分位（0-100）
+    percentile: float | None
+
+
+class VolatilitySeries(BaseModel):
+    """一个品种的 QVIX 序列。数组与 `VolatilityOut.dates` 严格等长。"""
+
+    code: str
+    name: str | None
+    close: list[float | None]
+
+
+class VolatilityOut(BaseModel):
+    """中国波指（QVIX）序列：50ETF / 300ETF 各一条隐含波动率线。
+
+    ⚠️ 数据由期权论坛合成，加权方案不在站内（见 `jobs/collect_qvix.py` 的取舍说明）。
+    """
+
+    dates: list[date]
+    series: list[VolatilitySeries]
+    # 分位窗口（交易日）
+    window: int
+    # 表内总天数（按 trade_date 去重）
+    coverage: int
+    latest: list[VolatilityLatest]
+    # 上证指数收盘点位（与 dates 等长），叠图看「指数跌 → 波动率升」的反向关系
+    benchmark: FearGreedBenchmark | None
+
+
 # --------------------------------------------------------------------- ERP
 #
 # 原始值由 `jobs/collect_erp.py` 落库（`erp_daily` 表）；历史分位读取时现算，

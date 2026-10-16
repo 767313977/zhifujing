@@ -433,6 +433,41 @@ export interface Northbound {
   benchmark: FearGreedBenchmark | null
 }
 
+/** 最新一天一个品种的波动率读数 */
+export interface VolatilityLatest {
+  trade_date: string
+  code: string
+  name: string | null
+  /** QVIX 收盘 = 隐含波动率（%） */
+  close: number | null
+  /** 较前一交易日的涨跌幅（%） */
+  chg: number | null
+  /** 在滚动 window 个交易日里的分位（0-100） */
+  percentile: number | null
+}
+
+/** 一个品种的 QVIX 序列。数组与 Volatility.dates 等长 */
+export interface VolatilitySeries {
+  code: string
+  name: string | null
+  close: (number | null)[]
+}
+
+/**
+ * 中国波指（QVIX）：50ETF / 300ETF 期权隐含波动率（%）。
+ * ⚠️ 不是交易所官方 iVX（2018 年停更），由期权论坛合成。**与指数反向**
+ */
+export interface Volatility {
+  dates: string[]
+  series: VolatilitySeries[]
+  /** 分位窗口（交易日） */
+  window: number
+  coverage: number
+  latest: VolatilityLatest[]
+  /** 上证指数收盘点位（与 dates 等长），叠图看「指数跌 → 波动率升」 */
+  benchmark: FearGreedBenchmark | null
+}
+
 /** 指数与个股广度是否背离。level 决定配色，detail 是判据里的原始数字 */
 export interface Divergence {
   level: 'weight_pull' | 'theme_active' | 'aligned'

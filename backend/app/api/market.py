@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
 from app.db import get_db
+from app.jobs.collect_qvix import CONTRACTS as VOLATILITY_CONTRACTS
 from app.models import (
     BreadthDaily,
     ErpDaily,
@@ -21,6 +22,7 @@ from app.models import (
     MarginDaily,
     MarketSentiment,
     StockDaily,
+    VolatilityDaily,
 )
 from app.schemas import (
     BreadthLatest,
@@ -57,6 +59,9 @@ from app.schemas import (
     RelayTempOut,
     SentimentOut,
     TurnoverSeries,
+    VolatilityLatest,
+    VolatilityOut,
+    VolatilitySeries,
 )
 from app.services import (
     etf_flow,
@@ -145,6 +150,10 @@ INDUSTRY_MA_LOOKBACK = 40
 
 # 北向活跃度曲线的默认回看长度。250 ≈ 一年，与 hsgt_daily 的深度（约 257 个交易日）相称
 NORTHBOUND_DAYS = 250
+
+# 中国波指（QVIX）曲线的默认回看长度。250 ≈ 一年：波动率有年度的冷热周期，
+# 且分位窗口也是 250 日（`services.fear_greed.WINDOW`）
+VOLATILITY_DAYS = 250
 
 
 def _bands() -> list[FearGreedBand]:
@@ -963,6 +972,85 @@ def northbound_activity(
         coverage=sum(1 for t in turnovers if t is not None),
         latest=latest,
         benchmark=_benchmark_series(session, dates[offset:]),
+    )
+
+
+@router.get("/volatility", response_model=VolatilityOut)
+def volatility_index(
+    days: int = Query(
+        VOLATILITY_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
+    ),
+    session: Session = Depends(get_db),
+) -> VolatilityOut:
+    """中国波指（QVIX）：50ETF / 300ETF 期权隐含波动率（%）。
+
+    ⚠️ **不是交易所官方 iVX**（那条 2018 年停更）—— 数据由**期权论坛**按方差互换
+    思路合成，站内只负责落库与读取（见 `jobs/collect_qvix.py` 与 `models.VolatilityDaily`）。
+    加权方案不在我们手里，这是「直取现成指数，换 10 年历史 + 零计算」的取舍。
+
+    单位是百分数（17.95 = 17.95%），**与指数反向**：指数跌、波动率升。分位与
+    OBV / ERP 同一套 `percentile_score`，**必须读全表算**再切展示窗口。
+    """
+    rows = list(
+        session.scalars(
+            select(VolatilityDaily).order_by(VolatilityDaily.trade_date, VolatilityDaily.code)
+        )
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="暂无波动率数据，请先执行采集或回补")
+
+    # 日期骨架用两个品种的**并集**：50ETF 从 2015 年就有、300ETF 到 2019 年底才有，
+    # 用并集才能让两边都对齐到同一条 x 轴（300ETF 早年的空档留 null、图上断开）
+    dates_all = sorted({row.trade_date for row in rows})
+    closes: dict[str, dict[date, float]] = {}
+    for row in rows:
+        if row.close is not None:
+            closes.setdefault(row.code, {})[row.trade_date] = row.close
+
+    tail = min(days, len(dates_all))
+    offset = len(dates_all) - tail
+
+    series: list[VolatilitySeries] = []
+    latest: list[VolatilityLatest] = []
+    for code, (_, label) in VOLATILITY_CONTRACTS.items():
+        values = [closes.get(code, {}).get(day) for day in dates_all]
+
+        # 分位：读全表算（窗口内过滤 None），再跟着展示窗口切
+        percentiles: list[float | None] = []
+        for i, value in enumerate(values):
+            if value is None:
+                percentiles.append(None)
+                continue
+            window = [v for v in values[max(0, i - WINDOW + 1) : i + 1] if v is not None]
+            percentiles.append(percentile_score(window, value))
+
+        # 最新读数取**最后一个有值的日子**：接口偶尔当天还没更新，末尾可能是空
+        last = next((i for i in range(len(values) - 1, -1, -1) if values[i] is not None), None)
+        if last is None:
+            continue
+        prev = values[last - 1] if last >= 1 else None
+        chg = (
+            round((values[last] / prev - 1) * 100, 2) if prev not in (None, 0) else None
+        )
+        latest.append(
+            VolatilityLatest(
+                trade_date=dates_all[last],
+                code=code,
+                name=label,
+                close=values[last],
+                chg=chg,
+                percentile=percentiles[last],
+            )
+        )
+        series.append(VolatilitySeries(code=code, name=label, close=values[offset:]))
+
+    return VolatilityOut(
+        dates=dates_all[offset:],
+        series=series,
+        window=WINDOW,
+        coverage=len(dates_all),
+        latest=latest,
+        benchmark=_benchmark_series(session, dates_all[offset:]),
     )
 
 

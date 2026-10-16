@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
-import type { Breadth, Erp, EtfNetFlow, FearGreed, FuturesBasis, IndexHistory, IndexSeries, IndustryBreadth, MarginTemp, NhNl, Northbound, Obv, RelayTemp, Sentiment } from '../api/types'
+import type { Breadth, Erp, EtfNetFlow, FearGreed, FuturesBasis, IndexHistory, IndexSeries, IndustryBreadth, MarginTemp, NhNl, Northbound, Obv, RelayTemp, Sentiment, Volatility } from '../api/types'
 import Alert from '../components/Alert'
 import BreadthThermometerPanel from '../components/BreadthThermometerPanel'
 import EChart from '../components/EChart'
@@ -17,6 +17,7 @@ import NorthboundPanel from '../components/NorthboundPanel'
 import ObvPanel from '../components/ObvPanel'
 import Panel from '../components/Panel'
 import RelayTempPanel from '../components/RelayTempPanel'
+import VolatilityPanel from '../components/VolatilityPanel'
 import {
   AXIS_LABEL,
   AXIS_LINE,
@@ -84,6 +85,7 @@ export default function SentimentPage() {
   const [marginTemp, setMarginTemp] = useState<MarginTemp | null>(null)
   const [industryBreadth, setIndustryBreadth] = useState<IndustryBreadth | null>(null)
   const [northbound, setNorthbound] = useState<Northbound | null>(null)
+  const [volatility, setVolatility] = useState<Volatility | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -92,8 +94,8 @@ export default function SentimentPage() {
       api.indexHistory(120),
       api.sentimentSeries(60),
       // 恐贪 / 宽度 / 接力 / 基差 / ERP / NH-NL / OBV / ETF 净申赎 / 两融杠杆温度 /
-      // 行业宽度 / 北向活跃度 都是增强读数：库里还没数据时接口返回 404，**不能**因此
-      // 把整页情绪指标打白。失败一律回落 null，由面板自己显示「暂无数据」
+      // 行业宽度 / 北向活跃度 / 中国波指 都是增强读数：库里还没数据时接口返回 404，
+      // **不能**因此把整页情绪指标打白。失败一律回落 null，由面板自己显示「暂无数据」
       api.fearGreed(250).catch(() => null),
       api.breadth(250).catch(() => null),
       api.relayTemp(120).catch(() => null),
@@ -105,8 +107,9 @@ export default function SentimentPage() {
       api.marginTemp(250).catch(() => null),
       api.industryBreadth().catch(() => null),
       api.northboundActivity(250).catch(() => null),
+      api.volatility(250).catch(() => null),
     ])
-      .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData, futuresBasisData, erpData, nhNlData, obvData, etfNetFlowData, marginTempData, industryBreadthData, northboundData]) => {
+      .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData, futuresBasisData, erpData, nhNlData, obvData, etfNetFlowData, marginTempData, industryBreadthData, northboundData, volatilityData]) => {
         setHistory(historyData)
         // 情绪指标只有数据源保留窗口内的日期才有值，其余为 null
         setSentiment(sentimentData.filter((item) => item.limit_up_count != null))
@@ -121,6 +124,7 @@ export default function SentimentPage() {
         setMarginTemp(marginTempData)
         setIndustryBreadth(industryBreadthData)
         setNorthbound(northboundData)
+        setVolatility(volatilityData)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -332,6 +336,10 @@ export default function SentimentPage() {
             指数走势与情绪明细 */}
         <FearGreedPanel data={fearGreed} loading={loading} delay={40} />
 
+        {/* 中国波指（QVIX）与恐贪说的是同一件事的两个侧面：恐贪是「从个股统计出来的
+            情绪」，QVIX 是「期权市场用真金白银定价出来的恐慌」。紧挨着恐贪放 */}
+        <VolatilityPanel data={volatility} loading={loading} delay={45} />
+
         {/* 宽度与接力是恐贪的两块补镜：一个看「指数涨有没有广度支撑」，一个看
             「打板生态热不热」。都在恐贪之后、指数走势之前 —— 几个温度计连着读 */}
         <BreadthThermometerPanel data={breadth} loading={loading} delay={60} />
@@ -448,6 +456,16 @@ export default function SentimentPage() {
               120 天，往左拖底部的缩放条可以看更早；那条随数值变色的彩虹线就是本指数，
               叠加的蓝色线是<span className="text-fg">上证指数收盘点位</span>
               （与恐贪的计算基准同一条）
+            </li>
+            <li>
+              · 中国波指 QVIX = <span className="text-fg">期权隐含波动率</span>
+              （50ETF / 300ETF 两个品种，单位是百分数）—— 恐贪是「从个股统计出来的情绪」，
+              QVIX 是「期权市场用真金白银定价出来的恐慌」，两者常互相印证。
+              <span className="text-fg">与指数反向</span>：指数跌、波动率升；虚线是上证
+              收盘点位。⚠️ 它<span className="text-fg-muted">不是交易所官方 iVX</span>
+              （那条 2018 年停更），数据由期权论坛按方差互换思路合成、站内只落库与读取；
+              分位是滚动 <span className="num">250</span> 个交易日里的位置，曲线取最近
+              <span className="num">250</span> 个交易日
             </li>
             <li>
               · 恐贪指数里的<span className="text-fg-muted">市场宽度</span>由全市场个股日线
