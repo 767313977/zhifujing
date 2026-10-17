@@ -50,6 +50,12 @@ ETF_BATCH = 30
 # 来源拒绝「一批问太多只」时的原话（2026-10-14 实测两条都出现过）。命中它才拆半重试。
 _TOO_MANY_HINTS = ("证券主体数量过多", "问句过长")
 
+# 来源在**配额耗尽**时不报错，而是把这句话写进回答、且不带任何数据 —— 与「这批基金
+# 本来就没有数据」长得一模一样。必须单独识别：否则整批被当成「无数据」跳过，`etf`
+# 步骤照样记 `ok`（rows=0）。2026-10-16 就是这么静默丢掉 10-14 ~ 10-16 三天 ETF
+# 份额的：7 天日志里 41 次「当前账户MCP请求用量已耗尽」，数据管理页却一路绿灯。
+_QUOTA_EXHAUSTED_HINTS = ("用量已耗尽", "配额已用尽", "调用次数已用完", "额度已用完")
+
 # 一批里问的指标。**四个是实测的上限**：再多问两个就只剩一张表、份额整列消失
 # （见 `IfindClient.fund_profile` 的说明）。
 ETF_METRICS = "基金份额、收盘价、成交额、涨跌幅"
@@ -343,6 +349,13 @@ def _fetch_etf_quotes(
                     found[code] = row
             continue
         too_many = any(hint in (answer or "") for hint in _TOO_MANY_HINTS)
+        # 「配额耗尽」优先判：它和「超上限」都不带数据，但处理方式相反 —— 超上限要
+        # 拆半重试，配额耗尽再拆只是把剩下几十次调用窗口空转完。抛出去让 `_step`
+        # 记 `failed`（而不是 ok+0 行），缺口才会在数据管理页露出来。
+        # ⚠️ 也**不写已取到的那部分**：半天快照会被净申赎面板当成整日，
+        # 算出一整天的假净流入（见 `collect_etf` 写入侧的覆盖率守卫，同一道理）。
+        if any(hint in (answer or "") for hint in _QUOTA_EXHAUSTED_HINTS):
+            raise RuntimeError(f"iFinD 配额已耗尽，ETF 采集中止：{_snippet(answer)}")
         if too_many and len(batch) > 1:
             half = len(batch) // 2
             logger.warning(

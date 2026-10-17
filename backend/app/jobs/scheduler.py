@@ -188,6 +188,25 @@ def tail_done(day: date) -> bool:
         )
 
 
+def tail_partial(day: date) -> bool:
+    """该日尾部链是否**只留下 `partial`**（跑过、但有步骤失败）。
+
+    与 `tail_done` 分开：`partial` 仍算「跑过」—— 整条尾巴重跑要烧 DDE 与 370 次
+    开盘啦请求，那笔账没变；但**零配额的派生步骤值得补跑**（见 `_heal_derived`）。
+    判据刻意不看顺序、只看状态集合：一旦后来跑出过 `ok`，这里就自动不再触发。
+    """
+    with session_scope() as session:
+        statuses = set(
+            session.scalars(
+                select(CollectLog.status).where(
+                    CollectLog.trade_date == day,
+                    CollectLog.task == TAIL_TASK,
+                )
+            )
+        )
+    return "partial" in statuses and "ok" not in statuses
+
+
 def _mark_tail(day: date, reason: str, failures: list[str] | None = None) -> None:
     """记下「这天的尾部跑完了」。
 
@@ -541,6 +560,12 @@ class DailyScheduler:
         # 放在入口内两条路才受同一份记录约束（重启后的补采是重复触发的主要来源）。
         if tail_done(today):
             logger.info("%s：%s 的尾部链路已跑过，跳过", reason, today)
+            # 但「部分失败」时补跑**零配额**的派生步骤：日线晚到（配额耗尽后到 20:30
+            # 才补上）、或中途某步失败，会让宽度 / 平均股价 / ERP / 基差 / 波指缺当天。
+            # 整条尾巴重跑要烧 DDE 与 370 次开盘啦请求，很不划算；而这几步是
+            # `refresh()` 自愈型、可重复跑，补一次的代价可以忽略（见 `_heal_derived`）。
+            if tail_partial(today):
+                self._heal_derived(today)
             return
 
         # 整条尾巴包进采集锁（2026-09-27 修）：`tail_done` 与 `_mark_tail` 是
@@ -865,6 +890,31 @@ class DailyScheduler:
             return
         logger.info("恐贪指数 %s：重算写入 %d 天", trade_date, written)
 
+    def _heal_derived(self, trade_date: date) -> None:
+        """补跑尾部链里**零配额**的派生步骤（只在当天尾部只留下 `partial` 时调）。
+
+        **为什么需要**：`tail_done` 把 `partial` 也算「跑过」，于是「日线晚到 / 中途
+        配额耗尽」造成的派生序列缺口永远补不回来。2026-10-16 实况：15:05 配额耗尽 →
+        全市场日线失败 → 宽度 / ERP / 平均股价算不出当天 → 尾部记 `partial`；20:30
+        日线补回来之后，尾部链却已判定「跑过」，这几条序列就一直缺 10-16。
+
+        **为什么只挑这几步**：全是 `refresh()` 自愈型（重算最近若干交易日、重复跑
+        无副作用），且零 iFinD 配额（ERP 的 PE 是 1 次 EDB 调用）。`_scan_patterns` /
+        `_scan_dde` / 板块资金流**不在这里** —— 它们有副作用或要花几十上百次配额，
+        仍然只随整条尾巴跑。
+        """
+        # 各 `_collect_*` 失败时往这里登记；独立初始化，别沾上一次尾巴的残留
+        self._tail_failures = []
+        logger.info("尾部部分失败，补跑零配额派生步骤：%s", trade_date)
+        self._collect_fear_greed(trade_date)
+        self._collect_breadth(trade_date)
+        self._collect_avg_price(trade_date)
+        self._collect_futures_basis(trade_date)
+        self._collect_erp(trade_date)
+        self._collect_qvix(trade_date)
+        if self._tail_failures:
+            logger.warning("派生步骤补跑仍有失败：%s", "、".join(self._tail_failures))
+
     def _collect_breadth(self, trade_date: date) -> None:
         """市场宽度温度计：只读库（窗口函数反算 stock_daily）、零配额，失败只登记。
 
@@ -1055,14 +1105,14 @@ class DailyScheduler:
         """每天往前啃一小段历史（默认 4 个交易日）。
 
         为什么要有这一步：2 年窗口 ≈ 500 天 × 14 次 = **7000 次调用**，
-        一次拉完就占掉当前口径（9000，2026-09-28）的 78% —— 直接顶到 80% 的让路线、
+        一次拉完就占掉当前口径（11000，2026-10-16）的 64% —— 直接顶到让路阶梯、
         把当天的采集停掉。而历史恰恰是「越早的越补不回来」—— 只能拆成每天一小段，
         跨几个配额周期慢慢铺满。补完之后
         `_needs_day` 全为假，这一步就自动变成 0 调用（每天只多几条本地查询）。
 
         两条自我保护，见 `Settings` 里的注释：
 
-        - **停手线比让路线更保守**（`kline_backfill_max_ratio` 0.74 vs 80%）：
+        - **停手线比让路档更保守**（`kline_backfill_max_ratio` 0.74 vs `PAUSE_KLINE` 档）：
           回补永远不会把当天的日线采集顶停 —— 历史慢慢补，当天的行情缺了就真缺了。
         - `max_days` 卡的是**本轮补几天**（窗口从旧到新推进），不是「只看最近几天」。
         """
@@ -1199,8 +1249,8 @@ class DailyScheduler:
         """全市场 DDE 扫描并推送（条件：5日DDE 由负转正，见 `scan_dde` 模块）。
 
         **每天十几次 iFinD 调用**（代码前缀 × 单个交易日）。配额紧张时先让它停 ——
-        它是增强项，而指数 / 涨停 / 板块 / 情绪那条主线才是复盘的地基。让路阈值
-        与形态日线同一档（80%），别等它把额度吃到影响次日的基础采集。
+        它是增强项，而指数 / 涨停 / 板块 / 情绪那条主线才是复盘的地基。让路档位
+        与形态日线同一档（`PAUSE_KLINE`），别等它把额度吃到影响次日的基础采集。
         """
         # 延迟导入：与 `_push_brief` 同理，避免模块级循环依赖
         from app.jobs.scan_dde import DDE_SCAN_TASK, run as run_dde_scan

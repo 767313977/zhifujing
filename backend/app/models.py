@@ -31,22 +31,16 @@ def _now() -> datetime:
     return datetime.now()
 
 
-# `sector_fund_flow.taxonomy` 的取值：同花顺概念 / 同花顺行业。
-# **与开盘红的 taxonomy 刻意分开命名**（那边是 kph_selected / kph_industry）——
-# 两套名字体系对不上（芯片 vs 芯片概念），前缀就是为了防止有人写错表还能跑通。
-FUND_FLOW_CONCEPT = "ths_concept"
-FUND_FLOW_INDUSTRY = "ths_industry"
-FUND_FLOW_TAXONOMIES = (FUND_FLOW_CONCEPT, FUND_FLOW_INDUSTRY)
-
 # 「资金通道 / 国家队持股」这类**口径标签**：融资融券与沪深股通天然是全市场口径，
 # 净额动辄几百亿 —— 实测 2026-09-22 融资融券 -424.3 亿、深股通 -280.3 亿，长期霸占
 # 流出榜前三；国家大基金 / 证金持股这类持股标签同理，它们把榜单和「累计净流入」曲线
 # 全带偏。**子串匹配**。
 #
-# 放在 models 而不是某个业务模块里，是因为**采集与查询两边都要用**：采集侧写库前就剔
-# （`jobs/collect_flows.py`），查询侧并按进 `api/sector.py:BOARD_EXCLUDE` 那一串
-# （业绩 / 身份 / 地域类）里一起当黑名单用 —— 后者是为了把「开始过滤之前已经落库的
-# 那些」也挡住，否则接下来 30 天的累计曲线里还会一直挂着它们。
+# 放在 models 而不是某个业务模块里，是因为查询侧与历史数据都要用：查询侧把它并进
+# `api/sector.py:BOARD_EXCLUDE` 那一串（业绩 / 身份 / 地域类）里一起当黑名单用。
+# 同花顺口径的采集器（原 `jobs/collect_flows.py`）已于 2026-10-17 删除，现在只剩
+# 查询侧这一道 —— 但**必须留着**：它挡的是「开始过滤之前已经落库的老数据」，
+# 否则那段日子的累计曲线里还会一直挂着融资融券与股通。
 #
 # 名字从 `FUND_FLOW_EXCLUDE` 改成这个（2026-09-23）：并进 BOARD_EXCLUDE 之后它不再是
 # 「资金流榜专用」，叫原名会让人以为轮动矩阵那份名单与它无关。
@@ -370,44 +364,6 @@ class LimitReason(Base):
     # 原样存：「水暖阀门+医疗器械+资产出售+业绩扭亏」。**不拆**成多个字段 ——
     # 里面混着行业、事件、地域，拆开就再也拼不回接口给的那串了
     reason: Mapped[str] = mapped_column(String(128))
-
-
-class SectorFundFlow(Base):
-    """板块资金流（**同花顺**口径，日频快照）。
-
-    ⚠️ **已不再是读取路径（2026-09-23）**：全站板块口径统一到开盘啦之后，板块资金流
-    改成「开盘啦成分股 × 逐股主力净流入」，落在 `sector_daily.net_inflow`（见设计文档
-    8.54 与 `jobs/collect_board_flow.py`）。本表连着 `jobs/collect_flows.py` 一起
-    **留一手** —— 新版跑几天确认没问题之后再一并删掉。
-
-    来源是同花顺数据中心的「概念资金流 / 行业资金流」（经 `sources/akshare_source.py`），
-    走 `data.10jqka.com.cn` —— **不是**东财 `push2` 集群（那个集群实测会触发本机 IP
-    频控，见设计文档 1.7）。
-
-    ⚠️ 三条口径限制，页面必须如实说明：
-
-    1. **和站内板块不是一套名字**：本表是**同花顺概念**（359 个）/ **同花顺行业**（90 个），
-       而 `sector_daily` 是开盘红精选 / 行业。名字对不上（芯片 vs 芯片概念），不能混着比。
-    2. **没有历史可补**：来源只给「即时 / 3日 / 5日 / 10日」四个**窗口**，不给历史日期，
-       所以本表只能从开始采集那天攒起。
-    3. **主键是名字、不是代码**：来源不给代码。落库前按名字去重（同一名字会出现两行、
-       值还不一样，见 `AkshareSource.concept_fund_flow`），去重时**留第一行**。
-    """
-
-    __tablename__ = "sector_fund_flow"
-
-    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
-    # ths_concept / ths_industry，取值见 FUND_FLOW_TAXONOMIES
-    taxonomy: Mapped[str] = mapped_column(String(16), primary_key=True)
-    name: Mapped[str] = mapped_column(String(32), primary_key=True)
-    pct_chg: Mapped[float | None] = mapped_column(Float)
-    # 金额单位一律**亿元**（来源就是亿元），字段名不带单位但注释写死，免得以后按元算错
-    in_amount: Mapped[float | None] = mapped_column(Float)
-    out_amount: Mapped[float | None] = mapped_column(Float)
-    net_amount: Mapped[float | None] = mapped_column(Float)
-    member_count: Mapped[int | None] = mapped_column(Integer)
-    leader_name: Mapped[str | None] = mapped_column(String(32))
-    leader_pct_chg: Mapped[float | None] = mapped_column(Float)
 
 
 class Lhb(Base):

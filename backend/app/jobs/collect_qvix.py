@@ -29,7 +29,7 @@ from datetime import date
 from sqlalchemy import func, select
 
 from app.db import session_scope, upsert_many
-from app.models import VolatilityDaily
+from app.models import TradeCalendar, VolatilityDaily
 from app.sources.markdown_table import to_float
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,18 @@ def _rows(api: str, code: str, name: str) -> list[dict]:
     return out
 
 
+def _trading_days(start: date, end: date) -> set[date]:
+    with session_scope() as session:
+        return set(
+            session.scalars(
+                select(TradeCalendar.trade_date).where(
+                    TradeCalendar.trade_date >= start,
+                    TradeCalendar.trade_date <= end,
+                )
+            )
+        )
+
+
 def refresh() -> int:
     """全量拉取两个品种并 upsert，返回写入行数。
 
@@ -96,6 +108,23 @@ def refresh() -> int:
             continue
         if not rows:
             logger.warning("QVIX %s 未返回任何数据，请检查接口", api)
+            continue
+        # 来源会混进非交易日行（2026-10-17 体检发现 6 行，日期落在周末 / 节假日）。
+        # 交易日历覆盖 1990 至今，按它过滤即可；日历为空（新库还没采）时**不过滤**，
+        # 免得把整段历史当垃圾丢掉。
+        days = _trading_days(
+            min(row["trade_date"] for row in rows), max(row["trade_date"] for row in rows)
+        )
+        if days:
+            kept = [row for row in rows if row["trade_date"] in days]
+            if len(kept) != len(rows):
+                logger.warning(
+                    "QVIX %s：丢弃 %d 行非交易日数据（来源口径问题）",
+                    code,
+                    len(rows) - len(kept),
+                )
+            rows = kept
+        if not rows:
             continue
         with session_scope() as session:
             written = upsert_many(session, VolatilityDaily, rows)
