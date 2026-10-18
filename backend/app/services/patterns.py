@@ -811,6 +811,41 @@ DIAMOND_MIN_EXPAND = 0.25  # 前半段振幅扩张比例下限
 DIAMOND_MIN_CONTRACT = 0.4  # 后半段振幅收敛比例下限
 DIAMOND_MIDDLE_EDGE = 1.6  # 中段振幅至少要达到两端的这个倍数（不然只是普通波动）
 
+# ---- 2026-10-18 候选策略（移植自 myhhub/stock，**回测通过前不进生产**）----
+#
+# 这一批的定义来自 InStock 的「策略选股」文档，先原样实现跑全量回测，
+# 数字出来之后再决定留谁 —— 不要因为它们出自别的项目就默认有效。
+# 「无大幅回撤」没有单独做成形态：它是一个**过滤条件**（60 日涨幅 <60% 且没有
+# 单日/两日大跌），单独当形态会命中上千只、没有区分度。
+
+# 停机坪：放量大涨后连续 3 天高开小阳整理
+PARKING_SURGE_PCT = 9.5
+PARKING_SURGE_VOL = 2.0  # 大涨日量 / 前 5 日均量
+PARKING_FLAT_DAYS = 3
+PARKING_FLAT_BODY_MAX = 0.03  # 收盘与开盘相差 <3%
+PARKING_FLAT_PCT_MAX = 5.0  # 整理日涨跌幅绝对值上限
+
+# 回踩年线：突破 MA250 后回踩缩量、不破年线
+MA250_PULLBACK_WINDOW = 60  # 在最近这么多天里找阶段高点与回踩低点
+MA250_PULLBACK_MIN_GAP = 10  # 高点 → 回踩低点至少隔这么多天
+MA250_PULLBACK_MAX_GAP = 50
+MA250_PULLBACK_MIN_SHRINK = 2.0  # 高点日量 / 回踩低点日量
+MA250_PULLBACK_MIN_DEPTH = 0.2  # 回踩低点 / 高点收盘 < 0.8
+MA250_PULLBACK_RECENT = 5  # 回踩低点距今天不超过这么多天
+
+# 低 ATR 成长：波动收敛 + 10 日重心上移
+LOW_ATR_DAYS = 14
+LOW_ATR_MAX = 0.04  # ATR14 / 收盘价
+LOW_ATR_RANGE_DAYS = 10
+LOW_ATR_MIN_RANGE = 0.10  # 10 日 (最高收盘 / 最低收盘 − 1)
+LOW_ATR_TREND_DAYS = 10  # MA20 斜率窗口
+
+# 放量跌停（**警示类**，不是买点）
+VOL_LIMIT_DOWN_PCT = -9.5
+VOL_LIMIT_DOWN_MIN_AMOUNT = 2e8
+VOL_LIMIT_DOWN_VOL_MULT = 4.0
+
+
 # 蜡烛形态（单根 / 两根 / 三根）
 CANDLE_BODY_MAX = 0.35  # 小实体：实体 / 全日振幅 的上限
 CANDLE_PRIOR_DAYS = 5
@@ -5566,6 +5601,219 @@ ZGNB_GROUP = "知行B1"
 # | 知行B1 | 原始B1 | 761 | −0.86% | −4.38% | −9.16% | −12.24% | 28.5% | −13.37% |
 # | 知行B1 | 回踩黄线B1 | 515 | −2.33% | **−4.70%** | −5.50% | −9.27% | 28.2% | −10.42% |
 #
+def _parking_apron(bars: Bars) -> Signal | None:
+    """停机坪：放量大涨后连续 3 天高开小阳整理（2026-10-18 候选，回测中）。
+
+    定义照 InStock：最近 15 日内有一根涨幅 ≥9.5% 的放量大涨，紧接着的 3 个交易日
+    必须**高开、收盘上涨、收盘与开盘相差 <3%、涨跌幅在 ±5% 内**。
+    信号只出在整理完成的第 3 天（`s = len-4`），不重复挂。
+    """
+    need = PARKING_FLAT_DAYS + 6
+    if len(bars) < need:
+        return None
+    s = len(bars) - 1 - PARKING_FLAT_DAYS
+
+    pct = float(bars.pct_chg[s])
+    if pct < PARKING_SURGE_PCT:
+        return None
+    base = _safe_mean(bars.volume[s - 5 : s])
+    surge_vol = float(bars.volume[s] / base) if base > 0 else 0.0
+    if surge_vol < PARKING_SURGE_VOL:
+        return None
+
+    max_body = 0.0
+    for i in range(s + 1, len(bars)):
+        prev_close = float(bars.close[i - 1])
+        open_ = float(bars.open[i])
+        close = float(bars.close[i])
+        # 高开 + 收盘上涨 + 小实体 + 当日涨跌幅不超 5%
+        if open_ <= prev_close or close <= prev_close or open_ <= 0:
+            return None
+        body = abs(close / open_ - 1)
+        if body >= PARKING_FLAT_BODY_MAX:
+            return None
+        if abs(float(bars.pct_chg[i])) >= PARKING_FLAT_PCT_MAX:
+            return None
+        max_body = max(max_body, body)
+
+    flat_low = float(bars.low[s + 1 :].min())
+    flat_high = float(bars.high[s + 1 :].max())
+    flat_vol = _safe_mean(bars.volume[s + 1 :])
+    shrink = flat_vol / float(bars.volume[s]) if bars.volume[s] > 0 else 0.0
+
+    score = 55.0
+    score += min((pct - PARKING_SURGE_PCT) / 5.0, 1.0) * 10
+    score += min((surge_vol - PARKING_SURGE_VOL) / 4.0, 1.0) * 15
+    score += max(0.0, (PARKING_FLAT_BODY_MAX - max_body) / PARKING_FLAT_BODY_MAX) * 20
+
+    return Signal(
+        "parking_apron",
+        min(score, 100.0),
+        {"support": flat_low, "breakout": flat_high},
+        {
+            "surge_pct": round(pct, 2),
+            "surge_vol": round(surge_vol, 2),
+            "flat_body": round(max_body, 4),
+            "shrink": round(shrink, 2),
+        },
+    )
+
+
+def _ma250_pullback(bars: Bars) -> Signal | None:
+    """回踩年线：突破 MA250 后回踩缩量、不破年线（2026-10-18 候选，回测中）。
+
+    定义照 InStock：最近 60 天内的阶段高点必须站上年线、且 20 天前还在年线下方；
+    高点之后回踩到低点（两者相隔 10~50 天），回踩段缩量（高点日量 / 低点日量 >2）、
+    低点相对高点收盘回撤 >20%；整段后段都运行在年线上方。
+    信号只在**回踩低点出现后的 5 个交易日内**给出，避免同一波回踩连挂几十天。
+    """
+    if len(bars) < 300:
+        return None
+    ma250 = _align(_ma_series(bars.close, 250), 250, len(bars))
+    if not np.isfinite(ma250[-1]):
+        return None
+
+    start = len(bars) - MA250_PULLBACK_WINDOW
+    peak = start + int(np.argmax(bars.close[start:]))
+    if peak >= len(bars) - 3:
+        return None
+    if not (np.isfinite(ma250[peak]) and np.isfinite(ma250[peak - 20])):
+        return None
+    # 高点站上年线；20 天前还在年线下方（“由下向上突破”）
+    if float(bars.close[peak]) <= float(ma250[peak]):
+        return None
+    if float(bars.close[peak - 20]) >= float(ma250[peak - 20]):
+        return None
+    # 后段必须一直在年线上方
+    if not np.all(bars.close[peak:] >= ma250[peak:]):
+        return None
+
+    low_index = peak + 1 + int(np.argmin(bars.low[peak + 1 :]))
+    gap = low_index - peak
+    if not (MA250_PULLBACK_MIN_GAP <= gap <= MA250_PULLBACK_MAX_GAP):
+        return None
+    if len(bars) - 1 - low_index > MA250_PULLBACK_RECENT:
+        return None
+
+    depth = 1 - float(bars.low[low_index]) / float(bars.close[peak])
+    if depth < MA250_PULLBACK_MIN_DEPTH:
+        return None
+    low_volume = float(bars.volume[low_index])
+    shrink = float(bars.volume[peak]) / low_volume if low_volume > 0 else 0.0
+    if shrink < MA250_PULLBACK_MIN_SHRINK:
+        return None
+
+    ma_gap = float(bars.close[-1]) / float(ma250[-1]) - 1
+    score = _band_score(depth, 0.15, 0.30, 0.45) * 35
+    score += _band_score(shrink, 2.0, 5.0, 10.0) * 35
+    score += _gate_score(ma_gap, 0.0, 0.05) * 30
+
+    return Signal(
+        "ma250_pullback",
+        min(score, 100.0),
+        {"support": float(ma250[-1]), "breakout": float(bars.close[peak])},
+        {
+            "pullback_days": len(bars) - 1 - low_index,
+            "depth": round(depth, 4),
+            "vol_ratio": round(shrink, 2),
+            "ma250_gap": round(ma_gap, 4),
+        },
+    )
+
+
+def _low_atr_growth(bars: Bars) -> Signal | None:
+    """低 ATR 成长：波动收敛 + 10 日重心上移（2026-10-18 候选，回测中）。
+
+    定义照 InStock：上市 ≥250 日，最近 10 个交易日最高收盘比最低收盘高 1.1 倍。
+    另加两道「成长」约束：ATR14/收盘 ≤4%、MA20 近 10 日向上且收盘在 MA60 上方 ——
+    否则「低波动」会把一堆横盘僵尸票选进来。
+    """
+    if len(bars) < 250:
+        return None
+    window = bars.close[-LOW_ATR_RANGE_DAYS:]
+    low, high = float(window.min()), float(window.max())
+    if low <= 0:
+        return None
+    span = high / low - 1
+    if span < LOW_ATR_MIN_RANGE:
+        return None
+
+    true_ranges = []
+    for i in range(len(bars) - LOW_ATR_DAYS, len(bars)):
+        prev_close = float(bars.close[i - 1])
+        true_ranges.append(
+            max(
+                float(bars.high[i]) - float(bars.low[i]),
+                abs(float(bars.high[i]) - prev_close),
+                abs(float(bars.low[i]) - prev_close),
+            )
+        )
+    close = float(bars.close[-1])
+    atr_pct = float(np.mean(true_ranges)) / close if close > 0 else 1.0
+    if atr_pct > LOW_ATR_MAX:
+        return None
+
+    ma20 = _ma_series(bars.close, 20)
+    ma60 = _ma_series(bars.close, 60)
+    if ma20 is None or ma60 is None:
+        return None
+    if float(ma20[-1]) <= float(ma20[-1 - LOW_ATR_TREND_DAYS]):
+        return None
+    if close <= float(ma60[-1]):
+        return None
+
+    rise = float(ma20[-1]) / float(ma20[-1 - LOW_ATR_TREND_DAYS]) - 1
+    score = _band_score(span, LOW_ATR_MIN_RANGE, 0.18, 0.30) * 40
+    score += _gate_score(atr_pct, LOW_ATR_MAX, 0.02) * 35
+    score += min(rise / 0.03, 1.0) * 25
+
+    return Signal(
+        "low_atr_growth",
+        min(score, 100.0),
+        {"support": float(ma20[-1]), "breakout": high},
+        {
+            "atr_pct": round(atr_pct, 4),
+            "range10": round(span, 4),
+            "ma20_rise": round(rise, 4),
+        },
+    )
+
+
+def _volume_limit_down(bars: Bars) -> Signal | None:
+    """放量跌停：跌 >9.5%、成交额 ≥2 亿、量为 5 日均量 4 倍（**警示类**）。
+
+    2026-10-18 候选，回测中。与其它形态不同，它命中的是**风险**而不是买点；
+    回测里如果超额为负，那正是它「有效」的证据（同上升楔形 / 放量滞涨的定位）。
+    """
+    if len(bars) < 6:
+        return None
+    pct = float(bars.pct_chg[-1])
+    if pct > VOL_LIMIT_DOWN_PCT:
+        return None
+    amount = float(bars.amount[-1])
+    if amount < VOL_LIMIT_DOWN_MIN_AMOUNT:
+        return None
+    base = _safe_mean(bars.volume[-6:-1])
+    ratio = float(bars.volume[-1] / base) if base > 0 else 0.0
+    if ratio < VOL_LIMIT_DOWN_VOL_MULT:
+        return None
+
+    score = _band_score(ratio, VOL_LIMIT_DOWN_VOL_MULT, 8.0, 20.0) * 50
+    score += _band_score(amount / 1e8, 2.0, 6.0, 20.0) * 30
+    score += _gate_score(-pct, 9.5, 19.5) * 20
+
+    return Signal(
+        "volume_limit_down",
+        min(score, 100.0),
+        {"support": float(bars.low[-1])},
+        {
+            "pct_chg": round(pct, 2),
+            "vol_ratio": round(ratio, 2),
+            "amount_yi": round(amount / 1e8, 2),
+        },
+    )
+
+
 # 读表提醒：**中位普遍为负**（右尾驱动），所以看胜率与中位比看均值更重要。
 # ⚠️ **知行B1 那 7 行是 2026-10-15 单独重算的**（当天口径，见 `ZGNB_RECENT_DAYS` 的说明），
 # 其余行的窗口截止 2026-10-14 —— 差一天，量级不受影响但别拿它们做逐位排名。重算后
@@ -5683,6 +5931,28 @@ PATTERNS: tuple[Pattern, ...] = (
     # 打分按本站 0~100 口径重写（原委见文件顶部 `TURTLE_*` / `MA_VOLUME_*` 两段）。
     Pattern("turtle_breakout", "海龟突破", "突破", _turtle_breakout),
     Pattern("ma_volume", "均线放量金叉", "趋势", _ma_volume),
+    # ⚠️ 2026-10-18 候选策略（移植自 myhhub/stock）**均未纳入**：
+    #
+    # | 形态 | 样本 | 5日超额 | 10日超额 | 20日超额 | 60日超额 | 10日胜率 | 10日中位 |
+    # | --- | --- | --- | --- | --- | --- | --- | --- |
+    # | 停机坪（3 天整理，主库） | 7 | +4.83% | +4.06% | −1.19% | +0.51% | 42.9% | −0.72% |
+    # | 停机坪（2 天整理，主库） | 53 | +1.11% | +3.05% | −0.03% | +3.74% | 50.9% | +0.09% |
+    # | 停机坪（3 天整理，长历史） | 2 | +0.69% | −2.91% | −4.31% | −9.02% | 0% | −0.77% |
+    # | 回踩年线（长历史） | 55 | +0.04% | −0.30% | −0.93% | −2.67% | 52.7% | +1.85% |
+    # | 低ATR成长（长历史） | 1022 | +0.54% | +0.32% | +0.11% | +0.41% | 47.3% | −0.51% |
+    # | 放量跌停（主库） | 37 | −0.98% | −1.14% | +0.88% | +1.21% | 54.1% | +0.25% |
+    # | 放量跌停（长历史） | 14 | −2.92% | −5.00% | −5.40% | −9.67% | 42.9% | −2.46% |
+    #
+    # 结论：停机坪样本太少（严格版 7 条 / 长历史 2 条），放宽到 2 天整理后中位≈0、
+    # 20 日超额归零；回踩年线 20/60 日为负；低ATR成长 1000+ 条信号而超额≈0、中位为负。
+    # 放量跌停的 5/10 日超额稳定为负（作为**警示**方向是对的），但样本少、20/60 日又
+    # 翻正，暂不单独成形态。判定函数与阈值保留在下方（`_parking_apron` 等）以便调参复跑，
+    # **不注册 = 不参与线上扫描**。
+    #
+    # Pattern("parking_apron", "停机坪", "量价", _parking_apron),
+    # Pattern("ma250_pullback", "回踩年线", "趋势", _ma250_pullback),
+    # Pattern("low_atr_growth", "低ATR成长", "趋势", _low_atr_growth),
+    # Pattern("volume_limit_down", "放量跌停", "量价", _volume_limit_down),
 )
 
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}
