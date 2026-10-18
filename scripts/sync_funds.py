@@ -91,9 +91,13 @@ def main() -> int:
     print(f"  两融      rows={collect_funds.collect_margin(ifind, end, args.days)}")
     print(f"  沪深股通  rows={collect_funds.collect_hsgt(ifind, end, args.days)}")
     if not args.skip_etf:
-        # ETF：代码清单与日期走同花顺（零配额），份额与行情走 iFinD（约 20 次调用）；
-        # 机构席位仍走 akshare。ETF 的日期由数据源决定，与上面的 end 无关
-        print(f"  ETF 份额  rows={collect_funds.collect_etf(ak, ifind)}")
+        # ETF：交易所官方份额 + 通达信盘后包（零 iFinD 配额）；落库日期取深交所
+        # 快照日，`end` 只用来判断快照是否异常地晚于目标日。
+        try:
+            etf_rows: object = collect_funds.collect_etf(ak, ifind, end)
+        except collect_funds.EtfNotReady as exc:
+            etf_rows = f"跳过（{exc}）"
+        print(f"  ETF 份额  rows={etf_rows}")
     print(f"  机构席位  rows={collect_funds.collect_lhb_institutions(ak, end, args.days)}")
     return 0
 
