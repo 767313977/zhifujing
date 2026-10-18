@@ -10,6 +10,7 @@
 """
 
 import logging
+import time
 from collections import defaultdict
 from datetime import date, timedelta
 
@@ -27,6 +28,10 @@ _KEYS = tuple(PATTERN_NAMES)
 #: 放量阈值：单日涨幅 / 成交额相对 20 日均值
 VOLUME_PCT = 5.0
 VOLUME_MULT = 2.0
+#: 公告现取的总时间预算（秒）。缓存过期时每只自选串行现取，单只最坏 60s
+#: （`_call_bounded` 超时）—— 不设总预算的话，N 只自选最坏 N×60s，整节会把
+#: 简报链路拖死。超预算的票不再等公告，末尾统一标注「公告未取全」。
+NOTICE_BUDGET_SEC = 120.0
 
 
 def _amount(value: float | None) -> str:
@@ -129,6 +134,8 @@ def block(session: Session, trade_date: date) -> str:
         history[code].append(float(amount))
 
     lines: list[str] = []
+    deadline = time.monotonic() + NOTICE_BUDGET_SEC
+    notice_cut = False
     for code in codes:
         parts: list[str] = []
         hit = best_hit.get(code)
@@ -152,7 +159,11 @@ def block(session: Session, trade_date: date) -> str:
             elif base and amount is not None and amount >= base * VOLUME_MULT:
                 parts.append(f"成交额 {_amount(amount)}（20 日均 {_amount(base)}）")
 
-        notice = _recent_notice(code, trade_date)
+        notice = None
+        if time.monotonic() < deadline:
+            notice = _recent_notice(code, trade_date)
+        else:
+            notice_cut = True
         if notice:
             parts.append(notice)
 
@@ -163,6 +174,8 @@ def block(session: Session, trade_date: date) -> str:
         if parts:
             lines.append(f"- {code} {name}：{'；'.join(parts)}")
 
+    if notice_cut:
+        lines.append("- （公告取数超出时间预算，部分自选的公告未覆盖）")
     if not lines:
         return ""
-    return "## 自选股异动\n" + "\n".join(lines)
+    return "**自选股异动**\n" + "\n".join(lines)

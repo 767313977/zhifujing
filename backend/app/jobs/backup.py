@@ -93,6 +93,7 @@ def run(settings: Settings | None = None) -> dict:
 
         synced_to: str | None = None
         sync_dir = settings.backup_sync_dir.strip()
+        sync_note: str | None = None
         if sync_dir:
             # 同步失败不算备份失败：本机那一份已经成功了，同步只是额外一层。
             try:
@@ -109,13 +110,20 @@ def run(settings: Settings | None = None) -> dict:
                 for old in remote_files[settings.backup_keep :]:
                     old.unlink(missing_ok=True)
             except Exception as exc:  # noqa: BLE001 - 见上
+                sync_note = "同步失败（详见日志）"
                 logger.warning("备份同步到 %s 失败（本机备份已成功）：%s", sync_dir, exc)
+        else:
+            # 没配 BACKUP_SYNC_DIR 时备份与主库在同一块盘上 —— 盘坏了主库备份一起丢。
+            # 在记录里写明白，告警（jobs/alerts.py）也会据此提醒。
+            sync_note = "未配置异地同步（备份与主库同盘）"
 
         message = f"{dest.name}（{size_mb:.0f} MB），保留 {settings.backup_keep} 份"
         if removed:
             message += f"，清理 {len(removed)} 份"
         if synced_to:
             message += "，已同步"
+        elif sync_note:
+            message += f"，{sync_note}"
         _record("ok", message)
         logger.info("数据库备份完成：%s", message)
         return {

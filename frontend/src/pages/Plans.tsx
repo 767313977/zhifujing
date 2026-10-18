@@ -389,7 +389,7 @@ export default function PlansPage() {
                         <span className={`text-[12px] ${statusClass(row.status)}`}>
                           {row.status}
                         </span>
-                        {row.fill_price != null && (
+                        {row.status === "触发" && row.fill_price != null && (
                           <div className="num text-[11px] text-fg-dim">
                             成交 {fmtNum(row.fill_price, 2)}
                           </div>

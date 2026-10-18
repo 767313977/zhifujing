@@ -399,6 +399,23 @@ class DailyScheduler:
                 misfire_grace_time=3600,
                 coalesce=True,
             )
+            # 兜底：告警推送本身也可能失败（网络抖动 / 飞书限流），失败后当天不重试
+            # 就成了「出问题那天连告警都没有」的静默失败。一小时后重跑一次 ——
+            # 去重只认 sent（jobs/alerts.py），failed 会自动重试，sent 直接跳过。
+            scheduler.add_job(
+                self._run_alert,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour=min(self.settings.alert_hour + 1, 23),
+                    minute=self.settings.alert_minute,
+                    timezone=TIMEZONE,
+                ),
+                id=f"{ALERT_JOB_ID}_retry",
+                name="收盘链路告警（兜底）",
+                replace_existing=True,
+                misfire_grace_time=3600,
+                coalesce=True,
+            )
         logger.info(
             "定时采集已启动：交易日 %02d:%02d（收盘后补采 %02d:%02d / 兜底 %02d:%02d，"
             "成分股预取 %02d:%02d / 兜底 %02d:%02d；集合竞价 09:15–09:26 每分钟 + 09:31 补量比；"

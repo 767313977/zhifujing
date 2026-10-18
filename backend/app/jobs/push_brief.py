@@ -355,7 +355,7 @@ def _plan_block(session, trade_date: date) -> str:
     rows = trade_plan.brief_rows(session, trade_date)
     if not rows:
         return ""
-    lines = ["## 明日计划核对"]
+    lines = ["**明日计划核对**"]
     for row in rows:
         name = row.get("name") or row["code"]
         head = (

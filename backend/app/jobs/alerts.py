@@ -24,6 +24,8 @@ TASK = "alert"
 TAIL_TASK = "daily_tail"
 #: 与 `jobs/push_brief.py` 的 `PUSH_TASK` 必须一致
 PUSH_TASK = "push_brief"
+#: 与 `jobs/backup.py` 的 `TASK` 必须一致
+BACKUP_TASK = "db_backup"
 
 
 def _is_trading_day(day: date) -> bool:
@@ -45,6 +47,25 @@ def _log_statuses(day: date, task: str) -> set[str]:
                 )
             )
         )
+
+
+def _latest_backup() -> tuple[date | None, set[str]]:
+    """最近一次备份记录：`(记录日期, 那天的全部状态)`；从未跑过返回 `(None, set())`。
+
+    告警 20:00 跑、备份 23:10 才跑，所以这里查的是**昨天及以前**的备份 ——
+    语义上就是「最近一次」，不是「当天」。同一天重跑多次时把状态合并看。
+    """
+    with session_scope() as session:
+        rows = session.execute(
+            select(CollectLog.trade_date, CollectLog.status)
+            .where(CollectLog.task == BACKUP_TASK)
+            .order_by(CollectLog.trade_date.desc())
+            .limit(5)
+        ).all()
+    if not rows:
+        return None, set()
+    latest = rows[0][0]
+    return latest, {status for day, status in rows if day == latest}
 
 
 def _record(day: date, status: str, message: str) -> None:
@@ -93,6 +114,16 @@ def check(day: date | None = None, settings: Settings | None = None) -> dict:
             f"（剩余 {quota['cycle_remaining']} / {quota['monthly_quota']} 次，"
             f"今日 {quota['today_calls']} 次）"
         )
+
+    # 备份：23:10 才跑，这里查「最近一次」。失败要报；成功但没配异地同步也提醒 ——
+    # 备份和主库在同一块盘上等于没备份（2026-10-19 P3 修）。
+    backup_day, backup_statuses = _latest_backup()
+    if backup_day is None:
+        issues.append("数据库备份从未运行（23:10 任务无记录）")
+    elif "ok" not in backup_statuses:
+        issues.append(f"最近一次数据库备份失败（{backup_day}），主库当前无保护")
+    if not settings.backup_sync_dir.strip():
+        issues.append("备份未配置异地同步目录（BACKUP_SYNC_DIR），备份与主库在同一块盘上")
 
     if not issues:
         return {"status": "ok", "issues": []}
