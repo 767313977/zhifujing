@@ -635,6 +635,9 @@ MIN_BARS = MA_PERIODS[-1] + MA_SLOPE_LOOKBACK
 #
 # | 形态 | 信号 | 5日 | 10日 | 20日 | 60日 | 10日胜率 |
 # | --- | --- | --- | --- | --- | --- | --- |
+#
+# ⚠️ **2026-10-18：量价底背离 / 矩形箱体 / 下降楔形已按用户要求删除** ——
+# 下表里这三行的数字保留，只作「历史上跑出来过什么」的记录，不再代表在册形态。
 # | 缩量涨停 | 138 | +5.38% | **+4.29%** | +0.83% | −9.82% | 49.3% |
 # | V 型底 | 1766 | +1.54% | **+2.01%** | +0.49% | +0.70% | **53.3%** |
 # | 周线多头 | 2622 | +1.00% | +1.74% | **+1.91%** | +1.07% | 48.5% |
@@ -666,8 +669,8 @@ MIN_BARS = MA_PERIODS[-1] + MA_SLOPE_LOOKBACK
 #
 # 1. **有超额、且胜率/中位也正**的 4 个：V 型底、矩形箱体、周线多头、箱体突破 ——
 #    它们在自己那档持有期上是站得住的（周线多头与矩形箱体 20 日仍为正）。
-#    ⚠️ 「周线多头」已于 2026-10-15 撤下（用户要求）—— 这段里的名字**当时**是成立的，
-#    现在只剩 V 型底 / 矩形箱体 / 箱体突破 三个。
+#    ⚠️ 「周线多头」已于 2026-10-15 撤下、「矩形箱体」已于 2026-10-18 撤下（用户要求）
+#    —— 这段里的名字**当时**是成立的，现在只剩 V 型底 / 箱体突破 两个。
 #    缩量涨停的 10 日超额最高（+4.29%）但胜率只有 49%、中位 −0.35%，是**低胜率高赔率**，
 #    且信号只有 138 条（最少），结论比其它几个脆，20 日之后开始回吐。
 # 2. **超额接近 0（±0.5% 以内）**：启明星、看涨吞没、阳包阴、倒锤子线、三重底、锤子线 ——
@@ -676,11 +679,13 @@ MIN_BARS = MA_PERIODS[-1] + MA_SLOPE_LOOKBACK
 #    ⚠️ 其中 5 个**已于 2026-10-14 全部撤下**（启明星 / 锤子线 / 倒锤子线先撤，
 #    看涨吞没 / 阳包阴同日再撤）；只有「三重底」留下 —— 它不属蜡烛类、另有指向性。
 # 3. **负超额要分两种看**，混起来会得出相反结论：
-#    - **警示类**（上升楔形 −0.62%/20日 −3.83%、放量滞涨 −2.54%/20日 −5.71%、菱形、
-#      下降楔形）：负超额恰恰是「形态有效」的证据 —— 它们本来就该出现在高位/破位前，
+#    - **警示类**（上升楔形 −0.62%/20日 −3.83%、放量滞涨 −2.54%/20日 −5.71%、菱形）：
+#      负超额恰恰是「形态有效」的证据 —— 它们本来就该出现在高位/破位前，
 #      用来提示风险，不是选买点。放量滞涨胜率 32.8%、上升楔形 26.8%，指向性很明确。
+#      ⚠️ 原来的第四员「下降楔形」已 2026-10-18 撤下。
 #    - **本该是买点的**（均线粘合 −0.87%、地量见底 −0.43%、量价底背离 −1.15%）：
 #      这些的负超额说明「经典说法在这段样本里不成立」，看的时候要打折。
+#      ⚠️ 其中「量价底背离」已 2026-10-18 撤下。
 #
 # ⚠️ **2026-09-27 重跑，口径变大，有几个结论跟着变**：上面那张表是 2995 只票的
 # 样本；扩成**全池 5100 只 × 250 个交易日、165894 条信号**之后 ——
@@ -693,7 +698,7 @@ MIN_BARS = MA_PERIODS[-1] + MA_SLOPE_LOOKBACK
 # | 欧奈尔突破 | **0** | — | — | **删除**（一条信号都不出） |
 #
 # 判据：**负超额 + 本来就是买点定位 + 没有别的用途**，三条同时成立才删。所以
-# 警示类（上升楔形 / 放量滞涨 / 菱形 / 下降楔形，负超额正是它们「有效」的证据）
+# 警示类（上升楔形 / 放量滞涨 / 菱形，负超额正是它们「有效」的证据）
 # 与用户点名要的「按形状捞票」类（N 字选股、揉搓线、玉柱擎天、爆量后缩量回踩）
 # 都留着 —— 后者的负超额是已知代价，不是新信息。形态数 48 → **44**。
 # 完整表格与逐条理由见设计文档 §8.68.25。
@@ -747,10 +752,8 @@ DRY_BOTTOM_DAYS = 60  # 「地量」与「低位」的回看窗口
 DRY_BOTTOM_VOL_MAX = 1.05  # 当日量 ≤ 窗口最低量 × 这个系数
 DRY_BOTTOM_MIN_DRAWDOWN = 0.2  # 距窗口最高收盘的回撤下限（够低才算底）
 
-# 量价底背离（价创新低、量能反而萎缩）
-VP_DIVERGE_DAYS = 40
-VP_DIVERGE_NEW_LOW = 0.01  # 收盘距窗口最低收盘在这个比例以内算「贴着新低」
-VP_DIVERGE_VOL_DROP = 0.7  # 本次跌段均量 / 上次跌段均量 的上限
+# 量价底背离（价创新低、量能反而萎缩）—— **2026-10-18 已按用户要求删除**
+# （判定函数 `_vp_divergence`、阈值 `VP_DIVERGE_*`、前端明细标签、库里的历史命中一并删）。
 
 # 缩量涨停（涨停却没量 = 惜售）
 SHRINK_LIMIT_VOL_MAX = 0.8  # 涨停日量 / 前 5 日均量 的上限
@@ -788,21 +791,18 @@ TRIPLE_DAYS = 90
 TRIPLE_LOW_TOL = 0.06  # 三个低点两两差距上限
 TRIPLE_MAX_EXCESS = 0.06  # 突破颈线的幅度上限
 
-# 矩形箱体（长矩形里贴着上沿，尚未突破）
-RECT_DAYS = 80
-RECT_MIN_RANGE = 0.1
-RECT_MAX_RANGE = 0.45
-RECT_POSITION_MIN = 0.7  # 收盘在箱体内的相对位置下限
+# 矩形箱体（长矩形里贴着上沿，尚未突破）—— **2026-10-18 已按用户要求删除**
+# （判定函数 `_rectangle_box`、阈值 `RECT_*`、库里的历史命中一并删；沿用的
+#  `BOX_TOUCH_TOL` / `BOX_MIN_TOUCHES` 仍被「箱体突破」使用，保留）。
 
-# 楔形（收敛三角形；上升楔形偏空、下降楔形偏多）
+# 楔形（收敛三角形；上升楔形偏空）
 WEDGE_DAYS = 50
 WEDGE_MIN_DAYS = 30
 WEDGE_MIN_SLOPE = 0.0004  # 两轨斜率绝对值的下限，再平就是箱体
 WEDGE_MIN_CONVERGE = 0.55  # 收敛比例下限 (起始间距 − 结束间距) / 起始间距
 WEDGE_TOUCH_TOL = 0.03  # 轨被触碰的容差
 WEDGE_MIN_TOUCHES = 3  # 每条轨至少被碰这么多次（真楔形的高/低点会反复贴轨）
-WEDGE_FALL_POSITION_MIN = 0.35  # 下降楔形要求收盘在楔形上部（跌势末端、准备向上突）
-WEDGE_FALL_GAP_MAX = 0.08  # 下降楔形末端两轨的间距上限（占均价）—— 成熟楔形快汇合了
+# 下降楔形 2026-10-18 已删除（连同 `WEDGE_FALL_*` 两个专属阈值）。
 
 # 菱形（先扩张后收敛）
 DIAMOND_DAYS = 70
@@ -4048,56 +4048,6 @@ def _volume_dry_bottom(bars: Bars) -> Signal | None:
     )
 
 
-def _vp_divergence(bars: Bars) -> Signal | None:
-    """量价底背离：价格贴着 40 日新低，但这一段下跌的均量比上一段低点萎缩 ≥30%。
-
-    口径说明：这里取「**缩量新低** = 抛压衰竭」这个读法（价创新低、量不再创新低）。
-    另一种常见读法是「放量新低 = 恐慌盘出清」，两种都说得通，本引擎取前者；
-    要换口径就把 `VP_DIVERGE_VOL_DROP` 的比较方向改掉。
-    """
-    if len(bars) < VP_DIVERGE_DAYS + 5:
-        return None
-    window = bars.close[-VP_DIVERGE_DAYS:]
-    lowest = float(window.min())
-    if lowest <= 0:
-        return None
-    close = float(bars.close[-1])
-    if close > lowest * (1 + VP_DIVERGE_NEW_LOW):
-        return None  # 还没到新低附近
-
-    half = len(window) // 2
-    prev_index = len(bars) - VP_DIVERGE_DAYS + int(np.argmin(window[:half]))
-    prev_vol = _safe_mean(bars.volume[max(prev_index - 2, 0) : prev_index + 3])
-    now_vol = _safe_mean(bars.volume[-5:])
-    if prev_vol <= 0 or now_vol <= 0:
-        return None
-    ratio = now_vol / prev_vol
-    if ratio > VP_DIVERGE_VOL_DROP:
-        return None
-
-    peak = float(bars.close[-DRY_BOTTOM_DAYS:].max()) if len(bars) >= DRY_BOTTOM_DAYS else float(
-        bars.close.max()
-    )
-    drawdown = 1 - close / peak if peak > 0 else 0.0
-    pct = float(bars.pct_chg[-1])
-
-    score = _gate_score(ratio, VP_DIVERGE_VOL_DROP, 0.35) * 45
-    score += _band_score(drawdown, DRY_BOTTOM_MIN_DRAWDOWN, 0.45, 0.7) * 25
-    score += _gate_score(pct, -2.0, 2.0) * 30
-
-    return Signal(
-        "vp_divergence",
-        min(score, 100.0),
-        {"support": lowest},
-        {
-            "vol_ratio": round(ratio, 3),
-            "new_low": round(close / lowest - 1, 4),
-            "drawdown": round(drawdown, 4),
-            "pct_chg": round(pct, 2),
-        },
-    )
-
-
 def _shrink_limit_up(bars: Bars) -> Signal | None:
     """缩量涨停：涨停（沿用 `LS_LIMIT_PCT` 的 9.5% 口径）却明显没量 —— 惜售。
 
@@ -4331,49 +4281,6 @@ def _triple_bottom(bars: Bars) -> Signal | None:
     )
 
 
-def _rectangle_box(bars: Bars) -> Signal | None:
-    """矩形箱体：80 天的宽幅矩形、上下沿反复验证，今天收在箱体上部但**尚未突破**。
-
-    与「箱体突破」的分工：那个要求已经收在上沿之上（右侧交易），这个要求贴着上沿
-    待突破（左侧埋伏）。买点不同，所以两个都留着。
-    """
-    if len(bars) < RECT_DAYS + 2:
-        return None
-    box = slice(len(bars) - 1 - RECT_DAYS, len(bars) - 1)
-    top = float(bars.high[box].max())
-    bottom = float(bars.low[box].min())
-    if bottom <= 0:
-        return None
-    width = (top - bottom) / bottom
-    if width < RECT_MIN_RANGE or width > RECT_MAX_RANGE:
-        return None
-    touches_top = _touches(bars.high[box], top, BOX_TOUCH_TOL)
-    touches_bottom = _touches(bars.low[box], bottom, BOX_TOUCH_TOL)
-    if touches_top < BOX_MIN_TOUCHES or touches_bottom < BOX_MIN_TOUCHES:
-        return None
-
-    close = float(bars.close[-1])
-    position = (close - bottom) / (top - bottom)
-    if not RECT_POSITION_MIN <= position <= 1.0:
-        return None  # 必须在上部，且还没突破上沿
-
-    score = min((touches_top + touches_bottom) / 8.0, 1.0) * 35
-    score += _band_score(position, RECT_POSITION_MIN, 0.95, 1.05) * 40
-    score += _gate_score(width, RECT_MAX_RANGE, RECT_MIN_RANGE) * 25
-
-    return Signal(
-        "rectangle_box",
-        min(score, 100.0),
-        {"breakout": top, "support": bottom},
-        {
-            "box_range": round(width, 4),
-            "position": round(position, 3),
-            "touches_top": touches_top,
-            "touches_bottom": touches_bottom,
-        },
-    )
-
-
 def _wedge_shape(bars: Bars) -> tuple[float, float, float, float] | None:
     """楔形几何：返回 `(上轨日斜率, 下轨日斜率, 收敛比例, 末端间距/均价)`，不成立则 None。
 
@@ -4452,44 +4359,6 @@ def _rising_wedge(bars: Bars) -> Signal | None:
             "upper_slope": round(high_daily, 5),
             "lower_slope": round(low_daily, 5),
             "gap_ratio": round(gap_ratio, 4),
-        },
-    )
-
-
-def _falling_wedge(bars: Bars) -> Signal | None:
-    """下降楔形：两轨都向下但逐渐收敛 —— **偏多**（跌势衰竭，向上突破概率大）。"""
-    shape = _wedge_shape(bars)
-    if shape is None:
-        return None
-    high_daily, low_daily, converge, gap_ratio = shape
-    if high_daily >= 0 or low_daily >= 0:
-        return None
-
-    close = float(bars.close[-1])
-    high_slope, high_intercept = _linfit(bars.high[-min(WEDGE_DAYS, len(bars)) :])
-    low_slope, low_intercept = _linfit(bars.low[-min(WEDGE_DAYS, len(bars)) :])
-    end = min(WEDGE_DAYS, len(bars)) - 1
-    upper = float(high_intercept + high_slope * end)
-    lower = float(low_intercept + low_slope * end)
-    position = (close - lower) / (upper - lower) if upper > lower else 0.5
-    if position < WEDGE_FALL_POSITION_MIN:
-        return None  # 还在楔形下部 = 跌势没走完，别急着当"向上突破"看
-    if gap_ratio > WEDGE_FALL_GAP_MAX:
-        return None  # 两轨还没汇合，说明楔形还没走到底
-
-    score = _gate_score(converge, WEDGE_MIN_CONVERGE, 0.75) * 40
-    score += _band_score(position, 0.4, 0.95, 1.05) * 30
-    score += min(_volume_ratio(bars, 5) / 2.0, 1.0) * 30
-
-    return Signal(
-        "falling_wedge",
-        min(score, 100.0),
-        {"support": lower, "breakout": upper},
-        {
-            "converge": round(converge, 3),
-            "upper_slope": round(high_daily, 5),
-            "lower_slope": round(low_daily, 5),
-            "position": round(position, 3),
         },
     )
 
@@ -5645,6 +5514,9 @@ ZGNB_GROUP = "知行B1"
 #
 # | 分组 | 形态 | 信号 | 5日超额 | 10日超额 | 20日超额 | 60日超额 | 10日胜率 | 10日中位 |
 # | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+#
+# ⚠️ 2026-10-18：量价底背离 / 矩形箱体 / 下降楔形已按用户要求撤下 —— 下表中这三行
+# 的数字保留作历史记录（别再照它们判断「这个形态还在不在」）。
 # | 知行B1 | 超牛股回踩白线B1 | 13 | +4.21% | **+6.08%** | +7.78% | −7.16% | **61.5%** | **+10.05%** |
 # | 知行B1 | 缩量拐头B1 | 199 | +0.25% | **+2.96%** | +4.14% | −5.95% | 50.8% | +0.18% |
 # | 量价 | 突破后横盘 | 78 | +2.92% | **+2.20%** | −0.23% | +1.38% | **55.1%** | +0.86% |
@@ -5734,12 +5606,15 @@ PATTERNS: tuple[Pattern, ...] = (
     #
     # 定位与「N 字选股」一致：按这个形状捞一批票自己看，不是高胜率信号。
     # 逐形态的回测数字（5/10/20/60 日超额、胜率）见文件上方阈值块开头那张表 ——
-    # 那一批里 V 型底 / 矩形箱体 / 箱体突破 有正超额，蜡烛类接近 0，
+    # 那一批里 V 型底 / 箱体突破 有正超额，蜡烛类接近 0，
     # 上升楔形与放量滞涨是**警示类**（负超额正是它们有效的证据）。
     #
     # ⚠️ 「上升通道」与「周线多头」2026-10-15 已撤下（用户要求，上面那句里原本还有
     # 它们的名字）：判定函数、`CHANNEL_*` / `WEEKLY_BULL_*` 阈值、只被周线多头用到的
     # `_weekly_closes`、前端明细标签、库里的历史命中都一并删了。
+    # ⚠️ 「量价底背离」「矩形箱体」「下降楔形」2026-10-18 已撤下（用户要求）：
+    # 判定函数、`VP_DIVERGE_*` / `RECT_*` / `WEDGE_FALL_*` 阈值、前端明细标签、
+    # 库里的历史命中同样一并删了。
     Pattern("ma_squeeze", "均线粘合", "趋势", _ma_squeeze),
     Pattern("ma_golden_cross", "金叉共振", "趋势", _ma_golden_cross),
     Pattern("downtrend_breakout", "下降趋势线突破", "突破", _downtrend_breakout),
@@ -5747,15 +5622,12 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("gap_fill", "缺口回补", "突破", _gap_fill),
     Pattern("box_breakout", "箱体突破", "突破", _box_breakout),
     Pattern("volume_dry_bottom", "地量见底", "量价", _volume_dry_bottom),
-    Pattern("vp_divergence", "量价底背离", "量价", _vp_divergence),
     Pattern("shrink_limit_up", "缩量涨停", "量价", _shrink_limit_up),
     Pattern("volume_stall", "放量滞涨", "量价", _volume_stall),
     Pattern("v_bottom", "V 型底", "几何", _v_bottom),
     Pattern("round_bottom", "圆弧底", "几何", _round_bottom),
     Pattern("triple_bottom", "三重底", "几何", _triple_bottom),
-    Pattern("rectangle_box", "矩形箱体", "几何", _rectangle_box),
     Pattern("rising_wedge", "上升楔形", "几何", _rising_wedge),
-    Pattern("falling_wedge", "下降楔形", "几何", _falling_wedge),
     Pattern("diamond", "菱形", "几何", _diamond),
     # ⚠️ 「锤子线 / 倒锤子线 / 启明星」2026-10-14 **撤下**：新口径下信号量上千条
     # （2734 / 2804 / 3257）而 10 日超额≈0（−0.81% / +0.05% / +0.04%），是噪声 ——

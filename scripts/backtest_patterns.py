@@ -138,15 +138,14 @@ NEW_KEYS = (
     "gap_fill",
     "box_breakout",
     "volume_dry_bottom",
-    "vp_divergence",
+    # 「量价底背离」2026-10-18 撤下（用户要求），不在这批里了
     "shrink_limit_up",
     "volume_stall",
     "v_bottom",
     "round_bottom",
     "triple_bottom",
-    "rectangle_box",
     "rising_wedge",
-    "falling_wedge",
+    # 「矩形箱体」「下降楔形」2026-10-18 撤下（用户要求），不在这批里了
     "diamond",
     # 「启明星 / 锤子线 / 倒锤子线」2026-10-14 撤下（噪声），不在这批里了；
     # 同日「看涨吞没 / 阳包阴」按同一条线（信号量 ≥1000 且 |10 日超额| < 0.5%）也撤下

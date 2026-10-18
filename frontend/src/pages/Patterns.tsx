@@ -278,7 +278,6 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   // 量价
   vol_shrink: ['缩量到', true],
   drawdown: ['距高点回撤', true],
-  new_low: ['距新低', true],
   upper_shadow: ['上影占比', true],
   gain: ['区间涨幅', true],
   // 几何
