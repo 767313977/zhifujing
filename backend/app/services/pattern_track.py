@@ -825,21 +825,25 @@ SCORECARD_NOISE_EXCESS = 0.5
 def _verdict(entry: dict) -> str:
     """给一行成绩单下结论。`entry` 是 `scorecard` 里那一条（含 `hits` / `returns`）。
 
+    **样本数取 10 日那一档实际走完的样本**，不是总命中数：最近几个扫描日还没走完
+    10 个交易日，把它们算进去会让「样本不足」的形态看起来样本很多（2026-10-18 修）。
+
     顺序不能换：样本太少时超额本身不可信，先报「样本不足」；「噪声」要求样本多，
     否则一个偶然的 0 超额也会被当成「已证明无效」。
     """
-    if entry["hits"] < SCORECARD_MIN_SAMPLES:
-        return "样本不足"
     last = next(
         (row for row in entry["returns"] if row["days"] == max(HORIZONS)), None
     )
+    samples = last["samples"] if last is not None else 0
+    if samples < SCORECARD_MIN_SAMPLES:
+        return "样本不足"
     if last is None or last["excess"] is None:
         return "观察"
     excess = last["excess"]
     beat = last["beat_pct"] or 0.0
     if excess > SCORECARD_EFFECT_EXCESS and beat > 50:
         return "有效"
-    if abs(excess) < SCORECARD_NOISE_EXCESS and entry["hits"] >= SCORECARD_NOISE_SAMPLES:
+    if abs(excess) < SCORECARD_NOISE_EXCESS and samples >= SCORECARD_NOISE_SAMPLES:
         return "噪声"
     return "观察"
 

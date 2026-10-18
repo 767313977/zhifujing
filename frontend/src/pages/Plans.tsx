@@ -389,6 +389,11 @@ export default function PlansPage() {
                         <span className={`text-[12px] ${statusClass(row.status)}`}>
                           {row.status}
                         </span>
+                        {row.fill_price != null && (
+                          <div className="num text-[11px] text-fg-dim">
+                            成交 {fmtNum(row.fill_price, 2)}
+                          </div>
+                        )}
                         {row.high != null && (
                           <div className="num text-[11px] text-fg-dim">
                             高 {fmtNum(row.high, 2)} / 低 {fmtNum(row.low, 2)}

@@ -25,9 +25,13 @@ def test_level_core_only_when_below_main_line_budget():
     assert _level_for(40, 1) == QuotaLevel.CORE_ONLY
 
 
-def test_level_normal_on_last_day_even_with_zero_left():
-    # collect_days=0 = 今天就是周期最后一天：额度不累积，该花就花
-    assert _level_for(0, 0) == QuotaLevel.NORMAL
+def test_level_core_only_on_last_day_with_zero_left():
+    # collect_days=0 时按 1 天算：今天这一轮仍要花，剩 0 额度不能判正常档
+    assert _level_for(0, 0) == QuotaLevel.CORE_ONLY
+
+
+def test_level_normal_on_last_day_with_enough_for_one_day():
+    assert _level_for(500, 0) == QuotaLevel.NORMAL
 
 
 def test_cycle_boundaries_mid_month():

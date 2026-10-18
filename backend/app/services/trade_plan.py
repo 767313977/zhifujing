@@ -41,7 +41,7 @@ def _calendar(session: Session) -> tuple[list[date], dict[date, int]]:
 
 
 def _bars(session: Session, codes: set[str], start: date) -> dict[str, dict[date, tuple]]:
-    """`{code: {交易日: (最高, 最低, 收盘)}}`，只取三价齐全的行。"""
+    """`{code: {交易日: (开盘, 最高, 最低, 收盘)}}`，只取四价齐全的行。"""
     if not codes:
         return {}
     result: dict[str, dict[date, tuple]] = defaultdict(dict)
@@ -49,24 +49,31 @@ def _bars(session: Session, codes: set[str], start: date) -> dict[str, dict[date
         select(
             StockDaily.code,
             StockDaily.trade_date,
+            StockDaily.open,
             StockDaily.high,
             StockDaily.low,
             StockDaily.close,
         ).where(
             StockDaily.code.in_(codes),
             StockDaily.trade_date >= start,
+            StockDaily.open.is_not(None),
             StockDaily.high.is_not(None),
             StockDaily.low.is_not(None),
             StockDaily.close.is_not(None),
         )
     ).all()
-    for code, day, high, low, close in rows:
-        result[code][day] = (float(high), float(low), float(close))
+    for code, day, open_, high, low, close in rows:
+        result[code][day] = (
+            float(open_),
+            float(high),
+            float(low),
+            float(close),
+        )
     return result
 
 
 def _next_returns(
-    buy_price: float,
+    entry: float,
     bars: dict[date, tuple],
     calendar: list[date],
     pos: dict[date, int],
@@ -79,7 +86,7 @@ def _next_returns(
         if start is not None and start + horizon < len(calendar):
             bar = bars.get(calendar[start + horizon])
             if bar is not None:
-                value = round((bar[2] / buy_price - 1) * 100, 2)
+                value = round((bar[3] / entry - 1) * 100, 2)
         out[f"next_{horizon}d_pct"] = value
     return out
 
@@ -97,6 +104,7 @@ def evaluate(
         "high": None,
         "low": None,
         "close": None,
+        "fill_price": None,
         "day_close_pct": None,
         "max_favorable_pct": None,
         "max_adverse_pct": None,
@@ -110,10 +118,20 @@ def evaluate(
             return {**blank, "status": "无日线（停牌或未采集）"}
         return blank
 
-    high, low, close = bar
+    open_, high, low, close = bar
     triggered = high >= plan.buy_price
     broken = low <= plan.stop_price
-    if triggered and broken:
+    # 一字板：开 = 高 = 低，盘中只有一个价，挂单买不进 —— 不能因为「最高价碰到买点」
+    # 就算触发（2026-10-18 修）。跌停一字同理不算触发。
+    one_word = open_ == high == low
+    if one_word:
+        if high >= plan.buy_price:
+            status = "一字板买不进"
+        elif broken:
+            status = "放弃（破位）"
+        else:
+            status = "未触发"
+    elif triggered and broken:
         status = "同日触发并跌破"
     elif triggered:
         status = "触发"
@@ -122,11 +140,16 @@ def evaluate(
     else:
         status = "未触发"
 
+    # 跳空高开时按**开盘价**成交（不是计划买点价），否则收益会被高估。
+    fill_price = (
+        max(float(plan.buy_price), open_) if triggered and not one_word else None
+    )
     result = {
         "status": status,
         "high": high,
         "low": low,
         "close": close,
+        "fill_price": fill_price,
         "day_close_pct": None,
         "max_favorable_pct": None,
         "max_adverse_pct": None,
@@ -134,11 +157,11 @@ def evaluate(
         "next_3d_pct": None,
         "next_5d_pct": None,
     }
-    if triggered:
-        result["day_close_pct"] = round((close / plan.buy_price - 1) * 100, 2)
-        result["max_favorable_pct"] = round((high / plan.buy_price - 1) * 100, 2)
-        result["max_adverse_pct"] = round((low / plan.buy_price - 1) * 100, 2)
-        result.update(_next_returns(plan.buy_price, bars, calendar, pos, plan.plan_date))
+    if status == "触发" and fill_price is not None:
+        result["day_close_pct"] = round((close / fill_price - 1) * 100, 2)
+        result["max_favorable_pct"] = round((high / fill_price - 1) * 100, 2)
+        result["max_adverse_pct"] = round((low / fill_price - 1) * 100, 2)
+        result.update(_next_returns(fill_price, bars, calendar, pos, plan.plan_date))
     return result
 
 

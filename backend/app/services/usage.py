@@ -75,8 +75,11 @@ class QuotaLevel(IntEnum):
 #:
 #: ⚠️ 「还要采的天数」= 余下交易日（含今天）**− 今天**（见 `quota_status`）：
 #: 判档是在采集途中求值的，今天那一轮要么已经跑完、要么正在跑，再算一天等于白留一天
-#: 预算（实测 10-13：多算这一天会让纯增强的 ETF 白停）。周期最后一天则退化成 0 →
-#: 恒为正常档，把余额花光（额度不累积，留着没用）。
+#: 预算（实测 10-13：多算这一天会让纯增强的 ETF 白停）。
+#:
+#: **但 0 不能真的按 0 算**（2026-10-18 修）：周期最后一天 `余下 − 今天 = 0`，如果
+#: 直接乘 0，任何档位都成立 → 恒为正常档，剩 0 额度也全速跑。现在 `_level_for` 把
+#: 天数下限设为 1 —— 今天这一轮仍要花额度，剩多少至少要能覆盖它。
 #:
 #: 写成表而不是一串 if，是为了让「先停谁、后停谁」一眼看完 —— 调整顺序只动这里一处。
 #: 最后一档的日耗 = `FULL_DAY_CALLS − HIT_DDE_DAILY − BASE_DAILY`
@@ -285,7 +288,9 @@ def quota_status(day: date | None = None, settings: Settings | None = None) -> d
     days_left = trade_days_between(today, end)  # 含今天，只用于展示
     remaining = max(quota - used, 0)
     # 判档按「还要采几天」= 上面 − 今天：判档发生在采集途中，今天那轮已经在跑/跑完，
-    # 再算一天等于白留一天预算（2026-10-13 用户实测后要求放宽这一天）
+    # 再算一天等于白留一天预算（2026-10-13 用户实测后要求放宽这一天）。
+    # ⚠️ 这里可能得到 0（周期最后一天），但 `_level_for` 会按**至少 1 天**算 ——
+    # 今天这一轮仍要花额度，剩 0 时不能再判成正常档（2026-10-18 修）。
     level = _level_for(remaining, max(days_left - 1, 0))
     # 手工压档（见 `FORCED_LEVELS`）：只覆盖列出的那一天，其余一律照常。
     # 压档只改「判成哪一档」，不改用量统计 —— 所以页面上的已用/剩余仍是真实值。
@@ -325,12 +330,13 @@ def quota_status(day: date | None = None, settings: Settings | None = None) -> d
 def _level_for(remaining: int, collect_days: int) -> QuotaLevel:
     """`LEVEL_BUDGETS` 里第一个「剩余额度 ≥ 日耗 × 还要采的交易日数」的档位。
 
-    `collect_days` **不含今天**（调用方传 `余下交易日 − 1`，理由见 `quota_status`）。
-    `collect_days = 0`（今天就是周期最后一天，或本周期已经过完）时每档都成立 →
-    恒为 NORMAL ✓ —— 额度不累积，最后一天该花就花。
+    `collect_days` **不含今天**（调用方传 `余下交易日 − 1`），但这里会把它**下限设为 1**：
+    周期最后一天传 0，如果直接乘 0，每一档都会成立、恒判正常档 —— 剩 0 额度时也会
+    全速跑，当天必然撞墙（2026-10-18 修）。今天这一轮还没跑完，至少要按 1 天算。
     """
+    days = max(collect_days, 1)
     for daily, level in LEVEL_BUDGETS:
-        if remaining >= daily * collect_days:
+        if remaining >= daily * days:
             return level
     return QuotaLevel.CORE_ONLY
 

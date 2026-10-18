@@ -99,7 +99,7 @@ def check(day: date | None = None, settings: Settings | None = None) -> dict:
 
     from app.jobs.push_brief import send_markdown
 
-    lines = [f"**收盘链路告警** · {today.isoformat()}"] + [
+    lines = [f"**收盘复盘 · 链路告警** · {today.isoformat()}"] + [
         f"- {item}" for item in issues
     ]
     lines.append("")

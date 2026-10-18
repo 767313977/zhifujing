@@ -1794,6 +1794,8 @@ export interface TradePlanRow extends TradePlanIn {
   high: number | null
   low: number | null
   close: number | null
+  /** 实际成交价：跳空高开时是开盘价；一字板买不进时为 null */
+  fill_price: number | null
   day_close_pct: number | null
   max_favorable_pct: number | null
   max_adverse_pct: number | null

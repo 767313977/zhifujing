@@ -1689,6 +1689,8 @@ class TradePlanRow(TradePlanIn):
     high: float | None = None
     low: float | None = None
     close: float | None = None
+    #: 实际成交价：跳空高开时是开盘价（≥ 买点）；一字板买不进时为 null
+    fill_price: float | None = None
     #: 触发后：计划日收盘相对买点
     day_close_pct: float | None = None
     max_favorable_pct: float | None = None

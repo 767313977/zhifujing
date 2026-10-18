@@ -81,14 +81,27 @@ def test_pooled_stats_flattens_samples_not_cycles():
     assert out["beat_pct"] == pytest.approx(66.7)
 
 
-def _row(hits: int, excess: float | None, beat: float | None = 50.0) -> dict:
+def _row(
+    hits: int,
+    excess: float | None,
+    beat: float | None = 50.0,
+    *,
+    samples: int | None = None,
+) -> dict:
+    """构造一行成绩单；`samples` 是 10 日那一档实际走完的样本（默认等于总命中数）。"""
+    count = hits if samples is None else samples
     return {
         "hits": hits,
         "returns": [
-            {"days": 1, "excess": excess, "beat_pct": beat},
-            {"days": 10, "excess": excess, "beat_pct": beat},
+            {"days": 1, "excess": excess, "beat_pct": beat, "samples": count},
+            {"days": 10, "excess": excess, "beat_pct": beat, "samples": count},
         ],
     }
+
+
+def test_verdict_uses_10day_samples_not_total_hits():
+    # 总命中 500，但 10 日只走完 10 条 —— 不能因为总命中多就判「有效」
+    assert _verdict(_row(500, 2.0, 60, samples=10)) == "样本不足"
 
 
 def test_verdict_sample_shortage_comes_first():

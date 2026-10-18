@@ -58,20 +58,31 @@ def _calendar_position(session: Session) -> dict[date, int]:
 
 def _bars(
     session: Session, codes: set[str], start: date
-) -> dict[str, list[tuple[date, float]]]:
-    """`{code: [(交易日, 收盘价)]}`，只取有收盘价的行（停牌残行跳过）。"""
+) -> dict[str, list[tuple[date, float, float | None]]]:
+    """`{code: [(交易日, 不复权收盘, 涨跌幅)]}`，只取有收盘价的行（停牌残行跳过）。
+
+    涨跌幅是**已按除权调整的真实收益率**，`_metrics` 靠它逐日复利出「买入日口径」的
+    等价价 —— 直接用不复权收盘价遇到 10 送 10 会凭空算出 −50%。
+    """
     if not codes:
         return {}
-    result: dict[str, list[tuple[date, float]]] = defaultdict(list)
+    result: dict[str, list[tuple[date, float, float | None]]] = defaultdict(list)
     rows = session.execute(
-        select(StockDaily.code, StockDaily.trade_date, StockDaily.close).where(
+        select(
+            StockDaily.code,
+            StockDaily.trade_date,
+            StockDaily.close,
+            StockDaily.pct_chg,
+        ).where(
             StockDaily.code.in_(codes),
             StockDaily.trade_date >= start,
             StockDaily.close.is_not(None),
         )
     ).all()
-    for code, day, close in rows:
-        result[code].append((day, float(close)))
+    for code, day, close, pct_chg in rows:
+        result[code].append(
+            (day, float(close), float(pct_chg) if pct_chg is not None else None)
+        )
     for values in result.values():
         values.sort(key=lambda item: item[0])
     return result
@@ -124,7 +135,7 @@ def _sentiment_levels(session: Session, days: int = 400) -> dict[date, str]:
 
 def _metrics(
     trade: TradeJournal,
-    bars: list[tuple[date, float]],
+    bars: list[tuple[date, float, float | None]],
     calendar_pos: dict[date, int],
     data_end: date | None,
 ) -> dict:
@@ -147,18 +158,42 @@ def _metrics(
     if end_day is None or end_pos is None:
         return {**blank, "metrics_note": "卖出日不在交易日历里"}
 
-    window = [(day, close) for day, close in bars if trade.entry_date <= day <= end_day]
+    window = [
+        (day, close, pct)
+        for day, close, pct in bars
+        if trade.entry_date <= day <= end_day
+    ]
     if not window or window[0][0] != trade.entry_date:
         return {**blank, "metrics_note": "买入日没有日线（停牌或未采集）"}
+    entry_close = window[0][1]
+    if entry_close <= 0 or trade.entry_price <= 0:
+        return {**blank, "metrics_note": "买入日收盘价无效"}
 
-    last_close = window[-1][1]
-    basis = float(trade.exit_price) if trade.exit_price is not None else last_close
-    drawdown = min(0.0, min(close for _, close in window) / trade.entry_price - 1.0)
+    # 以**买入日收盘**为基准，按 pct_chg 逐日复利出「买入日口径」的等价收盘价。
+    # 这样窗口里发生 10 送 10 时，等价价不会腰斩，回撤 / 止损也不会误判。
+    cumulative = 1.0
+    adjusted: list[tuple[date, float]] = []
+    for index, (day, _close, pct) in enumerate(window):
+        if index > 0 and pct is not None:
+            cumulative *= 1.0 + pct / 100.0
+        adjusted.append((day, entry_close * cumulative))
+
+    last_adjusted = adjusted[-1][1]
+    exit_row = next((row for row in window if row[0] == end_day), None)
+    if trade.exit_price is not None and exit_row is not None and exit_row[1] > 0:
+        # 卖出价是实际成交价（不复权），换成「买入日口径」再和买入价比
+        basis = last_adjusted * (float(trade.exit_price) / exit_row[1])
+    else:
+        basis = last_adjusted
+
+    drawdown = min(
+        0.0, min(value for _, value in adjusted) / trade.entry_price - 1.0
+    )
 
     stop_hit = None
     stop_executed = None
     if trade.plan_stop is not None:
-        stop_hit = any(close < trade.plan_stop for _, close in window)
+        stop_hit = any(value < trade.plan_stop for _, value in adjusted)
         if stop_hit:
             stop_executed = (
                 trade.exit_price is not None and trade.exit_price <= trade.plan_stop

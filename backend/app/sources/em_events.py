@@ -13,6 +13,9 @@ import math
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+from app.config import get_settings
+from app.sources.akshare_source import _call_bounded
+
 logger = logging.getLogger(__name__)
 
 #: 公告回看天数。覆盖「最近几个月有没有立案 / 问询 / 减持计划」这类硬证据。
@@ -113,10 +116,14 @@ def fetch_notices(
 
     end = today or date.today()
     begin = end - timedelta(days=max(1, days))
-    df = ak.stock_individual_notice_report(
-        security=_code(code),
-        begin_date=begin.strftime("%Y%m%d"),
-        end_date=end.strftime("%Y%m%d"),
+    df = _call_bounded(
+        lambda: ak.stock_individual_notice_report(
+            security=_code(code),
+            begin_date=begin.strftime("%Y%m%d"),
+            end_date=end.strftime("%Y%m%d"),
+        ),
+        f"{code} 公告",
+        get_settings().http_timeout,
     )
     if df is None or getattr(df, "empty", True):
         return []
@@ -143,7 +150,11 @@ def fetch_reports(code: str, *, limit: int = REPORT_LIMIT) -> list[ReportItem]:
     """
     import akshare as ak
 
-    df = ak.stock_research_report_em(symbol=_code(code))
+    df = _call_bounded(
+        lambda: ak.stock_research_report_em(symbol=_code(code)),
+        f"{code} 研报",
+        get_settings().http_timeout,
+    )
     if df is None or getattr(df, "empty", True):
         return []
 
@@ -192,7 +203,11 @@ def fetch_unlocks(
     """
     import akshare as ak
 
-    df = ak.stock_restricted_release_queue_em(symbol=_code(code))
+    df = _call_bounded(
+        lambda: ak.stock_restricted_release_queue_em(symbol=_code(code)),
+        f"{code} 解禁",
+        get_settings().http_timeout,
+    )
     if df is None or getattr(df, "empty", True):
         return []
 
