@@ -1432,6 +1432,40 @@ export interface StockDde {
   note: string | null
 }
 
+/** 筹码分布直方图的一格：`weight` 是占比（0~1，全部格子求和为 1）。 */
+export interface ChipPoint {
+  price: number
+  weight: number
+}
+
+/**
+ * 个股筹码分布（CYQ）：本地按换手率衰减计算，零外部请求。
+ *
+ * 比例字段都是 0~1（`profit_ratio = 0.09` 表示 9% 的筹码处于盈利），价格单位元。
+ * 日线不足 20 根时 `days = 0`、`histogram` 为空，`note` 说明原因。
+ */
+export interface ChipDistribution {
+  code: string
+  name: string | null
+  /** 最后一根日线的日期；算不出时为 null */
+  trade_date: string | null
+  days: number
+  price: number | null
+  /** 获利比例：现价及以下的筹码占比 */
+  profit_ratio: number | null
+  avg_cost: number | null
+  cost_90_low: number | null
+  cost_90_high: number | null
+  cost_70_low: number | null
+  cost_70_high: number | null
+  /** (90% 区间上沿 − 下沿) / (上沿 + 下沿)，越小越集中 */
+  concentration_90: number | null
+  concentration_70: number | null
+  peak_price: number | null
+  histogram: ChipPoint[]
+  note: string | null
+}
+
 /**
  * 后端能聚合的 K 线周期。
  *

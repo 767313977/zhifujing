@@ -39,6 +39,8 @@ from app.models import (
     Watchlist,
 )
 from app.schemas import (
+    ChipDistributionOut,
+    ChipPoint,
     StockDailyRow,
     StockDdeOut,
     StockDdeRow,
@@ -48,7 +50,7 @@ from app.schemas import (
     StockThemeItem,
     StockThemes,
 )
-from app.services import limit_rules
+from app.services import chip, limit_rules
 from app.services.auth import Cooldown, RateLimiter, current_user
 from app.services.patterns import build_bars
 from app.services.stock_phase import load_phase
@@ -702,6 +704,65 @@ def dde(
         days=len(rows),
         rows=[StockDdeRow.model_validate(row) for row in rows],
         note=note,
+    )
+
+
+@router.get("/{code}/chips", response_model=ChipDistributionOut)
+def chips(
+    code: str,
+    days: int = Query(250, ge=60, le=500, description="回看的交易日数"),
+    session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> ChipDistributionOut:
+    """筹码分布（CYQ）：获利比例 / 平均成本 / 70% 与 90% 成本区间 / 筹码峰。
+
+    **本地计算，零外部请求、零配额**：输入是 `stock_daily` 的 OHLC + 换手率，
+    按「历史筹码按换手率衰减、当日成交按三角分布撒进 [low, high]」递推
+    （口径与两个必须小心的点见 `services/chip.py`）。
+
+    日线不足 20 根时不算（返回 `days=0` + `note`），不拿几根 K 线凑一个「分布」。
+    """
+    code = _code(code)
+    if session.get(StockBasic, code) is None:
+        raise HTTPException(
+            status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
+        )
+    name = _resolve_name(session, code)
+    result = chip.for_stock(code, days)
+    if result is None:
+        return ChipDistributionOut(
+            code=code,
+            name=name,
+            days=0,
+            note="这只票的日线不足 20 根，暂时算不出筹码分布",
+        )
+    return ChipDistributionOut(
+        code=code,
+        name=name,
+        trade_date=result.trade_date,
+        days=result.days,
+        price=round(result.price, 3),
+        profit_ratio=round(result.profit_ratio, 4),
+        avg_cost=round(result.avg_cost, 3),
+        cost_90_low=round(result.cost_90[0], 3),
+        cost_90_high=round(result.cost_90[1], 3),
+        cost_70_low=round(result.cost_70[0], 3),
+        cost_70_high=round(result.cost_70[1], 3),
+        concentration_90=(
+            round(result.concentration_90, 4)
+            if result.concentration_90 is not None
+            else None
+        ),
+        concentration_70=(
+            round(result.concentration_70, 4)
+            if result.concentration_70 is not None
+            else None
+        ),
+        peak_price=round(result.peak_price, 3),
+        histogram=[
+            ChipPoint(price=round(price, 3), weight=round(weight, 6))
+            for price, weight in result.histogram
+        ],
     )
 
 

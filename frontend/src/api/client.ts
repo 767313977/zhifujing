@@ -5,6 +5,7 @@ import type {
   AuctionList,
   AuctionQuery,
   Breadth,
+  ChipDistribution,
   DdeBoard,
   DdeOrder,
   Erp,
@@ -514,6 +515,15 @@ export const api = {
    */
   stockDde: (code: string, days = 60) =>
     request<StockDde>(`/stock/${encodeURIComponent(code)}/dde?days=${days}`),
+
+  /**
+   * 个股筹码分布（CYQ）：获利比例 / 平均成本 / 70% 与 90% 成本区间 / 筹码峰。
+   *
+   * 后端**本地计算、零外部请求**（按换手率衰减推演，见 `services/chip.py`）；
+   * `days` 是回看的交易日数（后端 60~500，默认 250）。
+   */
+  stockChips: (code: string, days = 250) =>
+    request<ChipDistribution>(`/stock/${encodeURIComponent(code)}/chips?days=${days}`),
 
   /**
    * 个股新闻（**东财口径**，按发布时间倒序）。

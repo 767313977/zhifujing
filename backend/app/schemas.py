@@ -1350,6 +1350,40 @@ class StockDdeOut(BaseModel):
     note: str | None = None
 
 
+class ChipPoint(ApiModel):
+    """筹码分布直方图的一个价格格。`weight` 是占比（0~1，格内求和为 1）。"""
+
+    price: float
+    weight: float
+
+
+class ChipDistributionOut(BaseModel):
+    """筹码分布（CYQ）：本地按换手率衰减计算，口径见 `services/chip.py`。
+
+    比例都是 0~1（`profit_ratio = 0.09` 表示 9% 的筹码处于盈利）；价格单位元。
+    """
+
+    code: str
+    name: str | None
+    # 最后一根日线的日期；日线不足时为 None
+    trade_date: date | None = None
+    days: int
+    price: float | None = None
+    # 获利比例：现价及以下的筹码占比
+    profit_ratio: float | None = None
+    avg_cost: float | None = None
+    cost_90_low: float | None = None
+    cost_90_high: float | None = None
+    cost_70_low: float | None = None
+    cost_70_high: float | None = None
+    # (90% 区间上沿 − 下沿) / (上沿 + 下沿)：越小越集中
+    concentration_90: float | None = None
+    concentration_70: float | None = None
+    peak_price: float | None = None
+    histogram: list[ChipPoint] = []
+    note: str | None = None
+
+
 class WudaoPhase(ApiModel):
     """悟道「阶段判定」：8 个标签之一 + 一眼看懂的说明。
 

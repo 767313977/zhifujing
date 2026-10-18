@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
+  ChipDistribution,
   FqMode,
   StockDde,
   StockDdeRow,
@@ -61,6 +62,88 @@ function viewUnit(view: string, fq: FqMode, volAdjust: boolean): string {
   if (view === 'day') return `${mode}，红涨青跌${vol}`
   const how = view === 'week' ? '按 ISO 周' : '按月'
   return `${mode} · 由日线${how}聚合${vol}`
+}
+
+/**
+ * 筹码分布（CYQ）一栏：**横向柱 = 每个价位的筹码占比**。
+ *
+ * 纵轴是价格（从低到高）、横轴是占比；现价及以下的筹码标红（获利盘）、
+ * 之上的标绿（套牢盘），并用一条虚线标出现价。颜色只表示「在现价之上还是之下」，
+ * 与涨跌无关 —— 这行说明写在图上方，避免被读成涨跌色。
+ *
+ * ⚠️ 不要给柱子排序：价格顺序就是分布的形状，按占比排序会把「筹码峰」压平。
+ */
+function buildChipOption(data: ChipDistribution): ChartOption {
+  const rows = data.histogram
+  const price = data.price
+  // 现价在纵轴上的位置：取最接近的一格（横轴是类目轴，markLine 只能给类目下标）
+  let priceIndex = -1
+  if (price != null && rows.length) {
+    let best = Number.POSITIVE_INFINITY
+    rows.forEach((row, index) => {
+      const gap = Math.abs(row.price - price)
+      if (gap < best) {
+        best = gap
+        priceIndex = index
+      }
+    })
+  }
+  return {
+    grid: { ...GRID, left: 58, right: 18, top: 14, bottom: 34 },
+    tooltip: {
+      ...TOOLTIP,
+      trigger: 'axis' as const,
+      axisPointer: { type: 'shadow' as const },
+      formatter: (params: unknown) => {
+        const items = params as { dataIndex: number }[] | undefined
+        const row = rows[items?.[0]?.dataIndex ?? -1]
+        if (!row) return ''
+        return [
+          `<b>${row.price.toFixed(2)} 元</b>`,
+          `筹码占比 ${(row.weight * 100).toFixed(2)}%`,
+        ].join('<br/>')
+      },
+    },
+    xAxis: {
+      type: 'value' as const,
+      axisLabel: {
+        ...AXIS_LABEL,
+        formatter: (value: number) => `${(value * 100).toFixed(1)}%`,
+      },
+      splitLine: SPLIT_LINE,
+      axisLine: { show: false },
+    },
+    yAxis: {
+      type: 'category' as const,
+      data: rows.map((row) => row.price.toFixed(2)),
+      axisLabel: { ...AXIS_LABEL, interval: Math.max(0, Math.floor(rows.length / 8)) },
+      axisLine: AXIS_LINE,
+      axisTick: { show: false },
+    },
+    series: [
+      {
+        type: 'bar' as const,
+        name: '筹码占比',
+        data: rows.map((row) => ({
+          value: row.weight,
+          itemStyle: {
+            color: price != null && row.price <= price ? CHART.up : CHART.down,
+          },
+        })),
+        barMaxWidth: 6,
+        markLine:
+          priceIndex >= 0
+            ? {
+                symbol: 'none' as const,
+                silent: true,
+                label: { formatter: '现价', color: CHART.accent, fontSize: 11 },
+                lineStyle: { color: CHART.accent, type: 'dashed' as const },
+                data: [{ yAxis: priceIndex }],
+              }
+            : undefined,
+      },
+    ],
+  }
 }
 
 /**
@@ -143,6 +226,8 @@ export default function StockDetail() {
   const [profile, setProfile] = useState<StockProfile | null>(null)
   const [themes, setThemes] = useState<StockThemes | null>(null)
   const [dde, setDde] = useState<StockDde | null>(null)
+  // 筹码分布（本地计算，零外部请求）。增强读数：请求失败只当 null，不拖垮整页
+  const [chips, setChips] = useState<ChipDistribution | null>(null)
   // DDE 请求本身失败的原因（网络 / 超时 / 5xx）。null 表示请求成功 —— 此时 `dde`
   // 为 null 或 rows 为空都只是「这只票没数据」，与「取数失败」是两件事（2026-10-10 修）
   const [ddeError, setDdeError] = useState<string | null>(null)
@@ -195,16 +280,20 @@ export default function StockDetail() {
         (data) => ({ data, error: null as string | null }),
         (err: Error) => ({ data: null, error: err.message }),
       )
-      const [p, themeData, ddeResult] = await Promise.all([
+      // 筹码分布是本地计算、很快；失败也不该拖垮整页（增强读数一律回落 null）
+      const chipsRequest = api.stockChips(target).catch(() => null)
+      const [p, themeData, ddeResult, chipData] = await Promise.all([
         api.stockProfile(target),
         api.stockThemes(target).catch(() => null),
         ddeRequest,
+        chipsRequest,
       ])
       if (isCancelled()) return p
       setProfile(p)
       setThemes(themeData)
       setDde(ddeResult.data)
       setDdeError(ddeResult.error)
+      setChips(chipData)
       return p
     },
     [],
@@ -219,6 +308,7 @@ export default function StockDetail() {
     setThemes(null)
     setDde(null)
     setDdeError(null)
+    setChips(null)
     setError(null)
     setProfileError(null)
     ;(async () => {
@@ -321,6 +411,10 @@ export default function StockDetail() {
   // 缓存图表 option：否则每次父组件重渲染（如 loading 变化）都会造一份新对象，
   // EChart 的 setOption(notMerge) 就整图重建一次（2026-10-10 修）
   const ddeOption = useMemo(() => (dde ? buildDdeOption(dde.rows) : null), [dde])
+  const chipOption = useMemo(
+    () => (chips && chips.histogram.length ? buildChipOption(chips) : null),
+    [chips],
+  )
   /**
    * 所属题材（并进概况格的「所属题材」那一格，2026-10-10 用户要求）。
    *
@@ -548,6 +642,67 @@ export default function StockDetail() {
                   柱 = 主力净流入额（红=净流入 绿=净流出）· 线 = 5日DDE
                 </div>
                 {ddeOption && <EChart option={ddeOption} height={240} />}
+              </div>
+            </>
+          )}
+        </Panel>
+
+        <Panel
+          title="筹码分布"
+          meta={
+            <span className="num">
+              {chips?.trade_date ? `${chips.trade_date} · ` : ''}
+              本地按换手率衰减推演 · 红=获利筹码 绿=套牢筹码
+            </span>
+          }
+          delay={105}
+        >
+          {profile === null ? (
+            <div className="flex h-[240px] items-center justify-center text-[14px] text-fg-dim">
+              <span className="pulse-soft">加载中…</span>
+            </div>
+          ) : !chips || chips.days === 0 ? (
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
+              {chips?.note ?? '这只票暂时算不出筹码分布'}
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 overflow-hidden md:grid-cols-4">
+                <Cell
+                  label="获利比例"
+                  value={fmtNum(
+                    chips.profit_ratio != null ? chips.profit_ratio * 100 : null,
+                    1,
+                    '%',
+                  )}
+                />
+                <Cell label="平均成本" value={fmtNum(chips.avg_cost, 2)} />
+                <Cell
+                  label="90% 成本区间"
+                  value={
+                    chips.cost_90_low != null && chips.cost_90_high != null
+                      ? `${chips.cost_90_low.toFixed(2)} ~ ${chips.cost_90_high.toFixed(2)}`
+                      : '—'
+                  }
+                />
+                <Cell
+                  label="集中度(90%)"
+                  value={fmtNum(
+                    chips.concentration_90 != null
+                      ? chips.concentration_90 * 100
+                      : null,
+                    1,
+                    '%',
+                  )}
+                />
+              </div>
+              <div className="px-2 pt-2">
+                <div className="mb-1 text-[12px] text-fg-dim">
+                  横轴 = 该价位的筹码占比 · 现价 {fmtNum(chips.price, 2)} 元
+                  {chips.peak_price != null &&
+                    ` · 筹码峰 ${fmtNum(chips.peak_price, 2)} 元`}
+                </div>
+                {chipOption && <EChart option={chipOption} height={260} />}
               </div>
             </>
           )}
