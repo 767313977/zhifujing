@@ -12,15 +12,17 @@
 | 3 | 换手异常 | `stock_daily.turnover` | 近 5 日均换手高于 250 日 90 分位，或单日 >25% |
 | 4 | 反复上龙虎榜 | `lhb` | 近 90 天上榜 ≥3 天 |
 | 5 | 小市值高波动 | `stock_universe.total_mv` + 日线 | 市值 <80 亿且 20 日涨幅 ≥30%（或单日逼近涨停） |
-| 6 | 基本面与热度脱节 | — | **数据不足**（本站没有营收/净利润），不投票 |
-| 7 | 推广话术 / 澄清 | 东财个股新闻（现取） | 出现「必涨/翻倍/老师带单」等 ≥2 条；有「辟谣/澄清/不实」则**不算风险** |
+| 6 | 基本面与热度脱节 | `stock_financial`（同花顺财务摘要）+ 日线 | 营收同比 ≤-20% / 净利同比 ≤-30% / 净利<0，且 20 日涨幅 ≥20% 或换手过热 |
+| 7 | 推广话术 / 澄清 | 东财个股新闻 + 深市互动易问答 | 出现「必涨/翻倍/老师带单」等 ≥2 条；有「辟谣/澄清/不实」则**不算风险** |
 | 8 | 跨平台 / 社群引流 | — | **数据不足**（需要社媒搜索，本站不接） |
+| — | 人气榜热度（仅展示） | 东财人气榜 | 只显示排名与变化，**不投票、不计分** |
 
 评分只加「命中」信号的权重；`unknown` 不投票、也不当成 0 分。这一点与 UZI-Skill
 的原则一致：**没有证据就不装成「安全」**，但也不装成「有风险」。
 """
 
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
@@ -31,6 +33,7 @@ from sqlalchemy.orm import Session
 from app.db import session_scope
 from app.models import Lhb, LimitPool, StockBasic, StockDaily, StockUniverse
 from app.services import financials
+from app.sources.akshare_source import AkshareSource
 from app.sources.em_news import fetch_stock_news
 
 logger = logging.getLogger(__name__)
@@ -92,7 +95,8 @@ LEVEL_LABELS = {
 class TrapSignal:
     key: str
     name: str
-    status: str  # hit / miss / unknown
+    # hit / miss / unknown / info（info = 仅展示、不参与评分）
+    status: str
     severity: str  # high / medium / low
     evidence: str
 
@@ -247,35 +251,66 @@ def _check_small_cap(
 
 
 def _check_news(code: str, name: str | None) -> TrapSignal:
-    """东财个股新闻里的推广话术 / 澄清报道。
+    """推广话术 / 澄清报道：东财个股新闻 + 深市互动易问答。
 
-    ⚠️ 与 UZI-Skill 的差异：**「辟谣」是保护性证据，不是风险** —— 它说明公司/媒体
-    已经澄清了传闻，不能和「有人在推这只票」混为一谈。
+    ⚠️ 与 UZI-Skill 的差异：**「辟谣 / 澄清」是保护性证据，不是风险** —— 它说明
+    公司或媒体已经澄清了传闻，不能和「有人在推这只票」混为一谈。
+
+    互动易只用来**找澄清证据**（问题/回答里出现「辟谣 / 澄清 / 不实」），不参与
+    推广话术计数：散户提问里常出现「老师」「推荐」，那是提问不是推广。
+    沪市 e 互动接口实测不可用（见 `AkshareSource.interactive_qa`），沪市只有新闻源。
     """
+    news_items = []
+    news_error = False
     try:
-        result = fetch_stock_news(code, name=name, limit=30)
+        news_items = fetch_stock_news(code, name=name, limit=30).items
     except Exception as exc:  # noqa: BLE001 - 新闻源失败不该拖垮整个体检
         logger.info("%s 的杀猪盘新闻信号取数失败：%s", code, exc)
-        return TrapSignal("news", "推广话术 / 澄清", "unknown", "low", "新闻源不可用")
-    if not result.items:
-        return TrapSignal("news", "推广话术 / 澄清", "miss", "low", "近 30 条新闻里没有相关稿件")
+        news_error = True
+
+    qa_rows: list[dict] = []
+    try:
+        qa_rows = AkshareSource().interactive_qa(code)
+    except Exception as exc:  # noqa: BLE001 - 互动易失败同样只降级
+        logger.info("%s 的互动易问答取数失败：%s", code, exc)
+
+    if not news_items and not qa_rows:
+        return TrapSignal(
+            "news",
+            "推广话术 / 澄清",
+            "unknown" if news_error else "miss",
+            "low",
+            "新闻与互动易都取不到" if news_error else "近 30 条新闻与互动易都没有相关稿件",
+        )
 
     promo: list[str] = []
-    debunk: list[str] = []
-    for item in result.items:
+    news_debunk: list[str] = []
+    for item in news_items:
         text = f"{item.title} {item.summary}"
         if any(word in text for word in DEBUNK_WORDS):
-            debunk.append(item.title)
+            news_debunk.append(item.title)
         elif any(word in text for word in PROMO_WORDS):
             promo.append(item.title)
 
+    qa_debunk: list[str] = []
+    for row in qa_rows:
+        text = f"{row.get('问题') or ''} {row.get('回答内容') or ''}"
+        if any(word in text for word in DEBUNK_WORDS):
+            qa_debunk.append(str(row.get("问题") or "互动易问答")[:30])
+
+    debunk = news_debunk + qa_debunk
     if debunk:
+        parts = []
+        if news_debunk:
+            parts.append(f"东财新闻 {len(news_debunk)} 条")
+        if qa_debunk:
+            parts.append(f"互动易 {len(qa_debunk)} 条")
         return TrapSignal(
             "news",
             "推广话术 / 澄清",
             "miss",
             "low",
-            f"发现 {len(debunk)} 条澄清/辟谣报道（{debunk[0][:28]}…），不按推广计",
+            f"发现 {'、'.join(parts)}澄清/辟谣（{debunk[0][:28]}…），不按推广计",
         )
     if len(promo) >= 2:
         return TrapSignal(
@@ -377,6 +412,46 @@ def _context_boost(context: str | None) -> tuple[int, str | None]:
     return 0, text
 
 
+# 东财人气榜的短缓存（10 分钟）。它只是展示项、不计分，没必要每次打开都请求。
+_HOT_CACHE: dict[str, tuple[float, TrapSignal]] = {}
+HOT_RANK_TTL = 600
+
+
+def _check_hot_rank(code: str) -> TrapSignal:
+    """东财人气榜排名（**仅展示、不投票**）。
+
+    它回答的是「这只票最近有多热」，不是「有没有人在引流」。把热度直接当引流
+    证据会冤枉所有热门股，所以状态固定为 `info`：不参与评分，只放在面板最后一行
+    供对照。
+    """
+    now = time.monotonic()
+    cached = _HOT_CACHE.get(code)
+    if cached and now - cached[0] < HOT_RANK_TTL:
+        return cached[1]
+
+    try:
+        data = AkshareSource().hot_rank(code)
+    except Exception:  # noqa: BLE001 - 展示项失败不影响体检
+        logger.info("%s 的人气榜取数失败", code, exc_info=True)
+        data = None
+    if data is None:
+        signal = TrapSignal(
+            "hot_rank", "人气榜热度", "info", "low", "人气榜取不到（仅展示项，不影响评分）"
+        )
+    else:
+        signal = TrapSignal(
+            "hot_rank",
+            "人气榜热度",
+            "info",
+            "low",
+            f"东财人气榜第 {data['rank']}/{data['total']} 名，"
+            f"较上一统计点 {data['change']:+d}、近 5 日 {data['his_change']:+d}；"
+            "仅热度参考，不计分",
+        )
+    _HOT_CACHE[code] = (now, signal)
+    return signal
+
+
 def check(code: str, context: str | None = None) -> TrapResult | None:
     """跑完 8 个信号。代码不在 `stock_basic` 里时返回 None。
 
@@ -431,6 +506,7 @@ def check(code: str, context: str | None = None) -> TrapResult | None:
             "需要社媒搜索，本站未接入",
         )
     )
+    signals.append(_check_hot_rank(code))
 
     boost, context_text = _context_boost(context)
     if boost:

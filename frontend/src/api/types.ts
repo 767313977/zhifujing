@@ -1466,11 +1466,11 @@ export interface ChipDistribution {
   note: string | null
 }
 
-/** 杀猪盘体检的一个信号：`status` 是 hit / miss / unknown（数据不足，不投票）。 */
+/** 杀猪盘体检的一个信号：hit / miss / unknown（数据不足，不投票）/ info（仅展示）。 */
 export interface TrapSignal {
   key: string
   name: string
-  status: 'hit' | 'miss' | 'unknown'
+  status: 'hit' | 'miss' | 'unknown' | 'info'
   severity: 'high' | 'medium' | 'low'
   evidence: string
 }

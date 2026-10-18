@@ -275,6 +275,54 @@ class AkshareSource:
         )
         return _records(df)
 
+    # -------------------------------------------------------------- 人气 / 互动
+
+    def hot_rank(self, code: str) -> dict | None:
+        """东财个股人气榜的最新排名（**仅热度参考**，不是「有人在引流」的证据）。
+
+        返回 `{rank, total, change, his_change, calc_time}`；取不到返回 None。
+        `change` 是较上一统计点，`his_change` 是近 5 日变化（东财口径）。
+        """
+        if code.startswith("6"):
+            prefix = "SH"
+        elif code.startswith("92") or code.startswith(("4", "8")):
+            prefix = "BJ"
+        elif code.startswith("9"):
+            prefix = "SH"  # 沪 B 股 900xxx（人气榜多半查不到，交给失败分支）
+        else:
+            prefix = "SZ"
+        df = self._call(
+            lambda: ak.stock_hot_rank_latest_em(symbol=f"{prefix}{code}"),
+            f"东财人气榜 {code}",
+        )
+        if df is None or df.empty:
+            return None
+        values = {str(row["item"]): row["value"] for _, row in df.iterrows()}
+        try:
+            return {
+                "rank": int(float(values["rank"])),
+                "total": int(float(values["marketAllCount"])),
+                "change": int(float(values["rankChange"])),
+                "his_change": int(float(values["hisRankChange"])),
+                "calc_time": str(values.get("calcTime") or ""),
+            }
+        except (KeyError, ValueError):
+            return None
+
+    def interactive_qa(self, code: str) -> list[dict]:
+        """深市/北交所的**互动易问答**（问题 + 回答 + 时间）。
+
+        ⚠️ 上证e互动（`stock_sns_sseinfo`）2026-10-18 实测对 600519 / 601398 / 603119
+        **全部返回空表**（接口页面结构已变），所以沪市直接返回空列表，不做无谓请求。
+        互动易只给深市/北交所 —— 沪市的「澄清」仍只能靠东财个股新闻。
+        """
+        if code.startswith("6"):
+            return []
+        df = self._call(
+            lambda: ak.stock_irm_cninfo(symbol=code), f"互动易问答 {code}"
+        )
+        return _records(df)
+
     # -------------------------------------------------------------- 市场宽度
 
     def market_activity(self) -> dict:

@@ -156,6 +156,7 @@ const TRAP_STATUS: Record<
   hit: { icon: '●', className: 'text-danger', label: '命中' },
   miss: { icon: '○', className: 'text-fg-muted', label: '未命中' },
   unknown: { icon: '—', className: 'text-fg-dim', label: '数据不足' },
+  info: { icon: '·', className: 'text-fg-dim', label: '参考' },
 }
 
 const TRAP_LEVEL_CLASS: Record<TrapCheck['level'], string> = {
