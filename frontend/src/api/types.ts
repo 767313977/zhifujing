@@ -1824,6 +1824,40 @@ export interface TradePlanSuggestionsOut {
   rows: TradePlanSuggestion[]
 }
 
+/** 相似日向量的一维：今天的原始值 + 历史分位（0~1）。 */
+export interface SimilarDayDim {
+  key: string
+  label: string
+  value: number | null
+  rank: number | null
+}
+
+export interface SimilarDayRow {
+  trade_date: string
+  distance: number
+  /** 0~100，越大越像 */
+  similarity: number
+  limit_up: number | null
+  broken_rate: number | null
+  max_consecutive: number | null
+  above_ma20: number | null
+  fear_greed: number | null
+  relay_score: number | null
+  index_1d: number | null
+  index_3d: number | null
+  index_5d: number | null
+  sentiment_1d: number | null
+  sentiment_3d: number | null
+  sentiment_5d: number | null
+}
+
+export interface SimilarDays {
+  date: string | null
+  vector: SimilarDayDim[]
+  rows: SimilarDayRow[]
+  lookback_days: number
+}
+
 /**
  * 个股分析的返回（`/api/analysis/lookup`）：把「代码 / 名称 / 拼音首字母」解析成结论。
  *

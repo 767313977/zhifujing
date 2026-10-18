@@ -14,6 +14,8 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: '/', label: '今日复盘', end: true },
   { to: '/sentiment', label: '情绪周期' },
+  // 相似日（2026-10-18 清单 #4）：用情绪向量找历史最像的几天。
+  { to: '/similar', label: '相似日' },
   { to: '/sectors', label: '板块题材' },
   // 竞价强度（2026-10-11 用户要求「放在涨停复盘前边」）：集合竞价的涨幅 / 金额 /
   // 量比 / 换手，数据来自腾讯批量行情逐分钟采样（见后端 jobs/collect_auction.py）。

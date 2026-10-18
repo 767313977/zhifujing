@@ -24,6 +24,7 @@ from app.api import (
     patterns,
     plans,
     sector,
+    similar,
     stock,
     watchlist,
 )
@@ -157,6 +158,7 @@ app.include_router(watchlist.router)
 app.include_router(note.router)
 app.include_router(journal.router)
 app.include_router(plans.router)
+app.include_router(similar.router)
 app.include_router(patterns.router)
 app.include_router(anomaly_map.router)
 app.include_router(admin.router)
