@@ -337,6 +337,29 @@ class Settings(BaseSettings):
     # 要用更早的日子，先把它们也重扫一遍。
     pool_track_start: date = date(2026, 9, 10)
 
+    # ---- 数据库定时备份（2026-10-18 加）----
+    #
+    # 站点全部数据在一个 SQLite 文件里（线上实测约 660 MB），里面很多是花 iFinD 配额
+    # 换来的、补不回来。用 sqlite3 的在线备份 API（连 WAL 一起复制），每天收盘链路
+    # 全部跑完之后备份一份，只保留最近 `backup_keep` 份。
+    backup_enabled: bool = True
+    # 23:10：晚于 22:30 的成分股兜底，把当天最后一次写库也覆盖进去
+    backup_hour: int = 23
+    backup_minute: int = 10
+    # 保留份数。线上库约 660 MB，10 份约 6.6 GB（磁盘 50 GB 余量）
+    backup_keep: int = 10
+    # 额外同步目录（挂载盘 / COS 同步客户端的落地目录）。空 = 只留本机。
+    # 不直接调 COS SDK：那需要额外依赖与密钥，先用「任意可写目录」做接口。
+    backup_sync_dir: str = ""
+
+    # ---- 收盘链路告警（2026-10-18 加）----
+    #
+    # 20:00 检查：交易日但简报没推成功 / 尾部链 partial / 配额已进入让路档，
+    # 就单独推一条飞书告警。只推一次（`collect_log` 里 `alert` 任务去重）。
+    alert_enabled: bool = True
+    alert_hour: int = 20
+    alert_minute: int = 0
+
 
 @lru_cache
 def get_settings() -> Settings:

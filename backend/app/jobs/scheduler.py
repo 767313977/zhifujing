@@ -55,6 +55,10 @@ MEMBERS_JOB_ID = "prefetch_members"
 MEMBERS_RETRY_JOB_ID = "prefetch_members_retry"
 # 集合竞价采样（交易日 9:15–9:26 每分钟一跑，见 `jobs/collect_auction.py`）。
 AUCTION_JOB_ID = "collect_auction"
+# 数据库备份（见 config.backup_hour）：晚于 22:30 的成分股兜底，把当天最后一次写库也覆盖。
+BACKUP_JOB_ID = "db_backup"
+# 收盘链路告警（见 config.alert_hour）：检查简报 / 尾部 / 配额，异常单独推一条。
+ALERT_JOB_ID = "close_alert"
 
 # 「错过 17:30 / 22:00」的回看上限（单位：交易日）。本机常年关机，重启往往发生在
 # 次日 —— 那一天的**龙虎榜 / 机构席位 / 涨停题材**（`_run_late`）与**板块成分股**
@@ -362,9 +366,43 @@ class DailyScheduler:
         )
         scheduler.start()
         self._scheduler = scheduler
+        # 数据库备份：放在 22:30 成分股兜底之后，把当天所有写库都收进去。
+        # 用在线备份 API（见 jobs/backup.py），不拿采集锁 —— WAL 下读写可并行。
+        if self.settings.backup_enabled:
+            scheduler.add_job(
+                self._run_backup,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour=self.settings.backup_hour,
+                    minute=self.settings.backup_minute,
+                    timezone=TIMEZONE,
+                ),
+                id=BACKUP_JOB_ID,
+                name="数据库备份",
+                replace_existing=True,
+                misfire_grace_time=3600,
+                coalesce=True,
+            )
+        # 收盘链路告警：20:00 时简报（15:05）与尾部链早已结束，查一遍状态。
+        if self.settings.alert_enabled:
+            scheduler.add_job(
+                self._run_alert,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour=self.settings.alert_hour,
+                    minute=self.settings.alert_minute,
+                    timezone=TIMEZONE,
+                ),
+                id=ALERT_JOB_ID,
+                name="收盘链路告警",
+                replace_existing=True,
+                misfire_grace_time=3600,
+                coalesce=True,
+            )
         logger.info(
             "定时采集已启动：交易日 %02d:%02d（收盘后补采 %02d:%02d / 兜底 %02d:%02d，"
-            "成分股预取 %02d:%02d / 兜底 %02d:%02d；集合竞价 09:15–09:26 每分钟 + 09:31 补量比）",
+            "成分股预取 %02d:%02d / 兜底 %02d:%02d；集合竞价 09:15–09:26 每分钟 + 09:31 补量比；"
+            "告警 %02d:%02d；备份 %02d:%02d）",
             self.settings.collect_hour,
             self.settings.collect_minute,
             self.settings.late_collect_hour,
@@ -375,6 +413,10 @@ class DailyScheduler:
             self.settings.members_collect_minute,
             self.settings.members_retry_hour,
             self.settings.members_retry_minute,
+            self.settings.alert_hour,
+            self.settings.alert_minute,
+            self.settings.backup_hour,
+            self.settings.backup_minute,
         )
 
         if self.settings.catchup_on_start:
@@ -436,6 +478,26 @@ class DailyScheduler:
         }
 
     # -------------------------------------------------------------------- 执行
+
+    def _run_backup(self) -> None:
+        """定时备份数据库。失败只记日志，不影响其它任务。"""
+        from app.jobs.backup import run as run_backup
+
+        try:
+            result = run_backup(self.settings)
+            logger.info("数据库备份完成：%s", result)
+        except Exception:  # noqa: BLE001 - 备份失败不能把调度器带崩
+            logger.exception("数据库备份失败")
+
+    def _run_alert(self) -> None:
+        """收盘链路告警检查。失败只记日志。"""
+        from app.jobs.alerts import check
+
+        try:
+            result = check(settings=self.settings)
+            logger.info("收盘链路告警检查：%s", result)
+        except Exception:  # noqa: BLE001 - 告警检查失败不能把调度器带崩
+            logger.exception("收盘链路告警检查失败")
 
     def _run_auction(self) -> None:
         """跑一次集合竞价采样（见 `jobs/collect_auction.py`）。

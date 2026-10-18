@@ -113,6 +113,20 @@ class IfindParseError(IfindError):
     """
 
 
+class IfindQuotaExhausted(IfindError):
+    """账户级配额已耗尽（来源不报 HTTP 错误，只在回答文本里写一句话）。
+
+    属于**不可重试**的确定性错误：再试多少次都是同一句话，只会把剩余窗口空转完。
+    单独一个类型是为了让调用方能把「配额耗尽」与「参数错 / 网络错」区分开 ——
+    2026-10-16 就是因为没识别，ETF 整批被当成「无数据」跳过、步骤还记 `ok`。
+    """
+
+
+#: 配额耗尽时来源写在回答文本里的说法（实测多条，2026-10-16）。各调用方
+#: 也可以在拿到文本、没走 `call()` 的路径上复用这个元组。
+QUOTA_EXHAUSTED_HINTS = ("用量已耗尽", "配额已用尽", "调用次数已用完", "额度已用完")
+
+
 # iFinD 限流时 HTTP 状态码仍是 200，错误藏在工具结果文本里，只能按文本识别
 _RATE_LIMIT_MARKERS = ("请求过于频繁", "status: 429")
 
@@ -378,6 +392,10 @@ class IfindClient:
                 # 限流时 HTTP 仍是 200，错误在工具结果文本里。必须在此处（重试范围内）
                 # 判定，否则 _extract 在重试之外，429 会被当成解析失败而不重试。
                 text = _content_text(body)
+                # 配额耗尽：HTTP 200、没有 error 对象，只在文本里写一句话。
+                # 必须在限流判定之前拦下 —— 它不是「等一下再来」的错误。
+                if any(hint in (text or "") for hint in QUOTA_EXHAUSTED_HINTS):
+                    raise IfindQuotaExhausted(f"iFinD 配额已耗尽：{text[:120]}")
                 if _is_rate_limited(text):
                     raise IfindRateLimitError(f"iFinD 限流: {text[:120]}")
                 return body or {}

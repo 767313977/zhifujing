@@ -28,6 +28,7 @@ from app.models import (
     StockDaily,
     StockUniverse,
 )
+from app.services.coverage import coverage_ok
 from app.services.fear_greed import build_series
 from app.services.fear_greed import latest as fear_latest
 
@@ -43,10 +44,7 @@ _SYSTEM_PROMPT = """你是 A 股收盘复盘助手。只能根据用户给出的
 
 
 def _coverage_ok(trade_date: date) -> bool:
-    """当天日线是否采全。口径与 `scan_patterns._require_bars` 一致。"""
-    # 局部导入：`scan_patterns` 会 import 大量采集模块，放模块顶部容易形成 job 间循环。
-    from app.jobs.scan_patterns import _MIN_DAY_COVERAGE
-
+    """当天日线是否采全。口径与 `scan_patterns._require_bars` 一致（同一个纯函数）。"""
     with session_scope() as session:
         pool = session.scalar(select(func.count()).select_from(StockUniverse)) or 0
         count = (
@@ -60,7 +58,7 @@ def _coverage_ok(trade_date: date) -> bool:
             )
             or 0
         )
-    return bool(pool) and count >= pool * _MIN_DAY_COVERAGE
+    return coverage_ok(count, pool)
 
 
 def _readings(trade_date: date) -> str:

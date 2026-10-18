@@ -92,6 +92,10 @@ from app.services.patterns import (
 )
 # 悟道六池的 key 列表 —— 板块关要按它挑（见 `WUDAO_POOL_KEYS`）。成绩单取的就是这六个，
 # 同一个集合，所以直接复用，不再抄一份。
+from app.services.coverage import (
+    MIN_DAY_COVERAGE as _MIN_DAY_COVERAGE,
+    coverage_ok,
+)
 from app.services.pattern_track import POOL_KEYS
 # 按交易日历截断「最近一段连续日线」的公共实现放在 `services.stock_phase`
 # （个股页的阶段判定也用它，两处口径必须一份）。
@@ -109,7 +113,7 @@ PATTERN_TASK = "patterns"
 # 扫某一天之前，要求那一天在库里至少覆盖池子的这个比例（见 `_require_bars`）。
 # 90% 是「明显没采全」的底线：正常日子缺失约 0.3%（停牌/次新），
 # 而 2026-09-24 那种抽风是 9% —— 卡在 90% 能拦住整片缺，又不至于因为几只停牌票就不让扫。
-_MIN_DAY_COVERAGE = 0.9
+# 判据本体在 `services.coverage`（简报 AI 点评的覆盖率闸也用它，口径只有一份）。
 
 # 形态选股**不收**的市值上限（**元**）：总市值超过它的票一律不出信号
 # （2026-10-15 用户要求「形态选股时候剔除掉市值 2000 亿以上的票」）。
@@ -1056,7 +1060,7 @@ def _require_bars(trade_date: date) -> None:
         raise IfindError("stock_daily 是空的，先跑 collect_kline")
     if latest < trade_date or count == 0:
         raise IfindError(f"{trade_date} 的日线还没采到（库里最新是 {latest}），先跑 collect_kline")
-    if pool and count < pool * _MIN_DAY_COVERAGE:
+    if pool and not coverage_ok(count, pool):
         raise IfindError(
             f"{trade_date} 的日线只采到 {count}/{pool} 只（{count / pool:.0%}），"
             f"低于 {_MIN_DAY_COVERAGE:.0%} —— 当天没采全，先补 collect_kline 再扫"

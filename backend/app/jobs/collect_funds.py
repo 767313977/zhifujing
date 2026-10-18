@@ -31,7 +31,11 @@ from app.models import (
 from app.services.etf_category import classify
 from app.sources import etf_exchange, tdx
 from app.sources.akshare_source import AkshareSource
-from app.sources.ifind import IfindClient, normalize_code
+from app.sources.ifind import (
+    QUOTA_EXHAUSTED_HINTS as _QUOTA_EXHAUSTED_HINTS,
+    IfindClient,
+    normalize_code,
+)
 from app.sources.markdown_table import pick_float, pick_text, to_float, to_int
 
 logger = logging.getLogger(__name__)
@@ -55,7 +59,10 @@ _TOO_MANY_HINTS = ("证券主体数量过多", "问句过长")
 # 本来就没有数据」长得一模一样。必须单独识别：否则整批被当成「无数据」跳过，`etf`
 # 步骤照样记 `ok`（rows=0）。2026-10-16 就是这么静默丢掉 10-14 ~ 10-16 三天 ETF
 # 份额的：7 天日志里 41 次「当前账户MCP请求用量已耗尽」，数据管理页却一路绿灯。
-_QUOTA_EXHAUSTED_HINTS = ("用量已耗尽", "配额已用尽", "调用次数已用完", "额度已用完")
+#
+# 2026-10-18：识别已下沉到 `sources/ifind.call()`（所有 iFinD 调用统一抛
+# `IfindQuotaExhausted`），这里保留同一份提示词做**第二道识别** —— 万一将来某条
+# 路径绕过 `call()` 直接解析文本，也不至于又静默成「无数据」。
 
 # 一批里问的指标。**四个是实测的上限**：再多问两个就只剩一张表、份额整列消失
 # （见 `IfindClient.fund_profile` 的说明）。
