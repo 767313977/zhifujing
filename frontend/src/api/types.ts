@@ -1655,6 +1655,61 @@ export interface StockNews {
   note: string | null
 }
 
+/** 公告 / 研报 / 解禁三张表的公共字段。 */
+export interface StockEventMeta {
+  code: string
+  name: string | null
+  /** 取不到时的原因；`stale=true` 表示给的是上次缓存 */
+  note: string | null
+  stale: boolean
+  /** 这份数据是什么时候写进缓存的 */
+  fetched_at: string | null
+}
+
+/** 一条公告。 */
+export interface StockNoticeRow {
+  published_at: string
+  title: string
+  /** 东财公告类型（其他 / 半年度报告摘要 / 风险提示 …） */
+  category: string
+  url: string
+}
+
+export interface StockNotices extends StockEventMeta {
+  rows: StockNoticeRow[]
+}
+
+/** 一条机构研报。 */
+export interface StockReportRow {
+  published_at: string
+  title: string
+  institution: string
+  /** 东财评级（买入 / 增持 / 中性 …） */
+  rating: string
+  industry: string
+  /** 盈利预测一行文本；上游没有预测时为空串（不是目标价） */
+  forecast: string
+  url: string
+}
+
+export interface StockReports extends StockEventMeta {
+  rows: StockReportRow[]
+}
+
+/** 一笔未来限售解禁。两个比例都是**小数**（0.05 = 5%）。 */
+export interface StockUnlockRow {
+  unlock_date: string
+  shares: number | null
+  market_value: number | null
+  ratio_total: number | null
+  ratio_float: number | null
+  share_type: string
+}
+
+export interface StockUnlocks extends StockEventMeta {
+  rows: StockUnlockRow[]
+}
+
 /**
  * 个股分析的返回（`/api/analysis/lookup`）：把「代码 / 名称 / 拼音首字母」解析成结论。
  *

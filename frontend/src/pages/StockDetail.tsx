@@ -6,8 +6,11 @@ import type {
   FqMode,
   StockDde,
   StockDdeRow,
+  StockNotices,
   StockProfile,
+  StockReports,
   StockThemes,
+  StockUnlocks,
   TrapCheck,
   TrapSignal,
 } from '../api/types'
@@ -166,6 +169,22 @@ const TRAP_LEVEL_CLASS: Record<TrapCheck['level'], string> = {
   low: 'text-ok',
 }
 
+/** 个股事件面板的三个 tab。 */
+type EventTab = 'notices' | 'reports' | 'unlock'
+const EVENT_TABS: { key: EventTab; label: string; hint: string }[] = [
+  { key: 'notices', label: '公告', hint: '最近 180 天（缓存 6 小时）' },
+  { key: 'reports', label: '研报', hint: '机构研报（缓存 1 天）' },
+  { key: 'unlock', label: '解禁', hint: '未来的限售解禁排期（缓存 1 天）' },
+]
+
+/** 解禁股数：按亿 / 万格式化（上游给的是股数，不是金额）。 */
+function fmtShares(value: number | null): string {
+  if (value == null) return '—'
+  if (value >= 1e8) return `${(value / 1e8).toFixed(2)} 亿股`
+  if (value >= 1e4) return `${(value / 1e4).toFixed(2)} 万股`
+  return `${Math.round(value)} 股`
+}
+
 /**
  * DDE 一栏的图：**柱 = 主力净流入额**（逐条上色，正红负绿）、**线 = 5日DDE**。
  *
@@ -253,6 +272,13 @@ export default function StockDetail() {
   // 用户补充背景（朋友推荐 / 群里说…）与重新体检的进行态
   const [trapContext, setTrapContext] = useState('')
   const [trapChecking, setTrapChecking] = useState(false)
+  // 个股事件（公告 / 研报 / 解禁）：切到哪个 tab 才拉哪个，各自缓存；失败只影响这一块
+  const [eventTab, setEventTab] = useState<EventTab>('notices')
+  const [notices, setNotices] = useState<StockNotices | null>(null)
+  const [reports, setReports] = useState<StockReports | null>(null)
+  const [unlocks, setUnlocks] = useState<StockUnlocks | null>(null)
+  const [eventsLoading, setEventsLoading] = useState(false)
+  const [eventsError, setEventsError] = useState<string | null>(null)
   // DDE 请求本身失败的原因（网络 / 超时 / 5xx）。null 表示请求成功 —— 此时 `dde`
   // 为 null 或 rows 为空都只是「这只票没数据」，与「取数失败」是两件事（2026-10-10 修）
   const [ddeError, setDdeError] = useState<string | null>(null)
@@ -339,6 +365,11 @@ export default function StockDetail() {
     setChips(null)
     setTrap(null)
     setTrapContext('')
+    setEventTab('notices')
+    setNotices(null)
+    setReports(null)
+    setUnlocks(null)
+    setEventsError(null)
     setError(null)
     setProfileError(null)
     ;(async () => {
@@ -380,6 +411,71 @@ export default function StockDetail() {
       cancelled = true
     }
   }, [code, load, reloadKline])
+
+  /**
+   * 个股事件：**切到哪个 tab 才拉哪个**。
+   *
+   * 不跟着概况一起 `Promise.all`：这三条都要出外网，首次打开会各花一两秒，
+   * 塞进首屏只会让整页更慢。已经拉过的 tab 用 state 里的结果，切回来不重复请求；
+   * 失败只写 `eventsError`，不影响 K 线 / 概况 / 体检。
+   */
+  useEffect(() => {
+    if (!code) return
+    let cancelled = false
+    const finish = () => {
+      if (!cancelled) setEventsLoading(false)
+    }
+    setEventsError(null)
+    if (eventTab === 'notices' && notices === null) {
+      setEventsLoading(true)
+      api
+        .stockNotices(code)
+        .then((data) => {
+          if (!cancelled) setNotices(data)
+        })
+        .catch((err) => {
+          if (!cancelled) setEventsError((err as Error).message)
+        })
+        .finally(finish)
+      return () => {
+        cancelled = true
+      }
+    }
+    if (eventTab === 'reports' && reports === null) {
+      setEventsLoading(true)
+      api
+        .stockReports(code)
+        .then((data) => {
+          if (!cancelled) setReports(data)
+        })
+        .catch((err) => {
+          if (!cancelled) setEventsError((err as Error).message)
+        })
+        .finally(finish)
+      return () => {
+        cancelled = true
+      }
+    }
+    if (eventTab === 'unlock' && unlocks === null) {
+      setEventsLoading(true)
+      api
+        .stockUnlock(code)
+        .then((data) => {
+          if (!cancelled) setUnlocks(data)
+        })
+        .catch((err) => {
+          if (!cancelled) setEventsError((err as Error).message)
+        })
+        .finally(finish)
+      return () => {
+        cancelled = true
+      }
+    }
+    setEventsLoading(false)
+    return () => {
+      cancelled = true
+    }
+  }, [code, eventTab, notices, reports, unlocks])
 
   /**
    * ← → 翻上/下一只。
@@ -501,6 +597,10 @@ export default function StockDetail() {
       </button>
     </>
   )
+
+  // 当前 tab 的数据。三张表结构不同，这里只用它们共有的 note / stale / fetched_at
+  const eventData =
+    eventTab === 'notices' ? notices : eventTab === 'reports' ? reports : unlocks
 
   return (
     <Layout toolbar={toolbar}>
@@ -760,7 +860,7 @@ export default function StockDetail() {
           title="杀猪盘体检"
           meta={
             <span className="num">
-              8 信号 · 结构化证据优先 · 新闻仅作辅助 · 非投资建议
+              10 信号 · 结构化证据优先 · 新闻仅作辅助 · 非投资建议
             </span>
           }
           delay={106}
@@ -840,10 +940,172 @@ export default function StockDetail() {
           )}
         </Panel>
 
+        <Panel
+          title="公告 / 研报 / 解禁"
+          meta={
+            <span className="num">
+              按需加载 · 公告缓存 6 小时、研报 / 解禁缓存 1 天 · 点击标题看原文
+            </span>
+          }
+          delay={108}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line-soft px-4 py-2">
+            <Segmented value={eventTab} items={EVENT_TABS} onChange={setEventTab} />
+            <span className="num text-[12px] text-fg-dim">
+              {eventsLoading
+                ? '加载中…'
+                : eventData?.fetched_at
+                  ? `缓存于 ${eventData.fetched_at.replace('T', ' ')}`
+                  : ''}
+            </span>
+          </div>
+          {eventsError ? (
+            <div className="px-4 py-8 text-center text-[13px] text-fg-dim">
+              暂时取不到：{eventsError}
+            </div>
+          ) : !eventData ? (
+            <div className="px-4 py-8 text-center text-[13px] text-fg-dim">
+              {eventsLoading ? '加载中…' : '暂无数据'}
+            </div>
+          ) : eventData.rows.length === 0 ? (
+            <div className="px-4 py-8 text-center text-[13px] text-fg-dim">
+              {eventData.note ?? '没有数据'}
+            </div>
+          ) : (
+            <>
+              {eventTab === 'notices' && notices && (
+                <div>
+                  {notices.rows.map((row, index) => (
+                    <div
+                      key={`${row.published_at}-${index}`}
+                      className="flex gap-3 border-b border-line-soft px-4 py-2 text-[13px] last:border-b-0"
+                    >
+                      <span className="num w-20 shrink-0 text-fg-dim">
+                        {row.published_at}
+                      </span>
+                      {row.url ? (
+                        <a
+                          href={row.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={row.title}
+                          className="min-w-0 flex-1 text-fg hover:text-accent hover:underline"
+                        >
+                          {row.title}
+                        </a>
+                      ) : (
+                        <span className="min-w-0 flex-1 text-fg" title={row.title}>
+                          {row.title}
+                        </span>
+                      )}
+                      <span className="shrink-0 text-fg-dim">{row.category}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {eventTab === 'reports' && reports && (
+                <div>
+                  {reports.rows.map((row, index) => (
+                    <div
+                      key={`${row.published_at}-${index}`}
+                      className="flex gap-3 border-b border-line-soft px-4 py-2 text-[13px] last:border-b-0"
+                    >
+                      <span className="num w-20 shrink-0 text-fg-dim">
+                        {row.published_at}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        {row.url ? (
+                          <a
+                            href={row.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={row.title}
+                            className="text-fg hover:text-accent hover:underline"
+                          >
+                            {row.title}
+                          </a>
+                        ) : (
+                          <span className="text-fg">{row.title}</span>
+                        )}
+                        <div className="num mt-0.5 text-[12px] text-fg-dim">
+                          {[row.institution, row.rating, row.forecast]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </div>
+                      </div>
+                      <span className="shrink-0 text-fg-dim">{row.industry}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {eventTab === 'unlock' && unlocks && (
+                <div className="overflow-x-auto">
+                  <table className="grid-table">
+                    <thead>
+                      <tr>
+                        <th className="!text-left">解禁日</th>
+                        <th title="解禁数量占**流通**市值的比例">占流通市值</th>
+                        <th title="解禁数量占**总**市值的比例">占总市值</th>
+                        <th>解禁市值</th>
+                        <th>解禁股数</th>
+                        <th className="!text-left">类型</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {unlocks.rows.map((row) => (
+                        <tr key={`${row.unlock_date}-${row.share_type}`}>
+                          <td className="!text-left">
+                            <span className="num">{row.unlock_date}</span>
+                          </td>
+                          <td>
+                            <span
+                              className={`num ${
+                                (row.ratio_float ?? 0) >= 0.05 ? 'text-danger' : ''
+                              }`}
+                            >
+                              {row.ratio_float == null
+                                ? '—'
+                                : `${(row.ratio_float * 100).toFixed(1)}%`}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="num">
+                              {row.ratio_total == null
+                                ? '—'
+                                : `${(row.ratio_total * 100).toFixed(1)}%`}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="num">{fmtAmount(row.market_value)}</span>
+                          </td>
+                          <td>
+                            <span className="num">{fmtShares(row.shares)}</span>
+                          </td>
+                          <td className="!text-left text-fg-dim">{row.share_type}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {(eventData.stale || eventData.note) && (
+                <p className="px-4 py-2 text-[12px] text-fg-dim">
+                  {eventData.stale ? '⚠ 数据源暂时不可用，以上是上次缓存。' : ''}
+                  {eventData.note ?? ''}
+                </p>
+              )}
+            </>
+          )}
+          <p className="px-4 py-2.5 text-[12px] leading-relaxed text-fg-dim">
+            「占流通市值」超过 <span className="text-fg-muted">5%</span> 且在未来 30
+            天内的解禁，会同时记入上面的杀猪盘体检；研报里的盈利预测是机构观点，
+            <span className="text-fg-muted">不是目标价</span>，也不构成投资建议。
+          </p>
+        </Panel>
+
         {/* 阶段判定放在资金流向之后（2026-10-10 用户要求）：先看资金与流通盘，
             再看这只票处在哪一档 */}
         {profile?.phase && <PhasePanel phase={profile.phase} delay={110} />}
-
         <Panel
           title="涨停记录"
           meta={<span className="num">该股上过涨停池的日期（数据源只保留最近 15 个交易日）</span>}

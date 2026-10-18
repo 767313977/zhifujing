@@ -1541,6 +1541,65 @@ class StockNewsOut(ApiModel):
     note: str | None = None
 
 
+class StockEventMeta(ApiModel):
+    """公告 / 研报 / 解禁三张表的公共字段。"""
+
+    code: str
+    name: str | None = None
+    #: 取不到时的原因（页面照常显示其它内容）；`stale=True` 表示给的是上次缓存
+    note: str | None = None
+    stale: bool = False
+    #: 这份数据是什么时候写进缓存的（"2026-10-18T15:30:00"）
+    fetched_at: str | None = None
+
+
+class StockNoticeRow(ApiModel):
+    """一条公告。"""
+
+    published_at: str
+    title: str
+    #: 东财公告类型（其他 / 半年度报告摘要 / 风险提示 …）
+    category: str
+    url: str
+
+
+class StockNoticesOut(StockEventMeta):
+    rows: list[StockNoticeRow] = Field(default_factory=list)
+
+
+class StockReportRow(ApiModel):
+    """一条机构研报。"""
+
+    published_at: str
+    title: str
+    institution: str
+    #: 东财评级（买入 / 增持 / 中性 …）
+    rating: str
+    industry: str
+    #: 盈利预测一行文本；上游没有预测时为空串（**不拿评级冒充目标价**）
+    forecast: str
+    url: str
+
+
+class StockReportsOut(StockEventMeta):
+    rows: list[StockReportRow] = Field(default_factory=list)
+
+
+class StockUnlockRow(ApiModel):
+    """一笔未来限售解禁。两个 `ratio_*` 是**比例**（0.05 = 5%）。"""
+
+    unlock_date: str
+    shares: float | None = None
+    market_value: float | None = None
+    ratio_total: float | None = None
+    ratio_float: float | None = None
+    share_type: str
+
+
+class StockUnlocksOut(StockEventMeta):
+    rows: list[StockUnlockRow] = Field(default_factory=list)
+
+
 class StockAnalysis(ApiModel):
     """个股分析页（`/api/analysis/lookup`）的返回：解析结果 + 阶段判定 + 旁证。
 

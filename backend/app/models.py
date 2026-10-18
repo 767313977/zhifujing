@@ -361,6 +361,24 @@ class SectorMember(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class StockEventCache(Base):
+    """个股公告 / 研报 / 解禁的按需缓存（打开个股页或体检时现取、写这里）。
+
+    为什么要落库而不是只放进程内字典：杀猪盘体检也要读同一批数据，而它在
+    每次打开个股页时都会跑 —— 不共享缓存的话，同一条公告在几秒内会被拉两次。
+    落库还能跨重启保留：公告 6 小时、研报/解禁 24 小时内不重复请求上游。
+    """
+
+    __tablename__ = "stock_event_cache"
+
+    code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    #: notices / reports / unlock
+    kind: Mapped[str] = mapped_column(String(16), primary_key=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    #: 归一后的行（`sources.em_events` 的 dataclass 转 dict），保持上游顺序
+    payload: Mapped[list] = mapped_column(JSON, default=list)
+
+
 class StockConcept(Base):
     """个股所属的开盘红**精选板块**（只针对当日涨停股）。
 

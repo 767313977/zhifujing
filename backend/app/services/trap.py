@@ -1,4 +1,4 @@
-"""杀猪盘体检：用**本站已有的结构化数据**做 8 信号排查。
+"""杀猪盘体检：用**本站已有的结构化数据**做 10 信号排查。
 
 为什么不直接搬 UZI-Skill 的 `fetch_trap_signals.py`：它靠「8 条 web 搜索 × 关键词
 计数」，实测两个方向都出错 —— 茅台因为「公司辟谣涨价传闻」被判成风险信号，
@@ -15,6 +15,8 @@
 | 6 | 基本面与热度脱节 | `stock_financial`（同花顺财务摘要）+ 日线 | 营收同比 ≤-20% / 净利同比 ≤-30% / 净利<0，且 20 日涨幅 ≥20% 或换手过热 |
 | 7 | 推广话术 / 澄清 | 东财个股新闻 + 深市互动易问答 | 出现「必涨/翻倍/老师带单」等 ≥2 条；有「辟谣/澄清/不实」则**不算风险** |
 | 8 | 跨平台 / 社群引流 | — | **数据不足**（需要社媒搜索，本站不接） |
+| 9 | 风险类公告 | 东财公告（`stock_event_cache`） | 近 90 天出现立案 / 问询函 / 减持计划等；「澄清 / 辟谣」类不计 |
+| 10 | 近期高比例解禁 | 东财解禁排期（`stock_event_cache`） | 未来 30 日内、占流通市值 >5% |
 | — | 人气榜热度（仅展示） | 东财人气榜 | 只显示排名与变化，**不投票、不计分** |
 
 评分只加「命中」信号的权重；`unknown` 不投票、也不当成 0 分。这一点与 UZI-Skill
@@ -32,7 +34,7 @@ from sqlalchemy.orm import Session
 
 from app.db import session_scope
 from app.models import Lhb, LimitPool, StockBasic, StockDaily, StockUniverse
-from app.services import financials
+from app.services import financials, stock_events
 from app.sources.akshare_source import AkshareSource
 from app.sources.em_news import fetch_stock_news
 
@@ -49,6 +51,10 @@ WEIGHTS = {
     # **命中也不加分** —— 一个能命中却永远不影响等级的体检项，比没有更糟。
     "fundamental": 20,
     "news": 10,
+    # 风险类公告比推广话术更「硬」（立案 / 问询 / 减持计划是公司自己披露的），
+    # 所以权重高于 news；解禁是排期，属于中等强度。
+    "notice": 20,
+    "unlock": 10,
 }
 
 # 总分 → 等级。与 UZI-Skill 的四档一致（🟢/🟡/🟠/🔴）。
@@ -83,6 +89,31 @@ PROMO_WORDS = (
 # 强触发 +2 档，普通触发 +1 档；取最大，不叠加。
 CONTEXT_STRONG = ("内幕", "稳赚")
 CONTEXT_NORMAL = ("朋友推荐", "朋友说", "群里", "老师", "跟单", "带单", "小红书", "抖音")
+
+# 公告标题里的**硬风险词**。只收公司自己披露的负面事项 —— 「减持」单独一个词会命中
+# 「减持计划期限届满」这类中性稿，所以用「减持计划 / 拟减持 / 被动减持」三种写法。
+RISK_NOTICE_WORDS = (
+    "立案",
+    "处罚",
+    "违规",
+    "警示函",
+    "监管函",
+    "问询函",
+    "关注函",
+    "退市风险",
+    "诉讼",
+    "仲裁",
+    "冻结",
+    "减持计划",
+    "拟减持",
+    "被动减持",
+)
+# 与新闻信号同一条原则：公司澄清过的事，不能当成风险证据
+NOTICE_SAFE_WORDS = ("澄清", "辟谣", "不实")
+
+# 解禁信号：未来多少天内、占流通市值多少比例才算「高比例解禁」
+UNLOCK_WINDOW_DAYS = 30
+UNLOCK_RATIO = 0.05
 
 # 等级从低到高，用于「用户补充背景」上调档位
 LEVEL_ORDER = ("low", "medium", "orange", "high")
@@ -332,6 +363,118 @@ def _check_news(code: str, name: str | None) -> TrapSignal:
     )
 
 
+def _check_notices(code: str, trade_date: date) -> TrapSignal:
+    """风险类公告：近 90 天有没有立案 / 问询 / 减持计划这类**公司自己披露**的负面事项。
+
+    与新闻信号的分工：新闻是别人写的、可能带情绪；公告是公司按规则披露的，强度更高
+    （所以权重 20 > news 的 10）。「澄清 / 辟谣 / 不实」类公告不计 —— 那是保护性证据。
+
+    ⚠️ 数据取不到时是 `unknown` 而不是 `miss`：没拉到公告 ≠ 没有风险公告。
+    """
+    data = stock_events.load(code, "notices")
+    rows = data["rows"]
+    if not rows:
+        if data["note"]:
+            return TrapSignal(
+                "notice", "风险类公告", "unknown", "low", f"公告取不到：{data['note']}"
+            )
+        return TrapSignal(
+            "notice", "风险类公告", "miss", "low", "近 180 天没有公告"
+        )
+
+    since = (trade_date - timedelta(days=90)).isoformat()
+    recent = [row for row in rows if str(row.get("published_at") or "") >= since]
+    if not recent:
+        return TrapSignal(
+            "notice",
+            "风险类公告",
+            "miss",
+            "low",
+            f"近 90 天没有公告（缓存里最早 {rows[-1].get('published_at')}）",
+        )
+
+    risky: list[tuple[dict, tuple[str, ...]]] = []
+    for row in recent:
+        title = str(row.get("title") or "")
+        if any(word in title for word in NOTICE_SAFE_WORDS):
+            continue
+        matched = tuple(word for word in RISK_NOTICE_WORDS if word in title)
+        if matched:
+            risky.append((row, matched))
+
+    if not risky:
+        return TrapSignal(
+            "notice",
+            "风险类公告",
+            "miss",
+            "low",
+            f"近 90 天 {len(recent)} 条公告，未见立案 / 问询 / 减持计划等风险词",
+        )
+
+    words = sorted({word for _, matched in risky for word in matched})
+    title = str(risky[0][0].get("title") or "")
+    # 立案 / 处罚 / 退市风险这类是硬负面；问询函 / 减持计划相对常见，按 medium
+    hard = {"立案", "处罚", "退市风险", "违规", "冻结"}
+    severity = "high" if hard & set(words) else "medium"
+    return TrapSignal(
+        "notice",
+        "风险类公告",
+        "hit",
+        severity,
+        f"近 90 天 {len(risky)} 条风险类公告（{('、'.join(words))}），最近一条：{title[:32]}",
+    )
+
+
+def _check_unlock(code: str, trade_date: date) -> TrapSignal:
+    """未来 30 日内、占流通市值 >5% 的限售解禁。
+
+    解禁本身不是「有人在坐庄」，但它会改变供给：高比例解禁前后常有资金提前撤离，
+    所以作为一条独立风险信号（权重 10，低于公告）。
+
+    上游只给未来排期；没有记录就是确实没有（次新股常见）—— 数据源失败才是 `unknown`。
+    """
+    data = stock_events.load(code, "unlock")
+    rows = data["rows"]
+    if not rows:
+        if data["note"]:
+            return TrapSignal(
+                "unlock", "近期高比例解禁", "unknown", "low", f"解禁排期取不到：{data['note']}"
+            )
+        return TrapSignal(
+            "unlock", "近期高比例解禁", "miss", "low", "没有未来的限售解禁记录"
+        )
+
+    today = trade_date.isoformat()
+    end = (trade_date + timedelta(days=UNLOCK_WINDOW_DAYS)).isoformat()
+    soon = [
+        row
+        for row in rows
+        if today <= str(row.get("unlock_date") or "") <= end
+        and (row.get("ratio_float") or 0) >= UNLOCK_RATIO
+    ]
+    if not soon:
+        upcoming = rows[0].get("unlock_date")
+        return TrapSignal(
+            "unlock",
+            "近期高比例解禁",
+            "miss",
+            "low",
+            f"未来 {UNLOCK_WINDOW_DAYS} 天没有比例 >{UNLOCK_RATIO:.0%} 的解禁"
+            f"（共 {len(rows)} 笔排期，最近一笔 {upcoming}）",
+        )
+
+    top = max(soon, key=lambda row: row.get("ratio_float") or 0)
+    ratio = float(top.get("ratio_float") or 0)
+    return TrapSignal(
+        "unlock",
+        "近期高比例解禁",
+        "hit",
+        "high" if ratio >= UNLOCK_RATIO * 2 else "medium",
+        f"{top.get('unlock_date')} 解禁，占流通市值 {ratio * 100:.1f}%"
+        f"（未来 {UNLOCK_WINDOW_DAYS} 天共 {len(soon)} 笔 >{UNLOCK_RATIO:.0%}）",
+    )
+
+
 def _heat(daily: list[StockDaily]) -> tuple[float | None, float | None, float | None]:
     """(20 日累计涨幅, 近 5 日均换手, 此前 250 日换手 90 分位)。"""
     ret20 = None
@@ -532,6 +675,8 @@ def check(code: str, context: str | None = None) -> TrapResult | None:
     # 财务摘要与新闻都会各自开连接 / 发请求，放在 session 之外，避免嵌套会话。
     signals.append(_check_fundamental(code, trade_date, daily))
     signals.append(_check_news(code, name))
+    signals.append(_check_notices(code, trade_date))
+    signals.append(_check_unlock(code, trade_date))
     signals.append(
         TrapSignal(
             "social",

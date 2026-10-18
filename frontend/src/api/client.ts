@@ -64,8 +64,11 @@ import type {
   StockDailyRow,
   StockDde,
   StockNews,
+  StockNotices,
   StockProfile,
+  StockReports,
   StockThemes,
+  StockUnlocks,
   TrapCheck,
   Volatility,
   WatchlistRow,
@@ -549,7 +552,7 @@ export const api = {
     request<ChipDistribution>(`/stock/${encodeURIComponent(code)}/chips?days=${days}`),
 
   /**
-   * 杀猪盘体检：8 个信号，结构化证据优先、新闻只作辅助。
+   * 杀猪盘体检：10 个信号，结构化证据优先、新闻只作辅助。
    *
    * `unknown`（数据不足）不投票 —— 页面要把它显示成「未判断」，不能说成安全。
    * `context` 是用户补充的背景（"朋友推荐" / "群里说的" / "老师带单"）；
@@ -571,6 +574,23 @@ export const api = {
    */
   stockNews: (code: string, limit = 20) =>
     request<StockNews>(`/stock/${encodeURIComponent(code)}/news?limit=${limit}`),
+
+  /**
+   * 个股公告（东财数据中心，最近 180 天）。后端带 6 小时落库缓存。
+   *
+   * `note` 是「取不到 / 真没有」的说明，`stale=true` 表示给的是上次缓存 ——
+   * 页面照常显示其它内容，不要把这一块当整页失败。
+   */
+  stockNotices: (code: string, limit = 10) =>
+    request<StockNotices>(`/stock/${encodeURIComponent(code)}/notices?limit=${limit}`),
+
+  /** 机构研报（东财数据中心，缓存 1 天）。`forecast` 是盈利预测，不是目标价。 */
+  stockReports: (code: string, limit = 10) =>
+    request<StockReports>(`/stock/${encodeURIComponent(code)}/reports?limit=${limit}`),
+
+  /** 未来限售解禁（东财数据中心，缓存 1 天）。比例字段是小数（0.05 = 5%）。 */
+  stockUnlock: (code: string, limit = 10) =>
+    request<StockUnlocks>(`/stock/${encodeURIComponent(code)}/unlock?limit=${limit}`),
 
   /**
    * 个股分析：把「代码 / 名称 / 拼音首字母」解析成结论（阶段判定 + 旁证）。

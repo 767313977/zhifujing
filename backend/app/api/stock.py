@@ -46,13 +46,19 @@ from app.schemas import (
     StockDdeRow,
     StockNewsOut,
     StockNewsRow,
+    StockNoticeRow,
+    StockNoticesOut,
     StockProfile,
+    StockReportRow,
+    StockReportsOut,
     StockThemeItem,
     StockThemes,
+    StockUnlockRow,
+    StockUnlocksOut,
     TrapCheckOut,
     TrapSignalOut,
 )
-from app.services import chip, limit_rules, trap
+from app.services import chip, limit_rules, stock_events, trap
 from app.services.auth import Cooldown, RateLimiter, current_user
 from app.services.patterns import build_bars
 from app.services.stock_phase import load_phase
@@ -871,6 +877,96 @@ def news(
     )
     _cache_news(key, result)
     return result
+
+
+@router.get("/{code}/notices", response_model=StockNoticesOut)
+def notices(
+    code: str,
+    limit: int = Query(10, ge=1, le=30, description="返回最近 N 条"),
+    session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> StockNoticesOut:
+    """个股公告（东财数据中心，最近 180 天，按日期倒序）。
+
+    **带落库缓存**（6 小时，见 `services/stock_events`）：这条源没有配额，但公告不是
+    盘中会变的数据，没必要每次打开都请求上游；杀猪盘体检也读同一份缓存。
+
+    取不到时 `note` 写原因、`stale=True` 表示给的是上次缓存 —— 页面照常显示其它内容，
+    **不把这一块当 500**。
+    """
+    normalized = _code(code)
+    name = _resolve_name(session, normalized)
+    data = stock_events.load(normalized, "notices")
+    rows = [StockNoticeRow.model_validate(row) for row in data["rows"][:limit]]
+    note = data["note"]
+    if not rows and note is None:
+        note = "近 180 天没有公告（或这只票的公告源没有收录）"
+    return StockNoticesOut(
+        code=normalized,
+        name=name,
+        rows=rows,
+        note=note,
+        stale=data["stale"],
+        fetched_at=data["fetched_at"],
+    )
+
+
+@router.get("/{code}/reports", response_model=StockReportsOut)
+def reports(
+    code: str,
+    limit: int = Query(10, ge=1, le=20, description="返回最近 N 篇"),
+    session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> StockReportsOut:
+    """个股研报（东财数据中心，按报告日期倒序，缓存 1 天）。
+
+    上游**没有目标价**，只有未来三年盈利预测；`forecast` 是拼好的一行文本，
+    页面不要把它当成目标价展示。
+    """
+    normalized = _code(code)
+    name = _resolve_name(session, normalized)
+    data = stock_events.load(normalized, "reports")
+    rows = [StockReportRow.model_validate(row) for row in data["rows"][:limit]]
+    note = data["note"]
+    if not rows and note is None:
+        note = "东财数据中心没有这只票的机构研报"
+    return StockReportsOut(
+        code=normalized,
+        name=name,
+        rows=rows,
+        note=note,
+        stale=data["stale"],
+        fetched_at=data["fetched_at"],
+    )
+
+
+@router.get("/{code}/unlock", response_model=StockUnlocksOut)
+def unlock(
+    code: str,
+    limit: int = Query(10, ge=1, le=20, description="返回最近 N 笔"),
+    session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> StockUnlocksOut:
+    """未来的限售解禁（东财数据中心，按解禁日升序，缓存 1 天）。
+
+    `ratio_total` / `ratio_float` 是**比例**（0.05 = 5%），前端显示时乘 100。
+    上游只给还没解禁的排期；没有记录就是真的没有（次新股常见）。
+    """
+    normalized = _code(code)
+    name = _resolve_name(session, normalized)
+    data = stock_events.load(normalized, "unlock")
+    rows = [StockUnlockRow.model_validate(row) for row in data["rows"][:limit]]
+    note = data["note"]
+    if not rows and note is None:
+        note = "没有未来的限售解禁记录"
+    return StockUnlocksOut(
+        code=normalized,
+        name=name,
+        rows=rows,
+        note=note,
+        stale=data["stale"],
+        fetched_at=data["fetched_at"],
+    )
 
 
 @router.get("/{code}/themes", response_model=StockThemes)
