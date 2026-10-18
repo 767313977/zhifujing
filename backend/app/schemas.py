@@ -1496,6 +1496,28 @@ class PoolStandingOut(ApiModel):
     pools: list[PoolStanding] = Field(default_factory=list)
 
 
+class PatternScorecardRow(PoolStanding):
+    """一个形态的成绩单。字段与池子成绩单一致，另加分组与结论。"""
+
+    #: 形态分组（趋势 / 突破 / 量价 / 几何 …），用于表里分组显示
+    group: str = ""
+    #: 结论：有效 / 观察 / 噪声 / 样本不足（阈值见 `services.pattern_track`）
+    verdict: str = ""
+
+
+class PatternScorecardOut(ApiModel):
+    """全形态成绩单（`/api/patterns/scorecard`）。"""
+
+    start: str
+    cohorts: int
+    scan_days: list[str] = Field(default_factory=list)
+    track_days: int
+    line_days: int
+    #: 同一 (形态, 代码) 的去重窗口（交易日）
+    dedup_days: int
+    patterns: list[PatternScorecardRow] = Field(default_factory=list)
+
+
 class StockNewsRow(ApiModel):
     """一条个股新闻。"""
 

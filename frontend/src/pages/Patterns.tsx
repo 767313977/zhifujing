@@ -1,7 +1,13 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { PatternCount, PatternMeta, PatternStock, PatternSummary } from '../api/types'
+import type {
+  PatternCount,
+  PatternMeta,
+  PatternScorecardOut,
+  PatternStock,
+  PatternSummary,
+} from '../api/types'
 import Alert from '../components/Alert'
 import KLineChart from '../components/KLineChart'
 import type { KeyLevel } from '../components/KLineChart'
@@ -10,7 +16,7 @@ import Panel from '../components/Panel'
 import { phaseTone } from '../components/PhasePanel'
 import Segmented from '../components/Segmented'
 import SortTh from '../components/SortTh'
-import { boardOf, fmtAmount, fmtInt, fmtPct, fmtShortDate, toneOf } from '../lib/format'
+import { boardOf, fmtAmount, fmtInt, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
 import type { Board } from '../lib/format'
 import { K_VIEWS, useKLine } from '../lib/klinePeriod'
 import { useSort } from '../lib/sort'
@@ -361,6 +367,9 @@ export default function Patterns() {
   const [summary, setSummary] = useState<PatternSummary | null>(null)
   // chip 徽标的「再加上它会剩多少只」（后端按当前选择算好的交集家数）
   const [preview, setPreview] = useState<PatternCount[]>([])
+  // 全形态成绩单：只用来给 chip 的悬停提示补一行「近 N 日线上表现」。
+  // 取不到就当没有（`null`），**不影响筛选与列表** —— 它是增强信息，不是主体。
+  const [scorecard, setScorecard] = useState<PatternScorecardOut | null>(null)
   // 选中的形态：**多选**（交集）。空数组 = 默认视图（全市场按评分取前 HIT_LIMIT 只）
   const [picked, setPicked] = useState<string[]>(() => splitPatterns(params.get('patterns')))
   const [minScore, setMinScore] = useState(0)
@@ -409,6 +418,8 @@ export default function Patterns() {
   useEffect(() => {
     api.dates().then(setDates).catch(() => setDates([]))
     api.patternCatalog().then(setCatalog).catch(() => setCatalog([]))
+    // 成绩单是增强信息：失败就静默当没有，不弹错（筛选条照常可用）
+    api.patternScorecard().then(setScorecard).catch(() => setScorecard(null))
   }, [])
 
   /**
@@ -509,6 +520,13 @@ export default function Patterns() {
     for (const item of preview) map[item.pattern] = item.stocks
     return map
   }, [preview])
+
+  /** 形态 key → 成绩单那一行（只用于 chip 的 title，缺了就不显示这段） */
+  const scoreOf = useMemo(() => {
+    const map = new Map<string, PatternScorecardOut['patterns'][number]>()
+    for (const row of scorecard?.patterns ?? []) map.set(row.pattern, row)
+    return map
+  }, [scorecard])
 
   /** 当前选中形态的中文名（标题与提示都要用；清单还没拉到时退回 key） */
   const pickedNames = useMemo(
@@ -733,15 +751,24 @@ export default function Patterns() {
                   // 已选了别的形态时，徽标算的是「再点它会剩多少只」；为 0 说明这个
                   // 组合筛不到票 —— 标红，点之前就知道没戏（点进去就是空列表）
                   const empty = !on && picked.length > 0 && count === 0
+                  // 悬停追加一行线上成绩：**只改提示，不动 chip 主数字** ——
+                  // 那个数字是「今天命中多少只」，用户已经习惯了，换成超额会看错。
+                  const stats = scoreOf.get(item.key)
+                  const h10 = stats?.returns.find((row) => row.days === 10)
+                  const perf = stats
+                    ? `\n近 ${scorecard?.cohorts ?? 0} 个扫描日线上：10 日超额 ` +
+                      `${fmtPct(h10?.excess ?? null)} · 跑赢 ${fmtNum(h10?.beat_pct ?? null, 0, '%')}` +
+                      ` · 样本 ${stats.hits}`
+                    : ''
                   return (
                     <button
                       key={item.key}
                       type="button"
                       onClick={() => toggle(item.key)}
                       title={
-                        picked.length > 0
+                        (picked.length > 0
                           ? `再加上「${item.name}」后剩 ${count} 只`
-                          : `「${item.name}」全市场命中 ${count} 只`
+                          : `「${item.name}」全市场命中 ${count} 只`) + perf
                       }
                       className={`num border px-2 py-[2px] text-[13px] transition-colors ${
                         on
@@ -752,6 +779,14 @@ export default function Patterns() {
                       }`}
                     >
                       {item.name}
+                      {stats?.verdict === '噪声' && (
+                        <span
+                          className="ml-1 text-[11px] text-fg-dim"
+                          title="近 N 日线上 10 日超额接近 0、样本已足够 —— 与噪声难以区分"
+                        >
+                          噪
+                        </span>
+                      )}
                       <span
                         className={`ml-1.5 text-[13px] ${
                           on ? 'text-accent' : empty ? 'text-danger' : 'text-fg-dim'

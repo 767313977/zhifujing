@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
+  PatternScorecardOut,
+  PatternScorecardRow,
   PatternTrack,
   PatternTrackCohort,
   PatternTrackDetail,
@@ -11,7 +13,10 @@ import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import Segmented from '../components/Segmented'
-import { fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
+import SortTh from '../components/SortTh'
+import { fmtInt, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
+import { useSort } from '../lib/sort'
+import type { SortSpecs } from '../lib/sort'
 
 /**
  * 可选的循环个数（= 看最近几个筛选日）。单位是**有命中记录的交易日数**。
@@ -39,6 +44,41 @@ function pointAt(cohort: PatternTrackCohort, day: number): PatternTrackPoint | u
   return cohort.points.find((item) => item.day === day)
 }
 
+/** 成绩单里的收益档位（与后端 `pattern_track.HORIZONS` 一致）。 */
+const SCORECARD_HORIZONS = [1, 3, 5, 10]
+
+/** 成绩单一行里某个档位的统计量（没走到该档位就是 undefined）。 */
+function horizonOf(row: PatternScorecardRow, days: number) {
+  return row.returns.find((item) => item.days === days)
+}
+
+/** 结论配色：有效最显眼；噪声与样本不足压暗，避免抢走主数字的注意力。 */
+function verdictTone(verdict: string): string {
+  if (verdict === '有效') return 'text-accent'
+  if (verdict === '噪声') return 'text-fg-muted'
+  if (verdict === '样本不足') return 'text-fg-dim'
+  return ''
+}
+
+/**
+ * 成绩单表的可排序列。
+ *
+ * 默认按 **10 日超额降序**（用户最关心「扣掉大盘之后还剩多少」）；
+ * 分组 / 形态按拼音升序，方便先按组看。
+ */
+const SCORECARD_SORTS: SortSpecs<PatternScorecardRow> = {
+  group: { value: (row) => row.group, first: 'asc' },
+  name: { value: (row) => row.name, first: 'asc' },
+  samples: { value: (row) => row.hits },
+  d1: { value: (row) => horizonOf(row, 1)?.excess },
+  d3: { value: (row) => horizonOf(row, 3)?.excess },
+  d5: { value: (row) => horizonOf(row, 5)?.excess },
+  d10: { value: (row) => horizonOf(row, 10)?.excess },
+  beat: { value: (row) => horizonOf(row, 10)?.beat_pct },
+  touch: { value: (row) => row.touch },
+  stop: { value: (row) => row.stop },
+}
+
 /** 均值曲线上的峰 / 谷（含它出现在第几天）。 */
 function extreme(
   cohort: PatternTrackCohort,
@@ -57,9 +97,18 @@ export default function PatternTrackPage() {
   const [picked, setPicked] = useState<string | null>(null)
   const [data, setData] = useState<PatternTrack | null>(null)
   const [detail, setDetail] = useState<PatternTrackDetail | null>(null)
+  // 全形态成绩单（与「循环」同一个统计窗口）。取不到时只这一块留空，
+  // 上面的明细与汇总照常显示 —— 它是增强信息。
+  const [scorecard, setScorecard] = useState<PatternScorecardOut | null>(null)
+  const [scoreFailed, setScoreFailed] = useState(false)
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // 成绩单排序（默认 10 日超额降序，见 `SCORECARD_SORTS`）
+  const [scoreSort, scoreRows] = useSort(scorecard?.patterns ?? [], SCORECARD_SORTS, {
+    key: 'd10',
+  })
 
   const load = useCallback(async (count: number, isStale: () => boolean) => {
     try {
@@ -110,6 +159,23 @@ export default function PatternTrackPage() {
     // `picked`（各档循环的「最近那个筛选日」往往是同一天、值没变），就不会重新拉取，
     // 明细会停在「这个循环还没有命中记录」的误报上（2026-10-10 修）。
   }, [picked, cohorts])
+
+  useEffect(() => {
+    let stale = false
+    setScorecard(null)
+    setScoreFailed(false)
+    api
+      .patternScorecard(cohorts, 10)
+      .then((result) => {
+        if (!stale) setScorecard(result)
+      })
+      .catch(() => {
+        if (!stale) setScoreFailed(true)
+      })
+    return () => {
+      stale = true
+    }
+  }, [cohorts])
 
   const summary = data?.summary
   const toolbar = (
@@ -323,6 +389,137 @@ export default function PatternTrackPage() {
                 峰谷是均值曲线上的最高 / 最低点（小字是它出现在第几天）。
                 <span className="text-fg-muted">未计手续费，也没考虑涨停当天买不进</span>——
                 这是理论口径，不是能实现的收益。没走到的节点显示「—」，不按 0% 计入。
+              </p>
+            </div>
+          )}
+        </Panel>
+
+        <Panel
+          title="形态成绩单"
+          meta={
+            <span className="num">
+              {scorecard
+                ? `从 ${scorecard.start} 起 · ${scorecard.cohorts} 个扫描日 · ` +
+                  `(形态, 代码) ${scorecard.dedup_days} 日去重 · 到线 / 破位只算有作废位的形态`
+                : scoreFailed
+                  ? '暂时取不到（不影响上面的明细）'
+                  : '加载中…'}
+            </span>
+          }
+          delay={120}
+        >
+          {!scorecard || scoreRows.length === 0 ? (
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
+              {scoreFailed ? '暂时取不到成绩单，稍后刷新再试' : '加载中…'}
+            </div>
+          ) : (
+            <div className="overflow-auto">
+              <table className="grid-table">
+                <thead>
+                  <tr>
+                    <SortTh sortKey="group" align="left" {...scoreSort}>
+                      分组
+                    </SortTh>
+                    <SortTh sortKey="name" align="left" {...scoreSort}>
+                      形态
+                    </SortTh>
+                    <SortTh sortKey="samples" {...scoreSort} title="去重后的命中条数">
+                      样本
+                    </SortTh>
+                    {SCORECARD_HORIZONS.map((day) => (
+                      <SortTh
+                        key={day}
+                        sortKey={`d${day}`}
+                        {...scoreSort}
+                        title={`第 ${day} 个交易日相对同日全市场等权的超额`}
+                      >
+                        {day} 日超额
+                      </SortTh>
+                    ))}
+                    <SortTh
+                      sortKey="beat"
+                      {...scoreSort}
+                      title="10 日跑赢同日全市场的比例"
+                    >
+                      跑赢率
+                    </SortTh>
+                    <SortTh
+                      sortKey="touch"
+                      {...scoreSort}
+                      title="命中后 5 个交易日内收盘站上「要过的线」的比例"
+                    >
+                      到线率
+                    </SortTh>
+                    <SortTh
+                      sortKey="stop"
+                      {...scoreSort}
+                      title="命中后 5 个交易日内收盘跌破「作废位」的比例"
+                    >
+                      破位率
+                    </SortTh>
+                    <SortTh>结论</SortTh>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scoreRows.map((row) => (
+                    <tr key={row.pattern}>
+                      <td className="!text-left text-fg-dim">{row.group}</td>
+                      <td className="!text-left">
+                        <Link
+                          to={`/patterns?patterns=${encodeURIComponent(row.pattern)}`}
+                          className="text-fg hover:underline"
+                        >
+                          {row.name}
+                        </Link>
+                        <div className="num text-[11px] text-fg-dim">
+                          {row.stocks} 只 · {row.scan_days} 天有命中
+                        </div>
+                      </td>
+                      <td>
+                        <span className="num">{fmtInt(row.hits)}</span>
+                      </td>
+                      {SCORECARD_HORIZONS.map((day) => {
+                        const stat = horizonOf(row, day)
+                        return (
+                          <td key={day}>
+                            <div className={`num ${toneOf(stat?.excess)}`}>
+                              {fmtPct(stat?.excess ?? null)}
+                            </div>
+                            <div className="num text-[11px] text-fg-dim">
+                              n={fmtInt(stat?.samples ?? 0)} · 赢{' '}
+                              {fmtNum(stat?.beat_pct ?? null, 0, '%')}
+                            </div>
+                          </td>
+                        )
+                      })}
+                      <td>
+                        <span className="num">
+                          {fmtNum(horizonOf(row, 10)?.beat_pct ?? null, 0, '%')}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="num">{fmtNum(row.touch, 0, '%')}</span>
+                      </td>
+                      <td>
+                        <span className="num">{fmtNum(row.stop, 0, '%')}</span>
+                      </td>
+                      <td>
+                        <span className={verdictTone(row.verdict)}>{row.verdict}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="px-4 py-3 text-[12px] leading-relaxed text-fg-dim">
+                口径：<span className="text-fg-muted">命中日收盘</span>买入、持有到第 n 个
+                交易日收盘，收益按涨跌幅逐日复利（前复权口径）；超额减掉
+                <span className="text-fg-muted">同一天全市场等权平均</span>。同一 (形态,
+                代码) {scorecard.dedup_days} 个交易日内只留第一个信号，与离线回测同口径。
+                到线率 / 破位率只对 <span className="text-fg-muted">key_levels</span> 里真写了
+                「要过的线 / 作废位」的形态计算，其余显示「—」——
+                不拿命中日最低价冒充破位线。结论阈值：样本 &lt; 30 为「样本不足」；10 日超额
+                &gt; +1% 且跑赢率 &gt; 50% 为「有效」；|10 日超额| &lt; 0.5% 且样本 ≥ 200 为
+                「噪声」；其余「观察」。未计手续费，也未考虑涨停当天买不进。
               </p>
             </div>
           )}

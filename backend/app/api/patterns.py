@@ -32,6 +32,7 @@ from app.schemas import (
     PatternCount,
     PatternHitItem,
     PatternMeta,
+    PatternScorecardOut,
     PatternStockOut,
     PatternSummary,
     PatternTrackDetail,
@@ -724,6 +725,58 @@ def standing(
     result = PoolStandingOut.model_validate(
         pattern_track.pool_standing(
             db, start=start, cohorts=cohorts, hold_days=track_days, line_days=line_days
+        )
+    )
+    _TRACK_CACHE.set(key, result)
+    return result
+
+
+@router.get("/scorecard", response_model=PatternScorecardOut)
+def scorecard(
+    db: Session = Depends(get_db),
+    cohorts: int = Query(pattern_track.DEFAULT_COHORTS, ge=1, le=120),
+    track_days: int = Query(max(pattern_track.HORIZONS), ge=1, le=60),
+    line_days: int = Query(5, ge=1, le=30),
+    dedup_days: int = Query(pattern_track.SCORECARD_DEDUP_DAYS, ge=0, le=120),
+) -> PatternScorecardOut:
+    """注册表里**每个形态**的线上滚动成绩单：1/3/5/10 日超额 + 胜率 + 结论。
+
+    与 `/track` 的分工：那边是「全形态混合的评分前 50 只后来怎么样」，这一张回答的是
+    「**这个形态本身**值不值得留」。与 `/standing` 的区别只是覆盖范围 —— 那边固定六
+    个悟道池，这里是注册表全部形态，口径完全一致。
+
+    - **去重**：同一 (形态, 代码) 在 `dedup_days` 个交易日内只算第一个信号，避免一波
+      行情被重复计成十几个样本（与回测脚本的 `DEDUP_DAYS` 同口径）。
+    - **到线率 / 破位率**：只对 `key_levels` 里真的写了「要过的线 / 作废位」的形态算；
+      不拿命中日最低价当代理，没有的形态这两列返回 null。
+    - **结论**：`样本不足`（< 30）/ `有效`（10 日超额 > +1% 且跑赢率 > 50%）/
+      `噪声`（|10 日超额| < 0.5% 且样本 ≥ 200）/ 其余 `观察`。
+
+    ⚠️ 统计起点用 `Settings.pattern_track_start`。**历史上改过规则的日子必须先重扫**
+    （`scan(..., no_ifind=True)`），否则不同判定口径的命中会被平均在一起。
+    """
+    start = get_settings().pattern_track_start
+    key = (
+        "scorecard",
+        cohorts,
+        track_days,
+        line_days,
+        dedup_days,
+        start,
+        *_track_version(db),
+    )
+    cached = _TRACK_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    result = PatternScorecardOut.model_validate(
+        pattern_track.scorecard(
+            db,
+            start=start,
+            cohorts=cohorts,
+            hold_days=track_days,
+            line_days=line_days,
+            dedup_days=dedup_days,
         )
     )
     _TRACK_CACHE.set(key, result)

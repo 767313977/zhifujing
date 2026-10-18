@@ -1604,6 +1604,26 @@ export interface PoolStandingOut {
   pools: PoolStanding[]
 }
 
+/** 一个形态的成绩单（`/api/patterns/scorecard`）：与池子成绩单同口径，多分组与结论。 */
+export interface PatternScorecardRow extends PoolStanding {
+  /** 形态分组（趋势 / 突破 / 量价 / 几何 …） */
+  group: string
+  /** 结论：有效 / 观察 / 噪声 / 样本不足 */
+  verdict: string
+}
+
+export interface PatternScorecardOut {
+  start: string
+  /** 窗口里实际有命中的扫描日数 */
+  cohorts: number
+  scan_days: string[]
+  track_days: number
+  line_days: number
+  /** 同一 (形态, 代码) 的去重窗口（交易日） */
+  dedup_days: number
+  patterns: PatternScorecardRow[]
+}
+
 /** 一条个股新闻（东财口径）。 */
 export interface StockNewsRow {
   /** 发布时间，东财原样给（"2026-08-26 09:59:14"） */

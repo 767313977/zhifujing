@@ -40,6 +40,7 @@ import type {
   PoolType,
   PatternCount,
   PatternMeta,
+  PatternScorecardOut,
   PatternStock,
   PatternSummary,
   PatternTrack,
@@ -593,6 +594,19 @@ export const api = {
   poolStanding: (cohorts = 30, trackDays = 10, lineDays = 5) =>
     request<PoolStandingOut>(
       `/patterns/standing?cohorts=${cohorts}&track_days=${trackDays}&line_days=${lineDays}`,
+    ),
+
+  /**
+   * 注册表里**每个形态**的线上滚动成绩单：1/3/5/10 日超额 + 胜率 + 结论。
+   *
+   * 与 `patternTrack` 的分工：那个看「全形态混合的评分前 50 只」，这个看
+   * 「**单个形态**值不值得留」。同一 (形态, 代码) 按 `dedupDays` 个交易日去重，
+   * 与回测脚本同口径；到线率 / 破位率只对真写了关键位的形态有值。
+   */
+  patternScorecard: (cohorts = 30, trackDays = 10, lineDays = 5, dedupDays = 20) =>
+    request<PatternScorecardOut>(
+      `/patterns/scorecard?cohorts=${cohorts}&track_days=${trackDays}` +
+        `&line_days=${lineDays}&dedup_days=${dedupDays}`,
     ),
 
   // --- 形态选股 ---

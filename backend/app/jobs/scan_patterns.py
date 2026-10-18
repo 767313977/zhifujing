@@ -592,7 +592,11 @@ def _sync_note(sync_info: dict) -> str:
 
 
 def _ensure_wudao_kline(
-    codes: set[str], trade_date: date, settings: Settings | None = None
+    codes: set[str],
+    trade_date: date,
+    settings: Settings | None = None,
+    *,
+    allow_ifind: bool = True,
 ) -> dict:
     """候选池外那几只补日线：东财 → 腾讯 → iFinD（三级，都免费在前、吃配额在后）。
 
@@ -618,6 +622,9 @@ def _ensure_wudao_kline(
       （当天就没有这些候选的形态信号）。这是刻意的「配额 ↔ 覆盖」取舍，不静默：
       跳过的只数进 `skipped_quota`，日志与采集日志里都会写出来。
       **有了腾讯这一级，它其实很少再触发** —— 只有在腾讯也整轮不通时才轮得到它顶上来。
+
+    `allow_ifind=False` 时**完全不碰 iFinD**（只走东财 / 腾讯）—— 历史重扫用它：
+    重扫是「把过去的日子用现在的规则重算一遍」，不该为此消耗当天的 iFinD 配额。
     """
     settings = settings or get_settings()
     counts = _bar_counts(codes, trade_date)
@@ -645,10 +652,14 @@ def _ensure_wudao_kline(
             "skipped_quota": 0,
         }
 
-    return _sync_codes_three_levels(need, settings, label="悟道候选")
+    return _sync_codes_three_levels(
+        need, settings, label="悟道候选", allow_ifind=allow_ifind
+    )
 
 
-def _sync_codes_three_levels(need: set[str], settings: Settings, *, label: str) -> dict:
+def _sync_codes_three_levels(
+    need: set[str], settings: Settings, *, label: str, allow_ifind: bool = True
+) -> dict:
     """把一批票的近端日线补齐：**东财 → 腾讯 → iFinD**（免费在前、吃配额在后）。
 
     从 `_ensure_wudao_kline` 抽出来给两处共用：那里补的是「扫描目标日的悟道候选」，
@@ -730,7 +741,7 @@ def _sync_codes_three_levels(need: set[str], settings: Settings, *, label: str) 
                     )
                 else:
                     logger.warning("补日线(腾讯) %s 失败：%s", code, exc)
-        if not ok and not skip_ifind:
+        if not ok and allow_ifind and not skip_ifind:
             if via_ifind >= settings.wudao_ifind_fallback_max:
                 # 到上限了：本轮不补它。不记 failed —— 这不是失败，是刻意的取舍
                 skipped_quota += 1
@@ -828,8 +839,14 @@ def scan(
     settings: Settings | None = None,
     *,
     min_score: float = MIN_SCORE,
+    no_ifind: bool = False,
 ) -> dict:
-    """扫描一个交易日的全市场形态，整段替换该日的命中记录。"""
+    """扫描一个交易日的全市场形态，整段替换该日的命中记录。
+
+    `no_ifind=True`：候选补日线**只走东财 / 腾讯**，不碰 iFinD（见
+    `_ensure_wudao_kline` 的同名参数）。历史重扫用它 —— 重扫是零配额的维护操作，
+    不该为了补几只新股消耗当天的 iFinD 额度。
+    """
     settings = settings or get_settings()
     started = time.monotonic()
 
@@ -845,7 +862,9 @@ def scan(
     wudao_cands = _candidate_codes(target)
     extras = {c for c in wudao_cands if c not in set(universe)}
     sync_info = (
-        _ensure_wudao_kline(wudao_cands, target, settings)
+        _ensure_wudao_kline(
+            wudao_cands, target, settings, allow_ifind=not no_ifind
+        )
         if wudao_cands
         else {
             "synced": 0,

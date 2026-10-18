@@ -602,6 +602,8 @@ def _line_rate(
     session: Session,
     hits: dict[tuple[date, str], tuple[float | None, float | None]],
     days: int,
+    *,
+    allow_low_proxy: bool = True,
 ) -> dict:
     """到线率 / 破位率：命中后 `days` 个交易日里，**收盘**站上「线」、跌破「作废位」的比例。
 
@@ -620,13 +622,16 @@ def _line_rate(
       收盘逐日复利出「命中日口径」的等价价再比（见下面循环里的说明）。
     · 作废位优先用纪律里那个（`wash_low` / `start_low`）；池子没有的话退回
       **命中日最低价**当代理，并在 `stop_source` 里写明用的是哪种 —— 页面照原样显示。
+    · `allow_low_proxy=False` 时**不做代理**：没有真作废位的命中不计入破位率
+      （`stop` 返回 None）。全形态成绩单用它 —— 否则「随便一个形态」的命中日最低价
+      都会被当成破位线，那一列就失去了比较意义。
     """
     blank = {
         "samples": 0,
         "touch": None,
         "touch_samples": 0,
         "stop": None,
-        "stop_source": STOP_FROM_LOW,
+        "stop_source": STOP_FROM_LOW if allow_low_proxy else "",
     }
     if not hits:
         return blank
@@ -696,7 +701,9 @@ def _line_rate(
             touch_total += 1
             if any(value >= line for value in closes):
                 touched += 1
-        floor = stop if stop is not None else entry[1]
+        floor = stop
+        if floor is None and allow_low_proxy:
+            floor = entry[1]
         if floor is None:
             continue
         stop_total += 1
@@ -710,7 +717,9 @@ def _line_rate(
         "touch": round(touched / touch_total * 100, 1) if touch_total else None,
         "touch_samples": touch_total,
         "stop": round(stopped / stop_total * 100, 1) if stop_total else None,
-        "stop_source": STOP_FROM_LEVEL if has_stop_level else STOP_FROM_LOW,
+        "stop_source": (
+            STOP_FROM_LEVEL if has_stop_level else (STOP_FROM_LOW if allow_low_proxy else "")
+        ),
     }
 
 
@@ -721,6 +730,7 @@ def pool_standing(
     cohorts: int = DEFAULT_COHORTS,
     hold_days: int = max(HORIZONS),
     line_days: int = 5,
+    keys: tuple[str, ...] = POOL_KEYS,
 ) -> dict:
     """按池子发成绩单：收益（1/3/5/10 日）+ 到线率 + 破位率。
 
@@ -735,6 +745,10 @@ def pool_standing(
 
     六池共用**同一份行情矩阵**（`_matrix` 拉一次、`_curves_from` 各算一遍），
     否则同一份 30 万行要读六次。
+
+    `keys` 默认是悟道六池；全形态成绩单（`scorecard`）传注册表全部 key 走同一套口径。
+    注意 `scan_days` 仍按**全部注册形态**的命中日算（`_scan_dates`），这样加参数前后
+    悟道六池的 `cohorts` / `scan_days` 逐项不变。
     """
     names = {pattern.key: pattern.name for pattern in PATTERNS}
     scan_days = _scan_dates(session, cohorts, start)
@@ -756,7 +770,7 @@ def pool_standing(
             PatternHit.pattern,
             PatternHit.score,
             PatternHit.key_levels,
-        ).where(PatternHit.trade_date.in_(scan_days), PatternHit.pattern.in_(POOL_KEYS))
+        ).where(PatternHit.trade_date.in_(scan_days), PatternHit.pattern.in_(keys))
     ).all()
 
     picks: dict[str, dict[date, list[Pick]]] = defaultdict(lambda: defaultdict(list))
@@ -767,7 +781,7 @@ def pool_standing(
 
     matrix = _matrix(session, scan_days, hold_days)
     pools: list[dict] = []
-    for key in POOL_KEYS:
+    for key in keys:
         pool_picks = picks.get(key) or {}
         entry = {
             "pattern": key,
@@ -790,3 +804,162 @@ def pool_standing(
                 entry["returns"].append({"days": horizon, **_stats(np.array([]), float("nan"))})
         pools.append(entry)
     return {**base, "pools": pools}
+
+
+# ---------------------------------------------------------------- 全形态「成绩单」
+
+#: 同一只票、同一个形态这么多交易日内只留第一个信号。
+#: 口径与 `scripts/backtest_patterns.py` 的 `DEDUP_DAYS = 20` 一致：形态判定是
+#: 「今天满足条件」，一波行情里会连着几天都命中 —— 不去重的话「均线多头排列」这类
+#: 天天出票的形态，一波行情会被算成十几个独立样本，显著性虚高。
+SCORECARD_DEDUP_DAYS = 20
+
+#: 结论分档的阈值。前两条来自 2026-10-14 删形态时定的标准（信号量 ≥1000 且
+#: |10 日超额| < 0.5% 视为噪声），`样本不足` 是统计上的下限。
+SCORECARD_MIN_SAMPLES = 30
+SCORECARD_NOISE_SAMPLES = 200
+SCORECARD_EFFECT_EXCESS = 1.0
+SCORECARD_NOISE_EXCESS = 0.5
+
+
+def _verdict(entry: dict) -> str:
+    """给一行成绩单下结论。`entry` 是 `scorecard` 里那一条（含 `hits` / `returns`）。
+
+    顺序不能换：样本太少时超额本身不可信，先报「样本不足」；「噪声」要求样本多，
+    否则一个偶然的 0 超额也会被当成「已证明无效」。
+    """
+    if entry["hits"] < SCORECARD_MIN_SAMPLES:
+        return "样本不足"
+    last = next(
+        (row for row in entry["returns"] if row["days"] == max(HORIZONS)), None
+    )
+    if last is None or last["excess"] is None:
+        return "观察"
+    excess = last["excess"]
+    beat = last["beat_pct"] or 0.0
+    if excess > SCORECARD_EFFECT_EXCESS and beat > 50:
+        return "有效"
+    if abs(excess) < SCORECARD_NOISE_EXCESS and entry["hits"] >= SCORECARD_NOISE_SAMPLES:
+        return "噪声"
+    return "观察"
+
+
+def scorecard(
+    session: Session,
+    *,
+    start: date,
+    cohorts: int = DEFAULT_COHORTS,
+    hold_days: int = max(HORIZONS),
+    line_days: int = 5,
+    dedup_days: int = SCORECARD_DEDUP_DAYS,
+    low_proxy: bool = False,
+) -> dict:
+    """注册表里**每个形态**的线上滚动成绩单：1/3/5/10 日超额 + 胜率 + 结论。
+
+    与 `track` 的分工：`track` 看的是「全形态混合的评分前 50 只」，回答不了
+    「**这个形态本身**值不值得留」；池子（悟道六池）只覆盖了少数几个形态。这里把
+    `pool_standing` 的口径推广到全部形态。
+
+    **去重**（`dedup_days`）：按 (形态, 代码) 计，`dedup_days` 个交易日内只留第一个
+    信号 —— 与回测脚本同口径（见 `SCORECARD_DEDUP_DAYS` 的注释）。
+
+    **到线率 / 破位率**只对 `key_levels` 里真的写了对应字段的形态算；`low_proxy=False`
+    （默认）时**不拿命中日最低价当代理**，没有作废位的形态这一列返回 None。
+
+    收益、超额、样本全部复用 `_matrix` / `_curves_from` / `_pooled_stats`，
+    与 `track` / `pool_standing` 是同一套复利与基准口径。零 iFinD 配额。
+    """
+    names = {pattern.key: pattern.name for pattern in PATTERNS}
+    groups = {pattern.key: pattern.group for pattern in PATTERNS}
+    scan_days = _scan_dates(session, cohorts, start)
+    base = {
+        "start": start.isoformat(),
+        "cohorts": len(scan_days),
+        "scan_days": [day.isoformat() for day in scan_days],
+        "track_days": hold_days,
+        "line_days": line_days,
+        "dedup_days": dedup_days,
+    }
+    if not scan_days:
+        return {**base, "patterns": []}
+
+    calendar = list(
+        session.scalars(select(TradeCalendar.trade_date).order_by(TradeCalendar.trade_date))
+    )
+    position = {day: index for index, day in enumerate(calendar)}
+
+    rows = session.execute(
+        select(
+            PatternHit.trade_date,
+            PatternHit.code,
+            PatternHit.name,
+            PatternHit.pattern,
+            PatternHit.score,
+            PatternHit.key_levels,
+        )
+        .where(PatternHit.trade_date.in_(scan_days), PatternHit.pattern.in_(_KEYS))
+        .order_by(PatternHit.trade_date, PatternHit.pattern, PatternHit.code)
+    ).all()
+
+    picks: dict[str, dict[date, list[Pick]]] = defaultdict(lambda: defaultdict(list))
+    levels: dict[str, dict[tuple[date, str], tuple[float | None, float | None]]] = defaultdict(dict)
+    last_hit: dict[tuple[str, str], int] = {}
+    for day, code, name, pattern, score, key_levels in rows:
+        where = position.get(day)
+        if where is None:
+            continue  # 命中日不在交易日历里（不该发生）—— 不计入样本
+        marker = (pattern, code)
+        previous = last_hit.get(marker)
+        if previous is not None and where - previous < dedup_days:
+            continue
+        last_hit[marker] = where
+        picks[pattern][day].append((code, name, float(score)))
+        levels[pattern][(day, code)] = _levels(key_levels)
+
+    matrix = _matrix(session, scan_days, hold_days)
+    out: list[dict] = []
+    for pattern in PATTERNS:
+        key = pattern.key
+        pattern_picks = picks.get(key) or {}
+        entry = {
+            "pattern": key,
+            "name": names.get(key, key),
+            "group": groups.get(key, ""),
+            "hits": sum(len(items) for items in pattern_picks.values()),
+            "stocks": len(
+                {code for items in pattern_picks.values() for code, _, _ in items}
+            ),
+            "scan_days": len(pattern_picks),
+            "returns": [],
+            **(
+                _line_rate(
+                    session,
+                    levels.get(key) or {},
+                    line_days,
+                    allow_low_proxy=low_proxy,
+                )
+            ),
+        }
+        if matrix is not None and pattern_picks:
+            curves = _curves_from(matrix, pattern_picks, hold_days)
+            for horizon in HORIZONS:
+                entry["returns"].append(
+                    {
+                        "days": horizon,
+                        **_pooled_stats(
+                            [
+                                curve[horizon]
+                                for curve in curves.values()
+                                if horizon in curve
+                            ]
+                        ),
+                    }
+                )
+        else:
+            for horizon in HORIZONS:
+                entry["returns"].append(
+                    {"days": horizon, **_stats(np.array([]), float("nan"))}
+                )
+        entry["verdict"] = _verdict(entry)
+        out.append(entry)
+    return {**base, "patterns": out}
