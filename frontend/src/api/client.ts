@@ -72,6 +72,10 @@ import type {
   TradeJournalIn,
   TradeJournalOut,
   TradeJournalRow,
+  TradePlanIn,
+  TradePlanOut,
+  TradePlanRow,
+  TradePlanSuggestionsOut,
   TradeStatsOut,
   TrapCheck,
   Volatility,
@@ -619,6 +623,32 @@ export const api = {
 
   /** 按理由 / 情绪档位 / 板块的自成绩单（只统计已平仓）。 */
   journalStats: () => request<TradeStatsOut>('/journal/stats'),
+
+  // --- 次日计划（2026-10-18 清单 #2）---
+  plans: (planDate?: string) =>
+    request<TradePlanOut>(
+      `/plans${planDate ? `?date=${encodeURIComponent(planDate)}` : ''}`,
+    ),
+
+  /** 自选股 + 当日形态命中，带 key_levels 里的买点 / 放弃位。 */
+  planSuggestions: () => request<TradePlanSuggestionsOut>('/plans/suggestions'),
+
+  createPlan: (payload: TradePlanIn) =>
+    request<TradePlanRow>('/plans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  updatePlan: (id: number, payload: TradePlanIn) =>
+    request<TradePlanRow>(`/plans/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  deletePlan: (id: number) =>
+    request<{ ok: boolean }>(`/plans/${id}`, { method: 'DELETE' }),
 
   /**
    * 个股分析：把「代码 / 名称 / 拼音首字母」解析成结论（阶段判定 + 旁证）。

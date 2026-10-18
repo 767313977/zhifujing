@@ -363,15 +363,22 @@ def _check_news(code: str, name: str | None) -> TrapSignal:
     )
 
 
-def _check_notices(code: str, trade_date: date) -> TrapSignal:
+def _check_notices(
+    code: str, trade_date: date, *, allow_fetch: bool = True
+) -> TrapSignal:
     """风险类公告：近 90 天有没有立案 / 问询 / 减持计划这类**公司自己披露**的负面事项。
 
     与新闻信号的分工：新闻是别人写的、可能带情绪；公告是公司按规则披露的，强度更高
     （所以权重 20 > news 的 10）。「澄清 / 辟谣 / 不实」类公告不计 —— 那是保护性证据。
 
     ⚠️ 数据取不到时是 `unknown` 而不是 `miss`：没拉到公告 ≠ 没有风险公告。
+    `allow_fetch=False` 时只读缓存（简报里的快速体检用，不打外部接口）。
     """
-    data = stock_events.load(code, "notices")
+    if allow_fetch:
+        data = stock_events.load(code, "notices")
+    else:
+        rows = stock_events.peek(code, "notices")
+        data = {"rows": rows, "note": None if rows else "公告未缓存"}
     rows = data["rows"]
     if not rows:
         if data["note"]:
@@ -425,15 +432,22 @@ def _check_notices(code: str, trade_date: date) -> TrapSignal:
     )
 
 
-def _check_unlock(code: str, trade_date: date) -> TrapSignal:
+def _check_unlock(
+    code: str, trade_date: date, *, allow_fetch: bool = True
+) -> TrapSignal:
     """未来 30 日内、占流通市值 >5% 的限售解禁。
 
     解禁本身不是「有人在坐庄」，但它会改变供给：高比例解禁前后常有资金提前撤离，
     所以作为一条独立风险信号（权重 10，低于公告）。
 
     上游只给未来排期；没有记录就是确实没有（次新股常见）—— 数据源失败才是 `unknown`。
+    `allow_fetch=False` 时只读缓存（简报快速体检用）。
     """
-    data = stock_events.load(code, "unlock")
+    if allow_fetch:
+        data = stock_events.load(code, "unlock")
+    else:
+        rows = stock_events.peek(code, "unlock")
+        data = {"rows": rows, "note": None if rows else "解禁排期未缓存"}
     rows = data["rows"]
     if not rows:
         if data["note"]:
@@ -630,11 +644,17 @@ def _check_hot_rank(code: str) -> TrapSignal:
     return signal
 
 
-def check(code: str, context: str | None = None) -> TrapResult | None:
-    """跑完 8 个信号。代码不在 `stock_basic` 里时返回 None。
+def check(
+    code: str, context: str | None = None, *, fast: bool = False
+) -> TrapResult | None:
+    """跑完信号。代码不在 `stock_basic` 里时返回 None。
 
     `context` 是用户补充的背景（"朋友推荐我" / "群里说的" / "老师带单"）；命中触发词时
     **只上调最终等级、不改评分** —— 评分是数据证据，用户背景是额外的一档判断。
+
+    `fast=True` 是给收盘简报用的**只读硬证据**模式：跳过新闻 / 互动易 / 人气榜
+    （这几个都要出外网），公告与解禁也只读缓存。分数会低于完整体检，不能拿它替代
+    个股页的体检结论 —— 只用来在简报里标「硬证据已经到高风险档」。
     """
     with session_scope() as session:
         basic = session.get(StockBasic, code)
@@ -674,19 +694,33 @@ def check(code: str, context: str | None = None) -> TrapResult | None:
 
     # 财务摘要与新闻都会各自开连接 / 发请求，放在 session 之外，避免嵌套会话。
     signals.append(_check_fundamental(code, trade_date, daily))
-    signals.append(_check_news(code, name))
-    signals.append(_check_notices(code, trade_date))
-    signals.append(_check_unlock(code, trade_date))
-    signals.append(
-        TrapSignal(
-            "social",
-            "跨平台 / 社群引流",
-            "unknown",
-            "low",
-            "需要社媒搜索，本站未接入",
+    if fast:
+        # 只读硬证据：公告 / 解禁读缓存，不碰新闻、互动易、人气榜
+        signals.append(_check_notices(code, trade_date, allow_fetch=False))
+        signals.append(_check_unlock(code, trade_date, allow_fetch=False))
+        signals.append(
+            TrapSignal(
+                "social",
+                "跨平台 / 社群引流",
+                "unknown",
+                "low",
+                "快速体检：跳过社媒 / 新闻 / 人气榜",
+            )
         )
-    )
-    signals.append(_check_hot_rank(code))
+    else:
+        signals.append(_check_news(code, name))
+        signals.append(_check_notices(code, trade_date))
+        signals.append(_check_unlock(code, trade_date))
+        signals.append(
+            TrapSignal(
+                "social",
+                "跨平台 / 社群引流",
+                "unknown",
+                "low",
+                "需要社媒搜索，本站未接入",
+            )
+        )
+        signals.append(_check_hot_rank(code))
 
     boost, context_text = _context_boost(context)
     if boost:

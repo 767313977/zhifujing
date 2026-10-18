@@ -24,6 +24,7 @@ const Login = lazy(() => import('./pages/Login'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const Patterns = lazy(() => import('./pages/Patterns'))
 const PatternTrack = lazy(() => import('./pages/PatternTrack'))
+const PlansPage = lazy(() => import('./pages/Plans'))
 const Sectors = lazy(() => import('./pages/Sectors'))
 const SentimentPage = lazy(() => import('./pages/Sentiment'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -137,6 +138,14 @@ export default function App() {
                 element={
                   <RequireAuth>
                     <JournalPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/plans"
+                element={
+                  <RequireAuth>
+                    <PlansPage />
                   </RequireAuth>
                 }
               />

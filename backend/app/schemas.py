@@ -1669,6 +1669,58 @@ class TradeStatsOut(ApiModel):
     by_sector: list[TradeStatsRow] = Field(default_factory=list)
 
 
+class TradePlanIn(ApiModel):
+    """新增 / 修改次日计划（2026-10-18 清单 #2）。"""
+
+    code: str
+    name: str | None = None
+    plan_date: date
+    #: 过这个价买
+    buy_price: float
+    #: 破这个价放弃
+    stop_price: float
+    note: str | None = None
+
+
+class TradePlanRow(TradePlanIn):
+    id: int
+    #: 触发 / 未触发 / 放弃（破位）/ 同日触发并跌破 / 待验证 / 无日线…
+    status: str
+    high: float | None = None
+    low: float | None = None
+    close: float | None = None
+    #: 触发后：计划日收盘相对买点
+    day_close_pct: float | None = None
+    max_favorable_pct: float | None = None
+    max_adverse_pct: float | None = None
+    #: 触发后未来 1/3/5 个交易日的收盘相对买点（还没有数据时为 null）
+    next_1d_pct: float | None = None
+    next_3d_pct: float | None = None
+    next_5d_pct: float | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TradePlanOut(ApiModel):
+    rows: list[TradePlanRow] = Field(default_factory=list)
+
+
+class TradePlanSuggestion(ApiModel):
+    code: str
+    name: str | None = None
+    #: watchlist / pattern
+    source: str
+    in_watchlist: bool = False
+    pattern: str | None = None
+    pattern_name: str | None = None
+    buy_price: float | None = None
+    stop_price: float | None = None
+
+
+class TradePlanSuggestionsOut(ApiModel):
+    rows: list[TradePlanSuggestion] = Field(default_factory=list)
+
+
 class StockAnalysis(ApiModel):
     """个股分析页（`/api/analysis/lookup`）的返回：解析结果 + 阶段判定 + 旁证。
 

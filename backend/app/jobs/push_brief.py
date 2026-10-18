@@ -36,6 +36,7 @@ from app.models import (
     PatternHit,
     SectorDaily,
 )
+from app.services import trade_plan
 from app.services.brief_ai import ai_comment
 from app.services.patterns import PATTERN_NAMES
 from app.services.themes import limit_up_themes
@@ -345,6 +346,53 @@ def latest_trade_date() -> date | None:
         return session.scalar(select(func.max(MarketSentiment.trade_date)))
 
 
+def _plan_block(session, trade_date: date) -> str:
+    """「明日计划核对」：管理员的计划在当天是否触发、触发后怎么走。
+
+    只取**管理员**的计划（简报是全局推送，不能带其他会员的）；没有计划时整节省略，
+    不给每天加一块空标题。结果全部用日线现算（`services/trade_plan.py`），零配额。
+    """
+    rows = trade_plan.brief_rows(session, trade_date)
+    if not rows:
+        return ""
+    lines = ["## 明日计划核对"]
+    for row in rows:
+        name = row.get("name") or row["code"]
+        head = (
+            f"- {row['code']} {name}：过 {row['buy_price']:.2f} 买、"
+            f"破 {row['stop_price']:.2f} 放弃"
+        )
+        status = row["status"]
+        if status == "触发":
+            extra = f" → **触发**，当日收盘 {_pct(row.get('day_close_pct'))}"
+            if row.get("next_1d_pct") is not None:
+                extra += f"，次日 {_pct(row['next_1d_pct'])}"
+            lines.append(head + extra)
+        elif status == "同日触发并跌破":
+            lines.append(head + " → 同日触发并跌破（日线没有盘中顺序，不猜先后）")
+        elif status == "放弃（破位）":
+            lines.append(head + " → 破位放弃")
+        elif status == "未触发":
+            lines.append(head + " → 未触发")
+        else:
+            lines.append(head + f" → {status}")
+        if row.get("note"):
+            lines.append(f"  - 备注：{row['note'][:60]}")
+    return "\n".join(lines)
+
+
+def _watchlist_block(session, trade_date: date) -> str:
+    """「自选股异动」：命中的形态 / 关键位 / 放量 / 公告 / 硬证据高风险。
+
+    没有异动的自选股**不列**（自选页本身能看全量）；整节没有内容时也不出现。
+    公告只读 `stock_event_cache` 的缓存（`peek`），不在简报里现场打外部接口 ——
+    简报 15:05 发，拖几十秒去拉公告不值得；用户打开过个股页后自然会有缓存。
+    """
+    from app.services import brief_watchlist
+
+    return brief_watchlist.block(session, trade_date)
+
+
 def build_brief(trade_date: date) -> str:
     """把某个交易日的复盘要点拼成一段飞书可渲染的 Markdown。
 
@@ -369,6 +417,8 @@ def build_brief(trade_date: date) -> str:
             # 「共达模式选股」不在这里 —— 它有命中时单独发一条
             # （`build_gongda_brief` + `push_gongda`），混进复盘简报会被淹掉
             _pattern_block(session, trade_date),
+            _plan_block(session, trade_date),
+            _watchlist_block(session, trade_date),
         ]
     return "\n\n".join(block for block in blocks if block)
 

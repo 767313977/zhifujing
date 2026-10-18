@@ -1774,6 +1774,56 @@ export interface TradeStatsOut {
   by_sector: TradeStatsRow[]
 }
 
+/** 次日计划（对应后端 `TradePlanIn`）。 */
+export interface TradePlanIn {
+  code: string
+  name?: string | null
+  /** YYYY-MM-DD，计划针对的交易日 */
+  plan_date: string
+  /** 过这个价买 */
+  buy_price: number
+  /** 破这个价放弃 */
+  stop_price: number
+  note?: string | null
+}
+
+export interface TradePlanRow extends TradePlanIn {
+  id: number
+  /** 触发 / 未触发 / 放弃（破位）/ 同日触发并跌破 / 待验证 / 无日线… */
+  status: string
+  high: number | null
+  low: number | null
+  close: number | null
+  day_close_pct: number | null
+  max_favorable_pct: number | null
+  max_adverse_pct: number | null
+  next_1d_pct: number | null
+  next_3d_pct: number | null
+  next_5d_pct: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TradePlanOut {
+  rows: TradePlanRow[]
+}
+
+/** 次日计划候选：自选股 + 当日形态命中（带 key_levels）。 */
+export interface TradePlanSuggestion {
+  code: string
+  name: string | null
+  source: string
+  in_watchlist: boolean
+  pattern: string | null
+  pattern_name: string | null
+  buy_price: number | null
+  stop_price: number | null
+}
+
+export interface TradePlanSuggestionsOut {
+  rows: TradePlanSuggestion[]
+}
+
 /**
  * 个股分析的返回（`/api/analysis/lookup`）：把「代码 / 名称 / 拼音首字母」解析成结论。
  *

@@ -728,6 +728,34 @@ class TradeJournal(Base):
     __table_args__ = (Index("ix_trade_journal_user_entry", "user_id", "entry_date"),)
 
 
+class TradePlan(Base):
+    """次日计划：**过 `buy_price` 买、破 `stop_price` 放弃**（2026-10-18 清单 #2）。
+
+    一行 = 一个用户对一只票在某一个交易日的计划。结果（是否触发 / 触发后走势）
+    不落库，用当日与之后的日线现算（见 `services/trade_plan.py`）。
+    """
+
+    __tablename__ = "trade_plan"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    code: Mapped[str] = mapped_column(String(16))
+    name: Mapped[str | None] = mapped_column(String(32))
+    #: 计划针对的交易日（通常写在头一天晚上）
+    plan_date: Mapped[date] = mapped_column(Date)
+    buy_price: Mapped[float] = mapped_column(Float)
+    stop_price: Mapped[float] = mapped_column(Float)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    __table_args__ = (
+        Index("ix_trade_plan_user_date", "user_id", "plan_date"),
+        # 同一用户、同一只票、同一天只留一条；重复保存按更新处理（见 api/plans.py）
+        Index("ux_trade_plan_user_code_date", "user_id", "code", "plan_date", unique=True),
+    )
+
+
 class CollectLog(Base):
     """采集日志。"""
 

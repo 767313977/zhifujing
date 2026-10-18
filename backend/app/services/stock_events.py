@@ -48,6 +48,16 @@ def _write(code: str, kind: str, rows: list[dict]) -> None:
             row.payload = rows
 
 
+def peek(code: str, kind: str) -> list[dict]:
+    """只读缓存、**不请求上游**；没有缓存时返回空列表。
+
+    给「不想为了看一眼而打外部接口」的场景用（如收盘简报里的自选公告）：
+    用户打开过个股页或跑过体检后自然会有缓存。
+    """
+    rows, _ = _read(code, kind)
+    return rows or []
+
+
 def load(code: str, kind: str) -> dict:
     """读一件事的数据：`{rows, fetched_at, stale, note}`。
 
