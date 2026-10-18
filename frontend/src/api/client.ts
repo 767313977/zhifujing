@@ -100,6 +100,19 @@ const AUTH_CHECK_TIMEOUT_MS = 10_000
  */
 export const UNAUTHORIZED_EVENT = 'fupan:unauthorized'
 
+/**
+ * 自选股增删后发的事件。`WatchlistProvider` 收到就重拉一次名单，
+ * 于是全站 `StockLink` 上的 ★ 不用刷新页面就能跟着变。
+ *
+ * 放在 api 层而不是各个页面里：增删自选的入口不止一个（个股页、自选页），
+ * 漏掉任何一处都会让别的页面显示过期的高亮。
+ */
+export const WATCHLIST_CHANGED_EVENT = 'fupan:watchlist-changed'
+
+function notifyWatchlistChanged() {
+  window.dispatchEvent(new Event(WATCHLIST_CHANGED_EVENT))
+}
+
 async function request<T>(
   path: string,
   init?: RequestInit,
@@ -468,10 +481,18 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, name }),
+    }).then((row) => {
+      notifyWatchlistChanged()
+      return row
     }),
 
   removeWatchlist: (code: string) =>
-    request<{ ok: boolean }>(`/watchlist/${encodeURIComponent(code)}`, { method: 'DELETE' }),
+    request<{ ok: boolean }>(`/watchlist/${encodeURIComponent(code)}`, {
+      method: 'DELETE',
+    }).then((result) => {
+      notifyWatchlistChanged()
+      return result
+    }),
 
   updateWatchlistNote: (code: string, note: string) =>
     request<WatchlistRow>(`/watchlist/${encodeURIComponent(code)}`, {

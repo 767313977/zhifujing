@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { useWatchlist } from '../lib/watchlist'
 
 /**
  * 个股链接 —— **凡是在表里/卡片里出现个股代码或名称的地方，都用它包一下**。
@@ -28,12 +29,19 @@ export default function StockLink({
   /** 悬停提示。梯队 chip 那种「一块内容里带细节」的地方靠它，链接上照样能显示 */
   title?: string
 }) {
+  // 自选命中时在文字前加一颗 ★，并把它拼进 title —— 列表里只显示代码时
+  // 用户能一眼看出「这只已经在自选里了」。名单是全局共享的，加/删自选后
+  // 其它页面的 ★ 会跟着变，不用刷新（见 lib/watchlist.tsx）。
+  const { isWatched } = useWatchlist()
+  const watched = isWatched(code)
+  const hint = watched ? (title ? `${title}（自选）` : '自选') : title
   return (
     <Link
       to={`/stock/${encodeURIComponent(code)}`}
-      title={title}
+      title={hint}
       className={`transition-colors hover:text-accent ${className}`}
     >
+      {watched && <span className="text-accent">★</span>}
       {children ?? code}
     </Link>
   )
