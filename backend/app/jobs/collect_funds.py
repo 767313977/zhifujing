@@ -4,12 +4,12 @@
 市场级数据，彼此独立、失败互不影响；而且数据源分两类（iFinD EDB 与 akshare），
 分开能让「哪块坏了」在采集日志里一眼看到。
 
-配额成本：两融 1 次 + 北向 1 次 + ETF 约 59 次 = **每天约 61 次 iFinD 调用**。
+配额成本：两融 1 次 + 北向 1 次 = **每天约 2 次 iFinD 调用**。
+（ETF 2026-10-18 起换成交易所官方份额 + 通达信盘后包，**零 iFinD 配额**；
+在那之前它要 59 次/天，是整条链路里最贵的一项 —— 原委见
+`collect_etf` / `_collect_etf_ifind`。）
 EDB 按区间返回，但区间不能开太大（见 EDB_CHUNK_DAYS），
 所以回补一年的历史是 3 段 × 2 项 = 6 次，仍然很便宜。
-（ETF 那 59 次是 2026-09-22 换源之后才有的；2026-10-14 按**实测的单批上限 30 只**
-重算 = 1745 只 ÷ 30。原来按 80 只/批写成「约 20 次」，那个批量其实早就超上限了 ——
-原委见 `ETF_BATCH` 与 `collect_etf`。）
 """
 
 import logging
@@ -17,7 +17,7 @@ import re
 from collections import Counter
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db import session_scope, upsert, upsert_fill, upsert_many
 from app.models import (
@@ -29,6 +29,7 @@ from app.models import (
     TradeCalendar,
 )
 from app.services.etf_category import classify
+from app.sources import etf_exchange, tdx
 from app.sources.akshare_source import AkshareSource
 from app.sources.ifind import IfindClient, normalize_code
 from app.sources.markdown_table import pick_float, pick_text, to_float, to_int
@@ -376,8 +377,215 @@ def _fetch_etf_quotes(
     return found, calls
 
 
-def collect_etf(ak: AkshareSource, ifind: IfindClient) -> int:
-    """ETF 份额与行情：**清单/日期取自同花顺，份额与行情取自 iFinD**。
+# 交易所快照的完整性下限。正常一份是 1680 只左右（沪 920 + 深 760）；
+# 单所只有 900 / 760，取 1000 能把「只拿到一所」挡在外面。
+ETF_EXCHANGE_MIN_ROWS = 1000
+
+# 已有快照里收盘价的覆盖率到这么多就不再重取。17:30 与 19:30 两趟都会调本函数，
+# 用这个比例避免第二趟把两所几十页再翻一遍。行情没齐时（盘后包还没发布）会低于它，
+# 下一趟自然会重试。
+ETF_PRICED_RATIO = 0.95
+
+# 交易所源的异常类型直接透给 `collect_daily`（它据此把步骤记成 skipped）
+EtfNotReady = etf_exchange.EtfNotReady
+
+
+def _etf_snapshot_complete(session, day: date) -> tuple[int, bool]:
+    """该日快照的（行数, 是否完整）。完整 = 行数达标且收盘价覆盖 ≥ `ETF_PRICED_RATIO`。"""
+    total = (
+        session.scalar(
+            select(func.count())
+            .select_from(EtfShare)
+            .where(EtfShare.trade_date == day)
+        )
+        or 0
+    )
+    priced = (
+        session.scalar(
+            select(func.count())
+            .select_from(EtfShare)
+            .where(EtfShare.trade_date == day, EtfShare.close.is_not(None))
+        )
+        or 0
+    )
+    return total, total >= ETF_EXCHANGE_MIN_ROWS and priced >= total * ETF_PRICED_RATIO
+
+
+def _etf_quotes(day: date) -> dict[str, dict]:
+    """从通达信盘后包取 ETF 的收盘价 / 涨跌幅 / 成交额。
+
+    取不到（当天包还没发布 / 下载失败）时返回空 dict，**不抛** —— 份额本身是
+    官方数据，比行情重要，不能因为行情缺就让整批不写。行情由下一趟或
+    `_heal_etf_quotes` 补。
+    """
+    try:
+        package = tdx.daily_package(day)
+    except tdx.TdxUnavailable as exc:
+        logger.info("ETF 行情暂缺（%s），本轮只写份额", exc)
+        return {}
+    except tdx.TdxError:
+        logger.exception("通达信盘后包解析失败，本轮只写份额")
+        return {}
+
+    quotes: dict[str, dict] = {}
+    for row in package:
+        code = row["code"]
+        # 只收场内 ETF 的代码段：沪 5 开头、深 1 开头。包里还有指数 / 债券 / 个股，
+        # 但下面按 ETF 代码查表，多收进来也无害；这里过滤只是少几个键。
+        if not (
+            (row["market"] == "sh" and code.startswith("5"))
+            or (row["market"] == "sz" and code.startswith("1"))
+        ):
+            continue
+        prev = row["prev_close"]
+        pct = (row["close"] / prev - 1) * 100 if prev and prev > 0 else None
+        quotes[code] = {
+            "close": row["close"],
+            "pct_chg": round(pct, 2) if pct is not None else None,
+            "amount": row["amount"],
+        }
+    return quotes
+
+
+def _heal_etf_quotes(day: date, *, limit: int = 2) -> None:
+    """给最近几天的快照补收盘价（盘后包比份额晚发布时用）。
+
+    只查最近 5 个有快照的日期，挑「收盘价覆盖不足」的至多 `limit` 天去补。
+    写入用 `upsert_fill`，所以只填空值，不会把已有的份额 / 名称改掉。
+    """
+    with session_scope() as session:
+        recent = list(
+            session.scalars(
+                select(EtfShare.trade_date)
+                .where(EtfShare.trade_date <= day)
+                .group_by(EtfShare.trade_date)
+                .order_by(EtfShare.trade_date.desc())
+                .limit(5)
+            )
+        )
+        need = [
+            recent_day
+            for recent_day in recent
+            if not _etf_snapshot_complete(session, recent_day)[1]
+        ]
+        codes_by_day = {
+            recent_day: list(
+                session.scalars(
+                    select(EtfShare.code).where(EtfShare.trade_date == recent_day)
+                )
+            )
+            for recent_day in need[:limit]
+        }
+
+    for recent_day, codes in codes_by_day.items():
+        quotes = _etf_quotes(recent_day)
+        if not quotes:
+            continue
+        updates = [
+            {"trade_date": recent_day, "code": code, **quotes[code]}
+            for code in codes
+            if code in quotes
+        ]
+        if not updates:
+            continue
+        with session_scope() as session:
+            filled = upsert_fill(session, EtfShare, updates)
+        logger.info("ETF 行情补齐 %s：%d 行", recent_day, filled)
+
+
+def _collect_etf_exchange(target: date) -> int:
+    """交易所官方份额 + 通达信盘后包行情（**零 iFinD 配额**）。"""
+    # 先用深交所第一页确认「当前快照是哪一天」：如果库里这一天已经完整，就不必
+    # 再把 38 页翻一遍（17:30 / 19:30 两趟都会调本函数）。
+    snap_day, _pages, _total = etf_exchange.szse_snapshot()
+    if snap_day > target:
+        raise etf_exchange.EtfSourceError(f"深交所快照日期 {snap_day} 晚于目标日 {target}")
+    with session_scope() as session:
+        total, complete = _etf_snapshot_complete(session, snap_day)
+    if complete:
+        logger.info("ETF %s 的份额与行情已完整（%d 只），跳过", snap_day, total)
+        _heal_etf_quotes(snap_day)
+        return total
+
+    rows = etf_exchange.fetch_shares(target)
+    day = rows[0]["trade_date"]
+
+    if len(rows) < ETF_EXCHANGE_MIN_ROWS:
+        raise etf_exchange.EtfSourceError(
+            f"交易所 ETF 快照只有 {len(rows)} 只（下限 {ETF_EXCHANGE_MIN_ROWS}），不写半份快照"
+        )
+
+    quotes = _etf_quotes(day)
+    records: list[dict] = []
+    categories: list[dict] = []
+    for row in rows:
+        quote = quotes.get(row["code"], {})
+        categories.append(
+            {"code": row["code"], "name": row["name"], "category": classify(row["name"])}
+        )
+        records.append(
+            {
+                "trade_date": day,
+                "code": row["code"],
+                "name": row["name"],
+                "shares": row["shares"],
+                "close": quote.get("close"),
+                "pct_chg": quote.get("pct_chg"),
+                "amount": quote.get("amount"),
+            }
+        )
+
+    with session_scope() as session:
+        upsert(session, EtfCategory, categories)
+        written = upsert_fill(session, EtfShare, records)
+
+    priced = sum(1 for record in records if record["close"] is not None)
+    logger.info(
+        "ETF（交易所）：%s 快照 %d 只 → 入库 %d 行；行情 %d 只",
+        day,
+        len(rows),
+        written,
+        priced,
+    )
+    if priced < len(records) * ETF_PRICED_RATIO:
+        logger.warning(
+            "ETF 行情只覆盖 %d/%d 只：通达信盘后包可能还没发布，下一趟 / 次日会补",
+            priced,
+            len(records),
+        )
+    _heal_etf_quotes(day)
+    return written
+
+
+def collect_etf(
+    ak: AkshareSource, ifind: IfindClient, trade_date: date | None = None
+) -> int:
+    """ETF 份额与行情。**2026-10-18 起换成交易所官方 + 通达信盘后包，零 iFinD 配额。**
+
+    分工：份额来自上交所（按日归档）+ 深交所（当前快照），行情（收盘价 / 涨跌幅 /
+    成交额）来自通达信盘后包 —— 后者的数值与本站 iFinD 口径逐字段对拍一致
+    （见 `sources/tdx` 顶部）。两所必须**同一天**取齐，理由见 `sources/etf_exchange`。
+
+    降级顺序：
+    1. 交易所**还没发布**（`EtfNotReady`）→ 原样抛给 `collect_daily`，步骤记 `skipped`，
+       等 19:30 那趟或次日再取，**不退回 iFinD**（否则白烧 59 次调用）；
+    2. 交易所源**坏了**（网络 / 结构变化）→ 退回 `_collect_etf_ifind`，保证数据不断。
+
+    `trade_date` 只用来判断「深交所快照是不是早于目标日」，落库日期始终取快照自己的
+    日期 —— 深交所只有当前快照，按请求日期写会把昨天的份额标成今天。
+    """
+    target = trade_date or date.today()
+    try:
+        return _collect_etf_exchange(target)
+    except etf_exchange.EtfNotReady:
+        raise
+    except Exception:  # noqa: BLE001 - 交易所源真坏了才退回 iFinD
+        logger.exception("交易所 ETF 源失败，回退 iFinD（约 59 次调用）")
+        return _collect_etf_ifind(ak, ifind)
+
+
+def _collect_etf_ifind(ak: AkshareSource, ifind: IfindClient) -> int:
+    """**旧路径（iFinD）**：ETF 份额与行情。
 
     **为什么换源（2026-09-22）**：原来用 akshare 的东财 ETF 快照
     （`fund_etf_spot_em` → `push2delay.eastmoney.com`），而那一系从**本机与云端

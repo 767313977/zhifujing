@@ -36,7 +36,7 @@ from app.models import (
 )
 from app.jobs import collect_funds
 from app.services.sentiment import build_sentiment
-from app.services.usage import QuotaLevel, level_label, quota_level
+from app.services.usage import QuotaLevel, quota_level
 from app.sources.akshare_source import AkshareSource
 from app.sources.ifind import IfindClient, IfindError, from_ths_symbol, to_ths_symbol
 from app.sources.markdown_table import pick_float, pick_int, pick_text, to_float, to_int
@@ -132,7 +132,6 @@ RUN_STEP_TASKS = (
     "reasons",
     "lhb",
     "sentiment",
-    "etf",
     "lhb_institution",
     "sectors",
     "watchlist",
@@ -154,7 +153,6 @@ RUN_ALWAYS_TASKS = (
     "reasons",
     "lhb",
     "sentiment",
-    "etf",
     "lhb_institution",
 )
 
@@ -545,9 +543,9 @@ class DailyCollector:
         而基础步骤真失败时仍会重跑（各步都是幂等 upsert，不会写坏数据）。
 
         为什么「只看情绪表」也不行（2026-09-27 修）：情绪排在链路**中部**，它后面
-        还有 ETF、龙虎榜机构席位、题材、板块、自选股、两融、北向 —— 只看情绪的话，
-        ETF 失败后这一天再也不会被重试，而 ETF 份额是「最新-交易日」快照，
-        **漏了当天就永久补不回来**。
+        还有龙虎榜机构席位、板块、自选股、两融、北向 —— 只看情绪的话，
+        后面某步失败后这一天再也不会被重试。
+        （ETF 2026-10-18 起已挪到 `run_late`，不在 `run()` 里，与这段判据无关。）
         """
         with session_scope() as session:
             if not session.scalar(
@@ -1059,30 +1057,24 @@ class DailyCollector:
         """沪深股通成交额（iFinD EDB，1 次调用）。"""
         return collect_funds.collect_hsgt(self.ifind, trade_date)
 
-    def collect_etf(self) -> int:
-        """ETF 份额与行情（同花顺清单 + iFinD 份额/行情，约 59 次 iFinD 调用）。
+    def collect_etf(self, trade_date: date) -> int:
+        """ETF 份额与行情（交易所官方 + 通达信盘后包，**零 iFinD 配额**）。
 
-        **不接受目标日期**：落库日期由同花顺自带的「最新-交易日」决定 ——
-        盘前/凌晨/周末取到的都是上一交易日的快照，按「今天」写会造出假数据点。
-        详见 `collect_funds.collect_etf`。
+        2026-10-18 换源：份额取上交所按日归档 + 深交所当前快照，行情（收盘价 /
+        涨跌幅 / 成交额）取通达信盘后包 —— 两者都是官方/免费源，不再花 iFinD 的
+        59 次调用。口径与降级顺序见 `collect_funds.collect_etf`。
 
-        配额让路的**第一级**就停它（`PAUSE_ENHANCE`，约 59 次/天）—— 让路链里最先
-        被牺牲的一项。它是目前**最便宜的纯增强**（59 次），而「命中前 50 只的 DDE
-        补齐」（70 次）有每天可见的下游（选股榜的 DDE 栏），所以排在它后面
-        （2026-10-16 对调，原委见 `services.usage` 的日耗表）。全市场日线属于地基，
-        留在最后才停（顺序见 `services.usage.LEVEL_BUDGETS`）。
-
-        净申赎面板是它的下游，但缺一天只断一个点、累计线仍连续 —— 这正是它敢排在
-        最前面的依据。
+        **排在 `run_late`（17:30 / 19:30）而不是 15:05 的主链**：两所都要收盘后
+        才发布份额，盘后包也要收盘后数小时才有；放在主链只会拿到「还没发布」。
         """
-        level = quota_level(date.today(), self.settings)
-        if level >= QuotaLevel.PAUSE_ENHANCE:
-            logger.warning("ETF 采集跳过：%s", level_label(level))
-            # 标成 skipped，别让数据管理页把它显示成 `etf ok rows=0`（2026-10-13 修）
+        try:
+            return collect_funds.collect_etf(self.ak, self.ifind, trade_date)
+        except collect_funds.EtfNotReady as exc:
+            # 还没发布，不是坏掉：记 skipped，下一趟（19:30）或次日再取。
+            logger.info("ETF 交易所份额还没发布：%s", exc)
             self._step_status = "skipped"
-            self._step_note = f"配额让路：{level_label(level)}"
+            self._step_note = str(exc)
             return 0
-        return collect_funds.collect_etf(self.ak, self.ifind)
 
     def collect_lhb_institution(self, trade_date: date) -> int:
         """龙虎榜机构席位统计（akshare，零配额）。"""
@@ -1337,14 +1329,13 @@ class DailyCollector:
         # 龙虎榜走 akshare，不占 iFinD 配额，任何档位都照采
         steps["lhb"] = self._step(target, "lhb", lambda: self.collect_lhb(target))
         # 情绪只依赖涨停池+指数，必须尽早落库：首页「今日复盘」以 market_sentiment
-        # 有没有数据为准。若把情绪放在 ETF（约 59 次 iFinD）之后，ETF 一卡死
+        # 有没有数据为准。若把情绪放在耗时长的步骤之后，那一步一卡死
         # 页面会一直显示「暂无数据」，尽管指数/涨停其实已经采完。
         steps["sentiment"] = self._step(
             target, "sentiment", lambda: self.collect_sentiment(target)
         )
-        # ETF 换 iFinD 源之后要花约 59 次调用（配额让路在它自己内部判断），
-        # 龙虎榜机构席位仍是 akshare、零配额
-        steps["etf"] = self._step(target, "etf", self.collect_etf)
+        # ETF 已换成交易所官方 + 通达信盘后包（零 iFinD 配额），且两所都要收盘后
+        # 才发布 —— 所以挪到 17:30 / 19:30 的 `run_late`，不在这条主链里。
         steps["lhb_institution"] = self._step(
             target, "lhb_institution", lambda: self.collect_lhb_institution(target)
         )
@@ -1395,6 +1386,9 @@ class DailyCollector:
             target, "lhb_institution", lambda: self.collect_lhb_institution(target)
         )
         steps["themes"] = self._step(target, "themes", lambda: self.collect_themes(target))
+        # ETF 份额与行情：两所都要收盘后才发布，盘后包也要数小时 —— 放在这一趟
+        # （17:30 试一次、19:30 再试一次）。零 iFinD 配额。
+        steps["etf"] = self._step(target, "etf", lambda: self.collect_etf(target))
         if quota_level(settings=self.settings) < QuotaLevel.CORE_ONLY:
             steps["margin"] = self._step(target, "margin", lambda: self.collect_margin(target))
             steps["hsgt"] = self._step(target, "hsgt", lambda: self.collect_hsgt(target))
