@@ -249,6 +249,9 @@ export default function StockDetail() {
   const [chips, setChips] = useState<ChipDistribution | null>(null)
   // 杀猪盘体检（库内信号 + 东财新闻）。同样按增强读数处理
   const [trap, setTrap] = useState<TrapCheck | null>(null)
+  // 用户补充背景（朋友推荐 / 群里说…）与重新体检的进行态
+  const [trapContext, setTrapContext] = useState('')
+  const [trapChecking, setTrapChecking] = useState(false)
   // DDE 请求本身失败的原因（网络 / 超时 / 5xx）。null 表示请求成功 —— 此时 `dde`
   // 为 null 或 rows 为空都只是「这只票没数据」，与「取数失败」是两件事（2026-10-10 修）
   const [ddeError, setDdeError] = useState<string | null>(null)
@@ -334,6 +337,7 @@ export default function StockDetail() {
     setDdeError(null)
     setChips(null)
     setTrap(null)
+    setTrapContext('')
     setError(null)
     setProfileError(null)
     ;(async () => {
@@ -426,6 +430,24 @@ export default function StockDetail() {
       setError((err as Error).message)
     }
   }, [profile, load])
+
+  /**
+   * 带「用户补充背景」重新跑一次杀猪盘体检。
+   *
+   * 失败时**保留上一次结果**：网络失败不该把已经算出来的体检清空成「无法体检」；
+   * 页面重试的成本很低，误清空反而让人以为数据没了。
+   */
+  const recheckTrap = useCallback(async () => {
+    if (!code) return
+    setTrapChecking(true)
+    try {
+      setTrap(await api.stockTrap(code, trapContext.trim()))
+    } catch {
+      // 保留旧结果
+    } finally {
+      setTrapChecking(false)
+    }
+  }, [code, trapContext])
 
   const latest = profile?.latest
   /**
@@ -742,6 +764,27 @@ export default function StockDetail() {
           }
           delay={106}
         >
+          <div className="flex flex-col gap-2 border-b border-line-soft px-4 py-3 sm:flex-row">
+            <input
+              value={trapContext}
+              onChange={(event) => setTrapContext(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void recheckTrap()
+              }}
+              placeholder="补充背景（如：朋友推荐 / 群里说 / 老师带），会按触发词上调等级"
+              maxLength={80}
+              disabled={trapChecking}
+              className="num min-w-0 flex-1 border border-line bg-ink-850 px-3 py-1.5 text-[13px] text-fg outline-none placeholder:text-fg-dim focus:border-fg-dim disabled:cursor-not-allowed disabled:opacity-40"
+            />
+            <button
+              type="button"
+              onClick={() => void recheckTrap()}
+              disabled={trapChecking}
+              className="shrink-0 border border-accent/60 bg-accent/10 px-3 py-1.5 text-[13px] text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {trapChecking ? '体检中…' : '重新体检'}
+            </button>
+          </div>
           {profile === null ? (
             <div className="flex h-[180px] items-center justify-center text-[14px] text-fg-dim">
               <span className="pulse-soft">加载中…</span>

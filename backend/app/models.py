@@ -141,6 +141,33 @@ class StockBasic(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class StockFinancial(Base):
+    """个股最新一期财务摘要（同花顺口径，按报告期）。
+
+    只给「杀猪盘体检」的信号 6 用：**按需拉取 + 缓存**，不做全市场批量
+    （见 `services/financials`）。来源是 akshare 的 `stock_financial_abstract_ths`
+    —— 免费、单只一次请求，返回的列正好是营收 / 净利 / 同比 / ROE / 毛利率 / 负债率。
+
+    单位：金额一律**元**（来源给「823.20亿」，用 `markdown_table.to_float` 换算）；
+    同比 / ROE / 毛利率 / 负债率是**百分数**（`-4.53` 表示 -4.53%）。
+    `report_period` 是报告期末（如 2026-06-30），不是抓取时间；读取时要判断它是否过期。
+    """
+
+    __tablename__ = "stock_financial"
+
+    code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    report_period: Mapped[date] = mapped_column(Date)
+    revenue: Mapped[float | None] = mapped_column(Float)
+    revenue_yoy: Mapped[float | None] = mapped_column(Float)
+    net_profit: Mapped[float | None] = mapped_column(Float)
+    net_profit_yoy: Mapped[float | None] = mapped_column(Float)
+    roe: Mapped[float | None] = mapped_column(Float)
+    gross_margin: Mapped[float | None] = mapped_column(Float)
+    debt_ratio: Mapped[float | None] = mapped_column(Float)
+    # 抓取时间：缓存 7 天（财报是季度数据，取太勤没意义）
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class StockDaily(Base):
     """个股日线。
 

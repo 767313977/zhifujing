@@ -771,6 +771,11 @@ def chips(
 @router.get("/{code}/trap", response_model=TrapCheckOut)
 def trap_check(
     code: str,
+    context: str | None = Query(
+        None,
+        max_length=80,
+        description="用户补充背景（如「朋友推荐」「群里说的」「老师带单」），命中触发词时上调等级",
+    ),
     session: Session = Depends(get_db),
     user: AppUser = Depends(current_user),
 ) -> TrapCheckOut:
@@ -781,9 +786,10 @@ def trap_check(
     检查推广话术与澄清报道（**辟谣算保护性证据，不算风险**）。
 
     `unknown`（数据不足）**不投票**：既不当 0 分装成安全，也不凭空扣分。
+    `context` 命中「朋友推荐 / 群里 / 老师 / 内幕」等词时**只上调等级、不改评分**。
     """
     code = _code(code)
-    result = trap.check(code)
+    result = trap.check(code, context)
     if result is None:
         raise HTTPException(
             status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
@@ -796,6 +802,7 @@ def trap_check(
         level=result.level,
         level_label=result.level_label,
         summary=result.summary,
+        context_boost=result.context_boost,
         signals=[
             TrapSignalOut(
                 key=signal.key,

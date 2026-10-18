@@ -256,6 +256,25 @@ class AkshareSource:
         df = self._call(ak.fund_etf_spot_ths, "同花顺 ETF 列表")
         return _records(df)
 
+    # -------------------------------------------------------------- 财务摘要
+
+    def financial_abstract_ths(self, code: str) -> list[dict]:
+        """同花顺「财务摘要（按报告期）」—— 杀猪盘体检的信号 6 用。
+
+        返回列：`报告期 / 净利润 / 净利润同比增长率 / 营业总收入 /
+        营业总收入同比增长率 / 净资产收益率 / 销售毛利率 / 资产负债率`。
+        金额带「823.20亿」「249.75万」这类后缀，统一交给 `markdown_table.to_float`
+        换算成元；同比与比率是百分数（`-4.53%` → `-4.53`）。
+
+        **单只一次请求、免费**，所以只在个股体检时按需调用（见 `services/financials`），
+        不做全市场批量。
+        """
+        df = self._call(
+            lambda: ak.stock_financial_abstract_ths(symbol=code, indicator="按报告期"),
+            f"同花顺财务摘要 {code}",
+        )
+        return _records(df)
+
     # -------------------------------------------------------------- 市场宽度
 
     def market_activity(self) -> dict:

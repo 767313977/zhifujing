@@ -1408,6 +1408,8 @@ class TrapCheckOut(BaseModel):
     level_label: str
     summary: str
     signals: list[TrapSignalOut] = []
+    #: 用户补充背景带来的等级上调档数（0 = 没提供或不含触发词）
+    context_boost: int = 0
 
 
 class WudaoPhase(ApiModel):

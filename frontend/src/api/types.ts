@@ -1485,6 +1485,8 @@ export interface TrapCheck {
   level_label: string
   summary: string
   signals: TrapSignal[]
+  /** 用户补充背景带来的等级上调档数（0 = 没提供或不含触发词） */
+  context_boost: number
 }
 
 /**

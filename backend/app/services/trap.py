@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.db import session_scope
 from app.models import Lhb, LimitPool, StockBasic, StockDaily, StockUniverse
+from app.services import financials
 from app.sources.em_news import fetch_stock_news
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,20 @@ PROMO_WORDS = (
     "即将爆发",
 )
 
+# 用户补充背景的触发词（与 UZI-Skill「朋友推荐自动升级」同一思路）：
+# 强触发 +2 档，普通触发 +1 档；取最大，不叠加。
+CONTEXT_STRONG = ("内幕", "稳赚")
+CONTEXT_NORMAL = ("朋友推荐", "朋友说", "群里", "老师", "跟单", "带单", "小红书", "抖音")
+
+# 等级从低到高，用于「用户补充背景」上调档位
+LEVEL_ORDER = ("low", "medium", "orange", "high")
+LEVEL_LABELS = {
+    "low": "🟢 安全",
+    "medium": "🟡 注意",
+    "orange": "🟠 警惕",
+    "high": "🔴 高度可疑",
+}
+
 
 @dataclass(slots=True)
 class TrapSignal:
@@ -92,6 +107,8 @@ class TrapResult:
     level_label: str
     summary: str
     signals: list[TrapSignal] = field(default_factory=list)
+    #: 用户补充背景带来的等级上调档数（0 = 没提供或不含触发词）
+    context_boost: int = 0
 
 
 def _latest_table_day(session: Session, model) -> date | None:
@@ -277,19 +294,107 @@ def _check_news(code: str, name: str | None) -> TrapSignal:
     )
 
 
-def check(code: str) -> TrapResult | None:
-    """跑完 8 个信号。代码不在 `stock_basic` 里时返回 None。"""
+def _heat(daily: list[StockDaily]) -> tuple[float | None, float | None, float | None]:
+    """(20 日累计涨幅, 近 5 日均换手, 此前 250 日换手 90 分位)。"""
+    ret20 = None
+    if len(daily) >= 21 and daily[-21].close:
+        ret20 = float(daily[-1].close) / float(daily[-21].close) - 1
+
+    turns = [float(row.turnover) for row in daily if row.turnover is not None]
+    avg5 = float(np.mean(turns[-5:])) if len(turns) >= 5 else None
+    p90 = _pct(turns[:-5], 90) if len(turns) >= 60 else None
+    return ret20, avg5, p90
+
+
+def _yoy_text(value: float | None) -> str:
+    return "—" if value is None else f"{value:+.1f}%"
+
+
+def _check_fundamental(
+    code: str, trade_date: date, daily: list[StockDaily]
+) -> TrapSignal:
+    """基本面与热度脱节：**业绩明显走弱** + **股价/换手明显过热**。
+
+    为什么必须加热度条件：只看「净利下滑」会把所有周期股都标成风险；
+    「基本面差 + 股价/换手异常热」才是脱节。也正因为如此，它不是「财务差」信号，
+    而是「财务差还被炒」信号。
+    """
+    snapshot = financials.latest(code)
+    if snapshot is None:
+        return TrapSignal(
+            "fundamental", "基本面与热度脱节", "unknown", "low", "财务摘要取不到"
+        )
+    age = (trade_date - snapshot.report_period).days
+    if age > financials.REPORT_MAX_AGE_DAYS:
+        return TrapSignal(
+            "fundamental",
+            "基本面与热度脱节",
+            "unknown",
+            "low",
+            f"最新报告期 {snapshot.report_period} 距今 {age} 天，已过期",
+        )
+
+    ret20, avg5, p90 = _heat(daily)
+    weak_profit = snapshot.net_profit is not None and snapshot.net_profit < 0
+    weak_growth = (
+        snapshot.revenue_yoy is not None and snapshot.revenue_yoy <= -20
+    ) or (snapshot.net_profit_yoy is not None and snapshot.net_profit_yoy <= -30)
+    hot = (ret20 is not None and ret20 >= 0.2) or (
+        avg5 is not None and p90 is not None and avg5 >= p90 and avg5 >= 5
+    )
+
+    profit_yi = (
+        f"{snapshot.net_profit / 1e8:.2f} 亿"
+        if snapshot.net_profit is not None
+        else "—"
+    )
+    evidence = (
+        f"{snapshot.report_period} 报告期：营收 {_yoy_text(snapshot.revenue_yoy)}、"
+        f"净利 {_yoy_text(snapshot.net_profit_yoy)}（{profit_yi}）；"
+        f"20 日 {('—' if ret20 is None else f'{ret20 * 100:+.1f}%')}、"
+        f"近 5 日均换手 {('—' if avg5 is None else f'{avg5:.2f}%')}"
+    )
+    hit = (weak_profit or weak_growth) and hot
+    high = weak_profit and ret20 is not None and ret20 >= 0.3
+    return TrapSignal(
+        "fundamental",
+        "基本面与热度脱节",
+        "hit" if hit else "miss",
+        "high" if high else ("medium" if hit else "low"),
+        evidence,
+    )
+
+
+def _context_boost(context: str | None) -> tuple[int, str | None]:
+    """用户补充背景 → 上调档数。取最大触发，不叠加。"""
+    text = (context or "").strip()
+    if not text:
+        return 0, None
+    if any(word in text for word in CONTEXT_STRONG):
+        return 2, text
+    if any(word in text for word in CONTEXT_NORMAL):
+        return 1, text
+    return 0, text
+
+
+def check(code: str, context: str | None = None) -> TrapResult | None:
+    """跑完 8 个信号。代码不在 `stock_basic` 里时返回 None。
+
+    `context` 是用户补充的背景（"朋友推荐我" / "群里说的" / "老师带单"）；命中触发词时
+    **只上调最终等级、不改评分** —— 评分是数据证据，用户背景是额外的一档判断。
+    """
     with session_scope() as session:
         basic = session.get(StockBasic, code)
         if basic is None:
             return None
+        name = basic.name
         trade_date = session.scalar(
             select(func.max(StockDaily.trade_date)).where(StockDaily.code == code)
         )
         if trade_date is None:
             return TrapResult(
                 code=code,
-                name=basic.name,
+                name=name,
                 trade_date=None,
                 score=0,
                 level="low",
@@ -307,36 +412,61 @@ def check(code: str) -> TrapResult | None:
         )[::-1]
 
         signals = [
-            _check_st(basic.name),
+            _check_st(name),
             _check_surge(session, code, trade_date, daily),
             _check_turnover(daily),
             _check_lhb(session, code, trade_date),
             _check_small_cap(session, code, daily),
-            TrapSignal(
-                "fundamental",
-                "基本面与热度脱节",
-                "unknown",
-                "low",
-                "本站未接入营收/净利润，无法核对基本面",
-            ),
-            _check_news(code, basic.name),
-            TrapSignal(
-                "social",
-                "跨平台 / 社群引流",
-                "unknown",
-                "low",
-                "需要社媒搜索，本站未接入",
-            ),
         ]
+
+    # 财务摘要与新闻都会各自开连接 / 发请求，放在 session 之外，避免嵌套会话。
+    signals.append(_check_fundamental(code, trade_date, daily))
+    signals.append(_check_news(code, name))
+    signals.append(
+        TrapSignal(
+            "social",
+            "跨平台 / 社群引流",
+            "unknown",
+            "low",
+            "需要社媒搜索，本站未接入",
+        )
+    )
+
+    boost, context_text = _context_boost(context)
+    if boost:
+        signals.append(
+            TrapSignal(
+                "context",
+                "用户补充背景",
+                "hit",
+                "high" if boost >= 2 else "medium",
+                f"你提到「{context_text[:40]}」；风险等级上调 {boost} 档",
+            )
+        )
 
     score = min(
         100,
-        sum(WEIGHTS[signal.key] for signal in signals if signal.status == "hit"),
+        sum(
+            WEIGHTS.get(signal.key, 0)
+            for signal in signals
+            if signal.status == "hit"
+        ),
     )
     level, level_label = next(
-        (name, label) for threshold, name, label in LEVELS if score >= threshold
+        (level_name, label)
+        for threshold, level_name, label in LEVELS
+        if score >= threshold
     )
-    hits = [signal.name for signal in signals if signal.status == "hit"]
+    if boost:
+        index = min(len(LEVEL_ORDER) - 1, LEVEL_ORDER.index(level) + boost)
+        level = LEVEL_ORDER[index]
+        level_label = LEVEL_LABELS[level]
+
+    hits = [
+        signal.name
+        for signal in signals
+        if signal.status == "hit" and signal.key != "context"
+    ]
     unknown = [signal.name for signal in signals if signal.status == "unknown"]
     if hits:
         summary = f"命中 {len(hits)} 个信号：{'、'.join(hits)}"
@@ -346,14 +476,17 @@ def check(code: str) -> TrapResult | None:
         summary = "已核对的信号均未命中"
         if unknown:
             summary += f"（{len(unknown)} 项数据不足：{'、'.join(unknown)}）"
+    if boost:
+        summary += f"；你补充的背景「{context_text[:30]}」使等级上调 {boost} 档"
 
     return TrapResult(
         code=code,
-        name=basic.name,
+        name=name,
         trade_date=trade_date,
         score=score,
         level=level,
         level_label=level_label,
         summary=summary,
         signals=signals,
+        context_boost=boost,
     )

@@ -530,9 +530,14 @@ export const api = {
    * 杀猪盘体检：8 个信号，结构化证据优先、新闻只作辅助。
    *
    * `unknown`（数据不足）不投票 —— 页面要把它显示成「未判断」，不能说成安全。
+   * `context` 是用户补充的背景（"朋友推荐" / "群里说的" / "老师带单"）；
+   * 命中触发词时后端**只上调等级、不改评分**。
    */
-  stockTrap: (code: string) =>
-    request<TrapCheck>(`/stock/${encodeURIComponent(code)}/trap`),
+  stockTrap: (code: string, context = '') =>
+    request<TrapCheck>(
+      `/stock/${encodeURIComponent(code)}/trap` +
+        (context ? `?context=${encodeURIComponent(context)}` : ''),
+    ),
 
   /**
    * 个股新闻（**东财口径**，按发布时间倒序）。
