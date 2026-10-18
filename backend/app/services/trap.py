@@ -45,6 +45,9 @@ WEIGHTS = {
     "turnover": 15,
     "lhb": 15,
     "small_cap": 10,
+    # 2026-10-18 修：信号 6 接入时漏了这个键，`WEIGHTS.get(key, 0)` 会让它
+    # **命中也不加分** —— 一个能命中却永远不影响等级的体检项，比没有更糟。
+    "fundamental": 20,
     "news": 10,
 }
 
