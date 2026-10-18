@@ -1175,13 +1175,24 @@ export default function Patterns() {
                   <span className="num w-10 shrink-0 text-[13px] text-accent">
                     {item.score.toFixed(1)}
                   </span>
+                  {item.detail.candle_confirm && (
+                    <span
+                      className="shrink-0 border border-accent/50 bg-accent/10 px-1 text-[11px] text-accent"
+                      title="命中日同时出现看涨吞没 —— K 线确认实验里唯一达到「10 日超额 +1pp 且样本 ≥200」的组合"
+                    >
+                      K线确认 · {item.detail.candle_confirm}
+                    </span>
+                  )}
                   <span className="num flex flex-wrap gap-x-3 text-[13px] text-fg-dim">
-                    {Object.entries(item.detail).map(([key, value]) => (
-                      <span key={key}>
-                        {DETAIL_FIELDS[key]?.[0] ?? key}
-                        <span className="ml-1 text-fg-muted">{detailText(key, value)}</span>
-                      </span>
-                    ))}
+                    {Object.entries(item.detail)
+                      // 已单独做成徽标，别再按普通明细重复列一遍
+                      .filter(([key]) => key !== 'candle_confirm')
+                      .map(([key, value]) => (
+                        <span key={key}>
+                          {DETAIL_FIELDS[key]?.[0] ?? key}
+                          <span className="ml-1 text-fg-muted">{detailText(key, value)}</span>
+                        </span>
+                      ))}
                   </span>
                 </div>
               ))}

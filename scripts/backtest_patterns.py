@@ -273,6 +273,130 @@ PRESCREENS = {
 }
 
 
+# ---------------------------------------------------------------- K 线确认实验
+#
+# 2026-10-18 的清单 #3：把 10-14 删除的那批「单 K 蜡烛形态」当成**已有形态命中日的
+# 确认条件**，先用回测看有没有增益 —— 不再单独注册形态。
+#
+# 三条判定从删除前那一版逐字取回（`git show c826e34:backend/app/services/patterns.py`），
+# 阈值也保持一致。**只在这个脚本里用**，不进 `services/patterns.py` 的注册表。
+CANDLE_BODY_MAX = 0.35  # 小实体：实体 / 全日振幅 的上限
+CANDLE_SHADOW_MULT = 2.0  # 长影线至少是实体的多少倍
+CANDLE_SHORT_SHADOW = 0.3  # 另一侧影线占振幅的上限
+CANDLE_PRIOR_DAYS = 5
+CANDLE_PRIOR_DROP = 0.03  # 反转类蜡烛要在跌势之后出现才有意义
+ENGULF_MIN_BODY = 1.3
+ENGULF_MIN_CLOSE_POS = 0.6
+STAR_BIG_BODY = 0.015
+STAR_SMALL_BODY = 0.5
+
+
+def _candle_parts(bars: Bars, index: int = -1) -> tuple[float, ...]:
+    """`(开, 高, 低, 收, 实体, 上影, 下影, 振幅)`。"""
+    open_, high, low, close = (
+        float(bars.open[index]),
+        float(bars.high[index]),
+        float(bars.low[index]),
+        float(bars.close[index]),
+    )
+    return (
+        open_,
+        high,
+        low,
+        close,
+        abs(close - open_),
+        high - max(open_, close),
+        min(open_, close) - low,
+        high - low,
+    )
+
+
+def _prior_drop(bars: Bars, days: int = CANDLE_PRIOR_DAYS) -> float:
+    """`days` 个交易日前的收盘到**昨收**的跌幅（正数表示下跌）。"""
+    if len(bars) < days + 2:
+        return 0.0
+    base = float(bars.close[-1 - days])
+    if base <= 0:
+        return 0.0
+    return float(base / bars.close[-2] - 1)
+
+
+def _engulf_shape(bars: Bars) -> tuple[float, float] | None:
+    """阳包阴 / 看涨吞没共用的两根 K 判据。"""
+    if len(bars) < 3:
+        return None
+    prev_open, _, _, prev_close, prev_body, _, _, prev_span = _candle_parts(bars, -2)
+    open_, _, low, close, body, _, _, span = _candle_parts(bars)
+    if prev_close >= prev_open or close <= open_:
+        return None
+    if prev_body <= 0 or prev_span <= 0 or span <= 0:
+        return None
+    if not (open_ <= prev_close and close >= prev_open):
+        return None
+    ratio = body / prev_body
+    if ratio < ENGULF_MIN_BODY:
+        return None
+    close_pos = (close - low) / span
+    if close_pos < ENGULF_MIN_CLOSE_POS:
+        return None
+    return ratio, close_pos
+
+
+def has_bullish_engulfing(bars: Bars) -> bool:
+    """看涨吞没：吞没形状 + 出现在近 5 日回调之后。"""
+    if len(bars) < CANDLE_PRIOR_DAYS + 3:
+        return False
+    if _prior_drop(bars) < CANDLE_PRIOR_DROP:
+        return False
+    return _engulf_shape(bars) is not None
+
+
+def has_hammer(bars: Bars) -> bool:
+    """锤子线：长下影（≥2 倍实体）、上影极短、小实体，且出现在下跌之后。"""
+    if len(bars) < CANDLE_PRIOR_DAYS + 2:
+        return False
+    _, _, _, _, body, upper, lower, span = _candle_parts(bars)
+    if span <= 0 or body <= 0:
+        return False
+    if body > span * CANDLE_BODY_MAX or upper > span * CANDLE_SHORT_SHADOW:
+        return False
+    if lower < body * CANDLE_SHADOW_MULT:
+        return False
+    return _prior_drop(bars) >= CANDLE_PRIOR_DROP
+
+
+def has_morning_star(bars: Bars) -> bool:
+    """启明星：大阴 → 小实体（探底）→ 大阳，右侧收盘收复左侧实体一半以上。"""
+    if len(bars) < CANDLE_PRIOR_DAYS + 4:
+        return False
+    open1, _, _, close1, body1, _, _, span1 = _candle_parts(bars, -3)
+    _, _, _, _, body2, _, _, span2 = _candle_parts(bars, -2)
+    open3, _, _, close3, body3, _, _, span3 = _candle_parts(bars)
+    if close1 >= open1 or body1 <= 0 or span1 <= 0:
+        return False
+    if body1 / close1 < STAR_BIG_BODY:
+        return False
+    if span2 <= 0 or body2 > body1 * STAR_SMALL_BODY:
+        return False
+    if close3 <= open3 or body3 <= 0 or span3 <= 0:
+        return False
+    if body3 / close3 < STAR_BIG_BODY * 0.6:
+        return False
+    return close3 >= (open1 + close1) / 2
+
+
+CANDLE_CHECKS = {
+    "bullish_engulfing": has_bullish_engulfing,
+    "hammer": has_hammer,
+    "morning_star": has_morning_star,
+}
+CANDLE_LABELS = {
+    "bullish_engulfing": "看涨吞没",
+    "hammer": "锤子线",
+    "morning_star": "启明星",
+}
+
+
 # ---------------------------------------------------------------- 数据装载
 
 
@@ -449,6 +573,14 @@ def main() -> int:
     )
     parser.add_argument("--history", action="store_true", help="用长历史库 history.db")
     parser.add_argument(
+        "--candle-split",
+        action="store_true",
+        help=(
+            "K 线确认实验：把每个形态的信号按「命中当天是否同时出现看涨吞没 / 锤子线 / "
+            "启明星」分组，输出两组的 5/10/20 日超额与胜率之差"
+        ),
+    )
+    parser.add_argument(
         "--bars", type=int, default=DEFAULT_HISTORY_BARS, help=f"长历史窗口（默认 {DEFAULT_HISTORY_BARS} 根）"
     )
     args = parser.parse_args()
@@ -520,6 +652,15 @@ def main() -> int:
     targets = _resolve_targets(args.pattern)
     logger.info("目标形态 %d 个：%s", len(targets), ", ".join(targets))
 
+    # K 线确认实验：每个 (形态, 蜡烛名) 一份累加器。只有 `--candle-split` 时才建，
+    # 平时零额外开销（判定函数要读开高低收，不是免费的）。
+    candle_tallies: dict[tuple[str, str], Tally] = {}
+    if args.candle_split:
+        candle_tallies = {
+            (key, candle): Tally() for key in targets for candle in CANDLE_CHECKS
+        }
+        logger.info("K 线确认实验：%d 个形态 × %d 种蜡烛", len(targets), len(CANDLE_CHECKS))
+
     # **交易日轴**：取数据自身的日期并集。持有期一律按**交易日**对齐（见 `_forward_outcomes`
     # 与模块顶部「持有期口径」一节）—— 停牌日的行在库里是缺的，只有一条全局日期轴才能
     # 把「第 h 个交易日」和「第 h 行」区分开。
@@ -575,6 +716,8 @@ def main() -> int:
                 # 命中日之后不足 `max(HORIZONS)` 个交易日了。日期升序，可以直接停这一只票。
                 break
             sample: Bars | None = None
+            # 同一个 (票, 交易日) 的蜡烛形态只判一次：多个形态同日命中时共用
+            candle_flags: tuple[str, ...] | None = None
             for key, target in targets.items():
                 screen = target["screen"]
                 if screen is not None and not screen(bars, t):
@@ -605,6 +748,19 @@ def main() -> int:
                         "outcomes": dict(zip(HORIZONS, outcomes)),
                     },
                 )
+                if candle_tallies:
+                    if candle_flags is None:
+                        candle_flags = tuple(
+                            name
+                            for name, detect in CANDLE_CHECKS.items()
+                            if detect(sample)
+                        )
+                    for candle in candle_flags:
+                        candle_tallies[(key, candle)].add(
+                            outcomes,
+                            [bench[h].get(day, 0.0) for h in HORIZONS],
+                            str(day)[:7],
+                        )
         if done % 1000 == 0:
             logger.info(
                 "  扫过 %d/%d 只，命中 %d 条，用时 %.0fs",
@@ -625,6 +781,8 @@ def main() -> int:
         _report_single(key, tallies[key], args.samples)
     else:
         _report_multi(tallies)
+    if candle_tallies:
+        _report_candle_split(tallies, candle_tallies)
     return 0
 
 
@@ -719,6 +877,88 @@ def _report_multi(tallies: dict[str, Tally]) -> None:
             continue
         months = "   ".join(f"{m}:{c}" for m, c in sorted(tally.months.items()))
         print(f"  {_BY_KEY[key].name:<18}{months}")
+
+
+def _report_candle_split(
+    tallies: dict[str, Tally], split: dict[tuple[str, str], Tally]
+) -> None:
+    """K 线确认实验表：确认组 vs 同形态全部信号（基础组）。
+
+    决策线（清单 #3）：某个「形态 × K 线确认」组合的 10 日超额比基础组高 ≥1pp、
+    且确认组样本 ≥200，才考虑在命中明细里加 `candle_confirm` 标签；
+    否则这一项结束，把结论写进 `patterns.py` 的注释，免得以后又想做一遍。
+    """
+    index10 = HORIZONS.index(10)
+    rows = []
+    for (key, candle), tally in split.items():
+        base = tallies.get(key)
+        if base is None or not base.size or tally.size == 0:
+            continue
+        # 基础组 10 日样本都没有时，差值没有意义（该形态还没走到 10 日）
+        if base.counts[index10] == 0:
+            continue
+        base_excess = base.stats(index10)[0] - base.bench_mean(index10)
+        excess = tally.stats(index10)[0] - tally.bench_mean(index10)
+        rows.append(
+            {
+                "key": key,
+                "candle": candle,
+                "samples": tally.size,
+                "excess5": tally.stats(0)[0] - tally.bench_mean(0),
+                "excess10": excess,
+                "excess20": tally.stats(2)[0] - tally.bench_mean(2),
+                "win10": tally.stats(index10)[2],
+                "diff": (excess - base_excess) * 100,
+                "win_diff": (tally.stats(index10)[2] - base.stats(index10)[2]) * 100,
+            }
+        )
+
+    print()
+    print("=" * 118)
+    print("K 线确认实验：同一形态的信号按「命中当天是否同时出现该蜡烛形态」分组")
+    print(
+        "决策线：10 日超额比基础组高 ≥1pp 且确认组样本 ≥200 → 才考虑加 candle_confirm 标签"
+    )
+    print("-" * 118)
+    if not rows:
+        print("没有任何组合（基础组或确认组没有样本）")
+        print("=" * 118)
+        return
+
+    rows.sort(key=lambda item: item["diff"], reverse=True)
+    shown = [item for item in rows if item["samples"] >= 30]
+    hidden = len(rows) - len(shown)
+    print(
+        f"{'分组':<10}{'形态':<16}{'K线确认':<10}{'样本':>6}"
+        f"{'5日超额':>10}{'10日超额':>10}{'20日超额':>10}"
+        f"{'10日胜率':>9}{'胜率差':>9}{'超额差':>9}  结论"
+    )
+    print("-" * 118)
+    winners = []
+    for item in shown:
+        meta = _BY_KEY[item["key"]]
+        label = CANDLE_LABELS[item["candle"]]
+        hit = item["diff"] >= 1.0 and item["samples"] >= 200
+        note = "✅ 达标" if hit else ("样本不足" if item["samples"] < 200 and item["diff"] >= 1.0 else "")
+        if hit:
+            winners.append(f"{meta.name} × {label}")
+        print(
+            f"{meta.group:<10}{meta.name:<16}{label:<10}{item['samples']:>6}"
+            f"{item['excess5'] * 100:>9.2f}%{item['excess10'] * 100:>9.2f}%"
+            f"{item['excess20'] * 100:>9.2f}%{item['win10'] * 100:>8.1f}%"
+            f"{item['win_diff']:>+8.1f}{item['diff']:>+8.2f}  {note}"
+        )
+    print("=" * 118)
+    print(f"（只显示确认组样本 ≥30 的组合；另有 {hidden} 个组合样本不足 30 未列出）")
+    print("（超额差 = 确认组 10 日超额 − 基础组 10 日超额，单位 pp；胜率差同）")
+    print()
+    if winners:
+        print("达到决策线的组合：" + "、".join(winners))
+    else:
+        print(
+            "结论：没有任何「形态 × K 线确认」组合达到「10 日超额 +1pp 且样本 ≥200」——"
+            "本次实验结束，不新增 candle_confirm 标签、也不恢复独立蜡烛形态。"
+        )
 
 
 if __name__ == "__main__":

@@ -849,9 +849,17 @@ VOL_LIMIT_DOWN_VOL_MULT = 4.0
 # 蜡烛形态（单根 / 两根 / 三根）
 CANDLE_BODY_MAX = 0.35  # 小实体：实体 / 全日振幅 的上限
 CANDLE_PRIOR_DAYS = 5
+# 2026-10-18 的 K 线确认实验（清单 #3）从删除前那一版取回的三条：
+# 它们**只服务于** `_bullish_engulf_confirm`（金叉大阳的确认标签），
+# **不注册独立蜡烛形态**。判定与 `scripts/backtest_patterns.py` 里那份逐字一致。
+CANDLE_PRIOR_DROP = 0.03  # 前置下跌幅度：反转类蜡烛要在跌势之后出现才有意义
+ENGULF_MIN_BODY = 1.3  # 今日实体 / 昨日实体 的下限
+ENGULF_MIN_CLOSE_POS = 0.6  # 今日收盘要落在全日振幅的这个位置以上
 # 2026-10-14 撤下「看涨吞没 / 阳包阴」时，一并删了只被它们用到的三个阈值：
 # `CANDLE_MIN_BODY`（实体不能是十字星的下限）、`CANDLE_PRIOR_DROP`（前置跌幅）、
 # `ENGULF_MIN_BODY` / `ENGULF_MIN_CLOSE_POS`（今日实体倍数与收盘位置）。
+# 2026-10-18 其中三条按 K 线确认实验的结论重新加回（见上），只给「金叉大阳」的
+# `candle_confirm` 标签用；`CANDLE_MIN_BODY` 仍然没有回来。
 # 「实体不能是十字星」这条思路如今只剩 `KNEAD_MIN_BODY`（揉搓线）在用，同值 0.05。
 SOLDIER_MIN_BODY = 0.3  # 红三兵每根实体占振幅的下限
 SOLDIER_MAX_SHADOW = 0.35  # 每根上影线占振幅的上限
@@ -3702,6 +3710,37 @@ def _candle(
     )
 
 
+def _bullish_engulf_confirm(bars: Bars) -> bool:
+    """命中日当天是否同时出现「看涨吞没」（含近 5 日回调 ≥3% 的前置条件）。
+
+    2026-10-18 清单 #3 的回测结论：47 个形态 × 3 种蜡烛里，只有「金叉大阳 × 看涨吞没」
+    达到决策线 —— 确认组 10 日超额 +1.99%，基础组 +0.83%，差 **+1.16pp**，样本 215
+    （≥200）。所以只在金叉大阳的 `detail` 里加 `candle_confirm`，**不恢复独立蜡烛形态**。
+
+    判定与 `scripts/backtest_patterns.py` 里那份逐字一致（回调门槛 + 吞没形状 +
+    收盘落在全日振幅上半部），改一处必须同步改另一处。
+    """
+    if len(bars) < CANDLE_PRIOR_DAYS + 3:
+        return False
+    base = float(bars.close[-1 - CANDLE_PRIOR_DAYS])
+    if base <= 0:
+        return False
+    if float(base / bars.close[-2] - 1) < CANDLE_PRIOR_DROP:
+        return False
+
+    prev_open, _, _, prev_close, prev_body, _, _, prev_span = _candle(bars, -2)
+    open_, _, low, close, body, _, _, span = _candle(bars)
+    if prev_close >= prev_open or close <= open_:
+        return False
+    if prev_body <= 0 or prev_span <= 0 or span <= 0:
+        return False
+    if not (open_ <= prev_close and close >= prev_open):
+        return False
+    if body / prev_body < ENGULF_MIN_BODY:
+        return False
+    return (close - low) / span >= ENGULF_MIN_CLOSE_POS
+
+
 def _ma_squeeze(bars: Bars) -> Signal | None:
     """均线粘合：MA5/10/20/60 挤在极窄区间里横住 —— 方向未定的蓄势。
 
@@ -4678,6 +4717,10 @@ def _ma_cross_big_yang(bars: Bars) -> Signal | None:
 
     ⚠️ 这是布尔与形态，没有「更像」的分级空间，所以底分 60（高过 `MIN_SCORE`）
     保证命中全部入库，剩下 40 分按过线幅度分级、只用于排序。
+
+    ⚠️ 2026-10-18 清单 #3：命中日若同时是「看涨吞没」，`detail` 多一个
+    `candle_confirm`。这来自 47 形态 × 3 种蜡烛的回测 —— 只有「金叉大阳 × 看涨吞没」
+    达到决策线（10 日超额 +1.16pp、样本 215），**不是**把蜡烛形态又注册回来。
     """
     if len(bars) < GCB_MIN_BARS:
         return None
@@ -4711,17 +4754,23 @@ def _ma_cross_big_yang(bars: Bars) -> Signal | None:
     score += _gate_score(upper_ratio, GCB_UPPER_MAX, 0.0) * 10
     score += _gate_score(rsi6, GCB_RSI_MAX, GCB_RSI_IDEAL) * 15
 
+    detail: dict[str, float | int | str] = {
+        "gain": round(gain, 4),
+        "rsi6": round(rsi6, 1),
+        "upper_ratio": round(upper_ratio, 3),
+        "ma3": round(float(ma3[-1]), 2),
+        "ma5": round(float(ma5[-1]), 2),
+    }
+    # 2026-10-18 清单 #3：只有这个组合的确认组达到决策线（理由见
+    # `_bullish_engulf_confirm` 的 docstring）。其它形态不加这个标签。
+    if _bullish_engulf_confirm(bars):
+        detail["candle_confirm"] = "看涨吞没"
+
     return Signal(
         "ma_cross_big_yang",
         min(score, 100.0),
         {"support": float(ma5[-1])},
-        {
-            "gain": round(gain, 4),
-            "rsi6": round(rsi6, 1),
-            "upper_ratio": round(upper_ratio, 3),
-            "ma3": round(float(ma3[-1]), 2),
-            "ma5": round(float(ma5[-1]), 2),
-        },
+        detail,
     )
 
 
@@ -5600,6 +5649,25 @@ ZGNB_GROUP = "知行B1"
 # | 知行B1 | 回踩白线B1 | 105 | −0.74% | −4.12% | −9.32% | −11.69% | 36.2% | −13.07% |
 # | 知行B1 | 原始B1 | 761 | −0.86% | −4.38% | −9.16% | −12.24% | 28.5% | −13.37% |
 # | 知行B1 | 回踩黄线B1 | 515 | −2.33% | **−4.70%** | −5.50% | −9.27% | 28.2% | −10.42% |
+#
+# ## K 线确认实验（2026-10-18，清单 #3；**没有改注册表**）
+#
+# 把 10-14 删掉的三条蜡烛判定（看涨吞没 / 锤子线 / 启明星）当作**已有形态命中日的
+# 确认条件**回测，而不是重新注册形态。命令：
+#
+#     python scripts/backtest_patterns.py --pattern all --board prod --candle-split
+#
+# 口径：4813 只 × 260 个交易日（2025-09-08 ~ 2026-10-09），47 个形态 × 3 种蜡烛，
+# 与上面主表同一套去重 / 横截面基准 / 按交易日持有期。决策线：确认组 10 日超额比
+# 基础组高 ≥1pp 且确认组样本 ≥200。
+#
+# **唯一达标**：金叉大阳 × 看涨吞没 —— 确认组 215 条，10 日超额 +1.99%
+# （基础组 +0.83%，差 **+1.16pp**），10 日胜率 47.9%（基础组 43.1%，差 +4.8pp）。
+# 其余组合里差值更大的几个样本都不足 200（头肩底 × 启明星 +3.14pp 但只有 87 条、
+# V 型底 × 启明星 +2.76pp / 106 条），只能算线索。
+#
+# 落地：只在 `_ma_cross_big_yang` 的 detail 里加 `candle_confirm`（前端显示小徽标），
+# **不新增形态、不改判定、不加分**。想扩大范围就按上面的命令重跑，别凭印象挑组合。
 #
 def _parking_apron(bars: Bars) -> Signal | None:
     """停机坪：放量大涨后连续 3 天高开小阳整理（2026-10-18 候选，回测中）。
