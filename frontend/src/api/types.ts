@@ -1852,7 +1852,7 @@ export interface SimilarDayRow {
 }
 
 export interface SimilarDays {
-  date: string | null
+  trade_date: string | null
   vector: SimilarDayDim[]
   rows: SimilarDayRow[]
   lookback_days: number

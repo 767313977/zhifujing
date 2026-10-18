@@ -135,7 +135,7 @@ def similar(session: Session, target: date | None = None, top: int = 10) -> dict
         session.scalars(select(MarketSentiment).order_by(MarketSentiment.trade_date))
     )
     if not sentiment:
-        return {"date": None, "vector": [], "rows": [], "lookback_days": 0}
+        return {"trade_date": None, "vector": [], "rows": [], "lookback_days": 0}
 
     days = [row.trade_date for row in sentiment]
     if target is None:
@@ -144,7 +144,7 @@ def similar(session: Session, target: date | None = None, top: int = 10) -> dict
         # 传入非交易日 / 没有情绪数据的日子：退到它之前最近的一个情绪日
         available = [day for day in days if day <= target]
         if not available:
-            return {"date": None, "vector": [], "rows": [], "lookback_days": 0}
+            return {"trade_date": None, "vector": [], "rows": [], "lookback_days": 0}
         target = available[-1]
 
     start = max(0, len(days) - LOOKBACK_DAYS)
@@ -230,7 +230,7 @@ def similar(session: Session, target: date | None = None, top: int = 10) -> dict
 
     rows.sort(key=lambda item: item["distance"])
     return {
-        "date": target,
+        "trade_date": target,
         "vector": vector,
         "rows": rows[:top],
         "lookback_days": len(limited),

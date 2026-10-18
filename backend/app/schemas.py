@@ -1752,7 +1752,8 @@ class SimilarDayRow(ApiModel):
 
 
 class SimilarDaysOut(ApiModel):
-    date: date | None = None
+    #: 「今天」是哪一天（传非交易日时退到之前最近一个情绪日）
+    trade_date: date | None = None
     vector: list[SimilarDayDim] = Field(default_factory=list)
     rows: list[SimilarDayRow] = Field(default_factory=list)
     lookback_days: int = 0

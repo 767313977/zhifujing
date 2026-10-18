@@ -74,8 +74,8 @@ export default function SimilarPage() {
             <span className="num">
               {loading
                 ? '加载中…'
-                : data?.date
-                  ? `${data.date} · 回看 ${data.lookback_days} 个交易日`
+                : data?.trade_date
+                  ? `${data.trade_date} · 回看 ${data.lookback_days} 个交易日`
                   : '—'}
             </span>
           }
