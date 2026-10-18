@@ -8,6 +8,8 @@ import type {
   StockDdeRow,
   StockProfile,
   StockThemes,
+  TrapCheck,
+  TrapSignal,
 } from '../api/types'
 import AdjustMenu from '../components/AdjustMenu'
 import Alert from '../components/Alert'
@@ -146,6 +148,23 @@ function buildChipOption(data: ChipDistribution): ChartOption {
   }
 }
 
+/** 杀猪盘体检：三种状态的行内标记与颜色。`unknown` 必须与「未命中」明显区分。 */
+const TRAP_STATUS: Record<
+  TrapSignal['status'],
+  { icon: string; className: string; label: string }
+> = {
+  hit: { icon: '●', className: 'text-danger', label: '命中' },
+  miss: { icon: '○', className: 'text-fg-muted', label: '未命中' },
+  unknown: { icon: '—', className: 'text-fg-dim', label: '数据不足' },
+}
+
+const TRAP_LEVEL_CLASS: Record<TrapCheck['level'], string> = {
+  high: 'text-danger',
+  orange: 'text-danger',
+  medium: 'text-accent',
+  low: 'text-ok',
+}
+
 /**
  * DDE 一栏的图：**柱 = 主力净流入额**（逐条上色，正红负绿）、**线 = 5日DDE**。
  *
@@ -228,6 +247,8 @@ export default function StockDetail() {
   const [dde, setDde] = useState<StockDde | null>(null)
   // 筹码分布（本地计算，零外部请求）。增强读数：请求失败只当 null，不拖垮整页
   const [chips, setChips] = useState<ChipDistribution | null>(null)
+  // 杀猪盘体检（库内信号 + 东财新闻）。同样按增强读数处理
+  const [trap, setTrap] = useState<TrapCheck | null>(null)
   // DDE 请求本身失败的原因（网络 / 超时 / 5xx）。null 表示请求成功 —— 此时 `dde`
   // 为 null 或 rows 为空都只是「这只票没数据」，与「取数失败」是两件事（2026-10-10 修）
   const [ddeError, setDdeError] = useState<string | null>(null)
@@ -282,11 +303,13 @@ export default function StockDetail() {
       )
       // 筹码分布是本地计算、很快；失败也不该拖垮整页（增强读数一律回落 null）
       const chipsRequest = api.stockChips(target).catch(() => null)
-      const [p, themeData, ddeResult, chipData] = await Promise.all([
+      const trapRequest = api.stockTrap(target).catch(() => null)
+      const [p, themeData, ddeResult, chipData, trapData] = await Promise.all([
         api.stockProfile(target),
         api.stockThemes(target).catch(() => null),
         ddeRequest,
         chipsRequest,
+        trapRequest,
       ])
       if (isCancelled()) return p
       setProfile(p)
@@ -294,6 +317,7 @@ export default function StockDetail() {
       setDde(ddeResult.data)
       setDdeError(ddeResult.error)
       setChips(chipData)
+      setTrap(trapData)
       return p
     },
     [],
@@ -309,6 +333,7 @@ export default function StockDetail() {
     setDde(null)
     setDdeError(null)
     setChips(null)
+    setTrap(null)
     setError(null)
     setProfileError(null)
     ;(async () => {
@@ -703,6 +728,69 @@ export default function StockDetail() {
                     ` · 筹码峰 ${fmtNum(chips.peak_price, 2)} 元`}
                 </div>
                 {chipOption && <EChart option={chipOption} height={260} />}
+              </div>
+            </>
+          )}
+        </Panel>
+
+        <Panel
+          title="杀猪盘体检"
+          meta={
+            <span className="num">
+              8 信号 · 结构化证据优先 · 新闻仅作辅助 · 非投资建议
+            </span>
+          }
+          delay={106}
+        >
+          {profile === null ? (
+            <div className="flex h-[180px] items-center justify-center text-[14px] text-fg-dim">
+              <span className="pulse-soft">加载中…</span>
+            </div>
+          ) : !trap ? (
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
+              暂时无法体检（接口未返回结果）
+            </div>
+          ) : (
+            <>
+              <div className="border-b border-line-soft px-4 py-3">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span
+                    className={`text-[20px] leading-tight font-medium ${TRAP_LEVEL_CLASS[trap.level]}`}
+                  >
+                    {trap.level_label}
+                  </span>
+                  <span className="num text-[13px] text-fg-dim">
+                    风险分 {trap.score}/100
+                  </span>
+                  {trap.trade_date && (
+                    <span className="num text-[13px] text-fg-dim">{trap.trade_date}</span>
+                  )}
+                </div>
+                <div className="mt-1 text-[13px] text-fg-dim">{trap.summary}</div>
+              </div>
+              <div className="divide-y divide-line-soft">
+                {trap.signals.map((signal) => {
+                  const status = TRAP_STATUS[signal.status]
+                  return (
+                    <div
+                      key={signal.key}
+                      className="flex gap-3 px-4 py-2 text-[13px]"
+                    >
+                      <span className={`w-4 shrink-0 ${status.className}`}>
+                        {status.icon}
+                      </span>
+                      <span className="w-36 shrink-0 text-fg">{signal.name}</span>
+                      <span className="min-w-0 flex-1 text-fg-dim">
+                        {signal.evidence}
+                      </span>
+                      <span
+                        className={`w-16 shrink-0 text-right ${status.className}`}
+                      >
+                        {status.label}
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             </>
           )}

@@ -1466,6 +1466,27 @@ export interface ChipDistribution {
   note: string | null
 }
 
+/** 杀猪盘体检的一个信号：`status` 是 hit / miss / unknown（数据不足，不投票）。 */
+export interface TrapSignal {
+  key: string
+  name: string
+  status: 'hit' | 'miss' | 'unknown'
+  severity: 'high' | 'medium' | 'low'
+  evidence: string
+}
+
+/** 杀猪盘体检结果：评分只加命中信号的权重，unknown 不当作 0 分。 */
+export interface TrapCheck {
+  code: string
+  name: string | null
+  trade_date: string | null
+  score: number
+  level: 'high' | 'orange' | 'medium' | 'low'
+  level_label: string
+  summary: string
+  signals: TrapSignal[]
+}
+
 /**
  * 后端能聚合的 K 线周期。
  *

@@ -1384,6 +1384,32 @@ class ChipDistributionOut(BaseModel):
     note: str | None = None
 
 
+class TrapSignalOut(BaseModel):
+    """杀猪盘体检的一个信号。
+
+    `status`：`hit`（命中）/ `miss`（未命中）/ `unknown`（数据不足，**不投票**）。
+    """
+
+    key: str
+    name: str
+    status: str
+    severity: str
+    evidence: str
+
+
+class TrapCheckOut(BaseModel):
+    """杀猪盘体检结果。评分只加命中信号的权重；unknown 不当作 0 分。"""
+
+    code: str
+    name: str | None
+    trade_date: date | None = None
+    score: int
+    level: str
+    level_label: str
+    summary: str
+    signals: list[TrapSignalOut] = []
+
+
 class WudaoPhase(ApiModel):
     """悟道「阶段判定」：8 个标签之一 + 一眼看懂的说明。
 

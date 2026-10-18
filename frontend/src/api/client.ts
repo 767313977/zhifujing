@@ -65,6 +65,7 @@ import type {
   StockNews,
   StockProfile,
   StockThemes,
+  TrapCheck,
   Volatility,
   WatchlistRow,
 } from './types'
@@ -524,6 +525,14 @@ export const api = {
    */
   stockChips: (code: string, days = 250) =>
     request<ChipDistribution>(`/stock/${encodeURIComponent(code)}/chips?days=${days}`),
+
+  /**
+   * 杀猪盘体检：8 个信号，结构化证据优先、新闻只作辅助。
+   *
+   * `unknown`（数据不足）不投票 —— 页面要把它显示成「未判断」，不能说成安全。
+   */
+  stockTrap: (code: string) =>
+    request<TrapCheck>(`/stock/${encodeURIComponent(code)}/trap`),
 
   /**
    * 个股新闻（**东财口径**，按发布时间倒序）。

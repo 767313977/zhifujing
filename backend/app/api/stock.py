@@ -49,8 +49,10 @@ from app.schemas import (
     StockProfile,
     StockThemeItem,
     StockThemes,
+    TrapCheckOut,
+    TrapSignalOut,
 )
-from app.services import chip, limit_rules
+from app.services import chip, limit_rules, trap
 from app.services.auth import Cooldown, RateLimiter, current_user
 from app.services.patterns import build_bars
 from app.services.stock_phase import load_phase
@@ -762,6 +764,47 @@ def chips(
         histogram=[
             ChipPoint(price=round(price, 3), weight=round(weight, 6))
             for price, weight in result.histogram
+        ],
+    )
+
+
+@router.get("/{code}/trap", response_model=TrapCheckOut)
+def trap_check(
+    code: str,
+    session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> TrapCheckOut:
+    """杀猪盘体检：8 个信号，**结构化证据优先、新闻只作辅助**。
+
+    与 UZI-Skill 的原始实现不同：不是「8 次 web 搜索数关键词」，而是先看库里的
+    ST 状态、连板/涨幅、换手分位、龙虎榜上榜次数、市值与波动，再用东财个股新闻
+    检查推广话术与澄清报道（**辟谣算保护性证据，不算风险**）。
+
+    `unknown`（数据不足）**不投票**：既不当 0 分装成安全，也不凭空扣分。
+    """
+    code = _code(code)
+    result = trap.check(code)
+    if result is None:
+        raise HTTPException(
+            status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
+        )
+    return TrapCheckOut(
+        code=result.code,
+        name=result.name,
+        trade_date=result.trade_date,
+        score=result.score,
+        level=result.level,
+        level_label=result.level_label,
+        summary=result.summary,
+        signals=[
+            TrapSignalOut(
+                key=signal.key,
+                name=signal.name,
+                status=signal.status,
+                severity=signal.severity,
+                evidence=signal.evidence,
+            )
+            for signal in result.signals
         ],
     )
 
