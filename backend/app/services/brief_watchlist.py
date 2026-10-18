@@ -4,8 +4,9 @@
 硬证据体检进入高风险档。没有异动的股票不出现 —— 自选页本身能看全量，
 简报每天列一遍只会变成噪音。
 
-公告只读 `stock_event_cache` 的缓存（`stock_events.peek`），**不在简报里打外部接口**：
-15:05 的推送不该为了几条公告多等几十秒。用户打开过个股页后自然会有缓存。
+公告走 `stock_events.load`：**缓存新鲜就读缓存，过期就现取**（2026-10-18 用户要求
+「保证每只自选都有」）。公告缓存 6 小时，所以一天里第一次推简报时每只自选最多
+打一次东财；之后的推送直接读库。
 """
 
 import logging
@@ -45,9 +46,12 @@ def _levels(key_levels: dict | None) -> tuple[float | None, float | None]:
 
 
 def _recent_notice(code: str, trade_date: date) -> str | None:
-    """缓存里最近一条**当天或前一天**的公告；没有就返回 None。"""
+    """最近一条**当天或前一天**的公告；没有就返回 None。
+
+    用 `load` 而不是 `peek`：缓存过期时会现取，保证每只自选都有公告可看。
+    """
     floor = (trade_date - timedelta(days=1)).isoformat()
-    for row in stock_events.peek(code, "notices"):
+    for row in stock_events.load(code, "notices")["rows"]:
         if str(row.get("published_at") or "") < floor:
             continue
         title = str(row.get("title") or "")

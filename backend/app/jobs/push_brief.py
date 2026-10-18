@@ -385,8 +385,8 @@ def _watchlist_block(session, trade_date: date) -> str:
     """「自选股异动」：命中的形态 / 关键位 / 放量 / 公告 / 硬证据高风险。
 
     没有异动的自选股**不列**（自选页本身能看全量）；整节没有内容时也不出现。
-    公告只读 `stock_event_cache` 的缓存（`peek`），不在简报里现场打外部接口 ——
-    简报 15:05 发，拖几十秒去拉公告不值得；用户打开过个股页后自然会有缓存。
+    公告由 `services/brief_watchlist` 走 `stock_events.load`：缓存新鲜读库、
+    过期就现取，保证每只自选都有公告可查（2026-10-18 用户要求）。
     """
     from app.services import brief_watchlist
 
