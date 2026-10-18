@@ -98,6 +98,38 @@ PRIOR_HIGH_DAYS = 60
 PRIOR_HIGH_VOL_MULT = 2.0
 PRIOR_HIGH_VOL_WINDOW = 20
 
+# 海龟突破（2026-10-17 移植自 sngyai/Sequoia-X 的 `TurtleTradeStrategy`）
+#
+# 四条必要条件与原策略逐字对应：收盘创 20 日**最高价**新高、成交额过亿、
+# 实体阳线、真涨（收盘高于昨收）。原式按流通市值降序出名单；本站是统一评分，
+# 所以「谁排前面」由下面的加权分承担（成交额 / 量比 / 突破幅度 / 涨幅）。
+#
+# 与邻居的分工：`new_high` 只比**收盘**、且不看量；`volume_breakout` 突破的是
+# **收盘**的 60 日前高、要求量比 ≥2；海龟突破比的是**最高价**（20 日），且额外要求
+# 「阳线 + 真涨」—— 高开低走的大阴线即使盘中创了新高也不收，这是原策略的防诱多条款。
+TURTLE_WINDOW = 20
+TURTLE_MIN_AMOUNT = 1e8  # 成交额 ≥ 1 亿元（`stock_daily.amount` 单位就是元）
+TURTLE_AMOUNT_IDEAL = 5e8  # 5 亿元拿满「流动性」那 20 分
+TURTLE_VOL_IDEAL = (1.0, 3.0)
+TURTLE_VOL_CAP = 8.0
+TURTLE_EXCESS_IDEAL = (0.005, 0.03)
+TURTLE_EXCESS_CAP = 0.10
+
+# 均线放量金叉（2026-10-17 移植自 `MaVolumeStrategy`）
+#
+# 与 `_ma_golden_cross`（金叉共振）的分工：那条看 **MA5 × MA10**、要求 MA20 不走弱，
+# 语义是「短周期刚转强」；这条看 **MA5 × MA20**、要求**放量**（20 日均量的 1.5 倍），
+# 语义是「中期趋势切换 + 量能确认」。两条可以同一天命中同一只票，含义不同，不合并。
+#
+# ⚠️ 量比分母**含当日**（原式 `rolling(20).mean()` 把今天也算进去），与本文件通用的
+# `_volume_ratio`（分母不含当日）不一样，别顺手换 —— 含当日会让门槛略难一点。
+MA_VOLUME_FAST = 5
+MA_VOLUME_SLOW = 20
+MA_VOLUME_MIN_MULT = 1.5
+MA_VOLUME_IDEAL_MULT = 3.0
+MA_VOLUME_CAP_MULT = 8.0
+MA_VOLUME_GAP_IDEAL = 0.02  # MA5 高出 MA20 的幅度到 2% 拿满「金叉强度」那 35 分
+
 # 玉柱擎天（2026-09-27 用户点名要的形态）
 #
 # 一根**长实体大阳线顶破前期的压制位**，且明显放量。「玉柱」是那根柱子，
@@ -1426,6 +1458,50 @@ def _volume_breakout(bars: Bars) -> Signal | None:
         score,
         {"breakout": prior},
         {"vol_ratio": round(ratio, 2), "excess": round(excess, 4)},
+    )
+
+
+def _turtle_breakout(bars: Bars) -> Signal | None:
+    """海龟突破：收盘创 20 日**最高价**新高，成交额过亿，且今天是实体阳线 + 真涨。
+
+    2026-10-17 移植自 `sngyai/Sequoia-X` 的 `TurtleTradeStrategy`。四条必要条件
+    照搬，打分按本站 0~100 口径重写（见文件顶部 `TURTLE_*` 那段的分工说明）。
+    """
+    if len(bars) < TURTLE_WINDOW + 1:
+        return None
+
+    prior_high = float(bars.high[-TURTLE_WINDOW - 1 : -1].max())
+    close = float(bars.close[-1])
+    if close <= prior_high:
+        return None
+
+    amount = float(bars.amount[-1])
+    if amount < TURTLE_MIN_AMOUNT:
+        return None
+
+    # 防诱多：高开低走的大阴线即使盘中创了新高也不收（原策略专门加的这条）
+    if close <= float(bars.open[-1]) or close <= float(bars.close[-2]):
+        return None
+
+    excess = close / prior_high - 1
+    ratio = _volume_ratio(bars, 5)
+    pct = float(bars.pct_chg[-1])
+
+    score = _gate_score(amount, TURTLE_MIN_AMOUNT, TURTLE_AMOUNT_IDEAL) * 20
+    score += _band_score(ratio, *TURTLE_VOL_IDEAL, TURTLE_VOL_CAP) * 35
+    score += _band_score(excess, *TURTLE_EXCESS_IDEAL, TURTLE_EXCESS_CAP) * 30
+    score += _gate_score(pct / 100.0, 0.0, 0.03) * 15
+
+    return Signal(
+        "turtle_breakout",
+        min(score, 100.0),
+        {"breakout": prior_high},
+        {
+            "excess": round(excess, 4),
+            "vol_ratio": round(ratio, 2),
+            "amount_yi": round(amount / 1e8, 2),
+            "pct_chg": round(pct, 2),
+        },
     )
 
 
@@ -3694,6 +3770,45 @@ def _ma_golden_cross(bars: Bars) -> Signal | None:
     )
 
 
+def _ma_volume(bars: Bars) -> Signal | None:
+    """均线放量金叉：MA5 今天上穿 MA20，且当日成交量 ≥ 20 日均量的 1.5 倍。
+
+    2026-10-17 移植自 `sngyai/Sequoia-X` 的 `MaVolumeStrategy`。两条必要条件
+    照搬，打分按本站 0~100 口径重写（见文件顶部 `MA_VOLUME_*` 那段的分工说明）。
+    """
+    if len(bars) < MA_VOLUME_SLOW + 1:
+        return None
+
+    ma5 = _align(_ma_series(bars.close, MA_VOLUME_FAST), MA_VOLUME_FAST, len(bars))
+    ma20 = _align(_ma_series(bars.close, MA_VOLUME_SLOW), MA_VOLUME_SLOW, len(bars))
+    now5, now20 = float(ma5[-1]), float(ma20[-1])
+    prev5, prev20 = float(ma5[-2]), float(ma20[-2])
+    if not all(np.isfinite(value) for value in (now5, now20, prev5, prev20)):
+        return None
+    if not (prev5 < prev20 and now5 > now20):
+        return None
+
+    # 量比分母**含当日**（原式 `rolling(20).mean()` 的口径），别换成 `_volume_ratio`
+    base = _safe_mean(bars.volume[-MA_VOLUME_SLOW:])
+    ratio = float(bars.volume[-1] / base) if base > 0 else 0.0
+    if ratio < MA_VOLUME_MIN_MULT:
+        return None
+
+    gap = now5 / now20 - 1
+    score = (
+        _band_score(ratio, MA_VOLUME_MIN_MULT, MA_VOLUME_IDEAL_MULT, MA_VOLUME_CAP_MULT)
+        * 65
+    )
+    score += _gate_score(gap, 0.0, MA_VOLUME_GAP_IDEAL) * 35
+
+    return Signal(
+        "ma_volume",
+        min(score, 100.0),
+        {"support": now20},
+        {"vol_ratio_20": round(ratio, 2), "cross_gap": round(gap, 4)},
+    )
+
+
 def _downtrend_breakout(bars: Bars) -> Signal | None:
     """下降趋势线突破：用近 60 天的**摆动高点**连出一条下降线，今天收盘站上它。
 
@@ -5692,6 +5807,10 @@ PATTERNS: tuple[Pattern, ...] = (
     # 这一档单独用 10 日：全市场约 0.1 条/天，5 日窗口常常一只都没有
     Pattern("zgnb_pull_super", "超牛股回踩白线B1", ZGNB_GROUP, _zgnb_pull_super),
     Pattern("zgnb_pull_yellow", "回踩黄线B1", ZGNB_GROUP, _zgnb_pull_yellow),
+    # 2026-10-17 移植自 sngyai/Sequoia-X 的两个策略：只搬判定条件与阈值，
+    # 打分按本站 0~100 口径重写（原委见文件顶部 `TURTLE_*` / `MA_VOLUME_*` 两段）。
+    Pattern("turtle_breakout", "海龟突破", "突破", _turtle_breakout),
+    Pattern("ma_volume", "均线放量金叉", "趋势", _ma_volume),
 )
 
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}

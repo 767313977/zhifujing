@@ -328,6 +328,12 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   vol_mult: ['堆量倍数', false],
   pile_rise: ['堆量涨幅', true],
   pile_gap: ['堆量后间隔', false],
+
+  // ---- 海龟突破 / 均线放量金叉（2026-10-17 移植自 Sequoia-X）----
+  // `vol_ratio` / `vol_ratio_20` / `excess` / `pct_chg` 与既有字段共用；
+  // 这两个是新增语义，别复用 `rise`（已被 gap_fill 占成「补缺口后的反弹幅度」）。
+  amount_yi: ['成交额(亿)', false],
+  cross_gap: ['金叉幅度', true],
 }
 
 function detailText(key: string, value: number | string): string {
