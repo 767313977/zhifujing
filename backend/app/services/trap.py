@@ -439,14 +439,28 @@ def _check_hot_rank(code: str) -> TrapSignal:
             "hot_rank", "人气榜热度", "info", "low", "人气榜取不到（仅展示项，不影响评分）"
         )
     else:
+        parts = [f"第 {data['rank']}/{data['total']} 名"]
+        moves = []
+        if data.get("today_change") is not None:
+            moves.append(f"今日 {data['today_change']:+d}")
+        else:
+            moves.append(f"较上一统计点 {data['change']:+d}")
+        moves.append(f"近 5 日 {data['his_change']:+d}")
+        parts.append("、".join(moves))
+        if data.get("today_best") is not None:
+            parts.append(f"今日最高第 {data['today_best']} 名")
+        keywords = data.get("keywords") or []
+        if keywords:
+            parts.append(
+                "关键词 "
+                + " / ".join(f"{item['name']} {item['heat']:.0f}" for item in keywords)
+            )
         signal = TrapSignal(
             "hot_rank",
             "人气榜热度",
             "info",
             "low",
-            f"东财人气榜第 {data['rank']}/{data['total']} 名，"
-            f"较上一统计点 {data['change']:+d}、近 5 日 {data['his_change']:+d}；"
-            "仅热度参考，不计分",
+            "；".join(parts) + "；仅热度参考，不计分",
         )
     _HOT_CACHE[code] = (now, signal)
     return signal

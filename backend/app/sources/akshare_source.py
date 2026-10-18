@@ -278,10 +278,15 @@ class AkshareSource:
     # -------------------------------------------------------------- 人气 / 互动
 
     def hot_rank(self, code: str) -> dict | None:
-        """东财个股人气榜的最新排名（**仅热度参考**，不是「有人在引流」的证据）。
+        """东财个股人气榜（**仅热度参考**，不是「有人在引流」的证据）。
 
-        返回 `{rank, total, change, his_change, calc_time}`；取不到返回 None。
-        `change` 是较上一统计点，`his_change` 是近 5 日变化（东财口径）。
+        除最新排名外，还补两项能解释「热度在往哪走」的读数：
+
+        - `stock_hot_rank_detail_realtime_em`：当日 10 分钟级排名序列 →
+          `today_change`（正 = 排名上升）、`today_best`（当日最好名次）
+        - `stock_hot_keyword_em`：热门关键词与热度（如「ST股 719、算力概念 109」）
+
+        后两项失败时只少几个字段，**不影响最新排名**。整体 10 分钟缓存由调用方控制。
         """
         if code.startswith("6"):
             prefix = "SH"
@@ -291,23 +296,60 @@ class AkshareSource:
             prefix = "SH"  # 沪 B 股 900xxx（人气榜多半查不到，交给失败分支）
         else:
             prefix = "SZ"
+        symbol = f"{prefix}{code}"
+
         df = self._call(
-            lambda: ak.stock_hot_rank_latest_em(symbol=f"{prefix}{code}"),
+            lambda: ak.stock_hot_rank_latest_em(symbol=symbol),
             f"东财人气榜 {code}",
         )
         if df is None or df.empty:
             return None
         values = {str(row["item"]): row["value"] for _, row in df.iterrows()}
         try:
-            return {
+            result = {
                 "rank": int(float(values["rank"])),
                 "total": int(float(values["marketAllCount"])),
                 "change": int(float(values["rankChange"])),
                 "his_change": int(float(values["hisRankChange"])),
                 "calc_time": str(values.get("calcTime") or ""),
+                "today_change": None,
+                "today_best": None,
+                "today_points": 0,
+                "keywords": [],
             }
         except (KeyError, ValueError):
             return None
+
+        try:
+            series = self._call(
+                lambda: ak.stock_hot_rank_detail_realtime_em(symbol=symbol),
+                f"人气榜分时 {code}",
+            )
+            if series is not None and not series.empty:
+                ranks = [int(float(value)) for value in series["排名"].tolist()]
+                if ranks:
+                    # 名次数字越小越热：first - last 为正 = 今天排名在上升
+                    result["today_change"] = ranks[0] - ranks[-1]
+                    result["today_best"] = min(ranks)
+                    result["today_points"] = len(ranks)
+        except Exception:  # noqa: BLE001 - 辅助读数失败不影响主排名
+            logger.info("%s 的人气榜分时取数失败", code, exc_info=True)
+
+        try:
+            frame = self._call(
+                lambda: ak.stock_hot_keyword_em(symbol=symbol),
+                f"人气榜关键词 {code}",
+            )
+            rows = _records(frame)
+            rows.sort(key=lambda row: float(row.get("热度") or 0), reverse=True)
+            result["keywords"] = [
+                {"name": str(row.get("概念名称") or ""), "heat": float(row.get("热度") or 0)}
+                for row in rows[:2]
+                if row.get("概念名称")
+            ]
+        except Exception:  # noqa: BLE001 - 辅助读数失败不影响主排名
+            logger.info("%s 的人气榜关键词取数失败", code, exc_info=True)
+        return result
 
     def interactive_qa(self, code: str) -> list[dict]:
         """深市/北交所的**互动易问答**（问题 + 回答 + 时间）。
