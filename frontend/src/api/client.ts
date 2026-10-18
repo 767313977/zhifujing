@@ -69,6 +69,10 @@ import type {
   StockReports,
   StockThemes,
   StockUnlocks,
+  TradeJournalIn,
+  TradeJournalOut,
+  TradeJournalRow,
+  TradeStatsOut,
   TrapCheck,
   Volatility,
   WatchlistRow,
@@ -591,6 +595,30 @@ export const api = {
   /** 未来限售解禁（东财数据中心，缓存 1 天）。比例字段是小数（0.05 = 5%）。 */
   stockUnlock: (code: string, limit = 10) =>
     request<StockUnlocks>(`/stock/${encodeURIComponent(code)}/unlock?limit=${limit}`),
+
+  // --- 交易日志（2026-10-18 清单 #1）---
+  /** 全部交易（含收益 / 回撤 / 持有天数 / 止损执行，按买入日倒序）。 */
+  journalTrades: () => request<TradeJournalOut>('/journal'),
+
+  createTrade: (payload: TradeJournalIn) =>
+    request<TradeJournalRow>('/journal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  updateTrade: (id: number, payload: TradeJournalIn) =>
+    request<TradeJournalRow>(`/journal/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  deleteTrade: (id: number) =>
+    request<{ ok: boolean }>(`/journal/${id}`, { method: 'DELETE' }),
+
+  /** 按理由 / 情绪档位 / 板块的自成绩单（只统计已平仓）。 */
+  journalStats: () => request<TradeStatsOut>('/journal/stats'),
 
   /**
    * 个股分析：把「代码 / 名称 / 拼音首字母」解析成结论（阶段判定 + 旁证）。

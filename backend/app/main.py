@@ -17,6 +17,7 @@ from app.api import (
     auction,
     auth as auth_api,
     funds,
+    journal,
     limit,
     market,
     note,
@@ -153,6 +154,7 @@ app.include_router(stock.router)
 app.include_router(analysis.router)
 app.include_router(watchlist.router)
 app.include_router(note.router)
+app.include_router(journal.router)
 app.include_router(patterns.router)
 app.include_router(anomaly_map.router)
 app.include_router(admin.router)

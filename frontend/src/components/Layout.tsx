@@ -25,6 +25,8 @@ const NAV: NavItem[] = [
   { to: '/patterns', label: '形态选股', end: true },
   { to: '/patterns/track', label: '胜率跟踪' },
   { to: '/watchlist', label: '自选股' },
+  // 交易日志（2026-10-18 清单 #1）：复盘自己的买卖，而不是只看市场。
+  { to: '/journal', label: '交易日志' },
   // 悟道之路（2026-10-08 用户要求加在「自选股」之后）。
   // ⚠️ 一开始做成了**指向 GitHub 仓库的外链**，用户随即反馈「点进去还是跳转」——
   // 他要的是站内的选股池页面。现在判定逻辑已经移植进来（`services/patterns.py` 的

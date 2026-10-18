@@ -691,6 +691,43 @@ class ReviewNote(Base):
     )
 
 
+class TradeJournal(Base):
+    """交易日志：**一笔完整的买卖回合**（2026-10-18 清单 #1）。
+
+    为什么一行是一整笔而不是逐笔成交：复盘要回答的是「这笔交易做得怎么样」，
+    而分批买卖会把同一笔拆成多行、统计时又得自己合并。先按回合记；将来真要做
+    分批加减仓，再加一张 `trade_fill` 子表，不要改这张表的语义。
+
+    收益 / 最大回撤 / 持有天数 / 止损是否触发都**不落库**：它们由 `stock_daily`
+    现算（见 `services/trade_journal.py`），改了算法不用回补历史。
+    """
+
+    __tablename__ = "trade_journal"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    code: Mapped[str] = mapped_column(String(16))
+    name: Mapped[str | None] = mapped_column(String(32))
+    entry_date: Mapped[date] = mapped_column(Date)
+    entry_price: Mapped[float] = mapped_column(Float)
+    exit_date: Mapped[date | None] = mapped_column(Date)
+    exit_price: Mapped[float | None] = mapped_column(Float)
+    #: 仓位：占自己总资金的比例（0-100）。只用于展示，不参与收益计算
+    position_pct: Mapped[float | None] = mapped_column(Float)
+    #: 理由来源：pattern / wudao / theme / other
+    reason_type: Mapped[str] = mapped_column(String(16), default="other")
+    #: 形态 key / 悟道池 key / 题材名；other 时留空、用 reason_text
+    reason_key: Mapped[str | None] = mapped_column(String(64))
+    reason_text: Mapped[str | None] = mapped_column(Text)
+    #: 计划止损位（元）。没设就是 None，止损相关指标也返回 None
+    plan_stop: Mapped[float | None] = mapped_column(Float)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    __table_args__ = (Index("ix_trade_journal_user_entry", "user_id", "entry_date"),)
+
+
 class CollectLog(Base):
     """采集日志。"""
 

@@ -1600,6 +1600,75 @@ class StockUnlocksOut(StockEventMeta):
     rows: list[StockUnlockRow] = Field(default_factory=list)
 
 
+class TradeJournalIn(ApiModel):
+    """新增 / 修改一笔交易时的入参（2026-10-18 清单 #1）。"""
+
+    code: str
+    name: str | None = None
+    entry_date: date
+    entry_price: float
+    exit_date: date | None = None
+    exit_price: float | None = None
+    #: 仓位（占自己总资金的比例，0-100）
+    position_pct: float | None = None
+    #: pattern / wudao / theme / other
+    reason_type: str = "other"
+    #: 形态 key / 悟道池 key / 题材名
+    reason_key: str | None = None
+    reason_text: str | None = None
+    plan_stop: float | None = None
+    note: str | None = None
+
+
+class TradeJournalRow(TradeJournalIn):
+    id: int
+    #: 理由的中文名（形态 / 池子查注册表，题材用 key，其它用自由文本）
+    reason_label: str
+    #: 买入当天的接力温度档位（冰点 / 偏冷 / 温和 / 活跃 / 沸腾）
+    sentiment_level: str | None = None
+    #: 个股所属板块（同花顺三级行业路径的末段）
+    sector: str | None = None
+    #: 买入日到卖出日的交易日数（含两端；未平仓算到最新日线）
+    holding_days: int | None = None
+    return_pct: float | None = None
+    #: 持仓期间收盘价相对买入价的最大跌幅（≤0）
+    max_drawdown_pct: float | None = None
+    #: 持仓期间收盘价是否跌破计划止损位；没设止损时为 None
+    stop_hit: bool | None = None
+    #: 触发止损后是否真的在止损位或更低卖出；未触发 / 没平仓时为 None / False
+    stop_executed: bool | None = None
+    #: 未平仓 = True（`return_pct` 是浮动盈亏）
+    open: bool = False
+    latest_date: date | None = None
+    #: 日线不够、算不出指标时的原因
+    metrics_note: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TradeJournalOut(ApiModel):
+    rows: list[TradeJournalRow] = Field(default_factory=list)
+
+
+class TradeStatsRow(ApiModel):
+    label: str
+    trades: int = 0
+    #: 已平仓 = 计入胜率 / 平均收益的笔数
+    closed: int = 0
+    open: int = 0
+    win_rate: float | None = None
+    avg_return: float | None = None
+    avg_drawdown: float | None = None
+    avg_holding_days: float | None = None
+
+
+class TradeStatsOut(ApiModel):
+    summary: TradeStatsRow
+    by_reason: list[TradeStatsRow] = Field(default_factory=list)
+    by_sentiment: list[TradeStatsRow] = Field(default_factory=list)
+    by_sector: list[TradeStatsRow] = Field(default_factory=list)
+
+
 class StockAnalysis(ApiModel):
     """个股分析页（`/api/analysis/lookup`）的返回：解析结果 + 阶段判定 + 旁证。
 

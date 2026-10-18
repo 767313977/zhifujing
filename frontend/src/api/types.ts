@@ -1710,6 +1710,70 @@ export interface StockUnlocks extends StockEventMeta {
   rows: StockUnlockRow[]
 }
 
+/** 新增 / 修改一笔交易（对应后端 `TradeJournalIn`）。 */
+export interface TradeJournalIn {
+  code: string
+  name?: string | null
+  /** YYYY-MM-DD */
+  entry_date: string
+  entry_price: number
+  exit_date?: string | null
+  exit_price?: number | null
+  /** 仓位（占自己总资金的比例，0-100） */
+  position_pct?: number | null
+  /** pattern / wudao / theme / other */
+  reason_type: string
+  reason_key?: string | null
+  reason_text?: string | null
+  plan_stop?: number | null
+  note?: string | null
+}
+
+/** 一笔交易 + 用日线现算的指标（对应后端 `TradeJournalRow`）。 */
+export interface TradeJournalRow extends TradeJournalIn {
+  id: number
+  reason_label: string
+  /** 买入当天的接力温度档位 */
+  sentiment_level: string | null
+  sector: string | null
+  /** 买入日到卖出日的交易日数（含两端） */
+  holding_days: number | null
+  return_pct: number | null
+  max_drawdown_pct: number | null
+  /** 持仓期间收盘价是否跌破计划止损位；没设止损为 null */
+  stop_hit: boolean | null
+  /** 触发止损后是否真的在止损位或更低卖出 */
+  stop_executed: boolean | null
+  /** 未平仓 = true（return_pct 是浮动盈亏） */
+  open: boolean
+  latest_date: string | null
+  metrics_note: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TradeJournalOut {
+  rows: TradeJournalRow[]
+}
+
+export interface TradeStatsRow {
+  label: string
+  trades: number
+  closed: number
+  open: number
+  win_rate: number | null
+  avg_return: number | null
+  avg_drawdown: number | null
+  avg_holding_days: number | null
+}
+
+export interface TradeStatsOut {
+  summary: TradeStatsRow
+  by_reason: TradeStatsRow[]
+  by_sentiment: TradeStatsRow[]
+  by_sector: TradeStatsRow[]
+}
+
 /**
  * 个股分析的返回（`/api/analysis/lookup`）：把「代码 / 名称 / 拼音首字母」解析成结论。
  *

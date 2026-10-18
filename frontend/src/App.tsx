@@ -18,6 +18,7 @@ const AnomalyPage = lazy(() => import('./pages/Anomaly'))
 const AuctionPage = lazy(() => import('./pages/Auction'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Funds = lazy(() => import('./pages/Funds'))
+const JournalPage = lazy(() => import('./pages/Journal'))
 const LimitReview = lazy(() => import('./pages/LimitReview'))
 const Login = lazy(() => import('./pages/Login'))
 const NotFound = lazy(() => import('./pages/NotFound'))
@@ -128,6 +129,14 @@ export default function App() {
                 element={
                   <RequireAuth>
                     <WatchlistPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/journal"
+                element={
+                  <RequireAuth>
+                    <JournalPage />
                   </RequireAuth>
                 }
               />
