@@ -35,6 +35,10 @@ class Snapshot:
     revenue_yoy: float | None
     net_profit: float | None
     net_profit_yoy: float | None
+    deducted_net_profit: float | None
+    deducted_net_profit_yoy: float | None
+    eps: float | None
+    ocf_per_share: float | None
     roe: float | None
     gross_margin: float | None
     debt_ratio: float | None
@@ -69,6 +73,11 @@ def _parse(records: list[dict]) -> dict | None:
         "revenue_yoy": to_float(latest.get("营业总收入同比增长率")),
         "net_profit": net_profit,
         "net_profit_yoy": to_float(latest.get("净利润同比增长率")),
+        # 扣非与每股指标：同一次请求里就有，用来剔除一次性损益、判断利润含金量
+        "deducted_net_profit": to_float(latest.get("扣非净利润")),
+        "deducted_net_profit_yoy": to_float(latest.get("扣非净利润同比增长率")),
+        "eps": to_float(latest.get("基本每股收益")),
+        "ocf_per_share": to_float(latest.get("每股经营现金流")),
         "roe": to_float(latest.get("净资产收益率")),
         "gross_margin": to_float(latest.get("销售毛利率")),
         "debt_ratio": to_float(latest.get("资产负债率")),
@@ -83,6 +92,10 @@ def _snapshot(row: StockFinancial) -> Snapshot:
         revenue_yoy=row.revenue_yoy,
         net_profit=row.net_profit,
         net_profit_yoy=row.net_profit_yoy,
+        deducted_net_profit=row.deducted_net_profit,
+        deducted_net_profit_yoy=row.deducted_net_profit_yoy,
+        eps=row.eps,
+        ocf_per_share=row.ocf_per_share,
         roe=row.roe,
         gross_margin=row.gross_margin,
         debt_ratio=row.debt_ratio,

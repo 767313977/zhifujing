@@ -373,22 +373,40 @@ def _check_fundamental(
         )
 
     ret20, avg5, p90 = _heat(daily)
-    weak_profit = snapshot.net_profit is not None and snapshot.net_profit < 0
+    # 优先用**扣非**：一次性收益/损失会把净利同比带偏，扣非才是经营口径。
+    # 扣非缺失时才退回净利。
+    if snapshot.deducted_net_profit is not None:
+        profit = snapshot.deducted_net_profit
+        profit_yoy = snapshot.deducted_net_profit_yoy
+        profit_label = "扣非"
+    else:
+        profit = snapshot.net_profit
+        profit_yoy = snapshot.net_profit_yoy
+        profit_label = "净利"
+    weak_profit = profit is not None and profit < 0
     weak_growth = (
         snapshot.revenue_yoy is not None and snapshot.revenue_yoy <= -20
-    ) or (snapshot.net_profit_yoy is not None and snapshot.net_profit_yoy <= -30)
+    ) or (profit_yoy is not None and profit_yoy <= -30)
     hot = (ret20 is not None and ret20 >= 0.2) or (
         avg5 is not None and p90 is not None and avg5 >= p90 and avg5 >= 5
     )
 
-    profit_yi = (
-        f"{snapshot.net_profit / 1e8:.2f} 亿"
-        if snapshot.net_profit is not None
-        else "—"
-    )
+    profit_yi = f"{profit / 1e8:.2f} 亿" if profit is not None else "—"
+    parts = [
+        f"营收 {_yoy_text(snapshot.revenue_yoy)}",
+        f"{profit_label} {_yoy_text(profit_yoy)}（{profit_yi}）",
+    ]
+    if profit_label == "扣非" and snapshot.net_profit_yoy is not None:
+        parts.append(f"净利 {_yoy_text(snapshot.net_profit_yoy)}")
+    if snapshot.ocf_per_share is not None:
+        cash = f"每股经营现金流 {snapshot.ocf_per_share:.3f} 元"
+        if snapshot.eps is not None:
+            cash += f" / EPS {snapshot.eps:.3f} 元"
+        if snapshot.ocf_per_share < 0:
+            cash += "（为负）"
+        parts.append(cash)
     evidence = (
-        f"{snapshot.report_period} 报告期：营收 {_yoy_text(snapshot.revenue_yoy)}、"
-        f"净利 {_yoy_text(snapshot.net_profit_yoy)}（{profit_yi}）；"
+        f"{snapshot.report_period} 报告期：" + "、".join(parts) + "；"
         f"20 日 {('—' if ret20 is None else f'{ret20 * 100:+.1f}%')}、"
         f"近 5 日均换手 {('—' if avg5 is None else f'{avg5:.2f}%')}"
     )

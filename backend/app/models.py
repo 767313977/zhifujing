@@ -161,6 +161,12 @@ class StockFinancial(Base):
     revenue_yoy: Mapped[float | None] = mapped_column(Float)
     net_profit: Mapped[float | None] = mapped_column(Float)
     net_profit_yoy: Mapped[float | None] = mapped_column(Float)
+    # 扣非口径：剔除一次性损益后的经营利润（同一次请求里就有，不额外花调用）
+    deducted_net_profit: Mapped[float | None] = mapped_column(Float)
+    deducted_net_profit_yoy: Mapped[float | None] = mapped_column(Float)
+    # 每股指标：EPS 与每股经营现金流（元/股）。后者 < EPS 或为负 = 利润含金量差
+    eps: Mapped[float | None] = mapped_column(Float)
+    ocf_per_share: Mapped[float | None] = mapped_column(Float)
     roe: Mapped[float | None] = mapped_column(Float)
     gross_margin: Mapped[float | None] = mapped_column(Float)
     debt_ratio: Mapped[float | None] = mapped_column(Float)
