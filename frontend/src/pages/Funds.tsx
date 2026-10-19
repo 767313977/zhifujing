@@ -127,6 +127,11 @@ function signedAmount(value: number | null | undefined): string {
   return `${value > 0 ? '+' : ''}${fmtAmount(value)}`
 }
 
+/** 整数带符号：期指是「手」，不走金额格式。 */
+function signedInt(value: number): string {
+  return `${value > 0 ? '+' : ''}${fmtInt(value)}`
+}
+
 /**
  * 「面板的数据日 ≠ 页面日期」时要标出来的日期，否则为 null。
  *
@@ -318,6 +323,29 @@ export default function Funds() {
     mainInflow != null && overview?.main_net_inflow_prev != null
       ? mainInflow - overview.main_net_inflow_prev
       : null
+  // 期指明细按「中信 / 主要玩家」两组分开，与第三方那张图的口径一致
+  const futuresGroups = [
+    {
+      label: '中信期货',
+      change: futures.reduce((sum, item) => sum + item.citic_change, 0),
+      total: futures.reduce((sum, item) => sum + item.citic_net_short, 0),
+      rows: futures.map((item) => ({
+        name: item.name,
+        change: item.citic_change,
+        net: item.citic_net_short,
+      })),
+    },
+    {
+      label: '主要玩家（前20）',
+      change: futures.reduce((sum, item) => sum + item.change, 0),
+      total: futuresTotal ?? 0,
+      rows: futures.map((item) => ({
+        name: item.name,
+        change: item.change,
+        net: item.net_short,
+      })),
+    },
+  ]
   const financingTotal = overview?.financing_total ?? null
   const buyTotal = overview?.financing_buy_total ?? null
   const financingChange = overview?.financing_change ?? null
@@ -456,6 +484,55 @@ export default function Funds() {
             </>
           )}
         </div>
+
+        {/* ---- 期指持仓明细：中信 / 主要玩家两组 ---- */}
+        {futures.length > 0 && (
+          <Panel
+            title="期指持仓（净空，手）"
+            meta={
+              <span className="num text-fg-muted">
+                {overview?.futures_date ?? '—'} 收盘
+              </span>
+            }
+            delay={60}
+          >
+            <div className="grid grid-cols-1 gap-px bg-line-soft sm:grid-cols-2">
+              {futuresGroups.map((group) => (
+                <div key={group.label} className="bg-ink-900 px-4 py-3">
+                  <div className="mb-2 text-[13px] text-fg-muted">
+                    {group.label}
+                  </div>
+                  <div className="space-y-1">
+                    {group.rows.map((row) => (
+                      <div
+                        key={row.name}
+                        className="flex items-baseline justify-between gap-4 text-[13px]"
+                      >
+                        <span>{row.name}</span>
+                        <span className="num">
+                          <span className={toneOf(row.change)}>
+                            {signedInt(row.change)}
+                          </span>
+                          <span className="ml-3">{fmtInt(row.net)}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex items-baseline justify-between border-t border-line-soft pt-2 text-[13px]">
+                    <span className="text-fg-muted">今日累计</span>
+                    <span className={`num ${toneOf(group.change)}`}>
+                      {signedInt(group.change)}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between text-[13px]">
+                    <span className="text-fg-muted">净空单总数</span>
+                    <span className="num">{fmtInt(group.total)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        )}
 
         {/* ---- 走势图 ---- */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

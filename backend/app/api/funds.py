@@ -188,11 +188,16 @@ def overview(
                 name=FUTURES_VARIETIES[row.variety],
                 net_short=row.top_net_short,
                 change=row.top_change,
+                citic_net_short=row.citic_net_short,
+                citic_change=row.citic_change,
             )
             for row in sorted(
                 rows, key=lambda item: order.get(item.variety, len(order))
             )
-            if row.top_net_short is not None and row.top_change is not None
+            if row.top_net_short is not None
+            and row.top_change is not None
+            and row.citic_net_short is not None
+            and row.citic_change is not None
         ]
 
     # 大盘主力净流入 = 全市场 DDE 主力净流入额之和（iFinD 口径，元）

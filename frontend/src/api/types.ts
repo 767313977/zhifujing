@@ -1972,10 +1972,14 @@ export interface FuturesNetShort {
   variety: string
   /** 沪深300 / 中证500 / 上证50 / 中证1000 */
   name: string
-  /** 前 20 席位净空（手） */
+  /** 主要玩家（前 20 席位）净空（手） */
   net_short: number
-  /** 当日变化：正 = 加空，负 = 减空 */
+  /** 主要玩家当日变化：正 = 加空，负 = 减空 */
   change: number
+  /** 中信期货单席位净空（手） */
+  citic_net_short: number
+  /** 中信期货当日变化 */
+  citic_change: number
 }
 
 /** 资金面走势。数组与 dates 一一对应，缺失为 null（图上必须断开，不能画成 0）。 */

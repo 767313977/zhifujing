@@ -2067,13 +2067,16 @@ class MarginSnapshot(BaseModel):
 
 
 class FuturesNetShort(BaseModel):
-    """一个股指期货品种的前 20 席位净空（手）。"""
+    """一个股指期货品种的净空（手）：中信期货与主要玩家各一套。"""
 
     variety: str  # IF / IC / IH / IM
     name: str  # 沪深300 / 中证500 / 上证50 / 中证1000
+    # 主要玩家 = 前 20 席位合计
     net_short: int
-    # 当日变化：正 = 加空，负 = 减空
-    change: int
+    change: int  # 当日变化：正 = 加空，负 = 减空
+    # 中信期货单席位
+    citic_net_short: int
+    citic_change: int
 
 
 class FundFlowOverview(BaseModel):
