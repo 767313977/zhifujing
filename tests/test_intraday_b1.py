@@ -11,6 +11,7 @@ from app.jobs.intraday_b1 import (
     _scan,
     build_card,
 )
+from app.services.patterns import PATTERNS, _volume_engulf, build_bars
 
 DAY = date(2026, 10, 19)
 
@@ -206,6 +207,30 @@ def test_scan_rejects_engulf_without_volume():
         {"600000": history}, {"600000": _engulf_snapshot(volume=1e6)}
     )
     assert engulfs == []
+
+
+def test_volume_engulf_registered_in_volume_group():
+    pattern = next(item for item in PATTERNS if item.key == "volume_engulf")
+    assert pattern.name == "放量阳包阴"
+    assert pattern.group == "量价"
+
+
+def test_volume_engulf_signal_detail():
+    bars = build_bars(
+        [*_engulf_history(), _as_record(_engulf_snapshot())], "600000"
+    )
+    signal = _volume_engulf(bars)
+    assert signal is not None
+    assert signal.pattern == "volume_engulf"
+    assert signal.detail["volume_ratio"] == 2.5
+    assert signal.score >= 50
+
+
+def test_volume_engulf_requires_more_volume_than_yesterday():
+    bars = build_bars(
+        [*_engulf_history(), _as_record(_engulf_snapshot(volume=1e6))], "600000"
+    )
+    assert _volume_engulf(bars) is None
 
 
 def test_build_card_uses_single_b1_table_sorted_by_score():

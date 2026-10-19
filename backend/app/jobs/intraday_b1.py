@@ -1,16 +1,17 @@
 """知行B1 盘中预览（2026-10-19 加）。
 
 14:50 拉一次全市场当天快照，在内存里拼成「历史 + 当日一根」的 K 线序列，只算
-**知行B1 那 7 个形态**，结果直接推飞书。
+**知行B1 那 7 个形态 + 放量阳包阴**，结果直接推飞书。
 
 ## 为什么不写库
 
-用户要求「不用出现在网站里」。所以这条链路：
+盘中预览**不落任何库**：
 
 - **不写 `stock_daily`** —— 盘中那一根是半根 K 线（14:50 时还差 10 分钟），
   写进去会让个股页 / 形态页显示未收盘的价；
 - **不写 `pattern_hit`** —— `scan_patterns.scan` 是「先删后插」，盘中跑会把当天
-  正式榜单换成半根 K 线算出来的结果。15:05 的正式采集照常按收盘口径重扫。
+  正式榜单换成半根 K 线算出来的结果。15:05 的正式采集照常按收盘口径重扫
+  （放量阳包阴已注册进形态库「量价」组，正式榜单里也会有它）。
 
 ## 成本与口径
 
@@ -41,7 +42,13 @@ from app.jobs.scan_patterns import (
 )
 from app.models import CollectLog, TradeCalendar
 from app.services.coverage import coverage_ok
-from app.services.patterns import MIN_SCORE, PATTERNS, _candle, build_bars, is_st
+from app.services.patterns import (
+    MIN_SCORE,
+    PATTERNS,
+    _volume_engulf as _detect_volume_engulf,
+    build_bars,
+    is_st,
+)
 from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.ifind import IfindClient
 
@@ -124,39 +131,6 @@ def _as_record(row: dict) -> dict:
     }
 
 
-def _volume_engulf(bars) -> float | None:
-    """放量阳包阴：**阳线实体反包阴线实体，且阳线成交量 > 阴线成交量**。
-
-    判定只用最近两根 K 线（用户 2026-10-19 给定的定义）：
-
-    1. 昨日阴线（收 < 开）、今日阳线（收 > 开）；
-    2. 今日实体完全包住昨日实体：今开 ≤ 昨收，今收 ≥ 昨开；
-    3. 今日成交量 **大于** 昨日成交量。
-
-    刻意不加「近 5 日回调 ≥3%」「实体 ≥1.3 倍」「收盘在振幅上半部」这些额外条件
-    —— 项目里那套（`patterns._bullish_engulf_confirm`）服务于「金叉大阳」的确认
-    标签，与这里的口径不是一回事。
-
-    返回「今量 / 昨量」的倍数（≥1），不符合返回 None。
-    """
-    if len(bars) < 2:
-        return None
-    prev_open, _, _, prev_close, prev_body, _, _, _ = _candle(bars, -2)
-    open_, _, _, close, body, _, _, _ = _candle(bars)
-    if prev_close >= prev_open or close <= open_:
-        return None
-    if prev_body <= 0 or body <= 0:
-        return None
-    if not (open_ <= prev_close and close >= prev_open):
-        return None
-
-    prev_volume = float(bars.volume[-2])
-    volume = float(bars.volume[-1])
-    if prev_volume <= 0 or volume <= prev_volume:
-        return None
-    return volume / prev_volume
-
-
 def _scan(
     history: dict[str, list[dict]],
     snapshot: dict[str, dict],
@@ -168,9 +142,9 @@ def _scan(
     返回 `({pattern: [命中]}, [放量阳包阴])`。`dropped` 是外部已判定要剔除的代码
     （大市值票），与 `scan_patterns.scan` 同口径。纯函数，不发请求、不碰数据库。
 
-    「放量阳包阴」复用 `patterns._bullish_engulf_confirm`（含「近 5 日回调 ≥3%」
-    前置 + 吞没形状 + 收盘落在振幅上半部），再叠加成交量 ≥ 5 日均量 ×
-    `ENGULF_VOLUME_MULT`。它是**推送专用**，不注册成形态、不落 `pattern_hit`。
+    「放量阳包阴」直接用形态库里的 `patterns._volume_engulf`（「量价」组）——
+    与站点、每日形态扫描同一份判定，不另写一遍。盘中只是**不落库**：结果只进
+    推送，`pattern_hit` 仍由 15:05 的正式扫描按收盘口径写。
     """
     dropped = dropped or set()
     hits: dict[str, list[dict]] = {key: [] for key in B1_KEYS}
@@ -207,13 +181,13 @@ def _scan(
             )
 
         try:
-            ratio = _volume_engulf(bars)
+            signal = _detect_volume_engulf(bars)
         except Exception:  # noqa: BLE001 - 同上
             logger.warning("阳包阴判定失败（%s）", code, exc_info=True)
-            ratio = None
-        if ratio is None:
+            signal = None
+        if signal is None:
             continue
-        if not _signal_allowed("bullish_engulf", code, set(), set()):
+        if not _signal_allowed(signal.pattern, code, set(), set()):
             continue
         engulfs.append(
             {
@@ -221,7 +195,7 @@ def _scan(
                 "name": record.get("name") or code,
                 "close": record["close"],
                 "pct_chg": record["pct_chg"],
-                "volume_ratio": round(ratio, 2),
+                "volume_ratio": float(signal.detail.get("volume_ratio") or 0.0),
             }
         )
 

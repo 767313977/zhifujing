@@ -202,6 +202,8 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   platform_width: ['平台振幅', true],
   // 量价
   pct_chg: ['当日涨幅', false], // 后端存的就是百分数（10.02 = +10.02%）
+  // 放量阳包阴（2026-10-19）：倍量 = 今量 / 昨量；实体比复用下面蜡烛组已有的 `body_ratio`
+  volume_ratio: ['倍量（今/昨）', false],
   pullback_days: ['回调天数', false],
   drop: ['回调幅度', true],
   // 几何

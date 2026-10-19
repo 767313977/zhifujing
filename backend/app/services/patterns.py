@@ -1571,6 +1571,53 @@ def _volume_surge(bars: Bars) -> Signal | None:
     )
 
 
+def _volume_engulf(bars: Bars) -> Signal | None:
+    """放量阳包阴：阳线实体反包阴线实体，且**阳线成交量 > 阴线成交量**。
+
+    2026-10-19 用户定义。它与 2026-10-14 撤下的裸「阳包阴」不是一回事 ——
+    那一版不看量（信号 3963 条、10 日超额 +0.31%，按当时的噪声线撤下）；
+    这里要求今量严格大于昨量，信号会少一大截。
+
+    判定只用最近两根 K 线，不加「前期回调」之类的前置：
+
+    1. 昨日阴线（收 < 开）、今日阳线（收 > 开）；
+    2. 今日实体完全包住昨日实体：今开 ≤ 昨收，今收 ≥ 昨开；
+    3. 今日成交量 > 昨日成交量。
+
+    评分：50 分起步（刚好达标），倍量（今/昨）最多 +30，实体比最多 +20。
+    """
+    if len(bars) < 2:
+        return None
+
+    prev_open, _, _, prev_close, prev_body, _, _, _ = _candle(bars, -2)
+    open_, _, low, close, body, _, _, _ = _candle(bars)
+    if prev_close >= prev_open or close <= open_:
+        return None
+    if prev_body <= 0 or body <= 0:
+        return None
+    if not (open_ <= prev_close and close >= prev_open):
+        return None
+
+    prev_volume = float(bars.volume[-2])
+    volume = float(bars.volume[-1])
+    if prev_volume <= 0 or volume <= prev_volume:
+        return None
+
+    ratio = volume / prev_volume
+    body_ratio = body / prev_body
+    score = 50.0 + min(30.0, (ratio - 1.0) * 30.0) + min(20.0, (body_ratio - 1.0) * 20.0)
+    return Signal(
+        "volume_engulf",
+        round(score, 1),
+        {"breakout": round(prev_open, 2), "support": round(low, 2)},
+        {
+            "volume_ratio": round(ratio, 2),
+            "body_ratio": round(body_ratio, 2),
+            "pct_chg": round(float(bars.pct_chg[-1]), 2),
+        },
+    )
+
+
 def _dry_pullback(bars: Bars) -> Signal | None:
     """缩量回踩：高位回调但量能明显萎缩，且没跌破 MA20。"""
     if len(bars) < MA_PERIODS[-1] + DRY_PULLBACK_UP_WINDOW + DRY_PULLBACK_MAX_DAYS:
@@ -5940,6 +5987,9 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("volume_dry_bottom", "地量见底", "量价", _volume_dry_bottom),
     Pattern("shrink_limit_up", "缩量涨停", "量价", _shrink_limit_up),
     Pattern("volume_stall", "放量滞涨", "量价", _volume_stall),
+    # 2026-10-19 用户定义：反包 + 今量 > 昨量（与 10-14 撤下的裸「阳包阴」不同，
+    # 那一版不看量；判定见 `_volume_engulf`）
+    Pattern("volume_engulf", "放量阳包阴", "量价", _volume_engulf),
     Pattern("v_bottom", "V 型底", "几何", _v_bottom),
     Pattern("round_bottom", "圆弧底", "几何", _round_bottom),
     Pattern("triple_bottom", "三重底", "几何", _triple_bottom),
