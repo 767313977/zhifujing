@@ -190,7 +190,8 @@ def _format(
                 f" 现价 {item['close']:.2f}（{item['pct_chg']:+.2f}%）"
             )
         if len(items) > MAX_PER_PATTERN:
-            lines.append(f"- 其余 {len(items) - MAX_PER_PATTERN} 只未列出")
+            # 不带 `-`：和上面的命中项混在同一个列表里会被误读成「又一只」
+            lines.append(f"（其余 {len(items) - MAX_PER_PATTERN} 只未列出）")
     return "\n".join(lines)
 
 
