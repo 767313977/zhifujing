@@ -43,6 +43,7 @@ from app.jobs.scan_patterns import (
 from app.models import CollectLog, TradeCalendar
 from app.services.coverage import coverage_ok
 from app.services.patterns import (
+    ENGULF_MIN_VOLUME_RATIO,
     MIN_SCORE,
     PATTERNS,
     _volume_engulf as _detect_volume_engulf,
@@ -365,7 +366,7 @@ def build_card(
                     "tag": "lark_md",
                     "content": (
                         f"**放量阳包阴** {len(engulfs)} 只"
-                        "（阳线量 ÷ 阴线量 > 1，按倍数排序）"
+                        f"（倍量 ≥ {ENGULF_MIN_VOLUME_RATIO:.1f}，按倍数排序）"
                     ),
                 },
             }
@@ -418,7 +419,7 @@ def _format(
         lines.append("")
         lines.append(
             f"**放量阳包阴** {len(engulfs)} 只"
-            "（阳线量 ÷ 阴线量 > 1，按倍数排序）"
+            f"（倍量 ≥ {ENGULF_MIN_VOLUME_RATIO:.1f}，按倍数排序）"
         )
         for item in engulfs[:MAX_ENGULF_ROWS]:
             lines.append(

@@ -233,6 +233,21 @@ def test_volume_engulf_requires_more_volume_than_yesterday():
     assert _volume_engulf(bars) is None
 
 
+def test_volume_engulf_requires_ratio_at_least_1_2():
+    """门槛 1.2：1.1 倍不算放量，正好 1.2 倍通过。"""
+    bars = build_bars(
+        [*_engulf_history(), _as_record(_engulf_snapshot(volume=1.1e6))], "600000"
+    )
+    assert _volume_engulf(bars) is None
+
+    bars = build_bars(
+        [*_engulf_history(), _as_record(_engulf_snapshot(volume=1.2e6))], "600000"
+    )
+    signal = _volume_engulf(bars)
+    assert signal is not None
+    assert signal.detail["volume_ratio"] == 1.2
+
+
 def test_build_card_uses_single_b1_table_sorted_by_score():
     """飞书一张卡片最多挂 5 张表，7 个形态各自成表会报错 —— B1 只能是一张总表。"""
     hits = {key: [] for key in B1_KEYS}
