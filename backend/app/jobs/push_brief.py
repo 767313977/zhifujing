@@ -30,11 +30,14 @@ from app.config import Settings, get_settings
 from app.db import session_scope
 from app.models import (
     CollectLog,
+    FuturesPosition,
     IndexDaily,
     LimitPool,
+    MarginDaily,
     MarketSentiment,
     PatternHit,
     SectorDaily,
+    StockDde,
 )
 from app.services import trade_plan
 from app.services.brief_ai import ai_comment
@@ -161,18 +164,83 @@ def _sentiment_block(session: Session, trade_date: date) -> str:
     )
     if row is None:
         return ""
-    return _section(
-        "情绪",
-        [
-            f"- 涨停 {_count(row.limit_up_count)} · 跌停 {_count(row.limit_down_count)}"
-            f" · 炸板 {_count(row.broken_count)}",
-            f"- 封板率 {_rate(row.seal_rate)} · 炸板率 {_rate(row.broken_rate)}",
-            f"- 最高连板 {_count(row.max_consecutive)} 板",
-            f"- 上涨 {_count(row.up_count)} / 下跌 {_count(row.down_count)}",
-            f"- 两市成交额 {_amount(row.total_amount)}",
-            f"- 昨日涨停股今日均涨 {_pct(row.yesterday_limit_today_avg)}",
-        ],
+    lines = [
+        f"- 涨停 {_count(row.limit_up_count)} · 跌停 {_count(row.limit_down_count)}"
+        f" · 炸板 {_count(row.broken_count)}",
+        f"- 封板率 {_rate(row.seal_rate)} · 炸板率 {_rate(row.broken_rate)}",
+        f"- 最高连板 {_count(row.max_consecutive)} 板",
+        f"- 上涨 {_count(row.up_count)} / 下跌 {_count(row.down_count)}",
+        f"- 两市成交额 {_amount(row.total_amount)}",
+        f"- 昨日涨停股今日均涨 {_pct(row.yesterday_limit_today_avg)}",
+    ]
+    # 资金面两项（2026-10-19 加）：对应「主力净流出 / 两融余额」。
+    # 主力净流入是**全市场 DDE 主力净流入额之和**（iFinD 口径），与东财那个
+    # 数字会有小幅差异，所以要标口径。
+    inflow = session.scalar(
+        select(func.sum(StockDde.net_inflow)).where(
+            StockDde.trade_date == trade_date
+        )
     )
+    if inflow is not None:
+        lines.append(f"- 主力净流入 {_amount(inflow)}（iFinD 口径）")
+    financing = session.scalar(
+        select(func.sum(MarginDaily.financing_balance)).where(
+            MarginDaily.trade_date == trade_date
+        )
+    )
+    securities = session.scalar(
+        select(func.sum(MarginDaily.securities_balance)).where(
+            MarginDaily.trade_date == trade_date
+        )
+    )
+    if financing is not None or securities is not None:
+        total = (financing or 0.0) + (securities or 0.0)
+        lines.append(f"- 两融余额 {total:.0f} 亿")
+    return _section("情绪", lines)
+
+
+#: 期指品种 → 中文名。展示顺序即这里的顺序
+FUTURES_NAMES = {"IF": "沪深300", "IC": "中证500", "IH": "上证50", "IM": "中证1000"}
+
+
+def _lots(value: int | None) -> str:
+    return DASH if value is None else f"{value:,}"
+
+
+def _change(value: int | None) -> str:
+    if value is None:
+        return ""
+    if value == 0:
+        return "（持平）"
+    return f"（加空 {value:,}）" if value > 0 else f"（减空 {-value:,}）"
+
+
+def _futures_block(session: Session, trade_date: date) -> str:
+    """期指前 20 席位净空。
+
+    中金所约收盘后 16:00 才发布，而简报 15:05 就发 —— 所以这里取**最近一份**
+    并在标题里标出实际日期，避免把昨天的持仓读成今天的。
+    """
+    day = session.scalar(
+        select(func.max(FuturesPosition.trade_date)).where(
+            FuturesPosition.trade_date <= trade_date
+        )
+    )
+    if day is None:
+        return ""
+    rows = {
+        row.variety: row
+        for row in session.scalars(
+            select(FuturesPosition).where(FuturesPosition.trade_date == day)
+        )
+    }
+    lines = [
+        f"- {label}：中信 {_lots(item.citic_net_short)}{_change(item.citic_change)}"
+        f" · 前20 {_lots(item.top_net_short)}{_change(item.top_change)}"
+        for variety, label in FUTURES_NAMES.items()
+        if (item := rows.get(variety)) is not None and item.top_net_short is not None
+    ]
+    return _section(f"期指持仓（净空，手）· {day.isoformat()}", lines)
 
 
 def _ladder_block(session: Session, trade_date: date) -> str:
@@ -406,6 +474,8 @@ def build_brief(trade_date: date) -> str:
             _quota_block(),
             _index_block(session, trade_date),
             _sentiment_block(session, trade_date),
+            # 期指持仓：中金所 16:00 才发布，简报里标的是**最近一份**的日期
+            _futures_block(session, trade_date),
             _ladder_block(session, trade_date),
             _theme_block(session, trade_date),
             _sector_block(session, trade_date),

@@ -1389,6 +1389,14 @@ class DailyCollector:
         # ETF 份额与行情：两所都要收盘后才发布，盘后包也要数小时 —— 放在这一趟
         # （17:30 试一次、19:30 再试一次）。零 iFinD 配额。
         steps["etf"] = self._step(target, "etf", lambda: self.collect_etf(target))
+        # 期指持仓（中金所前 20 席位）：约 16:00 才发布，同样放这一趟。零配额
+        from app.jobs.collect_futures_position import collect as collect_futures_position
+
+        steps["futures_position"] = self._step(
+            target,
+            "futures_position",
+            lambda: collect_futures_position(target, self.settings),
+        )
         if quota_level(settings=self.settings) < QuotaLevel.CORE_ONLY:
             steps["margin"] = self._step(target, "margin", lambda: self.collect_margin(target))
             steps["hsgt"] = self._step(target, "hsgt", lambda: self.collect_hsgt(target))

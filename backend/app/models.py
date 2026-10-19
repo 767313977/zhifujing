@@ -1052,3 +1052,31 @@ class AuctionSnapshot(Base):
     # 逐分钟：[[HHMM, price, amount], …]（amount 为当日累计成交额，元）
     samples: Mapped[list | None] = mapped_column(JSON)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class FuturesPosition(Base):
+    """股指期货前 20 席位的净空持仓（中金所每日持仓排名，2026-10-19 加）。
+
+    来源：`akshare.get_cffex_rank_table`（中金所官网），**零 iFinD 配额**。
+    中金所约收盘后 16:00 发布，所以采集挂在 17:30 那一趟（`run_late`）。
+
+    **口径**（与第三方截图逐项对数验证过）：
+
+    - 每个品种当天有多个合约（当月 / 下月 / 当季 / 下季），逐合约取 `rank == 999`
+      那一行 —— 它是中金所**直接给出的前 20 名合计**。⚠️ 不要自己把 rank 1~20
+      求和：返回值里那条合计行也在 DataFrame 里，再加一遍数值正好翻倍。
+    - `top_net_short` = 前 20 持卖单量 − 前 20 持买单量，正数 = 净空。
+    - `top_change` = 同一行的当日变化：正 = 加空，负 = 减空。
+    - `citic_*` 同口径，但只取席位「中信期货(代客)」那一行（多空两个榜分别取，
+      同一行的多头榜与空头榜不是同一家）。
+    - 四个合约按品种加总后落一行，单位：手。
+    """
+
+    __tablename__ = "futures_position"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    variety: Mapped[str] = mapped_column(String(4), primary_key=True)  # IF/IC/IH/IM
+    top_net_short: Mapped[int | None] = mapped_column(Integer)  # 前20净空
+    top_change: Mapped[int | None] = mapped_column(Integer)  # 前20当日变化
+    citic_net_short: Mapped[int | None] = mapped_column(Integer)  # 中信净空
+    citic_change: Mapped[int | None] = mapped_column(Integer)  # 中信当日变化
