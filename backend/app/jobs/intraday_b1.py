@@ -1,0 +1,239 @@
+"""知行B1 盘中预览（2026-10-19 加）。
+
+14:50 拉一次全市场当天快照，在内存里拼成「历史 + 当日一根」的 K 线序列，只算
+**知行B1 那 7 个形态**，结果直接推飞书。
+
+## 为什么不写库
+
+用户要求「不用出现在网站里」。所以这条链路：
+
+- **不写 `stock_daily`** —— 盘中那一根是半根 K 线（14:50 时还差 10 分钟），
+  写进去会让个股页 / 形态页显示未收盘的价；
+- **不写 `pattern_hit`** —— `scan_patterns.scan` 是「先删后插」，盘中跑会把当天
+  正式榜单换成半根 K 线算出来的结果。15:05 的正式采集照常按收盘口径重扫。
+
+## 成本与口径
+
+- iFinD：14 次调用（与正式日线采集同一套前缀分段，全市场约 5,200 只）。
+- 本地计算：约 1~2 秒（只算 7 个形态，不是全部 47 个）。
+- 量能是盘中的（差最后约 10 分钟），所以「缩量」类信号会比收盘口径略多。
+  推送里写明了这一点，别把它当收盘名单用。
+
+配额紧张时直接跳过：这是可选增强，不该和当天的主线采集抢额度。
+"""
+
+import logging
+import time
+from datetime import date, datetime
+
+from sqlalchemy import select
+
+from app.config import Settings, get_settings
+from app.db import session_scope
+from app.jobs.collect_kline import _snapshot_query, _snapshot_row
+from app.jobs.collect_universe import crawl_prefixes, load_codes
+from app.jobs.push_brief import already_pushed, send_markdown
+from app.jobs.scan_patterns import (
+    PATTERN_MAX_TOTAL_MV,
+    _load_bars,
+    _over_cap_codes,
+    _signal_allowed,
+)
+from app.models import CollectLog, TradeCalendar
+from app.services.coverage import coverage_ok
+from app.services.patterns import MIN_SCORE, PATTERNS, build_bars, evaluate, is_st
+from app.services.usage import QuotaLevel, level_label, quota_level
+from app.sources.ifind import IfindClient
+
+logger = logging.getLogger(__name__)
+
+#: `collect_log` 里的任务名
+TASK = "b1_intraday"
+
+#: 只推这 7 个（知行超级B1 的子信号），顺序与形态页一致
+B1_KEYS = (
+    "zgnb_turn",
+    "zgnb_shrink",
+    "zgnb_origin",
+    "zgnb_super_shrink",
+    "zgnb_pull_white",
+    "zgnb_pull_super",
+    "zgnb_pull_yellow",
+)
+NAMES = {pattern.key: pattern.name for pattern in PATTERNS}
+
+#: 每个形态最多列几只。推送是给人扫一眼去下单的，列几十只反而没法用
+MAX_PER_PATTERN = 10
+
+
+def _is_trade_day(day: date) -> bool:
+    with session_scope() as session:
+        return (
+            session.scalar(
+                select(TradeCalendar.trade_date).where(TradeCalendar.trade_date == day)
+            )
+            is not None
+        )
+
+
+def _record(day: date, status: str, message: str) -> None:
+    with session_scope() as session:
+        session.add(
+            CollectLog(trade_date=day, task=TASK, status=status, message=message)
+        )
+
+
+def _fetch_snapshot(day: date, settings: Settings) -> tuple[dict[str, dict], int]:
+    """拉全市场当天快照，**只返回内存行，不写库**。返回 `({代码: 行}, 调用次数)`。"""
+    client = IfindClient(settings)
+    raw, calls = crawl_prefixes(
+        client, lambda prefix: _snapshot_query(prefix, day), f"{day} 盘中"
+    )
+    rows: dict[str, dict] = {}
+    for code, raw_row in raw.items():
+        row = _snapshot_row(raw_row, code, day)
+        if row is not None:
+            rows[code] = row
+    return rows, calls
+
+
+def _as_record(row: dict) -> dict:
+    """快照行 → 与 `_load_bars` 同口径的一根 K 线（键是 `date` 不是 `trade_date`）。"""
+    return {
+        "date": row["trade_date"],
+        "name": row.get("name"),
+        "open": row["open"],
+        "high": row["high"],
+        "low": row["low"],
+        "close": row["close"],
+        "volume": row.get("volume"),
+        "amount": row.get("amount"),
+        "pct_chg": row["pct_chg"],
+    }
+
+
+def _scan(
+    history: dict[str, list[dict]],
+    snapshot: dict[str, dict],
+    *,
+    dropped: set[str] | None = None,
+) -> dict[str, list[dict]]:
+    """把当天快照拼在历史后面，只算 B1。返回 `{pattern: [命中]}`（按分数降序）。
+
+    `dropped` 是外部已判定要剔除的代码（大市值票），与 `scan_patterns.scan` 同口径。
+    纯函数，不发请求、不碰数据库 —— 便于单测。
+    """
+    dropped = dropped or set()
+    hits: dict[str, list[dict]] = {key: [] for key in B1_KEYS}
+    for code, row in snapshot.items():
+        records = history.get(code)
+        if not records or code in dropped:
+            continue
+        record = _as_record(row)
+        if is_st(record.get("name")):
+            continue
+
+        bars = build_bars([*records, record], code)
+        for signal in evaluate(bars, min_score=MIN_SCORE):
+            if signal.pattern not in hits:
+                continue
+            if not _signal_allowed(signal.pattern, code, set(), set()):
+                continue
+            hits[signal.pattern].append(
+                {
+                    "code": code,
+                    "name": record.get("name") or code,
+                    "score": round(signal.score, 1),
+                    "close": record["close"],
+                    "pct_chg": record["pct_chg"],
+                }
+            )
+
+    for items in hits.values():
+        items.sort(key=lambda item: item["score"], reverse=True)
+    return hits
+
+
+def _format(
+    day: date, clock: str, hits: dict[str, list[dict]], calls: int
+) -> str:
+    """推送正文。标题必须含「收盘复盘」（群机器人关键词校验）。"""
+    total = sum(len(items) for items in hits.values())
+    lines = [
+        f"**收盘复盘 · 知行B1 盘中预览** · {day.isoformat()} {clock}",
+        f"盘中快照（当天量能未走完，尾盘可能变化），{calls} 次调用。",
+    ]
+    if total == 0:
+        lines += ["", "今日知行B1 暂无命中。"]
+        return "\n".join(lines)
+
+    lines.append("")
+    for key in B1_KEYS:
+        items = hits.get(key) or []
+        if not items:
+            continue
+        lines.append(f"**{NAMES.get(key, key)}** {len(items)} 只")
+        for item in items[:MAX_PER_PATTERN]:
+            lines.append(
+                f"- {item['name']} {item['code']}（{item['score']:.0f} 分）"
+                f" 现价 {item['close']:.2f}（{item['pct_chg']:+.2f}%）"
+            )
+        if len(items) > MAX_PER_PATTERN:
+            lines.append(f"- 其余 {len(items) - MAX_PER_PATTERN} 只未列出")
+    return "\n".join(lines)
+
+
+def run(settings: Settings | None = None, *, now: datetime | None = None) -> dict:
+    """跑一次盘中预览。失败只记录，不抛异常（定时任务不该把调度器带崩）。"""
+    settings = settings or get_settings()
+    moment = now or datetime.now()
+    day = moment.date()
+
+    if not settings.b1_intraday_enabled:
+        return {"status": "skipped", "reason": "盘中预览已关闭"}
+    if not _is_trade_day(day):
+        return {"status": "skipped", "reason": f"{day} 不是交易日"}
+    if already_pushed(day, TASK):
+        return {"status": "skipped", "reason": "今天已经推过"}
+
+    level = quota_level(settings=settings)
+    if level >= QuotaLevel.PAUSE_HIT_DDE:
+        reason = f"配额让路，跳过盘中预览：{level_label(level)}"
+        logger.info(reason)
+        return {"status": "skipped", "reason": reason}
+
+    started = time.monotonic()
+    try:
+        snapshot, calls = _fetch_snapshot(day, settings)
+    except Exception as exc:  # noqa: BLE001 - 记一条失败就结束
+        _record(day, "failed", f"盘中快照失败：{exc}")
+        logger.warning("知行B1 盘中快照失败：%s", exc)
+        return {"status": "failed", "error": str(exc)}
+
+    pool = len(load_codes())
+    if pool and not coverage_ok(len(snapshot), pool):
+        message = f"只取到 {len(snapshot)}/{pool} 只（{len(snapshot) / pool:.0%}），数据不全，本次不推名单"
+        _record(day, "failed", message)
+        logger.warning("知行B1 盘中预览：%s", message)
+        return {"status": "failed", "reason": message}
+
+    history = _load_bars(day, set(load_codes()) | set(snapshot))
+    dropped = _over_cap_codes(PATTERN_MAX_TOTAL_MV)
+    hits = _scan(history, snapshot, dropped=dropped)
+
+    clock = moment.strftime("%H:%M")
+    markdown = _format(day, clock, hits, calls)
+    result = send_markdown(markdown, settings)
+    cost = round(time.monotonic() - started, 2)
+    total = sum(len(items) for items in hits.values())
+
+    if result["ok"]:
+        message = f"{total} 条命中 / {calls} 次调用 / 用时 {cost}s"
+        _record(day, "ok", message)
+        logger.info("知行B1 盘中预览已推送：%s", message)
+        return {"status": "sent", "hits": total, "calls": calls, "cost_seconds": cost}
+
+    error = result.get("error") or "推送失败"
+    _record(day, "failed", error)
+    logger.warning("知行B1 盘中预览推送失败：%s", error)
+    return {"status": "failed", "error": error}

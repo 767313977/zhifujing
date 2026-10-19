@@ -371,6 +371,17 @@ class Settings(BaseSettings):
     alert_hour: int = 20
     alert_minute: int = 0
 
+    # ---- 知行B1 盘中预览（2026-10-19 加）----
+    #
+    # 14:50 拉一次全市场当天快照，只算知行B1 那 7 个形态，结果直接推飞书。
+    # **不写库**：`stock_daily` 与 `pattern_hit` 都不动，站点上看不到这份名单。
+    #
+    # ⚠️ 时间不能晚于 14:50：跑一轮约 80 秒（快照 15s + 本地计算 65s），
+    # 而 14:57 连续竞价就结束了。量能只差最后 10 分钟，缩量类信号会比收盘口径略多。
+    b1_intraday_enabled: bool = True
+    b1_intraday_hour: int = Field(default=14, ge=0, le=23)
+    b1_intraday_minute: int = Field(default=50, ge=0, le=59)
+
 
 @lru_cache
 def get_settings() -> Settings:

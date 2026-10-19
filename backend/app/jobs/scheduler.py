@@ -59,6 +59,8 @@ AUCTION_JOB_ID = "collect_auction"
 BACKUP_JOB_ID = "db_backup"
 # 收盘链路告警（见 config.alert_hour）：检查简报 / 尾部 / 配额，异常单独推一条。
 ALERT_JOB_ID = "close_alert"
+# 知行B1 盘中预览（见 config.b1_intraday_hour）：14:50 拉当天快照、只推飞书，不写库。
+B1_INTRADAY_JOB_ID = "b1_intraday"
 
 # 「错过 17:30 / 22:00」的回看上限（单位：交易日）。本机常年关机，重启往往发生在
 # 次日 —— 那一天的**龙虎榜 / 机构席位 / 涨停题材**（`_run_late`）与**板块成分股**
@@ -416,10 +418,26 @@ class DailyScheduler:
                 misfire_grace_time=3600,
                 coalesce=True,
             )
+        # 知行B1 盘中预览：必须在 14:57 连续竞价结束前跑完，所以只给 10 分钟宽限。
+        if self.settings.b1_intraday_enabled:
+            scheduler.add_job(
+                self._run_b1_intraday,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour=self.settings.b1_intraday_hour,
+                    minute=self.settings.b1_intraday_minute,
+                    timezone=TIMEZONE,
+                ),
+                id=B1_INTRADAY_JOB_ID,
+                name="知行B1 盘中预览",
+                replace_existing=True,
+                misfire_grace_time=600,
+                coalesce=True,
+            )
         logger.info(
             "定时采集已启动：交易日 %02d:%02d（收盘后补采 %02d:%02d / 兜底 %02d:%02d，"
             "成分股预取 %02d:%02d / 兜底 %02d:%02d；集合竞价 09:15–09:26 每分钟 + 09:31 补量比；"
-            "告警 %02d:%02d；备份 %02d:%02d）",
+            "告警 %02d:%02d；盘中B1 %02d:%02d；备份 %02d:%02d）",
             self.settings.collect_hour,
             self.settings.collect_minute,
             self.settings.late_collect_hour,
@@ -432,6 +450,8 @@ class DailyScheduler:
             self.settings.members_retry_minute,
             self.settings.alert_hour,
             self.settings.alert_minute,
+            self.settings.b1_intraday_hour,
+            self.settings.b1_intraday_minute,
             self.settings.backup_hour,
             self.settings.backup_minute,
         )
@@ -515,6 +535,16 @@ class DailyScheduler:
             logger.info("收盘链路告警检查：%s", result)
         except Exception:  # noqa: BLE001 - 告警检查失败不能把调度器带崩
             logger.exception("收盘链路告警检查失败")
+
+    def _run_b1_intraday(self) -> None:
+        """知行B1 盘中预览。失败只记日志（14:50 只有一次机会，但不该带崩调度器）。"""
+        from app.jobs.intraday_b1 import run as run_intraday
+
+        try:
+            result = run_intraday(settings=self.settings)
+            logger.info("知行B1 盘中预览：%s", result)
+        except Exception:  # noqa: BLE001 - 见上
+            logger.exception("知行B1 盘中预览失败")
 
     def _run_auction(self) -> None:
         """跑一次集合竞价采样（见 `jobs/collect_auction.py`）。
