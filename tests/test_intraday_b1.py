@@ -162,7 +162,7 @@ def test_format_lists_engulf():
         14,
     )
     assert "放量阳包阴" in text
-    assert "量比 2.31" in text
+    assert "倍量 2.31" in text
 
 
 def test_scan_skips_missing_history():
@@ -196,7 +196,8 @@ def test_scan_detects_volume_engulf():
     _, engulfs = _scan({"600000": history}, {"600000": _engulf_snapshot()})
     assert len(engulfs) == 1
     assert engulfs[0]["code"] == "600000"
-    assert engulfs[0]["volume_ratio"] >= 1.5
+    # 今量 2.5e6 ÷ 昨量 1e6
+    assert engulfs[0]["volume_ratio"] == 2.5
 
 
 def test_scan_rejects_engulf_without_volume():
@@ -264,7 +265,7 @@ def test_build_card_has_engulf_table_too():
         "代码",
         "现价",
         "涨幅",
-        "量比",
+        "倍量",
     ]
     assert tables[0]["rows"][0]["ratio"] == "2.31"
 

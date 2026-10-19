@@ -41,14 +41,7 @@ from app.jobs.scan_patterns import (
 )
 from app.models import CollectLog, TradeCalendar
 from app.services.coverage import coverage_ok
-from app.services.patterns import (
-    MIN_SCORE,
-    PATTERNS,
-    _bullish_engulf_confirm,
-    _volume_ratio,
-    build_bars,
-    is_st,
-)
+from app.services.patterns import MIN_SCORE, PATTERNS, _candle, build_bars, is_st
 from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.ifind import IfindClient
 
@@ -81,10 +74,7 @@ MAX_PER_PATTERN = 10
 #: 所以只做一张总表：按评分全局排序，形态放第一列。
 TABLE_ROWS = 20
 
-#: 「放量阳包阴」的放量倍数：当日成交量 / 前 5 日均量。
-#: 1.5 是「明显放量」的常用线；调到 2.0 会少一半信号，调到 1.2 噪声明显变多。
-ENGULF_VOLUME_MULT = 1.5
-#: 阳包阴最多列几只（与 B1 同口径，扫一眼下单用）
+#: 「放量阳包阴」最多列几只（与 B1 同口径，扫一眼下单用）
 MAX_ENGULF_ROWS = 20
 
 
@@ -132,6 +122,39 @@ def _as_record(row: dict) -> dict:
         "amount": row.get("amount"),
         "pct_chg": row["pct_chg"],
     }
+
+
+def _volume_engulf(bars) -> float | None:
+    """放量阳包阴：**阳线实体反包阴线实体，且阳线成交量 > 阴线成交量**。
+
+    判定只用最近两根 K 线（用户 2026-10-19 给定的定义）：
+
+    1. 昨日阴线（收 < 开）、今日阳线（收 > 开）；
+    2. 今日实体完全包住昨日实体：今开 ≤ 昨收，今收 ≥ 昨开；
+    3. 今日成交量 **大于** 昨日成交量。
+
+    刻意不加「近 5 日回调 ≥3%」「实体 ≥1.3 倍」「收盘在振幅上半部」这些额外条件
+    —— 项目里那套（`patterns._bullish_engulf_confirm`）服务于「金叉大阳」的确认
+    标签，与这里的口径不是一回事。
+
+    返回「今量 / 昨量」的倍数（≥1），不符合返回 None。
+    """
+    if len(bars) < 2:
+        return None
+    prev_open, _, _, prev_close, prev_body, _, _, _ = _candle(bars, -2)
+    open_, _, _, close, body, _, _, _ = _candle(bars)
+    if prev_close >= prev_open or close <= open_:
+        return None
+    if prev_body <= 0 or body <= 0:
+        return None
+    if not (open_ <= prev_close and close >= prev_open):
+        return None
+
+    prev_volume = float(bars.volume[-2])
+    volume = float(bars.volume[-1])
+    if prev_volume <= 0 or volume <= prev_volume:
+        return None
+    return volume / prev_volume
 
 
 def _scan(
@@ -184,14 +207,11 @@ def _scan(
             )
 
         try:
-            engulf = _bullish_engulf_confirm(bars)
+            ratio = _volume_engulf(bars)
         except Exception:  # noqa: BLE001 - 同上
             logger.warning("阳包阴判定失败（%s）", code, exc_info=True)
-            engulf = False
-        if not engulf:
-            continue
-        ratio = _volume_ratio(bars, 5)
-        if ratio < ENGULF_VOLUME_MULT:
+            ratio = None
+        if ratio is None:
             continue
         if not _signal_allowed("bullish_engulf", code, set(), set()):
             continue
@@ -220,7 +240,7 @@ def _title(day: date, clock: str, calls: int) -> str:
 
 
 def _engulf_table(items: list[dict]) -> dict:
-    """「放量阳包阴」表：名称 / 代码 / 现价 / 涨幅 / 量比。"""
+    """「放量阳包阴」表：名称 / 代码 / 现价 / 涨幅 / 倍量（今量 ÷ 昨量）。"""
     return {
         "tag": "table",
         "page_size": MAX_ENGULF_ROWS,
@@ -242,7 +262,7 @@ def _engulf_table(items: list[dict]) -> dict:
             },
             {
                 "name": "ratio",
-                "display_name": "量比",
+                "display_name": "倍量",
                 "data_type": "text",
                 "horizontal_align": "right",
             },
@@ -371,7 +391,7 @@ def build_card(
                     "tag": "lark_md",
                     "content": (
                         f"**放量阳包阴** {len(engulfs)} 只"
-                        f"（量比 ≥ {ENGULF_VOLUME_MULT:.1f}，按量比排序）"
+                        "（阳线量 ÷ 阴线量 > 1，按倍数排序）"
                     ),
                 },
             }
@@ -424,12 +444,12 @@ def _format(
         lines.append("")
         lines.append(
             f"**放量阳包阴** {len(engulfs)} 只"
-            f"（量比 ≥ {ENGULF_VOLUME_MULT:.1f}，按量比排序）"
+            "（阳线量 ÷ 阴线量 > 1，按倍数排序）"
         )
         for item in engulfs[:MAX_ENGULF_ROWS]:
             lines.append(
                 f"- {item['name']} {item['code']} 现价 {item['close']:.2f}"
-                f"（{item['pct_chg']:+.2f}%）· 量比 {item['volume_ratio']:.2f}"
+                f"（{item['pct_chg']:+.2f}%）· 倍量 {item['volume_ratio']:.2f}"
             )
         if len(engulfs) > MAX_ENGULF_ROWS:
             lines.append(f"（其余 {len(engulfs) - MAX_ENGULF_ROWS} 只未列出）")
