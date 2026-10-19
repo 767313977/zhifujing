@@ -15,7 +15,7 @@
 ## 成本与口径
 
 - iFinD：14 次调用（与正式日线采集同一套前缀分段，全市场约 5,200 只）。
-- 本地计算：约 1~2 秒（只算 7 个形态，不是全部 47 个）。
+- 本地计算：只跑 B1 那 7 个形态（不是全部 47 个），约 10~20 秒。
 - 量能是盘中的（差最后约 10 分钟），所以「缩量」类信号会比收盘口径略多。
   推送里写明了这一点，别把它当收盘名单用。
 
@@ -41,7 +41,7 @@ from app.jobs.scan_patterns import (
 )
 from app.models import CollectLog, TradeCalendar
 from app.services.coverage import coverage_ok
-from app.services.patterns import MIN_SCORE, PATTERNS, build_bars, evaluate, is_st
+from app.services.patterns import MIN_SCORE, PATTERNS, build_bars, is_st
 from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.ifind import IfindClient
 
@@ -61,6 +61,10 @@ B1_KEYS = (
     "zgnb_pull_yellow",
 )
 NAMES = {pattern.key: pattern.name for pattern in PATTERNS}
+
+#: 只保留 B1 的 7 个形态对象。不调 `patterns.evaluate`：那会把全部 47 个形态都算一遍
+#: （约 65 秒），而这里只需要 7 个。
+B1_PATTERNS = tuple(pattern for pattern in PATTERNS if pattern.key in set(B1_KEYS))
 
 #: 每个形态最多列几只。推送是给人扫一眼去下单的，列几十只反而没法用
 MAX_PER_PATTERN = 10
@@ -134,8 +138,15 @@ def _scan(
             continue
 
         bars = build_bars([*records, record], code)
-        for signal in evaluate(bars, min_score=MIN_SCORE):
-            if signal.pattern not in hits:
+        for pattern in B1_PATTERNS:
+            try:
+                signal = pattern.detect(bars)
+            except Exception:  # noqa: BLE001 - 单个形态出错不影响其余
+                logger.warning(
+                    "形态 %s 计算失败（%s）", pattern.key, code, exc_info=True
+                )
+                continue
+            if signal is None or signal.score < MIN_SCORE:
                 continue
             if not _signal_allowed(signal.pattern, code, set(), set()):
                 continue
