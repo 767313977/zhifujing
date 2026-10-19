@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from app.jobs.intraday_b1 import (
     B1_KEYS,
     MAX_PER_PATTERN,
+    TABLE_ROWS,
     _as_record,
     _format,
     _scan,
@@ -108,7 +109,8 @@ def test_scan_skips_dropped_codes():
     assert all(items == [] for items in hits.values())
 
 
-def test_build_card_makes_one_table_per_pattern():
+def test_build_card_uses_single_table_sorted_by_score():
+    """飞书一张卡片最多挂 5 张表，7 个形态各自成表会报错 —— 只能是一张总表。"""
     hits = {key: [] for key in B1_KEYS}
     hits["zgnb_turn"] = [
         {"code": "000001", "name": "平安银行", "score": 80, "close": 12.3, "pct_chg": 2.0}
@@ -121,20 +123,24 @@ def test_build_card_makes_one_table_per_pattern():
             "close": 10.0,
             "pct_chg": 1.5,
         }
-        for index in range(MAX_PER_PATTERN + 3)
+        for index in range(TABLE_ROWS + 3)
     ]
     elements = build_card(DAY, "14:51", hits, 14)
     tables = [element for element in elements if element["tag"] == "table"]
-    assert len(tables) == 2
+    assert len(tables) == 1
     assert [column["display_name"] for column in tables[0]["columns"]] == [
+        "形态",
         "名称",
         "代码",
         "现价",
         "涨幅",
         "评分",
     ]
-    assert len(tables[1]["rows"]) == MAX_PER_PATTERN
-    assert tables[1]["rows"][0]["pct"].endswith("%")
+    assert len(tables[0]["rows"]) == TABLE_ROWS
+    # 按评分全局排序：前 20 行被 90~72 分的缩量B1 占满
+    scores = [int(row["score"]) for row in tables[0]["rows"]]
+    assert scores == sorted(scores, reverse=True)
+    assert tables[0]["rows"][0]["pattern"] == "缩量B1"
     assert "收盘复盘" in elements[0]["text"]["content"]
 
 

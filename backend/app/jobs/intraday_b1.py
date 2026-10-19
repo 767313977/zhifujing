@@ -69,6 +69,11 @@ B1_PATTERNS = tuple(pattern for pattern in PATTERNS if pattern.key in set(B1_KEY
 #: 每个形态最多列几只。推送是给人扫一眼去下单的，列几十只反而没法用
 MAX_PER_PATTERN = 10
 
+#: 卡片总表的行数上限。飞书卡片最多挂 **5 张表**、每张 `page_size` 最多 20 行 ——
+#: 7 个形态各一张表会直接报 `card table number over limit`（2026-10-19 实测），
+#: 所以只做一张总表：按评分全局排序，形态放第一列。
+TABLE_ROWS = 20
+
 
 def _is_trade_day(day: date) -> bool:
     with session_scope() as session:
@@ -176,13 +181,16 @@ def _title(day: date, clock: str, calls: int) -> str:
 def build_card(
     day: date, clock: str, hits: dict[str, list[dict]], calls: int
 ) -> list[dict]:
-    """飞书卡片元素：每个形态一张表。
+    """飞书卡片元素：一张总表（按评分排序）+ 各形态家数。
 
-    表格组件**只能挂在卡片根节点**（不能塞进 div 里），所以返回的是元素列表，
-    与 `jobs/scan_dde.py` 的 `_board_table` 同一套写法。
+    表格组件**只能挂在卡片根节点**（不能塞进 div 里），与 `jobs/scan_dde.py`
+    的 `_board_table` 同一套写法。
 
-    单元格放**格式化好的文本**：飞书表格的数字列要自己配单位，写 `+2.30%`
-    一眼就能读，不用再换算。
+    为什么只做一张表：飞书卡片最多挂 5 张表，而 B1 有 7 个形态 —— 一个形态一张表
+    会直接报 `card table number over limit`。改成总表后，形态放第一列，按评分
+    全局排序，尾盘挑票看前几行就够。
+
+    单元格放**格式化好的文本**：写 `+2.30%` 一眼能读，不用再配单位。
     """
     total = sum(len(items) for items in hits.values())
     elements: list[dict] = [
@@ -194,58 +202,75 @@ def build_card(
         )
         return elements
 
-    for key in B1_KEYS:
-        items = hits.get(key) or []
-        if not items:
-            continue
-        heading = f"**{NAMES.get(key, key)}** {len(items)} 只"
-        if len(items) > MAX_PER_PATTERN:
-            heading += f"（列前 {MAX_PER_PATTERN} 只）"
-        elements.append(
-            {"tag": "div", "text": {"tag": "lark_md", "content": heading}}
-        )
+    counts = " · ".join(
+        f"{NAMES.get(key, key)} {len(hits[key])}" for key in B1_KEYS if hits.get(key)
+    )
+    elements.append(
+        {"tag": "div", "text": {"tag": "lark_md", "content": f"共 **{total}** 条：{counts}"}}
+    )
+
+    merged = [
+        {**item, "pattern": NAMES.get(key, key)}
+        for key in B1_KEYS
+        for item in hits.get(key) or []
+    ]
+    merged.sort(key=lambda item: item["score"], reverse=True)
+    shown = merged[:TABLE_ROWS]
+
+    elements.append(
+        {
+            "tag": "table",
+            "page_size": TABLE_ROWS,
+            "row_height": "low",
+            "columns": [
+                {
+                    "name": "pattern",
+                    "display_name": "形态",
+                    "data_type": "text",
+                    "width": "auto",
+                },
+                {"name": "name", "display_name": "名称", "data_type": "text"},
+                {"name": "code", "display_name": "代码", "data_type": "text"},
+                {
+                    "name": "price",
+                    "display_name": "现价",
+                    "data_type": "text",
+                    "horizontal_align": "right",
+                },
+                {
+                    "name": "pct",
+                    "display_name": "涨幅",
+                    "data_type": "text",
+                    "horizontal_align": "right",
+                },
+                {
+                    "name": "score",
+                    "display_name": "评分",
+                    "data_type": "text",
+                    "horizontal_align": "right",
+                },
+            ],
+            "rows": [
+                {
+                    "pattern": item["pattern"],
+                    "name": item["name"],
+                    "code": item["code"],
+                    "price": f"{item['close']:.2f}",
+                    "pct": f"{item['pct_chg']:+.2f}%",
+                    "score": f"{item['score']:.0f}",
+                }
+                for item in shown
+            ],
+        }
+    )
+    if total > len(shown):
         elements.append(
             {
-                "tag": "table",
-                "page_size": MAX_PER_PATTERN,
-                "row_height": "low",
-                "columns": [
-                    {
-                        "name": "name",
-                        "display_name": "名称",
-                        "data_type": "text",
-                        "width": "auto",
-                    },
-                    {"name": "code", "display_name": "代码", "data_type": "text"},
-                    {
-                        "name": "price",
-                        "display_name": "现价",
-                        "data_type": "text",
-                        "horizontal_align": "right",
-                    },
-                    {
-                        "name": "pct",
-                        "display_name": "涨幅",
-                        "data_type": "text",
-                        "horizontal_align": "right",
-                    },
-                    {
-                        "name": "score",
-                        "display_name": "评分",
-                        "data_type": "text",
-                        "horizontal_align": "right",
-                    },
-                ],
-                "rows": [
-                    {
-                        "name": item["name"],
-                        "code": item["code"],
-                        "price": f"{item['close']:.2f}",
-                        "pct": f"{item['pct_chg']:+.2f}%",
-                        "score": f"{item['score']:.0f}",
-                    }
-                    for item in items[:MAX_PER_PATTERN]
-                ],
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"其余 {total - len(shown)} 条未列出（按评分取前 {TABLE_ROWS}）。",
+                },
             }
         )
     return elements
