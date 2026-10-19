@@ -87,6 +87,7 @@ import sys
 import time
 from array import array
 from collections import Counter, defaultdict, deque
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 
@@ -397,6 +398,50 @@ CANDLE_LABELS = {
 }
 
 
+# ---------------------------------------------------------------- 过滤条件对照
+#
+# 2026-10-19 清单「指令 0」：把「命中日是否同时满足某个过滤条件」拆成过滤组 / 基础组
+# 对照，与 K 线确认实验同一套骨架。注册表签名统一为：
+#
+#     check(code: str, bars: Bars, i: int, ctx: dict) -> bool
+#
+# - `bars` 是整段序列、`i` 是**命中日**下标；判定只能读 `<= i` 的部分，不许看未来。
+# - `ctx` 放横截面预计算（RPS 排名 / 行业涨幅），单票条件用不到时是 `{}`。
+# - **只有带 `--filter-split` 才建累加器、才预计算**，平时零额外开销。
+FILTER_LABELS: dict[str, str] = {
+    "ma60_up": "MA60 向上",
+}
+FILTER_CHECKS: dict[str, Callable[[str, Bars, int, dict], bool]] = {}
+
+
+def _filter_ma60_up(code: str, bars: Bars, i: int, ctx: dict) -> bool:
+    """占位过滤：收盘 > MA60，且 MA60 比 5 个交易日前高。
+
+    它只用来验证 `--filter-split` 框架能跑通，本身不是候选策略 ——
+    真要用，得先看报告里能不能过决策线。
+    """
+    if i < 64:
+        return False
+    close = bars.close
+    ma_now = float(np.mean(close[i - 59 : i + 1]))
+    ma_prev = float(np.mean(close[i - 64 : i - 4]))
+    return float(close[i]) > ma_now and ma_now > ma_prev
+
+
+FILTER_CHECKS["ma60_up"] = _filter_ma60_up
+
+
+def _filter_context(
+    names: list[str], bars_by_code: dict[str, Bars], all_dates: list[date]
+) -> dict:
+    """过滤条件需要的横截面预计算。
+
+    目前只有单票条件（`ma60_up`），不需要横截面数据；RPS / 行业共振接进来后
+    在这里按需构建（**只算被点名的条件**，别为没选的条件付代价）。
+    """
+    return {}
+
+
 # ---------------------------------------------------------------- 数据装载
 
 
@@ -581,9 +626,26 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--filter-split",
+        default="",
+        help=(
+            "过滤条件对照：逗号分隔（如 ma60_up、rps50_90）。把每个形态的信号按"
+            "「命中当天该条件是否成立」分成过滤组 / 基础组，输出两组之差。"
+            f"可选：{', '.join(FILTER_CHECKS)}"
+        ),
+    )
+    parser.add_argument(
         "--bars", type=int, default=DEFAULT_HISTORY_BARS, help=f"长历史窗口（默认 {DEFAULT_HISTORY_BARS} 根）"
     )
     args = parser.parse_args()
+
+    filter_names = [name.strip() for name in args.filter_split.split(",") if name.strip()]
+    unknown_filters = [name for name in filter_names if name not in FILTER_CHECKS]
+    if unknown_filters:
+        raise SystemExit(
+            f"未知的过滤条件：{', '.join(unknown_filters)}"
+            f"（可选：{', '.join(FILTER_CHECKS)}）"
+        )
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
@@ -661,12 +723,35 @@ def main() -> int:
         }
         logger.info("K 线确认实验：%d 个形态 × %d 种蜡烛", len(targets), len(CANDLE_CHECKS))
 
+    # 过滤条件对照：过滤组 / 基础组（**不满足**该条件的信号）各一份累加器。
+    # 两组互补，样本加起来就是该形态的全部信号。
+    filter_tallies: dict[tuple[str, str], Tally] = {}
+    filter_base_tallies: dict[tuple[str, str], Tally] = {}
+    filter_ctx: dict = {}
+    if filter_names:
+        filter_tallies = {
+            (key, name): Tally() for key in targets for name in filter_names
+        }
+        filter_base_tallies = {
+            (key, name): Tally() for key in targets for name in filter_names
+        }
+        logger.info(
+            "过滤条件对照：%d 个形态 × %d 个条件（%s）",
+            len(targets),
+            len(filter_names),
+            ", ".join(filter_names),
+        )
+
     # **交易日轴**：取数据自身的日期并集。持有期一律按**交易日**对齐（见 `_forward_outcomes`
     # 与模块顶部「持有期口径」一节）—— 停牌日的行在库里是缺的，只有一条全局日期轴才能
     # 把「第 h 个交易日」和「第 h 行」区分开。
     all_dates = sorted({day for bars in bars_by_code.values() for day in bars.dates})
     global_pos = {day: i for i, day in enumerate(all_dates)}
     logger.info("交易日轴：%d 个交易日（%s ~ %s）", len(all_dates), all_dates[0], all_dates[-1])
+
+    # 过滤条件的横截面预计算要在交易日轴之后做（RPS / 行业涨幅都按「日」组织）
+    if filter_names:
+        filter_ctx = _filter_context(filter_names, bars_by_code, all_dates)
 
     # 基准：每个交易日 → 该日之后**第 h 个交易日**的平均收益。
     #
@@ -761,6 +846,18 @@ def main() -> int:
                             [bench[h].get(day, 0.0) for h in HORIZONS],
                             str(day)[:7],
                         )
+                if filter_tallies:
+                    for name in filter_names:
+                        bucket = (
+                            filter_tallies
+                            if FILTER_CHECKS[name](code, bars, t, filter_ctx)
+                            else filter_base_tallies
+                        )
+                        bucket[(key, name)].add(
+                            outcomes,
+                            [bench[h].get(day, 0.0) for h in HORIZONS],
+                            str(day)[:7],
+                        )
         if done % 1000 == 0:
             logger.info(
                 "  扫过 %d/%d 只，命中 %d 条，用时 %.0fs",
@@ -783,6 +880,8 @@ def main() -> int:
         _report_multi(tallies)
     if candle_tallies:
         _report_candle_split(tallies, candle_tallies)
+    if filter_tallies:
+        _report_filter_split(filter_tallies, filter_base_tallies)
     return 0
 
 
@@ -958,6 +1057,105 @@ def _report_candle_split(
         print(
             "结论：没有任何「形态 × K 线确认」组合达到「10 日超额 +1pp 且样本 ≥200」——"
             "本次实验结束，不新增 candle_confirm 标签、也不恢复独立蜡烛形态。"
+        )
+
+
+def _report_filter_split(
+    matched: dict[tuple[str, str], Tally],
+    base: dict[tuple[str, str], Tally],
+) -> None:
+    """过滤条件对照表：满足条件的「过滤组」vs 不满足的同形态信号「基础组」。
+
+    两组**互补**：样本相加 = 该形态的全部信号。这样比「过滤组 vs 全部信号」
+    更能看出条件本身的增量 —— 后者会把过滤组自己也算进对照组。
+
+    决策线（2026-10-19 清单）：过滤组样本 ≥200 且 10 日超额比基础组高 ≥1pp，
+    才算这个条件对这个形态有效；长历史方向一致才上线。
+    """
+    index10 = HORIZONS.index(10)
+    rows = []
+    for (key, name), tally in matched.items():
+        reference = base.get((key, name))
+        if reference is None or not tally.size or not reference.size:
+            continue
+        # 任一组还没走到 10 日，差值没有意义
+        if tally.counts[index10] == 0 or reference.counts[index10] == 0:
+            continue
+        excess = tally.stats(index10)[0] - tally.bench_mean(index10)
+        base_excess = reference.stats(index10)[0] - reference.bench_mean(index10)
+        rows.append(
+            {
+                "key": key,
+                "filter": name,
+                "samples": tally.size,
+                "base_samples": reference.size,
+                "excess5": tally.stats(0)[0] - tally.bench_mean(0),
+                "excess10": excess,
+                "excess20": tally.stats(2)[0] - tally.bench_mean(2),
+                # 60 日要命中后再走 60 个交易日，窗口末端那批信号没有样本 ——
+                # 为 0 时打印 `—`，不能当「超额 0」看
+                "excess60": (
+                    tally.stats(3)[0] - tally.bench_mean(3)
+                    if tally.counts[3]
+                    else None
+                ),
+                "win10": tally.stats(index10)[2],
+                "median10": tally.stats(index10)[1],
+                "base_win10": reference.stats(index10)[2],
+                "diff": (excess - base_excess) * 100,
+                "win_diff": (tally.stats(index10)[2] - reference.stats(index10)[2]) * 100,
+            }
+        )
+
+    print()
+    print("=" * 150)
+    print("过滤条件对照：同一形态的信号按「命中当天该过滤条件是否成立」分组")
+    print(
+        "决策线：过滤组 10 日超额比基础组高 ≥1pp 且过滤组样本 ≥200 → 该条件对这个形态有效"
+    )
+    print("-" * 150)
+    if not rows:
+        print("没有任何组合（过滤组或基础组没有样本）")
+        print("=" * 150)
+        return
+
+    rows.sort(key=lambda item: item["diff"], reverse=True)
+    shown = [item for item in rows if item["samples"] >= 30]
+    hidden = len(rows) - len(shown)
+    print(
+        f"{'分组':<10}{'形态':<16}{'过滤条件':<14}{'过滤组':>7}{'基础组':>7}"
+        f"{'5日超额':>10}{'10日超额':>10}{'20日超额':>10}{'60日超额':>10}"
+        f"{'10日胜率':>9}{'10日中位':>9}{'胜率差':>9}{'超额差':>9}  结论"
+    )
+    print("-" * 150)
+    winners = []
+    for item in shown:
+        meta = _BY_KEY[item["key"]]
+        label = FILTER_LABELS.get(item["filter"], item["filter"])
+        hit = item["diff"] >= 1.0 and item["samples"] >= 200
+        note = "✅ 达标" if hit else ("样本不足" if item["diff"] >= 1.0 else "")
+        if hit:
+            winners.append(f"{meta.name} × {label}")
+        excess60 = (
+            "         —" if item["excess60"] is None else f"{item['excess60'] * 100:>9.2f}%"
+        )
+        print(
+            f"{meta.group:<10}{meta.name:<16}{label:<14}"
+            f"{item['samples']:>7}{item['base_samples']:>7}"
+            f"{item['excess5'] * 100:>9.2f}%{item['excess10'] * 100:>9.2f}%"
+            f"{item['excess20'] * 100:>9.2f}%{excess60}"
+            f"{item['win10'] * 100:>8.1f}%{item['median10'] * 100:>8.2f}%"
+            f"{item['win_diff']:>+8.1f}{item['diff']:>+8.2f}  {note}"
+        )
+    print("=" * 150)
+    print(f"（只显示过滤组样本 ≥30 的组合；另有 {hidden} 个组合样本不足 30 未列出）")
+    print("（超额差 = 过滤组 10 日超额 − 基础组 10 日超额，单位 pp；胜率差同）")
+    print()
+    if winners:
+        print("达到决策线的组合：" + "、".join(winners))
+    else:
+        print(
+            "结论：没有任何「形态 × 过滤条件」组合达到「10 日超额 +1pp 且过滤组样本 ≥200」。"
         )
 
 
