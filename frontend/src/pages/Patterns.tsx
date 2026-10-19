@@ -215,7 +215,6 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   bottom_gap: ['两底间隔', false],
   tolerance: ['两底差距', true],
   rebound: ['中间反弹', true],
-  converge: ['收敛比', true],
   position: ['在区间位置', true],
   pivots: ['摆动点数', false],
   shoulder_diff: ['两肩差距', true],
@@ -296,11 +295,8 @@ const DETAIL_FIELDS: Record<string, [string, boolean]> = {
   amplitude: ['窗口振幅', true],
   low_position: ['低点位置', true],
   low_spread: ['三底差距', true],
-  expand: ['扩张比例', true],
-  contract: ['收敛比例', true],
-  upper_slope: ['上轨斜率', true],
-  lower_slope: ['下轨斜率', true],
-  gap_ratio: ['末端间距', true],
+  // 上升楔形 / 菱形 2026-10-20 撤下：expand / contract / upper_slope / lower_slope /
+  // gap_ratio / converge 只被它们用过，同删
   // 单 K 蜡烛形态（2026-10-14 撤下锤子线 / 倒锤子线 / 启明星时，把只被它们用到的
   // `shadow_ratio` 与 `star_recover` 也删了；同日给揉搓线补了下面两个。
   // 同日再撤看涨吞没 / 阳包阴，`prior_drop` 只被前者用到、一并删；

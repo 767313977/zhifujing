@@ -763,17 +763,6 @@ DRY_BOTTOM_MIN_DRAWDOWN = 0.2  # 距窗口最高收盘的回撤下限（够低�
 # 缩量涨停（涨停却没量 = 惜售）
 SHRINK_LIMIT_VOL_MAX = 0.8  # 涨停日量 / 前 5 日均量 的上限
 
-# 放量滞涨（放量了但价格没动、还留了长上影）
-#
-# ⚠️ 它是**警示类**形态，不是买点：高位放量滞涨多半是派发，低位才是吸筹嫌疑。
-# 所以「距 60 日高点的回撤」只写进 detail、只参与打分，**不做否决** ——
-# 一度把它当门槛（要求回撤 ≥15%），实测全市场只剩 0.2 次/天，等于页面上永远看不到；
-# 而且那是我替用户做的解读，名字本身并没有「只在低位」的意思。位置自己看明细判断。
-STALL_VOL_MULT = 1.8
-STALL_PCT_BAND = (-0.015, 0.025)  # 当日涨幅落在这一段里才算「滞涨」
-STALL_SHADOW_MIN = 0.28  # 上影线占全日振幅的比例下限
-STALL_MIN_DRAWDOWN = 0.1  # 低于这个回撤就不给「低位」那部分加分
-
 # 量堆（连续放量、价格重心同步上移）—— **2026-09-27 已删除**（阈值随判定函数一起删）。
 #
 # 全量回测（5100 只 × 250 个交易日、1522 条信号）：5/10/20/60 日超额 −1.06% /
@@ -800,21 +789,9 @@ TRIPLE_MAX_EXCESS = 0.06  # 突破颈线的幅度上限
 # （判定函数 `_rectangle_box`、阈值 `RECT_*`、库里的历史命中一并删；沿用的
 #  `BOX_TOUCH_TOL` / `BOX_MIN_TOUCHES` 仍被「箱体突破」使用，保留）。
 
-# 楔形（收敛三角形；上升楔形偏空）
-WEDGE_DAYS = 50
-WEDGE_MIN_DAYS = 30
-WEDGE_MIN_SLOPE = 0.0004  # 两轨斜率绝对值的下限，再平就是箱体
-WEDGE_MIN_CONVERGE = 0.55  # 收敛比例下限 (起始间距 − 结束间距) / 起始间距
-WEDGE_TOUCH_TOL = 0.03  # 轨被触碰的容差
-WEDGE_MIN_TOUCHES = 3  # 每条轨至少被碰这么多次（真楔形的高/低点会反复贴轨）
-# 下降楔形 2026-10-18 已删除（连同 `WEDGE_FALL_*` 两个专属阈值）。
-
-# 菱形（先扩张后收敛）
-DIAMOND_DAYS = 70
-DIAMOND_MIN_DAYS = 45
-DIAMOND_MIN_EXPAND = 0.25  # 前半段振幅扩张比例下限
-DIAMOND_MIN_CONTRACT = 0.4  # 后半段振幅收敛比例下限
-DIAMOND_MIDDLE_EDGE = 1.6  # 中段振幅至少要达到两端的这个倍数（不然只是普通波动）
+# 楔形（上升楔形）与菱形 —— **2026-10-20 已按用户要求删除**
+# （判定函数 `_wedge_shape` / `_rising_wedge` / `_diamond`、专属阈值 `WEDGE_*` /
+#  `DIAMOND_*`、前端明细标签、库里的历史命中一并删；`_linfit` 只被楔形用过，同删）。
 
 # ---- 2026-10-18 候选策略（移植自 myhhub/stock，**回测通过前不进生产**）----
 #
@@ -3723,18 +3700,6 @@ def _huabao_early(bars: Bars) -> Signal | None:
 
 # ------------------------------------------------- 新增形态实现（2026-09-25）
 
-def _linfit(values: np.ndarray) -> tuple[float, float]:
-    """最小二乘直线拟合，返回 `(斜率, 截距)`，x 取 0..n-1。
-
-    趋势线一律用拟合，而不是「窗口两端的极值连线」：后者对单根毛刺极度敏感 ——
-    一根长上影就能把整条轨拉歪；最小二乘会把毛刺摊到整条线上。
-    """
-    if values.size < 2:
-        return 0.0, 0.0
-    slope, intercept = np.polyfit(np.arange(values.size, dtype=float), values, 1)
-    return float(slope), float(intercept)
-
-
 def _touches(values: np.ndarray, level: float, tol: float) -> int:
     """序列里「碰到 level」的次数（相对容差）。
 
@@ -4211,49 +4176,6 @@ def _shrink_limit_up(bars: Bars) -> Signal | None:
     )
 
 
-def _volume_stall(bars: Bars) -> Signal | None:
-    """放量滞涨：放量（量比 ≥1.8）但价格没动（-1.5%~+2.5%）、还留了长上影。
-
-    ⚠️ 偏**警示类**：高位放量滞涨多半是派发，低位才可能是吸筹。位置只写进 detail
-    与打分，不做否决（理由见阈值块里那段）。位置看 detail 的「距高点回撤」。
-    """
-    if len(bars) < DRY_BOTTOM_DAYS + 1:
-        return None
-    ratio = _volume_ratio(bars, 5)
-    if ratio < STALL_VOL_MULT:
-        return None
-    pct = float(bars.pct_chg[-1])
-    if not STALL_PCT_BAND[0] <= pct <= STALL_PCT_BAND[1]:
-        return None
-    _, _, _, close, _, upper, _, span = _candle(bars)
-    if span <= 0:
-        return None
-    shadow = upper / span
-    if shadow < STALL_SHADOW_MIN:
-        return None
-    peak = float(bars.close[-DRY_BOTTOM_DAYS:].max())
-    if peak <= 0:
-        return None
-    drawdown = 1 - close / peak
-
-    score = _band_score(ratio, STALL_VOL_MULT, 4.0, 8.0) * 35
-    score += _band_score(shadow, STALL_SHADOW_MIN, 0.6, 0.95) * 30
-    # 低位才给这 35 分：高位放量滞涨同样会入库，但分数明显更低、排不到前面
-    score += _band_score(drawdown, STALL_MIN_DRAWDOWN, 0.45, 0.7) * 35
-
-    return Signal(
-        "volume_stall",
-        min(score, 100.0),
-        {"support": float(bars.low[-1])},
-        {
-            "vol_ratio": round(ratio, 2),
-            "pct_chg": round(pct, 2),
-            "upper_shadow": round(shadow, 3),
-            "drawdown": round(drawdown, 4),
-        },
-    )
-
-
 def _v_bottom(bars: Bars) -> Signal | None:
     """V 型底：急跌 → 快速收复，左右两段基本对称，现在已从低点反弹到左侧跌幅的 60% 以上。
 
@@ -4411,139 +4333,6 @@ def _triple_bottom(bars: Bars) -> Signal | None:
             "low_spread": round(spread, 4),
             "excess": round(excess, 4),
             "vol_ratio": round(ratio, 2),
-        },
-    )
-
-
-def _wedge_shape(bars: Bars) -> tuple[float, float, float, float] | None:
-    """楔形几何：返回 `(上轨日斜率, 下轨日斜率, 收敛比例, 末端间距/均价)`，不成立则 None。
-
-    上下轨分别对 high / low 序列做最小二乘（理由见 `_linfit`）。要求两轨**同向**
-    且间距明显收敛 —— 一上一下那种是收敛三角形（原「三角收敛」形态已删，
-    这里的判定不变：它不是楔形）。
-    """
-    if len(bars) < WEDGE_MIN_DAYS:
-        return None
-    days = min(WEDGE_DAYS, len(bars))
-    mean_close = float(np.mean(bars.close[-days:]))
-    if mean_close <= 0:
-        return None
-    high_slope, high_intercept = _linfit(bars.high[-days:])
-    low_slope, low_intercept = _linfit(bars.low[-days:])
-    high_daily = high_slope / mean_close
-    low_daily = low_slope / mean_close
-    if abs(high_daily) < WEDGE_MIN_SLOPE or abs(low_daily) < WEDGE_MIN_SLOPE:
-        return None  # 太平，那是箱体
-    if high_daily * low_daily <= 0:
-        return None  # 一上一下 = 收敛三角形，不是楔形
-
-    end = days - 1
-    gap_start = float(high_intercept - low_intercept)
-    gap_end = float(
-        high_intercept + high_slope * end - (low_intercept + low_slope * end)
-    )
-    if gap_start <= 0 or gap_end <= 0 or gap_end >= gap_start:
-        return None  # 没有收敛
-    converge = (gap_start - gap_end) / gap_start
-    if converge < WEDGE_MIN_CONVERGE:
-        return None
-
-    # 同向两轨要收敛，必然是「下轨比上轨陡」：上升楔形下轨涨得快，
-    # 下降楔形上轨跌得快 —— 两种情况都归到这一个判据上
-    if high_daily >= low_daily:
-        return None
-
-    # 两条轨都要真被碰到过。光要求「同向 + 收敛」太松：实测那样全市场有 8.6%
-    # 的票"在下降楔形里"，清单会长到没法看
-    index = np.arange(days, dtype=float)
-    upper_series = high_intercept + high_slope * index
-    lower_series = low_intercept + low_slope * index
-    high_touch = int(np.sum(np.abs(bars.high[-days:] / upper_series - 1.0) <= WEDGE_TOUCH_TOL))
-    low_touch = int(np.sum(np.abs(bars.low[-days:] / lower_series - 1.0) <= WEDGE_TOUCH_TOL))
-    if high_touch < WEDGE_MIN_TOUCHES or low_touch < WEDGE_MIN_TOUCHES:
-        return None
-
-    return high_daily, low_daily, converge, gap_end / mean_close
-
-
-def _rising_wedge(bars: Bars) -> Signal | None:
-    """上升楔形：两轨都向上但逐渐收敛 —— **偏空**形态（涨势在衰竭）。
-
-    ⚠️ 与其它形态不同，它给的是**风险提示**而不是买点：上升楔形向上突破的
-    成功率偏低，多数以下破告终。照样收录的理由是「持仓时看到它」比「选票时
-    看到它」更重要 —— 分数越高表示形态越成熟（越接近变盘）。
-    """
-    shape = _wedge_shape(bars)
-    if shape is None:
-        return None
-    high_daily, low_daily, converge, gap_ratio = shape
-    if high_daily <= 0 or low_daily <= 0:
-        return None
-
-    score = _gate_score(converge, WEDGE_MIN_CONVERGE, 0.75) * 45
-    score += min(low_daily / 0.006, 1.0) * 25  # 涨得越陡越危险
-    score += _gate_score(gap_ratio, 0.12, 0.02) * 30  # 末端越挤越接近变盘
-
-    return Signal(
-        "rising_wedge",
-        min(score, 100.0),
-        {"support": float(bars.low[-1]), "breakout": float(bars.high[-1])},
-        {
-            "converge": round(converge, 3),
-            "upper_slope": round(high_daily, 5),
-            "lower_slope": round(low_daily, 5),
-            "gap_ratio": round(gap_ratio, 4),
-        },
-    )
-
-
-def _diamond(bars: Bars) -> Signal | None:
-    """菱形（钻石形）：先扩张后收敛 —— 前两段振幅放大、后两段收窄。
-
-    判法把窗口四等分比各段振幅，这是「情绪先发散、后回归」的可计算版本。
-    菱形多出现在转折处，本身不指示方向，所以打分只看形状成熟度与当前位置。
-    """
-    if len(bars) < DIAMOND_MIN_DAYS:
-        return None
-    days = min(DIAMOND_DAYS, len(bars))
-    quarter = days // 4
-    if quarter < 8:
-        return None
-    ranges = []
-    for part in range(4):
-        start = len(bars) - days + part * quarter
-        segment = slice(start, start + quarter)
-        ranges.append(float(bars.high[segment].max() - bars.low[segment].min()))
-    if min(ranges) <= 0:
-        return None
-
-    expand = ranges[1] / ranges[0] - 1
-    contract = (ranges[2] - ranges[3]) / ranges[2]
-    if expand < DIAMOND_MIN_EXPAND or contract < DIAMOND_MIN_CONTRACT:
-        return None
-    # 中段必须明显比两端宽 —— 只看「前段扩张、后段收敛」的话，一段普通波动
-    # 也能凑出来（实测全市场 10.7% 的票"是菱形"）
-    if min(ranges[1], ranges[2]) < max(ranges[0], ranges[3]) * DIAMOND_MIDDLE_EDGE:
-        return None
-
-    tail = slice(len(bars) - quarter, len(bars))
-    top = float(bars.high[tail].max())
-    bottom = float(bars.low[tail].min())
-    position = (float(bars.close[-1]) - bottom) / (top - bottom) if top > bottom else 0.5
-
-    score = _gate_score(expand, DIAMOND_MIN_EXPAND, 0.6) * 35
-    score += _gate_score(contract, DIAMOND_MIN_CONTRACT, 0.7) * 35
-    score += _band_score(position, 0.4, 0.95, 1.05) * 30
-
-    return Signal(
-        "diamond",
-        min(score, 100.0),
-        {"breakout": top, "support": bottom},
-        {
-            "days": days,
-            "expand": round(expand, 3),
-            "contract": round(contract, 3),
-            "position": round(position, 3),
         },
     )
 
@@ -5999,15 +5788,16 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("box_breakout", "箱体突破", "突破", _box_breakout),
     Pattern("volume_dry_bottom", "地量见底", "量价", _volume_dry_bottom),
     Pattern("shrink_limit_up", "缩量涨停", "量价", _shrink_limit_up),
-    Pattern("volume_stall", "放量滞涨", "量价", _volume_stall),
-    # 2026-10-19 用户定义：反包 + 今量 > 昨量（与 10-14 撤下的裸「阳包阴」不同，
+    # ⚠️ 「放量滞涨」2026-10-20 已按用户要求删除（判定函数、`STALL_*` 阈值、
+    # 前端明细标签、库里的历史命中一并删）。
+    # 2026-10-19 用户定义：反包 + 倍量 ≥ 1.5（与 10-14 撤下的裸「阳包阴」不同，
     # 那一版不看量；判定见 `_volume_engulf`）
     Pattern("volume_engulf", "放量阳包阴", "量价", _volume_engulf),
     Pattern("v_bottom", "V 型底", "几何", _v_bottom),
     Pattern("round_bottom", "圆弧底", "几何", _round_bottom),
     Pattern("triple_bottom", "三重底", "几何", _triple_bottom),
-    Pattern("rising_wedge", "上升楔形", "几何", _rising_wedge),
-    Pattern("diamond", "菱形", "几何", _diamond),
+    # ⚠️ 「上升楔形 / 菱形」2026-10-20 已按用户要求删除（判定函数、`WEDGE_*` /
+    # `DIAMOND_*` 阈值、前端明细标签、库里的历史命中一并删）。
     # ⚠️ 「锤子线 / 倒锤子线 / 启明星」2026-10-14 **撤下**：新口径下信号量上千条
     # （2734 / 2804 / 3257）而 10 日超额≈0（−0.81% / +0.05% / +0.04%），是噪声 ——
     # 判定函数、专属阈值（`CANDLE_SHADOW_MULT` / `CANDLE_SHORT_SHADOW` / `STAR_*`）、
