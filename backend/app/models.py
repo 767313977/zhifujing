@@ -783,7 +783,8 @@ class IfindUsage(Base):
     """iFinD 调用次数按天累计。
 
     iFinD 的权益**按 `tools/call` 次数计费**，账号级一个计量周期（约一个月，
-    起点见 `Settings.ifind_cycle_start_day`）9000 次 ——
+    起点见 `Settings.ifind_cycle_start_day`）可用次数随资源包变动（2026-10-19 起
+    为 5,452 次）——
     定时采集、形态选股、手工补数全都在花同一个额度。没有这张表，
     「这个周期还剩多少」根本无从回答，配额守卫也无从谈起。
 
