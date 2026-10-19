@@ -182,9 +182,9 @@ SURGE_RATIO_IDEAL = (2.0, 6.0)
 SURGE_RATIO_CAP = 12.0
 
 # 放量阳包阴（2026-10-19）：倍量 = 今日成交量 / 昨日成交量。
-# 门槛 1.2 是用户定的 —— 1.0（只要比昨天多）信号太松，1.5 又砍掉太多
-# 「温和放量」的反包。1.2 以下视为「量没放大」，不算放量阳包阴。
-ENGULF_MIN_VOLUME_RATIO = 1.2
+# 门槛 1.5 是用户定的（2026-10-19 从 1.2 提到这里）：1.2 时一天 250+ 条，
+# 命中列表前 50 几乎被它占满；1.5 之后约 80 条，仍能覆盖「明显放量」的反包。
+ENGULF_MIN_VOLUME_RATIO = 1.5
 
 # 缩量回踩
 DRY_PULLBACK_MIN_DAYS = 3
@@ -1587,9 +1587,11 @@ def _volume_engulf(bars: Bars) -> Signal | None:
 
     1. 昨日阴线（收 < 开）、今日阳线（收 > 开）；
     2. 今日实体完全包住昨日实体：今开 ≤ 昨收，今收 ≥ 昨开；
-    3. 今日成交量 > 昨日成交量，且**倍量 ≥ `ENGULF_MIN_VOLUME_RATIO`（1.2）**。
+    3. 今日成交量 > 昨日成交量，且**倍量 ≥ `ENGULF_MIN_VOLUME_RATIO`（1.5）**。
 
-    评分：50 分起步（刚好达标），倍量超过门槛的部分最多 +30，实体比最多 +20。
+    评分：50 分起步（刚好达标），倍量超过门槛的部分最多 +25、实体比最多 +20 ——
+    上限 **95 分**，不让它轻易刷到 100 去霸占命中列表前排（2026-10-19 实测：
+    门槛 1.2 时一天 27 条满分，前 50 几乎全是它）。
     """
     if len(bars) < 2:
         return None
@@ -1614,8 +1616,8 @@ def _volume_engulf(bars: Bars) -> Signal | None:
     body_ratio = body / prev_body
     score = (
         50.0
-        + min(30.0, (ratio - ENGULF_MIN_VOLUME_RATIO) * 30.0)
-        + min(20.0, (body_ratio - 1.0) * 20.0)
+        + min(25.0, (ratio - ENGULF_MIN_VOLUME_RATIO) * 20.0)
+        + min(20.0, (body_ratio - 1.0) * 10.0)
     )
     return Signal(
         "volume_engulf",
