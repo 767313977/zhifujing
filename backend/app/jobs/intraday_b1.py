@@ -32,7 +32,7 @@ from app.config import Settings, get_settings
 from app.db import session_scope
 from app.jobs.collect_kline import _snapshot_query, _snapshot_row
 from app.jobs.collect_universe import crawl_prefixes, load_codes
-from app.jobs.push_brief import already_pushed, send_markdown
+from app.jobs.push_brief import already_pushed, send_elements
 from app.jobs.scan_patterns import (
     PATTERN_MAX_TOTAL_MV,
     _load_bars,
@@ -165,15 +165,98 @@ def _scan(
     return hits
 
 
+def _title(day: date, clock: str, calls: int) -> str:
+    """卡片首行。标题必须含「收盘复盘」（群机器人关键词校验）。"""
+    return (
+        f"**收盘复盘 · 知行B1 盘中预览** · {day.isoformat()} {clock}\n"
+        f"盘中快照（当天量能未走完，尾盘可能变化），{calls} 次调用。"
+    )
+
+
+def build_card(
+    day: date, clock: str, hits: dict[str, list[dict]], calls: int
+) -> list[dict]:
+    """飞书卡片元素：每个形态一张表。
+
+    表格组件**只能挂在卡片根节点**（不能塞进 div 里），所以返回的是元素列表，
+    与 `jobs/scan_dde.py` 的 `_board_table` 同一套写法。
+
+    单元格放**格式化好的文本**：飞书表格的数字列要自己配单位，写 `+2.30%`
+    一眼就能读，不用再换算。
+    """
+    total = sum(len(items) for items in hits.values())
+    elements: list[dict] = [
+        {"tag": "div", "text": {"tag": "lark_md", "content": _title(day, clock, calls)}}
+    ]
+    if total == 0:
+        elements.append(
+            {"tag": "div", "text": {"tag": "lark_md", "content": "今日知行B1 暂无命中。"}}
+        )
+        return elements
+
+    for key in B1_KEYS:
+        items = hits.get(key) or []
+        if not items:
+            continue
+        heading = f"**{NAMES.get(key, key)}** {len(items)} 只"
+        if len(items) > MAX_PER_PATTERN:
+            heading += f"（列前 {MAX_PER_PATTERN} 只）"
+        elements.append(
+            {"tag": "div", "text": {"tag": "lark_md", "content": heading}}
+        )
+        elements.append(
+            {
+                "tag": "table",
+                "page_size": MAX_PER_PATTERN,
+                "row_height": "low",
+                "columns": [
+                    {
+                        "name": "name",
+                        "display_name": "名称",
+                        "data_type": "text",
+                        "width": "auto",
+                    },
+                    {"name": "code", "display_name": "代码", "data_type": "text"},
+                    {
+                        "name": "price",
+                        "display_name": "现价",
+                        "data_type": "text",
+                        "horizontal_align": "right",
+                    },
+                    {
+                        "name": "pct",
+                        "display_name": "涨幅",
+                        "data_type": "text",
+                        "horizontal_align": "right",
+                    },
+                    {
+                        "name": "score",
+                        "display_name": "评分",
+                        "data_type": "text",
+                        "horizontal_align": "right",
+                    },
+                ],
+                "rows": [
+                    {
+                        "name": item["name"],
+                        "code": item["code"],
+                        "price": f"{item['close']:.2f}",
+                        "pct": f"{item['pct_chg']:+.2f}%",
+                        "score": f"{item['score']:.0f}",
+                    }
+                    for item in items[:MAX_PER_PATTERN]
+                ],
+            }
+        )
+    return elements
+
+
 def _format(
     day: date, clock: str, hits: dict[str, list[dict]], calls: int
 ) -> str:
-    """推送正文。标题必须含「收盘复盘」（群机器人关键词校验）。"""
+    """纯文字版：没配 webhook、走 lark-cli 时的兜底（那条通道只吃 markdown）。"""
     total = sum(len(items) for items in hits.values())
-    lines = [
-        f"**收盘复盘 · 知行B1 盘中预览** · {day.isoformat()} {clock}",
-        f"盘中快照（当天量能未走完，尾盘可能变化），{calls} 次调用。",
-    ]
+    lines = [_title(day, clock, calls)]
     if total == 0:
         lines += ["", "今日知行B1 暂无命中。"]
         return "\n".join(lines)
@@ -234,8 +317,12 @@ def run(settings: Settings | None = None, *, now: datetime | None = None) -> dic
     hits = _scan(history, snapshot, dropped=dropped)
 
     clock = moment.strftime("%H:%M")
-    markdown = _format(day, clock, hits, calls)
-    result = send_markdown(markdown, settings)
+    # 卡片表格优先（webhook）；没配 webhook 时 send_elements 会自动退回纯文字版
+    result = send_elements(
+        build_card(day, clock, hits, calls),
+        settings,
+        fallback_markdown=_format(day, clock, hits, calls),
+    )
     cost = round(time.monotonic() - started, 2)
     total = sum(len(items) for items in hits.values())
 

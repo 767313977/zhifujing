@@ -2,7 +2,14 @@
 
 from datetime import date, timedelta
 
-from app.jobs.intraday_b1 import B1_KEYS, MAX_PER_PATTERN, _as_record, _format, _scan
+from app.jobs.intraday_b1 import (
+    B1_KEYS,
+    MAX_PER_PATTERN,
+    _as_record,
+    _format,
+    _scan,
+    build_card,
+)
 
 DAY = date(2026, 10, 19)
 
@@ -99,3 +106,40 @@ def test_scan_skips_dropped_codes():
         dropped={"600000"},
     )
     assert all(items == [] for items in hits.values())
+
+
+def test_build_card_makes_one_table_per_pattern():
+    hits = {key: [] for key in B1_KEYS}
+    hits["zgnb_turn"] = [
+        {"code": "000001", "name": "平安银行", "score": 80, "close": 12.3, "pct_chg": 2.0}
+    ]
+    hits["zgnb_shrink"] = [
+        {
+            "code": f"60000{index}",
+            "name": f"票{index}号",
+            "score": 90 - index,
+            "close": 10.0,
+            "pct_chg": 1.5,
+        }
+        for index in range(MAX_PER_PATTERN + 3)
+    ]
+    elements = build_card(DAY, "14:51", hits, 14)
+    tables = [element for element in elements if element["tag"] == "table"]
+    assert len(tables) == 2
+    assert [column["display_name"] for column in tables[0]["columns"]] == [
+        "名称",
+        "代码",
+        "现价",
+        "涨幅",
+        "评分",
+    ]
+    assert len(tables[1]["rows"]) == MAX_PER_PATTERN
+    assert tables[1]["rows"][0]["pct"].endswith("%")
+    assert "收盘复盘" in elements[0]["text"]["content"]
+
+
+def test_build_card_without_hits():
+    elements = build_card(DAY, "14:51", {key: [] for key in B1_KEYS}, 14)
+    assert len(elements) == 2
+    assert all(element["tag"] == "div" for element in elements)
+    assert "暂无命中" in elements[1]["text"]["content"]
