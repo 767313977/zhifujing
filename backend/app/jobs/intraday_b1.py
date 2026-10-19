@@ -41,7 +41,14 @@ from app.jobs.scan_patterns import (
 )
 from app.models import CollectLog, TradeCalendar
 from app.services.coverage import coverage_ok
-from app.services.patterns import MIN_SCORE, PATTERNS, build_bars, is_st
+from app.services.patterns import (
+    MIN_SCORE,
+    PATTERNS,
+    _bullish_engulf_confirm,
+    _volume_ratio,
+    build_bars,
+    is_st,
+)
 from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.ifind import IfindClient
 
@@ -73,6 +80,12 @@ MAX_PER_PATTERN = 10
 #: 7 个形态各一张表会直接报 `card table number over limit`（2026-10-19 实测），
 #: 所以只做一张总表：按评分全局排序，形态放第一列。
 TABLE_ROWS = 20
+
+#: 「放量阳包阴」的放量倍数：当日成交量 / 前 5 日均量。
+#: 1.5 是「明显放量」的常用线；调到 2.0 会少一半信号，调到 1.2 噪声明显变多。
+ENGULF_VOLUME_MULT = 1.5
+#: 阳包阴最多列几只（与 B1 同口径，扫一眼下单用）
+MAX_ENGULF_ROWS = 20
 
 
 def _is_trade_day(day: date) -> bool:
@@ -126,14 +139,19 @@ def _scan(
     snapshot: dict[str, dict],
     *,
     dropped: set[str] | None = None,
-) -> dict[str, list[dict]]:
-    """把当天快照拼在历史后面，只算 B1。返回 `{pattern: [命中]}`（按分数降序）。
+) -> tuple[dict[str, list[dict]], list[dict]]:
+    """把当天快照拼在历史后面，算 B1 与「放量阳包阴」。
 
-    `dropped` 是外部已判定要剔除的代码（大市值票），与 `scan_patterns.scan` 同口径。
-    纯函数，不发请求、不碰数据库 —— 便于单测。
+    返回 `({pattern: [命中]}, [放量阳包阴])`。`dropped` 是外部已判定要剔除的代码
+    （大市值票），与 `scan_patterns.scan` 同口径。纯函数，不发请求、不碰数据库。
+
+    「放量阳包阴」复用 `patterns._bullish_engulf_confirm`（含「近 5 日回调 ≥3%」
+    前置 + 吞没形状 + 收盘落在振幅上半部），再叠加成交量 ≥ 5 日均量 ×
+    `ENGULF_VOLUME_MULT`。它是**推送专用**，不注册成形态、不落 `pattern_hit`。
     """
     dropped = dropped or set()
     hits: dict[str, list[dict]] = {key: [] for key in B1_KEYS}
+    engulfs: list[dict] = []
     for code, row in snapshot.items():
         records = history.get(code)
         if not records or code in dropped:
@@ -165,9 +183,32 @@ def _scan(
                 }
             )
 
+        try:
+            engulf = _bullish_engulf_confirm(bars)
+        except Exception:  # noqa: BLE001 - 同上
+            logger.warning("阳包阴判定失败（%s）", code, exc_info=True)
+            engulf = False
+        if not engulf:
+            continue
+        ratio = _volume_ratio(bars, 5)
+        if ratio < ENGULF_VOLUME_MULT:
+            continue
+        if not _signal_allowed("bullish_engulf", code, set(), set()):
+            continue
+        engulfs.append(
+            {
+                "code": code,
+                "name": record.get("name") or code,
+                "close": record["close"],
+                "pct_chg": record["pct_chg"],
+                "volume_ratio": round(ratio, 2),
+            }
+        )
+
     for items in hits.values():
         items.sort(key=lambda item: item["score"], reverse=True)
-    return hits
+    engulfs.sort(key=lambda item: item["volume_ratio"], reverse=True)
+    return hits, engulfs
 
 
 def _title(day: date, clock: str, calls: int) -> str:
@@ -178,17 +219,61 @@ def _title(day: date, clock: str, calls: int) -> str:
     )
 
 
+def _engulf_table(items: list[dict]) -> dict:
+    """「放量阳包阴」表：名称 / 代码 / 现价 / 涨幅 / 量比。"""
+    return {
+        "tag": "table",
+        "page_size": MAX_ENGULF_ROWS,
+        "row_height": "low",
+        "columns": [
+            {"name": "name", "display_name": "名称", "data_type": "text", "width": "auto"},
+            {"name": "code", "display_name": "代码", "data_type": "text"},
+            {
+                "name": "price",
+                "display_name": "现价",
+                "data_type": "text",
+                "horizontal_align": "right",
+            },
+            {
+                "name": "pct",
+                "display_name": "涨幅",
+                "data_type": "text",
+                "horizontal_align": "right",
+            },
+            {
+                "name": "ratio",
+                "display_name": "量比",
+                "data_type": "text",
+                "horizontal_align": "right",
+            },
+        ],
+        "rows": [
+            {
+                "name": item["name"],
+                "code": item["code"],
+                "price": f"{item['close']:.2f}",
+                "pct": f"{item['pct_chg']:+.2f}%",
+                "ratio": f"{item['volume_ratio']:.2f}",
+            }
+            for item in items[:MAX_ENGULF_ROWS]
+        ],
+    }
+
+
 def build_card(
-    day: date, clock: str, hits: dict[str, list[dict]], calls: int
+    day: date,
+    clock: str,
+    hits: dict[str, list[dict]],
+    engulfs: list[dict],
+    calls: int,
 ) -> list[dict]:
-    """飞书卡片元素：一张总表（按评分排序）+ 各形态家数。
+    """飞书卡片元素：B1 总表 + 放量阳包阴表（最多两张表，飞书上限 5 张）。
 
     表格组件**只能挂在卡片根节点**（不能塞进 div 里），与 `jobs/scan_dde.py`
     的 `_board_table` 同一套写法。
 
-    为什么只做一张表：飞书卡片最多挂 5 张表，而 B1 有 7 个形态 —— 一个形态一张表
-    会直接报 `card table number over limit`。改成总表后，形态放第一列，按评分
-    全局排序，尾盘挑票看前几行就够。
+    为什么 B1 只做一张表：7 个形态各一张表会直接报 `card table number over limit`
+    （2026-10-19 实测）。改成总表后，形态放第一列，按评分全局排序。
 
     单元格放**格式化好的文本**：写 `+2.30%` 一眼能读，不用再配单位。
     """
@@ -196,110 +281,158 @@ def build_card(
     elements: list[dict] = [
         {"tag": "div", "text": {"tag": "lark_md", "content": _title(day, clock, calls)}}
     ]
-    if total == 0:
+    if total == 0 and not engulfs:
         elements.append(
-            {"tag": "div", "text": {"tag": "lark_md", "content": "今日知行B1 暂无命中。"}}
+            {"tag": "div", "text": {"tag": "lark_md", "content": "今日暂无命中。"}}
         )
         return elements
 
-    counts = " · ".join(
-        f"{NAMES.get(key, key)} {len(hits[key])}" for key in B1_KEYS if hits.get(key)
-    )
-    elements.append(
-        {"tag": "div", "text": {"tag": "lark_md", "content": f"共 **{total}** 条：{counts}"}}
-    )
+    if total:
+        counts = " · ".join(
+            f"{NAMES.get(key, key)} {len(hits[key])}" for key in B1_KEYS if hits.get(key)
+        )
+        elements.append(
+            {
+                "tag": "div",
+                "text": {"tag": "lark_md", "content": f"共 **{total}** 条：{counts}"},
+            }
+        )
 
-    merged = [
-        {**item, "pattern": NAMES.get(key, key)}
-        for key in B1_KEYS
-        for item in hits.get(key) or []
-    ]
-    merged.sort(key=lambda item: item["score"], reverse=True)
-    shown = merged[:TABLE_ROWS]
+        merged = [
+            {**item, "pattern": NAMES.get(key, key)}
+            for key in B1_KEYS
+            for item in hits.get(key) or []
+        ]
+        merged.sort(key=lambda item: item["score"], reverse=True)
+        shown = merged[:TABLE_ROWS]
 
-    elements.append(
-        {
-            "tag": "table",
-            "page_size": TABLE_ROWS,
-            "row_height": "low",
-            "columns": [
+        elements.append(
+            {
+                "tag": "table",
+                "page_size": TABLE_ROWS,
+                "row_height": "low",
+                "columns": [
+                    {
+                        "name": "pattern",
+                        "display_name": "形态",
+                        "data_type": "text",
+                        "width": "auto",
+                    },
+                    {"name": "name", "display_name": "名称", "data_type": "text"},
+                    {"name": "code", "display_name": "代码", "data_type": "text"},
+                    {
+                        "name": "price",
+                        "display_name": "现价",
+                        "data_type": "text",
+                        "horizontal_align": "right",
+                    },
+                    {
+                        "name": "pct",
+                        "display_name": "涨幅",
+                        "data_type": "text",
+                        "horizontal_align": "right",
+                    },
+                    {
+                        "name": "score",
+                        "display_name": "评分",
+                        "data_type": "text",
+                        "horizontal_align": "right",
+                    },
+                ],
+                "rows": [
+                    {
+                        "pattern": item["pattern"],
+                        "name": item["name"],
+                        "code": item["code"],
+                        "price": f"{item['close']:.2f}",
+                        "pct": f"{item['pct_chg']:+.2f}%",
+                        "score": f"{item['score']:.0f}",
+                    }
+                    for item in shown
+                ],
+            }
+        )
+        if total > len(shown):
+            elements.append(
                 {
-                    "name": "pattern",
-                    "display_name": "形态",
-                    "data_type": "text",
-                    "width": "auto",
-                },
-                {"name": "name", "display_name": "名称", "data_type": "text"},
-                {"name": "code", "display_name": "代码", "data_type": "text"},
-                {
-                    "name": "price",
-                    "display_name": "现价",
-                    "data_type": "text",
-                    "horizontal_align": "right",
-                },
-                {
-                    "name": "pct",
-                    "display_name": "涨幅",
-                    "data_type": "text",
-                    "horizontal_align": "right",
-                },
-                {
-                    "name": "score",
-                    "display_name": "评分",
-                    "data_type": "text",
-                    "horizontal_align": "right",
-                },
-            ],
-            "rows": [
-                {
-                    "pattern": item["pattern"],
-                    "name": item["name"],
-                    "code": item["code"],
-                    "price": f"{item['close']:.2f}",
-                    "pct": f"{item['pct_chg']:+.2f}%",
-                    "score": f"{item['score']:.0f}",
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"其余 {total - len(shown)} 条未列出（按评分取前 {TABLE_ROWS}）。",
+                    },
                 }
-                for item in shown
-            ],
-        }
-    )
-    if total > len(shown):
+            )
+
+    if engulfs:
         elements.append(
             {
                 "tag": "div",
                 "text": {
                     "tag": "lark_md",
-                    "content": f"其余 {total - len(shown)} 条未列出（按评分取前 {TABLE_ROWS}）。",
+                    "content": (
+                        f"**放量阳包阴** {len(engulfs)} 只"
+                        f"（量比 ≥ {ENGULF_VOLUME_MULT:.1f}，按量比排序）"
+                    ),
                 },
             }
         )
+        elements.append(_engulf_table(engulfs))
+        if len(engulfs) > MAX_ENGULF_ROWS:
+            elements.append(
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"其余 {len(engulfs) - MAX_ENGULF_ROWS} 只未列出。",
+                    },
+                }
+            )
     return elements
 
 
 def _format(
-    day: date, clock: str, hits: dict[str, list[dict]], calls: int
+    day: date,
+    clock: str,
+    hits: dict[str, list[dict]],
+    engulfs: list[dict],
+    calls: int,
 ) -> str:
     """纯文字版：没配 webhook、走 lark-cli 时的兜底（那条通道只吃 markdown）。"""
     total = sum(len(items) for items in hits.values())
     lines = [_title(day, clock, calls)]
-    if total == 0:
-        lines += ["", "今日知行B1 暂无命中。"]
+    if total == 0 and not engulfs:
+        lines += ["", "今日暂无命中。"]
         return "\n".join(lines)
 
-    lines.append("")
-    for key in B1_KEYS:
-        items = hits.get(key) or []
-        if not items:
-            continue
-        lines.append(f"**{NAMES.get(key, key)}** {len(items)} 只")
-        for item in items[:MAX_PER_PATTERN]:
+    if total:
+        lines.append("")
+        for key in B1_KEYS:
+            items = hits.get(key) or []
+            if not items:
+                continue
+            lines.append(f"**{NAMES.get(key, key)}** {len(items)} 只")
+            for item in items[:MAX_PER_PATTERN]:
+                lines.append(
+                    f"- {item['name']} {item['code']}（{item['score']:.0f} 分）"
+                    f" 现价 {item['close']:.2f}（{item['pct_chg']:+.2f}%）"
+                )
+            if len(items) > MAX_PER_PATTERN:
+                # 不带 `-`：和上面的命中项混在同一个列表里会被误读成「又一只」
+                lines.append(f"（其余 {len(items) - MAX_PER_PATTERN} 只未列出）")
+
+    if engulfs:
+        lines.append("")
+        lines.append(
+            f"**放量阳包阴** {len(engulfs)} 只"
+            f"（量比 ≥ {ENGULF_VOLUME_MULT:.1f}，按量比排序）"
+        )
+        for item in engulfs[:MAX_ENGULF_ROWS]:
             lines.append(
-                f"- {item['name']} {item['code']}（{item['score']:.0f} 分）"
-                f" 现价 {item['close']:.2f}（{item['pct_chg']:+.2f}%）"
+                f"- {item['name']} {item['code']} 现价 {item['close']:.2f}"
+                f"（{item['pct_chg']:+.2f}%）· 量比 {item['volume_ratio']:.2f}"
             )
-        if len(items) > MAX_PER_PATTERN:
-            # 不带 `-`：和上面的命中项混在同一个列表里会被误读成「又一只」
-            lines.append(f"（其余 {len(items) - MAX_PER_PATTERN} 只未列出）")
+        if len(engulfs) > MAX_ENGULF_ROWS:
+            lines.append(f"（其余 {len(engulfs) - MAX_ENGULF_ROWS} 只未列出）")
     return "\n".join(lines)
 
 
@@ -339,23 +472,29 @@ def run(settings: Settings | None = None, *, now: datetime | None = None) -> dic
 
     history = _load_bars(day, set(load_codes()) | set(snapshot))
     dropped = _over_cap_codes(PATTERN_MAX_TOTAL_MV)
-    hits = _scan(history, snapshot, dropped=dropped)
+    hits, engulfs = _scan(history, snapshot, dropped=dropped)
 
     clock = moment.strftime("%H:%M")
     # 卡片表格优先（webhook）；没配 webhook 时 send_elements 会自动退回纯文字版
     result = send_elements(
-        build_card(day, clock, hits, calls),
+        build_card(day, clock, hits, engulfs, calls),
         settings,
-        fallback_markdown=_format(day, clock, hits, calls),
+        fallback_markdown=_format(day, clock, hits, engulfs, calls),
     )
     cost = round(time.monotonic() - started, 2)
     total = sum(len(items) for items in hits.values())
 
     if result["ok"]:
-        message = f"{total} 条命中 / {calls} 次调用 / 用时 {cost}s"
+        message = f"{total} 条命中 / 阳包阴 {len(engulfs)} 只 / {calls} 次调用 / 用时 {cost}s"
         _record(day, "ok", message)
         logger.info("知行B1 盘中预览已推送：%s", message)
-        return {"status": "sent", "hits": total, "calls": calls, "cost_seconds": cost}
+        return {
+            "status": "sent",
+            "hits": total,
+            "engulfs": len(engulfs),
+            "calls": calls,
+            "cost_seconds": cost,
+        }
 
     error = result.get("error") or "推送失败"
     _record(day, "failed", error)
