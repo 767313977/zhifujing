@@ -303,6 +303,21 @@ export default function Funds() {
 
   // 下面四张卡片的小字计算先落地成常量：JSX 里写几层可选链会读不清，
   // 而且顺势把「算不出来」统一收敛成 null，交给格式化函数输出占位符
+  // 期指净空与主力净流入（2026-10-19 加，放概览最前）
+  const futures = overview?.futures_net_short ?? []
+  const futuresTotal = futures.length
+    ? futures.reduce((sum, item) => sum + item.net_short, 0)
+    : null
+  const futuresDetail = futures.length
+    ? futures
+        .map((item) => `${item.variety} ${(item.net_short / 10000).toFixed(1)}万`)
+        .join(' · ')
+    : '暂无数据'
+  const mainInflow = overview?.main_net_inflow ?? null
+  const mainInflowChange =
+    mainInflow != null && overview?.main_net_inflow_prev != null
+      ? mainInflow - overview.main_net_inflow_prev
+      : null
   const financingTotal = overview?.financing_total ?? null
   const buyTotal = overview?.financing_buy_total ?? null
   const financingChange = overview?.financing_change ?? null
@@ -362,13 +377,37 @@ export default function Funds() {
 
       <div className="space-y-4">
         {/* ---- 概览 ---- */}
-        <div className="rise grid grid-cols-1 gap-px border border-line-soft bg-line-soft sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rise grid grid-cols-1 gap-px border border-line-soft bg-line-soft sm:grid-cols-2 xl:grid-cols-3">
           {overviewLoading ? (
-            <div className="bg-ink-900 px-4 py-8 text-center text-[14px] text-fg-dim sm:col-span-2 xl:col-span-4">
+            <div className="bg-ink-900 px-4 py-8 text-center text-[14px] text-fg-dim sm:col-span-2 xl:col-span-3">
               加载中…
             </div>
           ) : (
             <>
+              <MetricCard
+                label="期指净空（前20）"
+                value={futuresTotal == null ? '—' : `${fmtInt(futuresTotal)} 手`}
+                muted={futuresTotal == null}
+                sub={futuresDetail}
+                // 中金所 16:00 才发布，日期可能早于页面选中的交易日
+                note={`${overview?.futures_date ?? '—'} 收盘 · 前20席位合计`}
+              />
+              <MetricCard
+                label="主力净流入"
+                value={signedAmount(mainInflow)}
+                tone={toneOf(mainInflow)}
+                muted={mainInflow == null}
+                sub={
+                  mainInflowChange == null ? (
+                    '无上一交易日数据'
+                  ) : (
+                    <span className={toneOf(mainInflowChange)}>
+                      较上日 {signedAmount(mainInflowChange)}
+                    </span>
+                  )
+                }
+                note="全市场 DDE 汇总 · iFinD 口径"
+              />
               <MetricCard
                 label="两融余额"
                 // 深市常比沪市晚一天披露，此时两市合计给不出来。

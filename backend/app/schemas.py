@@ -2066,6 +2066,16 @@ class MarginSnapshot(BaseModel):
     securities_balance: float | None  # 融券余额
 
 
+class FuturesNetShort(BaseModel):
+    """一个股指期货品种的前 20 席位净空（手）。"""
+
+    variety: str  # IF / IC / IH / IM
+    name: str  # 沪深300 / 中证500 / 上证50 / 中证1000
+    net_short: int
+    # 当日变化：正 = 加空，负 = 减空
+    change: int
+
+
 class FundFlowOverview(BaseModel):
     """资金面总览（当日）。所有金额单位：元。"""
 
@@ -2087,6 +2097,14 @@ class FundFlowOverview(BaseModel):
     institution_count: int
     # ETF 净申赎估算（份额变化 × 收盘价）。缺上一日数据时为 None
     etf_net_inflow: float | None
+    # 期指前 20 净空（2026-10-19 加）。中金所约 16:00 才发布，这里取**最近一份**，
+    # `futures_date` 就是它的日期 —— 可能早于 `trade_date`
+    futures_date: date | None
+    futures_net_short: list[FuturesNetShort]
+    # 大盘主力净流入 = 全市场 DDE 主力净流入额之和（iFinD 口径，元）。
+    # 负数 = 净流出；`_prev` 用于算「较上日」
+    main_net_inflow: float | None
+    main_net_inflow_prev: float | None
 
 
 class FundsSeries(BaseModel):

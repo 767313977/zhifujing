@@ -1958,6 +1958,24 @@ export interface FundFlowOverview {
   institution_count: number
   /** ETF 净申赎估算（不含货币现金类）；没有上一交易日数据时为 null */
   etf_net_inflow: number | null
+  /** 期指净空数据的日期。中金所约 16:00 才发布，可能早于 trade_date */
+  futures_date: string | null
+  /** 四个股指期货品种的前 20 席位净空（手） */
+  futures_net_short: FuturesNetShort[]
+  /** 大盘主力净流入（全市场 DDE 汇总，iFinD 口径，元）。负数 = 净流出 */
+  main_net_inflow: number | null
+  /** 上一交易日的主力净流入，用于算「较上日」 */
+  main_net_inflow_prev: number | null
+}
+
+export interface FuturesNetShort {
+  variety: string
+  /** 沪深300 / 中证500 / 上证50 / 中证1000 */
+  name: string
+  /** 前 20 席位净空（手） */
+  net_short: number
+  /** 当日变化：正 = 加空，负 = 减空 */
+  change: number
 }
 
 /** 资金面走势。数组与 dates 一一对应，缺失为 null（图上必须断开，不能画成 0）。 */

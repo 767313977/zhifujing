@@ -13,9 +13,11 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
 from app.db import get_db
+from app.jobs.collect_futures_position import VARIETIES as FUTURES_VARIETIES
 from app.models import (
     EtfCategory,
     EtfShare,
+    FuturesPosition,
     HsgtDaily,
     LhbInstitution,
     MarginDaily,
@@ -33,6 +35,7 @@ from app.schemas import (
     EtfIndustryItem,
     FundFlowOverview,
     FundsSeries,
+    FuturesNetShort,
     InstitutionBoard,
     InstitutionItem,
     MarginSnapshot,
@@ -160,6 +163,48 @@ def overview(
 
     etf_inflow = _etf_net_inflow(session, target, prev)
 
+    # 期指前 20 净空（2026-10-19 加）：中金所约 16:00 才发布，取**最近一份**，
+    # 所以 `futures_date` 可能早于页面选中的交易日。
+    futures_date = session.scalar(
+        select(func.max(FuturesPosition.trade_date)).where(
+            FuturesPosition.trade_date <= target
+        )
+    )
+    futures_net_short: list[FuturesNetShort] = []
+    if futures_date is not None:
+        rows = list(
+            session.scalars(
+                select(FuturesPosition).where(
+                    FuturesPosition.trade_date == futures_date
+                )
+            )
+        )
+        order = {
+            variety: index for index, variety in enumerate(FUTURES_VARIETIES)
+        }
+        futures_net_short = [
+            FuturesNetShort(
+                variety=row.variety,
+                name=FUTURES_VARIETIES[row.variety],
+                net_short=row.top_net_short,
+                change=row.top_change,
+            )
+            for row in sorted(
+                rows, key=lambda item: order.get(item.variety, len(order))
+            )
+            if row.top_net_short is not None and row.top_change is not None
+        ]
+
+    # 大盘主力净流入 = 全市场 DDE 主力净流入额之和（iFinD 口径，元）
+    main_net_inflow = session.scalar(
+        select(func.sum(StockDde.net_inflow)).where(StockDde.trade_date == target)
+    )
+    main_net_inflow_prev = None
+    if prev is not None:
+        main_net_inflow_prev = session.scalar(
+            select(func.sum(StockDde.net_inflow)).where(StockDde.trade_date == prev)
+        )
+
     return FundFlowOverview(
         trade_date=target,
         sh=_margin_snapshot(sh),
@@ -172,6 +217,10 @@ def overview(
         institution_net=institution_net,
         institution_count=len({row.code for row in institutions}),
         etf_net_inflow=etf_inflow,
+        futures_date=futures_date,
+        futures_net_short=futures_net_short,
+        main_net_inflow=main_net_inflow,
+        main_net_inflow_prev=main_net_inflow_prev,
     )
 
 
