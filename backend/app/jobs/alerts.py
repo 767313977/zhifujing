@@ -115,15 +115,17 @@ def check(day: date | None = None, settings: Settings | None = None) -> dict:
             f"今日 {quota['today_calls']} 次）"
         )
 
-    # 备份：23:10 才跑，这里查「最近一次」。失败要报；成功但没配异地同步也提醒 ——
-    # 备份和主库在同一块盘上等于没备份（2026-10-19 P3 修）。
+    # 备份：23:10 才跑，这里查「最近一次」。失败要报、从未跑也要报。
+    #
+    # ⚠️ 「未配异地同步（BACKUP_SYNC_DIR）」**故意不报**（2026-10-20 用户要求）：
+    # 那是一句常驻的配置提醒，每天都会推、推到用户关掉为止 —— 常驻提醒会让真告警
+    # （备份失败、链路断）也变成背景噪声。它只留在备份记录里（`backup.py` 的
+    # `sync_note` 会写明「未配置异地同步（备份与主库同盘）」），想看就去数据管理页。
     backup_day, backup_statuses = _latest_backup()
     if backup_day is None:
         issues.append("数据库备份从未运行（23:10 任务无记录）")
     elif "ok" not in backup_statuses:
         issues.append(f"最近一次数据库备份失败（{backup_day}），主库当前无保护")
-    if not settings.backup_sync_dir.strip():
-        issues.append("备份未配置异地同步目录（BACKUP_SYNC_DIR），备份与主库在同一块盘上")
 
     if not issues:
         return {"status": "ok", "issues": []}
