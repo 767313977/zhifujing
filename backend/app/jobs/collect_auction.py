@@ -165,6 +165,11 @@ def collect_auction(now: datetime | None = None) -> int:
                 if item["code"] not in known:
                     continue
                 volume_ratio = item["volume_ratio"]
+                # 量比 ≤0 当缺值（2026-10-20 修）：腾讯对**竞价无成交**的票填 0
+                # （全天还一笔交易都没有，量比分母都不存在），那不是「量比真的是 0」
+                # 而是「算不出」。写 0 会让这类票在量比列显示 0.00、混进量比升序的队首。
+                if volume_ratio is not None and volume_ratio <= 0:
+                    volume_ratio = None
                 # 开盘后的现价 → 「开盘后涨幅」（它 ÷ 昨收 − 1）：看高开有没有被接住。
                 # ≤0 当缺值（停牌 / 无成交时腾讯给 0，见 `_positive`）。
                 post_open_price = _positive(item["price"])
@@ -229,7 +234,9 @@ def collect_auction(now: datetime | None = None) -> int:
                             if price is not None and pre_close
                             else None
                         ),
-                        "open": item["open"],
+                        # 开盘价 ≤0 当缺值：竞价无成交的票腾讯给 0（约 80 只/天），
+                        # 那不是「开盘价是 0」而是「没有开盘价」（2026-10-20 修）。
+                        "open": _positive(item["open"]),
                         "amount": item["amount"],
                         "volume": item["volume"],
                         "turnover": item["turnover"],
@@ -240,8 +247,11 @@ def collect_auction(now: datetime | None = None) -> int:
                         "volume_ratio": None,
                         "float_mv": item["float_mv"],
                         "total_mv": item["total_mv"],
-                        "limit_up": item["limit_up"],
-                        "limit_down": item["limit_down"],
+                        # 涨跌停价 ≤0 当缺值：腾讯对**无涨跌停**的票（新股上市初期等）
+                        # 填 −1 哨兵值。存 −1 会让读端「price >= limit_up」恒真，
+                        # 把普通票误算成「竞价涨停」（2026-10-20 修）。
+                        "limit_up": _positive(item["limit_up"]),
+                        "limit_down": _positive(item["limit_down"]),
                         "samples": samples,
                     }
                 )

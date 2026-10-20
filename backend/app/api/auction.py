@@ -174,9 +174,11 @@ def _open_volume(samples: list | None, hhmm: str, limit_up, limit_down) -> float
     bid_vol = _frame_at(samples, hhmm, SAMPLE_BID1_VOLUME)
     ask_price = _frame_at(samples, hhmm, SAMPLE_ASK1_PRICE)
     ask_vol = _frame_at(samples, hhmm, SAMPLE_ASK1_VOLUME)
-    if limit_up and bid_price and bid_price >= limit_up and bid_vol:
+    # ⚠️ limit_up/limit_down 必须 > 0：历史行存的是腾讯 −1 哨兵（无涨跌停，2026-10-20
+    # 起写端才清洗成 NULL），−1 是 truthy，不拦会让「bid_price >= limit_up」恒真。
+    if limit_up and limit_up > 0 and bid_price and bid_price >= limit_up and bid_vol:
         return float(bid_vol)
-    if limit_down and ask_price and ask_price <= limit_down and ask_vol:
+    if limit_down and limit_down > 0 and ask_price and ask_price <= limit_down and ask_vol:
         return float(ask_vol)
     return None
 
@@ -316,7 +318,14 @@ def _metrics(
         # **封成比（%）** = 涨停价上的封单额 ÷ 自由流通市值。只在**竞价就封在涨停价上**
         # 时有意义（打板核心指标：>1% 较强、>3% 超强）。
         seal_ratio = None
-        if row.limit_up and row.price is not None and row.price >= row.limit_up and free_mv:
+        # limit_up 必须 > 0：历史行可能是 −1 哨兵（见 `_open_volume` 的注释）
+        if (
+            row.limit_up
+            and row.limit_up > 0
+            and row.price is not None
+            and row.price >= row.limit_up
+            and free_mv
+        ):
             bid_price = _frame_last(row.samples, SAMPLE_BID1_PRICE)
             bid_volume = _frame_last(row.samples, SAMPLE_BID1_VOLUME)
             if bid_price and bid_volume:
@@ -396,6 +405,9 @@ def _summary(session: Session, trade_date: date, prev: date | None) -> AuctionSu
             .select_from(AuctionSnapshot)
             .where(
                 AuctionSnapshot.trade_date == trade_date,
+                # 历史行的 limit_up 可能是 −1 哨兵（腾讯「无涨跌停」的填法，
+                # 2026-10-20 起写端才置 NULL）—— 不拦的话任何正价都 ≥ −1，全被算成涨停
+                AuctionSnapshot.limit_up > 0,
                 AuctionSnapshot.price >= AuctionSnapshot.limit_up,
             )
         )
@@ -584,21 +596,25 @@ def auction_list(
 
     def to_row(row: AuctionSnapshot) -> AuctionRow:
         metric = metrics.get(row.code) or {}
+        # 历史脏行的展示层清洗（写端 2026-10-20 起才置 NULL，之前的行不动库、在这里拦）：
+        # open = 0 / volume_ratio = 0 → 无成交；limit_up / limit_down = −1 → 无涨跌停哨兵
+        limit_up = row.limit_up if row.limit_up and row.limit_up > 0 else None
+        limit_down = row.limit_down if row.limit_down and row.limit_down > 0 else None
         return AuctionRow(
             code=row.code,
             name=row.name,
             price=row.price,
             pre_close=row.pre_close,
             pct_chg=row.pct_chg,
-            open=row.open,
+            open=row.open or None,
             amount=row.amount,
             volume=row.volume,
             turnover=row.turnover,
-            volume_ratio=row.volume_ratio,
+            volume_ratio=row.volume_ratio or None,
             float_mv=row.float_mv,
             total_mv=row.total_mv,
-            limit_up=row.limit_up,
-            limit_down=row.limit_down,
+            limit_up=limit_up,
+            limit_down=limit_down,
             consecutive=boards.get(row.code),
             auction_ratio=ratios.get(row.code),
             amplitude=metric.get("amplitude"),
@@ -672,7 +688,8 @@ def auction_boards(
             bucket["pct_n"] += 1
         if amount:
             bucket["amount"] += amount
-        if price is not None and limit_up and price >= limit_up:
+        # limit_up 必须 > 0：历史行可能是 −1 哨兵（见 `_open_volume` 的注释）
+        if price is not None and limit_up and limit_up > 0 and price >= limit_up:
             bucket["limit"] += 1
 
     items = [
