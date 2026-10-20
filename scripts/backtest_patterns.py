@@ -410,8 +410,18 @@ CANDLE_LABELS = {
 # - **只有带 `--filter-split` 才建累加器、才预计算**，平时零额外开销。
 FILTER_LABELS: dict[str, str] = {
     "ma60_up": "MA60 向上",
+    "rps50_90": "RPS50≥90",
+    "rps120_85": "RPS120≥85",
+    "rps_dual": "RPS50≥90 且 RPS120≥85",
 }
 FILTER_CHECKS: dict[str, Callable[[str, Bars, int, dict], bool]] = {}
+
+# 每个过滤条件要用到哪几个 RPS 窗口（`--filter-split` 里一个都没选就不预计算）
+RPS_CONDITIONS: dict[str, tuple[int, ...]] = {
+    "rps50_90": (50,),
+    "rps120_85": (120,),
+    "rps_dual": (50, 120),
+}
 
 
 def _filter_ma60_up(code: str, bars: Bars, i: int, ctx: dict) -> bool:
@@ -431,15 +441,103 @@ def _filter_ma60_up(code: str, bars: Bars, i: int, ctx: dict) -> bool:
 FILTER_CHECKS["ma60_up"] = _filter_ma60_up
 
 
+# ---------------------------------------------------------------- RPS 相对强度
+#
+# 欧奈尔相对强度：**N 日涨幅在当天横截面上的百分位**（0~100）。
+# 口径（2026-10-19 清单「指令 1」）：
+# - 分母是**参与本次回测的那批票**（与基准同池），停牌当天没有行 → 不参与排名；
+# - 只看当天及以前：涨幅用 `close[t] / close[t-N] - 1`，t-N 不足的直接跳过；
+# - 按日一次性排序，不在每条信号上现算。
+
+RPS_TOP = 90.0
+
+
+def _rps_context(
+    bars_by_code: dict[str, Bars], windows: set[int]
+) -> dict[int, dict[date, dict[str, float]]]:
+    """`{窗口: {交易日: {代码: 0~100 百分位}}}`。
+
+    同一只票在窗口内停牌时缺行，`close[i] / close[i-N]` 按**行**对齐（与
+    MA60 等指标同口径），不跨空缺补交易日。
+    """
+    by_date: dict[int, dict[date, dict[str, float]]] = {
+        window: defaultdict(dict) for window in windows
+    }
+    for code, bars in bars_by_code.items():
+        close = bars.close
+        for window in windows:
+            if len(bars) <= window:
+                continue
+            gains = close[window:] / close[:-window] - 1.0
+            for offset, gain in enumerate(gains.tolist()):
+                by_date[window][bars.dates[window + offset]][code] = gain
+
+    tables: dict[int, dict[date, dict[str, float]]] = {}
+    for window, days in by_date.items():
+        table: dict[date, dict[str, float]] = {}
+        for day, gains in days.items():
+            if not gains:
+                continue
+            codes = list(gains)
+            values = np.fromiter((gains[code] for code in codes), dtype=float)
+            order = np.argsort(values)
+            ranks = np.empty(len(values), dtype=float)
+            ranks[order] = np.arange(len(values), dtype=float)
+            # 全是同一涨幅（或只有一只票）时，denom 兜住 0 除
+            percent = ranks / max(len(values) - 1, 1) * 100.0
+            table[day] = dict(zip(codes, percent.tolist()))
+        tables[window] = table
+    return tables
+
+
+def _rps_lookup(ctx: dict, window: int, code: str, day: date) -> float | None:
+    table = ctx.get("rps", {}).get(window)
+    if not table:
+        return None
+    return table.get(day, {}).get(code)
+
+
+def _filter_rps50_90(code: str, bars: Bars, i: int, ctx: dict) -> bool:
+    value = _rps_lookup(ctx, 50, code, bars.dates[i])
+    return value is not None and value >= RPS_TOP
+
+
+def _filter_rps120_85(code: str, bars: Bars, i: int, ctx: dict) -> bool:
+    value = _rps_lookup(ctx, 120, code, bars.dates[i])
+    return value is not None and value >= 85.0
+
+
+def _filter_rps_dual(code: str, bars: Bars, i: int, ctx: dict) -> bool:
+    day = bars.dates[i]
+    rps50 = _rps_lookup(ctx, 50, code, day)
+    rps120 = _rps_lookup(ctx, 120, code, day)
+    return (
+        rps50 is not None
+        and rps120 is not None
+        and rps50 >= RPS_TOP
+        and rps120 >= 85.0
+    )
+
+
+FILTER_CHECKS["rps50_90"] = _filter_rps50_90
+FILTER_CHECKS["rps120_85"] = _filter_rps120_85
+FILTER_CHECKS["rps_dual"] = _filter_rps_dual
+
+
 def _filter_context(
     names: list[str], bars_by_code: dict[str, Bars], all_dates: list[date]
 ) -> dict:
-    """过滤条件需要的横截面预计算。
-
-    目前只有单票条件（`ma60_up`），不需要横截面数据；RPS / 行业共振接进来后
-    在这里按需构建（**只算被点名的条件**，别为没选的条件付代价）。
-    """
-    return {}
+    """过滤条件需要的横截面预计算（**只算被点名的条件**）。"""
+    ctx: dict = {}
+    windows: set[int] = set()
+    for name in names:
+        windows.update(RPS_CONDITIONS.get(name, ()))
+    if windows:
+        # 额外表（RPS 单独回测）固定用 RPS50，只选 rps120_85 时也要补上
+        windows.add(50)
+        logger.info("RPS 预计算：窗口 %s", ", ".join(str(w) for w in sorted(windows)))
+        ctx["rps"] = _rps_context(bars_by_code, windows)
+    return ctx
 
 
 # ---------------------------------------------------------------- 数据装载
@@ -742,6 +840,14 @@ def main() -> int:
             ", ".join(filter_names),
         )
 
+    # RPS 单独回测（清单「指令 1」要求）：把「每天 RPS50 ≥ 90」当成一个虚拟形态，
+    # 与真实形态用同一套 20 日去重与同日横截面基准。
+    rps_extra: Tally | None = None
+    last_rps: dict[str, int] = {}
+    if any(name in RPS_CONDITIONS for name in filter_names):
+        rps_extra = Tally()
+        logger.info("RPS 单独回测：每天 RPS50 ≥ 90，按 %d 日去重", DEDUP_DAYS)
+
     # **交易日轴**：取数据自身的日期并集。持有期一律按**交易日**对齐（见 `_forward_outcomes`
     # 与模块顶部「持有期口径」一节）—— 停牌日的行在库里是缺的，只有一条全局日期轴才能
     # 把「第 h 个交易日」和「第 h 行」区分开。
@@ -800,6 +906,21 @@ def main() -> int:
             if g + max(HORIZONS) >= len(all_dates):
                 # 命中日之后不足 `max(HORIZONS)` 个交易日了。日期升序，可以直接停这一只票。
                 break
+            if rps_extra is not None:
+                rps50 = _rps_lookup(filter_ctx, 50, code, day)
+                if (
+                    rps50 is not None
+                    and rps50 >= RPS_TOP
+                    and t - last_rps.get(code, -10**6) >= DEDUP_DAYS
+                ):
+                    entry_rps = float(bars.close[t])
+                    if entry_rps > 0:
+                        last_rps[code] = t
+                        rps_extra.add(
+                            _forward_outcomes(bars, date_index, g, all_dates, entry_rps),
+                            [bench[h].get(day, 0.0) for h in HORIZONS],
+                            str(day)[:7],
+                        )
             sample: Bars | None = None
             # 同一个 (票, 交易日) 的蜡烛形态只判一次：多个形态同日命中时共用
             candle_flags: tuple[str, ...] | None = None
@@ -882,6 +1003,8 @@ def main() -> int:
         _report_candle_split(tallies, candle_tallies)
     if filter_tallies:
         _report_filter_split(filter_tallies, filter_base_tallies)
+    if rps_extra is not None and rps_extra.size:
+        _report_rps_standalone(rps_extra)
     return 0
 
 
@@ -1157,6 +1280,37 @@ def _report_filter_split(
         print(
             "结论：没有任何「形态 × 过滤条件」组合达到「10 日超额 +1pp 且过滤组样本 ≥200」。"
         )
+
+
+def _report_rps_standalone(tally: Tally) -> None:
+    """RPS50 ≥ 90 单独（不叠任何形态）的表现。
+
+    清单「指令 1」的附加要求：先知道相对强度本身有没有用，再谈它当过滤条件。
+    口径与形态完全一致（20 日去重、同日横截面基准、按交易日持有期）。
+    """
+    index10 = HORIZONS.index(10)
+    print()
+    print("=" * 104)
+    print("RPS50 ≥ 90 单独（不叠任何形态）：每天横截面涨幅前 10% 的票")
+    print("-" * 104)
+    header = f"{'信号数':>7}"
+    for horizon in HORIZONS:
+        header += f"{f'{horizon}日超额':>12}"
+    header += f"{'10日胜率':>10}{'10日中位':>10}"
+    print(header)
+    print("-" * 104)
+    line = f"{tally.size:>7}"
+    for index in range(len(HORIZONS)):
+        if tally.counts[index]:
+            excess = tally.stats(index)[0] - tally.bench_mean(index)
+            line += f"{excess * 100:>11.2f}%"
+        else:
+            line += f"{'—':>12}"
+    line += f"{tally.stats(index10)[2] * 100:>9.1f}%"
+    line += f"{tally.stats(index10)[1] * 100:>9.2f}%"
+    print(line)
+    print("=" * 104)
+    print("（超额 = 命中组平均收益 − 同一天全市场平均收益；与形态表同一套基准）")
 
 
 if __name__ == "__main__":
