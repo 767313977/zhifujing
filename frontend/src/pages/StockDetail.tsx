@@ -795,66 +795,73 @@ export default function StockDetail() {
           )}
         </Panel>
 
-        <Panel
-          title="筹码分布"
-          meta={
-            <span className="num">
-              {chips?.trade_date ? `${chips.trade_date} · ` : ''}
-              本地按换手率衰减推演 · 红=获利筹码 绿=套牢筹码
-            </span>
-          }
-          delay={105}
-        >
-          {profile === null ? (
-            <div className="flex h-[240px] items-center justify-center text-[14px] text-fg-dim">
-              <span className="pulse-soft">加载中…</span>
-            </div>
-          ) : !chips || chips.days === 0 ? (
-            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
-              {chips?.note ?? '这只票暂时算不出筹码分布'}
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 overflow-hidden md:grid-cols-4">
-                <Cell
-                  label="获利比例"
-                  value={fmtNum(
-                    chips.profit_ratio != null ? chips.profit_ratio * 100 : null,
-                    1,
-                    '%',
-                  )}
-                />
-                <Cell label="平均成本" value={fmtNum(chips.avg_cost, 2)} />
-                <Cell
-                  label="90% 成本区间"
-                  value={
-                    chips.cost_90_low != null && chips.cost_90_high != null
-                      ? `${chips.cost_90_low.toFixed(2)} ~ ${chips.cost_90_high.toFixed(2)}`
-                      : '—'
-                  }
-                />
-                <Cell
-                  label="集中度(90%)"
-                  value={fmtNum(
-                    chips.concentration_90 != null
-                      ? chips.concentration_90 * 100
-                      : null,
-                    1,
-                    '%',
-                  )}
-                />
+        {/* 筹码分布与阶段判定**并排**（2026-10-20 用户要求）：筹码图单占一行太宽，
+            右边空着一大片；阶段判定原先在资金流向之后单独一行，挪上来正好填满。
+            窄屏（<lg）自动叠成一列。`items-start` 让两块各自按内容高度对齐顶部，
+            不把较矮的那块拉伸成同样高 */}
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          <Panel
+            title="筹码分布"
+            meta={
+              <span className="num">
+                {chips?.trade_date ? `${chips.trade_date} · ` : ''}
+                本地按换手率衰减推演 · 红=获利筹码 绿=套牢筹码
+              </span>
+            }
+            delay={105}
+          >
+            {profile === null ? (
+              <div className="flex h-[240px] items-center justify-center text-[14px] text-fg-dim">
+                <span className="pulse-soft">加载中…</span>
               </div>
-              <div className="px-2 pt-2">
-                <div className="mb-1 text-[12px] text-fg-dim">
-                  横轴 = 该价位的筹码占比 · 现价 {fmtNum(chips.price, 2)} 元
-                  {chips.peak_price != null &&
-                    ` · 筹码峰 ${fmtNum(chips.peak_price, 2)} 元`}
+            ) : !chips || chips.days === 0 ? (
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
+                {chips?.note ?? '这只票暂时算不出筹码分布'}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 overflow-hidden md:grid-cols-4">
+                  <Cell
+                    label="获利比例"
+                    value={fmtNum(
+                      chips.profit_ratio != null ? chips.profit_ratio * 100 : null,
+                      1,
+                      '%',
+                    )}
+                  />
+                  <Cell label="平均成本" value={fmtNum(chips.avg_cost, 2)} />
+                  <Cell
+                    label="90% 成本区间"
+                    value={
+                      chips.cost_90_low != null && chips.cost_90_high != null
+                        ? `${chips.cost_90_low.toFixed(2)} ~ ${chips.cost_90_high.toFixed(2)}`
+                        : '—'
+                    }
+                  />
+                  <Cell
+                    label="集中度(90%)"
+                    value={fmtNum(
+                      chips.concentration_90 != null
+                        ? chips.concentration_90 * 100
+                        : null,
+                      1,
+                      '%',
+                    )}
+                  />
                 </div>
-                {chipOption && <EChart option={chipOption} height={260} />}
-              </div>
-            </>
-          )}
-        </Panel>
+                <div className="px-2 pt-2">
+                  <div className="mb-1 text-[12px] text-fg-dim">
+                    横轴 = 该价位的筹码占比 · 现价 {fmtNum(chips.price, 2)} 元
+                    {chips.peak_price != null &&
+                      ` · 筹码峰 ${fmtNum(chips.peak_price, 2)} 元`}
+                  </div>
+                  {chipOption && <EChart option={chipOption} height={260} />}
+                </div>
+              </>
+            )}
+          </Panel>
+          {profile?.phase && <PhasePanel phase={profile.phase} delay={110} />}
+        </div>
 
         <Panel
           title="杀猪盘体检"
@@ -1103,9 +1110,6 @@ export default function StockDetail() {
           </p>
         </Panel>
 
-        {/* 阶段判定放在资金流向之后（2026-10-10 用户要求）：先看资金与流通盘，
-            再看这只票处在哪一档 */}
-        {profile?.phase && <PhasePanel phase={profile.phase} delay={110} />}
         <Panel
           title="涨停记录"
           meta={<span className="num">该股上过涨停池的日期（数据源只保留最近 15 个交易日）</span>}
