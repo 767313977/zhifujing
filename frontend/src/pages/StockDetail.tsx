@@ -766,9 +766,7 @@ export default function StockDetail() {
             </div>
           ) : ddeLoading ? (
             // 首屏不等 DDE（见 `load` 的注释）：概况已出来，这块还在路上
-            <div className="flex h-[240px] items-center justify-center text-[14px] text-fg-dim">
-              <span className="pulse-soft">资金流加载中…</span>
-            </div>
+            <PanelLoading label="资金流取数中…（DDE 需要现取，稍等几秒）" />
           ) : ddeError ? (
             // 请求本身失败（网络 / 超时 / 5xx）：与「本来就没数据」分开说 ——
             // 原来 `dde` 为 null 会落到下面那句「暂时没有 DDE 数据」，把取数失败读成了没数据
@@ -923,9 +921,7 @@ export default function StockDetail() {
             </div>
           ) : trapLoading ? (
             // 体检首次要现取东财新闻（实测 3.7s），不阻塞首屏 —— 见 `load` 的注释
-            <div className="flex h-[180px] items-center justify-center text-[14px] text-fg-dim">
-              <span className="pulse-soft">体检中…</span>
-            </div>
+            <PanelLoading label="体检中…（正在取个股新闻，稍等几秒）" height={180} />
           ) : !trap ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               暂时无法体检（接口未返回结果）
@@ -1184,6 +1180,30 @@ function Cell({
         {value}
       </div>
       {sub && <div className="num mt-1 text-[13px] text-fg-dim">{sub}</div>}
+    </div>
+  )
+}
+
+/**
+ * 面板内的加载占位（2026-10-20）。
+ *
+ * 用它的两处都是**要现取外部数据**的块：资金流（DDE 未命中缓存时要现取 iFinD，可到
+ * 十几秒）、杀猪盘体检（首次现取东财个股新闻，实测 3.7s）。原来只是一行「加载中…」，
+ * 在纯白卡片上很容易被当成「这块没内容」；这里改成状态点 + 骨架条 + 扫光，
+ * 一眼能看出还在取数。`height` 与最终内容大致同高，避免内容到达时页面跳一下。
+ */
+function PanelLoading({ label, height = 240 }: { label: string; height?: number }) {
+  return (
+    <div className="px-4 py-4" style={{ minHeight: height }}>
+      <div className="mb-3 flex items-center gap-2">
+        <span className="h-[6px] w-[6px] animate-pulse bg-accent" />
+        <span className="text-[13px] text-fg-muted">{label}</span>
+      </div>
+      <div className="space-y-2.5">
+        {[96, 88, 92, 74].map((width, index) => (
+          <div key={index} className="skeleton h-[10px]" style={{ width: `${width}%` }} />
+        ))}
+      </div>
     </div>
   )
 }

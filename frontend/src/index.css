@@ -367,4 +367,27 @@
   .pulse-soft {
     animation: pulse-soft 2.4s ease-in-out infinite;
   }
+
+  /* 面板内的加载骨架（个股页 DDE / 杀猪盘体检那种「要现取外部数据」的占位）。
+     一条浅灰底色 + 一层从左扫到右的高光，比一行「加载中…」更容易看出还在取数；
+     浅色主题下高光用更亮的一档灰，不用白闪（白闪在纯白卡片上看不出来）。 */
+  @keyframes skeleton-sweep {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+  .skeleton {
+    background-image: linear-gradient(
+      90deg,
+      var(--color-ink-800) 0%,
+      var(--color-ink-700) 50%,
+      var(--color-ink-800) 100%
+    );
+    background-size: 200% 100%;
+    border-radius: 2px;
+    animation: skeleton-sweep 1.6s linear infinite;
+  }
 }
