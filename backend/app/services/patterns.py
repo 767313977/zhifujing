@@ -2776,6 +2776,38 @@ def _wudao_start(bars: Bars) -> Signal | None:
 
 # ---------------------------------------------------------------- 悟道「阶段判定」
 
+# 日线做T 的「超跌」档（2026-10-20 用户提供的 `日线做T.hxf` 原式，一字未改）：
+#   乖离 := (C - MA(C,20)) / MA(C,20) * 100
+#   超跌 := 乖离 < -15
+#
+# ⚠️ 它**不是** `classify_phase` 的第 10 档：那 9 档回答的是「这票现在处在什么阶段」
+# （有优先级、会互相压制），而「超跌」回答的是「离 20 日线够不够远」，两个问题互不相干
+# —— 一只票完全可能既「超跌」又「明天预案」。所以只作为**筛选条件**用（形态选股筛选行
+# 里与「明天预案 / 明天盯」并列），不进 `WUDAO_PHASE_LABELS`、不影响个股页的阶段卡片。
+OVERSOLD_MA = 20
+OVERSOLD_DEV_PCT = -15.0
+
+
+def oversold_deviation(bars: Bars) -> float | None:
+    """收盘相对 20 日均线的乖离（%，负数表示在均线下方）；日线不足 20 根返回 None。
+
+    MA20 与用户公式同一个口径：**含当日收盘**的简单均线（`MA(C,20)` 就是这么算的）。
+    返回值给筛选排序用（越负跌得越狠），阈值判断在 `is_oversold` 里。
+    """
+    if len(bars.close) < OVERSOLD_MA:
+        return None
+    ma20 = float(bars.close[-OVERSOLD_MA:].mean())
+    if ma20 <= 0:
+        return None
+    return (float(bars.close[-1]) - ma20) / ma20 * 100.0
+
+
+def is_oversold(bars: Bars) -> bool:
+    """收盘相对 20 日均线乖离 < −15%（用户「日线做T」指标里的「超跌」）。"""
+    dev = oversold_deviation(bars)
+    return dev is not None and dev < OVERSOLD_DEV_PCT
+
+
 # 8 个阶段的展示名与建议动作 —— 与原型 `PHASE_LABELS` / `PHASE_DO` 逐条一致。
 # 这是**给单只票的一句话结论**（个股页「阶段判定」卡片用），不是选股信号；
 # 选股走的是注册进上面 `PATTERNS` 的那些形态。

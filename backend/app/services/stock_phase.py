@@ -22,9 +22,12 @@ from app.db import session_scope
 from app.models import StockDaily, TradeCalendar
 from app.services.patterns import (
     Bars,
+    OVERSOLD_DEV_PCT,
+    OVERSOLD_MA,
     PhaseVerdict,
     build_bars,
     classify_phase,
+    oversold_deviation,
     usable_bar,
 )
 from app.sources.base import chunked
@@ -65,6 +68,11 @@ _TRADE_DAY_INDEX: dict[date, int] | None = None
 #: 的空表处理）—— 免得把「什么都没有」永久钉住。
 _PHASE_CACHE: dict[str, PhaseVerdict | None] = {}
 _PHASE_CACHE_VERSION: tuple[date, int] | None = None
+#: 「超跌」筛选的进程内缓存（`load_oversold`）。与阶段判定**分开存**：值类型不同
+#: （这里存「乖离%」或 None），共用一份 dict 会互相覆盖。版本口径与上面完全一样。
+#: None = 算不出来（日线不够 20 根 / 没有数据），同样要缓存，否则次新股每次都要重算。
+_OVERSOLD_CACHE: dict[str, float | None] = {}
+_OVERSOLD_CACHE_VERSION: tuple[date, int] | None = None
 #: 接口跑在线程池里，多个请求会同时读写这份 dict；只有「命中读 / 写回」几微秒在锁内。
 _PHASE_CACHE_LOCK = threading.Lock()
 
@@ -142,15 +150,15 @@ def trim_contiguous_tail(records: list[dict], trade_day_index: dict[date, int]) 
     return records[cut:]
 
 
-def _verdict_from_rows(rows: Iterable[StockDaily | Row]) -> PhaseVerdict | None:
-    """把一只票的一段日线（**顺序不限**，内部按交易日升序）算成阶段判定。
+def _bars_from_rows(rows: Iterable[StockDaily | Row]) -> Bars | None:
+    """把一只票的一段日线（**顺序不限**，内部按交易日升序）整理成 `Bars`。
 
     `rows` 既可以是 ORM 的 `StockDaily`（个股页 `load_phase`），也可以是 Core 查出来的
     `Row`（列表页 `_compute_verdicts`，见那里为什么不用实体）—— 只按属性名读九个字段，
     两条路径都吃。
 
-    `load_phase`（个股页）与 `load_phases`（列表页）共用这一条路径 —— 列表页与个股页
-    对同一只票必须给出同一个判定，共用同一段代码是唯一不会漂移的办法（见模块开头）。
+    阶段判定与「超跌」筛选共用这一段：同一只票在个股页与列表页必须给出同一个结论，
+    共用同一段取数/清洗是唯一不会漂移的办法（见模块开头）。
     """
     records = [
         {
@@ -179,8 +187,13 @@ def _verdict_from_rows(rows: Iterable[StockDaily | Row]) -> PhaseVerdict | None:
     usable = [record for record in records if usable_bar(record)]
     if not usable:
         return None
-    bars: Bars = build_bars(usable)
-    return classify_phase(bars)
+    return build_bars(usable)
+
+
+def _verdict_from_rows(rows: Iterable[StockDaily | Row]) -> PhaseVerdict | None:
+    """把一只票的一段日线算成阶段判定；没有可用日线时返回 None。"""
+    bars = _bars_from_rows(rows)
+    return None if bars is None else classify_phase(bars)
 
 
 def load_phase(session: Session, code: str) -> PhaseVerdict | None:
@@ -194,6 +207,37 @@ def load_phase(session: Session, code: str) -> PhaseVerdict | None:
         )
     )
     return _verdict_from_rows(rows)
+
+
+def _recent_rows(
+    session: Session, codes: list[str], bars: int = PHASE_BARS
+) -> dict[str, list[Row]]:
+    """按 code 各取最近 `bars` 根日线（Core 列，窗口函数分片）。
+
+    阶段判定与「超跌」筛选共用这一段取数 —— 两处的数据窗口、分批大小、排序口径必须
+    一致，否则同一只票会在两个筛选条件里给出互相矛盾的结论。
+
+    `bars` 默认是阶段判定的 130 根；超跌只需要 MA20，传 25 根能把全市场取数从
+    65 万行降到 10 万行（见 `load_oversold`）。
+    """
+    grouped: dict[str, list[Row]] = {}
+    for batch in chunked(codes, _PHASE_IN_BATCH):
+        recent = (
+            select(
+                *_BAR_COLS,
+                func.row_number()
+                .over(
+                    partition_by=StockDaily.code,
+                    order_by=StockDaily.trade_date.desc(),
+                )
+                .label("rn"),
+            )
+            .where(StockDaily.code.in_(batch))
+            .subquery()
+        )
+        for row in session.execute(select(recent).where(recent.c.rn <= bars)):
+            grouped.setdefault(row.code, []).append(row)
+    return grouped
 
 
 def _compute_verdicts(session: Session, codes: list[str]) -> dict[str, PhaseVerdict | None]:
@@ -215,23 +259,7 @@ def _compute_verdicts(session: Session, codes: list[str]) -> dict[str, PhaseVerd
        属性仪表，一屏十几万行时占掉约 1/4 耗时（实测 1145 只：5.1 秒 → 3.9 秒），
        判定结果逐只比对完全一致。
     """
-    grouped: dict[str, list[Row]] = {}
-    for batch in chunked(codes, _PHASE_IN_BATCH):
-        recent = (
-            select(
-                *_BAR_COLS,
-                func.row_number()
-                .over(
-                    partition_by=StockDaily.code,
-                    order_by=StockDaily.trade_date.desc(),
-                )
-                .label("rn"),
-            )
-            .where(StockDaily.code.in_(batch))
-            .subquery()
-        )
-        for row in session.execute(select(recent).where(recent.c.rn <= PHASE_BARS)):
-            grouped.setdefault(row.code, []).append(row)
+    grouped = _recent_rows(session, codes)
     out: dict[str, PhaseVerdict | None] = {}
     for code in codes:
         rows = grouped.get(code)
@@ -308,3 +336,59 @@ def load_phases(session: Session, codes: Iterable[str]) -> dict[str, PhaseVerdic
 
     # 保持入参顺序（调用方按 code 逐个 `.get`，顺序不影响，但别在这里无谓改口径）
     return {code: cached[code] for code in ordered if cached.get(code) is not None}
+
+
+def load_oversold(session: Session, codes: Iterable[str]) -> dict[str, float]:
+    """这批票里当天「超跌」的那些 → `{code: 乖离%}`（负值，越负跌得越狠）。
+
+    口径取自用户提供的 `日线做T.hxf`（见 `patterns.is_oversold`），与阶段判定共用同一段
+    取数与清洗（`_recent_rows` + `_bars_from_rows`）—— 两处对同一只票必须看到同一根 K。
+    它回答的是「离 20 日线够不够远」，与 `classify_phase` 的 9 档互不影响。
+
+    返回**乖离值**而不只是 code 集合：筛选结果要按「跌得有多狠」排序，阈值附近（−15%）
+    和深跌（−30%）在列表里的先后差得很远。非超跌的票不出现在结果里。
+
+    缓存与 `load_phases` 同一套版本口径，但用**独立的 dict**：两边的值类型不同
+    （一档标签一档乖离），混在一起会互相覆盖。
+    """
+    global _OVERSOLD_CACHE, _OVERSOLD_CACHE_VERSION
+
+    ordered = list(codes)
+    if not ordered:
+        return {}
+
+    version = _phase_version(session)
+    cached: dict[str, float | None]
+    if version is None:
+        cached = {}
+        pending = ordered
+    else:
+        with _PHASE_CACHE_LOCK:
+            if version != _OVERSOLD_CACHE_VERSION:
+                _OVERSOLD_CACHE, _OVERSOLD_CACHE_VERSION = {}, version
+            cached = {code: _OVERSOLD_CACHE[code] for code in ordered if code in _OVERSOLD_CACHE}
+        pending = [code for code in ordered if code not in cached]
+
+    if pending:
+        # 只需要 MA20（20 根），不必按阶段判定的 130 根取 —— 全市场 5000 只时这是
+        # 65 万行 vs 10 万行的差别（实测 20 秒 vs 3 秒）
+        grouped = _recent_rows(session, pending, bars=OVERSOLD_MA + 5)
+        fresh: dict[str, float | None] = {}
+        for code in pending:
+            rows = grouped.get(code)
+            bars = _bars_from_rows(rows) if rows else None
+            fresh[code] = oversold_deviation(bars) if bars is not None else None
+        cached.update(fresh)
+        # 同 `load_phases`：算的期间数据版本变了就丢掉这批（宁可下次重算）
+        if version is not None:
+            with _PHASE_CACHE_LOCK:
+                if _OVERSOLD_CACHE_VERSION == version:
+                    _OVERSOLD_CACHE.update(fresh)
+
+    # 缓存里存**全部**乖离（超跌与否都存）—— 阈值以后要调时不必重算；过滤放在这里做，
+    # 与 `patterns.is_oversold` 同一个阈值常量（OVERSOLD_DEV_PCT）
+    return {
+        code: dev
+        for code in ordered
+        if (dev := cached.get(code)) is not None and dev < OVERSOLD_DEV_PCT
+    }

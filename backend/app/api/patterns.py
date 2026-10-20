@@ -40,8 +40,8 @@ from app.schemas import (
     PoolStandingOut,
 )
 from app.services import pattern_track
-from app.services.patterns import PATTERNS, WUDAO_PHASE_LABELS
-from app.services.stock_phase import load_phases
+from app.services.patterns import PATTERNS, WUDAO_PHASE_LABELS, is_st
+from app.services.stock_phase import load_oversold, load_phases
 from app.sources.base import chunked
 
 router = APIRouter(prefix="/api/patterns", tags=["patterns"])
@@ -401,6 +401,79 @@ def _hits_window(
     return keep, run_info
 
 
+def _market_oversold(db: Session, target: date) -> dict[str, float]:
+    """当日**全市场**超跌票 → `{code: 乖离%}`（用户「日线做T」口径）。
+
+    为什么是全市场而不是「今天命中的票」：超跌的票往往一个强势形态都不中（形态多是
+    突破 / 均线多头那类），只在命中表里筛会几乎筛空 —— 实测 10-20 本地库在 1100 只
+    命中里只筛出 1 只。做 T 要的是「跌够深的票」，与今天有没有形态是两件事。
+
+    范围与线上落库闸门同一口径（主板 + 创业板 + 科创板、剔 ST），见
+    `scan_patterns.is_pattern_board` / `patterns.is_st`。
+    """
+    # 函数内导入：`api` 顶层不引 `jobs`（与 `api/admin.py` 里那条同款，避免启动期的环）
+    from app.jobs.scan_patterns import is_pattern_board
+
+    rows = db.execute(
+        select(StockDaily.code, StockDaily.name).where(StockDaily.trade_date == target)
+    ).all()
+    codes = [
+        code for code, name in rows if is_pattern_board(code) and not is_st(name)
+    ]
+    return load_oversold(db, codes)
+
+
+def _oversold_only_rows(
+    db: Session, target: date, codes: list[str], devs: dict[str, float]
+) -> list[PatternStockOut]:
+    """把「没进今天命中表、但超跌」的票造成列表行（`patterns` 为空）。
+
+    这些行没有形态、因而没有评分（`score=0`），排序放在命中行之后、按乖离从深到浅
+    —— 做 T 的人先看跌得最狠的那几只。板块 / 行业留空：它们没有涨停记录，`stock_concept`
+    本来就没有值；`industry` 若一并查会多一次全表 IN，收益不大。
+    """
+    if not codes:
+        return []
+    basic: dict[str, tuple] = {}
+    for batch in chunked(codes, _IN_BATCH):
+        for code, name, close, pct_chg, amount in db.execute(
+            select(
+                StockDaily.code,
+                StockDaily.name,
+                StockDaily.close,
+                StockDaily.pct_chg,
+                StockDaily.amount,
+            ).where(StockDaily.trade_date == target, StockDaily.code.in_(batch))
+        ).all():
+            basic[code] = (name, close, pct_chg, amount)
+
+    out: list[PatternStockOut] = []
+    for code in sorted(codes, key=lambda item: devs.get(item, 0.0)):
+        item = basic.get(code)
+        if item is None:
+            continue
+        name, close, pct_chg, amount = item
+        out.append(
+            PatternStockOut(
+                code=code,
+                name=name,
+                trade_date=target,
+                run_days=1,
+                last_date=target,
+                close=close,
+                pct_chg=pct_chg,
+                amount=amount,
+                avg_amount=None,
+                total_mv=None,
+                sectors=[],
+                industry=None,
+                score=0.0,
+                patterns=[],
+            )
+        )
+    return out
+
+
 @router.get("/hits", response_model=list[PatternStockOut])
 def hits(
     db: Session = Depends(get_db),
@@ -419,7 +492,8 @@ def hits(
     phase: list[str] | None = Query(
         None,
         description="只看阶段判定属于这些档的票（可重复传多个，取**并集**）。"
-        "取值见 `WUDAO_PHASE_LABELS`，如 sample=明天盯 / start=明天预案",
+        "取值见 `WUDAO_PHASE_LABELS`（如 sample=明天盯 / start=明天预案），"
+        "另加 `oversold`=超跌（收盘相对 20 日线乖离 < −15%，用户「日线做T」口径）",
     ),
 ) -> list[PatternStockOut]:
     """某交易日的命中，**按股票归并**（一只票命中多个形态就是一行多标签）。
@@ -470,14 +544,25 @@ def hits(
     全市场命中约 1100 只首次约 5 秒，之后按数据版本缓存、基本只剩几百毫秒
     （见 `stock_phase.load_phases`）。**不传 `phase` 时只对最终返回的那几十只算**
     （原口径，用于表格里的「阶段判定」列），所以平时零额外开销。
+
+    `oversold`（超跌，2026-10-20）走**另一条判定**：用户「日线做T」公式里的
+    `乖离=(C−MA20)/MA20×100 < −15`，与 9 档阶段互不影响（一只票可以既超跌又是
+    「明天预案」）。它与 9 档一起选择时取**并集**。
+
+    ⚠️ 超跌的取样范围是**当日全市场**（prod 板块、剔 ST），不是今天的形态命中 ——
+    超跌股往往一个强势形态都不中，只在命中表里筛几乎筛空（实测 1100 只命中里只有
+    1 只）。所以选了超跌时，列表里会混入**没有形态标签的行**（`patterns` 为空、
+    `score` 为 0），它们排在命中行之后、按乖离从深到浅。
     """
     codes_wanted = [key for key in (phase or []) if key]
     if codes_wanted:
-        unknown_phase = [key for key in codes_wanted if key not in WUDAO_PHASE_LABELS]
+        # `oversold` 是筛选专用的额外一档，不在 9 档枚举里（原因见 `patterns.is_oversold`）
+        allowed = {**WUDAO_PHASE_LABELS, "oversold": "超跌"}
+        unknown_phase = [key for key in codes_wanted if key not in allowed]
         if unknown_phase:
             raise HTTPException(
                 status_code=400,
-                detail=f"未知阶段 {', '.join(unknown_phase)}，可选：{', '.join(WUDAO_PHASE_LABELS)}",
+                detail=f"未知阶段 {', '.join(unknown_phase)}，可选：{', '.join(allowed)}",
             )
     target = trade_date or _latest_date(db)
     if target is None:
@@ -660,12 +745,24 @@ def hits(
         result.sort(key=lambda stock: stock.score, reverse=True)
     if codes_wanted:
         # 先在全量命中上判阶段、再筛、最后才截 limit（理由见 docstring「阶段判定筛选」）
-        all_phases = load_phases(db, [stock.code for stock in result])
-        result = [
-            stock
-            for stock in result
-            if stock.code in all_phases and all_phases[stock.code].phase in codes_wanted
-        ]
+        wanted_phases = [key for key in codes_wanted if key != "oversold"]
+        keep: set[str] = set()
+        if wanted_phases:
+            all_phases = load_phases(db, [stock.code for stock in result])
+            keep |= {
+                code for code, verdict in all_phases.items() if verdict.phase in wanted_phases
+            }
+        oversold_devs: dict[str, float] = {}
+        if "oversold" in codes_wanted:
+            # 超跌取**全市场**（不是今天命中的票），理由见 `_market_oversold`
+            oversold_devs = _market_oversold(db, target)
+            keep |= set(oversold_devs)
+        result = [stock for stock in result if stock.code in keep]
+        if oversold_devs:
+            # 今天没有任何形态命中、但超跌的票：补成不带形态的行（做 T 池）
+            hit_codes_now = {stock.code for stock in result}
+            extra = [code for code in oversold_devs if code not in hit_codes_now]
+            result.extend(_oversold_only_rows(db, target, extra, oversold_devs))
     page = result[:limit]
     # 阶段判定：与个股页／个股分析页**同一个取数壳**（`stock_phase.load_phase`），
     # 保证同一只票在两处给出同一个判定。**只对真正返回的行算**（默认 50 只；
