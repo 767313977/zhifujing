@@ -111,7 +111,27 @@ const BOARDS: Board[] = ['主板', '创业板', '科创板', '北交所']
 const DEFAULT_BOARDS: Board[] = ['主板', '创业板', '科创板']
 
 /**
- * 解析 URL 里的 `boards`（逗号分隔）。**空值 / 全是非法值一律回落到默认**
+ * 阶段判定筛选的候选（2026-10-20 用户要求：在筛选区单独一行，分「明天预案 / 明天盯」）。
+ *
+ * 值与后端 `WUDAO_PHASE_LABELS` 的 key 一致，label 直接用那张表的展示名 —— 表格里的
+ * 「阶段判定」列显示的是同一个词，所以筛出来的一屏天然对得上。
+ * 只是把最常用的两档提到筛选区；其余档在表格列里照旧能看到。
+ */
+const PHASES: { value: string; label: string }[] = [
+  { value: 'start', label: '明天预案' },
+  { value: 'sample', label: '明天盯' },
+]
+
+/** 解析 URL 里的 `phase`（逗号分隔）。非法值丢掉，空列表 = 不筛。 */
+function readPhases(raw: string | null): string[] {
+  if (!raw) return []
+  return raw
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => PHASES.some((phase) => phase.value === item))
+}
+
+/** 解析 URL 里的 `boards`（逗号分隔）。**空值 / 全是非法值一律回落到默认**
  * （`DEFAULT_BOARDS`，与后端那道闸门同一范围）—— 而不是空列表
  * （空列表 = 一只都不显示，最难理解）。
  */
@@ -378,6 +398,9 @@ export default function Patterns() {
   })
   // 交易所板块筛选：默认只勾创业板 + 科创板（见 `BOARDS`）
   const [boards, setBoards] = useState<Board[]>(() => readBoards(params.get('boards')))
+  // 阶段判定筛选：空数组 = 不筛（默认）。多选 = 并集（一只票只有一个阶段，
+  // 所以「明天预案 + 明天盯」就是这两种都留下）
+  const [phases, setPhases] = useState<string[]>(() => readPhases(params.get('phase')))
   const [active, setActive] = useState<string | null>(() => readActive())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -410,8 +433,11 @@ export default function Patterns() {
     const asKey = (list: Board[]) => [...list].sort().join(',')
     if (asKey(boards) !== asKey(DEFAULT_BOARDS)) next.set('boards', asKey(boards))
     else next.delete('boards')
+    // 阶段判定筛选：空 = 不筛（默认），不写进地址
+    if (phases.length > 0) next.set('phase', [...phases].sort().join(','))
+    else next.delete('phase')
     if (next.toString() !== params.toString()) setParams(next, { replace: true })
-  }, [date, picked, days, boards, params, setParams])
+  }, [date, picked, days, boards, phases, params, setParams])
 
   useEffect(() => {
     api.dates().then(setDates).catch(() => setDates([]))
@@ -429,6 +455,7 @@ export default function Patterns() {
       target: string | null,
       only: string[],
       win: number,
+      onlyPhases: string[],
       isStale: () => boolean = () => false,
     ) => {
       setLoading(true)
@@ -438,6 +465,8 @@ export default function Patterns() {
         // 选了形态：取这些形态的**全部**命中（`PATTERN_LIMIT`，多个之间取**交集**），
         // 评分与排序由后端换成所选形态里的最高分 —— 见 `api.patternHits` 与后端 `/hits`
         // `win` = 窗口天数（>1 时后端合并同一只票的重复命中，见 `WINDOWS`）
+        // `onlyPhases` = 阶段判定筛选（空数组 = 不筛）。传了它以后端是「先算全量命中的
+        // 阶段、再筛、最后截 limit」，所以不是在这 50 条里筛（见后端 `/hits` docstring）
         const [list, sum, prev] = await Promise.all([
           api.patternHits(
             target,
@@ -445,6 +474,7 @@ export default function Patterns() {
             only.length > 0 ? PATTERN_LIMIT : HIT_LIMIT,
             only,
             win,
+            onlyPhases,
           ),
           api.patternSummary(target),
           // 徽标数据：跟着 `only` 与窗口走，所以每次切形态／切窗口都重算（与命中列表同一次请求里发出）
@@ -473,14 +503,15 @@ export default function Patterns() {
     setHits([])
     setSummary(null)
     setPreview([])
-    void load(date, picked, days, () => stale)
+    void load(date, picked, days, phases, () => stale)
     return () => {
       stale = true
     }
     // ⚠️ `picked` 必须在依赖里：切形态要**重新取数**（默认视图取前 50、
     // 形态视图取该形态的全部命中），这是 2026-09-27 那次改动的关键一步
     // `days` 同理：换窗口要重新取（>1 时后端合并同一只票的重复命中）
-  }, [date, picked, days, load])
+    // `phases` 同理：阶段是在后端算的，换档必须重新请求（前端筛不了全市场）
+  }, [date, picked, days, phases, load])
 
   // 2026-10-15 之前这里有一句「没选形态就把 days 拉回 1」—— 那时后端没 `pattern` 会
   // 忽略 `days`，留着「近10日」的选中态而列表其实是当天的，对不上账。现在后端两种模式
@@ -857,17 +888,52 @@ export default function Patterns() {
                 className="range-accent h-[3px] w-40"
               />
               <span className="num w-8 text-[13px] text-fg">{minScore}</span>
-              {(picked.length > 0 || minScore > 0) && (
+              {(picked.length > 0 || minScore > 0 || phases.length > 0) && (
                 <button
                   type="button"
                   onClick={() => {
                     setPicked([])
                     setMinScore(0)
+                    setPhases([])
                   }}
                   className="num border border-line px-2 py-[2px] text-[13px] text-fg-dim hover:border-fg-dim hover:text-fg"
                 >
                   清除筛选
                 </button>
+              )}
+            </div>
+            {/* 阶段判定（2026-10-20 用户要求：单独一行，分「明天预案 / 明天盯」）。
+                多选 = 并集；筛选在**后端**做（先算全量命中的阶段再筛），不是在前端这几十行里筛 */}
+            <div className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-2.5">
+              <span className="text-[13px] text-fg-dim">阶段判定</span>
+              {PHASES.map((item) => {
+                const on = phases.includes(item.value)
+                return (
+                  <button
+                    key={item.value}
+                    type="button"
+                    onClick={() =>
+                      setPhases((prev) =>
+                        prev.includes(item.value)
+                          ? prev.filter((key) => key !== item.value)
+                          : [...prev, item.value],
+                      )
+                    }
+                    title={`${on ? '去掉' : '只看'}「${item.label}」（悟道阶段判定，与个股页／表格里的「阶段判定」列同一判据）`}
+                    className={`border px-2 py-[2px] text-[13px] transition-colors ${
+                      on
+                        ? 'border-accent bg-accent/10 text-accent'
+                        : 'border-line text-fg-muted hover:border-fg-dim hover:text-fg'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                )
+              })}
+              {phases.length > 0 && (
+                <span className="text-[12px] text-fg-dim">
+                  在全市场命中里筛（不是只筛这几十行）· 可多选
+                </span>
               )}
             </div>
           </div>
@@ -922,6 +988,18 @@ export default function Patterns() {
                     只，这里只列出前
                     <span className="num text-fg"> {PATTERN_LIMIT} </span>
                     只。
+                  </>
+                ) : phases.length > 0 ? (
+                  <>
+                    已按阶段筛选（
+                    {PHASES.filter((item) => phases.includes(item.value))
+                      .map((item) => item.label)
+                      .join(' / ')}
+                    ），筛后只列出评分最高的
+                    <span className="num text-fg"> {HIT_LIMIT} </span>
+                    只，点列头排序也只在这
+                    <span className="num text-fg"> {HIT_LIMIT} </span>
+                    只里排 —— 不是全市场排名。要看得更多，可以叠加形态名收窄。
                   </>
                 ) : (
                   <>

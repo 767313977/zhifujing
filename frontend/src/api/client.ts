@@ -711,6 +711,7 @@ export const api = {
     limit = 50,
     patterns?: string[] | null,
     days = 1,
+    phases?: string[] | null,
   ) => {
     const pick = (patterns ?? [])
       .filter(Boolean)
@@ -719,8 +720,15 @@ export const api = {
     // days > 1 = 窗口模式：后端把窗口内同一只票的重复命中合并成一条（首次那天为日期）。
     // 只传 1 时不带这个参数，行为与以前完全一致
     const win = days > 1 ? `&days=${days}` : ''
+    // 阶段判定筛选（可多选，后端取并集）：sample=明天盯 / start=明天预案。
+    // 传了它以后端是「先算全量命中的阶段、再筛、最后截 limit」—— 所以筛选范围是全市场命中，
+    // 不是已经截好的这 50 只（理由见后端 `/hits` 的 docstring）
+    const ph = (phases ?? [])
+      .filter(Boolean)
+      .map((key) => `&phase=${encodeURIComponent(key)}`)
+      .join('')
     return request<PatternStock[]>(
-      withDate(`/patterns/hits?min_score=${minScore}&limit=${limit}${pick}${win}`, date),
+      withDate(`/patterns/hits?min_score=${minScore}&limit=${limit}${pick}${win}${ph}`, date),
     )
   },
 

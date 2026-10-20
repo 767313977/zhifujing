@@ -40,7 +40,7 @@ from app.schemas import (
     PoolStandingOut,
 )
 from app.services import pattern_track
-from app.services.patterns import PATTERNS
+from app.services.patterns import PATTERNS, WUDAO_PHASE_LABELS
 from app.services.stock_phase import load_phases
 from app.sources.base import chunked
 
@@ -416,6 +416,11 @@ def hits(
         description="窗口天数：>1 时把窗口内同一只票的重复命中合并成一条（不选形态也生效）",
     ),
     limit: int = Query(50, ge=1, le=3000),
+    phase: list[str] | None = Query(
+        None,
+        description="只看阶段判定属于这些档的票（可重复传多个，取**并集**）。"
+        "取值见 `WUDAO_PHASE_LABELS`，如 sample=明天盯 / start=明天预案",
+    ),
 ) -> list[PatternStockOut]:
     """某交易日的命中，**按股票归并**（一只票命中多个形态就是一行多标签）。
 
@@ -456,7 +461,24 @@ def hits(
     **「窗口内先后命中过每一个」** —— 一只票第 1 天中 A、第 3 天中 B 也算数（原先会被
     前端按「这一行的标签要含全部所选形态」筛掉）。所以窗口模式下每行的 `patterns`
     带的是所选形态**各自首次命中**那几次的记录。与 `/preview` 同口径（那里也要传 `days`）。
+
+    ## 阶段判定筛选（`phase`，2026-10-20 用户要求）
+
+    传了 `phase` 时**先在全部命中里算阶段、再筛、最后截 `limit`** —— 不是在已经截好的
+    50 只里筛（那样「明天预案」很可能一只都不剩，用户会以为筛坏了）。因为
+    `classify_phase` 要读每只票最近 130 根日线，这一步是 `/hits` 里最贵的：
+    全市场命中约 1100 只首次约 5 秒，之后按数据版本缓存、基本只剩几百毫秒
+    （见 `stock_phase.load_phases`）。**不传 `phase` 时只对最终返回的那几十只算**
+    （原口径，用于表格里的「阶段判定」列），所以平时零额外开销。
     """
+    codes_wanted = [key for key in (phase or []) if key]
+    if codes_wanted:
+        unknown_phase = [key for key in codes_wanted if key not in WUDAO_PHASE_LABELS]
+        if unknown_phase:
+            raise HTTPException(
+                status_code=400,
+                detail=f"未知阶段 {', '.join(unknown_phase)}，可选：{', '.join(WUDAO_PHASE_LABELS)}",
+            )
     target = trade_date or _latest_date(db)
     if target is None:
         return []
@@ -636,10 +658,19 @@ def hits(
             if scores:
                 stock.score = max(scores)
         result.sort(key=lambda stock: stock.score, reverse=True)
+    if codes_wanted:
+        # 先在全量命中上判阶段、再筛、最后才截 limit（理由见 docstring「阶段判定筛选」）
+        all_phases = load_phases(db, [stock.code for stock in result])
+        result = [
+            stock
+            for stock in result
+            if stock.code in all_phases and all_phases[stock.code].phase in codes_wanted
+        ]
     page = result[:limit]
     # 阶段判定：与个股页／个股分析页**同一个取数壳**（`stock_phase.load_phase`），
     # 保证同一只票在两处给出同一个判定。**只对真正返回的行算**（默认 50 只；
     # 按形态过滤时最多 3000，见 `load_phases` 的说明），不白算被 limit 截掉的那些。
+    # 上面刚按阶段筛过时这批结果已经在缓存里，这里几乎不花时间。
     phases = load_phases(db, [stock.code for stock in page])
     for stock in page:
         verdict = phases.get(stock.code)
