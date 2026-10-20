@@ -470,12 +470,13 @@ export default function Patterns() {
         // 评分与排序由后端换成所选形态里的最高分 —— 见 `api.patternHits` 与后端 `/hits`
         // `win` = 窗口天数（>1 时后端合并同一只票的重复命中，见 `WINDOWS`）
         // `onlyPhases` = 阶段判定筛选（空数组 = 不筛）。传了它以后端是「先算全量命中的
-        // 阶段、再筛、最后截 limit」，所以不是在这 50 条里筛（见后端 `/hits` docstring）
+        // 阶段、再筛、最后截 limit」；超跌还会把**全市场**超跌股补进来，所以这里必须
+        // 取全量（`PATTERN_LIMIT`），否则纯超跌的票会被 50 只上限截掉
         const [list, sum, prev] = await Promise.all([
           api.patternHits(
             target,
             0,
-            only.length > 0 ? PATTERN_LIMIT : HIT_LIMIT,
+            only.length > 0 || onlyPhases.length > 0 ? PATTERN_LIMIT : HIT_LIMIT,
             only,
             win,
             onlyPhases,
@@ -642,16 +643,20 @@ export default function Patterns() {
   /**
    * 这一屏的「应有条数」与截断判定。
    *
-   * - 默认视图：只有 `HIT_LIMIT`（50）条，拿 summary 的**全市场去重只数**与它比；
-   * - 形态视图：后端按 `PATTERN_LIMIT` 取全，所以**返回条数就是全集** —— 少于上限
-   *   说明已经全给出来了（交集没法从 summary 反推条数，也不需要），正好顶到上限才
-   *   可能还有更多、弹截断提示。
+   * - 默认视图（不选形态、不选阶段）：只有 `HIT_LIMIT`（50）条，拿 summary 的
+   *   **全市场去重只数**与它比；
+   * - 形态视图 / 阶段筛选：后端按 `PATTERN_LIMIT` 取**筛后全量**，所以返回条数就是
+   *   全集 —— 少于上限说明已经全给出来了，正好顶到上限才可能还有更多、弹截断提示。
+   *
+   * ⚠️ 阶段筛选也必须按「全量」算（2026-10-20 修）：超跌是**全市场池**（当天 288 只），
+   * 若沿用 50 只的上限，纯超跌的票会被命中的那几十只挤掉 —— 实测中材科技乖离 −21.3%、
+   * 排在第 70 位，用户在页面上根本看不到它。
    */
+  const fullView = picked.length > 0 || phases.length > 0
   const expected = picked.length > 0 ? hits.length : (summary?.total_stocks ?? 0)
-  const truncated =
-    picked.length > 0
-      ? hits.length >= PATTERN_LIMIT
-      : (summary?.total_stocks ?? 0) > hits.length
+  const truncated = fullView
+    ? hits.length >= PATTERN_LIMIT
+    : (summary?.total_stocks ?? 0) > hits.length
 
   // 筛完之后当前看图的票可能已经不在列表里，自动切到第一条
   useEffect(() => {
@@ -936,7 +941,7 @@ export default function Patterns() {
               })}
               {phases.length > 0 && (
                 <span className="text-[12px] text-fg-dim">
-                  在全市场命中里筛（不是只筛这几十行）· 可多选
+                  可多选 · 超跌取全市场（含今天没有形态的票），其余档在全市场命中里筛
                 </span>
               )}
             </div>
@@ -999,11 +1004,11 @@ export default function Patterns() {
                     {PHASES.filter((item) => phases.includes(item.value))
                       .map((item) => item.label)
                       .join(' / ')}
-                    ），筛后只列出评分最高的
-                    <span className="num text-fg"> {HIT_LIMIT} </span>
-                    只，点列头排序也只在这
-                    <span className="num text-fg"> {HIT_LIMIT} </span>
-                    只里排 —— 不是全市场排名。要看得更多，可以叠加形态名收窄。
+                    ），筛后超过
+                    <span className="num text-fg"> {PATTERN_LIMIT} </span>
+                    只，这里只列出前
+                    <span className="num text-fg"> {PATTERN_LIMIT} </span>
+                    只。要看得更少，可以叠加形态名收窄。
                   </>
                 ) : (
                   <>
