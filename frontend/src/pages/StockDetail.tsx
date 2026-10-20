@@ -282,6 +282,11 @@ export default function StockDetail() {
   // DDE 请求本身失败的原因（网络 / 超时 / 5xx）。null 表示请求成功 —— 此时 `dde`
   // 为 null 或 rows 为空都只是「这只票没数据」，与「取数失败」是两件事（2026-10-10 修）
   const [ddeError, setDdeError] = useState<string | null>(null)
+  // 「DDE / 杀猪盘这两块慢请求还在路上」——它们**不阻塞首屏**（见 `load` 的注释），
+  // 各自到货后再填。没有这两个标志的话，加载途中 `dde`/`trap` 都是 null，面板会先闪
+  // 一句「暂时没有数据 / 无法体检」，几百毫秒后又跳成有数据，观感像出过错。
+  const [ddeLoading, setDdeLoading] = useState(true)
+  const [trapLoading, setTrapLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // 只代表「概况那批请求（stockProfile / stockThemes / stockDde 的 Promise.all）失败」。
@@ -334,20 +339,31 @@ export default function StockDetail() {
       // 筹码分布是本地计算、很快；失败也不该拖垮整页（增强读数一律回落 null）
       const chipsRequest = api.stockChips(target).catch(() => null)
       const trapRequest = api.stockTrap(target).catch(() => null)
-      const [p, themeData, ddeResult, chipData, trapData] = await Promise.all([
+      // ⚠️ 首屏只等**本地就能算完**的三块（2026-10-20 改）：
+      // - `stockDde` 未命中缓存时要现取 iFinD，可能十几秒；
+      // - `stockTrap` 首次要现取东财个股新闻，实测 3.7 秒（第二次走缓存才 0.04s）。
+      // 原先这两块一起塞进 Promise.all，导致**整页白屏等最慢的那个** —— 用户点进来
+      // 感觉「加载非常慢」，而后端概况本身只要 0.01~0.13 秒。现在它们各自到货再填。
+      const [p, themeData, chipData] = await Promise.all([
         api.stockProfile(target),
         api.stockThemes(target).catch(() => null),
-        ddeRequest,
         chipsRequest,
-        trapRequest,
       ])
       if (isCancelled()) return p
       setProfile(p)
       setThemes(themeData)
-      setDde(ddeResult.data)
-      setDdeError(ddeResult.error)
       setChips(chipData)
-      setTrap(trapData)
+      void ddeRequest.then((result) => {
+        if (isCancelled()) return
+        setDde(result.data)
+        setDdeError(result.error)
+        setDdeLoading(false)
+      })
+      void trapRequest.then((data) => {
+        if (isCancelled()) return
+        setTrap(data)
+        setTrapLoading(false)
+      })
       return p
     },
     [],
@@ -364,6 +380,9 @@ export default function StockDetail() {
     setDdeError(null)
     setChips(null)
     setTrap(null)
+    // 两块异步请求的标志跟着一起复位，否则切票后新票的面板会沿用上一只票的「已加载」态
+    setDdeLoading(true)
+    setTrapLoading(true)
     setTrapContext('')
     setEventTab('notices')
     setNotices(null)
@@ -745,6 +764,11 @@ export default function StockDetail() {
             <div className="flex h-[240px] items-center justify-center text-[14px] text-fg-dim">
               <span className="pulse-soft">加载中…</span>
             </div>
+          ) : ddeLoading ? (
+            // 首屏不等 DDE（见 `load` 的注释）：概况已出来，这块还在路上
+            <div className="flex h-[240px] items-center justify-center text-[14px] text-fg-dim">
+              <span className="pulse-soft">资金流加载中…</span>
+            </div>
           ) : ddeError ? (
             // 请求本身失败（网络 / 超时 / 5xx）：与「本来就没数据」分开说 ——
             // 原来 `dde` 为 null 会落到下面那句「暂时没有 DDE 数据」，把取数失败读成了没数据
@@ -896,6 +920,11 @@ export default function StockDetail() {
           {profile === null ? (
             <div className="flex h-[180px] items-center justify-center text-[14px] text-fg-dim">
               <span className="pulse-soft">加载中…</span>
+            </div>
+          ) : trapLoading ? (
+            // 体检首次要现取东财新闻（实测 3.7s），不阻塞首屏 —— 见 `load` 的注释
+            <div className="flex h-[180px] items-center justify-center text-[14px] text-fg-dim">
+              <span className="pulse-soft">体检中…</span>
             </div>
           ) : !trap ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
