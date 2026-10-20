@@ -2214,6 +2214,13 @@ def _limit_surge_flat(bars: Bars) -> Signal | None:
                 continue
             # 横盘低点守住多少成果。这一条比「振幅够窄」更要紧：振幅窄但一路
             # 阴跌回平台上的「横盘」，是出货不是整理
+            #
+            # ⚠️ 分母保护（2026-10-20 长历史回测崩出来的 ZeroDivisionError）：
+            # `seg_high - platform` 实测会取到 0（长历史里出现过异常的一轮），
+            # 一崩整个回测扫描就退出。取 0 / 负值说明这一段没有真正越过平台上沿，
+            # 「守住成果」的比例没有意义，直接跳过这一轮。
+            if seg_high <= platform:
+                continue
             keep = (flat_low - platform) / (seg_high - platform)
             if keep < LS_FLAT_KEEP:
                 continue
