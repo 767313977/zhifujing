@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
@@ -617,10 +618,18 @@ export default function StockDetail() {
     : syncing
       ? '同步中…'
       : '—'
-  // 涨跌幅与上面的名称同序，只给列出来的那几个
-  const themePcts = themeItems.length
-    ? themeShown.map((theme) => fmtPct(theme.pct_chg)).join('、')
-    : undefined
+  // 涨跌幅与上面的名称同序，只给列出来的那几个；**逐个按红涨绿跌染色**
+  // （`toneOf` 与全站行情数字同一套规则，2026-10-21 用户要求）
+  const themePcts = themeItems.length ? (
+    <>
+      {themeShown.map((theme, index) => (
+        <span key={`${theme.concept}-${index}`}>
+          {index > 0 && '、'}
+          <span className={toneOf(theme.pct_chg)}>{fmtPct(theme.pct_chg)}</span>
+        </span>
+      ))}
+    </>
+  ) : undefined
   const themeTitle = themeItems.length
     ? themeItems.map((theme) => theme.concept).join('、')
     : themeSuppressed.length
@@ -1211,7 +1220,7 @@ function Cell({
   label: string
   value: string
   tone?: string
-  sub?: string
+  sub?: ReactNode
   /** 悬浮提示（如「所属题材」只列前 5 个时，完整名单放这里） */
   title?: string
   /** 多值格子（如「所属题材」可能挂好几个板块）用小一号字，别把整行撑高 */
