@@ -471,6 +471,13 @@ def load_enriched(session: Session, user_id: int) -> list[dict]:
                 "name": trade.name,
                 "entry_date": trade.entry_date,
                 "entry_price": trade.entry_price,
+                "shares": trade.shares,
+                # 买入金额现算不落库：改买入价时金额跟着变，不用回补历史
+                "entry_amount": (
+                    round(float(trade.entry_price) * trade.shares, 2)
+                    if trade.shares
+                    else None
+                ),
                 "exit_date": trade.exit_date,
                 "exit_price": trade.exit_price,
                 "position_pct": trade.position_pct,

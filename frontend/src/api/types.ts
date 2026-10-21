@@ -1717,6 +1717,8 @@ export interface TradeJournalIn {
   /** YYYY-MM-DD */
   entry_date: string
   entry_price: number
+  /** 买入股数（可选）；买入金额由后端按 买入价 × 股数 现算 */
+  shares?: number | null
   exit_date?: string | null
   exit_price?: number | null
   /** 仓位（占自己总资金的比例，0-100） */
@@ -1785,6 +1787,8 @@ export interface TradeTRow extends TradeTIn {
 /** 一笔交易 + 用日线现算的指标（对应后端 `TradeJournalRow`）。 */
 export interface TradeJournalRow extends TradeJournalIn {
   id: number
+  /** 买入金额 = 买入价 × 股数（没填股数时为 null） */
+  entry_amount: number | null
   reason_label: string
   /** 买入当天的接力温度档位 */
   sentiment_level: string | null

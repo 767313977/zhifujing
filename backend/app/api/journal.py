@@ -113,6 +113,8 @@ def _apply(session: Session, trade: TradeJournal, payload: TradeJournalIn) -> No
     code = _normalize_code(payload.code)
     if payload.entry_price <= 0:
         raise HTTPException(status_code=400, detail="买入价必须大于 0")
+    if payload.shares is not None and payload.shares <= 0:
+        raise HTTPException(status_code=400, detail="买入股数必须大于 0")
     if payload.exit_price is not None and payload.exit_price <= 0:
         raise HTTPException(status_code=400, detail="卖出价必须大于 0")
     if payload.plan_stop is not None and payload.plan_stop <= 0:
@@ -147,6 +149,7 @@ def _apply(session: Session, trade: TradeJournal, payload: TradeJournalIn) -> No
     trade.name = name
     trade.entry_date = payload.entry_date
     trade.entry_price = float(payload.entry_price)
+    trade.shares = payload.shares
     trade.exit_date = payload.exit_date
     trade.exit_price = float(payload.exit_price) if payload.exit_price else None
     trade.position_pct = payload.position_pct

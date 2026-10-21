@@ -1607,6 +1607,8 @@ class TradeJournalIn(ApiModel):
     name: str | None = None
     entry_date: date
     entry_price: float
+    #: 买入股数（可选）。买入金额 = 买入价 × 股数，现算不落库
+    shares: int | None = None
     exit_date: date | None = None
     exit_price: float | None = None
     #: 仓位（占自己总资金的比例，0-100）
@@ -1693,6 +1695,8 @@ class TradeTRow(TradeTIn):
 
 class TradeJournalRow(TradeJournalIn):
     id: int
+    #: 买入金额 = 买入价 × 股数（没填股数时为 None）
+    entry_amount: float | None = None
     #: 理由的中文名（形态 / 池子查注册表，题材用 key，其它用自由文本）
     reason_label: str
     #: 买入当天的接力温度档位（冰点 / 偏冷 / 温和 / 活跃 / 沸腾）

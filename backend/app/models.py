@@ -710,6 +710,8 @@ class TradeJournal(Base):
     name: Mapped[str | None] = mapped_column(String(32))
     entry_date: Mapped[date] = mapped_column(Date)
     entry_price: Mapped[float] = mapped_column(Float)
+    #: 买入股数（可选）。买入金额 = 买入价 × 股数，**现算不落库**（改价不用回补）
+    shares: Mapped[int | None] = mapped_column(Integer)
     exit_date: Mapped[date | None] = mapped_column(Date)
     exit_price: Mapped[float | None] = mapped_column(Float)
     #: 仓位：占自己总资金的比例（0-100）。只用于展示，不参与收益计算

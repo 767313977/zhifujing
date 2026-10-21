@@ -1,9 +1,16 @@
-"""交易日志的指标口径（纯函数，不碰数据库）。"""
+"""交易日志的指标口径（纯函数）+ 股数校验（内存库）。"""
 
 from datetime import date
 
-from app.models import TradeJournal
-from app.services.trade_journal import _metrics, reason_label
+import pytest
+from fastapi import HTTPException
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import Session
+
+from app.api.journal import _apply
+from app.models import AppUser, Base, TradeCalendar, TradeJournal
+from app.schemas import TradeJournalIn
+from app.services.trade_journal import _metrics, load_enriched, reason_label
 
 
 def _trade(**overrides) -> TradeJournal:
@@ -139,3 +146,53 @@ def test_reason_label():
     # 「其他」里只存了 key 的老记录也要显示出来（2026-10-21 清单 #2）
     assert reason_label("other", "朋友推荐", None) == "朋友推荐"
     assert reason_label("other", None, None) == "其他"
+
+
+# ------------------------------------------------- 股数 / 买入金额（走真库）
+
+
+@pytest.fixture()
+def db():
+    engine = create_engine("sqlite://", future=True)
+
+    @event.listens_for(engine, "connect")
+    def _enable_fk(dbapi_conn, _record):
+        dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add(AppUser(username="tester", password_hash="x"))
+        for day in (date(2026, 8, 3), date(2026, 8, 4)):
+            session.add(TradeCalendar(trade_date=day))
+        session.commit()
+        yield session
+
+
+def _payload(**overrides) -> TradeJournalIn:
+    values = {
+        "code": "600519",
+        "entry_date": date(2026, 8, 3),
+        "entry_price": 10.0,
+        "reason_type": "other",
+    }
+    values.update(overrides)
+    return TradeJournalIn(**values)
+
+
+def test_entry_amount_from_shares(db):
+    """买入金额 = 买入价 × 股数，由后端现算（不落库）。"""
+    trade = TradeJournal(user_id=1)
+    _apply(db, trade, _payload(shares=1200))
+    db.add(trade)
+    db.commit()
+
+    row = load_enriched(db, 1)[0]
+    assert row["shares"] == 1200
+    assert row["entry_amount"] == pytest.approx(12000.0)
+
+
+def test_shares_must_be_positive(db):
+    with pytest.raises(HTTPException) as exc:
+        _apply(db, TradeJournal(user_id=1), _payload(shares=0))
+    assert exc.value.status_code == 400
+    assert "股数" in exc.value.detail

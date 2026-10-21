@@ -72,6 +72,7 @@ interface FormState {
   name: string
   entryDate: string
   entryPrice: string
+  shares: string
   exitDate: string
   exitPrice: string
   position: string
@@ -88,6 +89,7 @@ function emptyForm(): FormState {
     name: '',
     entryDate: todayText(),
     entryPrice: '',
+    shares: '',
     exitDate: '',
     exitPrice: '',
     position: '',
@@ -715,6 +717,7 @@ export default function JournalPage() {
       name: form.name.trim() || null,
       entry_date: form.entryDate,
       entry_price: Number(form.entryPrice),
+      shares: form.shares ? Number(form.shares) : null,
       exit_date: form.exitDate || null,
       exit_price: form.exitPrice ? Number(form.exitPrice) : null,
       position_pct: form.position ? Number(form.position) : null,
@@ -751,6 +754,7 @@ export default function JournalPage() {
       name: row.name ?? '',
       entryDate: row.entry_date,
       entryPrice: String(row.entry_price),
+      shares: row.shares == null ? '' : String(row.shares),
       exitDate: row.exit_date ?? '',
       exitPrice: row.exit_price == null ? '' : String(row.exit_price),
       position: row.position_pct == null ? '' : String(row.position_pct),
@@ -808,6 +812,19 @@ export default function JournalPage() {
   }
 
   const summary = stats?.summary
+
+  // 买入金额 = 买入价 × 股数（现算，只用于表单提示与表格展示；后端也会现算一份）
+  const priceValue = Number(form.entryPrice)
+  const sharesValue = Number(form.shares)
+  const entryAmount =
+    form.entryPrice &&
+    form.shares &&
+    Number.isFinite(priceValue) &&
+    Number.isFinite(sharesValue) &&
+    priceValue > 0 &&
+    sharesValue > 0
+      ? priceValue * sharesValue
+      : null
 
   return (
     <Layout>
@@ -894,6 +911,26 @@ export default function JournalPage() {
                 value={form.entryPrice}
                 onChange={(event) => set('entryPrice', event.target.value)}
                 placeholder="0.00"
+                className={INPUT}
+              />
+            </Field>
+            <Field
+              label="股数"
+              hint={
+                entryAmount == null
+                  ? '填股数后自动算金额'
+                  : `金额 ¥${entryAmount.toLocaleString('zh-CN', {
+                      maximumFractionDigits: 2,
+                    })}`
+              }
+            >
+              <input
+                type="number"
+                step="100"
+                min="0"
+                value={form.shares}
+                onChange={(event) => set('shares', event.target.value)}
+                placeholder="1000"
                 className={INPUT}
               />
             </Field>
@@ -1046,6 +1083,7 @@ export default function JournalPage() {
                     <th>情绪</th>
                     <th className="!text-left">板块</th>
                     <th>买入 → 卖出</th>
+                    <th>股数 / 金额</th>
                     <th>仓位</th>
                     <th>收益</th>
                     <th>最大回撤</th>
@@ -1117,6 +1155,25 @@ export default function JournalPage() {
                             </div>
                           </td>
                           <td>
+                            {row.shares == null ? (
+                              <span className="text-fg-dim">—</span>
+                            ) : (
+                              <>
+                                <div className="num">
+                                  {row.shares.toLocaleString('zh-CN')} 股
+                                </div>
+                                {row.entry_amount != null && (
+                                  <div className="num text-[11px] text-fg-dim">
+                                    ¥
+                                    {row.entry_amount.toLocaleString('zh-CN', {
+                                      maximumFractionDigits: 2,
+                                    })}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </td>
+                          <td>
                             <span className="num">
                               {row.position_pct == null ? '—' : `${fmtNum(row.position_pct, 0)}%`}
                             </span>
@@ -1185,7 +1242,7 @@ export default function JournalPage() {
                         </tr>
                         {isOpen && (
                           <tr>
-                            <td colSpan={14} className="!text-left bg-ink-850">
+                            <td colSpan={15} className="!text-left bg-ink-850">
                               <div className="px-1 py-2">
                                 {row.t_ops.length === 0 ? (
                                   <div className="text-[12px] text-fg-dim">
