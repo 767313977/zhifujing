@@ -7,8 +7,8 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
-from app.api.journal import _apply
-from app.models import AppUser, Base, TradeCalendar, TradeJournal
+from app.api.journal import _apply, suggest_reason
+from app.models import AppUser, Base, StockDaily, TradeCalendar, TradeJournal
 from app.schemas import TradeJournalIn
 from app.services.trade_journal import _metrics, load_enriched, reason_label
 
@@ -196,3 +196,22 @@ def test_shares_must_be_positive(db):
         _apply(db, TradeJournal(user_id=1), _payload(shares=0))
     assert exc.value.status_code == 400
     assert "股数" in exc.value.detail
+
+
+def test_suggest_oversold_date_uses_own_last_bar(db, monkeypatch):
+    """乖离的日期取这只票自己的最后一根日线，不是全市场最新那天（复查 P2-1）。"""
+    db.add_all(
+        [
+            StockDaily(code="600519", trade_date=date(2026, 8, 3), close=10.0),
+            # 另一只票的日线更新，不能拿它的日期当成 600519 的
+            StockDaily(code="600000", trade_date=date(2026, 8, 4), close=10.0),
+        ]
+    )
+    db.commit()
+    monkeypatch.setattr(
+        "app.api.journal.load_oversold", lambda session, codes: {"600519": -18.0}
+    )
+
+    out = suggest_reason("600519", date(2026, 8, 3), session=db, user=None)
+    assert out.oversold_dev == -18.0
+    assert out.oversold_date == date(2026, 8, 3)

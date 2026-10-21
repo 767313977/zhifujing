@@ -1692,6 +1692,8 @@ class TradeTRow(TradeTIn):
     success: bool = False
     #: 期末价（未平仓 = 最新收盘，已平仓 = 卖出价）；未完成时用它顶替缺的那一腿
     end_price: float | None = None
+    #: 盘中记的未完成 T：缺的腿用昨收代替，价差 / 降本要等收盘后再算（前端显示「等收盘」）
+    pending_close: bool = False
     #: 价格不在当天日线 [low, high] 区间内的软提示（不拦截保存）
     warnings: list[str] = Field(default_factory=list)
 

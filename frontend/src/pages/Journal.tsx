@@ -216,13 +216,16 @@ function StatsTable({ title, rows }: { title: string; rows: TradeStatsRow[] }) {
 }
 
 /** 做 T 子表里「买 → 卖」那一格：缺的那一腿写明按哪天的收盘价算。 */
-function tLegText(row: TradeTRow, endDate: string | null): string {
+function tLegText(row: TradeTRow, endDate: string | null, open: boolean): string {
   const end =
     row.end_price == null
       ? '期末价'
-      : endDate
-        ? `按 ${endDate.slice(5)} 收盘 ${fmtNum(row.end_price, 2)}`
-        : `按期末 ${fmtNum(row.end_price, 2)}`
+      : !open
+        ? // 已平仓时期末价就是卖出价（正常情况下已平仓不允许留未完成的 T）
+          `按卖出价 ${fmtNum(row.end_price, 2)}`
+        : endDate
+          ? `按 ${endDate.slice(5)} 收盘 ${fmtNum(row.end_price, 2)}`
+          : `按期末 ${fmtNum(row.end_price, 2)}`
   const buy = row.buy_price == null ? `—（${end}）` : fmtNum(row.buy_price, 2)
   const sell = row.sell_price == null ? `—（${end}）` : fmtNum(row.sell_price, 2)
   return `${buy} → ${sell}`
@@ -304,14 +307,15 @@ function TForm({
   }, [code, entryDate, initial])
 
   /**
-   * 触发类型的默认值：只有 `tradeDate` 与乖离对应的日线日相同时才预选「超跌」。
-   * 补记 10-15 的 T 时，今天的乖离与它无关，不能拿来套（复查 #3）。
+   * 触发类型的默认值：只要 T 的日期 **不早于** 乖离对应的日线日，就预选「超跌」。
+   * 盘中记 T 时库里的最新日线还是昨天，而「昨收已超跌 → 今天做 T」正是这个信号的
+   * 用法；补记更早的 T 才不预选（复查 P2-1）。
    */
   useEffect(() => {
     if (initial || triggerTouched) return
-    const isLatest =
-      oversoldDev != null && oversoldDate != null && oversoldDate === tradeDate
-    setTrigger(isLatest ? 'oversold' : 'other')
+    const usable =
+      oversoldDev != null && oversoldDate != null && tradeDate >= oversoldDate
+    setTrigger(usable ? 'oversold' : 'other')
   }, [initial, triggerTouched, oversoldDev, oversoldDate, tradeDate])
 
   useEffect(() => {
@@ -423,9 +427,13 @@ function TForm({
         <span className="text-[11px] text-fg-dim" title="正T = 先买后卖；倒T = 先卖后买">
           ⓘ 正T 先买后卖、倒T 先卖后买
         </span>
-        {oversoldDev != null && oversoldDate === tradeDate && (
-          <span className="text-[11px] text-warn">今日乖离 {fmtPct(oversoldDev)}</span>
-        )}
+        {oversoldDev != null &&
+          oversoldDate != null &&
+          tradeDate >= oversoldDate && (
+            <span className="text-[11px] text-warn">
+              {oversoldDate.slice(5)} 收盘乖离 {fmtPct(oversoldDev)}
+            </span>
+          )}
       </div>
       <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-6">
         <Field label="日期">
@@ -1318,7 +1326,7 @@ export default function JournalPage() {
                                               </span>
                                             </td>
                                             <td className="num text-[12px]">
-                                              {tLegText(item, row.latest_date)}
+                                              {tLegText(item, row.latest_date, row.open)}
                                             </td>
                                             <td>
                                               <span className="num">
@@ -1326,9 +1334,17 @@ export default function JournalPage() {
                                               </span>
                                             </td>
                                             <td>
-                                              <span className={`num ${toneOf(item.spread_pct)}`}>
-                                                {fmtPct(item.spread_pct)}
-                                              </span>
+                                              {item.pending_close ? (
+                                                <span className="text-[11px] text-warn">
+                                                  等收盘
+                                                </span>
+                                              ) : (
+                                                <span
+                                                  className={`num ${toneOf(item.spread_pct)}`}
+                                                >
+                                                  {fmtPct(item.spread_pct)}
+                                                </span>
+                                              )}
                                             </td>
                                             <td>
                                               <span className={`num ${toneOf(item.net_pct)}`}>
@@ -1336,9 +1352,17 @@ export default function JournalPage() {
                                               </span>
                                             </td>
                                             <td>
-                                              <span className={`num ${toneOf(item.contrib_pct)}`}>
-                                                {fmtPct(item.contrib_pct)}
-                                              </span>
+                                              {item.pending_close ? (
+                                                <span className="text-[11px] text-warn">
+                                                  等收盘
+                                                </span>
+                                              ) : (
+                                                <span
+                                                  className={`num ${toneOf(item.contrib_pct)}`}
+                                                >
+                                                  {fmtPct(item.contrib_pct)}
+                                                </span>
+                                              )}
                                               {item.fly_pct != null && (
                                                 <span className="ml-1 text-[11px] text-warn">
                                                   卖飞 {fmtPct(item.fly_pct)}

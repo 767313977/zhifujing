@@ -156,6 +156,26 @@ def test_t_after_last_bar_is_estimated_with_warning():
     )[0]
     assert out["spread_pct"] == pytest.approx(3.0, abs=0.01)
     assert out["net_pct"] == pytest.approx(2.90, abs=0.01)
+    assert out["pending_close"] is False
+    assert any("日线未入库" in text for text in out["warnings"])
+
+
+def test_incomplete_t_after_last_bar_waits_for_close():
+    """盘中记的**未完成** T：缺的腿是昨收，价差/降本都是伪数字 → 置空等收盘。"""
+    bars = [
+        (date(2026, 8, 3), 10.0, 0.0),
+        (date(2026, 8, 4), 10.0, 0.0),
+    ]
+    out = _metrics(
+        _trade(exit_date=None),
+        [_t(trade_date=date(2026, 8, 5), buy_price=10.0)],
+        bars,
+        date(2026, 8, 4),
+    )[0]
+    assert out["pending_close"] is True
+    assert out["spread_pct"] is None
+    assert out["contrib_pct"] is None
+    assert out["fly_pct"] is None
     assert any("日线未入库" in text for text in out["warnings"])
 
 

@@ -1784,6 +1784,8 @@ export interface TradeTRow extends TradeTIn {
   success: boolean
   /** 期末价（未平仓 = 最新收盘，已平仓 = 卖出价） */
   end_price: number | null
+  /** 盘中记的未完成 T：价差 / 降本等收盘后再算（页面显示「等收盘」） */
+  pending_close: boolean
   /** 价格不在当天日线 [low, high] 区间内的软提示 */
   warnings: string[]
 }

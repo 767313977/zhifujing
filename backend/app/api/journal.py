@@ -418,10 +418,15 @@ def suggest_reason(
         # 做 T 表单用来决定触发类型是否默认「超跌」；`load_oversold` 只返回达到阈值的，
         # 没超跌时这里就是 None（前端据此保留「其他」）
         oversold_dev=oversold_dev,
-        # 乖离是按哪天的日线算的：只有 T 日期正好是这一天，前端才自动预选「超跌」；
-        # 补记旧 T 时不能拿今天的乖离去套（复查 #3）
+        # 乖离是按**这只票自己**最后一根日线算的（不能用全市场 max：停牌票会被
+        # 标成今天）。前端用它判断 T 的日期是不是「今天或以后」——盘中记 T 时
+        # 库里最新日线还是昨天，但那份乖离正是做 T 的依据（复查 P2-1）
         oversold_date=(
-            session.scalar(select(func.max(StockDaily.trade_date)))
+            session.scalar(
+                select(func.max(StockDaily.trade_date)).where(
+                    StockDaily.code == target
+                )
+            )
             if oversold_dev is not None
             else None
         ),

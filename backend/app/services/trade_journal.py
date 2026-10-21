@@ -382,8 +382,17 @@ def _t_metrics(
         else:
             fee_pct = FEE_BUY * 100
 
+        # 盘中估算 + 有一腿还没发生：缺的那腿用的是**昨天的收盘价**，与今天的真实
+        # 成交价比出来的价差 / 降本都是伪数字 —— 置空，等收盘后再算（复查 P2-2）
+        pending_close = bool(estimated and not completed)
+
         spread_pct = net_pct = contrib_pct = fly_pct = None
-        if buy_basis is not None and sell_basis is not None and buy_basis > 0:
+        if (
+            not pending_close
+            and buy_basis is not None
+            and sell_basis is not None
+            and buy_basis > 0
+        ):
             spread_pct = round((sell_basis / buy_basis - 1.0) * 100, 2)
             if completed:
                 net_pct = round(spread_pct - fee_pct, 2)
@@ -427,6 +436,8 @@ def _t_metrics(
                 "fly_pct": fly_pct,
                 "success": bool(completed and net_pct is not None and net_pct > 0),
                 "end_price": end_price,
+                #: 盘中估算的未完成 T：价差 / 降本要等收盘后再算，前端显示「等收盘」
+                "pending_close": pending_close,
                 "warnings": warnings,
             }
         )
