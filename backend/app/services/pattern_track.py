@@ -72,7 +72,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import PatternHit, StockDaily, TradeCalendar
-from app.services.patterns import PATTERNS
+from app.services.patterns import PATTERNS, SCORE_EXCLUDED
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,9 @@ def _picks(session: Session, days: list[date], top: int) -> dict[date, list[Pick
     rows = session.execute(
         select(PatternHit.trade_date, PatternHit.code, PatternHit.name, PatternHit.score).where(
             PatternHit.trade_date.in_(days),
-            PatternHit.pattern.in_(_KEYS),
+            # 与 `/hits` 默认视图同一口径：只当标签的形态（明天预案 / 明天盯）不参与评分，
+            # 也就不能靠它们挤进「前 N 只」（2026-10-21 用户要求，见 `SCORE_EXCLUDED`）
+            PatternHit.pattern.in_([key for key in _KEYS if key not in SCORE_EXCLUDED]),
             or_(ago.is_(None), ago == 0),
         )
     ).all()

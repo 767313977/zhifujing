@@ -40,7 +40,7 @@ from app.schemas import (
     PoolStandingOut,
 )
 from app.services import pattern_track
-from app.services.patterns import PATTERNS, WUDAO_PHASE_LABELS, is_st
+from app.services.patterns import PATTERNS, SCORE_EXCLUDED, WUDAO_PHASE_LABELS, is_st
 from app.services.stock_phase import load_oversold, load_phases
 from app.sources.base import chunked
 
@@ -724,6 +724,15 @@ def hits(
             # 已经按分数降序取过，所以第一条就是最高分；这里只在必要时提升
             existing.score = max(existing.score, row.score)
 
+    # 评分只算「参与打分」的形态（见 `patterns.SCORE_EXCLUDED`）：
+    # 「明天预案 / 明天盯」照旧显示标签，但不贡献总分 —— 只命中这两个的票记 0 分，
+    # 不进默认评分榜（2026-10-21 用户要求）
+    for stock in grouped.values():
+        scored = [
+            item.score for item in stock.patterns if item.pattern not in SCORE_EXCLUDED
+        ]
+        stock.score = max(scored) if scored else 0.0
+
     # 窗口模式回填「这一轮持续了几天 / 最近哪天」（见 `_hits_window`）
     for run_code, (run_days, run_last) in run_info.items():
         run_stock = grouped.get(run_code)
@@ -737,11 +746,13 @@ def hits(
         # 上面那句 max 取的是这只票的最高形态分；在当前这一屏里那不是它该显的分
         # （页面上每行的其它形态仍各自带自己的分数，见 `patterns` 数组）。
         # 多选（交集）时一只票**必然**命中其中每一个，取最高那个 —— 与单选口径一致
-        wanted = set(picked)
+        #
+        # ⚠️ 被排除打分的形态（明天预案 / 明天盯）即使被选中也不给分：选中它们时
+        # 这一屏全按 0 分展示（按其它形态的分排序会让人以为这两个也在打分）
+        wanted = set(picked) - SCORE_EXCLUDED
         for stock in result:
             scores = [item.score for item in stock.patterns if item.pattern in wanted]
-            if scores:
-                stock.score = max(scores)
+            stock.score = max(scores) if scores else 0.0
         result.sort(key=lambda stock: stock.score, reverse=True)
     if codes_wanted:
         # 先在全量命中上判阶段、再筛、最后才截 limit（理由见 docstring「阶段判定筛选」）
