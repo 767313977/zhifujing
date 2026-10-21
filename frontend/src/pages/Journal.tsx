@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
 import { api } from '../api/client'
 import type {
   JournalReasonSuggestion,
@@ -8,6 +8,9 @@ import type {
   TradeJournalRow,
   TradeStatsOut,
   TradeStatsRow,
+  TradeTIn,
+  TradeTRow,
+  TradeTStatsRow,
 } from '../api/types'
 import Alert from '../components/Alert'
 import Layout from '../components/Layout'
@@ -35,6 +38,26 @@ const POOL_KEYS = [
 
 const REASON_LABELS: Record<string, string> = Object.fromEntries(
   REASON_TYPES.map((item) => [item.key, item.label]),
+)
+
+/** 做 T 的方向 / 触发类型。与后端 `services.trade_journal` 的常量一一对应。 */
+const T_DIRECTIONS = [
+  { key: 'long', label: '正T' },
+  { key: 'short', label: '倒T' },
+]
+
+const T_TRIGGERS = [
+  { key: 'oversold', label: '超跌' },
+  { key: 'intraday_high', label: '分时冲高' },
+  { key: 'theme_fade', label: '题材退潮' },
+  { key: 'other', label: '其他' },
+]
+
+const T_DIRECTION_LABELS: Record<string, string> = Object.fromEntries(
+  T_DIRECTIONS.map((item) => [item.key, item.label]),
+)
+const T_TRIGGER_LABELS: Record<string, string> = Object.fromEntries(
+  T_TRIGGERS.map((item) => [item.key, item.label]),
 )
 
 function todayText(): string {
@@ -190,6 +213,356 @@ function StatsTable({ title, rows }: { title: string; rows: TradeStatsRow[] }) {
   )
 }
 
+/** 做 T 子表里「买 → 卖」那一格：缺的那一腿写明按哪个期末价算。 */
+function tLegText(row: TradeTRow): string {
+  const end = row.end_price == null ? '期末价' : `按期末 ${fmtNum(row.end_price, 2)}`
+  const buy = row.buy_price == null ? `—（${end}）` : fmtNum(row.buy_price, 2)
+  const sell = row.sell_price == null ? `—（${end}）` : fmtNum(row.sell_price, 2)
+  return `${buy} → ${sell}`
+}
+
+interface TFormProps {
+  tradeId: number
+  code: string
+  entryDate: string
+  /** 编辑已有的一条时传入；新增为 null */
+  initial: TradeTRow | null
+  /** 保存前这只票已有的 T id，用来在返回的整行里认出刚新建的那条（取 warnings） */
+  knownIds: number[]
+  onSaved: (row: TradeJournalRow) => void
+  onClose: () => void
+}
+
+/** 行内「+ 做T」表单：正T / 倒T、两腿价格与日期、比例、触发。 */
+function TForm({
+  tradeId,
+  code,
+  entryDate,
+  initial,
+  knownIds,
+  onSaved,
+  onClose,
+}: TFormProps) {
+  const [direction, setDirection] = useState(initial?.direction ?? 'long')
+  const [tradeDate, setTradeDate] = useState(initial?.trade_date ?? todayText())
+  // 第二腿默认与第一腿同一天（当日 T）；没做第二腿时价格留空，日期不会提交
+  const [leg2Date, setLeg2Date] = useState(
+    initial?.leg2_date ?? initial?.trade_date ?? todayText(),
+  )
+  const [buyPrice, setBuyPrice] = useState(
+    initial?.buy_price == null ? '' : String(initial.buy_price),
+  )
+  const [sellPrice, setSellPrice] = useState(
+    initial?.sell_price == null ? '' : String(initial.sell_price),
+  )
+  const [ratio, setRatio] = useState(
+    initial
+      ? String(initial.ratio_pct)
+      : (window.localStorage.getItem('journal.lastTRatio') ?? '33'),
+  )
+  const [trigger, setTrigger] = useState(initial?.trigger ?? 'other')
+  const [note, setNote] = useState(initial?.note ?? '')
+  const [oversoldDev, setOversoldDev] = useState<number | null>(null)
+  // 当天日线的最低价 / 最高价，只用来做 placeholder（软提示，不拦截）
+  const [range, setRange] = useState<{ low: number; high: number } | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [warnings, setWarnings] = useState<string[]>([])
+
+  // 今天相对 20 日线的乖离：到了超跌阈值就把触发默认成「超跌」
+  useEffect(() => {
+    if (initial) return
+    let stale = false
+    api
+      .journalSuggest(code, entryDate)
+      .then((data) => {
+        if (stale) return
+        setOversoldDev(data.oversold_dev)
+        if (data.oversold_dev != null && data.oversold_dev < -15) setTrigger('oversold')
+      })
+      .catch(() => {
+        /* 回溯不到就不预选，不打扰 */
+      })
+    return () => {
+      stale = true
+    }
+  }, [code, entryDate, initial])
+
+  useEffect(() => {
+    if (!tradeDate) {
+      setRange(null)
+      return
+    }
+    let stale = false
+    api
+      .stockDaily(code, { days: 60 })
+      .then((rows) => {
+        if (stale) return
+        const hit = rows.find((row) => row.trade_date === tradeDate)
+        setRange(
+          hit && hit.low != null && hit.high != null
+            ? { low: hit.low, high: hit.high }
+            : null,
+        )
+      })
+      .catch(() => {
+        if (!stale) setRange(null)
+      })
+    return () => {
+      stale = true
+    }
+  }, [code, tradeDate])
+
+  const priceHint = range
+    ? `${fmtNum(range.low, 2)} ~ ${fmtNum(range.high, 2)}`
+    : '当日成交价'
+  // 第二腿 = 正T 的卖出 / 倒T 的买回
+  const secondPrice = direction === 'long' ? sellPrice : buyPrice
+
+  const submit = async () => {
+    if (direction === 'long' && !buyPrice) {
+      setError('正T 要先填买入价')
+      return
+    }
+    if (direction === 'short' && !sellPrice) {
+      setError('倒T 要先填卖出价')
+      return
+    }
+    const value = Number(ratio)
+    if (!Number.isFinite(value) || value <= 0 || value > 100) {
+      setError('比例填 0-100 之间（1/3 仓填 33）')
+      return
+    }
+    const payload: TradeTIn = {
+      trade_date: tradeDate,
+      leg2_date: secondPrice ? leg2Date || tradeDate : null,
+      direction,
+      buy_price: buyPrice ? Number(buyPrice) : null,
+      sell_price: sellPrice ? Number(sellPrice) : null,
+      ratio_pct: value,
+      trigger,
+      note: note.trim() || null,
+    }
+    setSaving(true)
+    setError(null)
+    setWarnings([])
+    try {
+      const row = initial
+        ? await api.updateTradeT(initial.id, payload)
+        : await api.createTradeT(tradeId, payload)
+      window.localStorage.setItem('journal.lastTRatio', String(value))
+      const saved = initial
+        ? row.t_ops.find((item) => item.id === initial.id)
+        : row.t_ops.find((item) => !knownIds.includes(item.id))
+      onSaved(row)
+      if (saved && saved.warnings.length > 0) {
+        setWarnings(saved.warnings)
+      } else {
+        onClose()
+      }
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onEnter = (event: ReactKeyboardEvent) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      void submit()
+    }
+  }
+
+  return (
+    <div className="mt-2 border border-line bg-ink-850 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-[12px] text-fg-dim">方向</span>
+        <div className="flex">
+          {T_DIRECTIONS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setDirection(item.key)}
+              className={`border px-2 py-[3px] text-[12px] transition-colors ${
+                direction === item.key
+                  ? 'border-accent/60 bg-accent/10 text-accent'
+                  : 'border-line text-fg-muted hover:text-fg'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <span className="text-[11px] text-fg-dim" title="正T = 先买后卖；倒T = 先卖后买">
+          ⓘ 正T 先买后卖、倒T 先卖后买
+        </span>
+        {oversoldDev != null && (
+          <span className="text-[11px] text-warn">今日乖离 {fmtPct(oversoldDev)}</span>
+        )}
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-6">
+        <Field label="日期">
+          <input
+            type="date"
+            value={tradeDate}
+            onChange={(event) => setTradeDate(event.target.value)}
+            onKeyDown={onEnter}
+            className={INPUT}
+          />
+        </Field>
+        <Field label="买入价" hint={direction === 'long' ? '第一腿' : '第二腿，没接回留空'}>
+          <input
+            type="number"
+            step="0.01"
+            value={buyPrice}
+            onChange={(event) => setBuyPrice(event.target.value)}
+            onKeyDown={onEnter}
+            placeholder={priceHint}
+            className={INPUT}
+          />
+        </Field>
+        <Field label="卖出价" hint={direction === 'short' ? '第一腿' : '第二腿，没卖出留空'}>
+          <input
+            type="number"
+            step="0.01"
+            value={sellPrice}
+            onChange={(event) => setSellPrice(event.target.value)}
+            onKeyDown={onEnter}
+            placeholder={priceHint}
+            className={INPUT}
+          />
+        </Field>
+        <Field label="第二腿日期" hint="第二腿价格留空时忽略">
+          <input
+            type="date"
+            value={leg2Date}
+            onChange={(event) => setLeg2Date(event.target.value)}
+            onKeyDown={onEnter}
+            className={INPUT}
+          />
+        </Field>
+        <Field label="比例 %" hint="占底仓的比例">
+          <input
+            type="number"
+            step="1"
+            value={ratio}
+            onChange={(event) => setRatio(event.target.value)}
+            onKeyDown={onEnter}
+            className={INPUT}
+          />
+        </Field>
+        <Field label="触发">
+          <select
+            value={trigger}
+            onChange={(event) => setTrigger(event.target.value)}
+            className={INPUT}
+          >
+            {T_TRIGGERS.map((item) => (
+              <option key={item.key} value={item.key}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="备注">
+          <input
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            onKeyDown={onEnter}
+            placeholder="可选"
+            className={INPUT}
+          />
+        </Field>
+        <div className="flex items-end gap-2">
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={saving}
+            className="border border-accent/60 bg-accent/10 px-3 py-[6px] text-[13px] text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {saving ? '保存中…' : initial ? '保存修改' : '保存'}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="border border-line px-3 py-[6px] text-[13px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+      {error && <div className="mt-1.5 text-[12px] text-danger">{error}</div>}
+      {warnings.map((text) => (
+        <div key={text} className="mt-1 text-[12px] text-warn">
+          {text}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** 做 T 的分组表（按方向 / 按触发）。 */
+function TStatsTable({ title, rows }: { title: string; rows: TradeTStatsRow[] }) {
+  return (
+    <div className="min-w-0">
+      <div className="mb-1.5 text-[12px] text-fg-dim">{title}</div>
+      <div className="overflow-x-auto">
+        <table className="grid-table">
+          <thead>
+            <tr>
+              <th className="!text-left">分组</th>
+              <th>次数</th>
+              <th>已完成 / 未完成</th>
+              <th>成功率</th>
+              <th>平均扣费后</th>
+              <th>累计降本</th>
+              <th>卖飞</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.label}>
+                <td className="!text-left text-fg">{row.label}</td>
+                <td>
+                  <span className="num">{row.count}</span>
+                </td>
+                <td>
+                  <span className="num text-fg-dim">
+                    {row.completed} / {row.open}
+                  </span>
+                </td>
+                <td>
+                  <span className="num">
+                    {row.success_rate == null ? '—' : `${row.success_rate.toFixed(1)}%`}
+                  </span>
+                </td>
+                <td>
+                  <span className={`num ${toneOf(row.avg_net_pct)}`}>
+                    {fmtPct(row.avg_net_pct)}
+                  </span>
+                </td>
+                <td>
+                  <span className={`num ${toneOf(row.total_contrib_pct)}`}>
+                    {fmtPct(row.total_contrib_pct)}
+                  </span>
+                </td>
+                <td>
+                  <span className="num text-fg-dim">
+                    {row.fly_count === 0
+                      ? '—'
+                      : `${row.fly_count} 次 · ${fmtPct(row.avg_fly_pct)}`}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function JournalPage() {
   const [rows, setRows] = useState<TradeJournalRow[]>([])
   const [stats, setStats] = useState<TradeStatsOut | null>(null)
@@ -199,6 +572,9 @@ export default function JournalPage() {
   // 录入表单默认收起（2026-10-21 清单 #10）：做 T 之后页面元素更多，默认摊开会把
   // 「我的交易」挤到首屏之外；点「记一笔」或「编辑」时再展开
   const [formOpen, setFormOpen] = useState(false)
+  // 展开做 T 子表的底仓行；同一时间只开一个「+ 做T」/编辑表单
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [tForm, setTForm] = useState<{ tradeId: number; tId: number | null } | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -393,6 +769,38 @@ export default function JournalPage() {
       await api.deleteTrade(row.id)
       setNotice('已删除')
       if (editingId === row.id) resetForm()
+      await load()
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  const toggleExpand = (id: number) => {
+    const willOpen = !expanded.has(id)
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (willOpen) next.add(id)
+      else next.delete(id)
+      return next
+    })
+    // 收起时把这只票的做 T 表单一起关掉，免得下次展开还挂着半截输入
+    if (!willOpen && tForm?.tradeId === id) setTForm(null)
+  }
+
+  /** 做 T 保存后：只替换这一行，再刷新成绩单（后端已返回整行含 `t_ops`）。 */
+  const onTSaved = (row: TradeJournalRow) => {
+    setRows((prev) => prev.map((item) => (item.id === row.id ? row : item)))
+    api.journalStats().then(setStats).catch(() => {
+      /* 成绩单刷新失败不影响这一行 */
+    })
+  }
+
+  const removeT = async (t: TradeTRow) => {
+    if (!window.confirm(`删除 ${t.trade_date} 的这次做 T？`)) return
+    try {
+      await api.deleteTradeT(t.id)
+      setNotice('已删除这次做 T')
+      if (tForm?.tId === t.id) setTForm(null)
       await load()
     } catch (err) {
       setError((err as Error).message)
@@ -624,6 +1032,7 @@ export default function JournalPage() {
               <table className="grid-table">
                 <thead>
                   <tr>
+                    <th></th>
                     <th className="!text-left">买入日</th>
                     <th className="!text-left">股票</th>
                     <th className="!text-left">理由</th>
@@ -642,102 +1051,266 @@ export default function JournalPage() {
                 <tbody>
                   {rows.map((row) => {
                     const stop = stopText(row)
+                    // 有 T 记录、或还没平仓时才给展开钮；已平仓又没做过 T 的没有内容可展
+                    const canExpand = row.t_count > 0 || row.open
+                    const isOpen = expanded.has(row.id)
+                    const editingT = tForm?.tradeId === row.id
                     return (
-                      <tr key={row.id} title={row.metrics_note ?? undefined}>
-                        <td className="!text-left">
-                          <span className="num">{row.entry_date}</span>
-                        </td>
-                        <td className="!text-left">
-                          <StockLink code={row.code} className="text-fg">
-                            {row.name ?? row.code}
-                          </StockLink>
-                          <div className="num text-[11px] text-fg-dim">{row.code}</div>
-                        </td>
-                        <td className="!text-left">
-                          <div className="text-fg">{row.reason_label}</div>
-                          <div className="text-[11px] text-fg-dim">
-                            {REASON_LABELS[row.reason_type] ?? row.reason_type}
-                          </div>
-                        </td>
-                        <td>
-                          <span className="text-[12px] text-fg-muted">
-                            {row.sentiment_level ?? '—'}
-                          </span>
-                        </td>
-                        <td className="!text-left text-[12px] text-fg-muted">
-                          {row.sector ?? '—'}
-                        </td>
-                        <td>
-                          <div className="num text-[12px]">
-                            {fmtNum(row.entry_price, 2)}
-                            {row.exit_price != null
-                              ? ` → ${fmtNum(row.exit_price, 2)}`
-                              : ' → 持有中'}
-                          </div>
-                          <div className="num text-[11px] text-fg-dim">
-                            {row.exit_date ??
-                              (row.latest_close == null
-                                ? '—'
-                                : `最新 ${fmtNum(row.latest_close, 2)}${
-                                    row.latest_date ? ` · ${row.latest_date.slice(5)}` : ''
-                                  }`)}
-                          </div>
-                        </td>
-                        <td>
-                          <span className="num">
-                            {row.position_pct == null ? '—' : `${fmtNum(row.position_pct, 0)}%`}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`num ${toneOf(row.return_pct)}`}>
-                            {fmtPct(row.return_pct)}
-                          </span>
-                          {row.open && (
-                            <div className="text-[11px] text-fg-dim">浮动</div>
-                          )}
-                        </td>
-                        <td>
-                          <span className={`num ${toneOf(row.max_drawdown_pct)}`}>
-                            {fmtDrawdown(row.max_drawdown_pct)}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="num">
-                            {row.holding_days == null ? '—' : `${row.holding_days} 天`}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`text-[12px] ${stop.className}`} title={stop.title}>
-                            {stop.text}
-                          </span>
-                        </td>
-                        <td className="!text-left text-[12px] text-fg-dim">
-                          <span title={row.note ?? undefined}>
-                            {row.note ? `${row.note.slice(0, 18)}${row.note.length > 18 ? '…' : ''}` : '—'}
-                          </span>
-                          {row.metrics_note && (
-                            <div className="text-[11px] text-danger">{row.metrics_note}</div>
-                          )}
-                        </td>
-                        <td>
-                          <div className="flex gap-2 whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => startEdit(row)}
-                              className="text-[12px] text-accent hover:underline"
-                            >
-                              编辑
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void remove(row)}
-                              className="text-[12px] text-fg-dim hover:text-danger"
-                            >
-                              删除
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                      <Fragment key={row.id}>
+                        <tr title={row.metrics_note ?? undefined}>
+                          <td className="!text-left">
+                            {canExpand && (
+                              <button
+                                type="button"
+                                onClick={() => toggleExpand(row.id)}
+                                title={isOpen ? '收起做 T' : '展开做 T'}
+                                className="text-[12px] text-fg-dim hover:text-fg"
+                              >
+                                {isOpen ? '▾' : '▸'}
+                              </button>
+                            )}
+                          </td>
+                          <td className="!text-left">
+                            <span className="num">{row.entry_date}</span>
+                          </td>
+                          <td className="!text-left">
+                            <StockLink code={row.code} className="text-fg">
+                              {row.name ?? row.code}
+                            </StockLink>
+                            <div className="num text-[11px] text-fg-dim">{row.code}</div>
+                          </td>
+                          <td className="!text-left">
+                            <div className="text-fg">{row.reason_label}</div>
+                            <div className="text-[11px] text-fg-dim">
+                              {REASON_LABELS[row.reason_type] ?? row.reason_type}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="text-[12px] text-fg-muted">
+                              {row.sentiment_level ?? '—'}
+                            </span>
+                          </td>
+                          <td className="!text-left text-[12px] text-fg-muted">
+                            {row.sector ?? '—'}
+                          </td>
+                          <td>
+                            <div className="num text-[12px]">
+                              {fmtNum(row.entry_price, 2)}
+                              {row.exit_price != null
+                                ? ` → ${fmtNum(row.exit_price, 2)}`
+                                : ' → 持有中'}
+                            </div>
+                            <div className="num text-[11px] text-fg-dim">
+                              {row.exit_date ??
+                                (row.latest_close == null
+                                  ? '—'
+                                  : `最新 ${fmtNum(row.latest_close, 2)}${
+                                      row.latest_date ? ` · ${row.latest_date.slice(5)}` : ''
+                                    }`)}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="num">
+                              {row.position_pct == null ? '—' : `${fmtNum(row.position_pct, 0)}%`}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`num ${toneOf(row.return_pct)}`}>
+                              {fmtPct(row.return_pct)}
+                            </span>
+                            {row.open && (
+                              <div className="text-[11px] text-fg-dim">浮动</div>
+                            )}
+                            {row.t_count > 0 && (
+                              <div className="num text-[11px] text-fg-dim">
+                                含T{' '}
+                                <span className={toneOf(row.return_with_t_pct)}>
+                                  {fmtPct(row.return_with_t_pct)}
+                                </span>
+                                {` · T×${row.t_count}`}
+                                {row.t_open_count > 0 && (
+                                  <span className="text-warn"> · {row.t_open_count} 未完成</span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            <span className={`num ${toneOf(row.max_drawdown_pct)}`}>
+                              {fmtDrawdown(row.max_drawdown_pct)}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="num">
+                              {row.holding_days == null ? '—' : `${row.holding_days} 天`}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`text-[12px] ${stop.className}`} title={stop.title}>
+                              {stop.text}
+                            </span>
+                          </td>
+                          <td className="!text-left text-[12px] text-fg-dim">
+                            <span title={row.note ?? undefined}>
+                              {row.note ? `${row.note.slice(0, 18)}${row.note.length > 18 ? '…' : ''}` : '—'}
+                            </span>
+                            {row.metrics_note && (
+                              <div className="text-[11px] text-danger">{row.metrics_note}</div>
+                            )}
+                          </td>
+                          <td>
+                            <div className="flex gap-2 whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => startEdit(row)}
+                                className="text-[12px] text-accent hover:underline"
+                              >
+                                编辑
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void remove(row)}
+                                className="text-[12px] text-fg-dim hover:text-danger"
+                              >
+                                删除
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr>
+                            <td colSpan={14} className="!text-left bg-ink-850">
+                              <div className="px-1 py-2">
+                                {row.t_ops.length === 0 ? (
+                                  <div className="text-[12px] text-fg-dim">
+                                    还没有做 T 记录
+                                  </div>
+                                ) : (
+                                  <div className="overflow-x-auto">
+                                    <table className="grid-table">
+                                      <thead>
+                                        <tr>
+                                          <th className="!text-left">日期</th>
+                                          <th>方向</th>
+                                          <th>买 → 卖</th>
+                                          <th>比例</th>
+                                          <th>价差</th>
+                                          <th>扣费后</th>
+                                          <th>对底仓</th>
+                                          <th>触发</th>
+                                          <th className="!text-left">备注</th>
+                                          <th></th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {row.t_ops.map((item) => (
+                                          <tr key={item.id}>
+                                            <td className="!text-left num">
+                                              {item.leg2_date != null &&
+                                              item.leg2_date !== item.trade_date
+                                                ? `${item.trade_date} → ${item.leg2_date}`
+                                                : item.trade_date}
+                                            </td>
+                                            <td>
+                                              <span className="text-[12px] text-fg-muted">
+                                                {T_DIRECTION_LABELS[item.direction] ??
+                                                  item.direction}
+                                              </span>
+                                            </td>
+                                            <td className="num text-[12px]">{tLegText(item)}</td>
+                                            <td>
+                                              <span className="num">
+                                                {fmtNum(item.ratio_pct, 0)}%
+                                              </span>
+                                            </td>
+                                            <td>
+                                              <span className={`num ${toneOf(item.spread_pct)}`}>
+                                                {fmtPct(item.spread_pct)}
+                                              </span>
+                                            </td>
+                                            <td>
+                                              <span className={`num ${toneOf(item.net_pct)}`}>
+                                                {fmtPct(item.net_pct)}
+                                              </span>
+                                            </td>
+                                            <td>
+                                              <span className={`num ${toneOf(item.contrib_pct)}`}>
+                                                {fmtPct(item.contrib_pct)}
+                                              </span>
+                                              {item.fly_pct != null && (
+                                                <span className="ml-1 text-[11px] text-warn">
+                                                  卖飞 {fmtPct(item.fly_pct)}
+                                                </span>
+                                              )}
+                                            </td>
+                                            <td>
+                                              <span className="text-[12px] text-fg-muted">
+                                                {T_TRIGGER_LABELS[item.trigger] ?? item.trigger}
+                                              </span>
+                                            </td>
+                                            <td className="!text-left text-[12px] text-fg-dim">
+                                              {item.note ?? '—'}
+                                              {item.warnings.map((text) => (
+                                                <div key={text} className="text-[11px] text-warn">
+                                                  {text}
+                                                </div>
+                                              ))}
+                                            </td>
+                                            <td>
+                                              <div className="flex gap-2 whitespace-nowrap">
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setTForm({ tradeId: row.id, tId: item.id })
+                                                  }
+                                                  className="text-[12px] text-accent hover:underline"
+                                                >
+                                                  编辑
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => void removeT(item)}
+                                                  className="text-[12px] text-fg-dim hover:text-danger"
+                                                >
+                                                  删除
+                                                </button>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                                {editingT ? (
+                                  <TForm
+                                    key={`${row.id}-${tForm?.tId ?? 'new'}`}
+                                    tradeId={row.id}
+                                    code={row.code}
+                                    entryDate={row.entry_date}
+                                    initial={
+                                      tForm?.tId == null
+                                        ? null
+                                        : (row.t_ops.find((item) => item.id === tForm.tId) ??
+                                          null)
+                                    }
+                                    knownIds={row.t_ops.map((item) => item.id)}
+                                    onSaved={onTSaved}
+                                    onClose={() => setTForm(null)}
+                                  />
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setTForm({ tradeId: row.id, tId: null })}
+                                    className="mt-2 text-[12px] text-accent hover:underline"
+                                  >
+                                    + 做T
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     )
                   })}
                 </tbody>
@@ -775,7 +1348,7 @@ export default function JournalPage() {
                   ['平均收益', fmtPct(summary?.avg_return), toneOf(summary?.avg_return)],
                   [
                     '平均最大回撤',
-                    fmtPct(summary?.avg_drawdown),
+                    fmtDrawdown(summary?.avg_drawdown),
                     toneOf(summary?.avg_drawdown),
                   ],
                 ].map(([label, value, className]) => (
@@ -796,6 +1369,69 @@ export default function JournalPage() {
                 「已平 / 未平」里。情绪档位取买入当天的接力温度（冰点 / 偏冷 / 温和 /
                 活跃 / 沸腾）；板块取同花顺三级行业路径的末段。
               </p>
+
+              <div className="border-t border-line-soft pt-4">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="text-[13px] text-fg">做 T 成绩</span>
+                  <span className="text-[11px] text-fg-dim">
+                    降本按各自底仓的买入价折算 · 跨票相加仅供参考
+                  </span>
+                </div>
+                {stats.t_stats.summary.count === 0 ? (
+                  <div className="text-[12px] text-fg-dim">
+                    还没有做 T 记录：在持仓行点 ▸ 展开后记
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                      {[
+                        [
+                          '次数（已完成 / 未完成）',
+                          `${stats.t_stats.summary.completed} / ${stats.t_stats.summary.open}`,
+                          '',
+                        ],
+                        [
+                          '成功率',
+                          stats.t_stats.summary.success_rate == null
+                            ? '—'
+                            : `${stats.t_stats.summary.success_rate}%`,
+                          '',
+                        ],
+                        [
+                          '平均扣费后价差',
+                          fmtPct(stats.t_stats.summary.avg_net_pct),
+                          toneOf(stats.t_stats.summary.avg_net_pct),
+                        ],
+                        [
+                          '累计降本',
+                          fmtPct(stats.t_stats.summary.total_contrib_pct),
+                          toneOf(stats.t_stats.summary.total_contrib_pct),
+                        ],
+                        ['卖飞次数', `${stats.t_stats.summary.fly_count} 次`, ''],
+                        [
+                          '卖飞后平均涨幅',
+                          fmtPct(stats.t_stats.summary.avg_fly_pct),
+                          toneOf(stats.t_stats.summary.avg_fly_pct),
+                        ],
+                      ].map(([label, value, className]) => (
+                        <div key={label} className="border border-line-soft px-3 py-2">
+                          <div className="text-[11px] text-fg-dim">{label}</div>
+                          <div className={`num text-[16px] ${className}`}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <TStatsTable title="按方向" rows={stats.t_stats.by_direction} />
+                      <TStatsTable title="按触发" rows={stats.t_stats.by_trigger} />
+                    </div>
+                    <p className="text-[12px] leading-relaxed text-fg-dim">
+                      成功 = 扣掉佣金万 2.5×2 与印花税 0.05% 后价差为正；没记股数，未计最低 5
+                      元。卖飞 = 倒T 没接回，按期末价算之后又涨了多少；未完成的 T
+                      按期末价计贡献，但不进成功率的分母。
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </Panel>

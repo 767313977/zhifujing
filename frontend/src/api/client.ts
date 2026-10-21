@@ -79,6 +79,7 @@ import type {
   TradePlanRow,
   TradePlanSuggestionsOut,
   TradeStatsOut,
+  TradeTIn,
   TrapCheck,
   Volatility,
   WatchlistRow,
@@ -622,6 +623,25 @@ export const api = {
 
   deleteTrade: (id: number) =>
     request<{ ok: boolean }>(`/journal/${id}`, { method: 'DELETE' }),
+
+  // --- 做 T（2026-10-21 做 T 记录需求）---
+  /** 给一笔底仓记一次做 T，返回更新后的整行（含 `t_ops`）。 */
+  createTradeT: (tradeId: number, payload: TradeTIn) =>
+    request<TradeJournalRow>(`/journal/${tradeId}/t`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  updateTradeT: (tId: number, payload: TradeTIn) =>
+    request<TradeJournalRow>(`/journal/t/${tId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  deleteTradeT: (tId: number) =>
+    request<{ ok: boolean }>(`/journal/t/${tId}`, { method: 'DELETE' }),
 
   /** 按理由 / 情绪档位 / 板块的自成绩单（只统计已平仓）。 */
   journalStats: () => request<TradeStatsOut>('/journal/stats'),

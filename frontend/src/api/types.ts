@@ -1740,6 +1740,46 @@ export interface JournalReasonSuggestion {
   patterns: { key: string; name: string; score: number }[]
   /** 当天所属题材（没涨停过就是空） */
   themes: string[]
+  /** 这只票今天的 20 日线乖离（%，负数）；没到超跌阈值时为 null */
+  oversold_dev: number | null
+}
+
+/** 新增 / 修改一次做 T 的入参（对应后端 `TradeTIn`）。 */
+export interface TradeTIn {
+  /** 第一腿日期 */
+  trade_date: string
+  /** 第二腿日期；没做第二腿时 null */
+  leg2_date: string | null
+  /** long = 正T（先买后卖）/ short = 倒T（先卖后买） */
+  direction: string
+  buy_price: number | null
+  sell_price: number | null
+  /** 这次 T 占底仓的比例（0-100） */
+  ratio_pct: number
+  /** oversold / intraday_high / theme_fade / other */
+  trigger: string
+  note?: string | null
+}
+
+/** 一次做 T + 现算指标（对应后端 `TradeTRow`）。 */
+export interface TradeTRow extends TradeTIn {
+  id: number
+  trade_id: number
+  /** 两腿都有成交价 = 已完成；未完成时缺的那腿按期末价计 */
+  completed: boolean
+  /** 价差 = 卖出腿 / 买入腿 − 1（%） */
+  spread_pct: number | null
+  /** 扣费后价差（只对已完成的有意义） */
+  net_pct: number | null
+  /** 对底仓收益的贡献（降本），按底仓买入价计（%） */
+  contrib_pct: number | null
+  /** 卖飞幅度（只对「倒T 没接回」） */
+  fly_pct: number | null
+  success: boolean
+  /** 期末价（未平仓 = 最新收盘，已平仓 = 卖出价） */
+  end_price: number | null
+  /** 价格不在当天日线 [low, high] 区间内的软提示 */
+  warnings: string[]
 }
 
 /** 一笔交易 + 用日线现算的指标（对应后端 `TradeJournalRow`）。 */
@@ -1763,6 +1803,15 @@ export interface TradeJournalRow extends TradeJournalIn {
   /** 最新一根日线的不复权收盘价（持仓行显示「最新价」） */
   latest_close: number | null
   metrics_note: string | null
+  /** 这只票的做 T 明细，按第一腿日期升序 */
+  t_ops: TradeTRow[]
+  t_count: number
+  /** 各条做 T 贡献的简单相加（每条相对各自底仓的百分比） */
+  t_contrib_pct: number | null
+  /** 未完成的做 T 条数 */
+  t_open_count: number
+  /** 含 T 收益 = return_pct + t_contrib_pct（return_pct 原口径不动） */
+  return_with_t_pct: number | null
   created_at: string
   updated_at: string
 }
@@ -1782,11 +1831,32 @@ export interface TradeStatsRow {
   avg_holding_days: number | null
 }
 
+/** 做 T 的分组成绩（成功率只看已完成的）。 */
+export interface TradeTStatsRow {
+  label: string
+  count: number
+  completed: number
+  open: number
+  success_rate: number | null
+  avg_net_pct: number | null
+  total_contrib_pct: number | null
+  fly_count: number
+  avg_fly_pct: number | null
+}
+
+export interface TradeTStats {
+  summary: TradeTStatsRow
+  by_direction: TradeTStatsRow[]
+  by_trigger: TradeTStatsRow[]
+}
+
 export interface TradeStatsOut {
   summary: TradeStatsRow
   by_reason: TradeStatsRow[]
   by_sentiment: TradeStatsRow[]
   by_sector: TradeStatsRow[]
+  /** 做 T 成绩（2026-10-21）；没有记录时 count 全 0 */
+  t_stats: TradeTStats
 }
 
 /** 次日计划（对应后端 `TradePlanIn`）。 */
