@@ -820,17 +820,24 @@ export default function JournalPage() {
 
       <div className="space-y-4">
         <Panel
-          title={editingId === null ? '记一笔交易' : `编辑交易 #${editingId}`}
+          // 标题里不放数据库 id（`#1` 这种对用户没有意义），改用股票名 / 代码
+          title={
+            editingId === null
+              ? '记一笔交易'
+              : `编辑交易 · ${form.name.trim() || form.code || '未命名'}`
+          }
           meta={
             <span className="flex items-center gap-3">
               <span className="num">收益 / 回撤 / 持有天数 / 止损都用日线现算 · 不占配额</span>
               <button
                 type="button"
                 onClick={() => {
-                  if (formOpen && editingId === null) {
+                  // 收起 = 放弃这次录入 / 编辑：标题跟着回到「记一笔交易」，
+                  // 不然会留下一个收着表单的「编辑交易 · xxx」（2026-10-21）
+                  if (formOpen) {
                     resetForm()
                   } else {
-                    setFormOpen((prev) => !prev)
+                    setFormOpen(true)
                   }
                 }}
                 className="text-accent hover:underline"
