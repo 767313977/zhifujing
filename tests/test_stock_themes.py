@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
-from app.api.stock import themes
+from app.api.stock import _is_non_theme, themes
 from app.models import (
     Base,
     SectorBasic,
@@ -43,6 +43,7 @@ def db():
                 SectorBasic(code="801046", name="医疗器械", taxonomy="kph_selected"),
                 SectorBasic(code="881144", name="医疗器械", taxonomy="kph_industry"),
                 SectorBasic(code="801351", name="科创板", taxonomy="kph_selected"),
+                SectorBasic(code="801900", name="再融资", taxonomy="kph_selected"),
                 SectorDaily(
                     trade_date=BOARD_DAY,
                     sector_code="801046",
@@ -73,6 +74,13 @@ def db():
                 SectorMember(
                     trade_date=MEMBER_DAY,
                     sector_code="881144",
+                    code="688410",
+                    name="山外山",
+                ),
+                # 融资 / 事件型标签（2026-10-21 补进黑名单）
+                SectorMember(
+                    trade_date=MEMBER_DAY,
+                    sector_code="801900",
                     code="688410",
                     name="山外山",
                 ),
@@ -110,7 +118,7 @@ def db():
 def test_membership_beats_limit_up_concept(db):
     out = themes("688410", session=db)
     assert out.name == "山外山"
-    # 科创板是「身份」标签，被黑名单剔掉，只剩医疗器械
+    # 科创板（身份标签）、再融资（事件标签）都被黑名单剔掉，只剩医疗器械
     assert [item.concept for item in out.themes] == ["医疗器械"]
     assert out.board_date == BOARD_DAY
     # 行业板块（同一名字、kph_industry）不重复出现在题材里
@@ -134,6 +142,12 @@ def test_falls_back_to_limit_up_concept(db):
 def test_fallback_branch_keeps_all_when_filtered_empty(db):
     out = themes("600003", session=db)
     assert [item.concept for item in out.themes] == ["低价股"]
+
+
+def test_event_labels_are_filtered():
+    """2026-10-21 补进共享黑名单的融资 / 事件型标签。"""
+    for name in ("再融资", "可转债", "分拆上市预期", "实控人变更", "壳资源"):
+        assert _is_non_theme(name)
 
 
 def test_unknown_code_returns_empty(db):
