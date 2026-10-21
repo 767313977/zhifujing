@@ -239,6 +239,24 @@ export default function JournalPage() {
     setEditingId(null)
   }
 
+  /**
+   * 名称框失焦 / 回车时按名称反查代码（2026-10-21 用户要求：先写名字，代码自动带出）。
+   *
+   * 解析用后端的 `stockResolve`（与个股分析同一套：名称全等 → 拼音 → 模糊唯一）。
+   * **解析不出来就静默保持原样** —— 名称本来可以手填，为它弹红条只会打断录入；
+   * 拼音重名时同理，用户继续按代码填即可。
+   */
+  const resolveByName = async () => {
+    const key = form.name.trim()
+    if (!key) return
+    try {
+      const hit = await api.stockResolve(key)
+      setForm((prev) => ({ ...prev, code: hit.code, name: hit.name ?? prev.name }))
+    } catch {
+      // 没解析出来：保留用户输入，不打扰
+    }
+  }
+
   const submit = async () => {
     if (!form.code.trim() || !form.entryDate || !form.entryPrice) {
       setError('股票代码、买入日、买入价是必填项')
@@ -334,11 +352,19 @@ export default function JournalPage() {
                 className={INPUT}
               />
             </Field>
-            <Field label="名称" hint="留空自动从股票池补">
+            <Field label="名称" hint="填名称后自动带出代码（也认拼音）；留空保存时按代码补">
               <input
                 value={form.name}
                 onChange={(event) => set('name', event.target.value)}
-                placeholder="贵州茅台"
+                onBlur={() => void resolveByName()}
+                onKeyDown={(event) => {
+                  // 回车 = 立即解析，不用切到别的格子等失焦
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void resolveByName()
+                  }
+                }}
+                placeholder="贵州茅台 / gzmt"
                 className={INPUT}
               />
             </Field>

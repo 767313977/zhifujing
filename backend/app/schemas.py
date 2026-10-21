@@ -1761,6 +1761,18 @@ class SimilarDaysOut(ApiModel):
     lookback_days: int = 0
 
 
+class StockResolveOut(ApiModel):
+    """「名称 / 拼音首字母 / 代码 → 代码」的解析结果。
+
+    交易日志的「名称」框失焦时调它，好让用户先写名字、代码自动带出。
+    只查 `stock_basic`，**不算任何行情**（与 `/analysis/lookup` 的解析规则同一套）。
+    """
+
+    code: str
+    #: 库里的标准名称；查不到（极少：6 位代码直接放行时可能不在 `stock_basic`）为 None
+    name: str | None = None
+
+
 class StockAnalysis(ApiModel):
     """个股分析页（`/api/analysis/lookup`）的返回：解析结果 + 阶段判定 + 旁证。
 

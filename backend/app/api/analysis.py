@@ -35,13 +35,37 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Lhb, LimitPool, StockBasic, StockConcept, StockDaily
-from app.schemas import StockAnalysis
+from app.schemas import StockAnalysis, StockResolveOut
 from app.services.stock_lookup import LookupError, resolve_code
 from app.services.stock_phase import load_phase
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/analysis", tags=["个股分析"])
+
+
+@router.get("/resolve", response_model=StockResolveOut)
+def resolve(
+    q: str = Query(
+        ...,
+        min_length=1,
+        max_length=32,
+        description="股票名称 / 拼音首字母 / 6 位代码（如 贵州茅台 / gzmt / 600519）",
+    ),
+    session: Session = Depends(get_db),
+) -> StockResolveOut:
+    """名称 → 代码（**只查 `stock_basic`，不算任何行情**）。
+
+    给交易日志的「名称」输入框用：用户习惯先写名字，失焦时调这里把代码带出来。
+    解析规则与 `/lookup` 完全同一套（`services.stock_lookup.resolve_code`），
+    所以「名称 + 拼音 + 模糊唯一匹配」的行为两边一致，只是这里不做任何行情计算。
+    """
+    try:
+        code = resolve_code(q)
+    except LookupError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    name = session.scalar(select(StockBasic.name).where(StockBasic.code == code))
+    return StockResolveOut(code=code, name=name)
 
 
 @router.get("/lookup", response_model=StockAnalysis)

@@ -667,6 +667,18 @@ export const api = {
     request<StockAnalysis>(`/analysis/lookup?q=${encodeURIComponent(q)}`),
 
   /**
+   * 名称 / 拼音首字母 / 代码 → `{code, name}`（**只查股票池、不算行情**）。
+   *
+   * 交易日志的「名称」框失焦时用：先写名字，代码自动带出。解析规则与
+   * `analysisLookup` 同一套；解析不出/多解时后端 400，调用方按「没解析出来」静默处理
+   * —— 名称本来也可以手填，不该为它弹红条。
+   */
+  stockResolve: (q: string) =>
+    request<{ code: string; name: string | null }>(
+      `/analysis/resolve?q=${encodeURIComponent(q)}`,
+    ),
+
+  /**
    * 悟道六池的「成绩单」：收益（1/3/5/10 日）+ 到线率 + 破位率。
    *
    * 与 `patternTrack` 的分工：那个问「全形态混合的评分前 50 只后来怎么样」，
