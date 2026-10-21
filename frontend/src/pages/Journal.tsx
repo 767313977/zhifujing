@@ -257,7 +257,10 @@ export default function JournalPage() {
           const best = data.patterns[0]
           if (!best) return
           setForm((prev) => {
-            if (prev.reasonKey.trim()) return prev
+            // 只在「形态 / 悟道池」且还没选具体理由时自动带入：用户已经切到「题材 / 其他」
+            // 时，哪怕还没打字也不该被切回形态（2026-10-21 复查 #8）
+            const fillable = prev.reasonType === 'pattern' || prev.reasonType === 'wudao'
+            if (!fillable || prev.reasonKey.trim()) return prev
             return {
               ...prev,
               reasonType: POOL_KEYS.includes(best.key) ? 'wudao' : 'pattern',

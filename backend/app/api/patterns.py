@@ -412,13 +412,25 @@ def _market_oversold(db: Session, target: date) -> dict[str, float]:
     `scan_patterns.is_pattern_board` / `patterns.is_st`。
     """
     # 函数内导入：`api` 顶层不引 `jobs`（与 `api/admin.py` 里那条同款，避免启动期的环）
+    from app.jobs.collect_universe import load_codes
     from app.jobs.scan_patterns import is_pattern_board
 
     rows = db.execute(
-        select(StockDaily.code, StockDaily.name).where(StockDaily.trade_date == target)
+        select(StockDaily.code, StockDaily.name, StockDaily.amount).where(
+            StockDaily.trade_date == target,
+            # 停牌日 iFinD 会给一行「只有收盘价、其余全空」的残行（成交额为 0/NULL）：
+            # 那种票不该按停牌前的旧 K 线算成「今天超跌」（2026-10-21 复查 #5）
+            StockDaily.amount.is_not(None),
+            StockDaily.amount > 0,
+        )
     ).all()
+    # 与形态扫描用**同一个股票池**（`stock_universe`，有日均成交额门槛）：
+    # 只按板块前缀筛会把僵尸票、临近退市的票一起放进来（2026-10-21 复查 #4）
+    pool = set(load_codes())
     codes = [
-        code for code, name in rows if is_pattern_board(code) and not is_st(name)
+        code
+        for code, name, _amount in rows
+        if code in pool and is_pattern_board(code) and not is_st(name)
     ]
     return load_oversold(db, codes)
 
@@ -549,10 +561,14 @@ def hits(
     `乖离=(C−MA20)/MA20×100 < −15`，与 9 档阶段互不影响（一只票可以既超跌又是
     「明天预案」）。它与 9 档一起选择时取**并集**。
 
-    ⚠️ 超跌的取样范围是**当日全市场**（prod 板块、剔 ST），不是今天的形态命中 ——
-    超跌股往往一个强势形态都不中，只在命中表里筛几乎筛空（实测 1100 只命中里只有
-    1 只）。所以选了超跌时，列表里会混入**没有形态标签的行**（`patterns` 为空、
-    `score` 为 0），它们排在命中行之后、按乖离从深到浅。
+    ⚠️ 超跌的取样范围是**当日全市场**（股票池 + prod 板块、剔 ST），不是今天的形态
+    命中 —— 超跌股往往一个强势形态都不中，只在命中表里筛几乎筛空（实测 1100 只命中里
+    只有 1 只）。补行只在**不选形态、无评分下限、单日**时发生（选了形态就是在那个
+    命中集里挑，补行会混进一个形态都不中的票）；补进来的行 `patterns` 为空、`score`
+    为 0，排在命中行之后、按乖离从深到浅。
+
+    ⚠️ **只支持最新交易日**（2026-10-21 复查 #3）：阶段与超跌都按库里最新的日线算，
+    传历史日期时会直接 400 —— 否则候选池是那天的、判定却是今天的，两端不同日。
     """
     codes_wanted = [key for key in (phase or []) if key]
     if codes_wanted:
@@ -567,6 +583,18 @@ def hits(
     target = trade_date or _latest_date(db)
     if target is None:
         return []
+
+    # 阶段判定 / 超跌只能筛**最新交易日**（2026-10-21 复查 #3）：它们取的是「库里最近
+    # 130 根 / 25 根日线」，没有 `trade_date <= target` 的限制 —— 翻到 10-10 那天点
+    # 「超跌」，候选池是 10-10 的命中，乖离却是按最新那根 K 线算的，两边不是同一天。
+    # 与其给出一个看起来对、实际错位的结果，不如直接说清楚（缓存也只按数据版本区分，
+    # 不做「按日期重算」那一套）。
+    if codes_wanted and target != _latest_date(db):
+        raise HTTPException(
+            status_code=400,
+            detail="阶段判定 / 超跌只支持最新交易日：它们按库里最新的日线计算，"
+            "翻到历史日期筛会与实际不符（点「最新」即可）",
+        )
 
     # 允许 `?pattern=a&pattern=b`。空串条目直接丢掉 —— 手工拼 URL 会出现 `pattern=`，
     # 那不该被当成一个「未知形态」而报 400
@@ -725,8 +753,9 @@ def hits(
             existing.score = max(existing.score, row.score)
 
     # 评分只算「参与打分」的形态（见 `patterns.SCORE_EXCLUDED`）：
-    # 「明天预案 / 明天盯」照旧显示标签，但不贡献总分 —— 只命中这两个的票记 0 分，
-    # 不进默认评分榜（2026-10-21 用户要求）
+    # 悟道那几池照旧显示标签，但不贡献总分 —— 只命中它们的票记 0 分，自然排在最后
+    # （默认视图只取前 50，0 分票进不去；放大 limit 时它们仍可能出现，这是有意的：
+    #  点开某个池子看全部命中时，行不该凭空消失）
     for stock in grouped.values():
         scored = [
             item.score for item in stock.patterns if item.pattern not in SCORE_EXCLUDED
@@ -754,6 +783,12 @@ def hits(
             scores = [item.score for item in stock.patterns if item.pattern in wanted]
             stock.score = max(scores) if scores else 0.0
         result.sort(key=lambda stock: stock.score, reverse=True)
+    # `min_score` 必须在**评分重算之后**再筛一次（2026-10-21 复查 #2）：
+    # SQL 里那一遍是按行级原始分过滤的，而列表展示的是重算后的总分 —— 只命中
+    # 「明天预案 80 分」的票能过 SQL 的 min_score，重算后却是 0 分，于是出现
+    # 「评分为 0 却满足 ≥60」的行。
+    if min_score > 0:
+        result = [stock for stock in result if stock.score >= min_score]
     if codes_wanted:
         # 先在全量命中上判阶段、再筛、最后才截 limit（理由见 docstring「阶段判定筛选」）
         wanted_phases = [key for key in codes_wanted if key != "oversold"]
@@ -769,7 +804,10 @@ def hits(
             oversold_devs = _market_oversold(db, target)
             keep |= set(oversold_devs)
         result = [stock for stock in result if stock.code in keep]
-        if oversold_devs:
+        # 只有「不选形态、无评分下限、单日」时才补全市场的超跌票（2026-10-21 复查 #1）：
+        # 选了形态就是在那个命中集里挑（交集语义），补行会混进一批一个形态都不中的票；
+        # 有 min_score 时补进来的行是 0 分、与门槛矛盾；窗口模式下补行的 run_days 也对不上。
+        if oversold_devs and not picked and min_score <= 0 and days <= 1:
             # 今天没有任何形态命中、但超跌的票：补成不带形态的行（做 T 池）
             hit_codes_now = {stock.code for stock in result}
             extra = [code for code in oversold_devs if code not in hit_codes_now]

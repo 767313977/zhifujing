@@ -390,6 +390,14 @@ export default function PatternTrackPage() {
                 <span className="text-fg-muted">未计手续费，也没考虑涨停当天买不进</span>——
                 这是理论口径，不是能实现的收益。没走到的节点显示「—」，不按 0% 计入。
               </p>
+              {/* 口径变更要说在明处（2026-10-21）：SCORE_EXCLUDED 改了「评分」的算法，
+                  历史批次是**按新口径重算**的，不说明的话会以为是数据坏了 */}
+              <p className="px-4 pb-3 text-[12px] leading-relaxed text-fg-dim">
+                ⚠️「评分」不含悟道之路的 5 个池子（明天预案 / 明天盯 / 洗完可盯 /
+                洗后可盯 / 华宝早期，2026-10-21 起）——
+                <span className="text-fg-muted">历史批次也按新口径重算</span>，
+                所以早期循环的数字与 10-21 之前看到的可能不同，不是数据出了问题。
+              </p>
             </div>
           )}
         </Panel>

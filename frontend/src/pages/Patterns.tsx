@@ -508,7 +508,8 @@ export default function Patterns() {
     setHits([])
     setSummary(null)
     setPreview([])
-    void load(date, picked, days, phases, () => stale)
+    // 看历史日期时不带阶段筛选（后端会 400，见「阶段判定」那一行的注释）；切回最新自动恢复
+    void load(date, picked, days, date !== null ? [] : phases, () => stale)
     return () => {
       stale = true
     }
@@ -912,15 +913,19 @@ export default function Patterns() {
               )}
             </div>
             {/* 阶段判定（2026-10-20 用户要求：单独一行，分「明天预案 / 明天盯」）。
-                多选 = 并集；筛选在**后端**做（先算全量命中的阶段再筛），不是在前端这几十行里筛 */}
+                多选 = 并集；筛选在**后端**做（先算全量命中的阶段再筛），不是在前端这几十行里筛。
+                ⚠️ 只支持**最新交易日**：阶段与超跌都按库里最新的日线算，翻历史日期时
+                候选池是那天的、判定却是今天的，两端不同日（后端会直接 400） */}
             <div className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-2.5">
               <span className="text-[13px] text-fg-dim">阶段判定</span>
               {PHASES.map((item) => {
                 const on = phases.includes(item.value)
+                const off = date !== null
                 return (
                   <button
                     key={item.value}
                     type="button"
+                    disabled={off}
                     onClick={() =>
                       setPhases((prev) =>
                         prev.includes(item.value)
@@ -928,21 +933,35 @@ export default function Patterns() {
                           : [...prev, item.value],
                       )
                     }
-                    title={`${on ? '去掉' : '只看'}「${item.label}」（悟道阶段判定，与个股页／表格里的「阶段判定」列同一判据）`}
+                    title={
+                      off
+                        ? '阶段判定 / 超跌只支持最新交易日（它们按最新日线计算）'
+                        : `${on ? '去掉' : '只看'}「${item.label}」（悟道阶段判定，与个股页／表格里的「阶段判定」列同一判据）`
+                    }
                     className={`border px-2 py-[2px] text-[13px] transition-colors ${
-                      on
-                        ? 'border-accent bg-accent/10 text-accent'
-                        : 'border-line text-fg-muted hover:border-fg-dim hover:text-fg'
+                      off
+                        ? 'cursor-not-allowed border-line-soft text-fg-dim opacity-50'
+                        : on
+                          ? 'border-accent bg-accent/10 text-accent'
+                          : 'border-line text-fg-muted hover:border-fg-dim hover:text-fg'
                     }`}
                   >
                     {item.label}
                   </button>
                 )
               })}
-              {phases.length > 0 && (
+              {date !== null ? (
                 <span className="text-[12px] text-fg-dim">
-                  可多选 · 超跌取全市场（含今天没有形态的票），其余档在全市场命中里筛
+                  看的是历史日期 · 阶段判定 / 超跌只能筛最新那天（点日期选「最新」）
                 </span>
+              ) : (
+                phases.length > 0 && (
+                  <span className="text-[12px] text-fg-dim">
+                    {picked.length > 0
+                      ? '超跌只在你选中的形态命中里筛（不补全市场）'
+                      : '可多选 · 超跌取全市场（含今天没有形态的票），其余档在全市场命中里筛'}
+                  </span>
+                )
               )}
             </div>
           </div>

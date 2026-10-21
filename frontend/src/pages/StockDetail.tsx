@@ -344,15 +344,13 @@ export default function StockDetail() {
       // - `stockTrap` 首次要现取东财个股新闻，实测 3.7 秒（第二次走缓存才 0.04s）。
       // 原先这两块一起塞进 Promise.all，导致**整页白屏等最慢的那个** —— 用户点进来
       // 感觉「加载非常慢」，而后端概况本身只要 0.01~0.13 秒。现在它们各自到货再填。
-      const [p, themeData, chipData] = await Promise.all([
-        api.stockProfile(target),
-        api.stockThemes(target).catch(() => null),
-        chipsRequest,
-      ])
-      if (isCancelled()) return p
-      setProfile(p)
-      setThemes(themeData)
-      setChips(chipData)
+      //
+      // 两块慢请求的回调要在**等首屏之前**注册（2026-10-21 复查 #7）：概况请求失败时
+      // 上面那句 Promise.all 会直接抛出去，若把 `.then` 放在它后面就永远不会注册，
+      // `ddeLoading` / `trapLoading` 会一直停在 true。同时在这里把它们重置为 true ——
+      // 手动同步后重新调 `load` 时，第二次取数期间不该继续显示上一轮的旧数据。
+      setDdeLoading(true)
+      setTrapLoading(true)
       void ddeRequest.then((result) => {
         if (isCancelled()) return
         setDde(result.data)
@@ -364,6 +362,15 @@ export default function StockDetail() {
         setTrap(data)
         setTrapLoading(false)
       })
+      const [p, themeData, chipData] = await Promise.all([
+        api.stockProfile(target),
+        api.stockThemes(target).catch(() => null),
+        chipsRequest,
+      ])
+      if (isCancelled()) return p
+      setProfile(p)
+      setThemes(themeData)
+      setChips(chipData)
       return p
     },
     [],
