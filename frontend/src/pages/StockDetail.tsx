@@ -44,6 +44,15 @@ import { alreadySynced, markSynced, readStockList } from '../lib/stockNav'
  */
 const NEED_BARS = 120
 
+/**
+ * 「所属题材」这一格最多列几个。
+ *
+ * 成分股快照覆盖全市场之后，宽泛的票能挂 20 多个板块（中国长城实测 22 个），
+ * 全铺开会把概况这一行撑到七八行。这里只列前 N 个，其余用「等 N 个」收口，
+ * 完整名单挂在 `title` 上悬浮可见（2026-10-21 用户要求）。
+ */
+const THEME_SHOW = 5
+
 /** K 线面板的标题按周期变 */
 const VIEW_LABEL: Record<string, string> = {
   day: '日 K',
@@ -591,16 +600,26 @@ export default function StockDetail() {
    * 原来是一整块带板块涨跌幅的 Panel，压成两行：名称一行、**同序**对应的涨跌幅一行。
    * 数据来源 2026-10-21 改了：优先读板块成分股快照（覆盖全市场），没快照才退回
    * 「最近一次涨停所属的精选板块」—— 以前只看涨停股，非涨停股永远是「—」。
-   * 一只票可能挂好几个板块（山外山就有 9 个），这一格用 compact 字号，避免把整行撑高。
+   * 一只票可能挂十几个板块（中国长城实测 22 个），这一格用 compact 字号，
+   * 并且最多列前 5 个（其余收口成「等 N 个」，完整名单见 title）。
    */
   const themeItems = themes?.themes ?? []
+  // 最多列 THEME_SHOW 个，其余收口成「等 N 个」；完整名单放 title
+  const themeShown = themeItems.slice(0, THEME_SHOW)
+  const themeMore = themeItems.length - themeShown.length
   const themeNames = themeItems.length
-    ? themeItems.map((theme) => theme.concept).join('、')
+    ? `${themeShown.map((theme) => theme.concept).join('、')}${
+        themeMore > 0 ? ` 等 ${themeItems.length} 个` : ''
+      }`
     : syncing
       ? '同步中…'
       : '—'
+  // 涨跌幅与上面的名称同序，只给列出来的那几个
   const themePcts = themeItems.length
-    ? themeItems.map((theme) => fmtPct(theme.pct_chg)).join('、')
+    ? themeShown.map((theme) => fmtPct(theme.pct_chg)).join('、')
+    : undefined
+  const themeTitle = themeItems.length
+    ? themeItems.map((theme) => theme.concept).join('、')
     : undefined
   const toolbar = (
     <>
@@ -685,7 +704,13 @@ export default function StockDetail() {
               sub={`龙虎榜 ${profile?.lhb_count ?? 0} 次`}
             />
             <Cell label="换手率" value={fmtNum(latest?.turnover, 2, '%')} />
-            <Cell label="所属题材" value={themeNames} sub={themePcts} compact />
+            <Cell
+              label="所属题材"
+              value={themeNames}
+              sub={themePcts}
+              title={themeTitle}
+              compact
+            />
             <Cell label="总市值" value={fmtAmount(profile?.total_mv)} />
             <Cell label="自由流通市值" value={fmtAmount(profile?.free_float_mv)} />
             <Cell label="动态市盈率" value={fmtNum(profile?.pe_forecast, 2)} />
@@ -1175,17 +1200,23 @@ function Cell({
   value,
   tone = 'text-fg',
   sub,
+  title,
   compact = false,
 }: {
   label: string
   value: string
   tone?: string
   sub?: string
+  /** 悬浮提示（如「所属题材」只列前 5 个时，完整名单放这里） */
+  title?: string
   /** 多值格子（如「所属题材」可能挂好几个板块）用小一号字，别把整行撑高 */
   compact?: boolean
 }) {
   return (
-    <div className="relative -mr-px -mb-px border-r border-b border-line-soft px-4 py-3">
+    <div
+      className="relative -mr-px -mb-px border-r border-b border-line-soft px-4 py-3"
+      title={title}
+    >
       <div className="text-[13px] tracking-[0.1em] text-fg-dim">{label}</div>
       <div
         className={`num mt-1.5 font-medium ${compact ? 'text-[14px] leading-snug' : 'text-[18px] leading-tight'} ${tone}`}
