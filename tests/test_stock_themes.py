@@ -76,11 +76,23 @@ def db():
                     code="688410",
                     name="山外山",
                 ),
-                # 600000 没有成分股快照，只有涨停天梯里的一条历史题材
+                # 600000 没有成分股快照，只有涨停天梯里的两条历史题材
+                # （「国有企业」是身份标签，走天梯分支时也要被剔掉）
                 StockConcept(
                     trade_date=date(2026, 9, 1),
                     code="600000",
                     concept="银行",
+                ),
+                StockConcept(
+                    trade_date=date(2026, 9, 1),
+                    code="600000",
+                    concept="国有企业",
+                ),
+                # 600003 只有一条身份标签：剔空后按原样保留
+                StockConcept(
+                    trade_date=date(2026, 9, 1),
+                    code="600003",
+                    concept="低价股",
                 ),
                 # 600002 只有一个「身份」标签，黑名单会把它剔空
                 SectorMember(
@@ -113,9 +125,15 @@ def test_generic_label_kept_when_nothing_else(db):
 
 def test_falls_back_to_limit_up_concept(db):
     out = themes("600000", session=db)
+    # 天梯分支同样过黑名单：国有企业被剔掉，银行留下
     assert [item.concept for item in out.themes] == ["银行"]
     # 板块表里没有「银行」，board_code 为 None，但题材名仍要显示
     assert out.themes[0].board_code is None
+
+
+def test_fallback_branch_keeps_all_when_filtered_empty(db):
+    out = themes("600003", session=db)
+    assert [item.concept for item in out.themes] == ["低价股"]
 
 
 def test_unknown_code_returns_empty(db):

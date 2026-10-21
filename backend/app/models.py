@@ -360,6 +360,13 @@ class SectorMember(Base):
     turnover: Mapped[float | None] = mapped_column(Float)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
+    __table_args__ = (
+        # 个股页「所属题材」按 code 反过来查它属于哪些板块（`api/stock.themes`）。
+        # 主键以 trade_date 开头，按 code 查用不上 —— 实测要扫当天全部 ~6.7 万行
+        # （6ms/次）；加上这个索引后走 code 等值区间（2026-10-21）。
+        Index("ix_sector_member_code_date", "code", "trade_date"),
+    )
+
 
 class StockEventCache(Base):
     """个股公告 / 研报 / 解禁的按需缓存（打开个股页或体检时现取、写这里）。
