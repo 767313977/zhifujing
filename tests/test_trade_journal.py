@@ -89,6 +89,7 @@ def test_open_trade_uses_latest_close():
     assert out["holding_days"] == 10
     assert out["return_pct"] == 8.0  # 浮动盈亏用最新收盘
     assert out["latest_date"] == date(2026, 8, 14)
+    assert out["latest_close"] == 108.0  # 持仓行显示的最新价（不复权）
 
 
 def test_split_does_not_look_like_a_crash():
@@ -135,4 +136,6 @@ def test_reason_label():
     assert reason_label("pattern", "ma_bull", None) == "均线多头排列"
     assert reason_label("theme", "固态电池", None) == "固态电池"
     assert reason_label("other", None, "朋友推荐") == "朋友推荐"
+    # 「其他」里只存了 key 的老记录也要显示出来（2026-10-21 清单 #2）
+    assert reason_label("other", "朋友推荐", None) == "朋友推荐"
     assert reason_label("other", None, None) == "其他"

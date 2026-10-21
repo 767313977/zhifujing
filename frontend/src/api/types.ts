@@ -1760,6 +1760,8 @@ export interface TradeJournalRow extends TradeJournalIn {
   /** 未平仓 = true（return_pct 是浮动盈亏） */
   open: boolean
   latest_date: string | null
+  /** 最新一根日线的不复权收盘价（持仓行显示「最新价」） */
+  latest_close: number | null
   metrics_note: string | null
   created_at: string
   updated_at: string

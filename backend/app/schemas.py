@@ -1664,6 +1664,8 @@ class TradeJournalRow(TradeJournalIn):
     #: 未平仓 = True（`return_pct` 是浮动盈亏）
     open: bool = False
     latest_date: date | None = None
+    #: 最新一根日线的**不复权**收盘价（持仓行显示「最新价」，与行情软件一致）
+    latest_close: float | None = None
     #: 日线不够、算不出指标时的原因
     metrics_note: str | None = None
     created_at: datetime

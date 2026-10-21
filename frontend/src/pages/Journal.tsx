@@ -13,7 +13,7 @@ import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import StockLink from '../components/StockLink'
-import { fmtNum, fmtPct, toneOf } from '../lib/format'
+import { fmtDrawdown, fmtNum, fmtPct, toneOf } from '../lib/format'
 
 /** 理由来源。与后端 `services/trade_journal.REASON_TYPES` 一一对应。 */
 const REASON_TYPES = [
@@ -172,7 +172,7 @@ function StatsTable({ title, rows }: { title: string; rows: TradeStatsRow[] }) {
                   </td>
                   <td>
                     <span className={`num ${toneOf(row.avg_drawdown)}`}>
-                      {fmtPct(row.avg_drawdown)}
+                      {fmtDrawdown(row.avg_drawdown)}
                     </span>
                   </td>
                   <td>
@@ -196,6 +196,9 @@ export default function JournalPage() {
   const [catalog, setCatalog] = useState<PatternMeta[]>([])
   const [form, setForm] = useState<FormState>(emptyForm)
   const [editingId, setEditingId] = useState<number | null>(null)
+  // 录入表单默认收起（2026-10-21 清单 #10）：做 T 之后页面元素更多，默认摊开会把
+  // 「我的交易」挤到首屏之外；点「记一笔」或「编辑」时再展开
+  const [formOpen, setFormOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -305,6 +308,7 @@ export default function JournalPage() {
   const resetForm = () => {
     setForm(emptyForm())
     setEditingId(null)
+    setFormOpen(false)
   }
 
   /**
@@ -365,6 +369,7 @@ export default function JournalPage() {
 
   const startEdit = (row: TradeJournalRow) => {
     setEditingId(row.id)
+    setFormOpen(true)
     setForm({
       code: row.code,
       name: row.name ?? '',
@@ -408,9 +413,32 @@ export default function JournalPage() {
       <div className="space-y-4">
         <Panel
           title={editingId === null ? '记一笔交易' : `编辑交易 #${editingId}`}
-          meta={<span className="num">收益 / 回撤 / 持有天数 / 止损都用日线现算 · 不占配额</span>}
+          meta={
+            <span className="flex items-center gap-3">
+              <span className="num">收益 / 回撤 / 持有天数 / 止损都用日线现算 · 不占配额</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (formOpen && editingId === null) {
+                    resetForm()
+                  } else {
+                    setFormOpen((prev) => !prev)
+                  }
+                }}
+                className="text-accent hover:underline"
+              >
+                {formOpen ? '收起' : '记一笔'}
+              </button>
+            </span>
+          }
           delay={40}
         >
+          {!formOpen ? (
+            <div className="px-4 py-3 text-[12px] text-fg-dim">
+              表单默认收起（记完就折上，页面不会被录入框占满）。点右上角「记一笔」展开。
+            </div>
+          ) : (
+            <>
           <div className="grid grid-cols-2 gap-3 px-4 py-3 md:grid-cols-4">
             <Field label="代码 *">
               <input
@@ -571,6 +599,8 @@ export default function JournalPage() {
             的最大跌幅；止损按「收盘跌破计划止损位」判定，卖出价不高于止损位才算
             <span className="text-fg-muted">已执行</span>。
           </p>
+            </>
+          )}
         </Panel>
 
         <Panel
@@ -645,7 +675,12 @@ export default function JournalPage() {
                               : ' → 持有中'}
                           </div>
                           <div className="num text-[11px] text-fg-dim">
-                            {row.exit_date ?? (row.latest_date ? `最新 ${row.latest_date}` : '—')}
+                            {row.exit_date ??
+                              (row.latest_close == null
+                                ? '—'
+                                : `最新 ${fmtNum(row.latest_close, 2)}${
+                                    row.latest_date ? ` · ${row.latest_date.slice(5)}` : ''
+                                  }`)}
                           </div>
                         </td>
                         <td>
@@ -663,7 +698,7 @@ export default function JournalPage() {
                         </td>
                         <td>
                           <span className={`num ${toneOf(row.max_drawdown_pct)}`}>
-                            {fmtPct(row.max_drawdown_pct)}
+                            {fmtDrawdown(row.max_drawdown_pct)}
                           </span>
                         </td>
                         <td>

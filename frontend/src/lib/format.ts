@@ -28,6 +28,17 @@ export function fmtPct(value: number | null | undefined, digits = 2): string {
   return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}%`
 }
 
+/**
+ * 回撤：**0 不加 `+`**。
+ *
+ * 回撤按定义 ≤ 0，唯一会走到「非负」的情形就是 0（持仓期间没跌过）。
+ * 用 `fmtPct` 会显示成 `+0.00%`，看着像一笔收益（2026-10-21 清单 #3）。
+ */
+export function fmtDrawdown(value: number | null | undefined, digits = 2): string {
+  if (isMissing(value)) return DASH
+  return `${value > 0 ? '+' : ''}${value.toFixed(digits)}%`
+}
+
 export function fmtNum(
   value: number | null | undefined,
   digits = 2,

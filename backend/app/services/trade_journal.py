@@ -48,7 +48,9 @@ def reason_label(reason_type: str | None, reason_key: str | None, reason_text: s
         return POOL_NAMES.get(reason_key or "", reason_key or "未填写")
     if reason_type == "theme":
         return (reason_key or reason_text or "题材").strip() or "题材"
-    return (reason_text or "其他").strip() or "其他"
+    # `other` 也认 reason_key：早先「具体理由」只有一个输入框、存进了 key，
+    # 只看 text 会把那批老记录显示成「其他」（2026-10-21 清单 #2）
+    return (reason_text or reason_key or "其他").strip() or "其他"
 
 
 def _calendar_position(session: Session) -> dict[date, int]:
@@ -98,7 +100,9 @@ def _sectors(session: Session, codes: set[str]) -> dict[str, str]:
     result: dict[str, str] = {}
     for code, industry in rows:
         text = (industry or "").strip()
-        result[code] = text.split("/")[-1] if text else "未知"
+        # 同花顺三级行业是「电子-半导体-集成电路」这种**短横线**分隔的路径，
+        # 以前按 "/" 切，整条路径原样显示在「板块」列里（2026-10-21 清单 #1）
+        result[code] = text.split("-")[-1] if text else "未知"
     return result
 
 
@@ -133,6 +137,39 @@ def _sentiment_levels(session: Session, days: int = 400) -> dict[date, str]:
     return {item["trade_date"]: item["level"] for item in series if item["level"]}
 
 
+def _adjust(window: list[tuple[date, float, float | None]]) -> list[tuple[date, float]]:
+    """把底仓窗口的收盘价按 `pct_chg` 逐日复利成「买入日口径」的等价价。
+
+    窗口第一行必须是买入日（`_metrics` 已经校验过）。这样窗口里发生 10 送 10 时，
+    等价价不会腰斩，回撤 / 止损 / 做 T 的降本也不会被算成假亏损。
+
+    做 T 的成交价是当天的不复权价，换算到买入日口径用
+    `price × adjusted[day] / close[day]`，所以这里必须同时留下原始收盘价（见 `_bars`）。
+    """
+    entry_close = window[0][1]
+    cumulative = 1.0
+    adjusted: list[tuple[date, float]] = []
+    for index, (day, _close, pct) in enumerate(window):
+        if index > 0 and pct is not None:
+            cumulative *= 1.0 + pct / 100.0
+        adjusted.append((day, entry_close * cumulative))
+    return adjusted
+
+
+def _end_basis(
+    trade: TradeJournal,
+    window: list[tuple[date, float, float | None]],
+    adjusted: list[tuple[date, float]],
+) -> float:
+    """期末价的「买入日口径」：已平仓用卖出价换算，未平仓用最新等价收盘价。"""
+    last_adjusted = adjusted[-1][1]
+    exit_row = next((row for row in window if row[0] == trade.exit_date), None)
+    if trade.exit_price is not None and exit_row is not None and exit_row[1] > 0:
+        # 卖出价是实际成交价（不复权），换成「买入日口径」再和买入价比
+        return last_adjusted * (float(trade.exit_price) / exit_row[1])
+    return last_adjusted
+
+
 def _metrics(
     trade: TradeJournal,
     bars: list[tuple[date, float, float | None]],
@@ -148,6 +185,8 @@ def _metrics(
         "stop_executed": None,
         "open": trade.exit_date is None,
         "latest_date": None,
+        #: 最新一根日线的**不复权**收盘价（持仓行显示「最新价」用，与行情软件一致）
+        "latest_close": None,
         "metrics_note": None,
     }
     start_pos = calendar_pos.get(trade.entry_date)
@@ -170,21 +209,8 @@ def _metrics(
         return {**blank, "metrics_note": "买入日收盘价无效"}
 
     # 以**买入日收盘**为基准，按 pct_chg 逐日复利出「买入日口径」的等价收盘价。
-    # 这样窗口里发生 10 送 10 时，等价价不会腰斩，回撤 / 止损也不会误判。
-    cumulative = 1.0
-    adjusted: list[tuple[date, float]] = []
-    for index, (day, _close, pct) in enumerate(window):
-        if index > 0 and pct is not None:
-            cumulative *= 1.0 + pct / 100.0
-        adjusted.append((day, entry_close * cumulative))
-
-    last_adjusted = adjusted[-1][1]
-    exit_row = next((row for row in window if row[0] == end_day), None)
-    if trade.exit_price is not None and exit_row is not None and exit_row[1] > 0:
-        # 卖出价是实际成交价（不复权），换成「买入日口径」再和买入价比
-        basis = last_adjusted * (float(trade.exit_price) / exit_row[1])
-    else:
-        basis = last_adjusted
+    adjusted = _adjust(window)
+    basis = _end_basis(trade, window, adjusted)
 
     drawdown = min(
         0.0, min(value for _, value in adjusted) / trade.entry_price - 1.0
@@ -207,6 +233,7 @@ def _metrics(
         "stop_executed": stop_executed,
         "open": trade.exit_date is None,
         "latest_date": window[-1][0],
+        "latest_close": window[-1][1],
         "metrics_note": None,
     }
 
