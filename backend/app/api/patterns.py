@@ -10,6 +10,7 @@
 前端在截断时会给提示（`HIT_LIMIT`）。
 """
 
+import logging
 import threading
 from collections import OrderedDict
 from datetime import date, datetime, timedelta
@@ -45,6 +46,8 @@ from app.services.stock_phase import load_oversold, load_phases
 from app.sources.base import chunked
 
 router = APIRouter(prefix="/api/patterns", tags=["patterns"])
+
+logger = logging.getLogger(__name__)
 
 # 单日命中去重后最多约等于全市场代码数（5300+）。老版本 SQLite 的单条 SQL 变量
 # 上限是 999，一次性 IN 这么多 code 会 OperationalError；3.32+ 放宽到 32766 才不炸。
@@ -424,14 +427,27 @@ def _market_oversold(db: Session, target: date) -> dict[str, float]:
             StockDaily.amount > 0,
         )
     ).all()
-    # 与形态扫描用**同一个股票池**（`stock_universe`，有日均成交额门槛）：
-    # 只按板块前缀筛会把僵尸票、临近退市的票一起放进来（2026-10-21 复查 #4）
+    # 与形态扫描用**同一个股票池**（`stock_universe`，建池时按日均成交额 2000 万过滤）：
+    # 只按板块前缀筛会把僵尸票、临近退市的票一起放进来（2026-10-21 复查 #4）。
+    #
+    # ⚠️ 线上实测（2026-10-21）：当日有行情的 4954 只 prod 票**全部**在池子里（差集 0）——
+    # 因为池子本身就是「要采哪些票的日线」的范围，所以这一步多数时候是**幂等的**，
+    # 真正挡住僵尸票的是建池那道门槛。这里保留交集是为了「池子刚重建、日线还没跟上」
+    # 或「票已退池但当天仍有残行」这类窗口期不至于漏筛。
     pool = set(load_codes())
-    codes = [
-        code
-        for code, name, _amount in rows
-        if code in pool and is_pattern_board(code) and not is_st(name)
-    ]
+    if pool:
+        codes = [
+            code
+            for code, name, _amount in rows
+            if code in pool and is_pattern_board(code) and not is_st(name)
+        ]
+    else:
+        # 池子为空（首次部署 / 建池失败）时**不能因此把超跌池清空** —— 那会让功能静默
+        # 变成「永远 0 只」。退回只按板块 + ST 判定，留一条 warning 便于从日志发现
+        logger.warning("股票池为空，超跌筛选退回只按板块 / ST 判定")
+        codes = [
+            code for code, name, _amount in rows if is_pattern_board(code) and not is_st(name)
+        ]
     return load_oversold(db, codes)
 
 
