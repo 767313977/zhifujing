@@ -5848,9 +5848,16 @@ def _volume_limit_down(bars: Bars) -> Signal | None:
 #: 它们**照旧入库、照旧显示标签**（悟道页与阶段判定都还要用），只是**不贡献总分**
 #: —— 只命中这几个的票，评分记 0，不进默认评分榜。
 #:
-#: 2026-10-21 先排除「明天预案 / 明天盯」，同日按用户要求加上「洗完可盯」。
+#: 2026-10-21 用户逐个点名，现在这份名单是：
+#: 明天预案 / 明天盯 / 洗完可盯 / 洗后可盯 / 华宝早期（悟道之路那几池）。
 SCORE_EXCLUDED: frozenset[str] = frozenset(
-    {"wudao_start", "wudao_sample", "wudao_wash2"}
+    {
+        "wudao_start",  # 明天预案
+        "wudao_sample",  # 明天盯
+        "wudao_wash2",  # 洗完可盯
+        "pile_wash_ready",  # 洗后可盯
+        "huabao_early",  # 华宝早期
+    }
 )
 
 PATTERNS: tuple[Pattern, ...] = (
