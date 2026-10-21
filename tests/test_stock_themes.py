@@ -36,6 +36,8 @@ def db():
     with Session(engine) as session:
         session.add(StockBasic(code="688410", name="山外山"))
         session.add(StockBasic(code="600000", name="浦发银行"))
+        # 只挂着「科创板」这类身份标签的票：黑名单剔完一个不剩时仍要显示
+        session.add(StockBasic(code="600002", name="只有身份标签"))
         session.add_all(
             [
                 SectorBasic(code="801046", name="医疗器械", taxonomy="kph_selected"),
@@ -80,6 +82,13 @@ def db():
                     code="600000",
                     concept="银行",
                 ),
+                # 600002 只有一个「身份」标签，黑名单会把它剔空
+                SectorMember(
+                    trade_date=MEMBER_DAY,
+                    sector_code="801351",
+                    code="600002",
+                    name="只有身份标签",
+                ),
             ]
         )
         session.commit()
@@ -89,10 +98,17 @@ def db():
 def test_membership_beats_limit_up_concept(db):
     out = themes("688410", session=db)
     assert out.name == "山外山"
-    assert [item.concept for item in out.themes] == ["医疗器械", "科创板"]
+    # 科创板是「身份」标签，被黑名单剔掉，只剩医疗器械
+    assert [item.concept for item in out.themes] == ["医疗器械"]
     assert out.board_date == BOARD_DAY
     # 行业板块（同一名字、kph_industry）不重复出现在题材里
     assert all(item.board_code != "881144" for item in out.themes)
+
+
+def test_generic_label_kept_when_nothing_else(db):
+    out = themes("600002", session=db)
+    # 剔完一个不剩时保留原样，不能又变回「—」
+    assert [item.concept for item in out.themes] == ["科创板"]
 
 
 def test_falls_back_to_limit_up_concept(db):

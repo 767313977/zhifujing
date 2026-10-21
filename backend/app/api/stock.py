@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api.sector import BOARD_EXCLUDE
 from app.db import get_db, session_scope
 from app.jobs.collect_daily import (
     STOCK_FULL_DAYS,
@@ -972,6 +973,15 @@ def unlock(
     )
 
 
+def _is_non_theme(name: str) -> bool:
+    """「身份 / 地域 / 业绩」类标签不算题材。
+
+    名单直接用资金流榜那份 `api.sector.BOARD_EXCLUDE`（科创板、低价股、送转、
+    中报增长、地域…），**不复制第二份** —— 两处各写一遍早晚会漂移。
+    """
+    return any(word in name for word in BOARD_EXCLUDE)
+
+
 @router.get("/{code}/themes", response_model=StockThemes)
 def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
     """该股所属的开盘红精选板块，附带板块最近一个交易日的涨跌幅。
@@ -984,6 +994,10 @@ def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
     快照里查不到这只票（新股、快照还没跑到它、或者退市）时，退回原来那一套：
     取 `stock_concept` 里该股最近一次涨停所属的精选板块 —— 至少比空着多一条信息。
     两者都是开盘红精选板块口径，不混用别的分类（同花顺行业路径那种）。
+
+    「身份 / 地域 / 业绩」类标签（科创板、低价股、重庆市、中报增长…）**不算题材**，
+    用资金流榜那份 `BOARD_EXCLUDE` 剔掉；如果剔完一个不剩，保留原样 ——
+    宁可显示宽泛标签，也别又变回「—」（2026-10-21 用户要求）。
     """
     code = _code(code)
     name = _resolve_name(session, code)
@@ -1057,6 +1071,11 @@ def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
             )
             for concept in concepts
         ]
+
+    # 「身份 / 地域 / 业绩」类标签不算题材；剔完一个不剩时保留原样（别又变回「—」）
+    themed = [item for item in items if not _is_non_theme(item.concept)]
+    if themed:
+        items = themed
 
     # 能对上板块的排前面，其次按板块涨跌幅降序 —— 一眼看到这只票最热的题材
     items.sort(key=lambda item: (item.board_code is None, -(item.pct_chg or 0)))
