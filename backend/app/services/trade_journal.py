@@ -143,7 +143,8 @@ def _sentiment_levels(session: Session, days: int = 400) -> dict[date, str]:
     first_board: dict[date, set[str]] = defaultdict(set)
     pool_rows = session.execute(
         select(LimitPool.trade_date, LimitPool.code, LimitPool.consecutive).where(
-            LimitPool.trade_date >= start
+            LimitPool.pool_type == "up",
+            LimitPool.trade_date >= start,
         )
     ).all()
     for day, code, consecutive in pool_rows:

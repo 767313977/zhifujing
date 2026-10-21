@@ -113,6 +113,20 @@ def update_plan(
     plan = session.get(TradePlan, plan_id)
     if plan is None or plan.user_id != user.id:
         raise HTTPException(status_code=404, detail="这条计划不存在")
+    # 改成「另一条已有计划」的 code + plan_date 会撞唯一索引
+    # `ux_trade_plan_user_code_date`，不拦的话 commit 直接 IntegrityError → 500
+    conflict = session.scalar(
+        select(TradePlan.id).where(
+            TradePlan.user_id == user.id,
+            TradePlan.code == code,
+            TradePlan.plan_date == payload.plan_date,
+            TradePlan.id != plan_id,
+        )
+    )
+    if conflict is not None:
+        raise HTTPException(
+            status_code=400, detail="该票当天已有一条计划，请直接编辑那一条"
+        )
     plan.code = code
     plan.name = name
     plan.plan_date = payload.plan_date

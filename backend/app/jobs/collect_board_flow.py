@@ -147,6 +147,7 @@ def aggregate(day: date, settings: Settings | None = None) -> dict:
     empty = 0
     unmatched: list[str] = []
     consecutive = 0
+    aborted = False
     for index, (code, name) in enumerate(boards, 1):
         calls += 1
         try:
@@ -166,6 +167,7 @@ def aggregate(day: date, settings: Settings | None = None) -> dict:
                     index,
                     len(boards),
                 )
+                aborted = True
                 break
             continue
 
@@ -212,15 +214,18 @@ def aggregate(day: date, settings: Settings | None = None) -> dict:
     )
     if unmatched:
         logger.warning("有 %d 个板块的成分股与净流入表完全对不上：%s", len(unmatched), unmatched[:5])
+    # 被熔断中断时剩余板块根本没试过，记 ok 会让「当天资金流残缺」被日志掩盖
+    status = "partial" if aborted else "ok"
     _record(
         day,
-        "ok",
+        status,
         written,
-        f"{len(boards)} 个板块 / 名单 {member_day} / 逐股覆盖 {len(flows)} 只",
+        f"{len(boards)} 个板块 / 名单 {member_day} / 逐股覆盖 {len(flows)} 只"
+        + (f" / 连续失败中断，已处理 {calls} 次" if aborted else ""),
         cost,
     )
     return {
-        "status": "ok",
+        "status": status,
         "trade_date": day.isoformat(),
         "member_date": member_day.isoformat(),
         "boards": len(boards),

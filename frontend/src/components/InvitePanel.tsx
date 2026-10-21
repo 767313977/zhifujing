@@ -20,7 +20,8 @@ const BUTTON =
 export default function InvitePanel() {
   const [invites, setInvites] = useState<Invite[] | null>(null)
   const [note, setNote] = useState('')
-  const [count, setCount] = useState(1)
+  // 存字符串：数字类型会让输入框清不空（清空瞬间被 `|| 1` 顶回 1）
+  const [count, setCount] = useState('1')
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -86,7 +87,11 @@ export default function InvitePanel() {
     setError(null)
     setMessage(null)
     try {
-      const made = await api.createInvites(note.trim(), count)
+      // 手输 25 也要夹到 20：`max` 属性只约束步进器，不拦手输
+      const made = await api.createInvites(
+        note.trim(),
+        Math.min(Math.max(Number(count) || 1, 1), 20),
+      )
       setMessage(
         made.length === 1
           ? `已生成 ${made[0].code}`
@@ -150,7 +155,7 @@ export default function InvitePanel() {
           min={1}
           max={20}
           value={count}
-          onChange={(event) => setCount(Number(event.target.value) || 1)}
+          onChange={(event) => setCount(event.target.value)}
           className={`num w-[64px] ${INPUT}`}
           title="一次生成几个（最多 20）"
         />

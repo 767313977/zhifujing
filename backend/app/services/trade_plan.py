@@ -26,6 +26,7 @@ from app.models import (
     Watchlist,
 )
 from app.services.patterns import PATTERNS
+from app.sources.base import chunked
 
 logger = logging.getLogger(__name__)
 
@@ -253,13 +254,17 @@ def suggestions(session: Session, user_id: int) -> list[dict]:
         session.scalars(select(Watchlist.code).where(Watchlist.user_id == user_id))
     )
     watch = set(watch_codes)
-    names = dict(
-        session.execute(
-            select(StockBasic.code, StockBasic.name).where(
-                StockBasic.code.in_(watch | set(best))
-            )
-        ).all()
-    )
+    # 单日命中的票可能上千只，按 900 分批（与 api/patterns、stock_phase 同一约定），
+    # 不依赖 SQLite 版本对单条 SQL 变量数的上限
+    names: dict[str, str | None] = {}
+    for batch in chunked(sorted(watch | set(best)), 900):
+        names.update(
+            session.execute(
+                select(StockBasic.code, StockBasic.name).where(
+                    StockBasic.code.in_(batch)
+                )
+            ).all()
+        )
 
     result: list[dict] = []
     for code in sorted(watch):

@@ -2,7 +2,7 @@
 
 import logging
 import secrets
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -185,6 +185,14 @@ def backfill(
     指数走 iFinD 日频接口按日期回补；三池受数据源窗口限制只能覆盖最近
     15 个交易日，更早的日期对应指标记 null。详见设计文档 4.1。
     """
+    # 一次最多回补 60 天：回补是逐日调 iFinD 的计费接口，参数手误写成
+    # `start=2000-01-01` 会一口气烧掉整月配额，而且全程占着采集锁
+    if end is not None and end < start:
+        raise HTTPException(status_code=400, detail="结束日期不能早于起始日期")
+    if (end or date.today()) - start > timedelta(days=60):
+        raise HTTPException(
+            status_code=400, detail="一次最多回补 60 天，请分段执行"
+        )
     try:
         with collect_guard("手动回补"):
             result = _build_collector().backfill(start, end)

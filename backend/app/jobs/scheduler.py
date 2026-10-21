@@ -1486,6 +1486,9 @@ class DailyScheduler:
             result.get("stocks"),
             result.get("cost_seconds"),
         )
+        # 熔断中断 = 当天资金流残缺，让尾部链路记 partial（否则会被当成跑完了）
+        if result.get("status") != "ok":
+            self._tail_failures.append("collect_board_flow")
 
     def _maybe_remind_calibration(self, trade_date: date) -> None:
         """每隔 `CALIBRATION_INTERVAL_DAYS` 天提醒一次配额对账。

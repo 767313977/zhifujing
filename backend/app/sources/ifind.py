@@ -642,7 +642,13 @@ class IfindClient:
             )
             response.raise_for_status()
         except requests.RequestException as exc:
-            logger.warning("下载 iFinD 结果 CSV 失败：%s", exc)
+            # 异常消息里带着**完整 URL**，而下载链接是 `…?token=…` —— 原样落日志
+            # 等于把可复用的下载凭证写进 fupan.log（轮转还会留 4 份）
+            logger.warning(
+                "下载 iFinD 结果 CSV 失败：%s（%s）",
+                type(exc).__name__,
+                url.split("?", 1)[0],
+            )
             return []
         # 用 utf-8-sig：iFinD 的 CSV 带 BOM，第一列名会是 "\ufeff股票代码"，
         # 不解掉的话按列名取值全部落空

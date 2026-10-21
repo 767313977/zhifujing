@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { SimilarDays } from '../api/types'
 import Alert from '../components/Alert'
@@ -17,17 +17,23 @@ export default function SimilarPage() {
   const [data, setData] = useState<SimilarDays | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // 连点「查询」时只认最后一次的结果，避免慢请求后到覆盖新结果
+  const seqRef = useRef(0)
 
   const load = useCallback(async (target?: string) => {
+    const seq = ++seqRef.current
     setLoading(true)
     setError(null)
     try {
-      setData(await api.similarDays(target || undefined))
+      const result = await api.similarDays(target || undefined)
+      if (seq !== seqRef.current) return
+      setData(result)
     } catch (err) {
+      if (seq !== seqRef.current) return
       setError((err as Error).message)
       setData(null)
     } finally {
-      setLoading(false)
+      if (seq === seqRef.current) setLoading(false)
     }
   }, [])
 

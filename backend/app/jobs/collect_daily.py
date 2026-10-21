@@ -955,6 +955,17 @@ class DailyCollector:
         if not history:
             try:
                 activity = self.ak.market_activity()
+                # 乐咕的「统计日期」可能是 datetime / date / 字符串。15:05 若还没更新，
+                # 它给的是**前一交易日**的涨跌家数 —— 直接写进今天会长期错（upsert_fill
+                # 之后也不会再纠正），所以日期对不上就整块不写，留待下一趟重试
+                stat_day = activity.get("统计日期")
+                if stat_day is not None and str(stat_day)[:10] != trade_date.isoformat():
+                    logger.warning(
+                        "涨跌家数是 %s 的快照（目标 %s），本次不写 up_count/down_count",
+                        str(stat_day)[:10],
+                        trade_date,
+                    )
+                    activity = {}
             except Exception as exc:  # noqa: BLE001 - 涨跌家数失败不该拖垮整条情绪
                 logger.warning("涨跌家数取数失败（%s）：%s", trade_date, exc)
         # 涨跌超 5% 的家数：乐咕那份宽度没有分档，只能问 iFinD 选股（每次 1 问，

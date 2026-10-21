@@ -34,6 +34,7 @@ from app.sources.akshare_source import AkshareSource
 from app.sources.ifind import (
     QUOTA_EXHAUSTED_HINTS as _QUOTA_EXHAUSTED_HINTS,
     IfindClient,
+    IfindError,
     normalize_code,
 )
 from app.sources.markdown_table import pick_float, pick_text, to_float, to_int
@@ -290,8 +291,9 @@ def collect_margin(ifind: IfindClient, end: date, days: int = EDB_LOOKBACK_DAYS)
                 }
             )
     if not records:
-        logger.warning("两融取到 0 行（%s 往前 %d 天）", end, days)
-        return 0
+        # 不能 return 0 记 ok：EDB 结构变化 / 单位识别失败时这就是「没取到」，
+        # 记成成功会让 has_collected 认为当天已完成，缺口再没人补（2026-10-21 体检）
+        raise IfindError(f"两融取到 0 行（{end} 往前 {days} 天）")
     with session_scope() as session:
         return upsert_fill(session, MarginDaily, records)
 
@@ -311,8 +313,7 @@ def collect_hsgt(ifind: IfindClient, end: date, days: int = EDB_LOOKBACK_DAYS) -
                 continue
             records.append({"trade_date": day, "channel": channel, "turnover": value})
     if not records:
-        logger.warning("沪深股通成交额取到 0 行（%s 往前 %d 天）", end, days)
-        return 0
+        raise IfindError(f"沪深股通成交额取到 0 行（{end} 往前 {days} 天）")
     with session_scope() as session:
         return upsert_fill(session, HsgtDaily, records)
 
@@ -507,6 +508,17 @@ def _collect_etf_exchange(target: date) -> int:
     snap_day, _pages, _total = etf_exchange.szse_snapshot()
     if snap_day > target:
         raise etf_exchange.EtfSourceError(f"深交所快照日期 {snap_day} 晚于目标日 {target}")
+    if snap_day < target:
+        # 快照还没更新到目标日：落库的是 snap_day 的数据（日期取自快照，不会写错），
+        # 但别让「目标日还没数据」被一句 ok 掩盖 —— 第二天 17:30 会补上
+        logger.warning(
+            "深交所 ETF 快照仍是 %s（早于目标日 %s）：本次落库的是 %s 的份额，"
+            "%s 的要等下一趟或次日",
+            snap_day,
+            target,
+            snap_day,
+            target,
+        )
     with session_scope() as session:
         total, complete = _etf_snapshot_complete(session, snap_day)
     if complete:

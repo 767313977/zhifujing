@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { PatternStock, PatternSummary } from '../api/types'
 import Alert from '../components/Alert'
@@ -110,8 +110,11 @@ export default function Wudao() {
   const [error, setError] = useState<string | null>(null)
 
   const pools = useMemo(() => SECTIONS.flatMap((section) => section.pools), [])
+  // 连点「刷新」时只认最后一次请求的结果
+  const seqRef = useRef(0)
 
   const reload = useCallback(() => {
+    const seq = ++seqRef.current
     setLoading(true)
     setError(null)
     Promise.all([
@@ -124,11 +127,16 @@ export default function Wudao() {
       ),
     ])
       .then(([sum, ...rows]) => {
+        if (seq !== seqRef.current) return
         setSummary(sum)
         setHits(Object.fromEntries(rows))
       })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false))
+      .catch((err: Error) => {
+        if (seq === seqRef.current) setError(err.message)
+      })
+      .finally(() => {
+        if (seq === seqRef.current) setLoading(false)
+      })
   }, [pools])
 
   useEffect(() => {

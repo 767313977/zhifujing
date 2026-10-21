@@ -100,7 +100,7 @@ from app.services.pattern_track import POOL_KEYS
 # 按交易日历截断「最近一段连续日线」的公共实现放在 `services.stock_phase`
 # （个股页的阶段判定也用它，两处口径必须一份）。
 from app.services.stock_phase import trim_contiguous_tail
-from app.sources.ifind import IfindError
+from app.sources.ifind import IfindAuthError, IfindError, IfindQuotaExhausted
 
 logger = logging.getLogger(__name__)
 
@@ -681,7 +681,6 @@ def _sync_codes_three_levels(
       **有了腾讯这一级，它其实很少再触发** —— 只有在腾讯也整轮不通时才轮得到它顶上来。
     """
     from app.jobs.collect_daily import DailyCollector
-    from app.sources.ifind import IfindError
 
     collector = DailyCollector()
     synced = 0
@@ -758,9 +757,11 @@ def _sync_codes_three_levels(
                 logger.info("补日线(iFinD) %s → %d 行", code, wrote)
             except Exception as exc:  # noqa: BLE001
                 msg = str(exc)
-                if "401" in msg or isinstance(exc, IfindError):
+                # 只有「授权失效 / 配额耗尽」才该整轮停用 iFinD；单只票超时、无数据
+                # 也是 IfindError，拿它当熔断会让剩下几十只全部跳过兜底
+                if isinstance(exc, (IfindAuthError, IfindQuotaExhausted)) or "401" in msg:
                     skip_ifind = True
-                    logger.warning("iFinD 不可用，本轮不再重试：%s", exc)
+                    logger.warning("iFinD 授权/配额不可用，本轮不再重试：%s", exc)
                 else:
                     logger.warning("补日线(iFinD) %s 失败：%s", code, exc)
         if not ok:

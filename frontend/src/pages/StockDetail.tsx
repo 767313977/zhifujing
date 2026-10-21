@@ -572,9 +572,12 @@ export default function StockDetail() {
    */
   const recheckTrap = useCallback(async () => {
     if (!code) return
+    const target = code
     setTrapChecking(true)
     try {
-      setTrap(await api.stockTrap(code, trapContext.trim()))
+      const result = await api.stockTrap(target, trapContext.trim())
+      // 点完「重新体检」立刻切票时，旧票的结果不能盖到新票上（与 toggleWatch 同一道守卫）
+      if (codeRef.current === target) setTrap(result)
     } catch {
       // 保留旧结果
     } finally {

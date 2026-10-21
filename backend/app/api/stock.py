@@ -657,7 +657,13 @@ def _stock_dde(code: str, days: int, user_id: int) -> tuple[list[StockDde], str 
     _dde_fetch_limiter.fail(key)
 
     try:
-        _, truncated = collect_stock_dde(code, days)
+        # 与每日采集串行：`collect_stock_dde` 用的是 scan_dde 那套共享限流桶，
+        # 采集线程另有一套 4 req/s —— 两边并发会把 iFinD 的实际 QPS 叠到超限
+        with collect_guard("个股DDE"):
+            _, truncated = collect_stock_dde(code, days)
+    except CollectionBusy:
+        # 正在收盘采集：不排队等，先用库里已有的那份，并如实说明
+        return cached, "收盘采集正在运行，先返回缓存；稍后再刷新"
     except IfindError as exc:
         # 细节只进日志：`exc` 里可能带上游主机名 / 响应片段，不该回给前端
         logger.warning("个股 %s 的 DDE 取数失败：%s", code, exc)

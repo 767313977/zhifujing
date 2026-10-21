@@ -1021,6 +1021,9 @@ class LhbInstitution(Base):
 
 Index("ix_stock_daily_code", StockDaily.code)
 Index("ix_limit_pool_type", LimitPool.trade_date, LimitPool.pool_type)
+# 「这只票哪天涨停过」是个股页 / 个股分析的高频查询，条件是 `code == ? AND
+# pool_type = 'up'`；主键以 trade_date 打头，用不上（2026-10-21 体检补）
+Index("ix_limit_pool_code_date", LimitPool.code, LimitPool.trade_date)
 Index("ix_pattern_hit_date", PatternHit.trade_date, PatternHit.pattern, PatternHit.score)
 Index("ix_lhb_code", Lhb.code)
 

@@ -73,7 +73,9 @@ def _relay_series(session: Session) -> dict[date, float | None]:
     up_pool: dict[date, set[str]] = {}
     first_board: dict[date, set[str]] = {}
     for day, code, consecutive in session.execute(
-        select(LimitPool.trade_date, LimitPool.code, LimitPool.consecutive)
+        select(LimitPool.trade_date, LimitPool.code, LimitPool.consecutive).where(
+            LimitPool.pool_type == "up"
+        )
     ).all():
         up_pool.setdefault(day, set()).add(code)
         if consecutive == 1:

@@ -107,7 +107,9 @@ export function useKLine(code: string, { fq: fixedFq }: { fq?: FqMode } = {}): K
   const [fq, setFq] = useState<FqMode>('qfq')
   const [volAdjust, setVolAdjust] = useState(true)
   const [bars, setBars] = useState<KLineBar[]>([])
-  const [loading, setLoading] = useState(false)
+  // 有 code 就按「加载中」起步：effect 是在首次绘制之后才跑，初始 false 会让
+  // 页面先闪一帧「没有取到该股的日线」（2026-10-21 体检）
+  const [loading, setLoading] = useState(code !== '')
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [nonce, setNonce] = useState(0)
