@@ -996,8 +996,9 @@ def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
     两者都是开盘红精选板块口径，不混用别的分类（同花顺行业路径那种）。
 
     「身份 / 地域 / 业绩」类标签（科创板、低价股、重庆市、中报增长…）**不算题材**，
-    用资金流榜那份 `BOARD_EXCLUDE` 剔掉；如果剔完一个不剩，保留原样 ——
-    宁可显示宽泛标签，也别又变回「—」（2026-10-21 用户要求）。
+    用资金流榜那份 `BOARD_EXCLUDE` 剔掉。剔完一个不剩时 `themes` 就是空（页面显示
+    「—」），被剔掉的标签放进 `suppressed`，前端做悬浮说明 —— 不能把它们当题材显示，
+    否则黑名单等于没生效（2026-10-21 用户要求）。
     """
     code = _code(code)
     name = _resolve_name(session, code)
@@ -1072,15 +1073,20 @@ def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
             for concept in concepts
         ]
 
-    # 「身份 / 地域 / 业绩」类标签不算题材；剔完一个不剩时保留原样（别又变回「—」）
-    themed = [item for item in items if not _is_non_theme(item.concept)]
-    if themed:
-        items = themed
+    # 「身份 / 地域 / 业绩」类标签不算题材：剔掉，另存一份供前端做悬浮说明
+    suppressed = [item.concept for item in items if _is_non_theme(item.concept)]
+    items = [item for item in items if not _is_non_theme(item.concept)]
 
     # 能对上板块的排前面，其次按板块涨跌幅降序 —— 一眼看到这只票最热的题材
     items.sort(key=lambda item: (item.board_code is None, -(item.pct_chg or 0)))
 
-    return StockThemes(code=code, name=name, board_date=board_date, themes=items)
+    return StockThemes(
+        code=code,
+        name=name,
+        board_date=board_date,
+        themes=items,
+        suppressed=suppressed,
+    )
 
 
 def _guard_quota() -> None:

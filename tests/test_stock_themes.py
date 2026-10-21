@@ -120,28 +120,32 @@ def test_membership_beats_limit_up_concept(db):
     assert out.name == "山外山"
     # 科创板（身份标签）、再融资（事件标签）都被黑名单剔掉，只剩医疗器械
     assert [item.concept for item in out.themes] == ["医疗器械"]
+    assert set(out.suppressed) == {"科创板", "再融资"}
     assert out.board_date == BOARD_DAY
     # 行业板块（同一名字、kph_industry）不重复出现在题材里
     assert all(item.board_code != "881144" for item in out.themes)
 
 
-def test_generic_label_kept_when_nothing_else(db):
+def test_generic_label_is_suppressed_when_nothing_else(db):
     out = themes("600002", session=db)
-    # 剔完一个不剩时保留原样，不能又变回「—」
-    assert [item.concept for item in out.themes] == ["科创板"]
+    # 一个真题材都没有：themes 为空（页面显示「—」），被剔的标签放 suppressed
+    assert out.themes == []
+    assert out.suppressed == ["科创板"]
 
 
 def test_falls_back_to_limit_up_concept(db):
     out = themes("600000", session=db)
     # 天梯分支同样过黑名单：国有企业被剔掉，银行留下
     assert [item.concept for item in out.themes] == ["银行"]
+    assert out.suppressed == ["国有企业"]
     # 板块表里没有「银行」，board_code 为 None，但题材名仍要显示
     assert out.themes[0].board_code is None
 
 
-def test_fallback_branch_keeps_all_when_filtered_empty(db):
+def test_fallback_branch_suppresses_when_filtered_empty(db):
     out = themes("600003", session=db)
-    assert [item.concept for item in out.themes] == ["低价股"]
+    assert out.themes == []
+    assert out.suppressed == ["低价股"]
 
 
 def test_event_labels_are_filtered():
@@ -153,3 +157,4 @@ def test_event_labels_are_filtered():
 def test_unknown_code_returns_empty(db):
     out = themes("600001", session=db)
     assert out.themes == []
+    assert out.suppressed == []

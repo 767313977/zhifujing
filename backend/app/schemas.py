@@ -1974,6 +1974,10 @@ class StockThemes(BaseModel):
     # 上面的板块涨跌幅对应的交易日
     board_date: date | None
     themes: list[StockThemeItem]
+    #: 被「身份 / 地域 / 业绩」类黑名单剔掉的标签（2026-10-21）。
+    #: 正常有题材时前端不用它；`themes` 为空而这里非空时，页面显示「—」并在
+    #: 悬浮提示里说明「仅身份/业绩标签：…」，而不是把这些标签当题材展示。
+    suppressed: list[str] = Field(default_factory=list)
 
 
 # ------------------------------------------------------------------ 复盘笔记

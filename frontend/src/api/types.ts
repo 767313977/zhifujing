@@ -1520,6 +1520,8 @@ export interface StockThemes {
   /** 上面的板块涨跌幅对应的交易日 */
   board_date: string | null
   themes: StockThemeItem[]
+  /** 被「身份 / 地域 / 业绩」黑名单剔掉的标签；`themes` 为空时用于悬浮说明 */
+  suppressed: string[]
 }
 
 /**

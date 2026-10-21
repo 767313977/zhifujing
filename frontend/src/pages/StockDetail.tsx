@@ -602,8 +602,11 @@ export default function StockDetail() {
    * 「最近一次涨停所属的精选板块」—— 以前只看涨停股，非涨停股永远是「—」。
    * 一只票可能挂十几个板块（中国长城实测 22 个），这一格用 compact 字号，
    * 并且最多列前 5 个（其余收口成「等 N 个」，完整名单见 title）。
+   * 全是「身份 / 业绩」标签时显示「—」，悬浮里说明被剔掉的是哪些（不冒充题材）。
    */
   const themeItems = themes?.themes ?? []
+  // 被黑名单剔掉的标签：没有真题材时页面显示「—」，靠它做悬浮说明
+  const themeSuppressed = themes?.suppressed ?? []
   // 最多列 THEME_SHOW 个，其余收口成「等 N 个」；完整名单放 title
   const themeShown = themeItems.slice(0, THEME_SHOW)
   const themeMore = themeItems.length - themeShown.length
@@ -620,7 +623,9 @@ export default function StockDetail() {
     : undefined
   const themeTitle = themeItems.length
     ? themeItems.map((theme) => theme.concept).join('、')
-    : undefined
+    : themeSuppressed.length
+      ? `仅身份/业绩标签：${themeSuppressed.join('、')}`
+      : undefined
   const toolbar = (
     <>
       {/* 从列表点进来才有这份上下文；直接输 URL 打开时不显示，
