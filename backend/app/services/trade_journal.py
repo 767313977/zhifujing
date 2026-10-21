@@ -319,17 +319,24 @@ def _t_metrics(
         close_by_day, adj_by_day = {}, {}
         end_basis, end_price = None, None
 
-    fee_pct = FEE_ROUND_TRIP * 100  # 换成百分数，与 spread_pct 同一单位
-
     def to_basis(price: float, day: date | None) -> float | None:
-        """不复权成交价 → 买入日口径；那天没有日线（停牌 / 未采集）返回 None。"""
+        """不复权成交价 → 买入日口径。
+
+        - 正常：该日有日线，按 `price × adjusted[day] / close[day]` 换算；
+        - **该日晚于窗口最后一天**（盘中当场记的 T，当天日线要收盘后才入库）：按最后
+          一根的换算比例估算，相当于假设当天没有除权；调用方会补一条 warning。
+          不这么做的话，14:50 记的 T 在当晚采集之前所有指标都是「—」。
+        - 该日早于窗口但缺日线（停牌 / 未采集）：算不出来，返回 None。
+        """
         if day is None:
             return None
         close = close_by_day.get(day)
         base = adj_by_day.get(day)
-        if close is None or base is None or close <= 0:
-            return None
-        return price * base / close
+        if close is not None and base is not None and close > 0:
+            return price * base / close
+        if window and day > window[-1][0] and window[-1][1] > 0:
+            return price * adjusted[-1][1] / window[-1][1]
+        return None
 
     def band_warning(label: str, price: float | None, day: date | None) -> str | None:
         if price is None or day is None:
@@ -354,14 +361,26 @@ def _t_metrics(
         else:
             buy_day, sell_day = row.trade_date, row.leg2_date
 
+        estimated = False
         if row.buy_price is not None and buy_day is not None:
             buy_basis = to_basis(float(row.buy_price), buy_day)
+            estimated = estimated or bool(window and buy_day > window[-1][0])
         else:
             buy_basis = end_basis
         if row.sell_price is not None and sell_day is not None:
             sell_basis = to_basis(float(row.sell_price), sell_day)
+            estimated = estimated or bool(window and sell_day > window[-1][0])
         else:
             sell_basis = end_basis
+
+        # 未完成的 T 只发生了一腿，只扣那一腿的费用（正T 没卖出 = 买入费，
+        # 倒T 没接回 = 卖出费）；完成的才是来回 0.10%
+        if completed:
+            fee_pct = FEE_ROUND_TRIP * 100
+        elif row.direction == "short":
+            fee_pct = FEE_SELL * 100
+        else:
+            fee_pct = FEE_BUY * 100
 
         spread_pct = net_pct = contrib_pct = fly_pct = None
         if buy_basis is not None and sell_basis is not None and buy_basis > 0:
@@ -385,6 +404,9 @@ def _t_metrics(
             )
             if text
         ]
+        if estimated:
+            # 当天（或之后）的日线还没入库：数值是估算的，必须让用户看见
+            warnings.append("当天日线未入库，按最新复权因子估算")
 
         result.append(
             {

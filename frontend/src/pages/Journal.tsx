@@ -215,9 +215,14 @@ function StatsTable({ title, rows }: { title: string; rows: TradeStatsRow[] }) {
   )
 }
 
-/** 做 T 子表里「买 → 卖」那一格：缺的那一腿写明按哪个期末价算。 */
-function tLegText(row: TradeTRow): string {
-  const end = row.end_price == null ? '期末价' : `按期末 ${fmtNum(row.end_price, 2)}`
+/** 做 T 子表里「买 → 卖」那一格：缺的那一腿写明按哪天的收盘价算。 */
+function tLegText(row: TradeTRow, endDate: string | null): string {
+  const end =
+    row.end_price == null
+      ? '期末价'
+      : endDate
+        ? `按 ${endDate.slice(5)} 收盘 ${fmtNum(row.end_price, 2)}`
+        : `按期末 ${fmtNum(row.end_price, 2)}`
   const buy = row.buy_price == null ? `—（${end}）` : fmtNum(row.buy_price, 2)
   const sell = row.sell_price == null ? `—（${end}）` : fmtNum(row.sell_price, 2)
   return `${buy} → ${sell}`
@@ -251,6 +256,10 @@ function TForm({
   const [leg2Date, setLeg2Date] = useState(
     initial?.leg2_date ?? initial?.trade_date ?? todayText(),
   )
+  // 用户手动改过第二腿日期就不再跟随第一腿；编辑一条「隔日 T」时也视为改过
+  const [leg2Touched, setLeg2Touched] = useState(
+    initial?.leg2_date != null && initial.leg2_date !== initial.trade_date,
+  )
   const [buyPrice, setBuyPrice] = useState(
     initial?.buy_price == null ? '' : String(initial.buy_price),
   )
@@ -263,15 +272,19 @@ function TForm({
       : (window.localStorage.getItem('journal.lastTRatio') ?? '33'),
   )
   const [trigger, setTrigger] = useState(initial?.trigger ?? 'other')
+  // 用户手动选过触发类型后，不再因日期变化而自动改回「其他」
+  const [triggerTouched, setTriggerTouched] = useState(false)
   const [note, setNote] = useState(initial?.note ?? '')
   const [oversoldDev, setOversoldDev] = useState<number | null>(null)
+  // 乖离是按哪天的日线算的 —— 只有 T 的日期与它相同才自动预选「超跌」
+  const [oversoldDate, setOversoldDate] = useState<string | null>(null)
   // 当天日线的最低价 / 最高价，只用来做 placeholder（软提示，不拦截）
   const [range, setRange] = useState<{ low: number; high: number } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
 
-  // 今天相对 20 日线的乖离：到了超跌阈值就把触发默认成「超跌」
+  // 今天相对 20 日线的乖离：只有 T 的日期正好是乖离对应的交易日时才默认「超跌」
   useEffect(() => {
     if (initial) return
     let stale = false
@@ -280,7 +293,7 @@ function TForm({
       .then((data) => {
         if (stale) return
         setOversoldDev(data.oversold_dev)
-        if (data.oversold_dev != null && data.oversold_dev < -15) setTrigger('oversold')
+        setOversoldDate(data.oversold_date)
       })
       .catch(() => {
         /* 回溯不到就不预选，不打扰 */
@@ -289,6 +302,17 @@ function TForm({
       stale = true
     }
   }, [code, entryDate, initial])
+
+  /**
+   * 触发类型的默认值：只有 `tradeDate` 与乖离对应的日线日相同时才预选「超跌」。
+   * 补记 10-15 的 T 时，今天的乖离与它无关，不能拿来套（复查 #3）。
+   */
+  useEffect(() => {
+    if (initial || triggerTouched) return
+    const isLatest =
+      oversoldDev != null && oversoldDate != null && oversoldDate === tradeDate
+    setTrigger(isLatest ? 'oversold' : 'other')
+  }, [initial, triggerTouched, oversoldDev, oversoldDate, tradeDate])
 
   useEffect(() => {
     if (!tradeDate) {
@@ -399,7 +423,7 @@ function TForm({
         <span className="text-[11px] text-fg-dim" title="正T = 先买后卖；倒T = 先卖后买">
           ⓘ 正T 先买后卖、倒T 先卖后买
         </span>
-        {oversoldDev != null && (
+        {oversoldDev != null && oversoldDate === tradeDate && (
           <span className="text-[11px] text-warn">今日乖离 {fmtPct(oversoldDev)}</span>
         )}
       </div>
@@ -408,7 +432,12 @@ function TForm({
           <input
             type="date"
             value={tradeDate}
-            onChange={(event) => setTradeDate(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value
+              setTradeDate(value)
+              // 没手动改过第二腿日期时跟着第一腿走：补记旧 T 不会悄悄变成隔日 T
+              if (!leg2Touched) setLeg2Date(value)
+            }}
             onKeyDown={onEnter}
             className={INPUT}
           />
@@ -439,7 +468,11 @@ function TForm({
           <input
             type="date"
             value={leg2Date}
-            onChange={(event) => setLeg2Date(event.target.value)}
+            onChange={(event) => {
+              setLeg2Date(event.target.value)
+              // 手动改过就不再跟随第一腿（支持隔日 T）
+              setLeg2Touched(true)
+            }}
             onKeyDown={onEnter}
             className={INPUT}
           />
@@ -457,7 +490,11 @@ function TForm({
         <Field label="触发">
           <select
             value={trigger}
-            onChange={(event) => setTrigger(event.target.value)}
+            onChange={(event) => {
+              setTrigger(event.target.value)
+              // 手动选过之后，日期变化不再改回去
+              setTriggerTouched(true)
+            }}
             className={INPUT}
           >
             {T_TRIGGERS.map((item) => (
@@ -1280,7 +1317,9 @@ export default function JournalPage() {
                                                   item.direction}
                                               </span>
                                             </td>
-                                            <td className="num text-[12px]">{tLegText(item)}</td>
+                                            <td className="num text-[12px]">
+                                              {tLegText(item, row.latest_date)}
+                                            </td>
                                             <td>
                                               <span className="num">
                                                 {fmtNum(item.ratio_pct, 0)}%
@@ -1486,7 +1525,11 @@ export default function JournalPage() {
                     </div>
                     <div className="grid gap-4 xl:grid-cols-2">
                       <TStatsTable title="按方向" rows={stats.t_stats.by_direction} />
-                      <TStatsTable title="按触发" rows={stats.t_stats.by_trigger} />
+                      <TStatsTable
+                        title="按触发"
+                        // 没有记录的触发类型不占一行（这里只在有 T 时渲染，至少剩 1 行）
+                        rows={stats.t_stats.by_trigger.filter((row) => row.count > 0)}
+                      />
                     </div>
                     <p className="text-[12px] leading-relaxed text-fg-dim">
                       成功 = 扣掉佣金万 2.5×2 与印花税 0.05% 后价差为正；没记股数，未计最低 5

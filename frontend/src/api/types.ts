@@ -1746,6 +1746,8 @@ export interface JournalReasonSuggestion {
   themes: string[]
   /** 这只票今天的 20 日线乖离（%，负数）；没到超跌阈值时为 null */
   oversold_dev: number | null
+  /** 上面的乖离是按哪天的日线算的（做 T 表单据此决定是否默认「超跌」） */
+  oversold_date: string | null
 }
 
 /** 新增 / 修改一次做 T 的入参（对应后端 `TradeTIn`）。 */

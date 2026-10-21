@@ -13,7 +13,7 @@ import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -22,6 +22,7 @@ from app.models import (
     PatternHit,
     StockBasic,
     StockConcept,
+    StockDaily,
     TradeCalendar,
     TradeJournal,
     TradeT,
@@ -141,6 +142,18 @@ def _apply(session: Session, trade: TradeJournal, payload: TradeJournalIn) -> No
 
     # 改底仓日期前先看已有的做 T 会不会越界（新增时 trade.id 还是 None，跳过）
     if trade.id is not None:
+        # 已有做 T 时不允许换股票：T 的价格是按这只票的日线换算的，换票后全算错
+        if code != trade.code:
+            t_count = len(
+                session.scalars(
+                    select(TradeT.id).where(TradeT.trade_id == trade.id)
+                ).all()
+            )
+            if t_count:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"这笔下面有 {t_count} 条做 T，先删掉再改代码",
+                )
         _check_t_conflicts(
             session, trade.id, payload.entry_date, payload.exit_date
         )
@@ -383,6 +396,9 @@ def suggest_reason(
         .where(PatternHit.code == target, PatternHit.trade_date == date)
         .order_by(PatternHit.score.desc())
     ).all()
+    # 做 T 表单用来决定触发类型是否默认「超跌」；`load_oversold` 只返回达到阈值的，
+    # 没超跌时这里就是 None（前端据此保留「其他」）
+    oversold_dev = load_oversold(session, [target]).get(target)
     return JournalReasonSuggestion(
         code=target,
         trade_date=date,
@@ -401,5 +417,12 @@ def suggest_reason(
         ),
         # 做 T 表单用来决定触发类型是否默认「超跌」；`load_oversold` 只返回达到阈值的，
         # 没超跌时这里就是 None（前端据此保留「其他」）
-        oversold_dev=load_oversold(session, [target]).get(target),
+        oversold_dev=oversold_dev,
+        # 乖离是按哪天的日线算的：只有 T 日期正好是这一天，前端才自动预选「超跌」；
+        # 补记旧 T 时不能拿今天的乖离去套（复查 #3）
+        oversold_date=(
+            session.scalar(select(func.max(StockDaily.trade_date)))
+            if oversold_dev is not None
+            else None
+        ),
     )

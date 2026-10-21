@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine, event, func, select
 from sqlalchemy.orm import Session
 
-from app.api.journal import _apply_t, _check_t_conflicts
+from app.api.journal import _apply, _apply_t, _check_t_conflicts
 from app.models import (
     AppUser,
     Base,
@@ -18,7 +18,7 @@ from app.models import (
     TradeJournal,
     TradeT,
 )
-from app.schemas import TradeTIn
+from app.schemas import TradeJournalIn, TradeTIn
 from app.services.trade_journal import (
     _adjust,
     _t_group_stats,
@@ -106,7 +106,8 @@ def test_short_not_bought_back_counts_as_fly():
     assert out["completed"] is False
     assert out["success"] is False
     assert out["fly_pct"] == pytest.approx(6.80, abs=0.01)
-    assert out["contrib_pct"] < 0
+    # 未完成只付卖出费 0.075%：0.33 × (-0.7)/10×100 − 0.33×0.075 ≈ −2.33
+    assert out["contrib_pct"] == pytest.approx(-2.33, abs=0.01)
     # 未完成的不进成功率分母
     assert _t_group_stats([out])["success_rate"] is None
     assert _t_group_stats([out])["fly_count"] == 1
@@ -129,8 +130,33 @@ def test_long_not_sold_takes_end_price():
     assert out["completed"] is False
     assert out["net_pct"] is None  # 扣费后价差只对已完成的有意义
     assert out["spread_pct"] == pytest.approx(5.0, abs=0.01)
-    assert out["contrib_pct"] == pytest.approx(1.62, abs=0.01)
+    # 未完成只付买入费 0.025%：0.33 × 0.5/10×100 − 0.33×0.025 ≈ 1.64
+    assert out["contrib_pct"] == pytest.approx(1.64, abs=0.01)
     assert out["end_price"] == 10.5
+
+
+def test_t_after_last_bar_is_estimated_with_warning():
+    """盘中当场记的 T（当天日线还没入库）：按最后一根的复权因子估算，并标注。"""
+    bars = [
+        (date(2026, 8, 3), 10.0, 0.0),
+        (date(2026, 8, 4), 10.0, 0.0),
+    ]
+    out = _metrics(
+        _trade(exit_date=None),
+        [
+            _t(
+                trade_date=date(2026, 8, 5),
+                leg2_date=date(2026, 8, 5),
+                buy_price=10.0,
+                sell_price=10.3,
+            )
+        ],
+        bars,
+        date(2026, 8, 4),
+    )[0]
+    assert out["spread_pct"] == pytest.approx(3.0, abs=0.01)
+    assert out["net_pct"] == pytest.approx(2.90, abs=0.01)
+    assert any("日线未入库" in text for text in out["warnings"])
 
 
 def test_split_between_two_legs_is_not_a_crash():
@@ -245,6 +271,36 @@ def test_move_exit_date_before_t_is_rejected(session):
         _check_t_conflicts(session, trade.id, ENTRY, date(2026, 8, 4))
     assert exc.value.status_code == 400
     assert f"T#{row.id}" in exc.value.detail
+
+
+def test_cannot_change_code_when_t_exists(session):
+    """已有做 T 时不允许把底仓换成另一只票（T 的价格会拿错日线换算）。"""
+    trade = _saved_trade(session)
+    session.add(
+        TradeT(
+            user_id=1,
+            trade_id=trade.id,
+            trade_date=date(2026, 8, 4),
+            leg2_date=date(2026, 8, 4),
+            direction="long",
+            buy_price=10.0,
+            sell_price=10.3,
+            ratio_pct=33.0,
+            trigger="other",
+        )
+    )
+    session.commit()
+
+    payload = TradeJournalIn(
+        code="000001",
+        entry_date=ENTRY,
+        entry_price=10.0,
+        reason_type="other",
+    )
+    with pytest.raises(HTTPException) as exc:
+        _apply(session, trade, payload)
+    assert exc.value.status_code == 400
+    assert "先删掉再改代码" in exc.value.detail
 
 
 def test_delete_trade_cascades_to_t(session):

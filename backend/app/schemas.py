@@ -1647,6 +1647,9 @@ class JournalReasonSuggestion(ApiModel):
     #: 这只票**今天**相对 20 日线的乖离（%，负数）；没到超跌阈值时为 null。
     #: 做 T 表单据此默认把触发设为「超跌」（阈值见 `patterns.OVERSOLD_DEV_PCT`）
     oversold_dev: float | None = None
+    #: 上面的乖离是按哪一天的日线算的。做 T 表单只有在「T 的日期 == 这一天」时才
+    #: 自动预选「超跌」，补记旧 T 时不能拿今天的乖离去套（2026-10-21 复查 #3）
+    oversold_date: date | None = None
 
 
 class TradeTIn(ApiModel):
