@@ -1,0 +1,107 @@
+"""「所属题材」的取数口径：优先板块成分股快照，退回落涨停天梯。
+
+2026-10-21 用户反馈「所属题材没有数据」：原来只读 `stock_concept`（只覆盖涨停股），
+没涨停过的票永远是「—」。这里钉住新的两级取数顺序。
+"""
+
+from datetime import date
+
+import pytest
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import Session
+
+from app.api.stock import themes
+from app.models import (
+    Base,
+    SectorBasic,
+    SectorDaily,
+    SectorMember,
+    StockBasic,
+    StockConcept,
+)
+
+MEMBER_DAY = date(2026, 10, 19)
+BOARD_DAY = date(2026, 10, 21)
+
+
+@pytest.fixture()
+def db():
+    engine = create_engine("sqlite://", future=True)
+
+    @event.listens_for(engine, "connect")
+    def _enable_fk(dbapi_conn, _record):
+        dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add(StockBasic(code="688410", name="山外山"))
+        session.add(StockBasic(code="600000", name="浦发银行"))
+        session.add_all(
+            [
+                SectorBasic(code="801046", name="医疗器械", taxonomy="kph_selected"),
+                SectorBasic(code="881144", name="医疗器械", taxonomy="kph_industry"),
+                SectorBasic(code="801351", name="科创板", taxonomy="kph_selected"),
+                SectorDaily(
+                    trade_date=BOARD_DAY,
+                    sector_code="801046",
+                    name="医疗器械",
+                    taxonomy="kph_selected",
+                    pct_chg=1.2,
+                ),
+                SectorDaily(
+                    trade_date=BOARD_DAY,
+                    sector_code="801351",
+                    name="科创板",
+                    taxonomy="kph_selected",
+                    pct_chg=-0.5,
+                ),
+                # 688410 在最新快照里挂了 2 个精选板块 + 1 个行业板块（行业不进题材）
+                SectorMember(
+                    trade_date=MEMBER_DAY,
+                    sector_code="801046",
+                    code="688410",
+                    name="山外山",
+                ),
+                SectorMember(
+                    trade_date=MEMBER_DAY,
+                    sector_code="801351",
+                    code="688410",
+                    name="山外山",
+                ),
+                SectorMember(
+                    trade_date=MEMBER_DAY,
+                    sector_code="881144",
+                    code="688410",
+                    name="山外山",
+                ),
+                # 600000 没有成分股快照，只有涨停天梯里的一条历史题材
+                StockConcept(
+                    trade_date=date(2026, 9, 1),
+                    code="600000",
+                    concept="银行",
+                ),
+            ]
+        )
+        session.commit()
+        yield session
+
+
+def test_membership_beats_limit_up_concept(db):
+    out = themes("688410", session=db)
+    assert out.name == "山外山"
+    assert [item.concept for item in out.themes] == ["医疗器械", "科创板"]
+    assert out.board_date == BOARD_DAY
+    # 行业板块（同一名字、kph_industry）不重复出现在题材里
+    assert all(item.board_code != "881144" for item in out.themes)
+
+
+def test_falls_back_to_limit_up_concept(db):
+    out = themes("600000", session=db)
+    assert [item.concept for item in out.themes] == ["银行"]
+    # 板块表里没有「银行」，board_code 为 None，但题材名仍要显示
+    assert out.themes[0].board_code is None
+
+
+def test_unknown_code_returns_empty(db):
+    out = themes("600001", session=db)
+    assert out.themes == []

@@ -5,8 +5,9 @@
 批量落库的；但**池外的票没有**，所以首次打开某只池外个股时前端会自动调一次
 同步，之后走缓存（见设计文档 8.16、8.22.2）。
 
-「所属题材」不在这里现取：它读的是 `stock_concept`（涨停天梯的日度快照），
-只覆盖涨停过的票，见 `themes()` 的说明。
+「所属题材」不在这里现取：优先读 `sector_member`（每晚预取的板块成分股快照，
+覆盖全市场），没有快照时才退回 `stock_concept`（涨停天梯，只覆盖涨停过的票），
+见 `themes()` 的说明。
 """
 
 import logging
@@ -30,7 +31,9 @@ from app.models import (
     AppUser,
     Lhb,
     LimitPool,
+    SectorBasic,
     SectorDaily,
+    SectorMember,
     StockBasic,
     StockConcept,
     StockDaily,
@@ -971,30 +974,21 @@ def unlock(
 
 @router.get("/{code}/themes", response_model=StockThemes)
 def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
-    """该股**最近一次涨停时**所属的开盘红精选板块，附带板块最近一个交易日的涨跌幅。
+    """该股所属的开盘红精选板块，附带板块最近一个交易日的涨跌幅。
 
-    数据来自 `stock_concept`（涨停天梯的日度快照），这里取该股出现过的最近一天 ——
-    所以它回答的是「这只票最近一次涨停是因为哪个板块」，**不是**「它属于哪些概念」。
-    这个语义差别要记住：开盘红没有非涨停个股的板块归属接口（见设计文档 8.32.4），
-    对从未涨停过的票这里就是空的，如实返回空列表，不编一个概念出来。
+    **数据来源（2026-10-21 修）**：优先读 `sector_member` —— 每晚 22:00 预取的
+    板块成分股快照，覆盖全市场（线上实测 374 个板块 / 5888 只票）。原来只读
+    `stock_concept`（涨停天梯），它**只记涨停股**，于是没涨停过的票（如 688410
+    山外山）永远是「—」。
+
+    快照里查不到这只票（新股、快照还没跑到它、或者退市）时，退回原来那一套：
+    取 `stock_concept` 里该股最近一次涨停所属的精选板块 —— 至少比空着多一条信息。
+    两者都是开盘红精选板块口径，不混用别的分类（同花顺行业路径那种）。
     """
     code = _code(code)
     name = _resolve_name(session, code)
 
-    latest = session.scalar(
-        select(func.max(StockConcept.trade_date)).where(StockConcept.code == code)
-    )
-    concepts: list[str] = []
-    if latest is not None:
-        concepts = sorted(
-            session.scalars(
-                select(StockConcept.concept).where(
-                    StockConcept.code == code, StockConcept.trade_date == latest
-                )
-            )
-        )
-
-    # 板块表现：取板块表里精选口径的最新交易日，能对上的顺带给板块代码
+    # 板块表现：取板块表里精选口径的最新交易日，用于给每个题材带涨跌幅
     board_date = session.scalar(
         select(func.max(SectorDaily.trade_date)).where(
             SectorDaily.taxonomy == TAXONOMY_SELECTED
@@ -1013,14 +1007,57 @@ def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
             if row.name
         }
 
-    items = [
-        StockThemeItem(
-            concept=concept,
-            board_code=boards.get(concept, (None, None))[0],
-            pct_chg=boards.get(concept, (None, None))[1],
+    # ① 当前所属板块：这只票最近一次成分股快照，只留精选口径（行业板块不进「题材」）
+    member_date = session.scalar(
+        select(func.max(SectorMember.trade_date)).where(SectorMember.code == code)
+    )
+    member_names: dict[str, str] = {}
+    if member_date is not None:
+        member_rows = session.execute(
+            select(SectorMember.sector_code, SectorBasic.name)
+            .join(SectorBasic, SectorBasic.code == SectorMember.sector_code)
+            .where(
+                SectorMember.code == code,
+                SectorMember.trade_date == member_date,
+                SectorBasic.taxonomy == TAXONOMY_SELECTED,
+            )
+        ).all()
+        for sector_code, sector_name in member_rows:
+            if sector_name:
+                member_names.setdefault(sector_name, sector_code)
+
+    if member_names:
+        items = [
+            StockThemeItem(
+                concept=concept,
+                board_code=sector_code,
+                pct_chg=boards.get(concept, (None, None))[1],
+            )
+            for concept, sector_code in member_names.items()
+        ]
+    else:
+        # ② 退回旧口径：最近一次涨停所属的精选板块
+        latest = session.scalar(
+            select(func.max(StockConcept.trade_date)).where(StockConcept.code == code)
         )
-        for concept in concepts
-    ]
+        concepts: list[str] = []
+        if latest is not None:
+            concepts = sorted(
+                session.scalars(
+                    select(StockConcept.concept).where(
+                        StockConcept.code == code, StockConcept.trade_date == latest
+                    )
+                )
+            )
+        items = [
+            StockThemeItem(
+                concept=concept,
+                board_code=boards.get(concept, (None, None))[0],
+                pct_chg=boards.get(concept, (None, None))[1],
+            )
+            for concept in concepts
+        ]
+
     # 能对上板块的排前面，其次按板块涨跌幅降序 —— 一眼看到这只票最热的题材
     items.sort(key=lambda item: (item.board_code is None, -(item.pct_chg or 0)))
 

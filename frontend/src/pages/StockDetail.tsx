@@ -589,8 +589,9 @@ export default function StockDetail() {
    * 所属题材（并进概况格的「所属题材」那一格，2026-10-10 用户要求）。
    *
    * 原来是一整块带板块涨跌幅的 Panel，压成两行：名称一行、**同序**对应的涨跌幅一行。
-   * 口径没变：板块归属来自开盘红的涨停天梯，**只覆盖涨停股**，非涨停股没有归属
-   * 接口，如实留空「—」（`themes` 为空且不在同步中时）。
+   * 数据来源 2026-10-21 改了：优先读板块成分股快照（覆盖全市场），没快照才退回
+   * 「最近一次涨停所属的精选板块」—— 以前只看涨停股，非涨停股永远是「—」。
+   * 一只票可能挂好几个板块（山外山就有 9 个），这一格用 compact 字号，避免把整行撑高。
    */
   const themeItems = themes?.themes ?? []
   const themeNames = themeItems.length
@@ -684,7 +685,7 @@ export default function StockDetail() {
               sub={`龙虎榜 ${profile?.lhb_count ?? 0} 次`}
             />
             <Cell label="换手率" value={fmtNum(latest?.turnover, 2, '%')} />
-            <Cell label="所属题材" value={themeNames} sub={themePcts} />
+            <Cell label="所属题材" value={themeNames} sub={themePcts} compact />
             <Cell label="总市值" value={fmtAmount(profile?.total_mv)} />
             <Cell label="自由流通市值" value={fmtAmount(profile?.free_float_mv)} />
             <Cell label="动态市盈率" value={fmtNum(profile?.pe_forecast, 2)} />
@@ -1174,16 +1175,21 @@ function Cell({
   value,
   tone = 'text-fg',
   sub,
+  compact = false,
 }: {
   label: string
   value: string
   tone?: string
   sub?: string
+  /** 多值格子（如「所属题材」可能挂好几个板块）用小一号字，别把整行撑高 */
+  compact?: boolean
 }) {
   return (
     <div className="relative -mr-px -mb-px border-r border-b border-line-soft px-4 py-3">
       <div className="text-[13px] tracking-[0.1em] text-fg-dim">{label}</div>
-      <div className={`num mt-1.5 text-[18px] leading-tight font-medium ${tone}`}>
+      <div
+        className={`num mt-1.5 font-medium ${compact ? 'text-[14px] leading-snug' : 'text-[18px] leading-tight'} ${tone}`}
+      >
         {value}
       </div>
       {sub && <div className="num mt-1 text-[13px] text-fg-dim">{sub}</div>}
