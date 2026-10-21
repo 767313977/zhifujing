@@ -1729,6 +1729,19 @@ export interface TradeJournalIn {
   note?: string | null
 }
 
+/** 「按代码 + 买入日回溯理由」的结果（对应后端 `JournalReasonSuggestion`）。
+ *
+ * 只来自库里的形态扫描与涨停天梯快照：那天没跑扫描 / 该票当天没命中时两个列表都为空，
+ * 页面上如实提示「当天没有可比对的记录」。 */
+export interface JournalReasonSuggestion {
+  code: string
+  trade_date: string
+  /** 当天命中的形态，按分数降序 */
+  patterns: { key: string; name: string; score: number }[]
+  /** 当天所属题材（没涨停过就是空） */
+  themes: string[]
+}
+
 /** 一笔交易 + 用日线现算的指标（对应后端 `TradeJournalRow`）。 */
 export interface TradeJournalRow extends TradeJournalIn {
   id: number

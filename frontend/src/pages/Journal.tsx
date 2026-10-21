@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api } from '../api/client'
 import type {
+  JournalReasonSuggestion,
   PatternMeta,
   TradeJournalIn,
   TradeJournalRow,
@@ -199,6 +200,8 @@ export default function JournalPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  // 「买入日那天这只票命中了什么」——按代码 + 买入日回溯（2026-10-21 用户要求）
+  const [suggest, setSuggest] = useState<JournalReasonSuggestion | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -229,6 +232,68 @@ export default function JournalPage() {
     }
     return []
   }, [catalog, form.reasonType])
+
+  /**
+   * 回溯理由（2026-10-21 用户要求）：填好代码与买入日后，自动查**那天**这只票命中了
+   * 哪些形态（库里的扫描结果，零外部请求）。
+   *
+   * - 只在「具体理由」还空着时自动带入最高分那个 —— 用户手填过就不覆盖；
+   * - 最高分是悟道池 → 理由来源自动切「悟道池」，否则切「形态」；
+   * - 查不到（那天没跑扫描 / 该票当天没命中）就什么都不填，提示里如实写没有记录。
+   */
+  useEffect(() => {
+    const code = form.code.trim()
+    if (!/^\d{6}$/.test(code) || !form.entryDate) {
+      setSuggest(null)
+      return
+    }
+    let stale = false
+    const timer = window.setTimeout(() => {
+      api
+        .journalSuggest(code, form.entryDate)
+        .then((data) => {
+          if (stale) return
+          setSuggest(data)
+          const best = data.patterns[0]
+          if (!best) return
+          setForm((prev) => {
+            if (prev.reasonKey.trim()) return prev
+            return {
+              ...prev,
+              reasonType: POOL_KEYS.includes(best.key) ? 'wudao' : 'pattern',
+              reasonKey: best.key,
+            }
+          })
+        })
+        .catch(() => {
+          if (!stale) setSuggest(null)
+        })
+    }, 400) // 400ms：填代码/改日期时不要每按一键就请求
+    return () => {
+      stale = true
+      window.clearTimeout(timer)
+    }
+  }, [form.code, form.entryDate])
+
+  /** 「具体理由」下方那句：优先说回溯结果，没有回溯数据时才退回原来的说明。 */
+  const suggestHint = useMemo(() => {
+    if (suggest) {
+      if (suggest.patterns.length > 0) {
+        const head = suggest.patterns
+          .slice(0, 3)
+          .map((item) => `${item.name}${item.score}`)
+          .join(' / ')
+        const more = suggest.patterns.length > 3 ? ` 等 ${suggest.patterns.length} 个` : ''
+        return `当日命中：${head}${more}（已自动带入，可改）`
+      }
+      return suggest.themes.length > 0
+        ? `当日没有形态命中；题材：${suggest.themes.join(' / ')}`
+        : '当日没有命中记录（那天可能没跑扫描）'
+    }
+    return form.reasonType === 'theme' || form.reasonType === 'other'
+      ? '直接写题材名 / 一句话'
+      : undefined
+  }, [suggest, form.reasonType])
 
   const set = (key: keyof FormState, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -446,14 +511,7 @@ export default function JournalPage() {
                 ))}
               </select>
             </Field>
-            <Field
-              label="具体理由"
-              hint={
-                form.reasonType === 'theme' || form.reasonType === 'other'
-                  ? '直接写题材名 / 一句话'
-                  : undefined
-              }
-            >
+            <Field label="具体理由" hint={suggestHint}>
               {form.reasonType === 'pattern' || form.reasonType === 'wudao' ? (
                 <select
                   value={form.reasonKey}

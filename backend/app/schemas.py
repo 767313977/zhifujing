@@ -1620,6 +1620,30 @@ class TradeJournalIn(ApiModel):
     note: str | None = None
 
 
+class JournalReasonHit(ApiModel):
+    """个股在某交易日命中的一个形态（回溯理由时用）。"""
+
+    key: str
+    name: str
+    score: float
+
+
+class JournalReasonSuggestion(ApiModel):
+    """交易日志「按代码 + 买入日回溯理由」的结果。
+
+    数据只来自库里已有的形态扫描（`pattern_hit`）与涨停天梯快照（`stock_concept`），
+    **不发外部请求、不占配额**。那天没跑扫描、或该票当天没命中，两个列表都会是空的 ——
+    前端据此提示「当天没有可比对的记录」，不替用户编一个理由。
+    """
+
+    code: str
+    trade_date: date
+    #: 当天命中的形态，按分数降序
+    patterns: list[JournalReasonHit] = Field(default_factory=list)
+    #: 当天所属题材（涨停天梯快照；没涨停过就是空）
+    themes: list[str] = Field(default_factory=list)
+
+
 class TradeJournalRow(TradeJournalIn):
     id: int
     #: 理由的中文名（形态 / 池子查注册表，题材用 key，其它用自由文本）

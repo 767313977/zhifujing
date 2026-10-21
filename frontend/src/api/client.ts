@@ -61,6 +61,7 @@ import type {
   SectorTaxonomy,
   Sentiment,
   SimilarDays,
+  JournalReasonSuggestion,
   StockAnalysis,
   StockDailyRow,
   StockDde,
@@ -624,6 +625,17 @@ export const api = {
 
   /** 按理由 / 情绪档位 / 板块的自成绩单（只统计已平仓）。 */
   journalStats: () => request<TradeStatsOut>('/journal/stats'),
+
+  /**
+   * 按「代码 + 买入日」回溯当天命中的形态与题材（填理由用）。
+   *
+   * 只读库：那天没跑形态扫描、或该票当天没命中，两个列表都是空的 —— 调用方据此
+   * 提示「当天没有可比对的记录」，不要自己编一个理由。
+   */
+  journalSuggest: (code: string, date: string) =>
+    request<JournalReasonSuggestion>(
+      `/journal/suggest?code=${encodeURIComponent(code)}&date=${encodeURIComponent(date)}`,
+    ),
 
   // --- 次日计划（2026-10-18 清单 #2）---
   plans: (planDate?: string) =>

@@ -5,16 +5,32 @@
 """
 
 import logging
+from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import AppUser, StockBasic, TradeCalendar, TradeJournal
-from app.schemas import TradeJournalIn, TradeJournalOut, TradeJournalRow, TradeStatsOut
+from app.models import (
+    AppUser,
+    PatternHit,
+    StockBasic,
+    StockConcept,
+    TradeCalendar,
+    TradeJournal,
+)
+from app.schemas import (
+    JournalReasonHit,
+    JournalReasonSuggestion,
+    TradeJournalIn,
+    TradeJournalOut,
+    TradeJournalRow,
+    TradeStatsOut,
+)
 from app.services import trade_journal
 from app.services.auth import current_user
+from app.services.patterns import PATTERNS
 
 logger = logging.getLogger(__name__)
 
@@ -149,3 +165,45 @@ def trade_stats(
 ) -> TradeStatsOut:
     """按理由 / 情绪档位 / 板块分组看自己的胜率与平均收益（只统计已平仓）。"""
     return TradeStatsOut.model_validate(trade_journal.stats(session, user.id))
+
+
+@router.get("/suggest", response_model=JournalReasonSuggestion)
+def suggest_reason(
+    code: str = Query(..., min_length=1, max_length=16, description="6 位股票代码"),
+    date: date = Query(..., description="买入日"),
+    session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> JournalReasonSuggestion:
+    """按「代码 + 买入日」回溯当天命中的形态与所属题材，供交易日志填理由。
+
+    2026-10-21 用户要求：记一笔交易时，理由来源与具体理由能自动回溯查找 ——
+    买入那天这只票到底命中了哪些形态、挂在哪个题材，库里本来就有（形态扫描
+    `pattern_hit` + 涨停天梯快照 `stock_concept`），不必凭记忆重选。
+
+    **只读库、不发外部请求**；那天没跑扫描或该票当天没命中时返回空列表 ——
+    那是「当天没有可比对的记录」，前端如实提示，不替用户编理由。
+    """
+    target = _normalize_code(code)
+    names = {pattern.key: pattern.name for pattern in PATTERNS}
+    hits = session.execute(
+        select(PatternHit.pattern, PatternHit.score)
+        .where(PatternHit.code == target, PatternHit.trade_date == date)
+        .order_by(PatternHit.score.desc())
+    ).all()
+    return JournalReasonSuggestion(
+        code=target,
+        trade_date=date,
+        # 注册表里已删掉的旧 key 不返回（历史命中的残留标签，选它也保存不了）
+        patterns=[
+            JournalReasonHit(key=key, name=names[key], score=round(float(score), 1))
+            for key, score in hits
+            if key in names
+        ],
+        themes=sorted(
+            session.scalars(
+                select(StockConcept.concept).where(
+                    StockConcept.code == target, StockConcept.trade_date == date
+                )
+            )
+        ),
+    )
