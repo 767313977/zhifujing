@@ -2,6 +2,11 @@
 
 收益口径全部在 `services/trade_journal.py`（用 `stock_daily` 现算），这里只做
 入参校验与持久化。**不占 iFinD 配额**，也不发外部请求。
+
+**按用户隔离**（2026-10-21 用户要求）：所有读写一律用 `current_user.id` 过滤，
+并且逐条校验 `user_id` 归属；管理员**没有**跨用户查看 / 修改的入口 ——
+`api/admin.py` 只管理账号（改名、重置密码、停用），不碰 `trade_journal`。
+以后加接口时别为了「方便排查」开一个带 `user_id` 参数的旁路。
 """
 
 import logging
