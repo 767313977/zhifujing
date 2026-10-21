@@ -1642,6 +1642,53 @@ class JournalReasonSuggestion(ApiModel):
     patterns: list[JournalReasonHit] = Field(default_factory=list)
     #: 当天所属题材（涨停天梯快照；没涨停过就是空）
     themes: list[str] = Field(default_factory=list)
+    #: 这只票**今天**相对 20 日线的乖离（%，负数）；没到超跌阈值时为 null。
+    #: 做 T 表单据此默认把触发设为「超跌」（阈值见 `patterns.OVERSOLD_DEV_PCT`）
+    oversold_dev: float | None = None
+
+
+class TradeTIn(ApiModel):
+    """新增 / 修改一次做 T 时的入参（2026-10-21 做 T 记录需求）。"""
+
+    #: 第一腿日期
+    trade_date: date
+    #: 第二腿日期。与第一腿相同就是当日 T；不同是隔日 T；没做第二腿时留空
+    leg2_date: date | None = None
+    #: long = 正T（先买后卖）/ short = 倒T（先卖后买）
+    direction: str = "long"
+    buy_price: float | None = None
+    sell_price: float | None = None
+    #: 这次 T 的数量占底仓的比例（0-100）。1/3 仓就填 33
+    ratio_pct: float = 33.0
+    #: oversold（日线做T超跌）/ intraday_high（分时冲高）/ theme_fade（题材退潮）/ other
+    trigger: str = "other"
+    note: str | None = None
+
+
+class TradeTRow(TradeTIn):
+    """一次做 T + 现算指标（对应 `services.trade_journal._t_metrics`）。
+
+    字段名有意不叫 `date`（CI #91 的教训：`date` 会遮住导入的 `datetime.date`）。
+    """
+
+    id: int
+    trade_id: int
+    #: 两腿都有成交价 = 已完成；未完成时缺的那一腿按期末价计
+    completed: bool = False
+    #: 价差 = 卖出腿 / 买入腿 − 1（未完成时缺的腿用期末价；单位 %）
+    spread_pct: float | None = None
+    #: 扣费后价差（只对已完成的有意义；佣金万 2.5×2 + 印花税 0.05%）
+    net_pct: float | None = None
+    #: 对底仓收益的贡献（降本），按底仓买入价计；单位 %
+    contrib_pct: float | None = None
+    #: 卖飞幅度（只对「倒T 没接回」）：期末价 / 卖出价 − 1
+    fly_pct: float | None = None
+    #: 成功 = 已完成且扣费后价差为正
+    success: bool = False
+    #: 期末价（未平仓 = 最新收盘，已平仓 = 卖出价）；未完成时用它顶替缺的那一腿
+    end_price: float | None = None
+    #: 价格不在当天日线 [low, high] 区间内的软提示（不拦截保存）
+    warnings: list[str] = Field(default_factory=list)
 
 
 class TradeJournalRow(TradeJournalIn):
@@ -1668,6 +1715,15 @@ class TradeJournalRow(TradeJournalIn):
     latest_close: float | None = None
     #: 日线不够、算不出指标时的原因
     metrics_note: str | None = None
+    #: 这只票的做 T 明细，按第一腿日期升序
+    t_ops: list[TradeTRow] = Field(default_factory=list)
+    t_count: int = 0
+    #: 各条做 T 贡献的简单相加（每条都是相对各自底仓的百分比）
+    t_contrib_pct: float | None = None
+    #: 未完成的做 T 条数（缺第二腿）
+    t_open_count: int = 0
+    #: 含 T 收益 = `return_pct + t_contrib_pct`；`return_pct` 的原口径不动
+    return_with_t_pct: float | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -1688,11 +1744,36 @@ class TradeStatsRow(ApiModel):
     avg_holding_days: float | None = None
 
 
+class TradeTStatsRow(ApiModel):
+    """做 T 的分组成绩（按方向 / 按触发）。成功率只看**已完成**的。"""
+
+    label: str
+    count: int = 0
+    completed: int = 0
+    open: int = 0
+    success_rate: float | None = None
+    avg_net_pct: float | None = None
+    #: 各条贡献的简单相加（每条相对各自底仓，跨票相加仅供参考）
+    total_contrib_pct: float | None = None
+    fly_count: int = 0
+    avg_fly_pct: float | None = None
+
+
+class TradeTStats(ApiModel):
+    summary: TradeTStatsRow = Field(
+        default_factory=lambda: TradeTStatsRow(label="全部做T")
+    )
+    by_direction: list[TradeTStatsRow] = Field(default_factory=list)
+    by_trigger: list[TradeTStatsRow] = Field(default_factory=list)
+
+
 class TradeStatsOut(ApiModel):
     summary: TradeStatsRow
     by_reason: list[TradeStatsRow] = Field(default_factory=list)
     by_sentiment: list[TradeStatsRow] = Field(default_factory=list)
     by_sector: list[TradeStatsRow] = Field(default_factory=list)
+    #: 做 T 成绩（2026-10-21）；没有记录时 count 全 0
+    t_stats: TradeTStats = Field(default_factory=TradeTStats)
 
 
 class TradePlanIn(ApiModel):

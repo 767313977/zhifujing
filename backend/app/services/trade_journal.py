@@ -19,6 +19,7 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import FEE_BUY, FEE_SELL
 from app.models import (
     LimitPool,
     MarketSentiment,
@@ -26,6 +27,7 @@ from app.models import (
     StockDaily,
     TradeCalendar,
     TradeJournal,
+    TradeT,
 )
 from app.services import relay_temp
 from app.services.pattern_track import POOL_KEYS
@@ -38,6 +40,21 @@ POOL_NAMES = {
     pattern.key: pattern.name for pattern in PATTERNS if pattern.key in POOL_KEYS
 }
 REASON_TYPES = ("pattern", "wudao", "theme", "other")
+
+#: 一次做 T 的费率（分数，不是百分数）：佣金买卖各万 2.5，印花税 0.05% 只在卖出收。
+#: 没记股数，所以不算「最低 5 元」——见 `config.FEE_BUY` 的说明。
+FEE_ROUND_TRIP = FEE_BUY + FEE_SELL
+
+#: 做 T 的方向与触发类型（与 `models.TradeT` 的注释、前端下拉一一对应）
+T_DIRECTIONS = ("long", "short")
+T_DIRECTION_LABELS = {"long": "正T", "short": "倒T"}
+T_TRIGGERS = ("oversold", "intraday_high", "theme_fade", "other")
+T_TRIGGER_LABELS = {
+    "oversold": "超跌",
+    "intraday_high": "分时冲高",
+    "theme_fade": "题材退潮",
+    "other": "其他",
+}
 
 
 def reason_label(reason_type: str | None, reason_key: str | None, reason_text: str | None) -> str:
@@ -170,6 +187,22 @@ def _end_basis(
     return last_adjusted
 
 
+def _window(
+    trade: TradeJournal,
+    bars: list[tuple[date, float, float | None]],
+    data_end: date | None,
+) -> list[tuple[date, float, float | None]]:
+    """底仓的持仓窗口：买入日 ~ 卖出日（未平仓到库里最后一根日线）。"""
+    end_day = trade.exit_date or data_end
+    if end_day is None:
+        return []
+    return [
+        (day, close, pct)
+        for day, close, pct in bars
+        if trade.entry_date <= day <= end_day
+    ]
+
+
 def _metrics(
     trade: TradeJournal,
     bars: list[tuple[date, float, float | None]],
@@ -197,11 +230,7 @@ def _metrics(
     if end_day is None or end_pos is None:
         return {**blank, "metrics_note": "卖出日不在交易日历里"}
 
-    window = [
-        (day, close, pct)
-        for day, close, pct in bars
-        if trade.entry_date <= day <= end_day
-    ]
+    window = _window(trade, bars, data_end)
     if not window or window[0][0] != trade.entry_date:
         return {**blank, "metrics_note": "买入日没有日线（停牌或未采集）"}
     entry_close = window[0][1]
@@ -238,6 +267,150 @@ def _metrics(
     }
 
 
+def _day_ranges(
+    session: Session, codes: set[str], days: set[date]
+) -> dict[tuple[str, date], tuple[float, float]]:
+    """`{(code, 交易日): (最低, 最高)}`，只用于做 T 的软提示（价格是否在当日区间内）。"""
+    if not codes or not days:
+        return {}
+    rows = session.execute(
+        select(
+            StockDaily.code,
+            StockDaily.trade_date,
+            StockDaily.low,
+            StockDaily.high,
+        ).where(StockDaily.code.in_(codes), StockDaily.trade_date.in_(days))
+    ).all()
+    result: dict[tuple[str, date], tuple[float, float]] = {}
+    for code, day, low, high in rows:
+        if low is not None and high is not None:
+            result[(code, day)] = (float(low), float(high))
+    return result
+
+
+def _t_metrics(
+    trade: TradeJournal,
+    rows: list[TradeT],
+    window: list[tuple[date, float, float | None]],
+    adjusted: list[tuple[date, float]],
+    ranges: dict[tuple[str, date], tuple[float, float]],
+) -> list[dict]:
+    """把一笔底仓下面的做 T 记录算成指标（2026-10-21 做 T 记录需求 §3）。
+
+    价格口径：底仓窗口的收盘价按 `pct_chg` 复利成「买入日口径」的等价价
+    （`_adjust`），做 T 的成交价（不复权）按 `price × adjusted[day] / close[day]`
+    换算过去 —— 中间遇到 10 送 10 时，降本不会算成腰斩。
+
+    未完成（缺第二腿）的 T 用**期末价**顶上：正 T 没卖出 = 加仓，按期末价计盈亏；
+    倒 T 没接回 = 减仓，卖飞的部分按期末价计机会损失（`fly_pct`）。
+
+    `window` / `adjusted` 为空（买入日没有日线等）时，只给完成状态和软提示，指标留 None。
+    """
+    if adjusted:
+        close_by_day = {day: close for day, close, _pct in window}
+        adj_by_day = dict(adjusted)
+        end_basis: float | None = _end_basis(trade, window, adjusted)
+        end_price: float | None = (
+            float(trade.exit_price)
+            if trade.exit_date is not None and trade.exit_price is not None
+            else window[-1][1]
+        )
+    else:
+        close_by_day, adj_by_day = {}, {}
+        end_basis, end_price = None, None
+
+    fee_pct = FEE_ROUND_TRIP * 100  # 换成百分数，与 spread_pct 同一单位
+
+    def to_basis(price: float, day: date | None) -> float | None:
+        """不复权成交价 → 买入日口径；那天没有日线（停牌 / 未采集）返回 None。"""
+        if day is None:
+            return None
+        close = close_by_day.get(day)
+        base = adj_by_day.get(day)
+        if close is None or base is None or close <= 0:
+            return None
+        return price * base / close
+
+    def band_warning(label: str, price: float | None, day: date | None) -> str | None:
+        if price is None or day is None:
+            return None
+        band = ranges.get((trade.code, day))
+        if band is None:
+            return None
+        low, high = band
+        if low - 1e-9 <= price <= high + 1e-9:
+            return None
+        return (
+            f"{label} {price:.2f} 不在 {day.strftime('%m-%d')} 的"
+            f"最低 {low:.2f} ~ 最高 {high:.2f} 之间"
+        )
+
+    result: list[dict] = []
+    for row in rows:
+        completed = row.buy_price is not None and row.sell_price is not None
+        if row.direction == "short":
+            # 倒 T：先卖（第一腿）后买（第二腿）
+            sell_day, buy_day = row.trade_date, row.leg2_date
+        else:
+            buy_day, sell_day = row.trade_date, row.leg2_date
+
+        if row.buy_price is not None and buy_day is not None:
+            buy_basis = to_basis(float(row.buy_price), buy_day)
+        else:
+            buy_basis = end_basis
+        if row.sell_price is not None and sell_day is not None:
+            sell_basis = to_basis(float(row.sell_price), sell_day)
+        else:
+            sell_basis = end_basis
+
+        spread_pct = net_pct = contrib_pct = fly_pct = None
+        if buy_basis is not None and sell_basis is not None and buy_basis > 0:
+            spread_pct = round((sell_basis / buy_basis - 1.0) * 100, 2)
+            if completed:
+                net_pct = round(spread_pct - fee_pct, 2)
+            ratio = float(row.ratio_pct) / 100.0
+            contrib_pct = round(
+                ratio * (sell_basis - buy_basis) / trade.entry_price * 100
+                - ratio * fee_pct,
+                2,
+            )
+            if row.direction == "short" and not completed and end_basis is not None:
+                fly_pct = round((end_basis / sell_basis - 1.0) * 100, 2)
+
+        warnings = [
+            text
+            for text in (
+                band_warning("买入价", row.buy_price, buy_day),
+                band_warning("卖出价", row.sell_price, sell_day),
+            )
+            if text
+        ]
+
+        result.append(
+            {
+                "id": row.id,
+                "trade_id": row.trade_id,
+                "trade_date": row.trade_date,
+                "leg2_date": row.leg2_date,
+                "direction": row.direction,
+                "buy_price": row.buy_price,
+                "sell_price": row.sell_price,
+                "ratio_pct": row.ratio_pct,
+                "trigger": row.trigger,
+                "note": row.note,
+                "completed": completed,
+                "spread_pct": spread_pct,
+                "net_pct": net_pct,
+                "contrib_pct": contrib_pct,
+                "fly_pct": fly_pct,
+                "success": bool(completed and net_pct is not None and net_pct > 0),
+                "end_price": end_price,
+                "warnings": warnings,
+            }
+        )
+    return result
+
+
 def load_enriched(session: Session, user_id: int) -> list[dict]:
     """该用户的全部交易（含现算指标），按买入日倒序。"""
     trades = list(
@@ -258,9 +431,39 @@ def load_enriched(session: Session, user_id: int) -> list[dict]:
     levels = _sentiment_levels(session)
     sectors = _sectors(session, codes)
 
+    # 做 T 明细一次取全：按底仓分组，顺便收齐要查 [low, high] 的日期
+    t_rows = list(
+        session.scalars(
+            select(TradeT)
+            .where(TradeT.user_id == user_id)
+            .order_by(TradeT.trade_date, TradeT.id)
+        )
+    )
+    t_by_trade: dict[int, list[TradeT]] = defaultdict(list)
+    t_days: set[date] = set()
+    for row in t_rows:
+        t_by_trade[row.trade_id].append(row)
+        t_days.add(row.trade_date)
+        if row.leg2_date is not None:
+            t_days.add(row.leg2_date)
+    ranges = _day_ranges(session, codes, t_days)
+
     result: list[dict] = []
     for trade in trades:
-        metrics = _metrics(trade, bars.get(trade.code, []), calendar_pos, data_end)
+        trade_bars = bars.get(trade.code, [])
+        metrics = _metrics(trade, trade_bars, calendar_pos, data_end)
+        window = _window(trade, trade_bars, data_end)
+        adjusted = (
+            _adjust(window)
+            if window and window[0][0] == trade.entry_date and window[0][1] > 0
+            else []
+        )
+        t_ops = _t_metrics(
+            trade, t_by_trade.get(trade.id, []), window, adjusted, ranges
+        )
+        t_contrib = [item["contrib_pct"] for item in t_ops if item["contrib_pct"] is not None]
+        t_contrib_pct = round(sum(t_contrib), 2) if t_contrib else None
+        return_pct = metrics["return_pct"]
         result.append(
             {
                 "id": trade.id,
@@ -282,6 +485,16 @@ def load_enriched(session: Session, user_id: int) -> list[dict]:
                 "sentiment_level": levels.get(trade.entry_date),
                 "sector": sectors.get(trade.code, "未知"),
                 **metrics,
+                "t_ops": t_ops,
+                "t_count": len(t_ops),
+                "t_contrib_pct": t_contrib_pct,
+                "t_open_count": sum(1 for item in t_ops if not item["completed"]),
+                # 含 T 收益：`return_pct` 的原口径不动，成绩单 / 胜率仍只看波段收益
+                "return_with_t_pct": (
+                    round(return_pct + t_contrib_pct, 2)
+                    if return_pct is not None and t_contrib_pct is not None
+                    else return_pct
+                ),
                 "created_at": trade.created_at,
                 "updated_at": trade.updated_at,
             }
@@ -320,6 +533,55 @@ def _group_stats(items: list[dict]) -> dict:
     }
 
 
+def _t_group_stats(items: list[dict]) -> dict:
+    """做 T 的分组成绩。
+
+    **成功率与平均价差只看已完成的**（两腿都有成交价）；卖飞（倒 T 没接回）单独统计，
+    不算进失败。「未完成」的按期末价计贡献，所以 `total_contrib_pct` 仍算它们。
+    """
+    completed = [item for item in items if item["completed"]]
+    nets = [item["net_pct"] for item in completed if item["net_pct"] is not None]
+    contribs = [item["contrib_pct"] for item in items if item["contrib_pct"] is not None]
+    fly = [item["fly_pct"] for item in items if item["fly_pct"] is not None]
+    wins = sum(1 for item in completed if item["success"])
+    return {
+        "count": len(items),
+        "completed": len(completed),
+        "open": len(items) - len(completed),
+        "success_rate": (
+            round(wins / len(completed) * 100, 1) if completed else None
+        ),
+        "avg_net_pct": round(sum(nets) / len(nets), 2) if nets else None,
+        "total_contrib_pct": round(sum(contribs), 2) if contribs else None,
+        "fly_count": len(fly),
+        "avg_fly_pct": round(sum(fly) / len(fly), 2) if fly else None,
+    }
+
+
+def _t_stats(rows: list[dict]) -> dict:
+    """把 `t_ops` 摊平，按方向 / 按触发各出一张成绩表。"""
+    flat = [item for row in rows for item in row["t_ops"]]
+    return {
+        "summary": {"label": "全部做T", **_t_group_stats(flat)},
+        "by_direction": [
+            {
+                "label": T_DIRECTION_LABELS[key],
+                **_t_group_stats(
+                    [item for item in flat if item["direction"] == key]
+                ),
+            }
+            for key in T_DIRECTIONS
+        ],
+        "by_trigger": [
+            {
+                "label": T_TRIGGER_LABELS[key],
+                **_t_group_stats([item for item in flat if item["trigger"] == key]),
+            }
+            for key in T_TRIGGERS
+        ],
+    }
+
+
 def stats(session: Session, user_id: int) -> dict:
     """按理由 / 情绪档位 / 板块分组看自己的胜率与平均收益。
 
@@ -347,4 +609,5 @@ def stats(session: Session, user_id: int) -> dict:
         "by_reason": group(lambda item: item["reason_label"]),
         "by_sentiment": group(lambda item: item["sentiment_level"] or "未知"),
         "by_sector": group(lambda item: item["sector"] or "未知"),
+        "t_stats": _t_stats(rows),
     }

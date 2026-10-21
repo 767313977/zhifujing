@@ -728,6 +728,44 @@ class TradeJournal(Base):
     __table_args__ = (Index("ix_trade_journal_user_entry", "user_id", "entry_date"),)
 
 
+class TradeT(Base):
+    """挂在一笔底仓（`TradeJournal`）下面的一次做 T（2026-10-21 做 T 记录需求）。
+
+    正 T = 先买后卖（用的是**昨日及以前**的底仓，当天买的那部分不能卖）；
+    倒 T = 先卖后买。第二腿没做（正 T 没卖出 / 倒 T 没接回）时那一腿留空，
+    计算时用底仓的期末价顶上，并标记为「未完成」（见 `services.trade_journal._t_metrics`）。
+
+    为什么记比例不记股数：交易日志一直按百分比记（`position_pct`），从没记过股数，
+    这里保持同一口径。代价是算不了「最低 5 元」佣金（见 `config.FEE_BUY`）。
+    """
+
+    __tablename__ = "trade_t"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    #: 删除底仓时级联删掉（`db.py` 已开 PRAGMA foreign_keys=ON）
+    trade_id: Mapped[int] = mapped_column(
+        ForeignKey("trade_journal.id", ondelete="CASCADE")
+    )
+    #: 第一腿日期
+    trade_date: Mapped[date] = mapped_column(Date)
+    #: 第二腿日期。默认与 `trade_date` 相同；不同就是隔日 T。没做第二腿时为 None
+    leg2_date: Mapped[date | None] = mapped_column(Date)
+    #: "long" = 正T（先买后卖）/ "short" = 倒T（先卖后买）
+    direction: Mapped[str] = mapped_column(String(8))
+    buy_price: Mapped[float | None] = mapped_column(Float)
+    sell_price: Mapped[float | None] = mapped_column(Float)
+    #: 这次 T 的数量占底仓的比例（0-100）。1/3 仓就填 33
+    ratio_pct: Mapped[float] = mapped_column(Float)
+    #: oversold（日线做T超跌）/ intraday_high（分时冲高）/ theme_fade（题材退潮）/ other
+    trigger: Mapped[str] = mapped_column(String(16), default="other")
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    __table_args__ = (Index("ix_trade_t_trade", "trade_id", "trade_date"),)
+
+
 class TradePlan(Base):
     """次日计划：**过 `buy_price` 买、破 `stop_price` 放弃**（2026-10-18 清单 #2）。
 

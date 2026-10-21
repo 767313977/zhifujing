@@ -10,6 +10,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "backend" / "data"
 
+# ---- 做 T 的费用口径（2026-10-21 做 T 记录需求 §3）----
+# 佣金按万 2.5，买卖各收一次；印花税 0.05% 只在卖出时收 →
+# 一次完整 T 的费率 = 0.025% + (0.025% + 0.05%) = 0.10%。
+#
+# ⚠️ 交易日志**不记股数**，所以算不出「最低 5 元」佣金门槛：小金额做 T 的真实费率
+# 会比这里高，页面上「扣费后价差」偏乐观。这是记比例的代价，需求里已明确接受。
+FEE_BUY = 0.00025
+FEE_SELL = 0.00025 + 0.0005
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
