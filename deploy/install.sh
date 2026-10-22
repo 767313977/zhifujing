@@ -59,6 +59,33 @@ if [[ ! -f "$APP_DIR/.env" ]]; then
   die "缺少 $APP_DIR/.env：部署包不再携带密钥。请先把服务器的 .env 放好（参考仓库根 .env），再重跑本脚本。"
 fi
 
+# ---------------------------------------------------------------- 数据库（可选）
+# `--with-db` 打的包里放的是 `fupan.db.seed`，**不是** `fupan.db`（2026-10-22）：
+# 以前包里直接带 `fupan.db`，解压那一步就静默覆盖了线上库（用户 / 邀请码 / 笔记 /
+# 自选股全在里面，不可逆）。改成 seed 之后，解压永远碰不到线上库，是否采用由这里决定：
+#   新机器（没有 fupan.db）→ 直接把 seed 当初始库
+#   已有库 → 先原样备份，再要求显式 `--force-db` 才覆盖
+DATA_DIR="$APP_DIR/backend/data"
+if [[ -f "$DATA_DIR/fupan.db.seed" ]]; then
+  if [[ -f "$DATA_DIR/fupan.db" ]]; then
+    DB_BACKUP="$DATA_DIR/fupan.db.bak-$(date +%Y%m%d-%H%M%S)"
+    cp -p "$DATA_DIR/fupan.db" "$DB_BACKUP"
+    log "线上库已备份：$DB_BACKUP（$(du -h "$DB_BACKUP" | cut -f1)）"
+    if [[ ! " $* " =~ " --force-db " ]]; then
+      die "包里带了初始数据库，但 $DATA_DIR/fupan.db 已存在（已备份为 $(basename "$DB_BACKUP")）。
+     **没有**覆盖线上库。确认要用包里的库覆盖，重跑：
+       sudo bash deploy/install.sh --force-db"
+    fi
+    log "按 --force-db 用包里的库覆盖线上库"
+    mv -f "$DATA_DIR/fupan.db.seed" "$DATA_DIR/fupan.db"
+    # 旧库的 WAL / SHM 必须一起清掉，否则会被 SQLite 当成新库的日志回放
+    rm -f "$DATA_DIR/fupan.db-wal" "$DATA_DIR/fupan.db-shm"
+  else
+    log "没找到已有数据库，用包里的初始库"
+    mv "$DATA_DIR/fupan.db.seed" "$DATA_DIR/fupan.db"
+  fi
+fi
+
 log "安装系统依赖"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq

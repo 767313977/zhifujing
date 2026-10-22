@@ -35,7 +35,9 @@ from app.jobs.collect_auction import collect_auction
 from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
 from app.jobs.collect_sectors import SectorCollector
 from app.models import CollectLog, TradeCalendar
+from app.services.usage import QuotaLevel, quota_level
 from app.sources.ifind import IfindError
+from app.timeutil import now_cn, today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,14 @@ B1_INTRADAY_JOB_ID = "b1_intraday"
 # akshare + 一次开盘啦请求，而成分股一轮最多约 370 个板块请求 —— 无限回溯的代价
 # 随天数线性膨胀。取最近 5 个交易日（约一周），足够覆盖「周末整天关机」这种情况。
 CATCHUP_LOOKBACK_TRADING_DAYS = 5
+
+# 启动回看「整条基础采集」时，一次最多补几个交易日（2026-10-22 加）。
+# 与上面的 5 天窗口是两件事：**看**最近 5 天，但**补**只补最近 2 天 ——
+# 补一天约 30~50 次 iFinD 调用，一次补 5 天会直接吃掉当月配额的一大截。
+CATCHUP_BACKFILL_MAX_DAYS = 2
+
+# 回看补采写进 `collect_log` 的任务名（既用于展示，也用于「这天只尝试一次」的去重）
+BACKFILL_TASK = "backfill"
 
 # 15:05 主采集拿不到采集锁时的重试（见 `_run_daily`）：会员自选同步 / 个股同步 /
 # 定时采集共用同一把 `collect_guard`，别人正持锁时直接放弃会让「只能当天取」的
@@ -560,7 +570,7 @@ class DailyScheduler:
             logger.debug("集合竞价采样：本次无数据（非交易日 / 不在采样窗口）")
 
     def _run_daily(self, reason: str = "定时采集") -> None:
-        today = date.today()
+        today = today_cn()
         try:
             collector = DailyCollector(self.settings)
         except IfindError as exc:
@@ -705,7 +715,7 @@ class DailyScheduler:
         拿不到锁就跳过：**不会真丢** —— `_catch_up_late` 会回看最近 5 个交易日，
         下一天的这一趟会把它补上。
         """
-        today = date.today()
+        today = today_cn()
         try:
             collector = DailyCollector(self.settings)
         except IfindError as exc:
@@ -766,7 +776,7 @@ class DailyScheduler:
     def _catch_up_late(self, collector: DailyCollector, today: date, reason: str) -> None:
         """把最近几天漏采的「收盘后那一趟」补上（上限 `CATCHUP_LOOKBACK_TRADING_DAYS`）。
 
-        **为什么要有**：`_run_late` 只看 `date.today()`，而本机常年关机、重启跨天，
+        **为什么要有**：`_run_late` 只看 `today_cn()`，而本机常年关机、重启跨天，
         17:30 那一趟一旦错过，龙虎榜 / 机构席位 / 涨停题材当天就**永久缺** ——
         它们的数据源都按日期给、没有「下次自动补回来」的窗口（两融 / 北向有 30 天
         回看，故不在此列，也不做无谓重采）。
@@ -841,6 +851,70 @@ class DailyScheduler:
                 result.get("failed", 0),
             )
 
+    def _catch_up_backfill(self, reason: str = "启动补采（回看）") -> None:
+        """回看最近 `CATCHUP_LOOKBACK_TRADING_DAYS` 个交易日，把整条基础采集漏掉的日子补上。
+
+        `_catch_up` 只补「今天」：进程连停几天时（本机常年关机、服务器故障），中间
+        那些天就永远空着 —— 而指数 / 涨停三池 / 龙虎榜 / 机构席位 / 板块 / 情绪
+        本来都能按日期取（见 `DailyCollector.run_backfill`），不补白不补。
+
+        **三道闸**（2026-10-22 加，都在体检报告的第 5 条里）：
+        1. 一次最多补 `CATCHUP_BACKFILL_MAX_DAYS` 天 —— 补一天要几十次 iFinD 调用；
+        2. 配额到 CORE_ONLY 档就整趟跳过，让路给当天的主线采集；
+        3. 每个日子**只尝试一次**：补完写一条 `backfill` 日志收口。否则那些本来就
+           补不回来的老日子（三池只留 15 个交易日）每次重启都会再烧一遍配额。
+        """
+        if quota_level(self.settings) >= QuotaLevel.CORE_ONLY:
+            logger.info("%s 跳过：配额已到 CORE_ONLY 档，先保证当天采集", reason)
+            return
+        try:
+            collector = DailyCollector(self.settings)
+        except IfindError as exc:
+            logger.warning("%s 跳过：%s", reason, exc)
+            return
+        try:
+            days = _recent_trade_days(today_cn(), CATCHUP_LOOKBACK_TRADING_DAYS)
+        except Exception:  # noqa: BLE001 - 读日历失败不能影响服务启动
+            logger.exception("%s：读交易日历失败", reason)
+            return
+
+        done = 0
+        for day in days:
+            if done >= CATCHUP_BACKFILL_MAX_DAYS:
+                break
+            if _logged_tasks(day, (BACKFILL_TASK,), None):
+                continue  # 这天已经尝试过（成败都算），不再重复烧配额
+            try:
+                if collector.has_collected(day):
+                    continue
+            except Exception:  # noqa: BLE001 - 单天判断失败不该中断其余日子
+                logger.exception("%s：检查 %s 是否采过失败", reason, day)
+                continue
+            try:
+                with collect_guard(f"{reason} {day}"):
+                    result = collector.run_backfill(day)
+            except CollectionBusy as exc:
+                # 锁在别处（当天采集 / 个股同步）：什么都没写，不记日志，下次启动再试
+                logger.warning("%s 跳过 %s：%s", reason, day, exc)
+                continue
+            except Exception:  # noqa: BLE001 - 补历史失败不该中断调度
+                logger.exception("%s：补采 %s 失败", reason, day)
+                continue
+            failed = [
+                name
+                for name, step in result.get("steps", {}).items()
+                if step.get("status") != "ok"
+            ]
+            _record_log(
+                day,
+                BACKFILL_TASK,
+                "partial" if failed else "ok",
+                0,
+                f"回看补采（失败步骤：{'、'.join(failed) or '无'}）",
+            )
+            done += 1
+            logger.info("%s：补采 %s 完成（失败步骤：%s）", reason, day, failed or "无")
+
     def _run_members(self, reason: str = "板块成分股预取") -> None:
         """22:00 那一趟（+ 22:30 兜底）：把当天的**板块成分股**一次性预取进库。
 
@@ -858,7 +932,7 @@ class DailyScheduler:
         本来是**同时**起三个线程的）。采集锁的语义是「整条采集链串行」，这里同样适用。
         拿不到锁就跳过：22:30 那趟兜底会再来，次日回看也会补。
         """
-        today = date.today()
+        today = today_cn()
         try:
             with collect_guard(reason):
                 self._run_members_unguarded(today, reason)
@@ -1529,7 +1603,16 @@ class DailyScheduler:
 
         放后台线程跑，否则会阻塞服务启动好几秒。
         """
-        now = datetime.now()
+        # 回看漏掉的**历史交易日**（2026-10-22 加）：与「今天到点没有」无关 ——
+        # 凌晨部署时下面那个早返回会让它永不执行，而中间停机的那些天才是真缺口。
+        # 它自己带配额让路与「每天只试一次」的闸门，见 `_catch_up_backfill`。
+        threading.Thread(
+            target=self._catch_up_backfill,
+            name="collect-catchup-backfill",
+            daemon=True,
+        ).start()
+
+        now = now_cn()
         if (now.hour, now.minute) < (
             self.settings.collect_hour,
             self.settings.collect_minute,

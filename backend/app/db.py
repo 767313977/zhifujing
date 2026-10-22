@@ -82,18 +82,17 @@ def _add_missing_columns(base) -> list[str]:
                     # 非空列（如 `Mapped[datetime]`）—— 造出与模型矛盾的 NULL 行，比跳过更糟。
                     # 走到这里的两种情形：① 列根本没默认值；② 默认值是 `default=_now` 这类
                     # **可调用**对象 —— SQLite 的 DEFAULT 只收**常量**，函数默认值写不进去。
-                    # 都跳过并告警，让启动继续，留人工迁移。
-                    # ⚠️ 用 **error** 级别（2026-10-12 从 warning 升上来）：这是「启动时会
-                    # 静默跳过、运行期一读该列就 500」的隐患，被淹没在普通告警里最难发现。
-                    # 不直接 fail-fast 是有意的 —— 一个漏迁移的列不该把整个服务拦在门外。
-                    logger.error(
-                        "表 %s 新增了非空列 %s，但没有可用的常量默认值（SQLite 的 "
-                        "ADD COLUMN 只接受常量 DEFAULT，`default=_now` 这类函数默认值不行），"
-                        "**该列未创建**，读它的接口会报错，需要手工迁移",
-                        table.name,
-                        column.name,
+                    # ⚠️ **抛异常阻止启动**（2026-10-22 从「记 error 日志后跳过」改）：
+                    # 跳过的后果是服务照常起来、读该列的接口一调就 500，而且要等到有人
+                    # 点开那个页面才发现；启动失败虽然难看，但一眼就知道「库缺列、先迁移」。
+                    # 宁可服务起不来，也不要带着缺列的库跑一天。
+                    message = (
+                        f"表 {table.name} 新增了非空列 {column.name}，但没有可用的常量默认值"
+                        "（SQLite 的 ADD COLUMN 只接受常量 DEFAULT，`default=_now` 这类函数"
+                        "默认值不行），需要手工迁移后再启动"
                     )
-                    continue
+                    logger.error(message)
+                    raise RuntimeError(message)
                 column_type = column.type.compile(engine.dialect)
                 # 有可用常量默认值时**显式带上 DEFAULT**：不带的话老行一律是 NULL
                 #（对非空列不可接受，对可空列也会让「缺省值」语义丢失）。2026-10-10 修。

@@ -49,6 +49,7 @@ from app.models import CollectLog, LimitPool, StockDaily, StockUniverse, TradeCa
 from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.ifind import IfindClient, IfindError
 from app.sources.markdown_table import pick_float, pick_text
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -491,7 +492,7 @@ class KlineCollector:
         with session_scope() as session:
             found = session.scalar(
                 select(TradeCalendar.trade_date)
-                .where(TradeCalendar.trade_date <= date.today())
+                .where(TradeCalendar.trade_date <= today_cn())
                 .order_by(TradeCalendar.trade_date.desc())
                 .limit(1)
             )
@@ -536,7 +537,7 @@ class KlineCollector:
             dates = list(
                 session.scalars(
                     select(TradeCalendar.trade_date)
-                    .where(TradeCalendar.trade_date <= date.today())
+                    .where(TradeCalendar.trade_date <= today_cn())
                     .order_by(TradeCalendar.trade_date.desc())
                 )
             )

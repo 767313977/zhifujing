@@ -23,6 +23,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from app.config import Settings, get_settings
 from app.db import session_scope
 from app.models import IfindUsage, TradeCalendar
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +165,7 @@ def record_call(server: str, tool: str, day: date | None = None) -> None:
     同时写同一行，后者会丢计数 —— 而丢计数会让配额守卫**低估**用量，
     低估恰恰是危险的那个方向。
     """
-    target = day or date.today()
+    target = day or today_cn()
     try:
         with session_scope() as session:
             session.execute(
@@ -259,7 +260,7 @@ def cycle_trade_days(day: date, start: date, end: date) -> tuple[int, int]:
 def quota_status(day: date | None = None, settings: Settings | None = None) -> dict:
     """当前计量周期的完整视图，供「数据管理」页与配额守卫共用。"""
     settings = settings or get_settings()
-    today = day or date.today()
+    today = day or today_cn()
     start = cycle_start(today, settings.ifind_cycle_start_day)
     end = cycle_end(start, settings.ifind_cycle_start_day)
     quota = settings.ifind_monthly_quota

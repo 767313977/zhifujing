@@ -70,6 +70,7 @@ from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.em_news import fetch_stock_news
 from app.sources.ifind import IfindError, normalize_code
 from app.sources.kaipanhong import TAXONOMY_SELECTED
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -595,14 +596,14 @@ def _expected_latest(session: Session) -> date | None:
     days = list(
         session.scalars(
             select(TradeCalendar.trade_date)
-            .where(TradeCalendar.trade_date <= date.today())
+            .where(TradeCalendar.trade_date <= today_cn())
             .order_by(TradeCalendar.trade_date.desc())
             .limit(2)
         )
     )
     if not days:
         return None
-    if days[0] == date.today() and datetime.now().time() < CLOSE_READY:
+    if days[0] == today_cn() and datetime.now().time() < CLOSE_READY:
         return days[1] if len(days) > 1 else None
     return days[0]
 

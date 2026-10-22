@@ -154,6 +154,16 @@ class SectorCollector:
         概念被开盘红下线了）。代价是必须通过下面的完整性闸门。
         """
         baseline = known if known is not None else self.known_counts()
+        if not any(baseline.values()):
+            # 完整性闸门的基准就是 `sector_basic` 里的板块数：它空着时 expected=0，
+            # 下面的截断判断整段失效 —— 「翻页被截断」的残缺快照会被当成完整快照
+            # 写进去（2026-10-22 体检）。先试着自己刷新一次；还是空就报错，不静默放过。
+            logger.warning("板块清单（sector_basic）为空，先按 %s 刷新一次", trade_date)
+            baseline = self.refresh_sector_list(trade_date)
+        if not any(baseline.values()):
+            raise RuntimeError(
+                "板块清单（sector_basic）为空，完整性闸门没有基准，拒绝写入可能残缺的板块快照"
+            )
         written = 0
         truncated: list[str] = []
         for taxonomy in TAXONOMIES:

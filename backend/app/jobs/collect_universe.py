@@ -37,6 +37,7 @@ from app.db import session_scope, upsert_many
 from app.models import StockBasic, StockUniverse
 from app.sources.ifind import IfindClient, IfindError, from_ths_symbol
 from app.sources.markdown_table import pick_float, pick_text
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +169,7 @@ class UniverseCollector:
 
     def is_stale(self, today: date | None = None) -> bool:
         """池子是否需要重建：没建过，或上次重建超过 `REBUILD_INTERVAL_DAYS` 天。"""
-        today = today or date.today()
+        today = today or today_cn()
         with session_scope() as session:
             latest = session.scalar(select(func.max(StockUniverse.updated_at)))
             size = session.scalar(select(func.count()).select_from(StockUniverse)) or 0
@@ -178,7 +179,7 @@ class UniverseCollector:
 
     def collect(self, today: date | None = None, *, force: bool = False) -> dict:
         """拉全市场 → 过门槛 → 整表替换。池子没过期就什么都不做。"""
-        today = today or date.today()
+        today = today or today_cn()
         if not force and not self.is_stale(today):
             with session_scope() as session:
                 size = session.scalar(select(func.count()).select_from(StockUniverse)) or 0

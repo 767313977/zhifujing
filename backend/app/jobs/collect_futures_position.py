@@ -21,6 +21,7 @@ from app.config import Settings, get_settings
 from app.db import session_scope, upsert_many
 from app.models import FuturesPosition, TradeCalendar
 from app.sources.akshare_source import _call_bounded
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ def parse(day: date, tables: dict) -> list[dict]:
 def collect(day: date | None = None, settings: Settings | None = None) -> int:
     """采一个交易日的期指持仓，返回写入的品种数。"""
     settings = settings or get_settings()
-    target = day or date.today()
+    target = day or today_cn()
     if not _is_trade_day(target):
         logger.info("%s 不是交易日，跳过期指持仓", target)
         return 0

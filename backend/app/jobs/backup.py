@@ -15,12 +15,13 @@
 import logging
 import shutil
 import sqlite3
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 from app.config import Settings, get_settings
 from app.db import session_scope
 from app.models import CollectLog
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ def _record(status: str, message: str) -> None:
     with session_scope() as session:
         session.add(
             CollectLog(
-                trade_date=date.today(),
+                trade_date=today_cn(),
                 task=TASK,
                 status=status,
                 message=message,

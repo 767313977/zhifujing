@@ -32,6 +32,8 @@ import os
 import time
 from datetime import date, timedelta
 
+from app.timeutil import today_cn
+
 logger = logging.getLogger(__name__)
 
 # ---- 日线（push2his）----
@@ -117,7 +119,7 @@ def fetch_daily(code: str, *, days: int) -> list[dict]:
     import requests
 
     clear_proxies()
-    end = date.today()
+    end = today_cn()
     beg = (end - timedelta(days=int(days * 1.5) + 5)).strftime("%Y%m%d")
     end_text = end.strftime("%Y%m%d")
 

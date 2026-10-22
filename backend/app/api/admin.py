@@ -39,6 +39,7 @@ from app.services import auth
 from app.services.auth import require_admin
 from app.services.usage import quota_status
 from app.sources.ifind import IfindError
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +190,7 @@ def backfill(
     # `start=2000-01-01` 会一口气烧掉整月配额，而且全程占着采集锁
     if end is not None and end < start:
         raise HTTPException(status_code=400, detail="结束日期不能早于起始日期")
-    if (end or date.today()) - start > timedelta(days=60):
+    if (end or today_cn()) - start > timedelta(days=60):
         raise HTTPException(
             status_code=400, detail="一次最多回补 60 天，请分段执行"
         )

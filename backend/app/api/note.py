@@ -14,6 +14,7 @@ from app.db import get_db
 from app.models import AppUser, ReviewNote
 from app.schemas import NoteIn, NoteOut
 from app.services.auth import current_user
+from app.timeutil import today_cn
 
 router = APIRouter(prefix="/api/note", tags=["复盘笔记"])
 
@@ -31,7 +32,7 @@ def _check_date(trade_date: date) -> None:
     不卡范围的话，一个登录用户能把 `0001-01-01` 到 `9999-12-31` 每天都写一条、
     每条最多 4 万字 ×2 段 —— 光靠一个人就能把库刷满（路径参数 `date` 本身不设界）。
     """
-    latest = date.today() + timedelta(days=NOTE_FUTURE_DAYS)
+    latest = today_cn() + timedelta(days=NOTE_FUTURE_DAYS)
     if trade_date < NOTE_MIN_DATE or trade_date > latest:
         raise HTTPException(
             status_code=400,

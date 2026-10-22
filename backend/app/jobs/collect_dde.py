@@ -31,6 +31,7 @@ from app.models import PatternHit, StockDde, TradeCalendar
 from app.services.patterns import PATTERNS
 from app.sources.ifind import get_shared_client, normalize_code
 from app.sources.markdown_table import pick_float, pick_text
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +146,7 @@ def _store(
     # ② **今天还没收盘**：盘中拿到的是瞬时快照，见 `CLOSE_READY`。
     start = min(item["trade_date"] for item in parsed)
     end = max(item["trade_date"] for item in parsed)
-    today = date.today()
+    today = today_cn()
     before_close = datetime.now().time() < CLOSE_READY
     with session_scope() as session:
         trade_days = set(
@@ -244,7 +245,7 @@ def recent_trade_days(days: int, *, until: date | None = None) -> list[date]:
         rows = list(
             session.scalars(
                 select(TradeCalendar.trade_date)
-                .where(TradeCalendar.trade_date <= (until or date.today()))
+                .where(TradeCalendar.trade_date <= (until or today_cn()))
                 .order_by(TradeCalendar.trade_date.desc())
                 .limit(days)
             )

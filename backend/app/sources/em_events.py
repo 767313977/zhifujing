@@ -15,6 +15,7 @@ from datetime import date, timedelta
 
 from app.config import get_settings
 from app.sources.akshare_source import _call_bounded
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ def fetch_notices(
     """
     import akshare as ak
 
-    end = today or date.today()
+    end = today or today_cn()
     begin = end - timedelta(days=max(1, days))
     df = _call_bounded(
         lambda: ak.stock_individual_notice_report(
@@ -211,7 +212,7 @@ def fetch_unlocks(
     if df is None or getattr(df, "empty", True):
         return []
 
-    floor = (today or date.today()).isoformat()
+    floor = (today or today_cn()).isoformat()
     rows = [
         UnlockItem(
             unlock_date=_day(rec.get("解禁时间")),

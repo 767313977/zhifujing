@@ -101,6 +101,7 @@ from app.services.pattern_track import POOL_KEYS
 # （个股页的阶段判定也用它，两处口径必须一份）。
 from app.services.stock_phase import trim_contiguous_tail
 from app.sources.ifind import IfindAuthError, IfindError, IfindQuotaExhausted
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -555,7 +556,7 @@ def _sync_stock_tencent(code: str, *, days: int = _WUDAO_SYNC_DAYS) -> int:
     —— 本地补多年历史（`scripts/backfill_history.py`）用的是同一个函数。
     这一段只负责查名字与写库，口径只能有一份。
     """
-    end = date.today()
+    end = today_cn()
     # 多留两周：前复权序列的**第一行**没有前值、算不出涨跌幅，那一行会被丢掉，
     # 多取的这段保证丢完之后仍在 `days` 个交易日以上
     start = end - timedelta(days=int(days * 1.5) + 14)
@@ -1072,7 +1073,7 @@ def _latest_trade_date() -> date:
     with session_scope() as session:
         found = session.scalar(
             select(TradeCalendar.trade_date)
-            .where(TradeCalendar.trade_date <= date.today())
+            .where(TradeCalendar.trade_date <= today_cn())
             .order_by(TradeCalendar.trade_date.desc())
             .limit(1)
         )

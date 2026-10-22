@@ -63,6 +63,7 @@ from app.schemas import (
     SectorSeries,
 )
 from app.sources.kaipanhong import TAXONOMY_INDUSTRY, TAXONOMY_SELECTED
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +129,7 @@ def _recent_fetch_window(session: Session) -> date | None:
     days = list(
         session.scalars(
             select(TradeCalendar.trade_date)
-            .where(TradeCalendar.trade_date <= date.today())
+            .where(TradeCalendar.trade_date <= today_cn())
             .order_by(TradeCalendar.trade_date.desc())
             .limit(MEMBERS_LOOKBACK_DAYS)
         )

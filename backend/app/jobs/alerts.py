@@ -15,6 +15,7 @@ from app.config import Settings, get_settings
 from app.db import session_scope
 from app.models import CollectLog, TradeCalendar
 from app.services.usage import QuotaLevel, quota_status
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ def _record(day: date, status: str, message: str) -> None:
 def check(day: date | None = None, settings: Settings | None = None) -> dict:
     """检查当天收盘链路；有异常就推一条告警。**不抛异常**。"""
     settings = settings or get_settings()
-    today = day or date.today()
+    today = day or today_cn()
     if not settings.alert_enabled:
         return {"status": "skipped", "reason": "告警已关闭（ALERT_ENABLED=false）"}
     if not settings.feishu_push_enabled:

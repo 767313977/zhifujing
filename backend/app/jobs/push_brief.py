@@ -45,6 +45,7 @@ from app.services.patterns import PATTERN_NAMES
 from app.services.themes import limit_up_themes
 from app.services.usage import QuotaLevel, level_label, quota_level, quota_status
 from app.sources.kaipanhong import TAXONOMY_INDUSTRY, TAXONOMY_SELECTED
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -802,7 +803,7 @@ def push_calibration_reminder(
             "reason": "未配置 FEISHU_WEBHOOK_URL（群机器人）或 FEISHU_TARGET（收件人）",
         }
 
-    target_date = remind_date or date.today()
+    target_date = remind_date or today_cn()
     markdown = build_calibration_reminder(target_date)
     result = send_markdown(markdown, settings)
     status = "ok" if result["ok"] else "failed"

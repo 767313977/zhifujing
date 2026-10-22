@@ -25,7 +25,9 @@
 
 - 数据库是**数据**不是代码，云端每天自己采集生成，更新代码不该碰它；
 - 完整包解压时会用**本机数据库覆盖服务器数据库**，把服务器最新采集的数据
-  退回成本机旧数据（用户、邀请码、笔记、自选股全在里面）—— 那是**不可逆**的；
+  退回成本机旧数据（用户、邀请码、笔记、自选股全在里面）—— 那是**不可逆**的
+  （2026-10-22 起包里存为 `fupan.db.seed`，解压不再直接覆盖；是否采用由
+  `install.sh` 决定，见那里）；
 - 数据库 116 MB 占了包的绝大部分，省掉它之后包只有几百 KB，上传秒完成。
 
 ⚠️ 改默认值的理由就是「默认值会被手滑用上」：以前默认是**带库**，不带库要靠人记得
@@ -259,7 +261,11 @@ def main() -> int:
         if args.with_db:
             snapshot = Path(tmp) / "fupan.db"
             snapshot_db(snapshot)
-            tar.add(snapshot, arcname=f"{ARCHIVE_ROOT}/backend/data/fupan.db")
+            # 打成 `fupan.db.seed` 而**不是** `fupan.db`（2026-10-22）：解压是按路径覆盖的，
+            # 直接叫 fupan.db 就会在 `tar xzf` 那一步静默覆盖线上库（用户/邀请码/笔记/
+            # 自选股，不可逆）。改成 seed 之后解压碰不到线上库，由 install.sh 决定是否
+            # 采用：新机器直接用，已有库先备份并要求 `--force-db` 才覆盖。
+            tar.add(snapshot, arcname=f"{ARCHIVE_ROOT}/backend/data/fupan.db.seed")
             files += 1
 
     size = out.stat().st_size / 1024 / 1024
@@ -269,7 +275,9 @@ def main() -> int:
         for path in skipped:
             print(f"      {path}")
     if args.with_db:
-        print("  ⚠️ 包里**带了数据库** —— 解压会覆盖服务器上的库（用户 / 邀请码 / 笔记 / 自选股）")
+        print("  ⚠️ 包里**带了数据库**（存为 backend/data/fupan.db.seed）：")
+        print("     新机器会直接采用；已有库的机器上 install.sh 会先备份，")
+        print("     并要求 `sudo bash deploy/install.sh --force-db` 才覆盖。")
     else:
         print("（代码包，不含数据库 —— 解压不会覆盖服务器已有的数据）")
     print(f"传到服务器：scp \"{out}\" <用户>@<服务器IP>:~")

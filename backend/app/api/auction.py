@@ -33,6 +33,7 @@ from app.schemas import (
     AuctionRow,
     AuctionSummary,
 )
+from app.timeutil import today_cn
 
 router = APIRouter(prefix="/api", tags=["复盘"])
 
@@ -498,7 +499,7 @@ def auction_list(
     if trade_date is None:
         trade_date = _latest_date(session)
         if trade_date is None:
-            return AuctionListOut(trade_date=date.today(), total=0, shown=0, rows=[])
+            return AuctionListOut(trade_date=today_cn(), total=0, shown=0, rows=[])
 
     # 昨日连板数：当日 9:25 时今日的涨停池还没有，所以「几板」只能取昨日口径
     prev = _prev_trade_date(session, trade_date)
@@ -662,7 +663,7 @@ def auction_boards(
     if trade_date is None:
         trade_date = _latest_date(session)
         if trade_date is None:
-            return AuctionBoardsOut(trade_date=date.today(), items=[])
+            return AuctionBoardsOut(trade_date=today_cn(), items=[])
 
     industries = _industry_by_code(session)
     buckets: dict[str, dict] = {}

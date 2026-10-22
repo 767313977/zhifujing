@@ -54,6 +54,7 @@ from app.jobs.push_brief import already_pushed, send_elements
 from app.models import CollectLog, StockBasic, StockDaily, StockDde, TradeCalendar
 from app.sources.ifind import get_shared_client
 from app.sources.markdown_table import pick_float, pick_text, to_float
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ def _latest_trade_date() -> date | None:
     with session_scope() as session:
         return session.scalar(
             select(TradeCalendar.trade_date)
-            .where(TradeCalendar.trade_date <= date.today())
+            .where(TradeCalendar.trade_date <= today_cn())
             .order_by(TradeCalendar.trade_date.desc())
             .limit(1)
         )

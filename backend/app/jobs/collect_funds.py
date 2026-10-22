@@ -38,6 +38,7 @@ from app.sources.ifind import (
     normalize_code,
 )
 from app.sources.markdown_table import pick_float, pick_text, to_float, to_int
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -593,7 +594,7 @@ def collect_etf(
     `trade_date` 只用来判断「深交所快照是不是早于目标日」，落库日期始终取快照自己的
     日期 —— 深交所只有当前快照，按请求日期写会把昨天的份额标成今天。
     """
-    target = trade_date or date.today()
+    target = trade_date or today_cn()
     try:
         return _collect_etf_exchange(target)
     except etf_exchange.EtfNotReady:

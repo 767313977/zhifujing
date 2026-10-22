@@ -40,6 +40,7 @@ from app.services.usage import QuotaLevel, quota_level
 from app.sources.akshare_source import AkshareSource
 from app.sources.ifind import IfindClient, IfindError, from_ths_symbol, to_ths_symbol
 from app.sources.markdown_table import pick_float, pick_int, pick_text, to_float, to_int
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +221,7 @@ def _require_today(trade_date: date, what: str) -> None:
     若拿它给历史日期取数，会把今天的数据写到历史日期上。这种静默的数据污染
     比直接失败危险得多，所以硬性拦截。
     """
-    if trade_date != date.today():
+    if trade_date != today_cn():
         raise ValueError(
             f"{what} 依赖 iFinD 高频行情接口（仅当日），"
             f"请求日期 {trade_date} 非今日；历史行情需改用 index_data 等日频接口"
@@ -456,7 +457,7 @@ class DailyCollector:
     # ------------------------------------------------------------------ 交易日
 
     def _calendar_head(self) -> date | None:
-        today = date.today()
+        today = today_cn()
         with session_scope() as session:
             return session.scalar(
                 select(TradeCalendar.trade_date)
@@ -480,7 +481,7 @@ class DailyCollector:
           改成「最大日期早于今天就刷新一次」，上游一发布次年日历就能自己补上。
         """
         latest = self._calendar_max()
-        return latest is None or latest < date.today()
+        return latest is None or latest < today_cn()
 
     def latest_trade_date(self) -> date:
         """取不晚于今天的最近交易日。
@@ -631,7 +632,7 @@ class DailyCollector:
             recent = list(
                 session.scalars(
                     select(TradeCalendar.trade_date)
-                    .where(TradeCalendar.trade_date <= date.today())
+                    .where(TradeCalendar.trade_date <= today_cn())
                     .order_by(TradeCalendar.trade_date.desc())
                     .limit(POOL_HISTORY_TRADING_DAYS)
                 )
@@ -1413,6 +1414,52 @@ class DailyCollector:
             )
             steps["hsgt"] = self._step(target, "hsgt", lambda: self.collect_hsgt(target))
         return {"trade_date": target.isoformat(), "steps": steps}
+
+    def run_backfill(self, trade_date: date) -> dict:
+        """补一个**漏采的历史交易日**（启动回看最近 5 个交易日时用）。
+
+        为什么不直接复用 `run()`：它里面有三项**只对当日有效** —— 涨跌家数
+        （乐咕只给当日）、涨跌超 5% 家数、打板效应（都走 `_require_today`，历史日期
+        直接抛 ValueError），于是整个情绪步骤失败、那天又被判成「没采完」，
+        每次重启都重跑一遍。这里只跑**能按日期取数**的步骤：
+
+        - 指数走 `backfill_index`（iFinD `index_data` 日频），**不是** `collect_index`
+          （那个取的是「最新价」）
+        - 涨跌家数 / 涨跌超 5% / 打板效应由 `collect_sentiment(history=True)` 留空
+        - 涨停三池的数据源只保留 `POOL_HISTORY_TRADING_DAYS` 个交易日，更早的日子
+          补不回来（调用方自己限定窗口）
+        """
+        steps: dict[str, dict] = {}
+        # 配额让路：与 `run()` 同一档位判断，紧张时只补复盘主线
+        core_only = quota_level(settings=self.settings) >= QuotaLevel.CORE_ONLY
+        steps["index"] = self._step(
+            trade_date, "index", lambda: self.backfill_index(trade_date, trade_date)
+        )
+        steps["limit_pool"] = self._step(
+            trade_date, "limit_pool", lambda: self.collect_limit_pool(trade_date)
+        )
+        steps["reasons"] = self._step(
+            trade_date, "reasons", lambda: self.collect_reasons(trade_date)
+        )
+        steps["lhb"] = self._step(
+            trade_date, "lhb", lambda: self.collect_lhb(trade_date)
+        )
+        # history=True：涨跌家数 / 涨跌超 5% / 打板效应留空，不写错日期
+        steps["sentiment"] = self._step(
+            trade_date,
+            "sentiment",
+            lambda: self.collect_sentiment(trade_date, history=True),
+        )
+        steps["lhb_institution"] = self._step(
+            trade_date,
+            "lhb_institution",
+            lambda: self.collect_lhb_institution(trade_date),
+        )
+        if not core_only:
+            steps["sectors"] = self._step(
+                trade_date, "sectors", lambda: self.collect_sectors(trade_date)
+            )
+        return {"trade_date": trade_date.isoformat(), "steps": steps}
 
     def run_late(self, trade_date: date | None = None) -> dict:
         """只跑「收盘后才有数据」的那几步（17:30 那一趟）。
