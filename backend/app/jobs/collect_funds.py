@@ -583,6 +583,15 @@ def _collect_etf_exchange(target: date) -> int:
             len(records),
         )
     _heal_etf_quotes(day)
+    if day < target:
+        # 本次补的是**快照日**（前一天）那份，目标日还没有数据（2026-10-22 复查 P1-1 补漏）。
+        # 上面那条 `snap_day < target and complete` 的分支只盖住「昨天已完整」；
+        # 昨天**不完整**时原来会走到这里、把昨天补完并 return 行数 —— 调用方又把今天
+        # 记成 ok，22:35 终局照样跳过今天，于是「每天都晚一天、日志一直绿」。
+        # 数据已经落库（`day` 那天的），这里只负责把今天标成 skipped。
+        raise etf_exchange.EtfNotReady(
+            f"本次补的是 {day} 的快照，{target} 的还没发布"
+        )
     return written
 
 

@@ -30,6 +30,7 @@ from app.jobs.collect_daily import DailyCollector
 from app.models import (
     Base,
     CollectLog,
+    EtfShare,
     IndexDaily,
     LimitPool,
     MarketSentiment,
@@ -185,6 +186,41 @@ def test_etf_current_snapshot_complete_is_ok(monkeypatch):
     _patch_stale_etf(monkeypatch, snap=DAY, complete=True)
 
     assert collect_funds._collect_etf_exchange(DAY) == 1660
+
+
+def test_etf_stale_incomplete_snapshot_writes_then_raises(monkeypatch):
+    """快照停在昨天、昨天还不完整 → 先把昨天补完，**今天仍要记 skipped**。
+
+    （复查 3c02e21 补漏）漏掉这一支的后果：每天补的都是前一天、今天被记成 ok，
+    22:35 终局看到 ok 就跳过 —— 数据永远晚一天，日志却一直是绿的。
+    """
+    engine = _engine()
+    _patch_scope(monkeypatch, collect_funds, engine)
+    monkeypatch.setattr(
+        collect_funds.etf_exchange, "szse_snapshot", lambda: (PREV, 1, 1660)
+    )
+    monkeypatch.setattr(
+        collect_funds, "_etf_snapshot_complete", lambda session, day: (0, False)
+    )
+    monkeypatch.setattr(collect_funds, "_etf_quotes", lambda day: {})
+    monkeypatch.setattr(collect_funds, "_heal_etf_quotes", lambda day, limit=2: None)
+    monkeypatch.setattr(collect_funds, "ETF_EXCHANGE_MIN_ROWS", 1)
+    monkeypatch.setattr(
+        collect_funds.etf_exchange,
+        "fetch_shares",
+        lambda day: [
+            {"trade_date": PREV, "code": "510300", "name": "沪深300ETF", "shares": 1.0},
+            {"trade_date": PREV, "code": "159915", "name": "创业板ETF", "shares": 2.0},
+        ],
+    )
+
+    with pytest.raises(collect_funds.EtfNotReady) as exc:
+        collect_funds._collect_etf_exchange(DAY)
+
+    assert PREV.isoformat() in str(exc.value)
+    assert DAY.isoformat() in str(exc.value)
+    # 昨天那份照样落库 —— 抛错只改「今天」的状态标记，不影响已取到的数据
+    assert _count(engine, EtfShare) == 2
 
 
 # ------------------------------------------------- #2 三池纳入完成判据（skipped→非 failed）
