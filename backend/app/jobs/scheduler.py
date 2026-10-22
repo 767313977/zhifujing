@@ -50,6 +50,10 @@ LATE_JOB_ID = "collect_late"
 # 同一趟的**兜底重跑**（见 config.late_retry_hour）：这些来源当天什么时候更新不在我们
 # 手上，问早了又**不报错、只给前一天的**，所以固定跑两趟，赌错的那天还有第二次机会。
 LATE_RETRY_JOB_ID = "collect_late_retry"
+# 晚间链的**终局收尾**（见 config.late_final_hour）：上交所 ETF 份额 22:15 前后才发布，
+# 而上面两趟都在 19:30 之前 —— 不加这一趟，ETF 当天能不能落库就取决于「那晚有没有部署」。
+# 它传 `skip_done=True`：当天已 ok 的步骤全跳过，成本接近 0。
+LATE_FINAL_JOB_ID = "collect_late_final"
 # 当天板块成分股的预取（见 config.members_collect_hour）：开盘红要到晚上才发布当天
 # 成分股，所以这一趟比「收盘后」那两趟都晚。
 MEMBERS_JOB_ID = "prefetch_members"
@@ -240,6 +244,20 @@ def _mark_tail(day: date, reason: str, failures: list[str] | None = None) -> Non
         logger.warning("写尾部链路记录失败，下次重启可能重跑一遍", exc_info=True)
 
 
+def _split_step_statuses(steps: dict[str, dict]) -> tuple[list[str], list[str]]:
+    """把一次采集结果里的步骤分成「失败」与「跳过」两组名字。
+
+    `skipped` **不是失败**（2026-10-22 体检）：`run_late(skip_done=True)` 下已经采过的
+    步骤、以及「上游还没发布」的步骤都会返回 skipped。原来补采路径用
+    `status != "ok"` 算「本次失败」，于是重启多的日子日志里会刷出
+    「失败 ['lhb','themes','etf']」这种与事实相反的行（`_run_late_unguarded` 早已改成
+    只认 failed，这里把两处统一到同一个 helper）。
+    """
+    failed = [name for name, step in steps.items() if step.get("status") == "failed"]
+    skipped = [name for name, step in steps.items() if step.get("status") == "skipped"]
+    return failed, skipped
+
+
 class DailyScheduler:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
@@ -314,6 +332,27 @@ class DailyScheduler:
                 misfire_grace_time=3600,
                 coalesce=True,
             )
+        # 第三趟：**终局收尾**，只补还缺的步骤（`skip_done=True`）。
+        # 上交所 ETF 份额 22:15 前后发布，前两趟（17:30 / 19:30）必然拿到 skipped；
+        # 不加这一趟，ETF 当天能否落库完全取决于当晚有没有部署重启 —— 线上 10-15、
+        # 10-20 就是这么缺的（`etf_share` 0 行），而 10-19、10-21 有数据只是因为
+        # 那两晚恰好有部署。详见 `config.late_final_hour`。
+        scheduler.add_job(
+            self._run_late,
+            CronTrigger(
+                day_of_week="mon-fri",
+                hour=self.settings.late_final_hour,
+                minute=self.settings.late_final_minute,
+                timezone=TIMEZONE,
+            ),
+            kwargs={"reason": "收盘后数据补采（终局）", "skip_done": True},
+            id=LATE_FINAL_JOB_ID,
+            name="收盘后数据补采（终局）",
+            replace_existing=True,
+            # 这是「最后一班车」，晚到多久都该跑（比如机器 22:50 才唤醒）
+            misfire_grace_time=3600,
+            coalesce=True,
+        )
         # 当天板块成分股预取（见 config.members_collect_hour）：开盘红要到晚上才发布
         # 当天成分股，所以它比上面那两趟都晚 —— 不是为了「早」，而是为了「发布之后立刻
         # 取一遍」，让之后打开任何板块都是读库。
@@ -430,7 +469,8 @@ class DailyScheduler:
                 coalesce=True,
             )
         logger.info(
-            "定时采集已启动：交易日 %02d:%02d（收盘后补采 %02d:%02d / 兜底 %02d:%02d，"
+            "定时采集已启动：交易日 %02d:%02d（收盘后补采 %02d:%02d / 兜底 %02d:%02d / "
+            "终局 %02d:%02d，"
             "成分股预取 %02d:%02d / 兜底 %02d:%02d；集合竞价 09:15–09:26 每分钟 + 09:31 补量比；"
             "告警 %02d:%02d；盘中B1 %02d:%02d；备份 %02d:%02d）",
             self.settings.collect_hour,
@@ -439,6 +479,8 @@ class DailyScheduler:
             self.settings.late_collect_minute,
             self.settings.late_retry_hour,
             self.settings.late_retry_minute,
+            self.settings.late_final_hour,
+            self.settings.late_final_minute,
             self.settings.members_collect_hour,
             self.settings.members_collect_minute,
             self.settings.members_retry_hour,
@@ -470,7 +512,7 @@ class DailyScheduler:
         # 写较早的那个才不会被误读成「17:30 不跑了」
         late_nexts = [
             getattr(self._scheduler.get_job(job_id), "next_run_time", None)
-            for job_id in (LATE_JOB_ID, LATE_RETRY_JOB_ID)
+            for job_id in (LATE_JOB_ID, LATE_RETRY_JOB_ID, LATE_FINAL_JOB_ID)
             if self._scheduler
         ]
         late_nexts = [value for value in late_nexts if value is not None]
@@ -486,10 +528,14 @@ class DailyScheduler:
             "late_collect_time": (
                 f"{self.settings.late_collect_hour:02d}:{self.settings.late_collect_minute:02d}"
             ),
-            # 同一趟的兜底时刻（见 config.late_retry_hour）。`late_next_run_time` 是这两个
-            # 时刻里**较早**的那个 —— 两个触发挂在同一个 job 上，apscheduler 自己取最早
+            # 同一趟的兜底时刻（见 config.late_retry_hour）。`late_next_run_time` 是这几个
+            # 时刻里**较早**的那个 —— 三个触发挂在同一个 job 上，apscheduler 自己取最早
             "late_retry_time": (
                 f"{self.settings.late_retry_hour:02d}:{self.settings.late_retry_minute:02d}"
+            ),
+            # 终局收尾（见 config.late_final_hour）：只补还缺的步骤，主要等上交所 ETF 份额
+            "late_final_time": (
+                f"{self.settings.late_final_hour:02d}:{self.settings.late_final_minute:02d}"
             ),
             # 当天板块成分股的预取时刻（见 config.members_collect_hour）
             "members_collect_time": (
@@ -532,14 +578,26 @@ class DailyScheduler:
             logger.exception("收盘链路告警检查失败")
 
     def _run_b1_intraday(self) -> None:
-        """知行B1 盘中预览。失败只记日志（14:50 只有一次机会，但不该带崩调度器）。"""
+        """知行B1 盘中预览。失败只记日志（14:50 只有一次机会，但不该带崩调度器）。
+
+        ⚠️ **必须进采集锁**（2026-10-22 体检）：这一步要 13 次 iFinD 选股调用，而它
+        原先既没拿锁、又用了一个新建的 `IfindClient`（独立令牌桶）—— 用户此刻触发的
+        个股同步 / 自选同步 / 个股 DDE 都持着锁在打 iFinD，两边并发等于实际 QPS 翻倍，
+        直接把 iFinD 打到 429。拿不到锁就跳过：14:50 这一趟错过就当天没有预览，
+        宁可如此也不和主采集抢（数据源层已改成共享客户端，见 `intraday_b1._fetch_snapshot`）。
+        """
         from app.jobs.intraday_b1 import run as run_intraday
 
         try:
-            result = run_intraday(settings=self.settings)
-            logger.info("知行B1 盘中预览：%s", result)
+            with collect_guard("B1盘中预览"):
+                result = run_intraday(settings=self.settings)
+        except CollectionBusy as exc:
+            logger.warning("知行B1 盘中预览跳过（%s）：已有采集任务在跑", exc)
+            return
         except Exception:  # noqa: BLE001 - 见上
             logger.exception("知行B1 盘中预览失败")
+            return
+        logger.info("知行B1 盘中预览：%s", result)
 
     def _run_auction(self) -> None:
         """跑一次集合竞价采样（见 `jobs/collect_auction.py`）。
@@ -649,10 +707,14 @@ class DailyScheduler:
 
             self._last_run = datetime.now()
             self._last_result = result
+            # ⚠️ 只把 `failed` 当失败（2026-10-22 体检）：`lhb` 在 15:05 空返回现在
+            # 记 `partial`（东财还没发布，晚间那趟会重采），那是**预期**；用 `!= "ok"`
+            # 会让每天 15:05 都刷一条「部分步骤失败」的假告警。单步真失败由 `_step`
+            # 记 `failed`，这条判据仍然抓得到。
             failed = [
                 name
                 for name, step in result.get("steps", {}).items()
-                if step.get("status") != "ok"
+                if step.get("status") == "failed"
             ]
             if failed:
                 logger.warning("%s 完成但部分步骤失败：%s", reason, failed)
@@ -679,9 +741,15 @@ class DailyScheduler:
         # `POST /api/admin/collect`，那个接口 2026-09-28 已删 —— 现在并发的来源只有
         # cron 与启动补采两条路，都走这个入口。）
         # 拿不到锁就跳过且**不写标记**（尾巴确实没跑完），下次触发还会再试。
+        #
+        # `allow_push`：基础采集没采全时**只跳推送、日线/派生步骤照跑**（2026-10-22
+        # 体检）。否则基础数据缺的那天也会把一份残缺简报推出去并记 ok —— 而
+        # `already_pushed` 只认 ok，之后即便补回数据也永远不重发（见 `_run_tail`）。
         try:
             with collect_guard(f"{reason} 尾部"):
-                self._run_tail(today, reason)
+                self._run_tail(
+                    today, reason, allow_push=collector.has_collected(today)
+                )
         except CollectionBusy as exc:
             logger.warning("%s：尾部链路跳过（%s）", reason, exc)
 
@@ -736,9 +804,7 @@ class DailyScheduler:
         # `skipped` 不算失败：它要么是「上游还没发布」（ETF 22:15 才有）、要么是
         # 「当天已采过」（`skip_done`）。原来把 skipped 也当失败报，重启多的日子
         # 会刷出一堆假的「部分步骤失败」。
-        steps = result.get("steps", {})
-        failed = [name for name, step in steps.items() if step.get("status") == "failed"]
-        skipped = [name for name, step in steps.items() if step.get("status") == "skipped"]
+        failed, skipped = _split_step_statuses(result.get("steps", {}))
         if skipped:
             logger.info("%s：跳过 %s（当天已采过 / 上游未发布）", reason, skipped)
         if failed:
@@ -788,16 +854,16 @@ class DailyScheduler:
             except Exception:  # noqa: BLE001 - 补历史失败不该中断调度
                 logger.exception("%s：回看补采 %s 的收盘后数据失败", reason, day)
                 continue
-            failed = [
-                name
-                for name, step in result.get("steps", {}).items()
-                if step.get("status") != "ok"
-            ]
+            # `skipped` 不是失败（`skip_done=True` 下「已采过」就是 skipped）——
+            # 与 `_run_late_unguarded` 用同一个 helper，免得日志里出现与事实相反的
+            # 「本次失败 ['lhb','themes',...]」（2026-10-22 体检）。
+            failed, skipped = _split_step_statuses(result.get("steps", {}))
             logger.info(
-                "%s：回看补采 %s 的收盘后数据（本次失败 %s）",
+                "%s：回看补采 %s 的收盘后数据（本次失败 %s；跳过 %s）",
                 reason,
                 day,
                 failed or "无",
+                skipped or "无",
             )
 
     def _catch_up_members(self, today: date, reason: str) -> None:
@@ -862,6 +928,12 @@ class DailyScheduler:
         2. 配额到 CORE_ONLY 档就整趟跳过，让路给当天的主线采集；
         3. 每个日子**只尝试一次**：补完写一条 `backfill` 日志收口。否则那些本来就
            补不回来的老日子（三池只留 15 个交易日）每次重启都会再烧一遍配额。
+
+        ⚠️ 第 3 条只对**成功**的日子收口（2026-10-22 体检）：有失败步骤时**不写**
+        `backfill` 标记，下次启动再试。原来无论成败都写一条，于是 `backfill_index`
+        静默空返回（`_step` 记 ok rows=0）那天被封口后再也不重试；反过来，真失败
+        那天也被封口 —— 两种情况都让「日志绿色 + 数据永久缺」成立。重试成本由
+        上面两道闸（2 天/次 + CORE_ONLY 跳过）兜住。
         """
         for thread in wait_for or []:
             if thread.is_alive():
@@ -881,12 +953,12 @@ class DailyScheduler:
             logger.exception("%s：读交易日历失败", reason)
             return
 
-        done = 0
+        attempted = 0
         for day in days:
-            if done >= CATCHUP_BACKFILL_MAX_DAYS:
+            if attempted >= CATCHUP_BACKFILL_MAX_DAYS:
                 break
             if _logged_tasks(day, (BACKFILL_TASK,), None):
-                continue  # 这天已经尝试过（成败都算），不再重复烧配额
+                continue  # 这天已经成功补过，不再重复烧配额
             try:
                 if collector.has_collected(day):
                     continue
@@ -903,20 +975,26 @@ class DailyScheduler:
             except Exception:  # noqa: BLE001 - 补历史失败不该中断调度
                 logger.exception("%s：补采 %s 失败", reason, day)
                 continue
-            failed = [
-                name
-                for name, step in result.get("steps", {}).items()
-                if step.get("status") != "ok"
-            ]
+            attempted += 1
+            failed, skipped = _split_step_statuses(result.get("steps", {}))
+            if failed:
+                # **不写 `backfill` 标记**：写了就再也轮不到这天（见 docstring）。
+                logger.warning(
+                    "%s：补采 %s 有失败步骤 %s（跳过 %s），不写收口标记，下次启动再试",
+                    reason,
+                    day,
+                    failed,
+                    skipped or "无",
+                )
+                continue
             _record_log(
                 day,
                 BACKFILL_TASK,
-                "partial" if failed else "ok",
+                "ok",
                 0,
-                f"回看补采（失败步骤：{'、'.join(failed) or '无'}）",
+                f"回看补采完成（跳过步骤：{'、'.join(skipped) or '无'}）",
             )
-            done += 1
-            logger.info("%s：补采 %s 完成（失败步骤：%s）", reason, day, failed or "无")
+            logger.info("%s：补采 %s 完成（跳过：%s）", reason, day, skipped or "无")
 
     def _run_members(self, reason: str = "板块成分股预取") -> None:
         """22:00 那一趟（+ 22:30 兜底）：把当天的**板块成分股**一次性预取进库。
@@ -1000,10 +1078,19 @@ class DailyScheduler:
             result.get("failed", 0),
         )
 
-    def _run_tail(self, trade_date: date, reason: str) -> None:
+    def _run_tail(
+        self, trade_date: date, reason: str, *, allow_push: bool = True
+    ) -> None:
         """采集之后那一串：日线 → 回补 → 形态 → 简报/推送 → DDE → 板块资金流。
 
         由 `_run_daily` 在**采集锁内**调用（见那里的说明）。
+
+        `allow_push=False` 时**只跳过两步推送**（收盘简报 / 单形态推送），日线、派生
+        读数、形态扫描、DDE、板块资金流照跑（2026-10-22 体检）：基础采集没采全的那天
+        （`has_collected=False`）如果照样推简报，用户收到的是一份缺段的消息，而且
+        `push_brief` 记 `ok`、`already_pushed` 只认 ok —— 之后哪怕数据补回来了也**永远
+        不会重发**。`_run_daily` 用 `collector.has_collected(today)` 决定这个开关；
+        `_run_late_unguarded` 那条补尾部路径本来就带 `has_collected` 守卫，用默认 True。
         """
         today = trade_date
         # 每次运行先清空失败清单：各步在 except 分支里往这里登记步骤名，末尾据此
@@ -1038,9 +1125,17 @@ class DailyScheduler:
         # 排在形态扫描之后 —— 要先有命中才谈得上「前 50 只」。走免费源为主、
         # 常态零 iFinD 配额，所以**不像 DDE 那一步需要按配额让路**。
         self._backfill_hit_kline(today)
-        self._push_brief(today)
-        # 单独推送的形态：加新形态就在 `PUSH_PATTERNS` 里登记，然后在这里补一行
-        self._push_pattern("limit_surge_flat", today)
+        if allow_push:
+            self._push_brief(today)
+            # 单独推送的形态：加新形态就在 `PUSH_PATTERNS` 里登记，然后在这里补一行
+            self._push_pattern("limit_surge_flat", today)
+        else:
+            # 基础采集没采全：推送出去只会是一份缺段的消息，且 ok 之后不会再重发。
+            # 日线/派生步骤已经照跑，等数据补齐（重启补采 / 次日回看）后再推。
+            logger.warning(
+                "%s：基础采集未完成（has_collected=False），本次跳过收盘简报与形态推送",
+                today,
+            )
         # 命中前 N 只的 DDE 补齐**排在 DDE 扫描之前**（2026-10-10 用户要求「每天先补齐
         # 命中列表前 50 只」）：这两步都吃 iFinD 配额、共用同一道让路阈值，而「命中前 50 只」
         # 才是当天真正要看的票 —— 先把它补上，配额万一被吃掉时牺牲的是全市场扫描（增强项），

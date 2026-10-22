@@ -133,6 +133,16 @@ STOCK_DAILY_DAYS = 10
 RUN_STEP_TASKS = (
     "index",
     "limit_pool",
+    # 三池的**分池**任务也要算进来（2026-10-22 体检）：`collect_limit_pool` 只在
+    # 涨停池失败或三池全败时抛错，跌停池 / 炸板池单池失败被吞成 `pool_down failed`
+    # 日志、而 `limit_pool` 这一步仍是 ok —— 于是 `has_collected` 判「已采完」，
+    # 这天再也不会重试，跌停 / 炸板家数就永久缺（来源只留 15 个交易日，过窗口连
+    # 手工回补都取不回来）。把它们并进判据后：最新一条是 failed → 判没采完 → 重跑。
+    # ⚠️ 超期 `skipped`（超出 15 个交易日窗口）**不是** failed，绝不能把它算进来
+    # —— 否则历史日每天重启都会重跑整套 `run()`，反而更烧配额。
+    "pool_up",
+    "pool_down",
+    "pool_broken",
     "reasons",
     "lhb",
     "sentiment",
@@ -718,7 +728,19 @@ class DailyCollector:
         return written
 
     def collect_lhb(self, trade_date: date) -> int:
+        """龙虎榜（akshare 东财）。**0 行不能记 ok**，见下面那段。"""
         rows = _lhb_rows(trade_date, self.ak.lhb(trade_date))
+        if not rows:
+            # A 股每个交易日都有龙虎榜（几十~上百行）。0 行只可能是「东财还没发布」
+            # 或来源坏了。记 `ok` 会让 `has_collected` / `_catch_up_late`（只认 ok）
+            # 把「没发布」当成「采完了」，那天就永久缺（2026-10-22 体检）。
+            # 记 `partial`：① 数据管理页看得见；② 不阻塞完成判据（`has_collected`
+            # 只把 failed 当失败，15:05 空是**预期**、不能记 failed 把主链拖着重跑）；
+            # ③ `_catch_up_late` 要求 ok 才算补到，partial 会让它下次启动再试。
+            self._step_status = "partial"
+            self._step_note = (
+                "龙虎榜 0 行（东财该日尚未发布或来源异常），等晚间那趟 / 次日回看重采"
+            )
         with session_scope() as session:
             return upsert(session, Lhb, rows)
 
@@ -1261,6 +1283,14 @@ class DailyCollector:
 
         `index_highfreq_quotes` 只能取当日快照，历史必须走自然语言接口 `index_data`。
         逐指数分别提问：自然语言接口对多主体的解析不如结构化接口稳。
+
+        ⚠️ **问过却一行都没回来时必须抛错**（2026-10-22 体检）：这个自然语言接口对
+        识别不出的主体**静默返回空**，`_index_nl_rows` 又会把非交易日 / 不在日历里的
+        行过滤掉 —— 两者都可能给 0 行。原来只 `logger.warning` 后 `return 0`，于是
+        `_step` 记 `ok rows=0`、启动回补还给这天写一条 `backfill` 标记把它封口，
+        这天就**永不重试**（快照库里有 `index_history ok rows=0` 的实证）。
+        只在**全部指数都没取到任何行**时抛：部分指数有数据仍算成功（0 行可能只是
+        那个主体在这段区间没有数据）。
         """
         end = end or self.latest_trade_date()
         trade_dates = set(self._trade_dates(start, end))
@@ -1281,6 +1311,8 @@ class DailyCollector:
             }
 
         written = 0
+        asked_any = False
+        got_any = False
         for symbol, name in INDEX_NAMES.items():
             rows: list[dict] = []
             asked = False
@@ -1312,6 +1344,7 @@ class DailyCollector:
                         len(missing),
                     )
 
+            asked_any = asked_any or asked
             if not asked:
                 continue
             # 兜一道：自然语言接口给的是**另一套交易所后缀**时要吼一声，否则别名表一漏
@@ -1327,6 +1360,7 @@ class DailyCollector:
                 # iFinD 对识别不出的主体静默丢弃，不校验会以为补全了
                 logger.warning("回补指数 %s 未返回任何数据，请检查主体名称", name)
                 continue
+            got_any = True
 
             fresh = [
                 row for row in rows if (row["trade_date"], row["code"]) not in existing
@@ -1336,6 +1370,11 @@ class DailyCollector:
             with session_scope() as session:
                 written += upsert(session, IndexDaily, fresh)
             logger.info("回补指数 %-8s %d 行", name, len(fresh))
+        if asked_any and not got_any:
+            raise IfindError(
+                f"指数回补 {start}~{end} 问了但一行都没取到（{len(INDEX_NAMES)} 个指数全空返回）"
+                "—— 自然语言接口静默空返回，不能记成功"
+            )
         return written
 
     def backfill(self, start: date, end: date | None = None) -> dict:

@@ -1,15 +1,19 @@
-"""收盘链路告警：20:00 检查「简报没发 / 尾部 partial / 配额让路」。
+"""收盘链路告警：20:00 检查「简报没发 / 尾部 partial / 配额让路 / 基础采集没跑完」。
 
 为什么需要它：这条链路的失败大多**不会让页面报错** —— 简报没发只是少一条消息、
 尾部 partial 只是少几列数据、配额让路只是某些增强项悄悄停掉。2026-10-16 那次
-配额撞墙、当天没有选股结果，就是事后复盘才发现的。这里把这三类状态在晚间
+配额撞墙、当天没有选股结果，就是事后复盘才发现的。这里把这些状态在晚间
 主动推一条飞书，**只推一次**（`collect_log` 的 `alert` 任务去重）。
+
+⚠️ 2026-10-22 体检补上「基础采集未完成」（`collect_daily.RUN_ALWAYS_TASKS`）：
+15:05 那趟基础采集失败后**当天没有任何重试入口**（17:30 那趟只补晚间数据、尾部
+则照样跑），而尾部与简报都可能是 ok —— 20:00 这条告警是唯一能发现它的地方。
 """
 
 import logging
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.config import Settings, get_settings
 from app.db import session_scope
@@ -48,6 +52,28 @@ def _log_statuses(day: date, task: str) -> set[str]:
                 )
             )
         )
+
+
+def _latest_statuses(day: date, tasks: tuple[str, ...]) -> dict[str, str]:
+    """各任务当天**最新**一条日志的状态。
+
+    与 `collect_daily.has_collected` 同口径：某步先 ok、后又重跑失败，真实状态是
+    「没采全」，不能因为历史上有过一条 ok 就判成已完成。
+    """
+    with session_scope() as session:
+        rows = session.execute(
+            select(CollectLog.task, CollectLog.status).where(
+                CollectLog.id.in_(
+                    select(func.max(CollectLog.id))
+                    .where(
+                        CollectLog.trade_date == day,
+                        CollectLog.task.in_(tasks),
+                    )
+                    .group_by(CollectLog.task)
+                )
+            )
+        ).all()
+    return {task: status for task, status in rows}
 
 
 def _latest_backup() -> tuple[date | None, set[str]]:
@@ -106,6 +132,26 @@ def check(day: date | None = None, settings: Settings | None = None) -> dict:
             issues.append(f"尾部链状态异常（{'、'.join(sorted(tail_status))}）")
         else:
             issues.append("尾部链没有运行（当天采集可能没跑完）")
+
+    # 基础采集（`run()` 里**任何配额档位都会跑**的那几步）：15:05 失败后当天没有
+    # 重试入口（晚间那趟只补晚间数据、尾部照样跑），而尾部 / 简报都可能是 ok ——
+    # 这里单独查最新状态，failed 与「整步没日志（采集被中断）」都要报。
+    # 延迟 import：jobs 之间保持「没有模块级互相依赖」，与 `_run_alert` 的写法一致。
+    from app.jobs.collect_daily import RUN_ALWAYS_TASKS
+
+    base = _latest_statuses(today, RUN_ALWAYS_TASKS)
+    base_failed = [task for task in RUN_ALWAYS_TASKS if base.get(task) == "failed"]
+    base_missing = [task for task in RUN_ALWAYS_TASKS if task not in base]
+    if base_failed:
+        issues.append(
+            "基础采集有步骤失败："
+            + "、".join(base_failed)
+            + "（当天不会再重试，需重启服务触发启动补采）"
+        )
+    if base_missing:
+        issues.append(
+            "基础采集有步骤没有日志：" + "、".join(base_missing) + "（那次采集被中断？）"
+        )
 
     quota = quota_status(today, settings)
     level = QuotaLevel(quota["level"])

@@ -50,7 +50,7 @@ from app.services.patterns import (
 )
 from app.services.usage import QuotaLevel, level_label, quota_level
 from app.services.trading_days import is_trade_day
-from app.sources.ifind import IfindClient
+from app.sources.ifind import get_shared_client
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +93,14 @@ def _record(day: date, status: str, message: str) -> None:
 
 
 def _fetch_snapshot(day: date, settings: Settings) -> tuple[dict[str, dict], int]:
-    """拉全市场当天快照，**只返回内存行，不写库**。返回 `({代码: 行}, 调用次数)`。"""
-    client = IfindClient(settings)
+    """拉全市场当天快照，**只返回内存行，不写库**。返回 `({代码: 行}, 调用次数)`。
+
+    ⚠️ 用**进程内共享的** iFinD 客户端（2026-10-22 体检）：原来这里 `IfindClient(settings)`
+    新建一个实例 —— 它自带独立令牌桶、且要重新握手一次 MCP 会话。14:50 这 13 次调用
+    与用户触发的同步 / DDE 现取（都持着 `collect_guard`）并发时，两边各按自己的
+    4 req/s 走，实际 QPS 翻倍 → 直接触发 iFinD 429。共享实例后至少限速是同一把。
+    """
+    client = get_shared_client(settings)
     raw, calls = crawl_prefixes(
         client, lambda prefix: _snapshot_query(prefix, day), f"{day} 盘中"
     )

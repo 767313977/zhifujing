@@ -595,6 +595,17 @@ def collect_etf(
     日期 —— 深交所只有当前快照，按请求日期写会把昨天的份额标成今天。
     """
     target = trade_date or today_cn()
+    # **历史日期绝不回退 iFinD**（2026-10-22 体检）：深交所只有「当前快照」，
+    # 对历史 target 必然 `snap_day > target`，`_collect_etf_exchange` 抛的是
+    # **父类** `EtfSourceError`（不是 `EtfNotReady`），会落进下面那个 blanket
+    # `except Exception` → `_collect_etf_ifind` 白烧约 59 次 iFinD 调用；更糟的是
+    # 那条路按同花顺「最新-交易日」落库，目标历史日**仍旧缺** —— 钱花了、活没干。
+    # 语义按「这个日期交易所源没有快照」处理（EtfNotReady → 调用方记 skipped）。
+    if target < today_cn():
+        raise etf_exchange.EtfNotReady(
+            f"目标日 {target} 早于深交所当前快照日（{today_cn()}）：交易所源没有历史日"
+            "快照，本次跳过（不回退 iFinD，避免白烧约 59 次调用）"
+        )
     try:
         return _collect_etf_exchange(target)
     except etf_exchange.EtfNotReady:

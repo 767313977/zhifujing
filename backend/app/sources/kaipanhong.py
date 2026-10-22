@@ -26,6 +26,7 @@ import requests
 
 from app.config import Settings, get_settings
 from app.sources.base import TokenBucket, retry_call
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -175,8 +176,15 @@ class KaipanhongSource:
         self._bucket = TokenBucket(self.settings.kph_rate_limit)
 
     def _post(self, trade_date: date, params: dict, description: str) -> dict:
-        """POST 一次。按日期自动选实时/历史域名，并把 errcode 当异常抛出。"""
-        host = HOST_REALTIME if trade_date == date.today() else HOST_HISTORY
+        """POST 一次。按日期自动选实时/历史域名，并把 errcode 当异常抛出。
+
+        ⚠️ 「今天」必须用 `today_cn()`（2026-10-22 体检）：原来是 `date.today()`，
+        取的是**进程本地时区**的日期。云端 systemd 虽然钉了 `TZ=Asia/Shanghai`，
+        但手工脚本 / 容器 / 换机没跑 timedatectl 时，北京 00:00–08:00 段会把「今天」
+        判成「昨天」→ 采当天走**历史域名**（天梯 Date 对不上、板块排行可能是空/旧的）。
+        全项目口径见 `app/timeutil.py`。
+        """
+        host = HOST_REALTIME if trade_date == today_cn() else HOST_HISTORY
         body = {**_BASE_PARAMS, "Date": trade_date.isoformat(), **params}
 
         def _do() -> dict:

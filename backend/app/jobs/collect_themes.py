@@ -40,10 +40,34 @@ class ThemeCollector:
 
         按日整段替换而不是增量 upsert：板块归属是会变的（同一只票今天归芯片、
         下个月可能归算力），只补不删会留下已经过时的旧行，而本表是「某日快照」语义。
+
+        ⚠️ **0 行不能记成功**（2026-10-22 体检）：A 股每个交易日都有涨停，开盘红
+        天梯空返回只可能是「接口变了 / 反爬 / 该日没数据」。原来这里直接
+        `return 0`，`_step` 记 `ok rows=0`，而 `_catch_up_late` 的补采判据只认 ok
+        （`LATE_TASKS`）—— 那天题材归属就永久缺。所以先用站内涨停池对账：
+        有票还 0 行就抛错（`_step` 记 failed，当天会重试）。
         """
         ladder = self.kph.limit_up_ladder(trade_date)
+        # 对账放在「0 行早退」之前 —— 放在后面的话，真正需要它的那一次永远执行不到。
+        with session_scope() as session:
+            pool_count = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(LimitPool)
+                    .where(
+                        LimitPool.trade_date == trade_date, LimitPool.pool_type == "up"
+                    )
+                )
+                or 0
+            )
         if not ladder:
-            logger.warning("%s 涨停天梯返回 0 行，题材归属记空", trade_date)
+            if pool_count:
+                raise RuntimeError(
+                    f"{trade_date} 涨停天梯 0 行，但站内涨停池有 {pool_count} 只 —— "
+                    "开盘红没返回（接口变了 / 反爬 / 该日无数据），不能记成「没有题材」"
+                )
+            # 站内涨停池也是 0：非交易日或真的一天没有涨停，空才是正常
+            logger.warning("%s 涨停天梯 0 行（涨停池 0 只，属正常空）", trade_date)
             return 0
 
         # ⚠️ **必须是当天的天梯**（2026-09-30 加）：问「今天」走的是实时域名，而开盘红
@@ -62,12 +86,6 @@ class ThemeCollector:
 
         # 与站内涨停池对账。两者来源不同（一个开盘红、一个东财），差几只很正常
         # （ST / 新股 / 北交所的处理口径不同），但差太多说明有一边出问题了。
-        with session_scope() as session:
-            pool_count = session.scalar(
-                select(func.count())
-                .select_from(LimitPool)
-                .where(LimitPool.trade_date == trade_date, LimitPool.pool_type == "up")
-            )
         if pool_count and abs(len(ladder) - pool_count) > max(5, pool_count * 0.15):
             logger.warning(
                 "%s 涨停家数对不上：开盘红天梯 %d 家 vs 站内涨停池 %d 家，"

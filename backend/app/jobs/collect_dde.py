@@ -22,7 +22,7 @@
 """
 
 import logging
-from datetime import date, datetime, time, timedelta
+from datetime import date, time, timedelta
 
 from sqlalchemy import func, select
 
@@ -31,7 +31,7 @@ from app.models import PatternHit, StockDde, TradeCalendar
 from app.services.patterns import PATTERNS
 from app.sources.ifind import get_shared_client, normalize_code
 from app.sources.markdown_table import pick_float, pick_text
-from app.timeutil import today_cn
+from app.timeutil import now_cn, today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -144,10 +144,14 @@ def _store(
     # ① **非交易日**：来源会把周末也列出来（净流入为空、DDE 延续前一交易日的值），
     #    不过滤就会落进「周六也有资金流入」这种假数据；
     # ② **今天还没收盘**：盘中拿到的是瞬时快照，见 `CLOSE_READY`。
+    #    ⚠️ 时刻必须按**北京时间**取（2026-10-22 体检）：原来是 `datetime.now()`，
+    #    即进程本地墙钟；云端 systemd 钉了 TZ 所以现在没事，但容器 / 手工脚本里
+    #    「现在几点」与 `today_cn()` 的日期不是同一把尺子 —— 盘中的瞬时值会被当成
+    #    收盘终值落库（且 `upsert_fill` 不会自动纠正），或反过来把终值丢掉。
     start = min(item["trade_date"] for item in parsed)
     end = max(item["trade_date"] for item in parsed)
     today = today_cn()
-    before_close = datetime.now().time() < CLOSE_READY
+    before_close = now_cn().time() < CLOSE_READY
     with session_scope() as session:
         trade_days = set(
             session.scalars(
