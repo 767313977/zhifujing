@@ -1044,6 +1044,12 @@ Index("ix_stock_dde_code_date", StockDde.code, StockDde.trade_date)
 # 过滤 + 按日期排序/取范围」一次走索引；老库由 `db._add_missing_indexes`
 # 按索引名自动补建（幂等）。
 Index("ix_sector_daily_code_date", SectorDaily.sector_code, SectorDaily.trade_date)
+# sector_member 的「板块 → 成分股」索引（2026-10-22 加）。主键是
+# (trade_date, sector_code, code)，**trade_date 打头** —— 而成分股面板与
+# `api/sector._fallback_members` 查的是 `sector_code == ? [AND trade_date < ?]
+# ORDER BY trade_date DESC`，前导列对不上，只能全扫 82 万行（实测 EXPLAIN 是 SCAN）。
+# 已有的 ix_sector_member_code_date 解的是反方向（个股 → 板块）。
+Index("ix_sector_member_sector_date", SectorMember.sector_code, SectorMember.trade_date)
 
 
 # `samples` 每帧的下标。**写端（`jobs/collect_auction`）与读端（`api/auction`）共用这一份**，

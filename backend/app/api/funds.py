@@ -600,19 +600,26 @@ def dde_board(
     口径：这里的 `dde` 就是个股页那一栏的 5日DDE（同一张表，实测两条路径完全一致）。
     """
     day = _latest_data_date(session, StockDde.trade_date, target)
-    rows = list(
-        session.scalars(
-            select(StockDde).where(StockDde.trade_date == day, StockDde.dde.is_not(None))
+    # 只取两列、只构造「要返回的那几十个」DdeItem（2026-10-22 体检）：
+    # 以前把当天 5000 多行的 ORM 实体全建出来、又给每一行都建一个 pydantic 对象，
+    # 最后才切前 30 个 —— 实测 300ms 里大半花在这上面。
+    raw = session.execute(
+        select(StockDde.code, StockDde.dde).where(
+            StockDde.trade_date == day, StockDde.dde.is_not(None)
         )
-    )
-    if not rows:
+    ).all()
+    if not raw:
         return DdeBoard(trade_date=day, items=[], total=0)
 
     # 当天日线一次性读成映射。**不要用 IN(两千多个代码) 去查** —— SQLite 的绑定
     # 参数个数有上限（老版本 999），两千多个代码会直接把查询打挂
     quotes = {
-        row.code: row
-        for row in session.scalars(select(StockDaily).where(StockDaily.trade_date == day))
+        code: (name, close, pct_chg)
+        for code, name, close, pct_chg in session.execute(
+            select(
+                StockDaily.code, StockDaily.name, StockDaily.close, StockDaily.pct_chg
+            ).where(StockDaily.trade_date == day)
+        )
     }
     # 名字兜底：池外的票没有日线，用基础信息表补名字，免得榜上只剩代码
     basics = {
@@ -620,19 +627,17 @@ def dde_board(
         for code, name in session.execute(select(StockBasic.code, StockBasic.name))
     }
 
-    items = [
-        DdeItem(
-            code=row.code,
-            name=(quotes[row.code].name if row.code in quotes else None)
-            or basics.get(row.code),
-            close=quotes[row.code].close if row.code in quotes else None,
-            pct_chg=quotes[row.code].pct_chg if row.code in quotes else None,
-            dde=row.dde,
+    raw.sort(key=lambda item: item[1] or 0, reverse=order != "outflow")
+    items = []
+    for code, dde in raw[:limit]:
+        name, close, pct_chg = quotes.get(code, (None, None, None))
+        items.append(
+            DdeItem(
+                code=code,
+                name=name or basics.get(code),
+                close=close,
+                pct_chg=pct_chg,
+                dde=dde,
+            )
         )
-        for row in rows
-    ]
-    if order == "outflow":
-        items.sort(key=lambda item: item.dde or 0)
-    else:
-        items.sort(key=lambda item: item.dde or 0, reverse=True)
-    return DdeBoard(trade_date=day, items=items[:limit], total=len(items))
+    return DdeBoard(trade_date=day, items=items, total=len(raw))

@@ -1,7 +1,7 @@
 """大盘与情绪接口。"""
 
 import logging
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, text
@@ -147,6 +147,13 @@ MARGIN_TEMP_DAYS = 250
 # 不进分母（见 services/industry_breadth）
 INDUSTRY_MA_WINDOW = 20
 INDUSTRY_MA_LOOKBACK = 40
+
+# 行业宽度的结果缓存：`(目标交易日, 计算时间, 结果)`。
+# 它**读取时现算**（40 天 × 约 5500 只的 20 日窗口函数，实测 577ms），而某一天的
+# 结果在 `stock_daily` 落库后就不再变 —— 情绪周期页每次打开都会请求它，所以按
+# 目标交易日缓存 10 分钟（2026-10-22 体检）。
+_INDUSTRY_CACHE: tuple[date, datetime, IndustryBreadthOut] | None = None
+_INDUSTRY_TTL = timedelta(minutes=10)
 
 # 北向活跃度曲线的默认回看长度。250 ≈ 一年，与 hsgt_daily 的深度（约 257 个交易日）相称
 NORTHBOUND_DAYS = 250
@@ -846,6 +853,16 @@ def industry_breadth_api(session: Session = Depends(get_db)) -> IndustryBreadthO
     if target is None:
         raise HTTPException(status_code=404, detail="暂无个股日线，请先执行采集或回补")
 
+    global _INDUSTRY_CACHE
+    now = datetime.now()
+    cached = _INDUSTRY_CACHE
+    if (
+        cached is not None
+        and cached[0] == target
+        and now - cached[1] < _INDUSTRY_TTL
+    ):
+        return cached[2]
+
     # 目标日往前取 LOOKBACK 个交易日当 MA 窗口（只需当日的 20 日均线，多取的用于预热）
     bars = list(
         session.scalars(
@@ -890,7 +907,7 @@ def industry_breadth_api(session: Session = Depends(get_db)) -> IndustryBreadthO
     items = industry_breadth.aggregate(rows)
     total = sum(item["total"] for item in items)
     above = sum(item["above"] for item in items)
-    return IndustryBreadthOut(
+    result = IndustryBreadthOut(
         trade_date=target,
         ma_window=INDUSTRY_MA_WINDOW,
         items=[IndustryBreadthItem(**item) for item in items],
@@ -898,6 +915,8 @@ def industry_breadth_api(session: Session = Depends(get_db)) -> IndustryBreadthO
         median=industry_breadth.median_ratio(items),
         coverage=total,
     )
+    _INDUSTRY_CACHE = (target, now, result)
+    return result
 
 
 @router.get("/northbound-activity", response_model=NorthboundOut)

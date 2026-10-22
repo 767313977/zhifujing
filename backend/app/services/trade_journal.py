@@ -14,7 +14,7 @@
 
 import logging
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -123,12 +123,22 @@ def _sectors(session: Session, codes: set[str]) -> dict[str, str]:
     return result
 
 
+#: 接力温度档位的缓存：`(数据库引擎, 最新交易日, 计算时间, 结果)`。
+#: 这份数据只跟「最近 400 个交易日」有关，与用户 / 具体交易无关，但每次读写交易
+#: 日志都会现算一遍（400 行情绪 + 约 2 万行涨停池再逐日分组）—— 2026-10-22 实测
+#: 单次约 200ms，是整个 `/api/journal` 的大头。按「最新交易日」缓存 10 分钟。
+#: 带上引擎对象是为了不跨库串味（单测里每个用例都是一个新的内存库）。
+_LEVELS_CACHE: tuple[object, date, datetime, dict[date, str]] | None = None
+_LEVELS_TTL = timedelta(minutes=10)
+
+
 def _sentiment_levels(session: Session, days: int = 400) -> dict[date, str]:
     """`{交易日: 接力温度档位}`，用于「按情绪阶段分组」。
 
     复用 `relay_temp` 的现算口径（不落库）；只取最近 `days` 天 —— 交易日志的
     买入日不会早到几百天以前，再往前算纯属浪费。
     """
+    global _LEVELS_CACHE
     rows = list(
         session.scalars(
             select(MarketSentiment)
@@ -138,6 +148,17 @@ def _sentiment_levels(session: Session, days: int = 400) -> dict[date, str]:
     )[::-1]
     if not rows:
         return {}
+    latest = rows[-1].trade_date
+    bind = session.get_bind()
+    now = datetime.now()
+    cached = _LEVELS_CACHE
+    if (
+        cached is not None
+        and cached[0] is bind
+        and cached[1] == latest
+        and now - cached[2] < _LEVELS_TTL
+    ):
+        return cached[3]
     start = rows[0].trade_date
     up_pool: dict[date, set[str]] = defaultdict(set)
     first_board: dict[date, set[str]] = defaultdict(set)
@@ -152,7 +173,9 @@ def _sentiment_levels(session: Session, days: int = 400) -> dict[date, str]:
         if consecutive == 1:
             first_board[day].add(code)
     series = relay_temp.build_series(rows, up_pool, first_board)
-    return {item["trade_date"]: item["level"] for item in series if item["level"]}
+    levels = {item["trade_date"]: item["level"] for item in series if item["level"]}
+    _LEVELS_CACHE = (bind, latest, now, levels)
+    return levels
 
 
 def _adjust(window: list[tuple[date, float, float | None]]) -> list[tuple[date, float]]:
