@@ -2092,6 +2092,22 @@ class PatternStockOut(BaseModel):
     patterns: list[PatternHitItem]
 
 
+class PatternHitsOut(BaseModel):
+    """命中列表 + 截断信息（2026-10-22 加）。
+
+    为什么要带上 `total` / `truncated`：以前接口只返回一个列表，调用方只能靠
+    「条数正好等于上限」去猜有没有被截断（`days > 1` 的窗口模式下去重后尤其不准）——
+    猜错就把「还有更多」当成「就这些」，页面也不会提示。现在由后端如实给出
+    **截断前**的条数。
+    """
+
+    items: list[PatternStockOut]
+    #: 应用 `limit` **之前**的条数（按票归并后）
+    total: int
+    #: `total > len(items)`，即这次返回的是被截断的前 `limit` 条
+    truncated: bool
+
+
 class PatternCount(BaseModel):
     pattern: str
     pattern_name: str

@@ -16,6 +16,7 @@ import Panel from '../components/Panel'
 import { phaseTone } from '../components/PhasePanel'
 import Segmented from '../components/Segmented'
 import SortTh from '../components/SortTh'
+import { copyText } from '../lib/clipboard'
 import { boardOf, fmtAmount, fmtInt, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
 import type { Board } from '../lib/format'
 import { K_VIEWS, useKLine } from '../lib/klinePeriod'
@@ -386,6 +387,8 @@ export default function Patterns() {
   const [dates, setDates] = useState<string[]>([])
   const [catalog, setCatalog] = useState<PatternMeta[]>([])
   const [hits, setHits] = useState<PatternStock[]>([])
+  /** 这一屏**截断前**的条数（后端 `/hits` 的 `total`）—— 判断有没有更多全靠它 */
+  const [hitsTotal, setHitsTotal] = useState(0)
   const [summary, setSummary] = useState<PatternSummary | null>(null)
   // chip 徽标的「再加上它会剩多少只」（后端按当前选择算好的交集家数）
   const [preview, setPreview] = useState<PatternCount[]>([])
@@ -486,12 +489,14 @@ export default function Patterns() {
           api.patternPreview(target, 0, only, win),
         ])
         if (isStale()) return
-        setHits(list)
+        setHits(list.items)
+        setHitsTotal(list.total)
         setSummary(sum)
         setPreview(prev)
       } catch (err) {
         if (isStale()) return
         setHits([])
+        setHitsTotal(0)
         setSummary(null)
         setPreview([])
         setError((err as Error).message)
@@ -506,6 +511,7 @@ export default function Patterns() {
     let stale = false
     // 先清空：旧日期/旧形态的命中留在表里会被当成新的一屏看（与 `Funds` 同一处理）
     setHits([])
+    setHitsTotal(0)
     setSummary(null)
     setPreview([])
     // 看历史日期时不带阶段筛选（后端会 400，见「阶段判定」那一行的注释）；切回最新自动恢复
@@ -608,27 +614,10 @@ export default function Patterns() {
 
   /**
    * 把当前筛选结果的代码复制下来（每行一个），方便导进同花顺的自选股。
-   *
-   * 没用 `navigator.clipboard`：它只在**安全上下文**（HTTPS / localhost）可用，
-   * 而站点在云端是 `http://IP:8080` —— 那里调用会直接抛错。改用
-   * textarea + `execCommand` 这套老办法，两种环境下都能用。
+   * 实现见 `lib/clipboard.copyText`，这里只负责失败提示与「已复制」状态。
    */
   const copyCodes = useCallback(() => {
-    const box = document.createElement('textarea')
-    box.value = visible.map((stock) => stock.code).join('\n')
-    // 放到视口外，避免复制瞬间页面跳动
-    box.style.position = 'fixed'
-    box.style.top = '-1000px'
-    document.body.appendChild(box)
-    box.select()
-    let ok = false
-    try {
-      ok = document.execCommand('copy')
-    } catch {
-      ok = false
-    }
-    document.body.removeChild(box)
-    if (!ok) {
+    if (!copyText(visible.map((stock) => stock.code).join('\n'))) {
       setError('复制失败：浏览器不允许，手动选中列表里的代码吧')
       return
     }
@@ -644,20 +633,16 @@ export default function Patterns() {
   /**
    * 这一屏的「应有条数」与截断判定。
    *
-   * - 默认视图（不选形态、不选阶段）：只有 `HIT_LIMIT`（50）条，拿 summary 的
-   *   **全市场去重只数**与它比；
-   * - 形态视图 / 阶段筛选：后端按 `PATTERN_LIMIT` 取**筛后全量**，所以返回条数就是
-   *   全集 —— 少于上限说明已经全给出来了，正好顶到上限才可能还有更多、弹截断提示。
+   * `hitsTotal` 是后端给的**截断前**条数（`/hits` 的 `total`，2026-10-22 加的契约）——
+   * 以前只能靠「条数是否正好顶到上限」猜，窗口模式（`days > 1`）去重之后猜不准，
+   * 猜错就把「还有更多」当成「就这些」。
    *
-   * ⚠️ 阶段筛选也必须按「全量」算（2026-10-20 修）：超跌是**全市场池**（当天 288 只），
+   * ⚠️ 阶段筛选也必须按「全量」取（2026-10-20 修）：超跌是**全市场池**（当天 288 只），
    * 若沿用 50 只的上限，纯超跌的票会被命中的那几十只挤掉 —— 实测中材科技乖离 −21.3%、
    * 排在第 70 位，用户在页面上根本看不到它。
    */
-  const fullView = picked.length > 0 || phases.length > 0
-  const expected = picked.length > 0 ? hits.length : (summary?.total_stocks ?? 0)
-  const truncated = fullView
-    ? hits.length >= PATTERN_LIMIT
-    : (summary?.total_stocks ?? 0) > hits.length
+  const expected = hitsTotal
+  const truncated = hitsTotal > hits.length
 
   // 筛完之后当前看图的票可能已经不在列表里，自动切到第一条
   useEffect(() => {
@@ -974,7 +959,9 @@ export default function Patterns() {
               {pickedLabel && (
                 <span className="text-accent">
                   {picked.length === 1
-                    ? `该形态共 ${fmtInt(expected)} 只，已全部列出`
+                    ? truncated
+                      ? `该形态共 ${fmtInt(expected)} 只，只列出前 ${fmtInt(PATTERN_LIMIT)} 只`
+                      : `该形态共 ${fmtInt(expected)} 只，已全部列出`
                     : truncated
                       ? `所选 ${picked.length} 个形态同时满足的超过 ${fmtInt(PATTERN_LIMIT)} 只，只列出前 ${fmtInt(PATTERN_LIMIT)} 只`
                       : `所选 ${picked.length} 个形态同时满足：${fmtInt(expected)} 只，已全部列出`}

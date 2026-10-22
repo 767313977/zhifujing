@@ -151,7 +151,7 @@ export default function Dashboard() {
             // 形态是增强内容，拉失败不该把整个首页变成空白 —— 但也不能悄悄
             // 退回空列表，那样面板会显示成「当日没有命中的形态」
             patternError = err.message
-            return []
+            return { items: [], total: 0, truncated: false }
           }),
           api.patternSummary(target).catch(() => null),
         ])
@@ -172,7 +172,7 @@ export default function Dashboard() {
             lhb: lhbR.error,
             heat: heatR.error,
           },
-          patterns,
+          patterns: patterns.items,
           patternSummary,
           patternError,
         })

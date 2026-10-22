@@ -138,7 +138,7 @@ export default function Wudao() {
         ...pools.map((pool) =>
           // 这一页每个池子只取**一个**形态：传单元素数组（接口是多选口径，取并集）
           api.patternHits(null, 0, POOL_LIMIT, [pool.key]).then(
-            (rows) => ({ key: pool.key, rows, error: null as string | null }),
+            (page) => ({ key: pool.key, rows: page.items, error: null as string | null }),
             (err: Error) => ({ key: pool.key, rows: [] as PatternStock[], error: err.message }),
           ),
         ),

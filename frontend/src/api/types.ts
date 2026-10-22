@@ -1285,6 +1285,20 @@ export interface PatternSummary {
 }
 
 /**
+ * `/api/patterns/hits` 的返回：列表 + 截断信息（2026-10-22 加的契约）。
+ *
+ * 以前只返回一个数组，前端只能靠「条数是否正好等于上限」猜有没有被截断 ——
+ * 窗口模式（`days > 1`）去重之后尤其不准，猜错就把「还有更多」当成「就这些」。
+ */
+export interface PatternHitsPage {
+  items: PatternStock[]
+  /** 应用 `limit` **之前**的条数（按票归并后） */
+  total: number
+  /** `total > items.length`：这次只给了前 `limit` 条 */
+  truncated: boolean
+}
+
+/**
  * 每日「评分前 N 只」的 30 个交易日跟踪（`/patterns/track`）。
  *
  * ⚠️ **所有收益与比例都是百分数**（`mean: 1.23` 是 +1.23%、`up_pct: 54.3` 是 54.3%），

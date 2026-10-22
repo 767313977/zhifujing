@@ -32,6 +32,7 @@ from app.models import (
 from app.schemas import (
     PatternCount,
     PatternHitItem,
+    PatternHitsOut,
     PatternMeta,
     PatternScorecardOut,
     PatternStockOut,
@@ -502,7 +503,7 @@ def _oversold_only_rows(
     return out
 
 
-@router.get("/hits", response_model=list[PatternStockOut])
+@router.get("/hits", response_model=PatternHitsOut)
 def hits(
     db: Session = Depends(get_db),
     trade_date: date | None = Query(None, alias="date"),
@@ -523,7 +524,7 @@ def hits(
         "取值见 `WUDAO_PHASE_LABELS`（如 sample=明天盯 / start=明天预案），"
         "另加 `oversold`=超跌（收盘相对 20 日线乖离 < −15%，用户「日线做T」口径）",
     ),
-) -> list[PatternStockOut]:
+) -> PatternHitsOut:
     """某交易日的命中，**按股票归并**（一只票命中多个形态就是一行多标签）。
 
     ## 两种模式（2026-09-27 用户要求区分）
@@ -598,7 +599,7 @@ def hits(
             )
     target = trade_date or _latest_date(db)
     if target is None:
-        return []
+        return PatternHitsOut(items=[], total=0, truncated=False)
 
     # 阶段判定 / 超跌只能筛**最新交易日**（2026-10-21 复查 #3）：它们取的是「库里最近
     # 130 根 / 25 根日线」，没有 `trade_date <= target` 的限制 —— 翻到 10-10 那天点
@@ -629,12 +630,12 @@ def hits(
     if days > 1:
         rows, run_info = _hits_window(db, target, picked, min_score, days)
         if not rows:
-            return []
+            return PatternHitsOut(items=[], total=0, truncated=False)
     elif picked:
         # **交集**：命中全部所选形态的票才留下（定义见 `_intersection_codes`）
         codes = _intersection_codes(db, [target], picked, min_score)
         if not codes:
-            return []
+            return PatternHitsOut(items=[], total=0, truncated=False)
         rows = db.scalars(
             select(PatternHit)
             .where(
@@ -669,7 +670,7 @@ def hits(
             .order_by(PatternHit.score.desc())
         ).all()
     if not rows:
-        return []
+        return PatternHitsOut(items=[], total=0, truncated=False)
 
     # 下面三处都是「按当天命中的全部 code 集合 IN 查」，集合可能到 5300+ 个，
     # 必须分批（理由见 `_IN_BATCH`）；各批结果在内存里合并，与一次查全等价。
@@ -839,7 +840,11 @@ def hits(
         if verdict is not None:
             stock.phase = verdict.phase
             stock.phase_label = verdict.label
-    return page
+    # `total` 是**截断前**的条数：窗口模式下去重后的真实条数只有这里知道，
+    # 调用方据此显示「还有多少没列出来」（2026-10-22 加的契约）
+    return PatternHitsOut(
+        items=page, total=len(result), truncated=len(result) > len(page)
+    )
 
 
 @router.get("/track", response_model=PatternTrackOut)

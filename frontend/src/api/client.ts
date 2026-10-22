@@ -39,9 +39,9 @@ import type {
   Obv,
   PoolType,
   PatternCount,
+  PatternHitsPage,
   PatternMeta,
   PatternScorecardOut,
-  PatternStock,
   PatternSummary,
   PatternTrack,
   PatternTrackDetail,
@@ -780,7 +780,7 @@ export const api = {
       .filter(Boolean)
       .map((key) => `&phase=${encodeURIComponent(key)}`)
       .join('')
-    return request<PatternStock[]>(
+    return request<PatternHitsPage>(
       withDate(`/patterns/hits?min_score=${minScore}&limit=${limit}${pick}${win}${ph}`, date),
     )
   },
