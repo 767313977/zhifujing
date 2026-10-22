@@ -1162,8 +1162,41 @@ class DailyCollector:
                 )
             )
 
-    def _step(self, trade_date: date | None, name: str, fn) -> dict:
+    def _ok_tasks(self, trade_date: date) -> set[str]:
+        """该交易日**最近一条**日志是 `ok` 的任务名。
+
+        「最近一条」而不是「存在一条」：某天先 ok、后来又因为重跑失败，真实状态是
+        「没采全」，不能因为历史上有过一条 ok 就判成已完成（详见 `has_collected`）。
+        """
+        with session_scope() as session:
+            rows = session.execute(
+                select(CollectLog.task, CollectLog.status).where(
+                    CollectLog.id.in_(
+                        select(func.max(CollectLog.id))
+                        .where(CollectLog.trade_date == trade_date)
+                        .group_by(CollectLog.task)
+                    )
+                )
+            ).all()
+        return {task for task, status in rows if status == "ok"}
+
+    def _step(
+        self,
+        trade_date: date | None,
+        name: str,
+        fn,
+        skip_if_ok: bool = False,
+    ) -> dict:
+        """跑一个采集步骤。
+
+        `skip_if_ok=True` —— 当天这一步已经 ok 过就**直接跳过、不写日志、不碰数据源**。
+        只有 `run_late` 的补采路径会传它：晚间那几步是「等上游发布」，一旦当天取到了，
+        重跑只会把配额再花一遍（见 `run_late` 的说明）。
+        """
         global _current_step
+        if skip_if_ok:
+            logger.info("采集 %-10s [skipped] 当天已成功过，跳过（不重复花配额）", name)
+            return {"status": "skipped", "rows": 0, "cost": 0.0, "message": "当天已采过"}
         started = time.monotonic()
         status, row_count, message = "ok", 0, None
         # 步骤自己可以往 `_step_note` 写一句说明（如自选股「失败 3 只」）——
@@ -1502,8 +1535,8 @@ class DailyCollector:
             )
         return {"trade_date": trade_date.isoformat(), "steps": steps}
 
-    def run_late(self, trade_date: date | None = None) -> dict:
-        """只跑「收盘后才有数据」的那几步（17:30 那一趟）。
+    def run_late(self, trade_date: date | None = None, skip_done: bool = False) -> dict:
+        """只跑「收盘后才有数据」的那几步（17:30 / 19:30 那一趟）。
 
         **背景**（2026-09-30 加）：采集时刻 09-28 从 17:30 提到 15:05 之后，
         **龙虎榜与机构席位从那天起再没入过库** —— 这两个来源按日期问、没有回看窗口，
@@ -1520,33 +1553,49 @@ class DailyCollector:
 
         配额：龙虎榜、机构席位、涨停题材零 iFinD 配额（akshare / 开盘红），任何档位都采；
         两融 / 北向与 `run()` 一样受 CORE_ONLY 约束（它们能回看，真让路也补得回来）。
+
+        `skip_done`（2026-10-22 加）—— **只给「启动补采 / 回看补采」传 True**：
+        已经 ok 过的步骤直接跳过。为什么必须有这道守卫：
+
+        这一趟原先故意没有去重（「重复触发最多多花 1 次 akshare + 2 次 EDB」），
+        但那是在「一天触发两次」的前提下算的账。线上实测 10-21 一天重启了 28 次
+        （每次部署都重启，`_catch_up` 又会补这一趟），于是整条链被跑了 20 多轮：
+        `edb/get_edb_data` 当天 52 次（正常只要 4 次）、`run_late` 的日志刷了 20 遍，
+        而 EDB 与涨停题材**都是计费的** —— 当天 142 次调用里绝大部分是这么白烧的，
+        10-16 更是直接把配额打到 9042/9000、导致当日没有选股结果。
+
+        定时触发的那两趟（17:30 / 19:30）**仍然是全量重跑**：它们本来就是
+        「上游可能还没发布，再抓一次」的兜底，跳过就失去意义了。
         """
         target = trade_date or self.latest_trade_date()
+        # 一次查出当天已 ok 的任务集合，避免每个步骤各查一遍库
+        done = self._ok_tasks(target) if skip_done else set()
+
+        def late_step(name: str, fn) -> dict:
+            return self._step(target, name, fn, skip_if_ok=name in done)
+
         steps: dict[str, dict] = {}
-        steps["lhb"] = self._step(target, "lhb", lambda: self.collect_lhb(target))
-        steps["lhb_institution"] = self._step(
-            target, "lhb_institution", lambda: self.collect_lhb_institution(target)
+        steps["lhb"] = late_step("lhb", lambda: self.collect_lhb(target))
+        steps["lhb_institution"] = late_step(
+            "lhb_institution", lambda: self.collect_lhb_institution(target)
         )
-        steps["themes"] = self._step(target, "themes", lambda: self.collect_themes(target))
+        steps["themes"] = late_step("themes", lambda: self.collect_themes(target))
         # 涨跌家数补写：15:05 乐咕没更新时 `collect_sentiment` 会跳过，这里再问一次
         # （零配额，已有值直接跳过）。2026-10-22 体检：否则这一列会永久空着
-        steps["activity"] = self._step(
-            target, "activity", lambda: self.collect_activity(target)
-        )
+        steps["activity"] = late_step("activity", lambda: self.collect_activity(target))
         # ETF 份额与行情：两所都要收盘后才发布，盘后包也要数小时 —— 放在这一趟
-        # （17:30 试一次、19:30 再试一次）。零 iFinD 配额。
-        steps["etf"] = self._step(target, "etf", lambda: self.collect_etf(target))
+        # （17:30 试一次、19:30 再试一次）。零 iFinD 配额，但两所各一次 HTTP。
+        steps["etf"] = late_step("etf", lambda: self.collect_etf(target))
         # 期指持仓（中金所前 20 席位）：约 16:00 才发布，同样放这一趟。零配额
         from app.jobs.collect_futures_position import collect as collect_futures_position
 
-        steps["futures_position"] = self._step(
-            target,
+        steps["futures_position"] = late_step(
             "futures_position",
             lambda: collect_futures_position(target, self.settings),
         )
         if quota_level(settings=self.settings) < QuotaLevel.CORE_ONLY:
-            steps["margin"] = self._step(target, "margin", lambda: self.collect_margin(target))
-            steps["hsgt"] = self._step(target, "hsgt", lambda: self.collect_hsgt(target))
+            steps["margin"] = late_step("margin", lambda: self.collect_margin(target))
+            steps["hsgt"] = late_step("hsgt", lambda: self.collect_hsgt(target))
         else:
             logger.warning("配额已达 95%，收盘后这一趟只采零配额那三项（龙虎榜 / 机构席位 / 题材）")
         return {"trade_date": target.isoformat(), "steps": steps}

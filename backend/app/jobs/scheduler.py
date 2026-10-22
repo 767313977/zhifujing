@@ -685,12 +685,14 @@ class DailyScheduler:
         except CollectionBusy as exc:
             logger.warning("%s：尾部链路跳过（%s）", reason, exc)
 
-    def _run_late(self, reason: str = "收盘后补采") -> None:
+    def _run_late(self, reason: str = "收盘后补采", skip_done: bool = False) -> None:
         """17:30 那一趟：只补「收盘后才发布」的数据（见 `DailyCollector.run_late`）。
 
-        **没有「今天采过没有」那道守卫**（与 `_run_daily` 不同）：这几类数据很小、
-        写库是幂等的（同一天覆盖写），重复触发最多多花 1 次 akshare + 2 次 EDB，
-        不值得再为它加一套去重标记。
+        定时触发的那两趟（17:30 / 19:30）传 `skip_done=False`：它们就是「上游可能
+        还没发布，再抓一次」的兜底，全量重跑才对。
+        **启动补采 / 回看补采传 `skip_done=True`**：那两条路径是按「服务重启」触发的，
+        线上一天重启 28 次就等于整条链跑 28 遍（2026-10-21 实测 EDB 52 次/天、配额
+        被打到 9042/9000），已经 ok 的步骤必须跳过 —— 详见 `run_late` 的说明。
 
         ⚠️ **整趟包进采集锁**（2026-10-10 修）：这一趟里的两融 / 北向走 iFinD EDB，
         而 `_run_daily` 那趟也在花 iFinD 配额 —— 两个 `DailyCollector` **各有各的令牌桶**，
@@ -709,12 +711,12 @@ class DailyScheduler:
 
         try:
             with collect_guard(f"{reason} 收盘后"):
-                self._run_late_unguarded(collector, today, reason)
+                self._run_late_unguarded(collector, today, reason, skip_done)
         except CollectionBusy as exc:
             logger.warning("%s 跳过：%s（等下一趟或次日回看补采）", reason, exc)
 
     def _run_late_unguarded(
-        self, collector: DailyCollector, today: date, reason: str
+        self, collector: DailyCollector, today: date, reason: str, skip_done: bool = False
     ) -> None:
         """`_run_late` 的主体。单独一个方法只为让上面那个 `with` 包得干净。"""
         # 先把最近漏掉的补上（不受今天是否交易日影响：今天休市也可能漏着上一交易日的）。
@@ -726,16 +728,19 @@ class DailyScheduler:
             return
 
         try:
-            result = collector.run_late(today)
+            result = collector.run_late(today, skip_done=skip_done)
         except Exception:  # noqa: BLE001 - 定时任务绝不能因异常中断调度
             logger.exception("%s 失败", reason)
             return
 
-        failed = [
-            name
-            for name, step in result.get("steps", {}).items()
-            if step.get("status") != "ok"
-        ]
+        # `skipped` 不算失败：它要么是「上游还没发布」（ETF 22:15 才有）、要么是
+        # 「当天已采过」（`skip_done`）。原来把 skipped 也当失败报，重启多的日子
+        # 会刷出一堆假的「部分步骤失败」。
+        steps = result.get("steps", {})
+        failed = [name for name, step in steps.items() if step.get("status") == "failed"]
+        skipped = [name for name, step in steps.items() if step.get("status") == "skipped"]
+        if skipped:
+            logger.info("%s：跳过 %s（当天已采过 / 上游未发布）", reason, skipped)
         if failed:
             logger.warning("%s 完成但部分步骤失败：%s", reason, failed)
         else:
@@ -777,7 +782,9 @@ class DailyScheduler:
             if _logged_tasks(day, LATE_TASKS, "ok") >= set(LATE_TASKS):
                 continue
             try:
-                result = collector.run_late(day)
+                # `skip_done=True`：回看补采只为「补缺口」，已经 ok 的步骤不要再花
+                # 一次配额（过去这里整跑一遍，重启多的日子会重复烧 EDB 与涨停题材）。
+                result = collector.run_late(day, skip_done=True)
             except Exception:  # noqa: BLE001 - 补历史失败不该中断调度
                 logger.exception("%s：回看补采 %s 的收盘后数据失败", reason, day)
                 continue
@@ -1629,7 +1636,9 @@ class DailyScheduler:
         ):
             late = threading.Thread(
                 target=self._run_late,
-                kwargs={"reason": "启动补采（收盘后）"},
+                # 启动补采走 `skip_done=True`：每次部署/重启都会走到这里，已经采到的
+                # 步骤不能再花一遍配额（线上 10-21 重启 28 次 = 整链跑 20 多轮）。
+                kwargs={"reason": "启动补采（收盘后）", "skip_done": True},
                 name="collect-catchup-late",
                 daemon=True,
             )
