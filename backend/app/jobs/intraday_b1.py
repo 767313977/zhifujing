@@ -27,8 +27,6 @@ import logging
 import time
 from datetime import date, datetime
 
-from sqlalchemy import select
-
 from app.config import Settings, get_settings
 from app.db import session_scope
 from app.jobs.collect_kline import _snapshot_query, _snapshot_row
@@ -40,7 +38,7 @@ from app.jobs.scan_patterns import (
     _over_cap_codes,
     _signal_allowed,
 )
-from app.models import CollectLog, TradeCalendar
+from app.models import CollectLog
 from app.services.coverage import coverage_ok
 from app.services.patterns import (
     ENGULF_MIN_VOLUME_RATIO,
@@ -51,6 +49,7 @@ from app.services.patterns import (
     is_st,
 )
 from app.services.usage import QuotaLevel, level_label, quota_level
+from app.services.trading_days import is_trade_day
 from app.sources.ifind import IfindClient
 
 logger = logging.getLogger(__name__)
@@ -84,16 +83,6 @@ TABLE_ROWS = 20
 
 #: 「放量阳包阴」最多列几只（与 B1 同口径，扫一眼下单用）
 MAX_ENGULF_ROWS = 20
-
-
-def _is_trade_day(day: date) -> bool:
-    with session_scope() as session:
-        return (
-            session.scalar(
-                select(TradeCalendar.trade_date).where(TradeCalendar.trade_date == day)
-            )
-            is not None
-        )
 
 
 def _record(day: date, status: str, message: str) -> None:
@@ -439,7 +428,7 @@ def run(settings: Settings | None = None, *, now: datetime | None = None) -> dic
 
     if not settings.b1_intraday_enabled:
         return {"status": "skipped", "reason": "盘中预览已关闭"}
-    if not _is_trade_day(day):
+    if not is_trade_day(day):
         return {"status": "skipped", "reason": f"{day} 不是交易日"}
     if already_pushed(day, TASK):
         return {"status": "skipped", "reason": "今天已经推过"}

@@ -22,10 +22,11 @@ import logging
 import time
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.db import session_scope, upsert_many
-from app.models import AuctionSnapshot, StockBasic, TradeCalendar
+from app.models import AuctionSnapshot, StockBasic
+from app.services.trading_days import is_trade_day
 from app.sources.tencent import fetch_spot
 
 logger = logging.getLogger(__name__)
@@ -94,18 +95,6 @@ def now_cst() -> datetime:
     return datetime.now(_CST)
 
 
-def _is_trade_day(day: date) -> bool:
-    """查交易日历。日历为空时保守返回 False（全新部署的库会先跑一遍采集建日历）。"""
-    with session_scope() as session:
-        return bool(
-            session.scalar(
-                select(func.count())
-                .select_from(TradeCalendar)
-                .where(TradeCalendar.trade_date == day)
-            )
-        )
-
-
 def _universe() -> list[str]:
     """全市场代码（`stock_basic` 覆盖全 A，约 5500 只）。"""
     with session_scope() as session:
@@ -127,7 +116,7 @@ def collect_auction(now: datetime | None = None) -> int:
     # `hhmm` 一定落在 `PLANNED_MINUTES` 里（要么 None 已提前返回），所以除了 9:15–9:26
     # 那一段，剩下的就是唯一的 9:31 量比帧 —— 不用再单独判一次。
     result_frame = RESULT_FIRST <= hhmm <= RESULT_LAST
-    if not _is_trade_day(day):
+    if not is_trade_day(day):
         return 0
 
     codes = _universe()

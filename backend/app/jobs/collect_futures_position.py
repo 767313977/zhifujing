@@ -15,11 +15,10 @@
 import logging
 from datetime import date
 
-from sqlalchemy import select
-
 from app.config import Settings, get_settings
 from app.db import session_scope, upsert_many
-from app.models import FuturesPosition, TradeCalendar
+from app.models import FuturesPosition
+from app.services.trading_days import is_trade_day
 from app.sources.akshare_source import _call_bounded
 from app.timeutil import today_cn
 
@@ -31,16 +30,6 @@ VARIETIES = {"IF": "沪深300", "IC": "中证500", "IH": "上证50", "IM": "中�
 CITIC = "中信期货(代客)"
 #: 合计行的 rank。中金所自己给合计，**不要**再把 rank 1~20 求和（会正好翻倍）
 SUMMARY_RANK = 999
-
-
-def _is_trade_day(day: date) -> bool:
-    with session_scope() as session:
-        return (
-            session.scalar(
-                select(TradeCalendar.trade_date).where(TradeCalendar.trade_date == day)
-            )
-            is not None
-        )
 
 
 def parse(day: date, tables: dict) -> list[dict]:
@@ -117,7 +106,7 @@ def collect(day: date | None = None, settings: Settings | None = None) -> int:
     """采一个交易日的期指持仓，返回写入的品种数。"""
     settings = settings or get_settings()
     target = day or today_cn()
-    if not _is_trade_day(target):
+    if not is_trade_day(target):
         logger.info("%s 不是交易日，跳过期指持仓", target)
         return 0
 

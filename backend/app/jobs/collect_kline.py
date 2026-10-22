@@ -47,6 +47,7 @@ from app.db import session_scope, upsert_many_fill
 from app.jobs.collect_universe import crawl_prefixes, load_codes
 from app.models import CollectLog, LimitPool, StockDaily, StockUniverse, TradeCalendar
 from app.services.usage import QuotaLevel, level_label, quota_level
+from app.services.trading_days import is_trade_day
 from app.sources.ifind import IfindClient, IfindError
 from app.sources.markdown_table import pick_float, pick_text
 from app.timeutil import today_cn
@@ -503,19 +504,12 @@ class KlineCollector:
     def _is_trade_day(self, day: date) -> bool:
         """该日是否在交易日历内。
 
-        直接复用 `DailyCollector.is_trade_day` 的现成判定（同一张 TradeCalendar 表、
-        同一个「日历没数据保守返回 False」口径），不在本文件另造日历查询。
-        该方法不使用采集器的实例状态；DailyCollector 构造成本不低（会各建一个
-        iFinD/akshare 客户端但**不发网络请求**），所以懒加载并缓存，且只在
-        「取到 0 行」这种罕见分支才会走到。
+        2026-10-22：改走 `services.trading_days.is_trade_day`（与其余 job 共用一份查询）。
+        以前这里为了复用判定要懒加载一个 `DailyCollector` 并缓存 —— 构造它要建
+        iFinD / akshare 客户端（不发请求，但也不便宜），只为问一句「是不是交易日」
+        没有必要。
         """
-        daily = getattr(self, "_daily", None)
-        if daily is None:
-            from app.jobs.collect_daily import DailyCollector
-
-            daily = DailyCollector(self.settings)
-            self._daily = daily
-        return daily.is_trade_day(day)
+        return is_trade_day(day)
 
     def _window_start(self, end: date, full: bool) -> date:
         if not full:

@@ -36,6 +36,7 @@ from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
 from app.jobs.collect_sectors import SectorCollector
 from app.models import CollectLog, TradeCalendar
 from app.services.usage import QuotaLevel, quota_level
+from app.services.trading_days import is_trade_day
 from app.sources.ifind import IfindError
 from app.timeutil import now_cn, today_cn
 
@@ -129,22 +130,6 @@ def _record_log(day: date, task: str, status: str, rows: int, message: str | Non
             )
     except Exception:  # noqa: BLE001 - 见 docstring
         logger.warning("写采集日志失败：%s %s", task, day, exc_info=True)
-
-
-def _is_trade_day(day: date) -> bool:
-    """该日是否交易日（直接查日历表）。
-
-    这里不借 `DailyCollector.is_trade_day`：成分股预取走的是开盘红、**与 iFinD 无关**，
-    而构造 `DailyCollector` 会因为 iFinD 没配好而抛 `IfindError`。
-    """
-    with session_scope() as session:
-        return bool(
-            session.scalar(
-                select(func.count())
-                .select_from(TradeCalendar)
-                .where(TradeCalendar.trade_date == day)
-            )
-        )
 
 
 def _previous_trade_day(day: date) -> date | None:
@@ -946,7 +931,7 @@ class DailyScheduler:
         # `status="failed"` 都当成「当天没采完」→ 会让基础采集白跑一遍，而成分股预取
         # 失败本不该有那个后果。漏没漏由次日回看时补记（历史日不受 `has_collected` 影响）。
         self._catch_up_members(today, reason)
-        if not _is_trade_day(today):
+        if not is_trade_day(today):
             logger.info("%s 跳过：%s 不是交易日", reason, today)
             return
 
