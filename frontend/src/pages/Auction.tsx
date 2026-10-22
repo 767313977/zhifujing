@@ -8,8 +8,8 @@ import type {
   AuctionRow,
   AuctionSort,
 } from '../api/types'
-import Alert from '../components/Alert'
 import Layout from '../components/Layout'
+import LoadState from '../components/LoadState'
 import Panel from '../components/Panel'
 import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
@@ -501,8 +501,6 @@ export default function AuctionPage() {
 
   return (
     <Layout toolbar={toolbar}>
-      {error && <Alert onClose={() => setError(null)}>{error}</Alert>}
-
       <div className="space-y-4">
         {/* 市场级情绪带：盘前先回答「今天该不该出手」，再逐个看票。
             口径是**全市场**，不受下方筛选影响 */}
@@ -702,7 +700,11 @@ export default function AuctionPage() {
           </div>
 
           {loading ? (
-            <div className="px-4 py-8 text-center text-[14px] text-fg-dim">加载中…</div>
+            <LoadState loading className="px-4 py-10" />
+          ) : error ? (
+            // 取数失败不能落到下面那句「当日还没有竞价数据」上（2026-10-22 体检）：
+            // 那会把「接口挂了」说成「今天没采样」，用户会当成结论
+            <LoadState error={error} className="px-4 py-10" />
           ) : !data || data.total === 0 ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               当日还没有竞价数据 —— 采样任务在<strong>交易日 9:15–9:26</strong>自动跑，
