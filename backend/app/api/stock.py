@@ -45,6 +45,7 @@ from app.models import (
 from app.schemas import (
     ChipDistributionOut,
     ChipPoint,
+    StockAiReviewOut,
     StockDailyRow,
     StockDdeOut,
     StockDdeRow,
@@ -62,7 +63,7 @@ from app.schemas import (
     TrapCheckOut,
     TrapSignalOut,
 )
-from app.services import chip, limit_rules, stock_events, trap
+from app.services import chip, limit_rules, stock_ai, stock_events, trap
 from app.services.auth import Cooldown, RateLimiter, current_user
 from app.services.patterns import build_bars
 from app.services.stock_phase import load_phase
@@ -1153,3 +1154,57 @@ def sync(
         raise HTTPException(status_code=400, detail="同步失败，请稍后再试") from exc
     _sync_cooldown.touch(f"user:{user.id}")
     return {"rows": written}
+
+
+#: 「AI 研判」的按用户冷却（2026-10-22 加）。
+#:
+#: **只在真要调模型时记账**：同一天第二次点会命中服务层缓存、不再花 token，
+#: 那种情况不该被冷却拦住（所以判缓存放在冷却之前，见 `ai_review`）。
+#: 10 秒只为挡「连点 / 双击」，不是成本闸 —— 真正的成本闸是缓存本身。
+AI_REVIEW_COOLDOWN_SEC = 10
+_ai_review_cooldown = Cooldown(AI_REVIEW_COOLDOWN_SEC)
+
+
+@router.post("/{code}/ai-review", response_model=StockAiReviewOut)
+def ai_review(
+    code: str,
+    user: AppUser = Depends(current_user),
+    session: Session = Depends(get_db),
+) -> StockAiReviewOut:
+    """按本站已有数据生成一段个股研判（用户主动点按钮，**不自动调用**）。
+
+    三种失败分别对应：503（`LLM_*` 没配齐，部署问题）、502（这一次模型没成功）、
+    429（刚点过还没生成完）。缓存命中直接返回，不占冷却。
+    """
+    code = _code(code)
+    hit = stock_ai.cached_review(code)
+    from_cache = hit is not None
+    if hit is None:
+        wait = _ai_review_cooldown.remaining(f"user:{user.id}")
+        if wait is not None:
+            raise HTTPException(
+                status_code=429,
+                detail=f"刚刚点过，请 {int(wait) + 1} 秒后再试",
+                headers={"Retry-After": str(int(wait) + 1)},
+            )
+        _ai_review_cooldown.touch(f"user:{user.id}")
+        try:
+            hit = stock_ai.review(code)
+        except stock_ai.AiNotConfigured as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "AI 研判未启用：需要在 .env 里配 LLM_BASE_URL / "
+                    "LLM_API_KEY / LLM_MODEL（与简报 AI 点评同一套配置）"
+                ),
+            ) from exc
+        except stock_ai.AiFailed as exc:
+            raise HTTPException(status_code=502, detail=f"AI 研判生成失败：{exc}") from exc
+    return StockAiReviewOut(
+        code=code,
+        name=_resolve_name(session, code),
+        as_of=hit.as_of,
+        text=hit.text,
+        cached=from_cache,
+        generated_at=hit.generated_at,
+    )
