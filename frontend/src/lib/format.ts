@@ -97,6 +97,26 @@ export function fmtDateTime(value: string | null | undefined): string {
   return `${month}-${day} ${hour}:${minute}`
 }
 
+/** `Date` → 本地 `YYYY-MM-DD`。
+ *
+ * ⚠️ 不用 `toISOString().slice(0,10)`：那是按 **UTC** 切的，东八区凌晨 0~8 点
+ * 会被算成**前一天**（2026-09-27 修）。
+ */
+export function localDate(value: Date): string {
+  const pad = (number: number) => String(number).padStart(2, '0')
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
+}
+
+/**
+ * 今天的本地日期 `YYYY-MM-DD`，用作表单里日期字段的默认值。
+ *
+ * Journal / Plans 两个页面原先各有一份同样的实现（2026-10-22 合并到这里），
+ * 口径与 `localDate` 一致 —— 同样是**本地**日期，不是 UTC。
+ */
+export function todayLocal(): string {
+  return localDate(new Date())
+}
+
 /**
  * A 股惯例：红涨绿跌。
  * 0、空值与非有限数走中性色，不要误染色（NaN > 0 === false 会被染成跌色）。

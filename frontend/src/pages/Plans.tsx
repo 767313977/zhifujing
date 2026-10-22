@@ -10,14 +10,7 @@ import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import StockLink from '../components/StockLink'
-import { fmtNum, fmtPct, toneOf } from '../lib/format'
-
-function todayText(): string {
-  const now = new Date()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${now.getFullYear()}-${month}-${day}`
-}
+import { fmtNum, fmtPct, todayLocal, toneOf } from '../lib/format'
 
 interface FormState {
   code: string
@@ -32,7 +25,7 @@ function emptyForm(): FormState {
   return {
     code: '',
     name: '',
-    planDate: todayText(),
+    planDate: todayLocal(),
     buyPrice: '',
     stopPrice: '',
     note: '',
@@ -122,7 +115,7 @@ export default function PlansPage() {
     setForm({
       code: item.code,
       name: item.name ?? '',
-      planDate: form.planDate || todayText(),
+      planDate: form.planDate || todayLocal(),
       buyPrice: item.buy_price == null ? '' : String(item.buy_price),
       stopPrice: item.stop_price == null ? '' : String(item.stop_price),
       note: item.pattern_name ? `来自形态：${item.pattern_name}` : '',

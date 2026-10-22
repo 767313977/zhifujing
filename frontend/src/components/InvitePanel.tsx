@@ -3,6 +3,7 @@ import { api } from '../api/client'
 import type { Invite } from '../api/types'
 import Alert from './Alert'
 import Panel from './Panel'
+import { copyText } from '../lib/clipboard'
 import { fmtDateTime } from '../lib/format'
 
 const INPUT =
@@ -55,38 +56,21 @@ export default function InvitePanel() {
   }, [load])
 
   /**
-   * 复制到剪贴板。
-   *
-   * 不用 `navigator.clipboard`：它只在**安全上下文**（HTTPS / localhost）可用，
-   * 而本机用手机通过局域网 IP 打开时是 http://10.x.x.x，那里会直接抛错。
-   * textarea + `execCommand` 这套老办法两种环境都能用（Patterns 页里也有一份同样
-   * 的实现，那边在导自选股代码，没去合并）。
+   * 复制到剪贴板。实现见 `lib/clipboard.copyText`（Patterns 页导自选股代码也用它）。
+   * 这里只负责「已复制」的状态与定时器。
    */
-  async function copy(code: string) {
-    const box = document.createElement('textarea')
-    box.value = code
-    box.style.position = 'fixed'
-    box.style.top = '-1000px'
-    document.body.appendChild(box)
-    box.select()
-    let ok = false
-    try {
-      ok = document.execCommand('copy')
-    } catch {
-      ok = false
-    }
-    document.body.removeChild(box)
-    if (ok) {
-      setCopied(code)
-      // 连点不同邀请码时以最后一次为准，先清旧定时器
-      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
-      copiedTimer.current = window.setTimeout(() => {
-        copiedTimer.current = null
-        setCopied(null)
-      }, 1500)
-    } else {
+  function copy(code: string) {
+    if (!copyText(code)) {
       setError('复制失败：浏览器不允许，手动选中那串码吧')
+      return
     }
+    setCopied(code)
+    // 连点不同邀请码时以最后一次为准，先清旧定时器
+    if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
+    copiedTimer.current = window.setTimeout(() => {
+      copiedTimer.current = null
+      setCopied(null)
+    }, 1500)
   }
 
   async function create() {

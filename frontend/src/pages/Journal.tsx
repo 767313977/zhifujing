@@ -16,7 +16,7 @@ import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import StockLink from '../components/StockLink'
-import { fmtDrawdown, fmtNum, fmtPct, toneOf } from '../lib/format'
+import { fmtDrawdown, fmtNum, fmtPct, todayLocal, toneOf } from '../lib/format'
 
 /** 理由来源。与后端 `services/trade_journal.REASON_TYPES` 一一对应。 */
 const REASON_TYPES = [
@@ -60,13 +60,6 @@ const T_TRIGGER_LABELS: Record<string, string> = Object.fromEntries(
   T_TRIGGERS.map((item) => [item.key, item.label]),
 )
 
-function todayText(): string {
-  const now = new Date()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${now.getFullYear()}-${month}-${day}`
-}
-
 interface FormState {
   code: string
   name: string
@@ -87,7 +80,7 @@ function emptyForm(): FormState {
   return {
     code: '',
     name: '',
-    entryDate: todayText(),
+    entryDate: todayLocal(),
     entryPrice: '',
     shares: '',
     exitDate: '',
@@ -254,10 +247,10 @@ function TForm({
   onClose,
 }: TFormProps) {
   const [direction, setDirection] = useState(initial?.direction ?? 'long')
-  const [tradeDate, setTradeDate] = useState(initial?.trade_date ?? todayText())
+  const [tradeDate, setTradeDate] = useState(initial?.trade_date ?? todayLocal())
   // 第二腿默认与第一腿同一天（当日 T）；没做第二腿时价格留空，日期不会提交
   const [leg2Date, setLeg2Date] = useState(
-    initial?.leg2_date ?? initial?.trade_date ?? todayText(),
+    initial?.leg2_date ?? initial?.trade_date ?? todayLocal(),
   )
   // 用户手动改过第二腿日期就不再跟随第一腿；编辑一条「隔日 T」时也视为改过
   const [leg2Touched, setLeg2Touched] = useState(

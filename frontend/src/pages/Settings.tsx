@@ -7,7 +7,7 @@ import Layout from '../components/Layout'
 import MembersPanel from '../components/MembersPanel'
 import Panel from '../components/Panel'
 import SortTh from '../components/SortTh'
-import { fmtDateTime, fmtInt, fmtShortDate } from '../lib/format'
+import { fmtDateTime, fmtInt, fmtShortDate, localDate } from '../lib/format'
 import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'
 
@@ -33,16 +33,6 @@ const LOG_SORTS: SortSpecs<CollectLog> = {
   status: { value: (log) => log.status, first: 'asc' },
   rows: { value: (log) => log.rows },
   cost_seconds: { value: (log) => log.cost_seconds },
-}
-
-/** `Date` → 本地 `YYYY-MM-DD`。
- *
- * ⚠️ 不用 `toISOString().slice(0,10)`：那是按 **UTC** 切的，东八区凌晨 0~8 点
- * 会被算成**前一天**（2026-09-27 修）。
- */
-function localDate(value: Date): string {
-  const pad = (number: number) => String(number).padStart(2, '0')
-  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
 }
 
 function sixMonthsAgo(): string {
