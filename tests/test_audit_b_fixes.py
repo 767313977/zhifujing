@@ -234,3 +234,37 @@ def test_etf_covered_day_skips_fragment_and_nontrading_snapshots(engine, monkeyp
         assert etf_flow.latest_covered_day(db, fragment) == covered
         # 当日快照覆盖不足时不给「净申赎合计」（None，不是 0）
         assert funds_api._etf_net_inflow(db, fragment, covered) is None
+
+
+def test_etf_flow_series_net_computed_in_one_batch(engine, monkeypatch):
+    """`build_series` 的逐日净申赎由**一条**批量 SQL 算出（2026-10-22 体检）。
+
+    两天各 3 只、份额 100 → 110、收盘 1.0 → 净申赎 = 3 × 10 × 1.0 = 30 元。
+    这条用例同时钉住「基准日缺席的日期给 None（不是 0）」。
+    """
+    monkeypatch.setattr(etf_flow, "MIN_ROWS", 3)
+    first, second = date(2026, 9, 18), date(2026, 9, 21)
+    with Session(engine) as db:
+        db.add_all(
+            [TradeCalendar(trade_date=first), TradeCalendar(trade_date=second)]
+        )
+        db.add_all(
+            [
+                EtfShare(trade_date=first, code=f"51000{i}", shares=100.0, close=1.0)
+                for i in range(3)
+            ]
+        )
+        db.add_all(
+            [
+                EtfShare(trade_date=second, code=f"51000{i}", shares=110.0, close=1.0)
+                for i in range(3)
+            ]
+        )
+        db.commit()
+
+        series = etf_flow.build_series(db, second, 5)
+
+    assert series.dates == [first, second]
+    # 第一天没有更早的基准日 → None；第二天 = 30 元
+    assert series.net == [None, 30.0]
+    assert series.latest_date == second

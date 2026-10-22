@@ -24,10 +24,10 @@
 
 from bisect import bisect_left
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 
-from sqlalchemy import and_, func, select
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy import func, select, text
+from sqlalchemy.orm import Session
 
 from app.models import EtfCategory, EtfShare, TradeCalendar
 
@@ -86,6 +86,32 @@ def usable_days(session: Session) -> list[date]:
     return sorted(
         day for day, count in counts.items() if day in calendar and count >= MIN_ROWS
     )
+
+
+#: `usable_days` 的进程内缓存：`(引擎, 最新快照日, 计算时间, 结果)`。
+#: 它要对整张 `etf_share`（约 40 万行）做 group by，单次要几十毫秒到上百毫秒，
+#: 而「哪几天覆盖达标」在一天里基本不变（新的一天落库才会变）。10 分钟 TTL 兜住
+#: 「同一天补数据」这种改动（2026-10-22 体检）。
+_USABLE_CACHE: tuple[object, date | None, datetime, list[date]] | None = None
+_USABLE_TTL = timedelta(minutes=10)
+
+
+def _usable_days_cached(session: Session) -> list[date]:
+    global _USABLE_CACHE
+    latest = session.scalar(select(func.max(EtfShare.trade_date)))
+    bind = session.get_bind()
+    now = datetime.now()
+    cached = _USABLE_CACHE
+    if (
+        cached is not None
+        and cached[0] is bind
+        and cached[1] == latest
+        and now - cached[2] < _USABLE_TTL
+    ):
+        return cached[3]
+    days = usable_days(session)
+    _USABLE_CACHE = (bind, latest, now, days)
+    return days
 
 
 #: 「找最近覆盖达标日」时最多往前翻几个快照日。碎片日与正常日相邻（见 `MIN_ROWS`
@@ -164,38 +190,59 @@ def prev_covered_day(session: Session, day: date) -> date | None:
     )
 
 
-def day_net(
-    session: Session, day: date, prev: date | None, money: set[str] | None = None
-) -> float | None:
-    """单日净申赎（元）= Σ(份额变化 × 当日收盘价)，**不含货币现金类**。
+def day_nets(
+    session: Session, pairs: list[tuple[date, date]], money: set[str] | None = None
+) -> dict[date, float | None]:
+    """批量算多天的净申赎：`{day: 净额}`，**一条 SQL**（2026-10-22 体检）。
 
-    与 `api/funds._etf_net_inflow` 的逐行循环等价，只是把求和交给 SQL：
-    一年窗口 × 1700 只 = 40 万行，全读进内存做差分会把一次请求变成几十兆的分配。
-    留在 Python 侧的判据只有三条，与原来一一对应：**当日份额非空、当日收盘价非空
-    且不为 0、基准日份额非空**；基准日缺席（join 不上）即跳过该只。
+    净申赎 = Σ(当日份额 − 基准日份额) × 当日收盘价，**不含货币现金类**。
 
-    没有可配对的只时返回 **None 而不是 0**。
+    为什么要有它：`build_series` 原来对窗口里每一天各发一条单日查询（250 天 =
+    250 条往返），一次 `/api/etf-net-subscription` 要 300~500ms。这里把
+    `(day, prev)` 对拼成一张 VALUES 临时表、与 `etf_share` 关联两次后按 day 分组，
+    把 250 次往返压成 1 次。判据：**当日份额 / 收盘价非空、收盘价不为 0、
+    基准日份额非空、剔除货基**；缺配对的日期不会出现在结果里（调用方按 None 处理）。
+
+    没有可配对的只时该日不进结果 —— 「今天一分钱没进来」与「没得比」必须能区分。
     """
-    if prev is None:
-        return None
-    today = aliased(EtfShare)
-    before = aliased(EtfShare)
-    stmt = (
-        select(func.sum((today.shares - before.shares) * today.close))
-        .select_from(today)
-        .join(before, and_(before.code == today.code, before.trade_date == prev))
-        .where(
-            today.trade_date == day,
-            today.shares.is_not(None),
-            before.shares.is_not(None),
-            today.close.is_not(None),
-            # `not row.close` 的原语义：收盘价为 0 也算「算不出金额」
-            today.close != 0,
-        )
+    if not pairs:
+        return {}
+    values = ", ".join(
+        f"(CAST(:d{index} AS TEXT), CAST(:p{index} AS TEXT))"
+        for index in range(len(pairs))
     )
+    params: dict[str, str] = {}
+    for index, (day, prev) in enumerate(pairs):
+        params[f"d{index}"] = day.isoformat()
+        params[f"p{index}"] = prev.isoformat()
+    money_clause = ""
     if money:
-        stmt = stmt.where(today.code.not_in(money))
-    return session.scalar(stmt)
+        names = []
+        for index, code in enumerate(sorted(money)):
+            params[f"m{index}"] = code
+            names.append(f":m{index}")
+        money_clause = f"AND t.code NOT IN ({', '.join(names)})"
+    rows = session.execute(
+        text(
+            f"""
+            WITH pairs(day, prev) AS (VALUES {values})
+            SELECT p.day AS day, SUM((t.shares - b.shares) * t.close) AS net
+            FROM pairs p
+            JOIN etf_share t ON t.trade_date = p.day
+            JOIN etf_share b ON b.trade_date = p.prev AND b.code = t.code
+            WHERE t.shares IS NOT NULL
+              AND b.shares IS NOT NULL
+              AND t.close IS NOT NULL
+              AND t.close != 0
+              {money_clause}
+            GROUP BY p.day
+            """
+        ),
+        params,
+    ).all()
+    return {
+        date.fromisoformat(str(day)): float(net) for day, net in rows if net is not None
+    }
 
 
 @dataclass
@@ -254,20 +301,27 @@ def build_series(session: Session, end: date, days: int) -> FlowSeries:
     if not dates:
         return FlowSeries([], [], [], [], None, None, 0, {})
 
-    usable = usable_days(session)
+    usable = _usable_days_cached(session)
     usable_set = set(usable)
     position = {day: index for index, day in enumerate(calendar)}
     money = money_fund_codes(session)
 
     terms: list[Term] = []
+    planned: list[tuple[date, date]] = []
     for day in dates:
         index = bisect_left(usable, day)
         prev = usable[index - 1] if index else None
         if day in usable_set and prev is not None:
             span = position[day] - position[prev]
-            terms.append(Term(day, prev, span, day_net(session, day, prev, money)))
+            terms.append(Term(day, prev, span, None))
+            planned.append((day, prev))
         else:
             terms.append(Term(day, prev, None, None))
+    # 250 天一次算完（原来是逐日一条 SQL，见 `day_nets`）
+    nets = day_nets(session, planned, money)
+    for term in terms:
+        if term.span is not None:
+            term.net = nets.get(term.day)
 
     net = [term.net for term in terms]
     latest_index = next(
