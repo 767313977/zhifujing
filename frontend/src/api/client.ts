@@ -144,15 +144,8 @@ async function request<T>(
     timedOut = true
     controller.abort()
   }, timeoutMs)
-  // 合并调用方的 signal（而不是让 `signal: controller.signal` 把它覆盖掉）：调用方
-  // 传了 signal 时（如切票要取消旧请求），任一 abort 都要能取消这次请求 —— 直接覆盖
-  // 会把调用方的 signal 丢掉，旧请求就永远取消不掉。`AbortSignal.any` 兼容性不够，手写。
-  const callerSignal = init?.signal ?? null
-  const abortFromCaller = () => controller.abort()
-  if (callerSignal) {
-    if (callerSignal.aborted) controller.abort()
-    else callerSignal.addEventListener('abort', abortFromCaller)
-  }
+  // 合并调用方的 signal 那段代码已删（2026-10-22 体检）：全站没有一个调用方传 signal
+  // （切票 / 卸载都是靠页面内的 `seqRef` 丢过期响应），留着只是一段永远不执行的死代码。
   try {
     // `credentials: 'same-origin'`：登录态在 HttpOnly cookie 里，不带它就等于没登录。
     // 同源请求浏览器默认也会带，但显式写出来 —— 将来若改成跨域部署，这里不会静默失效。
@@ -205,7 +198,6 @@ async function request<T>(
     throw err
   } finally {
     clearTimeout(timer)
-    if (callerSignal) callerSignal.removeEventListener('abort', abortFromCaller)
   }
 }
 

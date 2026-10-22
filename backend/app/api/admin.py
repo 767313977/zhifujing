@@ -79,6 +79,32 @@ def _coverage(session: Session, model, label: str) -> TableCoverage:
     )
 
 
+# 「各表覆盖」缓存（2026-10-22 体检）：这里 7 张表各一次 COUNT(DISTINCT trade_date)
+# + MAX(trade_date)，个股日线是百万行级别，实测一次要几百毫秒 —— 而这个页面每次打开
+# 都会请求。这些数字一天最多变一次，缓存 10 分钟足够；`data_days` 与最新日期仍实时查
+# （都走索引，很便宜）。
+_COVERAGE_TTL = timedelta(minutes=10)
+_coverage_cache: tuple[datetime, list[TableCoverage]] | None = None
+
+
+def _coverage_all(session: Session) -> list[TableCoverage]:
+    global _coverage_cache
+    now = datetime.now()
+    if _coverage_cache is not None and now - _coverage_cache[0] < _COVERAGE_TTL:
+        return _coverage_cache[1]
+    rows = [
+        _coverage(session, IndexDaily, "指数日线"),
+        _coverage(session, LimitPool, "涨停三池"),
+        _coverage(session, Lhb, "龙虎榜"),
+        _coverage(session, SectorDaily, "板块行情"),
+        _coverage(session, StockConcept, "涨停题材"),
+        _coverage(session, StockDaily, "个股日线"),
+        _coverage(session, MarketSentiment, "情绪指标"),
+    ]
+    _coverage_cache = (now, rows)
+    return rows
+
+
 @router.get("/status", response_model=AdminStatus)
 def status(session: Session = Depends(get_db)) -> AdminStatus:
     """采集状态：各表覆盖、定时任务、最近采集日志。"""
@@ -113,15 +139,7 @@ def status(session: Session = Depends(get_db)) -> AdminStatus:
         latest_lhb_date=session.scalar(select(func.max(Lhb.trade_date))),
         latest_index_date=session.scalar(select(func.max(IndexDaily.trade_date))),
         data_days=session.scalar(select(func.count()).select_from(MarketSentiment)) or 0,
-        coverage=[
-            _coverage(session, IndexDaily, "指数日线"),
-            _coverage(session, LimitPool, "涨停三池"),
-            _coverage(session, Lhb, "龙虎榜"),
-            _coverage(session, SectorDaily, "板块行情"),
-            _coverage(session, StockConcept, "涨停题材"),
-            _coverage(session, StockDaily, "个股日线"),
-            _coverage(session, MarketSentiment, "情绪指标"),
-        ],
+        coverage=_coverage_all(session),
         scheduler=SchedulerStatus.model_validate(scheduler_status),
         recent_logs=[CollectLogOut.model_validate(log) for log in logs],
         ifind_quota=IfindQuota.model_validate(quota_status()),

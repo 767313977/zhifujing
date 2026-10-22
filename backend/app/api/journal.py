@@ -253,7 +253,8 @@ def _apply_t(
 
 
 def _row(session: Session, user: AppUser, trade_id: int) -> TradeJournalRow:
-    rows = trade_journal.load_enriched(session, user.id)
+    # 只算当前这一笔（2026-10-22 体检）：全量重算在笔数多时是写接口的主要开销
+    rows = trade_journal.load_enriched(session, user.id, trade_id=trade_id)
     for row in rows:
         if row["id"] == trade_id:
             return TradeJournalRow.model_validate(row)

@@ -445,13 +445,21 @@ def _t_metrics(
     return result
 
 
-def load_enriched(session: Session, user_id: int) -> list[dict]:
-    """该用户的全部交易（含现算指标），按买入日倒序。"""
+def load_enriched(
+    session: Session, user_id: int, trade_id: int | None = None
+) -> list[dict]:
+    """该用户的交易（含现算指标），按买入日倒序。
+
+    `trade_id` 只给「刚保存完、要把这一笔回给前端」的路径用（2026-10-22 体检）：
+    以前新增 / 编辑 / 改 T 之后都重算**全部**交易 —— 而每一笔都要拉日线、做 T 明细、
+    板块快照，笔数一多写一次就要几百毫秒。现在按 id 只算当前这一笔。
+    """
+    statement = select(TradeJournal).where(TradeJournal.user_id == user_id)
+    if trade_id is not None:
+        statement = statement.where(TradeJournal.id == trade_id)
     trades = list(
         session.scalars(
-            select(TradeJournal)
-            .where(TradeJournal.user_id == user_id)
-            .order_by(TradeJournal.entry_date.desc(), TradeJournal.id.desc())
+            statement.order_by(TradeJournal.entry_date.desc(), TradeJournal.id.desc())
         )
     )
     if not trades:
@@ -466,13 +474,10 @@ def load_enriched(session: Session, user_id: int) -> list[dict]:
     sectors = _sectors(session, codes)
 
     # 做 T 明细一次取全：按底仓分组，顺便收齐要查 [low, high] 的日期
-    t_rows = list(
-        session.scalars(
-            select(TradeT)
-            .where(TradeT.user_id == user_id)
-            .order_by(TradeT.trade_date, TradeT.id)
-        )
-    )
+    t_statement = select(TradeT).where(TradeT.user_id == user_id)
+    if trade_id is not None:
+        t_statement = t_statement.where(TradeT.trade_id == trade_id)
+    t_rows = list(session.scalars(t_statement.order_by(TradeT.trade_date, TradeT.id)))
     t_by_trade: dict[int, list[TradeT]] = defaultdict(list)
     t_days: set[date] = set()
     for row in t_rows:
