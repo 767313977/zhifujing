@@ -525,6 +525,15 @@ def _collect_etf_exchange(target: date) -> int:
     if complete:
         logger.info("ETF %s 的份额与行情已完整（%d 只），跳过", snap_day, total)
         _heal_etf_quotes(snap_day)
+        if snap_day < target:
+            # 补齐的只是**快照日**（= 昨天）那份，今天还没发布（2026-10-22 复查 P1-1）。
+            # 这里若 return，调用方会把今天的 `etf` 记成 **ok**，22:35 的终局
+            # （`run_late(skip_done=True)`）看到 ok 就跳过 —— 今天照样 0 行、日志还是绿的。
+            # 抛 EtfNotReady 让今天记 `skipped`，终局才会真的去抓。
+            raise etf_exchange.EtfNotReady(
+                f"深交所快照仍是 {snap_day}（早于目标日 {target}）：{snap_day} 的份额已完整，"
+                f"{target} 的要等交易所更新后由终局 / 次日再取"
+            )
         return total
 
     rows = etf_exchange.fetch_shares(target)

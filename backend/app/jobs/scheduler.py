@@ -829,6 +829,39 @@ class DailyScheduler:
             except Exception:  # noqa: BLE001 - 补尾部失败不该拖垮收盘后这一趟
                 logger.exception("%s：补当天尾部链路失败", reason)
 
+        # 15:05 的推送若因「基础采集没采全」被推迟，在这里补推（2026-10-22 复查 P1-2）。
+        # 三条定时链（17:30 / 19:30 / 22:35）与启动补采都会走到这里。
+        self._push_if_ready(collector, today, reason)
+
+    def _push_if_ready(
+        self, collector: DailyCollector, today: date, reason: str
+    ) -> None:
+        """基础数据齐了、但当天还没推送成功时，补推收盘简报与形态（2026-10-22 复查 P1-2）。
+
+        **为什么需要单独一步**：15:05 若 `has_collected=False`，`_run_tail` 会跳过
+        两步推送（避免发一份缺段的消息），但整条尾巴仍会落一条 **partial** 记录；
+        而 `tail_done` 把 partial 也算「跑过」，于是 17:30 / 19:30 / 22:35 都不会
+        再走 `_run_tail` —— 推送就再也没人做了（日志还是绿的）。
+
+        `already_pushed` 只认 `ok`：推失败那次不算推过，下一趟会再试；成功之后
+        这里只剩一次索引查询，几乎没有成本。
+        """
+        if not collector.has_collected(today):
+            return
+        # 尾部压根没跑（不是 partial）：上面那段会走 `_run_tail`，推送在那里做
+        if not tail_done(today):
+            return
+        from app.jobs.push_brief import already_pushed
+
+        try:
+            if already_pushed(today):
+                return
+            logger.info("%s：基础数据已齐，补推 %s 的收盘简报", reason, today)
+            self._push_brief(today)
+            self._push_pattern("limit_surge_flat", today)
+        except Exception:  # noqa: BLE001 - 补推失败不能拖垮收盘后这一趟
+            logger.exception("%s：补推收盘简报失败", reason)
+
     def _catch_up_late(self, collector: DailyCollector, today: date, reason: str) -> None:
         """把最近几天漏采的「收盘后那一趟」补上（上限 `CATCHUP_LOOKBACK_TRADING_DAYS`）。
 
@@ -1131,9 +1164,13 @@ class DailyScheduler:
             self._push_pattern("limit_surge_flat", today)
         else:
             # 基础采集没采全：推送出去只会是一份缺段的消息，且 ok 之后不会再重发。
-            # 日线/派生步骤已经照跑，等数据补齐（重启补采 / 次日回看）后再推。
+            # 日线/派生步骤已经照跑，等数据补齐后由 `_push_if_ready` 补推。
+            # ⚠️ 必须**记一笔失败**，否则其它步骤都成功时这条尾巴会被 `_mark_tail`
+            # 写成 ok，而 `tail_done` 把 ok 当「跑过」→ 再没人补推（2026-10-22 复查 P1-2）。
+            self._tail_failures.append("push_deferred")
             logger.warning(
-                "%s：基础采集未完成（has_collected=False），本次跳过收盘简报与形态推送",
+                "%s：基础采集未完成（has_collected=False），本次跳过收盘简报与形态推送；"
+                "数据补齐后由收盘后那几趟补推",
                 today,
             )
         # 命中前 N 只的 DDE 补齐**排在 DDE 扫描之前**（2026-10-10 用户要求「每天先补齐

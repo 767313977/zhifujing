@@ -153,6 +153,40 @@ def test_daily_collector_etf_history_marks_skipped(monkeypatch):
     assert "历史日没有快照" in (collector._step_note or "")
 
 
+def _patch_stale_etf(monkeypatch, *, snap: date, complete: bool):
+    """深交所快照停在 `snap`、且该日快照是否完整由 `complete` 决定。"""
+    engine = _engine()
+    _patch_scope(monkeypatch, collect_funds, engine)
+    monkeypatch.setattr(
+        collect_funds.etf_exchange, "szse_snapshot", lambda: (snap, 1, 1660)
+    )
+    monkeypatch.setattr(
+        collect_funds, "_etf_snapshot_complete", lambda session, day: (1660, complete)
+    )
+    monkeypatch.setattr(collect_funds, "_heal_etf_quotes", lambda day, limit=2: None)
+
+
+def test_etf_stale_snapshot_with_previous_complete_raises(monkeypatch):
+    """快照还停在昨天、昨天那份已完整 → 必须抛 EtfNotReady（2026-10-22 复查 P1-1）。
+
+    改之前这里直接 `return total`，调用方把今天的 `etf` 记成 **ok**，22:35 的终局
+    （`skip_done=True`）看到 ok 就跳过 —— 今天照样 0 行，日志却是绿的。
+    """
+    _patch_stale_etf(monkeypatch, snap=PREV, complete=True)
+
+    with pytest.raises(collect_funds.EtfNotReady) as exc:
+        collect_funds._collect_etf_exchange(DAY)
+
+    assert PREV.isoformat() in str(exc.value)
+
+
+def test_etf_current_snapshot_complete_is_ok(monkeypatch):
+    """快照日就是目标日且已完整 → 正常返回（不能把正常路径也判成「没发布」）。"""
+    _patch_stale_etf(monkeypatch, snap=DAY, complete=True)
+
+    assert collect_funds._collect_etf_exchange(DAY) == 1660
+
+
 # ------------------------------------------------- #2 三池纳入完成判据（skipped→非 failed）
 def test_has_collected_skipped_pool_is_not_failed(monkeypatch):
     """超期 `skipped` 不算失败 —— 否则历史日每次重启都会重跑整套 run()。"""
@@ -326,7 +360,11 @@ def _patch_tail(monkeypatch, called: list[str]) -> scheduler.DailyScheduler:
 
 
 def test_run_tail_allow_push_false_skips_only_pushes(monkeypatch):
-    """基础采集没采全：只跳过两步推送，其余照跑。"""
+    """基础采集没采全：只跳过两步推送，其余照跑，**并记一笔 push_deferred**。
+
+    不记的话其它步骤都成功时这条尾巴会被 `_mark_tail` 写成 ok，而 `tail_done` 把 ok
+    当「跑过」→ 之后再没人补推（2026-10-22 复查 P1-2）。
+    """
     called: list[str] = []
     sched = _patch_tail(monkeypatch, called)
 
@@ -334,6 +372,7 @@ def test_run_tail_allow_push_false_skips_only_pushes(monkeypatch):
 
     assert called == list(TAIL_STEPS)
     assert not set(PUSH_STEPS) & set(called)
+    assert "push_deferred" in sched._tail_failures
 
 
 def test_run_tail_allow_push_true_pushes(monkeypatch):
@@ -344,6 +383,72 @@ def test_run_tail_allow_push_true_pushes(monkeypatch):
     sched._run_tail(DAY, "测试")
 
     assert set(PUSH_STEPS) <= set(called)
+    assert "push_deferred" not in sched._tail_failures
+
+
+def _patch_push_ready(
+    monkeypatch, *, collected: bool, done: bool, pushed: bool
+) -> tuple[scheduler.DailyScheduler, list[str], SimpleNamespace]:
+    """造一个 `_push_if_ready` 的环境：三处判据（已采齐 / 尾部跑过 / 已推过）都可控。"""
+    sched = scheduler.DailyScheduler.__new__(scheduler.DailyScheduler)
+    sched.settings = object()
+    sched._tail_failures = []
+    called: list[str] = []
+    monkeypatch.setattr(sched, "_push_brief", lambda day: called.append("brief"))
+    monkeypatch.setattr(
+        sched, "_push_pattern", lambda pattern, day: called.append(f"pattern:{pattern}")
+    )
+    monkeypatch.setattr(scheduler, "tail_done", lambda day: done)
+    monkeypatch.setattr(
+        "app.jobs.push_brief.already_pushed",
+        lambda day, task=None: pushed,
+    )
+    collector = SimpleNamespace(has_collected=lambda day: collected)
+    return sched, called, collector
+
+
+def test_push_if_ready_pushes_after_base_completed(monkeypatch):
+    """15:05 被推迟、19:30 基础数据已齐 → 补推一次（简报 + 形态）。"""
+    sched, called, collector = _patch_push_ready(
+        monkeypatch, collected=True, done=True, pushed=False
+    )
+
+    sched._push_if_ready(collector, DAY, "测试")
+
+    assert called == ["brief", "pattern:limit_surge_flat"]
+
+
+def test_push_if_ready_skips_when_base_still_incomplete(monkeypatch):
+    """基础数据还是没采齐 → 不推（发出去只会是一份缺段的消息）。"""
+    sched, called, collector = _patch_push_ready(
+        monkeypatch, collected=False, done=True, pushed=False
+    )
+
+    sched._push_if_ready(collector, DAY, "测试")
+
+    assert called == []
+
+
+def test_push_if_ready_skips_when_tail_not_done(monkeypatch):
+    """尾部压根没跑过 → 让上面那段 `_run_tail` 去推，这里不重复。"""
+    sched, called, collector = _patch_push_ready(
+        monkeypatch, collected=True, done=False, pushed=False
+    )
+
+    sched._push_if_ready(collector, DAY, "测试")
+
+    assert called == []
+
+
+def test_push_if_ready_does_not_repeat(monkeypatch):
+    """已经推成功过（`already_pushed` 只认 ok）→ 后续趟次（22:35 / 重启）不再发。"""
+    sched, called, collector = _patch_push_ready(
+        monkeypatch, collected=True, done=True, pushed=True
+    )
+
+    sched._push_if_ready(collector, DAY, "测试")
+
+    assert called == []
 
 
 def _patch_run_daily(monkeypatch, collected_after: bool):

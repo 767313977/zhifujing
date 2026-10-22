@@ -92,6 +92,20 @@ def test_ok_tasks_uses_latest_status(monkeypatch):
     assert tasks == {"lhb"}
 
 
+def test_ok_tasks_ignores_skipped(monkeypatch):
+    """`skipped`（上游还没发布）**不算**已完成 —— 22:35 终局才会真的去抓 ETF。
+
+    2026-10-22 复查 P1-1 的另一半：ETF 快照还停在昨天时会记 skipped，
+    若这里把它当完成，终局就会跳过、当天永远 0 行。
+    """
+    engine = _engine()
+    _patch_scope(monkeypatch, engine)
+    _add_log(engine, "etf", "skipped")
+    _add_log(engine, "lhb", "ok")
+
+    assert _collector()._ok_tasks(DAY) == {"lhb"}
+
+
 def test_step_runs_when_skip_flag_off(monkeypatch):
     """`skip_if_ok=False`（定时触发那两趟）必须照旧全量重跑。"""
     engine = _engine()

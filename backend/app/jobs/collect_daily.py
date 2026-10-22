@@ -1214,6 +1214,10 @@ class DailyCollector:
         `skip_if_ok=True` —— 当天这一步已经 ok 过就**直接跳过、不写日志、不碰数据源**。
         只有 `run_late` 的补采路径会传它：晚间那几步是「等上游发布」，一旦当天取到了，
         重跑只会把配额再花一遍（见 `run_late` 的说明）。
+
+        ⚠️ **跳过的分支刻意不写 `collect_log`**：`run_late(skip_done=True)` 的判据是
+        「该任务**最近一条**日志是否为 ok」（`_ok_tasks`），补一条 skipped 会把那条 ok
+        盖掉，于是下一趟又当成没采过、重新花一遍配额。别"顺手"在这里补日志（2026-10-22 复查 P3）。
         """
         global _current_step
         if skip_if_ok:
