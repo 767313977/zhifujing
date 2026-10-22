@@ -5,7 +5,6 @@ import { api } from '../api/client'
 import type {
   ChipDistribution,
   FqMode,
-  StockAiReview,
   StockDde,
   StockDdeRow,
   StockNotices,
@@ -33,7 +32,7 @@ import {
   SPLIT_LINE,
   TOOLTIP,
 } from '../lib/chart'
-import { fmtAmount, fmtDateTime, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
+import { fmtAmount, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
 import { K_VIEWS, fqLabel, useKLine } from '../lib/klinePeriod'
 import { alreadySynced, markSynced, readStockList } from '../lib/stockNav'
 
@@ -306,11 +305,6 @@ export default function StockDetail() {
   // error，面板判据若也挂在 error 上，红条一关面板就永久「加载中…」（2026-10-11 修）
   const [profileError, setProfileError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  // AI 研判（用户点按钮才生成，后端按「代码 + 数据日」缓存）。
-  // 与其它增强读数一样：失败只影响这一块，不拖垮整页
-  const [aiReview, setAiReview] = useState<StockAiReview | null>(null)
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiError, setAiError] = useState<string | null>(null)
   // 周期、取数、按需补历史都在这个 hook 里（与形态页共用一套）
   const kline = useKLine(code)
   const { reload: reloadKline } = kline
@@ -414,10 +408,6 @@ export default function StockDetail() {
     setEventsError(null)
     setError(null)
     setProfileError(null)
-    // AI 研判是**按票**的，切票必须清掉，否则会拿上一只票的研判看新票
-    setAiReview(null)
-    setAiError(null)
-    setAiLoading(false)
     ;(async () => {
       try {
         const p = await load(code, () => cancelled)
@@ -594,25 +584,6 @@ export default function StockDetail() {
       setTrapChecking(false)
     }
   }, [code, trapContext])
-
-  /**
-   * 生成 AI 研判。**只在用户点按钮时调用** —— 它要花 token，不跟着页面自动跑。
-   * 生成要十几秒，期间用户可能已经切票，所以结果落地前要跟 `codeRef` 比对。
-   */
-  const runAiReview = useCallback(async () => {
-    if (!code) return
-    const target = code
-    setAiLoading(true)
-    setAiError(null)
-    try {
-      const data = await api.aiReview(target)
-      if (codeRef.current === target) setAiReview(data)
-    } catch (err) {
-      if (codeRef.current === target) setAiError((err as Error).message)
-    } finally {
-      if (codeRef.current === target) setAiLoading(false)
-    }
-  }, [code])
 
   const latest = profile?.latest
   /**
@@ -824,54 +795,6 @@ export default function StockDetail() {
           ) : (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               没有取到该股的日线 —— 同步失败（比如采集正忙）或该股当日无行情，稍后刷新重试
-            </div>
-          )}
-        </Panel>
-
-        {/* AI 研判：**不自动生成**（每次都要花 token），用户点了才调。
-            位置放在 K 线之后、资金流之前 —— 它读的正是上面这些数据，跟阅读顺序一致。
-            数据日必须显示出来：模型看到的是库里最新那根日线，未必是今天 */}
-        <Panel
-          title="AI 研判"
-          meta={
-            <span className="num">
-              {aiReview
-                ? `数据日 ${aiReview.as_of} · 生成于 ${fmtDateTime(aiReview.generated_at)}${
-                    aiReview.cached ? ' · 命中缓存' : ''
-                  }`
-                : '按本站已入库数据生成 · 不接新闻'}
-            </span>
-          }
-          delay={90}
-        >
-          {aiLoading ? (
-            <PanelLoading label="正在生成研判（约 10~30 秒，只调用一次模型）…" />
-          ) : aiError ? (
-            <div className="px-4 py-6 text-[13px] leading-relaxed text-danger">{aiError}</div>
-          ) : aiReview ? (
-            <>
-              {/* 后端保留段落换行（4 段），这里必须 pre-line；压成一行会很难读 */}
-              <div className="whitespace-pre-line px-4 py-3 text-[13.5px] leading-relaxed text-fg">
-                {aiReview.text}
-              </div>
-              <div className="border-t border-line-soft px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
-                由大模型根据本站入库数据组织，未接入新闻与公告；仅供参考，不构成投资建议。
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-col items-start gap-3 px-4 py-5">
-              <p className="text-[13px] leading-relaxed text-fg-muted">
-                按这只票的日线、阶段判定、形态命中、DDE 与市场情绪写一段研判。只在本站数据里找依据，
-                不联网找新闻，也不给买卖建议。
-              </p>
-              <button
-                type="button"
-                onClick={() => void runAiReview()}
-                disabled={aiLoading}
-                className="border border-accent/60 bg-accent/10 px-3 py-1.5 text-[13px] text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                生成研判
-              </button>
             </div>
           )}
         </Panel>

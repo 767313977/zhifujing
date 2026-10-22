@@ -2001,23 +2001,6 @@ export interface StockAnalysis {
   lhb_days: number
 }
 
-/**
- * 个股「AI 研判」（后端 `/api/stock/{code}/ai-review`）。
- *
- * 内容是模型按**本站库里已有的数字**写的，不接新闻；`as_of` 是数据日，不是「今天」。
- * `text` 用 `\n` 分段，渲染时要 `whitespace-pre-line`，别压成一行。
- */
-export interface StockAiReview {
-  code: string
-  name: string | null
-  /** 喂给模型的数据日 = 该股最新一根可用日线 */
-  as_of: string
-  text: string
-  /** true = 同一天已生成过，这次读的缓存（没有再次调用模型） */
-  cached: boolean
-  generated_at: string
-}
-
 export interface StockProfile {
   code: string
   name: string | null

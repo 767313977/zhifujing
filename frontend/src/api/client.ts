@@ -63,7 +63,6 @@ import type {
   SimilarDays,
   JournalReasonSuggestion,
   StockAnalysis,
-  StockAiReview,
   StockDailyRow,
   StockDde,
   StockNews,
@@ -100,15 +99,6 @@ const DEFAULT_TIMEOUT_MS = 30_000
  * 历史回补、自选同步、单只同步（后两个要按年的跨度去问 iFinD）。
  */
 const LONG_TIMEOUT_MS = 600_000
-
-/**
- * 个股「AI 研判」的超时（90 秒）。
- *
- * 后端调用大模型的超时是 `settings.llm_timeout`（默认 40 秒），前端要留出
- * 「排队 + 生成 + 回传」的余量；它比默认 30 秒长，所以必须单独给一个值 ——
- * 否则模型正常慢一点就会被前端先掐断，看起来像「生成失败」。
- */
-const AI_REVIEW_TIMEOUT_MS = 90_000
 
 /**
  * 「确认登录态」用的超时，单独给一个**更短**的值。
@@ -851,17 +841,6 @@ export const api = {
       `/stock/${encodeURIComponent(code)}/sync?days=${days}`,
       { method: 'POST' },
       LONG_TIMEOUT_MS,
-    ),
-
-  /**
-   * 个股 AI 研判。**用户点按钮才调**，后端按 (代码, 数据日) 缓存，同一天只花一次 token。
-   * 503 = 后端没配 `LLM_*`；502 = 这次模型没成功；429 = 刚点过（见后端注释）。
-   */
-  aiReview: (code: string) =>
-    request<StockAiReview>(
-      `/stock/${encodeURIComponent(code)}/ai-review`,
-      { method: 'POST' },
-      AI_REVIEW_TIMEOUT_MS,
     ),
 
   note: (date: string) => request<ReviewNote>(`/note/${date}`),

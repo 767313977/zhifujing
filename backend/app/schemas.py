@@ -1960,23 +1960,6 @@ class StockProfile(BaseModel):
     phase: WudaoPhase | None = None
 
 
-class StockAiReviewOut(BaseModel):
-    """个股「AI 研判」（2026-10-22 加）。
-
-    内容由大模型根据**本站库里已有的数字**组织而成，不接新闻、不接外部信息；
-    `as_of` 是喂给模型的数据日，页面上要如实标出来 —— 它不是「今天的实时观点」。
-    """
-
-    code: str
-    name: str | None
-    #: 数据日 = 该股最新一根可用日线的日期
-    as_of: date
-    text: str
-    #: True = 同一天已经生成过，这次直接读的缓存（没有再次调用模型）
-    cached: bool
-    generated_at: datetime
-
-
 class StockThemeItem(BaseModel):
     """个股挂的一个题材，附带该板块最近一个交易日的表现。
 
