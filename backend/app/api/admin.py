@@ -105,6 +105,18 @@ def _coverage_all(session: Session) -> list[TableCoverage]:
     return rows
 
 
+def _invalidate_coverage_cache() -> None:
+    """清「各表覆盖」缓存。
+
+    为什么要有它：覆盖数字缓存 10 分钟，而**手动回补 / 近端补数 / 形态扫描**都会
+    当场写库 —— 不清的话管理员刚跑完回补打开页面，看到的还是旧数字，会把「回补
+    成功」误判成「没生效」。定时采集不在这里清（没有请求上下文），由 TTL 兜底，
+    最多晚 10 分钟。
+    """
+    global _coverage_cache
+    _coverage_cache = None
+
+
 @router.get("/status", response_model=AdminStatus)
 def status(session: Session = Depends(get_db)) -> AdminStatus:
     """采集状态：各表覆盖、定时任务、最近采集日志。"""
@@ -171,11 +183,13 @@ def kline_recent(
 
     try:
         with collect_guard("近端日线"):
-            return KlineCollector().collect_recent(trade_date, days=days)
+            result = KlineCollector().collect_recent(trade_date, days=days)
     except CollectionBusy as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except IfindError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _invalidate_coverage_cache()
+    return result
 
 
 @router.post("/patterns/scan")
@@ -187,11 +201,13 @@ def patterns_scan(
 
     try:
         with collect_guard("形态扫描"):
-            return scan(trade_date)
+            result = scan(trade_date)
     except CollectionBusy as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except IfindError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _invalidate_coverage_cache()
+    return result
 
 
 @router.post("/backfill")
@@ -217,6 +233,8 @@ def backfill(
             result = _build_collector().backfill(start, end)
     except CollectionBusy as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    # 回补写了历史数据 → 覆盖数字当场过期（见 `_invalidate_coverage_cache`）
+    _invalidate_coverage_cache()
 
     days = result["days"]
     steps = [result["index_history"], result["lhb_history"]]

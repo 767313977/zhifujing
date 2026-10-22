@@ -7,6 +7,10 @@
 - **持有天数**：买入日到卖出日之间的交易日数，**含买入日与卖出日**（当天买卖 = 1）；
   未平仓算到库里最后一个有日线的交易日。
 - **收益**：已平仓用 `卖出价 / 买入价 − 1`；未平仓用**最新收盘**做浮动盈亏。
+  卖出日**没有日线**时（盘中先记卖出 / 停牌 / 当天还没采到）不能拿最后一根收盘价冒充
+  卖出价（那会把真实成交价丢掉，收益按昨收算而 note 是空的）：持仓窗口内**无除权**
+  就直接用 `卖出价 / 买入价`（两者都是不复权价），**有除权**则收益留 None；两种情况
+  都会在 `metrics_note` 里写明口径（见 `_end_basis`）。
 - **最大回撤**：持仓期间**收盘价**相对买入价的最大跌幅（≤0），不是「峰值到谷值」。
 - **止损是否触发**：持仓期间有没有收盘价跌破 `plan_stop`；`stop_executed` 表示
   触发后是否真的在止损位或更低卖出（没卖出 → False，没触发 → None）。
@@ -200,18 +204,57 @@ def _adjust(window: list[tuple[date, float, float | None]]) -> list[tuple[date, 
     return adjusted
 
 
+#: 判断「持仓窗口内有没有除权」的容差（等价价 ÷ 不复权收盘 与 1 的差）。
+#:
+#: 没有除权时两者只差「涨跌幅四舍五入到 0.01pp」的复利漂移：每个交易日最多约
+#: 0.005pp（≈0.00005 相对），一百个交易日不到 0.5%，一年也就 1%~2%。取 2% 作为
+#: 判据：超过它就把窗口当成**有除权**，保守地不给收益（等日线入库再算），也不拿
+#: 不复权卖出价直接比买入价（10 送 10 那种会凭空差一倍）。
+_ADJUST_FACTOR_TOL = 0.02
+
+
 def _end_basis(
     trade: TradeJournal,
     window: list[tuple[date, float, float | None]],
     adjusted: list[tuple[date, float]],
-) -> float:
-    """期末价的「买入日口径」：已平仓用卖出价换算，未平仓用最新等价收盘价。"""
+) -> tuple[float | None, str | None]:
+    """期末价的「买入日口径」+ 口径说明 `(等价价, metrics_note)`。
+
+    正常路径（与旧口径一致）：
+    - 未平仓：最新一根的等价收盘价，note 为 None；
+    - 已平仓且卖出日**有日线**：`等价收盘 × 卖出价 / 当日收盘`，note 为 None。
+
+    ⚠️ 卖出日**没有日线**（盘中先记卖出、停牌、或当天日线还没入库）时，旧实现直接
+    返回最后一根等价收盘 —— 等于把用户的卖出价丢掉、收益按昨收算，而 note 还是空的。
+    现在改为不静默：
+    - 窗口内**无除权**（等价价与不复权收盘的比例≈1）→ 卖价与买价都是不复权价，
+      直接返回 `卖出价`（调用方算 `卖出价/买入价−1`），note 写明「无除权、直接计算」；
+    - 窗口内**有除权** → 卖出价换算不到买入日口径，返回 `(None, note)`，
+      调用方把收益留 None，等日线入库后自动修正。
+    """
     last_adjusted = adjusted[-1][1]
+    last_close = window[-1][1]
     exit_row = next((row for row in window if row[0] == trade.exit_date), None)
-    if trade.exit_price is not None and exit_row is not None and exit_row[1] > 0:
+    if trade.exit_price is None:
+        # 未平仓（或历史脏数据只填了日期）：沿用旧口径——最新等价收盘
+        return last_adjusted, None
+    if exit_row is not None and exit_row[1] > 0:
         # 卖出价是实际成交价（不复权），换成「买入日口径」再和买入价比
-        return last_adjusted * (float(trade.exit_price) / exit_row[1])
-    return last_adjusted
+        return last_adjusted * (float(trade.exit_price) / exit_row[1]), None
+    # 卖出日没有可用日线：先判断窗口内有没有除权，再决定能不能直接比
+    if last_close > 0:
+        factor = last_adjusted / last_close
+        if abs(factor - 1.0) <= _ADJUST_FACTOR_TOL:
+            return (
+                float(trade.exit_price),
+                "卖出日没有日线，按卖出价/买入价直接计算（持仓期内无除权）；"
+                "日线入库后自动按当日收盘换算",
+            )
+    return (
+        None,
+        "卖出日没有日线（停牌或未采集），无法把卖出价换算到买入日口径，"
+        "暂不计算收益；日线入库后自动修正",
+    )
 
 
 def _window(
@@ -266,7 +309,7 @@ def _metrics(
 
     # 以**买入日收盘**为基准，按 pct_chg 逐日复利出「买入日口径」的等价收盘价。
     adjusted = _adjust(window)
-    basis = _end_basis(trade, window, adjusted)
+    basis, basis_note = _end_basis(trade, window, adjusted)
 
     drawdown = min(
         0.0, min(value for _, value in adjusted) / trade.entry_price - 1.0
@@ -283,14 +326,19 @@ def _metrics(
 
     return {
         "holding_days": end_pos - start_pos + 1,
-        "return_pct": round((basis / trade.entry_price - 1.0) * 100, 2),
+        "return_pct": (
+            round((basis / trade.entry_price - 1.0) * 100, 2)
+            if basis is not None
+            else None
+        ),
         "max_drawdown_pct": round(drawdown * 100, 2),
         "stop_hit": stop_hit,
         "stop_executed": stop_executed,
         "open": trade.exit_date is None,
         "latest_date": window[-1][0],
         "latest_close": window[-1][1],
-        "metrics_note": None,
+        # 卖出日无日线时的口径说明（见 `_end_basis`）；正常路径是 None
+        "metrics_note": basis_note,
     }
 
 
@@ -336,7 +384,9 @@ def _t_metrics(
     if adjusted:
         close_by_day = {day: close for day, close, _pct in window}
         adj_by_day = dict(adjusted)
-        end_basis: float | None = _end_basis(trade, window, adjusted)
+        # 卖出日无日线时 `_end_basis` 可能返回 None（有除权、换算不了）——未完成腿的
+        # 期末价指标跟着留 None 即可，底仓那一行的 `metrics_note` 会说明原因。
+        end_basis, _end_note = _end_basis(trade, window, adjusted)
         end_price: float | None = (
             float(trade.exit_price)
             if trade.exit_date is not None and trade.exit_price is not None

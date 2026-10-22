@@ -22,6 +22,7 @@ from app.models import (
     MarginDaily,
     MarketSentiment,
     StockDaily,
+    StockUniverse,
     VolatilityDaily,
 )
 from app.schemas import (
@@ -64,6 +65,7 @@ from app.schemas import (
     VolatilitySeries,
 )
 from app.services import (
+    coverage,
     etf_flow,
     industry_breadth,
     margin_temp,
@@ -148,12 +150,71 @@ MARGIN_TEMP_DAYS = 250
 INDUSTRY_MA_WINDOW = 20
 INDUSTRY_MA_LOOKBACK = 40
 
-# 行业宽度的结果缓存：`(目标交易日, 计算时间, 结果)`。
+# 行业宽度的结果缓存：`(目标交易日, 该日有效行数, 计算时间, 结果)`。
 # 它**读取时现算**（40 天 × 约 5500 只的 20 日窗口函数，实测 577ms），而某一天的
-# 结果在 `stock_daily` 落库后就不再变 —— 情绪周期页每次打开都会请求它，所以按
-# 目标交易日缓存 10 分钟（2026-10-22 体检）。
-_INDUSTRY_CACHE: tuple[date, datetime, IndustryBreadthOut] | None = None
+# 结果在「那天采全」之后就不再变 —— 情绪周期页每次打开都会请求它，所以按
+# （目标交易日, 该日行数）缓存 10 分钟（2026-10-22 体检）。
+#
+# ⚠️ 缓存键必须带上**该日的行数**：同一天里还会陆续补进行（收盘采集的后几批、
+# `api/admin/kline/recent`、个股页的 sync），日期不变、行数会变。只看日期的话，
+# 「半天」算出来的旧结果会被沿用到采完之后（与 `services.stock_phase._phase_version`
+# 同一个版本口径，2026-10-22 修）。
+_INDUSTRY_CACHE: tuple[date, int, datetime, IndustryBreadthOut] | None = None
 _INDUSTRY_TTL = timedelta(minutes=10)
+
+#: 找「最近一个日线采全的交易日」时最多往前翻几个交易日。
+#: 收盘采集按批提交，紧挨着的「今天」可能只有几百只票；再往前一天通常就是全的。
+_STOCK_DAY_LOOKBACK = 5
+
+
+def _valid_stock_rows(session: Session, day: date) -> int:
+    """某天有多少只票有**有效**日线（`pct_chg` 非空；停牌残行不算采到）。"""
+    return int(
+        session.scalar(
+            select(func.count())
+            .select_from(StockDaily)
+            .where(
+                StockDaily.trade_date == day,
+                StockDaily.pct_chg.is_not(None),
+            )
+        )
+        or 0
+    )
+
+
+def _latest_covered_stock_day(session: Session) -> tuple[date, int] | None:
+    """最近一个「日线采全」的交易日 + 那天有效行数；库空时 None。
+
+    为什么不用 `max(trade_date)`：只要**任意一只**票当天有行（个股页的 sync、回补的
+    分块写入、收盘采集的前几批），max 就会切到当天，而全市场行业占比要的是「当天
+    绝大多数股票都采到了」—— 拿「半天」算出来的占比没有意义。判据复用
+    `services.coverage.coverage_ok`（与形态扫描 / 简报 AI 同一道 90% 闸），池子取
+    `stock_universe` 的只数（它就是「每天要采哪些票」的范围）。
+    一个达标日都找不到（新库 / 池子空）时退回最新一天并照实返回行数，让响应里的
+    `coverage` 字段自己说明样本有多小。
+    """
+    days = list(
+        session.scalars(
+            select(StockDaily.trade_date)
+            .distinct()
+            .order_by(StockDaily.trade_date.desc())
+            .limit(_STOCK_DAY_LOOKBACK)
+        )
+    )
+    if not days:
+        return None
+    pool = session.scalar(select(func.count()).select_from(StockUniverse)) or 0
+    # 逐天算、命中即返回：最常见的「最新一天就采全」只花一次 count（约几毫秒），
+    # 不必再为更早的日子白算 4 次。
+    latest_rows: int | None = None
+    for day in days:
+        rows_on_day = _valid_stock_rows(session, day)
+        if latest_rows is None:
+            latest_rows = rows_on_day
+        if coverage.coverage_ok(rows_on_day, int(pool)):
+            return day, rows_on_day
+    return days[0], int(latest_rows or 0)
+
 
 # 北向活跃度曲线的默认回看长度。250 ≈ 一年，与 hsgt_daily 的深度（约 257 个交易日）相称
 NORTHBOUND_DAYS = 250
@@ -848,10 +909,15 @@ def industry_breadth_api(session: Session = Depends(get_db)) -> IndustryBreadthO
     要好几秒（按票的 20 日窗口函数跑几十万行），而情绪周期页是 `Promise.all` 拉齐
     后才渲染、会整页卡住。所以只取当日：窗口取目标日往前 40 个交易日、只聚合一天，
     实测约 0.4 秒。
+
+    ⚠️ 目标日取「最近一个**日线采全**的交易日」，不是 `max(trade_date)`（2026-10-22 修，
+    见 `_latest_covered_stock_day`）：收盘采集是按批写库的，采集中「今天」可能只有
+    几百只票，拿它算全市场占比会得出一个没有意义的数。
     """
-    target = session.scalar(select(func.max(StockDaily.trade_date)))
-    if target is None:
+    found = _latest_covered_stock_day(session)
+    if found is None:
         raise HTTPException(status_code=404, detail="暂无个股日线，请先执行采集或回补")
+    target, rows_on_target = found
 
     global _INDUSTRY_CACHE
     now = datetime.now()
@@ -859,9 +925,10 @@ def industry_breadth_api(session: Session = Depends(get_db)) -> IndustryBreadthO
     if (
         cached is not None
         and cached[0] == target
-        and now - cached[1] < _INDUSTRY_TTL
+        and cached[1] == rows_on_target
+        and now - cached[2] < _INDUSTRY_TTL
     ):
-        return cached[2]
+        return cached[3]
 
     # 目标日往前取 LOOKBACK 个交易日当 MA 窗口（只需当日的 20 日均线，多取的用于预热）
     bars = list(
@@ -915,7 +982,7 @@ def industry_breadth_api(session: Session = Depends(get_db)) -> IndustryBreadthO
         median=industry_breadth.median_ratio(items),
         coverage=total,
     )
-    _INDUSTRY_CACHE = (target, now, result)
+    _INDUSTRY_CACHE = (target, rows_on_target, now, result)
     return result
 
 

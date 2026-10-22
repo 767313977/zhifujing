@@ -8,6 +8,7 @@
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -73,6 +74,19 @@ def save_note(
         session.add(row)
     row.market_view = payload.market_view
     row.next_plan = payload.next_plan
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # 并发保存同一天笔记（双击 / 两个标签页）：两个 PUT 都在上面「查不到」→ 都
+        # INSERT，后者撞主键 `(user_id, trade_date)`。结果与串行一致（行已存在），
+        # 重新取回来按「更新」再写一次，不冒 500（2026-10-22 加，与次日计划同处理）。
+        session.rollback()
+        row = session.get(ReviewNote, (user.id, trade_date))
+        if row is None:
+            # 理论上不会走到：主键冲突说明这一行已经在库里
+            raise
+        row.market_view = payload.market_view
+        row.next_plan = payload.next_plan
+        session.commit()
     session.refresh(row)
     return NoteOut.model_validate(row)

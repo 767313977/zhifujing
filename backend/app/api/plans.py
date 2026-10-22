@@ -9,6 +9,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -76,6 +77,14 @@ def suggestions(
     )
 
 
+def _fill(plan: TradePlan, name: str | None, payload: TradePlanIn) -> None:
+    """把入参写回计划行：新增、并发冲突后改走「更新」、修改三处共用这一份。"""
+    plan.name = name
+    plan.buy_price = float(payload.buy_price)
+    plan.stop_price = float(payload.stop_price)
+    plan.note = (payload.note or "").strip() or None
+
+
 @router.post("", response_model=TradePlanRow)
 def create_plan(
     payload: TradePlanIn,
@@ -93,11 +102,27 @@ def create_plan(
     if plan is None:
         plan = TradePlan(user_id=user.id, code=code, plan_date=payload.plan_date)
         session.add(plan)
-    plan.name = name
-    plan.buy_price = float(payload.buy_price)
-    plan.stop_price = float(payload.stop_price)
-    plan.note = (payload.note or "").strip() or None
-    session.commit()
+    _fill(plan, name, payload)
+    try:
+        session.commit()
+    except IntegrityError:
+        # 并发连点 / 两个标签页同时保存：两个请求都在上面「查不到」，后者 INSERT 撞
+        # `ux_trade_plan_user_code_date`。这不是错误 —— 结果与串行路径完全一样（那一行
+        # 已经在库里），按「更新」重写一次再返回，不要把 500 丢给用户（2026-10-22 修，
+        # 与 `api/watchlist.add_watchlist` 的 IntegrityError 处理同一套）。
+        session.rollback()
+        plan = session.scalar(
+            select(TradePlan).where(
+                TradePlan.user_id == user.id,
+                TradePlan.code == code,
+                TradePlan.plan_date == payload.plan_date,
+            )
+        )
+        if plan is None:
+            # 理论上不会走到：唯一约束只可能被同一把键挡下
+            raise
+        _fill(plan, name, payload)
+        session.commit()
     session.refresh(plan)
     return _row(session, user, plan.id)
 
@@ -128,12 +153,18 @@ def update_plan(
             status_code=400, detail="该票当天已有一条计划，请直接编辑那一条"
         )
     plan.code = code
-    plan.name = name
     plan.plan_date = payload.plan_date
-    plan.buy_price = float(payload.buy_price)
-    plan.stop_price = float(payload.stop_price)
-    plan.note = (payload.note or "").strip() or None
-    session.commit()
+    _fill(plan, name, payload)
+    try:
+        session.commit()
+    except IntegrityError:
+        # 上面的预检挡不住「预检之后、commit 之前别人刚插了同键行」这一瞬：改走
+        # 「另一条已有计划」的 code+plan_date 仍会撞唯一索引。这里把它转成与预检
+        # 同一句 400，不冒 500（2026-10-22 加）。
+        session.rollback()
+        raise HTTPException(
+            status_code=400, detail="该票当天已有一条计划，请直接编辑那一条"
+        ) from None
     return _row(session, user, plan.id)
 
 

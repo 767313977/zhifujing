@@ -88,6 +88,82 @@ def usable_days(session: Session) -> list[date]:
     )
 
 
+#: 「找最近覆盖达标日」时最多往前翻几个快照日。碎片日与正常日相邻（见 `MIN_ROWS`
+#: 的实测记录），翻 5 天足够。
+_RECENT_DAY_LOOKBACK = 5
+
+
+def snapshot_rows(session: Session, day: date) -> int:
+    """某天有多少只 ETF 有份额快照行（`MIN_ROWS` 判据的输入）。"""
+    return int(
+        session.scalar(
+            select(func.count()).select_from(EtfShare).where(EtfShare.trade_date == day)
+        )
+        or 0
+    )
+
+
+def _is_covered_day(session: Session, day: date) -> bool:
+    """这一天是否**覆盖达标**（判据与 `usable_days` 完全一致：日历内 + 行数 ≥ MIN_ROWS）。"""
+    if snapshot_rows(session, day) < MIN_ROWS:
+        return False
+    return (
+        session.scalar(
+            select(TradeCalendar.trade_date).where(TradeCalendar.trade_date == day)
+        )
+        is not None
+    )
+
+
+def _recent_snapshot_days(
+    session: Session, upper: date, *, inclusive: bool
+) -> list[date]:
+    """`upper` 之前（或含它）最近的几个**有快照的日期**，降序。"""
+    condition = (
+        EtfShare.trade_date <= upper if inclusive else EtfShare.trade_date < upper
+    )
+    return list(
+        session.scalars(
+            select(EtfShare.trade_date)
+            .distinct()
+            .where(condition)
+            .order_by(EtfShare.trade_date.desc())
+            .limit(_RECENT_DAY_LOOKBACK)
+        )
+    )
+
+
+def _first_covered(session: Session, days: list[date]) -> date | None:
+    for day in days:
+        if _is_covered_day(session, day):
+            return day
+    return None
+
+
+def latest_covered_day(session: Session, on_or_before: date) -> date | None:
+    """`on_or_before`（含）之前最近一个**覆盖达标**的快照日；没有则 None。
+
+    为什么不直接调用 `usable_days()`：它要对整张 `etf_share` 做 group by（生产约
+    40 万行，每次请求几百毫秒），而这里只需要「最近一个可用日」。只看最近
+    `_RECENT_DAY_LOOKBACK` 天，判据仍是同一份（日历内 + 行数 ≥ `MIN_ROWS`）。
+    """
+    return _first_covered(
+        session, _recent_snapshot_days(session, on_or_before, inclusive=True)
+    )
+
+
+def prev_covered_day(session: Session, day: date) -> date | None:
+    """`day` **之前**最近一个覆盖达标的快照日（「相邻两天净申赎」的基准日）。
+
+    与 `build_series` 里基准日的取法一致（上一个覆盖达标日，不是紧邻交易日）：
+    紧邻交易日可能是只有几十行的碎片快照，拿它当基准会算出一个只覆盖几十只、
+    甚至交集为 0 的「净申赎」（见 `MIN_ROWS` / `build_series` 的说明）。
+    """
+    return _first_covered(
+        session, _recent_snapshot_days(session, day, inclusive=False)
+    )
+
+
 def day_net(
     session: Session, day: date, prev: date | None, money: set[str] | None = None
 ) -> float | None:

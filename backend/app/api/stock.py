@@ -284,11 +284,15 @@ def profile(
     code = _code(code)
     # 「在不在自选里」问的是**当前用户自己的**自选 —— 复合主键 (user_id, code)
     item = session.get(Watchlist, (user.id, code))
-    # 取 6 根：第 1 根当 latest，第 6 根用来算「五日涨跌幅」（见 _pct_chg_5d）
+    # 取 6 根：第 1 根当 latest，第 6 根用来算「五日涨跌幅」（见 _pct_chg_5d）。
+    # ⚠️ 必须滤掉停牌残行（只有收盘价、`pct_chg` 为空）：iFinD 给停牌日会写这种行，
+    # 不滤的话 latest 会变成「停牌日 + 旧收盘」，而同一响应的 `load_phase` 用
+    # `usable_bar` 剔掉了它 —— 页面就会出现「阶段判定是昨天、最新价日期是今天」
+    # （2026-10-22 修；`api/analysis.lookup` 早就这么滤了，见那里的注释）。
     recent = list(
         session.scalars(
             select(StockDaily)
-            .where(StockDaily.code == code)
+            .where(StockDaily.code == code, StockDaily.pct_chg.is_not(None))
             .order_by(StockDaily.trade_date.desc())
             .limit(6)
         )

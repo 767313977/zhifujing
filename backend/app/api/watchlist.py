@@ -63,12 +63,16 @@ def _latest_quotes(session: Session, codes: list[str]) -> dict[str, StockDaily]:
 
     取的是缓存而不是实时行情：页面因此不必联网、打开即读。
     实时性由采集任务与页面的「同步行情」按钮保证。
+
+    ⚠️ 「最新」要滤掉停牌残行（iFinD 给停牌日写的那种只有收盘价、`pct_chg` 为空的行）：
+    不滤的话停牌股的最新日会停在停牌那天、涨跌幅显示成「—」，看起来像当天没成交；
+    与 `services/stock_phase.usable_bar`、个股页的取数口径保持一致（2026-10-22 修）。
     """
     if not codes:
         return {}
     newest = (
         select(StockDaily.code, func.max(StockDaily.trade_date).label("latest"))
-        .where(StockDaily.code.in_(codes))
+        .where(StockDaily.code.in_(codes), StockDaily.pct_chg.is_not(None))
         .group_by(StockDaily.code)
         .subquery()
     )

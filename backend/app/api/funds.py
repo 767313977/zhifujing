@@ -40,6 +40,7 @@ from app.schemas import (
     InstitutionItem,
     MarginSnapshot,
 )
+from app.services import etf_flow
 from app.services.etf_category import UNKNOWN
 
 router = APIRouter(prefix="/api/funds", tags=["资金面"])
@@ -161,7 +162,12 @@ def overview(
             seen[row.code] = row.net_amount
     institution_net = sum(seen.values()) if seen else None
 
-    etf_inflow = _etf_net_inflow(session, target, prev)
+    # ETF 的基准日与曲线接口（`/api/market/etf-net-subscription`）同口径：上一个
+    # **覆盖达标**的快照日，而不是紧邻交易日。碎片快照日（跨境/QDII 滞后那天只有
+    # 几十行、与当天零交集）当基准会得出「没得比」，详见 `services/etf_flow.MIN_ROWS`。
+    etf_inflow = _etf_net_inflow(
+        session, target, etf_flow.prev_covered_day(session, target)
+    )
 
     # 期指前 20 净空（2026-10-19 加）：中金所约 16:00 才发布，取**最近一份**，
     # 所以 `futures_date` 可能早于页面选中的交易日。
@@ -260,6 +266,12 @@ def _etf_net_inflow(session: Session, target: date, prev: date | None) -> float 
     货基份额的单位与覆盖都不可信，计进去是噪声（见 `_money_fund_codes`）。
     没有前一日数据（首次采集）时返回 None 而不是 0 —— 「没得比」与
     「今天一分钱没进来」是两件事，后者是个结论，前者只是缺数据。
+
+    ⚠️ 两条判据与 `services.etf_flow.build_series` **同口径**（2026-10-22 修）：
+    - `prev` 由调用方传「上一个**覆盖达标**的快照日」（`etf_flow.prev_covered_day`），
+      不是紧邻交易日 —— 碎片快照日（几十行）当基准会让交集为 0；
+    - 当日快照不足 `MIN_ROWS` 时直接给 None：只覆盖几十只的「净申赎合计」不是
+      当日的真实数，不能拿它当「资金没动」。
     """
     if prev is None:
         return None
@@ -268,6 +280,8 @@ def _etf_net_inflow(session: Session, target: date, prev: date | None) -> float 
         row.code: row
         for row in session.scalars(select(EtfShare).where(EtfShare.trade_date == target))
     }
+    if len(today) < etf_flow.MIN_ROWS:
+        return None
     yesterday = {
         row.code: row
         for row in session.scalars(select(EtfShare).where(EtfShare.trade_date == prev))
@@ -383,15 +397,27 @@ def _etf_flows(
     """当日每只 ETF 的份额变化与净申赎。两个 ETF 接口共用。
 
     返回 (**实际数据日**, 对比基准日, 明细, 有没有可比基准)。
-    实际数据日由 `_etf_data_date` 从请求日往前回落而来 —— 接口必须把它放进响应，
-    否则前端只会看到请求的那个日期，标不出「这份 ETF 数据是哪天的」。
-    **has_prev 判的是「上一交易日的份额数据在不在」，不是「上一交易日在不在」** ——
-    交易日历里天天都是交易日，但份额要等第一次采集才有数；只看日期会返回
-    has_prev=True + 空列表，前端于是把「没得比」显示成「今天没人申赎」，
-    那是两个相反的结论。
+    实际数据日取「最近一个**覆盖达标**的份额快照日」、基准日取它之前最近的达标日
+    （都来自 `services.etf_flow`，与 `/api/market/etf-net-subscription` 的曲线同口径）。
+
+    **为什么不能直接用「请求日 / 上一交易日」**（2026-10-22 修）：快照日期不是全市场
+    统一的一天（跨境/QDII 晚一天），会造出只有几十行的**碎片快照日**。拿紧邻交易日
+    当基准，今天能配上的只有那几十只、常与当天零交集 → 返回 has_prev=True + 空列表，
+    前端把「没得比」显示成「今天没人申赎」，那是两个相反的结论。基准日覆盖不足
+    （< `MIN_ROWS`）时一律 `has_prev=False`。
     """
-    target = _latest_data_date(session, EtfShare.trade_date, target)
-    prev = _prev_trade_date(session, target)
+    requested = target
+    target = etf_flow.latest_covered_day(session, requested)
+    if target is None:
+        # 一个达标快照日都没有（新库 / 只有碎片快照）：保持旧行为 —— 返回最近有数据的
+        # 那天 + 空列表 + has_prev=False，页面显示「没有可比数据」而不是报错。
+        return (
+            _latest_data_date(session, EtfShare.trade_date, requested),
+            None,
+            [],
+            False,
+        )
+    prev = etf_flow.prev_covered_day(session, target)
     if prev is None:
         return target, None, [], False
 
@@ -449,8 +475,8 @@ def etf_flows(
 ) -> EtfFlowBoard:
     """ETF 申赎排行（按单只）。份额变化 = 净申购，是真金白银的资金进出。
 
-    `trade_date` 返回的是**实际数据日**（ETF 份额 T+1 才更新，所以通常比请求的
-    日期早一天），见 `_etf_data_date`。
+    `trade_date` 返回的是**实际数据日**（ETF 份额 T+1 才更新、且会剔除碎片快照日，
+    所以通常比请求的日期早），见 `_etf_flows`；`prev_date` 是实际用的基准日。
     """
     actual, prev, items, has_prev = _etf_flows(session, target)
     _sort_flows(items, order)
