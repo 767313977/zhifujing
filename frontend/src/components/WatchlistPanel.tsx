@@ -10,6 +10,11 @@ import StockLink from './StockLink'
 interface WatchlistPanelProps {
   rows: WatchlistRow[]
   delay?: number
+  /**
+   * 取数中。必须传：自选股是独立请求，没有这个标志时「还没到」与「真的没有自选股」
+   * 都走空态，有自选股的用户每次打开首页都会先看到「还没有自选股」（2026-10-22 体检 #8）。
+   */
+  loading?: boolean
 }
 
 const WATCH_SORTS: SortSpecs<WatchlistRow> = {
@@ -26,7 +31,7 @@ const WATCH_SORTS: SortSpecs<WatchlistRow> = {
  * 再回到自己的票，最后写笔记 —— 个人持仓放在最前面会把大盘视野挤掉。
  * 备注不在这里显示，编辑去自选股页，首页只回答「今天我的票怎么样」。
  */
-export default function WatchlistPanel({ rows, delay = 0 }: WatchlistPanelProps) {
+export default function WatchlistPanel({ rows, delay = 0, loading = false }: WatchlistPanelProps) {
   // 首屏不排，保持后端顺序（按代码）；点列头才排
   const [sort, shown] = useSort(rows, WATCH_SORTS, { key: null })
   const latest = rows.find((row) => row.latest_date)?.latest_date ?? '—'
@@ -38,14 +43,18 @@ export default function WatchlistPanel({ rows, delay = 0 }: WatchlistPanelProps)
       title="自选股表现"
       meta={
         <span className="num">
-          {rows.length > 0 ? `${rows.length} 只 · ${rising} 涨 / ${falling} 跌 · ${latest}` : '—'}
+          {rows.length > 0
+            ? `${rows.length} 只 · ${rising} 涨 / ${falling} 跌 · ${latest}`
+            : loading
+              ? '加载中…'
+              : '—'}
         </span>
       }
       delay={delay}
     >
       {rows.length === 0 ? (
         <div className="px-4 py-8 text-center text-[14px] text-fg-dim">
-          还没有自选股，在个股详情页点「加入自选」
+          {loading ? '加载中…' : '还没有自选股，在个股详情页点「加入自选」'}
         </div>
       ) : (
         <div className="max-h-[300px] overflow-auto">

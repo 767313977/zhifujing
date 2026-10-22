@@ -626,23 +626,40 @@ export default function JournalPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  /**
+   * 「我的交易」与「成绩单」各自的取数失败原因。
+   *
+   * 为什么必须分两个（2026-10-22 体检 #2）：成绩单要重算（按理由 / 情绪档位 / 板块聚合、
+   * 再做一遍做 T 统计），是最慢也最容易超时的一块。它和交易列表塞在同一个 `Promise.all`
+   * 里时，它一挂 `setRows` 就不执行，页面于是把用户已有的记录显示成
+   * 「还没有交易记录」—— 把「接口出错」说成「你的数据没了」。
+   */
+  const [rowsError, setRowsError] = useState<string | null>(null)
+  const [statsError, setStatsError] = useState<string | null>(null)
   // 「买入日那天这只票命中了什么」——按代码 + 买入日回溯（2026-10-21 用户要求）
   const [suggest, setSuggest] = useState<JournalReasonSuggestion | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
-    try {
-      const [trades, summary] = await Promise.all([
-        api.journalTrades(),
-        api.journalStats(),
-      ])
-      setRows(trades.rows)
-      setStats(summary)
-    } catch (err) {
-      setError((err as Error).message)
-    } finally {
-      setLoading(false)
-    }
+    setRowsError(null)
+    setStatsError(null)
+    // 两个请求各自转成「数据 + 失败原因」，谁挂了都不影响另一块（见上面 state 处的说明）
+    const [tradesResult, statsResult] = await Promise.all([
+      api.journalTrades().then(
+        (data) => ({ data, error: null as string | null }),
+        (err: Error) => ({ data: null, error: err.message }),
+      ),
+      api.journalStats().then(
+        (data) => ({ data, error: null as string | null }),
+        (err: Error) => ({ data: null, error: err.message }),
+      ),
+    ])
+    // 只在真拿到数据时覆盖：失败时保留上一份，总比把已有记录清成空表好
+    if (tradesResult.data) setRows(tradesResult.data.rows)
+    if (statsResult.data) setStats(statsResult.data)
+    setRowsError(tradesResult.error)
+    setStatsError(statsResult.error)
+    setLoading(false)
   }, [])
 
   useEffect(() => {
@@ -1104,7 +1121,7 @@ export default function JournalPage() {
           title="我的交易"
           meta={
             <span className="num">
-              {loading ? '加载中…' : `${rows.length} 笔`}
+              {loading ? '加载中…' : rowsError ? '—' : `${rows.length} 笔`}
               {summary && summary.closed > 0
                 ? ` · 已平仓胜率 ${summary.win_rate}% · 平均收益 ${fmtPct(summary.avg_return)}`
                 : ''}
@@ -1112,7 +1129,15 @@ export default function JournalPage() {
           }
           delay={70}
         >
-          {rows.length === 0 ? (
+          {rowsError ? (
+            // 失败态：明确说「是接口出错、不是没有记录」，否则用户会以为数据丢了
+            <div className="px-4 py-10 text-center text-[14px] text-danger">
+              交易记录取数失败：{rowsError}
+              <div className="mt-1 text-[12px] text-fg-dim">
+                这是接口出错，不是「你的交易记录没了」；刷新页面重试
+              </div>
+            </div>
+          ) : rows.length === 0 ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               {loading ? '加载中…' : '还没有交易记录 —— 从上面记第一笔开始'}
             </div>
@@ -1457,7 +1482,15 @@ export default function JournalPage() {
           }
           delay={100}
         >
-          {!stats ? (
+          {statsError ? (
+            // 成绩单失败只影响这一块：上面的「我的交易」照常显示（2026-10-22 体检 #2）
+            <div className="px-4 py-10 text-center text-[14px] text-danger">
+              成绩单取数失败：{statsError}
+              <div className="mt-1 text-[12px] text-fg-dim">
+                你的交易记录照常显示，只是这份统计没算出来；刷新页面重试
+              </div>
+            </div>
+          ) : !stats ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               {loading ? '加载中…' : '还没有统计数据'}
             </div>

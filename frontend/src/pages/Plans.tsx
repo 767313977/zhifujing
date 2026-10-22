@@ -71,21 +71,37 @@ export default function PlansPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  /**
+   * 「我的计划」与「候选建议」各自的取数失败原因。
+   *
+   * 为什么必须分开（2026-10-22 体检 #2）：候选建议要跑当日形态命中再与自选股合并，
+   * 慢且容易失败；两者塞在同一个 `Promise.all` 里时它一挂 `setRows` 就不执行，
+   * 页面会把用户写过的计划说成「还没有计划」。
+   */
+  const [plansError, setPlansError] = useState<string | null>(null)
+  const [suggestError, setSuggestError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
-    try {
-      const [plans, candidates] = await Promise.all([
-        api.plans(),
-        api.planSuggestions(),
-      ])
-      setRows(plans.rows)
-      setSuggestions(candidates.rows)
-    } catch (err) {
-      setError((err as Error).message)
-    } finally {
-      setLoading(false)
-    }
+    setPlansError(null)
+    setSuggestError(null)
+    // 两个请求各自转成「数据 + 失败原因」，谁挂了都不影响另一块（见上面 state 处的说明）
+    const [plansResult, suggestResult] = await Promise.all([
+      api.plans().then(
+        (data) => ({ data, error: null as string | null }),
+        (err: Error) => ({ data: null, error: err.message }),
+      ),
+      api.planSuggestions().then(
+        (data) => ({ data, error: null as string | null }),
+        (err: Error) => ({ data: null, error: err.message }),
+      ),
+    ])
+    // 只在真拿到数据时覆盖：失败时保留上一份，别把用户已看到的计划清成空表
+    if (plansResult.data) setRows(plansResult.data.rows)
+    if (suggestResult.data) setSuggestions(suggestResult.data.rows)
+    setPlansError(plansResult.error)
+    setSuggestError(suggestResult.error)
+    setLoading(false)
   }, [])
 
   useEffect(() => {
@@ -281,7 +297,15 @@ export default function PlansPage() {
           meta={<span className="num">点「带入」自动填代码与 key_levels 的买点 / 支撑</span>}
           delay={70}
         >
-          {shownSuggestions.length === 0 ? (
+          {suggestError ? (
+            // 候选取数失败只影响这一块；「我的计划」照常显示（2026-10-22 体检 #2）
+            <div className="px-4 py-8 text-center text-[13px] text-danger">
+              候选取数失败：{suggestError}
+              <div className="mt-1 text-[12px] text-fg-dim">
+                不是「今天没有可带入的候选」；你写好的计划仍显示在下面，刷新页面重试
+              </div>
+            </div>
+          ) : shownSuggestions.length === 0 ? (
             <div className="px-4 py-8 text-center text-[13px] text-fg-dim">
               {loading ? '加载中…' : '自选股与当日命中里没有可带入的候选'}
             </div>
@@ -342,12 +366,20 @@ export default function PlansPage() {
           title="我的计划"
           meta={
             <span className="num">
-              {loading ? '加载中…' : `${rows.length} 条`}
+              {loading ? '加载中…' : plansError ? '—' : `${rows.length} 条`}
             </span>
           }
           delay={100}
         >
-          {rows.length === 0 ? (
+          {plansError ? (
+            // 失败态：明确说「是接口出错、不是没有计划」，别让用户以为记录被删了
+            <div className="px-4 py-10 text-center text-[14px] text-danger">
+              计划取数失败：{plansError}
+              <div className="mt-1 text-[12px] text-fg-dim">
+                这是接口出错，不是「你还没有计划」；刷新页面重试
+              </div>
+            </div>
+          ) : rows.length === 0 ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               {loading ? '加载中…' : '还没有计划 —— 从上面写一条，或从候选里带入'}
             </div>

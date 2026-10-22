@@ -20,6 +20,12 @@ const INPUT =
 export default function MembersPanel() {
   const { me } = useAuth()
   const [members, setMembers] = useState<Member[] | null>(null)
+  /**
+   * 名单**读取**失败的原因。不能与 `error`（重置密码 / 停用等操作的失败）混用：
+   * 列表用 `members === null` 兼作「加载中」，读失败时 members 会一直是 null，
+   * 没有这个标志就会永久停在「加载中…」（2026-10-22 体检 #9）。
+   */
+  const [loadFailed, setLoadFailed] = useState<string | null>(null)
   const [resetFor, setResetFor] = useState<number | null>(null)
   const [resetValue, setResetValue] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -29,8 +35,9 @@ export default function MembersPanel() {
   const load = useCallback(async () => {
     try {
       setMembers(await api.members())
+      setLoadFailed(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setLoadFailed(err instanceof Error ? err.message : String(err))
     }
   }, [])
 
@@ -108,7 +115,25 @@ export default function MembersPanel() {
       )}
 
       {members === null ? (
-        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">加载中…</div>
+        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">
+          {loadFailed ? (
+            // 读失败不能伪装成「加载中…」（2026-10-22 体检 #9）
+            <>
+              <span className="text-danger">加载失败</span>：{loadFailed}
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => void load()}
+                  className="border border-line px-3 py-1 text-[12px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg"
+                >
+                  重试
+                </button>
+              </div>
+            </>
+          ) : (
+            '加载中…'
+          )}
+        </div>
       ) : (
         <div className="max-h-[320px] overflow-auto">
           <table className="grid-table">

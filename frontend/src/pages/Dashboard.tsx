@@ -15,7 +15,10 @@ import type {
 } from '../api/types'
 import Alert from '../components/Alert'
 import DivergenceNote from '../components/DivergenceNote'
-import { FearGreedBrief } from '../components/FearGreedPanel'
+// ⚠️ 从 `FearGreedBrief` 自己的文件引，**不要**改回 `./FearGreedPanel`：
+// 那个文件顶部静态 import 了 EChart（进而整包 echarts/core），首页自己一个图都不画，
+// 却会因此被迫下载 642 kB 的图表 chunk（2026-10-22 体检 #11）。
+import { FearGreedBrief } from '../components/FearGreedBrief'
 import IndexStrip from '../components/IndexStrip'
 import Layout from '../components/Layout'
 import LhbTable from '../components/LhbTable'
@@ -99,6 +102,12 @@ export default function Dashboard() {
   // 自选股：最新行情，**不随所选日期变**，所以与主数据分开、只在挂载时取一次
   //（放进 `load()` 会在每次切日期时白打一次 —— 2026-10-12 修）
   const [watchlist, setWatchlist] = useState<WatchlistRow[]>([])
+  /**
+   * 自选股是否还在取。初值 true，所以面板会显示「加载中…」而不是空态 ——
+   * 没有这个标志时，有自选股的用户每次打开首页都会先看到「还没有自选股」，
+   * 半秒后表格才出来，像数据丢了又回来（2026-10-22 体检 #8）。
+   */
+  const [watchLoading, setWatchLoading] = useState(true)
   const [watchError, setWatchError] = useState<string | null>(null)
   const [watchDismissed, setWatchDismissed] = useState(false)
   const dismiss = (key: keyof SectionErrors) =>
@@ -189,10 +198,14 @@ export default function Dashboard() {
     api
       .watchlist()
       .then((rows) => {
-        if (alive) setWatchlist(rows)
+        if (!alive) return
+        setWatchlist(rows)
+        setWatchLoading(false)
       })
       .catch((err: Error) => {
-        if (alive) setWatchError(err.message)
+        if (!alive) return
+        setWatchError(err.message)
+        setWatchLoading(false)
       })
     return () => {
       alive = false
@@ -393,7 +406,7 @@ export default function Dashboard() {
               />
             ) : null
           ) : (
-            <WatchlistPanel rows={watchlist} delay={400} />
+            <WatchlistPanel rows={watchlist} loading={watchLoading} delay={400} />
           )}
 
           <NotePanel tradeDate={data.overview.trade_date} delay={430} />

@@ -717,8 +717,12 @@ export default function StockDetail() {
             <Cell label="成交额" value={fmtAmount(latest?.amount)} />
             <Cell
               label="复盘关联"
-              value={`涨停 ${profile?.limit_up_dates.length ?? 0} 次`}
-              sub={`龙虎榜 ${profile?.lhb_count ?? 0} 次`}
+              // 概况还没到（或整批失败）时不能拼出「涨停 0 次」：0 是「一次都没涨停过」
+              // 这个**结论**，而这里只是还没取到。同一排其它格子走 fmtX(undefined) 会显示
+              // 「—」，这一格原来用字符串拼接 + `?? 0`，于是每次打开都先闪一个假 0，
+              // 概况失败时还会一直挂着（2026-10-22 体检 #7）。未知一律给「—」。
+              value={profile ? `涨停 ${profile.limit_up_dates.length} 次` : '—'}
+              sub={profile ? `龙虎榜 ${profile.lhb_count} 次` : undefined}
             />
             <Cell label="换手率" value={fmtNum(latest?.turnover, 2, '%')} />
             <Cell

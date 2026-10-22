@@ -204,17 +204,28 @@ function buildHistoryOption(history: FundFlowHistoryOut): ChartOption {
 interface Props {
   data: SectorFundFlowOut | null
   loading: boolean
+  /**
+   * 三块数据各自的失败原因。为什么要分开传（2026-10-22 体检 #3）：这三块在页面上
+   * 是三个独立请求，失败时它们原本会显示「这一天没有资金流数据 / 库里只有 1 个交易日」
+   * 这类空态文案，把接口故障说成「没有数据」。有 error 时改渲染失败态。
+   */
+  error?: string | null
   /** 多日矩阵（列=交易日、行=当日净额第 N 名），与轮动矩阵同一套版式 */
   matrix: FundFlowMatrixOut | null
   matrixLoading: boolean
+  matrixError?: string | null
   /** 累计曲线（跨多日，另有窗口档位） */
   history: FundFlowHistoryOut | null
   historyLoading: boolean
+  historyError?: string | null
   historyDays: number
   onHistoryDays: (days: number) => void
   taxonomy: SectorTaxonomy
   onTaxonomy: (taxonomy: SectorTaxonomy) => void
-  /** 点矩阵格子 = 选中那个板块，与轮动矩阵同一个动作 */
+  /**
+   * 点矩阵格子 = 选中那个板块，与轮动矩阵同一个动作。
+   * 矩阵里的格子是 memo 组件，所以这个函数要用 `useCallback` 稳定住（Sectors 已包）。
+   */
   onSelect: (code: string) => void
   /**
    * 页面当前看的交易日（板块排行解析出来的那天，缺省时用页面 state）。
@@ -226,10 +237,13 @@ interface Props {
 export default function SectorFlowPanel({
   data,
   loading,
+  error = null,
   matrix,
   matrixLoading,
+  matrixError = null,
   history,
   historyLoading,
+  historyError = null,
   historyDays,
   onHistoryDays,
   taxonomy,
@@ -314,6 +328,13 @@ export default function SectorFlowPanel({
 
       {loading ? (
         <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
+      ) : error ? (
+        // 失败态：与下面那句「这一天没有资金流数据」分开 —— 后者是「这天真的没算」，
+        // 前者是接口挂了（2026-10-22 体检 #3）
+        <div className="px-4 py-10 text-center text-[14px] text-danger">
+          资金流取数失败：{error}
+          <div className="mt-1 text-[12px] text-fg-dim">这是接口出错，不是「这一天没有资金流数据」</div>
+        </div>
       ) : empty ? (
         <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
           这一天没有资金流数据。净流入是拿「开盘红成分股 × 逐股主力净流入」现算的，
@@ -343,7 +364,7 @@ export default function SectorFlowPanel({
           放在条形图与曲线之间 —— 上是「今天谁最强」、中是「这几天每天谁最强」、
           下是「这几天谁被持续买入」，三块是同一个数据的三种看法。
           库里还没有净流入的日子时**不摆一张空表**，只在下面给出原因 */}
-      {(matrixLoading || matrixDays > 0) && (
+      {(matrixLoading || matrixDays > 0 || matrixError) && (
         <div className="border-t border-line-soft px-3 py-2">
           <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <span className="text-[13px] text-fg-dim">每日净流入前 {TOP}</span>
@@ -351,17 +372,24 @@ export default function SectorFlowPanel({
               列是交易日（从新到旧）、行是当天的第 N 名 · 点格子看板块详情
             </span>
             <span className="num ml-auto text-[13px] text-fg-dim">
-              {matrixLoading ? '加载中…' : `${matrixDays} 个交易日`}
+              {matrixLoading ? '加载中…' : matrixError ? '—' : `${matrixDays} 个交易日`}
             </span>
           </div>
-          <SectorFlowMatrix data={matrix} loading={matrixLoading} onSelect={onSelect} />
+          {matrixError ? (
+            // 多日矩阵与「当日排行」是两个请求，它挂了不影响上面那张条形图
+            <div className="py-6 text-center text-[13px] text-danger">
+              多日矩阵取数失败：{matrixError}
+            </div>
+          ) : (
+            <SectorFlowMatrix data={matrix} loading={matrixLoading} onSelect={onSelect} />
+          )}
         </div>
       )}
 
       {/* 累计曲线：与上面的「当日排行」是同一份数据的两个看法，所以放同一个面板，
           只在中间加一条分隔线。库里还没两天数据时**不画空图**，直接说明原因。
           窗口档位在面板头部（与矩阵共用一个值），这里只留说明文字 */}
-      {curveDays > 0 && (
+      {(curveDays > 0 || historyError) && (
         <div className="border-t border-line-soft px-3 py-2">
           <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <span className="text-[13px] text-fg-dim">累计净流入</span>
@@ -369,11 +397,16 @@ export default function SectorFlowPanel({
               从窗口起点累加，缺的那天累计值顺延
             </span>
             <span className="num ml-auto text-[13px] text-fg-dim">
-              {historyLoading ? '加载中…' : `${curveDays} 个交易日`}
+              {historyLoading ? '加载中…' : historyError ? '—' : `${curveDays} 个交易日`}
             </span>
           </div>
           {historyLoading ? (
             <div className="py-8 text-center text-[14px] text-fg-dim">加载中…</div>
+          ) : historyError ? (
+            // 与「库里只有 1 个交易日」分开：那是数据不够，这是请求失败
+            <div className="py-8 text-center text-[13px] text-danger">
+              累计曲线取数失败：{historyError}
+            </div>
           ) : historyOption && curveDays >= 2 ? (
             <EChart option={historyOption} height={360} />
           ) : (

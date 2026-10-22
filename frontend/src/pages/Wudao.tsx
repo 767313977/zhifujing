@@ -106,7 +106,14 @@ const POOL_TITLES: Record<string, string> = Object.fromEntries(
 export default function Wudao() {
   const [summary, setSummary] = useState<PatternSummary | null>(null)
   const [hits, setHits] = useState<Record<string, PatternStock[]>>({})
+  /**
+   * 每个池子**自己的**失败原因。六个池子是六块互相独立的表，一块请求挂了不能让其余
+   * 五块跟着显示「当日无命中」—— 那等于把接口故障说成「今天这只池子没票」
+   * （2026-10-22 体检 #1）。所以按池子 key 分开记。
+   */
+  const [poolErrors, setPoolErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
+  /** 汇总（交易日 / 各形态家数）的失败原因；与池子的错误分开，它只影响标题旁那行 */
   const [error, setError] = useState<string | null>(null)
 
   const pools = useMemo(() => SECTIONS.flatMap((section) => section.pools), [])
@@ -117,26 +124,37 @@ export default function Wudao() {
     const seq = ++seqRef.current
     setLoading(true)
     setError(null)
-    Promise.all([
-      api.patternSummary(null),
-      ...pools.map((pool) =>
-        // 这一页每个池子只取**一个**形态：传单元素数组（接口是多选口径，取并集）
-        api
-          .patternHits(null, 0, POOL_LIMIT, [pool.key])
-          .then((rows) => [pool.key, rows] as const),
-      ),
-    ])
-      .then(([sum, ...rows]) => {
-        if (seq !== seqRef.current) return
-        setSummary(sum)
-        setHits(Object.fromEntries(rows))
-      })
-      .catch((err: Error) => {
-        if (seq === seqRef.current) setError(err.message)
-      })
-      .finally(() => {
-        if (seq === seqRef.current) setLoading(false)
-      })
+    setPoolErrors({})
+    // 汇总与六个池子**各自兜底**：每个请求先转成「数据 + 失败原因」，于是下面这个
+    // `Promise.all` 永不 reject。旧写法是裸 Promise.all + 一个 catch —— 任一请求失败时
+    // `.then` 整段不执行、`setHits` 被跳过，六张表因此全部落到「当日无命中」分支
+    // （2026-10-22 体检 #1）。
+    void (async () => {
+      const [summaryResult, ...poolResults] = await Promise.all([
+        api.patternSummary(null).then(
+          (data) => ({ data, error: null as string | null }),
+          (err: Error) => ({ data: null, error: err.message }),
+        ),
+        ...pools.map((pool) =>
+          // 这一页每个池子只取**一个**形态：传单元素数组（接口是多选口径，取并集）
+          api.patternHits(null, 0, POOL_LIMIT, [pool.key]).then(
+            (rows) => ({ key: pool.key, rows, error: null as string | null }),
+            (err: Error) => ({ key: pool.key, rows: [] as PatternStock[], error: err.message }),
+          ),
+        ),
+      ])
+      // 连点「刷新」：旧响应整份丢掉，别把上一轮的结果写回来
+      if (seq !== seqRef.current) return
+      setSummary(summaryResult.data)
+      setError(summaryResult.error)
+      setHits(Object.fromEntries(poolResults.map((item) => [item.key, item.rows])))
+      setPoolErrors(
+        Object.fromEntries(
+          poolResults.flatMap((item) => (item.error === null ? [] : [[item.key, item.error]])),
+        ),
+      )
+      setLoading(false)
+    })()
   }, [pools])
 
   useEffect(() => {
@@ -217,6 +235,7 @@ export default function Wudao() {
                 pool={pool}
                 rows={hits[pool.key] ?? []}
                 loading={loading}
+                error={poolErrors[pool.key] ?? null}
                 count={countOf[pool.key]}
               />
             ))}
@@ -231,11 +250,14 @@ function PoolPanel({
   pool,
   rows,
   loading,
+  error,
   count,
 }: {
   pool: Pool
   rows: PatternStock[]
   loading: boolean
+  /** 这一池取数失败的原因；有值时渲染失败态而不是「当日无命中」 */
+  error?: string | null
   count?: number
 }) {
   // 一只票在本池里的分数与关键位要看**它自己**那条命中记录（同一只票可能命中别的形态），
@@ -260,7 +282,7 @@ function PoolPanel({
       title={pool.title}
       meta={
         <span className="num">
-          {loading ? '加载中…' : `${(count ?? rows.length)} 只`}
+          {loading ? '加载中…' : error ? '—' : `${(count ?? rows.length)} 只`}
           <span className="ml-2 text-fg-dim">按分数降序</span>
         </span>
       }
@@ -268,6 +290,15 @@ function PoolPanel({
     >
       {loading ? (
         <div className="px-4 py-8 text-center text-[14px] text-fg-dim">加载中…</div>
+      ) : error ? (
+        // 失败必须与「当日无命中」分开：其余池子照常显示，用户能看出是**这一块**挂了
+        //（2026-10-22 体检 #1）
+        <div className="px-4 py-8 text-center text-[13px] text-danger">
+          取数失败：{error}
+          <div className="mt-1 text-[12px] text-fg-dim">
+            这是接口出错，不是「今天这只池子没有票」；其余池子不受影响，可点右上「刷新」重试
+          </div>
+        </div>
       ) : rows.length === 0 ? (
         <div className="px-4 py-8 text-center text-[14px] text-fg-dim">当日无命中</div>
       ) : (

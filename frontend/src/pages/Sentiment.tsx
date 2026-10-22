@@ -32,8 +32,15 @@ import {
 } from '../lib/chart'
 import { fmtAmount, fmtShortDate } from '../lib/format'
 
-/** 增强读数的 key（面板失败信息按它归类，见 `panelErrors`） */
+/**
+ * 各读数块的 key（失败信息按它归类，见 `panelErrors`）。
+ *
+ * `indexHistory` / `sentiment` 也在里面：它们原来是「主序列」，失败会连累整页
+ * 12 个面板一起丢掉（见下面 effect 的注释，2026-10-22 体检 #4），现在也按 key 记错。
+ */
 type PanelKey =
+  | 'indexHistory'
+  | 'sentiment'
   | 'fearGreed'
   | 'breadth'
   | 'relayTemp'
@@ -118,8 +125,12 @@ export default function SentimentPage() {
       return null
     }
     Promise.all([
-      api.indexHistory(120),
-      api.sentimentSeries(60),
+      // 这两条原来是**唯一没有兜底**的请求（2026-10-22 体检 #4）：它们一失败整个
+      // `Promise.all` 就 reject，下面的 `.then` 整段不执行 —— 另外 12 个已经成功取回的
+      // 面板数据一个都进不了 state，全部渲染成「暂无数据，请先执行采集」。
+      // 现在与其它读数一样按 key 记错，失败只影响自己那一块。
+      api.indexHistory(120).catch(track('indexHistory')),
+      api.sentimentSeries(60).catch(track('sentiment')),
       api.fearGreed(250).catch(track('fearGreed')),
       api.breadth(250).catch(track('breadth')),
       api.relayTemp(120).catch(track('relayTemp')),
@@ -135,8 +146,9 @@ export default function SentimentPage() {
     ])
       .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData, futuresBasisData, erpData, nhNlData, obvData, etfNetFlowData, marginTempData, industryBreadthData, northboundData, volatilityData]) => {
         setHistory(historyData)
-        // 情绪指标只有数据源保留窗口内的日期才有值，其余为 null
-        setSentiment(sentimentData.filter((item) => item.limit_up_count != null))
+        // 情绪指标只有数据源保留窗口内的日期才有值，其余为 null。
+        // 请求失败时这里是 null（上面的 catch 兜成了 null），不是空列表
+        setSentiment((sentimentData ?? []).filter((item) => item.limit_up_count != null))
         setFearGreed(fearGreedData)
         setBreadth(breadthData)
         setRelayTemp(relayTempData)
@@ -455,6 +467,13 @@ export default function SentimentPage() {
             <div className="flex h-[320px] items-center justify-center text-[14px] text-fg-dim">
               <span className="pulse-soft">加载中…</span>
             </div>
+          ) : panelErrors.indexHistory ? (
+            // 失败与「没有数据」分开（2026-10-22 体检 #4）
+            <LoadState
+              error={panelErrors.indexHistory}
+              emptyText="暂无指数走势数据"
+              className="px-4 py-10"
+            />
           ) : (
             <div className="px-2 pt-2">
               <EChart option={indexOption} height={320} />
@@ -479,7 +498,7 @@ export default function SentimentPage() {
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
           ) : sentiment.length === 0 ? (
             <LoadState
-              error={error}
+              error={panelErrors.sentiment}
               emptyText="暂无情绪数据，请先在「今日复盘」执行采集"
               className="px-4 py-10"
             />
@@ -494,7 +513,11 @@ export default function SentimentPage() {
           {loading ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
           ) : sentiment.length === 0 ? (
-            <LoadState error={error} className="px-4 py-10" />
+            <LoadState
+              error={panelErrors.sentiment}
+              emptyText="暂无连板高度数据"
+              className="px-4 py-10"
+            />
           ) : (
             <div className="px-2 pt-2">
               <EChart option={ladderOption} height={200} />

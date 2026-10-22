@@ -176,6 +176,20 @@ export default function Sectors() {
     return CURVE_SPANS.includes(raw) ? raw : 30
   })
   const [loading, setLoading] = useState(true)
+  /**
+   * 各区块**自己的**失败原因。
+   *
+   * 为什么要分开（2026-10-22 体检 #3）：这一页有 6 条请求各自成败，共用一个 `error`
+   * 时后到的失败会覆盖先到的（顺序由网络决定），顶部只显示得出一条；而失败的那一块
+   * 自己会退回「本地还没有板块历史 / 这一天没有资金流数据」这类空态文案，
+   * 把接口故障说成「没有数据」。`error` 只剩「加入对比超过上限」这一句用户操作提示用。
+   */
+  const [rotationError, setRotationError] = useState<string | null>(null)
+  const [flowError, setFlowError] = useState<string | null>(null)
+  const [flowHistoryError, setFlowHistoryError] = useState<string | null>(null)
+  const [flowMatrixError, setFlowMatrixError] = useState<string | null>(null)
+  const [rankingError, setRankingError] = useState<string | null>(null)
+  const [membersError, setMembersError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // 把当前视图写回 URL。用 replace 而不是 push —— 否则每点一个板块都会往
@@ -223,6 +237,7 @@ export default function Sectors() {
   useEffect(() => {
     let stale = false
     setRotationLoading(true)
+    setRotationError(null)
     api
       // top 固定 10：跟短线侠那页一样，看轮动 10 行足够，再多一屏放不下，
       // 也就没必要做成可选项。
@@ -240,10 +255,11 @@ export default function Sectors() {
       })
       .catch((err: Error) => {
         // 失败要显式报出来：面板里那句「本地还没有板块历史」是给真的没数据准备的，
-        // 拿它顶替错误会被读成「板块历史就是空的」
+        // 拿它顶替错误会被读成「板块历史就是空的」。记在自己这一块的 error 上，
+        // 别去覆盖别的区块的（2026-10-22 体检 #3）
         if (!stale) {
           setRotation(null)
-          setError(err.message)
+          setRotationError(err.message)
         }
       })
       .finally(() => {
@@ -285,6 +301,7 @@ export default function Sectors() {
   useEffect(() => {
     let stale = false
     setFlowLoading(true)
+    setFlowError(null)
     api
       .sectorFundFlow(flowTaxonomy, date)
       .then((data) => {
@@ -293,7 +310,7 @@ export default function Sectors() {
       .catch((err: Error) => {
         if (!stale) {
           setFlow(null)
-          setError(err.message)
+          setFlowError(err.message)
         }
       })
       .finally(() => {
@@ -308,6 +325,7 @@ export default function Sectors() {
   useEffect(() => {
     let stale = false
     setFlowHistoryLoading(true)
+    setFlowHistoryError(null)
     api
       .sectorFundFlowHistory(flowTaxonomy, { days: flowDays }, date)
       .then((data) => {
@@ -316,7 +334,7 @@ export default function Sectors() {
       .catch((err: Error) => {
         if (!stale) {
           setFlowHistory(null)
-          setError(err.message)
+          setFlowHistoryError(err.message)
         }
       })
       .finally(() => {
@@ -332,6 +350,7 @@ export default function Sectors() {
   useEffect(() => {
     let stale = false
     setFlowMatrixLoading(true)
+    setFlowMatrixError(null)
     api
       .sectorFundFlowMatrix(
         flowTaxonomy,
@@ -344,7 +363,7 @@ export default function Sectors() {
       .catch((err: Error) => {
         if (!stale) {
           setFlowMatrix(null)
-          setError(err.message)
+          setFlowMatrixError(err.message)
         }
       })
       .finally(() => {
@@ -358,7 +377,7 @@ export default function Sectors() {
   useEffect(() => {
     let stale = false
     setLoading(true)
-    setError(null)
+    setRankingError(null)
     api
       .sectorRanking(taxonomy, date)
       .then((data) => {
@@ -372,7 +391,7 @@ export default function Sectors() {
         if (stale) return
         setRanking(null)
         setSelected(null)
-        setError(err.message)
+        setRankingError(err.message)
       })
       .finally(() => {
         if (!stale) setLoading(false)
@@ -420,18 +439,22 @@ export default function Sectors() {
   useEffect(() => {
     if (!selected) {
       setMembers(null)
+      setMembersError(null)
       return
     }
     let stale = false
     setMembersLoading(true)
     setMembers(null)
+    setMembersError(null)
     api
       .sectorMembers(selected, date)
       .then((data) => {
         if (!stale) setMembers(data)
       })
       .catch((err: Error) => {
-        if (!stale) setError(err.message)
+        // 记在这一块自己的 error 上：成员股那格的口径是「该板块暂无成分股数据」，
+        // 拿它顶替错误会被读成「这个板块真的没有成分股」（2026-10-22 体检 #3）
+        if (!stale) setMembersError(err.message)
       })
       .finally(() => {
         if (!stale) setMembersLoading(false)
@@ -564,19 +587,30 @@ export default function Sectors() {
       )}
 
       <div className="space-y-4">
-        <div className="flex flex-wrap items-stretch gap-px border border-line-soft bg-line-soft">
-          <Stat label="板块总数" value={fmtInt(ranking?.total ?? null)} unit="个" />
-          <Stat label="上涨板块" value={fmtInt(summary.rising)} unit="个" tone="text-up" />
-          <Stat label="下跌板块" value={fmtInt(summary.falling)} unit="个" tone="text-down" />
-          <Stat label="平均涨跌幅" value={fmtPct(summary.average)} tone={toneOf(summary.average)} />
-          <Stat label="板块总成交额" value={fmtAmount(summary.amount)} />
-          <Stat
-            label={taxonomy === 'kph_selected' ? '涨停股命中板块' : '口径'}
-            value={taxonomy === 'kph_selected' ? fmtInt(summary.limitUps) : '开盘红板块行情'}
-            unit={taxonomy === 'kph_selected' ? '次' : undefined}
-            muted={taxonomy !== 'kph_selected'}
-          />
-        </div>
+        {rankingError ? (
+          // 排行取不到时这一排统计量按 `boards=[]` 算出来全是 0 —— 0 个板块上涨是个
+          // 结论，而这里只是没取到。整排换成一句失败说明，别让 0 被当成事实
+          //（2026-10-22 体检 #3）
+          <div className="flex items-stretch border border-line-soft bg-line-soft">
+            <div className="flex-1 bg-ink-900 px-4 py-2.5 text-[13px] text-danger">
+              板块统计未取到：{rankingError}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-stretch gap-px border border-line-soft bg-line-soft">
+            <Stat label="板块总数" value={fmtInt(ranking?.total ?? null)} unit="个" />
+            <Stat label="上涨板块" value={fmtInt(summary.rising)} unit="个" tone="text-up" />
+            <Stat label="下跌板块" value={fmtInt(summary.falling)} unit="个" tone="text-down" />
+            <Stat label="平均涨跌幅" value={fmtPct(summary.average)} tone={toneOf(summary.average)} />
+            <Stat label="板块总成交额" value={fmtAmount(summary.amount)} />
+            <Stat
+              label={taxonomy === 'kph_selected' ? '涨停股命中板块' : '口径'}
+              value={taxonomy === 'kph_selected' ? fmtInt(summary.limitUps) : '开盘红板块行情'}
+              unit={taxonomy === 'kph_selected' ? '次' : undefined}
+              muted={taxonomy !== 'kph_selected'}
+            />
+          </div>
+        )}
 
         <Panel
           title="板块轮动"
@@ -590,6 +624,7 @@ export default function Sectors() {
           <SectorRotationPanel
             data={rotation}
             loading={rotationLoading}
+            error={rotationError}
             metric={rotationMetric}
             taxonomy={taxonomy}
             days={rotationDays}
@@ -620,6 +655,13 @@ export default function Sectors() {
             {membersLoading ? (
               <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
                 取数中…（该板块第一次打开时要向开盘红现取）
+              </div>
+            ) : membersError ? (
+              // 失败态：与「该板块暂无成分股数据」分开，后者是数据真的没有
+              //（2026-10-22 体检 #3）
+              <div className="px-4 py-10 text-center text-[14px] text-danger">
+                成分股取数失败：{membersError}
+                <div className="mt-1 text-[12px] text-fg-dim">这是接口出错，不是「这个板块没有成分股」</div>
               </div>
             ) : members && members.members.length > 0 ? (
               <>
@@ -757,13 +799,21 @@ export default function Sectors() {
             title={taxonomy === 'kph_selected' ? '精选板块排行' : '行业板块排行'}
             meta={
               <span className="num">
-                {loading ? '加载中…' : `${boards.length} 个 · 点列头排序`}
+                {loading ? '加载中…' : rankingError ? '—' : `${boards.length} 个 · 点列头排序`}
               </span>
             }
             delay={160}
           >
             {loading ? (
               <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
+            ) : rankingError ? (
+              // 失败态：与「暂无板块数据，请先执行采集」分开（2026-10-22 体检 #3）
+              <div className="px-4 py-10 text-center text-[14px] text-danger">
+                板块排行取数失败：{rankingError}
+                <div className="mt-1 text-[12px] text-fg-dim">
+                  这是接口出错，不是「库里没有板块数据」；右侧详情与下方资金流不受影响
+                </div>
+              </div>
             ) : boards.length === 0 ? (
               <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
                 暂无板块数据，请先在「数据管理」中执行采集
@@ -847,10 +897,13 @@ export default function Sectors() {
           <SectorFlowPanel
             data={flow}
             loading={flowLoading}
+            error={flowError}
             matrix={flowMatrix}
             matrixLoading={flowMatrixLoading}
+            matrixError={flowMatrixError}
             history={flowHistory}
             historyLoading={flowHistoryLoading}
+            historyError={flowHistoryError}
             historyDays={flowDays}
             onHistoryDays={setFlowDays}
             taxonomy={flowTaxonomy}

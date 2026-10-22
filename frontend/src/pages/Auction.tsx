@@ -375,6 +375,8 @@ export default function AuctionPage() {
   const [dates, setDates] = useState<string[]>([])
   const [data, setData] = useState<AuctionList | null>(null)
   const [boards, setBoards] = useState<AuctionBoards | null>(null)
+  /** 板块榜的失败原因；null = 取数成功。与主表的 `error` 分开（两块是独立请求） */
+  const [boardsError, setBoardsError] = useState<string | null>(null)
 
   // 板块榜在前端排（数据少）；默认按平均竞价涨幅降序，与后端给的一致
   const [boardSort, boardItems] = useSort(boards?.items ?? [], BOARD_SORTS, { key: 'avg_pct' })
@@ -400,13 +402,19 @@ export default function AuctionPage() {
   // 板块榜只随**日期**变（与上面的筛选无关，是全市场口径）
   useEffect(() => {
     let stale = false
+    setBoardsError(null)
     api
       .auctionBoards(date)
       .then((value) => {
         if (!stale) setBoards(value)
       })
-      .catch(() => {
-        if (!stale) setBoards(null)
+      .catch((err: Error) => {
+        // 失败不能只把 boards 置空：渲染条件是「有数据才出现」，那样整块会静默消失，
+        // 用户会把「没有板块共振」当成结论（2026-10-22 体检 #10）
+        if (!stale) {
+          setBoards(null)
+          setBoardsError(err.message)
+        }
       })
     return () => {
       stale = true
@@ -533,7 +541,19 @@ export default function AuctionPage() {
         )}
 
         {/* 板块竞价强度：判断「个股独立行情」还是「板块共振」——个股高开 + 板块整体高开才有持续性 */}
-        {boards && boards.items.length > 0 && (
+        {boardsError && (
+          // 失败要在原位置说清楚：这块原来是「有数据才出现」，一挂就整块消失，
+          // 而它回答的正是「今天有没有板块共振」（2026-10-22 体检 #10）
+          <Panel title="板块竞价强度" delay={60}>
+            <div className="px-4 py-8 text-center text-[13px] text-danger">
+              板块竞价强度取数失败：{boardsError}
+              <div className="mt-1 text-[12px] text-fg-dim">
+                这是接口出错，不是「今天没有板块共振」；下方个股主表不受影响，刷新页面重试
+              </div>
+            </div>
+          </Panel>
+        )}
+        {!boardsError && boards && boards.items.length > 0 && (
           <Panel
             title="板块竞价强度"
             meta={

@@ -19,6 +19,12 @@ const BUTTON =
  */
 export default function InvitePanel() {
   const [invites, setInvites] = useState<Invite[] | null>(null)
+  /**
+   * 名单**读取**失败的原因。必须与 `error`（生成 / 删除等操作的失败）分开：
+   * 列表用 `invites === null` 兼作「加载中」，读失败时 invites 会一直是 null，
+   * 没有这个标志就会永久停在「加载中…」（2026-10-22 体检 #9）。
+   */
+  const [loadFailed, setLoadFailed] = useState<string | null>(null)
   const [note, setNote] = useState('')
   // 存字符串：数字类型会让输入框清不空（清空瞬间被 `|| 1` 顶回 1）
   const [count, setCount] = useState('1')
@@ -38,8 +44,9 @@ export default function InvitePanel() {
   const load = useCallback(async () => {
     try {
       setInvites(await api.invites())
+      setLoadFailed(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setLoadFailed(err instanceof Error ? err.message : String(err))
     }
   }, [])
 
@@ -165,7 +172,22 @@ export default function InvitePanel() {
       </div>
 
       {invites === null ? (
-        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">加载中…</div>
+        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">
+          {loadFailed ? (
+            // 读失败不能伪装成「加载中…」：那会让管理员一直等一个不会来的结果
+            //（2026-10-22 体检 #9）
+            <>
+              <span className="text-danger">加载失败</span>：{loadFailed}
+              <div className="mt-2">
+                <button type="button" onClick={() => void load()} className={BUTTON}>
+                  重试
+                </button>
+              </div>
+            </>
+          ) : (
+            '加载中…'
+          )}
+        </div>
       ) : invites.length === 0 ? (
         <div className="px-4 py-8 text-center text-[14px] text-fg-dim">
           还没有邀请码。生成一个发给要用的人。

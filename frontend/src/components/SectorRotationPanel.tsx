@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import type {
   RotationColumn,
   RotationLeader,
@@ -149,9 +149,79 @@ function buildLadderOption(
   }
 }
 
+/**
+ * 矩阵里的一格。抽成 `memo` 组件是**为了悬停**（2026-10-22 体检 #12）。
+ *
+ * `hovered` 是面板的 state，鼠标每跨一格都会 setState 一次，整张表随之重渲染 ——
+ * 10 行 × 最多 60 列 = 600 个格子，每个格子都要重算 `toneOf` / `fmt*` 并新建 onClick
+ * 闭包，而真正需要变的只有「离开的那一格」和「进入的那一格」。memo 之后其余格子的
+ * props 没变、整批跳过。
+ *
+ * ⚠️ 因此 `onSelect` 必须是稳定引用（Sectors 用 `useCallback` 包过）：传内联箭头函数
+ * 会让每个格子的 props 每次都变，memo 静默失效 —— 只是白优化，不影响正确性。
+ * `onHover` 直接传 `setState`，它本身就是稳定的。
+ */
+const MatrixCell = memo(function MatrixCell({
+  cell,
+  active,
+  metric,
+  onSelect,
+  onHover,
+}: {
+  /** 缺这一格（当天上榜不足 N 名）时为 undefined，渲染「—」占位 */
+  cell: RotationColumn['cells'][number] | undefined
+  active: boolean
+  metric: RotationMetric
+  onSelect: (code: string) => void
+  onHover: (code: string | null) => void
+}) {
+  if (!cell) {
+    return <td className="border-b border-line-soft px-2 py-1 text-fg-dim">—</td>
+  }
+  return (
+    <td className={['border-b border-line-soft p-0', active ? 'bg-ink-700' : ''].join(' ')}>
+      <button
+        type="button"
+        onClick={() => onSelect(cell.code)}
+        onMouseEnter={() => onHover(cell.code)}
+        onMouseLeave={() => onHover(null)}
+        className="block w-full px-2 py-1 text-left"
+      >
+        <span
+          className={`text-[13px] whitespace-nowrap ${active ? 'text-accent' : 'text-fg'}`}
+        >
+          {cell.name}
+        </span>
+        <span
+          className={[
+            'num mt-0.5 block text-[13px]',
+            // 按成交额排时，格子里那行数字也该按涨跌上色 ——
+            // 成交额本身没有方向，红绿才是这行字要看的东西。
+            // 强度虽然也是「强度越大越好」，但它有正负（弱板块为负），
+            // 所以照旧按正负上色，与开盘啦那张图的红绿一致。
+            toneOf(metric === 'amount' ? cell.pct_chg : cell.value),
+          ].join(' ')}
+        >
+          {metric === 'amount'
+            ? fmtAmount(cell.value)
+            : metric === 'strength'
+              ? // 强度就是个数，没有单位（开盘啦也这么显示）
+                fmtNum(cell.value, 0)
+              : fmtPct(cell.value)}
+        </span>
+      </button>
+    </td>
+  )
+})
+
 interface Props {
   data: SectorRotation | null
   loading: boolean
+  /**
+   * 取数失败原因。有值时渲染失败态 —— 面板里那句「本地还没有板块历史」是给
+   * 「真的没采过」准备的，拿它顶替错误会被读成「板块历史是空的」（2026-10-22 体检 #3）
+   */
+  error?: string | null
   metric: RotationMetric
   /** 口径。**行业口径不显示「领涨」行**：涨停归属只覆盖精选板块，那行会永远是「—」 */
   taxonomy: SectorTaxonomy
@@ -166,13 +236,17 @@ interface Props {
   onMetric: (metric: RotationMetric) => void
   onDays: (days: number) => void
   onLadderDays: (days: number) => void
-  /** 点格子跳到那个板块的详情（右侧那块），与下方板块排行点一行是同一个动作 */
+  /**
+   * 点格子跳到那个板块的详情（右侧那块），与下方板块排行点一行是同一个动作。
+   * 调用方应传**稳定引用**（`useCallback`）—— 格子是 memo 组件，传内联箭头会让它每次都重渲染。
+   */
   onSelect: (code: string) => void
 }
 
 export default function SectorRotationPanel({
   data,
   loading,
+  error = null,
   metric,
   taxonomy,
   days,
@@ -235,6 +309,12 @@ export default function SectorRotationPanel({
 
       {loading ? (
         <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
+      ) : error ? (
+        // 失败与「本地还没有板块历史」必须分开：后者是数据没采，前者是这次请求挂了
+        //（2026-10-22 体检 #3）
+        <div className="px-4 py-10 text-center text-[14px] text-danger">
+          板块轮动取数失败：{error}
+        </div>
       ) : columns.length === 0 ? (
         <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
           本地还没有板块历史，请先在「数据管理」里执行一次采集
@@ -274,56 +354,17 @@ export default function SectorRotationPanel({
                     </td>
                     {columns.map((column) => {
                       const cell = column.cells[rank]
-                      if (!cell) {
-                        return (
-                          <td
-                            key={column.trade_date}
-                            className="border-b border-line-soft px-2 py-1 text-fg-dim"
-                          >
-                            —
-                          </td>
-                        )
-                      }
-                      const active = hovered === cell.code
                       return (
-                        <td
+                        <MatrixCell
                           key={column.trade_date}
-                          className={[
-                            'border-b border-line-soft p-0',
-                            active ? 'bg-ink-700' : '',
-                          ].join(' ')}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => onSelect(cell.code)}
-                            onMouseEnter={() => setHovered(cell.code)}
-                            onMouseLeave={() => setHovered(null)}
-                            className="block w-full px-2 py-1 text-left"
-                          >
-                            <span
-                              className={`text-[13px] whitespace-nowrap ${active ? 'text-accent' : 'text-fg'}`}
-                            >
-                              {cell.name}
-                            </span>
-                            <span
-                              className={[
-                                'num mt-0.5 block text-[13px]',
-                                // 按成交额排时，格子里那行数字也该按涨跌上色 ——
-                                // 成交额本身没有方向，红绿才是这行字要看的东西。
-                                // 强度虽然也是「强度越大越好」，但它有正负（弱板块为负），
-                                // 所以照旧按正负上色，与开盘啦那张图的红绿一致。
-                                toneOf(metric === 'amount' ? cell.pct_chg : cell.value),
-                              ].join(' ')}
-                            >
-                              {metric === 'amount'
-                                ? fmtAmount(cell.value)
-                                : metric === 'strength'
-                                  ? // 强度就是个数，没有单位（开盘啦也这么显示）
-                                    fmtNum(cell.value, 0)
-                                  : fmtPct(cell.value)}
-                            </span>
-                          </button>
-                        </td>
+                          cell={cell}
+                          // 高亮只有「上一格 / 新一格」会变，其余格子的这个 prop 保持不变，
+                          // memo 因此能把它们整批跳过（见 MatrixCell 的说明）
+                          active={cell != null && hovered === cell.code}
+                          metric={metric}
+                          onSelect={onSelect}
+                          onHover={setHovered}
+                        />
                       )
                     })}
                   </tr>

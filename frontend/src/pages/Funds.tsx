@@ -17,7 +17,6 @@ import type {
   InstitutionItem,
   InstitutionOrder,
 } from '../api/types'
-import Alert from '../components/Alert'
 import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
 import Layout from '../components/Layout'
@@ -174,7 +173,19 @@ export default function Funds() {
   const [ddeOrder, setDdeOrder] = useState<DdeOrder>('inflow')
   const [dde, setDde] = useState<DdeBoard | null>(null)
   const [ddeLoading, setDdeLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  /**
+   * 五个区块**各自的**失败原因。
+   *
+   * 为什么不能共用一个 `error`（2026-10-22 体检 #5）：这五条请求互相独立，共用一份时
+   * 后到的失败会覆盖先到的，用户只看得到一条、也不知道是哪一块；而且这份 state 原先
+   * 只有用户手点 ✕ 才会清 —— 切日期后数据都重新取成功了，红条还挂着上一次的失败。
+   * 现在每块自己记、每次取数开头清掉，失败只影响自己那一块。
+   */
+  const [overviewError, setOverviewError] = useState<string | null>(null)
+  const [seriesError, setSeriesError] = useState<string | null>(null)
+  const [etfError, setEtfError] = useState<string | null>(null)
+  const [instError, setInstError] = useState<string | null>(null)
+  const [ddeError, setDdeError] = useState<string | null>(null)
 
   // 日期下拉的候选来自交易日历（与其它页共用一个接口），不写死天数
   useEffect(() => {
@@ -187,6 +198,7 @@ export default function Funds() {
   useEffect(() => {
     let stale = false
     setOverviewLoading(true)
+    setOverviewError(null)
     api
       .fundsOverview(date)
       .then((data) => {
@@ -195,7 +207,7 @@ export default function Funds() {
       .catch((err: Error) => {
         if (stale) return
         setOverview(null)
-        setError(err.message)
+        setOverviewError(err.message)
       })
       .finally(() => {
         if (!stale) setOverviewLoading(false)
@@ -209,6 +221,7 @@ export default function Funds() {
   useEffect(() => {
     let stale = false
     setSeriesLoading(true)
+    setSeriesError(null)
     api
       .fundsSeries(SERIES_DAYS, date)
       .then((data) => {
@@ -217,7 +230,7 @@ export default function Funds() {
       .catch((err: Error) => {
         if (stale) return
         setSeries(null)
-        setError(err.message)
+        setSeriesError(err.message)
       })
       .finally(() => {
         if (!stale) setSeriesLoading(false)
@@ -230,6 +243,7 @@ export default function Funds() {
   useEffect(() => {
     let stale = false
     setEtfLoading(true)
+    setEtfError(null)
     // 先清空：旧日期的榜留在表里会被当成新日期的数据看。
     // 两个视图的数据都清 —— 来回切视图时留着另一个视图的旧数据，会闪一下错的内容
     setEtf(null)
@@ -246,7 +260,7 @@ export default function Funds() {
           })
     load
       .catch((err: Error) => {
-        if (!stale) setError(err.message)
+        if (!stale) setEtfError(err.message)
       })
       .finally(() => {
         if (!stale) setEtfLoading(false)
@@ -259,6 +273,7 @@ export default function Funds() {
   useEffect(() => {
     let stale = false
     setInstLoading(true)
+    setInstError(null)
     setInstitutions(null)
     api
       .fundsInstitutions(instOrder, BOARD_LIMIT, date)
@@ -266,7 +281,7 @@ export default function Funds() {
         if (!stale) setInstitutions(data)
       })
       .catch((err: Error) => {
-        if (!stale) setError(err.message)
+        if (!stale) setInstError(err.message)
       })
       .finally(() => {
         if (!stale) setInstLoading(false)
@@ -279,6 +294,7 @@ export default function Funds() {
   useEffect(() => {
     let stale = false
     setDdeLoading(true)
+    setDdeError(null)
     setDde(null)
     api
       .fundsDde(ddeOrder, BOARD_LIMIT, date)
@@ -286,7 +302,7 @@ export default function Funds() {
         if (!stale) setDde(data)
       })
       .catch((err: Error) => {
-        if (!stale) setError(err.message)
+        if (!stale) setDdeError(err.message)
       })
       .finally(() => {
         if (!stale) setDdeLoading(false)
@@ -401,14 +417,21 @@ export default function Funds() {
 
   return (
     <Layout toolbar={toolbar}>
-      {error && <Alert onClose={() => setError(null)}>{error}</Alert>}
-
       <div className="space-y-4">
         {/* ---- 概览 ---- */}
         <div className="rise grid grid-cols-1 gap-px border border-line-soft bg-line-soft sm:grid-cols-2 xl:grid-cols-3">
           {overviewLoading ? (
             <div className="bg-ink-900 px-4 py-8 text-center text-[14px] text-fg-dim sm:col-span-2 xl:col-span-3">
               加载中…
+            </div>
+          ) : overviewError ? (
+            // 失败态：概览六张卡原来会把「取不到」显示成一排「—」/「暂无数据」，
+            // 与「今天这些指标真的都没有」分不开（2026-10-22 体检 #5）
+            <div className="bg-ink-900 px-4 py-8 text-center text-[14px] text-danger sm:col-span-2 xl:col-span-3">
+              概览取数失败：{overviewError}
+              <div className="mt-1 text-[12px] text-fg-dim">
+                这是接口出错，不是「今天这些指标都没有值」；下面各区块不受影响
+              </div>
             </div>
           ) : (
             <>
@@ -547,6 +570,11 @@ export default function Funds() {
           >
             {seriesLoading ? (
               <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
+            ) : seriesError ? (
+              // 两张走势图是同一个请求，共用这一份失败原因（2026-10-22 体检 #5）
+              <div className="px-4 py-10 text-center text-[14px] text-danger">
+                走势取数失败：{seriesError}
+              </div>
             ) : series && series.dates.length > 0 ? (
               <div className="px-2 pt-2">
                 <EChart option={marginOption} height={280} />
@@ -570,6 +598,10 @@ export default function Funds() {
           >
             {seriesLoading ? (
               <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
+            ) : seriesError ? (
+              <div className="px-4 py-10 text-center text-[14px] text-danger">
+                走势取数失败：{seriesError}
+              </div>
             ) : series && series.dates.length > 0 ? (
               <div className="px-2 pt-2">
                 <EChart option={hsgtOption} height={280} />
@@ -611,6 +643,12 @@ export default function Funds() {
         >
           {etfLoading ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
+          ) : etfError ? (
+            // 失败态：与下面「还没有上一交易日的份额数据」「当日无数据」分开
+            //（2026-10-22 体检 #5）
+            <div className="px-4 py-10 text-center text-[14px] text-danger">
+              ETF 申赎取数失败：{etfError}
+            </div>
           ) : etfHasPrev === false ? (
             // 首次采集只有当天份额，没有可比的基准 —— 这是「没得比」，
             // 与「今天没人申赎」完全不同，不能共用一句空态文案
@@ -649,6 +687,10 @@ export default function Funds() {
         >
           {instLoading ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
+          ) : instError ? (
+            <div className="px-4 py-10 text-center text-[14px] text-danger">
+              机构席位排行取数失败：{instError}
+            </div>
           ) : institutions && institutions.items.length > 0 ? (
             <InstitutionTable items={institutions.items} />
           ) : (
@@ -675,6 +717,11 @@ export default function Funds() {
         >
           {ddeLoading ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
+          ) : ddeError ? (
+            // 失败态：与「还没有 DDE 数据（当天扫描没跑到）」分开（2026-10-22 体检 #5）
+            <div className="px-4 py-10 text-center text-[14px] text-danger">
+              DDE 排名取数失败：{ddeError}
+            </div>
           ) : dde && dde.items.length > 0 ? (
             <>
               <div className="border-b border-line-soft px-3 py-1.5 text-[13px] text-fg-dim">

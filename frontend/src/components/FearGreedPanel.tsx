@@ -1,5 +1,8 @@
 import { useMemo } from 'react'
-import type { FearGreed, FearGreedBand, FearGreedBrief as BriefData } from '../api/types'
+import type { FearGreed } from '../api/types'
+// 五档配色 / 分档判据 / 读数头都在 `FearGreedBrief.tsx`（那个文件**不引 EChart**，
+// 首页只用到它，见该文件头的说明）。这里反向引用，保证两处只有一套阈值。
+import { ScoreHeader, bandColor, bandOf, scoreColor } from './FearGreedBrief'
 import EChart from './EChart'
 import type { ChartOption } from './EChart'
 import Panel from './Panel'
@@ -19,43 +22,14 @@ import { fmtNum, fmtShortDate } from '../lib/format'
 /**
  * 恐惧贪婪指数面板（0–100，越高越贪婪）。
  *
- * 两个导出共用同一条五档色带与指针：
- * - `FearGreedBrief`：首页今日复盘用，只有读数 + 色带，不发第二个请求
- *   （数据来自 `overview.fear_greed`），要看拆解去「情绪周期」页；
- * - `FearGreedPanel`：情绪周期页用，读数 + 六项子指标 + 历史曲线。
+ * - `FearGreedBrief`（在 `FearGreedBrief.tsx`）：首页今日复盘用，只有读数 + 色带，
+ *   不发第二个请求（数据来自 `overview.fear_greed`），要看拆解去「情绪周期」页；
+ * - `FearGreedPanel`（本文件）：情绪周期页用，读数 + 六项子指标 + 历史曲线。
  *
  * 分档阈值（25/45/55/75）**由后端给**（`bands`），这里只把 band 的 `key` 映射到颜色 ——
  * 所以后端调档位时色带、指针、图上的横线会一起动，不会出现「色带画在 45、
  * 数字却按 50 分档」这种对不上的情况。
  */
-
-/** 五档配色：绿→灰→红，与全站「红涨绿跌」一致（恐慌=绿、贪婪=红）。 */
-const BAND_COLOR: Record<string, string> = {
-  // 极端两档用同色相再深一档（与 K 线里涨停/跌停标记同一套取色理由）：
-  // 压在中间档上仍一眼看出是「更重的那一端」，又不引入第三种语义
-  extreme_fear: CHART.limitDown,
-  fear: CHART.down,
-  neutral: CHART.fgDim,
-  greed: CHART.up,
-  extreme_greed: CHART.limitUp,
-}
-
-function bandColor(key: string): string {
-  return BAND_COLOR[key] ?? CHART.fgDim
-}
-
-/** 分数落在哪一档。返回该档（含后端给的中文名），分数为 null 时返回 null。 */
-function bandOf(bands: FearGreedBand[], score: number | null): FearGreedBand | null {
-  if (score == null) return null
-  // 与后端 `level_of` 同一判据：命中第一个「score <= upper」的档
-  return bands.find((band) => score <= band.upper) ?? bands[bands.length - 1] ?? null
-}
-
-/** 读数色跟着分档走：红色贪婪 / 绿色恐慌，扫一眼就分得出方向。 */
-function scoreColor(bands: FearGreedBand[], score: number | null): string {
-  const band = bandOf(bands, score)
-  return band ? bandColor(band.key) : 'var(--color-fg-dim)'
-}
 
 /** 曲线与图例里的系列名。tooltip 按名字找系列，不按下标找（下标会随叠加线的有无而变）。 */
 const SCORE_NAME = '恐惧贪婪指数'
@@ -76,125 +50,6 @@ function toNumber(value: unknown): number | null {
     return typeof last === 'number' ? last : null
   }
   return null
-}
-
-/**
- * 0–100 五档色带 + 位置指针。
- *
- * 段宽按各档的区间长度分配（25/20/10/20/25，不是等分）：这样指针位置与分数
- * 严格成比例 —— 读数 30 就落在「恐慌」段里偏右的地方，不会骗人。
- */
-function ScoreBand({ bands, score }: { bands: FearGreedBand[]; score: number | null }) {
-  const total = bands.reduce((sum, band) => sum + (band.upper - band.lower), 0) || 100
-  return (
-    <div>
-      <div className="relative h-[10px]">
-        <div className="flex h-full w-full overflow-hidden">
-          {bands.map((band) => (
-            <div
-              key={band.key}
-              style={{
-                width: `${((band.upper - band.lower) / total) * 100}%`,
-                backgroundColor: bandColor(band.key),
-              }}
-            />
-          ))}
-        </div>
-        {/* 指针用一圈面板底色的描边，把它从深色档里挑出来 */}
-        {score != null && (
-          <div
-            className="absolute top-[-4px] bottom-[-4px] w-[3px] -translate-x-1/2 bg-fg"
-            style={{
-              left: `${Math.min(Math.max(score, 0), 100)}%`,
-              boxShadow: '0 0 0 2px var(--color-ink-900)',
-            }}
-          />
-        )}
-      </div>
-      {/* 刻度用绝对定位按边界位置摆（用 flex 均分会与段宽对不上） */}
-      <div className="relative mt-1 h-[14px]">
-        {[0, ...bands.map((band) => band.upper)].map((bound, i, arr) => (
-          <span
-            key={bound}
-            className="num absolute text-[11px] text-fg-dim"
-            style={{
-              left: `${bound}%`,
-              // 首尾两个刻度贴着两端，各挪半格以免被裁掉一半
-              transform:
-                i === 0 ? undefined : i === arr.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)',
-            }}
-          >
-            {bound}
-          </span>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-/** 读数 + 分档 + 变化 + 色带。首页与情绪周期页共用这一块。 */
-function ScoreHeader({
-  score,
-  level,
-  change,
-  bands,
-}: {
-  score: number | null
-  level: string | null
-  change: number | null
-  bands: FearGreedBand[]
-}) {
-  const color = scoreColor(bands, score)
-  return (
-    <div className="flex flex-wrap items-end gap-x-8 gap-y-3 px-4 py-4">
-      <div className="shrink-0">
-        <div className="num text-[34px] leading-none font-semibold" style={{ color }}>
-          {score == null ? '—' : fmtNum(score, 1)}
-        </div>
-        <div className="mt-2 flex items-center gap-3">
-          <span className="text-[13px] tracking-[0.1em]" style={{ color }}>
-            {level ?? '数据不足'}
-          </span>
-          {change != null && (
-            <span className="num text-[12px] text-fg-dim">
-              较上一交易日 {change >= 0 ? '+' : ''}
-              {change.toFixed(1)}
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="min-w-[220px] flex-1">
-        <ScoreBand bands={bands} score={score} />
-      </div>
-    </div>
-  )
-}
-
-/**
- * 首页的一行读数。
- *
- * 放它在这里的理由：恐贪是「今天整体冷不冷」的**总结论**，先给这一句，
- * 再看下面市场情绪面板那十几个明细数字，扫读顺序才顺。
- */
-export function FearGreedBrief({ data, delay = 0 }: { data: BriefData; delay?: number }) {
-  return (
-    <Panel
-      title="恐惧贪婪指数"
-      meta={<span className="num">{data.trade_date} · 越高越贪婪</span>}
-      delay={delay}
-    >
-      <ScoreHeader
-        score={data.score}
-        level={data.level}
-        change={data.change}
-        bands={data.bands}
-      />
-      <div className="px-4 pb-3.5 text-[12px] leading-relaxed text-fg-dim">
-        六项分位（波动率 / RSI / 相对换手率 / 融资融券 / 市场宽度 / 涨跌停强度）等权合成，
-        明细与历史曲线见「情绪周期」页
-      </div>
-    </Panel>
-  )
 }
 
 /**

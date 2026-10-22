@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { SimilarDays } from '../api/types'
-import Alert from '../components/Alert'
 import Layout from '../components/Layout'
+import LoadState from '../components/LoadState'
 import Panel from '../components/Panel'
 import { fmtNum, fmtPct, toneOf } from '../lib/format'
 
@@ -71,8 +71,9 @@ export default function SimilarPage() {
 
   return (
     <Layout toolbar={toolbar}>
-      {error && <Alert onClose={() => setError(null)}>{error}</Alert>}
-
+      {/* 失败原因不再走顶部 Alert：两块面板各自用 LoadState 显示「加载失败 + 原因」，
+          那儿同时说清了「这是接口出错、不是没有数据」，比一条可关闭的红条更难被忽略
+          （2026-10-22 体检 #6） */}
       <div className="space-y-4">
         <Panel
           title="当天的情绪向量"
@@ -88,9 +89,17 @@ export default function SimilarPage() {
           delay={40}
         >
           {!data || data.vector.length === 0 ? (
-            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
-              {loading ? '加载中…' : '库里还没有情绪数据'}
-            </div>
+            loading ? (
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
+            ) : (
+              // 失败与「库里还没有情绪数据」分开：`load` 失败时 data 会被置 null，
+              // 只按 data 判会把接口故障显示成「没有数据」（2026-10-22 体检 #6）
+              <LoadState
+                error={error}
+                emptyText="库里还没有情绪数据"
+                className="px-4 py-10"
+              />
+            )
           ) : (
             <div className="grid grid-cols-2 gap-2 px-4 py-3 sm:grid-cols-5">
               {data.vector.map((item) => (
@@ -118,9 +127,16 @@ export default function SimilarPage() {
           delay={70}
         >
           {!data || data.rows.length === 0 ? (
-            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
-              {loading ? '加载中…' : '没有可比的历史日子（数据还不够）'}
-            </div>
+            loading ? (
+              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
+            ) : (
+              // 同上：失败态与原空态必须能区分（2026-10-22 体检 #6）
+              <LoadState
+                error={error}
+                emptyText="没有可比的历史日子（数据还不够）"
+                className="px-4 py-10"
+              />
+            )
           ) : (
             <div className="overflow-auto">
               <table className="grid-table">
