@@ -864,7 +864,7 @@ class DailyScheduler:
         3. 每个日子**只尝试一次**：补完写一条 `backfill` 日志收口。否则那些本来就
            补不回来的老日子（三池只留 15 个交易日）每次重启都会再烧一遍配额。
         """
-        if quota_level(self.settings) >= QuotaLevel.CORE_ONLY:
+        if quota_level(settings=self.settings) >= QuotaLevel.CORE_ONLY:
             logger.info("%s 跳过：配额已到 CORE_ONLY 档，先保证当天采集", reason)
             return
         try:
