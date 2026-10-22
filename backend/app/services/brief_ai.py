@@ -14,6 +14,7 @@
 import logging
 from datetime import date
 
+import requests
 from sqlalchemy import func, select
 
 from app.config import Settings, get_settings
@@ -27,7 +28,6 @@ from app.models import (
     StockDaily,
     StockUniverse,
 )
-from app.services import llm
 from app.services.coverage import coverage_ok
 from app.services.fear_greed import build_series
 from app.services.fear_greed import latest as fear_latest
@@ -144,7 +144,10 @@ def ai_comment(
     settings = settings or get_settings()
     if not settings.llm_brief_enabled:
         return None
-    if not llm.configured(settings):
+    base = settings.llm_base_url.strip().rstrip("/")
+    key = settings.llm_api_key.strip()
+    model = settings.llm_model.strip()
+    if not (base and key and model):
         logger.warning("AI 点评已开启，但 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL 不全，跳过")
         return None
 
@@ -161,17 +164,38 @@ def ai_comment(
         "请按系统要求写点评。"
     )
     try:
-        content = llm.chat(
-            settings,
-            _SYSTEM_PROMPT.format(limit=limit),
-            prompt,
-            max_tokens=500,
+        response = requests.post(
+            f"{base}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": _SYSTEM_PROMPT.format(limit=limit),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0.3,
+                "max_tokens": 500,
+            },
+            timeout=settings.llm_timeout,
         )
-    except llm.LlmError as exc:  # 点评失败绝不能影响推送
+        response.raise_for_status()
+        payload = response.json()
+        content = (
+            (payload.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+        )
+        content = " ".join(str(content).split()).strip()
+        if not content:
+            logger.warning("AI 点评返回空内容，简报照发")
+            return None
+        if len(content) > limit:
+            content = content[: limit - 1].rstrip() + "…"
+        return content
+    except Exception as exc:  # noqa: BLE001 —— 点评失败绝不能影响推送
         logger.warning("AI 点评失败（简报照发）：%s", exc)
         return None
-    # 点评要嵌进简报的一行里，段落换行在这里折成空格（个股研判才保留分段）
-    content = " ".join(content.split()).strip()
-    if len(content) > limit:
-        content = content[: limit - 1].rstrip() + "…"
-    return content
