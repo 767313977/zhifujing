@@ -27,8 +27,11 @@ from app.models import (
     CollectLog,
     IndexDaily,
     Lhb,
+    LhbInstitution,
     LimitPool,
+    LimitReason,
     MarketSentiment,
+    SectorDaily,
     StockBasic,
     StockDaily,
     TradeCalendar,
@@ -1415,6 +1418,35 @@ class DailyCollector:
             steps["hsgt"] = self._step(target, "hsgt", lambda: self.collect_hsgt(target))
         return {"trade_date": target.isoformat(), "steps": steps}
 
+    def _missing_steps(self, trade_date: date) -> dict[str, bool]:
+        """补采前先看库里已有哪几块，返回 `{步骤: 是否还缺}`（2026-10-22 复查 P3）。
+
+        判据是**数据在不在**、不是日志状态：这些步骤写库都是整天替换或幂等 upsert，
+        库里已经有当天的行就说明那一步跑过了。不这么做的话，某天只是「两融失败」
+        也会把指数 / 三池 / 龙虎榜 / 情绪 / 板块整套重跑一遍（几十次 iFinD 调用）。
+        每张表都是按 trade_date 计数，主键或索引首列就够用。
+        """
+        counts = {
+            "index": IndexDaily,
+            "limit_pool": LimitPool,
+            "reasons": LimitReason,
+            "lhb": Lhb,
+            "lhb_institution": LhbInstitution,
+            "sectors": SectorDaily,
+        }
+        with session_scope() as session:
+            missing = {
+                step: not session.scalar(
+                    select(func.count())
+                    .select_from(model)
+                    .where(model.trade_date == trade_date)
+                )
+                for step, model in counts.items()
+            }
+            # 情绪表是「首页有没有数据可看」的判据，单独判（主键就是 trade_date）
+            missing["sentiment"] = session.get(MarketSentiment, trade_date) is None
+        return missing
+
     def run_backfill(self, trade_date: date) -> dict:
         """补一个**漏采的历史交易日**（启动回看最近 5 个交易日时用）。
 
@@ -1428,34 +1460,43 @@ class DailyCollector:
         - 涨跌家数 / 涨跌超 5% / 打板效应由 `collect_sentiment(history=True)` 留空
         - 涨停三池的数据源只保留 `POOL_HISTORY_TRADING_DAYS` 个交易日，更早的日子
           补不回来（调用方自己限定窗口）
+
+        **只跑库里还缺的那几步**（`_missing_steps`）：那天已经采到的部分不再重取。
         """
         steps: dict[str, dict] = {}
+        missing = self._missing_steps(trade_date)
         # 配额让路：与 `run()` 同一档位判断，紧张时只补复盘主线
         core_only = quota_level(settings=self.settings) >= QuotaLevel.CORE_ONLY
-        steps["index"] = self._step(
-            trade_date, "index", lambda: self.backfill_index(trade_date, trade_date)
-        )
-        steps["limit_pool"] = self._step(
-            trade_date, "limit_pool", lambda: self.collect_limit_pool(trade_date)
-        )
-        steps["reasons"] = self._step(
-            trade_date, "reasons", lambda: self.collect_reasons(trade_date)
-        )
-        steps["lhb"] = self._step(
-            trade_date, "lhb", lambda: self.collect_lhb(trade_date)
-        )
-        # history=True：涨跌家数 / 涨跌超 5% / 打板效应留空，不写错日期
-        steps["sentiment"] = self._step(
-            trade_date,
-            "sentiment",
-            lambda: self.collect_sentiment(trade_date, history=True),
-        )
-        steps["lhb_institution"] = self._step(
-            trade_date,
-            "lhb_institution",
-            lambda: self.collect_lhb_institution(trade_date),
-        )
-        if not core_only:
+        if missing["index"]:
+            steps["index"] = self._step(
+                trade_date, "index", lambda: self.backfill_index(trade_date, trade_date)
+            )
+        if missing["limit_pool"]:
+            steps["limit_pool"] = self._step(
+                trade_date, "limit_pool", lambda: self.collect_limit_pool(trade_date)
+            )
+        if missing["reasons"]:
+            steps["reasons"] = self._step(
+                trade_date, "reasons", lambda: self.collect_reasons(trade_date)
+            )
+        if missing["lhb"]:
+            steps["lhb"] = self._step(
+                trade_date, "lhb", lambda: self.collect_lhb(trade_date)
+            )
+        if missing["sentiment"]:
+            # history=True：涨跌家数 / 涨跌超 5% / 打板效应留空，不写错日期
+            steps["sentiment"] = self._step(
+                trade_date,
+                "sentiment",
+                lambda: self.collect_sentiment(trade_date, history=True),
+            )
+        if missing["lhb_institution"]:
+            steps["lhb_institution"] = self._step(
+                trade_date,
+                "lhb_institution",
+                lambda: self.collect_lhb_institution(trade_date),
+            )
+        if missing["sectors"] and not core_only:
             steps["sectors"] = self._step(
                 trade_date, "sectors", lambda: self.collect_sectors(trade_date)
             )

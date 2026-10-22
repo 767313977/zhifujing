@@ -128,6 +128,9 @@ def _sectors(session: Session, codes: set[str]) -> dict[str, str]:
 #: 日志都会现算一遍（400 行情绪 + 约 2 万行涨停池再逐日分组）—— 2026-10-22 实测
 #: 单次约 200ms，是整个 `/api/journal` 的大头。按「最新交易日」缓存 10 分钟。
 #: 带上引擎对象是为了不跨库串味（单测里每个用例都是一个新的内存库）。
+#: ⚠️ 版本只看情绪表的**最新交易日**：同一天后来才补进库的涨停池（17:30 那趟）不会
+#: 让缓存失效，最多晚 10 分钟（TTL）才反映到档位上。交易日志的分组标签不是实时指标，
+#: 这个延迟可以接受（2026-10-22 复查 P3）。
 _LEVELS_CACHE: tuple[object, date, datetime, dict[date, str]] | None = None
 _LEVELS_TTL = timedelta(minutes=10)
 

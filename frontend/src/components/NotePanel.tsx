@@ -73,6 +73,13 @@ export default function NotePanel({ tradeDate, delay = 420 }: NotePanelProps) {
   const [error, setError] = useState<string | null>(null)
   /** 切回来时从本地草稿恢复过内容（页脚要说明，否则用户会以为是服务端存的） */
   const [restored, setRestored] = useState(false)
+  /**
+   * 已经**载入完成**的那一天的 key。写草稿前必须确认它等于当前 key（2026-10-22 复查 P1）：
+   * 切日期的一瞬间 `key` 已经变了，但 `marketView` 还是上一天的、`saved` 也还是上一天的，
+   * 于是 `dirty` 仍为 true —— 不拦的话会把**上一天未保存的字**写进新一天的草稿，
+   * 下次打开新一天就被「恢复」成旧日期的内容，一点保存就把新一天覆盖掉。
+   */
+  const [loadedKey, setLoadedKey] = useState<string | null>(null)
   /** 加载失败时不知道服务端已有内容，禁止保存 —— 否则拿空值一存就把当天已写的笔记清掉 */
   const [loadFailed, setLoadFailed] = useState(false)
   // 用户是否已开始编辑某一栏。慢网下加载结果晚到，若不管这个就会把先打的字冲掉；
@@ -87,6 +94,7 @@ export default function NotePanel({ tradeDate, delay = 420 }: NotePanelProps) {
     editedPlan.current = false
     setLoadFailed(false)
     setRestored(false)
+    setLoadedKey(null)
     const draft = readDraft(key)
     api
       .note(tradeDate)
@@ -107,6 +115,7 @@ export default function NotePanel({ tradeDate, delay = 420 }: NotePanelProps) {
         }
         // 基线始终记为服务端内容，dirty 才能如实反映「改了没有」
         setSaved({ marketView: view, nextPlan: plan })
+        setLoadedKey(key)
       })
       .catch((err: Error) => {
         if (cancelled) return
@@ -119,6 +128,9 @@ export default function NotePanel({ tradeDate, delay = 420 }: NotePanelProps) {
         }
         setLoadFailed(true)
         setError(err.message)
+        // 读不到服务端内容也算「这一天载入过了」：此时草稿（如果恢复了）就是用户
+        // 手上唯一的一份，必须让它继续落盘，否则刷新一下真丢了
+        setLoadedKey(key)
       })
     return () => {
       cancelled = true
@@ -147,10 +159,12 @@ export default function NotePanel({ tradeDate, delay = 420 }: NotePanelProps) {
   // 有未保存的改动就落一份草稿（本地写很小，不必防抖）；保存成功时清掉。
   // 只在 `dirty` 时写：否则「刚载入的服务器内容」也会被存成草稿，
   // 下次进来就得先判断它是不是和服务器一样（见上面那段）。
+  // ⚠️ 还必须等**这一天**载入完成（`loadedKey === key`）：切日期的瞬间 key 变了、
+  // 内容还是上一天的，那一笔写下去就是「旧日期的字串到新日期」（复查 P1）。
   useEffect(() => {
-    if (!dirty) return
+    if (!dirty || loadedKey !== key) return
     writeDraft(key, { marketView, nextPlan })
-  }, [key, marketView, nextPlan, dirty])
+  }, [key, marketView, nextPlan, dirty, loadedKey])
 
   const save = async () => {
     // 加载失败时不知道服务端已有内容，禁止用空值覆盖（按钮已禁用，这里再兜一道）

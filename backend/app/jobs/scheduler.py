@@ -836,12 +836,19 @@ class DailyScheduler:
                 result.get("failed", 0),
             )
 
-    def _catch_up_backfill(self, reason: str = "启动补采（回看）") -> None:
+    def _catch_up_backfill(
+        self,
+        reason: str = "启动补采（回看）",
+        wait_for: list[threading.Thread] | None = None,
+    ) -> None:
         """回看最近 `CATCHUP_LOOKBACK_TRADING_DAYS` 个交易日，把整条基础采集漏掉的日子补上。
 
         `_catch_up` 只补「今天」：进程连停几天时（本机常年关机、服务器故障），中间
         那些天就永远空着 —— 而指数 / 涨停三池 / 龙虎榜 / 机构席位 / 板块 / 情绪
         本来都能按日期取（见 `DailyCollector.run_backfill`），不补白不补。
+
+        `wait_for` 是**当天那几趟**的线程：先等它们跑完再动手（2026-10-22 复查 P2，
+        原因见 `_start_backfill`）。
 
         **三道闸**（2026-10-22 加，都在体检报告的第 5 条里）：
         1. 一次最多补 `CATCHUP_BACKFILL_MAX_DAYS` 天 —— 补一天要几十次 iFinD 调用；
@@ -849,6 +856,10 @@ class DailyScheduler:
         3. 每个日子**只尝试一次**：补完写一条 `backfill` 日志收口。否则那些本来就
            补不回来的老日子（三池只留 15 个交易日）每次重启都会再烧一遍配额。
         """
+        for thread in wait_for or []:
+            if thread.is_alive():
+                logger.info("%s：等当天的补采（%s）跑完再开始", reason, thread.name)
+                thread.join()
         if quota_level(settings=self.settings) >= QuotaLevel.CORE_ONLY:
             logger.info("%s 跳过：配额已到 CORE_ONLY 档，先保证当天采集", reason)
             return
@@ -1588,21 +1599,16 @@ class DailyScheduler:
 
         放后台线程跑，否则会阻塞服务启动好几秒。
         """
-        # 回看漏掉的**历史交易日**（2026-10-22 加）：与「今天到点没有」无关 ——
-        # 凌晨部署时下面那个早返回会让它永不执行，而中间停机的那些天才是真缺口。
-        # 它自己带配额让路与「每天只试一次」的闸门，见 `_catch_up_backfill`。
-        threading.Thread(
-            target=self._catch_up_backfill,
-            name="collect-catchup-backfill",
-            daemon=True,
-        ).start()
-
+        # 当天那几趟先起；回看补采要**等它们跑完**再开始（见方法末尾）。
+        today_threads: list[threading.Thread] = []
         now = now_cn()
         if (now.hour, now.minute) < (
             self.settings.collect_hour,
             self.settings.collect_minute,
         ):
-            return  # 还没到今天该采集的时刻，交给调度器即可
+            # 还没到今天该采集的时刻：没有「当天」的补采，但历史缺口照样要回看
+            self._start_backfill(today_threads)
+            return
 
         logger.info("已过采集时刻，后台检查是否需要补采")
         thread = threading.Thread(
@@ -1612,6 +1618,7 @@ class DailyScheduler:
             daemon=True,
         )
         thread.start()
+        today_threads.append(thread)
 
         # 收盘后那一趟也补：服务一直开着时调度器会自己触发，但「17:30 之后才起来」
         # （部署、重启）就会错过 —— 那天的龙虎榜就再没人去采了（这正是要修的那个坑）。
@@ -1620,12 +1627,14 @@ class DailyScheduler:
             self.settings.late_collect_hour,
             self.settings.late_collect_minute,
         ):
-            threading.Thread(
+            late = threading.Thread(
                 target=self._run_late,
                 kwargs={"reason": "启动补采（收盘后）"},
                 name="collect-catchup-late",
                 daemon=True,
-            ).start()
+            )
+            late.start()
+            today_threads.append(late)
 
         # 成分股预取也补：22:00 那次常常正好撞上部署/重启（本机更是常年关机）。
         # **重复触发不贵**：`collect_all_members(only_missing=True)` 会把已在库的板块
@@ -1634,12 +1643,32 @@ class DailyScheduler:
             self.settings.members_collect_hour,
             self.settings.members_collect_minute,
         ):
-            threading.Thread(
+            members = threading.Thread(
                 target=self._run_members,
                 kwargs={"reason": "启动补采（成分股）"},
                 name="collect-catchup-members",
                 daemon=True,
-            ).start()
+            )
+            members.start()
+            today_threads.append(members)
+
+        self._start_backfill(today_threads)
+
+    def _start_backfill(self, wait_for: list[threading.Thread]) -> None:
+        """启动「回看历史缺口」的线程，排在当天那几趟**之后**（2026-10-22 复查 P2）。
+
+        为什么不能并行：`_catch_up_backfill` 一跑就是十几分钟、全程占着采集锁
+        （每天几十次 iFinD 调用），而当天那几趟拿不到锁的代价更重 ——
+        `_run_daily` 重试约 12 分钟就放弃（当天只能当天取的指标缺一天），
+        `_run_late` / `_run_members` 更是**直接跳过**、不重试。
+        今天的数据永远比历史缺口要紧，所以让它 join 完当天那几趟再开始。
+        """
+        threading.Thread(
+            target=self._catch_up_backfill,
+            kwargs={"wait_for": list(wait_for)},
+            name="collect-catchup-backfill",
+            daemon=True,
+        ).start()
 
 
 _scheduler: DailyScheduler | None = None
