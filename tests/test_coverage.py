@@ -1,4 +1,4 @@
-"""日线覆盖率闸：扫描与简报 AI 点评共用同一个纯函数。"""
+"""日线覆盖率闸：扫描与派生读数共用同一个纯函数。"""
 
 from app.services.coverage import MIN_DAY_COVERAGE, coverage_ok
 

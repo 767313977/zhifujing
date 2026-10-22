@@ -266,18 +266,6 @@ class Settings(BaseSettings):
     # Trae 插件自带的命令行工具，默认在 PATH 上
     lark_cli: str = "lark-cli"
 
-    # --- 飞书简报的 AI 点评（OpenAI 兼容接口）---
-    # DeepSeek / 通义 / 硅基流动 / 本地 Ollama 都走同一套 /chat/completions。
-    # 三项都填且 enabled=True 才启用；任何一项缺失都退回「纯简报」，逐字不变。
-    llm_base_url: str = ""
-    llm_api_key: str = ""
-    llm_model: str = ""
-    llm_brief_enabled: bool = False
-    # 超时就放弃点评、简报照发 —— 点评是增强项，不能拖住推送
-    llm_timeout: int = 40
-    # 点评字数上限（超出截断）
-    llm_max_chars: int = 220
-
     # --- 形态选股：股票池与日线 ---
     # 池子门槛：近 20 日日均成交额（元）。低于这个数的票出了形态也没法交易，
     # 采它们的日线纯属白花 iFinD 配额。

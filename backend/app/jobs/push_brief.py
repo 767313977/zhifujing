@@ -40,7 +40,6 @@ from app.models import (
     StockDde,
 )
 from app.services import trade_plan
-from app.services.brief_ai import ai_comment
 from app.services.patterns import PATTERN_NAMES
 from app.services.themes import limit_up_themes
 from app.services.usage import QuotaLevel, level_label, quota_level, quota_status
@@ -667,25 +666,15 @@ def push(trade_date: date | None = None, settings: Settings | None = None) -> di
         return {"status": "skipped", "reason": "库里还没有任何交易日数据"}
 
     markdown = build_brief(target_date)
-    # AI 点评插在标题之后、正文之前。**标题必须留在最前面** —— 群机器人的
-    # 自定义关键词「收盘复盘」校验靠它（见本模块顶部与 `_post_card` 的注释）。
-    comment = ai_comment(target_date, markdown, settings)
-    if comment:
-        head, _, rest = markdown.partition("\n\n")
-        markdown = f"{head}\n\n**AI 点评**（仅供参考）\n{comment}\n\n{rest}"
     result = send_markdown(markdown, settings)
     status = "ok" if result["ok"] else "failed"
     message = f"已推送 {len(markdown)} 字" if result["ok"] else result["error"]
-    if settings.llm_brief_enabled:
-        # 只有开启时才标记，避免没配 LLM 的日子每条日志都挂一个「✗」
-        message += " · AI点评 " + ("✓" if comment else "✗")
     _record(target_date, status, message)
     logger.info(
-        "简报 %s %s（%d 字%s）",
+        "简报 %s %s（%d 字）",
         target_date,
         "已推送" if result["ok"] else "推送失败",
         len(markdown),
-        "，含 AI 点评" if comment else "",
     )
     return {
         "status": status,
