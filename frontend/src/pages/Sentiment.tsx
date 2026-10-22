@@ -11,6 +11,7 @@ import FearGreedPanel from '../components/FearGreedPanel'
 import FuturesBasisPanel from '../components/FuturesBasisPanel'
 import IndustryBreadthPanel from '../components/IndustryBreadthPanel'
 import Layout from '../components/Layout'
+import LoadState from '../components/LoadState'
 import MarginTempPanel from '../components/MarginTempPanel'
 import NhNlPanel from '../components/NhNlPanel'
 import NorthboundPanel from '../components/NorthboundPanel'
@@ -30,6 +31,21 @@ import {
   withAlpha,
 } from '../lib/chart'
 import { fmtAmount, fmtShortDate } from '../lib/format'
+
+/** 增强读数的 key（面板失败信息按它归类，见 `panelErrors`） */
+type PanelKey =
+  | 'fearGreed'
+  | 'breadth'
+  | 'relayTemp'
+  | 'futuresBasis'
+  | 'erp'
+  | 'nhNl'
+  | 'obv'
+  | 'etfNetFlow'
+  | 'marginTemp'
+  | 'industryBreadth'
+  | 'northbound'
+  | 'volatility'
 
 /** 首日归一为 100，让点位数量级不同的指数能在同一轴上比较。 */
 function normalize(values: (number | null)[]): (number | null)[] {
@@ -88,26 +104,34 @@ export default function SentimentPage() {
   const [volatility, setVolatility] = useState<Volatility | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  /** 增强读数各自的失败原因（404 不算失败，见 `track`） */
+  const [panelErrors, setPanelErrors] = useState<Partial<Record<PanelKey, string>>>({})
 
   useEffect(() => {
+    // 增强读数失败时**记下原因**而不是一律静默变 null（2026-10-22 体检）：
+    // 以前 500 / 超时和「库里还没有这条数据」都显示成「暂无数据」，看不出是接口挂了。
+    // 404 仍是正常空态 —— 这几个接口在没数据时后端就返回 404。
+    const track = (key: PanelKey) => (err: Error & { status?: number }) => {
+      if (err.status !== 404) {
+        setPanelErrors((old) => ({ ...old, [key]: err.message }))
+      }
+      return null
+    }
     Promise.all([
       api.indexHistory(120),
       api.sentimentSeries(60),
-      // 恐贪 / 宽度 / 接力 / 基差 / ERP / NH-NL / OBV / ETF 净申赎 / 两融杠杆温度 /
-      // 行业宽度 / 北向活跃度 / 中国波指 都是增强读数：库里还没数据时接口返回 404，
-      // **不能**因此把整页情绪指标打白。失败一律回落 null，由面板自己显示「暂无数据」
-      api.fearGreed(250).catch(() => null),
-      api.breadth(250).catch(() => null),
-      api.relayTemp(120).catch(() => null),
-      api.futuresBasis(250).catch(() => null),
-      api.erp(250).catch(() => null),
-      api.nhNl(250).catch(() => null),
-      api.obv(250).catch(() => null),
-      api.etfNetFlow(250).catch(() => null),
-      api.marginTemp(250).catch(() => null),
-      api.industryBreadth().catch(() => null),
-      api.northboundActivity(250).catch(() => null),
-      api.volatility(250).catch(() => null),
+      api.fearGreed(250).catch(track('fearGreed')),
+      api.breadth(250).catch(track('breadth')),
+      api.relayTemp(120).catch(track('relayTemp')),
+      api.futuresBasis(250).catch(track('futuresBasis')),
+      api.erp(250).catch(track('erp')),
+      api.nhNl(250).catch(track('nhNl')),
+      api.obv(250).catch(track('obv')),
+      api.etfNetFlow(250).catch(track('etfNetFlow')),
+      api.marginTemp(250).catch(track('marginTemp')),
+      api.industryBreadth().catch(track('industryBreadth')),
+      api.northboundActivity(250).catch(track('northbound')),
+      api.volatility(250).catch(track('volatility')),
     ])
       .then(([historyData, sentimentData, fearGreedData, breadthData, relayTempData, futuresBasisData, erpData, nhNlData, obvData, etfNetFlowData, marginTempData, industryBreadthData, northboundData, volatilityData]) => {
         setHistory(historyData)
@@ -334,43 +358,88 @@ export default function SentimentPage() {
       <div className="space-y-4">
         {/* 恐贪是本页的总读数，排在最前：先给「今天整体冷不冷」，再展开下面拆开的
             指数走势与情绪明细 */}
-        <FearGreedPanel data={fearGreed} loading={loading} delay={40} />
+        <FearGreedPanel
+          data={fearGreed}
+          loading={loading}
+          error={panelErrors.fearGreed}
+          delay={40}
+        />
 
         {/* 中国波指（QVIX）与恐贪说的是同一件事的两个侧面：恐贪是「从个股统计出来的
             情绪」，QVIX 是「期权市场用真金白银定价出来的恐慌」。紧挨着恐贪放 */}
-        <VolatilityPanel data={volatility} loading={loading} delay={45} />
+        <VolatilityPanel
+          data={volatility}
+          loading={loading}
+          error={panelErrors.volatility}
+          delay={45}
+        />
 
         {/* 宽度与接力是恐贪的两块补镜：一个看「指数涨有没有广度支撑」，一个看
             「打板生态热不热」。都在恐贪之后、指数走势之前 —— 几个温度计连着读 */}
-        <BreadthThermometerPanel data={breadth} loading={loading} delay={60} />
-        <RelayTempPanel data={relayTemp} loading={loading} delay={70} />
+        <BreadthThermometerPanel
+          data={breadth}
+          loading={loading}
+          error={panelErrors.breadth}
+          delay={60}
+        />
+        <RelayTempPanel
+          data={relayTemp}
+          loading={loading}
+          error={panelErrors.relayTemp}
+          delay={70}
+        />
 
         {/* 基差与 ERP 是「钱怎么看后市」的两面：一个看期货对冲成本（负 = 贴水 = 谨慎），
             一个看股票相对债券便不便宜（高 = 便宜）。紧跟在温度计之后 */}
-        <FuturesBasisPanel data={futuresBasis} loading={loading} delay={80} />
-        <ErpPanel data={erp} loading={loading} delay={90} />
+        <FuturesBasisPanel
+          data={futuresBasis}
+          loading={loading}
+          error={panelErrors.futuresBasis}
+          delay={80}
+        />
+        <ErpPanel data={erp} loading={loading} error={panelErrors.erp} delay={90} />
 
         {/* NH-NL 与量能潮是「广度与量能」的两面：一个看指数新高有没有广度支撑
             （顶底背离），一个看钱在往哪个方向走（量价背离）。都在指数走势之前 ——
             看完它们再看指数，走势就不只是一个点位了 */}
-        <NhNlPanel data={nhNl} loading={loading} delay={92} />
-        <ObvPanel data={obv} loading={loading} delay={94} />
+        <NhNlPanel data={nhNl} loading={loading} error={panelErrors.nhNl} delay={92} />
+        <ObvPanel data={obv} loading={loading} error={panelErrors.obv} delay={94} />
 
         {/* ETF 净申赎是「增量资金」那一条：OBV 说成交的钱往哪个方向走（存量博弈
             也能放量），份额说场外有没有真的申购进来。紧跟量能潮之后 */}
-        <EtfFlowPanel data={etfNetFlow} loading={loading} delay={96} />
+        <EtfFlowPanel
+          data={etfNetFlow}
+          loading={loading}
+          error={panelErrors.etfNetFlow}
+          delay={96}
+        />
 
         {/* 两融杠杆温度是「资金加到什么程度」那一条：ETF 净申赎看场内基金的申赎，
             两融看融资盘的水位与变化速度。紧跟 ETF 之后 */}
-        <MarginTempPanel data={marginTemp} loading={loading} delay={97} />
+        <MarginTempPanel
+          data={marginTemp}
+          loading={loading}
+          error={panelErrors.marginTemp}
+          delay={97}
+        />
 
         {/* 北向活跃度是「外资参与度」那一条（只有成交额、没有净流入）。
             与两融同属资金面，紧挨着 */}
-        <NorthboundPanel data={northbound} loading={loading} delay={98} />
+        <NorthboundPanel
+          data={northbound}
+          loading={loading}
+          error={panelErrors.northbound}
+          delay={98}
+        />
 
         {/* 行业宽度是「宽度拆到行业」那一层：前面全是时间序列，这个是当日横截面 ——
             分辨指数是靠少数行业扛着（结构行情）还是行业齐涨（共振）*/}
-        <IndustryBreadthPanel data={industryBreadth} loading={loading} delay={99} />
+        <IndustryBreadthPanel
+          data={industryBreadth}
+          loading={loading}
+          error={panelErrors.industryBreadth}
+          delay={99}
+        />
 
         <Panel
           title="指数走势"
@@ -409,9 +478,11 @@ export default function SentimentPage() {
           {loading ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
           ) : sentiment.length === 0 ? (
-            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
-              暂无情绪数据，请先在「今日复盘」执行采集
-            </div>
+            <LoadState
+              error={error}
+              emptyText="暂无情绪数据，请先在「今日复盘」执行采集"
+              className="px-4 py-10"
+            />
           ) : (
             <div className="px-2 pt-2">
               <EChart option={emotionOption} height={300} />
@@ -423,7 +494,7 @@ export default function SentimentPage() {
           {loading ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
           ) : sentiment.length === 0 ? (
-            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">暂无数据</div>
+            <LoadState error={error} className="px-4 py-10" />
           ) : (
             <div className="px-2 pt-2">
               <EChart option={ladderOption} height={200} />

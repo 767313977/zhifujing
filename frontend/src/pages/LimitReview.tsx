@@ -6,6 +6,7 @@ import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
 import LadderBoard from '../components/LadderBoard'
 import Layout from '../components/Layout'
+import LoadState from '../components/LoadState'
 import LimitTable from '../components/LimitTable'
 import Panel from '../components/Panel'
 import {
@@ -458,7 +459,7 @@ export default function LimitReview() {
             {loading ? (
               <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
             ) : stocks.length === 0 ? (
-              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">暂无数据</div>
+              <LoadState error={error} className="px-4 py-10" />
             ) : (
               <div className="px-2 pt-2">
                 <EChart option={timeOption} height={240} />
@@ -479,7 +480,7 @@ export default function LimitReview() {
             {loading ? (
               <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
             ) : boardRanking.length === 0 ? (
-              <div className="px-4 py-10 text-center text-[14px] text-fg-dim">暂无数据</div>
+              <LoadState error={error} className="px-4 py-10" />
             ) : (
               <BoardBars items={boardRanking} total={stocks.length} />
             )}

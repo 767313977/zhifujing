@@ -3,6 +3,7 @@ import type { NhNl } from '../api/types'
 import EChart from './EChart'
 import type { ChartOption } from './EChart'
 import Panel from './Panel'
+import LoadState from './LoadState'
 import {
   AXIS_LABEL,
   AXIS_LINE,
@@ -82,11 +83,14 @@ function withComma(value: number): string {
 export default function NhNlPanel({
   data,
   loading = false,
+  error = null,
   delay = 0,
 }: {
   data: NhNl | null
   /** 取数中：显示「加载中…」而不是「暂无数据」 */
   loading?: boolean
+  /** 请求失败原因（404 由调用方过滤，算「暂无数据」）；有值时不显示「暂无数据」 */
+  error?: string | null
   delay?: number
 }) {
   const latest = data?.latest ?? null
@@ -220,9 +224,7 @@ export default function NhNlPanel({
   if (!data || !latest) {
     return (
       <Panel title="NH-NL 新高新低扩散" meta={<span>净新高 · 顶底背离</span>} delay={delay}>
-        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">
-          {loading ? <span className="pulse-soft">加载中…</span> : '暂无数据，请先执行采集或回补'}
-        </div>
+        <LoadState loading={loading} error={error} emptyText="暂无数据，请先执行采集或回补" />
       </Panel>
     )
   }

@@ -128,6 +128,23 @@ function notifyWatchlistChanged() {
   window.dispatchEvent(new Event(WATCHLIST_CHANGED_EVENT))
 }
 
+/**
+ * 带 HTTP 状态码的错误（2026-10-22 加）。
+ *
+ * 为什么要它：增强读数那几个接口（恐贪 / 宽度 / ERP…）在库里还没有数据时
+ * 后端就返回 **404**，那是正常的「暂无数据」；而 500 / 超时才是真的出错。
+ * 只拿 `Error.message` 分不出来 —— 404 的 detail 也写着「暂无数据」。
+ */
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
 async function request<T>(
   path: string,
   init?: RequestInit,
@@ -173,9 +190,9 @@ async function request<T>(
         // RequireAuth 不会再跑。靠这个事件让 AuthProvider 清掉用户，下一次渲染自动跳登录页。
         // （这里不再抛专门的错误类型：没有调用方按类型分支，跳转全靠上面这个事件。）
         window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
-        throw new Error(detail)
+        throw new ApiError(detail, response.status)
       }
-      throw new Error(detail)
+      throw new ApiError(detail, response.status)
     }
     // 读**响应体**也要在超时保护内：`fetch` resolve 只代表收到了响应头，弱网下 body
     // 传到一半卡住时 `response.json()` 会一直挂着，页面永远「加载中」。所以这里不提前

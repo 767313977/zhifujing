@@ -3,6 +3,7 @@ import type { FuturesBasis } from '../api/types'
 import EChart from './EChart'
 import type { ChartOption } from './EChart'
 import Panel from './Panel'
+import LoadState from './LoadState'
 import {
   AXIS_LABEL,
   AXIS_LINE,
@@ -45,11 +46,14 @@ function valueColor(value: number | null): string {
 export default function FuturesBasisPanel({
   data,
   loading = false,
+  error = null,
   delay = 0,
 }: {
   data: FuturesBasis | null
   /** 取数中：显示「加载中…」而不是「暂无数据」 */
   loading?: boolean
+  /** 请求失败原因（404 由调用方过滤，算「暂无数据」）；有值时不显示「暂无数据」 */
+  error?: string | null
   delay?: number
 }) {
   const latest = data?.latest ?? []
@@ -153,9 +157,7 @@ export default function FuturesBasisPanel({
   if (!data || latest.length === 0) {
     return (
       <Panel title="期指年化基差" meta={<span>IF · IH · IC · IM 对冲成本</span>} delay={delay}>
-        <div className="px-4 py-8 text-center text-[14px] text-fg-dim">
-          {loading ? <span className="pulse-soft">加载中…</span> : '暂无数据，请先执行采集或回补'}
-        </div>
+        <LoadState loading={loading} error={error} emptyText="暂无数据，请先执行采集或回补" />
       </Panel>
     )
   }
