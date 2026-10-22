@@ -67,8 +67,10 @@ DB = ROOT / "backend" / "data" / "fupan.db"
 DEFAULT_OUT_DIR = ROOT / "dist-deploy"
 ARCHIVE_ROOT = "fupan"
 
-# 要打进包里的路径（相对项目根）。`.env` 也在里面 —— 它是密钥，
-# 传的时候走 scp/ssh 这种加密通道，别放公开网盘。
+# 要打进包里的路径（相对项目根）。
+# ⚠️ **`.env` 不在里面**（2026-10-22）：它含 iFinD token / 飞书 webhook / LLM key，
+# 打进包会让每个历史压缩包都变成密钥副本，部署时还会把服务器上的配置整体覆盖成
+# 本机调试值。服务器那份 `/opt/fupan/.env` 手工维护，`install.sh` 找不到会直接退出。
 INCLUDE = (
     "backend/app",
     "backend/requirements.txt",
@@ -76,7 +78,6 @@ INCLUDE = (
     "scripts",
     "deploy",
     "docs",
-    ".env",
 )
 
 SKIP_DIRS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}

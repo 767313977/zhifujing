@@ -19,7 +19,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.config import Settings, get_settings
 from app.db import session_scope, upsert, upsert_fill
@@ -952,17 +952,20 @@ class DailyCollector:
         # 乐咕的涨跌家数与打板效应都**只有当日值**，且任一失败都不该让整条情绪不落库
         # ——各自动 try，互不影响（2026-10-10 修）
         activity: dict = {}
+        activity_skipped: str | None = None
         if not history:
             try:
                 activity = self.ak.market_activity()
                 # 乐咕的「统计日期」可能是 datetime / date / 字符串。15:05 若还没更新，
                 # 它给的是**前一交易日**的涨跌家数 —— 直接写进今天会长期错（upsert_fill
-                # 之后也不会再纠正），所以日期对不上就整块不写，留待下一趟重试
+                # 之后也不会再纠正），所以日期对不上就整块不写，由 17:30 / 19:30 的
+                # `collect_activity` 再补（零配额，不重跑整条链）
                 stat_day = activity.get("统计日期")
                 if stat_day is not None and str(stat_day)[:10] != trade_date.isoformat():
+                    activity_skipped = str(stat_day)[:10]
                     logger.warning(
                         "涨跌家数是 %s 的快照（目标 %s），本次不写 up_count/down_count",
-                        str(stat_day)[:10],
+                        activity_skipped,
                         trade_date,
                     )
                     activity = {}
@@ -995,7 +998,47 @@ class DailyCollector:
         )
         with session_scope() as session:
             # upsert_fill：历史回补算出来的 None 不覆盖库里已有值（见 docstring）
-            return upsert_fill(session, MarketSentiment, [payload])
+            written = upsert_fill(session, MarketSentiment, [payload])
+        if activity_skipped:
+            # 只改日志状态（partial 不会让 has_collected 判成「没采完」而重跑整条链），
+            # 真正的补数交给 `run_late` 里的 `collect_activity`
+            self._step_status = "partial"
+            self._step_note = f"涨跌家数还是 {activity_skipped} 的，未写入"
+        return written
+
+    def collect_activity(self, trade_date: date) -> int:
+        """补涨跌家数（乐咕，零配额，17:30 / 19:30 各试一次）。
+
+        15:05 时乐咕若还没更新，`collect_sentiment` 会跳过 up/down（写错日期比缺更糟）。
+        这个方法只补这几个列，**不重跑整条 `run()`**：已有值直接跳过，源还是旧日期
+        就记 `skipped`，等下一趟。
+        """
+        with session_scope() as session:
+            row = session.get(MarketSentiment, trade_date)
+            if row is None or row.up_count is not None:
+                return 0
+        activity = self.ak.market_activity()
+        stat_day = activity.get("统计日期")
+        if stat_day is None or str(stat_day)[:10] != trade_date.isoformat():
+            self._step_status = "skipped"
+            self._step_note = (
+                f"乐咕最新统计日期是 {str(stat_day)[:10]}，还不是 {trade_date}"
+            )
+            return 0
+        up = to_int(activity.get("上涨"))
+        down = to_int(activity.get("下跌"))
+        if up is None or down is None:
+            self._step_status = "skipped"
+            self._step_note = "乐咕返回里没有涨跌家数"
+            return 0
+        with session_scope() as session:
+            session.execute(
+                update(MarketSentiment)
+                .where(MarketSentiment.trade_date == trade_date)
+                .values(up_count=up, down_count=down)
+            )
+        logger.info("涨跌家数补写 %s：涨 %s / 跌 %s", trade_date, up, down)
+        return 1
 
     # ------------------------------------------------------------------ 衍生值
 
@@ -1397,6 +1440,11 @@ class DailyCollector:
             target, "lhb_institution", lambda: self.collect_lhb_institution(target)
         )
         steps["themes"] = self._step(target, "themes", lambda: self.collect_themes(target))
+        # 涨跌家数补写：15:05 乐咕没更新时 `collect_sentiment` 会跳过，这里再问一次
+        # （零配额，已有值直接跳过）。2026-10-22 体检：否则这一列会永久空着
+        steps["activity"] = self._step(
+            target, "activity", lambda: self.collect_activity(target)
+        )
         # ETF 份额与行情：两所都要收盘后才发布，盘后包也要数小时 —— 放在这一趟
         # （17:30 试一次、19:30 再试一次）。零 iFinD 配额。
         steps["etf"] = self._step(target, "etf", lambda: self.collect_etf(target))

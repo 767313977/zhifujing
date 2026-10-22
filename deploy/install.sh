@@ -51,6 +51,14 @@ if command -v timedatectl >/dev/null 2>&1; then
   timedatectl set-timezone Asia/Shanghai
 fi
 
+# ---------------------------------------------------------------- 密钥（必做）
+# 部署包**不再携带 .env**（2026-10-22）：它含 iFinD token / 飞书 webhook / LLM key，
+# 跟着每个历史压缩包扩散太危险，而且覆盖式写入会把服务器配置换成本机调试值。
+# 服务器这份只手工维护；全新机器先 scp 一份上来再跑本脚本。
+if [[ ! -f "$APP_DIR/.env" ]]; then
+  die "缺少 $APP_DIR/.env：部署包不再携带密钥。请先把服务器的 .env 放好（参考仓库根 .env），再重跑本脚本。"
+fi
+
 log "安装系统依赖"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
@@ -102,16 +110,13 @@ Environment=PYTHONUNBUFFERED=1
 # 启动补采会把北京时间当 UTC 判、差 8 小时直接跳过。这里钉死之后，无论系统时钟怎么配，
 # date.today() 都是北京日期。
 Environment=TZ=Asia/Shanghai
-# 云端**永远**是采集机。这条守卫是必需的，不是重复设置：本机那份 .env 里写着
-# SCHEDULER_ENABLED=false（本机只当看图机，见仓库根 .env 的注释），而 .env 会被
-# pack_deploy 打进包里推过来 —— systemd 的环境变量优先级高于 .env，所以它不会
-# 把云端的定时任务一起关掉。删掉这条的后果很隐蔽：某次部署之后云端静悄悄不再采集。
+# 云端**永远**是采集机。2026-10-22 起部署包不再带 .env（服务器那份手工维护），
+# 但这条仍保留：systemd 环境变量优先级高于 .env，万一手工拷配置时写成 false，
+# 也不会把云端的定时采集静悄悄关掉。
 Environment=SCHEDULER_ENABLED=true
-# iFinD 的 TLS 证书校验（2026-10-12 加）。**必须放这里，不能只写 .env**：
-# 部署包会带一份本机的 .env 过来把它覆盖掉（与上面 SCHEDULER_ENABLED 同一个理由）
-# —— 实测在服务器上手动往 .env 里加 IFIND_CA_FILE，下一次部署就被冲掉，
-# 连接又悄悄变回不校验。systemd 环境变量优先级高于 .env，放这里才稳。
-# 路径用系统 CA 包：iFinD 那张证书是 DigiCert 签发的公共证书，用系统信任库即可校验。
+# iFinD 的 TLS 证书校验（2026-10-12 加）。**放这里比只写 .env 稳**：.env 是手工
+# 维护的，换机器 / 重装容易漏；systemd 里钉死之后不会再漂。路径用系统 CA 包：
+# iFinD 那张证书是 DigiCert 签发的公共证书，用系统信任库即可校验。
 Environment=IFIND_CA_FILE=/etc/ssl/certs/ca-certificates.crt
 ExecStart=$APP_DIR/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
