@@ -145,6 +145,10 @@ Environment=SCHEDULER_ENABLED=true
 # 维护的，换机器 / 重装容易漏；systemd 里钉死之后不会再漂。路径用系统 CA 包：
 # iFinD 那张证书是 DigiCert 签发的公共证书，用系统信任库即可校验。
 Environment=IFIND_CA_FILE=/etc/ssl/certs/ca-certificates.crt
+# 生产不开放开发源的 CORS（2026-10-23 体检后加）：main.py 只在
+# settings.enable_dev_cors 为真时才把 http://localhost:5173 加进 allow_origins。
+# 放 systemd 而不是 .env：.env 是手工维护的、换机器容易漏，而这是**生产语义**。
+Environment=ENABLE_DEV_CORS=false
 ExecStart=$APP_DIR/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=10
@@ -164,6 +168,20 @@ TimeoutStopSec=30
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
+# ---- 以下加固 2026-10-23 体检后加（当时 systemd-analyze exposure = 8.5）----
+# LimitNOFILE：默认软上限只有 1024，采集并发 + 全市场日线查询容易碰到 fd 上限。
+LimitNOFILE=65535
+UMask=0027
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
 
 [Install]
 WantedBy=multi-user.target
@@ -171,11 +189,19 @@ UNIT
 
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
-# 收紧敏感文件的权限（2026-10-12 加）：
-# - `.env` 里有 iFinD token / 飞书 webhook / OpenAI key，包里解出来的文件位通常是 644
-#   （线上实测还见过 666），同机其它账号能直接读走。
-# - `backend/data` 目录 700：库文件本身按 umask 一般是 644，但目录不可进入，
-#   其它账号就遍历/读取不到（SQLite 的 -wal / -shm 也跟着一起挡住）。
+# ---------------------------------------------------- 权限规整（2026-10-23 加）
+# 背景（体检发现）：部署包在 **Windows** 上打出来，tar 里是 `-rw-rw-rw-`/`drwxrwxrwx`。
+# 解压覆盖后生产上 218 个文件变成 0666（后端 100 个 .py + 前端 75 个 dist JS），
+# 任意本地 UID 都能改线上代码。打包脚本（scripts/pack_deploy.py）已从源头规整，
+# 这里再做一道兜底 —— 老包 / 手工 scp 的文件也能被纠正。
+# ⚠️ 只规整**随包发布的目录**，别碰 `.venv`（bin/ 下的脚本要有可执行位）与
+# `backend/data`（700，库里是数据不是代码）。
+for _dir in backend/app frontend/dist scripts deploy; do
+  [[ -d "$APP_DIR/$_dir" ]] || continue
+  find "$APP_DIR/$_dir" -type d -exec chmod 755 {} \;
+  find "$APP_DIR/$_dir" -type f -exec chmod 644 {} \;
+done
+find "$APP_DIR/scripts" -name '*.sh' -exec chmod 755 {} \; 2>/dev/null || true
 chmod 600 "$APP_DIR/.env"
 chmod 700 "$APP_DIR/backend/data" 2>/dev/null || true
 

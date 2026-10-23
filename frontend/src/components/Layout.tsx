@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import Footer from './Footer'
 import UserMenu from './UserMenu'
@@ -46,6 +47,97 @@ const NAV: NavItem[] = [
   { to: '/settings', label: '数据管理' },
 ]
 
+/**
+ * 顶栏布局档位（2026-10-23 改，修复 16 项导航在 1024–1440 被裁切）：
+ *
+ * - `wide`（1280–1535）：主项 8 个 + 「更多 ▾」收纳剩下 8 个；
+ * - `xwide`（≥1536）：主项 12 个 + 「更多 ▾」收纳剩下 4 个；
+ * - `medium`（1024–1279）：顶栏**折两行**（断点仍是下文的 `xl`），导航独占第一行、
+ *   约 900px 可用，主项 12 个 + 「更多」放得下；
+ * - `mobile`（<1024）：整条导航收进汉堡抽屉，点开可看到**全部** 16 项。
+ *
+ * 为什么不再「全部平铺 + 横向滚动」：导航已涨到 16 项，实测 1280 下最窄的页面
+ * （板块题材，操作区最宽）nav 只剩 585px、内容 924px —— 1280/1366/1440 分别被裁
+ * 5/3/2 项，而 `.no-scrollbar` 把滚动条藏了，鼠标用户根本发现不了还能横滑
+ * （2026-10-23 前端审计 P1）。改成「主项 + 更多」后：1280 下主项 8 个 456px +
+ * 更多按钮约 60px = 516px < nav 可用 525px；1024 下 12 个 684px + 60px < 840px。
+ *
+ * ⚠️ 往 NAV 里加项后要重新量主项数：它是按**实测宽度**定的（单项 48~60px），
+ * 菜单（更多/抽屉）本身对项数自适应、不会裁切。
+ */
+
+type Breakpoint = 'wide' | 'xwide' | 'medium' | 'mobile'
+
+/** 与 Tailwind 断点保持一致：xl=1280、2xl=1536、lg=1024。 */
+const WIDE_QUERY = '(min-width: 1280px)'
+const XWIDE_QUERY = '(min-width: 1536px)'
+const MEDIUM_QUERY = '(min-width: 1024px)'
+
+function currentBreakpoint(): Breakpoint {
+  if (typeof window === 'undefined') return 'wide'
+  if (window.matchMedia(XWIDE_QUERY).matches) return 'xwide'
+  if (window.matchMedia(WIDE_QUERY).matches) return 'wide'
+  if (window.matchMedia(MEDIUM_QUERY).matches) return 'medium'
+  return 'mobile'
+}
+
+/** 监听三个断点。用 matchMedia 而不是 resize 计数：方向键调窗口大小时也准。 */
+function useBreakpoint(): Breakpoint {
+  const [mode, setMode] = useState<Breakpoint>(currentBreakpoint)
+  useEffect(() => {
+    const queries = [WIDE_QUERY, XWIDE_QUERY, MEDIUM_QUERY].map((q) => window.matchMedia(q))
+    const update = () => setMode(currentBreakpoint())
+    // 首次 effect 再同步一次：兜住「模块加载后窗口尺寸立刻变化」
+    update()
+    queries.forEach((q) => q.addEventListener('change', update))
+    return () => queries.forEach((q) => q.removeEventListener('change', update))
+  }, [])
+  return mode
+}
+
+/** 主项平铺几个（其余进「更多」；mobile 不渲染平铺导航）。 */
+function primaryCountOf(mode: Breakpoint): number {
+  if (mode === 'wide') return 8
+  if (mode === 'xwide' || mode === 'medium') return 12
+  return 0
+}
+
+function isItemActive(item: NavItem, pathname: string): boolean {
+  if (item.end) return pathname === item.to
+  return pathname === item.to || pathname.startsWith(`${item.to}/`)
+}
+
+/**
+ * 一个导航项（桌面主项与「更多」里的项共用）。下划线贴容器底边 ——
+ * 往外溢出会逼出竖向滚动条（2026-09 踩过）。
+ */
+function NavEntry({ item, onClick }: { item: NavItem; onClick?: () => void }) {
+  return (
+    <NavLink
+      to={item.to}
+      end={item.end}
+      onClick={onClick}
+      className={({ isActive }) =>
+        [
+          'relative flex items-center px-3 text-[13px] whitespace-nowrap transition-colors',
+          // 1024 起收紧密度（与「导航必须显式 basis-0 grow」无关，纯省宽度）
+          'lg:px-1.5 lg:text-[12px]',
+          isActive ? 'text-fg' : 'text-fg-muted hover:text-fg',
+        ].join(' ')
+      }
+    >
+      {({ isActive }) => (
+        <>
+          {item.label}
+          {isActive && (
+            <span className="absolute inset-x-2 bottom-0 h-[2px] bg-accent wipe" aria-hidden />
+          )}
+        </>
+      )}
+    </NavLink>
+  )
+}
+
 interface LayoutProps {
   children: ReactNode
   /** 顶栏右侧的操作区，由各页面自行注入（日期切换、刷新等） */
@@ -54,66 +146,73 @@ interface LayoutProps {
 
 export default function Layout({ children, toolbar }: LayoutProps) {
   const { me } = useAuth()
+  const location = useLocation()
+  const mode = useBreakpoint()
   // 「数据管理」只给管理员看：那一页能触发采集（烧 iFinD 配额），还会显示邀请码与
   // 会员名单。前端隐藏只是体面，真正的拦截在后端（/api/admin/* 一律 403）。
-  // 会员少一项，因此导航比下面注释里量过的 9 项还宽松一点。
   const items = me?.is_admin ? NAV : NAV.filter((item) => item.to !== '/settings')
+  const primaryCount = primaryCountOf(mode)
+  const primaryItems = items.slice(0, primaryCount)
+  const overflowItems = items.slice(primaryCount)
+  const overflowActive = overflowItems.some((item) => isItemActive(item, location.pathname))
+
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const moreRef = useRef<HTMLDivElement>(null)
+  const drawerFirstLinkRef = useRef<HTMLAnchorElement>(null)
+
+  // 换页即收起菜单（包括点「更多」里的项、用 ← → 切个股）
+  useEffect(() => {
+    setMoreOpen(false)
+    setDrawerOpen(false)
+  }, [location.pathname, location.search])
+
+  // 「更多」：点外面或按 Esc 关掉
+  useEffect(() => {
+    if (!moreOpen) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (moreRef.current && !moreRef.current.contains(event.target as Node)) setMoreOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMoreOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [moreOpen])
+
+  // 手机抽屉：Esc 关闭、锁住背景滚动、打开时焦点进第一个链接
+  useEffect(() => {
+    if (!drawerOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    drawerFirstLinkRef.current?.focus()
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDrawerOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [drawerOpen])
 
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 border-b border-line bg-ink-950/95 backdrop-blur-sm">
         {/*
-          顶栏折成两行的断点是 **xl（1280）**：以下两行（第一行品牌 + 导航，第二行
-          操作区），1280 及以上回到一行。
+          折行断点是 xl（1280）：以下两行（第一行品牌 + 导航 + 更多，第二行操作区），
+          1280 及以上回到一行。这一条从 2026-09-28 起就是如此，保持不动。
 
-          ⚠️ 这个断点 2026-09-28 从 md（768）挪到了 xl —— 因为顶栏最右端多了账号区
-          （当时是 `用户名 · 改密码 · 退出`，约 169px）。实测（headless Chrome + CDP 设视口、
-          落地页 `/`、工具栏是最宽的那一档）：
-
-          （2026-09-30：「改密码」已改成「账号」（见 UserMenu），账号区**窄了约 12px** ——
-          下面这些数是改前量的，仍然成立，而且现在是**偏保守**的一侧。）
-            · 一行布局下 1024 时导航可用 422px、内容要 516px（缺 94px）；
-              1280 时可用 580px、内容要 690px（缺 110px）—— 最后 1~2 项被裁掉，
-              而导航挂的是 `.no-scrollbar`，用户看不见任何「还能横滑」的提示。
-            · 折成两行后导航独占第一行，1024 下可用约 774px > 690px，宽松。
-          所以「一行放不下就折行」这件事在 1024~1279 也必须成立。
-
-          为什么不折不行：一行里「品牌 + 9 项导航 + 三四个控件」在 420px 里必然装不下，
-          而导航是**唯一能被压缩的那个**（`overflow-x-auto` 让它的自动最小尺寸变成 0，
-          别的都是 shrink-0 或内容宽），于是浏览器先把它压到 0 宽 —— 结果是导航整条
-          不可见、工具栏把页面顶出 157px 的横向滚动条（实测）。
-
-          ⚠️ 三个都是踩过的坑，改之前先看这里：
-
-          1. 只给操作区加 `w-full` 而不开 `flex-wrap` 是没用的 —— 那只会把它压成
-             100% 宽却仍挤在同一行。
-          2. `flex-nowrap` 现在挂在 **xl** 上（原来是 md）：1280 以上要锁死成一行，
-             否则「品牌 + 导航 + 操作区」的基准宽度和也会让笔记本上莫名折行。
-             1280 以下**必须允许折行**，否则操作区那 `w-full` 不起作用。
-          3. **导航必须显式 `basis-0 grow`**。换行判据用的是 flex 基准尺寸，而
-             `overflow-x-auto` 只改「最小尺寸」、不改基准尺寸 —— 不动它的话导航的
-             基准宽仍是内容宽 677px，第一行永远放不下「品牌 + 导航」，于是折成
-             **三行**（品牌 / 导航 / 操作区，实测 420px 下 139px 高）。`basis-0` 把它
-             的基准宽压到 0，导航才会留在第一行、并且自己吃掉这一行的剩余宽度。
-
-          ⚠️ 容器高度从固定的 `h-[52px]` 改成自适应（折行后要能变高），**高度因此下移到
-          各子项**（品牌与导航各带 `h-[52px]`）；原来 nav 上的 `h-full` 在这里会失效
-          —— 百分比高度要求父级有确定高度。
+          ⚠️ 操作区是顶栏里唯一「内容不可压缩」的一大块（日期下拉 + 账号区），
+          所以它每宽 1px 都从导航身上扣。判断标准仍是「这是不是全局切换」：
+          日期/口径是（整页跟着变），图表窗口不是。往这里塞控件前先想清楚。
         */}
         <div className="mx-auto flex max-w-shell flex-wrap items-center gap-x-3 px-3 md:px-5 xl:flex-nowrap xl:gap-x-6">
-          {/* 品牌：中文名做主标识，等宽拉丁字母做辅助标记。
-              字号与字距是响应式的，当初按**7 个字的长站名**调过：照常规参数窄屏
-              会从导航那里抢走约 80px 可视宽度（那一段导航本来就靠横滑，再挤就
-              只剩百来 px），所以窄屏收成 13px/0.05em、宽屏才展开成 15px/0.1em。
-              站名已换成 3 个字的「致富经」，这套参数没回退 —— 现在富余很多，
-              窄屏 13px 看着反而更稳。
-
-              ⚠️ 拉丁标记的断点是 **xl（1280）不是 lg（1024）**：这一项本身就有几十 px
-              宽，而 1024~1279 正好是导航最紧张的区间（那一段导航本来就显示不全）。
-              长站名时期的实测是：按 1024 显示，等于用「一个纯装饰」换掉整整一个
-              导航项（导航从 6/9 掉到 5/9）。**这些数是长站名时量的** —— 站名缩短后
-              品牌窄了一大截、导航随之变宽松，但没重新量过。要动这个断点，先在
-              1024 / 1280 两档各量一次再改。1280 以上富余够，随便显示。 */}
+          {/* 品牌：中文名做主标识，等宽拉丁字母做辅助标记。 */}
           <div className="flex h-[52px] shrink-0 items-baseline gap-2">
             <span className="text-[14px] font-semibold tracking-[0.05em] text-fg whitespace-nowrap md:text-[15px] md:tracking-[0.1em]">
               致富经
@@ -123,123 +222,147 @@ export default function Layout({ children, toolbar }: LayoutProps) {
             </span>
           </div>
 
-          <span className="h-4 w-px shrink-0 bg-line" />
+          <span className="hidden h-4 w-px shrink-0 bg-line lg:block" />
 
-          {/*
-            ⚠️ 导航在 lg~xl（1024~1279）这三档是**故意调紧的**，别当成写错：
-            当初 7 字站名时量到的是 —— 固定项（品牌 115.5 + 分隔线 1 + 操作区 258 +
-            三个 24px 间隙）占掉 446.5px，1024 下 nav 只剩 527.5px，而 9 项按常规
-            密度要 677px。调紧后（字号 13→12、左右内边距 12→6、项间距 4→0）内容降到
-            504px，正好放下。xl（1280）起富余够（nav 689 ≥ 677），所以**恢复常规密度**
-            —— 主力宽度不受影响。
-
-            站名换成 3 个字的「致富经」后品牌窄了、nav 随之变宽松，所以上面这组数是
-            **偏保守**的；但没重新量过，别把它当成可以用掉的余量。
-
-            代价要认：那一段的点击热区只有 6px 内边距、相邻项之间只隔 12px，比别处挤。
-            将来若增减导航项，第一件事是把这里的等式重新量一遍（项宽 = 字数×字号 + 内边距×2）。
-
-            ⚠️ 2026-09-25 全站字号 +1px（用户「字体调大一点」）时**唯独导航没动**：
-            上面那组等式是逐 px 量过的，9 项各 +1px 等于多要 25~30px，1024 与 1280
-            两档会从「正好放下」变成「必须横滑」。导航本身是等宽字重里最不需要放大的
-            （它是图标级别的短词），宁可比正文小一档，也不动这组等式。
-
-            ✅ **2026-09-27 加了第 9 项「胜率跟踪」后实测（headless Chrome + CDP 设视口）**：
-            1024×800 → nav.scrollWidth/clientWidth = **664/664**、documentElement = 1014/1014；
-            1280×900 → **823/823**、1270/1270。两档都没有溢出、9 项文字完整，整页无横向
-            滚动条。也就是说站名从 7 字缩到 3 字（「致富经」）省下来的余量足够再放一项，
-            上面那组偏保守的等式可以作废 —— 但**再加第 10 项之前仍要重量一次**。
-
-            ✅ **2026-10-08 加第 10 项「悟道之路」（外链）时又量了一次** —— 量法换了但更简单：
-            把顶栏复刻成一个静态页（CSS 直接用 `dist` 的构建产物），用
-            `msedge --headless=new --window-size=W,800 --dump-dom` 跑，页内脚本把
-            `nav` 的左右边界、内容右沿写进 `data-result` 再读出来。
-            （`--window-size` 要比目标视口大 30px：Edge 的窗口边不算在 innerWidth 里。）
-
-            | 视口 | 导航可用 | 9 项内容 | 10 项内容 |
-            | --- | --- | --- | --- |
-            | 1024（折两行） | 910 | 517 | **589** |
-            | 1280（一行） | 762 | 516 | **588**（余 174） |
-            | 1536（一行） | 1018 | 516 | **588** |
-
-            一项 4 字的成本正好是 `4×12 + 6×2 = 60px`（与 112 行那条等式对得上）；
-            当时「悟道之路」还是外链、末尾带个 `↗`（10px + 2px 边距）所以再多 12px。
-            **它后来改成站内路由、`↗` 去掉了**，所以是 577 / 576 / 576。
-
-            ✅ **2026-10-09 加第 11 项「个股分析」**（也在「悟道之路」右边）：它也是 4 个字，
-            按上面那条等式**再 +60px** → 约 637 / 636 / 636。三档的可用宽度是 910 / 762 / 1018，
-            余量仍有 273 / 126 / 382 —— **没有溢出，这一版是推算的、没有重新上 headless 量**；
-            下次真正挤不下时再按 135 行那套办法实测，并记得先怀疑操作区而不是导航。
-            操作区按最宽那一档（258px）建模；真到了再挤不下的时候，先动的是这里的
-            密度（字号/内边距），别去改 `xl:flex-nowrap`。
-
-            ✅ **2026-10-09 加第 12 项「个股异动」**（插在「悟道之路」与「个股分析」之间，
-            同为 4 个字）：再 +60px → 约 697 / 696 / 696。三档可用仍按 910 / 762 / 1018 算，
-            余量 213 / 66 / 322 —— **1280 那档只剩 66px，是这一版三档里最紧的一档**。
-            同样是推算、没重新上 headless 量；真挤不下时先用上面 2026-10-08 那套
-            `msedge --headless` 复核，别先动导航密度（操作区才是更可能的元凶）。
-          */}
-          <nav className="no-scrollbar flex h-[52px] min-w-0 grow basis-0 items-stretch gap-1 overflow-x-auto overflow-y-hidden lg:gap-0">
-            {items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  [
-                    'relative flex items-center px-3 text-[13px] whitespace-nowrap transition-colors',
-                    // 1024 起收紧。**不再在 xl 恢复常规密度**（2026-09-28 改）：
-                    // 顶栏多了右上角账号区，实测按 13px 算会被裁。12px + px-1.5 下
-                    // 10 项（2026-10-08）仍有余量，见上面那段实测数字。
-                    'lg:px-1.5 lg:text-[12px]',
-                    isActive ? 'text-fg' : 'text-fg-muted hover:text-fg',
-                  ].join(' ')
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {item.label}
-                    {/* 下划线贴容器底边，不再向外溢出，否则会逼出竖向滚动条 */}
-                    {isActive && (
-                      <span className="absolute inset-x-2 bottom-0 h-[2px] bg-accent wipe" />
-                    )}
-                  </>
-                )}
-              </NavLink>
+          {/* 桌面/平板（≥1024）：主项平铺；剩下的进「更多 ▾」 */}
+          <nav
+            aria-label="主导航"
+            className="hidden h-[52px] min-w-0 grow basis-0 items-stretch gap-1 overflow-x-auto overflow-y-hidden lg:flex lg:gap-0"
+          >
+            {primaryItems.map((item) => (
+              <NavEntry key={item.to} item={item} />
             ))}
           </nav>
 
-          {/* 操作区。xl 以下 `w-full` 把它挤到第二行并占满整行，1280 以上恢复成
-              「靠右、宽度随内容」（断点 2026-09-28 从 md 挪到 xl，理由见上面那段：
-              账号区占了 169px 之后 1024~1279 一行放不下）。
+          {overflowItems.length > 0 && (
+            <div ref={moreRef} className="relative hidden shrink-0 self-center lg:block">
+              <button
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={moreOpen}
+                aria-controls="nav-more-menu"
+                onClick={() => setMoreOpen((open) => !open)}
+                className={[
+                  'relative flex h-[52px] items-center gap-1 px-3 text-[13px] transition-colors lg:px-1.5 lg:text-[12px]',
+                  overflowActive ? 'text-accent' : 'text-fg-muted hover:text-fg',
+                ].join(' ')}
+              >
+                更多
+                <span aria-hidden className="text-[9px] leading-none">
+                  ▾
+                </span>
+                {/* 当前路由在「更多」里：与主项一致的贴底下划线，用户能看出「这页在这」 */}
+                {overflowActive && (
+                  <span className="absolute inset-x-2 bottom-0 h-[2px] bg-accent" aria-hidden />
+                )}
+              </button>
+              {moreOpen && (
+                <div
+                  id="nav-more-menu"
+                  role="menu"
+                  aria-label="更多导航"
+                  className="absolute top-full right-0 z-30 mt-1 grid w-[220px] grid-cols-1 gap-0.5 border border-line bg-ink-950 p-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.18)]"
+                >
+                  {overflowItems.map((item) => (
+                    <NavEntry key={item.to} item={item} onClick={() => setMoreOpen(false)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
-              不用 `ml-auto`：导航那边的 `grow` 已经吃满剩余空间、自然把这一块顶到右边，
-              再加 auto margin 是空操作（实测 computed `margin-left: 0px`）。
+          {/* <1024：整条导航收进抽屉（汉堡）。放第一行右端，操作区仍占第二行 */}
+          <button
+            type="button"
+            aria-label="打开导航菜单"
+            aria-expanded={drawerOpen}
+            aria-controls="nav-drawer"
+            onClick={() => setDrawerOpen(true)}
+            className="ml-auto flex h-[52px] w-9 shrink-0 items-center justify-center text-fg-muted transition-colors hover:text-fg lg:hidden"
+          >
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden fill="none">
+              <path
+                d="M3 5h14M3 10h14M3 15h14"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="square"
+              />
+            </svg>
+          </button>
 
-              两道兜底都是为了「宁可内部横滑，也不压扁控件、更不顶破页面」：
-              - `*:shrink-0`：没有它的话子控件会被压到 min-content —— 实测 360px 下
-                口径段选被压成 85px、两个按钮的文字各折成两行，而 `overflow-x-auto`
-                根本没触发（控件还能缩，就不算溢出）。
-              - `overflow-x-auto`：真到了放不下的宽度（360px 下三个控件 379px > 可用
-                336px），让它在这一条里横滑。不要 `justify-end` —— 内容超宽时右对齐
-                会把左端（口径切换）挤出可视区，要从左往右滑才看得到。
+          {/*
+            操作区。xl 以下 `w-full` 把它挤到第二行并占满整行，1280 以上恢复成
+            「靠右、宽度随内容」（断点 2026-09-28 从 md 挪到 xl）。
 
-              ⚠️ 往这里塞控件是有代价的：**导航是顶栏里唯一可收缩的元素**，所以操作区
-              每宽 1px 都从导航身上扣 —— 1080p 以下很容易扣到导航要横滑才够得着最后几项。
-              实测过一次：板块题材页的操作区曾经有三个控件（口径 + 日期 + 走势窗口，379px），
-              1280px 下导航只剩 568px、只显示 7/9 项；把只管图表的那一个挪进图表 header
-              之后回到 689px，9 项全展开。**判断标准是「这是不是全局切换」**：口径、日期
-              是（整页都跟着变），图表窗口不是（它只影响那一两张图）。
-              2026-09-28 就是被这条咬到：右上角账号区（169px）加进来之后导航开始被裁，
-              于是把折行断点从 md 挪到 xl（见上）。 */}
+            两道兜底都是为了「宁可内部横滑，也不压扁控件、更不顶破页面」：
+            `*:shrink-0` + `overflow-x-auto`（见 2026-09 的排查记录）。
+          */}
           <div className="no-scrollbar flex w-full shrink-0 items-center gap-3 overflow-x-auto pb-2 *:shrink-0 xl:w-auto xl:pb-0">
             {toolbar}
-            {/* 账号区放**最右端**（即整页右上角）。它拼在操作区里而不是单开一块：
+            {/* 账号区放最右端（即整页右上角）。它拼在操作区里而不是单开一块：
                 顶栏的剩余宽度全归导航，单开一块等于再切一刀。 */}
             <UserMenu />
           </div>
         </div>
       </header>
+
+      {/* 手机/窄屏抽屉：全部导航项（管理员多一项「数据管理」） */}
+      {drawerOpen && (
+        <div
+          className="fixed inset-0 z-40 lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="导航菜单"
+        >
+          {/* 背景遮罩：点一下就关 */}
+          <div
+            className="absolute inset-0 bg-ink-950/60"
+            onClick={() => setDrawerOpen(false)}
+            aria-hidden
+          />
+          <div
+            id="nav-drawer"
+            className="absolute inset-y-0 right-0 flex w-[86%] max-w-[340px] flex-col border-l border-line bg-ink-950 shadow-[-12px_0_32px_rgba(15,23,42,0.2)]"
+          >
+            <div className="flex h-[52px] shrink-0 items-center justify-between border-b border-line px-4">
+              <span className="text-[14px] font-semibold tracking-[0.05em] text-fg">导航</span>
+              <button
+                type="button"
+                aria-label="关闭导航菜单"
+                onClick={() => setDrawerOpen(false)}
+                className="flex h-8 w-8 items-center justify-center text-fg-muted transition-colors hover:text-fg"
+              >
+                <span aria-hidden>✕</span>
+              </button>
+            </div>
+            <nav aria-label="全部导航" className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+              <div className="grid grid-cols-2 gap-1">
+                {items.map((item, index) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    ref={index === 0 ? drawerFirstLinkRef : undefined}
+                    className={({ isActive }) =>
+                      [
+                        'flex min-h-[42px] items-center border px-3 text-[14px] transition-colors',
+                        isActive
+                          ? 'border-accent/60 bg-accent/10 text-accent'
+                          : 'border-line-soft text-fg-muted hover:border-fg-dim hover:text-fg',
+                      ].join(' ')
+                    }
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            </nav>
+            <div className="border-t border-line-soft px-4 py-3 text-[12px] text-fg-dim">
+              点右上角 ✕ 或遮罩关闭；关闭后回到原页面滚动位置
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 内边距与顶栏保持一致：两边不一样时窄屏下能看到内容与顶栏左边缘差 8px。
           宽度上限用同一个 `max-w-shell`（见 index.css 里的说明），否则大屏上

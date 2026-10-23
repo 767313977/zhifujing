@@ -53,8 +53,41 @@ const LOG_TONE: Record<string, string> = {
   failed: 'text-danger',
 }
 
+/**
+ * 后台状态（/admin/status）取数失败时的统一失败态（2026-10-23）。
+ *
+ * 定时任务 / 配额 / 覆盖 / 日志都来自这一个接口：失败时一起显示「未知 + 原因 + 重试」，
+ * 而不是各自退化成「未启用 / 暂无日志 / 加载中…」这类会被当成结论的假状态。
+ */
+function StatusFailure({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="px-4 py-10 text-center text-[14px] text-danger">
+      后台状态取数失败：{message}
+      <div className="mt-1 text-[12px] leading-relaxed text-fg-dim">
+        这是接口出错 —— 下面这些都是「未知」，不是「未启用」或「没有数据」；刷新重试即可
+      </div>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-3 border border-line px-3 py-1 text-[13px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg"
+      >
+        重试
+      </button>
+    </div>
+  )
+}
+
 export default function Settings() {
   const [status, setStatus] = useState<AdminStatus | null>(null)
+  /**
+   * 后台状态的取数失败原因（2026-10-23 加）。
+   *
+   * 以前失败只弹顶部红条、`status` 保持 null：覆盖表永久「加载中…」、定时任务显示
+   * 「未启用/已停止」、采集日志「暂无日志」 —— 把「不知道」说成了状态与结论
+   * （2026-10-23 前端审计 P2）。现在三块各自渲染失败态，且加载中与失败分开。
+   */
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const [statusLoading, setStatusLoading] = useState(true)
   const [backfillStart, setBackfillStart] = useState(sixMonthsAgo)
   // 留空表示补到最近交易日（后端 end 参数缺省就是这个语义）
   const [backfillEnd, setBackfillEnd] = useState('')
@@ -76,10 +109,19 @@ export default function Settings() {
   const [logSort, logRows] = useSort(status?.recent_logs ?? [], LOG_SORTS, { key: null })
 
   const reload = useCallback(() => {
+    setStatusError(null)
+    setStatusLoading(true)
     api
       .adminStatus()
-      .then(setStatus)
-      .catch((err: Error) => setError(err.message))
+      .then((data) => {
+        setStatus(data)
+      })
+      .catch((err: Error) => {
+        setStatusError(err.message)
+      })
+      .finally(() => {
+        setStatusLoading(false)
+      })
   }, [])
 
   useEffect(() => {
@@ -149,12 +191,26 @@ export default function Settings() {
           title="定时任务"
           meta={
             <span className="num">
-              {scheduler?.enabled ? '交易日收盘后自动采集' : '未启用'}
+              {statusLoading
+                ? '加载中…'
+                : statusError
+                  ? '取数失败'
+                  : scheduler?.enabled
+                    ? '交易日收盘后自动采集'
+                    : '未启用'}
             </span>
           }
           delay={40}
         >
-          <div className="grid grid-cols-2 overflow-hidden md:grid-cols-4">
+          {statusError ? (
+            <StatusFailure message={statusError} onRetry={reload} />
+          ) : statusLoading ? (
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
+              <span className="pulse-soft">加载中…</span>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 overflow-hidden md:grid-cols-4">
             <Cell
               label="运行状态"
               value={scheduler?.running ? '运行中' : '已停止'}
@@ -206,21 +262,31 @@ export default function Settings() {
             <span className="mx-1">·</span>
             <b className="font-normal text-fg-muted">没有手动采集入口</b>
             ：采集只在上面这两个时刻自动跑，需要强制重采就重启服务。
-          </div>
+              </div>
+            </>
+          )}
         </Panel>
 
         <Panel
           title="iFinD 调用配额"
           meta={
             <span className="num">
-              {quota
-                ? `本周期 ${fmtShortDate(quota.cycle_start)} ~ ${fmtShortDate(quota.cycle_end)} · 账号级共享`
-                : '—'}
+              {statusLoading
+                ? '加载中…'
+                : statusError
+                  ? '取数失败'
+                  : quota
+                    ? `本周期 ${fmtShortDate(quota.cycle_start)} ~ ${fmtShortDate(quota.cycle_end)} · 账号级共享`
+                    : '—'}
             </span>
           }
           delay={80}
         >
-          <div className="grid grid-cols-2 overflow-hidden md:grid-cols-4">
+          {statusError ? (
+            <StatusFailure message={statusError} onRetry={reload} />
+          ) : (
+            <>
+              <div className="grid grid-cols-2 overflow-hidden md:grid-cols-4">
             <Cell
               label="本周期已用"
               value={
@@ -331,6 +397,8 @@ export default function Settings() {
               </table>
             </div>
           )}
+            </>
+          )}
         </Panel>
 
         <Panel
@@ -338,8 +406,15 @@ export default function Settings() {
           meta={<span className="num">各表可回补范围不同，故分别统计</span>}
           delay={120}
         >
-          {/* 与其他表格一样套一层 overflow-auto：否则窄视口下这张表会把
-              整个页面撑出横向滚动条，而不是自己滚 */}
+          {statusError ? (
+            <StatusFailure message={statusError} onRetry={reload} />
+          ) : statusLoading ? (
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
+              <span className="pulse-soft">加载中…</span>
+            </div>
+          ) : (
+          /* 与其他表格一样套一层 overflow-auto：否则窄视口下这张表会把
+             整个页面撑出横向滚动条，而不是自己滚 */
           <div className="overflow-auto">
             <table className="grid-table">
               <thead>
@@ -369,16 +444,10 @@ export default function Settings() {
                     </td>
                   </tr>
                 ))}
-                {status === null && (
-                  <tr>
-                    <td colSpan={4} className="!text-center text-fg-dim">
-                      加载中…
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
+          )}
         </Panel>
 
         <Panel
@@ -436,7 +505,13 @@ export default function Settings() {
           meta={<span className="num">最近 30 条 · 点列头排序</span>}
           delay={200}
         >
-          {status === null || status.recent_logs.length === 0 ? (
+          {statusError ? (
+            <StatusFailure message={statusError} onRetry={reload} />
+          ) : statusLoading ? (
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
+              <span className="pulse-soft">加载中…</span>
+            </div>
+          ) : !status || status.recent_logs.length === 0 ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">暂无日志</div>
           ) : (
             <div className="max-h-[420px] overflow-auto">

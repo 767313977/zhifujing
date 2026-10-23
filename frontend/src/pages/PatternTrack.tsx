@@ -407,8 +407,10 @@ export default function PatternTrackPage() {
           meta={
             <span className="num">
               {scorecard
-                ? `从 ${scorecard.start} 起 · ${scorecard.cohorts} 个扫描日 · ` +
-                  `(形态, 代码) ${scorecard.dedup_days} 日去重 · 到线 / 破位只算有作废位的形态`
+                ? scorecard.patterns.length > 0
+                  ? `从 ${scorecard.start} 起 · ${scorecard.cohorts} 个扫描日 · ` +
+                    `(形态, 代码) ${scorecard.dedup_days} 日去重 · 到线 / 破位只算有作废位的形态`
+                  : `从 ${scorecard.start} 起 · 这段时间还没有扫描记录`
                 : scoreFailed
                   ? '暂时取不到（不影响上面的明细）'
                   : '加载中…'}
@@ -416,9 +418,20 @@ export default function PatternTrackPage() {
           }
           delay={120}
         >
-          {!scorecard || scoreRows.length === 0 ? (
+          {scoreFailed ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
-              {scoreFailed ? '暂时取不到成绩单，稍后刷新再试' : '加载中…'}
+              暂时取不到成绩单，稍后刷新再试
+            </div>
+          ) : !scorecard ? (
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
+              <span className="pulse-soft">加载中…</span>
+            </div>
+          ) : scoreRows.length === 0 ? (
+            // 成功返回但 0 行 = 「这段时间还没跑过形态扫描」，不是还在加载。
+            // 以前这一支和 `!scorecard` 共用了「加载中…」，空库/新部署时会永远转圈
+            //（2026-10-23 前端审计 P2）。
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
+              这段时间还没有扫描记录 —— 每个交易日收盘后自动扫描，跑过之后这里才会有成绩单。
             </div>
           ) : (
             <div className="overflow-auto">

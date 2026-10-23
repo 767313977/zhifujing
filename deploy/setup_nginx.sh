@@ -204,6 +204,8 @@ add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" alway
 add_header X-Content-Type-Options "nosniff" always;
 add_header X-Frame-Options "SAMEORIGIN" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+# Permissions-Policy（2026-10-23 体检后加）：本站不用摄像头/麦克风/定位/FLoC。
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()" always;
 # CSP 取保守值，别把 SPA 打坏：
 #   - style-src 带 'unsafe-inline' 是**因为前端有内联 style**（不是偷懒）；要收紧得先改前端。
 #   - img-src / font-src 放 data: —— 图标、字体可能是内联 data URL。
@@ -215,6 +217,24 @@ NGINX
 # 后端端口走 __占位符__ 而不是 $BACKEND_PORT：这段定界符带引号（里面有 nginx
 # 变量必须原样保留），bash 不会展开任何 $，直接写变量名会原样留在配置里。
 sed -i "s|__BACKEND_PORT__|$BACKEND_PORT|g" "$PROXY_SNIPPET"
+
+# ---------------------------------------------------------------- HTTP 层加固
+# 2026-10-23 体检后加（问题：日志没有 $request_time、server_tokens 暴露版本、
+# Ubuntu 默认 http 层仍允许 TLSv1/1.1）。
+# ⚠️ `log_format` **只能**写在 http 上下文，不能写进 server 块，所以单独放
+# `/etc/nginx/conf.d/`（Ubuntu 的 nginx.conf 在读 sites-enabled 之前 include 它，
+# 顺序没问题）。`server_tokens off` / `ssl_protocols` 也在这里统一收紧。
+install -d /etc/nginx/conf.d
+cat > /etc/nginx/conf.d/00-fupan-http.conf <<'NGINX'
+# 由 deploy/setup_nginx.sh 生成（2026-10-23）：HTTP 层观测性与安全基线。
+# rt / urt 分别是「整条请求耗时」与「后端处理耗时」，排查慢接口直接看这两个数。
+log_format fupan_main '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" "$http_user_agent" '
+                      'rt=$request_time urt=$upstream_response_time';
+server_tokens off;
+# 只留 TLS 1.2 / 1.3（vhost 里还有一份，这里保证 80/其它 server 也不放旧协议）
+ssl_protocols TLSv1.2 TLSv1.3;
+NGINX
 
 if [[ -n "$DOMAIN" ]]; then
   # ---- 有域名：先拿证书，再写正式配置 ----
@@ -309,6 +329,11 @@ server {
     # nginx ≥ 1.25.1 把它拆成了 `listen 443 ssl;` + `http2 on;`，升级后要改回来。
     listen 443 ssl http2;
     server_name __SERVER_NAMES__;
+
+    # 拆出独立访问日志（2026-10-23 加）：格式 fupan_main 带 rt/urt，见
+    # /etc/nginx/conf.d/00-fupan-http.conf。分文件也让「本站 4xx/5xx 比例」
+    # 不再被扫描噪声与其它站点混在一起。
+    access_log /var/log/nginx/fupan.access.log fupan_main;
 
     ssl_certificate     /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/__DOMAIN__/privkey.pem;

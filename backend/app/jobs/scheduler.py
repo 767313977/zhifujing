@@ -68,6 +68,9 @@ BACKUP_JOB_ID = "db_backup"
 ALERT_JOB_ID = "close_alert"
 # 知行B1 盘中预览（见 config.b1_intraday_hour）：14:50 拉当天快照、只推飞书，不写库。
 B1_INTRADAY_JOB_ID = "b1_intraday"
+# 过期登录会话清理（见 config.session_cleanup_hour，2026-10-23 加）：每天凌晨删一次
+# `user_session` 里已过期 / 超绝对上限的行，别让长期不登录的账号一直占着。
+SESSION_CLEANUP_JOB_ID = "session_cleanup"
 
 # 「错过 17:30 / 22:00」的回看上限（单位：交易日）。本机常年关机，重启往往发生在
 # 次日 —— 那一天的**龙虎榜 / 机构席位 / 涨停题材**（`_run_late`）与**板块成分股**
@@ -419,6 +422,22 @@ class DailyScheduler:
                 misfire_grace_time=3600,
                 coalesce=True,
             )
+        # 过期登录会话清理（2026-10-23 加，见 `services.auth.delete_expired_sessions`）。
+        # **不限定工作日**：过期会话与交易日无关；凌晨 03:30 跑，避开所有采集/备份。
+        if self.settings.session_cleanup_enabled:
+            scheduler.add_job(
+                self._run_session_cleanup,
+                CronTrigger(
+                    hour=self.settings.session_cleanup_hour,
+                    minute=self.settings.session_cleanup_minute,
+                    timezone=TIMEZONE,
+                ),
+                id=SESSION_CLEANUP_JOB_ID,
+                name="过期登录会话清理",
+                replace_existing=True,
+                misfire_grace_time=3600,
+                coalesce=True,
+            )
         # 收盘链路告警：20:00 时简报（15:05）与尾部链早已结束，查一遍状态。
         if self.settings.alert_enabled:
             scheduler.add_job(
@@ -566,6 +585,22 @@ class DailyScheduler:
             logger.info("数据库备份完成：%s", result)
         except Exception:  # noqa: BLE001 - 备份失败不能把调度器带崩
             logger.exception("数据库备份失败")
+
+    def _run_session_cleanup(self) -> None:
+        """删过期登录会话（2026-10-23 加）。失败只记日志，不影响其它任务。
+
+        与 `_run_backup` 同一套：读/写库都走 `session_scope`，异常吞在本方法内 ——
+        凌晨这一趟失败不该把调度器带崩（下一次触发在 24 小时后，过期行多留一天
+        没有任何副作用）。
+        """
+        from app.services.auth import delete_expired_sessions
+
+        try:
+            with session_scope() as session:
+                removed = delete_expired_sessions(session)
+            logger.info("过期登录会话清理完成：删除 %d 行", removed)
+        except Exception:  # noqa: BLE001 - 清理失败不能把调度器带崩
+            logger.exception("过期登录会话清理失败")
 
     def _run_alert(self) -> None:
         """收盘链路告警检查。失败只记日志。"""

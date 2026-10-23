@@ -36,6 +36,11 @@ def _enable_sqlite_pragmas(dbapi_conn, _record) -> None:
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.execute("PRAGMA foreign_keys=ON")
+    # WAL 文件默认不回收（journal_size_limit=-1）：赶上一轮几万行的大批量写入，
+    # 它只会一直涨（线上实测 124MB ≈ 主库 15%）。设 64MB 上限 —— checkpoint 之后
+    # SQLite 会把 WAL 截回到这个尺寸以内，既留足高峰余量、又不会无限膨胀。
+    # ⚠️ 这个 PRAGMA 只影响 checkpoint 时的截断，不改写入行为；老库在下次连接时生效。
+    cursor.execute("PRAGMA journal_size_limit=67108864")
     cursor.close()
 
 

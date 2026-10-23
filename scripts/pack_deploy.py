@@ -79,11 +79,32 @@ INCLUDE = (
     "frontend/dist",
     "scripts",
     "deploy",
-    "docs",
 )
 
 SKIP_DIRS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 SKIP_SUFFIX = (".pyc", ".pyo")
+
+
+def normalize_tarinfo(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo:
+    """把包内权限位统一成 **644（文件）/ 755（目录）**。
+
+    ⚠️ 为什么必须有它（2026-10-23 体检发现的生产问题）：这个脚本是在 **Windows**
+    上跑的，`tarfile` 会把 NTFS 的 `-rw-rw-rw-` / `drwxrwxrwx` 原样写进 tar。
+    部署（解压覆盖）之后，生产上 218 个文件变成 0666 —— 后端 100 个 `.py` 与前端
+    75 个 dist JS 全站可写，任意本地 UID 都能改线上代码。`install.sh` 只 chown、
+    不 chmod，所以这个模式会一直跟着每次部署。
+
+    这里从**源头**规整：文件 644、目录 755、属主统一 root（解包后 install.sh 会
+    chown 成 fupan）。`.env` / 数据库不在包里（分别由 install.sh chmod 600、
+    data 目录 700 兜底），不受影响。
+    """
+    tarinfo.uid = 0
+    tarinfo.gid = 0
+    tarinfo.uname = "root"
+    tarinfo.gname = "root"
+    tarinfo.mode = 0o755 if tarinfo.isdir() else 0o644
+    return tarinfo
+
 
 
 def _git(*args: str) -> list[str] | None:
@@ -185,7 +206,12 @@ def add_tree(
                 continue
         # recursive=False：目录只留一个条目，内容由各自的循环负责，
         # 否则 tarfile 会把整棵树重复加一遍
-        tar.add(path, arcname=f"{prefix}/{relative.as_posix()}", recursive=False)
+        tar.add(
+            path,
+            arcname=f"{prefix}/{relative.as_posix()}",
+            recursive=False,
+            filter=normalize_tarinfo,
+        )
         if path.is_file():
             count += 1
     return count, skipped
@@ -255,7 +281,7 @@ def main() -> int:
                 files += count
                 skipped += tree_skipped
             else:
-                tar.add(src, arcname=f"{ARCHIVE_ROOT}/{item}")
+                tar.add(src, arcname=f"{ARCHIVE_ROOT}/{item}", filter=normalize_tarinfo)
                 files += 1
 
         if args.with_db:
@@ -265,7 +291,11 @@ def main() -> int:
             # 直接叫 fupan.db 就会在 `tar xzf` 那一步静默覆盖线上库（用户/邀请码/笔记/
             # 自选股，不可逆）。改成 seed 之后解压碰不到线上库，由 install.sh 决定是否
             # 采用：新机器直接用，已有库先备份并要求 `--force-db` 才覆盖。
-            tar.add(snapshot, arcname=f"{ARCHIVE_ROOT}/backend/data/fupan.db.seed")
+            tar.add(
+                snapshot,
+                arcname=f"{ARCHIVE_ROOT}/backend/data/fupan.db.seed",
+                filter=normalize_tarinfo,
+            )
             files += 1
 
     size = out.stat().st_size / 1024 / 1024

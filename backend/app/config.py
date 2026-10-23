@@ -35,6 +35,19 @@ class Settings(BaseSettings):
     # 公共 WiFi、公网 IP 不要改。
     host: str = "127.0.0.1"
     port: int = 8000
+    # 是否把本地开发源（Vite 的 5173）加进 CORS 白名单。
+    #
+    # 站点本体与后端同源，这层 CORS 只服务本地开发调试；生产环境不该出现开发源
+    # （2026-10-23 体检 P3）。生产在 systemd 里设 `ENABLE_DEV_CORS=false` 即可关掉，
+    # 本地默认 true —— 不改 .env 也能继续用 5173 调试。
+    enable_dev_cors: bool = True
+    # 启动后是否在后台预热形态成绩单缓存（2026-10-23 加，见 `main._warm_pattern_cache`）。
+    #
+    # `/api/patterns/scorecard` 是站内最重的读接口（线上冷缓存实测 4.76s，`standing`
+    # 1.5s、`track` 0.7s；热了之后 40ms），而结果缓存的有效期只有 10 分钟 —— 部署 /
+    # 重启后第一个打开形态页的人就要白等这几秒。启动后用默认参数各跑一遍把缓存捂热。
+    # 关掉设 `WARMUP_PATTERN_CACHE=false`（pydantic-settings 直接读大写环境变量）。
+    warmup_pattern_cache: bool = True
 
     # --- iFinD ---
     ifind_auth_token: str = ""
@@ -372,6 +385,14 @@ class Settings(BaseSettings):
     # 额外同步目录（挂载盘 / COS 同步客户端的落地目录）。空 = 只留本机。
     # 不直接调 COS SDK：那需要额外依赖与密钥，先用「任意可写目录」做接口。
     backup_sync_dir: str = ""
+
+    # ---- 过期登录会话清理（2026-10-23 加）----
+    # 会话是 30 天滑动 + 90 天绝对上限（见 `services.auth`），但过期行原本只在
+    # 「**该用户下次登录**」时才被清（`create_session` 顺手删）—— 长期不登录的账号
+    # 会一直占着 `user_session`。每天凌晨固定清一次，失败只记日志。
+    session_cleanup_enabled: bool = True
+    session_cleanup_hour: int = 3
+    session_cleanup_minute: int = 30
 
     # ---- 收盘链路告警（2026-10-18 加）----
     #

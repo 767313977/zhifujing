@@ -40,6 +40,15 @@ def _validate(session: Session, payload: TradePlanIn) -> tuple[str, str | None]:
         raise HTTPException(status_code=400, detail="买点与放弃位都必须大于 0")
     if payload.stop_price >= payload.buy_price:
         raise HTTPException(status_code=400, detail="放弃位要低于买点（过 X 买、破 Y 放弃）")
+    code = _normalize_code(payload.code)
+    # 代码必须真在 `stock_basic` 里（2026-10-23 体检修，文案与
+    # `api/watchlist.add_watchlist` 对齐）：`_normalize_code` 只校验"6 位数字"，
+    # 手误的 999999 也能落一条永远「无日线」的计划行，用户还以为存上了。
+    basic = session.get(StockBasic, code)
+    if basic is None:
+        raise HTTPException(
+            status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
+        )
     exists = session.scalar(
         select(TradeCalendar.trade_date).where(
             TradeCalendar.trade_date == payload.plan_date
@@ -47,11 +56,9 @@ def _validate(session: Session, payload: TradePlanIn) -> tuple[str, str | None]:
     )
     if exists is None:
         raise HTTPException(status_code=400, detail=f"{payload.plan_date} 不是交易日")
-    code = _normalize_code(payload.code)
     name = (payload.name or "").strip() or None
     if name is None:
-        basic = session.get(StockBasic, code)
-        name = basic.name if basic is not None else None
+        name = basic.name
     return code, name
 
 

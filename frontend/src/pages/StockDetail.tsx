@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { api } from '../api/client'
+import { api, ApiError, isNoDataError } from '../api/client'
 import type {
   ChipDistribution,
   FqMode,
@@ -44,6 +44,41 @@ import { alreadySynced, markSynced, readStockList } from '../lib/stockNav'
  * 正好被 `=== 0` 这条判据漏掉。
  */
 const NEED_BARS = 120
+
+/**
+ * 概况请求失败的可读文案 + 「这只票是不是不存在」判定（2026-10-23）。
+ *
+ * 后端今天起对未知代码返回 404（此前是 200 + 空概况），而 400 的 detail 通常已经是
+ * 「查不到这个代码「999999」」这类可读句。两种情况都收敛成同一句结论，
+ * 页面上别再笼统显示「加载失败 / 同步失败」。
+ */
+function stockFailureOf(err: unknown): { text: string; missing: boolean } {
+  const status = err instanceof ApiError ? err.status : null
+  const message = err instanceof Error ? err.message : String(err)
+  if (status === 404) return { text: '代码不存在或没有这只票', missing: true }
+  if (status === 400 && /查不到|不存在/.test(message)) {
+    return { text: '代码不存在或没有这只票', missing: true }
+  }
+  return { text: message, missing: false }
+}
+
+/**
+ * 首访自动补历史（syncStock）失败时的文案。
+ *
+ * 429（60 秒冷却）/ 409（采集正忙）是**可自愈的等待**，不是页面坏了；而且这时
+ * 概况 / K 线可能已经渲染出来了，别用一句刺眼的「同步失败」盖住正常内容。
+ */
+function syncFailureText(err: unknown): string {
+  const status = err instanceof ApiError ? err.status : null
+  if (status === 404) return '代码不存在或没有这只票'
+  if (status === 400) {
+    const message = err instanceof Error ? err.message : String(err)
+    return /查不到|不存在/.test(message) ? '代码不存在或没有这只票' : message
+  }
+  if (status === 409) return '采集正忙，暂时补不了历史；已显示本地已有数据，稍后再试'
+  if (status === 429) return '补历史请求过于频繁（约 60 秒冷却）；已显示本地已有数据，稍后再试'
+  return err instanceof Error ? err.message : String(err)
+}
 
 /**
  * 「所属题材」这一格最多列几个。
@@ -304,6 +339,8 @@ export default function StockDetail() {
   // 共用一个状态会让 DDE 面板误报「资金流取数失败：采集正忙」；且顶部 Alert 关闭只清
   // error，面板判据若也挂在 error 上，红条一关面板就永久「加载中…」（2026-10-11 修）
   const [profileError, setProfileError] = useState<string | null>(null)
+  /** 概况失败是否因为「这只票不存在」（404 / 400 查不到）：文案与面板失败态要用 */
+  const [profileMissing, setProfileMissing] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   // 周期、取数、按需补历史都在这个 hook 里（与形态页共用一套）
   const kline = useKLine(code)
@@ -344,7 +381,9 @@ export default function StockDetail() {
       // 不区分就会被下面同一句文案盖住（2026-10-10 修）
       const ddeRequest = api.stockDde(target).then(
         (data) => ({ data, error: null as string | null }),
-        (err: Error) => ({ data: null, error: err.message }),
+        // 404 = 这只票还没有 DDE 数据（正常空态），交给下面的「暂无数据」分支；
+        // 5xx/超时才记成失败（2026-10-23 统一 404 语义）
+        (err: Error) => ({ data: null, error: isNoDataError(err) ? null : err.message }),
       )
       // 筹码分布是本地计算、很快；失败也不该拖垮整页（增强读数一律回落 null）
       const chipsRequest = api.stockChips(target).catch(() => null)
@@ -408,6 +447,7 @@ export default function StockDetail() {
     setEventsError(null)
     setError(null)
     setProfileError(null)
+    setProfileMissing(false)
     ;(async () => {
       try {
         const p = await load(code, () => cancelled)
@@ -430,14 +470,16 @@ export default function StockDetail() {
               reloadKline()
             }
           } catch (err) {
-            if (!cancelled) setError((err as Error).message)
+            if (!cancelled) setError(syncFailureText(err))
           }
         }
       } catch (err) {
         // 走到这里只剩 load() 失败：概况那批整体没取到，页面红条与面板失败态一起给
         if (!cancelled) {
-          setError((err as Error).message)
-          setProfileError((err as Error).message)
+          const failure = stockFailureOf(err)
+          setError(failure.text)
+          setProfileError(failure.text)
+          setProfileMissing(failure.missing)
         }
       } finally {
         if (!cancelled) setSyncing(false)
@@ -470,7 +512,8 @@ export default function StockDetail() {
           if (!cancelled) setNotices(data)
         })
         .catch((err) => {
-          if (!cancelled) setEventsError((err as Error).message)
+          // 404 = 这类数据源暂时没有这只票的记录 → 「暂无数据」；5xx/超时才显示失败
+          if (!cancelled) setEventsError(isNoDataError(err) ? null : (err as Error).message)
         })
         .finally(finish)
       return () => {
@@ -485,7 +528,8 @@ export default function StockDetail() {
           if (!cancelled) setReports(data)
         })
         .catch((err) => {
-          if (!cancelled) setEventsError((err as Error).message)
+          // 404 = 这类数据源暂时没有这只票的记录 → 「暂无数据」；5xx/超时才显示失败
+          if (!cancelled) setEventsError(isNoDataError(err) ? null : (err as Error).message)
         })
         .finally(finish)
       return () => {
@@ -500,7 +544,8 @@ export default function StockDetail() {
           if (!cancelled) setUnlocks(data)
         })
         .catch((err) => {
-          if (!cancelled) setEventsError((err as Error).message)
+          // 404 = 这类数据源暂时没有这只票的记录 → 「暂无数据」；5xx/超时才显示失败
+          if (!cancelled) setEventsError(isNoDataError(err) ? null : (err as Error).message)
         })
         .finally(finish)
       return () => {
@@ -685,7 +730,9 @@ export default function StockDetail() {
                   // 页面级 error —— 后者还被补历史/加自选的失败共用、且会被 Alert 的关闭
                   // 清掉，拿它当判据要么误报失败、要么关掉红条后永久「加载中…」
                   profileError
-                  ? '概况加载失败'
+                  ? profileMissing
+                    ? '代码不存在或没有这只票'
+                    : '概况加载失败'
                   : '加载中…'}
               <Link to="/watchlist" className="ml-3 text-fg-dim hover:text-fg">
                 ← 回自选
@@ -812,7 +859,9 @@ export default function StockDetail() {
               注意 ddeError 只代表 DDE 自己的请求失败，和 profileError 是两件事 */}
           {profileError ? (
             <div className="px-4 py-10 text-center text-[14px] text-danger">
-              资金流取数失败：{profileError}（刷新页面重试）
+              {profileMissing
+                ? '代码不存在或没有这只票'
+                : `资金流取数失败：${profileError}（刷新页面重试）`}
             </div>
           ) : profile === null ? (
             <div className="flex h-[240px] items-center justify-center text-[14px] text-fg-dim">
@@ -886,7 +935,15 @@ export default function StockDetail() {
             }
             delay={105}
           >
-            {profile === null ? (
+            {profileError ? (
+              // 概况失败时 profile 永远是 null：以前这一支落到下面的「加载中…」，
+              // 面板会永久转圈（2026-10-23 前端审计 P1）。失败要如实说失败。
+              <div className="flex h-[240px] items-center justify-center px-6 text-center text-[14px] text-danger">
+                {profileMissing
+                  ? '代码不存在或没有这只票'
+                  : `概况加载失败，暂时算不出筹码分布（${profileError}）`}
+              </div>
+            ) : profile === null ? (
               <div className="flex h-[240px] items-center justify-center text-[14px] text-fg-dim">
                 <span className="pulse-soft">加载中…</span>
               </div>
@@ -969,7 +1026,14 @@ export default function StockDetail() {
               {trapChecking ? '体检中…' : '重新体检'}
             </button>
           </div>
-          {profile === null ? (
+          {profileError ? (
+            // 同筹码分布：概况失败时 profile 为 null，不能继续显示「加载中…」
+            <div className="flex h-[180px] items-center justify-center px-6 text-center text-[14px] text-danger">
+              {profileMissing
+                ? '代码不存在或没有这只票'
+                : `概况加载失败，暂时无法体检（${profileError}）`}
+            </div>
+          ) : profile === null ? (
             <div className="flex h-[180px] items-center justify-center text-[14px] text-fg-dim">
               <span className="pulse-soft">加载中…</span>
             </div>
@@ -1130,8 +1194,8 @@ export default function StockDetail() {
                     <thead>
                       <tr>
                         <th className="!text-left">解禁日</th>
-                        <th title="解禁数量占**流通**市值的比例">占流通市值</th>
-                        <th title="解禁数量占**总**市值的比例">占总市值</th>
+                        <th title="解禁数量占流通市值的比例">占流通市值</th>
+                        <th title="解禁数量占总市值的比例">占总市值</th>
                         <th>解禁市值</th>
                         <th>解禁股数</th>
                         <th className="!text-left">类型</th>
@@ -1194,7 +1258,19 @@ export default function StockDetail() {
           meta={<span className="num">该股上过涨停池的日期（数据源只保留最近 15 个交易日）</span>}
           delay={120}
         >
-          {!profile || profile.limit_up_dates.length === 0 ? (
+          {profileError ? (
+            // 概况失败 ≠「没有涨停记录」：以前 profile 为 null 会走下面那一支，
+            // 把接口故障说成「窗口内没有涨停记录」（2026-10-23 前端审计 P1）
+            <div className="px-4 py-6 text-center text-[13px] text-danger">
+              {profileMissing
+                ? '代码不存在或没有这只票'
+                : '概况加载失败，无法判断涨停记录'}
+            </div>
+          ) : !profile ? (
+            <div className="px-4 py-6 text-center text-[13px] text-fg-dim">
+              <span className="pulse-soft">加载中…</span>
+            </div>
+          ) : profile.limit_up_dates.length === 0 ? (
             <div className="px-4 py-6 text-center text-[13px] text-fg-dim">
               窗口内没有涨停记录
             </div>
@@ -1272,3 +1348,4 @@ function PanelLoading({ label, height = 240 }: { label: string; height?: number 
     </div>
   )
 }
+

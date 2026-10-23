@@ -21,7 +21,7 @@ import time
 from datetime import datetime, timedelta
 
 from fastapi import Depends, HTTPException, Request
-from sqlalchemy import delete
+from sqlalchemy import delete, or_
 from sqlalchemy.orm import Session
 
 from app.db import get_db, session_scope
@@ -242,6 +242,31 @@ def delete_user_sessions(db: Session, user_id: int, keep: str | None = None) -> 
     if keep:
         statement = statement.where(UserSession.token_hash != _digest(keep))
     result = db.execute(statement)
+    db.commit()
+    return result.rowcount or 0
+
+
+def delete_expired_sessions(db: Session) -> int:
+    """删掉**已过期**的全部会话，返回删掉的行数。
+
+    「过期」与 `resolve_session` 的两道判据完全一致：
+    - 滑动的 `expires_at` 已过；
+    - 从 `created_at` 起算超过 `SESSION_ABSOLUTE_DAYS` 的**绝对上限**。
+
+    **为什么需要它**：原来的清理只发生在「该用户下次登录」时（`create_session` 顺手
+    删），长期不登录的账号会一直把过期行留在 `user_session` 里。调度器每天凌晨调一次
+    （见 `jobs.scheduler._run_session_cleanup`），清完返回行数只用于日志。
+    """
+    now = datetime.now()
+    absolute_cut = now - timedelta(days=SESSION_ABSOLUTE_DAYS)
+    result = db.execute(
+        delete(UserSession).where(
+            or_(
+                UserSession.expires_at < now,
+                UserSession.created_at <= absolute_cut,
+            )
+        )
+    )
     db.commit()
     return result.rowcount or 0
 
@@ -484,6 +509,7 @@ __all__ = [
     "create_session",
     "current_user",
     "delete_session",
+    "delete_expired_sessions",
     "delete_user_sessions",
     "guard_rate",
     "guard_user_rate",

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '../api/client'
+import { api, ApiError } from '../api/client'
 import type { FqMode, KPeriod } from '../api/types'
 import { dailyBars } from '../components/KLineChart'
 import type { KLineBar } from '../components/KLineChart'
@@ -67,6 +67,43 @@ const LONG_SPAN_DAYS = 700
 
 /** 一次补多少根日线 ≈ 500 个交易日 ≈ 2 年（后端上限） */
 const LONG_SYNC_DAYS = 500
+
+/**
+ * 正在进行的「补 2 年历史」请求，按代码去重（2026-10-23 加）。
+ *
+ * 为什么必须有：补一次要等十几秒（iFinD），而用户在这期间切周 K→月 K 会触发两次
+ * effect（`stale` 只挡 setState、挡不住已经发出的请求）。以前每次切 view 都会再发一次
+ * `POST /sync`，第二次通常撞上后端 60 秒冷却返回 429，错误文案还被画到正常图表上
+ * （2026-10-23 前端审计 P2，CDP 实测两次 POST）。
+ *
+ * 放在模块级而不是 ref：`useKLine` 在个股页与形态页各有一个实例，同一只票的补历史
+ * 是「全站一次」的事，跨实例也该去重。
+ */
+const longSyncInFlight = new Map<string, Promise<void>>()
+
+/**
+ * 确保这只票补过长历史；已有同代码请求在途就**复用同一个 Promise**。
+ * 成功才写两个「已补」标记（失败允许下次再试，见 stockNav 的说明）。
+ */
+function ensureLongHistory(code: string): Promise<void> {
+  const running = longSyncInFlight.get(code)
+  if (running) return running
+  const task = api.syncStock(code, LONG_SYNC_DAYS).then(() => {
+    markLongHistory(code)
+    markSynced(code)
+  })
+  // 无论成败都从表里删掉：成功 → 后续走 hasLongHistory；失败 → 允许下次重试
+  const tracked = task.finally(() => {
+    longSyncInFlight.delete(code)
+  })
+  longSyncInFlight.set(code, tracked)
+  return tracked
+}
+
+/** 429（60s 冷却）/ 409（采集正忙）是「等一会儿」的软失败，不往正常图表上盖红字。 */
+function isSyncCooldown(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 409 || err.status === 429)
+}
 
 /** 最早那根 K 离今天有多远（自然日）。用原始行而不是格式化后的标签 ——
  *  标签只有 `MM-DD`，丢了年份，跨年时会算错 */
@@ -143,17 +180,16 @@ export function useKLine(code: string, { fq: fixedFq }: { fq?: FqMode } = {}): K
         if (view !== 'day' && spanDays(rows) < LONG_SPAN_DAYS && !hasLongHistory(code)) {
           setSyncing(true)
           try {
-            await api.syncStock(code, LONG_SYNC_DAYS)
-            // 成功才标记（失败时下次打开还能再试），并且顺手把日线的那份标记也打上：
-            // 这次补的是「2 年」，比个股页挂载时那次 250 天的更全
-            markLongHistory(code)
-            markSynced(code)
+            // 复用同一个在途 Promise：快速切周/月只发一次 POST（见 ensureLongHistory）
+            await ensureLongHistory(code)
             rows = await api.stockDaily(code, query)
           } catch (err) {
             // 补长历史失败（60 秒冷却的 429 / 采集期间的 409）时**保留已经拿到的日线**，
             // 继续用它画图；只有连第一次取数都失败（外层 catch）时才置空。否则整张图会
             // 退化成一句报错，明明有数据可看（2026-10-10 修）。
-            if (!stale) setError((err as Error).message)
+            // 429/409 是「等一会儿就好」，不显示 —— 否则正常图表上会盖一行红字
+            //（2026-10-23 前端审计 P2）。
+            if (!stale && !isSyncCooldown(err)) setError((err as Error).message)
           } finally {
             if (!stale) setSyncing(false)
           }
@@ -161,10 +197,11 @@ export function useKLine(code: string, { fq: fixedFq }: { fq?: FqMode } = {}): K
         // 周/月的横轴带上年份：2 年的跨度里 `09-30` 会撞上两个
         if (!stale) setBars(dailyBars(rows, { withYear: view !== 'day' }))
       } catch (err) {
-        // 连第一次日线都没取到：这时确实没有数据可画，才置空并显示报错
+        // 连第一次日线都没取到：这时确实没有数据可画，才置空并显示报错。
+        // 404 = 这只票/这个交易日没有日线（后端语义），按空态处理，不显示成接口故障
         if (!stale) {
           setBars([])
-          setError((err as Error).message)
+          setError(err instanceof ApiError && err.status === 404 ? null : (err as Error).message)
         }
       } finally {
         if (!stale) {

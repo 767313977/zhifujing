@@ -60,6 +60,32 @@ const T_TRIGGER_LABELS: Record<string, string> = Object.fromEntries(
   T_TRIGGERS.map((item) => [item.key, item.label]),
 )
 
+/**
+ * 「上次用的做 T 比例」的本地记忆 key。
+ *
+ * ⚠️ 读写都要 try/catch：浏览器「阻止所有 Cookie/站点数据」或部分隐私扩展下，
+ * 访问 `localStorage` 会直接抛 SecurityError。这是**渲染期**执行的（useState 初始化），
+ * 抛出去会整块表单崩溃 —— 项目没有 ErrorBoundary，就是白屏。
+ * 同类保护见 `lib/stockNav.ts` 与 `components/NotePanel.tsx`（2026-10-23 前端审计 P2）。
+ */
+const LAST_T_RATIO_KEY = 'journal.lastTRatio'
+
+function readLastTRatio(): string {
+  try {
+    return window.localStorage.getItem(LAST_T_RATIO_KEY) ?? '33'
+  } catch {
+    return '33'
+  }
+}
+
+function writeLastTRatio(value: string): void {
+  try {
+    window.localStorage.setItem(LAST_T_RATIO_KEY, value)
+  } catch {
+    // 存不进去只是下次不记忆比例，不能影响保存成功后的界面更新
+  }
+}
+
 interface FormState {
   code: string
   name: string
@@ -262,10 +288,8 @@ function TForm({
   const [sellPrice, setSellPrice] = useState(
     initial?.sell_price == null ? '' : String(initial.sell_price),
   )
-  const [ratio, setRatio] = useState(
-    initial
-      ? String(initial.ratio_pct)
-      : (window.localStorage.getItem('journal.lastTRatio') ?? '33'),
+  const [ratio, setRatio] = useState(() =>
+    initial ? String(initial.ratio_pct) : readLastTRatio(),
   )
   const [trigger, setTrigger] = useState(initial?.trigger ?? 'other')
   // 用户手动选过触发类型后，不再因日期变化而自动改回「其他」
@@ -373,7 +397,7 @@ function TForm({
       const row = initial
         ? await api.updateTradeT(initial.id, payload)
         : await api.createTradeT(tradeId, payload)
-      window.localStorage.setItem('journal.lastTRatio', String(value))
+      writeLastTRatio(String(value))
       const saved = initial
         ? row.t_ops.find((item) => item.id === initial.id)
         : row.t_ops.find((item) => !knownIds.includes(item.id))

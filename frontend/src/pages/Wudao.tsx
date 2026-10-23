@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api } from '../api/client'
+import { api, isNoDataError } from '../api/client'
 import type { PatternStock, PatternSummary } from '../api/types'
 import Alert from '../components/Alert'
 import Layout from '../components/Layout'
@@ -85,7 +85,15 @@ const SECTIONS: Section[] = [
   },
 ]
 
-const POOL_LIMIT = 3000
+/**
+ * 每池一次最多取多少行（2026-10-23 从 3000 降到 800）。
+ *
+ * 与形态选股页的 `PATTERN_LIMIT` 同步收紧：3000 行的响应体与前端过滤都很慢，
+ * 而六个池子实测单日最多 600 多只（10-08 缩量洗盘中 633），800 足够。
+ * 真超过时表尾会写明「另有 N 只未取回」（`count` 来自 summary 的全量家数，
+ * 不受这个上限影响），不会静默少给。
+ */
+const POOL_LIMIT = 800
 
 /**
  * 每张表最多渲染多少行。
@@ -133,13 +141,18 @@ export default function Wudao() {
       const [summaryResult, ...poolResults] = await Promise.all([
         api.patternSummary(null).then(
           (data) => ({ data, error: null as string | null }),
-          (err: Error) => ({ data: null, error: err.message }),
+          // 404 = 还没有扫描数据（新部署/非交易日）→ 空态，不提示「接口出错」
+          (err: Error) => ({ data: null, error: isNoDataError(err) ? null : err.message }),
         ),
         ...pools.map((pool) =>
           // 这一页每个池子只取**一个**形态：传单元素数组（接口是多选口径，取并集）
           api.patternHits(null, 0, POOL_LIMIT, [pool.key]).then(
             (page) => ({ key: pool.key, rows: page.items, error: null as string | null }),
-            (err: Error) => ({ key: pool.key, rows: [] as PatternStock[], error: err.message }),
+            (err: Error) => ({
+              key: pool.key,
+              rows: [] as PatternStock[],
+              error: isNoDataError(err) ? null : err.message,
+            }),
           ),
         ),
       ])
@@ -392,6 +405,12 @@ function PoolPanel({
           {hidden > 0 && (
             <div className="border-t border-line-soft px-4 py-2 text-[12px] text-fg-dim">
               按分数只显示前 {RENDER_LIMIT} 只，另有 {hidden} 只没显示
+            </div>
+          )}
+          {count != null && count > rows.length && (
+            <div className="border-t border-line-soft px-4 py-2 text-[12px] text-warn">
+              本池共 {count} 只，本次取回前 {rows.length} 只（单次上限 {POOL_LIMIT} 只）；
+              其余可通过收窄形态/日期再看
             </div>
           )}
         </>

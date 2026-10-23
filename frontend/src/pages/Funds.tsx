@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { api } from '../api/client'
+import { api, isNoDataError } from '../api/client'
 import type {
   DdeBoard,
   DdeItem,
@@ -207,7 +207,9 @@ export default function Funds() {
       .catch((err: Error) => {
         if (stale) return
         setOverview(null)
-        setOverviewError(err.message)
+        // 404 = 这一天还没有资金面数据（非交易日/尚未采集）→ 空态；
+        // 只有 5xx/超时/断网才显示「接口出错」（2026-10-23 统一 404 语义）
+        setOverviewError(isNoDataError(err) ? null : err.message)
       })
       .finally(() => {
         if (!stale) setOverviewLoading(false)
@@ -230,7 +232,7 @@ export default function Funds() {
       .catch((err: Error) => {
         if (stale) return
         setSeries(null)
-        setSeriesError(err.message)
+        setSeriesError(isNoDataError(err) ? null : err.message)
       })
       .finally(() => {
         if (!stale) setSeriesLoading(false)
@@ -260,7 +262,7 @@ export default function Funds() {
           })
     load
       .catch((err: Error) => {
-        if (!stale) setEtfError(err.message)
+        if (!stale) setEtfError(isNoDataError(err) ? null : err.message)
       })
       .finally(() => {
         if (!stale) setEtfLoading(false)
@@ -281,7 +283,7 @@ export default function Funds() {
         if (!stale) setInstitutions(data)
       })
       .catch((err: Error) => {
-        if (!stale) setInstError(err.message)
+        if (!stale) setInstError(isNoDataError(err) ? null : err.message)
       })
       .finally(() => {
         if (!stale) setInstLoading(false)
@@ -302,7 +304,7 @@ export default function Funds() {
         if (!stale) setDde(data)
       })
       .catch((err: Error) => {
-        if (!stale) setDdeError(err.message)
+        if (!stale) setDdeError(isNoDataError(err) ? null : err.message)
       })
       .finally(() => {
         if (!stale) setDdeLoading(false)

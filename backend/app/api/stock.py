@@ -70,7 +70,7 @@ from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.em_news import fetch_stock_news
 from app.sources.ifind import IfindError, normalize_code
 from app.sources.kaipanhong import TAXONOMY_SELECTED
-from app.timeutil import today_cn
+from app.timeutil import now_cn, today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +144,51 @@ def _cache_news(key: tuple[str, int], value: StockNewsOut) -> None:
         if len(_news_cache) > NEWS_CACHE_MAX:
             oldest = min(list(_news_cache.items()), key=lambda kv: kv[1][0])
             _news_cache.pop(oldest[0], None)
+
+
+# 「杀猪盘体检」的进程内 TTL 缓存（2026-10-23 加）。体检要出外网（财务摘要 / 东财新闻 /
+# 公告 / 解禁 / 人气榜），一次 1~2 秒，而它**每次打开个股页都会跑**；同一只票 10 分钟内
+# 的结论不会变。键取 `(code, context)`（context 会改变等级上调，不能忽略）。
+#
+# ⚠️ 与新闻缓存同一套：加锁（同步接口跑在线程池里会并发写）、有上限、只缓存成功结果
+# （`trap.check` 返回 None 或抛异常都不写缓存 —— 否则一次源故障会让这只票 10 分钟内
+# 都显示"查不到这个代码"）。
+TRAP_TTL_SEC = 600
+TRAP_CACHE_MAX = 256
+_trap_cache: dict[tuple[str, str], tuple[datetime, "trap.TrapResult"]] = {}
+_trap_cache_lock = threading.Lock()
+
+
+def _trap_key(code: str, context: str | None) -> tuple[str, str]:
+    """缓存键：代码 + 归一化后的 context（strip 后为空 → 空串）。"""
+    return code, (context or "").strip()
+
+
+def _trap_cache_get(key: tuple[str, str]) -> "trap.TrapResult | None":
+    """取未过期的体检结果；命中过期项顺手删掉。"""
+    with _trap_cache_lock:
+        item = _trap_cache.get(key)
+        if item is None:
+            return None
+        if datetime.now() - item[0] < timedelta(seconds=TRAP_TTL_SEC):
+            return item[1]
+        _trap_cache.pop(key, None)
+        return None
+
+
+def _trap_cache_put(key: tuple[str, str], value: "trap.TrapResult") -> None:
+    """写体检缓存并维持上限（先清过期，再超就丢最旧一条）。"""
+    now = datetime.now()
+    ttl = timedelta(seconds=TRAP_TTL_SEC)
+    with _trap_cache_lock:
+        _trap_cache[key] = (now, value)
+        if len(_trap_cache) > TRAP_CACHE_MAX:
+            for stale_key, (stamp, _) in list(_trap_cache.items()):
+                if now - stamp >= ttl:
+                    _trap_cache.pop(stale_key, None)
+        if len(_trap_cache) > TRAP_CACHE_MAX:
+            oldest = min(list(_trap_cache.items()), key=lambda kv: kv[1][0])
+            _trap_cache.pop(oldest[0], None)
 
 
 # 可选的 K 线周期。周/月由本地日线重采样（`_resample`），不额外取数
@@ -305,6 +350,14 @@ def profile(
             func.max(StockDaily.trade_date),
         ).where(StockDaily.code == code)
     ).one()
+
+    # 未知代码（既不在 `stock_basic`、也没有任何日线）返回 404 —— 以前会渲染一张
+    # 全空个股页，看起来像「这只票今天没数据」而不是「代码不存在」（2026-10-23 体检）。
+    # ⚠️ 有日线但 `stock_basic` 没有行（池外票 / 历史遗留）仍按 200 处理，不误伤。
+    if session.get(StockBasic, code) is None and not count:
+        raise HTTPException(
+            status_code=404, detail=f"查不到这个代码「{code}」，请确认后重试"
+        )
 
     # 把该股与复盘数据关联起来：涨停过哪天、上过几次龙虎榜
     limit_up_dates = list(
@@ -607,7 +660,7 @@ def _expected_latest(session: Session) -> date | None:
     )
     if not days:
         return None
-    if days[0] == today_cn() and datetime.now().time() < CLOSE_READY:
+    if days[0] == today_cn() and now_cn().time() < CLOSE_READY:
         return days[1] if len(days) > 1 else None
     return days[0]
 
@@ -800,21 +853,29 @@ def trap_check(
     session: Session = Depends(get_db),
     user: AppUser = Depends(current_user),
 ) -> TrapCheckOut:
-    """杀猪盘体检：8 个信号，**结构化证据优先、新闻只作辅助**。
+    """杀猪盘体检：10 个信号，**结构化证据优先、新闻只作辅助**。
 
     与 UZI-Skill 的原始实现不同：不是「8 次 web 搜索数关键词」，而是先看库里的
     ST 状态、连板/涨幅、换手分位、龙虎榜上榜次数、市值与波动，再用东财个股新闻
     检查推广话术与澄清报道（**辟谣算保护性证据，不算风险**）。
 
+    ⚠️ **进程内 TTL 缓存 10 分钟**（2026-10-23 加，见 `TRAP_TTL_SEC`）：体检要出外网
+    （财务摘要 / 新闻 / 公告 / 解禁 / 人气榜），一次 1~2 秒，而它每次打开个股页都跑；
+    同一 `(code, context)` 10 分钟内直接返回上次结论。失败（None / 异常）**不缓存**。
+
     `unknown`（数据不足）**不投票**：既不当 0 分装成安全，也不凭空扣分。
     `context` 命中「朋友推荐 / 群里 / 老师 / 内幕」等词时**只上调等级、不改评分**。
     """
     code = _code(code)
-    result = trap.check(code, context)
+    key = _trap_key(code, context)
+    result = _trap_cache_get(key)
     if result is None:
-        raise HTTPException(
-            status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
-        )
+        result = trap.check(code, context)
+        if result is None:
+            raise HTTPException(
+                status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
+            )
+        _trap_cache_put(key, result)
     return TrapCheckOut(
         code=result.code,
         name=result.name,

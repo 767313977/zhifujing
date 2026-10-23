@@ -51,6 +51,7 @@ from app.services.patterns import (
 from app.services.usage import QuotaLevel, level_label, quota_level
 from app.services.trading_days import is_trade_day
 from app.sources.ifind import get_shared_client
+from app.timeutil import now_cn
 
 logger = logging.getLogger(__name__)
 
@@ -429,7 +430,9 @@ def _format(
 def run(settings: Settings | None = None, *, now: datetime | None = None) -> dict:
     """跑一次盘中预览。失败只记录，不抛异常（定时任务不该把调度器带崩）。"""
     settings = settings or get_settings()
-    moment = now or datetime.now()
+    # 默认「现在」必须取**北京时间**（`now_cn()`）：进程本地墙钟在 TZ 漏配的机器上
+    # 差 8 小时，`day` 会落到错误的一天、推送里的时钟标签也会错（2026-10-23 体检）。
+    moment = now or now_cn()
     day = moment.date()
 
     if not settings.b1_intraday_enabled:

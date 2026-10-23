@@ -469,7 +469,7 @@ export default function PlansPage() {
             </div>
           )}
           <p className="px-4 py-3 text-[12px] leading-relaxed text-fg-dim">
-            次日 / 3 日 / 5 日是**触发后**从买点起算的收盘收益；还没走到对应交易日时显示
+            次日 / 3 日 / 5 日是<span className="text-fg-muted">触发后</span>从买点起算的收盘收益；还没走到对应交易日时显示
             「—」，不按 0% 编造。没触发或直接破位的计划不计算持有收益。
           </p>
         </Panel>

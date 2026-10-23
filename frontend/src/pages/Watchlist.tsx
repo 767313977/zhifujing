@@ -27,14 +27,25 @@ export default function WatchlistPage() {
   const [code, setCode] = useState('')
   // 「加入」请求进行中：连点按钮或连按回车不能发多个 POST
   const [submitting, setSubmitting] = useState(false)
+  /** 「移除」请求进行中（防止连点发两次 DELETE）；值是正在移除的代码 */
+  const [removing, setRemoving] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /**
+   * 自选名单**列表本身**取数失败的原因（2026-10-23 加）。
+   *
+   * 与 `error`（增删改/同步等操作的失败）分开：列表失败要整块显示失败态，
+   * 不能落进「自选池是空的」——那会把接口故障说成「你的自选没了」
+   * （2026-10-23 前端审计 P1）。
+   */
+  const [rowsError, setRowsError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
+    setRowsError(null)
     try {
       setRows(await api.watchlist())
     } catch (err) {
-      setError((err as Error).message)
+      setRowsError((err as Error).message)
     } finally {
       setLoading(false)
     }
@@ -63,15 +74,22 @@ export default function WatchlistPage() {
   }, [code, reload, submitting])
 
   const remove = useCallback(
-    async (target: string) => {
+    async (row: WatchlistRow) => {
+      // 防连点：同一个代码已有删除在途就不再发（第二次 DELETE 会 404，弹一条假错误）
+      if (removing !== null) return
+      const label = row.name ?? row.code
+      if (!window.confirm(`从自选里移除 ${label}（${row.code}）？`)) return
+      setRemoving(row.code)
       try {
-        await api.removeWatchlist(target)
+        await api.removeWatchlist(row.code)
         await reload()
       } catch (err) {
         setError((err as Error).message)
+      } finally {
+        setRemoving(null)
       }
     },
-    [reload],
+    [reload, removing],
   )
 
   const sync = useCallback(async () => {
@@ -97,7 +115,7 @@ export default function WatchlistPage() {
   const toolbar = (
     <>
       <span className="num hidden text-[13px] text-fg-dim lg:inline">
-        {loading ? '加载中…' : `${rows.length} 只`}
+        {loading ? '加载中…' : rowsError ? '—' : `${rows.length} 只`}
       </span>
       <button
         type="button"
@@ -152,15 +170,33 @@ export default function WatchlistPage() {
           title="自选池"
           meta={
             <span className="num">
-              {rows.length} 只
-              {missing > 0 && (
+              {rowsError ? '—' : `${rows.length} 只`}
+              {!rowsError && missing > 0 && (
                 <span className="ml-3 text-accent">{missing} 只尚无行情，需同步</span>
               )}
             </span>
           }
           delay={80}
         >
-          {rows.length === 0 ? (
+          {rowsError ? (
+            // 列表失败 ≠ 空池：整块显示失败态与重试，别让用户以为自选被清空了
+            <div className="px-4 py-10 text-center text-[14px] text-danger">
+              自选取数失败：{rowsError}
+              <div className="mt-1 text-[12px] text-fg-dim">
+                这是接口出错，不是「你的自选没了」；点下面重试或刷新页面
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoading(true)
+                  void reload()
+                }}
+                className="mt-3 border border-line px-3 py-1 text-[13px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg"
+              >
+                重试
+              </button>
+            </div>
+          ) : rows.length === 0 ? (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
               {loading ? '加载中…' : '自选池是空的。可以在上方按代码、名称或拼音首字母加入'}
             </div>
@@ -220,10 +256,11 @@ export default function WatchlistPage() {
                       <td>
                         <button
                           type="button"
-                          onClick={() => void remove(row.code)}
-                          className="border border-line px-2 py-[2px] text-[13px] text-fg-dim transition-colors hover:border-danger/50 hover:text-danger"
+                          onClick={() => void remove(row)}
+                          disabled={removing !== null}
+                          className="border border-line px-2 py-[2px] text-[13px] text-fg-dim transition-colors hover:border-danger/50 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          移除
+                          {removing === row.code ? '移除中…' : '移除'}
                         </button>
                       </td>
                     </tr>

@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { api } from '../api/client'
+import { api, isNoDataError } from '../api/client'
 import type {
   PatternCount,
   PatternMeta,
@@ -59,14 +59,18 @@ const GROUP_ORDER = [
 const HIT_LIMIT = 50
 
 /**
- * 选中某个形态时一次取多少只。
+ * 选中某个形态时一次取多少只（2026-10-23 从 3000 降到 800）。
  *
  * **2026-09-27 用户要求**：点了形态就该看到**它的全部命中**，而不是「全市场前 50
  * 里恰好属于这个形态的那几只」（原来两者混在一起，出现过「标签写 312 家、点进去
- * 只剩 5 行」）。所以形态模式下按后端允许的最大值取，实际条数由 `countOf` 兜底
- * 校验；真超过这个数（单形态一天三千只以上）会照旧弹截断提示，不会静默少给。
+ * 只剩 5 行」）。当时按后端允许的最大值取 3000。
+ *
+ * 但 3000 行 × 十几列响应体很大、页面要过滤/排序几十万格、切换筛选明显卡顿
+ * （2026-10-23 前端审计「形态 hits 慢」）。实测单形态一天极少超过 800 只，
+ * 所以收到 800；真超过时**截断提示仍然会弹**（文案直接用这个常量，`hitsTotal`
+ * 来自后端 total、不受这个上限影响），不会静默少给。
  */
-const PATTERN_LIMIT = 3000
+const PATTERN_LIMIT = 800
 
 /**
  * 「近 N 日」窗口的候选值（1 = 只看当天）。
@@ -397,6 +401,19 @@ export default function Patterns() {
   const [scorecard, setScorecard] = useState<PatternScorecardOut | null>(null)
   // 选中的形态：**多选**（交集）。空数组 = 默认视图（全市场按评分取前 HIT_LIMIT 只）
   const [picked, setPicked] = useState<string[]>(() => splitPatterns(params.get('patterns')))
+  /**
+   * 从 URL 里读进来、但当前形态目录里不存在的 key（2026-10-23 加）。
+   *
+   * 旧链接 / 手改 URL 会带失效的形态 key：后端按「未知形态」返回 0 行，页面以前会
+   * 静默显示「共 0 只命中」，看起来像今天真的没有票。现在 catalog 到达后过滤掉，
+   * 并在筛选条里明说「已忽略哪些」。
+   */
+  const [ignoredPatterns, setIgnoredPatterns] = useState<string[]>([])
+  // catalog 是异步到达的：过滤时要拿到**当前** picked，不能只在 effect 闭包里读初值
+  const pickedRef = useRef(picked)
+  useEffect(() => {
+    pickedRef.current = picked
+  }, [picked])
   const [minScore, setMinScore] = useState(0)
   // 「近 N 日」窗口：>1 时后端把窗口内同一只票的重复命中合并成一条（见 `WINDOWS`）
   const [days, setDays] = useState(() => {
@@ -448,7 +465,20 @@ export default function Patterns() {
 
   useEffect(() => {
     api.dates().then(setDates).catch(() => setDates([]))
-    api.patternCatalog().then(setCatalog).catch(() => setCatalog([]))
+    api
+      .patternCatalog()
+      .then((list) => {
+        setCatalog(list)
+        // 目录到达后清掉 URL 里失效的形态 key（只可能存在初始值里；界面上的 chip
+        // 都来自 catalog，不会产生未知 key）
+        const known = new Set(list.map((item) => item.key))
+        const unknown = pickedRef.current.filter((key) => !known.has(key))
+        if (unknown.length > 0) {
+          setIgnoredPatterns(unknown)
+          setPicked((prev) => prev.filter((key) => known.has(key)))
+        }
+      })
+      .catch(() => setCatalog([]))
     // 成绩单是增强信息：失败就静默当没有，不弹错（筛选条照常可用）
     api.patternScorecard().then(setScorecard).catch(() => setScorecard(null))
   }, [])
@@ -499,7 +529,9 @@ export default function Patterns() {
         setHitsTotal(0)
         setSummary(null)
         setPreview([])
-        setError((err as Error).message)
+        // 404 = 这一天没有形态命中数据（非交易日 / 尚未扫描）→ 空态；
+        // 只有 5xx/超时/断网才显示「接口出错」（2026-10-23 统一 404 语义）
+        setError(isNoDataError(err) ? null : (err as Error).message)
       } finally {
         if (!isStale()) setLoading(false)
       }
@@ -788,6 +820,7 @@ export default function Patterns() {
                     <button
                       key={item.key}
                       type="button"
+                      aria-pressed={on}
                       onClick={() => toggle(item.key)}
                       title={
                         (picked.length > 0
@@ -823,6 +856,14 @@ export default function Patterns() {
                 })}
               </div>
             ))}
+            {ignoredPatterns.length > 0 && (
+              <div className="text-[12px] leading-relaxed text-warn">
+                已忽略无效形态：{ignoredPatterns.join(' / ')}
+                <span className="ml-1 text-fg-dim">
+                  —— 链接里的 key 不在当前形态目录中（可能来自旧版本），已从筛选里清除。
+                </span>
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-2.5">
               {/* 板块：按代码号段判（见 lib/format.boardOf）。默认只勾创业板 + 科创板 —— 20cm */}
               <span className="text-[13px] text-fg-dim">板块</span>
@@ -832,6 +873,7 @@ export default function Patterns() {
                   <button
                     key={name}
                     type="button"
+                    aria-pressed={on}
                     onClick={() =>
                       setBoards((prev) =>
                         prev.includes(name)
@@ -857,6 +899,7 @@ export default function Patterns() {
                 <button
                   key={value}
                   type="button"
+                  aria-pressed={days === value}
                   onClick={() => setDays(value)}
                   title={
                     value === 1
@@ -910,6 +953,7 @@ export default function Patterns() {
                   <button
                     key={item.value}
                     type="button"
+                    aria-pressed={on}
                     disabled={off}
                     onClick={() =>
                       setPhases((prev) =>

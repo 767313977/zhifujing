@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import * as echarts from 'echarts/core'
-import { api } from '../api/client'
+import { api, isNoDataError } from '../api/client'
 import type {
   FundFlowHistoryOut,
   FundFlowMatrixOut,
@@ -259,7 +259,8 @@ export default function Sectors() {
         // 别去覆盖别的区块的（2026-10-22 体检 #3）
         if (!stale) {
           setRotation(null)
-          setRotationError(err.message)
+          // 404 = 这一天还没有板块历史（非交易日/尚未采集）→ 空态，不报「接口出错」
+          setRotationError(isNoDataError(err) ? null : err.message)
         }
       })
       .finally(() => {
@@ -310,7 +311,7 @@ export default function Sectors() {
       .catch((err: Error) => {
         if (!stale) {
           setFlow(null)
-          setFlowError(err.message)
+          setFlowError(isNoDataError(err) ? null : err.message)
         }
       })
       .finally(() => {
@@ -334,7 +335,7 @@ export default function Sectors() {
       .catch((err: Error) => {
         if (!stale) {
           setFlowHistory(null)
-          setFlowHistoryError(err.message)
+          setFlowHistoryError(isNoDataError(err) ? null : err.message)
         }
       })
       .finally(() => {
@@ -363,7 +364,7 @@ export default function Sectors() {
       .catch((err: Error) => {
         if (!stale) {
           setFlowMatrix(null)
-          setFlowMatrixError(err.message)
+          setFlowMatrixError(isNoDataError(err) ? null : err.message)
         }
       })
       .finally(() => {
@@ -391,7 +392,7 @@ export default function Sectors() {
         if (stale) return
         setRanking(null)
         setSelected(null)
-        setRankingError(err.message)
+        setRankingError(isNoDataError(err) ? null : err.message)
       })
       .finally(() => {
         if (!stale) setLoading(false)
@@ -425,7 +426,7 @@ export default function Sectors() {
         // 本来就没几天数据」准备的，拿它顶替错误会被读成「数据源没给数据」
         if (!stale) {
           setSeries(null)
-          setSeriesError(err.message)
+          setSeriesError(isNoDataError(err) ? null : err.message)
         }
       })
       .finally(() => {
@@ -454,7 +455,7 @@ export default function Sectors() {
       .catch((err: Error) => {
         // 记在这一块自己的 error 上：成员股那格的口径是「该板块暂无成分股数据」，
         // 拿它顶替错误会被读成「这个板块真的没有成分股」（2026-10-22 体检 #3）
-        if (!stale) setMembersError(err.message)
+        if (!stale) setMembersError(isNoDataError(err) ? null : err.message)
       })
       .finally(() => {
         if (!stale) setMembersLoading(false)
@@ -482,7 +483,7 @@ export default function Sectors() {
       .catch((err: Error) => {
         if (!stale) {
           setCompare(null)
-          setCompareError(err.message)
+          setCompareError(isNoDataError(err) ? null : err.message)
         }
       })
       .finally(() => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '../api/client'
+import { api, isNoDataError } from '../api/client'
 import type {
   AdminStatus,
   LadderBoard,
@@ -25,6 +25,7 @@ import LhbTable from '../components/LhbTable'
 import LimitPoolBoard from '../components/LimitPoolBoard'
 import LimitTable from '../components/LimitTable'
 import NotePanel from '../components/NotePanel'
+import Panel from '../components/Panel'
 import PatternPanel from '../components/PatternPanel'
 import SectorHeatPanel from '../components/SectorHeatPanel'
 import SentimentPanel from '../components/SentimentPanel'
@@ -97,6 +98,12 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  /**
+   * overview 返回 404（库里还没有这一天的数据）—— 正常空态，不是「接口出错」。
+   * 以前只弹一条「暂无数据，请先执行采集」的红条，页面其余部分全空；现在渲染一份
+   * 保留面板标题/骨架的结构化空态 + 引导（2026-10-23 前端审计 P2）。
+   */
+  const [noData, setNoData] = useState(false)
   // 被手动关掉的次级区块错误条（切日期重新取数时清空）
   const [dismissed, setDismissed] = useState<Partial<Record<keyof SectionErrors, boolean>>>({})
   // 自选股：最新行情，**不随所选日期变**，所以与主数据分开、只在挂载时取一次
@@ -121,6 +128,7 @@ export default function Dashboard() {
     async (target: string | null, isStale: () => boolean = () => false) => {
       setLoading(true)
       setError(null)
+      setNoData(false)
       // 次级接口各自兜底：失败记错误、回落空值，不拖白整页。
       // overview 不走这里 —— 它是整页的主数据（指数条、情绪、涨跌家数，且 trade_date
       // 是笔记等区块的日期锚点），没它整页无意义，它的失败仍走外层 catch 的整页错误。
@@ -179,7 +187,14 @@ export default function Dashboard() {
       } catch (err) {
         if (isStale()) return
         setData(null)
-        setError((err as Error).message)
+        // 404 = 这天还没有数据（正常空态）；5xx / 超时才走红条
+        if (isNoDataError(err)) {
+          setNoData(true)
+          setError(null)
+        } else {
+          setNoData(false)
+          setError((err as Error).message)
+        }
       } finally {
         if (!isStale()) setLoading(false)
       }
@@ -411,6 +426,8 @@ export default function Dashboard() {
 
           <NotePanel tradeDate={data.overview.trade_date} delay={430} />
         </div>
+      ) : noData ? (
+        <DashboardEmpty />
       ) : (
         !error && (
           <div className="panel px-4 py-10 text-center text-[14px] text-fg-dim">
@@ -420,5 +437,45 @@ export default function Dashboard() {
         )
       )}
     </Layout>
+  )
+}
+
+/**
+ * 首页 overview 404 时的结构化空态（2026-10-23）。
+ *
+ * 保留各面板标题与口径说明，让用户知道「这一页本来有什么、为什么现在是空的」，
+ * 而不是只剩一条红条/一句暂无数据。文案刻意写「收盘后自动采集」而不是「请先执行采集」：
+ * 站内没有手动采集入口（2026-09-28 用户要求删掉），让用户去找按钮只会更困惑。
+ */
+function DashboardEmpty() {
+  const panels: { title: string; meta: string; text: string }[] = [
+    { title: '指数', meta: '收盘点位 / 涨跌幅', text: '指数收盘数据还没有入库' },
+    { title: '市场情绪', meta: '涨停 / 跌停 / 炸板', text: '情绪指标由每日采集推导' },
+    { title: '板块热力', meta: '精选 / 行业', text: '板块行情随每日采集累积' },
+    { title: '涨停复盘', meta: '涨停池 / 连板梯队', text: '涨停池只覆盖最近 15 个交易日' },
+    { title: '龙虎榜', meta: '机构席位', text: '龙虎榜要收盘后才发布' },
+    { title: '形态选股', meta: '评分前 50', text: '形态扫描在每个交易日收盘后自动跑' },
+  ]
+  return (
+    <div className="space-y-4">
+      <Alert tone="accent">
+        还没有可展示的复盘数据 —— 采集在每个交易日收盘后自动跑，跑完这一页就会出现内容。
+        第一次使用或服务刚重启时请等自动采集跑完；管理员可以在「数据管理」里看各表的覆盖情况。
+      </Alert>
+      <div className="grid gap-4 md:grid-cols-2">
+        {panels.map((panel, index) => (
+          <Panel
+            key={panel.title}
+            title={panel.title}
+            meta={<span className="num">{panel.meta}</span>}
+            delay={40 + index * 40}
+          >
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
+              {panel.text} · <span className="text-fg-muted">暂无数据，收盘后自动采集</span>
+            </div>
+          </Panel>
+        ))}
+      </div>
+    </div>
   )
 }

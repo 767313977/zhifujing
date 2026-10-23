@@ -2,6 +2,8 @@
 
 import logging
 import socket
+import threading
+import time
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 
@@ -58,6 +60,83 @@ logger = logging.getLogger(__name__)
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 
 
+def _warm_pattern_cache() -> None:
+    """后台预热形态成绩单缓存（2026-10-23 加，task-7 #12）。
+
+    `/api/patterns/scorecard` 是站内最重的读接口（线上冷缓存实测 4.76s，`standing`
+    1.5s、`track` 0.7s；热了之后 40ms），结果缓存在 `api/patterns._TRACK_CACHE`
+    （10 分钟 TTL + 数据版本键）。部署 / 重启后第一个打开形态页的人要白等这几秒，
+    所以启动后**用前端默认请求的参数**各跑一遍，把缓存捂热。
+
+    ⚠️ 三条硬约定：
+    - **守护线程 + 非阻塞**：调用方（lifespan）只 `start()` 不 join，启动不受影响；
+    - **每一步独立 try/except**：任何一步失败都只记日志，绝不影响服务；
+    - 参数必须与**前端默认值**一致，否则缓存键对不上、等于白跑（对应关系见
+      `frontend/src/api/client.ts` 的 `patternScorecard/poolStanding/patternTrack`）。
+    """
+    from app.api import patterns as patterns_api
+    from app.db import SessionLocal
+    from app.services import pattern_track
+
+    steps = (
+        (
+            "scorecard",
+            lambda db: patterns_api.scorecard(
+                db=db,
+                cohorts=pattern_track.DEFAULT_COHORTS,
+                track_days=max(pattern_track.HORIZONS),
+                line_days=5,
+                dedup_days=pattern_track.SCORECARD_DEDUP_DAYS,
+            ),
+        ),
+        (
+            "standing",
+            lambda db: patterns_api.standing(
+                db=db,
+                cohorts=pattern_track.DEFAULT_COHORTS,
+                track_days=max(pattern_track.HORIZONS),
+                line_days=5,
+            ),
+        ),
+        (
+            "track",
+            lambda db: patterns_api.track(
+                db=db,
+                cohorts=pattern_track.DEFAULT_COHORTS,
+                top=pattern_track.DEFAULT_TOP,
+                track_days=pattern_track.DEFAULT_TRACK_DAYS,
+            ),
+        ),
+    )
+    logger.info("形态成绩单缓存预热开始（后台线程，%d 步）", len(steps))
+    total_started = time.monotonic()
+    ok = 0
+    for name, compute in steps:
+        started = time.monotonic()
+        try:
+            with SessionLocal() as db:
+                compute(db)
+        except Exception:  # noqa: BLE001 - 预热失败绝不能影响服务启动
+            logger.exception(
+                "形态缓存预热 %s 失败（耗时 %.1f ms）",
+                name,
+                (time.monotonic() - started) * 1000,
+            )
+        else:
+            ok += 1
+            logger.info(
+                "形态缓存预热 %s 完成：耗时 %.1f ms",
+                name,
+                (time.monotonic() - started) * 1000,
+            )
+    logger.info(
+        "形态成绩单缓存预热结束：%d/%d 步成功，总耗时 %.1f ms",
+        ok,
+        len(steps),
+        (time.monotonic() - total_started) * 1000,
+    )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
@@ -70,6 +149,17 @@ async def lifespan(_app: FastAPI):
     # 定时采集随服务一起启停。注意本服务必须单 worker 运行，
     # 多 worker 会各自拉起一个调度器、同一时刻重复采集。
     start_scheduler()
+
+    # 形态成绩单缓存预热：后台守护线程，**不阻塞启动、失败只记日志**（见
+    # `_warm_pattern_cache`）。放在 start_scheduler() 之后：调度器起来再抢 CPU 预热，
+    # 不拖慢端口监听。
+    if settings.warmup_pattern_cache:
+        threading.Thread(
+            target=_warm_pattern_cache,
+            name="warmup-pattern-cache",
+            daemon=True,
+        ).start()
+
     try:
         yield
     finally:
@@ -102,12 +192,16 @@ app = FastAPI(
     dependencies=[Depends(require_login)],
 )
 
+_DEV_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     # 只放行前端**实际用到**的方法与请求头（2026-10-12 收紧）。站点本体与后端同源，
     # 这层 CORS 只服务本地 5173 的开发调试；原来写 `*` 等于任何来源都能跨域打这些接口
     #（虽未开 `allow_credentials`、影响有限，但没有必要留着这个敞口）。
+    #
+    # ⚠️ 开发源由 `settings.enable_dev_cors` 控制（2026-10-23 加）：生产 systemd 里设
+    # `ENABLE_DEV_CORS=false` 就得到空名单，不再把 localhost:5173 送给线上的浏览器。
+    allow_origins=_DEV_CORS_ORIGINS if settings.enable_dev_cors else [],
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
@@ -164,9 +258,12 @@ app.include_router(anomaly_map.router)
 app.include_router(admin.router)
 
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health() -> dict:
     """探活接口。**只回最小状态**。
+
+    ⚠️ **同时支持 HEAD**（2026-10-23 加）：监控/部署脚本常用 `curl -I`（HEAD），
+    以前只挂 GET、HEAD 一律 405，会把「服务正常」判成失败。GET 行为不变。
 
     这里原来带回 `db`（数据库**绝对路径**）、`ifind_token`、`frontend_built`，那是给
     部署排查用的；但它挂在**免登录**的探活口上，等于对外泄露服务器路径与配置
@@ -200,12 +297,19 @@ _SCAN_SEGMENTS = frozenset(
         "phpmyadmin", "pma", "myadmin", "webui", "cgi-bin", "actuator", "druid",
         "solr", "jenkins", "console", "server-status", "vendor", "backup", "backups",
         "config", "administrator", "telescope", "aws", "ssh", "env",
+        # 2026-10-23 体检补：在线文档虽然已在 FastAPI 层关掉（docs_url=None 等），
+        # 但兜底仍会把这些路径回 200 index.html —— 扫描器看到 200 会继续挖、日志也被刷。
+        # 这里挡的是**噪声**，不是泄漏（回的是 SPA 外壳，没有 schema）。
+        "docs", "redoc", "openapi.json",
     }
 )
 _SCAN_SUFFIXES = (
     ".php", ".asp", ".aspx", ".jsp", ".cgi", ".sql", ".bak", ".old", ".orig",
     ".zip", ".tar.gz", ".tgz", ".log", ".ini", ".yml", ".yaml", ".env",
     ".sh", ".py", ".rb",
+    # 数据库文件（2026-10-23 体检补）：`/fupan.db`、`/fupan.db-wal` 之类也是扫描器常客。
+    # 它们本来就不在 dist 里、回的是 index.html，这里只是别让它看到 200。
+    ".db", ".db-wal", ".db-shm", ".sqlite",
 )
 
 
@@ -219,24 +323,46 @@ def _is_scan_probe(full_path: str) -> bool:
     return full_path.lower().endswith(_SCAN_SUFFIXES)
 
 
+def _spa_response(full_path: str) -> FileResponse:
+    """SPA 兜底的核心（与路由注册分开，没构建前端时也能单测；见 tests/）。
+
+    非 `/api` 路径一律交给前端路由；扫描器探测直接 404；带 null byte 等非法字符的
+    路径**必须 404 而不是 500**（`Path.resolve()` 会抛 `ValueError: embedded null
+    character in path`，2026-10-23 体检修）。
+    """
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="接口不存在")
+    # 扫描器探测（判据见 `_is_scan_probe`）：直接 404，别回 index.html 让它看到 200
+    if _is_scan_probe(full_path):
+        raise HTTPException(status_code=404, detail="Not Found")
+    # resolve 掉 ../ 后必须仍在 dist 目录内，否则 /..%2F..%2F.env 这类请求
+    # 能穿越出 dist 读到项目根的 .env（含 iFinD token）甚至数据库文件。
+    # 同文件的 /assets 用 StaticFiles 自带穿越防护，这里手写的必须自己校验。
+    try:
+        candidate = (FRONTEND_DIST / full_path).resolve()
+        inside = bool(full_path) and candidate.is_relative_to(FRONTEND_DIST)
+        if inside and candidate.is_file():
+            return FileResponse(candidate)
+    except (ValueError, OSError):
+        # null byte / 非法路径：这是**客户端输入问题**，不是服务端故障 —— 404 即可
+        raise HTTPException(status_code=404, detail="Not Found") from None
+    index = FRONTEND_DIST / "index.html"
+    if index.is_file():
+        return FileResponse(index)
+    raise HTTPException(status_code=404, detail="Not Found")
+
+
 if FRONTEND_DIST.exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
-    @app.get("/{full_path:path}", include_in_schema=False)
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     def spa_fallback(full_path: str) -> FileResponse:
-        """单页应用回退：非 /api 路径一律交给前端路由。"""
-        if full_path.startswith("api/"):
-            raise HTTPException(status_code=404, detail="接口不存在")
-        # 扫描器探测（判据见 `_is_scan_probe`）：直接 404，别回 index.html 让它看到 200
-        if _is_scan_probe(full_path):
-            raise HTTPException(status_code=404, detail="Not Found")
-        # resolve 掉 ../ 后必须仍在 dist 目录内，否则 /..%2F..%2F.env 这类请求
-        # 能穿越出 dist 读到项目根的 .env（含 iFinD token）甚至数据库文件。
-        # 同文件的 /assets 用 StaticFiles 自带穿越防护，这里手写的必须自己校验。
-        candidate = (FRONTEND_DIST / full_path).resolve()
-        if full_path and candidate.is_file() and candidate.is_relative_to(FRONTEND_DIST):
-            return FileResponse(candidate)
-        return FileResponse(FRONTEND_DIST / "index.html")
+        """单页应用回退：非 /api 路径一律交给前端路由（GET / HEAD）。
+
+        HEAD 是给监控 `curl -I` 用的（以前只挂 GET，首页 HEAD 会 405，2026-10-23 加）；
+        GET 行为不变。
+        """
+        return _spa_response(full_path)
 
 
 def _lan_ip() -> str | None:

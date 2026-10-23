@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { api } from '../api/client'
+import { api, isNoDataError } from '../api/client'
 import type {
   AuctionBoardItem,
   AuctionBoards,
@@ -346,7 +346,7 @@ const BOARD_SORTS: SortSpecs<AuctionBoardItem> = {
   limit_count: { value: (item) => item.limit_count },
 }
 
-/** 一个筛选档位按钮。`active` 高亮；再点一下由调用方取消。 */
+/** 一个筛选档位按钮。`active` 高亮；再点一下由调用方取消。按钮是 toggle，用 aria-pressed 表达选中态。 */
 function Chip({
   active,
   onClick,
@@ -359,6 +359,7 @@ function Chip({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={[
         'border px-2 py-[2px] text-[12px] transition-colors',
@@ -410,10 +411,11 @@ export default function AuctionPage() {
       })
       .catch((err: Error) => {
         // 失败不能只把 boards 置空：渲染条件是「有数据才出现」，那样整块会静默消失，
-        // 用户会把「没有板块共振」当成结论（2026-10-22 体检 #10）
+        // 用户会把「没有板块共振」当成结论（2026-10-22 体检 #10）。
+        // 404 = 这一天还没有竞价数据（非交易日/尚未采样）→ 空态，不报「接口出错」
         if (!stale) {
           setBoards(null)
-          setBoardsError(err.message)
+          setBoardsError(isNoDataError(err) ? null : err.message)
         }
       })
     return () => {
@@ -443,7 +445,9 @@ export default function AuctionPage() {
       } catch (err) {
         if (isStale()) return
         setData(null)
-        setError((err as Error).message)
+        // 404 = 当日还没有竞价数据（非交易日/尚未采样）→ 空态；
+        // 只有 5xx/超时/断网才显示「加载失败」（2026-10-23 统一 404 语义）
+        setError(isNoDataError(err) ? null : (err as Error).message)
       } finally {
         if (!isStale()) setLoading(false)
       }
@@ -639,7 +643,10 @@ export default function AuctionPage() {
           title="竞价强度"
           meta={
             <span className="num">
-              {data ? `显示 ${data.shown} / ${data.total} 只` : '—'}
+              {/* `total` 是**当日全市场**只数、不受筛选影响（后端只按 trade_date 统计），
+                  所以写成「显示 X / 当日 Y 只」；以前写成「显示 X / Y 只」，
+                  加筛选后会被读成「命中 Y 只、只展示 X 只」（2026-10-23 前端审计 P3） */}
+              {data ? `显示 ${data.shown} / 当日 ${data.total} 只` : '—'}
               <span className="ml-2 text-fg-dim">点列头排序 · 点名称看日 K</span>
             </span>
           }

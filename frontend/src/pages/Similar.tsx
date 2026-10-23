@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from '../api/client'
+import { api, isNoDataError } from '../api/client'
 import type { SimilarDays } from '../api/types'
 import Layout from '../components/Layout'
 import LoadState from '../components/LoadState'
@@ -30,7 +30,9 @@ export default function SimilarPage() {
       setData(result)
     } catch (err) {
       if (seq !== seqRef.current) return
-      setError((err as Error).message)
+      // 404 = 选的这天没有情绪数据（非交易日 / 尚未采集）→ LoadState 显示空态；
+      // 只有 5xx/超时/断网才显示「加载失败」（2026-10-23 统一 404 语义）
+      setError(isNoDataError(err) ? null : (err as Error).message)
       setData(null)
     } finally {
       if (seq === seqRef.current) setLoading(false)

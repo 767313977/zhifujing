@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api } from '../api/client'
+import { api, isNoDataError } from '../api/client'
 import type { LimitPool, LimitThemes, PromotionSeries } from '../api/types'
 import Alert from '../components/Alert'
 import EChart from '../components/EChart'
@@ -57,9 +57,10 @@ export default function LimitReview() {
       .then(setPromotion)
       .catch((err: Error) => {
         // 「取数失败」与「样本不够」是两件事。都落进下面那句「需要至少 2 个
-        // 交易日的涨停池」的话，接口报错会被读成「数据还在攒，再等两天」
+        // 交易日的涨停池」的话，接口报错会被读成「数据还在攒，再等两天」。
+        // 404 = 还没数据（非交易日/未采集），按空态处理（2026-10-23）。
         setPromotion(null)
-        setPromotionError(err.message)
+        setPromotionError(isNoDataError(err) ? null : err.message)
       })
   }, [])
 
@@ -88,7 +89,9 @@ export default function LimitReview() {
         setPool(null)
         setBroken(null)
         setThemes(null)
-        setError((err as Error).message)
+        // 404 = 这个交易日还没有涨停池数据（非交易日 / 尚未采集）→ 空态；
+        // 只有 5xx / 超时 / 断网才显示红条（2026-10-23 统一 404 语义）
+        setError(isNoDataError(err) ? null : (err as Error).message)
       } finally {
         if (!isStale()) setLoading(false)
       }
@@ -287,7 +290,7 @@ export default function LimitReview() {
   const toolbar = (
     <>
       <span className="num hidden text-[13px] text-fg-dim lg:inline">
-        {loading ? '加载中…' : `${stocks.length} 只涨停`}
+        {loading ? '加载中…' : error ? '—' : `${stocks.length} 只涨停`}
       </span>
       <select
         value={date ?? ''}
@@ -310,6 +313,7 @@ export default function LimitReview() {
     <div className="flex flex-wrap gap-1.5 border-b border-line-soft px-3 py-2">
       <button
         type="button"
+        aria-pressed={industryFilter === null}
         onClick={() => setIndustryFilter(null)}
         className={[
           'border px-2 py-[3px] text-[13px] transition-colors',
@@ -324,6 +328,7 @@ export default function LimitReview() {
         <button
           key={name}
           type="button"
+          aria-pressed={name === industryFilter}
           onClick={() => setIndustryFilter(name === industryFilter ? null : name)}
           title={`${name} ${count} 只涨停`}
           className={[
@@ -414,6 +419,7 @@ export default function LimitReview() {
             <div className="flex flex-wrap gap-1.5 px-3 py-3">
               <button
                 type="button"
+                aria-pressed={themeFilter === null}
                 onClick={() => setThemeFilter(null)}
                 className={[
                   'border px-2 py-[3px] text-[13px] transition-colors',
@@ -428,6 +434,7 @@ export default function LimitReview() {
                 <button
                   key={item.concept}
                   type="button"
+                  aria-pressed={item.concept === themeFilter}
                   onClick={() =>
                     setThemeFilter(item.concept === themeFilter ? null : item.concept)
                   }
@@ -562,3 +569,4 @@ function BoardBars({ items, total }: { items: [string, number][]; total: number 
     </div>
   )
 }
+
