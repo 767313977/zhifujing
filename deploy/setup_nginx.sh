@@ -315,6 +315,27 @@ server {
     # 老 nginx 的默认值还允许 TLSv1 / 1.1，显式收窄到 1.2+
     ssl_protocols TLSv1.2 TLSv1.3;
 
+    # 文本压缩（2026-10-23 加）。实测（线上 1.24）：带 `Accept-Encoding: gzip, br`
+    # 请求 `index-*.js`，返回的仍是 278 KB 原文、没有 Content-Encoding —— Ubuntu 的
+    # nginx.conf 默认把 gzip 注释掉了。JS gzip 后约 1/3，首屏能少传 200 KB 左右。
+    # ⚠️ `text/javascript` 必须显式列出来：Vite 的产物就是这个 Content-Type，
+    # 而它不在 nginx 的默认 gzip_types 里。
+    # ⚠️ gzip 要写在 server 块里（不是 location）：静态产物由后端反代回来，
+    # `gzip_proxied any` 保证带 Via 的请求也压。
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_types
+        text/plain
+        text/css
+        text/javascript
+        application/javascript
+        application/json
+        application/xml
+        image/svg+xml;
+
     location / { include __SNIPPET__; }
 }
 NGINX

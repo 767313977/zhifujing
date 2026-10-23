@@ -5,7 +5,7 @@
 否则前端要为每个字段记住一个单位，迟早出错。
 """
 
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -94,6 +94,33 @@ def _margin_snapshot(row: MarginDaily | None) -> MarginSnapshot | None:
     )
 
 
+def _latest_complete_margin_day(session: Session, target: date) -> date | None:
+    """`target`（含）之前**沪深两市都齐全**的最近一个两融交易日。
+
+    为什么要有它（2026-10-23 实测的漏）：两融由沪深交易所各自发布、iFinD 常要次日
+    才给全，而页面顶部的日期由「最新情绪日」决定、收盘当晚就是当天 —— 于是从收盘到
+    次日采集之间，`target` 当天**根本没有两融行**，资金面那两张卡片只能空着。
+    ETF 与 DDE 早就做了同样的「回落到最近有数据的一天」，两融一直没做。
+
+    判据是「两个市场都有**融资余额**」，不是「有两个 market 的行」：深市出现过只有行、
+    余额为 NULL 的日子（见 `overview` 里两市合计算法的注释），那种日子合计照样给不出来。
+
+    ⚠️ 回落之后**必须**把实际日期回给前端（`FundFlowOverview.margin_date`），否则
+    面板上是昨天的数、页面顶部写着今天，比空白更容易误读。
+    """
+    return session.scalar(
+        select(MarginDaily.trade_date)
+        .where(
+            MarginDaily.trade_date <= target,
+            MarginDaily.financing_balance.is_not(None),
+        )
+        .group_by(MarginDaily.trade_date)
+        .having(func.count(func.distinct(MarginDaily.market)) >= 2)
+        .order_by(MarginDaily.trade_date.desc())
+        .limit(1)
+    )
+
+
 @router.get("/overview", response_model=FundFlowOverview)
 def overview(
     target: date = Depends(resolve_trade_date),
@@ -102,8 +129,16 @@ def overview(
     """资金面总览：当日两融、北向成交额、ETF 净申赎、机构席位。"""
     prev = _prev_trade_date(session, target)
 
-    margin_rows = list(
-        session.scalars(select(MarginDaily).where(MarginDaily.trade_date == target))
+    # 两融回落到最近一个「沪深都齐全」的交易日，理由见 `_latest_complete_margin_day`
+    margin_date = _latest_complete_margin_day(session, target)
+    margin_rows = (
+        list(
+            session.scalars(
+                select(MarginDaily).where(MarginDaily.trade_date == margin_date)
+            )
+        )
+        if margin_date is not None
+        else []
     )
     by_market = {row.market: row for row in margin_rows}
     sh, sz = by_market.get("sh"), by_market.get("sz")
@@ -122,11 +157,19 @@ def overview(
     if both and sh.financing_buy is not None and sz.financing_buy is not None:
         financing_buy_total = (sh.financing_buy + sz.financing_buy) * YI
 
-    # 融资余额变化：拿上一交易日的同口径合计来比，同样要求两边齐全
+    # 融资余额变化：拿**上一个齐全日**的同口径合计来比（不是 target 的前一交易日 ——
+    # 回落之后基准也必须跟着回落到两融自己的节奏上），同样要求两边齐全
+    margin_prev = (
+        _latest_complete_margin_day(session, margin_date - timedelta(days=1))
+        if margin_date is not None
+        else None
+    )
     financing_change = None
-    if prev is not None and financing_total is not None:
+    if margin_prev is not None and financing_total is not None:
         prev_rows = list(
-            session.scalars(select(MarginDaily).where(MarginDaily.trade_date == prev))
+            session.scalars(
+                select(MarginDaily).where(MarginDaily.trade_date == margin_prev)
+            )
         )
         prev_by_market = {row.market: row for row in prev_rows}
         prev_sh, prev_sz = prev_by_market.get("sh"), prev_by_market.get("sz")
@@ -218,6 +261,7 @@ def overview(
 
     return FundFlowOverview(
         trade_date=target,
+        margin_date=margin_date,
         sh=_margin_snapshot(sh),
         sz=_margin_snapshot(sz),
         financing_total=financing_total,

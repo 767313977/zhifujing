@@ -370,6 +370,10 @@ export default function Funds() {
   const hsgtChange =
     hsgtTurnover != null && hsgtPrev != null ? hsgtTurnover - hsgtPrev : null
   const institutionNet = overview?.institution_net ?? null
+  // 两融的实际数据日。两融由交易所各自发布、常比页面日期晚一天，后端会回落到
+  // 最近一个「沪深都齐全」的交易日（见 api/funds._latest_complete_margin_day），
+  // 回落之后必须把日期标出来，否则会把昨天的两融读成今天的
+  const marginDate = overview?.margin_date ?? null
 
   // 两个视图的 board 形状不同（单只明细 / 分类汇总），但「有没有可比基准」
   // 「有几条」「基准日」这三件事都要用 —— 先收敛成同一组变量，
@@ -461,9 +465,10 @@ export default function Funds() {
               />
               <MetricCard
                 label="两融余额"
-                // 深市常比沪市晚一天披露，此时两市合计给不出来。
-                // 这里必须说成「未披露」——写成 0 会读成两融一天归零
-                value={financingTotal == null ? '深市未披露' : fmtAmount(financingTotal)}
+                // 两融由交易所各自发布、常比页面日期晚一天，后端回落到最近一个
+                // 「沪深都齐全」的日子并把实际日期带回来。缺数据时说「暂无数据」，
+                // 写成 0 会读成两融一天归零
+                value={financingTotal == null ? '暂无数据' : fmtAmount(financingTotal)}
                 muted={financingTotal == null}
                 sub={
                   <>
@@ -476,13 +481,15 @@ export default function Funds() {
                     )}
                   </>
                 }
+                note={`${marginDate ?? '—'} · 沪深合计`}
               />
               <MetricCard
                 label="融资买入额"
-                // 与上面同一口径：两市齐全才给合计，缺一边时说「未披露」而不是 —
-                value={buyTotal == null ? '深市未披露' : fmtAmount(buyTotal)}
+                // 与上面同一口径：沪深都齐才给合计，数据日同样可能早于页面日期
+                value={buyTotal == null ? '暂无数据' : fmtAmount(buyTotal)}
                 muted={buyTotal == null}
                 sub="两市合计 · 当日买入"
+                note={`${marginDate ?? '—'} · 沪深合计`}
               />
               <MetricCard
                 label="沪深股通成交"

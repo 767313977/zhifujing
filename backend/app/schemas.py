@@ -2230,6 +2230,10 @@ class FundFlowOverview(BaseModel):
     """资金面总览（当日）。所有金额单位：元。"""
 
     trade_date: date
+    # 两融数据**实际所属**的交易日，可能早于 `trade_date`（见 api/funds._latest_complete_margin_day）：
+    # 两融由交易所各自发布、iFinD 常要次日才给全，页面顶部的日期却是「最新情绪日」。
+    # 前端必须把它标出来，否则会把昨天的两融读成今天的。没有可用数据时为 None。
+    margin_date: date | None
     sh: MarginSnapshot | None
     sz: MarginSnapshot | None
     # 两市合计。**两市都有数时才给** —— 深市常比沪市晚一天（实测），

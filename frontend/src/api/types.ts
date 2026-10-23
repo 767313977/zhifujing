@@ -2051,9 +2051,15 @@ export interface MarginSnapshot {
 
 export interface FundFlowOverview {
   trade_date: string
+  /**
+   * 两融数据**实际所属**的交易日，可能早于 `trade_date`：两融由交易所各自发布、
+   * iFinD 常要次日才给全，后端会回落到最近一个「沪深都齐全」的交易日
+   * （见后端 `_latest_complete_margin_day`）。没有可用数据时为 null。
+   */
+  margin_date: string | null
   sh: MarginSnapshot | null
   sz: MarginSnapshot | null
-  /** 两市融资余额合计。深市当日未披露时为 null —— 不是 0 */
+  /** 两市融资余额合计。缺任一边时为 null —— 不是 0 */
   financing_total: number | null
   financing_buy_total: number | null
   /** 与上一交易日的融资余额变化（同口径，两市都齐才算得出来） */
