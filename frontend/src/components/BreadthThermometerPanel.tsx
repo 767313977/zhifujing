@@ -182,7 +182,8 @@ export default function BreadthThermometerPanel({
           symbol: 'none' as const,
           lineStyle: { width: 1.6, color: MA20_COLOR },
           itemStyle: { color: MA20_COLOR },
-          // 半仓线：占比 50% 是多空分界，虚线标出来
+          // 半仓线：占比 50% 是多空分界，虚线标出来。
+          // 标注画在**图内**右端：外侧是右轴的差值刻度，会与数字叠在一起
           markLine: {
             silent: true,
             symbol: 'none' as const,
@@ -190,7 +191,13 @@ export default function BreadthThermometerPanel({
               {
                 yAxis: 50,
                 lineStyle: { color: withAlpha(CHART.fgDim, 0.55), type: 'dashed' as const, width: 1 },
-                label: { ...AXIS_LABEL, show: true, position: 'end' as const, formatter: '50%', fontSize: 11 },
+                label: {
+                  ...AXIS_LABEL,
+                  show: true,
+                  position: 'insideEndTop' as const,
+                  formatter: '50%',
+                  fontSize: 11,
+                },
               },
             ],
           },

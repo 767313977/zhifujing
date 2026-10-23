@@ -163,7 +163,8 @@ export default function ErpPanel({
           symbol: 'none' as const,
           lineStyle: { width: 1.4, color: CHART.fgDim, type: 'dashed' as const },
           itemStyle: { color: CHART.fgDim },
-          // 20 / 80 两档虚线：分位 >80 股票最便宜、<20 最贵（挂在分位线上，右轴刻度）
+          // 20 / 80 两档虚线：分位 >80 股票最便宜、<20 最贵（挂在分位线上，右轴）
+          // ⚠️ 标注画在**图内**右端：外侧就是右轴刻度，两者会叠成一团
           markLine: {
             silent: true,
             symbol: 'none' as const,
@@ -174,7 +175,13 @@ export default function ErpPanel({
                 type: 'dashed' as const,
                 width: 1,
               },
-              label: { ...AXIS_LABEL, show: true, position: 'end' as const, formatter: `${value}`, fontSize: 11 },
+              label: {
+                ...AXIS_LABEL,
+                show: true,
+                position: 'insideEndTop' as const,
+                formatter: `${value}`,
+                fontSize: 11,
+              },
             })),
           },
         },

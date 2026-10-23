@@ -181,7 +181,8 @@ export default function ObvPanel({
           symbol: 'none' as const,
           lineStyle: { width: 1.4, color: CHART.accent },
           itemStyle: { color: CHART.accent },
-          // 20 / 80 极端区参考线：>80% 是一年量能最大的一档，<20% 最冷清
+          // 20 / 80 极端区参考线：>80% 是一年量能最大的一档，<20% 最冷清。
+          // 标注画在**图内**右端：外侧是右轴刻度（分位 + 指数点位），会把数字压住
           markLine: {
             silent: true,
             symbol: 'none' as const,
@@ -189,12 +190,24 @@ export default function ObvPanel({
               {
                 yAxis: 80,
                 lineStyle: { color: withAlpha(CHART.up, 0.55), type: 'dashed' as const, width: 1 },
-                label: { ...AXIS_LABEL, show: true, position: 'end' as const, formatter: '80%', fontSize: 11 },
+                label: {
+                  ...AXIS_LABEL,
+                  show: true,
+                  position: 'insideEndTop' as const,
+                  formatter: '80%',
+                  fontSize: 11,
+                },
               },
               {
                 yAxis: 20,
                 lineStyle: { color: withAlpha(CHART.down, 0.55), type: 'dashed' as const, width: 1 },
-                label: { ...AXIS_LABEL, show: true, position: 'end' as const, formatter: '20%', fontSize: 11 },
+                label: {
+                  ...AXIS_LABEL,
+                  show: true,
+                  position: 'insideEndTop' as const,
+                  formatter: '20%',
+                  fontSize: 11,
+                },
               },
             ],
           },

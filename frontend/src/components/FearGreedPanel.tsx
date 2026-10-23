@@ -77,7 +77,10 @@ export default function FearGreedPanel({
     const benchmark = data.benchmark
     const shortDates = data.dates.map(fmtShortDate)
     return {
-      grid: { ...GRID, top: 30, bottom: 34 },
+      // top 比其它面板多 6px：图例（右上）与右轴第一个刻度（如「4,300」）原来几乎压
+      // 在同一条横线上，视觉上糊成一块（2026-10-23 用户截图反馈）。抬高 grid 把刻度
+      // 整体下移，给图例让出一行的高度
+      grid: { ...GRID, top: 36, bottom: 34 },
       legend: {
         ...LEGEND,
         top: 0,
@@ -217,7 +220,10 @@ export default function FearGreedPanel({
                 label: {
                   ...AXIS_LABEL,
                   show: true,
-                  position: 'end' as const,
+                  // **画在图内**（右端、线上方），不是画在线的外侧：外侧正好是
+                  // 叠加指数的右轴刻度（4,300 / 4,200…），档名会压在数字上，
+                  // 两行字叠在一起谁也读不清（2026-10-23 用户截图反馈）
+                  position: 'insideEndTop' as const,
                   formatter: above.label,
                   color: bandColor(above.key),
                   fontSize: 11,
