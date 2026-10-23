@@ -157,6 +157,18 @@ def test_profile_with_daily_but_no_basic_still_200(db, monkeypatch):
     assert result.day_count == 1
 
 
+# ---------------------------------------------------------------- 非法输入：控制字符
+
+def test_resolve_code_rejects_control_chars():
+    """`600519\\x00` 以前会被抽成 600519 正常返回（非法输入被静默接受）。"""
+    from app.services.stock_lookup import LookupError as StockLookupError
+    from app.services.stock_lookup import resolve_code
+
+    for bad in ("600519\x00", "贵州\x00茅台", "\x1b[31m600519"):
+        with pytest.raises(StockLookupError):
+            resolve_code(bad)
+
+
 # ---------------------------------------------------------------- SPA 兜底 / 扫描路径
 
 

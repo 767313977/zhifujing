@@ -123,6 +123,11 @@ def resolve_code(raw: str) -> str:
     key = (raw or "").strip()
     if not key:
         raise LookupError("请输入股票代码、名称或拼音首字母")
+    # 控制字符一律拒绝（2026-10-23 体检）：`600519\x00` 原来会被 normalize_code
+    # 抽成 600519 并正常返回 —— 非法输入被静默接受，且控制字符可能被原样写进日志/回显。
+    # 错误文案里不回显原串（避免把控制字符带出去）。
+    if any(ord(ch) < 32 for ch in key):
+        raise LookupError("输入包含控制字符，请重新输入")
 
     # 真代码：与改动前的行为**完全一致**（不查库）。库里没有的写法原来是放行的，
     # 这里若收紧就成了一次没人要求的行为变更。
