@@ -127,7 +127,15 @@ def test_profile_unknown_code_404(db):
     assert exc.value.status_code == 404
 
 
-def test_profile_with_daily_but_no_basic_still_200(db):
+def test_profile_with_daily_but_no_basic_still_200(db, monkeypatch):
+    # ⚠️ `profile` 会算阶段判定，而 `stock_phase._trade_day_index` 查的是**全局
+    # session_scope**（生产库）的交易日历，不是本测试的临时 session —— 本地库里有表
+    # 就通过、CI 的空库上就会 `no such table: trade_calendar`（2026-10-23 CI 实际踩到）。
+    # 这里把它钉成空表即可：本用例要验的是「有日线、无 stock_basic 仍 200」，
+    # 不是阶段判定的算法。生产环境里两者是同一个库，不受影响。
+    from app.services import stock_phase
+
+    monkeypatch.setattr(stock_phase, "_trade_day_index", lambda refresh=False: {})
     db.add(
         StockDaily(
             trade_date=DAY,
