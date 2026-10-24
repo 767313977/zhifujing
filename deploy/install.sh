@@ -102,8 +102,15 @@ log "建虚拟环境并装依赖（akshare + pandas 有几百 MB，要等一会�
 # 走国内镜像：依赖包共 233 MB，从 PyPI 直连在腾讯云上要十几分钟还容易断；
 # 换清华源大约两三分钟。要改回官方源就 PIP_INDEX=https://pypi.org/simple
 PIP_INDEX="${PIP_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
-"$APP_DIR/.venv/bin/pip" install -q -i "$PIP_INDEX" --upgrade pip
-"$APP_DIR/.venv/bin/pip" install -q -i "$PIP_INDEX" -r "$APP_DIR/backend/requirements.txt"
+# ⚠️ 用 `python -m pip` 而不是 `.venv/bin/pip`（2026-10-24 修）：
+# 那批入口脚本的可执行位**可能已经被抹掉**（实测服务器上 pip/uvicorn 都是 644，
+# 是历史某次整目录 chmod 留下的），直接调会 `Permission denied`（退出码 126），
+# 部署中断在半路。`python -m pip` 只依赖解释器本身，与脚本权限无关。
+VENV_PY="$APP_DIR/.venv/bin/python"
+"$VENV_PY" -m pip install -q -i "$PIP_INDEX" --upgrade pip
+"$VENV_PY" -m pip install -q -i "$PIP_INDEX" -r "$APP_DIR/backend/requirements.txt"
+# 顺手把入口脚本的可执行位补回来：以后谁再直接调 `.venv/bin/uvicorn` 也不会踩同一个坑
+chmod 755 "$APP_DIR/.venv/bin/"* 2>/dev/null || true
 
 # ------------------------------------------------------- 清理旧的前端产物
 # vite 每次构建都给产物换一套哈希文件名（index-abc.js → index-def.js），而部署是
