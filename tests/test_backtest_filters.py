@@ -173,3 +173,39 @@ def test_entry_next_open_returns_none_on_last_bar():
     bars = _open_bars([10.0, 11.0], [10.5, 11.5])
     assert bt._entry_price(bars, 1, bt.ENTRY_NEXT_OPEN) is None
 
+
+def test_unbuyable_when_next_open_is_limit_up():
+    """主板 10cm：前收 10.00 → 板价 11.00，次日开盘 11.00 就是竞价即封。"""
+    bars = _open_bars([10.0, 11.0], [10.0, 11.0])
+    assert bt._unbuyable(bars, 0, bt.ENTRY_NEXT_OPEN, 10.0) is True
+
+
+def test_buyable_when_next_open_below_limit():
+    bars = _open_bars([10.0, 10.9], [10.0, 10.9])
+    assert bt._unbuyable(bars, 0, bt.ENTRY_NEXT_OPEN, 10.0) is False
+
+
+def test_unbuyable_uses_board_limit():
+    """创业板 20cm：+15% 开盘不算涨停，+20% 才算。"""
+    assert bt._unbuyable(_open_bars([10.0, 11.5], [10.0, 11.5]), 0, bt.ENTRY_NEXT_OPEN, 20.0) is False
+    assert bt._unbuyable(_open_bars([10.0, 12.0], [10.0, 12.0]), 0, bt.ENTRY_NEXT_OPEN, 20.0) is True
+
+
+def test_unbuyable_tolerance_covers_one_cent_rounding():
+    """前收 3.00 → 板价 3.30。开盘 3.30 买不到，3.29（差一分）买得到。"""
+    assert bt._unbuyable(_open_bars([3.0, 3.30], [3.0, 3.30]), 0, bt.ENTRY_NEXT_OPEN, 10.0) is True
+    assert bt._unbuyable(_open_bars([3.0, 3.29], [3.0, 3.29]), 0, bt.ENTRY_NEXT_OPEN, 10.0) is False
+
+
+def test_unbuyable_close_mode_checks_signal_day():
+    """收盘入场时看的是信号日收盘有没有封在涨停价上（前收 10 → 收盘 11）。"""
+    bars = _open_bars([10.0, 11.0], [10.0, 11.0])
+    assert bt._unbuyable(bars, 1, bt.ENTRY_CLOSE, 10.0) is True
+    assert bt._unbuyable(bars, 1, bt.ENTRY_CLOSE, 20.0) is False
+
+
+def test_unbuyable_without_next_bar_is_conservative():
+    """没有次日 K 线时判「买不到」，而不是当成能买。"""
+    bars = _open_bars([10.0], [10.0])
+    assert bt._unbuyable(bars, 0, bt.ENTRY_NEXT_OPEN, 10.0) is True
+

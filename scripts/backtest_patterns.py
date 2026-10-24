@@ -57,6 +57,20 @@
 停牌时 `next_open` 取**这只票自己的下一根 K 线开盘价**（复牌首日，最早能成交的价格）；
 持有期仍按全局交易日轴定位，所以停牌会让实际持有天数变短，不做补偿。
 
+### `--skip-unbuyable`：剔除买不到的信号
+
+即便改了入场时点，**入场价本身可能根本买不到**：次日开盘就在涨停价上（竞价即封 /
+一字板），挂单根本成交不了。不剔的话，那一段涨停收益是纯账面数字，打板策略的回测
+会被抬得非常高。
+
+判定用 `limit_rules.limit_pct`（主板 10 / 创业板科创板 20 / 北交所 30）算限幅，
+比 `入场价 / 前收 − 1 ≥ 限幅 − 容差`；容差 `0.005 / 前收` 覆盖板价四舍五入到分的
+那一分钱。**基准表同口径剔除** —— 买不到的票不该出现在「可替代组合」里，否则超额里
+会混进一批你根本没机会买的强势股。注意这也意味着涨停潮的日子里基准偏低、超额偏乐观。
+
+买不到的信号**不占 20 日去重位**：同一波行情里如果几天后能成交，那次仍该算样本，
+不能因为第一次买不到就把整段行情丢掉。
+
 ## 数据来源：两个库
 
 | 数据源 | 窗口 | 用在 |
@@ -85,6 +99,8 @@ history.db 由 `scripts/backfill_history.py` 用腾讯补出来（零配额）�
     python scripts/backtest_patterns.py --pattern all                 # 注册表里全部
     python scripts/backtest_patterns.py --pattern all-new --history   # 换成 5 年长历史
     python scripts/backtest_patterns.py --pattern all-new --history --stocks 800   # 限样本试跑
+    python scripts/backtest_patterns.py --pattern limit_surge_flat --history --entry next_open --skip-unbuyable
+                                                                                   # 打板类：次日开盘 + 剔一字板
 
 多目标时**一遍扫描**跑完所有形态（序列只切一次），输出「形态 × 持有期」汇总表；
 单个形态则额外打印按月分布与命中明细，方便逐个人工核对。
@@ -118,6 +134,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 from app.db import session_scope  # noqa: E402
 from app.jobs.scan_patterns import _load_bars  # noqa: E402
 from app.models import StockDaily  # noqa: E402
+from app.services import limit_rules  # noqa: E402
 from app.services.patterns import (  # noqa: E402
     BF_MAX_GAP,
     BF_MIN_FLAT,
@@ -229,6 +246,37 @@ def _entry_price(bars: Bars, t: int, mode: str) -> float | None:
     if t + 1 >= len(bars):
         return None
     return float(bars.open[t + 1])
+
+
+#: 板价四舍五入到分带来的相对误差上限（`0.005 元 / 前收`），再大就封顶半个百分点。
+#: 复权价上换不成绝对价差，所以只能用相对值；取偏大的一侧 = 宁可多丢一个信号。
+_OPEN_LIMIT_TOL_CAP = 0.005
+
+
+def _unbuyable(bars: Bars, t: int, mode: str, limit_pct: float) -> bool:
+    """入场价是不是**已经等于涨停价** —— 这种价买不到（竞价即封 / 一字板）。
+
+    - `close` 口径看**信号日收盘**是否封在涨停价上（收盘那一下也买不到）；
+    - `next_open` 口径看**次日开盘**是否已在涨停价上。
+
+    限幅按代码取（`limit_rules.limit_pct`：主板 10 / 创业板科创板 20 / 北交所 30），
+    不在这里另写一张板块表 —— 那个口径已经有两处漂移过（见 `limit_rules` 模块说明）。
+
+    容差 `0.005 / 前收` 覆盖板价取整到分的那一分钱（例：前收 3.00、板价 3.30，
+    开盘 3.30 就是买不到）。宁可多丢一个信号，也不虚增收益。
+    """
+    if mode == ENTRY_CLOSE:
+        if t == 0:
+            return False
+        prev_close, price = float(bars.close[t - 1]), float(bars.close[t])
+    else:
+        if t + 1 >= len(bars):
+            return True
+        prev_close, price = float(bars.close[t]), float(bars.open[t + 1])
+    if prev_close <= 0 or price <= 0:
+        return True
+    tol = min(_OPEN_LIMIT_TOL_CAP, 0.005 / prev_close)
+    return price / prev_close - 1 >= limit_pct / 100.0 - tol
 
 
 def _forward_outcomes(
@@ -859,6 +907,14 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--skip-unbuyable",
+        action="store_true",
+        help=(
+            "剔除入场价已经在涨停价上的信号（竞价即封 / 一字板，开盘价买不到）。"
+            "基准表同口径剔除。打板类必须开，否则涨停那一段收益是假的"
+        ),
+    )
+    parser.add_argument(
         "--bars", type=int, default=DEFAULT_HISTORY_BARS, help=f"长历史窗口（默认 {DEFAULT_HISTORY_BARS} 根）"
     )
     args = parser.parse_args()
@@ -876,6 +932,8 @@ def main() -> int:
         logger.info(
             "入场口径：**次日开盘**（close[t+h] / open[t+1] − 1），与默认的收盘入场不可直接比较"
         )
+    if args.skip_unbuyable:
+        logger.info("剔除买不到的信号：入场价 = 涨停价（竞价即封 / 一字板），基准表同口径")
 
     from app.jobs.collect_universe import load_codes
 
@@ -1009,9 +1067,17 @@ def main() -> int:
     # 口径与命中样本一致：按交易日对齐，目标日停牌的票不计入该日基准。
     bench_sum: dict[int, dict[object, float]] = {h: defaultdict(float) for h in HORIZONS}
     bench_count: dict[int, dict[object, int]] = {h: defaultdict(int) for h in HORIZONS}
-    for bars in bars_by_code.values():
+    for code, bars in bars_by_code.items():
         date_index = {day: i for i, day in enumerate(bars.dates)}
+        # 限幅只跟板块有关（ST 已整段剔除，日期那档用不上），每只票算一次就够
+        code_limit = (
+            limit_rules.limit_pct(code, grouped[code][-1].get("name"))
+            if args.skip_unbuyable
+            else 0.0
+        )
         for i, day in enumerate(bars.dates):
+            if args.skip_unbuyable and _unbuyable(bars, i, args.entry, code_limit):
+                continue
             entry = _entry_price(bars, i, args.entry)
             if entry is None or entry <= 0:
                 continue
@@ -1030,12 +1096,19 @@ def main() -> int:
     logger.info("基准表：%d 个交易日", len(bench[HORIZONS[0]]))
 
     tallies = {key: Tally() for key in targets}
+    # `--skip-unbuyable` 剔掉了多少条（按形态），报告里要交代，否则「信号少」看不出原因
+    unbuyable: Counter[str] = Counter()
     last_hit: dict[tuple[str, str], int] = {}
     started = time.monotonic()
 
     for done, (code, bars) in enumerate(bars_by_code.items(), start=1):
         n = len(bars)
         date_index = {day: i for i, day in enumerate(bars.dates)}
+        code_limit = (
+            limit_rules.limit_pct(code, grouped[code][-1].get("name"))
+            if args.skip_unbuyable
+            else 0.0
+        )
         for t in range(MIN_BARS, n):
             day = bars.dates[t]
             g = global_pos[day]
@@ -1050,7 +1123,15 @@ def main() -> int:
                     and t - last_rps.get(code, -10**6) >= DEDUP_DAYS
                 ):
                     entry_rps = _entry_price(bars, t, args.entry)
-                    if entry_rps is not None and entry_rps > 0:
+                    # 买不到的信号连去重位都不占：后面几天若能成交，仍该算样本
+                    if (
+                        entry_rps is not None
+                        and entry_rps > 0
+                        and not (
+                            args.skip_unbuyable
+                            and _unbuyable(bars, t, args.entry, code_limit)
+                        )
+                    ):
                         last_rps[code] = t
                         rps_extra.add(
                             _forward_outcomes(bars, date_index, g, all_dates, entry_rps),
@@ -1075,6 +1156,10 @@ def main() -> int:
                     continue
                 entry = _entry_price(bars, t, args.entry)
                 if entry is None or entry <= 0:
+                    continue
+                # 买不到的信号不占去重位：20 日窗口内后面能成交的那次仍该算
+                if args.skip_unbuyable and _unbuyable(bars, t, args.entry, code_limit):
+                    unbuyable[key] += 1
                     continue
                 last_hit[(key, code)] = t
                 outcomes = _forward_outcomes(bars, date_index, g, all_dates, entry)
@@ -1126,6 +1211,14 @@ def main() -> int:
 
     total = sum(tally.size for tally in tallies.values())
     logger.info("命中 %d 条信号，用时 %.0fs", total, time.monotonic() - started)
+    if unbuyable:
+        dropped = sum(unbuyable.values())
+        logger.info(
+            "其中 %d 条因「入场价 = 涨停价」被剔除（占 %.1f%%：%s）",
+            dropped,
+            dropped / (total + dropped) * 100,
+            ", ".join(f"{key}×{count}" for key, count in unbuyable.most_common()),
+        )
     if total == 0:
         logger.warning("一个都没命中 —— 条件太严或数据太短")
         return 1
@@ -1133,6 +1226,8 @@ def main() -> int:
     if args.entry == ENTRY_NEXT_OPEN:
         # 口径不同不能和文档里的历史数字混读，报告开头点明
         print("\n★ 入场 = 次日开盘（open[t+1]）；历史结论均为信号日收盘入场，两者不可直接比较")
+    if args.skip_unbuyable:
+        print("★ 已剔除入场价已在涨停价上的信号（买不到），基准表同口径")
 
     if len(targets) == 1:
         key = next(iter(targets))
