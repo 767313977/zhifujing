@@ -864,6 +864,7 @@ export const api = {
   /**
    * 首板次日验证：参数与首板候选**完全一致**（后端就是调同一份实现），所以页面上的
    * 筛选条件一改，这条汇总就跟着变 —— 这是定阈值的依据。
+   * `top>0` 时只统计排序后的前 N 只（`order` 才有意义）；`top=0` = 全部候选。
    */
   firstBoardTrack: (params: {
     before?: string
@@ -874,6 +875,8 @@ export const api = {
     minSealRatio?: number
     onlyTrueFirstBoard?: boolean
     days?: number
+    order?: 'board' | 'factor'
+    top?: number
   } = {}) => {
     const query = new URLSearchParams({
       before: params.before ?? '140000',
@@ -884,6 +887,8 @@ export const api = {
       min_seal_ratio: String(params.minSealRatio ?? 0),
       only_true_first_board: String(params.onlyTrueFirstBoard ?? false),
       days: String(params.days ?? 20),
+      order: params.order ?? 'board',
+      top: String(params.top ?? 0),
     })
     return request<FirstBoardTrack>(`/pools/first-board/track?${query.toString()}`)
   },

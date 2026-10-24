@@ -804,11 +804,18 @@ def first_board_track(
     min_themes: int = 3,
     min_seal_ratio: float = 0,
     only_true_first_board: bool = False,
+    order: str = "board",
+    top: int = 0,
 ) -> FirstBoardTrack:
     """近 `days` 个有涨停池的交易日，按当前条件选出来的首板次日表现。
 
     条件参数与 `first_board` 完全一致（内部就是调它），所以页面上的候选和这里
     统计的样本是同一批票 —— 参数改了，两边一起变。
+
+    `order` / `top`（2026-10-24 加）：只统计**排序后的前 `top` 只**，`top=0` 表示
+    全部候选（默认，与加参数前完全一致）。`top>0` 时 `order` 才有意义 —— 全量统计
+    下顺序不影响任何汇总数字；`order="factor"` 才能验证「按量价因子分挑前 N 只」
+    到底比「按题材/封单综合分挑」好多少。
     """
     limit_days = list(
         session.scalars(
@@ -827,6 +834,8 @@ def first_board_track(
         "min_themes": min_themes,
         "min_seal_ratio": min_seal_ratio,
         "only_true_first_board": only_true_first_board,
+        "order": order,
+        "top": top,
     }
     if not limit_days:
         return FirstBoardTrack(trade_date=None, conditions=conditions)
@@ -869,8 +878,9 @@ def first_board_track(
             min_themes=min_themes,
             min_seal_ratio=min_seal_ratio,
             only_true_first_board=only_true_first_board,
-            # 验证要看**全部**候选，不能被页面上的前 50 只截断
-            limit=1000,
+            order=order,
+            # `top=0` 时要看**全部**候选，不能被页面上的前 50 只截断
+            limit=top or 1000,
         )
         codes = [row.code for row in board.rows]
         following = next_trading(day)

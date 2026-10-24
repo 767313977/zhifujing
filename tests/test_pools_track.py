@@ -1,6 +1,6 @@
 """次日验证面板（选股池-4）：晋级率、开盘溢价、一字买不进、待验证。"""
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -116,6 +116,43 @@ def test_first_board_track_marks_big_loss_and_limit_down(session):
     assert summary["limit_down_rate"] == 100.0
     # 昨收 = 9.0 / 0.9 = 10，开盘 9.5 → 溢价 -5%
     assert summary["open_premium_mean"] == -5.0
+
+
+def test_first_board_track_top_n_follows_order(session):
+    """`top>0` 时只统计排序后的前 N 只；`top=0`（默认）仍是全部候选。"""
+    # 因子窗口要 20 个交易日（首板日 D0 当天也算），否则三个因子全是 None
+    history = [date(2026, 9, 21) + timedelta(days=offset) for offset in range(19)]
+    session.add_all(TradeCalendar(trade_date=day) for day in (*history, D0, D1))
+    for code in ("000001", "000002"):
+        session.add(StockBasic(code=code, name=code))
+
+    for day in (*history, D0):
+        # 000001：一直涨 + 振幅大 + 成交额大 → 三个因子都排最后
+        _daily(
+            session, day, "000001",
+            high=11.5, low=9.5, close=10.0, pct_chg=1.0, amount=50 * pools.YI,
+        )
+        # 000002：一直跌 + 振幅小 + 成交额小 → 三个因子都排第一
+        _daily(
+            session, day, "000002",
+            high=10.05, low=9.95, close=10.0, pct_chg=-1.0, amount=1 * pools.YI,
+        )
+
+    _limit(session, D0, "000001")
+    _limit(session, D0, "000002")
+    _daily(session, D1, "000001", open=10.2, high=10.3, low=10.1, close=10.2, pct_chg=2.0)
+    _daily(session, D1, "000002", open=10.1, high=10.2, low=10.0, close=10.1, pct_chg=1.0)
+    session.commit()
+
+    every = pools.first_board_track(session, days=20, min_themes=0)
+    assert every.summary["samples"] == 2
+    assert every.conditions["order"] == "board"
+    assert every.conditions["top"] == 0
+
+    best = pools.first_board_track(session, days=20, min_themes=0, order="factor", top=1)
+    assert best.summary["samples"] == 1  # 只统计因子分最高的 000002
+    assert best.conditions["order"] == "factor"
+    assert best.conditions["top"] == 1
 
 
 def test_rps_track_uses_equal_weight_market(session):

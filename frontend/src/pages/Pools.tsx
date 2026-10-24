@@ -88,6 +88,9 @@ const RPS_ORDER_ITEMS = [
   { key: 'factor', label: '因子分排序' },
 ]
 
+/** 首板表显示多少只，「排序」切到因子分时验证汇总也只统计这前 N 只 —— 两侧口径一致。 */
+const FB_LIMIT = 50
+
 /** RPS 分位的颜色：只有两档极端才染色，中间一律中性（避免满屏红绿）。 */
 function rpsTone(value: number | null): string {
   if (value == null) return 'text-fg-muted'
@@ -136,6 +139,7 @@ export default function Pools() {
         minSealRatio: Number(seal),
         onlyTrueFirstBoard: trueFirst === '1',
         order: fbOrder as 'board' | 'factor',
+        limit: FB_LIMIT,
       })
       .then((value) => {
         if (!stale) setFirstBoard(value)
@@ -184,6 +188,8 @@ export default function Pools() {
         minSealRatio: Number(seal),
         onlyTrueFirstBoard: trueFirst === '1',
         days: 20,
+        order: fbOrder as 'board' | 'factor',
+        top: FB_LIMIT,
       })
       .then((value) => {
         if (!stale) setFbTrack(value)
@@ -195,7 +201,7 @@ export default function Pools() {
     return () => {
       stale = true
     }
-  }, [before, cap, themes, seal, trueFirst])
+  }, [before, cap, themes, seal, trueFirst, fbOrder])
 
   useEffect(() => {
     let stale = false
@@ -306,7 +312,9 @@ export default function Pools() {
                 className="w-full text-left leading-relaxed hover:text-fg"
               >
                 <span className="num">
-                  近 {fbTrack.verified_days} 日按当前条件：样本 {fbTrack.samples}
+                  近 {fbTrack.verified_days} 日按当前条件
+                  {`（${fbOrder === 'factor' ? '量价因子分' : '板块综合分'}前 ${FB_LIMIT} 只）`}
+                  ：样本 {fbTrack.samples}
                   {' · '}晋级 {fmtNum(fbTrack.promoted_rate, 1, '%')}
                   {' · '}开盘溢价中位 {fmtPct(fbTrack.open_premium_median)}
                   {' · '}收盘中位 {fmtPct(fbTrack.close_ret_median)}

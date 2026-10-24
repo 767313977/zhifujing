@@ -159,11 +159,23 @@ def first_board_track(
     min_seal_ratio: float = Query(0, ge=0, le=100, description="封单额/流通市值 下限（%）"),
     only_true_first_board: bool = Query(False, description="只看真首板（近 10 日没涨停过）"),
     days: int = Query(20, ge=1, le=60, description="回看多少个有涨停池的交易日"),
+    order: str = Query(
+        "board",
+        pattern="^(board|factor)$",
+        description="排序：board = 题材/封单/首封综合分；factor = 量价因子分",
+    ),
+    top: int = Query(
+        0,
+        ge=0,
+        le=500,
+        description="只统计排序后的前 N 只；0 = 全部候选（全量时顺序不影响汇总）",
+    ),
     session: Session = Depends(get_db),
 ) -> FirstBoardTrackOut:
     """近 `days` 天按当前条件选出的首板，次日的晋级 / 开盘溢价 / 收盘收益。
 
     参数与 `/first-board` 完全一致 —— 改这里的参数看汇总变化，就是定阈值的办法。
+    `top>0` 时才会只统计前 N 只，`order` 也才有意义。
     """
     if min_float_mv > max_float_mv:
         raise HTTPException(status_code=400, detail="流通市值下限不能大于上限")
@@ -181,6 +193,8 @@ def first_board_track(
         min_themes,
         min_seal_ratio,
         only_true_first_board,
+        order,
+        top,
     )
     track = _cached(
         key,
@@ -194,6 +208,8 @@ def first_board_track(
             min_themes=min_themes,
             min_seal_ratio=min_seal_ratio,
             only_true_first_board=only_true_first_board,
+            order=order,
+            top=top,
         ),
     )
     return FirstBoardTrackOut(
