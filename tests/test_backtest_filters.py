@@ -139,3 +139,37 @@ def test_trend_template_rejects_flat_market():
     assert (
         bt.FILTER_CHECKS["trend_template"]("600000", bars, 299, _trend_ctx(bars)) is False
     )
+
+
+def _open_bars(opens: list[float], closes: list[float]) -> Bars:
+    """开 / 收分开给的序列，用来测入场价口径。"""
+    open_ = np.array(opens, dtype=float)
+    close = np.array(closes, dtype=float)
+    return Bars(
+        dates=[date(2026, 1, 1) + timedelta(days=index) for index in range(len(close))],
+        open=open_,
+        high=np.maximum(open_, close),
+        low=np.minimum(open_, close),
+        close=close,
+        volume=np.ones_like(close),
+        amount=np.ones_like(close),
+        pct_chg=np.zeros_like(close),
+    )
+
+
+def test_entry_close_uses_signal_day_close():
+    bars = _open_bars([10.0, 11.0, 12.0], [10.5, 11.5, 12.5])
+    assert bt._entry_price(bars, 1, bt.ENTRY_CLOSE) == 11.5
+
+
+def test_entry_next_open_uses_following_open():
+    """次日开盘入场：信号日（i=1）收盘 11.5 买不到，只能 i=2 开盘 12.0 成交。"""
+    bars = _open_bars([10.0, 11.0, 12.0], [10.5, 11.5, 12.5])
+    assert bt._entry_price(bars, 1, bt.ENTRY_NEXT_OPEN) == 12.0
+
+
+def test_entry_next_open_returns_none_on_last_bar():
+    """最后一根没有「次日」，拿不到开盘价 —— 不能退回收盘价顶上。"""
+    bars = _open_bars([10.0, 11.0], [10.5, 11.5])
+    assert bt._entry_price(bars, 1, bt.ENTRY_NEXT_OPEN) is None
+

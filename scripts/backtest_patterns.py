@@ -41,6 +41,22 @@
 
 零 iFinD 配额：全部用库里已有的日线在本地算。
 
+## 入场价口径（`--entry`）
+
+- `close`（默认）：信号日**收盘价**入场，`close[t+h] / close[t] − 1`。历史结论全是这个口径。
+- `next_open`：**次日开盘价**入场，`close[t+h] / open[t+1] − 1`。
+
+默认的收盘入场有系统性偏差：形态在收盘后才成立，现实中最早只能次日开盘成交。
+涨停 / 突破类形态上这个偏差是致命的 —— 用收盘价等于「买在条件成立的那根 K 线上」，
+凭空吃掉次日的高开。**打板类必须用 `--entry next_open`。**
+
+两处口径的**卖出日不变**（仍是信号日之后第 h 个交易日的收盘），只换入场价，所以
+「5 日」指的都是「在 t+1 开盘买入、持有到 t+5 收盘」。基准表也换成同一入场口径 ——
+否则超额里会混进「全市场平均高开幅度」这个与形态无关的量。
+
+停牌时 `next_open` 取**这只票自己的下一根 K 线开盘价**（复牌首日，最早能成交的价格）；
+持有期仍按全局交易日轴定位，所以停牌会让实际持有天数变短，不做补偿。
+
 ## 数据来源：两个库
 
 | 数据源 | 窗口 | 用在 |
@@ -125,6 +141,11 @@ MIN_BARS = 80
 # 同一只票这么多交易日内的重复信号只留第一个（见模块说明第 2 条）
 DEDUP_DAYS = 20
 
+# 入场价口径（见模块说明「入场价口径」）：`close` 是历史默认，`next_open` 给打板 / 突破类用
+ENTRY_CLOSE = "close"
+ENTRY_NEXT_OPEN = "next_open"
+ENTRY_MODES = (ENTRY_CLOSE, ENTRY_NEXT_OPEN)
+
 HISTORY_DB = BACKEND / "data" / "history.db"
 # 长历史的默认窗口：5 年约 1220 根，取 1300 留点余量
 DEFAULT_HISTORY_BARS = 1300
@@ -192,6 +213,22 @@ def _as_hit(signal) -> dict | None:
     if signal is None or signal.score < MIN_SCORE:
         return None
     return {**signal.detail, "score": round(signal.score, 1)}
+
+
+def _entry_price(bars: Bars, t: int, mode: str) -> float | None:
+    """`t` 日信号对应的入场价；拿不到（`next_open` 已到序列末尾）时返回 None。
+
+    - `close`：信号日收盘价；
+    - `next_open`：**次日开盘价**（形态收盘后才成立，最早只能次日开盘成交）。
+
+    `next_open` 取的是**这只票自己的下一根 K 线**：中间停牌时那根就是复牌首日，
+    也就是「最早能成交的价格」。
+    """
+    if mode == ENTRY_CLOSE:
+        return float(bars.close[t])
+    if t + 1 >= len(bars):
+        return None
+    return float(bars.open[t + 1])
 
 
 def _forward_outcomes(
@@ -813,6 +850,15 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--entry",
+        default=ENTRY_CLOSE,
+        choices=ENTRY_MODES,
+        help=(
+            "入场价口径：close = 信号日收盘（默认，历史数字都是这个口径）；"
+            "next_open = 次日开盘（打板 / 突破类必须用，信号收盘后才成立）"
+        ),
+    )
+    parser.add_argument(
         "--bars", type=int, default=DEFAULT_HISTORY_BARS, help=f"长历史窗口（默认 {DEFAULT_HISTORY_BARS} 根）"
     )
     args = parser.parse_args()
@@ -826,6 +872,10 @@ def main() -> int:
         )
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    if args.entry == ENTRY_NEXT_OPEN:
+        logger.info(
+            "入场口径：**次日开盘**（close[t+h] / open[t+1] − 1），与默认的收盘入场不可直接比较"
+        )
 
     from app.jobs.collect_universe import load_codes
 
@@ -962,8 +1012,8 @@ def main() -> int:
     for bars in bars_by_code.values():
         date_index = {day: i for i, day in enumerate(bars.dates)}
         for i, day in enumerate(bars.dates):
-            entry = float(bars.close[i])
-            if entry <= 0:
+            entry = _entry_price(bars, i, args.entry)
+            if entry is None or entry <= 0:
                 continue
             g = global_pos[day]
             for h, value in zip(
@@ -999,8 +1049,8 @@ def main() -> int:
                     and rps50 >= RPS_TOP
                     and t - last_rps.get(code, -10**6) >= DEDUP_DAYS
                 ):
-                    entry_rps = float(bars.close[t])
-                    if entry_rps > 0:
+                    entry_rps = _entry_price(bars, t, args.entry)
+                    if entry_rps is not None and entry_rps > 0:
                         last_rps[code] = t
                         rps_extra.add(
                             _forward_outcomes(bars, date_index, g, all_dates, entry_rps),
@@ -1023,8 +1073,8 @@ def main() -> int:
                 # 都满足条件，会被当成几个「独立样本」，把统计显著性算得虚高
                 if t - last_hit.get((key, code), -10**6) < DEDUP_DAYS:
                     continue
-                entry = float(bars.close[t])
-                if entry <= 0:
+                entry = _entry_price(bars, t, args.entry)
+                if entry is None or entry <= 0:
                     continue
                 last_hit[(key, code)] = t
                 outcomes = _forward_outcomes(bars, date_index, g, all_dates, entry)
@@ -1079,6 +1129,10 @@ def main() -> int:
     if total == 0:
         logger.warning("一个都没命中 —— 条件太严或数据太短")
         return 1
+
+    if args.entry == ENTRY_NEXT_OPEN:
+        # 口径不同不能和文档里的历史数字混读，报告开头点明
+        print("\n★ 入场 = 次日开盘（open[t+1]）；历史结论均为信号日收盘入场，两者不可直接比较")
 
     if len(targets) == 1:
         key = next(iter(targets))
