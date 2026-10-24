@@ -116,6 +116,7 @@ from app.services.patterns import (  # noqa: E402
     is_st,
     usable_bar,
 )
+from draft_patterns import DRAFT_PATTERNS  # noqa: E402  （同目录的脚本）
 
 logger = logging.getLogger("backtest")
 
@@ -154,6 +155,11 @@ NEW_KEYS = (
 )
 
 _BY_KEY = {pattern.key: pattern for pattern in PATTERNS}
+# 实验形态（**不在生产注册表**）：只在这里能被 `--pattern` 点名。
+# 与生产形态共用同一套判定入口（`Pattern.detect`），所以回测结果可直接对比。
+_DRAFT_KEYS = {pattern.key for pattern in DRAFT_PATTERNS}
+for _draft in DRAFT_PATTERNS:
+    _BY_KEY[_draft.key] = _draft
 
 
 def _upto(bars: Bars, end: int) -> Bars:
@@ -413,6 +419,7 @@ FILTER_LABELS: dict[str, str] = {
     "rps50_90": "RPS50≥90",
     "rps120_85": "RPS120≥85",
     "rps_dual": "RPS50≥90 且 RPS120≥85",
+    "rps_any_90": "RPS 三线任一≥90",
     "trend_template": "趋势模板(Minervini)",
 }
 FILTER_CHECKS: dict[str, Callable[[str, Bars, int, dict], bool]] = {}
@@ -422,6 +429,8 @@ RPS_CONDITIONS: dict[str, tuple[int, ...]] = {
     "rps50_90": (50,),
     "rps120_85": (120,),
     "rps_dual": (50, 120),
+    # 陶博士「一线红」：RPS50 / 120 / 250 任一 ≥90 即可
+    "rps_any_90": (50, 120, 250),
     # 趋势模板第 8 条「RS ≥ 70」直接用 250 日分位（与站内 RPS 同口径）
     "trend_template": (250,),
 }
@@ -525,6 +534,22 @@ def _filter_rps_dual(code: str, bars: Bars, i: int, ctx: dict) -> bool:
 FILTER_CHECKS["rps50_90"] = _filter_rps50_90
 FILTER_CHECKS["rps120_85"] = _filter_rps120_85
 FILTER_CHECKS["rps_dual"] = _filter_rps_dual
+
+
+def _filter_rps_any_90(code: str, bars: Bars, i: int, ctx: dict) -> bool:
+    """「一线红」：RPS50 / RPS120 / RPS250 任意一条 ≥90。
+
+    陶博士的用法是把它叠在形态上（尤其是口袋支点），只看「有没有一条线是红的」。
+    """
+    day = bars.dates[i]
+    for window in (50, 120, 250):
+        value = _rps_lookup(ctx, window, code, day)
+        if value is not None and value >= RPS_TOP:
+            return True
+    return False
+
+
+FILTER_CHECKS["rps_any_90"] = _filter_rps_any_90
 
 
 #: 趋势模板第 8 条的门槛（RS ≥ 70）。用的就是上面的 250 日分位，不另算一套。
@@ -866,6 +891,12 @@ def main() -> int:
 
     targets = _resolve_targets(args.pattern)
     logger.info("目标形态 %d 个：%s", len(targets), ", ".join(targets))
+    if _DRAFT_KEYS & set(targets):
+        logger.info(
+            "★ 其中 %d 个是**实验形态**（未注册进生产）：%s",
+            len(_DRAFT_KEYS & set(targets)),
+            ", ".join(sorted(_DRAFT_KEYS & set(targets))),
+        )
 
     # K 线确认实验：每个 (形态, 蜡烛名) 一份累加器。只有 `--candle-split` 时才建，
     # 平时零额外开销（判定函数要读开高低收，不是免费的）。
