@@ -1406,6 +1406,10 @@ class DailyScheduler:
         except Exception:  # noqa: BLE001 - RPS 是增强读数，不该拖垮尾部链
             logger.exception("RPS 扫描失败")
             return
+        if result.get("skipped"):
+            # 当天日线没采全（覆盖率不到 90%）：不写库，也不当成失败 —— 明天重跑能补
+            logger.warning("RPS 扫描跳过 %s：%s", result.get("trade_date"), result["skipped"])
+            return
         logger.info(
             "RPS 扫描完成：%s 只 / %s，用时 %ss",
             result.get("rows"),

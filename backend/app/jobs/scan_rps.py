@@ -6,9 +6,16 @@
 ## 口径
 
 - 区间涨幅用 `pct_chg` **复利**（库里是不复权价，直接比收盘价会被除权除息带偏）；
-- 窗口是**交易日**：取最近 250 个交易日，停牌缺天按实际可用天数算，
-  但至少要有 90% 的天数，否则记 None；
-- 分位用**中位秩**（与恐贪、估值分位同一套定义），0 = 全市场最弱、100 = 最强。
+- 窗口是**交易日**：两个窗口各自的起点都从 `trade_calendar` 取（第 N 个最近交易日），
+  只复利**不早于起点**的行 —— 而不是「最近 N 行」。停牌缺天时 N 行会跨过不止 N 个
+  交易日，窗口被悄悄拉长（2026-10-24 修）；
+- 窗口内实际行数至少要有 90%，否则该档记 None；
+- 分位用**中位秩**（与恐贪、估值分位同一套定义），0 = 全市场最弱、100 = 最强；
+- **当天必须有这一行的票才参与排名**：最后一根 K 线早于 `target` 的（停牌）不进当天
+  横截面，否则它和别人的收益截止在不同日子，排名没有可比性；
+- **当天覆盖率闸**：`target` 当天有 `pct_chg` 的行数达不到股票池的 90% 时**不写库**
+  （与 `scan_patterns._require_bars` 同一判据）。否则一部分票用当天、一部分用前一天，
+  却混在同一张横截面排名里。
 
 ## 为什么只存「当天一行」
 
@@ -24,7 +31,8 @@ from datetime import date
 from sqlalchemy import func, select
 
 from app.db import session_scope, upsert_many
-from app.models import RpsDaily, StockDaily, TradeCalendar
+from app.models import RpsDaily, StockDaily, StockUniverse, TradeCalendar
+from app.services.coverage import coverage_ok
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +57,15 @@ def _ret(values: list[float], days: int) -> float | None:
     return round((factor - 1) * 100, 2)
 
 
+def _window_values(rows: list[tuple[date, float]], start: date) -> list[float]:
+    """只留**不早于 `start`** 的行。
+
+    窗口必须按交易日截取，不能按「最近 N 行」：停牌或漏采会让 N 行跨过更多交易日，
+    算出来的是「更长的区间」，与说明里的「N 个交易日涨幅」不是一回事。
+    """
+    return [pct for day, pct in rows if day >= start]
+
+
 def _mid_rank(ordered: list[float], value: float) -> float:
     """中位秩百分位（0-100）。`ordered` 必须是升序、且已去掉 None。"""
     left = bisect_left(ordered, value)
@@ -66,6 +83,34 @@ def scan(trade_date: date | None = None) -> dict:
         if target is None:
             return {"rows": 0, "trade_date": None, "cost_seconds": 0.0}
 
+        # 覆盖率闸：当天没采全就不写库。判据与 `scan_patterns._require_bars` 同一份。
+        pool = session.scalar(select(func.count()).select_from(StockUniverse)) or 0
+        day_rows = (
+            session.scalar(
+                select(func.count())
+                .select_from(StockDaily)
+                .where(
+                    StockDaily.trade_date == target,
+                    StockDaily.pct_chg.is_not(None),
+                )
+            )
+            or 0
+        )
+        if day_rows == 0 or (pool and not coverage_ok(day_rows, pool)):
+            logger.warning(
+                "RPS 停跑：%s 的日线只有 %d 行（池子 %d 只），没达到 %.0f%% —— 先补 collect_kline",
+                trade_date or target,
+                day_rows,
+                pool,
+                MIN_COVERAGE * 100,
+            )
+            return {
+                "rows": 0,
+                "trade_date": target,
+                "skipped": "coverage",
+                "cost_seconds": round(time.monotonic() - started, 2),
+            }
+
         trade_days = list(
             session.scalars(
                 select(TradeCalendar.trade_date)
@@ -76,10 +121,14 @@ def scan(trade_date: date | None = None) -> dict:
         )
         if not trade_days:
             return {"rows": 0, "trade_date": target, "cost_seconds": 0.0}
-        start = min(trade_days)
+        # 各窗口的起点：第 N 个最近交易日（不够 N 天时用最早那天）
+        starts = {
+            window: trade_days[min(window, len(trade_days)) - 1] for window in WINDOWS
+        }
+        start = min(starts.values())
 
         statement = (
-            select(StockDaily.code, StockDaily.pct_chg)
+            select(StockDaily.code, StockDaily.trade_date, StockDaily.pct_chg)
             .where(
                 StockDaily.trade_date >= start,
                 StockDaily.trade_date <= target,
@@ -89,53 +138,60 @@ def scan(trade_date: date | None = None) -> dict:
             .execution_options(yield_per=_STREAM_BATCH)
         )
 
-        returns: dict[str, tuple[float | None, float | None]] = {}
+        returns: dict[str, dict[int, float | None]] = {}
         current = ""
-        values: list[float] = []
+        rows: list[tuple[date, float]] = []
 
         def flush() -> None:
             if not current:
                 return
-            short, long = (_ret(values, window) for window in WINDOWS)
-            if short is not None or long is not None:
-                returns[current] = (short, long)
+            # 当天没有可用日线（停牌 / 漏采）→ 不参与当天横截面排名
+            if not rows or rows[-1][0] != target:
+                return
+            computed = {
+                window: _ret(_window_values(rows, starts[window]), window)
+                for window in WINDOWS
+            }
+            if any(value is not None for value in computed.values()):
+                returns[current] = computed
 
-        for code, pct in session.execute(statement):
+        for code, day, pct in session.execute(statement):
             if code != current:
                 flush()
                 current = code
-                values = []
-            values.append(float(pct))
+                rows = []
+            rows.append((day, float(pct)))
         flush()
 
         # 分位：先按各窗口筛出有值的票，再排序做中位秩
-        short_values = sorted(value[0] for value in returns.values() if value[0] is not None)
-        long_values = sorted(value[1] for value in returns.values() if value[1] is not None)
-        if not short_values and not long_values:
+        ordered = {
+            window: sorted(
+                value[window] for value in returns.values() if value[window] is not None
+            )
+            for window in WINDOWS
+        }
+        if not any(ordered.values()):
             return {"rows": 0, "trade_date": target, "cost_seconds": 0.0}
 
         records = []
-        for code, (short, long) in returns.items():
-            records.append(
-                {
-                    "trade_date": target,
-                    "code": code,
-                    "ret120": short,
-                    "ret250": long,
-                    "rps120": None if short is None else _mid_rank(short_values, short),
-                    "rps250": None if long is None else _mid_rank(long_values, long),
-                }
-            )
+        for code, computed in returns.items():
+            record: dict = {"trade_date": target, "code": code}
+            for window, value in computed.items():
+                record[f"ret{window}"] = value
+                record[f"rps{window}"] = (
+                    None if value is None else _mid_rank(ordered[window], value)
+                )
+            records.append(record)
 
         written = upsert_many(session, RpsDaily, records)
 
     cost = time.monotonic() - started
     logger.info(
-        "RPS 扫描 %s：%d 只（120 日 %d 只 / 250 日 %d 只），用时 %.1fs",
+        "RPS 扫描 %s：%d 只（%s），用时 %.1fs",
         target,
         written,
-        len(short_values),
-        len(long_values),
+        " / ".join(f"{window} 日 {len(ordered[window])} 只" for window in WINDOWS),
         cost,
     )
     return {"rows": written, "trade_date": target, "cost_seconds": round(cost, 2)}
+
