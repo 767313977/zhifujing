@@ -173,6 +173,9 @@ def first_board(
                 LimitPool.trade_date == target,
                 LimitPool.pool_type == "up",
                 LimitPool.consecutive == 1,
+                # 没炸过板。2026-10-24 核查过：库里涨停池 18003 行（255 个交易日，
+                # 2025-09-08 ~ 2026-09-24，本地库能查到的全量）`open_times` **没有空值**，
+                # 所以不必写成 `== 0 OR IS NULL`；将来换数据源要重跑一遍这条 SQL。
                 LimitPool.open_times == 0,
                 LimitPool.first_seal_time.is_not(None),
                 LimitPool.first_seal_time <= before,
