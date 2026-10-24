@@ -1839,44 +1839,6 @@ class TradePlanSuggestionsOut(ApiModel):
     rows: list[TradePlanSuggestion] = Field(default_factory=list)
 
 
-class SimilarDayDim(ApiModel):
-    """相似日向量的一维：今天的原始值 + 在历史窗口里的分位（0~1）。"""
-
-    key: str
-    label: str
-    value: float | None = None
-    rank: float | None = None
-
-
-class SimilarDayRow(ApiModel):
-    """一个历史相似日：向量原始值 + 之后 1/3/5 个交易日的指数与情绪。"""
-
-    trade_date: date
-    distance: float
-    #: 0~100，越大越像（= (1 − 距离) × 100）
-    similarity: float
-    limit_up: int | None = None
-    broken_rate: float | None = None
-    max_consecutive: int | None = None
-    above_ma20: float | None = None
-    fear_greed: float | None = None
-    relay_score: float | None = None
-    index_1d: float | None = None
-    index_3d: float | None = None
-    index_5d: float | None = None
-    sentiment_1d: float | None = None
-    sentiment_3d: float | None = None
-    sentiment_5d: float | None = None
-
-
-class SimilarDaysOut(ApiModel):
-    #: 「今天」是哪一天（传非交易日时退到之前最近一个情绪日）
-    trade_date: date | None = None
-    vector: list[SimilarDayDim] = Field(default_factory=list)
-    rows: list[SimilarDayRow] = Field(default_factory=list)
-    lookback_days: int = 0
-
-
 class StockResolveOut(ApiModel):
     """「名称 / 拼音首字母 / 代码 → 代码」的解析结果。
 

@@ -1085,13 +1085,12 @@ Index("ix_sector_member_sector_date", SectorMember.sector_code, SectorMember.tra
 # EXPLAIN 实测是 `SCAN trade_t`（`/api/journal`、`/api/journal/stats` 每刷新一次就把
 # 所有用户的做 T 行扫一遍）。补 user_id 打头的复合索引。
 Index("ix_trade_t_user_date", TradeT.user_id, TradeT.trade_date)
-# 「按池类型取全历史」（2026-10-23 体检补）：`services.similar_days` 要的是
-# `WHERE pool_type = 'up'` 的全部日期序列，而现有 `ix_limit_pool_type` 是
-# (trade_date, pool_type) —— 前导列对不上，实测 `SCAN limit_pool`。
+# 「按池类型取全历史」：`WHERE pool_type = 'up'` 这类查询吃不到以 trade_date 打头的
+# `ix_limit_pool_type`。相似日功能已下线（2026-10-24），索引**保留** —— 它让「某个池
+# 的全部历史」不用扫全表，代价只是写入时多维护一棵树。
 Index("ix_limit_pool_pooltype_date", LimitPool.pool_type, LimitPool.trade_date)
-# 「按指数代码取历史收盘」（2026-10-23 体检补）：`index_daily` 主键是
-# (trade_date, code)，`similar_days` 的基准指数查询是 `WHERE code = ? AND close IS NOT
-# NULL`，同样吃不到主键，实测 `SCAN index_daily`。
+# 「按指数代码取历史收盘」：`index_daily` 主键是 (trade_date, code)，按 code 查历史
+# （如取某指数的收盘序列）吃不到主键，实测是 `SCAN index_daily`。
 Index("ix_index_daily_code_date", IndexDaily.code, IndexDaily.trade_date)
 
 

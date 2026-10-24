@@ -61,7 +61,6 @@ import type {
   SectorSeries,
   SectorTaxonomy,
   Sentiment,
-  SimilarDays,
   JournalReasonSuggestion,
   StockAnalysis,
   StockDailyRow,
@@ -705,12 +704,6 @@ export const api = {
 
   deletePlan: (id: number) =>
     request<{ ok: boolean }>(`/plans/${id}`, { method: 'DELETE' }),
-
-  /** 历史相似日：情绪向量 + 它们之后 1/3/5 日的指数与情绪。 */
-  similarDays: (date?: string) =>
-    request<SimilarDays>(
-      `/similar-days${date ? `?date=${encodeURIComponent(date)}` : ''}`,
-    ),
 
   /**
    * 个股分析：把「代码 / 名称 / 拼音首字母」解析成结论（阶段判定 + 旁证）。

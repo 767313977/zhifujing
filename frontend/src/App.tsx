@@ -27,7 +27,6 @@ const PatternTrack = lazy(() => import('./pages/PatternTrack'))
 const PlansPage = lazy(() => import('./pages/Plans'))
 const Sectors = lazy(() => import('./pages/Sectors'))
 const SentimentPage = lazy(() => import('./pages/Sentiment'))
-const SimilarPage = lazy(() => import('./pages/Similar'))
 const Settings = lazy(() => import('./pages/Settings'))
 const StockAnalysisPage = lazy(() => import('./pages/StockAnalysis'))
 const StockDetail = lazy(() => import('./pages/StockDetail'))
@@ -84,14 +83,6 @@ export default function App() {
                 element={
                   <RequireAuth>
                     <ValuationPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/similar"
-                element={
-                  <RequireAuth>
-                    <SimilarPage />
                   </RequireAuth>
                 }
               />
