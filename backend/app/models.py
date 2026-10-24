@@ -604,6 +604,35 @@ class ErpDaily(Base):
     erp: Mapped[float | None] = mapped_column(Float)
 
 
+class IndexValuation(Base):
+    """核心指数的估值采样点（PE-TTM / PB），用来算「近 10 年分位」。
+
+    来源：蛋卷指数估值（danjuanfunds）的公开接口 —— 返回的是**周频**序列
+    （实测 2016-10-24 起共 516 个点，正好覆盖近 10 年）。为什么不取日频：
+    公开源里只有中证官网给日频，但它一次只回最近 20 个交易日，攒不出十年。
+
+    ⚠️ **没有 PS**：公开源没有指数级 10 年 PS 历史（2026-10-23 实测），
+    这一列刻意不加 —— 宁可缺，不做假数据。个股的 PE/PB 分位是另一套（按需取），
+    别拿这张表去顶。
+
+    ⚠️ 采样频率是**周**，所以 `trade_date` 是「采样日」而不是「每个交易日」；
+    同名指数的分位窗口里点数约 500 个，不是 2500 个。
+    """
+
+    __tablename__ = "index_valuation"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    #: 站内统一指数代码（000300.SH / 399006.SZ …），与 `index_daily` 同口径
+    index_code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    name: Mapped[str | None] = mapped_column(String(32))
+    #: 滚动市盈率（倍），来源直接给的就是 TTM 口径
+    pe_ttm: Mapped[float | None] = mapped_column(Float)
+    #: 市净率（倍）
+    pb: Mapped[float | None] = mapped_column(Float)
+    #: 数据来源标识（目前只有 danjuan），排查口径问题时用
+    source: Mapped[str | None] = mapped_column(String(16))
+
+
 # ---- 会员与登录态（2026-09-28，设计见设计文档 §8.69）----
 #
 # 这三张表是「邀请码注册 + 登录」的全部存储。刻意**不引入任何第三方鉴权库**：

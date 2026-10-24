@@ -15,6 +15,8 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: '/', label: '今日复盘', end: true },
   { to: '/sentiment', label: '情绪周期' },
+  // 估值分位（2026-10-23 用户要求）：核心指数 PE/PB 的十年分位与估值温度
+  { to: '/valuation', label: '估值分位' },
   // 相似日（2026-10-18 清单 #4）：用情绪向量找历史最像的几天。
   { to: '/similar', label: '相似日' },
   { to: '/sectors', label: '板块题材' },

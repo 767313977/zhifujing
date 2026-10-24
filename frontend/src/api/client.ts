@@ -1,5 +1,6 @@
 import type {
   AdminStatus,
+  AdvanceDecline,
   AnomalyMap,
   AuctionBoards,
   AuctionList,
@@ -81,6 +82,8 @@ import type {
   TradeStatsOut,
   TradeTIn,
   TrapCheck,
+  ValuationSeries,
+  ValuationSummary,
   Volatility,
   WatchlistRow,
 } from './types'
@@ -853,6 +856,18 @@ export const api = {
       { method: 'POST' },
       LONG_TIMEOUT_MS,
     ),
+
+  /**
+   * 全 A 涨跌分布（区间家数 + 平均/中位数）。缺省 = 库里最新交易日。
+   */
+  advanceDecline: () => request<AdvanceDecline>('/market/advance-decline'),
+
+  /** 核心指数估值分位总览（PE/PB 近 10 年，周频采样）。 */
+  valuation: () => request<ValuationSummary>('/valuation'),
+
+  /** 单个指数的近 10 年 PE/PB 序列。清单外的代码返回 404。 */
+  valuationSeries: (code: string) =>
+    request<ValuationSeries>(`/valuation/${encodeURIComponent(code)}`),
 
   note: (date: string) => request<ReviewNote>(`/note/${date}`),
 

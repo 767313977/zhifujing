@@ -2230,3 +2230,61 @@ export interface Member {
   /** 他是拿哪个邀请码进来的（可追来源） */
   invite_code: string | null
 }
+
+
+/** 一个核心指数的当前估值与近 10 年分位（后端 `/api/valuation`）。 */
+export interface IndexValuationItem {
+  code: string
+  name: string
+  /** 该指数最后一个**周频采样日**（可能比别的指数晚几天） */
+  as_of: string | null
+  pe_ttm: number | null
+  /** PE 的近 10 年分位（0-100，中位秩）；样本不足时是 null，不是 0 */
+  pe_pct: number | null
+  pb: number | null
+  pb_pct: number | null
+  /** PE 分位对应的温度档：极冷 / 偏冷 / 正常 / 偏热 / 极热 */
+  tone: string | null
+}
+
+export interface ValuationSummary {
+  as_of: string | null
+  /** 分位窗口（自然日）。页面上要如实写成「近 N 年 + 周频采样」 */
+  window_days: number
+  /** A 股估值温度 = 各核心指数 PE 分位的中位数 */
+  market_pct: number | null
+  market_tone: string | null
+  items: IndexValuationItem[]
+}
+
+export interface ValuationPoint {
+  day: string
+  pe_ttm: number | null
+  pb: number | null
+}
+
+export interface ValuationSeries {
+  code: string
+  name: string
+  window_days: number
+  points: ValuationPoint[]
+}
+
+/** 涨跌分布的一档。区间是「左开右闭」，首尾开区间。 */
+export interface AdvanceDeclineBucket {
+  label: string
+  lower: number | null
+  upper: number | null
+  count: number
+}
+
+export interface AdvanceDecline {
+  trade_date: string
+  total: number
+  up: number
+  down: number
+  flat: number
+  avg_pct: number | null
+  median_pct: number | null
+  buckets: AdvanceDeclineBucket[]
+}

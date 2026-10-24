@@ -265,6 +265,8 @@ export default function FearGreedPanel({
       meta={
         <span className="num">
           {latest.trade_date} · 分位窗口 {data.window} 日 · 库内 {data.coverage} 天
+          {/* 如实标出「不是十年」：外面有站点给的是十年分位，不写清楚会被拿去逐位对比 */}
+          <span className="ml-1 text-fg-dim">（按库内可用历史，非十年）</span>
         </span>
       }
       delay={delay}

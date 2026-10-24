@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
 import type { Breadth, Erp, EtfNetFlow, FearGreed, FuturesBasis, IndexHistory, IndexSeries, IndustryBreadth, MarginTemp, NhNl, Northbound, Obv, RelayTemp, Sentiment, Volatility } from '../api/types'
 import Alert from '../components/Alert'
+import AdvanceDeclinePanel from '../components/AdvanceDeclinePanel'
 import BreadthThermometerPanel from '../components/BreadthThermometerPanel'
 import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
@@ -394,6 +395,9 @@ export default function SentimentPage() {
           error={panelErrors.breadth}
           delay={60}
         />
+        {/* 涨跌分布紧跟宽度：宽度说「有多少票在均线上方」，这里说「今天的涨跌是怎么分布的」
+            —— 同样是 3000 家下跌，全在 -1% 与全在 -5% 是两种完全不同的日子 */}
+        <AdvanceDeclinePanel delay={65} />
         <RelayTempPanel
           data={relayTemp}
           loading={loading}

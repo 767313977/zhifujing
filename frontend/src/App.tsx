@@ -31,6 +31,7 @@ const SimilarPage = lazy(() => import('./pages/Similar'))
 const Settings = lazy(() => import('./pages/Settings'))
 const StockAnalysisPage = lazy(() => import('./pages/StockAnalysis'))
 const StockDetail = lazy(() => import('./pages/StockDetail'))
+const ValuationPage = lazy(() => import('./pages/Valuation'))
 const WatchlistPage = lazy(() => import('./pages/Watchlist'))
 const Wudao = lazy(() => import('./pages/Wudao'))
 
@@ -75,6 +76,14 @@ export default function App() {
                 element={
                   <RequireAuth>
                     <SentimentPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/valuation"
+                element={
+                  <RequireAuth>
+                    <ValuationPage />
                   </RequireAuth>
                 }
               />

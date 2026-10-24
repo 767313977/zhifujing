@@ -28,6 +28,7 @@ from app.api import (
     sector,
     similar,
     stock,
+    valuation,
     watchlist,
 )
 from app.config import ROOT, get_settings
@@ -255,6 +256,7 @@ app.include_router(plans.router)
 app.include_router(similar.router)
 app.include_router(patterns.router)
 app.include_router(anomaly_map.router)
+app.include_router(valuation.router)
 app.include_router(admin.router)
 
 

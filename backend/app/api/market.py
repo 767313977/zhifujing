@@ -26,6 +26,8 @@ from app.models import (
     VolatilityDaily,
 )
 from app.schemas import (
+    AdvanceDeclineBucket,
+    AdvanceDeclineOut,
     BreadthLatest,
     BreadthOut,
     DivergenceOut,
@@ -1216,3 +1218,81 @@ def index_history(
         )
     ]
     return IndexHistory(dates=dates, series=series)
+
+
+#: 涨跌分布的分档。区间统一是「左开右闭」（-7 < x ≤ -5），首尾是开区间。
+#: 11 档是刻意压到的数量：再多柱子就细到看不清，再少（例如只分 5 档）就看不出
+#: 「大跌家数」和「小跌家数」的区别 —— 而这两者的含义完全不同。
+AD_BUCKETS: tuple[tuple[str, float | None, float | None], ...] = (
+    ("≤-7%", None, -7.0),
+    ("-7~-5%", -7.0, -5.0),
+    ("-5~-3%", -5.0, -3.0),
+    ("-3~-1%", -3.0, -1.0),
+    ("-1~0%", -1.0, 0.0),
+    ("平盘", 0.0, 0.0),
+    ("0~1%", 0.0, 1.0),
+    ("1~3%", 1.0, 3.0),
+    ("3~5%", 3.0, 5.0),
+    ("5~7%", 5.0, 7.0),
+    (">7%", 7.0, None),
+)
+
+
+@router.get("/advance-decline", response_model=AdvanceDeclineOut)
+def advance_decline(
+    trade_date: date | None = Query(None, description="缺省 = 库里最新的个股日线日"),
+    session: Session = Depends(get_db),
+) -> AdvanceDeclineOut:
+    """全 A 涨跌分布：各区间家数 + 平均/中位数涨跌幅。
+
+    只统计**当天有真实涨跌幅**的票（`pct_chg` 非空）：停牌残行是「有收盘价、
+    没涨跌幅」，把它们算进「平盘」会让平盘家数凭空多出几百只。
+    """
+    target = trade_date or session.scalar(
+        select(func.max(StockDaily.trade_date)).where(StockDaily.pct_chg.is_not(None))
+    )
+    if target is None:
+        raise HTTPException(status_code=404, detail="库里还没有个股日线，先跑采集")
+
+    values = [
+        float(value)
+        for value in session.scalars(
+            select(StockDaily.pct_chg).where(
+                StockDaily.trade_date == target, StockDaily.pct_chg.is_not(None)
+            )
+        )
+    ]
+    if not values:
+        raise HTTPException(status_code=404, detail=f"{target} 没有个股涨跌幅")
+
+    counts: list[int] = []
+    for label, lower, upper in AD_BUCKETS:
+        if label == "平盘":
+            counts.append(sum(1 for value in values if value == 0))
+        elif lower is None:
+            counts.append(sum(1 for value in values if value <= upper))
+        elif upper is None:
+            counts.append(sum(1 for value in values if value > lower))
+        else:
+            counts.append(sum(1 for value in values if lower < value <= upper))
+
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    median = (
+        ordered[middle]
+        if len(ordered) % 2
+        else (ordered[middle - 1] + ordered[middle]) / 2
+    )
+    return AdvanceDeclineOut(
+        trade_date=target,
+        total=len(values),
+        up=sum(1 for value in values if value > 0),
+        down=sum(1 for value in values if value < 0),
+        flat=sum(1 for value in values if value == 0),
+        avg_pct=round(sum(values) / len(values), 2),
+        median_pct=round(median, 2),
+        buckets=[
+            AdvanceDeclineBucket(label=label, lower=lower, upper=upper, count=count)
+            for (label, lower, upper), count in zip(AD_BUCKETS, counts, strict=True)
+        ],
+    )

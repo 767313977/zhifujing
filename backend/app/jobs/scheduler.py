@@ -1185,6 +1185,9 @@ class DailyScheduler:
         # ERP 股债性价比：PE 走 iFinD EDB（日常 1 次调用），挂尾部链、
         # 失败只登记（增强读数）；国债走 akshare 零配额
         self._collect_erp(today)
+        # 核心指数估值（PE/PB 近 10 年分位）：走蛋卷公开接口，零 iFinD 配额。
+        # 排在 ERP 之后 —— 两者都读估值，但互不依赖；失败只登记，属增强读数
+        self._collect_valuation(today)
         # 中国波指（QVIX）：走 akshare、零配额；接口一次给全历史，每次全量 upsert
         self._collect_qvix(today)
         self._scan_patterns(today)
@@ -1348,6 +1351,22 @@ class DailyScheduler:
             self._tail_failures.append("erp")
             return
         logger.info("ERP %s：重算写入 %d 天", trade_date, written)
+
+    def _collect_valuation(self, trade_date: date) -> None:
+        """核心指数估值分位（蛋卷，零 iFinD 配额），失败只登记。
+
+        每次整段重拉（8 个指数 × PE/PB），因为来源会回改最近几周的采样值；
+        单个指数失败不影响其它指数（见 `collect_valuation.refresh`）。
+        """
+        from app.jobs.collect_valuation import refresh
+
+        try:
+            written = refresh()
+        except Exception:  # noqa: BLE001 - 估值是增强读数，不该拖垮尾部链
+            logger.exception("指数估值采集失败")
+            self._tail_failures.append("valuation")
+            return
+        logger.info("指数估值 %s：写入 %d 行", trade_date, written)
 
     def _scan_patterns(self, trade_date: date) -> None:
         """全市场形态扫描。

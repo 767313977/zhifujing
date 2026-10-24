@@ -2547,3 +2547,69 @@ class AuctionBoardItem(BaseModel):
 class AuctionBoardsOut(BaseModel):
     trade_date: date
     items: list[AuctionBoardItem]
+
+
+class IndexValuationItem(BaseModel):
+    """一个核心指数的当前估值与近 10 年分位。
+
+    分位是**中位秩**（0 = 历史最低、100 = 历史最高），窗口内约 500 个周频采样点；
+    样本不足 20 个点时给 None（页面显示「—」），不填 0。
+    """
+
+    code: str
+    name: str
+    #: 该指数最后一个采样日（周频，可能比其它指数晚/早几天）
+    as_of: date | None
+    pe_ttm: float | None
+    pe_pct: float | None
+    pb: float | None
+    pb_pct: float | None
+    #: PE 分位对应的温度档：极冷 / 偏冷 / 正常 / 偏热 / 极热
+    tone: str | None
+
+
+class ValuationSummaryOut(BaseModel):
+    """核心指数估值总览。"""
+
+    as_of: date | None
+    #: 分位窗口（自然日）。页面要如实写「近 N 年」，别写成「历史分位」
+    window_days: int
+    #: A 股估值温度 = 各核心指数 PE 分位的中位数（0-100）
+    market_pct: float | None
+    market_tone: str | None
+    items: list[IndexValuationItem]
+
+
+class ValuationPointOut(BaseModel):
+    day: date
+    pe_ttm: float | None
+    pb: float | None
+
+
+class ValuationSeriesOut(BaseModel):
+    code: str
+    name: str
+    window_days: int
+    points: list[ValuationPointOut]
+
+
+class AdvanceDeclineBucket(BaseModel):
+    """涨跌分布的一档。区间按「左开右闭」，与前端柱子的顺序一致。"""
+
+    label: str
+    lower: float | None
+    upper: float | None
+    count: int
+
+
+class AdvanceDeclineOut(BaseModel):
+    """全 A 涨跌分布（按当日涨跌幅分档 + 平均/中位数）。"""
+
+    trade_date: date
+    total: int
+    up: int
+    down: int
+    flat: int
+    avg_pct: float | None
+    median_pct: float | None
+    buckets: list[AdvanceDeclineBucket]
