@@ -50,75 +50,24 @@ const NAV: NavItem[] = [
 ]
 
 /**
- * 顶栏布局档位（2026-10-23 改，修复 16 项导航在 1024–1440 被裁切）：
+ * 顶栏导航：**16 项全部平铺**，放不下就横向滚动。
  *
- * - `wide`（1280–1535）：主项 8 个 + 「更多 ▾」收纳剩下 8 个；
- * - `xwide`（≥1536）：主项 12 个 + 「更多 ▾」收纳剩下 4 个；
- * - `medium`（1024–1279）：顶栏**折两行**（断点仍是下文的 `xl`），导航独占第一行、
- *   约 900px 可用，主项 12 个 + 「更多」放得下；
- * - `mobile`（<1024）：整条导航收进汉堡抽屉，点开可看到**全部** 16 项。
+ * 2026-10-23 曾改成「主项 + 更多 ▾」收纳（理由是 1024–1440 下会被裁切，而滚动条
+ * 被藏起来了）。2026-10-24 用户明确要求「不要压缩，能放得下」—— 他的屏幕放得下，
+ * 宁可在窄屏上横向滚动，也不要多一次点击。所以这里回到全部平铺。
  *
- * 为什么不再「全部平铺 + 横向滚动」：导航已涨到 16 项，实测 1280 下最窄的页面
- * （板块题材，操作区最宽）nav 只剩 585px、内容 924px —— 1280/1366/1440 分别被裁
- * 5/3/2 项，而 `.no-scrollbar` 把滚动条藏了，鼠标用户根本发现不了还能横滑
- * （2026-10-23 前端审计 P1）。改成「主项 + 更多」后：1280 下主项 8 个 456px +
- * 更多按钮约 60px = 516px < nav 可用 525px；1024 下 12 个 684px + 60px < 840px。
- *
- * ⚠️ 往 NAV 里加项后要重新量主项数：它是按**实测宽度**定的（单项 48~60px），
- * 菜单（更多/抽屉）本身对项数自适应、不会裁切。
+ * ⚠️ 不要再加 `.no-scrollbar`：横滑是这项决定的兜底，滚动条必须看得见，
+ * 否则又回到「用户不知道右边还有」的老问题。
  */
-
-type Breakpoint = 'wide' | 'xwide' | 'medium' | 'mobile'
-
-/** 与 Tailwind 断点保持一致：xl=1280、2xl=1536、lg=1024。 */
-const WIDE_QUERY = '(min-width: 1280px)'
-const XWIDE_QUERY = '(min-width: 1536px)'
-const MEDIUM_QUERY = '(min-width: 1024px)'
-
-function currentBreakpoint(): Breakpoint {
-  if (typeof window === 'undefined') return 'wide'
-  if (window.matchMedia(XWIDE_QUERY).matches) return 'xwide'
-  if (window.matchMedia(WIDE_QUERY).matches) return 'wide'
-  if (window.matchMedia(MEDIUM_QUERY).matches) return 'medium'
-  return 'mobile'
-}
-
-/** 监听三个断点。用 matchMedia 而不是 resize 计数：方向键调窗口大小时也准。 */
-function useBreakpoint(): Breakpoint {
-  const [mode, setMode] = useState<Breakpoint>(currentBreakpoint)
-  useEffect(() => {
-    const queries = [WIDE_QUERY, XWIDE_QUERY, MEDIUM_QUERY].map((q) => window.matchMedia(q))
-    const update = () => setMode(currentBreakpoint())
-    // 首次 effect 再同步一次：兜住「模块加载后窗口尺寸立刻变化」
-    update()
-    queries.forEach((q) => q.addEventListener('change', update))
-    return () => queries.forEach((q) => q.removeEventListener('change', update))
-  }, [])
-  return mode
-}
-
-/** 主项平铺几个（其余进「更多」；mobile 不渲染平铺导航）。 */
-function primaryCountOf(mode: Breakpoint): number {
-  if (mode === 'wide') return 8
-  if (mode === 'xwide' || mode === 'medium') return 12
-  return 0
-}
-
-function isItemActive(item: NavItem, pathname: string): boolean {
-  if (item.end) return pathname === item.to
-  return pathname === item.to || pathname.startsWith(`${item.to}/`)
-}
 
 /**
- * 一个导航项（桌面主项与「更多」里的项共用）。下划线贴容器底边 ——
- * 往外溢出会逼出竖向滚动条（2026-09 踩过）。
+ * 一个导航项。下划线贴容器底边 —— 往外溢出会逼出竖向滚动条（2026-09 踩过）。
  */
-function NavEntry({ item, onClick }: { item: NavItem; onClick?: () => void }) {
+function NavEntry({ item }: { item: NavItem }) {
   return (
     <NavLink
       to={item.to}
       end={item.end}
-      onClick={onClick}
       className={({ isActive }) =>
         [
           'relative flex items-center px-3 text-[13px] whitespace-nowrap transition-colors',
@@ -149,42 +98,17 @@ interface LayoutProps {
 export default function Layout({ children, toolbar }: LayoutProps) {
   const { me } = useAuth()
   const location = useLocation()
-  const mode = useBreakpoint()
   // 「数据管理」只给管理员看：那一页能触发采集（烧 iFinD 配额），还会显示邀请码与
   // 会员名单。前端隐藏只是体面，真正的拦截在后端（/api/admin/* 一律 403）。
   const items = me?.is_admin ? NAV : NAV.filter((item) => item.to !== '/settings')
-  const primaryCount = primaryCountOf(mode)
-  const primaryItems = items.slice(0, primaryCount)
-  const overflowItems = items.slice(primaryCount)
-  const overflowActive = overflowItems.some((item) => isItemActive(item, location.pathname))
 
-  const [moreOpen, setMoreOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const moreRef = useRef<HTMLDivElement>(null)
   const drawerFirstLinkRef = useRef<HTMLAnchorElement>(null)
 
-  // 换页即收起菜单（包括点「更多」里的项、用 ← → 切个股）
+  // 换页即收起抽屉（包括点抽屉里的项、用 ← → 切个股）
   useEffect(() => {
-    setMoreOpen(false)
     setDrawerOpen(false)
   }, [location.pathname, location.search])
-
-  // 「更多」：点外面或按 Esc 关掉
-  useEffect(() => {
-    if (!moreOpen) return
-    const onPointerDown = (event: PointerEvent) => {
-      if (moreRef.current && !moreRef.current.contains(event.target as Node)) setMoreOpen(false)
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMoreOpen(false)
-    }
-    document.addEventListener('pointerdown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [moreOpen])
 
   // 手机抽屉：Esc 关闭、锁住背景滚动、打开时焦点进第一个链接
   useEffect(() => {
@@ -206,7 +130,7 @@ export default function Layout({ children, toolbar }: LayoutProps) {
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 border-b border-line bg-ink-950/95 backdrop-blur-sm">
         {/*
-          折行断点是 xl（1280）：以下两行（第一行品牌 + 导航 + 更多，第二行操作区），
+          折行断点是 xl（1280）：以下两行（第一行品牌 + 导航，第二行操作区），
           1280 及以上回到一行。这一条从 2026-09-28 起就是如此，保持不动。
 
           ⚠️ 操作区是顶栏里唯一「内容不可压缩」的一大块（日期下拉 + 账号区），
@@ -226,52 +150,15 @@ export default function Layout({ children, toolbar }: LayoutProps) {
 
           <span className="hidden h-4 w-px shrink-0 bg-line lg:block" />
 
-          {/* 桌面/平板（≥1024）：主项平铺；剩下的进「更多 ▾」 */}
+          {/* 桌面/平板（≥1024）：**全部平铺**；装不下就横向滚动（见上面那段说明） */}
           <nav
             aria-label="主导航"
             className="hidden h-[52px] min-w-0 grow basis-0 items-stretch gap-1 overflow-x-auto overflow-y-hidden lg:flex lg:gap-0"
           >
-            {primaryItems.map((item) => (
+            {items.map((item) => (
               <NavEntry key={item.to} item={item} />
             ))}
           </nav>
-
-          {overflowItems.length > 0 && (
-            <div ref={moreRef} className="relative hidden shrink-0 self-center lg:block">
-              <button
-                type="button"
-                aria-haspopup="menu"
-                aria-expanded={moreOpen}
-                aria-controls="nav-more-menu"
-                onClick={() => setMoreOpen((open) => !open)}
-                className={[
-                  'relative flex h-[52px] items-center gap-1 px-3 text-[13px] transition-colors lg:px-1.5 lg:text-[12px]',
-                  overflowActive ? 'text-accent' : 'text-fg-muted hover:text-fg',
-                ].join(' ')}
-              >
-                更多
-                <span aria-hidden className="text-[9px] leading-none">
-                  ▾
-                </span>
-                {/* 当前路由在「更多」里：与主项一致的贴底下划线，用户能看出「这页在这」 */}
-                {overflowActive && (
-                  <span className="absolute inset-x-2 bottom-0 h-[2px] bg-accent" aria-hidden />
-                )}
-              </button>
-              {moreOpen && (
-                <div
-                  id="nav-more-menu"
-                  role="menu"
-                  aria-label="更多导航"
-                  className="absolute top-full right-0 z-30 mt-1 grid w-[220px] grid-cols-1 gap-0.5 border border-line bg-ink-950 p-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.18)]"
-                >
-                  {overflowItems.map((item) => (
-                    <NavEntry key={item.to} item={item} onClick={() => setMoreOpen(false)} />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* <1024：整条导航收进抽屉（汉堡）。放第一行右端，操作区仍占第二行 */}
           <button
