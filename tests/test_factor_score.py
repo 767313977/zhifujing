@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models import Base, LimitPool, StockBasic, StockDaily, TradeCalendar
+from app.models import Base, LimitPool, RpsDaily, StockBasic, StockDaily, TradeCalendar
 from app.services import factor_score, pools
 
 START = date(2026, 9, 1)
@@ -108,3 +108,36 @@ def test_first_board_order_by_factor(session):
     assert by_factor.conditions["order"] == "factor"
     assert [row.code for row in by_factor.rows] == ["000003", "000001"]
     assert by_factor.rows[0].factor_score > by_factor.rows[1].factor_score
+
+
+def test_rps_board_factor_picks_from_whole_pool(session):
+    """RPS 榜的 `order="factor"` 是**从全池挑**，不是「强度前 N 里重排」。"""
+    session.add_all(TradeCalendar(trade_date=day) for day in DAYS)
+    # 000001：RPS250 最高（强度榜第一），但涨 + 振幅大 + 成交额小 → 因子分最低
+    _seed(session, "000001", pct=1.0, amplitude=0.03, amount_yi=1)
+    # 000003：强度只排第二，但跌 + 振幅小 + 成交额大 → 因子分最高
+    _seed(session, "000003", pct=-1.0, amplitude=0.01, amount_yi=100)
+    for code, rps250 in (("000001", 100.0), ("000003", 91.0)):
+        session.add(StockBasic(code=code, name=code))
+        session.add(
+            RpsDaily(
+                trade_date=DAY,
+                code=code,
+                ret50=20.0,
+                ret120=40.0,
+                ret250=60.0,
+                rps50=95.0,
+                rps120=95.0,
+                rps250=rps250,
+            )
+        )
+    session.commit()
+
+    by_strength = pools.rps_board(session, limit=1, mode="all", order="strength")
+    assert [row.code for row in by_strength.rows] == ["000001"]
+    assert by_strength.rows[0].factor_score is None  # 默认不算因子分
+
+    by_factor = pools.rps_board(session, limit=1, mode="all", order="factor")
+    assert [row.code for row in by_factor.rows] == ["000003"]
+    # 反转 100 × 0.30 + 振幅 100 × 0.40；成交额 100 亿让 illiq20 排最后（0 分位）
+    assert by_factor.rows[0].factor_score == pytest.approx(70.0)

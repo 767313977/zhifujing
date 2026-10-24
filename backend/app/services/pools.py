@@ -121,12 +121,14 @@ def rps_board(
     `breakout_only`：只留当天命中了 `BREAKOUT_KEYS` 里任一形态的票；
     `trend_template`：只留满足 Minervini 趋势模板的票（判据与回测共用 `services.trend`）。
 
-    `order="factor"`（2026-10-24 加）：先在 `mode` 下取前 `limit` 只，**再在这批里**
-    按量价因子分重排 —— 不改变入选集合，只改顺序（全市场按因子重排要读 5000 只的
-    20 日窗口，不划算；而且榜单的语义本来就是「最强的一批里怎么排」）。
+    `order="factor"`（2026-10-24 改）：先在 `mode` 下筛出**全部**候选，按量价因子分
+    排序，再取前 `limit` 只 —— 选出来的票和「强度前 N」不同，验证面板里两档才看得出
+    差异。代价是每次要算全池（约 5000 只）的 20 日窗口：单日约 0.7s，`rps_track`
+    20 天首次约 15s（接口有 10 分钟缓存）。
 
     ⚠️ 两个开关都是在**排序之后**按序评估最多 `_FILTER_SCAN_CAP` 只 —— 榜单是
     「最强的一批」，翻到第 300 名之后还满足突破 / 趋势的票本来也不该按强度混进来。
+    （`order="factor"` 时不受这个上限约束：它本来就要看全池才能挑出「因子分最高」的。）
     """
     target = trade_date or _latest_rps_day(session)
     if target is None:
@@ -182,7 +184,15 @@ def rps_board(
     else:
         raise ValueError(f"未知的 RPS 模式：{mode}")
 
-    cap = max(limit * 3, _FILTER_SCAN_CAP) if (breakout_only or trend_template) else limit
+    # `order="factor"` 要全池才能挑出「因子分最高」的票；其余情况按 limit 截断。
+    if order == "factor":
+        cap = None
+    else:
+        cap = (
+            max(limit * 3, _FILTER_SCAN_CAP)
+            if (breakout_only or trend_template)
+            else limit
+        )
     records = session.execute(statement.limit(cap)).all()
     if not records:
         return RpsBoard(trade_date=target, rows=[])
@@ -224,11 +234,14 @@ def rps_board(
                 industry=industry.split("-")[-1] if industry else None,
             )
         )
-        if len(rows) >= limit and not trend_template:
+        if len(rows) >= limit and not trend_template and order != "factor":
             break
 
     if trend_template:
-        rows = _filter_trend(session, target, rows)[:limit]
+        rows = _filter_trend(session, target, rows)
+        # 因子档是「全池排序后再截前 limit」，这里不能提前截断
+        if order != "factor":
+            rows = rows[:limit]
 
     if order == "factor" and rows:
         computed = factor_scores.scores(session, [row.code for row in rows], target)
@@ -240,6 +253,7 @@ def rps_board(
             for row in rows
         ]
         rows.sort(key=lambda item: (-(item.factor_score or 0.0), item.code))
+        rows = rows[:limit]
 
     if rows:
         off_high = _off_high_pct(session, target, [row.code for row in rows])

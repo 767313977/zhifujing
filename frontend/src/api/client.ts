@@ -912,7 +912,12 @@ export const api = {
       trend_template: String(params.trendTemplate ?? false),
       order: params.order ?? 'strength',
     })
-    return request<RpsTrack>(`/pools/rps/track?${query.toString()}`)
+    // `order=factor` 要算近 20 天全池的因子分（首次十几秒），用长超时
+    return request<RpsTrack>(
+      `/pools/rps/track?${query.toString()}`,
+      undefined,
+      LONG_TIMEOUT_MS,
+    )
   },
 
   /** 板块强度榜（板块指数口径；`taxonomy` 两个口径不可混比） */
