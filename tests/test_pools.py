@@ -154,3 +154,47 @@ def test_rps_board_joins_latest_and_filters(session):
 
     # 不过滤时按 250 日分位降序
     assert [row.code for row in pools.rps_board(session).rows] == ["000001", "000002"]
+
+
+def _rps_row(session, code: str, rps120, rps250) -> None:
+    session.add(
+        StockDaily(trade_date=DAY, code=code, close=10.0, pct_chg=1.0, name=code)
+    )
+    session.add(
+        RpsDaily(
+            trade_date=DAY,
+            code=code,
+            ret120=10.0,
+            ret250=20.0,
+            rps120=rps120,
+            rps250=rps250,
+        )
+    )
+
+
+def test_rps_board_requires_both_windows(session):
+    """选股池-1：`min_rps` 必须同时卡 120 / 250 两档，不能只看 RPS250。
+
+    10-23 的实况：RPS250 99 但 RPS120 只有 24 的票混进了「RPS ≥90」榜。
+    """
+    _rps_row(session, "000001", 95.0, 95.0)
+    _rps_row(session, "000002", 50.0, 99.0)  # 只有 250 高
+    _rps_row(session, "000003", 95.0, 50.0)  # 只有 120 高
+    session.commit()
+
+    assert [row.code for row in pools.rps_board(session, min_rps=90).rows] == ["000001"]
+    assert sorted(row.code for row in pools.rps_board(session, min_rps=0).rows) == [
+        "000001",
+        "000002",
+        "000003",
+    ]
+
+
+def test_rps_board_skips_missing_rps120(session):
+    """rps120 为 None（窗口内交易日不足）的不进榜 —— 「≥0」也谈不上。"""
+    _rps_row(session, "000001", 95.0, 95.0)
+    _rps_row(session, "000002", None, 99.0)
+    session.commit()
+
+    assert [row.code for row in pools.rps_board(session).rows] == ["000001"]
+

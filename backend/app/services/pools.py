@@ -54,7 +54,13 @@ def rps_board(
     min_rps: float = 0,
     limit: int = 100,
 ) -> RpsBoard:
-    """RPS 榜：按 250 日分位降序。`min_rps` 同时作用在两档分位上（取较严的那个）。"""
+    """RPS 榜：按 250 日分位降序。`min_rps` 同时作用在 120 / 250 **两档**分位上。
+
+    2026-10-24 修：原来只卡了 `rps250`，页面选「RPS ≥90」时 RPS120 只有 36、24 的票
+    照样出现（10-23 的金富科技、南网数字）—— 与函数说明 / 接口参数说明都对不上。
+    两档都要求有值：`rps120` 为 None 的（窗口内交易日不足，常见于长期停牌刚复牌）
+    连「≥0」都谈不上，不放进榜里。
+    """
     target = trade_date or session.scalar(select(func.max(RpsDaily.trade_date)))
     if target is None:
         return RpsBoard(trade_date=None, rows=[])
@@ -79,6 +85,8 @@ def rps_board(
             RpsDaily.trade_date == target,
             RpsDaily.rps250.is_not(None),
             RpsDaily.rps250 >= min_rps,
+            RpsDaily.rps120.is_not(None),
+            RpsDaily.rps120 >= min_rps,
         )
         .order_by(RpsDaily.rps250.desc())
         .limit(limit)
