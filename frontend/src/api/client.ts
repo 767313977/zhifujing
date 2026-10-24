@@ -57,6 +57,8 @@ import type {
   RpsBoard,
   RpsTrack,
   SectorCompare,
+  SectorRpsBoard,
+  SectorTrack,
   SectorFundFlowOut,
   SectorHeat,
   SectorMembers,
@@ -905,6 +907,22 @@ export const api = {
     })
     return request<RpsTrack>(`/pools/rps/track?${query.toString()}`)
   },
+
+  /** 板块强度榜（板块指数口径；`taxonomy` 两个口径不可混比） */
+  sectorRps: (taxonomy: 'kph_selected' | 'kph_industry', limit = 30) =>
+    request<SectorRpsBoard>(
+      `/pools/sector-rps?taxonomy=${taxonomy}&limit=${limit}`,
+    ),
+
+  /** 板块动量延续性：最强 top 个板块之后 5 / 20 日的表现与超额 */
+  sectorRpsTrack: (
+    taxonomy: 'kph_selected' | 'kph_industry',
+    top = 5,
+    days = 20,
+  ) =>
+    request<SectorTrack>(
+      `/pools/sector-rps/track?taxonomy=${taxonomy}&top=${top}&days=${days}`,
+    ),
 
   /**
    * RPS 相对强度榜（盘后）。

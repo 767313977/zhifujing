@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { FirstBoardBoard, FirstBoardTrack, RpsBoard, RpsTrack } from '../api/types'
+import type {
+  FirstBoardBoard,
+  FirstBoardTrack,
+  RpsBoard,
+  RpsTrack,
+  SectorRpsBoard,
+  SectorTrack,
+} from '../api/types'
 import Layout from '../components/Layout'
 import LoadState from '../components/LoadState'
 import Panel from '../components/Panel'
@@ -64,6 +71,12 @@ const TREND_ITEMS = [
   { key: '1', label: '趋势模板' },
 ]
 
+/** 板块口径：精选板块（短线）与行业（宽基）**不可混比**。 */
+const TAXONOMY_ITEMS = [
+  { key: 'kph_selected', label: '精选板块' },
+  { key: 'kph_industry', label: '行业' },
+]
+
 /** RPS 分位的颜色：只有两档极端才染色，中间一律中性（避免满屏红绿）。 */
 function rpsTone(value: number | null): string {
   if (value == null) return 'text-fg-muted'
@@ -91,6 +104,10 @@ export default function Pools() {
   const [fbTrackOpen, setFbTrackOpen] = useState(false)
   const [rpsTrack, setRpsTrack] = useState<RpsTrack | null>(null)
   const [rpsTrackOpen, setRpsTrackOpen] = useState(false)
+  const [taxonomy, setTaxonomy] = useState('kph_selected')
+  const [sectorBoard, setSectorBoard] = useState<SectorRpsBoard | null>(null)
+  const [sectorTrack, setSectorTrack] = useState<SectorTrack | null>(null)
+  const [sectorError, setSectorError] = useState<string | null>(null)
 
   useEffect(() => {
     let stale = false
@@ -186,6 +203,33 @@ export default function Pools() {
       stale = true
     }
   }, [rpsMode, onlyBreakout, onlyTrend])
+
+  useEffect(() => {
+    let stale = false
+    setSectorBoard(null)
+    setSectorTrack(null)
+    setSectorError(null)
+    const kind = taxonomy as 'kph_selected' | 'kph_industry'
+    api
+      .sectorRps(kind, 30)
+      .then((value) => {
+        if (!stale) setSectorBoard(value)
+      })
+      .catch((err: Error) => {
+        if (!stale) setSectorError(err.message)
+      })
+    api
+      .sectorRpsTrack(kind, 5, 20)
+      .then((value) => {
+        if (!stale) setSectorTrack(value)
+      })
+      .catch(() => {
+        if (!stale) setSectorTrack(null)
+      })
+    return () => {
+      stale = true
+    }
+  }, [taxonomy])
 
   const tradeDate = firstBoard?.trade_date ?? rps?.trade_date ?? null
 
@@ -551,8 +595,76 @@ export default function Pools() {
           )}
         </Panel>
 
+        <Panel
+          title="板块 RPS（20 日强度分位）"
+          meta={
+            <span className="flex items-center gap-3">
+              <Segmented value={taxonomy} items={TAXONOMY_ITEMS} onChange={setTaxonomy} />
+              <span className="num">{sectorBoard?.trade_date ?? '—'}</span>
+            </span>
+          }
+          delay={80}
+        >
+          <p className="border-b border-line-soft px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
+            板块指数自身涨幅的横截面分位（0~100）。只用板块日线算，不拼成分 ——
+            `sector_member` 只有当天快照，拿它回看历史是前视偏差。两个口径不能混比。
+          </p>
+          {sectorTrack && (
+            <div className="border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+              <span className="num">
+                近 {sectorTrack.verified_days} 日最强 {sectorTrack.top} 个板块：5 日{' '}
+                {fmtPct(sectorTrack.ret5.mean)}（超额 {fmtPct(sectorTrack.ret5.excess)}）
+                {' · '}20 日 {fmtPct(sectorTrack.ret20.mean)}（超额{' '}
+                {fmtPct(sectorTrack.ret20.excess)}）
+              </span>
+              <span className="ml-2">收益是板块指数口径，不是个股</span>
+            </div>
+          )}
+          {sectorError ? (
+            <LoadState loading={false} error={sectorError} />
+          ) : sectorBoard === null ? (
+            <LoadState loading emptyText="加载中" />
+          ) : sectorBoard.rows.length === 0 ? (
+            <LoadState loading={false} emptyText="还没有板块日线数据" />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="grid-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th className="!text-left">板块</th>
+                    <th>RPS20</th>
+                    <th>20 日</th>
+                    <th>RPS5</th>
+                    <th>5 日</th>
+                    <th>成分</th>
+                    <th className="!text-left">龙一</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sectorBoard.rows.map((row, index) => (
+                    <tr key={row.code}>
+                      <td className="num text-fg-dim">{index + 1}</td>
+                      <td className="!text-left">
+                        <span className="text-fg">{row.name ?? row.code}</span>
+                        <span className="num ml-2 text-[12px] text-fg-dim">{row.code}</span>
+                      </td>
+                      <td className={`num ${rpsTone(row.rps20)}`}>{fmtNum(row.rps20, 1)}</td>
+                      <td className={`num ${toneOf(row.ret20)}`}>{fmtPct(row.ret20)}</td>
+                      <td className={`num ${rpsTone(row.rps5)}`}>{fmtNum(row.rps5, 1)}</td>
+                      <td className={`num ${toneOf(row.ret5)}`}>{fmtPct(row.ret5)}</td>
+                      <td className="num">{row.member_count ?? '—'}</td>
+                      <td className="!text-left text-fg-muted">{row.leader_name ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+
         <p className="px-1 text-[12px] leading-relaxed text-fg-dim">
-          两块都是盘后候选池，不是买卖建议：本站没有盘中数据，打板要看次日承接。
+          三块都是盘后读数，不是买卖建议：本站没有盘中数据，打板要看次日承接。
           阈值（首封时间、市值、题材家数）只是起手参数 —— 改参数看上面那行「近 20 日」
           的样本 / 晋级率 / 开盘溢价怎么变，比凭感觉定阈值靠谱。
         </p>

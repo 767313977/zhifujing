@@ -2392,3 +2392,51 @@ export interface RpsTrack {
   ret5: RpsTrackStat
   rows: RpsTrackDay[]
 }
+
+/** 板块强度榜的一行（板块指数口径，不是个股平均）。 */
+export interface SectorRpsRow {
+  code: string
+  name: string | null
+  ret5: number | null
+  ret20: number | null
+  rps5: number | null
+  rps20: number | null
+  member_count: number | null
+  leader_name: string | null
+  leader_pct_chg: number | null
+  net_inflow: number | null
+}
+
+export interface SectorRpsBoard {
+  trade_date: string | null
+  /** kph_selected 精选板块 / kph_industry 行业，两个口径不可混比 */
+  taxonomy: string
+  rows: SectorRpsRow[]
+}
+
+export interface SectorTrackDay {
+  trade_date: string
+  accepted: number
+  ret5: number | null
+  excess5: number | null
+  ret20: number | null
+  excess20: number | null
+  status: 'ok' | 'pending'
+}
+
+export interface SectorTrackStat {
+  samples: number
+  mean: number | null
+  excess: number | null
+}
+
+export interface SectorTrack {
+  trade_date: string | null
+  days: number
+  verified_days: number
+  top: number
+  ret5: SectorTrackStat
+  ret20: SectorTrackStat
+  rows: SectorTrackDay[]
+}
+

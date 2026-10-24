@@ -2726,3 +2726,54 @@ class RpsTrackOut(BaseModel):
     ret5: RpsTrackStatOut
     rows: list[RpsTrackDayOut]
 
+
+class SectorRpsRowOut(BaseModel):
+    """板块强度榜的一行。涨幅与分位都是**板块指数**口径（不是个股平均）。"""
+
+    code: str
+    name: str | None
+    ret5: float | None
+    ret20: float | None
+    rps5: float | None
+    rps20: float | None
+    member_count: int | None
+    leader_name: str | None
+    leader_pct_chg: float | None
+    net_inflow: float | None
+
+
+class SectorRpsOut(BaseModel):
+    trade_date: date | None
+    #: `kph_selected` 精选板块 / `kph_industry` 行业，**两个口径不可混比**
+    taxonomy: str
+    rows: list[SectorRpsRowOut]
+
+
+class SectorTrackDayOut(BaseModel):
+    trade_date: date
+    accepted: int
+    ret5: float | None
+    excess5: float | None
+    ret20: float | None
+    excess20: float | None
+    status: str
+
+
+class SectorTrackStatOut(BaseModel):
+    samples: int
+    mean: float | None
+    excess: float | None
+
+
+class SectorTrackOut(BaseModel):
+    """板块动量延续性：买 RPS 最高的几个板块 vs 全部板块平均。"""
+
+    trade_date: date | None
+    days: int
+    verified_days: int
+    top: int
+    ret5: SectorTrackStatOut
+    ret20: SectorTrackStatOut
+    rows: list[SectorTrackDayOut]
+
+

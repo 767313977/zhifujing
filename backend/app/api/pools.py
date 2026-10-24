@@ -19,7 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import LimitPool, RpsDaily
+from app.models import LimitPool, RpsDaily, SectorDaily
 from app.schemas import (
     FirstBoardOut,
     FirstBoardRowOut,
@@ -31,8 +31,13 @@ from app.schemas import (
     RpsTrackDayOut,
     RpsTrackOut,
     RpsTrackStatOut,
+    SectorRpsOut,
+    SectorRpsRowOut,
+    SectorTrackDayOut,
+    SectorTrackOut,
+    SectorTrackStatOut,
 )
-from app.services import pools
+from app.services import pools, sector_rps as sector_rps_service
 
 router = APIRouter(prefix="/api/pools", tags=["选股池"])
 
@@ -184,6 +189,71 @@ def first_board_track(
         conditions=track.conditions,
         days=[FirstBoardTrackDayOut(**asdict(row)) for row in track.days],
         **track.summary,
+    )
+
+
+@router.get("/sector-rps", response_model=SectorRpsOut)
+def sector_rps(
+    trade_date: date | None = Query(None, alias="date", description="缺省 = 库里最新板块日"),
+    taxonomy: str = Query(
+        "kph_selected",
+        pattern="^(kph_selected|kph_industry)$",
+        description="精选板块 / 行业，两个口径不可混比",
+    ),
+    limit: int = Query(30, ge=1, le=200),
+    session: Session = Depends(get_db),
+) -> SectorRpsOut:
+    """板块强度榜：按 20 日板块涨幅的横截面分位降序。
+
+    数据源是 `sector_daily.pct_chg`（板块指数当日涨跌），**不自己拼成分** ——
+    `sector_member` 只有当天快照，拿它回看历史会有前视偏差。
+    """
+    board_result = sector_rps_service.board(
+        session, trade_date=trade_date, taxonomy=taxonomy, limit=limit
+    )
+    if board_result.trade_date is None:
+        raise HTTPException(status_code=404, detail="还没有板块日线数据")
+    return SectorRpsOut(
+        trade_date=board_result.trade_date,
+        taxonomy=board_result.taxonomy,
+        rows=[SectorRpsRowOut(**asdict(row)) for row in board_result.rows],
+    )
+
+
+@router.get("/sector-rps/track", response_model=SectorTrackOut)
+def sector_rps_track(
+    top: int = Query(5, ge=1, le=30, description="每天取 RPS 最高的几个板块"),
+    days: int = Query(20, ge=5, le=60, description="回看多少个有板块数据的交易日"),
+    taxonomy: str = Query(
+        "kph_selected",
+        pattern="^(kph_selected|kph_industry)$",
+        description="精选板块 / 行业",
+    ),
+    session: Session = Depends(get_db),
+) -> SectorTrackOut:
+    """板块动量的延续性：最强 `top` 个板块在之后 5 / 20 日的表现与超额。
+
+    ⚠️ 收益是**板块指数**的收益（成分当日生效），不是个股；不能当成「买板块里的票
+    能赚这么多」。
+    """
+    latest = session.scalar(
+        select(func.max(SectorDaily.trade_date)).where(SectorDaily.taxonomy == taxonomy)
+    )
+    if latest is None:
+        raise HTTPException(status_code=404, detail="还没有板块日线数据")
+    key = ("sector", latest, days, top, taxonomy)
+    track = _cached(
+        key,
+        lambda: sector_rps_service.track(session, days=days, top=top, taxonomy=taxonomy),
+    )
+    return SectorTrackOut(
+        trade_date=track.trade_date,
+        days=track.summary["days"],
+        verified_days=track.summary["verified_days"],
+        top=track.summary["top"],
+        ret5=SectorTrackStatOut(**track.summary["ret5"]),
+        ret20=SectorTrackStatOut(**track.summary["ret20"]),
+        rows=[SectorTrackDayOut(**asdict(row)) for row in track.days],
     )
 
 
