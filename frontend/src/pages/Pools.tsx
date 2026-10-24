@@ -77,6 +77,17 @@ const TAXONOMY_ITEMS = [
   { key: 'kph_industry', label: '行业' },
 ]
 
+/** 首板排序：综合分是「题材/封单/首封」，因子分是「反转/低流动/低波动」。 */
+const FB_ORDER_ITEMS = [
+  { key: 'board', label: '板块综合分' },
+  { key: 'factor', label: '量价因子分' },
+]
+
+const RPS_ORDER_ITEMS = [
+  { key: 'strength', label: '强度排序' },
+  { key: 'factor', label: '因子分排序' },
+]
+
 /** RPS 分位的颜色：只有两档极端才染色，中间一律中性（避免满屏红绿）。 */
 function rpsTone(value: number | null): string {
   if (value == null) return 'text-fg-muted'
@@ -91,9 +102,11 @@ export default function Pools() {
   const [themes, setThemes] = useState('3')
   const [seal, setSeal] = useState('0')
   const [trueFirst, setTrueFirst] = useState('0')
+  const [fbOrder, setFbOrder] = useState('board')
   const [rpsMode, setRpsMode] = useState('all')
   const [onlyBreakout, setOnlyBreakout] = useState('0')
   const [onlyTrend, setOnlyTrend] = useState('0')
+  const [rpsOrder, setRpsOrder] = useState('strength')
 
   const [firstBoard, setFirstBoard] = useState<FirstBoardBoard | null>(null)
   const [firstBoardError, setFirstBoardError] = useState<string | null>(null)
@@ -122,6 +135,7 @@ export default function Pools() {
         minThemes: Number(themes),
         minSealRatio: Number(seal),
         onlyTrueFirstBoard: trueFirst === '1',
+        order: fbOrder as 'board' | 'factor',
       })
       .then((value) => {
         if (!stale) setFirstBoard(value)
@@ -132,7 +146,7 @@ export default function Pools() {
     return () => {
       stale = true
     }
-  }, [before, cap, themes, seal, trueFirst])
+  }, [before, cap, themes, seal, trueFirst, fbOrder])
 
   useEffect(() => {
     let stale = false
@@ -144,6 +158,7 @@ export default function Pools() {
         limit: 100,
         breakoutOnly: onlyBreakout === '1',
         trendTemplate: onlyTrend === '1',
+        order: rpsOrder as 'strength' | 'factor',
       })
       .then((value) => {
         if (!stale) setRps(value)
@@ -154,7 +169,7 @@ export default function Pools() {
     return () => {
       stale = true
     }
-  }, [rpsMode, onlyBreakout, onlyTrend])
+  }, [rpsMode, onlyBreakout, onlyTrend, rpsOrder])
 
   useEffect(() => {
     let stale = false
@@ -192,6 +207,7 @@ export default function Pools() {
         days: 20,
         breakoutOnly: onlyBreakout === '1',
         trendTemplate: onlyTrend === '1',
+        order: rpsOrder as 'strength' | 'factor',
       })
       .then((value) => {
         if (!stale) setRpsTrack(value)
@@ -202,7 +218,7 @@ export default function Pools() {
     return () => {
       stale = true
     }
-  }, [rpsMode, onlyBreakout, onlyTrend])
+  }, [rpsMode, onlyBreakout, onlyTrend, rpsOrder])
 
   useEffect(() => {
     let stale = false
@@ -274,6 +290,10 @@ export default function Pools() {
             </span>
             <span className="flex items-center gap-2">
               <Segmented value={trueFirst} items={TRUE_FIRST_ITEMS} onChange={setTrueFirst} />
+            </span>
+            <span className="flex items-center gap-2">
+              排序
+              <Segmented value={fbOrder} items={FB_ORDER_ITEMS} onChange={setFbOrder} />
             </span>
             <span>成交额 ≥3 亿 · 已剔除 ST 与北交所</span>
           </div>
@@ -363,6 +383,7 @@ export default function Pools() {
                     <th>成交额</th>
                     <th>换手</th>
                     <th>近10日涨停</th>
+                    {fbOrder === 'factor' && <th>因子分</th>}
                     <th className="!text-left">题材（当日涨停家数 / 题材内首封排名）</th>
                     <th className="!text-left">行业</th>
                   </tr>
@@ -396,6 +417,9 @@ export default function Pools() {
                       <td className={`num ${row.recent_limit_ups ? 'text-fg-muted' : ''}`}>
                         {row.recent_limit_ups || '—'}
                       </td>
+                      {fbOrder === 'factor' && (
+                        <td className="num">{fmtNum(row.factor_score, 1)}</td>
+                      )}
                       <td
                         className="!text-left"
                         title={
@@ -450,6 +474,10 @@ export default function Pools() {
             </span>
             <span className="flex items-center gap-2">
               <Segmented value={onlyTrend} items={TREND_ITEMS} onChange={setOnlyTrend} />
+            </span>
+            <span className="flex items-center gap-2">
+              排序
+              <Segmented value={rpsOrder} items={RPS_ORDER_ITEMS} onChange={setRpsOrder} />
             </span>
             {rps && rps.industry_top.length > 0 && (
               <span className="num">
@@ -541,6 +569,7 @@ export default function Pools() {
                     <th>RPS250</th>
                     <th>250 日</th>
                     <th>距新高</th>
+                    {rpsOrder === 'factor' && <th>因子分</th>}
                     <th className="!text-left">今日形态 / 标签</th>
                     <th className="!text-left">行业</th>
                   </tr>
@@ -566,6 +595,9 @@ export default function Pools() {
                       <td className={`num ${toneOf(row.off_high_pct)}`}>
                         {fmtPct(row.off_high_pct)}
                       </td>
+                      {rpsOrder === 'factor' && (
+                        <td className="num">{fmtNum(row.factor_score, 1)}</td>
+                      )}
                       <td className="!text-left">
                         {row.hits.length > 0 && (
                           <span className="mr-2 rounded border border-line-soft px-1 text-[11px] text-fg">

@@ -27,7 +27,7 @@ from app.models import (
     StockDaily,
     TradeCalendar,
 )
-from app.services import pattern_track, trend
+from app.services import factor_score as factor_scores, pattern_track, rps, trend
 from app.services.patterns import PATTERNS, Bars, build_bars, is_st, usable_bar
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,8 @@ class RpsRow:
     off_high_pct: float | None = None
     #: 行业末段（`StockBasic.industry` 按 `-` 拆的最后一段）
     industry: str | None = None
+    #: 量价因子分（0~100，仅 `order="factor"` 时计算）
+    factor_score: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +104,7 @@ def rps_board(
     mode: str = "all",
     breakout_only: bool = False,
     trend_template: bool = False,
+    order: str = "strength",
 ) -> RpsBoard:
     """RPS 榜。
 
@@ -117,6 +120,10 @@ def rps_board(
 
     `breakout_only`：只留当天命中了 `BREAKOUT_KEYS` 里任一形态的票；
     `trend_template`：只留满足 Minervini 趋势模板的票（判据与回测共用 `services.trend`）。
+
+    `order="factor"`（2026-10-24 加）：先在 `mode` 下取前 `limit` 只，**再在这批里**
+    按量价因子分重排 —— 不改变入选集合，只改顺序（全市场按因子重排要读 5000 只的
+    20 日窗口，不划算；而且榜单的语义本来就是「最强的一批里怎么排」）。
 
     ⚠️ 两个开关都是在**排序之后**按序评估最多 `_FILTER_SCAN_CAP` 只 —— 榜单是
     「最强的一批」，翻到第 300 名之后还满足突破 / 趋势的票本来也不该按强度混进来。
@@ -222,6 +229,17 @@ def rps_board(
 
     if trend_template:
         rows = _filter_trend(session, target, rows)[:limit]
+
+    if order == "factor" and rows:
+        computed = factor_scores.scores(session, [row.code for row in rows], target)
+        rows = [
+            replace(
+                row,
+                factor_score=computed[row.code].score if row.code in computed else None,
+            )
+            for row in rows
+        ]
+        rows.sort(key=lambda item: (-(item.factor_score or 0.0), item.code))
 
     if rows:
         off_high = _off_high_pct(session, target, [row.code for row in rows])
@@ -434,6 +452,8 @@ class FirstBoardRow:
     theme2_count: int = 0
     #: 综合排序分（0~100）：题材家数 / 封单比 / 首封时间的**当日候选内分位**加权
     score: float = 0.0
+    #: 量价因子分（0~100，仅 `order="factor"` 时计算）：rev20 / illiq20 / amp20 的池内分位加权
+    factor_score: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -472,19 +492,6 @@ def _board_shape(
     return None
 
 
-def _percentiles(values: list[float]) -> list[float]:
-    """同一批数值在该批里的百分位（0~100，最大 = 100）。并列取同一档。"""
-    if not values:
-        return []
-    if len(values) == 1:
-        return [100.0]
-    order = sorted(range(len(values)), key=lambda index: values[index])
-    percent = [0.0] * len(values)
-    for rank, index in enumerate(order):
-        percent[index] = rank / (len(values) - 1) * 100
-    return percent
-
-
 def first_board(
     session: Session,
     trade_date: date | None = None,
@@ -495,6 +502,7 @@ def first_board(
     min_themes: int = 3,
     min_seal_ratio: float = 0,
     only_true_first_board: bool = False,
+    order: str = "board",
     limit: int = 50,
 ) -> FirstBoardBoard:
     """首板一进二候选。
@@ -684,9 +692,9 @@ def first_board(
 
     # 综合分：三个**当日候选内**分位加权（理由见函数说明）。
     # 首封时间越早越好 → 取负号再算分位；封单比缺值按 0 算（等于排在最后）。
-    theme_pct = _percentiles([float(item.theme_count) for item in picked])
-    seal_pct = _percentiles([item.seal_ratio or 0.0 for item in picked])
-    time_pct = _percentiles([-float(item.first_seal_time or "235959") for item in picked])
+    theme_pct = rps.percentiles([float(item.theme_count) for item in picked])
+    seal_pct = rps.percentiles([item.seal_ratio or 0.0 for item in picked])
+    time_pct = rps.percentiles([-float(item.first_seal_time or "235959") for item in picked])
     scored = [
         replace(
             item,
@@ -700,6 +708,17 @@ def first_board(
         for index, item in enumerate(picked)
     ]
     scored.sort(key=lambda item: (-item.score, -(item.seal_ratio or 0), item.code))
+
+    # 因子排序（2026-10-24 加）：**不改变入选集合，只改顺序** ——
+    # 三个量价因子在「今天这批候选」里各算分位再加权（见 `factor_score`）。
+    if order == "factor":
+        computed = factor_scores.scores(session, [row.code for row in scored], target)
+        scored = [
+            replace(row, factor_score=computed[row.code].score if row.code in computed else None)
+            for row in scored
+        ]
+        scored.sort(key=lambda item: (-(item.factor_score or 0.0), -(item.score or 0.0)))
+
     return FirstBoardBoard(
         trade_date=target,
         conditions={
@@ -710,6 +729,7 @@ def first_board(
             "min_themes": min_themes,
             "min_seal_ratio": min_seal_ratio,
             "only_true_first_board": only_true_first_board,
+            "order": order,
         },
         rows=scored[:limit],
     )
@@ -1009,6 +1029,7 @@ def rps_track(
     mode: str = "all",
     breakout_only: bool = False,
     trend_template: bool = False,
+    order: str = "strength",
 ) -> RpsTrack:
     """近 `days` 个**有 RPS 记录**的交易日，榜单前 `top` 只的 1 / 5 日表现。
 
@@ -1039,6 +1060,7 @@ def rps_track(
             mode=mode,
             breakout_only=breakout_only,
             trend_template=trend_template,
+            order=order,
         )
         if board.rows:
             picks[day] = [

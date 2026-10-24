@@ -2600,6 +2600,8 @@ class RpsRowOut(BaseModel):
     off_high_pct: float | None = None
     #: 行业末段
     industry: str | None = None
+    #: 量价因子分（0~100，仅 `order=factor` 时计算）
+    factor_score: float | None = None
 
 
 class IndustryCountOut(BaseModel):
@@ -2649,6 +2651,8 @@ class FirstBoardRowOut(BaseModel):
     theme2_count: int
     #: 综合排序分（0~100）＝题材家数 / 封单比 / 首封早晚的当日候选内分位加权
     score: float
+    #: 量价因子分（0~100，仅 `order=factor` 时计算）：rev20 / illiq20 / amp20 的池内分位加权
+    factor_score: float | None = None
 
 
 class FirstBoardOut(BaseModel):

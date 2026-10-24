@@ -76,6 +76,11 @@ def rps(
     mode: str = Query("all", pattern="^(dual|line_red|all)$", description="档位：全部 / 双高 / 一线红"),
     breakout_only: bool = Query(False, description="只留当天命中突破类形态的票"),
     trend_template: bool = Query(False, description="只留满足 Minervini 趋势模板的票"),
+    order: str = Query(
+        "strength",
+        pattern="^(strength|factor)$",
+        description="排序：strength = 按档位原口径；factor = 在这批里按量价因子分重排",
+    ),
     session: Session = Depends(get_db),
 ) -> RpsOut:
     """RPS 榜（默认按 RPS250 排；`dual` 只在近一年有效，见函数说明）。"""
@@ -87,6 +92,7 @@ def rps(
         mode=mode,
         breakout_only=breakout_only,
         trend_template=trend_template,
+        order=order,
     )
     if board.trade_date is None:
         raise HTTPException(status_code=404, detail="还没有 RPS 数据（等收盘扫描跑一轮）")
@@ -110,6 +116,11 @@ def first_board(
     min_themes: int = Query(3, ge=0, le=50, description="同题材涨停家数下限"),
     min_seal_ratio: float = Query(0, ge=0, le=100, description="封单额/流通市值 下限（%）"),
     only_true_first_board: bool = Query(False, description="只看真首板（近 10 日没涨停过）"),
+    order: str = Query(
+        "board",
+        pattern="^(board|factor)$",
+        description="排序：board = 题材/封单/首封综合分；factor = 量价因子分（不改变入选集合）",
+    ),
     limit: int = Query(50, ge=1, le=200),
     session: Session = Depends(get_db),
 ) -> FirstBoardOut:
@@ -126,6 +137,7 @@ def first_board(
         min_themes=min_themes,
         min_seal_ratio=min_seal_ratio,
         only_true_first_board=only_true_first_board,
+        order=order,
         limit=limit,
     )
     if board.trade_date is None:
@@ -265,6 +277,11 @@ def rps_track(
     mode: str = Query("all", pattern="^(dual|line_red|all)$", description="档位：全部 / 双高 / 一线红"),
     breakout_only: bool = Query(False, description="只留当天命中突破类形态的票"),
     trend_template: bool = Query(False, description="只留满足 Minervini 趋势模板的票"),
+    order: str = Query(
+        "strength",
+        pattern="^(strength|factor)$",
+        description="排序：strength = 档位原口径；factor = 按量价因子分重排（会改变取前 N 只的结果）",
+    ),
     session: Session = Depends(get_db),
 ) -> RpsTrackOut:
     """RPS 榜前 `top` 只的 1 / 5 日表现与超额（只统计真跑过 RPS 的日子）。"""
@@ -280,6 +297,7 @@ def rps_track(
         mode,
         breakout_only,
         trend_template,
+        order,
     )
     track = _cached(
         key,
@@ -291,6 +309,7 @@ def rps_track(
             mode=mode,
             breakout_only=breakout_only,
             trend_template=trend_template,
+            order=order,
         ),
     )
     return RpsTrackOut(

@@ -2277,6 +2277,8 @@ export interface RpsRow {
   off_high_pct: number | null
   /** 行业末段 */
   industry: string | null
+  /** 量价因子分（0~100，仅 order=factor 时计算） */
+  factor_score: number | null
 }
 
 export interface IndustryCount {
@@ -2322,6 +2324,8 @@ export interface FirstBoardRow {
   /** 第二热题材（悬停显示） */
   theme2: string | null
   theme2_count: number
+  /** 量价因子分（0~100，仅 order=factor 时计算） */
+  factor_score: number | null
   /** 综合排序分（0~100）＝题材家数 / 封单比 / 首封早晚的当日候选内分位加权 */
   score: number
 }

@@ -44,3 +44,20 @@ def mid_rank(ordered: list[float], value: float) -> float:
     left = bisect_left(ordered, value)
     right = bisect_right(ordered, value)
     return round((left + right) / 2 / len(ordered) * 100, 1)
+
+
+def percentiles(values: list[float]) -> list[float]:
+    """同一批数值在该批里的百分位（0~100，最大 = 100），返回顺序与输入一致。
+
+    ⚠️ 与 `mid_rank` **不是**同一套：这里是「排名 / (n−1)」的端点式分位，专给
+    「池内排序」（首板综合分、因子打分）用 —— 只有一只票时给 100；它不用于 RPS。
+    """
+    if not values:
+        return []
+    if len(values) == 1:
+        return [100.0]
+    order = sorted(range(len(values)), key=lambda index: values[index])
+    percent = [0.0] * len(values)
+    for rank, index in enumerate(order):
+        percent[index] = rank / (len(values) - 1) * 100
+    return percent

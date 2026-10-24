@@ -896,6 +896,7 @@ export const api = {
     days?: number
     breakoutOnly?: boolean
     trendTemplate?: boolean
+    order?: 'strength' | 'factor'
   } = {}) => {
     const query = new URLSearchParams({
       mode: params.mode ?? 'all',
@@ -904,6 +905,7 @@ export const api = {
       days: String(params.days ?? 20),
       breakout_only: String(params.breakoutOnly ?? false),
       trend_template: String(params.trendTemplate ?? false),
+      order: params.order ?? 'strength',
     })
     return request<RpsTrack>(`/pools/rps/track?${query.toString()}`)
   },
@@ -936,6 +938,7 @@ export const api = {
     limit?: number
     breakoutOnly?: boolean
     trendTemplate?: boolean
+    order?: 'strength' | 'factor'
   } = {}) => {
     const query = new URLSearchParams({
       mode: params.mode ?? 'all',
@@ -943,6 +946,7 @@ export const api = {
       limit: String(params.limit ?? 100),
       breakout_only: String(params.breakoutOnly ?? false),
       trend_template: String(params.trendTemplate ?? false),
+      order: params.order ?? 'strength',
     })
     return request<RpsBoard>(`/pools/rps?${query.toString()}`)
   },
@@ -958,6 +962,7 @@ export const api = {
     minThemes?: number
     minSealRatio?: number
     onlyTrueFirstBoard?: boolean
+    order?: 'board' | 'factor'
     limit?: number
   } = {}) => {
     const query = new URLSearchParams({
@@ -968,6 +973,7 @@ export const api = {
       min_themes: String(params.minThemes ?? 3),
       min_seal_ratio: String(params.minSealRatio ?? 0),
       only_true_first_board: String(params.onlyTrueFirstBoard ?? false),
+      order: params.order ?? 'board',
       limit: String(params.limit ?? 50),
     })
     return request<FirstBoardBoard>(`/pools/first-board?${query.toString()}`)
