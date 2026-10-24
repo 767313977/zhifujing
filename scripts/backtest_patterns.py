@@ -413,6 +413,7 @@ FILTER_LABELS: dict[str, str] = {
     "rps50_90": "RPS50≥90",
     "rps120_85": "RPS120≥85",
     "rps_dual": "RPS50≥90 且 RPS120≥85",
+    "trend_template": "趋势模板(Minervini)",
 }
 FILTER_CHECKS: dict[str, Callable[[str, Bars, int, dict], bool]] = {}
 
@@ -421,6 +422,8 @@ RPS_CONDITIONS: dict[str, tuple[int, ...]] = {
     "rps50_90": (50,),
     "rps120_85": (120,),
     "rps_dual": (50, 120),
+    # 趋势模板第 8 条「RS ≥ 70」直接用 250 日分位（与站内 RPS 同口径）
+    "trend_template": (250,),
 }
 
 
@@ -522,6 +525,58 @@ def _filter_rps_dual(code: str, bars: Bars, i: int, ctx: dict) -> bool:
 FILTER_CHECKS["rps50_90"] = _filter_rps50_90
 FILTER_CHECKS["rps120_85"] = _filter_rps120_85
 FILTER_CHECKS["rps_dual"] = _filter_rps_dual
+
+
+#: 趋势模板第 8 条的门槛（RS ≥ 70）。用的就是上面的 250 日分位，不另算一套。
+TREND_RS_MIN = 70.0
+
+
+def _filter_trend_template(code: str, bars: Bars, i: int, ctx: dict) -> bool:
+    """Minervini 趋势模板（8 条全满足才算通过）。
+
+    用户 2026-10-24 给的清单，逐条对应：
+
+    1. 收盘 > MA150 且 > MA200
+    2. MA150 > MA200
+    3. MA200 比 20 个交易日前高（至少向上一个月）
+    4. MA50 > MA150 > MA200
+    5. 收盘 > MA50
+    6. 收盘 ≥ 52 周最低 × 1.3
+    7. 收盘 ≥ 52 周最高 × 0.75
+    8. RS ≥ 70 —— 直接用 250 日 RPS 分位（与站内 RPS 同口径）
+
+    ⚠️ 52 周按 **250 个交易日**算，所以 `i < 249` 一律不通过；短窗口（主库 260 根）
+    只够判最后十来天，结论要拿 `--history` 的长历史看。
+    """
+    if i < 249:
+        return False
+    close, high, low = bars.close, bars.high, bars.low
+    current = float(close[i])
+    ma50 = float(np.mean(close[i - 49 : i + 1]))
+    ma150 = float(np.mean(close[i - 149 : i + 1]))
+    ma200 = float(np.mean(close[i - 199 : i + 1]))
+    # MA200 的「20 个交易日前」= 窗口右端退到 i-20（含），即 [i-219, i-19)
+    ma200_prev = float(np.mean(close[i - 219 : i - 19]))
+
+    if not (current > ma150 and current > ma200 and ma150 > ma200):
+        return False
+    if ma200 <= ma200_prev:
+        return False
+    if not (ma50 > ma150 and current > ma50):
+        return False
+
+    low52 = float(np.min(low[i - 249 : i + 1]))
+    high52 = float(np.max(high[i - 249 : i + 1]))
+    if low52 <= 0 or high52 <= 0:
+        return False
+    if current < low52 * 1.3 or current < high52 * 0.75:
+        return False
+
+    rps250 = _rps_lookup(ctx, 250, code, bars.dates[i])
+    return rps250 is not None and rps250 >= TREND_RS_MIN
+
+
+FILTER_CHECKS["trend_template"] = _filter_trend_template
 
 
 def _filter_context(

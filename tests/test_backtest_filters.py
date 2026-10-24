@@ -91,3 +91,51 @@ def test_rps_dual_requires_both_windows():
     assert bt.FILTER_CHECKS["rps_dual"]("600000", bars, 59, ctx) is False
     ctx["rps"][120][day]["600000"] = 85.0
     assert bt.FILTER_CHECKS["rps_dual"]("600000", bars, 59, ctx) is True
+
+
+def _trend_bars(count: int = 300, start: float = 100.0, step: float = 1.0):
+    """稳步上行的序列（高 = 收 ×1.01、低 = 收 ×0.99），用来测趋势模板。"""
+    closes = np.array([start + step * index for index in range(count)], dtype=float)
+    return Bars(
+        dates=[date(2026, 1, 1) + timedelta(days=index) for index in range(count)],
+        open=closes.copy(),
+        high=closes * 1.01,
+        low=closes * 0.99,
+        close=closes,
+        volume=np.ones_like(closes),
+        amount=np.ones_like(closes),
+        pct_chg=np.zeros_like(closes),
+    )
+
+
+def _trend_ctx(bars, value: float = 85.0):
+    return {"rps": {250: {bars.dates[-1]: {"600000": value}}}}
+
+
+def test_trend_template_needs_52_weeks():
+    """不足 250 根（52 周）一律不通过 —— 短窗口回测只够判最后十来天。"""
+    bars = _trend_bars(249)
+    assert bt.FILTER_CHECKS["trend_template"]("600000", bars, 248, _trend_ctx(bars)) is False
+
+
+def test_trend_template_passes_on_steady_uptrend():
+    bars = _trend_bars(300)
+    assert bt.FILTER_CHECKS["trend_template"]("600000", bars, 299, _trend_ctx(bars)) is True
+
+
+def test_trend_template_requires_rs_and_rps_table():
+    bars = _trend_bars(300)
+    # 没有 RPS 表 → 第 8 条判不了，直接不通过（不猜）
+    assert bt.FILTER_CHECKS["trend_template"]("600000", bars, 299, {}) is False
+    # RS 只有 60 → 不满足 ≥70
+    assert (
+        bt.FILTER_CHECKS["trend_template"]("600000", bars, 299, _trend_ctx(bars, 60.0))
+        is False
+    )
+
+
+def test_trend_template_rejects_flat_market():
+    bars = _trend_bars(300, step=0.0)
+    assert (
+        bt.FILTER_CHECKS["trend_template"]("600000", bars, 299, _trend_ctx(bars)) is False
+    )
