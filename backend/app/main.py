@@ -334,6 +334,12 @@ def _spa_response(full_path: str) -> FileResponse:
     """
     if full_path.startswith("api/"):
         raise HTTPException(status_code=404, detail="接口不存在")
+    # 控制字符（含 null byte）显式拦掉：Linux 上 `resolve()` 会抛 ValueError，
+    # 但 **Windows 的 WindowsPath.resolve 不抛**（实测 2026-10-23，会把路径原样
+    # 返回），于是同一条请求在 Windows 上会一路落到 index.html 回 200 ——
+    # 两套系统行为不一致，所以这里先按「非法路径」自己判一次
+    if any(ord(char) < 32 for char in full_path):
+        raise HTTPException(status_code=404, detail="Not Found")
     # 扫描器探测（判据见 `_is_scan_probe`）：直接 404，别回 index.html 让它看到 200
     if _is_scan_probe(full_path):
         raise HTTPException(status_code=404, detail="Not Found")
