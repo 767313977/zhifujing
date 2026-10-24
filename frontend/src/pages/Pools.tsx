@@ -34,6 +34,13 @@ const THEME_ITEMS = [
   { key: '5', label: '≥5 家' },
 ]
 
+/** 封单额 / 流通市值。0.02% 那种基本等于没封住，默认不筛只是为了先看清全池。 */
+const SEAL_ITEMS = [
+  { key: '0', label: '封单不限' },
+  { key: '0.3', label: '≥0.3%' },
+  { key: '1', label: '≥1%' },
+]
+
 const RPS_ITEMS = [
   { key: '0', label: '全部' },
   { key: '80', label: 'RPS ≥80' },
@@ -52,6 +59,7 @@ export default function Pools() {
   const [before, setBefore] = useState('140000')
   const [cap, setCap] = useState('20-300')
   const [themes, setThemes] = useState('3')
+  const [seal, setSeal] = useState('0')
   const [minRps, setMinRps] = useState('0')
 
   const [firstBoard, setFirstBoard] = useState<FirstBoardBoard | null>(null)
@@ -70,7 +78,13 @@ export default function Pools() {
     setFirstBoardError(null)
     const [minFloatMv, maxFloatMv] = cap.split('-').map(Number)
     api
-      .firstBoard({ before, minFloatMv, maxFloatMv, minThemes: Number(themes) })
+      .firstBoard({
+        before,
+        minFloatMv,
+        maxFloatMv,
+        minThemes: Number(themes),
+        minSealRatio: Number(seal),
+      })
       .then((value) => {
         if (!stale) setFirstBoard(value)
       })
@@ -80,7 +94,7 @@ export default function Pools() {
     return () => {
       stale = true
     }
-  }, [before, cap, themes])
+  }, [before, cap, themes, seal])
 
   useEffect(() => {
     let stale = false
@@ -109,6 +123,7 @@ export default function Pools() {
         minFloatMv,
         maxFloatMv,
         minThemes: Number(themes),
+        minSealRatio: Number(seal),
         days: 20,
       })
       .then((value) => {
@@ -121,7 +136,7 @@ export default function Pools() {
     return () => {
       stale = true
     }
-  }, [before, cap, themes])
+  }, [before, cap, themes, seal])
 
   useEffect(() => {
     let stale = false
@@ -175,6 +190,10 @@ export default function Pools() {
             <span className="flex items-center gap-2">
               题材
               <Segmented value={themes} items={THEME_ITEMS} onChange={setThemes} />
+            </span>
+            <span className="flex items-center gap-2">
+              封单/流通
+              <Segmented value={seal} items={SEAL_ITEMS} onChange={setSeal} />
             </span>
             <span>成交额 ≥3 亿 · 已剔除 ST 与北交所</span>
           </div>
@@ -258,6 +277,8 @@ export default function Pools() {
                     <th className="!text-left">名称</th>
                     <th>首封</th>
                     <th>封单/流通</th>
+                    <th>封单额</th>
+                    <th>封成比</th>
                     <th>流通市值</th>
                     <th>成交额</th>
                     <th>换手</th>
@@ -278,6 +299,8 @@ export default function Pools() {
                       <td className={`num ${toneOf(row.seal_ratio)}`}>
                         {fmtNum(row.seal_ratio, 2, '%')}
                       </td>
+                      <td className="num">{fmtAmount(row.seal_amount)}</td>
+                      <td className="num">{fmtNum(row.seal_to_amount, 1, '%')}</td>
                       <td className="num">{fmtAmount(row.float_mv)}</td>
                       <td className="num">{fmtAmount(row.amount)}</td>
                       <td className="num">{fmtNum(row.turnover, 2, '%')}</td>

@@ -198,3 +198,64 @@ def test_rps_board_skips_missing_rps120(session):
 
     assert [row.code for row in pools.rps_board(session).rows] == ["000001"]
 
+
+def test_first_board_seal_to_amount(session):
+    """封成比 = 封单额 / 成交额。"""
+    _limit(session, "000001")
+    session.add(StockBasic(code="000001", name="甲股份"))
+    session.commit()
+
+    row = pools.first_board(session, min_themes=0).rows[0]
+    # 5 亿封单 / 8 亿成交额
+    assert row.seal_to_amount == 62.5
+    assert row.score == 100.0
+
+
+def test_first_board_min_seal_ratio(session):
+    _limit(session, "000001", seal_amount=1 * pools.YI)  # 1 月 / 50 亿 = 2%
+    _limit(session, "000002", seal_amount=0.05 * pools.YI)  # 0.1%
+    session.add_all(
+        [StockBasic(code="000001", name="甲股份"), StockBasic(code="000002", name="乙股份")]
+    )
+    session.commit()
+
+    assert {row.code for row in pools.first_board(session, min_themes=0).rows} == {
+        "000001",
+        "000002",
+    }
+    assert [
+        row.code for row in pools.first_board(session, min_themes=0, min_seal_ratio=1).rows
+    ] == ["000001"]
+
+
+def test_first_board_ranks_by_composite_not_theme_only(session):
+    """题材家数不再一票否决：封单 1% + 早封的冷门票可以排在封单 0.02% 的热门票前面。"""
+    # 热门题材 10 家（候选 A），冷门题材 3 家（候选 B）
+    _limit(session, "000001", seal_amount=1 * pools.YI, first_seal_time="140000")
+    _limit(session, "000002", seal_amount=20 * pools.YI, first_seal_time="093000")
+    for index in range(10):
+        session.add(
+            StockConcept(trade_date=DAY, code="000001", concept="热门")
+            if index == 0
+            else StockConcept(trade_date=DAY, code=f"90000{index}", concept="热门")
+        )
+    for index in range(3):
+        session.add(
+            StockConcept(trade_date=DAY, code="000002", concept="冷门")
+            if index == 0
+            else StockConcept(trade_date=DAY, code=f"91000{index}", concept="冷门")
+        )
+    session.add_all(
+        [StockBasic(code="000001", name="甲股份"), StockBasic(code="000002", name="乙股份")]
+    )
+    session.commit()
+
+    rows = pools.first_board(session, before="150000").rows
+    assert [row.code for row in rows] == ["000002", "000001"]
+    by_code = {row.code: row for row in rows}
+    # A：题材 100 分位、封单 0 分位、最晚封 → 40 分；B：0 / 100 / 100 → 60 分
+    assert by_code["000001"].theme_count == 10
+    assert by_code["000001"].score == 40.0
+    assert by_code["000002"].score == 60.0
+
+

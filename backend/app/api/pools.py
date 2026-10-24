@@ -87,6 +87,7 @@ def first_board(
     max_float_mv: float = Query(300, ge=0, description="流通市值上限（亿）"),
     min_amount: float = Query(3, ge=0, description="成交额下限（亿）"),
     min_themes: int = Query(3, ge=0, le=50, description="同题材涨停家数下限"),
+    min_seal_ratio: float = Query(0, ge=0, le=100, description="封单额/流通市值 下限（%）"),
     limit: int = Query(50, ge=1, le=200),
     session: Session = Depends(get_db),
 ) -> FirstBoardOut:
@@ -101,6 +102,7 @@ def first_board(
         max_float_mv=max_float_mv,
         min_amount=min_amount,
         min_themes=min_themes,
+        min_seal_ratio=min_seal_ratio,
         limit=limit,
     )
     if board.trade_date is None:
@@ -119,6 +121,7 @@ def first_board_track(
     max_float_mv: float = Query(300, ge=0, description="流通市值上限（亿）"),
     min_amount: float = Query(3, ge=0, description="成交额下限（亿）"),
     min_themes: int = Query(3, ge=0, le=50, description="同题材涨停家数下限"),
+    min_seal_ratio: float = Query(0, ge=0, le=100, description="封单额/流通市值 下限（%）"),
     days: int = Query(20, ge=1, le=60, description="回看多少个有涨停池的交易日"),
     session: Session = Depends(get_db),
 ) -> FirstBoardTrackOut:
@@ -140,6 +143,7 @@ def first_board_track(
         max_float_mv,
         min_amount,
         min_themes,
+        min_seal_ratio,
     )
     track = _cached(
         key,
@@ -151,6 +155,7 @@ def first_board_track(
             max_float_mv=max_float_mv,
             min_amount=min_amount,
             min_themes=min_themes,
+            min_seal_ratio=min_seal_ratio,
         ),
     )
     return FirstBoardTrackOut(

@@ -2289,10 +2289,14 @@ export interface FirstBoardRow {
   seal_amount: number | null
   /** 封单额 ÷ 流通市值（%） */
   seal_ratio: number | null
+  /** 封单额 ÷ 当日成交额（%）：成交额很小的板，封单占比再高也可能没承接 */
+  seal_to_amount: number | null
   industry: string | null
   /** 当日同题材涨停家数最多的精选板块，以及家数 */
   theme: string | null
   theme_count: number
+  /** 综合排序分（0~100）＝题材家数 / 封单比 / 首封早晚的当日候选内分位加权 */
+  score: number
 }
 
 export interface FirstBoardBoard {

@@ -2613,10 +2613,14 @@ class FirstBoardRowOut(BaseModel):
     seal_amount: float | None
     #: 封单额 ÷ 流通市值（%），越大封得越厚
     seal_ratio: float | None
+    #: 封单额 ÷ 当日成交额（%）：成交额很小的板，封单占比再高也可能没承接
+    seal_to_amount: float | None
     industry: str | None
     #: 当日同题材（精选板块）涨停家数最多的那个板块，以及它的家数
     theme: str | None
     theme_count: int
+    #: 综合排序分（0~100）＝题材家数 / 封单比 / 首封早晚的当日候选内分位加权
+    score: float
 
 
 class FirstBoardOut(BaseModel):

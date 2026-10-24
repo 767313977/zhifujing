@@ -12,7 +12,7 @@
 
 import logging
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 
 from sqlalchemy import func, select
@@ -133,10 +133,15 @@ class FirstBoardRow:
     seal_amount: float | None
     #: 封单额 / 流通市值（%），衡量封板质量
     seal_ratio: float | None
+    #: 封单额 / 当日成交额（%），衡量「有承接的封板」—— 成交额很小的板，
+    #: 封单占比再高也可能是没量的一字板
+    seal_to_amount: float | None
     industry: str | None
     #: 当日涨停股里，与它同属一个精选板块最多有几只（含自己）
     theme: str | None
     theme_count: int
+    #: 综合排序分（0~100）：题材家数 / 封单比 / 首封时间的**当日候选内分位**加权
+    score: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +149,26 @@ class FirstBoardBoard:
     trade_date: date | None
     conditions: dict = field(default_factory=dict)
     rows: list[FirstBoardRow] = field(default_factory=list)
+
+
+#: 综合排序的权重（**当日候选内分位**加权）。只是起手值 —— 用页面上的
+#: 「次日验证」面板对比旧排序 / 新排序的前 5 只表现之后再调。
+SCORE_W_THEME = 0.4
+SCORE_W_SEAL = 0.4
+SCORE_W_TIME = 0.2
+
+
+def _percentiles(values: list[float]) -> list[float]:
+    """同一批数值在该批里的百分位（0~100，最大 = 100）。并列取同一档。"""
+    if not values:
+        return []
+    if len(values) == 1:
+        return [100.0]
+    order = sorted(range(len(values)), key=lambda index: values[index])
+    percent = [0.0] * len(values)
+    for rank, index in enumerate(order):
+        percent[index] = rank / (len(values) - 1) * 100
+    return percent
 
 
 def first_board(
@@ -154,6 +179,7 @@ def first_board(
     max_float_mv: float = 300,
     min_amount: float = 3,
     min_themes: int = 3,
+    min_seal_ratio: float = 0,
     limit: int = 50,
 ) -> FirstBoardBoard:
     """首板一进二候选。
@@ -164,9 +190,13 @@ def first_board(
     - `min_float_mv` / `max_float_mv`：流通市值区间
     - `min_amount`：当日成交额下限
     - `min_themes`：当日同题材涨停家数下限（用 `stock_concept` 的精选板块口径）
+    - `min_seal_ratio`：封单额 / 流通市值 的下限（%），默认 0 = 不筛
 
-    ⚠️ 只筛「首板」（`consecutive == 1`）且**没炸过板**（`open_times == 0`）的票；
-    `seal_ratio` 越大说明封单相对流通盘越厚，是同样条件下的排序依据。
+    ⚠️ 只筛「首板」（`consecutive == 1`）且**没炸过板**（`open_times == 0`）的票。
+
+    排序（2026-10-24 改）：不再是「题材家数优先」—— 那样会把封单 0.02%（基本没封住）
+    的票排到封单 1.35% 的前面。现在是三个**当日候选内分位**的加权：
+    题材家数 0.4 + 封单比 0.4 + 首封早晚 0.2（见 `SCORE_W_*`）。
     """
     target = trade_date or session.scalar(
         select(func.max(LimitPool.trade_date)).where(LimitPool.pool_type == "up")
@@ -232,6 +262,13 @@ def first_board(
             if row.seal_amount and row.float_mv
             else None
         )
+        if min_seal_ratio and (seal_ratio is None or seal_ratio < min_seal_ratio):
+            continue
+        seal_to_amount = (
+            row.seal_amount / row.amount * 100
+            if row.seal_amount and row.amount
+            else None
+        )
         picked.append(
             FirstBoardRow(
                 code=row.code,
@@ -246,14 +283,33 @@ def first_board(
                 turnover=row.turnover,
                 seal_amount=row.seal_amount,
                 seal_ratio=round(seal_ratio, 2) if seal_ratio is not None else None,
+                seal_to_amount=(
+                    round(seal_to_amount, 1) if seal_to_amount is not None else None
+                ),
                 industry=row.industry,
                 theme=theme,
                 theme_count=theme_count,
             )
         )
 
-    # 题材热度优先，同热度看封单厚度
-    picked.sort(key=lambda item: (item.theme_count, item.seal_ratio or 0), reverse=True)
+    # 综合分：三个**当日候选内**分位加权（理由见函数说明）。
+    # 首封时间越早越好 → 取负号再算分位；封单比缺值按 0 算（等于排在最后）。
+    theme_pct = _percentiles([float(item.theme_count) for item in picked])
+    seal_pct = _percentiles([item.seal_ratio or 0.0 for item in picked])
+    time_pct = _percentiles([-float(item.first_seal_time or "235959") for item in picked])
+    scored = [
+        replace(
+            item,
+            score=round(
+                theme_pct[index] * SCORE_W_THEME
+                + seal_pct[index] * SCORE_W_SEAL
+                + time_pct[index] * SCORE_W_TIME,
+                1,
+            ),
+        )
+        for index, item in enumerate(picked)
+    ]
+    scored.sort(key=lambda item: (-item.score, -(item.seal_ratio or 0), item.code))
     return FirstBoardBoard(
         trade_date=target,
         conditions={
@@ -262,8 +318,9 @@ def first_board(
             "max_float_mv": max_float_mv,
             "min_amount": min_amount,
             "min_themes": min_themes,
+            "min_seal_ratio": min_seal_ratio,
         },
-        rows=picked[:limit],
+        rows=scored[:limit],
     )
 
 
@@ -334,6 +391,7 @@ def first_board_track(
     max_float_mv: float = 300,
     min_amount: float = 3,
     min_themes: int = 3,
+    min_seal_ratio: float = 0,
 ) -> FirstBoardTrack:
     """近 `days` 个有涨停池的交易日，按当前条件选出来的首板次日表现。
 
@@ -355,6 +413,7 @@ def first_board_track(
         "max_float_mv": max_float_mv,
         "min_amount": min_amount,
         "min_themes": min_themes,
+        "min_seal_ratio": min_seal_ratio,
     }
     if not limit_days:
         return FirstBoardTrack(trade_date=None, conditions=conditions)
@@ -395,6 +454,7 @@ def first_board_track(
             max_float_mv=max_float_mv,
             min_amount=min_amount,
             min_themes=min_themes,
+            min_seal_ratio=min_seal_ratio,
             # 验证要看**全部**候选，不能被页面上的前 50 只截断
             limit=1000,
         )

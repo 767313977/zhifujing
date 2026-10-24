@@ -869,6 +869,7 @@ export const api = {
     maxFloatMv?: number
     minAmount?: number
     minThemes?: number
+    minSealRatio?: number
     days?: number
   } = {}) => {
     const query = new URLSearchParams({
@@ -877,6 +878,7 @@ export const api = {
       max_float_mv: String(params.maxFloatMv ?? 300),
       min_amount: String(params.minAmount ?? 3),
       min_themes: String(params.minThemes ?? 3),
+      min_seal_ratio: String(params.minSealRatio ?? 0),
       days: String(params.days ?? 20),
     })
     return request<FirstBoardTrack>(`/pools/first-board/track?${query.toString()}`)
@@ -901,6 +903,7 @@ export const api = {
     maxFloatMv?: number
     minAmount?: number
     minThemes?: number
+    minSealRatio?: number
     limit?: number
   } = {}) => {
     const query = new URLSearchParams({
@@ -909,6 +912,7 @@ export const api = {
       max_float_mv: String(params.maxFloatMv ?? 300),
       min_amount: String(params.minAmount ?? 3),
       min_themes: String(params.minThemes ?? 3),
+      min_seal_ratio: String(params.minSealRatio ?? 0),
       limit: String(params.limit ?? 50),
     })
     return request<FirstBoardBoard>(`/pools/first-board?${query.toString()}`)
