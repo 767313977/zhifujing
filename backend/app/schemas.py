@@ -2624,3 +2624,73 @@ class FirstBoardOut(BaseModel):
     #: 本次实际使用的筛选条件（金额单位：亿），页面照原样展示，避免条件漂移
     conditions: dict
     rows: list[FirstBoardRowOut]
+
+
+class FirstBoardTrackDayOut(BaseModel):
+    """首板次日验证的一天。收益都是**百分数**（1.23 表示 +1.23%）。"""
+
+    trade_date: date
+    next_date: date | None
+    candidates: int
+    promoted: int
+    open_premium_mean: float | None
+    close_ret_mean: float | None
+    #: 一字涨停买不进 / 次日没有日线（停牌或未采）
+    unbuyable: int
+    no_quote: int
+    #: `ok` = 已验证；`pending` = 次日日线还没到
+    status: str
+
+
+class FirstBoardTrackOut(BaseModel):
+    """首板候选的次日表现汇总（按当前筛选条件滚动统计）。"""
+
+    trade_date: date | None
+    conditions: dict
+    #: 已验证 / 待验证的天数
+    verified_days: int
+    pending_days: int
+    #: 样本 = 有次日日线、且买得到的候选
+    samples: int
+    candidates: int
+    promoted_rate: float | None
+    open_premium_mean: float | None
+    open_premium_median: float | None
+    close_ret_mean: float | None
+    close_ret_median: float | None
+    big_loss_rate: float | None
+    limit_down_rate: float | None
+    unbuyable_rate: float | None
+    no_quote: int
+    days: list[FirstBoardTrackDayOut]
+
+
+class RpsTrackDayOut(BaseModel):
+    trade_date: date
+    picks: int
+    ret1: float | None
+    ret5: float | None
+    excess1: float | None
+    excess5: float | None
+    status: str
+
+
+class RpsTrackStatOut(BaseModel):
+    #: 参与统计的天数（`rps_daily` 只存跑过的日子，可能少于请求的 days）
+    days: int
+    #: 平均收益 / 平均超额（%）
+    mean: float | None
+    excess: float | None
+
+
+class RpsTrackOut(BaseModel):
+    """RPS 榜前 N 只的 1 / 5 日表现（与形态跟踪同一套等权基准）。"""
+
+    trade_date: date | None
+    days: int
+    verified_days: int
+    samples: int
+    ret1: RpsTrackStatOut
+    ret5: RpsTrackStatOut
+    rows: list[RpsTrackDayOut]
+

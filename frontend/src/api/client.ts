@@ -12,6 +12,7 @@ import type {
   Erp,
   EtfFlowBoard,
   FirstBoardBoard,
+  FirstBoardTrack,
   FundFlowHistoryOut,
   FundFlowMatrixOut,
   EtfFlowOrder,
@@ -54,6 +55,7 @@ import type {
   RotationLeaderDay,
   RotationMetric,
   RpsBoard,
+  RpsTrack,
   SectorCompare,
   SectorFundFlowOut,
   SectorHeat,
@@ -856,6 +858,33 @@ export const api = {
    * 全 A 涨跌分布（区间家数 + 平均/中位数）。缺省 = 库里最新交易日。
    */
   advanceDecline: () => request<AdvanceDecline>('/market/advance-decline'),
+
+  /**
+   * 首板次日验证：参数与首板候选**完全一致**（后端就是调同一份实现），所以页面上的
+   * 筛选条件一改，这条汇总就跟着变 —— 这是定阈值的依据。
+   */
+  firstBoardTrack: (params: {
+    before?: string
+    minFloatMv?: number
+    maxFloatMv?: number
+    minAmount?: number
+    minThemes?: number
+    days?: number
+  } = {}) => {
+    const query = new URLSearchParams({
+      before: params.before ?? '140000',
+      min_float_mv: String(params.minFloatMv ?? 20),
+      max_float_mv: String(params.maxFloatMv ?? 300),
+      min_amount: String(params.minAmount ?? 3),
+      min_themes: String(params.minThemes ?? 3),
+      days: String(params.days ?? 20),
+    })
+    return request<FirstBoardTrack>(`/pools/first-board/track?${query.toString()}`)
+  },
+
+  /** RPS 榜前 N 只的 1 / 5 日表现（与形态跟踪同一套等权基准） */
+  rpsTrack: (minRps = 0, top = 50, days = 20) =>
+    request<RpsTrack>(`/pools/rps/track?min_rps=${minRps}&top=${top}&days=${days}`),
 
   /**
    * RPS 相对强度榜（盘后）。`minRps` 同时作用在 120/250 两档分位上。

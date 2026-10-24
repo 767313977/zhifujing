@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { FirstBoardBoard, RpsBoard } from '../api/types'
+import type { FirstBoardBoard, FirstBoardTrack, RpsBoard, RpsTrack } from '../api/types'
 import Layout from '../components/Layout'
 import LoadState from '../components/LoadState'
 import Panel from '../components/Panel'
@@ -58,6 +58,11 @@ export default function Pools() {
   const [firstBoardError, setFirstBoardError] = useState<string | null>(null)
   const [rps, setRps] = useState<RpsBoard | null>(null)
   const [rpsError, setRpsError] = useState<string | null>(null)
+  // 次日验证：参数与上面的候选完全一致，所以「改条件 → 汇总立刻变」
+  const [fbTrack, setFbTrack] = useState<FirstBoardTrack | null>(null)
+  const [fbTrackOpen, setFbTrackOpen] = useState(false)
+  const [rpsTrack, setRpsTrack] = useState<RpsTrack | null>(null)
+  const [rpsTrackOpen, setRpsTrackOpen] = useState(false)
 
   useEffect(() => {
     let stale = false
@@ -88,6 +93,46 @@ export default function Pools() {
       })
       .catch((err: Error) => {
         if (!stale) setRpsError(err.message)
+      })
+    return () => {
+      stale = true
+    }
+  }, [minRps])
+
+  useEffect(() => {
+    let stale = false
+    setFbTrack(null)
+    const [minFloatMv, maxFloatMv] = cap.split('-').map(Number)
+    api
+      .firstBoardTrack({
+        before,
+        minFloatMv,
+        maxFloatMv,
+        minThemes: Number(themes),
+        days: 20,
+      })
+      .then((value) => {
+        if (!stale) setFbTrack(value)
+      })
+      .catch(() => {
+        // 验证行只是辅助信息，取不到就整行不显示，不弹错
+        if (!stale) setFbTrack(null)
+      })
+    return () => {
+      stale = true
+    }
+  }, [before, cap, themes])
+
+  useEffect(() => {
+    let stale = false
+    setRpsTrack(null)
+    api
+      .rpsTrack(Number(minRps), 50, 20)
+      .then((value) => {
+        if (!stale) setRpsTrack(value)
+      })
+      .catch(() => {
+        if (!stale) setRpsTrack(null)
       })
     return () => {
       stale = true
@@ -133,6 +178,71 @@ export default function Pools() {
             </span>
             <span>成交额 ≥3 亿 · 已剔除 ST 与北交所</span>
           </div>
+
+          {fbTrack && (
+            <div className="border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+              <button
+                type="button"
+                onClick={() => setFbTrackOpen((open) => !open)}
+                className="w-full text-left leading-relaxed hover:text-fg"
+              >
+                <span className="num">
+                  近 {fbTrack.verified_days} 日按当前条件：样本 {fbTrack.samples}
+                  {' · '}晋级 {fmtNum(fbTrack.promoted_rate, 1, '%')}
+                  {' · '}开盘溢价中位 {fmtPct(fbTrack.open_premium_median)}
+                  {' · '}收盘中位 {fmtPct(fbTrack.close_ret_median)}
+                  {' · '}大面 {fmtNum(fbTrack.big_loss_rate, 1, '%')}
+                  {' · '}一字买不进 {fmtNum(fbTrack.unbuyable_rate, 1, '%')}
+                </span>
+                {fbTrack.pending_days > 0 && (
+                  <span className="ml-1">（{fbTrack.pending_days} 天待验证）</span>
+                )}
+                <span className="ml-2 text-fg-muted">
+                  {fbTrackOpen ? '收起 ▴' : '逐日明细 ▾'}
+                </span>
+              </button>
+              {fbTrackOpen && (
+                <div className="mt-2 overflow-x-auto">
+                  <table className="grid-table">
+                    <thead>
+                      <tr>
+                        <th className="!text-left">信号日</th>
+                        <th className="!text-left">次日</th>
+                        <th>候选</th>
+                        <th>晋级</th>
+                        <th>开盘溢价</th>
+                        <th>收盘</th>
+                        <th>一字</th>
+                        <th>缺日线</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fbTrack.days.map((row) => (
+                        <tr key={row.trade_date}>
+                          <td className="num !text-left">{row.trade_date}</td>
+                          <td className="num !text-left text-fg-muted">
+                            {row.next_date ?? '—'}
+                          </td>
+                          <td className="num">{row.candidates}</td>
+                          <td className="num">
+                            {row.status === 'pending' ? '待验证' : row.promoted}
+                          </td>
+                          <td className={`num ${toneOf(row.open_premium_mean)}`}>
+                            {fmtPct(row.open_premium_mean)}
+                          </td>
+                          <td className={`num ${toneOf(row.close_ret_mean)}`}>
+                            {fmtPct(row.close_ret_mean)}
+                          </td>
+                          <td className="num">{row.unbuyable}</td>
+                          <td className="num">{row.no_quote}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           {firstBoardError ? (
             <LoadState loading={false} error={firstBoardError} />
@@ -204,6 +314,57 @@ export default function Pools() {
             RPS = 区间涨幅在全市场的百分位（0~100，中位秩）。涨幅按日涨跌幅复利计算，
             停牌缺天但覆盖不足 90% 的不参与排名。
           </p>
+          {rpsTrack && (
+            <div className="border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+              <button
+                type="button"
+                onClick={() => setRpsTrackOpen((open) => !open)}
+                className="w-full text-left leading-relaxed hover:text-fg"
+              >
+                <span className="num">
+                  近 {rpsTrack.days} 日榜前 50：1 日 {fmtPct(rpsTrack.ret1.mean)}（超额{' '}
+                  {fmtPct(rpsTrack.ret1.excess)}）{' · '}5 日 {fmtPct(rpsTrack.ret5.mean)}
+                  （超额 {fmtPct(rpsTrack.ret5.excess)}）{' · '}样本 {rpsTrack.samples}
+                </span>
+                {rpsTrack.ret1.days < 5 && <span className="ml-2">样本不足 5 天</span>}
+                <span className="ml-2 text-fg-muted">
+                  {rpsTrackOpen ? '收起 ▴' : '逐日明细 ▾'}
+                </span>
+              </button>
+              {rpsTrackOpen && (
+                <div className="mt-2 overflow-x-auto">
+                  <table className="grid-table">
+                    <thead>
+                      <tr>
+                        <th className="!text-left">日期</th>
+                        <th>只数</th>
+                        <th>1 日</th>
+                        <th>超额</th>
+                        <th>5 日</th>
+                        <th>超额</th>
+                        <th className="!text-left">状态</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rpsTrack.rows.map((row) => (
+                        <tr key={row.trade_date}>
+                          <td className="num !text-left">{row.trade_date}</td>
+                          <td className="num">{row.picks}</td>
+                          <td className={`num ${toneOf(row.ret1)}`}>{fmtPct(row.ret1)}</td>
+                          <td className={`num ${toneOf(row.excess1)}`}>{fmtPct(row.excess1)}</td>
+                          <td className={`num ${toneOf(row.ret5)}`}>{fmtPct(row.ret5)}</td>
+                          <td className={`num ${toneOf(row.excess5)}`}>{fmtPct(row.excess5)}</td>
+                          <td className="!text-left text-fg-muted">
+                            {row.status === 'pending' ? '待验证' : '已验证'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
           {rpsError ? (
             <LoadState loading={false} error={rpsError} />
           ) : rps === null ? (
@@ -251,7 +412,8 @@ export default function Pools() {
 
         <p className="px-1 text-[12px] leading-relaxed text-fg-dim">
           两块都是盘后候选池，不是买卖建议：本站没有盘中数据，打板要看次日承接。
-          阈值（首封时间、市值、题材家数）只是起手参数，用前请先在自己的库上回测。
+          阈值（首封时间、市值、题材家数）只是起手参数 —— 改参数看上面那行「近 20 日」
+          的样本 / 晋级率 / 开盘溢价怎么变，比凭感觉定阈值靠谱。
         </p>
       </div>
     </Layout>

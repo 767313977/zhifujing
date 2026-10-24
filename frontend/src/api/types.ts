@@ -2301,3 +2301,63 @@ export interface FirstBoardBoard {
   conditions: Record<string, number | string>
   rows: FirstBoardRow[]
 }
+
+/** 首板次日验证的一天。收益都是**百分数**（1.23 表示 +1.23%）。 */
+export interface FirstBoardTrackDay {
+  trade_date: string
+  next_date: string | null
+  candidates: number
+  promoted: number
+  open_premium_mean: number | null
+  close_ret_mean: number | null
+  /** 一字涨停买不进 / 次日没有日线（停牌或未采） */
+  unbuyable: number
+  no_quote: number
+  status: 'ok' | 'pending'
+}
+
+export interface FirstBoardTrack {
+  trade_date: string | null
+  conditions: Record<string, number | string>
+  verified_days: number
+  pending_days: number
+  /** 样本 = 有次日日线、且买得到的候选 */
+  samples: number
+  candidates: number
+  promoted_rate: number | null
+  open_premium_mean: number | null
+  open_premium_median: number | null
+  close_ret_mean: number | null
+  close_ret_median: number | null
+  big_loss_rate: number | null
+  limit_down_rate: number | null
+  unbuyable_rate: number | null
+  no_quote: number
+  days: FirstBoardTrackDay[]
+}
+
+export interface RpsTrackDay {
+  trade_date: string
+  picks: number
+  ret1: number | null
+  ret5: number | null
+  excess1: number | null
+  excess5: number | null
+  status: 'ok' | 'pending'
+}
+
+export interface RpsTrackStat {
+  days: number
+  mean: number | null
+  excess: number | null
+}
+
+export interface RpsTrack {
+  trade_date: string | null
+  days: number
+  verified_days: number
+  samples: number
+  ret1: RpsTrackStat
+  ret5: RpsTrackStat
+  rows: RpsTrackDay[]
+}
