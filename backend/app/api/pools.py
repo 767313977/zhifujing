@@ -68,12 +68,12 @@ def rps(
     trade_date: date | None = Query(None, alias="date", description="缺省 = 库里最新 RPS 日"),
     min_rps: float = Query(0, ge=0, le=100, description="`mode=all` 时两档分位都要 ≥ 这个值"),
     limit: int = Query(100, ge=1, le=500),
-    mode: str = Query("dual", pattern="^(dual|line_red|all)$", description="档位：双高 / 一线红 / 全部"),
+    mode: str = Query("all", pattern="^(dual|line_red|all)$", description="档位：全部 / 双高 / 一线红"),
     breakout_only: bool = Query(False, description="只留当天命中突破类形态的票"),
     trend_template: bool = Query(False, description="只留满足 Minervini 趋势模板的票"),
     session: Session = Depends(get_db),
 ) -> RpsOut:
-    """RPS 榜（默认「双高」：RPS50 ≥ 90 且 RPS120 ≥ 85）。"""
+    """RPS 榜（默认按 RPS250 排；`dual` 只在近一年有效，见函数说明）。"""
     board = pools.rps_board(
         session,
         trade_date=trade_date,
@@ -192,7 +192,7 @@ def rps_track(
     min_rps: float = Query(0, ge=0, le=100, description="`mode=all` 时两档分位都要 ≥ 这个值"),
     top: int = Query(50, ge=1, le=200, description="每天取榜单前多少只"),
     days: int = Query(20, ge=1, le=60, description="回看多少个有 RPS 记录的交易日"),
-    mode: str = Query("dual", pattern="^(dual|line_red|all)$", description="档位：双高 / 一线红 / 全部"),
+    mode: str = Query("all", pattern="^(dual|line_red|all)$", description="档位：全部 / 双高 / 一线红"),
     breakout_only: bool = Query(False, description="只留当天命中突破类形态的票"),
     trend_template: bool = Query(False, description="只留满足 Minervini 趋势模板的票"),
     session: Session = Depends(get_db),

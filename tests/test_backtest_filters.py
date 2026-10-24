@@ -52,26 +52,53 @@ def test_ma60_up_flat_fails():
     assert bt.FILTER_CHECKS["ma60_up"]("600000", bars, 99, {}) is False
 
 
+def _pct_bars(pcts: list[float], start: date = date(2026, 1, 1)) -> Bars:
+    """按日涨跌幅造序列：收盘价是复利出来的，`pct_chg` 就是给的那个值。"""
+    values = np.array(pcts, dtype=float)
+    close = np.cumprod(1 + values / 100) * 10.0
+    return Bars(
+        dates=[start + timedelta(days=index) for index in range(len(values))],
+        open=close.copy(),
+        high=close.copy(),
+        low=close.copy(),
+        close=close,
+        volume=np.ones_like(values),
+        amount=np.ones_like(values),
+        pct_chg=values,
+    )
+
+
 def test_rps_percentile_ranks_three_stocks():
-    """三只票 50 日涨幅 −10% / 0% / +10% → RPS 0 / 50 / 100。"""
-    flat = [100.0] * 10
+    """三只票 50 日涨幅 −10% / 0% / +10% → 中位秩 16.7 / 50 / 83.3。
+
+    ⚠️ 不是 0 / 50 / 100：中位秩是 `(count(<v) + count(==v)/2) / n`，三只票时
+    最弱那只也有「半只并列」的位置 —— 这与线上 `services.rps.mid_rank` 同一口径。
+    """
+    def series(last: float) -> list[float]:
+        return [0.0] * 59 + [last]
+
     bars = {
-        "a": _bars(flat + [90.0] * 50),
-        "b": _bars(flat + [100.0] * 50),
-        "c": _bars(flat + [110.0] * 50),
+        "a": _pct_bars(series(-10.0)),
+        "b": _pct_bars(series(0.0)),
+        "c": _pct_bars(series(10.0)),
     }
-    tables = bt._rps_context(bars, {50})
+    all_dates = sorted({day for item in bars.values() for day in item.dates})
+    tables = bt._rps_context(bars, {50}, all_dates)
     day = bars["a"].dates[-1]
-    assert tables[50][day]["a"] == 0.0
+    assert tables[50][day]["a"] == 16.7
     assert tables[50][day]["b"] == 50.0
-    assert tables[50][day]["c"] == 100.0
+    assert tables[50][day]["c"] == 83.3
 
 
 def test_rps_percentile_skips_short_history():
-    """K 线不足 N 根时不参与排名。"""
-    bars = {"a": _bars([100.0] * 50)}
-    tables = bt._rps_context(bars, {50})
-    assert tables[50] == {}
+    """K 线不足窗口覆盖（50 日 → 45 行）的不参与排名；够 50 行就参与。"""
+    bars = {"a": _pct_bars([1.0] * 40)}
+    all_dates = sorted(bars["a"].dates)
+    assert bt._rps_context(bars, {50}, all_dates)[50] == {}
+
+    bars = {"a": _pct_bars([1.0] * 50)}
+    all_dates = sorted(bars["a"].dates)
+    assert bt._rps_context(bars, {50}, all_dates)[50] != {}
 
 
 def test_rps50_filter_uses_ctx_table():

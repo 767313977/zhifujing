@@ -216,7 +216,7 @@ def test_rps_board_dual_mode(session):
     _rps_row(session, "000005", 95.0, 99.0, rps50=None)  # 没有 50 日值
     session.commit()
 
-    rows = pools.rps_board(session).rows  # 默认 dual
+    rows = pools.rps_board(session, mode="dual").rows
     assert [row.code for row in rows] == ["000002", "000001"]
 
 

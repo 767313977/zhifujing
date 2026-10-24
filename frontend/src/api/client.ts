@@ -896,7 +896,7 @@ export const api = {
     trendTemplate?: boolean
   } = {}) => {
     const query = new URLSearchParams({
-      mode: params.mode ?? 'dual',
+      mode: params.mode ?? 'all',
       min_rps: String(params.minRps ?? 0),
       top: String(params.top ?? 50),
       days: String(params.days ?? 20),
@@ -920,7 +920,7 @@ export const api = {
     trendTemplate?: boolean
   } = {}) => {
     const query = new URLSearchParams({
-      mode: params.mode ?? 'dual',
+      mode: params.mode ?? 'all',
       min_rps: String(params.minRps ?? 0),
       limit: String(params.limit ?? 100),
       breakout_only: String(params.breakoutOnly ?? false),

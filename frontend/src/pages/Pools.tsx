@@ -47,11 +47,11 @@ const TRUE_FIRST_ITEMS = [
   { key: '1', label: '只看真首板' },
 ]
 
-/** 档位：回测里有效的是「双高 × 突破形态」，单独用 RPS 没有超额。 */
+/** 档位：回测里「双高 × 突破」只在近一年有效，5 年长历史是负的 → 默认「全部」。 */
 const RPS_MODE_ITEMS = [
-  { key: 'dual', label: '双高' },
-  { key: 'line_red', label: '一线红' },
   { key: 'all', label: '全部' },
+  { key: 'line_red', label: '一线红' },
+  { key: 'dual', label: '双高' },
 ]
 
 const REVERSAL_ITEMS = [
@@ -78,7 +78,7 @@ export default function Pools() {
   const [themes, setThemes] = useState('3')
   const [seal, setSeal] = useState('0')
   const [trueFirst, setTrueFirst] = useState('0')
-  const [rpsMode, setRpsMode] = useState('dual')
+  const [rpsMode, setRpsMode] = useState('all')
   const [onlyBreakout, setOnlyBreakout] = useState('0')
   const [onlyTrend, setOnlyTrend] = useState('0')
 
@@ -418,8 +418,8 @@ export default function Pools() {
           </div>
           <p className="border-b border-line-soft px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
             RPS = 区间涨幅在全市场的百分位（0~100，中位秩）。**RPS 单独不是买点**：
-            回测里有效的是「双高 × 突破形态」，回踩类形态别叠 RPS。停牌缺天但覆盖不足
-            90% 的不参与排名。
+            「双高 × 突破形态」只在近一年样本有效（10 日超额 +3~4%），5 年长历史全部为负，
+            所以默认按 RPS250 排、双高只当参考视图；回踩类形态别叠 RPS。
           </p>
           {rpsTrack && (
             <div className="border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
@@ -479,7 +479,7 @@ export default function Pools() {
           ) : rps.rows.length === 0 ? (
             <LoadState
               loading={false}
-              emptyText="当前档位没有候选 —— 「双高」需要 RPS50 数据，刚上线时先等一轮收盘扫描"
+              emptyText="当前档位没有候选 —— 标签组合可能太严（「双高」还需要 RPS50 数据）"
             />
           ) : (
             <div className="overflow-x-auto">

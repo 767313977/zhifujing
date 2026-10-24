@@ -25,7 +25,6 @@ RPS 是横截面指标，历史值对「今天选股」没有增量；存全市�
 
 import logging
 import time
-from bisect import bisect_left, bisect_right
 from datetime import date
 
 from sqlalchemy import func, select
@@ -33,44 +32,20 @@ from sqlalchemy import func, select
 from app.db import session_scope, upsert_many
 from app.models import RpsDaily, StockDaily, StockUniverse, TradeCalendar
 from app.services.coverage import coverage_ok
+from app.services.rps import MIN_COVERAGE, mid_rank, ret, window_values
 
 logger = logging.getLogger(__name__)
 
 #: 三个窗口（交易日）。50 日是 2026-10-24 加的：选股池默认档「双高」要用
 WINDOWS = (50, 120, 250)
 
-#: 窗口内至少要有这么多比例的实际交易日，否则该档记 None。
-#: 0.9 能让「停牌几天」的票照常参与，又不至于拿半个窗口当 250 日涨幅。
-MIN_COVERAGE = 0.9
-
 #: 一次流式读多少行。130 万行整表读进内存约几百 MB，按块读只占常数内存。
 _STREAM_BATCH = 20000
 
-
-def _ret(values: list[float], days: int) -> float | None:
-    """窗口涨幅（%）。`values` 是该股在窗口内按日期升序的日涨跌幅。"""
-    if len(values) < int(days * MIN_COVERAGE):
-        return None
-    factor = 1.0
-    for pct in values[-days:]:
-        factor *= 1 + pct / 100
-    return round((factor - 1) * 100, 2)
-
-
-def _window_values(rows: list[tuple[date, float]], start: date) -> list[float]:
-    """只留**不早于 `start`** 的行。
-
-    窗口必须按交易日截取，不能按「最近 N 行」：停牌或漏采会让 N 行跨过更多交易日，
-    算出来的是「更长的区间」，与说明里的「N 个交易日涨幅」不是一回事。
-    """
-    return [pct for day, pct in rows if day >= start]
-
-
-def _mid_rank(ordered: list[float], value: float) -> float:
-    """中位秩百分位（0-100）。`ordered` 必须是升序、且已去掉 None。"""
-    left = bisect_left(ordered, value)
-    right = bisect_right(ordered, value)
-    return round((left + right) / 2 / len(ordered) * 100, 1)
+# 兼容旧调用（测试与回测都按这两个名字引用过）
+_ret = ret
+_mid_rank = mid_rank
+_window_values = window_values
 
 
 def scan(trade_date: date | None = None) -> dict:

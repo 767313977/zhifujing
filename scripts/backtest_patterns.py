@@ -115,9 +115,11 @@ history.db 由 `scripts/backfill_history.py` 用腾讯补出来（零配额）�
 
 import argparse
 import logging
+import math
 import sys
 import time
 from array import array
+from bisect import bisect_left
 from collections import Counter, defaultdict, deque
 from collections.abc import Callable
 from datetime import date
@@ -134,7 +136,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 from app.db import session_scope  # noqa: E402
 from app.jobs.scan_patterns import _load_bars  # noqa: E402
 from app.models import StockDaily  # noqa: E402
-from app.services import limit_rules, trend as trend_rules  # noqa: E402
+from app.services import limit_rules, rps as rps_rules, trend as trend_rules  # noqa: E402
 from app.services.patterns import (  # noqa: E402
     BF_MAX_GAP,
     BF_MIN_FLAT,
@@ -550,39 +552,48 @@ RPS_TOP = 90.0
 
 
 def _rps_context(
-    bars_by_code: dict[str, Bars], windows: set[int]
+    bars_by_code: dict[str, Bars], windows: set[int], all_dates: list[date]
 ) -> dict[int, dict[date, dict[str, float]]]:
-    """`{窗口: {交易日: {代码: 0~100 百分位}}}`。
+    """`{窗口: {交易日: {代码: 0~100 百分位}}}`——**与线上 `services.rps` 同一套口径**。
 
-    同一只票在窗口内停牌时缺行，`close[i] / close[i-N]` 按**行**对齐（与
-    MA60 等指标同口径），不跨空缺补交易日。
+    2026-10-24（选股池-8）改成调 `app.services.rps` 的纯函数：
+
+    - 涨幅用 `pct_chg` **复利**（原来是 `close[i]/close[i-N]`，除权日会假跌）；
+    - 窗口按**交易日**截（`all_dates` = 全市场日期并集），不是「最近 N 行」；
+    - 分位用**中位秩**（原来是 `rank/(n-1)`，并列值会被读成极端）。
+
+    性能：每只票先算一条 `log1p` 前缀和，窗口涨幅 = `exp(差值) − 1`。直接按窗口重乘
+    的话，全池 × 5 年 × 3 窗口约 1800 万次乘 250 项，跑不完。
     """
-    by_date: dict[int, dict[date, dict[str, float]]] = {
+    positions = {day: index for index, day in enumerate(all_dates)}
+    raw: dict[int, dict[date, dict[str, float]]] = {
         window: defaultdict(dict) for window in windows
     }
     for code, bars in bars_by_code.items():
-        close = bars.close
-        for window in windows:
-            if len(bars) <= window:
-                continue
-            gains = close[window:] / close[:-window] - 1.0
-            for offset, gain in enumerate(gains.tolist()):
-                by_date[window][bars.dates[window + offset]][code] = gain
+        gs = [positions[day] for day in bars.dates]
+        logs = [0.0]
+        for pct in bars.pct_chg.tolist():
+            logs.append(logs[-1] + math.log1p(pct / 100.0))
+        for i, g in enumerate(gs):
+            for window in windows:
+                start_g = g - window + 1
+                if start_g < 0:
+                    continue
+                lo = bisect_left(gs, start_g)
+                if i - lo + 1 < int(window * rps_rules.MIN_COVERAGE):
+                    continue
+                value = round((math.exp(logs[i + 1] - logs[lo]) - 1) * 100, 2)
+                raw[window][bars.dates[i]][code] = value
 
     tables: dict[int, dict[date, dict[str, float]]] = {}
-    for window, days in by_date.items():
+    for window, days in raw.items():
         table: dict[date, dict[str, float]] = {}
-        for day, gains in days.items():
-            if not gains:
-                continue
-            codes = list(gains)
-            values = np.fromiter((gains[code] for code in codes), dtype=float)
-            order = np.argsort(values)
-            ranks = np.empty(len(values), dtype=float)
-            ranks[order] = np.arange(len(values), dtype=float)
-            # 全是同一涨幅（或只有一只票）时，denom 兜住 0 除
-            percent = ranks / max(len(values) - 1, 1) * 100.0
-            table[day] = dict(zip(codes, percent.tolist()))
+        for day, values in days.items():
+            ordered = sorted(values.values())
+            table[day] = {
+                code: rps_rules.mid_rank(ordered, value)
+                for code, value in values.items()
+            }
         tables[window] = table
     return tables
 
@@ -665,7 +676,7 @@ def _filter_context(
         # 额外表（RPS 单独回测）固定用 RPS50，只选 rps120_85 时也要补上
         windows.add(50)
         logger.info("RPS 预计算：窗口 %s", ", ".join(str(w) for w in sorted(windows)))
-        ctx["rps"] = _rps_context(bars_by_code, windows)
+        ctx["rps"] = _rps_context(bars_by_code, windows, all_dates)
     return ctx
 
 

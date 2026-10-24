@@ -99,16 +99,21 @@ def rps_board(
     trade_date: date | None = None,
     min_rps: float = 0,
     limit: int = 100,
-    mode: str = "dual",
+    mode: str = "all",
     breakout_only: bool = False,
     trend_template: bool = False,
 ) -> RpsBoard:
     """RPS 榜。
 
     `mode`（2026-10-24 加）：
-    - `dual`（默认）：RPS50 ≥ 90 且 RPS120 ≥ 85，按两者之和降序 —— 回测里唯一有效的用法；
-    - `line_red`：三档里任一 ≥ 90（陶博士「一线红」），按三档最大值降序；
-    - `all`：不额外卡分位（仍受 `min_rps` 约束），按 RPS250 降序。
+    - `all`（**默认**）：不额外卡分位（受 `min_rps` 约束），按 RPS250 降序；
+    - `dual`：RPS50 ≥ 90 且 RPS120 ≥ 85，按两者之和降序；
+    - `line_red`：三档里任一 ≥ 90（陶博士「一线红」），按三档最大值降序。
+
+    ⚠️ **为什么默认不是 `dual`**：口径对齐后（选股池-8）重跑，「双高 × 突破」只在
+    最近一年（255 个交易日）有效（10 日超额 +3.1~4.1%），**5 年长历史全部为负**
+    （−0.4~−1.4%，超额差 −0.6~−1.6pp）。方向不一致 → 不拿它当默认档，只作参考视图。
+    数字见 `docs/回测_RPS与趋势模板_20261024.md`。
 
     `breakout_only`：只留当天命中了 `BREAKOUT_KEYS` 里任一形态的票；
     `trend_template`：只留满足 Minervini 趋势模板的票（判据与回测共用 `services.trend`）。
@@ -1001,7 +1006,7 @@ def rps_track(
     days: int = 20,
     min_rps: float = 0,
     top: int = 50,
-    mode: str = "dual",
+    mode: str = "all",
     breakout_only: bool = False,
     trend_template: bool = False,
 ) -> RpsTrack:
