@@ -2575,3 +2575,52 @@ class AdvanceDeclineOut(BaseModel):
     avg_pct: float | None
     median_pct: float | None
     buckets: list[AdvanceDeclineBucket]
+
+
+class RpsRowOut(BaseModel):
+    """RPS 榜的一行：区间涨幅 + 它在全市场里的分位。"""
+
+    code: str
+    name: str | None
+    close: float | None
+    pct_chg: float | None
+    #: 区间涨幅（%，用日涨跌幅复利），None = 窗口内可用天数不足
+    ret120: float | None
+    ret250: float | None
+    #: 横截面分位（0-100，中位秩）
+    rps120: float | None
+    rps250: float | None
+
+
+class RpsOut(BaseModel):
+    trade_date: date | None
+    rows: list[RpsRowOut]
+
+
+class FirstBoardRowOut(BaseModel):
+    """首板一进二候选的一行。金额单位：元（前端自己换算成亿）。"""
+
+    code: str
+    name: str | None
+    pct_chg: float | None
+    price: float | None
+    first_seal_time: str | None
+    last_seal_time: str | None
+    open_times: int | None
+    float_mv: float | None
+    amount: float | None
+    turnover: float | None
+    seal_amount: float | None
+    #: 封单额 ÷ 流通市值（%），越大封得越厚
+    seal_ratio: float | None
+    industry: str | None
+    #: 当日同题材（精选板块）涨停家数最多的那个板块，以及它的家数
+    theme: str | None
+    theme_count: int
+
+
+class FirstBoardOut(BaseModel):
+    trade_date: date | None
+    #: 本次实际使用的筛选条件（金额单位：亿），页面照原样展示，避免条件漂移
+    conditions: dict
+    rows: list[FirstBoardRowOut]

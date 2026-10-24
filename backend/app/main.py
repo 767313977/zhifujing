@@ -25,6 +25,7 @@ from app.api import (
     note,
     patterns,
     plans,
+    pools,
     sector,
     stock,
     valuation,
@@ -253,6 +254,7 @@ app.include_router(note.router)
 app.include_router(journal.router)
 app.include_router(plans.router)
 app.include_router(patterns.router)
+app.include_router(pools.router)
 app.include_router(anomaly_map.router)
 app.include_router(valuation.router)
 app.include_router(admin.router)

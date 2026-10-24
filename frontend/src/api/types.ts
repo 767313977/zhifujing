@@ -2254,3 +2254,50 @@ export interface AdvanceDecline {
   median_pct: number | null
   buckets: AdvanceDeclineBucket[]
 }
+
+
+/** RPS 榜的一行：区间涨幅 + 全市场横截面分位（0-100）。 */
+export interface RpsRow {
+  code: string
+  name: string | null
+  close: number | null
+  pct_chg: number | null
+  /** 区间涨幅（%，日涨跌幅复利）；null = 窗口内可用天数不足 */
+  ret120: number | null
+  ret250: number | null
+  rps120: number | null
+  rps250: number | null
+}
+
+export interface RpsBoard {
+  trade_date: string | null
+  rows: RpsRow[]
+}
+
+/** 首板一进二候选的一行。金额单位是**元**，展示时自己换算成亿。 */
+export interface FirstBoardRow {
+  code: string
+  name: string | null
+  pct_chg: number | null
+  price: number | null
+  first_seal_time: string | null
+  last_seal_time: string | null
+  open_times: number | null
+  float_mv: number | null
+  amount: number | null
+  turnover: number | null
+  seal_amount: number | null
+  /** 封单额 ÷ 流通市值（%） */
+  seal_ratio: number | null
+  industry: string | null
+  /** 当日同题材涨停家数最多的精选板块，以及家数 */
+  theme: string | null
+  theme_count: number
+}
+
+export interface FirstBoardBoard {
+  trade_date: string | null
+  /** 本次实际使用的条件（金额单位：亿） */
+  conditions: Record<string, number | string>
+  rows: FirstBoardRow[]
+}

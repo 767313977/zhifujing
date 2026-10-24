@@ -1191,6 +1191,9 @@ class DailyScheduler:
         # 中国波指（QVIX）：走 akshare、零配额；接口一次给全历史，每次全量 upsert
         self._collect_qvix(today)
         self._scan_patterns(today)
+        # RPS 相对强度：只读库（全市场日线流式复利），零配额；排在形态扫描之后、
+        # 命中补数之前 —— 它不依赖形态结果，但要等当天日线落库
+        self._scan_rps(today)
         # 命中前 N 只的**日线**补齐：形态页那张 K 线读的就是 `stock_daily`，某只的最后
         # 一根早于最近交易日，图上最新几天就是断的（2026-10-09 用户要求）。
         # 排在形态扫描之后 —— 要先有命中才谈得上「前 50 只」。走免费源为主、
@@ -1389,9 +1392,29 @@ class DailyScheduler:
             result.get("cost_seconds"),
         )
 
+    def _scan_rps(self, trade_date: date) -> None:
+        """全市场 RPS（120/250 日涨幅的横截面分位）。
+
+        零外部请求、零 iFinD 配额，只读 `stock_daily`（流式读约 130 万行）。
+        失败只记日志、不登记 `_tail_failures` —— 它不影响简报与推送，
+        明天重跑自然补上。
+        """
+        from app.jobs.scan_rps import scan
+
+        try:
+            result = scan(trade_date)
+        except Exception:  # noqa: BLE001 - RPS 是增强读数，不该拖垮尾部链
+            logger.exception("RPS 扫描失败")
+            return
+        logger.info(
+            "RPS 扫描完成：%s 只 / %s，用时 %ss",
+            result.get("rows"),
+            result.get("trade_date"),
+            result.get("cost_seconds"),
+        )
+
     def _backfill_hit_kline(self, trade_date: date) -> None:
         """把当日命中评分前 N 只（`Settings.kline_hit_top_n`，默认 50）的**日线**补到最近交易日。
-
         与 `_backfill_hit_dde` 同一口径取票（`collect_dde.top_hit_codes`，就是页面上
         「评分前 50」那批）。为什么要有这一步：形态页那张 K 线读的就是 `stock_daily`，
         某只的最后一根早于最近交易日，图上最新几天就是断的。

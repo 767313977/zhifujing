@@ -11,6 +11,7 @@ import type {
   DdeOrder,
   Erp,
   EtfFlowBoard,
+  FirstBoardBoard,
   FundFlowHistoryOut,
   FundFlowMatrixOut,
   EtfFlowOrder,
@@ -52,6 +53,7 @@ import type {
   ReviewNote,
   RotationLeaderDay,
   RotationMetric,
+  RpsBoard,
   SectorCompare,
   SectorFundFlowOut,
   SectorHeat,
@@ -854,6 +856,34 @@ export const api = {
    * 全 A 涨跌分布（区间家数 + 平均/中位数）。缺省 = 库里最新交易日。
    */
   advanceDecline: () => request<AdvanceDecline>('/market/advance-decline'),
+
+  /**
+   * RPS 相对强度榜（盘后）。`minRps` 同时作用在 120/250 两档分位上。
+   */
+  rpsBoard: (minRps = 0, limit = 100) =>
+    request<RpsBoard>(`/pools/rps?min_rps=${minRps}&limit=${limit}`),
+
+  /**
+   * 首板一进二候选（盘后）。金额参数单位是**亿**，与后端接口一致。
+   */
+  firstBoard: (params: {
+    before?: string
+    minFloatMv?: number
+    maxFloatMv?: number
+    minAmount?: number
+    minThemes?: number
+    limit?: number
+  } = {}) => {
+    const query = new URLSearchParams({
+      before: params.before ?? '103000',
+      min_float_mv: String(params.minFloatMv ?? 30),
+      max_float_mv: String(params.maxFloatMv ?? 150),
+      min_amount: String(params.minAmount ?? 5),
+      min_themes: String(params.minThemes ?? 3),
+      limit: String(params.limit ?? 50),
+    })
+    return request<FirstBoardBoard>(`/pools/first-board?${query.toString()}`)
+  },
 
   /** 核心指数估值分位总览（PE/PB 近 10 年，周频采样）。 */
   valuation: () => request<ValuationSummary>('/valuation'),
