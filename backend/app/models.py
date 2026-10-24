@@ -634,15 +634,19 @@ class IndexValuation(Base):
 
 
 class RpsDaily(Base):
-    """相对强度 RPS：近 120 / 250 个交易日涨幅的**全市场百分位**（0-100）。
+    """相对强度 RPS：近 50 / 120 / 250 个交易日涨幅的**全市场百分位**（0-100）。
 
     为什么要有它：形态是「是 / 否」，选股还需要一个**横截面排序** —— 同样命中
     「均线多头」，涨得比全市场 95% 的票强和只有 60% 强，是两回事。
 
-    - `ret120` / `ret250`：用 `stock_daily.pct_chg` **复利**出来的区间涨幅（%），
+    为什么 2026-10-24 加了 50 日：「双高」（RPS50 ≥ 90 且 RPS120 ≥ 85）是回测里
+    唯一站得住的用法，而它必须有 50 日这一档；只留 120/250 时排在最前面的是
+    「过去一年涨得最多」的票，很多已经掉头（RPS250 99、120 日 −27% 的那种）。
+
+    - `ret50` / `ret120` / `ret250`：用 `stock_daily.pct_chg` **复利**出来的区间涨幅（%），
       不是收盘价比值 —— 库里存的是不复权价，直接比会被除权除息带偏
-    - `rps120` / `rps250`：该涨幅在全市场（当天有数据的票）里的**中位秩**百分位
-    - 停牌导致窗口内缺几天时，按**实际可用的天数**算，但至少要有 90% 的天数，
+    - `rps50` / `rps120` / `rps250`：该涨幅在全市场（当天有数据的票）里的**中位秩**百分位
+    - 窗口按**交易日**截取，窗口内缺几天时按实际可用的天数算，但至少要有 90% 的天数，
       否则这一档记 None（不拿半截窗口冒充 250 日涨幅）
 
     只保留每天一行（全市场约 5000 行/天），由 `jobs/scan_rps` 收盘后重算当天。
@@ -652,8 +656,10 @@ class RpsDaily(Base):
 
     trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
     code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    ret50: Mapped[float | None] = mapped_column(Float)
     ret120: Mapped[float | None] = mapped_column(Float)
     ret250: Mapped[float | None] = mapped_column(Float)
+    rps50: Mapped[float | None] = mapped_column(Float)
     rps120: Mapped[float | None] = mapped_column(Float)
     rps250: Mapped[float | None] = mapped_column(Float)
 

@@ -2263,16 +2263,34 @@ export interface RpsRow {
   close: number | null
   pct_chg: number | null
   /** 区间涨幅（%，日涨跌幅复利）；null = 窗口内可用天数不足 */
+  ret50: number | null
   ret120: number | null
   ret250: number | null
+  rps50: number | null
   rps120: number | null
   rps250: number | null
+  /** 当天命中的突破类形态中文名 */
+  hits: string[]
+  /** 一线红 / 三线红 / 掉队 */
+  tags: string[]
+  /** 收盘距近 250 日最高收盘的百分比（≤ 0） */
+  off_high_pct: number | null
+  /** 行业末段 */
+  industry: string | null
+}
+
+export interface IndustryCount {
+  industry: string
+  count: number
 }
 
 export interface RpsBoard {
   trade_date: string | null
   rows: RpsRow[]
+  /** 返回行里各一级行业的只数，取前 5 */
+  industry_top: IndustryCount[]
 }
+
 
 /** 首板一进二候选的一行。金额单位是**元**，展示时自己换算成亿。 */
 export interface FirstBoardRow {

@@ -887,14 +887,47 @@ export const api = {
   },
 
   /** RPS 榜前 N 只的 1 / 5 日表现（与形态跟踪同一套等权基准） */
-  rpsTrack: (minRps = 0, top = 50, days = 20) =>
-    request<RpsTrack>(`/pools/rps/track?min_rps=${minRps}&top=${top}&days=${days}`),
+  rpsTrack: (params: {
+    mode?: 'dual' | 'line_red' | 'all'
+    minRps?: number
+    top?: number
+    days?: number
+    breakoutOnly?: boolean
+    trendTemplate?: boolean
+  } = {}) => {
+    const query = new URLSearchParams({
+      mode: params.mode ?? 'dual',
+      min_rps: String(params.minRps ?? 0),
+      top: String(params.top ?? 50),
+      days: String(params.days ?? 20),
+      breakout_only: String(params.breakoutOnly ?? false),
+      trend_template: String(params.trendTemplate ?? false),
+    })
+    return request<RpsTrack>(`/pools/rps/track?${query.toString()}`)
+  },
 
   /**
-   * RPS 相对强度榜（盘后）。`minRps` 同时作用在 120/250 两档分位上。
+   * RPS 相对强度榜（盘后）。
+   *
+   * `mode`：`dual` 双高（RPS50≥90 且 RPS120≥85，回测里唯一有效的用法）/
+   * `line_red` 一线红 / `all` 按 RPS250 排（旧口径）。
    */
-  rpsBoard: (minRps = 0, limit = 100) =>
-    request<RpsBoard>(`/pools/rps?min_rps=${minRps}&limit=${limit}`),
+  rpsBoard: (params: {
+    mode?: 'dual' | 'line_red' | 'all'
+    minRps?: number
+    limit?: number
+    breakoutOnly?: boolean
+    trendTemplate?: boolean
+  } = {}) => {
+    const query = new URLSearchParams({
+      mode: params.mode ?? 'dual',
+      min_rps: String(params.minRps ?? 0),
+      limit: String(params.limit ?? 100),
+      breakout_only: String(params.breakoutOnly ?? false),
+      trend_template: String(params.trendTemplate ?? false),
+    })
+    return request<RpsBoard>(`/pools/rps?${query.toString()}`)
+  },
 
   /**
    * 首板一进二候选（盘后）。金额参数单位是**亿**，与后端接口一致。

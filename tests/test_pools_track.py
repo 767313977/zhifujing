@@ -138,7 +138,7 @@ def test_rps_track_uses_equal_weight_market(session):
             _daily(session, day, code, close=10.0, pct_chg=1.0)
     session.commit()
 
-    track = pools.rps_track(session, days=20, min_rps=0, top=50)
+    track = pools.rps_track(session, days=20, min_rps=0, top=50, mode="all")
     assert track.summary["days"] == 1
     assert track.summary["samples"] == 2
     # 每天 +1%：1 日 +1.00%，5 日 1.01**5−1 = +5.10%

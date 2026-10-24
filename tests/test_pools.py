@@ -10,6 +10,7 @@ from app.jobs.scan_rps import _mid_rank, _ret
 from app.models import (
     Base,
     LimitPool,
+    PatternHit,
     RpsDaily,
     StockBasic,
     StockConcept,
@@ -146,7 +147,7 @@ def test_rps_board_joins_latest_and_filters(session):
     )
     session.commit()
 
-    board = pools.rps_board(session, min_rps=80)
+    board = pools.rps_board(session, min_rps=80, mode="all")
     assert board.trade_date == DAY
     assert [row.code for row in board.rows] == ["000001"]
     assert board.rows[0].name == "甲股份"
@@ -154,10 +155,13 @@ def test_rps_board_joins_latest_and_filters(session):
     assert board.rows[0].rps250 == 95.0
 
     # 不过滤时按 250 日分位降序
-    assert [row.code for row in pools.rps_board(session).rows] == ["000001", "000002"]
+    assert [row.code for row in pools.rps_board(session, mode="all").rows] == [
+        "000001",
+        "000002",
+    ]
 
 
-def _rps_row(session, code: str, rps120, rps250) -> None:
+def _rps_row(session, code: str, rps120, rps250, rps50=None) -> None:
     session.add(
         StockDaily(trade_date=DAY, code=code, close=10.0, pct_chg=1.0, name=code)
     )
@@ -165,8 +169,10 @@ def _rps_row(session, code: str, rps120, rps250) -> None:
         RpsDaily(
             trade_date=DAY,
             code=code,
+            ret50=5.0,
             ret120=10.0,
             ret250=20.0,
+            rps50=rps50,
             rps120=rps120,
             rps250=rps250,
         )
@@ -183,8 +189,9 @@ def test_rps_board_requires_both_windows(session):
     _rps_row(session, "000003", 95.0, 50.0)  # 只有 120 高
     session.commit()
 
-    assert [row.code for row in pools.rps_board(session, min_rps=90).rows] == ["000001"]
-    assert sorted(row.code for row in pools.rps_board(session, min_rps=0).rows) == [
+    board = pools.rps_board(session, min_rps=90, mode="all")
+    assert [row.code for row in board.rows] == ["000001"]
+    assert sorted(row.code for row in pools.rps_board(session, min_rps=0, mode="all").rows) == [
         "000001",
         "000002",
         "000003",
@@ -197,7 +204,83 @@ def test_rps_board_skips_missing_rps120(session):
     _rps_row(session, "000002", None, 99.0)
     session.commit()
 
-    assert [row.code for row in pools.rps_board(session).rows] == ["000001"]
+    assert [row.code for row in pools.rps_board(session, mode="all").rows] == ["000001"]
+
+
+def test_rps_board_dual_mode(session):
+    """「双高」= RPS50 ≥ 90 且 RPS120 ≥ 85，按两者之和降序。"""
+    _rps_row(session, "000001", 95.0, 99.0, rps50=95.0)  # 190
+    _rps_row(session, "000002", 99.0, 99.0, rps50=99.0)  # 198
+    _rps_row(session, "000003", 50.0, 99.0, rps50=99.0)  # 120 不够
+    _rps_row(session, "000004", 99.0, 99.0, rps50=60.0)  # 50 日不够
+    _rps_row(session, "000005", 95.0, 99.0, rps50=None)  # 没有 50 日值
+    session.commit()
+
+    rows = pools.rps_board(session).rows  # 默认 dual
+    assert [row.code for row in rows] == ["000002", "000001"]
+
+
+def test_rps_board_line_red_mode(session):
+    """一线红：任一档 ≥ 90 即可，按三档最大值降序。"""
+    _rps_row(session, "000001", 50.0, 95.0, rps50=20.0)  # 95
+    _rps_row(session, "000002", 96.0, 10.0, rps50=30.0)  # 96
+    _rps_row(session, "000003", 80.0, 80.0, rps50=80.0)  # 一条都不红
+    session.commit()
+
+    rows = pools.rps_board(session, mode="line_red").rows
+    assert [row.code for row in rows] == ["000002", "000001"]
+
+
+def test_rps_tags_flag_laggards(session):
+    """`掉队` = RPS250 很高但 RPS120 < 80（旧榜最前面的那批）。"""
+    _rps_row(session, "000001", 40.0, 99.0, rps50=30.0)
+    session.commit()
+
+    row = pools.rps_board(session, mode="all").rows[0]
+    assert "掉队" in row.tags
+    assert "一线红" in row.tags
+
+
+def test_rps_board_breakout_only(session):
+    """只留当天命中了突破类形态的票。"""
+    _rps_row(session, "000001", 95.0, 99.0, rps50=95.0)
+    _rps_row(session, "000002", 95.0, 99.0, rps50=95.0)
+    session.add(PatternHit(trade_date=DAY, code="000001", pattern="new_high", score=80.0))
+    session.add(PatternHit(trade_date=DAY, code="000002", pattern="v_bottom", score=80.0))
+    session.commit()
+
+    rows = pools.rps_board(session, breakout_only=True).rows
+    assert [row.code for row in rows] == ["000001"]
+    # 只列突破类形态（`v_bottom` 不在 BREAKOUT_KEYS 里）
+    assert len(rows[0].hits) == 1
+
+
+def test_rps_board_off_high_pct_uses_compounding(session):
+    """距新高用 pct_chg 复利：+10% → −10% 的净值是 0.99，距高点 −10%。"""
+    days = [date(2026, 10, 20), date(2026, 10, 21), date(2026, 10, 22), DAY]
+    session.add_all(TradeCalendar(trade_date=day) for day in days)
+    for day, pct in zip(days, [0.0, 10.0, -10.0, 0.0]):
+        session.add(
+            StockDaily(
+                trade_date=day, code="000001", close=10.0, pct_chg=pct, name="000001"
+            )
+        )
+    session.add(
+        RpsDaily(
+            trade_date=DAY,
+            code="000001",
+            ret50=5.0,
+            ret120=10.0,
+            ret250=20.0,
+            rps50=95.0,
+            rps120=95.0,
+            rps250=99.0,
+        )
+    )
+    session.commit()
+
+    row = pools.rps_board(session).rows[0]
+    assert row.off_high_pct == pytest.approx(-10.0, abs=0.01)
 
 
 def test_first_board_seal_to_amount(session):

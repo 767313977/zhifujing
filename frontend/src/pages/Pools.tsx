@@ -47,10 +47,21 @@ const TRUE_FIRST_ITEMS = [
   { key: '1', label: '只看真首板' },
 ]
 
-const RPS_ITEMS = [
-  { key: '0', label: '全部' },
-  { key: '80', label: 'RPS ≥80' },
-  { key: '90', label: 'RPS ≥90' },
+/** 档位：回测里有效的是「双高 × 突破形态」，单独用 RPS 没有超额。 */
+const RPS_MODE_ITEMS = [
+  { key: 'dual', label: '双高' },
+  { key: 'line_red', label: '一线红' },
+  { key: 'all', label: '全部' },
+]
+
+const REVERSAL_ITEMS = [
+  { key: '0', label: '形态不限' },
+  { key: '1', label: '只看突破形态' },
+]
+
+const TREND_ITEMS = [
+  { key: '0', label: '趋势不限' },
+  { key: '1', label: '趋势模板' },
 ]
 
 /** RPS 分位的颜色：只有两档极端才染色，中间一律中性（避免满屏红绿）。 */
@@ -67,7 +78,9 @@ export default function Pools() {
   const [themes, setThemes] = useState('3')
   const [seal, setSeal] = useState('0')
   const [trueFirst, setTrueFirst] = useState('0')
-  const [minRps, setMinRps] = useState('0')
+  const [rpsMode, setRpsMode] = useState('dual')
+  const [onlyBreakout, setOnlyBreakout] = useState('0')
+  const [onlyTrend, setOnlyTrend] = useState('0')
 
   const [firstBoard, setFirstBoard] = useState<FirstBoardBoard | null>(null)
   const [firstBoardError, setFirstBoardError] = useState<string | null>(null)
@@ -109,7 +122,12 @@ export default function Pools() {
     setRps(null)
     setRpsError(null)
     api
-      .rpsBoard(Number(minRps), 100)
+      .rpsBoard({
+        mode: rpsMode as 'dual' | 'line_red' | 'all',
+        limit: 100,
+        breakoutOnly: onlyBreakout === '1',
+        trendTemplate: onlyTrend === '1',
+      })
       .then((value) => {
         if (!stale) setRps(value)
       })
@@ -119,7 +137,7 @@ export default function Pools() {
     return () => {
       stale = true
     }
-  }, [minRps])
+  }, [rpsMode, onlyBreakout, onlyTrend])
 
   useEffect(() => {
     let stale = false
@@ -151,7 +169,13 @@ export default function Pools() {
     let stale = false
     setRpsTrack(null)
     api
-      .rpsTrack(Number(minRps), 50, 20)
+      .rpsTrack({
+        mode: rpsMode as 'dual' | 'line_red' | 'all',
+        top: 50,
+        days: 20,
+        breakoutOnly: onlyBreakout === '1',
+        trendTemplate: onlyTrend === '1',
+      })
       .then((value) => {
         if (!stale) setRpsTrack(value)
       })
@@ -161,7 +185,7 @@ export default function Pools() {
     return () => {
       stale = true
     }
-  }, [minRps])
+  }, [rpsMode, onlyBreakout, onlyTrend])
 
   const tradeDate = firstBoard?.trade_date ?? rps?.trade_date ?? null
 
@@ -366,15 +390,36 @@ export default function Pools() {
           title="RPS 相对强度榜"
           meta={
             <span className="flex items-center gap-3">
-              <Segmented value={minRps} items={RPS_ITEMS} onChange={setMinRps} />
+              <Segmented value={rpsMode} items={RPS_MODE_ITEMS} onChange={setRpsMode} />
               <span className="num">{rps?.trade_date ?? '—'}</span>
             </span>
           }
           delay={60}
         >
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line-soft px-4 py-2.5 text-[12px] text-fg-dim">
+            <span className="flex items-center gap-2">
+              <Segmented
+                value={onlyBreakout}
+                items={REVERSAL_ITEMS}
+                onChange={setOnlyBreakout}
+              />
+            </span>
+            <span className="flex items-center gap-2">
+              <Segmented value={onlyTrend} items={TREND_ITEMS} onChange={setOnlyTrend} />
+            </span>
+            {rps && rps.industry_top.length > 0 && (
+              <span className="num">
+                强势行业：
+                {rps.industry_top
+                  .map((item) => `${item.industry} ${item.count}`)
+                  .join(' · ')}
+              </span>
+            )}
+          </div>
           <p className="border-b border-line-soft px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
-            RPS = 区间涨幅在全市场的百分位（0~100，中位秩）。涨幅按日涨跌幅复利计算，
-            停牌缺天但覆盖不足 90% 的不参与排名。
+            RPS = 区间涨幅在全市场的百分位（0~100，中位秩）。**RPS 单独不是买点**：
+            回测里有效的是「双高 × 突破形态」，回踩类形态别叠 RPS。停牌缺天但覆盖不足
+            90% 的不参与排名。
           </p>
           {rpsTrack && (
             <div className="border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
@@ -432,7 +477,10 @@ export default function Pools() {
           ) : rps === null ? (
             <LoadState loading emptyText="加载中" />
           ) : rps.rows.length === 0 ? (
-            <LoadState loading={false} emptyText="还没有 RPS 数据（等收盘扫描跑一轮）" />
+            <LoadState
+              loading={false}
+              emptyText="当前档位没有候选 —— 「双高」需要 RPS50 数据，刚上线时先等一轮收盘扫描"
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="grid-table">
@@ -442,10 +490,15 @@ export default function Pools() {
                     <th className="!text-left">名称</th>
                     <th>收盘</th>
                     <th>当日</th>
-                    <th>120 日</th>
-                    <th>250 日</th>
+                    <th>RPS50</th>
+                    <th>50 日</th>
                     <th>RPS120</th>
+                    <th>120 日</th>
                     <th>RPS250</th>
+                    <th>250 日</th>
+                    <th>距新高</th>
+                    <th className="!text-left">今日形态 / 标签</th>
+                    <th className="!text-left">行业</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -460,10 +513,36 @@ export default function Pools() {
                       </td>
                       <td className="num">{fmtNum(row.close, 2)}</td>
                       <td className={`num ${toneOf(row.pct_chg)}`}>{fmtPct(row.pct_chg)}</td>
-                      <td className={`num ${toneOf(row.ret120)}`}>{fmtPct(row.ret120)}</td>
-                      <td className={`num ${toneOf(row.ret250)}`}>{fmtPct(row.ret250)}</td>
+                      <td className={`num ${rpsTone(row.rps50)}`}>{fmtNum(row.rps50, 1)}</td>
+                      <td className={`num ${toneOf(row.ret50)}`}>{fmtPct(row.ret50)}</td>
                       <td className={`num ${rpsTone(row.rps120)}`}>{fmtNum(row.rps120, 1)}</td>
+                      <td className={`num ${toneOf(row.ret120)}`}>{fmtPct(row.ret120)}</td>
                       <td className={`num ${rpsTone(row.rps250)}`}>{fmtNum(row.rps250, 1)}</td>
+                      <td className={`num ${toneOf(row.ret250)}`}>{fmtPct(row.ret250)}</td>
+                      <td className={`num ${toneOf(row.off_high_pct)}`}>
+                        {fmtPct(row.off_high_pct)}
+                      </td>
+                      <td className="!text-left">
+                        {row.hits.length > 0 && (
+                          <span className="mr-2 rounded border border-line-soft px-1 text-[11px] text-fg">
+                            {row.hits.join(' · ')}
+                          </span>
+                        )}
+                        {row.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className={`num mr-1 text-[11px] ${
+                              tag === '掉队' ? 'text-down' : 'text-up'
+                            }`}
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                        {row.hits.length === 0 && row.tags.length === 0 && (
+                          <span className="text-fg-dim">—</span>
+                        )}
+                      </td>
+                      <td className="!text-left text-fg-muted">{row.industry ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>

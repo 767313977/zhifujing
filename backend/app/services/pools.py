@@ -15,19 +15,20 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
     LimitPool,
+    PatternHit,
     RpsDaily,
     StockBasic,
     StockConcept,
     StockDaily,
     TradeCalendar,
 )
-from app.services import pattern_track
-from app.services.patterns import is_st
+from app.services import pattern_track, trend
+from app.services.patterns import PATTERNS, Bars, build_bars, is_st, usable_bar
 
 logger = logging.getLogger(__name__)
 
@@ -44,16 +45,53 @@ class RpsRow:
     name: str | None
     close: float | None
     pct_chg: float | None
+    ret50: float | None
     ret120: float | None
     ret250: float | None
+    rps50: float | None
     rps120: float | None
     rps250: float | None
+    #: 当天命中的**突破类**形态中文名（只列 `BREAKOUT_KEYS` 里的）
+    hits: list[str] = field(default_factory=list)
+    #: `一线红` / `三线红` / `掉队`
+    tags: list[str] = field(default_factory=list)
+    #: 收盘距近 250 日最高收盘的百分比（−8.5 表示比高点低 8.5%）
+    off_high_pct: float | None = None
+    #: 行业末段（`StockBasic.industry` 按 `-` 拆的最后一段）
+    industry: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class RpsBoard:
     trade_date: date | None
     rows: list[RpsRow]
+    #: 返回行里各**一级行业**的只数，取前 5
+    industry_top: list[tuple[str, int]] = field(default_factory=list)
+
+
+#: 「双高」档：RPS50 ≥ 90 且 RPS120 ≥ 85 —— 2026-10-19 实验里唯一站得住的组合，
+#: 而且要**叠在突破类形态上**（单独用 RPS 没有超额）。来源见
+#: `docs/回测_RPS与趋势模板_20261024.md` 与 `services/patterns.py` 的注释表。
+RPS_DUAL_50 = 90.0
+RPS_DUAL_120 = 85.0
+#: 「一线红」：三档里任意一档 ≥ 这个值
+RPS_LINE_RED = 90.0
+
+#: 突破类形态（2026-10-19 实验：叠 RPS 有效的那批）。**别往里加回踩类** ——
+#: 回踩白线B1 × rps50_90 是 −8.15pp。
+BREAKOUT_KEYS = (
+    "new_high",
+    "three_white_soldiers",
+    "ma_golden_cross",
+    "turtle_breakout",
+    "volume_surge",
+)
+
+_PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}
+
+#: 打开「突破形态 / 趋势模板」过滤时最多评估多少只：列表本身按强度排序，
+#: 取前 3 倍 limit（至少 300）足够，否则 `mode=all` 要为一整池 5000 只算 250 根均线
+_FILTER_SCAN_CAP = 300
 
 
 def rps_board(
@@ -61,26 +99,38 @@ def rps_board(
     trade_date: date | None = None,
     min_rps: float = 0,
     limit: int = 100,
+    mode: str = "dual",
+    breakout_only: bool = False,
+    trend_template: bool = False,
 ) -> RpsBoard:
-    """RPS 榜：按 250 日分位降序。`min_rps` 同时作用在 120 / 250 **两档**分位上。
+    """RPS 榜。
 
-    2026-10-24 修：原来只卡了 `rps250`，页面选「RPS ≥90」时 RPS120 只有 36、24 的票
-    照样出现（10-23 的金富科技、南网数字）—— 与函数说明 / 接口参数说明都对不上。
-    两档都要求有值：`rps120` 为 None 的（窗口内交易日不足，常见于长期停牌刚复牌）
-    连「≥0」都谈不上，不放进榜里。
+    `mode`（2026-10-24 加）：
+    - `dual`（默认）：RPS50 ≥ 90 且 RPS120 ≥ 85，按两者之和降序 —— 回测里唯一有效的用法；
+    - `line_red`：三档里任一 ≥ 90（陶博士「一线红」），按三档最大值降序；
+    - `all`：不额外卡分位（仍受 `min_rps` 约束），按 RPS250 降序。
+
+    `breakout_only`：只留当天命中了 `BREAKOUT_KEYS` 里任一形态的票；
+    `trend_template`：只留满足 Minervini 趋势模板的票（判据与回测共用 `services.trend`）。
+
+    ⚠️ 两个开关都是在**排序之后**按序评估最多 `_FILTER_SCAN_CAP` 只 —— 榜单是
+    「最强的一批」，翻到第 300 名之后还满足突破 / 趋势的票本来也不该按强度混进来。
     """
-    target = trade_date or session.scalar(select(func.max(RpsDaily.trade_date)))
+    target = trade_date or _latest_rps_day(session)
     if target is None:
         return RpsBoard(trade_date=None, rows=[])
 
-    rows = session.execute(
+    statement = (
         select(
             RpsDaily.code,
             StockBasic.name,
+            StockBasic.industry,
             StockDaily.close,
             StockDaily.pct_chg,
+            RpsDaily.ret50,
             RpsDaily.ret120,
             RpsDaily.ret250,
+            RpsDaily.rps50,
             RpsDaily.rps120,
             RpsDaily.rps250,
         )
@@ -89,33 +139,260 @@ def rps_board(
             (StockDaily.trade_date == RpsDaily.trade_date) & (StockDaily.code == RpsDaily.code),
         )
         .outerjoin(StockBasic, StockBasic.code == RpsDaily.code)
-        .where(
-            RpsDaily.trade_date == target,
+        .where(RpsDaily.trade_date == target)
+    )
+
+    if mode == "dual":
+        statement = statement.where(
+            RpsDaily.rps50.is_not(None),
+            RpsDaily.rps50 >= RPS_DUAL_50,
+            RpsDaily.rps120.is_not(None),
+            RpsDaily.rps120 >= RPS_DUAL_120,
+        ).order_by((RpsDaily.rps50 + RpsDaily.rps120).desc())
+    elif mode == "line_red":
+        statement = statement.where(
+            or_(
+                RpsDaily.rps50 >= RPS_LINE_RED,
+                RpsDaily.rps120 >= RPS_LINE_RED,
+                RpsDaily.rps250 >= RPS_LINE_RED,
+            )
+        ).order_by(
+            func.max(RpsDaily.rps50, RpsDaily.rps120, RpsDaily.rps250).desc()
+        )
+    elif mode == "all":
+        # 现状口径：两档都要有值、都 ≥ min_rps，按 250 日分位降序
+        statement = statement.where(
             RpsDaily.rps250.is_not(None),
             RpsDaily.rps250 >= min_rps,
             RpsDaily.rps120.is_not(None),
             RpsDaily.rps120 >= min_rps,
+        ).order_by(RpsDaily.rps250.desc())
+    else:
+        raise ValueError(f"未知的 RPS 模式：{mode}")
+
+    cap = max(limit * 3, _FILTER_SCAN_CAP) if (breakout_only or trend_template) else limit
+    records = session.execute(statement.limit(cap)).all()
+    if not records:
+        return RpsBoard(trade_date=target, rows=[])
+
+    codes = [row[0] for row in records]
+    hits = _breakout_hits(session, target, codes)
+
+    rows: list[RpsRow] = []
+    for record in records:
+        (
+            code,
+            name,
+            industry,
+            close,
+            pct_chg,
+            ret50,
+            ret120,
+            ret250,
+            rps50,
+            rps120,
+            rps250,
+        ) = record
+        if breakout_only and not hits.get(code):
+            continue
+        rows.append(
+            RpsRow(
+                code=code,
+                name=name,
+                close=close,
+                pct_chg=pct_chg,
+                ret50=ret50,
+                ret120=ret120,
+                ret250=ret250,
+                rps50=rps50,
+                rps120=rps120,
+                rps250=rps250,
+                hits=hits.get(code, []),
+                tags=_rps_tags(rps50, rps120, rps250),
+                industry=industry.split("-")[-1] if industry else None,
+            )
         )
-        .order_by(RpsDaily.rps250.desc())
-        .limit(limit)
-    ).all()
+        if len(rows) >= limit and not trend_template:
+            break
+
+    if trend_template:
+        rows = _filter_trend(session, target, rows)[:limit]
+
+    if rows:
+        off_high = _off_high_pct(session, target, [row.code for row in rows])
+        rows = [
+            replace(row, off_high_pct=off_high.get(row.code)) for row in rows
+        ]
 
     return RpsBoard(
         trade_date=target,
-        rows=[
-            RpsRow(
-                code=row[0],
-                name=row[1],
-                close=row[2],
-                pct_chg=row[3],
-                ret120=row[4],
-                ret250=row[5],
-                rps120=row[6],
-                rps250=row[7],
-            )
-            for row in rows
-        ],
+        rows=rows,
+        industry_top=_industry_top(session, [row.code for row in rows]),
     )
+
+
+def _latest_rps_day(session: Session) -> date | None:
+    """最近一个**同时有 RPS 和日线**的交易日。
+
+    为什么不能直接取 `max(rps_daily.trade_date)`：日线会被采集任务 `prune()`（只留
+    400 天），而 `rps_daily` 不删。老库上就会出现「RPS 有 10-21、日线只剩到 10-09」
+    这种组合 —— 直接取最新的话，榜单 join 不到行情，页面上是空表而不是报错。
+    """
+    days = list(
+        session.scalars(
+            select(RpsDaily.trade_date)
+            .group_by(RpsDaily.trade_date)
+            .order_by(RpsDaily.trade_date.desc())
+            .limit(5)
+        )
+    )
+    for day in days:
+        has_quote = session.scalar(
+            select(StockDaily.code).where(StockDaily.trade_date == day).limit(1)
+        )
+        if has_quote is not None:
+            return day
+    return days[0] if days else None
+
+
+def _breakout_hits(session: Session, day: date, codes: list[str]) -> dict[str, list[str]]:
+    """当天命中的突破类形态中文名（按 `BREAKOUT_KEYS` 过滤）。"""
+    if not codes:
+        return {}
+    hits: dict[str, list[str]] = defaultdict(list)
+    for code, key in session.execute(
+        select(PatternHit.code, PatternHit.pattern).where(
+            PatternHit.trade_date == day,
+            PatternHit.pattern.in_(BREAKOUT_KEYS),
+            PatternHit.code.in_(codes),
+        )
+    ):
+        hits[code].append(_PATTERN_NAMES.get(key, key))
+    return dict(hits)
+
+
+def _rps_tags(rps50, rps120, rps250) -> list[str]:
+    """`一线红` / `三线红` / `掉队`。
+
+    - 一线红：三档里至少一档 ≥ 90；
+    - 三线红：三档都 ≥ 90；
+    - 掉队：RPS250 ≥ 90 但 RPS120 < 80 —— 过去一年涨得多、近半年已经掉头，
+      正是旧榜（只按 250 排）排在最前面的那批。
+    """
+    values = [value for value in (rps50, rps120, rps250) if value is not None]
+    tags: list[str] = []
+    if values and len(values) == 3 and all(value >= RPS_LINE_RED for value in values):
+        tags.append("三线红")
+    elif any(value >= RPS_LINE_RED for value in values):
+        tags.append("一线红")
+    if rps250 is not None and rps120 is not None and rps250 >= RPS_LINE_RED and rps120 < 80:
+        tags.append("掉队")
+    return tags
+
+
+def _filter_trend(session: Session, day: date, rows: list[RpsRow]) -> list[RpsRow]:
+    """只留满足 Minervini 趋势模板的票（判据与回测共用 `services.trend`）。"""
+    if not rows:
+        return rows
+    codes = [row.code for row in rows]
+    records: dict[str, list[dict]] = defaultdict(list)
+    for code, trade_date, open_, high, low, close, volume, amount, pct in session.execute(
+        select(
+            StockDaily.code,
+            StockDaily.trade_date,
+            StockDaily.open,
+            StockDaily.high,
+            StockDaily.low,
+            StockDaily.close,
+            StockDaily.volume,
+            StockDaily.amount,
+            StockDaily.pct_chg,
+        )
+        .where(StockDaily.code.in_(codes), StockDaily.trade_date <= day)
+        .order_by(StockDaily.code, StockDaily.trade_date)
+    ):
+        item = {
+            "date": trade_date,
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+            "amount": amount,
+            "pct_chg": pct,
+            "name": None,
+        }
+        # 停牌残行（只有收盘价）不能当一根 K 线，与扫描 / 回测同口径
+        if usable_bar(item):
+            records[code].append(item)
+    kept: list[RpsRow] = []
+    for row in rows:
+        items = records.get(row.code) or []
+        if len(items) < trend.TREND_LOOKBACK:
+            continue
+        bars: Bars = build_bars(items, row.code)
+        if trend.passes(bars, len(bars) - 1, row.rps250):
+            kept.append(row)
+    return kept
+
+
+def _off_high_pct(session: Session, day: date, codes: list[str]) -> dict[str, float]:
+    """收盘距近 250 个交易日最高收盘的百分比（用 `pct_chg` 复利，避开除权）。
+
+    做法：把窗口内的日涨跌幅复利成一条以起点为 1 的净值曲线，终点归一成今天 ——
+    `off = 今天 / 曲线最高 − 1`，所以永远 ≤ 0。
+    """
+    days = list(
+        session.scalars(
+            select(TradeCalendar.trade_date)
+            .where(TradeCalendar.trade_date <= day)
+            .order_by(TradeCalendar.trade_date.desc())
+            .limit(250)
+        )
+    )
+    if not days:
+        return {}
+    days.sort()
+    series: dict[str, list[float]] = defaultdict(list)
+    for code, pct in session.execute(
+        select(StockDaily.code, StockDaily.pct_chg)
+        .where(
+            StockDaily.trade_date.in_(days),
+            StockDaily.code.in_(codes),
+            StockDaily.pct_chg.is_not(None),
+        )
+        .order_by(StockDaily.code, StockDaily.trade_date)
+    ):
+        series[code].append(float(pct))
+    out: dict[str, float] = {}
+    for code, values in series.items():
+        if len(values) < 2:
+            continue
+        equity = [1.0]
+        for pct in values:
+            equity.append(equity[-1] * (1 + pct / 100))
+        peak = max(equity)
+        if peak > 0:
+            out[code] = round((equity[-1] / peak - 1) * 100, 2)
+    return out
+
+
+def _industry_top(session: Session, codes: list[str]) -> list[tuple[str, int]]:
+    """返回行里各**一级行业**的只数，取前 5。
+
+    用一级（`A-B-C` 的第一段）而不是末段：末段太碎（"其他专用设备" 这种），
+    看不出行业抱团。
+    """
+    if not codes:
+        return []
+    industries = session.execute(
+        select(StockBasic.industry).where(StockBasic.code.in_(codes))
+    ).scalars()
+    counter: Counter[str] = Counter()
+    for industry in industries:
+        if industry:
+            counter[industry.split("-")[0]] += 1
+    return counter.most_common(5)
 
 
 @dataclass(frozen=True, slots=True)
@@ -724,6 +1001,9 @@ def rps_track(
     days: int = 20,
     min_rps: float = 0,
     top: int = 50,
+    mode: str = "dual",
+    breakout_only: bool = False,
+    trend_template: bool = False,
 ) -> RpsTrack:
     """近 `days` 个**有 RPS 记录**的交易日，榜单前 `top` 只的 1 / 5 日表现。
 
@@ -746,7 +1026,15 @@ def rps_track(
 
     picks: dict[date, list[tuple[str, str | None, float]]] = {}
     for day in dates:
-        board = rps_board(session, trade_date=day, min_rps=min_rps, limit=top)
+        board = rps_board(
+            session,
+            trade_date=day,
+            min_rps=min_rps,
+            limit=top,
+            mode=mode,
+            breakout_only=breakout_only,
+            trend_template=trend_template,
+        )
         if board.rows:
             picks[day] = [
                 (row.code, row.name, row.rps250 or 0.0) for row in board.rows

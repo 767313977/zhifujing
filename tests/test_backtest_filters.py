@@ -141,6 +141,20 @@ def test_trend_template_rejects_flat_market():
     )
 
 
+def test_trend_template_matches_shared_rule():
+    """页面（`services.trend.passes`）与回测必须是**同一份判据**（选股池-7）。"""
+    from app.services import trend
+
+    for bars in (_trend_bars(300), _trend_bars(300, step=0.0)):
+        for index in (249, 270, 299):
+            for rs in (60.0, 70.0, 95.0):
+                ctx = {"rps": {250: {bars.dates[index]: {"600000": rs}}}}
+                assert bt.FILTER_CHECKS["trend_template"](
+                    "600000", bars, index, ctx
+                ) is trend.passes(bars, index, rs)
+
+
+
 def _open_bars(opens: list[float], closes: list[float]) -> Bars:
     """开 / 收分开给的序列，用来测入场价口径。"""
     open_ = np.array(opens, dtype=float)

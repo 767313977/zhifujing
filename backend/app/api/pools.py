@@ -25,6 +25,7 @@ from app.schemas import (
     FirstBoardRowOut,
     FirstBoardTrackDayOut,
     FirstBoardTrackOut,
+    IndustryCountOut,
     RpsOut,
     RpsRowOut,
     RpsTrackDayOut,
@@ -65,17 +66,32 @@ def _cached(key: tuple, build):
 @router.get("/rps", response_model=RpsOut)
 def rps(
     trade_date: date | None = Query(None, alias="date", description="缺省 = 库里最新 RPS 日"),
-    min_rps: float = Query(0, ge=0, le=100, description="两档分位都要 ≥ 这个值"),
+    min_rps: float = Query(0, ge=0, le=100, description="`mode=all` 时两档分位都要 ≥ 这个值"),
     limit: int = Query(100, ge=1, le=500),
+    mode: str = Query("dual", pattern="^(dual|line_red|all)$", description="档位：双高 / 一线红 / 全部"),
+    breakout_only: bool = Query(False, description="只留当天命中突破类形态的票"),
+    trend_template: bool = Query(False, description="只留满足 Minervini 趋势模板的票"),
     session: Session = Depends(get_db),
 ) -> RpsOut:
-    """RPS 榜：按 250 日分位降序。"""
-    board = pools.rps_board(session, trade_date, min_rps, limit)
+    """RPS 榜（默认「双高」：RPS50 ≥ 90 且 RPS120 ≥ 85）。"""
+    board = pools.rps_board(
+        session,
+        trade_date=trade_date,
+        min_rps=min_rps,
+        limit=limit,
+        mode=mode,
+        breakout_only=breakout_only,
+        trend_template=trend_template,
+    )
     if board.trade_date is None:
         raise HTTPException(status_code=404, detail="还没有 RPS 数据（等收盘扫描跑一轮）")
     return RpsOut(
         trade_date=board.trade_date,
         rows=[RpsRowOut(**asdict(row)) for row in board.rows],
+        industry_top=[
+            IndustryCountOut(industry=name, count=count)
+            for name, count in board.industry_top
+        ],
     )
 
 
@@ -173,17 +189,40 @@ def first_board_track(
 
 @router.get("/rps/track", response_model=RpsTrackOut)
 def rps_track(
-    min_rps: float = Query(0, ge=0, le=100, description="两档分位都要 ≥ 这个值"),
+    min_rps: float = Query(0, ge=0, le=100, description="`mode=all` 时两档分位都要 ≥ 这个值"),
     top: int = Query(50, ge=1, le=200, description="每天取榜单前多少只"),
     days: int = Query(20, ge=1, le=60, description="回看多少个有 RPS 记录的交易日"),
+    mode: str = Query("dual", pattern="^(dual|line_red|all)$", description="档位：双高 / 一线红 / 全部"),
+    breakout_only: bool = Query(False, description="只留当天命中突破类形态的票"),
+    trend_template: bool = Query(False, description="只留满足 Minervini 趋势模板的票"),
     session: Session = Depends(get_db),
 ) -> RpsTrackOut:
     """RPS 榜前 `top` 只的 1 / 5 日表现与超额（只统计真跑过 RPS 的日子）。"""
     latest = session.scalar(select(func.max(RpsDaily.trade_date)))
     if latest is None:
         raise HTTPException(status_code=404, detail="还没有 RPS 数据（等收盘扫描跑一轮）")
-    key = ("rps", latest, days, min_rps, top)
-    track = _cached(key, lambda: pools.rps_track(session, days, min_rps, top))
+    key = (
+        "rps",
+        latest,
+        days,
+        min_rps,
+        top,
+        mode,
+        breakout_only,
+        trend_template,
+    )
+    track = _cached(
+        key,
+        lambda: pools.rps_track(
+            session,
+            days,
+            min_rps,
+            top,
+            mode=mode,
+            breakout_only=breakout_only,
+            trend_template=trend_template,
+        ),
+    )
     return RpsTrackOut(
         trade_date=track.trade_date,
         days=track.summary.get("days", 0),

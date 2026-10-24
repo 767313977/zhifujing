@@ -2578,23 +2578,42 @@ class AdvanceDeclineOut(BaseModel):
 
 
 class RpsRowOut(BaseModel):
-    """RPS 榜的一行：区间涨幅 + 它在全市场里的分位。"""
+    """RPS 榜的一行：区间涨幅 + 它在全市场里的分位 + 当天的形态/标签。"""
 
     code: str
     name: str | None
     close: float | None
     pct_chg: float | None
     #: 区间涨幅（%，用日涨跌幅复利），None = 窗口内可用天数不足
+    ret50: float | None
     ret120: float | None
     ret250: float | None
     #: 横截面分位（0-100，中位秩）
+    rps50: float | None
     rps120: float | None
     rps250: float | None
+    #: 当天命中的**突破类**形态中文名（只列 `BREAKOUT_KEYS`）
+    hits: list[str] = []
+    #: `一线红` / `三线红` / `掉队`
+    tags: list[str] = []
+    #: 收盘距近 250 日最高收盘的百分比（≤ 0）
+    off_high_pct: float | None = None
+    #: 行业末段
+    industry: str | None = None
+
+
+class IndustryCountOut(BaseModel):
+    """强势行业的一档：一级行业名 + 只数。"""
+
+    industry: str
+    count: int
 
 
 class RpsOut(BaseModel):
     trade_date: date | None
     rows: list[RpsRowOut]
+    #: 返回行里各一级行业的只数，取前 5
+    industry_top: list[IndustryCountOut] = []
 
 
 class FirstBoardRowOut(BaseModel):
