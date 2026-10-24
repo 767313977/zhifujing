@@ -875,10 +875,10 @@ export const api = {
     limit?: number
   } = {}) => {
     const query = new URLSearchParams({
-      before: params.before ?? '103000',
-      min_float_mv: String(params.minFloatMv ?? 30),
-      max_float_mv: String(params.maxFloatMv ?? 150),
-      min_amount: String(params.minAmount ?? 5),
+      before: params.before ?? '140000',
+      min_float_mv: String(params.minFloatMv ?? 20),
+      max_float_mv: String(params.maxFloatMv ?? 300),
+      min_amount: String(params.minAmount ?? 3),
       min_themes: String(params.minThemes ?? 3),
       limit: String(params.limit ?? 50),
     })

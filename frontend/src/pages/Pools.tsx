@@ -18,17 +18,19 @@ import { fmtAmount, fmtNum, fmtPct, fmtSealTime, toneOf } from '../lib/format'
 
 const BEFORE_ITEMS = [
   { key: '100000', label: '10:00 前' },
-  { key: '103000', label: '10:30 前' },
   { key: '113000', label: '11:30 前' },
+  { key: '140000', label: '14:00 前' },
 ]
 
 const CAP_ITEMS = [
+  { key: '20-300', label: '20~300 亿' },
   { key: '30-150', label: '30~150 亿' },
-  { key: '50-300', label: '50~300 亿' },
+  { key: '50-500', label: '50~500 亿' },
 ]
 
 const THEME_ITEMS = [
-  { key: '3', label: '题材 ≥3 家' },
+  { key: '2', label: '题材 ≥2 家' },
+  { key: '3', label: '≥3 家' },
   { key: '5', label: '≥5 家' },
 ]
 
@@ -47,8 +49,8 @@ function rpsTone(value: number | null): string {
 }
 
 export default function Pools() {
-  const [before, setBefore] = useState('103000')
-  const [cap, setCap] = useState('30-150')
+  const [before, setBefore] = useState('140000')
+  const [cap, setCap] = useState('20-300')
   const [themes, setThemes] = useState('3')
   const [minRps, setMinRps] = useState('0')
 
@@ -107,7 +109,11 @@ export default function Pools() {
           title="首板一进二候选"
           meta={
             <span className="num">
-              首板 · 未炸板 · {firstBoard?.conditions.before ? fmtSealTime(String(firstBoard.conditions.before)) : '10:30'} 前封板
+              首板 · 未炸板 ·{' '}
+              {firstBoard?.conditions.before
+                ? fmtSealTime(String(firstBoard.conditions.before))
+                : '14:00:00'}{' '}
+              前封板
             </span>
           }
           delay={40}
@@ -125,7 +131,7 @@ export default function Pools() {
               题材
               <Segmented value={themes} items={THEME_ITEMS} onChange={setThemes} />
             </span>
-            <span>成交额 ≥5 亿 · 已剔除 ST 与北交所</span>
+            <span>成交额 ≥3 亿 · 已剔除 ST 与北交所</span>
           </div>
 
           {firstBoardError ? (

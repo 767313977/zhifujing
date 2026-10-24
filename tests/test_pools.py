@@ -66,7 +66,8 @@ def _limit(session, code, **kwargs):
 
 def test_first_board_filters(session):
     _limit(session, "000001")
-    _limit(session, "000002", first_seal_time="110000")
+    # 14:30 才封板 → 晚于默认的 14:00（排掉尾盘偷袭）
+    _limit(session, "000002", first_seal_time="143000")
     _limit(session, "000003", consecutive=2)
     _limit(session, "000004", open_times=1)
     _limit(session, "000005")

@@ -133,17 +133,18 @@ class FirstBoardBoard:
 def first_board(
     session: Session,
     trade_date: date | None = None,
-    before: str = "103000",
-    min_float_mv: float = 30,
-    max_float_mv: float = 150,
-    min_amount: float = 5,
+    before: str = "140000",
+    min_float_mv: float = 20,
+    max_float_mv: float = 300,
+    min_amount: float = 3,
     min_themes: int = 3,
     limit: int = 50,
 ) -> FirstBoardBoard:
     """首板一进二候选。
 
     条件（全部可调，金额单位**亿**）：
-    - `before`：首封时间早于它（`HHMMSS`，默认 10:30）
+    - `before`：首封时间早于它（`HHMMSS`，默认 14:00 —— 只排掉尾盘偷袭，
+      10:30 那种卡法实测会把池子清空：2026-10-23 全天只有 3 只在 10:30 前封板）
     - `min_float_mv` / `max_float_mv`：流通市值区间
     - `min_amount`：当日成交额下限
     - `min_themes`：当日同题材涨停家数下限（用 `stock_concept` 的精选板块口径）

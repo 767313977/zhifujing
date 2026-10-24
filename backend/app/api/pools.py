@@ -37,10 +37,10 @@ def rps(
 @router.get("/first-board", response_model=FirstBoardOut)
 def first_board(
     trade_date: date | None = Query(None, alias="date"),
-    before: str = Query("103000", pattern=r"^\d{6}$", description="首封时间早于它（HHMMSS）"),
-    min_float_mv: float = Query(30, ge=0, description="流通市值下限（亿）"),
-    max_float_mv: float = Query(150, ge=0, description="流通市值上限（亿）"),
-    min_amount: float = Query(5, ge=0, description="成交额下限（亿）"),
+    before: str = Query("140000", pattern=r"^\d{6}$", description="首封时间早于它（HHMMSS）"),
+    min_float_mv: float = Query(20, ge=0, description="流通市值下限（亿）"),
+    max_float_mv: float = Query(300, ge=0, description="流通市值上限（亿）"),
+    min_amount: float = Query(3, ge=0, description="成交额下限（亿）"),
     min_themes: int = Query(3, ge=0, le=50, description="同题材涨停家数下限"),
     limit: int = Query(50, ge=1, le=200),
     session: Session = Depends(get_db),
