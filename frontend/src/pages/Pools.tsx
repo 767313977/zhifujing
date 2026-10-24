@@ -119,6 +119,7 @@ export default function Pools() {
   const [fbTrack, setFbTrack] = useState<FirstBoardTrack | null>(null)
   const [fbTrackOpen, setFbTrackOpen] = useState(false)
   const [rpsTrack, setRpsTrack] = useState<RpsTrack | null>(null)
+  const [rpsTrackFactor, setRpsTrackFactor] = useState<RpsTrack | null>(null)
   const [rpsTrackOpen, setRpsTrackOpen] = useState(false)
   const [taxonomy, setTaxonomy] = useState('kph_selected')
   const [sectorBoard, setSectorBoard] = useState<SectorRpsBoard | null>(null)
@@ -206,25 +207,35 @@ export default function Pools() {
   useEffect(() => {
     let stale = false
     setRpsTrack(null)
+    setRpsTrackFactor(null)
+    const base = {
+      mode: rpsMode as 'dual' | 'line_red' | 'all',
+      top: 50,
+      days: 20,
+      breakoutOnly: onlyBreakout === '1',
+      trendTemplate: onlyTrend === '1',
+    }
+    // 两档排序各取一次，页面上并排对比 —— 只有「同一批候选、只换顺序」的差别
     api
-      .rpsTrack({
-        mode: rpsMode as 'dual' | 'line_red' | 'all',
-        top: 50,
-        days: 20,
-        breakoutOnly: onlyBreakout === '1',
-        trendTemplate: onlyTrend === '1',
-        order: rpsOrder as 'strength' | 'factor',
-      })
+      .rpsTrack({ ...base, order: 'strength' })
       .then((value) => {
         if (!stale) setRpsTrack(value)
       })
       .catch(() => {
         if (!stale) setRpsTrack(null)
       })
+    api
+      .rpsTrack({ ...base, order: 'factor' })
+      .then((value) => {
+        if (!stale) setRpsTrackFactor(value)
+      })
+      .catch(() => {
+        if (!stale) setRpsTrackFactor(null)
+      })
     return () => {
       stale = true
     }
-  }, [rpsMode, onlyBreakout, onlyTrend, rpsOrder])
+  }, [rpsMode, onlyBreakout, onlyTrend])
 
   useEffect(() => {
     let stale = false
@@ -254,6 +265,8 @@ export default function Pools() {
   }, [taxonomy])
 
   const tradeDate = firstBoard?.trade_date ?? rps?.trade_date ?? null
+  // 逐日明细只展开当前选中档 —— 两档并排看汇总，明细看一份就够了
+  const activeRpsTrack = rpsOrder === 'factor' ? rpsTrackFactor : rpsTrack
 
   return (
     <Layout
@@ -501,24 +514,40 @@ export default function Pools() {
             「双高 × 突破形态」只在近一年样本有效（10 日超额 +3~4%），5 年长历史全部为负，
             所以默认按 RPS250 排、双高只当参考视图；回踩类形态别叠 RPS。
           </p>
-          {rpsTrack && (
+          {(rpsTrack || rpsTrackFactor) && (
             <div className="border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
               <button
                 type="button"
                 onClick={() => setRpsTrackOpen((open) => !open)}
                 className="w-full text-left leading-relaxed hover:text-fg"
               >
-                <span className="num">
-                  近 {rpsTrack.days} 日榜前 50：1 日 {fmtPct(rpsTrack.ret1.mean)}（超额{' '}
-                  {fmtPct(rpsTrack.ret1.excess)}）{' · '}5 日 {fmtPct(rpsTrack.ret5.mean)}
-                  （超额 {fmtPct(rpsTrack.ret5.excess)}）{' · '}样本 {rpsTrack.samples}
-                </span>
-                {rpsTrack.ret1.days < 5 && <span className="ml-2">样本不足 5 天</span>}
-                <span className="ml-2 text-fg-muted">
+                {(
+                  [
+                    { key: 'strength', label: '强度排序', track: rpsTrack },
+                    { key: 'factor', label: '因子分排序', track: rpsTrackFactor },
+                  ] as const
+                ).map(({ key, label, track }) =>
+                  track === null ? null : (
+                    <span key={key} className="block">
+                      <span className={rpsOrder === key ? 'text-fg' : ''}>
+                        {label}前 50 只{rpsOrder === key ? '（当前）' : ''}
+                      </span>
+                      <span className="num ml-2">
+                        近 {track.days} 日：1 日 {fmtPct(track.ret1.mean)}（超额{' '}
+                        {fmtPct(track.ret1.excess)}）{' · '}5 日 {fmtPct(track.ret5.mean)}
+                        （超额 {fmtPct(track.ret5.excess)}）{' · '}样本 {track.samples}
+                      </span>
+                      {track.ret1.days < 5 && (
+                        <span className="ml-2">样本不足 5 天</span>
+                      )}
+                    </span>
+                  ),
+                )}
+                <span className="ml-1 text-fg-muted">
                   {rpsTrackOpen ? '收起 ▴' : '逐日明细 ▾'}
                 </span>
               </button>
-              {rpsTrackOpen && (
+              {rpsTrackOpen && activeRpsTrack && (
                 <div className="mt-2 overflow-x-auto">
                   <table className="grid-table">
                     <thead>
@@ -533,7 +562,7 @@ export default function Pools() {
                       </tr>
                     </thead>
                     <tbody>
-                      {rpsTrack.rows.map((row) => (
+                      {activeRpsTrack.rows.map((row) => (
                         <tr key={row.trade_date}>
                           <td className="num !text-left">{row.trade_date}</td>
                           <td className="num">{row.picks}</td>
