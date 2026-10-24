@@ -2619,6 +2619,15 @@ class FirstBoardRowOut(BaseModel):
     #: 当日同题材（精选板块）涨停家数最多的那个板块，以及它的家数
     theme: str | None
     theme_count: int
+    #: D 之前 10 个交易日涨停次数（0 = 真首板）
+    recent_limit_ups: int
+    #: 涨停当天的封板形态：`一字` / `T字` / None
+    board_shape: str | None
+    #: 在 `theme` 里按首封时间的排名（1 = 该题材最早封板），分母是 `theme_count`
+    theme_rank: int | None
+    #: 第二热题材（悬停显示）
+    theme2: str | None
+    theme2_count: int
     #: 综合排序分（0~100）＝题材家数 / 封单比 / 首封早晚的当日候选内分位加权
     score: float
 

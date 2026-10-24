@@ -870,6 +870,7 @@ export const api = {
     minAmount?: number
     minThemes?: number
     minSealRatio?: number
+    onlyTrueFirstBoard?: boolean
     days?: number
   } = {}) => {
     const query = new URLSearchParams({
@@ -879,6 +880,7 @@ export const api = {
       min_amount: String(params.minAmount ?? 3),
       min_themes: String(params.minThemes ?? 3),
       min_seal_ratio: String(params.minSealRatio ?? 0),
+      only_true_first_board: String(params.onlyTrueFirstBoard ?? false),
       days: String(params.days ?? 20),
     })
     return request<FirstBoardTrack>(`/pools/first-board/track?${query.toString()}`)
@@ -904,6 +906,7 @@ export const api = {
     minAmount?: number
     minThemes?: number
     minSealRatio?: number
+    onlyTrueFirstBoard?: boolean
     limit?: number
   } = {}) => {
     const query = new URLSearchParams({
@@ -913,6 +916,7 @@ export const api = {
       min_amount: String(params.minAmount ?? 3),
       min_themes: String(params.minThemes ?? 3),
       min_seal_ratio: String(params.minSealRatio ?? 0),
+      only_true_first_board: String(params.onlyTrueFirstBoard ?? false),
       limit: String(params.limit ?? 50),
     })
     return request<FirstBoardBoard>(`/pools/first-board?${query.toString()}`)

@@ -11,7 +11,7 @@
 """
 
 import logging
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import date
 
@@ -140,6 +140,16 @@ class FirstBoardRow:
     #: 当日涨停股里，与它同属一个精选板块最多有几只（含自己）
     theme: str | None
     theme_count: int
+    #: 当天是不是真首板：D 之前 10 个交易日**一次涨停都没有**（`consecutive == 1`
+    #: 只保证今天是一板，前几天刚涨停过、断一天再涨停的票也会被算进来）
+    recent_limit_ups: int = 0
+    #: 当天的封板形态：`一字` / `T字` / None
+    board_shape: str | None = None
+    #: 它在 `theme` 里按首封时间的排名（1 = 该题材里最早封板），`theme_count` 是分母
+    theme_rank: int | None = None
+    #: 第二热的题材，悬停时显示
+    theme2: str | None = None
+    theme2_count: int = 0
     #: 综合排序分（0~100）：题材家数 / 封单比 / 首封时间的**当日候选内分位**加权
     score: float = 0.0
 
@@ -156,6 +166,28 @@ class FirstBoardBoard:
 SCORE_W_THEME = 0.4
 SCORE_W_SEAL = 0.4
 SCORE_W_TIME = 0.2
+
+#: 「真首板」的回看窗口（交易日）：D 之前这么多天里一次涨停都没有才算
+TRUE_FIRST_BOARD_LOOKBACK = 10
+
+
+def _board_shape(
+    open_: float | None, high: float | None, low: float | None, close: float | None
+) -> str | None:
+    """涨停当天的封板形态：`一字` / `T字` / None。
+
+    - 一字：开 = 高 = 低 = 收（竞价就封死，全天没有波动）
+    - T字：开 = 高，但盘中打开过（低 < 开）
+
+    三个价格都来自同一行不复权日线，直接比相等即可（同一数据源、同一天）。
+    """
+    if None in (open_, high, low, close):
+        return None
+    if open_ == high == low == close:
+        return "一字"
+    if open_ == high and low is not None and low < open_:
+        return "T字"
+    return None
 
 
 def _percentiles(values: list[float]) -> list[float]:
@@ -180,6 +212,7 @@ def first_board(
     min_amount: float = 3,
     min_themes: int = 3,
     min_seal_ratio: float = 0,
+    only_true_first_board: bool = False,
     limit: int = 50,
 ) -> FirstBoardBoard:
     """首板一进二候选。
@@ -191,8 +224,11 @@ def first_board(
     - `min_amount`：当日成交额下限
     - `min_themes`：当日同题材涨停家数下限（用 `stock_concept` 的精选板块口径）
     - `min_seal_ratio`：封单额 / 流通市值 的下限（%），默认 0 = 不筛
+    - `only_true_first_board`：只看**真首板**（D 之前 10 个交易日没涨停过），默认关
 
     ⚠️ 只筛「首板」（`consecutive == 1`）且**没炸过板**（`open_times == 0`）的票。
+    `consecutive == 1` 不等于真首板 —— 前几天涨停过、断一天再涨停的票也算 1 板，
+    所以另给 `recent_limit_ups`（近 10 个交易日涨停次数）让人自己决定要不要剔。
 
     排序（2026-10-24 改）：不再是「题材家数优先」—— 那样会把封单 0.02%（基本没封住）
     的票排到封单 1.35% 的前面。现在是三个**当日候选内分位**的加权：
@@ -225,8 +261,9 @@ def first_board(
         )
     )
 
-    # 题材：当日每只涨停股的精选板块 → 板块内涨停家数
+    # 题材：当日每只涨停股的精选板块 → 板块内涨停家数、板块成员（算题材内首封排名用）
     concepts: dict[str, list[str]] = {}
+    members: dict[str, list[str]] = defaultdict(list)
     counter: Counter[str] = Counter()
     for code, concept in session.execute(
         select(StockConcept.code, StockConcept.concept).where(
@@ -234,7 +271,45 @@ def first_board(
         )
     ):
         concepts.setdefault(code, []).append(concept)
+        members[concept].append(code)
         counter[concept] += 1
+
+    # 当日**全部**涨停股**的首封时间（题材内排名用；候选只是其中一小部分）
+    seal_times = dict(
+        session.execute(
+            select(LimitPool.code, LimitPool.first_seal_time).where(
+                LimitPool.trade_date == target, LimitPool.pool_type == "up"
+            )
+        ).all()
+    )
+    theme_rank: dict[str, dict[str, int]] = {}
+    for concept, codes_in in members.items():
+        ordered = sorted(codes_in, key=lambda item: seal_times.get(item) or "235959")
+        theme_rank[concept] = {
+            code: index + 1 for index, code in enumerate(ordered)
+        }
+
+    # 近 10 个交易日涨停次数（真首板 = 0）。按交易日历取，停牌日不算
+    prior_days = list(
+        session.scalars(
+            select(TradeCalendar.trade_date)
+            .where(TradeCalendar.trade_date < target)
+            .order_by(TradeCalendar.trade_date.desc())
+            .limit(TRUE_FIRST_BOARD_LOOKBACK)
+        )
+    )
+    recent_limit_ups: dict[str, int] = {}
+    if prior_days:
+        recent_limit_ups = dict(
+            session.execute(
+                select(LimitPool.code, func.count())
+                .where(
+                    LimitPool.trade_date.in_(prior_days),
+                    LimitPool.pool_type == "up",
+                )
+                .group_by(LimitPool.code)
+            ).all()
+        )
 
     names = dict(
         session.execute(
@@ -243,6 +318,22 @@ def first_board(
             )
         ).all()
     )
+
+    shapes = {
+        code: _board_shape(open_, high, low, close)
+        for code, open_, high, low, close in session.execute(
+            select(
+                StockDaily.code,
+                StockDaily.open,
+                StockDaily.high,
+                StockDaily.low,
+                StockDaily.close,
+            ).where(
+                StockDaily.trade_date == target,
+                StockDaily.code.in_([row.code for row in rows]),
+            )
+        )
+    }
 
     picked: list[FirstBoardRow] = []
     for row in rows:
@@ -256,6 +347,16 @@ def first_board(
         theme = max(stock_concepts, key=lambda item: counter[item], default=None)
         theme_count = counter[theme] if theme else 0
         if theme_count < min_themes:
+            continue
+        # 第二热的题材：同一天里另一条线索，悬停时给出来
+        others = sorted(
+            (item for item in stock_concepts if item != theme),
+            key=lambda item: counter[item],
+            reverse=True,
+        )
+        theme2 = others[0] if others else None
+        past_ups = int(recent_limit_ups.get(row.code, 0))
+        if only_true_first_board and past_ups:
             continue
         seal_ratio = (
             row.seal_amount / row.float_mv * 100
@@ -289,6 +390,13 @@ def first_board(
                 industry=row.industry,
                 theme=theme,
                 theme_count=theme_count,
+                recent_limit_ups=past_ups,
+                board_shape=shapes.get(row.code),
+                theme_rank=(
+                    theme_rank.get(theme, {}).get(row.code) if theme else None
+                ),
+                theme2=theme2,
+                theme2_count=counter[theme2] if theme2 else 0,
             )
         )
 
@@ -319,6 +427,7 @@ def first_board(
             "min_amount": min_amount,
             "min_themes": min_themes,
             "min_seal_ratio": min_seal_ratio,
+            "only_true_first_board": only_true_first_board,
         },
         rows=scored[:limit],
     )
@@ -392,6 +501,7 @@ def first_board_track(
     min_amount: float = 3,
     min_themes: int = 3,
     min_seal_ratio: float = 0,
+    only_true_first_board: bool = False,
 ) -> FirstBoardTrack:
     """近 `days` 个有涨停池的交易日，按当前条件选出来的首板次日表现。
 
@@ -414,6 +524,7 @@ def first_board_track(
         "min_amount": min_amount,
         "min_themes": min_themes,
         "min_seal_ratio": min_seal_ratio,
+        "only_true_first_board": only_true_first_board,
     }
     if not limit_days:
         return FirstBoardTrack(trade_date=None, conditions=conditions)
@@ -455,6 +566,7 @@ def first_board_track(
             min_amount=min_amount,
             min_themes=min_themes,
             min_seal_ratio=min_seal_ratio,
+            only_true_first_board=only_true_first_board,
             # 验证要看**全部**候选，不能被页面上的前 50 只截断
             limit=1000,
         )

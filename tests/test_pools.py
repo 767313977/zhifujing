@@ -14,6 +14,7 @@ from app.models import (
     StockBasic,
     StockConcept,
     StockDaily,
+    TradeCalendar,
 )
 from app.services import pools
 
@@ -257,5 +258,85 @@ def test_first_board_ranks_by_composite_not_theme_only(session):
     assert by_code["000001"].theme_count == 10
     assert by_code["000001"].score == 40.0
     assert by_code["000002"].score == 60.0
+
+
+def test_first_board_recent_limit_ups_and_true_filter(session):
+    """前几天涨停过、断一天再封板的票不是「真首板」。"""
+    prior = date(2026, 10, 20)
+    session.add_all([TradeCalendar(trade_date=prior), TradeCalendar(trade_date=DAY)])
+    _limit(session, "000001", trade_date=prior)  # 3 天前涨停过
+    _limit(session, "000001", trade_date=DAY)
+    _limit(session, "000002", trade_date=DAY)
+    session.add_all(
+        [StockBasic(code="000001", name="甲股份"), StockBasic(code="000002", name="乙股份")]
+    )
+    session.commit()
+
+    by_code = {row.code: row for row in pools.first_board(session, min_themes=0).rows}
+    assert by_code["000001"].recent_limit_ups == 1
+    assert by_code["000002"].recent_limit_ups == 0
+
+    only_true = pools.first_board(session, min_themes=0, only_true_first_board=True).rows
+    assert [row.code for row in only_true] == ["000002"]
+
+
+def test_first_board_board_shape(session):
+    """一字（开=高=低=收）与 T 字（开=高，盘中打开过）。"""
+    _limit(session, "000001")
+    _limit(session, "000002")
+    _limit(session, "000003")
+    session.add_all(
+        [
+            StockBasic(code="000001", name="甲股份"),
+            StockBasic(code="000002", name="乙股份"),
+            StockBasic(code="000003", name="丙股份"),
+        ]
+    )
+    for code, (open_, high, low, close) in {
+        "000001": (11.0, 11.0, 11.0, 11.0),
+        "000002": (11.0, 11.0, 10.4, 11.0),
+        "000003": (10.2, 11.0, 10.0, 11.0),
+    }.items():
+        session.add(
+            StockDaily(
+                trade_date=DAY,
+                code=code,
+                name=code,
+                open=open_,
+                high=high,
+                low=low,
+                close=close,
+                pct_chg=10.0,
+            )
+        )
+    session.commit()
+
+    by_code = {
+        row.code: row for row in pools.first_board(session, min_themes=0, limit=50).rows
+    }
+    assert by_code["000001"].board_shape == "一字"
+    assert by_code["000002"].board_shape == "T字"
+    assert by_code["000003"].board_shape is None
+
+
+def test_first_board_theme_rank_by_seal_time(session):
+    """同一题材里首封最早的票 rank = 1（全部涨停股都参与排名，不只是候选）。"""
+    _limit(session, "000001", first_seal_time="093000")
+    _limit(session, "000002", first_seal_time="103000")
+    # 同题材但不在候选里（首封太晚，被 before 卡掉）的那只也要参与排名
+    _limit(session, "000003", first_seal_time="145900")
+    for code in ("000001", "000002", "000003"):
+        session.add(StockBasic(code=code, name=code))
+        session.add(StockConcept(trade_date=DAY, code=code, concept="机器人"))
+    session.commit()
+
+    by_code = {
+        row.code: row
+        for row in pools.first_board(session, min_themes=0, before="140000").rows
+    }
+    assert by_code["000001"].theme_rank == 1
+    assert by_code["000002"].theme_rank == 2
+    assert by_code["000001"].theme_count == 3
+
 
 

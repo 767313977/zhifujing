@@ -41,6 +41,12 @@ const SEAL_ITEMS = [
   { key: '1', label: '≥1%' },
 ]
 
+/** 真首板：`consecutive == 1` 只说明今天是一板，前 10 日涨停过的票要能剔掉。 */
+const TRUE_FIRST_ITEMS = [
+  { key: '0', label: '全部首板' },
+  { key: '1', label: '只看真首板' },
+]
+
 const RPS_ITEMS = [
   { key: '0', label: '全部' },
   { key: '80', label: 'RPS ≥80' },
@@ -60,6 +66,7 @@ export default function Pools() {
   const [cap, setCap] = useState('20-300')
   const [themes, setThemes] = useState('3')
   const [seal, setSeal] = useState('0')
+  const [trueFirst, setTrueFirst] = useState('0')
   const [minRps, setMinRps] = useState('0')
 
   const [firstBoard, setFirstBoard] = useState<FirstBoardBoard | null>(null)
@@ -84,6 +91,7 @@ export default function Pools() {
         maxFloatMv,
         minThemes: Number(themes),
         minSealRatio: Number(seal),
+        onlyTrueFirstBoard: trueFirst === '1',
       })
       .then((value) => {
         if (!stale) setFirstBoard(value)
@@ -94,7 +102,7 @@ export default function Pools() {
     return () => {
       stale = true
     }
-  }, [before, cap, themes, seal])
+  }, [before, cap, themes, seal, trueFirst])
 
   useEffect(() => {
     let stale = false
@@ -124,6 +132,7 @@ export default function Pools() {
         maxFloatMv,
         minThemes: Number(themes),
         minSealRatio: Number(seal),
+        onlyTrueFirstBoard: trueFirst === '1',
         days: 20,
       })
       .then((value) => {
@@ -136,7 +145,7 @@ export default function Pools() {
     return () => {
       stale = true
     }
-  }, [before, cap, themes, seal])
+  }, [before, cap, themes, seal, trueFirst])
 
   useEffect(() => {
     let stale = false
@@ -194,6 +203,9 @@ export default function Pools() {
             <span className="flex items-center gap-2">
               封单/流通
               <Segmented value={seal} items={SEAL_ITEMS} onChange={setSeal} />
+            </span>
+            <span className="flex items-center gap-2">
+              <Segmented value={trueFirst} items={TRUE_FIRST_ITEMS} onChange={setTrueFirst} />
             </span>
             <span>成交额 ≥3 亿 · 已剔除 ST 与北交所</span>
           </div>
@@ -282,7 +294,8 @@ export default function Pools() {
                     <th>流通市值</th>
                     <th>成交额</th>
                     <th>换手</th>
-                    <th className="!text-left">题材（当日涨停家数）</th>
+                    <th>近10日涨停</th>
+                    <th className="!text-left">题材（当日涨停家数 / 题材内首封排名）</th>
                     <th className="!text-left">行业</th>
                   </tr>
                 </thead>
@@ -293,6 +306,14 @@ export default function Pools() {
                         <StockLink code={row.code} className="text-fg">
                           {row.name ?? row.code}
                         </StockLink>
+                        {row.board_shape && (
+                          <span
+                            className="ml-1 rounded border border-line-soft px-1 text-[11px] text-fg-dim"
+                            title={`当天${row.board_shape}板`}
+                          >
+                            {row.board_shape === '一字' ? '一' : 'T'}
+                          </span>
+                        )}
                         <span className="num ml-2 text-[12px] text-fg-dim">{row.code}</span>
                       </td>
                       <td className="num">{fmtSealTime(row.first_seal_time)}</td>
@@ -304,11 +325,29 @@ export default function Pools() {
                       <td className="num">{fmtAmount(row.float_mv)}</td>
                       <td className="num">{fmtAmount(row.amount)}</td>
                       <td className="num">{fmtNum(row.turnover, 2, '%')}</td>
-                      <td className="!text-left">
+                      <td className={`num ${row.recent_limit_ups ? 'text-fg-muted' : ''}`}>
+                        {row.recent_limit_ups || '—'}
+                      </td>
+                      <td
+                        className="!text-left"
+                        title={
+                          row.theme2
+                            ? `第二题材：${row.theme2}（${row.theme2_count} 家）`
+                            : undefined
+                        }
+                      >
                         {row.theme ? (
                           <>
                             <span className="text-fg">{row.theme}</span>
-                            <span className="num ml-1 text-fg-muted">{row.theme_count} 家</span>
+                            <span
+                              className={`num ml-1 ${
+                                (row.theme_rank ?? 99) <= 3
+                                  ? 'font-semibold text-fg'
+                                  : 'text-fg-muted'
+                              }`}
+                            >
+                              {row.theme_rank ?? '—'}/{row.theme_count}
+                            </span>
                           </>
                         ) : (
                           <span className="text-fg-dim">无精选板块</span>

@@ -2295,6 +2295,15 @@ export interface FirstBoardRow {
   /** 当日同题材涨停家数最多的精选板块，以及家数 */
   theme: string | null
   theme_count: number
+  /** D 之前 10 个交易日涨停次数（0 = 真首板） */
+  recent_limit_ups: number
+  /** 涨停当天的封板形态：一字 / T字 / null */
+  board_shape: string | null
+  /** 在 theme 里按首封时间的排名（1 = 最早），分母是 theme_count */
+  theme_rank: number | null
+  /** 第二热题材（悬停显示） */
+  theme2: string | null
+  theme2_count: number
   /** 综合排序分（0~100）＝题材家数 / 封单比 / 首封早晚的当日候选内分位加权 */
   score: number
 }
