@@ -19,7 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import LimitPool, RpsDaily, SectorDaily
+from app.models import LimitPool, RpsDaily, SectorDaily, SectorMember
 from app.schemas import (
     FirstBoardOut,
     FirstBoardRowOut,
@@ -33,6 +33,11 @@ from app.schemas import (
     RpsTrackStatOut,
     SectorRpsOut,
     SectorRpsRowOut,
+    SectorStockOut,
+    SectorStockRowOut,
+    SectorStockSectorOut,
+    SectorStockTrackDayOut,
+    SectorStockTrackOut,
     SectorTrackDayOut,
     SectorTrackOut,
     SectorTrackStatOut,
@@ -282,6 +287,98 @@ def sector_rps_track(
         ret5=SectorTrackStatOut(**track.summary["ret5"]),
         ret20=SectorTrackStatOut(**track.summary["ret20"]),
         rows=[SectorTrackDayOut(**asdict(row)) for row in track.days],
+    )
+
+
+@router.get("/sector-stock", response_model=SectorStockOut)
+def sector_stock(
+    trade_date: date | None = Query(None, alias="date", description="缺省 = 库里最新板块日"),
+    taxonomy: str = Query(
+        "kph_selected",
+        pattern="^(kph_selected|kph_industry)$",
+        description="精选板块 / 行业，两个口径不可混比",
+    ),
+    scope: str = Query(
+        "strong",
+        pattern="^(strong|weak)$",
+        description="强势板块（RPS20≥90）/ 弱势板块（RPS20≤10），后者的作用是对照",
+    ),
+    order: str = Query(
+        "gain",
+        pattern="^(gain|factor)$",
+        description="个股排序：gain = 当日涨幅；factor = 量价因子分",
+    ),
+    sectors: int = Query(3, ge=1, le=10, description="取几个板块"),
+    per_sector: int = Query(3, ge=1, le=10, description="每个板块取几只"),
+    session: Session = Depends(get_db),
+) -> SectorStockOut:
+    """板块强度 → 个股候选（研究视图）。
+
+    ⚠️ **历史超额为负**：IC −0.042、强势板块选股 −0.11%、强势板块 × 突破 −0.30%
+    （全市场突破 +0.18%）。见 `docs/回测_板块到个股_20261025.md`。上线它是为了让人
+    看见「板块强 ≠ 个股强」，不是买入推荐；页面必须把负超额如实显示。
+    """
+    board = pools.sector_stock(
+        session,
+        trade_date=trade_date,
+        taxonomy=taxonomy,
+        scope=scope,
+        order=order,
+        sectors=sectors,
+        per_sector=per_sector,
+        limit=sectors * per_sector,
+    )
+    if board.trade_date is None:
+        raise HTTPException(status_code=404, detail="还没有板块日线数据")
+    return SectorStockOut(
+        trade_date=board.trade_date,
+        conditions=board.conditions,
+        sectors=[SectorStockSectorOut(**asdict(row)) for row in board.sectors],
+        rows=[SectorStockRowOut(**asdict(row)) for row in board.rows],
+    )
+
+
+@router.get("/sector-stock/track", response_model=SectorStockTrackOut)
+def sector_stock_track(
+    days: int = Query(20, ge=5, le=60, description="回看多少个有成分股的交易日"),
+    taxonomy: str = Query(
+        "kph_selected",
+        pattern="^(kph_selected|kph_industry)$",
+        description="精选板块 / 行业",
+    ),
+    scope: str = Query("strong", pattern="^(strong|weak)$"),
+    order: str = Query("gain", pattern="^(gain|factor)$"),
+    sectors: int = Query(3, ge=1, le=10),
+    per_sector: int = Query(3, ge=1, le=10),
+    session: Session = Depends(get_db),
+) -> SectorStockTrackOut:
+    """近 `days` 日「板块 → 个股」候选的次日表现（与形态跟踪同一份等权基准）。"""
+    latest = session.scalar(select(func.max(SectorMember.trade_date)))
+    if latest is None:
+        raise HTTPException(
+            status_code=404,
+            detail="还没有板块成分股数据（等 22:00 预取，或跑 scripts/backfill_sector_members.py）",
+        )
+    key = ("sector_stock", latest, days, taxonomy, scope, order, sectors, per_sector)
+    track = _cached(
+        key,
+        lambda: pools.sector_stock_track(
+            session,
+            days=days,
+            taxonomy=taxonomy,
+            scope=scope,
+            order=order,
+            sectors=sectors,
+            per_sector=per_sector,
+        ),
+    )
+    return SectorStockTrackOut(
+        trade_date=track.trade_date,
+        conditions=track.conditions,
+        verified_days=track.summary["verified_days"],
+        samples=track.summary["samples"],
+        ret1=RpsTrackStatOut(**track.summary["ret1"]),
+        rows=[SectorStockTrackDayOut(**asdict(row)) for row in track.days],
     )
 
 

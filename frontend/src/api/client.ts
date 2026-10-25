@@ -58,6 +58,8 @@ import type {
   RpsTrack,
   SectorCompare,
   SectorRpsBoard,
+  SectorStockBoard,
+  SectorStockTrack,
   SectorTrack,
   SectorFundFlowOut,
   SectorHeat,
@@ -935,6 +937,54 @@ export const api = {
     request<SectorTrack>(
       `/pools/sector-rps/track?taxonomy=${taxonomy}&top=${top}&days=${days}`,
     ),
+
+  /**
+   * 板块强度 → 个股候选。
+   *
+   * ⚠️ 历史超额为负（强势档 −0.11%、弱势档 +0.34%，但 59 天样本且未扣费用）——
+   * 这是研究视图，不是买入推荐。`scope=weak` 是同一套检验的反向对照。
+   */
+  sectorStock: (params: {
+    taxonomy?: 'kph_selected' | 'kph_industry'
+    scope?: 'strong' | 'weak'
+    order?: 'gain' | 'factor'
+    sectors?: number
+    perSector?: number
+  } = {}) => {
+    const query = new URLSearchParams({
+      taxonomy: params.taxonomy ?? 'kph_selected',
+      scope: params.scope ?? 'strong',
+      order: params.order ?? 'gain',
+      sectors: String(params.sectors ?? 3),
+      per_sector: String(params.perSector ?? 3),
+    })
+    return request<SectorStockBoard>(`/pools/sector-stock?${query.toString()}`)
+  },
+
+  /** 近 N 日「板块 → 个股」候选的次日验证（与形态跟踪同一份等权基准） */
+  sectorStockTrack: (params: {
+    taxonomy?: 'kph_selected' | 'kph_industry'
+    scope?: 'strong' | 'weak'
+    order?: 'gain' | 'factor'
+    sectors?: number
+    perSector?: number
+    days?: number
+  } = {}) => {
+    const query = new URLSearchParams({
+      taxonomy: params.taxonomy ?? 'kph_selected',
+      scope: params.scope ?? 'strong',
+      order: params.order ?? 'gain',
+      sectors: String(params.sectors ?? 3),
+      per_sector: String(params.perSector ?? 3),
+      days: String(params.days ?? 20),
+    })
+    // 每天都要重算板块 RPS + 成分股，20 天首次会慢
+    return request<SectorStockTrack>(
+      `/pools/sector-stock/track?${query.toString()}`,
+      undefined,
+      LONG_TIMEOUT_MS,
+    )
+  },
 
   /**
    * RPS 相对强度榜（盘后）。

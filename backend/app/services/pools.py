@@ -22,12 +22,20 @@ from app.models import (
     LimitPool,
     PatternHit,
     RpsDaily,
+    SectorDaily,
+    SectorMember,
     StockBasic,
     StockConcept,
     StockDaily,
     TradeCalendar,
 )
-from app.services import factor_score as factor_scores, pattern_track, rps, trend
+from app.services import (
+    factor_score as factor_scores,
+    pattern_track,
+    rps,
+    sector_rps,
+    trend,
+)
 from app.services.patterns import PATTERNS, Bars, build_bars, is_st, usable_bar
 
 logger = logging.getLogger(__name__)
@@ -1141,6 +1149,320 @@ def rps_track(
             "samples": sum(row.picks for row in day_rows if row.status == "ok"),
             "ret1": _summarize(1),
             "ret5": _summarize(5),
+        },
+    )
+
+
+#: 板块强弱的分位线（与 `scripts/backtest_sector_stock.py` 同一套）
+SECTOR_STRONG = 90.0
+SECTOR_WEAK = 10.0
+
+
+@dataclass(frozen=True, slots=True)
+class SectorStockRow:
+    code: str
+    name: str | None
+    sector_code: str
+    sector_name: str | None
+    #: 所属板块当天在全部板块里的 RPS20 分位
+    rps20: float
+    #: 板块当日涨幅（%）
+    sector_pct_chg: float | None
+    #: 个股当日涨幅（%）
+    pct_chg: float | None
+    #: 量价因子分（仅 `order="factor"` 时计算）
+    factor_score: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SectorStockSector:
+    code: str
+    name: str | None
+    rps20: float
+    pct_chg: float | None
+    member_count: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class SectorStockBoard:
+    trade_date: date | None
+    conditions: dict = field(default_factory=dict)
+    sectors: list[SectorStockSector] = field(default_factory=list)
+    rows: list[SectorStockRow] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class SectorStockTrackDay:
+    trade_date: date
+    picks: int
+    ret1: float | None
+    excess1: float | None
+    status: str
+
+
+@dataclass(frozen=True, slots=True)
+class SectorStockTrack:
+    trade_date: date | None
+    conditions: dict = field(default_factory=dict)
+    days: list[SectorStockTrackDay] = field(default_factory=list)
+    summary: dict = field(default_factory=dict)
+
+
+def sector_stock(
+    session: Session,
+    trade_date: date | None = None,
+    taxonomy: str = "kph_selected",
+    scope: str = "strong",
+    order: str = "gain",
+    sectors: int = 3,
+    per_sector: int = 3,
+    limit: int = 50,
+) -> SectorStockBoard:
+    """从板块强度落到个股：强势（或弱势）板块里挑当日最强的几只。
+
+    ⚠️ **这组候选的历史超额是负的**（2026-10-25 用补回来的 60 天成分股检验）：
+    IC −0.042、强势板块选股超额 −0.11%、强势板块 × 突破 −0.30%（全市场突破 +0.18%）。
+    数字见 `docs/回测_板块到个股_20261025.md`。
+
+    上线它的目的**不是推荐**，而是让人看见「板块强 ≠ 个股强」；页面上必须如实标注
+    负超额，`scope="weak"` 那一档是同一套检验的反向对照（近 20 日反而正超额，但同样
+    不能当策略用）。
+
+    口径：
+    - 板块强度 = `sector_rps.rps20_on`（与页面第三块、研究脚本同一份）；
+    - `scope="strong"` 取 RPS20 ≥ 90 的前 `sectors` 个，`weak` 取 ≤ 10 的前几个；
+    - 每个板块的成员按当日涨幅（`order="gain"`）或量价因子分（`order="factor"`）取前
+      `per_sector` 只，跨板块去重（先命中的板块优先）。
+    """
+    conditions = {
+        "taxonomy": taxonomy,
+        "scope": scope,
+        "order": order,
+        "sectors": sectors,
+        "per_sector": per_sector,
+    }
+    target = trade_date or session.scalar(
+        select(func.max(SectorDaily.trade_date)).where(SectorDaily.taxonomy == taxonomy)
+    )
+    if target is None:
+        return SectorStockBoard(trade_date=None, conditions=conditions)
+
+    rps20 = sector_rps.rps20_on(session, target, taxonomy)
+    if not rps20:
+        return SectorStockBoard(trade_date=target, conditions=conditions)
+
+    ranked = sorted(rps20.items(), key=lambda item: item[1], reverse=scope == "strong")
+    if scope == "strong":
+        picked = [(code, value) for code, value in ranked if value >= SECTOR_STRONG][:sectors]
+    else:
+        picked = [(code, value) for code, value in ranked if value <= SECTOR_WEAK][:sectors]
+    if not picked:
+        return SectorStockBoard(trade_date=target, conditions=conditions)
+
+    meta = {
+        code: (name, pct_chg, member_count)
+        for code, name, pct_chg, member_count in session.execute(
+            select(
+                SectorDaily.sector_code,
+                SectorDaily.name,
+                SectorDaily.pct_chg,
+                SectorDaily.member_count,
+            ).where(
+                SectorDaily.trade_date == target,
+                SectorDaily.taxonomy == taxonomy,
+            )
+        )
+    }
+
+    codes = [code for code, _value in picked]
+    # 当天没采到的板块（RPS 用的是窗口内数据）退到最近一次的名称 —— 否则榜单上
+    # 会出现一个没名字的板块。但**当日涨幅不补**：那天就是没采到，补旧值会误导。
+    missing = [code for code in codes if code not in meta]
+    if missing:
+        seen: set[str] = set()
+        for code, name, count in session.execute(
+            select(
+                SectorDaily.sector_code,
+                SectorDaily.name,
+                SectorDaily.member_count,
+            )
+            .where(
+                SectorDaily.taxonomy == taxonomy,
+                SectorDaily.sector_code.in_(missing),
+                SectorDaily.trade_date < target,
+            )
+            .order_by(SectorDaily.sector_code, SectorDaily.trade_date.desc())
+        ):
+            if code in seen:
+                continue
+            seen.add(code)
+            meta[code] = (name, None, count)
+
+    by_sector: dict[str, list[tuple[str, str | None, float | None]]] = defaultdict(list)
+    for code, name, sector, pct in session.execute(
+        select(
+            SectorMember.code,
+            SectorMember.name,
+            SectorMember.sector_code,
+            SectorMember.pct_chg,
+        ).where(
+            SectorMember.trade_date == target,
+            SectorMember.sector_code.in_(codes),
+        )
+    ):
+        by_sector[sector].append((code, name, pct))
+
+    computed = (
+        factor_scores.scores(
+            session,
+            [item[0] for sector in codes for item in by_sector.get(sector, [])],
+            target,
+        )
+        if order == "factor"
+        else {}
+    )
+
+    rows: list[SectorStockRow] = []
+    seen: set[str] = set()
+    for sector, value in picked:
+        name, sector_pct, _members = meta.get(sector, (None, None, None))
+        items = by_sector.get(sector, [])
+        if order == "factor":
+            items = sorted(
+                items,
+                key=lambda item: -(computed[item[0]].score if item[0] in computed else -1.0),
+            )
+        else:
+            items = sorted(items, key=lambda item: -(item[2] or 0.0))
+        for code, stock_name, pct in items[:per_sector]:
+            if code in seen:
+                continue
+            seen.add(code)
+            rows.append(
+                SectorStockRow(
+                    code=code,
+                    name=stock_name,
+                    sector_code=sector,
+                    sector_name=name,
+                    rps20=value,
+                    sector_pct_chg=sector_pct,
+                    pct_chg=pct,
+                    factor_score=(
+                        computed[code].score if code in computed else None
+                    ),
+                )
+            )
+
+    board_sectors = [
+        SectorStockSector(
+            code=sector,
+            name=meta.get(sector, (None, None, None))[0],
+            rps20=value,
+            pct_chg=meta.get(sector, (None, None, None))[1],
+            member_count=meta.get(sector, (None, None, None))[2],
+        )
+        for sector, value in picked
+    ]
+    return SectorStockBoard(
+        trade_date=target,
+        conditions=conditions,
+        sectors=board_sectors,
+        rows=rows[:limit],
+    )
+
+
+def sector_stock_track(
+    session: Session,
+    days: int = 20,
+    taxonomy: str = "kph_selected",
+    scope: str = "strong",
+    order: str = "gain",
+    sectors: int = 3,
+    per_sector: int = 3,
+) -> SectorStockTrack:
+    """近 `days` 个有成分股的交易日，`sector_stock` 选出的票的次日表现。
+
+    收益与超额直接用 `pattern_track._curves`（与形态跟踪、RPS 验证同一份矩阵与
+    「当日全市场等权」基准），别在这里另写一套。
+    """
+    conditions = {
+        "taxonomy": taxonomy,
+        "scope": scope,
+        "order": order,
+        "sectors": sectors,
+        "per_sector": per_sector,
+    }
+    dates = sorted(
+        session.scalars(
+            select(SectorMember.trade_date)
+            .group_by(SectorMember.trade_date)
+            .order_by(SectorMember.trade_date.desc())
+            .limit(days)
+        )
+    )
+    if not dates:
+        return SectorStockTrack(trade_date=None, conditions=conditions)
+
+    picks: dict[date, list[tuple[str, str | None, float]]] = {}
+    for day in dates:
+        board = sector_stock(
+            session,
+            trade_date=day,
+            taxonomy=taxonomy,
+            scope=scope,
+            order=order,
+            sectors=sectors,
+            per_sector=per_sector,
+            limit=per_sector * sectors,
+        )
+        if board.rows:
+            picks[day] = [(row.code, row.name, row.rps20) for row in board.rows]
+    if not picks:
+        return SectorStockTrack(trade_date=dates[-1], conditions=conditions)
+
+    curves = pattern_track._curves(session, picks, 1)
+
+    day_rows: list[SectorStockTrackDay] = []
+    stats: list[tuple[float, float]] = []
+    for day in dates:
+        curve = curves.get(day, {})
+        entry = curve.get(1)
+        ret1 = excess1 = None
+        if entry is not None and len(entry[0]):
+            mean = float(entry[0].mean()) * 100
+            market = entry[1]
+            ret1 = round(mean, 2)
+            if market == market:
+                excess1 = round(mean - market * 100, 2)
+                stats.append((ret1, excess1))
+        day_rows.append(
+            SectorStockTrackDay(
+                day,
+                len(picks.get(day, [])),
+                ret1,
+                excess1,
+                "ok" if ret1 is not None else "pending",
+            )
+        )
+
+    verified = [row for row in day_rows if row.status == "ok"]
+    return SectorStockTrack(
+        trade_date=dates[-1],
+        conditions=conditions,
+        days=day_rows,
+        summary={
+            "days": len(day_rows),
+            "verified_days": len(verified),
+            "samples": sum(row.picks for row in verified),
+            "ret1": {
+                "days": len(stats),
+                "mean": round(sum(item[0] for item in stats) / len(stats), 2)
+                if stats
+                else None,
+                "excess": round(sum(item[1] for item in stats) / len(stats), 2)
+                if stats
+                else None,
+            },
         },
     )
 

@@ -2444,3 +2444,48 @@ export interface SectorTrack {
   rows: SectorTrackDay[]
 }
 
+/** 被选中的板块本身 */
+export interface SectorStockSector {
+  code: string
+  name: string | null
+  rps20: number
+  pct_chg: number | null
+  member_count: number | null
+}
+
+/** 板块 → 个股候选的一行（⚠️ 历史超额为负，只作研究视图） */
+export interface SectorStockRow {
+  code: string
+  name: string | null
+  sector_code: string
+  sector_name: string | null
+  rps20: number
+  sector_pct_chg: number | null
+  pct_chg: number | null
+  factor_score: number | null
+}
+
+export interface SectorStockBoard {
+  trade_date: string | null
+  conditions: Record<string, number | string>
+  sectors: SectorStockSector[]
+  rows: SectorStockRow[]
+}
+
+export interface SectorStockTrackDay {
+  trade_date: string
+  picks: number
+  ret1: number | null
+  excess1: number | null
+  status: 'ok' | 'pending'
+}
+
+export interface SectorStockTrack {
+  trade_date: string | null
+  conditions: Record<string, number | string>
+  verified_days: number
+  samples: number
+  ret1: RpsTrackStat
+  rows: SectorStockTrackDay[]
+}
+

@@ -6,6 +6,8 @@ import type {
   RpsBoard,
   RpsTrack,
   SectorRpsBoard,
+  SectorStockBoard,
+  SectorStockTrack,
   SectorTrack,
 } from '../api/types'
 import Layout from '../components/Layout'
@@ -91,6 +93,17 @@ const RPS_ORDER_ITEMS = [
 /** 首板表显示多少只，「排序」切到因子分时验证汇总也只统计这前 N 只 —— 两侧口径一致。 */
 const FB_LIMIT = 50
 
+/** 板块 → 个股：板块档（弱势档是对照，不是推荐）。 */
+const STOCK_SCOPE_ITEMS = [
+  { key: 'strong', label: '强势板块' },
+  { key: 'weak', label: '弱势板块' },
+]
+
+const STOCK_ORDER_ITEMS = [
+  { key: 'gain', label: '当日涨幅' },
+  { key: 'factor', label: '量价因子分' },
+]
+
 /** RPS 分位的颜色：只有两档极端才染色，中间一律中性（避免满屏红绿）。 */
 function rpsTone(value: number | null): string {
   if (value == null) return 'text-fg-muted'
@@ -125,6 +138,13 @@ export default function Pools() {
   const [sectorBoard, setSectorBoard] = useState<SectorRpsBoard | null>(null)
   const [sectorTrack, setSectorTrack] = useState<SectorTrack | null>(null)
   const [sectorError, setSectorError] = useState<string | null>(null)
+  // 板块 → 个股（研究视图）：历史超额为负，页面上必须如实显示
+  const [stockScope, setStockScope] = useState('strong')
+  const [stockOrder, setStockOrder] = useState('gain')
+  const [sectorStock, setSectorStock] = useState<SectorStockBoard | null>(null)
+  const [sectorStockError, setSectorStockError] = useState<string | null>(null)
+  const [sectorStockTrack, setSectorStockTrack] = useState<SectorStockTrack | null>(null)
+  const [sectorStockOpen, setSectorStockOpen] = useState(false)
 
   useEffect(() => {
     let stale = false
@@ -263,6 +283,49 @@ export default function Pools() {
       stale = true
     }
   }, [taxonomy])
+
+  useEffect(() => {
+    let stale = false
+    setSectorStock(null)
+    setSectorStockError(null)
+    api
+      .sectorStock({
+        taxonomy: taxonomy as 'kph_selected' | 'kph_industry',
+        scope: stockScope as 'strong' | 'weak',
+        order: stockOrder as 'gain' | 'factor',
+      })
+      .then((value) => {
+        if (!stale) setSectorStock(value)
+      })
+      .catch((err: Error) => {
+        if (!stale) setSectorStockError(err.message)
+      })
+    return () => {
+      stale = true
+    }
+  }, [taxonomy, stockScope, stockOrder])
+
+  useEffect(() => {
+    let stale = false
+    setSectorStockTrack(null)
+    api
+      .sectorStockTrack({
+        taxonomy: taxonomy as 'kph_selected' | 'kph_industry',
+        scope: stockScope as 'strong' | 'weak',
+        order: stockOrder as 'gain' | 'factor',
+        days: 20,
+      })
+      .then((value) => {
+        if (!stale) setSectorStockTrack(value)
+      })
+      .catch(() => {
+        // 验证行只是辅助信息，取不到就整行不显示
+        if (!stale) setSectorStockTrack(null)
+      })
+    return () => {
+      stale = true
+    }
+  }, [taxonomy, stockScope, stockOrder])
 
   const tradeDate = firstBoard?.trade_date ?? rps?.trade_date ?? null
   // 逐日明细只展开当前选中档 —— 两档并排看汇总，明细看一份就够了
@@ -732,8 +795,152 @@ export default function Pools() {
           )}
         </Panel>
 
+        <Panel
+          title="板块 → 个股（研究视图 · 历史负超额）"
+          meta={
+            <span className="flex items-center gap-3">
+              <Segmented
+                value={stockScope}
+                items={STOCK_SCOPE_ITEMS}
+                onChange={setStockScope}
+              />
+              <span className="num">{sectorStock?.trade_date ?? '—'}</span>
+            </span>
+          }
+          delay={100}
+        >
+          <p className="border-b border-line-soft px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
+            {stockScope === 'strong' ? 'RPS20 ≥ 90' : 'RPS20 ≤ 10'} 的前 3 个板块，每个板块按
+            {stockOrder === 'gain' ? '当日涨幅' : '量价因子分'}取前 3 只（跨板块去重）。
+            <span className="text-down"> 历史超额为负</span>：IC −0.042、强势档 −0.11%、
+            强势×突破 −0.30%（全市场突破 +0.18%）—— 这里只作「板块强 ≠ 个股强」的对照，
+            不是买入建议。
+          </p>
+          {sectorStockTrack && (
+            <div className="border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+              <button
+                type="button"
+                onClick={() => setSectorStockOpen((open) => !open)}
+                className="w-full text-left leading-relaxed hover:text-fg"
+              >
+                <span className="num">
+                  近 {sectorStockTrack.verified_days} 日：1 日{' '}
+                  {fmtPct(sectorStockTrack.ret1.mean)}（超额{' '}
+                  {fmtPct(sectorStockTrack.ret1.excess)}）{' · '}样本{' '}
+                  {sectorStockTrack.samples}
+                </span>
+                <span className="ml-2 text-fg-muted">
+                  {sectorStockOpen ? '收起 ▴' : '逐日明细 ▾'}
+                </span>
+              </button>
+              {sectorStockOpen && (
+                <div className="mt-2 overflow-x-auto">
+                  <table className="grid-table">
+                    <thead>
+                      <tr>
+                        <th className="!text-left">日期</th>
+                        <th>只数</th>
+                        <th>1 日</th>
+                        <th>超额</th>
+                        <th className="!text-left">状态</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sectorStockTrack.rows.map((row) => (
+                        <tr key={row.trade_date}>
+                          <td className="num !text-left">{row.trade_date}</td>
+                          <td className="num">{row.picks}</td>
+                          <td className={`num ${toneOf(row.ret1)}`}>{fmtPct(row.ret1)}</td>
+                          <td className={`num ${toneOf(row.excess1)}`}>
+                            {fmtPct(row.excess1)}
+                          </td>
+                          <td className="!text-left text-fg-muted">
+                            {row.status === 'pending' ? '待验证' : '已验证'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-3 border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+            <span className="flex items-center gap-2">
+              个股排序
+              <Segmented
+                value={stockOrder}
+                items={STOCK_ORDER_ITEMS}
+                onChange={setStockOrder}
+              />
+            </span>
+          </div>
+          {sectorStockError ? (
+            <LoadState loading={false} error={sectorStockError} />
+          ) : sectorStock === null ? (
+            <LoadState loading emptyText="加载中" />
+          ) : sectorStock.rows.length === 0 ? (
+            <LoadState
+              loading={false}
+              emptyText={
+                stockScope === 'strong'
+                  ? '今天没有 RPS20 ≥ 90 的板块（或成分股还没采到）'
+                  : '今天没有 RPS20 ≤ 10 的板块（或成分股还没采到）'
+              }
+            />
+          ) : (
+            <>
+              <div className="border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+                选中的板块：
+                {sectorStock.sectors
+                  .map(
+                    (item) =>
+                      `${item.name ?? item.code}（RPS ${fmtNum(item.rps20, 0)} · 当日 ${fmtPct(item.pct_chg)}）`,
+                  )
+                  .join('、')}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="grid-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th className="!text-left">板块</th>
+                      <th className="!text-left">个股</th>
+                      <th>当日涨幅</th>
+                      <th>板块当日</th>
+                      {stockOrder === 'factor' && <th>因子分</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sectorStock.rows.map((row, index) => (
+                      <tr key={row.code}>
+                        <td className="num text-fg-dim">{index + 1}</td>
+                        <td className="!text-left text-fg-muted">
+                          {row.sector_name ?? row.sector_code}
+                        </td>
+                        <td className="!text-left">
+                          <StockLink code={row.code} className="text-fg">
+                            {row.name ?? row.code}
+                          </StockLink>
+                        </td>
+                        <td className={`num ${toneOf(row.pct_chg)}`}>{fmtPct(row.pct_chg)}</td>
+                        <td className={`num ${toneOf(row.sector_pct_chg)}`}>
+                          {fmtPct(row.sector_pct_chg)}
+                        </td>
+                        {stockOrder === 'factor' && (
+                          <td className="num">{fmtNum(row.factor_score, 1)}</td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </Panel>
+
         <p className="px-1 text-[12px] leading-relaxed text-fg-dim">
-          三块都是盘后读数，不是买卖建议：本站没有盘中数据，打板要看次日承接。
+          四块都是盘后读数，不是买卖建议：本站没有盘中数据，打板要看次日承接。
           阈值（首封时间、市值、题材家数）只是起手参数 —— 改参数看上面那行「近 20 日」
           的样本 / 晋级率 / 开盘溢价怎么变，比凭感觉定阈值靠谱。
         </p>

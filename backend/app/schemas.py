@@ -2781,3 +2781,52 @@ class SectorTrackOut(BaseModel):
     rows: list[SectorTrackDayOut]
 
 
+class SectorStockSectorOut(BaseModel):
+    """被选中的板块本身（页面要显示「用的是哪几个板块」）。"""
+
+    code: str
+    name: str | None
+    rps20: float
+    pct_chg: float | None
+    member_count: int | None
+
+
+class SectorStockRowOut(BaseModel):
+    """板块 → 个股候选的一行。⚠️ 这组候选历史超额为负，只作研究视图。"""
+
+    code: str
+    name: str | None
+    sector_code: str
+    sector_name: str | None
+    rps20: float
+    sector_pct_chg: float | None
+    pct_chg: float | None
+    factor_score: float | None
+
+
+class SectorStockOut(BaseModel):
+    trade_date: date | None
+    conditions: dict
+    sectors: list[SectorStockSectorOut]
+    rows: list[SectorStockRowOut]
+
+
+class SectorStockTrackDayOut(BaseModel):
+    trade_date: date
+    picks: int
+    ret1: float | None
+    excess1: float | None
+    status: str
+
+
+class SectorStockTrackOut(BaseModel):
+    """近 N 日「板块 → 个股」候选的次日验证（与形态跟踪同一份等权基准）。"""
+
+    trade_date: date | None
+    conditions: dict
+    verified_days: int
+    samples: int
+    ret1: RpsTrackStatOut
+    rows: list[SectorStockTrackDayOut]
+
+
