@@ -2480,12 +2480,23 @@ export interface SectorStockTrackDay {
   status: 'ok' | 'pending'
 }
 
+export interface SectorStockTrackStat {
+  days: number
+  mean: number | null
+  median: number | null
+  /** 胜率：收益 > 0 的样本占比 */
+  up_pct: number | null
+  /** 大面：收益 ≤ −5% 的样本占比 */
+  big_loss: number | null
+  excess: number | null
+}
+
 export interface SectorStockTrack {
   trade_date: string | null
   conditions: Record<string, number | string>
   verified_days: number
   samples: number
-  ret1: RpsTrackStat
+  ret1: SectorStockTrackStat
   rows: SectorStockTrackDay[]
 }
 

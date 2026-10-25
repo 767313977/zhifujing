@@ -90,6 +90,27 @@ def test_sector_stock_weak_scope_is_the_control(session):
     assert board.rows == []
 
 
+def test_sector_stock_drops_st_and_bse(session):
+    """ST 与北交所不参与候选 —— 与首板池同一套剔除判据。"""
+    _seed(session)
+    for code, name in (("000004", "ST某某"), ("830001", "北交某")):
+        session.add(StockBasic(code=code, name=name))
+        session.add(
+            SectorMember(
+                trade_date=SIGNAL,
+                sector_code="S00",
+                code=code,
+                name=name,
+                pct_chg=9.0,  # 涨幅最高也一样被剔
+            )
+        )
+    session.commit()
+
+    board = pools.sector_stock(session, scope="strong", sectors=1, per_sector=5)
+
+    assert [row.code for row in board.rows] == ["000002", "000003", "000001"]
+
+
 def test_sector_stock_track_uses_next_day_quotes(session):
     _seed(session)
     for code in ("000001", "000002", "000003"):
@@ -117,3 +138,6 @@ def test_sector_stock_track_uses_next_day_quotes(session):
     assert track.summary["verified_days"] == 1
     assert track.summary["samples"] == 2  # 000002、000003
     assert track.summary["ret1"]["mean"] == pytest.approx(10.0)
+    assert track.summary["ret1"]["median"] == pytest.approx(10.0)
+    assert track.summary["ret1"]["up_pct"] == pytest.approx(100.0)
+    assert track.summary["ret1"]["big_loss"] == pytest.approx(0.0)

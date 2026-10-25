@@ -45,7 +45,8 @@ from sqlalchemy import func, select  # noqa: E402
 
 from app.db import session_scope  # noqa: E402
 from app.models import PatternHit, SectorBasic, SectorMember, StockDaily, TradeCalendar  # noqa: E402
-from app.services import factor_score, sector_rps  # noqa: E402
+from app.services import factor_score, limit_rules, sector_rps  # noqa: E402
+from app.services.patterns import is_st  # noqa: E402
 from app.services.pools import BREAKOUT_KEYS  # noqa: E402
 from backtest_relay import _load_window, _tradable  # noqa: E402
 from factor_ic import _spearman  # noqa: E402  （同一套秩相关，不另写一份）
@@ -83,12 +84,25 @@ def _pairs(days: int) -> list[tuple[date, date]]:
 
 
 def _members(session, day: date, taxonomy: str) -> list[tuple[str, str, float | None]]:
-    """当天该口径下全部 (个股, 板块, 当日涨跌幅)。"""
-    return session.execute(
-        select(SectorMember.code, SectorMember.sector_code, SectorMember.pct_chg)
-        .join(SectorBasic, SectorBasic.code == SectorMember.sector_code)
-        .where(SectorMember.trade_date == day, SectorBasic.taxonomy == taxonomy)
-    ).all()
+    """当天该口径下全部 (个股, 板块, 当日涨跌幅)。
+
+    剔除 ST 与北交所 —— 与页面 `pools.sector_stock` 同一套判据（`is_st` /
+    `limit_rules.is_bse`），否则回测数字代表不了上线后的候选。
+    """
+    return [
+        (code, sector, pct)
+        for code, name, sector, pct in session.execute(
+            select(
+                SectorMember.code,
+                SectorMember.name,
+                SectorMember.sector_code,
+                SectorMember.pct_chg,
+            )
+            .join(SectorBasic, SectorBasic.code == SectorMember.sector_code)
+            .where(SectorMember.trade_date == day, SectorBasic.taxonomy == taxonomy)
+        )
+        if not is_st(name) and not limit_rules.is_bse(code)
+    ]
 
 
 def _stock_rps(members: list[tuple[str, str, float | None]], rps20: dict[str, float]) -> dict[str, float]:

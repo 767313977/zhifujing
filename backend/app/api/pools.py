@@ -38,6 +38,7 @@ from app.schemas import (
     SectorStockSectorOut,
     SectorStockTrackDayOut,
     SectorStockTrackOut,
+    SectorStockTrackStatOut,
     SectorTrackDayOut,
     SectorTrackOut,
     SectorTrackStatOut,
@@ -377,7 +378,7 @@ def sector_stock_track(
         conditions=track.conditions,
         verified_days=track.summary["verified_days"],
         samples=track.summary["samples"],
-        ret1=RpsTrackStatOut(**track.summary["ret1"]),
+        ret1=SectorStockTrackStatOut(**track.summary["ret1"]),
         rows=[SectorStockTrackDayOut(**asdict(row)) for row in track.days],
     )
 

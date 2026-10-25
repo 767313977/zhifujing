@@ -2819,6 +2819,17 @@ class SectorStockTrackDayOut(BaseModel):
     status: str
 
 
+class SectorStockTrackStatOut(BaseModel):
+    """次日收益的汇总（`big_loss` = 收益 ≤ −5% 的样本占比）。"""
+
+    days: int
+    mean: float | None
+    median: float | None
+    up_pct: float | None
+    big_loss: float | None
+    excess: float | None
+
+
 class SectorStockTrackOut(BaseModel):
     """近 N 日「板块 → 个股」候选的次日验证（与形态跟踪同一份等权基准）。"""
 
@@ -2826,7 +2837,7 @@ class SectorStockTrackOut(BaseModel):
     conditions: dict
     verified_days: int
     samples: int
-    ret1: RpsTrackStatOut
+    ret1: SectorStockTrackStatOut
     rows: list[SectorStockTrackDayOut]
 
 

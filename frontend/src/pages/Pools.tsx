@@ -104,6 +104,18 @@ const STOCK_ORDER_ITEMS = [
   { key: 'factor', label: '量价因子分' },
 ]
 
+const STOCK_SECTOR_ITEMS = [
+  { key: '1', label: '1 个' },
+  { key: '3', label: '3 个' },
+  { key: '5', label: '5 个' },
+]
+
+const STOCK_PER_ITEMS = [
+  { key: '2', label: '2 只' },
+  { key: '3', label: '3 只' },
+  { key: '5', label: '5 只' },
+]
+
 /** RPS 分位的颜色：只有两档极端才染色，中间一律中性（避免满屏红绿）。 */
 function rpsTone(value: number | null): string {
   if (value == null) return 'text-fg-muted'
@@ -141,6 +153,8 @@ export default function Pools() {
   // 板块 → 个股（研究视图）：历史超额为负，页面上必须如实显示
   const [stockScope, setStockScope] = useState('strong')
   const [stockOrder, setStockOrder] = useState('gain')
+  const [stockSectors, setStockSectors] = useState('3')
+  const [stockPer, setStockPer] = useState('3')
   const [sectorStock, setSectorStock] = useState<SectorStockBoard | null>(null)
   const [sectorStockError, setSectorStockError] = useState<string | null>(null)
   const [sectorStockTrack, setSectorStockTrack] = useState<SectorStockTrack | null>(null)
@@ -293,6 +307,8 @@ export default function Pools() {
         taxonomy: taxonomy as 'kph_selected' | 'kph_industry',
         scope: stockScope as 'strong' | 'weak',
         order: stockOrder as 'gain' | 'factor',
+        sectors: Number(stockSectors),
+        perSector: Number(stockPer),
       })
       .then((value) => {
         if (!stale) setSectorStock(value)
@@ -303,7 +319,7 @@ export default function Pools() {
     return () => {
       stale = true
     }
-  }, [taxonomy, stockScope, stockOrder])
+  }, [taxonomy, stockScope, stockOrder, stockSectors, stockPer])
 
   useEffect(() => {
     let stale = false
@@ -313,6 +329,8 @@ export default function Pools() {
         taxonomy: taxonomy as 'kph_selected' | 'kph_industry',
         scope: stockScope as 'strong' | 'weak',
         order: stockOrder as 'gain' | 'factor',
+        sectors: Number(stockSectors),
+        perSector: Number(stockPer),
         days: 20,
       })
       .then((value) => {
@@ -325,7 +343,7 @@ export default function Pools() {
     return () => {
       stale = true
     }
-  }, [taxonomy, stockScope, stockOrder])
+  }, [taxonomy, stockScope, stockOrder, stockSectors, stockPer])
 
   const tradeDate = firstBoard?.trade_date ?? rps?.trade_date ?? null
   // 逐日明细只展开当前选中档 —— 两档并排看汇总，明细看一份就够了
@@ -810,8 +828,9 @@ export default function Pools() {
           delay={100}
         >
           <p className="border-b border-line-soft px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
-            {stockScope === 'strong' ? 'RPS20 ≥ 90' : 'RPS20 ≤ 10'} 的前 3 个板块，每个板块按
-            {stockOrder === 'gain' ? '当日涨幅' : '量价因子分'}取前 3 只（跨板块去重）。
+            {stockScope === 'strong' ? 'RPS20 ≥ 90' : 'RPS20 ≤ 10'} 的前 {stockSectors} 个板块，
+            每个板块按{stockOrder === 'gain' ? '当日涨幅' : '量价因子分'}取前 {stockPer} 只
+            （跨板块去重，已剔除 ST 与北交所）。
             <span className="text-down"> 历史超额为负</span>：IC −0.042、强势档 −0.11%、
             强势×突破 −0.30%（全市场突破 +0.18%）—— 这里只作「板块强 ≠ 个股强」的对照，
             不是买入建议。
@@ -825,9 +844,11 @@ export default function Pools() {
               >
                 <span className="num">
                   近 {sectorStockTrack.verified_days} 日：1 日{' '}
-                  {fmtPct(sectorStockTrack.ret1.mean)}（超额{' '}
-                  {fmtPct(sectorStockTrack.ret1.excess)}）{' · '}样本{' '}
-                  {sectorStockTrack.samples}
+                  {fmtPct(sectorStockTrack.ret1.mean)} · 中位{' '}
+                  {fmtPct(sectorStockTrack.ret1.median)} · 胜率{' '}
+                  {fmtNum(sectorStockTrack.ret1.up_pct, 1, '%')} · 大面{' '}
+                  {fmtNum(sectorStockTrack.ret1.big_loss, 1, '%')} · 超额{' '}
+                  {fmtPct(sectorStockTrack.ret1.excess)} · 样本 {sectorStockTrack.samples}
                 </span>
                 <span className="ml-2 text-fg-muted">
                   {sectorStockOpen ? '收起 ▴' : '逐日明细 ▾'}
@@ -866,6 +887,18 @@ export default function Pools() {
             </div>
           )}
           <div className="flex flex-wrap items-center gap-3 border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+            <span className="flex items-center gap-2">
+              板块数
+              <Segmented
+                value={stockSectors}
+                items={STOCK_SECTOR_ITEMS}
+                onChange={setStockSectors}
+              />
+            </span>
+            <span className="flex items-center gap-2">
+              每板块
+              <Segmented value={stockPer} items={STOCK_PER_ITEMS} onChange={setStockPer} />
+            </span>
             <span className="flex items-center gap-2">
               个股排序
               <Segmented

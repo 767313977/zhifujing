@@ -31,6 +31,7 @@ from app.models import (
 )
 from app.services import (
     factor_score as factor_scores,
+    limit_rules,
     pattern_track,
     rps,
     sector_rps,
@@ -1310,6 +1311,9 @@ def sector_stock(
             SectorMember.sector_code.in_(codes),
         )
     ):
+        # 与首板池同一套剔除：ST（风险警示）与北交所（30% 涨跌停 + 流动性另一套玩法）
+        if is_st(name) or limit_rules.is_bse(code):
+            continue
         by_sector[sector].append((code, name, pct))
 
     computed = (
@@ -1424,17 +1428,19 @@ def sector_stock_track(
 
     day_rows: list[SectorStockTrackDay] = []
     stats: list[tuple[float, float]] = []
+    pooled: list[float] = []
     for day in dates:
         curve = curves.get(day, {})
         entry = curve.get(1)
         ret1 = excess1 = None
         if entry is not None and len(entry[0]):
-            mean = float(entry[0].mean()) * 100
-            market = entry[1]
+            values = entry[0] * 100  # 转成百分数，与页面其它读数一致
+            mean = float(values.mean())
             ret1 = round(mean, 2)
-            if market == market:
-                excess1 = round(mean - market * 100, 2)
+            if entry[1] == entry[1]:
+                excess1 = round(mean - entry[1] * 100, 2)
                 stats.append((ret1, excess1))
+                pooled.extend(float(value) for value in values)
         day_rows.append(
             SectorStockTrackDay(
                 day,
@@ -1446,6 +1452,7 @@ def sector_stock_track(
         )
 
     verified = [row for row in day_rows if row.status == "ok"]
+    mean, median = _mean_median(pooled)
     return SectorStockTrack(
         trade_date=dates[-1],
         conditions=conditions,
@@ -1453,11 +1460,19 @@ def sector_stock_track(
         summary={
             "days": len(day_rows),
             "verified_days": len(verified),
-            "samples": sum(row.picks for row in verified),
+            "samples": len(pooled),
             "ret1": {
                 "days": len(stats),
-                "mean": round(sum(item[0] for item in stats) / len(stats), 2)
-                if stats
+                "mean": mean,
+                "median": median,
+                # 胜率 = 收益 > 0 的样本占比；大面 = 收益 ≤ −5% 的样本占比
+                "up_pct": round(sum(1 for value in pooled if value > 0) / len(pooled) * 100, 1)
+                if pooled
+                else None,
+                "big_loss": round(
+                    sum(1 for value in pooled if value <= -5.0) / len(pooled) * 100, 1
+                )
+                if pooled
                 else None,
                 "excess": round(sum(item[1] for item in stats) / len(stats), 2)
                 if stats
