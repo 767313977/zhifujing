@@ -831,7 +831,7 @@ export default function Pools() {
             {stockScope === 'strong' ? 'RPS20 ≥ 90' : 'RPS20 ≤ 10'} 的前 {stockSectors} 个板块，
             每个板块按{stockOrder === 'gain' ? '当日涨幅' : '量价因子分'}取前 {stockPer} 只
             （跨板块去重，已剔除 ST 与北交所）。
-            <span className="text-down"> 历史超额为负</span>：IC −0.042、强势档 −0.11%、
+            <span className="text-down"> 历史超额为负</span>：IC −0.046、强势档 −0.17%、
             强势×突破 −0.30%（全市场突破 +0.18%）—— 这里只作「板块强 ≠ 个股强」的对照，
             不是买入建议。
           </p>
