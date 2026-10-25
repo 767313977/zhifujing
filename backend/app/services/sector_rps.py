@@ -159,6 +159,20 @@ def _percentiles(values: dict[str, float]) -> dict[str, float]:
     return {code: rps.mid_rank(ordered, value) for code, value in values.items()}
 
 
+def rps20_on(session: Session, target: date, taxonomy: str = "kph_selected") -> dict[str, float]:
+    """某天各板块的 RPS20（`{板块代码: 0~100}`）。
+
+    「板块 → 个股」的回测与页面用**同一份**口径：20 日复利涨幅、按交易日截窗口、
+    中位秩分位；`taxonomy` 两个口径不能混比。
+    """
+    starts, rows = _window_rows(session, target, taxonomy)
+    if not rows:
+        return {}
+    returns = _returns(rows, starts)
+    values = {code: value[20] for code, value in returns.items() if value[20] is not None}
+    return _percentiles(values)
+
+
 def board(
     session: Session,
     trade_date: date | None = None,
