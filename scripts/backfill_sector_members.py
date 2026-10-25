@@ -128,10 +128,16 @@ def main() -> int:
             result.get("failed", 0),
             time.monotonic() - day_start,
         )
-        if result.get("boards") and not result.get("written"):
-            # 一条都没写：要么超出开盘红的历史保留期，要么当天名单缺失
+        if result.get("boards", 0) >= 10 and not result.get("written"):
+            # 缺的板块一个都没取到：可能是开盘红的历史保留期到了。
+            # 只缺一两个板块时不算异常 —— 10-19~10-23 每天是 372/374，那 2 个板块
+            # 本来就没有成分数据（实测这两天回补返回 0 行）。
             empty += 1
-            logger.warning("%s 一个板块都没取到，可能已超出历史保留期", day)
+            logger.warning(
+                "%s 缺的 %d 个板块一条都没取到，可能已超出历史保留期",
+                day,
+                result["boards"],
+            )
 
     logger.info(
         "完成：%d 天，写入 %d 行，失败 %d 个板块，空天 %d，总用时 %.0fs",
