@@ -71,6 +71,8 @@ class IndexValuationRow:
     pb: float | None
     pb_pct: float | None
     tone: str | None
+    #: 分位窗口里**实际**有几年数据（新股 / 新指数不足 10 年，不标出来会和别的网站对不上）
+    sample_years: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +135,22 @@ def _window(
     return float(current), percentile_score(values, float(current))
 
 
+def _sample_years(rows: list[IndexValuation], attr: str = "pe_ttm") -> float | None:
+    """分位窗口里**实际**有几年数据（科创50 2020-07 才有，不足 10 年）。"""
+    if not rows:
+        return None
+    latest = rows[-1]
+    since = latest.trade_date - timedelta(days=WINDOW_DAYS)
+    days = [
+        row.trade_date
+        for row in rows
+        if row.trade_date >= since and getattr(row, attr) is not None
+    ]
+    if len(days) < 2:
+        return None
+    return round((days[-1] - days[0]).days / 365.25, 1)
+
+
 def summary(session: Session) -> ValuationSummary:
     """全部核心指数的当前估值 + 分位，外加 A 股估值温度。"""
     grouped = _load(session)
@@ -151,6 +169,7 @@ def summary(session: Session) -> ValuationSummary:
                 pb=pb,
                 pb_pct=pb_pct,
                 tone=tone_of(pe_pct),
+                sample_years=_sample_years(rows),
             )
         )
 

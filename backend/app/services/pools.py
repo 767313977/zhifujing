@@ -38,6 +38,7 @@ from app.services import (
     trend,
 )
 from app.services.patterns import PATTERNS, Bars, build_bars, is_st, usable_bar
+from app.sources.base import chunked
 
 logger = logging.getLogger(__name__)
 
@@ -341,36 +342,57 @@ def _filter_trend(session: Session, day: date, rows: list[RpsRow]) -> list[RpsRo
     if not rows:
         return rows
     codes = [row.code for row in rows]
-    records: dict[str, list[dict]] = defaultdict(list)
-    for code, trade_date, open_, high, low, close, volume, amount, pct in session.execute(
-        select(
-            StockDaily.code,
-            StockDaily.trade_date,
-            StockDaily.open,
-            StockDaily.high,
-            StockDaily.low,
-            StockDaily.close,
-            StockDaily.volume,
-            StockDaily.amount,
-            StockDaily.pct_chg,
+    # 只读趋势模板需要的窗口：`trend.passes` 要 `TREND_LOOKBACK` 根可用日线，多留 10 天
+    # 缓冲（停牌残行会被 `usable_bar` 剔掉）。不设下限时会把库里保留的 400 天全读出来
+    # —— 全池（约 5000 只）实测 26.6 秒，而 `rps/track` 会乘 20 个循环，必然超时。
+    days = list(
+        session.scalars(
+            select(TradeCalendar.trade_date)
+            .where(TradeCalendar.trade_date <= day)
+            .order_by(TradeCalendar.trade_date.desc())
+            .limit(trend.TREND_LOOKBACK + 10)
         )
-        .where(StockDaily.code.in_(codes), StockDaily.trade_date <= day)
-        .order_by(StockDaily.code, StockDaily.trade_date)
-    ):
-        item = {
-            "date": trade_date,
-            "open": open_,
-            "high": high,
-            "low": low,
-            "close": close,
-            "volume": volume,
-            "amount": amount,
-            "pct_chg": pct,
-            "name": None,
-        }
-        # 停牌残行（只有收盘价）不能当一根 K 线，与扫描 / 回测同口径
-        if usable_bar(item):
-            records[code].append(item)
+    )
+    if not days:
+        return []
+    start = min(days)
+
+    records: dict[str, list[dict]] = defaultdict(list)
+    # 全池 5000 只时 IN 参数过多，按 900 一批（与 `api/patterns`、`stock_phase` 同一约定）
+    for batch in chunked(codes, 900):
+        for code, trade_date, open_, high, low, close, volume, amount, pct in session.execute(
+            select(
+                StockDaily.code,
+                StockDaily.trade_date,
+                StockDaily.open,
+                StockDaily.high,
+                StockDaily.low,
+                StockDaily.close,
+                StockDaily.volume,
+                StockDaily.amount,
+                StockDaily.pct_chg,
+            )
+            .where(
+                StockDaily.code.in_(batch),
+                StockDaily.trade_date >= start,
+                StockDaily.trade_date <= day,
+            )
+            .order_by(StockDaily.code, StockDaily.trade_date)
+        ):
+            item = {
+                "date": trade_date,
+                "open": open_,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume,
+                "amount": amount,
+                "pct_chg": pct,
+                "name": None,
+            }
+            # 停牌残行（只有收盘价）不能当一根 K 线，与扫描 / 回测同口径
+            if usable_bar(item):
+                records[code].append(item)
     kept: list[RpsRow] = []
     for row in rows:
         items = records.get(row.code) or []

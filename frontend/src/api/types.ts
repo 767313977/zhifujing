@@ -2211,6 +2211,8 @@ export interface IndexValuationItem {
   pb_pct: number | null
   /** PE 分位对应的温度档：极冷 / 偏冷 / 正常 / 偏热 / 极热 */
   tone: string | null
+  /** 分位窗口里**实际**有几年数据（科创50 这类新指数不足 10 年） */
+  sample_years: number | null
 }
 
 export interface ValuationSummary {

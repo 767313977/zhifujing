@@ -90,15 +90,34 @@ def rps(
     session: Session = Depends(get_db),
 ) -> RpsOut:
     """RPS 榜（默认按 RPS250 排；`dual` 只在近一年有效，见函数说明）。"""
-    board = pools.rps_board(
-        session,
-        trade_date=trade_date,
-        min_rps=min_rps,
-        limit=limit,
-        mode=mode,
-        breakout_only=breakout_only,
-        trend_template=trend_template,
-        order=order,
+    latest = session.scalar(select(func.max(RpsDaily.trade_date)))
+    if latest is None:
+        raise HTTPException(status_code=404, detail="还没有 RPS 数据（等收盘扫描跑一轮）")
+    # 全池 + 因子分 / 趋势模板时单次 1~6 秒，页面每次加载都会请求 → 与 track 一样缓存，
+    # 键带上全部条件参数与库里最新 RPS 日，换参数或数据更新自然失效
+    key = (
+        "rps_board",
+        latest,
+        trade_date,
+        min_rps,
+        limit,
+        mode,
+        breakout_only,
+        trend_template,
+        order,
+    )
+    board = _cached(
+        key,
+        lambda: pools.rps_board(
+            session,
+            trade_date=trade_date,
+            min_rps=min_rps,
+            limit=limit,
+            mode=mode,
+            breakout_only=breakout_only,
+            trend_template=trend_template,
+            order=order,
+        ),
     )
     if board.trade_date is None:
         raise HTTPException(status_code=404, detail="还没有 RPS 数据（等收盘扫描跑一轮）")

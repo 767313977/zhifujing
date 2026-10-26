@@ -239,7 +239,14 @@ export default function Valuation() {
                     </td>
                     <td className="num text-fg-muted">{item.as_of ?? '—'}</td>
                     <td className="num">{fmtNum(item.pe_ttm, 2)}</td>
-                    <td className="num">{pctText(item.pe_pct)}</td>
+                    <td className="num">
+                      {pctText(item.pe_pct)}
+                      {item.sample_years != null && item.sample_years < 9.5 && (
+                        <span className="ml-1 text-[11px] text-fg-muted">
+                          （{item.sample_years.toFixed(1)} 年）
+                        </span>
+                      )}
+                    </td>
                     <td className="num">{fmtNum(item.pb, 2)}</td>
                     <td className="num">{pctText(item.pb_pct)}</td>
                     <td className="num" style={toneStyle(item.tone)}>

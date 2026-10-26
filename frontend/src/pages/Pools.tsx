@@ -242,24 +242,41 @@ export default function Pools() {
     let stale = false
     setRpsTrack(null)
     setRpsTrackFactor(null)
-    const base = {
-      mode: rpsMode as 'dual' | 'line_red' | 'all',
-      top: 50,
-      days: 20,
-      breakoutOnly: onlyBreakout === '1',
-      trendTemplate: onlyTrend === '1',
-    }
-    // 两档排序各取一次，页面上并排对比 —— 只有「同一批候选、只换顺序」的差别
     api
-      .rpsTrack({ ...base, order: 'strength' })
+      .rpsTrack({
+        mode: rpsMode as 'dual' | 'line_red' | 'all',
+        top: 50,
+        days: 20,
+        breakoutOnly: onlyBreakout === '1',
+        trendTemplate: onlyTrend === '1',
+        order: 'strength',
+      })
       .then((value) => {
         if (!stale) setRpsTrack(value)
       })
       .catch(() => {
         if (!stale) setRpsTrack(null)
       })
+    return () => {
+      stale = true
+    }
+  }, [rpsMode, onlyBreakout, onlyTrend])
+
+  // 因子档的验证要跑「近 20 天 × 全池」打分（首次约 19 秒），所以**切到因子分排序时才请求**，
+  // 不要页面一打开就发 —— 默认档位用不到它。
+  const wantFactorTrack = rpsOrder === 'factor'
+  useEffect(() => {
+    if (!wantFactorTrack) return
+    let stale = false
     api
-      .rpsTrack({ ...base, order: 'factor' })
+      .rpsTrack({
+        mode: rpsMode as 'dual' | 'line_red' | 'all',
+        top: 50,
+        days: 20,
+        breakoutOnly: onlyBreakout === '1',
+        trendTemplate: onlyTrend === '1',
+        order: 'factor',
+      })
       .then((value) => {
         if (!stale) setRpsTrackFactor(value)
       })
@@ -269,7 +286,7 @@ export default function Pools() {
     return () => {
       stale = true
     }
-  }, [rpsMode, onlyBreakout, onlyTrend])
+  }, [rpsMode, onlyBreakout, onlyTrend, wantFactorTrack])
 
   useEffect(() => {
     let stale = false
