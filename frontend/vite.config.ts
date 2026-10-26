@@ -31,5 +31,10 @@ export default defineConfig({
         chunkFileNames: 'assets/[name]-[hash]-r2.js',
       },
     },
+    // EChart 那个 chunk 是 640 kB，一直高于 vite 默认的 500 kB 阈值。这条警告不是错误，
+    // 但 vite 会把它写到 **stderr**，而 `push.ps1` 用 `$ErrorActionPreference = 'Stop'`，
+    // PowerShell 会把原生命令的 stderr 当成致命错误 → 构建明明成功，部署脚本却中断。
+    // 阈值调到 1024 让警告消失（真要拆包是另一件事，不该靠一条告警来提醒）。
+    chunkSizeWarningLimit: 1024,
   },
 })
