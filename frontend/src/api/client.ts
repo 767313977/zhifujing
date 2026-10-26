@@ -1008,7 +1008,12 @@ export const api = {
       trend_template: String(params.trendTemplate ?? false),
       order: params.order ?? 'strength',
     })
-    return request<RpsBoard>(`/pools/rps?${query.toString()}`)
+    // 「趋势模板 + 因子分」首次要对全池跑一遍模板（约 23 秒），用长超时
+    return request<RpsBoard>(
+      `/pools/rps?${query.toString()}`,
+      undefined,
+      LONG_TIMEOUT_MS,
+    )
   },
 
   /**

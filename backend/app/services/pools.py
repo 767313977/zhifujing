@@ -138,9 +138,9 @@ def rps_board(
 
     ⚠️ 两个开关都是在**排序之后**按序评估最多 `_FILTER_SCAN_CAP` 只 —— 榜单是
     「最强的一批」，翻到第 300 名之后还满足突破 / 趋势的票本来也不该按强度混进来。
-    `order="factor"` 时不受这个上限约束（要全池才能挑出因子分最高的），但当它**同时**
-    开趋势模板时，先按因子分取前 `limit × 3` 再跑模板 —— 全池跑模板实测 23 秒，
-    对「因子分最高的前 N 只」来说这两种顺序的结果几乎一样。
+    `order="factor"` 时不受这个上限约束（要全池才能挑出因子分最高的）；它与
+    `trend_template` 同时开时，模板仍要先对**全池**跑一遍（约 23 秒），再按因子分取前 N
+    —— 换成「先排序再过滤」会得到 0 只（两种逻辑的票不重合，见下面的注释）。
     """
     target = trade_date or _latest_rps_day(session)
     if target is None:
@@ -249,6 +249,14 @@ def rps_board(
         if len(rows) >= limit and not trend_template and order != "factor":
             break
 
+    if trend_template:
+        # ⚠️ 趋势模板是**过滤条件**，必须先于「按因子分取前 N」：全池里满足模板的 72 只，
+        # 因子分没有一只进前 300 —— 反过来先排序再过滤会直接得到 0 只。代价是全池跑模板
+        # （约 5000 只 × 260 天日线）每次约 23 秒，只能靠 `/rps` 的 10 分钟缓存兜住。
+        rows = _filter_trend(session, target, rows)
+        if order != "factor":
+            rows = rows[:limit]
+
     if order == "factor" and rows:
         computed = factor_scores.scores(session, [row.code for row in rows], target)
         rows = [
@@ -259,12 +267,7 @@ def rps_board(
             for row in rows
         ]
         rows.sort(key=lambda item: (-(item.factor_score or 0.0), item.code))
-        # 趋势模板要对全池（约 5000 只）读 260 天日线，实测 23 秒；先按因子分取 3 倍余量
-        # 的候选，再跑模板 —— 对「因子分最高的前 N 只」来说结果几乎一样，但快 20 倍。
-        rows = rows[: limit * 3] if trend_template else rows[:limit]
-
-    if trend_template:
-        rows = _filter_trend(session, target, rows)[:limit]
+        rows = rows[:limit]
 
     if rows:
         off_high = _off_high_pct(session, target, [row.code for row in rows])
