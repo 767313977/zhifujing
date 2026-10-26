@@ -11,7 +11,7 @@
 """
 
 import logging
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import date
@@ -342,23 +342,41 @@ def _rps_tags(rps50, rps120, rps250) -> list[str]:
     return tags
 
 
-def _slice_bars(bars: Bars, day: date) -> Bars | None:
-    """从整段序列里取「截至 `day` 的最后 `TREND_LOOKBACK` 根」，不足则 None。"""
-    index = bisect_right(bars.dates, day)
-    if index < trend.TREND_LOOKBACK:
+def _slice_bars(bars: Bars, day: date, floor: date) -> Bars | None:
+    """取「`floor` ~ `day` 之间、截至 `day` 的最后 `TREND_LOOKBACK` 根」。
+
+    `floor` 必须与逐日现读时的窗口起点一致（`day` 往前 `TREND_LOOKBACK+10` 个交易日）——
+    否则长期停牌的票会因为在更宽的窗口里凑够 250 根而被误放进来（实测差 1 只）。
+    """
+    low = bisect_left(bars.dates, floor)
+    high = bisect_right(bars.dates, day)
+    if high - low < trend.TREND_LOOKBACK:
         return None
-    start = index - trend.TREND_LOOKBACK
+    start = high - trend.TREND_LOOKBACK
     return Bars(
-        dates=bars.dates[start:index],
-        open=bars.open[start:index],
-        high=bars.high[start:index],
-        low=bars.low[start:index],
-        close=bars.close[start:index],
-        volume=bars.volume[start:index],
-        amount=bars.amount[start:index],
-        pct_chg=bars.pct_chg[start:index],
+        dates=bars.dates[start:high],
+        open=bars.open[start:high],
+        high=bars.high[start:high],
+        low=bars.low[start:high],
+        close=bars.close[start:high],
+        volume=bars.volume[start:high],
+        amount=bars.amount[start:high],
+        pct_chg=bars.pct_chg[start:high],
         code=bars.code,
     )
+
+
+def _window_floor(session: Session, day: date) -> date | None:
+    """逐日现读时用的窗口起点（与 `_filter_trend` 的非缓存分支同一个表达式）。"""
+    days = list(
+        session.scalars(
+            select(TradeCalendar.trade_date)
+            .where(TradeCalendar.trade_date <= day)
+            .order_by(TradeCalendar.trade_date.desc())
+            .limit(trend.TREND_LOOKBACK + 10)
+        )
+    )
+    return min(days) if days else None
 
 
 def _build_trend_bars(session: Session, days: list[date]) -> dict[str, Bars]:
@@ -445,12 +463,15 @@ def _filter_trend(
     if not rows:
         return rows
     if cache is not None:
+        floor = _window_floor(session, day)
+        if floor is None:
+            return []
         kept: list[RpsRow] = []
         for row in rows:
             bars = cache.get(row.code)
             if bars is None:
                 continue
-            sliced = _slice_bars(bars, day)
+            sliced = _slice_bars(bars, day, floor)
             if sliced is None:
                 continue
             if trend.passes(sliced, len(sliced) - 1, row.rps250):
