@@ -11,6 +11,7 @@
 """
 
 import logging
+from bisect import bisect_right
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import date
@@ -115,6 +116,7 @@ def rps_board(
     breakout_only: bool = False,
     trend_template: bool = False,
     order: str = "strength",
+    trend_cache: dict[str, Bars] | None = None,
 ) -> RpsBoard:
     """RPS 榜。
 
@@ -251,9 +253,8 @@ def rps_board(
 
     if trend_template:
         # ⚠️ 趋势模板是**过滤条件**，必须先于「按因子分取前 N」：全池里满足模板的 72 只，
-        # 因子分没有一只进前 300 —— 反过来先排序再过滤会直接得到 0 只。代价是全池跑模板
-        # （约 5000 只 × 260 天日线）每次约 23 秒，只能靠 `/rps` 的 10 分钟缓存兜住。
-        rows = _filter_trend(session, target, rows)
+        # 因子分没有一只进前 300 —— 反过来先排序再过滤会直接得到 0 只。
+        rows = _filter_trend(session, target, rows, trend_cache)
         if order != "factor":
             rows = rows[:limit]
 
@@ -341,10 +342,120 @@ def _rps_tags(rps50, rps120, rps250) -> list[str]:
     return tags
 
 
-def _filter_trend(session: Session, day: date, rows: list[RpsRow]) -> list[RpsRow]:
-    """只留满足 Minervini 趋势模板的票（判据与回测共用 `services.trend`）。"""
+def _slice_bars(bars: Bars, day: date) -> Bars | None:
+    """从整段序列里取「截至 `day` 的最后 `TREND_LOOKBACK` 根」，不足则 None。"""
+    index = bisect_right(bars.dates, day)
+    if index < trend.TREND_LOOKBACK:
+        return None
+    start = index - trend.TREND_LOOKBACK
+    return Bars(
+        dates=bars.dates[start:index],
+        open=bars.open[start:index],
+        high=bars.high[start:index],
+        low=bars.low[start:index],
+        close=bars.close[start:index],
+        volume=bars.volume[start:index],
+        amount=bars.amount[start:index],
+        pct_chg=bars.pct_chg[start:index],
+        code=bars.code,
+    )
+
+
+def _build_trend_bars(session: Session, days: list[date]) -> dict[str, Bars]:
+    """给一批信号日准备「每只票一份」的整段前复权序列（趋势模板专用）。
+
+    为什么要预加载：`_filter_trend` 每次要读 `TREND_LOOKBACK+10` 个交易日 × 全池
+    （约 5000 只）的日线，单次约 11 秒；`rps/track` 有 20 个信号日，逐日跑就是 220 秒。
+    这里只读一次**并集窗口**（信号日跨度 + 260 天），每只票 `build_bars` 一次，之后按
+    信号日切片判定。
+
+    结果与逐日构建**一致**：前复权净值都是 `pct_chg` 复利，子窗口只是整体乘了一个常数
+    （等比缩放），而趋势模板全部是均线与高低点的**比值**判断，缩放不影响。
+    """
+    if not days:
+        return {}
+    last = days[-1]
+    window = list(
+        session.scalars(
+            select(TradeCalendar.trade_date)
+            .where(TradeCalendar.trade_date <= last)
+            .order_by(TradeCalendar.trade_date.desc())
+            .limit(trend.TREND_LOOKBACK + 10 + len(days) + 5)
+        )
+    )
+    if not window:
+        return {}
+    start = min(window)
+
+    codes = list(
+        session.scalars(select(RpsDaily.code).where(RpsDaily.trade_date.in_(days)).distinct())
+    )
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for batch in chunked(codes, 900):
+        for code, trade_date, open_, high, low, close, volume, amount, pct in session.execute(
+            select(
+                StockDaily.code,
+                StockDaily.trade_date,
+                StockDaily.open,
+                StockDaily.high,
+                StockDaily.low,
+                StockDaily.close,
+                StockDaily.volume,
+                StockDaily.amount,
+                StockDaily.pct_chg,
+            )
+            .where(
+                StockDaily.code.in_(batch),
+                StockDaily.trade_date >= start,
+                StockDaily.trade_date <= last,
+            )
+            .order_by(StockDaily.code, StockDaily.trade_date)
+        ):
+            item = {
+                "date": trade_date,
+                "open": open_,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume,
+                "amount": amount,
+                "pct_chg": pct,
+                "name": None,
+            }
+            if usable_bar(item):
+                grouped[code].append(item)
+
+    return {
+        code: build_bars(items, code)
+        for code, items in grouped.items()
+        if len(items) >= trend.TREND_LOOKBACK
+    }
+
+
+def _filter_trend(
+    session: Session,
+    day: date,
+    rows: list[RpsRow],
+    cache: dict[str, Bars] | None = None,
+) -> list[RpsRow]:
+    """只留满足 Minervini 趋势模板的票（判据与回测共用 `services.trend`）。
+
+    `cache` 给了就用预算好的一份序列切片（`rps/track` 的多日场景），否则现读日线。
+    """
     if not rows:
         return rows
+    if cache is not None:
+        kept: list[RpsRow] = []
+        for row in rows:
+            bars = cache.get(row.code)
+            if bars is None:
+                continue
+            sliced = _slice_bars(bars, day)
+            if sliced is None:
+                continue
+            if trend.passes(sliced, len(sliced) - 1, row.rps250):
+                kept.append(row)
+        return kept
     codes = [row.code for row in rows]
     # 只读趋势模板需要的窗口：`trend.passes` 要 `TREND_LOOKBACK` 根可用日线，多留 10 天
     # 缓冲（停牌残行会被 `usable_bar` 剔掉）。不设下限时会把库里保留的 400 天全读出来
@@ -1109,6 +1220,9 @@ def rps_track(
     if not dates:
         return RpsTrack(trade_date=None, summary=_empty_rps_summary())
 
+    # 趋势模板要读全池日线：20 个信号日逐日各读一遍约 220 秒，这里只读一次并集窗口
+    trend_cache = _build_trend_bars(session, dates) if trend_template else None
+
     picks: dict[date, list[tuple[str, str | None, float]]] = {}
     for day in dates:
         board = rps_board(
@@ -1120,6 +1234,7 @@ def rps_track(
             breakout_only=breakout_only,
             trend_template=trend_template,
             order=order,
+            trend_cache=trend_cache,
         )
         if board.rows:
             picks[day] = [
