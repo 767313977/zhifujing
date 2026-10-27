@@ -60,6 +60,8 @@ MEMBERS_JOB_ID = "prefetch_members"
 # 它的兜底重跑（见 config.members_retry_hour）：22:00 撞上「还没发布」时再给一次机会。
 # 正常日子这一趟几乎不花请求（已在库的板块全跳过）。
 MEMBERS_RETRY_JOB_ID = "prefetch_members_retry"
+#: 次日 08:30 补「昨天及更早」漏掉的成分股（2026-10-26 加，见 `_catch_up_members_morning`）
+MEMBERS_MORNING_JOB_ID = "prefetch_members_morning"
 # 集合竞价采样（交易日 9:15–9:26 每分钟一跑，见 `jobs/collect_auction.py`）。
 AUCTION_JOB_ID = "collect_auction"
 # 数据库备份（见 config.backup_hour）：晚于 22:30 的成分股兜底，把当天最后一次写库也覆盖。
@@ -389,6 +391,23 @@ class DailyScheduler:
                 misfire_grace_time=3600,
                 coalesce=True,
             )
+        # 次日早间补采：开盘红有时到第二天早上才发布前一天的名单（2026-10-26 实测
+        # 22:00/22:30 都是 errcode=1020，次日 08:39 才有），那天的「龙一」就一直是空。
+        # 这一趟只补「今天之前」，与上面两趟互补，不重复跑今天。
+        scheduler.add_job(
+            self._catch_up_members_morning,
+            CronTrigger(
+                day_of_week="mon-fri",
+                hour=self.settings.members_morning_hour,
+                minute=self.settings.members_morning_minute,
+                timezone=TIMEZONE,
+            ),
+            id=MEMBERS_MORNING_JOB_ID,
+            name="板块成分股预取（次日早间补采）",
+            replace_existing=True,
+            misfire_grace_time=3600,
+            coalesce=True,
+        )
         # 集合竞价采样：交易日 9:15–9:26 每分钟一次 + 9:31 补一帧量比（见 jobs/collect_auction.py）。
         # 固定在开盘前，与收盘后那几趟互不影响；单分钟失败只告警，下一分钟还会再跑。
         scheduler.add_job(
@@ -490,7 +509,8 @@ class DailyScheduler:
         logger.info(
             "定时采集已启动：交易日 %02d:%02d（收盘后补采 %02d:%02d / 兜底 %02d:%02d / "
             "终局 %02d:%02d，"
-            "成分股预取 %02d:%02d / 兜底 %02d:%02d；集合竞价 09:15–09:26 每分钟 + 09:31 补量比；"
+            "成分股预取 %02d:%02d / 兜底 %02d:%02d / 次日 %02d:%02d；"
+            "集合竞价 09:15–09:26 每分钟 + 09:31 补量比；"
             "告警 %02d:%02d；盘中B1 %02d:%02d；备份 %02d:%02d）",
             self.settings.collect_hour,
             self.settings.collect_minute,
@@ -504,6 +524,8 @@ class DailyScheduler:
             self.settings.members_collect_minute,
             self.settings.members_retry_hour,
             self.settings.members_retry_minute,
+            self.settings.members_morning_hour,
+            self.settings.members_morning_minute,
             self.settings.alert_hour,
             self.settings.alert_minute,
             self.settings.b1_intraday_hour,
@@ -1087,6 +1109,24 @@ class DailyScheduler:
                 self._run_members_unguarded(today, reason)
         except CollectionBusy as exc:
             logger.warning("%s 跳过：%s（22:30 兜底或次日回看会补）", reason, exc)
+
+    def _catch_up_members_morning(self) -> None:
+        """交易日 08:30：补「昨天及更早」漏掉的板块成分股（2026-10-26 加）。
+
+        **为什么要单独一趟**：开盘红发布当天名单的时刻不稳定 —— 2026-10-26 那天
+        22:00 与 22:30 两趟都是 `errcode=1020`（未发布），到**次日 08:39** 才取得到。
+        而 `sector_daily.leader_name`（页面上的「龙一」）就是这趟顺带写的，于是整个
+        10-26 白天 344 个板块里只有 5 个有龙一（用户报「龙一只有银行」）。
+
+        `_catch_up_members` 只看「今天之前」的日子（`_recent_trade_days` 不含 `end`），
+        所以不会给今天写 `collect_log` —— 今天那份仍由 22:00 / 22:30 负责。
+        """
+        if not is_trade_day(today_cn()):
+            return
+        try:
+            self._catch_up_members(today_cn(), "次日早间补采成分股")
+        except Exception:  # noqa: BLE001 - 定时任务绝不能因异常中断调度
+            logger.exception("次日早间补采成分股失败")
 
     def _run_members_unguarded(self, today: date, reason: str) -> None:
         """`_run_members` 的主体。单独一个方法只为让上面那个 `with` 包得干净。"""

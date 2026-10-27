@@ -221,6 +221,13 @@ class Settings(BaseSettings):
     # 所以不需要做成「第一次失败了才排第二次」那种条件调度，固定挂两个时刻更简单。
     members_retry_hour: int = 22
     members_retry_minute: int = 30
+    # 次日早间的**昨日补采**（2026-10-26 用户要求）：开盘红发布当天名单的时刻不稳定，
+    # 2026-10-26 那天 22:00 / 22:30 两趟都是 `errcode=1020`，到次日 08:39 才取得到 ——
+    # 而「龙一」`sector_daily.leader_name` 就是这趟顺带写的，于是整个 10-26 白天
+    # 344 个板块里只有 5 个有龙一。这趟只补**今天之前**（不会给今天记日志），
+    # 已在库的板块自动跳过，所以正常情况下几乎零请求、零 iFinD 配额。
+    members_morning_hour: int = 8
+    members_morning_minute: int = 30
     # 本机不常开，启动时若已过采集时刻且当日无数据，补采一次
     catchup_on_start: bool = True
 
