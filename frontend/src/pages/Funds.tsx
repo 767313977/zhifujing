@@ -13,6 +13,7 @@ import type {
   EtfIndustryItem,
   FundFlowOverview,
   FundsSeries,
+  FuturesSeries,
   InstitutionBoard,
   InstitutionItem,
   InstitutionOrder,
@@ -162,6 +163,8 @@ export default function Funds() {
   const [overviewLoading, setOverviewLoading] = useState(true)
   const [series, setSeries] = useState<FundsSeries | null>(null)
   const [seriesLoading, setSeriesLoading] = useState(true)
+  const [futuresSeries, setFuturesSeries] = useState<FuturesSeries | null>(null)
+  const [futuresSeriesLoading, setFuturesSeriesLoading] = useState(true)
   const [etfGroup, setEtfGroup] = useState<EtfGroup>('industry')
   const [etfOrder, setEtfOrder] = useState<EtfFlowOrder>('inflow')
   const [etf, setEtf] = useState<EtfFlowBoard | null>(null)
@@ -183,6 +186,7 @@ export default function Funds() {
    */
   const [overviewError, setOverviewError] = useState<string | null>(null)
   const [seriesError, setSeriesError] = useState<string | null>(null)
+  const [futuresSeriesError, setFuturesSeriesError] = useState<string | null>(null)
   const [etfError, setEtfError] = useState<string | null>(null)
   const [instError, setInstError] = useState<string | null>(null)
   const [ddeError, setDdeError] = useState<string | null>(null)
@@ -236,6 +240,28 @@ export default function Funds() {
       })
       .finally(() => {
         if (!stale) setSeriesLoading(false)
+      })
+    return () => {
+      stale = true
+    }
+  }, [date])
+
+  useEffect(() => {
+    let stale = false
+    setFuturesSeriesLoading(true)
+    setFuturesSeriesError(null)
+    api
+      .fundsFuturesSeries(SERIES_DAYS, date)
+      .then((data) => {
+        if (!stale) setFuturesSeries(data)
+      })
+      .catch((err: Error) => {
+        if (stale) return
+        setFuturesSeries(null)
+        setFuturesSeriesError(isNoDataError(err) ? null : err.message)
+      })
+      .finally(() => {
+        if (!stale) setFuturesSeriesLoading(false)
       })
     return () => {
       stale = true
@@ -324,6 +350,11 @@ export default function Funds() {
     [series],
   )
 
+  const futuresOption = useMemo<ChartOption>(
+    () => (futuresSeries ? buildFuturesOption(futuresSeries) : {}),
+    [futuresSeries],
+  )
+
   // 下面四张卡片的小字计算先落地成常量：JSX 里写几层可选链会读不清，
   // 而且顺势把「算不出来」统一收敛成 null，交给格式化函数输出占位符
   // 期指净空与主力净流入（2026-10-19 加，放概览最前）
@@ -336,6 +367,9 @@ export default function Funds() {
         .map((item) => `${item.variety} ${(item.net_short / 10000).toFixed(1)}万`)
         .join(' · ')
     : '暂无数据'
+  // 净空走势窗口里有数据吗。`futures_position` 从 2026-10-16 才开始采，
+  // 更早的日期全是 None —— 那种情况要给空态，不能画一张全是断点的图
+  const futuresHasSeries = futuresSeries?.total.some((value) => value != null) ?? false
   const mainInflow = overview?.main_net_inflow ?? null
   const mainInflowChange =
     mainInflow != null && overview?.main_net_inflow_prev != null
@@ -565,6 +599,37 @@ export default function Funds() {
             </div>
           </Panel>
         )}
+
+        {/* ---- 期指净空走势：上面那张明细卡的曲线版 ---- */}
+        <Panel
+          title="期指净空走势（前 20 净空，手）"
+          meta={
+            <span className="num">
+              {futuresSeriesLoading ? '加载中…' : rangeLabel(futuresSeries?.dates ?? [])}
+            </span>
+          }
+          delay={70}
+        >
+          {futuresSeriesLoading ? (
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
+          ) : futuresSeriesError ? (
+            <div className="px-4 py-10 text-center text-[14px] text-danger">
+              净空走势取数失败：{futuresSeriesError}
+            </div>
+          ) : futuresHasSeries && futuresSeries ? (
+            <div className="px-2 pt-2">
+              <EChart option={futuresOption} height={280} />
+              <div className="px-2 pb-2 pt-1 text-[13px] text-fg-dim">
+                净空 = 空单 − 多单 · 合计只在四个品种当天都齐时才给 · 断点 = 当天没有数据，不是 0
+                （该数据从 2026-10-16 开始采集）
+              </div>
+            </div>
+          ) : (
+            <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
+              暂无净空走势（该数据从 2026-10-16 开始采集）
+            </div>
+          )}
+        </Panel>
 
         {/* ---- 走势图 ---- */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -1259,5 +1324,77 @@ function buildHsgtOption(data: FundsSeries): ChartOption {
         itemStyle: { color },
       },
     ],
+  }
+}
+
+/**
+ * 期指前 20 净空走势：四个品种各一条 + 四品种合计（最粗、最深那条）。
+ *
+ * - 单位是「手」，不走金额格式（`fmtAmount` 会把它写成「2.2万」，那是金额的读法）。
+ * - `connectNulls: false`：没采集到的日子必须断开。补 0 会把「当天没数据」
+ *   画成「净空归零」，那是完全相反的结论。
+ * - 合计用 `CHART.fg`（最深的中性色）且加粗：它是这张图的主线，
+ *   但不用红绿、也不用强调蓝 —— 前两者在本站有涨跌/选中的含义。
+ */
+function buildFuturesOption(data: FuturesSeries): ChartOption {
+  const nameStyle = {
+    color: CHART.fgDim,
+    fontSize: 11,
+    fontFamily: AXIS_LABEL.fontFamily,
+  }
+  const series: { name: string; values: (number | null)[]; color: string; width: number }[] = [
+    { name: 'IF', values: data.if_net, color: SERIES_PALETTE[0], width: 1.6 },
+    { name: 'IC', values: data.ic_net, color: SERIES_PALETTE[1], width: 1.6 },
+    { name: 'IH', values: data.ih_net, color: SERIES_PALETTE[2], width: 1.6 },
+    { name: 'IM', values: data.im_net, color: SERIES_PALETTE[3], width: 1.6 },
+    { name: '合计', values: data.total, color: CHART.fg, width: 2.4 },
+  ]
+
+  return {
+    grid: { ...GRID, top: 46 },
+    legend: { ...LEGEND, top: 2, data: series.map((item) => item.name) },
+    tooltip: {
+      ...TOOLTIP,
+      trigger: 'axis' as const,
+      axisPointer: {
+        type: 'line' as const,
+        lineStyle: { color: CHART.fgDim, type: 'dashed' as const },
+      },
+      formatter: (params: unknown) => {
+        const items = params as { dataIndex: number }[]
+        if (!items?.length) return ''
+        const index = items[0].dataIndex
+        const lines = series.map((item) => `${item.name} ${fmtInt(item.values[index])}`)
+        // 合计为空是「当天有品种没发布」，不是 0，得说清楚
+        if (data.total[index] == null) lines.push('当日品种不全，不给合计')
+        return [data.dates[index], ...lines].join('<br/>')
+      },
+    },
+    xAxis: {
+      type: 'category' as const,
+      data: data.dates.map(fmtShortDate),
+      axisLabel: { ...AXIS_LABEL, interval: Math.ceil(data.dates.length / 8) },
+      axisLine: AXIS_LINE,
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value' as const,
+      name: '净空（手）',
+      nameTextStyle: nameStyle,
+      // 不从 0 起：净空长期在几万手，从 0 起四条线会挤成一团
+      scale: true,
+      axisLabel: { ...AXIS_LABEL, formatter: (value: number) => fmtInt(value) },
+      splitLine: SPLIT_LINE,
+      axisLine: { show: false },
+    },
+    series: series.map((item) => ({
+      type: 'line' as const,
+      name: item.name,
+      data: item.values,
+      symbol: 'none',
+      connectNulls: false,
+      lineStyle: { width: item.width, color: item.color },
+      itemStyle: { color: item.color },
+    })),
   }
 }

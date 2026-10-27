@@ -22,6 +22,7 @@ import type {
   FqMode,
   FundFlowOverview,
   FundsSeries,
+  FuturesSeries,
   FuturesBasis,
   IndexHistory,
   IndustryBreadth,
@@ -1079,6 +1080,10 @@ export const api = {
 
   fundsSeries: (days = 60, date?: string | null) =>
     request<FundsSeries>(withDate(`/funds/series?days=${days}`, date)),
+
+  /** 期指前 20 净空的走势（4 个品种 + 合计）。数据从 2026-10-16 才开始采。 */
+  fundsFuturesSeries: (days = 60, date?: string | null) =>
+    request<FuturesSeries>(withDate(`/funds/futures-series?days=${days}`, date)),
 
   fundsEtf: (order: EtfFlowOrder = 'inflow', limit = 30, date?: string | null) =>
     request<EtfFlowBoard>(withDate(`/funds/etf?limit=${limit}&order=${order}`, date)),

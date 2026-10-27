@@ -2073,6 +2073,20 @@ export interface FundsSeries {
   financing_complete: boolean[]
 }
 
+/**
+ * 期指前 20 净空的走势（手）。`null` = 那天中金所还没发布 → 曲线断开，不是 0。
+ * 采集从 2026-10-16 才开始，所以更早的日期是空的。
+ */
+export interface FuturesSeries {
+  dates: string[]
+  if_net: (number | null)[]
+  ic_net: (number | null)[]
+  ih_net: (number | null)[]
+  im_net: (number | null)[]
+  /** 当天四个品种都齐才给合计 */
+  total: (number | null)[]
+}
+
 export type EtfFlowOrder = 'inflow' | 'outflow' | 'amount'
 
 export interface EtfFlowItem {

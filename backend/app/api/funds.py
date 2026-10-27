@@ -36,6 +36,7 @@ from app.schemas import (
     FundFlowOverview,
     FundsSeries,
     FuturesNetShort,
+    FuturesSeries,
     InstitutionBoard,
     InstitutionItem,
     MarginSnapshot,
@@ -418,6 +419,54 @@ def series(
         financing_buy=buy,
         hsgt_turnover=turnover,
         financing_complete=complete,
+    )
+
+
+@router.get("/futures-series", response_model=FuturesSeries)
+def futures_series(
+    days: int = Query(SERIES_DEFAULT_DAYS, ge=5, le=SERIES_MAX_DAYS),
+    end: date = Depends(resolve_trade_date),
+    session: Session = Depends(get_db),
+) -> FuturesSeries:
+    """期指前 20 净空的走势（手）：IF / IC / IH / IM 各一条 + 四品种合计。
+
+    与 `overview.futures_net_short`（只给最近一份）互补 —— 那边是卡片，这边是曲线。
+    中金所约 16:00 发布，当天没发布的日子给 `None`（曲线上断开），不补 0。
+    """
+    dates = _recent_trade_dates(session, end, days)
+    if not dates:
+        return FuturesSeries(
+            dates=[], if_net=[], ic_net=[], ih_net=[], im_net=[], total=[]
+        )
+
+    varieties = ("IF", "IC", "IH", "IM")
+    by_day: dict[date, dict[str, int | None]] = {}
+    for row in session.scalars(
+        select(FuturesPosition).where(
+            FuturesPosition.trade_date >= dates[0], FuturesPosition.trade_date <= end
+        )
+    ):
+        by_day.setdefault(row.trade_date, {})[row.variety] = row.top_net_short
+
+    picked: dict[str, list[int | None]] = {variety: [] for variety in varieties}
+    total: list[int | None] = []
+    for day in dates:
+        values = by_day.get(day, {})
+        row = [values.get(variety) for variety in varieties]
+        for variety, value in zip(varieties, row):
+            picked[variety].append(value)
+        if all(value is not None for value in row):
+            total.append(sum(value for value in row if value is not None))
+        else:
+            total.append(None)
+
+    return FuturesSeries(
+        dates=dates,
+        if_net=picked["IF"],
+        ic_net=picked["IC"],
+        ih_net=picked["IH"],
+        im_net=picked["IM"],
+        total=total,
     )
 
 

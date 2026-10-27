@@ -2235,6 +2235,22 @@ class FundsSeries(BaseModel):
     financing_complete: list[bool]
 
 
+class FuturesSeries(BaseModel):
+    """期指前 20 净空的走势（手）：四个品种各一条 + 四品种合计。
+
+    ⚠️ `futures_position` 从 2026-10-16 才开始采，早期日期给 `None`（前端断线），
+    不要当成 0 —— 那会把「没数据」画成「净空归零」。
+    """
+
+    dates: list[date]
+    if_net: list[int | None]
+    ic_net: list[int | None]
+    ih_net: list[int | None]
+    im_net: list[int | None]
+    #: 当天四个品种都齐才给合计，否则 None（避免画出一条只含部分品种的假曲线）
+    total: list[int | None]
+
+
 class EtfFlowItem(BaseModel):
     code: str
     name: str | None
