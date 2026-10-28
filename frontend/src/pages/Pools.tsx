@@ -428,7 +428,7 @@ export default function Pools() {
                   ：样本 {fbTrack.samples}
                   {' · '}晋级 {fmtNum(fbTrack.promoted_rate, 1, '%')}
                   {' · '}开盘溢价中位 {fmtPct(fbTrack.open_premium_median)}
-                  {' · '}收盘中位 {fmtPct(fbTrack.close_ret_median)}
+                  {' · '}开盘买入收盘中位 {fmtPct(fbTrack.close_ret_median)}
                   {' · '}大面 {fmtNum(fbTrack.big_loss_rate, 1, '%')}
                   {' · '}一字买不进 {fmtNum(fbTrack.unbuyable_rate, 1, '%')}
                 </span>
@@ -449,7 +449,8 @@ export default function Pools() {
                         <th>候选</th>
                         <th>晋级</th>
                         <th>开盘溢价</th>
-                        <th>收盘</th>
+                        {/* 买入价 = T+1 开盘（2026-10-28 拍板），所以这一列是开盘→收盘 */}
+                        <th title="T+1 开盘买入到收盘的收益">收盘</th>
                         <th>一字</th>
                         <th>缺日线</th>
                       </tr>
