@@ -1274,7 +1274,14 @@ def advance_decline(
         elif upper is None:
             counts.append(sum(1 for value in values if value > lower))
         else:
-            counts.append(sum(1 for value in values if lower < value <= upper))
+            # ⚠️ 上界为 0 的那一档（`-1~0%`）必须**排除 0**（2026-10-28 体检）：
+            # 0 归「平盘」单独计一次，而原来的 `lower < value <= upper` 把 0 也算进了
+            # 这一档 —— 同一个 0 被数两遍。实测 2026-10-09：各档求和 5354，而总数
+            # 5249、平盘 105，差的正好是那 105 只。
+            if upper == 0:
+                counts.append(sum(1 for value in values if lower < value < 0))
+            else:
+                counts.append(sum(1 for value in values if lower < value <= upper))
 
     ordered = sorted(values)
     middle = len(ordered) // 2

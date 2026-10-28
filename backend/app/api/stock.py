@@ -367,8 +367,15 @@ def profile(
             .order_by(LimitPool.trade_date.desc())
         )
     )
+    # 「上过几次龙虎榜」数的是**交易日**，不是行数（2026-10-28 体检）：`Lhb` 的主键是
+    # `(trade_date, code, reason)`，同一天多个上榜原因就是多行（实测全库 21236 行只有
+    # 2557 个「票-日」，最多一天 6 行）。原来用 count(*) 会把「一天 3 个原因」显示成
+    # 「3 次」，与个股分析页的 `count(distinct trade_date)` 对不上。
     lhb_count = (
-        session.scalar(select(func.count()).select_from(Lhb).where(Lhb.code == code)) or 0
+        session.scalar(
+            select(func.count(func.distinct(Lhb.trade_date))).where(Lhb.code == code)
+        )
+        or 0
     )
     market = _market_fields(session, code, latest)
     # 悟道「阶段判定」：判定在 services/patterns.classify_phase，取数壳在

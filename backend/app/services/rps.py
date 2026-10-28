@@ -51,6 +51,11 @@ def percentiles(values: list[float]) -> list[float]:
 
     ⚠️ 与 `mid_rank` **不是**同一套：这里是「排名 / (n−1)」的端点式分位，专给
     「池内排序」（首板综合分、因子打分）用 —— 只有一只票时给 100；它不用于 RPS。
+
+    ⚠️ **并列值必须给同一分位**（2026-10-28 体检）：原来按「排序后的名次」逐个赋分，
+    于是三只票的题材家数都是 3（≥3 家很常见的并列）时会拿到 `0 / 50 / 100`，
+    `theme_pct × 0.4` 一项就凭空差 40 分 —— 排序结果取决于输入顺序（首封时间），
+    不是候选本身的属性。现在并列取**平均名次**（与 `mid_rank` 的中位秩同义）。
     """
     if not values:
         return []
@@ -58,6 +63,15 @@ def percentiles(values: list[float]) -> list[float]:
         return [100.0]
     order = sorted(range(len(values)), key=lambda index: values[index])
     percent = [0.0] * len(values)
-    for rank, index in enumerate(order):
-        percent[index] = rank / (len(values) - 1) * 100
+    span = len(values) - 1
+    start = 0
+    while start < len(values):
+        end = start
+        # 并列区间 [start, end]：值相等就必须同分
+        while end + 1 < len(values) and values[order[end + 1]] == values[order[start]]:
+            end += 1
+        score = (start + end) / 2 / span * 100
+        for position in range(start, end + 1):
+            percent[order[position]] = score
+        start = end + 1
     return percent

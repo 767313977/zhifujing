@@ -1086,7 +1086,14 @@ def first_board_track(
                     StockDaily.low,
                     StockDaily.close,
                     StockDaily.pct_chg,
-                ).where(StockDaily.trade_date == following)
+                )
+                # 只取这批候选的行情（2026-10-28 体检）：不加这个条件的话，每个次日
+                # 都把全市场 ~5300 行取回来，再逐个 `quotes.get` 丢掉九成九；
+                # 60 天窗口 = 32 万行无用传输，是 `/first-board/track` 的主要耗时。
+                .where(
+                    StockDaily.trade_date == following,
+                    StockDaily.code.in_(codes),
+                )
             )
         }
         pools_up: set[str] = set()
@@ -1268,6 +1275,10 @@ def rps_track(
 
     day_rows: list[RpsTrackDay] = []
     stats: dict[int, list[tuple[float, float]]] = {1: [], 5: []}
+    #: 每天**真正进了曲线**的样本数（两端都有日线）。摘要里的「样本」原来累加的是
+    #: `picks`（名单只数），停牌 / 退市 / 当日没采到的票也照样算进去 —— 于是选了 50 只、
+    #: 实际只算出 47 只时仍显示 50（2026-10-28 体检）。
+    entry_samples: dict[date, int] = {}
     for day in dates:
         curve = curves.get(day, {})
         values: dict[int, tuple[float | None, float | None]] = {}
@@ -1282,6 +1293,8 @@ def rps_track(
             values[step] = (round(mean, 2), None if excess is None else round(excess, 2))
             if excess is not None:
                 stats[step].append((mean, excess))
+        entry = curve.get(1)
+        entry_samples[day] = len(entry[0]) if entry is not None else 0
         ok = values[1][0] is not None
         day_rows.append(
             RpsTrackDay(

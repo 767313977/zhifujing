@@ -220,7 +220,20 @@ async function request<T>(
     // 读**响应体**也要在超时保护内：`fetch` resolve 只代表收到了响应头，弱网下 body
     // 传到一半卡住时 `response.json()` 会一直挂着，页面永远「加载中」。所以这里不提前
     // `clearTimeout`，等 body 读完由 finally 一起清（2026-10-10 修）。
-    return (await response.json()) as T
+    //
+    // ⚠️ 2xx 但**不是 JSON** 的响应也要翻成人话（2026-10-28 体检）：反代/网关出错时
+    // 可能回 200 + 一段 HTML，`response.json()` 抛的 `SyntaxError` 既不是 DOMException
+    // 也不是 TypeError，会被原样 rethrow，页面直接把
+    // `Unexpected token '<', "<!doctype "...` 印给用户，而且它不再是 `ApiError`
+    //（`isNoDataError` 与状态码判断全部失效）。
+    try {
+      return (await response.json()) as T
+    } catch {
+      throw new ApiError(
+        `接口返回的不是 JSON（可能被网关改写）：${path}`,
+        response.status,
+      )
+    }
   } catch (err) {
     // 这里接住的是**没拿到响应**的失败：超时 / 连接被重置 / 断网 / DNS 失败。
     // 不接的话浏览器把它抛成 `TypeError: Failed to fetch` 直接显示在页面上

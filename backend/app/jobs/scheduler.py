@@ -762,7 +762,10 @@ class DailyScheduler:
                     logger.exception("%s 失败", reason)
                     return
 
-            self._last_run = datetime.now()
+            # 北京时（2026-10-28 体检）：原来用 `datetime.now()`（本机 naive 时间），
+            # 服务器若是 UTC，状态页的「上次运行」会差 8 小时且不带时区。
+            # 全项目其余地方一律走 `now_cn()`（见 `timeutil.py`），这里漏了一处。
+            self._last_run = now_cn()
             self._last_result = result
             # ⚠️ 只把 `failed` 当失败（2026-10-22 体检）：`lhb` 在 15:05 空返回现在
             # 记 `partial`（东财还没发布，晚间那趟会重采），那是**预期**；用 `!= "ok"`
@@ -902,22 +905,35 @@ class DailyScheduler:
 
         `already_pushed` 只认 `ok`：推失败那次不算推过，下一趟会再试；成功之后
         这里只剩一次索引查询，几乎没有成本。
+
+        ⚠️ **两条消息各判各的去重**（2026-10-28 体检）：原来这里只有一道
+        `if already_pushed(today): return`，而它查的是**简报**那个任务名。于是
+        「简报推成功、形态推送失败」的组合下 —— 尾巴记 partial、`tail_done` 算跑过、
+        这里又被简报的去重挡住 —— 那条形态消息**当天再也不会补发**（日志只在数据
+        管理页留一条 partial）。两者的发送条件本来就不同（见 `_push_pattern` 的说明），
+        去重也必须分开查。
         """
         if not collector.has_collected(today):
             return
         # 尾部压根没跑（不是 partial）：上面那段会走 `_run_tail`，推送在那里做
         if not tail_done(today):
             return
-        from app.jobs.push_brief import already_pushed
+        from app.jobs.push_brief import PUSH_PATTERNS, already_pushed
 
+        pattern = "limit_surge_flat"
+        pattern_task = PUSH_PATTERNS[pattern][1]
         try:
-            if already_pushed(today):
-                return
-            logger.info("%s：基础数据已齐，补推 %s 的收盘简报", reason, today)
-            self._push_brief(today)
-            self._push_pattern("limit_surge_flat", today)
+            if not already_pushed(today):
+                logger.info("%s：基础数据已齐，补推 %s 的收盘简报", reason, today)
+                self._push_brief(today)
         except Exception:  # noqa: BLE001 - 补推失败不能拖垮收盘后这一趟
             logger.exception("%s：补推收盘简报失败", reason)
+        try:
+            if not already_pushed(today, pattern_task):
+                logger.info("%s：基础数据已齐，补推 %s 的 %s", reason, today, pattern)
+                self._push_pattern(pattern, today)
+        except Exception:  # noqa: BLE001 - 同上
+            logger.exception("%s：补推 %s 失败", reason, pattern)
 
     def _catch_up_late(self, collector: DailyCollector, today: date, reason: str) -> None:
         """把最近几天漏采的「收盘后那一趟」补上（上限 `CATCHUP_LOOKBACK_TRADING_DAYS`）。
@@ -1131,9 +1147,15 @@ class DailyScheduler:
     def _run_members_unguarded(self, today: date, reason: str) -> None:
         """`_run_members` 的主体。单独一个方法只为让上面那个 `with` 包得干净。"""
         # 先补最近几天漏掉的（跨天重启时那天的名单就永久缺，见 `_catch_up_members`）。
-        # 这里**不给「今天」写 collect_log**：`has_collected` 把当天任何一条
-        # `status="failed"` 都当成「当天没采完」→ 会让基础采集白跑一遍，而成分股预取
-        # 失败本不该有那个后果。漏没漏由次日回看时补记（历史日不受 `has_collected` 影响）。
+        #
+        # ⚠️ 以前这里**不给「今天」写 collect_log**，理由是「`has_collected` 会把当天任何
+        # 一条 failed 当成没采完，让基础采集白跑一遍」。那条判据 2026-10-10 已经收窄成
+        # 「只看 `RUN_STEP_TASKS` 里各步的最新状态」，而 `members` 不在那张表里 ——
+        # 所以写记录**不会**触发重采（2026-10-28 体检核对）。不写的代价反而更大：
+        # 22:00/22:30 这趟的成败在「数据管理」页一行都看不到；而 `_catch_up_members`
+        # 的闸门是「该日有 members 记录才跳过」，对当天恒为假 —— 次日必然把前一天当成
+        # 漏采再跑一轮，还给它补一条「回看补采 ok」（与事实不符，只靠 `only_missing`
+        # 让它多数时候 0 请求而没被发现）。
         self._catch_up_members(today, reason)
         if not is_trade_day(today):
             logger.info("%s 跳过：%s 不是交易日", reason, today)
@@ -1143,6 +1165,9 @@ class DailyScheduler:
             result = SectorCollector(self.settings).collect_all_members(today)
         except Exception:  # noqa: BLE001 - 定时任务绝不能因异常中断调度
             logger.exception("%s 失败", reason)
+            # 记 failed 只是让「数据管理」页看见，并让次日的回看闸门不再误判今天的成败
+            #（`members` 不在 `RUN_STEP_TASKS` 里，不会拖累 `has_collected`）
+            _record_log(today, MEMBERS_TASK, "failed", 0, "成分股预取异常")
             return
 
         if result.get("aborted"):
@@ -1161,11 +1186,13 @@ class DailyScheduler:
             # 补最近可用日之后，每个板块都有名单可回落，页面一打开就能看到票。
             prev = _previous_trade_day(today)
             if prev is None:
+                _record_log(today, MEMBERS_TASK, "empty", 0, "名单未发布，且没有上一交易日可回落")
                 return
             try:
                 fallback = SectorCollector(self.settings).collect_all_members(prev)
             except Exception:  # noqa: BLE001 - 回落失败也不能中断调度
                 logger.exception("%s 回落补 %s 失败", reason, prev)
+                _record_log(today, MEMBERS_TASK, "empty", 0, f"名单未发布，回落补 {prev} 也失败")
                 return
             logger.info(
                 "%s 回落：%s 还没发布，改补最近可用日 %s —— 共 %d 个板块，写入 %d 行，失败 %d 个",
@@ -1176,6 +1203,14 @@ class DailyScheduler:
                 fallback.get("written", 0),
                 fallback.get("failed", 0),
             )
+            _record_log(
+                today,
+                MEMBERS_TASK,
+                "empty",
+                fallback.get("written", 0),
+                f"名单未发布，已回落补 {prev}（{fallback.get('boards', 0)} 个板块，"
+                f"失败 {fallback.get('failed', 0)} 个）",
+            )
             return
         logger.info(
             "%s 完成：%s 共 %d 个板块，写入 %d 行，失败 %d 个",
@@ -1184,6 +1219,13 @@ class DailyScheduler:
             result.get("boards", 0),
             result.get("written", 0),
             result.get("failed", 0),
+        )
+        _record_log(
+            today,
+            MEMBERS_TASK,
+            "ok",
+            result.get("written", 0),
+            f"{result.get('boards', 0)} 个板块，失败 {result.get('failed', 0)} 个",
         )
 
     def _run_tail(
@@ -1554,9 +1596,21 @@ class DailyScheduler:
         - **停手线比让路档更保守**（`kline_backfill_max_ratio` 0.74 vs `PAUSE_KLINE` 档）：
           回补永远不会把当天的日线采集顶停 —— 历史慢慢补，当天的行情缺了就真缺了。
         - `max_days` 卡的是**本轮补几天**（窗口从旧到新推进），不是「只看最近几天」。
+
+        ⚠️ **当天只啃一次**（2026-10-28 体检 P1）：这一步**没有幂等性** —— 每执行一次
+        就把窗口再往前推进 `kline_backfill_days` 天（4 天 × 13 次/天 ≈ **52 次** iFinD
+        调用）。而 `_mark_tail` 是尾部**最后**才写的，中途被部署重启打断就不会有
+        `tail_done`，下次启动补采会重跑整条尾巴 —— 于是同一个交易日可能连啃好几轮。
+        其它耗配额的步骤都有各自的守卫（`_collect_kline` 看 `has_bars`、命中 DDE 看
+        `dde_coverage`），只有这一步没有；这里补一条 `collect_log` 终态标记做闸门。
         """
         from app.jobs.collect_kline import KlineCollector
         from app.services.usage import quota_status
+
+        # 闸门放在配额查询**之前**：已经啃过的日子连配额接口都不必问
+        if _logged_tasks(trade_date, ("backfill_kline",), None):
+            logger.info("历史回补 %s 今天已经推进过，跳过", trade_date)
+            return
 
         try:
             usage = quota_status()
@@ -1597,11 +1651,22 @@ class DailyScheduler:
         if result.get("status") == "skipped":
             logger.info("历史回补跳过：%s", result.get("reason"))
             return
+        fetched = len(result.get("fetched_days") or [])
         logger.info(
             "历史回补：往前补了 %s 天（%s 次调用），窗口内还剩 %s 天待补",
-            len(result.get("fetched_days") or []),
+            fetched,
             result.get("calls"),
             result.get("pending_days"),
+        )
+        # 终态标记：既是「今天已经推进过」的闸门（见 docstring），也让数据管理页
+        # 能看到这一步每天推进了多少（原来只在 app 日志里）。
+        _record_log(
+            trade_date,
+            "backfill_kline",
+            "ok",
+            fetched,
+            f"往前推进 {fetched} 天（{result.get('calls')} 次调用），"
+            f"窗口内还剩 {result.get('pending_days')} 天",
         )
 
     def _push_brief(self, trade_date: date) -> None:

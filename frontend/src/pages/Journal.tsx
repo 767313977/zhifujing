@@ -303,6 +303,11 @@ function TForm({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
+  /** 本次表单里「已经新建成功」的那条 T 的 id。
+   *
+   *  有 warnings 时表单不关闭（让用户看提示），如果没有它，再点一次「保存」就会
+   *  重复 POST（2026-10-28 体检 P1）。有值之后，同一表单的后续保存一律走更新。 */
+  const [savedId, setSavedId] = useState<number | null>(null)
 
   // 今天相对 20 日线的乖离：只有 T 的日期正好是乖离对应的交易日时才默认「超跌」
   useEffect(() => {
@@ -394,13 +399,19 @@ function TForm({
     setError(null)
     setWarnings([])
     try {
-      const row = initial
-        ? await api.updateTradeT(initial.id, payload)
+      // ⚠️ 记住「本次表单已经**建过**那条 T」（2026-10-28 体检 P1）：后端在盘中/价格
+      // 越界时会返回 warnings，此时表单**不关闭**（让用户看提示、改价格再存）。
+      // 但 `initial` 仍是 null —— 用户再点一次「保存」就会又 POST 一条，同一笔底仓
+      // 下出现两条重复的 T，做 T 统计也被重复计。
+      const editingId = initial?.id ?? savedId
+      const row = editingId
+        ? await api.updateTradeT(editingId, payload)
         : await api.createTradeT(tradeId, payload)
       writeLastTRatio(String(value))
-      const saved = initial
-        ? row.t_ops.find((item) => item.id === initial.id)
+      const saved = editingId
+        ? row.t_ops.find((item) => item.id === editingId)
         : row.t_ops.find((item) => !knownIds.includes(item.id))
+      if (!editingId && saved) setSavedId(saved.id)
       onSaved(row)
       if (saved && saved.warnings.length > 0) {
         setWarnings(saved.warnings)

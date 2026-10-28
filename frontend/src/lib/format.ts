@@ -12,20 +12,45 @@ function isMissing(value: number | null | undefined): value is null | undefined 
   return value == null || !Number.isFinite(value)
 }
 
-/** 金额：自动降到亿 / 万。成交额动辄千亿，原值不可读。 */
+/**
+ * `toFixed` 的**负零归一**版本（2026-10-28 体检）。
+ *
+ * `(-0.001).toFixed(2)` 是 `"-0.00"`、`(-0.4).toFixed(0)` 是 `"-0"` —— 页面上「-0.00%」
+ * 会被读成「跌了一点点」，其实是「就是 0」（涨跌幅四舍五入到分位后为 0）。
+ * 这里统一还原成 `"0.00"` / `"0"`。
+ */
+function fixed(value: number, digits: number): string {
+  const rounded = Number(value.toFixed(digits))
+  return (Object.is(rounded, -0) ? 0 : rounded).toFixed(digits)
+}
+
+/**
+ * 金额：自动降到亿 / 万。成交额动辄千亿，原值不可读。
+ *
+ * ⚠️ 档位按**四舍五入之后**的数字再判一次（2026-10-28 体检）：9,999,999,999 元按
+ * 「亿」保留两位会进位成「100.00亿」，还不要紧；但 99,999,999 元按「万」保留一位是
+ * 「10000.0万」—— 它已经等于 1 亿了，档位与数字自相矛盾。所以进位到下一档时换档。
+ */
 export function fmtAmount(value: number | null | undefined): string {
   if (isMissing(value)) return DASH
   const abs = Math.abs(value)
-  if (abs >= 1e12) return `${(value / 1e12).toFixed(2)}万亿`
-  if (abs >= 1e8) return `${(value / 1e8).toFixed(2)}亿`
-  if (abs >= 1e4) return `${(value / 1e4).toFixed(1)}万`
-  return value.toFixed(0)
+  if (abs >= 1e8) {
+    const text = fixed(value / 1e8, 2)
+    if (Math.abs(Number(text)) >= 1e4) return `${fixed(value / 1e12, 2)}万亿`
+    return `${text}亿`
+  }
+  if (abs >= 1e4) {
+    const text = fixed(value / 1e4, 1)
+    if (Math.abs(Number(text)) >= 1e4) return `${fixed(value / 1e8, 2)}亿`
+    return `${text}万`
+  }
+  return fixed(value, 0)
 }
 
 /** 涨跌幅：始终带符号，便于一眼分辨方向。 */
 export function fmtPct(value: number | null | undefined, digits = 2): string {
   if (isMissing(value)) return DASH
-  return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}%`
+  return `${value >= 0 ? '+' : ''}${fixed(value, digits)}%`
 }
 
 /**
@@ -36,7 +61,7 @@ export function fmtPct(value: number | null | undefined, digits = 2): string {
  */
 export function fmtDrawdown(value: number | null | undefined, digits = 2): string {
   if (isMissing(value)) return DASH
-  return `${value > 0 ? '+' : ''}${value.toFixed(digits)}%`
+  return `${value > 0 ? '+' : ''}${fixed(value, digits)}%`
 }
 
 export function fmtNum(
@@ -45,7 +70,7 @@ export function fmtNum(
   suffix = '',
 ): string {
   if (isMissing(value)) return DASH
-  return `${value.toFixed(digits)}${suffix}`
+  return `${fixed(value, digits)}${suffix}`
 }
 
 export function fmtInt(value: number | null | undefined): string {

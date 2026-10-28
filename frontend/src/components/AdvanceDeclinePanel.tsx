@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api } from '../api/client'
+import { api, isNoDataError } from '../api/client'
 import type { AdvanceDecline } from '../api/types'
 import EChart from './EChart'
 import type { ChartOption } from './EChart'
@@ -29,7 +29,11 @@ export default function AdvanceDeclinePanel({ delay = 0 }: { delay?: number }) {
         if (!stale) setData(value)
       })
       .catch((err: Error) => {
-        if (!stale) setError(err.message)
+        // 404 是「库里还没有个股日线」的**空态**，不是接口故障（2026-10-28 体检）：
+        // 后端本来就是 404 + 一句「先跑采集」，原来把它当 error 交给 LoadState，
+        // 面板会同时显示「加载失败：库里还没有个股日线」和「这是接口出错，不是没有数据」，
+        // 自相矛盾、还误导成接口挂了。全站约定见 client.ts 的 isNoDataError。
+        if (!stale) setError(isNoDataError(err) ? null : err.message)
       })
     return () => {
       stale = true

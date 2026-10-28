@@ -533,8 +533,11 @@ export default function Pools() {
                       <td className="num">{fmtAmount(row.float_mv)}</td>
                       <td className="num">{fmtAmount(row.amount)}</td>
                       <td className="num">{fmtNum(row.turnover, 2, '%')}</td>
-                      <td className={`num ${row.recent_limit_ups ? 'text-fg-muted' : ''}`}>
-                        {row.recent_limit_ups || '—'}
+                      {/* `0` 是**有意义的值**（0 = 近 10 日没有涨停 = 真首板），
+                          不能用 `||` 把它显示成「—」—— 勾「只看真首板」后整列都会变「—」
+                          （2026-10-28 体检） */}
+                      <td className={`num ${row.recent_limit_ups > 0 ? 'text-fg-muted' : ''}`}>
+                        {row.recent_limit_ups ?? '—'}
                       </td>
                       {fbOrder === 'factor' && (
                         <td className="num">{fmtNum(row.factor_score, 1)}</td>

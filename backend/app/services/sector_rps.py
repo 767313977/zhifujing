@@ -232,8 +232,14 @@ def _forward_returns(
     """`day` 之后第 h 个交易日的板块涨幅（`pct_chg` 复利，从 day+1 起算）。
 
     缺那几天的板块不出现在结果里（没有行就没法复利）。
+
+    ⚠️ 「缺行」必须**按行数判**（2026-10-28 体检）：窗口 `day+1 … exits[h]` 里本来
+    正好有 h 个交易日，所以只有拿到 h 行才算走完。原来只按 `when <= exit_day` 累加、
+    不校验条数 —— 某板块 5 日窗口只采到 2 行时也给一个「5 日收益」，它既会混进横截面
+    去比「最强板块」，又会污染 `track()` 的等权基准（缺的若是大跌日，它反而被选进
+    top5）。docstring 早就写着「缺那几天的板块不出现」，代码却没落实。
     """
-    after = list(
+    exits_candidates = list(
         session.scalars(
             select(TradeCalendar.trade_date)
             .where(TradeCalendar.trade_date > day)
@@ -241,7 +247,19 @@ def _forward_returns(
             .limit(max(horizons))
         )
     )
-    exits = {h: after[h - 1] for h in horizons if h <= len(after)}
+    # ⚠️ 交易日历**预置到年底（含未来日期）**，不能拿它当「已有数据」的边界
+    #（2026-10-28 体检）：日历里第 5 个交易日可能是下周，而 `sector_daily` 只到前天 ——
+    # 原来的 exits 会指向未来日，于是「5 日收益」实际只累积了 1~2 天。
+    # 这里用当日可用的最后一个板块数据日封顶，走不完的 horizon 直接不给值。
+    data_end = session.scalar(
+        select(func.max(SectorDaily.trade_date)).where(SectorDaily.taxonomy == taxonomy)
+    )
+    exits = {
+        h: exits_candidates[h - 1]
+        for h in horizons
+        if h <= len(exits_candidates)
+        and (data_end is None or exits_candidates[h - 1] <= data_end)
+    }
     if not exits:
         return {}
 
@@ -265,6 +283,9 @@ def _forward_returns(
     for h, per_code in series.items():
         out[h] = {}
         for code, values in per_code.items():
+            # 只有走满 h 个交易日才算数；缺行的板块该档记缺失（不进均值、不进基准）
+            if len(values) != h:
+                continue
             factor = 1.0
             for pct in values:
                 factor *= 1 + pct / 100

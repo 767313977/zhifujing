@@ -448,6 +448,11 @@ export default function StockDetail() {
     setError(null)
     setProfileError(null)
     setProfileMissing(false)
+    // `syncing` 必须一起复位（2026-10-28 体检 P1）：换票时旧 effect 被 cancelled，
+    // 它 finally 里的 `setSyncing(false)` 就不会执行；若上一只票正在补长历史、新票又
+    // 不需要补（已有够长日线），这个标志会永远停在 true —— K 线面板一直显示
+    // 「补 2 年历史…」/「加载中」，只有刷新页面才能恢复。
+    setSyncing(false)
     ;(async () => {
       try {
         const p = await load(code, () => cancelled)
@@ -760,7 +765,11 @@ export default function StockDetail() {
               value={fmtPct(profile?.pct_chg_5d)}
               tone={toneOf(profile?.pct_chg_5d)}
             />
-            <Cell label="成交量" value={`${fmtAmount(latest?.volume)}股`} />
+            {/* 缺值时不能再拼「股」，否则页面上是「—股」（2026-10-28 体检） */}
+            <Cell
+              label="成交量"
+              value={latest?.volume == null ? '—' : `${fmtAmount(latest.volume)}股`}
+            />
             <Cell label="成交额" value={fmtAmount(latest?.amount)} />
             <Cell
               label="复盘关联"
