@@ -13,15 +13,16 @@ turnover`。这不是新指标的口径发明：业界通行做法就是「历�
    从零开始等于假设窗口之前没人持仓，再把窗口内的少量换手归一化成 100%：
    两个 1% 换手日（价 10 和 100）会被算成约 50/50，而真实情况是约 99% 仍在 10 附近。
 
-输出单位：价格是元，比例是 0~1（`profit_ratio = 0.09` 表示 9% 的筹码处于盈利）。
+⚠️ **2026-10-28 用户拍板：价格改成前复权口径**。原先直接用 `stock_daily` 的
+不复权 OHLC，送转 / 大比例拆股那天价格会凭空腰斩（或翻倍），除权前的成本区被留在
+旧价位上，除权后 `DEFAULT_DAYS` 个交易日内 `profit_ratio` / `avg_cost` 明显失真。
+现在用**官方涨跌幅**把历史价换算到最新一根的价位上（`pct_chg` 本身就是前复权收益）：
+从最后一根往前推 `scale[i] = scale[i+1] × close[i+1] ÷ (close[i] × (1+pct[i+1]/100))`，
+再把 `high/low/close` 都乘上 `scale[i]`。这样除权日不再跳空，且不需要额外的复权因子表。
 
-⚠️ **已知口径缺口（2026-10-28 体检留档，只记不改）**：递推用的是 `stock_daily` 的
-**不复权** OHLC。送转 / 大比例拆股那天价格会凭空腰斩（或翻倍），而筹码是按「份」累积的，
-于是除权前的成本区被留在旧价位上 —— `profit_ratio` 与 `avg_cost` 在除权后的
-`DEFAULT_DAYS` 个交易日内会明显失真（时间越靠近除权日越明显），之后随着换手衰减慢慢
-被新筹码覆盖。改成前复权会**改变页面上所有个股的筹码数字**（不止除权股），属于产品
-口径决策，需要单独拍板后再动；在那之前宁可在这里写明，也不要让读代码的人以为它是
-复权口径。
+⚠️ 缺 `pct_chg` 的行按「无收益」处理（停牌日本来不交易、价格不变）。若整段都没有
+涨跌幅（老数据 / 直接调 `distribute` 的脚本），`scale` 全为 1，等价于原来的不复权口径。
+输出单位：价格是元，比例是 0~1（`profit_ratio = 0.09` 表示 9% 的筹码处于盈利）。
 """
 
 import logging
@@ -90,6 +91,35 @@ def _triangular_weights(
     return weights
 
 
+def _adjust_to_latest(rows: list[dict]) -> None:
+    """把 `rows` 的 high/low/close **就地**换算成以最后一根为基准的前复权价。
+
+    推导：`pct_chg` 是前复权收益，于是 `adj_close[i] = adj_close[i+1] ÷ (1+pct[i+1]/100)`，
+    且 `adj_close[-1] = close[-1]`。比例 `scale[i] = adj_close[i] / close[i]` 同时适用于
+    当日的 high / low（同一根 K 线的缩放系数相同）。
+    """
+    size = len(rows)
+    scales = [1.0] * size
+    for index in range(size - 2, -1, -1):
+        current = rows[index]
+        nxt = rows[index + 1]
+        close = float(current["close"])
+        next_close = float(nxt["close"])
+        pct = nxt.get("pct_chg")
+        # 缺涨跌幅（停牌）按 0 处理：那天价格没动，缩放系数不变
+        change = 1.0 + (float(pct) if pct is not None else 0.0) / 100.0
+        denominator = close * change
+        if denominator <= 0 or next_close <= 0:
+            scales[index] = scales[index + 1]
+            continue
+        scales[index] = scales[index + 1] * next_close / denominator
+    for row, scale in zip(rows, scales, strict=True):
+        if scale == 1.0:
+            continue
+        for key in ("high", "low", "close"):
+            row[key] = float(row[key]) * scale
+
+
 def distribute(
     rows: list[dict], *, grid_size: int = GRID_SIZE, decay: float = DECAY
 ) -> ChipResult:
@@ -110,6 +140,8 @@ def distribute(
     usable.sort(key=lambda row: row["trade_date"])
     if len(usable) < MIN_DAYS:
         raise ValueError(f"有效日线只有 {len(usable)} 根，不足 {MIN_DAYS} 根")
+    # 除权日不再跳空（见模块说明）：先把价格换算到最新一根的价位上
+    _adjust_to_latest(usable)
 
     low = min(float(row["low"]) for row in usable)
     high = max(float(row["high"]) for row in usable)
@@ -170,6 +202,9 @@ def for_stock(code: str, days: int = DEFAULT_DAYS) -> ChipResult | None:
                 "low": row.low,
                 "close": row.close,
                 "turnover": row.turnover,
+                # 前复权要用它（见 `_adjust_to_latest`）；`distribute` 的其它调用方
+                # 没有这一列时按「无收益」处理，等价于不复权
+                "pct_chg": row.pct_chg,
             }
             for row in session.scalars(
                 select(StockDaily)

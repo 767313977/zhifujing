@@ -142,13 +142,13 @@ from app.services.patterns import (  # noqa: E402
     BF_MIN_FLAT,
     BF_MIN_GAIN,
     BF_MIN_VOL,
-    LS_LIMIT_PCT,
     LS_LOOKBACK,
     MIN_SCORE,
     PATTERNS,
     Bars,
     build_bars,
     is_st,
+    limit_threshold,
     usable_bar,
 )
 from draft_patterns import DRAFT_PATTERNS  # noqa: E402  （同目录的脚本）
@@ -353,11 +353,11 @@ def prescreen_breakout_flat(bars: Bars, t: int) -> bool:
 
 
 def prescreen_limit_surge(bars: Bars, t: int) -> bool:
-    """最近 `LS_LOOKBACK` 天里出现过涨停。"""
+    """最近 `LS_LOOKBACK` 天里出现过涨停（按该股的涨跌幅限制判，见 `limit_threshold`）。"""
     if t < 40:
         return False
     start = max(0, t + 1 - LS_LOOKBACK)
-    return bool((bars.pct_chg[start : t + 1] >= LS_LIMIT_PCT).any())
+    return bool((bars.pct_chg[start : t + 1] >= limit_threshold(bars.code)).any())
 
 
 PRESCREENS = {

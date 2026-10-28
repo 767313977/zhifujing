@@ -25,6 +25,8 @@ from datetime import date
 
 import numpy as np
 
+from app.services import limit_rules
+
 logger = logging.getLogger(__name__)
 
 # 低于这个分不进库。全部形态都会先做布尔前提，再连续打分，所以它是「像不像」的门槛
@@ -316,12 +318,25 @@ THREE_BREAK_VOL = 1.3  # 突破日量 / 整理段均量
 # ⚠️ 下面这组阈值起步时是按**单只票**定的，靠全市场扫描 + 回测校准过
 # （过程与实测数据见设计文档 8.16.3），别直接改成某只票身上的数字。
 LS_LOOKBACK = 30  # 在最近这么多天里找涨停爆量日
-LS_LIMIT_PCT = 9.5  # 「涨停」的下限，留出主板 10% 的统计余量（20cm 板也一并覆盖）
-# ⚠️ **已知口径取舍（2026-10-28 体检留档，未改）**：这个 9.5% 对创业板 / 科创板
-# （20cm）意味着「涨 10%」就算涨停，比真实涨停价低了一半。想改成按代码段取
-# `services/limit_rules.py` 的口径，会**改动一批形态结果**（命中数、评分、回测胜率
-# 全部跟着变），也会让「形态引擎」与「涨停池」两套口径从「已知不同」变成「必须同步
-# 维护」。属于产品口径决策，先留档；改之前先读 `limit_rules` 顶部的对照说明。
+# 「涨停」的统计余量（百分点）。判据 = 该板块的涨跌幅限制 − 这个余量，
+# 见 `limit_threshold`。0.5 留给板价取整在百分比上的偏差（价格越低偏差越大）。
+LS_LIMIT_SLACK = 0.5
+
+
+def limit_threshold(code: str = "") -> float:
+    """这只票「算涨停」的涨跌幅下限（%）。
+
+    2026-10-28 用户拍板：不再全市场一刀切 9.5。原来那个值对创业板 / 科创板
+    （20cm）意味着「涨 10% 就算涨停」（比真实板价低一半），对主板 ST 又可能偏松 ——
+    现在直接取 `services/limit_rules.limit_pct`（主板 10 / 创业板·科创板 20 / 北交所 30），
+    再留 `LS_LIMIT_SLACK` 的统计余量。
+
+    ⚠️ `code` 为空时按主板 10% 处理（个股页 K 线那几处不跑形态、不传代码）。
+    这个改动**会改变一批形态结果**（命中数 / 评分 / 历史回测胜率），是拍板后的口径切换。
+    """
+    return limit_rules.limit_pct(code) - LS_LIMIT_SLACK
+
+
 LS_SURGE_VOL = 2.5  # 涨停日量 / 前 5 日均量
 LS_BREAK_DAYS = 3  # 涨停后这么多天内要完成对平台的收盘突破
 LS_PLATFORM_DAYS = 40  # 「前期平台」回看多少个交易日
@@ -2175,7 +2190,7 @@ def _limit_surge_flat(bars: Bars) -> Signal | None:
     best: Signal | None = None
 
     for t0 in range(first_t0, last_t0 + 1):
-        if float(pct[t0]) < LS_LIMIT_PCT:
+        if float(pct[t0]) < limit_threshold(bars.code):
             continue
         base_vol = _safe_mean(volume[t0 - 5 : t0])
         if base_vol <= 0:
@@ -3422,13 +3437,16 @@ def _pile_wash_phase(bars: Bars) -> tuple[str, dict] | None:
         vol_surge = mean_vol(s0, s1) or 1.0
         vol_wash = mean_vol(s1 + 1, wash_end)
         wash_vol_ratio = vol_wash / vol_surge
-        wash_high = float(np.max(bars.high[off + s1 + 1 : off + wash_end + 1]))
-        # ⚠️ **已知缺陷（2026-10-28 体检留档，未改）**：`wash_end = min(s1 + 18, last_i)`，
-        # 当最近这段不足 18 根时 `wash_end == last_i`，上面这一行就把**当日最高价**也
-        # 算进了「洗盘箱体上沿」。于是下面的 `broke = close > wash_high` 恒为假
-        # （收盘不可能高于当日最高），洗盘突破永远只能走 `near` 那一支、`gone` 分支
-        # 实际不可达。修法是把区间改成 `s1+1 .. last_i-1`，但那会改变现有形态的
-        # 阶段判定与回测数字，需要拍板；这里只写清楚，免得下次又当成新 bug 查一遍。
+        wash_high = float(
+            np.max(bars.high[off + s1 + 1 : off + min(s1 + 18, last_i - 1) + 1])
+        )
+        # 2026-10-28 用户拍板：箱体上沿**不含当日**。
+        # 原写法上界是 `wash_end = min(s1+18, last_i)`，最近这段不足 18 根时
+        # `wash_end == last_i`，把当日最高价也算进箱体 —— 于是 `close > wash_high`
+        # 恒为假，`broke` 分支与 `gone` 档实际不可达。这里固定取到 `last_i-1`。
+        # `wash_days >= 3` 保证区间非空（s1+1 ≤ last_i-2）。
+        # ⚠️ 下沿 `wash_low` **仍含当日**：它是「作废位」，当日已经跌破就该算数，
+        # 取更保守的一侧；上沿是「突破位」，必须用当日之前的箱体才有意义。
         wash_low = float(np.min(bars.low[off + s1 + 1 : off + wash_end + 1]))
         peak_close = float(np.max(bars.close[off + s0 : off + s1 + 1]))
         wash_close = float(bars.close[off + wash_end])
@@ -4198,7 +4216,7 @@ def _volume_dry_bottom(bars: Bars) -> Signal | None:
 
 
 def _shrink_limit_up(bars: Bars) -> Signal | None:
-    """缩量涨停：涨停（沿用 `LS_LIMIT_PCT` 的 9.5% 口径）却明显没量 —— 惜售。
+    """缩量涨停：涨停（按该股的涨跌幅限制判定，见 `limit_threshold`）却明显没量 —— 惜售。
 
     与「放量上涨」正好相反：那个要量能配合，这个要**没量**。缩量涨停说明
     卖盘极少，次日容易接着封；但也常常是「一字板买不进」，所以给的是
@@ -4206,8 +4224,9 @@ def _shrink_limit_up(bars: Bars) -> Signal | None:
     """
     if len(bars) < 6:
         return None
+    threshold = limit_threshold(bars.code)
     pct = float(bars.pct_chg[-1])
-    if pct < LS_LIMIT_PCT:
+    if pct < threshold:
         return None
     ratio = _volume_ratio(bars, 5)
     if ratio <= 0 or ratio > SHRINK_LIMIT_VOL_MAX:
@@ -4216,7 +4235,7 @@ def _shrink_limit_up(bars: Bars) -> Signal | None:
         return None
 
     score = _gate_score(ratio, SHRINK_LIMIT_VOL_MAX, 0.25) * 60
-    score += _gate_score(pct, LS_LIMIT_PCT, 12.0) * 40
+    score += _gate_score(pct, threshold, threshold + 2.5) * 40
 
     return Signal(
         "shrink_limit_up",

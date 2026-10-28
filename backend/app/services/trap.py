@@ -160,6 +160,27 @@ def _pct(values: list[float], q: float) -> float | None:
     return float(np.percentile(clean, q))
 
 
+def _ret_pct(daily: list[StockDaily], days: int) -> float | None:
+    """最近 `days` 个交易日的**复权**累计涨幅（%，小数形式：0.2 = +20%）。
+
+    2026-10-28 用户拍板：不再拿「末日收盘 ÷ N 日前后收盘」算 —— 那是**不复权**口径，
+    送转日会凭空算出暴涨 / 暴跌（筹码分布有同一个缺口，见 `services/chip.py`）。
+    这里改用官方涨跌幅连乘：`pct_chg` 存的是前复权收益（见 `jobs/collect_kline`
+    取数列），连乘天然跨过除权日。
+
+    任一行缺 `pct_chg` 就返回 None（停牌行没有收益，硬当 0 会把区间算短而不报错）。
+    """
+    if len(daily) < days + 1:
+        return None
+    values = [row.pct_chg for row in daily[-(days + 1) :][1:]]
+    if any(value is None for value in values):
+        return None
+    factor = 1.0
+    for value in values:
+        factor *= 1.0 + float(value) / 100.0
+    return factor - 1.0
+
+
 def _check_st(name: str | None) -> TrapSignal:
     text = (name or "").upper()
     if "ST" in text:
@@ -181,17 +202,9 @@ def _check_surge(
     counts = {pool_type: int(count) for pool_type, count, _ in rows}
     max_consecutive = max((int(consecutive or 0) for _, _, consecutive in rows), default=0)
 
-    # ⚠️ 这里的 20 日涨幅与 `_check_small_cap` / `_check_fundamental` 用的是**同一份**
-    # `daily`（同一个取数壳、同样的不复权收盘）：这是刻意的，同一个「20 日涨幅」在
-    # 六个信号里必须同源，否则同一只票会在两张卡片上给出不同的数字。
-    # 代价是它继承了不复权的除权跳空（送转日会算成暴涨 / 暴跌），与 `services/chip.py`
-    # 的缺口同源；要不要换成前复权属于产品口径决策（2026-10-28 体检留档）。
-    ret20 = None
-    if len(daily) >= 21:
-        base = float(daily[-21].close or 0)
-        if base > 0:
-            ret20 = float(daily[-1].close) / base - 1
-
+    # ⚠️ 20 日涨幅用**复权**口径（见 `_ret_pct`）：三个信号同源，否则同一只票会在
+    # 两张卡片上给出不同的数字；这里是拍板后统一换掉的旧「末日收盘 ÷ 21 日前收盘」。
+    ret20 = _ret_pct(daily, 20)
     latest_pool_day = _latest_table_day(session, LimitPool)
     stale = latest_pool_day is None or (trade_date - latest_pool_day).days > STALE_DAYS
     evidence = (
@@ -277,13 +290,18 @@ def _check_small_cap(
     if total_mv is None or len(daily) < 21:
         return TrapSignal("small_cap", "小市值高波动", "unknown", "low", "缺少市值或日线，无法判断")
     base = float(daily[-21].close or 0)
-    ret20 = float(daily[-1].close) / base - 1 if base > 0 else 0.0
+    ret20 = _ret_pct(daily, 20) if base > 0 else None
+    if ret20 is None:
+        # 缺涨跌幅（停牌 / 老数据）时留空，不拿 0 冒充「没涨」
+        ret20_note = "—"
+    else:
+        ret20_note = f"{ret20 * 100:+.1f}%"
     peak = max(
         (float(row.pct_chg) for row in daily[-20:] if row.pct_chg is not None), default=0.0
     )
     cap_yi = float(total_mv) / 1e8
-    evidence = f"总市值 {cap_yi:.0f} 亿；20 日累计 {ret20 * 100:+.1f}%、单日最大 {peak:+.1f}%"
-    hit = cap_yi < 80 and (ret20 >= 0.3 or peak >= 9.5)
+    evidence = f"总市值 {cap_yi:.0f} 亿；20 日累计 {ret20_note}、单日最大 {peak:+.1f}%"
+    hit = cap_yi < 80 and ((ret20 is not None and ret20 >= 0.3) or peak >= 9.5)
     return TrapSignal(
         "small_cap", "小市值高波动", "hit" if hit else "miss", "medium" if hit else "low", evidence
     )
@@ -495,10 +513,8 @@ def _check_unlock(
 
 
 def _heat(daily: list[StockDaily]) -> tuple[float | None, float | None, float | None]:
-    """(20 日累计涨幅, 近 5 日均换手, 此前 250 日换手 90 分位)。"""
-    ret20 = None
-    if len(daily) >= 21 and daily[-21].close:
-        ret20 = float(daily[-1].close) / float(daily[-21].close) - 1
+    """(20 日复权累计涨幅, 近 5 日均换手, 此前 250 日换手 90 分位)。"""
+    ret20 = _ret_pct(daily, 20)
 
     turns = [float(row.turnover) for row in daily if row.turnover is not None]
     avg5 = float(np.mean(turns[-5:])) if len(turns) >= 5 else None

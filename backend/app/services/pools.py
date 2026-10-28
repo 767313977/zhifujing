@@ -923,20 +923,17 @@ def first_board(
 # 参数一改，页面上的汇总行立刻跟着变，这是定阈值的唯一依据。
 #
 # 口径（写死了，别在页面里另算）：
-# - **基准是 T 日收盘**（不是 T+1 开盘）：`open_premium` = T+1 开盘 ÷ T 日收盘 − 1，
-#   `close_ret` = T+1 当日涨跌幅 = T+1 收盘 ÷ T 日收盘 − 1。UI 列名写「开盘溢价 /
-#   收盘」是准确的。
-#   ⚠️ 这里原先写的是「买入 = T+1 开盘、收益从 T+1 起算」，与实现**不符**：真按 T+1
-#   开盘买入，收盘收益该是 `close/open − 1`，而库里算的是 `close/prev_close − 1`。
-#   两种口径只差一个隔夜跳空，但差值正好是「次日高开能不能兑现」，是打板最关心的一段，
-#   所以**不能含糊**。改实现会改动页面上所有验证数字（含历史），列为待拍板项
-#   （2026-10-28 体检留档，本轮只改注释、不改算法）。
+# - **买入 = T+1 开盘**（2026-10-28 用户拍板）。`open_premium` = T+1 开盘 ÷ T 日收盘 − 1
+#   （隔夜跳空，衡量「高开多少」）；`close_ret` = T+1 收盘 ÷ **T+1 开盘** − 1
+#   （开盘买入到收盘的收益）。两者之差正是「高开能不能兑现」。
+#   ⚠️ 原实现里 `close_ret` 用的是 `pct`（T+1 收盘 ÷ T 日收盘），与「买入 = T+1 开盘」
+#   的说明不符 —— 本轮按拍板统一成「开盘买入」，**会改动页面上所有验证数字（含历史）**。
 # - T+1 开盘就一字涨停（晋级且开=高=低=收）的**买不到**，单独计数、不进收益均值；
 # - `open_premium` 的分母用 `close / (1 + pct_chg/100)` 反推的**昨收**（交易所除权
 #   参考价），直接用 T 日收盘会在除权日算出一个假的跳空；
 # - T+1 的日线还没采到时，这一天记 `pending`，**不计入统计**。
 
-#: 「大面」的门槛：T+1 收盘 ≤ 这个数（%）
+#: 「大面」的门槛：T+1 **开盘买入到收盘** ≤ 这个数（%）
 _BIG_LOSS_PCT = -5.0
 
 
@@ -1143,12 +1140,14 @@ def first_board_track(
                 continue
             # 昨收用官方涨跌幅反推：除权日直接拿 T 日收盘会算出一个假跳空
             prev_close = close / (1 + pct / 100)
-            if prev_close <= 0 or open_ is None:
+            if prev_close <= 0 or open_ is None or open_ <= 0:
                 day_no_quote += 1
                 continue
             day_open.append((open_ / prev_close - 1) * 100)
-            day_close.append(pct)
-            if pct <= _BIG_LOSS_PCT:
+            # **T+1 开盘买入**口径：开盘到收盘的收益（2026-10-28 拍板，见上方注释）
+            close_ret = (close / open_ - 1) * 100
+            day_close.append(close_ret)
+            if close_ret <= _BIG_LOSS_PCT:
                 big_loss_total += 1
             if code in pools_down:
                 limit_down_total += 1

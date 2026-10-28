@@ -94,7 +94,9 @@ def test_first_board_track_counts_promotion_and_unbuyable(session):
     assert summary["promoted_rate"] == 50.0
     assert summary["unbuyable_rate"] == 50.0
     assert summary["open_premium_mean"] == 5.0
-    assert summary["close_ret_mean"] == 8.0
+    # 2026-10-28 拍板：买入价 = T+1 开盘，所以「收盘收益」是 10.8/10.5 − 1 = +2.86%，
+    # 不再是 T+1 全天涨幅 +8%（那是「T 日收盘买入」的口径）
+    assert summary["close_ret_mean"] == 2.86
     assert summary["limit_down_rate"] == 0.0
 
     pending = [row for row in track.days if row.status == "pending"]

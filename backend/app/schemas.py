@@ -2714,7 +2714,11 @@ class FirstBoardOut(BaseModel):
 
 
 class FirstBoardTrackDayOut(BaseModel):
-    """首板次日验证的一天。收益都是**百分数**（1.23 表示 +1.23%）。"""
+    """首板次日验证的一天。收益都是**百分数**（1.23 表示 +1.23%）。
+
+    口径（2026-10-28 用户拍板）：`open_premium_mean` = T+1 开盘 ÷ T 日收盘 − 1；
+    `close_ret_mean` = T+1 收盘 ÷ **T+1 开盘** − 1（买入价是 T+1 开盘）。
+    """
 
     trade_date: date
     next_date: date | None
