@@ -270,7 +270,13 @@ class KaipanhongSource:
 
     # ------------------------------------------------------------ 成分股
 
-    def board_members(self, plate_id: str, trade_date: date) -> list[dict]:
+    def board_members(
+        self,
+        plate_id: str,
+        trade_date: date,
+        *,
+        stats: dict | None = None,
+    ) -> list[dict]:
         """某个板块在**历史某日**的成分股。
 
         ⚠️ 停法只能用**短页**，绝不能「翻到空页为止」：这个接口越界请求不是返回空页，
@@ -284,6 +290,13 @@ class KaipanhongSource:
 
         比原先的 iFinD 选股接口好的一点是它不分页上限截断（一次 1000 行、翻页到底），
         上千只成分股的大板块不会被静默砍成 100 只。
+
+        **`stats`**（2026-10-28 复查加）：传一个空 dict 进来，会填上
+        `reported`（接口说的总数）/ `unique`（去重后实际取到）/ `short`（是否对不上账）。
+        写库的那两处（当晚预取、板块资金流）据此把「残缺名单」记进日志与返回值 ——
+        原来只在源里 `logger.warning`，调用方一无所知，净流入照样按残缺名单求和、
+        采集日志仍是 ok。**不抛异常**是刻意的：名单残缺时少几只票也比整个板块没数据好，
+        而且连续失败会触发上游的熔断计数（那会把一轮几百个板块全打断）。
         """
         members: list[dict] = []
         reported: int | None = None
@@ -391,6 +404,11 @@ class KaipanhongSource:
                 reported,
                 len(members),
             )
+        if stats is not None:
+            stats["reported"] = reported
+            stats["unique"] = len(members)
+            # `reported` 不知道时**不算残缺**（没有对账依据，不能瞎报）
+            stats["short"] = isinstance(reported, int) and len(members) < reported
         return members
 
     @staticmethod

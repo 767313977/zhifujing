@@ -148,10 +148,14 @@ def aggregate(day: date, settings: Settings | None = None) -> dict:
     unmatched: list[str] = []
     consecutive = 0
     aborted = False
+    #: 名单「对不上账」的板块数（接口说 N 只、实际取到 M 只）。净流入会因此略偏小，
+    #: 但不该丢弃整个板块 —— 记数并在末尾告警（2026-10-28 复查）。
+    partial_members = 0
     for index, (code, name) in enumerate(boards, 1):
         calls += 1
+        stats: dict = {}
         try:
-            members = source.board_members(code, member_day)
+            members = source.board_members(code, member_day, stats=stats)
             consecutive = 0
         except Exception as exc:  # noqa: BLE001 - 单个板块取不到不该让整轮失败
             failed += 1
@@ -171,6 +175,8 @@ def aggregate(day: date, settings: Settings | None = None) -> dict:
                 break
             continue
 
+        if stats.get("short"):
+            partial_members += 1
         codes = [str(item["code"]).strip() for item in members if item.get("code")]
         if not codes:
             empty += 1
@@ -214,6 +220,11 @@ def aggregate(day: date, settings: Settings | None = None) -> dict:
     )
     if unmatched:
         logger.warning("有 %d 个板块的成分股与净流入表完全对不上：%s", len(unmatched), unmatched[:5])
+    if partial_members:
+        logger.warning(
+            "有 %d 个板块的成分股名单对不上账（接口总数 > 实际取到），这些板块的净流入会略偏小",
+            partial_members,
+        )
     # 被熔断中断时剩余板块根本没试过，记 ok 会让「当天资金流残缺」被日志掩盖
     status = "partial" if aborted else "ok"
     _record(

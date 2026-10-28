@@ -446,21 +446,24 @@ class IfindClient:
         「HTTP + 外层 JSON」为止，`_extract()` 里的**内层 JSON 解析**（MCP
         `content[0].text` 再解析一次）发生在重试之外 —— 网关回一段被截断的
         content 时，`IfindParseError` 会直接抛给调用方，下次请求往往就正常了，
-        却没有第二次机会。`IfindParseError` 本来就被 `call()` 的 `_retryable`
-        归为可重试，这里把它也纳入重试，口径才对得上。
+        却没有第二次机会。
+
+        ⚠️ **`_extract` 必须在被重试的那个 lambda 里**（2026-10-28 复查）：
+        `call()` 本身不会抛 `IfindParseError`（截断发生在 `content[0].text`，
+        是 `_extract` 解析它时才炸的），写成 `_extract(retry_call(...))` 的话
+        `retry_on=IfindParseError` 一次也不会命中 —— 等于没修。这里把
+        「请求 + 解析」整体纳入重试范围。
 
         只对解析错再发一次（`retries=2`）：真正的网络错 / 限流 `call()` 内部已经
         退避过了，外层不必重复三轮，否则最坏情况是 3×3 次计费请求。
         """
-        return _extract(
-            retry_call(
-                lambda: self.call(server, tool, params),
-                retries=2,
-                backoff=self.settings.http_backoff,
-                description=f"iFinD 解析 {server}.{tool}",
-                retry_on=lambda exc: isinstance(exc, IfindParseError),
-            )
-        )[1]
+        return retry_call(
+            lambda: _extract(self.call(server, tool, params))[1],
+            retries=2,
+            backoff=self.settings.http_backoff,
+            description=f"iFinD 解析 {server}.{tool}",
+            retry_on=lambda exc: isinstance(exc, IfindParseError),
+        )
 
     # ------------------------------------------------- 结构化行情（实时/高频）
 

@@ -11097,3 +11097,40 @@ ETF 净申赎逐日 SQL（最多 250 条/请求，约 0.3~0.5s）、`Auction` �
 验证：`pytest 309 passed`（新增 12 条：板块门槛 / 拆股缩放 / 复权涨幅 / 箱体上沿），
 `ruff` / `compileall` / 契约 17 项 / `npm run build` 全过。
 
+### 2026-10-28 复查第 6 轮的修复：三处「修了但没生效」
+
+第六轮把我留档的 27 条几乎全处理了，四条口径拍板也做对了（涨跌分布各档之和 5249、
+涨停门槛 9.5/19.5/29.5、首板 2.86%、筹码除权 avg 18.18→10.00 都实测复核过）。
+复查出三处**看起来修了、实际没修到**的，加两处只修一半的：
+
+1. **iFinD 内层 JSON 仍在重试之外**：`_call_extract` 写成了
+   `_extract(retry_call(lambda: self.call(...)))` —— 而 `call()` 本身不会抛
+   `IfindParseError`（截断发生在 `content[0].text`，是 `_extract` 解析它时才炸），
+   于是 `retry_on=IfindParseError` 一次都不会命中。改成把「请求 + 解析」整体放进
+   `retry_call`，并补两条用例（解析错重试一次 / 普通 `IfindError` 不重试）。
+2. **「迟到的 401 不踢人」守卫在错误的层**：`auth.tsx` 只在 `authMe` 的 **catch** 里
+   判了 `userRef.current === null`，但 401 在 `client.ts` 里是**先派发**
+   `UNAUTHORIZED_EVENT`、由 `onUnauthorized` 无条件清 `me` —— 事件先执行，守卫根本
+   轮不到。改成 `request(..., { silent401: true })` 只给 `authMe` 用：它是「登没登录」
+   的探测，不是「会话在使用中失效」，失败交给 `AuthProvider` 自己的 catch。
+3. **筹码缺 `pct_chg` 的兜底与注释相反**：注释说「整段都缺 → 等价不复权」，实现却把
+   `pct=None` 当成「收益 0」→ 任何价差都被推断成除权，整段价格被归一到最后一天。
+   实测真实腰斩 20→10（无除权、pct 缺失）：`avg_cost` 18.42 → **9.60**、
+   `cost90` 被压成 (9.53, 9.66)、`profit` 恒 0.5 —— 分布被压成一根针，看着正常但无意义。
+   改成「缺涨跌幅那一步不换算」。生产库目前 0 例（270 行 `pct_chg` 为空的停牌残行前后
+   收盘价全部相同），属潜伏问题；但 `distribute()` 是公开函数（脚本会直接调）。
+
+两处只修一半的：
+
+4. **开盘红成分股短页**：现在会「继续翻页 + 告警」，但残缺名单照样落库、且调用方
+   一无所知（板块净流入静默偏小）。这次给 `board_members` 加了 `stats` 出参
+   （`reported/unique/short`）：当晚预取把残缺板块数写进返回值与 `collect_log` 的
+   message（数据管理页可见），板块资金流也会在末尾汇总告警。**不抛异常**是刻意的 ——
+   少几只票也比整个板块没数据好，而且连续失败会撞上上游的熔断计数。
+5. **形态涨停门槛的 ST 档**：`Bars` 里没有名字，`limit_pct` 认不出 ST 的旧 5%。当前
+   无害（扫描入口已剔 ST、新规后主板 ST 就是 10%、形态回看窗口碰不到新规前），
+   已在 `limit_threshold` 的 docstring 写明「将来若把历史 ST 段纳入扫描，得给 Bars 加
+   name」，不再当成待查 bug。
+
+**验证**：`pytest 320 passed`（新增 7 条：解析错重试 / 不误重试 / 缺 pct 不压扁 /
+除权仍对 / 名单完整与残缺两种）/ `ruff` / `compileall` / 契约 / `npm run build` 全过。

@@ -168,10 +168,24 @@ export function isNoDataError(err: unknown): boolean {
   return err instanceof ApiError && err.status === 404
 }
 
+/** `request` 的额外开关。 */
+interface RequestOptions {
+  /**
+   * 401 时**不派发**全站 `UNAUTHORIZED_EVENT`（2026-10-28 复查）。
+   *
+   * 只该给启动时那次 `/auth/me` 用：它是「我登录了吗」的探测，不是「会话在使用中失效」。
+   * 原来它和普通请求走同一条路 —— 401 先派发事件、`AuthProvider` 立刻 `setMe(null)`,
+   * 于是**用户在慢网下先完成登录、这次探测晚到的 401 又把人踢回登录页**。
+   * 探测自己的 catch 里已经处理了「没登录」，不需要再触发全站登出。
+   */
+  silent401?: boolean
+}
+
 async function request<T>(
   path: string,
   init?: RequestInit,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  options: RequestOptions = {},
 ): Promise<T> {
   // 为什么手写 AbortController、不用更短的 `AbortSignal.timeout()`：后者要
   // Chrome 103+ / Safari 16.4+，而本站会在手机套壳浏览器（微信 / QQ / 夸克）里打开，
@@ -212,7 +226,12 @@ async function request<T>(
         // 会话**在使用中**失效（闲置过期 / 在别处改了密码 / 被停用）时，页面早就渲染出来了，
         // RequireAuth 不会再跑。靠这个事件让 AuthProvider 清掉用户，下一次渲染自动跳登录页。
         // （这里不再抛专门的错误类型：没有调用方按类型分支，跳转全靠上面这个事件。）
-        window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+        // ⚠️ 启动时那次 `/auth/me` 传 `silent401`：它是「登没登录」的探测，它自己的
+        // catch 已经把「没登录」处理掉了；再派发事件会把「刚登录成功、探测才返回」的
+        // 用户清掉（2026-10-28 复查）。
+        if (!options.silent401) {
+          window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+        }
         throw new ApiError(detail, response.status)
       }
       throw new ApiError(detail, response.status)
@@ -1134,14 +1153,16 @@ export const api = {
   // --- 登录与会员（设计见文档 §8.69）---
 
   /**
-   * 「我是谁」。未登录时 `request` 会派发 `UNAUTHORIZED_EVENT`，由 `AuthProvider`
-   * 清空用户 → 下一次渲染 `RequireAuth` 自动跳登录页；本调用自身也会失败（被
-   * `AuthProvider` 的 catch 当作「没登录」处理）。
+   * 「我是谁」。未登录时**不派发** `UNAUTHORIZED_EVENT`（`silent401`）—— 这个探测
+   * 的失败由 `AuthProvider` 自己的 catch 处理（清 `me`、结束 `checking`，`RequireAuth`
+   * 随即跳登录页）。派发全局事件反而有害：慢网下用户先登录成功、这次探测晚到的 401
+   * 会把刚登录的人清掉（2026-10-28 复查）。
    *
    * ⚠️ 用**更短**的超时（`AUTH_CHECK_TIMEOUT_MS`）：它挡在整页渲染之前，
    * 干等多久就是白屏多久（2026-10-10 修）。
    */
-  authMe: () => request<Me>('/auth/me', undefined, AUTH_CHECK_TIMEOUT_MS),
+  authMe: () =>
+    request<Me>('/auth/me', undefined, AUTH_CHECK_TIMEOUT_MS, { silent401: true }),
 
   login: (username: string, password: string) =>
     send<Me>('POST', '/auth/login', { username, password }),

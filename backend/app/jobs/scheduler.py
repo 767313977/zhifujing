@@ -1225,7 +1225,14 @@ class DailyScheduler:
             MEMBERS_TASK,
             "ok",
             result.get("written", 0),
-            f"{result.get('boards', 0)} 个板块，失败 {result.get('failed', 0)} 个",
+            # 名单不全的板块数一并写进 message（2026-10-28 复查）：它们仍会落库（比没有好），
+            # 但「数据管理」页要能看出今天有几个板块的名单是残缺的
+            f"{result.get('boards', 0)} 个板块，失败 {result.get('failed', 0)} 个"
+            + (
+                f"，名单不全 {result['partial']} 个"
+                if result.get("partial")
+                else ""
+            ),
         )
 
     def _run_tail(

@@ -292,14 +292,23 @@ class SectorCollector:
 
     # ------------------------------------------------------------ 成分股
 
-    def collect_members(self, trade_date: date, sector_code: str) -> int:
+    def collect_members(
+        self,
+        trade_date: date,
+        sector_code: str,
+        *,
+        stats: dict | None = None,
+    ) -> int:
         """抓某板块在某日的成分股，落 `sector_member`。
 
         ⚠️ 当日的成分股要等盘后更新（实测同一天 21:20 取不到、21:55 才有），
         所以「今天」打开板块时可能拿到 0 行 —— 这不是故障，调用方要如实告诉用户，
         不能显示成「该板块没有成分股」。
+
+        `stats` 透传给 `board_members`（2026-10-28 复查）：填 `reported/unique/short`，
+        让批量预取与资金流能把「名单残缺」记进返回值与日志，而不是静默少算。
         """
-        members = self.kph.board_members(sector_code, trade_date)
+        members = self.kph.board_members(sector_code, trade_date, stats=stats)
         if not members:
             return 0
         rows = [
@@ -407,10 +416,21 @@ class SectorCollector:
         written = 0
         failed = 0
         consecutive = 0
+        #: 名单「对不上账」的板块（接口说 N 只、实际只取到 M 只）。这不是失败 ——
+        #: 残缺名单仍比没有好，但必须让上层看见（2026-10-28 复查）。
+        partial = 0
+        partial_examples: list[str] = []
         for index, code in enumerate(todo, 1):
+            stats: dict = {}
             try:
-                written += self.collect_members(trade_date, code)
+                written += self.collect_members(trade_date, code, stats=stats)
                 consecutive = 0
+                if stats.get("short"):
+                    partial += 1
+                    if len(partial_examples) < 3:
+                        partial_examples.append(
+                            f"{code} {stats.get('unique')}/{stats.get('reported')}"
+                        )
             except Exception as exc:  # noqa: BLE001 - 单个板块不该拖垮整轮
                 failed += 1
                 consecutive += 1
@@ -451,9 +471,20 @@ class SectorCollector:
             written,
             failed,
         )
+        if partial:
+            logger.warning(
+                "成分股预取 %s：%d 个板块的名单对不上账（接口总数 > 实际取到），"
+                "板块成交额/净流入会略偏小。例：%s",
+                trade_date,
+                partial,
+                "；".join(partial_examples),
+            )
         return {
             "trade_date": trade_date.isoformat(),
             "boards": len(todo),
             "written": written,
             "failed": failed,
+            # 名单残缺的板块数：`_run_members` 会把它写进 collect_log 的 message，
+            # 「数据管理」页因此能看到「今天有几个板块的名单是不全的」
+            "partial": partial,
         }

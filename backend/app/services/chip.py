@@ -20,8 +20,11 @@ turnover`。这不是新指标的口径发明：业界通行做法就是「历�
 从最后一根往前推 `scale[i] = scale[i+1] × close[i+1] ÷ (close[i] × (1+pct[i+1]/100))`，
 再把 `high/low/close` 都乘上 `scale[i]`。这样除权日不再跳空，且不需要额外的复权因子表。
 
-⚠️ 缺 `pct_chg` 的行按「无收益」处理（停牌日本来不交易、价格不变）。若整段都没有
-涨跌幅（老数据 / 直接调 `distribute` 的脚本），`scale` 全为 1，等价于原来的不复权口径。
+⚠️ 缺 `pct_chg` 的**一步**不做换算（`scale` 原地继承），因为缺了官方涨跌幅就**无法区分**
+「真实涨跌」与「除权」—— 把它当成「收益 0」等于假设那一段价差全是除权，会把整段价格
+归一到最后一天（实测：真实腰斩 20→10 且 pct 缺失时，`avg_cost` 会从 18.42 掉到 9.60、
+`cost90` 被压成 (9.53, 9.66)）。停牌残行（`pct_chg` 空、收盘价与上一根相同）本来就不受
+影响；整段都缺时 `scale` 全为 1，等价于原来的不复权口径 —— 这与 2026-10-28 的说明一致。
 输出单位：价格是元，比例是 0~1（`profit_ratio = 0.09` 表示 9% 的筹码处于盈利）。
 """
 
@@ -97,6 +100,10 @@ def _adjust_to_latest(rows: list[dict]) -> None:
     推导：`pct_chg` 是前复权收益，于是 `adj_close[i] = adj_close[i+1] ÷ (1+pct[i+1]/100)`，
     且 `adj_close[-1] = close[-1]`。比例 `scale[i] = adj_close[i] / close[i]` 同时适用于
     当日的 high / low（同一根 K 线的缩放系数相同）。
+
+    ⚠️ 某一步缺 `pct_chg` 时**不做换算**（`scale` 原地继承）：缺了官方涨跌幅就分不清
+    「真实涨跌」与「除权」。原来把它当成「收益 0」，等于认定那一段价差全部来自除权 ——
+    真实腰斩（无除权）会被整段归一到最后一天，分布被压成一根针（2026-10-28 复查）。
     """
     size = len(rows)
     scales = [1.0] * size
@@ -106,9 +113,11 @@ def _adjust_to_latest(rows: list[dict]) -> None:
         close = float(current["close"])
         next_close = float(nxt["close"])
         pct = nxt.get("pct_chg")
-        # 缺涨跌幅（停牌）按 0 处理：那天价格没动，缩放系数不变
-        change = 1.0 + (float(pct) if pct is not None else 0.0) / 100.0
-        denominator = close * change
+        if pct is None:
+            # 没有官方涨跌幅：不猜除权，保持与后一根相同的缩放系数（等价于不复权）
+            scales[index] = scales[index + 1]
+            continue
+        denominator = close * (1.0 + float(pct) / 100.0)
         if denominator <= 0 or next_close <= 0:
             scales[index] = scales[index + 1]
             continue
