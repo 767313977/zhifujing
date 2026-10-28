@@ -181,6 +181,11 @@ def _check_surge(
     counts = {pool_type: int(count) for pool_type, count, _ in rows}
     max_consecutive = max((int(consecutive or 0) for _, _, consecutive in rows), default=0)
 
+    # ⚠️ 这里的 20 日涨幅与 `_check_small_cap` / `_check_fundamental` 用的是**同一份**
+    # `daily`（同一个取数壳、同样的不复权收盘）：这是刻意的，同一个「20 日涨幅」在
+    # 六个信号里必须同源，否则同一只票会在两张卡片上给出不同的数字。
+    # 代价是它继承了不复权的除权跳空（送转日会算成暴涨 / 暴跌），与 `services/chip.py`
+    # 的缺口同源；要不要换成前复权属于产品口径决策（2026-10-28 体检留档）。
     ret20 = None
     if len(daily) >= 21:
         base = float(daily[-21].close or 0)

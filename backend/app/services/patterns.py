@@ -317,6 +317,11 @@ THREE_BREAK_VOL = 1.3  # 突破日量 / 整理段均量
 # （过程与实测数据见设计文档 8.16.3），别直接改成某只票身上的数字。
 LS_LOOKBACK = 30  # 在最近这么多天里找涨停爆量日
 LS_LIMIT_PCT = 9.5  # 「涨停」的下限，留出主板 10% 的统计余量（20cm 板也一并覆盖）
+# ⚠️ **已知口径取舍（2026-10-28 体检留档，未改）**：这个 9.5% 对创业板 / 科创板
+# （20cm）意味着「涨 10%」就算涨停，比真实涨停价低了一半。想改成按代码段取
+# `services/limit_rules.py` 的口径，会**改动一批形态结果**（命中数、评分、回测胜率
+# 全部跟着变），也会让「形态引擎」与「涨停池」两套口径从「已知不同」变成「必须同步
+# 维护」。属于产品口径决策，先留档；改之前先读 `limit_rules` 顶部的对照说明。
 LS_SURGE_VOL = 2.5  # 涨停日量 / 前 5 日均量
 LS_BREAK_DAYS = 3  # 涨停后这么多天内要完成对平台的收盘突破
 LS_PLATFORM_DAYS = 40  # 「前期平台」回看多少个交易日
@@ -3418,6 +3423,12 @@ def _pile_wash_phase(bars: Bars) -> tuple[str, dict] | None:
         vol_wash = mean_vol(s1 + 1, wash_end)
         wash_vol_ratio = vol_wash / vol_surge
         wash_high = float(np.max(bars.high[off + s1 + 1 : off + wash_end + 1]))
+        # ⚠️ **已知缺陷（2026-10-28 体检留档，未改）**：`wash_end = min(s1 + 18, last_i)`，
+        # 当最近这段不足 18 根时 `wash_end == last_i`，上面这一行就把**当日最高价**也
+        # 算进了「洗盘箱体上沿」。于是下面的 `broke = close > wash_high` 恒为假
+        # （收盘不可能高于当日最高），洗盘突破永远只能走 `near` 那一支、`gone` 分支
+        # 实际不可达。修法是把区间改成 `s1+1 .. last_i-1`，但那会改变现有形态的
+        # 阶段判定与回测数字，需要拍板；这里只写清楚，免得下次又当成新 bug 查一遍。
         wash_low = float(np.min(bars.low[off + s1 + 1 : off + wash_end + 1]))
         peak_close = float(np.max(bars.close[off + s0 : off + s1 + 1]))
         wash_close = float(bars.close[off + wash_end])
