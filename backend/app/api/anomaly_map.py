@@ -65,8 +65,13 @@ _MAINBOARD_PREFIXES = ("600", "601", "603", "605", "000", "001", "002", "003")
 _WIDE_BOARD_PREFIXES = ("300", "301", "302", "688", "689")
 _DISPLAY_BOARD_PREFIXES = _MAINBOARD_PREFIXES + _WIDE_BOARD_PREFIXES
 
-# 总市值门槛（元）：40 亿。⚠️ 是**总市值**，原型用的流通市值（见模块说明 1）。
+# 总市值门槛（元）：主板 40 亿、20cm（创业板/科创板）20 亿。
+# ⚠️ 是**总市值**，原型用的流通市值（见模块说明 1）。
+#
+# 20cm 单列一档（2026-10-28 用户要求）：创业板/科创板的票普遍比主板小，40 亿会把
+# 一半以上的 20cm 异动挡在外面（实测 10-28 有 11 只 20cm 涨停，其中 2 只在 20~40 亿）。
 MIN_TOTAL_MV = 40e8
+MIN_TOTAL_MV_WIDE = 20e8
 
 # 中大阳线阈值：当日涨幅 ≥ 5%（`stock_daily.pct_chg` 是百分数口径，5.0 = +5%）。
 #
@@ -105,13 +110,13 @@ THEME_RULE = (
     "（含创业板/科创板，剔 ST/北交所；判定不看市值；回看 120 个交易日，间隔 10 个交易日以上算新一轮）"
 )
 
-# ⚠️ 同一个 40 亿门槛用的是**两套市值**：涨停 / 炸板来自 `limit_pool`（东财、当日值），
+# ⚠️ 市值门槛用的是**两套数据源**：涨停 / 炸板来自 `limit_pool`（东财、当日值），
 # 中大阳来自 `stock_universe`（iFinD 建池快照、最多 7 天前）—— `stock_daily` 不存市值
-# （模型与实际库都确认过），没有「当日值」可换。边界票（40 亿上下波动）可能一类进了
+# （模型与实际库都确认过），没有「当日值」可换。边界票（门槛上下波动）可能一类进了
 # 另一类没进，如实写进文案、不改查询。
 FILTER_TEXT = (
-    "主板+创业板+科创板（剔北交所/B股）/ 非ST / 总市值≥40亿（本站口径；原型用流通市值）。"
-    "中大阳线：主板涨幅≥5%、20cm(300/688)≥10%。"
+    "主板+创业板+科创板（剔北交所/B股）/ 非ST / 总市值：主板≥40亿、20cm≥20亿"
+    "（本站口径；原型用流通市值）。中大阳线：主板涨幅≥5%、20cm(300/688)≥10%。"
     "市值两套来源：涨停/炸板按当日东财值，中大阳按建池日快照（最多7天前），"
     "边界票归类可能略有出入"
 )
@@ -130,6 +135,11 @@ def _is_display_board(code: str) -> bool:
 def _big_yang_pct(code: str) -> float:
     """该票「中大阳线」的涨幅门槛：20cm 板块 10%，其余 5%（理由见 `BIG_YANG_PCT` 上方）。"""
     return BIG_YANG_PCT_WIDE if code[:3] in _WIDE_BOARD_PREFIXES else BIG_YANG_PCT
+
+
+def _min_total_mv(code: str) -> float:
+    """该票的市值门槛：20cm 板块 20 亿，其余 40 亿（理由见 `MIN_TOTAL_MV_WIDE`）。"""
+    return MIN_TOTAL_MV_WIDE if code[:3] in _WIDE_BOARD_PREFIXES else MIN_TOTAL_MV
 
 
 def _seal_time(value: str | None) -> str:
@@ -431,13 +441,13 @@ def build_anomaly_map(session: Session | None = None, days: int = 22) -> dict:
             """名称：池子 / 日线自带的优先，取不到退回建池表，再取不到退回代码。"""
             return name or basics.get(code, (None, None))[0] or code
 
-        # 1) 涨停：过滤 主板+创业板+科创板 / 非ST / 总市值≥40亿
+        # 1) 涨停：过滤 主板+创业板+科创板 / 非ST / 总市值≥门槛（主板 40 亿、20cm 20 亿）
         #    reason 取同花顺涨停原因（可能没有 → None）
         for day in window:
             for row in up_by_day.get(day, []):
                 if not _is_display_board(row.code) or is_st(row.name):
                     continue
-                if row.total_mv is None or row.total_mv < MIN_TOTAL_MV:
+                if row.total_mv is None or row.total_mv < _min_total_mv(row.code):
                     continue
                 rows.append(
                     _make_row(
@@ -462,7 +472,7 @@ def build_anomaly_map(session: Session | None = None, days: int = 22) -> dict:
                     continue
                 if not _is_display_board(row.code) or is_st(row.name):
                     continue
-                if row.total_mv is None or row.total_mv < MIN_TOTAL_MV:
+                if row.total_mv is None or row.total_mv < _min_total_mv(row.code):
                     continue
                 rows.append(
                     _make_row(
@@ -493,7 +503,7 @@ def build_anomaly_map(session: Session | None = None, days: int = 22) -> dict:
             if row.pct_chg is None or row.pct_chg < _big_yang_pct(row.code):
                 continue
             total_mv = mv_map.get(row.code)
-            if total_mv is None or total_mv < MIN_TOTAL_MV:
+            if total_mv is None or total_mv < _min_total_mv(row.code):
                 continue
             rows.append(
                 _make_row(

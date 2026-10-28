@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.api.anomaly_map import (
     _big_yang_pct,
     _is_display_board,
+    _min_total_mv,
     _start_days,
     _theme_counts,
     _theme_scope,
@@ -44,6 +45,13 @@ def test_big_yang_threshold_is_double_for_20cm():
     assert _big_yang_pct("600000") == 5.0
     assert _big_yang_pct("300001") == 10.0
     assert _big_yang_pct("688001") == 10.0
+
+
+def test_market_cap_floor_is_lower_for_20cm():
+    """市值门槛：20cm 20 亿、主板 40 亿（2026-10-28 用户要求）。"""
+    assert _min_total_mv("600000") == 40e8
+    assert _min_total_mv("300001") == 20e8
+    assert _min_total_mv("688001") == 20e8
 
 
 def _calendar(n: int) -> list[date]:
