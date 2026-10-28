@@ -574,6 +574,19 @@ def _industries_of(db: Session, codes: set[str]) -> dict[str, str | None]:
     return industries
 
 
+def _score_basis(picked: list[str]) -> set[str]:
+    """形态模式下「评分」按哪些形态取最高分。
+
+    正常形态：取所选形态里的最高分。只选了**被排除打分**的悟道池
+    （`patterns.SCORE_EXCLUDED`：明天预案 / 明天盯 / 洗完可盯 / 洗后可盯 / 华宝早期）时，
+    退回「所选形态自身」—— 否则整列会被回填成 0.0，看着像没有评分（2026-10-28 用户指出）。
+
+    默认视图（没有 `picked`）不走这条路径：那几个池在默认榜里仍然记 0 分、不参与排序。
+    """
+    wanted = set(picked) - SCORE_EXCLUDED
+    return wanted or set(picked)
+
+
 def _oversold_only_rows(
     db: Session, target: date, codes: list[str], devs: dict[str, float]
 ) -> list[PatternStockOut]:
@@ -895,11 +908,15 @@ def hits(
         # （页面上每行的其它形态仍各自带自己的分数，见 `patterns` 数组）。
         # 多选（交集）时一只票**必然**命中其中每一个，取最高那个 —— 与单选口径一致
         #
-        # ⚠️ 被排除打分的形态（明天预案 / 明天盯）即使被选中也不给分：选中它们时
-        # 这一屏全按 0 分展示（按其它形态的分排序会让人以为这两个也在打分）
-        wanted = set(picked) - SCORE_EXCLUDED
+        # ⚠️ 选项全是「被排除打分」的悟道池（明天预案 / 明天盯 / 洗后可盯 …）时，
+        # `wanted` 是空集 —— 原来的写法把每行都回填 0，整列变成「0.0」，看着像没有评分
+        # （2026-10-28 用户指出）。此时退回**所选形态自身**的分数：点「明天盯」想看的
+        # 本来就是这一池里谁的分更高。
+        # 这不会让它们混进默认榜：默认视图没有 `picked`，那条路径仍按 `SCORE_EXCLUDED`
+        # 记 0 分（见上面 `grouped.values()` 那一次重算）。
+        basis = _score_basis(picked)
         for stock in result:
-            scores = [item.score for item in stock.patterns if item.pattern in wanted]
+            scores = [item.score for item in stock.patterns if item.pattern in basis]
             stock.score = max(scores) if scores else 0.0
         result.sort(key=lambda stock: stock.score, reverse=True)
     # `min_score` 必须在**评分重算之后**再筛一次（2026-10-21 复查 #2）：
