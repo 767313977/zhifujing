@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
 import { api } from '../api/client'
 import type {
@@ -643,6 +643,14 @@ export default function JournalPage() {
   const [stats, setStats] = useState<TradeStatsOut | null>(null)
   const [catalog, setCatalog] = useState<PatternMeta[]>([])
   const [form, setForm] = useState<FormState>(emptyForm)
+  /**
+   * 最近一次**自动带入**的「具体理由」key。
+   *
+   * 为什么需要（2026-10-28 体检）：回溯理由的规则是「只在空着时带入，用户手填过就不覆盖」，
+   * 但代码/日期改了之后，上一次**自动带入**的那个 key 还留在表单里 —— 换了一只票，
+   * 理由却还是上一只票的形态。这里记住「哪个是自动填的」，只清这一类，用户手选的保留。
+   */
+  const autoReasonRef = useRef('')
   const [editingId, setEditingId] = useState<number | null>(null)
   // 录入表单默认收起（2026-10-21 清单 #10）：做 T 之后页面元素更多，默认摊开会把
   // 「我的交易」挤到首屏之外；点「记一笔」或「编辑」时再展开
@@ -718,6 +726,14 @@ export default function JournalPage() {
       setSuggest(null)
       return
     }
+    // 代码 / 日期变了：上一次**自动带入**的理由属于旧的票，先清掉
+    // （用户手动选的 key 不动，见 `autoReasonRef` 的说明）
+    setForm((prev) =>
+      prev.reasonKey && prev.reasonKey === autoReasonRef.current
+        ? { ...prev, reasonKey: '' }
+        : prev,
+    )
+    autoReasonRef.current = ''
     let stale = false
     const timer = window.setTimeout(() => {
       api
@@ -732,6 +748,7 @@ export default function JournalPage() {
             // 时，哪怕还没打字也不该被切回形态（2026-10-21 复查 #8）
             const fillable = prev.reasonType === 'pattern' || prev.reasonType === 'wudao'
             if (!fillable || prev.reasonKey.trim()) return prev
+            autoReasonRef.current = best.key
             return {
               ...prev,
               reasonType: POOL_KEYS.includes(best.key) ? 'wudao' : 'pattern',
@@ -1069,6 +1086,7 @@ export default function JournalPage() {
                 value={form.reasonType}
                 onChange={(event) => {
                   // 切换来源时清空具体理由，避免「形态 key 留在题材里」这种脏数据
+                  autoReasonRef.current = ''
                   setForm((prev) => ({
                     ...prev,
                     reasonType: event.target.value,
@@ -1088,7 +1106,11 @@ export default function JournalPage() {
               {form.reasonType === 'pattern' || form.reasonType === 'wudao' ? (
                 <select
                   value={form.reasonKey}
-                  onChange={(event) => set('reasonKey', event.target.value)}
+                  onChange={(event) => {
+                    // 用户手选了：以后换票不再自动清掉它
+                    autoReasonRef.current = ''
+                    set('reasonKey', event.target.value)
+                  }}
                   className={INPUT}
                 >
                   <option value="">请选择</option>

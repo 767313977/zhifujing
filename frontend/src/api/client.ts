@@ -844,14 +844,21 @@ export const api = {
     minScore = 0,
     patterns?: string[] | null,
     days = 1,
+    phases?: string[] | null,
   ) => {
     const pick = (patterns ?? [])
       .filter(Boolean)
       .map((key) => `&pattern=${encodeURIComponent(key)}`)
       .join('')
     const win = days > 1 ? `&days=${days}` : ''
+    // 阶段筛选也要传（2026-10-28 体检）：徽标必须与 `/hits` 同口径，否则选了阶段之后
+    // 徽标还显示全市场家数、点进去只剩几只
+    const ph = (phases ?? [])
+      .filter(Boolean)
+      .map((key) => `&phase=${encodeURIComponent(key)}`)
+      .join('')
     return request<PatternCount[]>(
-      withDate(`/patterns/preview?min_score=${minScore}${pick}${win}`, date),
+      withDate(`/patterns/preview?min_score=${minScore}${pick}${win}${ph}`, date),
     )
   },
 

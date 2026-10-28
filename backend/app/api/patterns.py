@@ -225,6 +225,10 @@ def preview(
         le=60,
         description="窗口天数，与 `/hits` 同口径（>1 时按窗口内先后命中过算）",
     ),
+    phase: list[str] | None = Query(
+        None,
+        description="只看阶段判定属于这些档的票（与 `/hits` 的 phase 同口径、同限制）",
+    ),
 ) -> list[PatternCount]:
     """每个形态「**再加上它会剩多少只**」—— 筛选条 chip 徽标专用的交集预览。
 
@@ -246,10 +250,34 @@ def preview(
 
     只发两条查询（求交 + 分组计数），与候选形态个数无关；与 `/hits` 共用
     `_intersection_codes` 这一条定义，所以徽标数点进去的行数不会打架。
+
+    ⚠️ **`phase` 必须跟着 `/hits` 一起传**（2026-10-28 体检）：徽标要反映「按当前阶段
+    筛选之后，再点这个形态会剩多少只」。不传的话选了「明天预案」徽标还是全市场家数，
+    点进去只剩几只 —— 会被当成接口算错。限制与 `/hits` 完全一致（只支持最新交易日、
+    取值校验、超跌走全市场口径）。
     """
     target = trade_date or _latest_date(db)
     if target is None:
         return []
+
+    # 阶段筛选（2026-10-28 体检）：徽标必须跟着 `/hits` 的 phase 走，否则选了「明天预案」
+    # 之后，徽标还显示全市场家数 —— 点进去只有几只，看着像接口算错了。
+    codes_wanted = [key for key in (phase or []) if key]
+    if codes_wanted:
+        allowed = {**WUDAO_PHASE_LABELS, "oversold": "超跌"}
+        unknown_phase = [key for key in codes_wanted if key not in allowed]
+        if unknown_phase:
+            raise HTTPException(
+                status_code=400,
+                detail=f"未知阶段 {', '.join(unknown_phase)}，可选：{', '.join(allowed)}",
+            )
+        # 与 `/hits` 同一条限制：阶段 / 超跌都按库里最新的日线算
+        if target != _latest_date(db):
+            raise HTTPException(
+                status_code=400,
+                detail="阶段判定 / 超跌只支持最新交易日：它们按库里最新的日线计算，"
+                "翻到历史日期筛会与实际不符（点「最新」即可）",
+            )
 
     picked = [key for key in (pattern or []) if key]
     unknown = [key for key in picked if key not in _META]
@@ -260,9 +288,37 @@ def preview(
         )
 
     window = _window_dates(db, target, days)
+    # 阶段筛选后的代码集合；None = 不按阶段筛（保持原口径）
+    keep: set[str] | None = None
+    if codes_wanted:
+        keep = set()
+        wanted_phases = [key for key in codes_wanted if key != "oversold"]
+        if wanted_phases:
+            candidates = set(
+                db.scalars(
+                    select(PatternHit.code)
+                    .where(
+                        PatternHit.trade_date.in_(window),
+                        PatternHit.pattern.in_(_KEYS),
+                        PatternHit.score >= min_score,
+                    )
+                    .distinct()
+                )
+            )
+            verdicts = load_phases(db, sorted(candidates))
+            keep |= {
+                code
+                for code, verdict in verdicts.items()
+                if verdict.phase in wanted_phases
+            }
+        if "oversold" in codes_wanted:
+            keep |= set(_market_oversold(db, target))
+
     counts: dict[str, int] = {}
     if picked:
         codes = _intersection_codes(db, window, picked, min_score)
+        if keep is not None:
+            codes &= keep
         # codes 为空 → counts 保持全 0（交集为空，任何候选都还是 0）
         for batch in chunked(sorted(codes), _IN_BATCH):
             rows = db.execute(
@@ -270,6 +326,20 @@ def preview(
                     PatternHit.pattern,
                     func.count(func.distinct(PatternHit.code)),
                 )
+                .where(
+                    PatternHit.trade_date.in_(window),
+                    PatternHit.pattern.in_(_KEYS),
+                    PatternHit.score >= min_score,
+                    PatternHit.code.in_(batch),
+                )
+                .group_by(PatternHit.pattern)
+            ).all()
+            for key, n in rows:
+                counts[key] = counts.get(key, 0) + n
+    elif keep is not None:
+        for batch in chunked(sorted(keep), _IN_BATCH):
+            rows = db.execute(
+                select(PatternHit.pattern, func.count(func.distinct(PatternHit.code)))
                 .where(
                     PatternHit.trade_date.in_(window),
                     PatternHit.pattern.in_(_KEYS),

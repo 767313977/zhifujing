@@ -509,6 +509,21 @@ export default function Sectors() {
   const inCompare = selected != null && compareCodes.includes(selected)
 
   const onSelect = useCallback((code: string) => setSelected(code), [])
+  /**
+   * 点资金流矩阵的格子。
+   *
+   * ⚠️ 资金流面板有自己的口径（`flowTaxonomy`），与上面的板块排行（`taxonomy`）是
+   * **两套独立状态**。原来跟轮动矩阵共用 `onSelect`，于是两处口径不一致时点一下会把
+   * 另一个口径的板块代码塞进 `selected` —— 排行里找不到这只票、明细区空着
+   * （2026-10-28 体检）。这里先把页面口径同步成资金流那一套，再选中。
+   */
+  const onSelectFlow = useCallback(
+    (code: string) => {
+      setTaxonomy(flowTaxonomy)
+      setSelected(code)
+    },
+    [flowTaxonomy],
+  )
 
   const switchTaxonomy = useCallback((next: SectorTaxonomy) => {
     setTaxonomy(next)
@@ -909,8 +924,8 @@ export default function Sectors() {
             onHistoryDays={setFlowDays}
             taxonomy={flowTaxonomy}
             onTaxonomy={setFlowTaxonomy}
-            // 点矩阵格子 = 选中板块，与轮动矩阵、上面的板块排行是同一个动作
-            onSelect={onSelect}
+            // 点矩阵格子 = 选中板块；口径要跟着资金流那一套走（见 `onSelectFlow`）
+            onSelect={onSelectFlow}
             // 页面当前看的交易日：优先用 URL / 选择器上的 `date`，没选时用排行
             // 解析出来的那天（两者通常一致，但首屏刚进时 `date` 还是 null）
             pageDate={date ?? ranking?.trade_date ?? null}

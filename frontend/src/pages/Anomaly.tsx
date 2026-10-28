@@ -472,7 +472,11 @@ export default function AnomalyPage() {
                         type="button"
                         onClick={() =>
                           setDrill((current) =>
-                            current && current.sector === row.sector
+                            // 同一个板块**同一天**才收起；同一板块换一天是「看另一天的名单」，
+                            // 保持展开（2026-10-28 体检：原来只比板块名，点另一天会把面板关掉）
+                            current &&
+                            current.sector === row.sector &&
+                            current.date === row.date
                               ? null
                               : { sector: row.sector, date: row.date },
                           )

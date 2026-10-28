@@ -308,8 +308,13 @@ function NoteEditor({
   const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle')
   // 「已保存」复原定时器：卸载（切页 / 列表刷新卸载旧行）时清掉，别对已卸载组件 setState
   const savedTimer = useRef<number | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
+    // ⚠️ 只在**没在输入**时跟随外部值（2026-10-28 体检）：保存后 `onSaved()` 会刷新列表、
+    // `row.note` 变成刚保存的旧值；如果用户已经又点回来接着改，这里跟着覆盖就会把
+    // 刚敲的字吃掉（看起来像「保存把输入回滚了」）。
+    if (document.activeElement === inputRef.current) return
     setValue(row.note ?? '')
   }, [row.note])
 
@@ -342,6 +347,7 @@ function NoteEditor({
   return (
     <div className="relative w-full max-w-[220px]">
       <input
+        ref={inputRef}
         value={value}
         onChange={(event) => setValue(event.target.value)}
         onBlur={() => void save()}

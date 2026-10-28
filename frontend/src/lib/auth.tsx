@@ -10,7 +10,7 @@
  * 这里收到就把用户清掉，于是下一次渲染自动跳登录页 —— 不用每个页面各自处理。
  */
 
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { api, UNAUTHORIZED_EVENT } from '../api/client'
@@ -33,8 +33,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null)
   const [checking, setChecking] = useState(true)
   const navigate = useNavigate()
+  /**
+   * `me` 的同步副本。
+   *
+   * 为什么需要（2026-10-28 体检）：首屏那次 `/auth/me` 可能很慢（弱网 / 10 秒超时）。
+   * 用户在这期间完成登录后，迟到的 **401** 会落进下面的 catch 把 `me` 清掉 ——
+   * 刚登录成功的人立刻被踢回登录页。用 ref 记「已经有人登录过」，晚到的初始结果一律忽略。
+   */
+  const userRef = useRef<Me | null>(null)
 
   const setUser = useCallback((user: Me) => {
+    userRef.current = user
     setMe(user)
     setChecking(false)
   }, [])
@@ -44,7 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api
       .authMe()
       .then((user) => {
-        if (alive) setUser(user)
+        // 期间用户已登录 → 这次「我是谁」已经过时，别覆盖
+        if (alive && userRef.current === null) setUser(user)
       })
       .catch(() => {
         // 401（没登录）与网络错误都当作「没登录」：这一层只决定要不要跳登录页，
@@ -52,7 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // ⚠️ 网络错误也要能走到这里 —— `authMe` 带 10 秒超时（见 api/client.ts 的
         // AUTH_CHECK_TIMEOUT_MS），否则弱网下这个 promise 永不 settle，下面的
         // `checking` 就永远是 true、RequireAuth 渲染的空白页就永远白着（2026-10-10 修）。
-        if (alive) {
+        // ⚠️ 只在**还没人登录**时才清（2026-10-28 修）：迟到的 401 不该踢掉刚登录的用户。
+        if (alive && userRef.current === null) {
           setMe(null)
           setChecking(false)
         }
@@ -63,7 +74,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setUser])
 
   useEffect(() => {
-    const onUnauthorized = () => setMe(null)
+    const onUnauthorized = () => {
+      userRef.current = null
+      setMe(null)
+    }
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
   }, [])
@@ -79,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     // 无论服务端成功与否都把本地状态清掉：目标是「别再显示成已登录」——
     // 会话可能已失效、或请求根本没发出去，不该让用户卡在已登录界面。
+    userRef.current = null
     setMe(null)
     // 详情页「← → 切换」用的列表存在 sessionStorage 里，是上一个用户点过的上下文，
     // 登出时清掉，别带给下一个登录的人（2026-10-10 修）

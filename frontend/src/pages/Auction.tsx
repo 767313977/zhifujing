@@ -486,7 +486,13 @@ export default function AuctionPage() {
   const toolbar = (
     <>
       <span className="num hidden text-[13px] text-fg-dim lg:inline">
-        {loading ? '加载中…' : data ? `${data.total} 只有竞价数据` : '—'}
+        {/* 带上**实际数据日**（2026-10-28 体检）：「最新」时下拉只写「最新」，
+            而库里的最新一天不一定是今天 —— 不写出来就会把昨天 9:25 的竞价当成今天的 */}
+        {loading
+          ? '加载中…'
+          : data
+            ? `${data.trade_date} · ${data.total} 只有竞价数据`
+            : '—'}
       </span>
       <select
         value={date ?? ''}

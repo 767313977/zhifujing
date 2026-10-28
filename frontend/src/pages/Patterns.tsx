@@ -152,6 +152,14 @@ function readBoards(raw: string | null): Board[] {
   return names.length > 0 ? names : DEFAULT_BOARDS
 }
 
+/** 当前板块选择是否就是默认的那三个（「清除筛选」要不要显示 / 把板块还原成默认）。 */
+function isDefaultBoards(list: Board[]): boolean {
+  return (
+    list.length === DEFAULT_BOARDS.length &&
+    DEFAULT_BOARDS.every((name) => list.includes(name))
+  )
+}
+
 /**
  * 命中表**实际渲染**多少行（与 `PATTERN_LIMIT` 是两件事：那个管取数，这个管 DOM）。
  *
@@ -517,8 +525,9 @@ export default function Patterns() {
             onlyPhases,
           ),
           api.patternSummary(target),
-          // 徽标数据：跟着 `only` 与窗口走，所以每次切形态／切窗口都重算（与命中列表同一次请求里发出）
-          api.patternPreview(target, 0, only, win),
+          // 徽标数据：跟着 `only`、窗口**与阶段**走，所以每次切形态／窗口／阶段都重算
+          // （与命中列表同一次请求里发出；阶段不传的话徽标数与点进去的行数对不上）
+          api.patternPreview(target, 0, only, win, onlyPhases),
         ])
         if (isStale()) return
         setHits(list.items)
@@ -928,18 +937,29 @@ export default function Patterns() {
                 className="range-accent h-[3px] w-40"
               />
               <span className="num w-8 text-[13px] text-fg">{minScore}</span>
-              {(picked.length > 0 || minScore > 0 || phases.length > 0) && (
+              {(picked.length > 0 ||
+                minScore > 0 ||
+                phases.length > 0 ||
+                !isDefaultBoards(boards)) && (
                 <button
                   type="button"
                   onClick={() => {
                     setPicked([])
                     setMinScore(0)
                     setPhases([])
+                    // 板块也算筛选（2026-10-28 体检）：原来取消完所有板块只剩一张空表，
+                    // 「清除筛选」却因为不算板块而压根不显示
+                    setBoards(DEFAULT_BOARDS)
                   }}
                   className="num border border-line px-2 py-[2px] text-[13px] text-fg-dim hover:border-fg-dim hover:text-fg"
                 >
                   清除筛选
                 </button>
+              )}
+              {boards.length === 0 && (
+                <span className="text-[13px] text-danger">
+                  一个板块都没选 —— 列表必然是空的，点上面的板块或「清除筛选」恢复
+                </span>
               )}
             </div>
             {/* 阶段判定（2026-10-20 用户要求：单独一行，分「明天预案 / 明天盯」）。
