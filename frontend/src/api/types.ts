@@ -2177,6 +2177,10 @@ export interface InstitutionItem {
   sell_amount: number | null
   net_amount: number | null
   reason: string | null
+  /** 开盘红精选板块（该股最近一次涨停因哪个题材；没涨停过就是空数组） */
+  sectors: string[]
+  /** 同花顺三级行业路径，与 sectors 不是一套分类 */
+  industry: string | null
 }
 
 export interface InstitutionBoard {
@@ -2196,6 +2200,10 @@ export interface DdeItem {
   pct_chg: number | null
   /** 5日DDE（元）。与个股页那一栏是同一个数（同一张表、同一口径） */
   dde: number | null
+  /** 开盘红精选板块（该股最近一次涨停因哪个题材；没涨停过就是空数组） */
+  sectors: string[]
+  /** 同花顺三级行业路径，与 sectors 不是一套分类 */
+  industry: string | null
 }
 
 export interface DdeBoard {

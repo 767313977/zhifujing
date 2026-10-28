@@ -23,8 +23,6 @@ from app.config import get_settings
 from app.db import get_db
 from app.models import (
     PatternHit,
-    StockBasic,
-    StockConcept,
     StockDaily,
     StockUniverse,
     TradeCalendar,
@@ -43,6 +41,7 @@ from app.schemas import (
 )
 from app.services import pattern_track
 from app.services.patterns import PATTERNS, SCORE_EXCLUDED, WUDAO_PHASE_LABELS, is_st
+from app.services.stock_meta import industries_of, sectors_of
 from app.services.stock_phase import load_oversold, load_phases
 from app.sources.base import chunked
 
@@ -522,58 +521,6 @@ def _market_oversold(db: Session, target: date) -> dict[str, float]:
     return load_oversold(db, codes)
 
 
-def _sectors_of(db: Session, codes: set[str]) -> dict[str, list[str]]:
-    """每只票「最近一次涨停是因为哪个板块」→ `{code: [板块名, ...]}`。
-
-    口径与个股页「所属题材」一致（见 `PatternStockOut.sectors`）。
-
-    ⚠️ 取「该股出现过的**最近一天**」而不是当天：`stock_concept` 来自涨停天梯、只有
-    涨停股有值，按当天口径这个列表里 97% 的行会是空的。
-    **一次查全、在内存里按 code 挑最新的那天**：写成「每只票一条相关子查询」会把这个
-    接口从一次查询变成上千次（`code` 不是那张表主键的首列，每次都要扫）。
-    """
-    if not codes:
-        return {}
-    concept_rows = []
-    for batch in chunked(sorted(codes), _IN_BATCH):
-        concept_rows.extend(
-            db.execute(
-                select(
-                    StockConcept.code, StockConcept.trade_date, StockConcept.concept
-                ).where(StockConcept.code.in_(batch))
-            ).all()
-        )
-    latest_seen: dict[str, tuple[date, list[str]]] = {}
-    for code, seen_on, concept in concept_rows:
-        current = latest_seen.get(code)
-        if current is None or seen_on > current[0]:
-            latest_seen[code] = (seen_on, [concept])
-        elif seen_on == current[0]:
-            current[1].append(concept)
-    return {code: sorted(names) for code, (_, names) in latest_seen.items()}
-
-
-def _industries_of(db: Session, codes: set[str]) -> dict[str, str | None]:
-    """同花顺行业（三级路径）。与板块**不是一套分类**，见 `PatternStockOut.industry`。
-
-    一次查全即可 —— 建池 7 天一次、覆盖全 A，所以基本没有查不到的行；查不到就是 None。
-    """
-    if not codes:
-        return {}
-    industries: dict[str, str | None] = {}
-    for batch in chunked(sorted(codes), _IN_BATCH):
-        industries.update(
-            dict(
-                db.execute(
-                    select(StockBasic.code, StockBasic.industry).where(
-                        StockBasic.code.in_(batch)
-                    )
-                ).all()
-            )
-        )
-    return industries
-
-
 def _score_basis(picked: list[str]) -> set[str]:
     """形态模式下「评分」按哪些形态取最高分。
 
@@ -597,8 +544,8 @@ def _oversold_only_rows(
 
     板块 / 行业**照常给**（2026-10-28 改）：原先这里直接把两个字段写死成空，理由是
     「没涨停过就没有板块值」—— 但线上实测（10-28 的 278 只超跌票）**全部**查得到行业、
-    248 只查得到板块，三列全空只会让人以为数据没加载出来。查询走 `_sectors_of` /
-    `_industries_of`，与命中行同源同口径。
+    248 只查得到板块，三列全空只会让人以为数据没加载出来。查询走 `sectors_of` /
+    `industries_of`，与命中行同源同口径。
 
     「命中形态」仍然空着，这是事实：这些票今天一个形态都没中（它们就是因为「没进命中表」
     才被补进来的）。
@@ -618,8 +565,8 @@ def _oversold_only_rows(
         ).all():
             basic[code] = (name, close, pct_chg, amount)
 
-    sector_map = _sectors_of(db, set(codes))
-    industry_map = _industries_of(db, set(codes))
+    sector_map = sectors_of(db, set(codes))
+    industry_map = industries_of(db, set(codes))
 
     out: list[PatternStockOut] = []
     for code in sorted(codes, key=lambda item: devs.get(item, 0.0)):
@@ -843,9 +790,9 @@ def hits(
             }
         )
 
-    # 板块 / 行业：两处查询的口径与代价见 `_sectors_of` / `_industries_of`
-    sectors = _sectors_of(db, set(hit_codes))
-    industries = _industries_of(db, set(hit_codes))
+    # 板块 / 行业：两处查询的口径与代价见 `sectors_of` / `industries_of`
+    sectors = sectors_of(db, set(hit_codes))
+    industries = industries_of(db, set(hit_codes))
 
     grouped: dict[str, PatternStockOut] = {}
     for row in rows:

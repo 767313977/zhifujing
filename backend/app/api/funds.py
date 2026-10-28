@@ -43,6 +43,7 @@ from app.schemas import (
 )
 from app.services import etf_flow
 from app.services.etf_category import UNKNOWN
+from app.services.stock_meta import industries_of, sectors_of
 
 router = APIRouter(prefix="/api/funds", tags=["资金面"])
 
@@ -688,7 +689,17 @@ def institutions(
     else:
         items.sort(key=lambda item: item.net_amount or 0, reverse=True)
 
-    return InstitutionBoard(trade_date=target, items=items[:limit], total=len(items))
+    # 板块 / 行业只查「要返回的那几十只」：先排序截断，再统一补两列，
+    # 口径与形态页 / 异动页同一份实现（`services.stock_meta`）
+    top = items[:limit]
+    codes = {item.code for item in top}
+    sector_map = sectors_of(session, codes)
+    industry_map = industries_of(session, codes)
+    for item in top:
+        item.sectors = sector_map.get(item.code, [])
+        item.industry = industry_map.get(item.code)
+
+    return InstitutionBoard(trade_date=target, items=top, total=len(items))
 
 
 # DDE 榜的条数上限。当天全市场扫描的实际覆盖是两三千只，给到 200 已经够看
@@ -747,8 +758,13 @@ def dde_board(
     }
 
     raw.sort(key=lambda item: item[1] or 0, reverse=order != "outflow")
+    # 与机构榜一样：先截断再补「板块 / 行业」，只对要返回的那几十只发查询
+    top = raw[:limit]
+    codes = {code for code, _ in top}
+    sector_map = sectors_of(session, codes)
+    industry_map = industries_of(session, codes)
     items = []
-    for code, dde in raw[:limit]:
+    for code, dde in top:
         name, close, pct_chg = quotes.get(code, (None, None, None))
         items.append(
             DdeItem(
@@ -757,6 +773,8 @@ def dde_board(
                 close=close,
                 pct_chg=pct_chg,
                 dde=dde,
+                sectors=sector_map.get(code, []),
+                industry=industry_map.get(code),
             )
         )
     return DdeBoard(trade_date=day, items=items, total=len(raw))

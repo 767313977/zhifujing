@@ -1044,6 +1044,42 @@ function EtfIndustryTable({ items }: { items: EtfIndustryItem[] }) {
   )
 }
 
+/**
+ * 「板块」单元格：开盘红精选板块（该股最近一次涨停因哪个题材）。
+ *
+ * 口径与形态页 / 异动页一致：没有涨停记录就没有值（实测覆盖约 75%），所以空着是
+ * 事实、不是没加载出来，用「—」表示。多个板块时列里只放第一个、其余放 tooltip。
+ */
+function SectorCell({ sectors }: { sectors: string[] }) {
+  if (sectors.length === 0) return <span className="text-fg-dim">—</span>
+  return (
+    <span
+      className="whitespace-nowrap text-[13px] text-fg-muted"
+      title={sectors.join('、')}
+    >
+      {sectors[0]}
+      {sectors.length > 1 && (
+        <span className="text-fg-dim"> +{sectors.length - 1}</span>
+      )}
+    </span>
+  )
+}
+
+/**
+ * 「行业」单元格：同花顺三级路径（`电子-半导体-集成电路Ⅲ`）。
+ *
+ * 完整值最长 19 字，铺在列里太占宽 —— 只显示**第一级**，完整路径放 tooltip
+ * （与形态页同一做法）。注意它与「板块」不是一套分类。
+ */
+function IndustryCell({ industry }: { industry: string | null }) {
+  if (!industry) return <span className="text-fg-dim">—</span>
+  return (
+    <span className="whitespace-nowrap text-[13px] text-fg-muted" title={industry}>
+      {industry.split('-')[0]}
+    </span>
+  )
+}
+
 function DdeTable({ items }: { items: DdeItem[] }) {
   // 首屏不排，保持后端顺序（已按当前口径排序）；点列头才排 —— 与其它榜一致
   const [sort, shown] = useSort(items, DDE_SORTS, { key: null })
@@ -1055,6 +1091,14 @@ function DdeTable({ items }: { items: DdeItem[] }) {
           <tr>
             <SortTh sortKey="code" {...sort}>代码</SortTh>
             <SortTh sortKey="name" align="left" {...sort}>名称</SortTh>
+            {/* 板块 / 行业是一串名字、没有单一可比值，不挂排序（与形态页同理）；
+                口径见 SectorCell / IndustryCell 的说明 */}
+            <SortTh align="left" title="开盘红精选板块：该股最近一次涨停因哪个题材（没涨停过就没有值）">
+              板块
+            </SortTh>
+            <SortTh align="left" title="同花顺三级行业路径，只显示第一级，悬停看完整路径">
+              行业
+            </SortTh>
             <SortTh sortKey="pct_chg" {...sort}>涨跌幅</SortTh>
             <SortTh sortKey="close" {...sort}>收盘价</SortTh>
             <SortTh sortKey="dde" {...sort} title="5 日区间 dde 大单净额">5日DDE</SortTh>
@@ -1079,6 +1123,12 @@ function DdeTable({ items }: { items: DdeItem[] }) {
               </td>
               <td className="!text-left">
                 <StockLink code={item.code}>{item.name ?? item.code}</StockLink>
+              </td>
+              <td className="!text-left">
+                <SectorCell sectors={item.sectors} />
+              </td>
+              <td className="!text-left">
+                <IndustryCell industry={item.industry} />
               </td>
               <td>
                 <span className={`num ${toneOf(item.pct_chg)}`}>{fmtPct(item.pct_chg)}</span>
@@ -1110,6 +1160,13 @@ function InstitutionTable({ items }: { items: InstitutionItem[] }) {
           <tr>
             <SortTh sortKey="code" {...sort}>代码</SortTh>
             <SortTh sortKey="name" align="left" {...sort}>名称</SortTh>
+            {/* 板块 / 行业不挂排序（一串名字、没有单一可比值），口径见上面两个单元格组件 */}
+            <SortTh align="left" title="开盘红精选板块：该股最近一次涨停因哪个题材（没涨停过就没有值）">
+              板块
+            </SortTh>
+            <SortTh align="left" title="同花顺三级行业路径，只显示第一级，悬停看完整路径">
+              行业
+            </SortTh>
             <SortTh sortKey="pct_chg" {...sort}>涨跌幅</SortTh>
             <SortTh sortKey="buy_count" {...sort} title="买方机构家数">买方机构</SortTh>
             <SortTh sortKey="sell_count" {...sort} title="卖方机构家数">卖方机构</SortTh>
@@ -1141,6 +1198,12 @@ function InstitutionTable({ items }: { items: InstitutionItem[] }) {
               </td>
               <td className="!text-left">
                 <StockLink code={item.code}>{item.name ?? item.code}</StockLink>
+              </td>
+              <td className="!text-left">
+                <SectorCell sectors={item.sectors} />
+              </td>
+              <td className="!text-left">
+                <IndustryCell industry={item.industry} />
               </td>
               <td>
                 <span className={`num ${toneOf(item.pct_chg)}`}>{fmtPct(item.pct_chg)}</span>

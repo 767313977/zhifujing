@@ -2336,6 +2336,10 @@ class InstitutionItem(BaseModel):
     sell_amount: float | None
     net_amount: float | None
     reason: str | None
+    #: 开盘红精选板块（该股最近一次涨停因哪个题材；没涨停过就是空列表）
+    sectors: list[str] = []
+    #: 同花顺三级行业路径（`电子-半导体-集成电路Ⅲ`），与 `sectors` 不是一套分类
+    industry: str | None = None
 
 
 class InstitutionBoard(BaseModel):
@@ -2354,6 +2358,10 @@ class DdeItem(BaseModel):
     pct_chg: float | None
     # 5日DDE（元）。与个股页那一栏是**同一个数**（同一张表、同一口径，实测一致）
     dde: float | None
+    #: 开盘红精选板块（该股最近一次涨停因哪个题材；没涨停过就是空列表）
+    sectors: list[str] = []
+    #: 同花顺三级行业路径，与 `sectors` 不是一套分类
+    industry: str | None = None
 
 
 class DdeBoard(BaseModel):
