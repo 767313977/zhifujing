@@ -18,12 +18,18 @@
     python scripts/rescan_patterns.py --start 2026-07-01 --end 2026-10-28
     python scripts/rescan_patterns.py --days 60 --dry-run
 
+`--days` 与 `--start` **必须给一个**：不给就报错，避免手一抖把全部历史（270+ 个交易日）
+重扫一遍。`--end` 只配合 `--start` 用。
+
 ## 两点注意
 
 - **零 iFinD 配额**：全程 `no_ifind=True`，候选补日线只走东财 / 腾讯。重扫是维护操作，
   不该为此消耗当天的额度（东财 / 腾讯那两级仍可能发请求，但都不占配额）。
 - **会改写 `pattern_hit`，以及那几天的 `collect_log(task=patterns)`**。只扫「交易日历里
   有的、且不晚于最新日线」的日子；`--dry-run` 只打印清单与现有命中数，不写库。
+
+（2026-10-28 增强：在原有 `--start/--end` 基础上加了 `--days`、`--dry-run` 与「旧命中 →
+新命中」的逐日对比，原参数与零配额语义不变。）
 """
 
 import argparse
@@ -80,6 +86,10 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="只打印清单与现有命中数，不写库")
     parser.add_argument("--verbose", action="store_true", help="打印扫描器的 INFO 日志")
     args = parser.parse_args()
+    # 必须显式给区间：不加这道校验时「不带参数」会扫全部历史（270+ 天），
+    # 一次误操作就把整张 pattern_hit 重写一遍，代价太大。
+    if not args.start and not args.days:
+        parser.error("请给 --days N 或 --start YYYY-MM-DD（二选一，避免误扫全部历史）")
 
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
