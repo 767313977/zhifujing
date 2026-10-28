@@ -439,6 +439,29 @@ class IfindClient:
         except requests.RequestException as exc:
             raise IfindError(f"iFinD 请求失败（{server}.{tool}）：{exc}") from exc
 
+    def _call_extract(self, server: str, tool: str, params: dict) -> dict:
+        """调用并**在重试范围内**剥开三层嵌套，返回内层数据。
+
+        为什么要单独一层（2026-10-28 体检）：`call()` 的 `retry_call` 只管到
+        「HTTP + 外层 JSON」为止，`_extract()` 里的**内层 JSON 解析**（MCP
+        `content[0].text` 再解析一次）发生在重试之外 —— 网关回一段被截断的
+        content 时，`IfindParseError` 会直接抛给调用方，下次请求往往就正常了，
+        却没有第二次机会。`IfindParseError` 本来就被 `call()` 的 `_retryable`
+        归为可重试，这里把它也纳入重试，口径才对得上。
+
+        只对解析错再发一次（`retries=2`）：真正的网络错 / 限流 `call()` 内部已经
+        退避过了，外层不必重复三轮，否则最坏情况是 3×3 次计费请求。
+        """
+        return _extract(
+            retry_call(
+                lambda: self.call(server, tool, params),
+                retries=2,
+                backoff=self.settings.http_backoff,
+                description=f"iFinD 解析 {server}.{tool}",
+                retry_on=lambda exc: isinstance(exc, IfindParseError),
+            )
+        )[1]
+
     # ------------------------------------------------- 结构化行情（实时/高频）
 
     def _highfreq(
@@ -473,7 +496,7 @@ class IfindClient:
             }
             if interval is not None:
                 params["interval"] = interval
-            _, inner = _extract(self.call(server, tool, params))
+            inner = self._call_extract(server, tool, params)
             rows.extend(_rows_from_tables(inner.get("tables") or []))
         return rows
 
@@ -505,7 +528,7 @@ class IfindClient:
         注意：一次回答可能包含多张 Markdown 表（如 sector_data），
         这里全部展平；调用方若需区分表格请直接用 parse_tables。
         """
-        _, inner = _extract(self.call(server, tool, params))
+        inner = self._call_extract(server, tool, params)
         answer = inner.get("answer") or ""
         rows = [row for table in parse_tables(answer) for row in table]
         return answer, rows
@@ -524,7 +547,7 @@ class IfindClient:
         （写着「只返回前1000行结果」但实际是 100 行），**不能拿文案判断**。
         判断是否被截断只能用 `matched > returned`。
         """
-        _, inner = _extract(self.call("stock", "search_stocks", {"query": query}))
+        inner = self._call_extract("stock", "search_stocks", {"query": query})
         answer = inner.get("answer") or ""
         tables = parse_tables(answer)
         rows = [row for table in tables for row in table]

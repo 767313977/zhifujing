@@ -1094,6 +1094,12 @@ class DailyCollector:
 
         只存自选股与选股结果的行情，所以这里临时向 iFinD 取昨日涨停股
         的今日涨跌幅（单次上限 10 只，stock_quotes 内部自动分片）。
+
+        ⚠️ **均值只按「真拿到这只票」的样本算，且覆盖不足时留空**（2026-10-28 体检）：
+        原先直接对返回行取均值，不看覆盖 —— iFinD 偶发少回几只（分片丢行 / 停牌），
+        这时的均值其实是「返回子集」的均值，却当成整个涨停池的赚钱效应写进
+        `market_sentiment`，还会被简报与接力温度引用。现在按代码对齐、去重，
+        覆盖不足 2/3 时宁可留 None（页面显示「—」），也不拿残样本冒充全样本。
         """
         _require_today(trade_date, "昨日涨停股今日涨幅")
         with session_scope() as session:
@@ -1118,13 +1124,31 @@ class DailyCollector:
             return None
 
         records = self.ifind.stock_quotes([to_ths_symbol(c) for c in codes], ["涨跌幅"])
-        values = [
-            value
-            for value in (pick_float(record, "涨跌幅") for record in records)
-            if value is not None
-        ]
+        by_code: dict[str, float] = {}
+        for record in records:
+            # 代码列在不同工具里叫「thscode / 证券代码 / 代码」，统一抽数字再对齐
+            raw = pick_text(record, "thscode", "证券代码", "股票代码", "代码") or ""
+            code = "".join(ch for ch in raw if ch.isdigit())[:6]
+            value = pick_float(record, "涨跌幅")
+            if len(code) != 6 or value is None:
+                continue
+            by_code[code] = value
+        values = list(by_code.values())
         if not values:
             return None
+        if len(values) * 3 < len(codes) * 2:
+            logger.warning(
+                "昨日涨停今日均涨：只取到 %d/%d 只的涨跌幅，样本不足 2/3，本次留空",
+                len(values),
+                len(codes),
+            )
+            return None
+        if len(values) < len(codes):
+            logger.info(
+                "昨日涨停今日均涨：取到 %d/%d 只（其余停牌或来源漏行），按现有样本算均值",
+                len(values),
+                len(codes),
+            )
         return round(sum(values) / len(values), 2)
 
     # ---------------------------------------------------------------- 资金面

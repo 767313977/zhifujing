@@ -25,7 +25,7 @@ from datetime import date
 import requests
 
 from app.config import Settings, get_settings
-from app.sources.base import TokenBucket, retry_call
+from app.sources.base import TokenBucket, is_deterministic_http_error, retry_call
 from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
@@ -200,6 +200,9 @@ class KaipanhongSource:
             retries=self.settings.http_retries,
             backoff=self.settings.http_backoff,
             description=description,
+            # 4xx（408/429 除外）是确定性错误：参数错 / 接口改版 / 域名被挡，
+            # 重发多少次都是同一个结果，只会白等退避、白占令牌桶（见 base 里的说明）
+            retry_on=lambda exc: not is_deterministic_http_error(exc),
         )
         # errcode=0 才是成功。注意**空数据也是 errcode=0**（换个接口名就是空 List），
         # 所以调用方不能只看这一层，必须校验行数。
@@ -284,7 +287,11 @@ class KaipanhongSource:
         """
         members: list[dict] = []
         reported: int | None = None
+        # 去重用的集合在**循环内**维护：判断「有没有新增 / 是否取满」必须按唯一代码数，
+        # 否则越界重复吐出的尾部会把计数灌大，误判成「已经取满」而提前收尾
+        seen: set[str] = set()
         for page in range(MAX_PAGES):
+            before = len(seen)
             payload = self._post(
                 trade_date,
                 {
@@ -314,9 +321,37 @@ class KaipanhongSource:
                 except (TypeError, ValueError):
                     reported = None
             batch = payload.get("list") or []
-            members.extend(self._parse_member(row) for row in batch)
+            for raw in batch:
+                member = self._parse_member(raw)
+                members.append(member)
+                if member["code"]:
+                    seen.add(member["code"])
             if len(batch) < MEMBER_PAGE_SIZE:
-                break
+                # ⚠️ 短页**不等于**到底了（2026-10-28 体检）：这个接口偶尔会在没取满时
+                # 提前回一截短页，按「短页即停」会把残缺名单当完整名单落库 ——
+                # 下游按成分股求和算板块成交额，少几只就是少几个亿，而且看不出异常。
+                # 有 `Count`（真总数）时按它对账：没取满就继续翻。
+                if reported is None or len(seen) >= reported:
+                    break
+                if len(seen) == before:
+                    # 短页且这一页一个新人也没有：再翻也是同一批（越界重复吐尾部的
+                    # 老毛病），停手并留痕，别在 40 页上限里空转。
+                    logger.warning(
+                        "开盘红成分股 %s %s 短页停在 %d/%d 只，且本页没有新增，提前收尾",
+                        plate_id,
+                        trade_date,
+                        len(seen),
+                        reported,
+                    )
+                    break
+                logger.warning(
+                    "开盘红成分股 %s %s 遇到短页（本页 %d 行），但只取到 %d/%d 只，继续翻页",
+                    plate_id,
+                    trade_date,
+                    len(batch),
+                    len(seen),
+                    reported,
+                )
         else:
             logger.warning(
                 "开盘红成分股 %s %s 翻到 %d 页仍未结束，可能有成分股被漏掉",
@@ -328,14 +363,15 @@ class KaipanhongSource:
         # 去重（按代码、保留首次出现，顺序不乱 —— 龙一~龙五取的就是原始顺序的前 5 只）。
         # 这个接口越界会**重复吐尾部**（见模块顶部对照表），成员数恰为 MEMBER_PAGE_SIZE
         # 的整数倍时，最后一页会整页重复 —— 不去重就会被下游（板块成交额求和）重复累加。
-        seen: set[str] = set()
+        # 循环里那个 `seen` 只用来判「取满没有」，这里重建一份保证顺序语义（保留首次出现）
+        dedupe_seen: set[str] = set()
         unique: list[dict] = []
         for member in members:
             code = member["code"]
-            if code and code in seen:
+            if code and code in dedupe_seen:
                 continue
             if code:
-                seen.add(code)
+                dedupe_seen.add(code)
             unique.append(member)
         if len(unique) != len(members):
             logger.info(

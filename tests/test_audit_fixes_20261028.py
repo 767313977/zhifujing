@@ -16,6 +16,7 @@ from app.api.market import advance_decline
 from app.models import Base, SectorDaily, StockDaily, TradeCalendar
 from app.services import sector_rps
 from app.services.rps import percentiles
+from app.sources import akshare_source, base, kaipanhong
 
 
 @pytest.fixture()
@@ -180,3 +181,86 @@ def test_resolve_trade_date_accepts_past_trading_day(session):
     session.add(TradeCalendar(trade_date=past))
     session.commit()
     assert deps.resolve_trade_date(trade_date=past, session=session) == past
+
+
+# ------------------------------------------------ 采集：确定性错误不重试 / 只吞特定的 TypeError
+
+
+def test_deterministic_http_error_only_covers_4xx():
+    """4xx 不重试（408/429 除外）；5xx 与网络异常照旧重试。"""
+    import requests
+
+    def http_error(code: int) -> requests.HTTPError:
+        response = requests.Response()
+        response.status_code = code
+        return requests.HTTPError(response=response)
+
+    assert base.is_deterministic_http_error(http_error(400)) is True
+    assert base.is_deterministic_http_error(http_error(404)) is True
+    # 限流与请求超时是明确的「等会儿再来」
+    assert base.is_deterministic_http_error(http_error(429)) is False
+    assert base.is_deterministic_http_error(http_error(408)) is False
+    assert base.is_deterministic_http_error(http_error(500)) is False
+    assert base.is_deterministic_http_error(requests.Timeout("慢")) is False
+
+
+def test_lhb_no_data_only_matches_none_subscript():
+    """只把「result 是 null」那一种 TypeError 当无数据，别的照旧抛。"""
+    assert akshare_source._is_lhb_no_data(TypeError("'NoneType' object is not subscriptable"))
+    assert not akshare_source._is_lhb_no_data(TypeError("not enough values to unpack"))
+    assert not akshare_source._is_lhb_no_data(ValueError("'NoneType' object is not subscriptable"))
+
+
+class _FakeKaipanhong:
+    """用假的 `_post` 顶掉网络，只验分页收尾判据。"""
+
+    def __init__(self, pages: dict[str, dict]):
+        self.pages = pages
+        self.indexes: list[str] = []
+
+    def _post(self, trade_date, params, description):
+        index = params["Index"]
+        self.indexes.append(index)
+        return self.pages[index]
+
+
+def _member_row(code: str) -> list:
+    row = [None] * 11
+    row[kaipanhong.MEMBER_CODE] = code
+    row[kaipanhong.MEMBER_NAME] = code
+    return row
+
+
+def test_kaipanhong_members_continue_on_short_page(monkeypatch):
+    """短页没取满 Count 时继续翻 —— 不能把残缺名单当完整名单。"""
+    monkeypatch.setattr(kaipanhong, "MEMBER_PAGE_SIZE", 2)
+    fake = _FakeKaipanhong(
+        {
+            "0": {"Count": 4, "list": [_member_row("600000"), _member_row("600001")]},
+            "2": {"Count": 4, "list": [_member_row("600002")]},
+            "4": {"Count": 4, "list": [_member_row("600003")]},
+        }
+    )
+    source = object.__new__(kaipanhong.KaipanhongSource)
+    source._post = fake._post  # type: ignore[method-assign]
+
+    members = kaipanhong.KaipanhongSource.board_members(source, "P1", date(2026, 10, 27))
+    assert [m["code"] for m in members] == ["600000", "600001", "600002", "600003"]
+    assert fake.indexes == ["0", "2", "4"], "短页未取满时必须继续，取满才停"
+
+
+def test_kaipanhong_members_stop_when_short_page_adds_nothing(monkeypatch):
+    """短页且这一页没有新人（越界重复吐尾部）→ 立刻收尾，不在 40 页里空转。"""
+    monkeypatch.setattr(kaipanhong, "MEMBER_PAGE_SIZE", 2)
+    fake = _FakeKaipanhong(
+        {
+            "0": {"Count": 5, "list": [_member_row("600000"), _member_row("600001")]},
+            "2": {"Count": 5, "list": [_member_row("600000")]},
+        }
+    )
+    source = object.__new__(kaipanhong.KaipanhongSource)
+    source._post = fake._post  # type: ignore[method-assign]
+
+    members = kaipanhong.KaipanhongSource.board_members(source, "P1", date(2026, 10, 27))
+    assert [m["code"] for m in members] == ["600000", "600001"]
+    assert fake.indexes == ["0", "2"]

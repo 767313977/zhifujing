@@ -28,7 +28,7 @@ from datetime import date
 import requests
 
 from app.config import Settings, get_settings
-from app.sources.base import UA, TokenBucket, retry_call
+from app.sources.base import UA, TokenBucket, is_deterministic_http_error, retry_call
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +94,8 @@ class ThsLimitUpSource:
             retries=self.settings.http_retries,
             backoff=self.settings.http_backoff,
             description=f"同花顺涨停池 {trade_date}",
+            # 4xx（408/429 除外）= 确定性错误，不重试（理由见 base.is_deterministic_http_error）
+            retry_on=lambda exc: not is_deterministic_http_error(exc),
         )
 
     def limit_reasons(self, trade_date: date) -> list[dict]:

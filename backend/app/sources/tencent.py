@@ -97,7 +97,17 @@ def fetch_daily(code: str, *, start: date, end: date) -> list[dict]:
         return []
     qfq = _fetch("qfq")
     if qfq is None or qfq.empty:
-        return []
+        # ⚠️ 这里原先是 `return []`（2026-10-28 体检）：不复权有数据、前复权没有，
+        # 说明**来源这一趟出了问题**（解析失败 / 字段改名 / 半截响应），不是「没有这只票」。
+        # 返回空列表会让调用方把它当成退市 / 未上市，进而：
+        #   · `scripts/backfill_history` 把这一天记成「无数据」跳过（以后不再补）；
+        #   · 池外候选兜底把这只票当「取不到」并落到下一级（白白多花一次请求）。
+        # 两者都不会报错，只是数据默默缺了一块。抛异常让调用方按「失败」处理，
+        # 下一次采集还能再试。
+        raise RuntimeError(
+            f"腾讯前复权序列为空（不复权有 {len(plain)} 行，{symbol} {start}~{end}）"
+            "—— 疑似来源解析失败，按失败处理而不是「没有这只票」"
+        )
 
     qfq_days = [str(value)[:10] for value in qfq["date"].tolist()]
     qfq_close = {day: _num(value) for day, value in zip(qfq_days, qfq["close"].tolist())}

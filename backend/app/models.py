@@ -251,6 +251,14 @@ class LimitPool(Base):
     last_seal_time: Mapped[str | None] = mapped_column(String(16))
     open_times: Mapped[int | None] = mapped_column(Integer)
     consecutive: Mapped[int | None] = mapped_column(Integer)
+    # ⚠️ **这一列混了两种分类体系**（2026-10-28 体检查明，docstring 口径更正）：
+    #   · 2026-09 换源之后的行来自东财 push2ex 的「所属行业」，是**单级**行业名
+    #     （半导体 / 家居用品 / 铁路公路）；
+    #   · 更早的行由 iFinD 写入，是**同花顺三级路径**（「电子-半导体-集成电路」）。
+    # 两种值都合法、都非空，只看一行分不出是哪一种；**不能跨日期按它分组 / 求和**
+    # （同一天内一致，跨月就会混出两套名字）。要做全市场一致的行业分类请用
+    # `stock_basic.industry`（同花顺三级路径，7 天一次覆盖全 A），
+    # 要做短线板块归属请用 `stock_concept`（开盘啦精选板块，只覆盖涨停股）。
     industry: Mapped[str | None] = mapped_column(String(64))
 
 

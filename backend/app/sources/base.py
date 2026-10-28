@@ -9,6 +9,8 @@ import time
 from collections.abc import Callable
 from typing import TypeVar
 
+import requests
+
 logger = logging.getLogger(__name__)
 
 UA = (
@@ -51,6 +53,26 @@ class TokenBucket:
                     return
                 wait = (tokens - self._tokens) / self.rate
             time.sleep(wait)
+
+
+def is_deterministic_http_error(exc: Exception) -> bool:
+    """这个异常是不是「换下一秒重发也还是同一个结果」的确定性 HTTP 错误。
+
+    目前只认 4xx（408 请求超时、429 限流除外 —— 那两个是明确的「等会儿再来」）。
+    5xx 与网络层异常一律不算确定性错误，照旧重试。
+
+    为什么要把这条抽出来（2026-10-28 体检）：开盘红与同花顺涨停池的 `retry_call`
+    原来都是默认参数（**一律重试**），而这两个来源在参数写错 / 接口改版时会稳定
+    返回 400 / 404 —— 每次都要白等 2+4 秒、并发时还白占令牌桶。iFinD 与 akshare
+    的龙虎榜早就按错误类型判过了，这里把同一套判定给到这两条链路。
+    """
+    if not isinstance(exc, requests.HTTPError):
+        return False
+    response = exc.response
+    if response is None:
+        return False
+    code = response.status_code
+    return 400 <= code < 500 and code not in (408, 429)
 
 
 def retry_call(

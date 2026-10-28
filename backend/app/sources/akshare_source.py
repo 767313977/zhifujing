@@ -63,6 +63,18 @@ def _records(df: pd.DataFrame) -> list[dict]:
     ]
 
 
+def _is_lhb_no_data(exc: Exception) -> bool:
+    """东财「还没发布」时 akshare 抛的那一种 TypeError。
+
+    `data_json["result"]` 是 null → `None["pages"]` 抛
+    `TypeError: 'NoneType' object is not subscriptable`。只有这一种是「没有数据」，
+    **其余 TypeError 一律当 bug 上抛**（2026-10-28 体检）：原先调用处
+    `except TypeError: return []` 把「列改名后在某处解包失败」之类的真实故障也吞成
+    空表，于是那天机构席位静默为零、采集日志还是 ok。
+    """
+    return isinstance(exc, TypeError) and "subscriptable" in str(exc)
+
+
 def _except_lhb_not_published(exc: Exception) -> bool:
     """龙虎榜调用的重试判定：东财「还没发布」的那一种 TypeError 不重试。
 
@@ -71,7 +83,7 @@ def _except_lhb_not_published(exc: Exception) -> bool:
     这是**确定性**的：同一时刻重试 3 次（白等 2+4 秒）结果不会变，发布时间没到
     就是没到。其余异常（断连 / 超时等）照旧重试，宁可慢也别漏采。
     """
-    return not (isinstance(exc, TypeError) and "subscriptable" in str(exc))
+    return not _is_lhb_no_data(exc)
 
 
 def _call_bounded(fn: Callable[[], pd.DataFrame], description: str, timeout: float) -> pd.DataFrame:
@@ -192,7 +204,7 @@ class AkshareSource:
                 retry_on=_except_lhb_not_published,
             )
         except TypeError as exc:
-            if "subscriptable" not in str(exc):
+            if not _is_lhb_no_data(exc):
                 raise  # 不是那个签名，就不当「暂无数据」处理
             logger.info("龙虎榜 %s 来源暂无数据（东财还没发布），跳过", trade_date)
             return []
@@ -237,6 +249,10 @@ class AkshareSource:
                 retry_on=_except_lhb_not_published,
             )
         except TypeError as exc:
+            # 只吞「result 是 null」那一种；其它 TypeError 是代码/字段问题，
+            # 吞掉会让当天机构席位静默为 0（2026-10-28 体检）
+            if not _is_lhb_no_data(exc):
+                raise
             logger.info("龙虎榜机构统计 %s~%s 无数据: %s", start, end, exc)
             return []
         return _records(df)
