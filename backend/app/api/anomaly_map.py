@@ -36,12 +36,12 @@ import logging
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal, get_db
 from app.models import LimitPool, LimitReason, StockBasic, StockDaily, StockUniverse
-from app.schemas import AnomalyMapOut
+from app.schemas import AnomalyMapOut, IndustryStocksOut
 from app.services.patterns import is_st
 from app.sources.base import chunked
 
@@ -444,3 +444,99 @@ def anomaly_map(
 ) -> AnomalyMapOut:
     """个股异动图谱。口径与取数细节见模块说明与 `build_anomaly_map`。"""
     return AnomalyMapOut.model_validate(build_anomaly_map(session, days))
+
+
+def build_industry_stocks(
+    session: Session, sector: str, day: date | None = None
+) -> dict:
+    """某个板块（同花顺行业末段名）在某交易日的全部个股。
+
+    取数逻辑（**不依赖 FastAPI**，便于单测直接调）：
+
+    1. `stock_basic.industry` 是三级路径（`电子-半导体-集成电路Ⅲ`），先把每只票用
+       `_sector_of` 压成末段名，再与 `sector` 比 —— 与异动图谱分组**同一个函数**，
+       两处口径不会走岔（级别记号 Ⅰ/Ⅱ/Ⅲ 也是在这里一起剥掉的）。
+    2. 一次性把 `stock_basic` 全表读进内存（约 5300 行），在 Python 里挑。写成
+       SQL 的 `LIKE '%-名字'` 也可以，但要额外枚举 5 个级别记号的后缀，容易漏。
+    3. 行情只查**一天**（`stock_daily`），市值取 `stock_universe` 的快照 —— 与图谱
+       那张表同源。停牌票当天没有日线，就不出现在列表里（不拿旧价冒充当天）。
+
+    `day` 不给就用库里最新的交易日。
+    """
+    if day is None:
+        day = session.scalar(select(func.max(StockDaily.trade_date)))
+
+    basics = [
+        (code, name)
+        for code, name, industry in session.execute(
+            select(StockBasic.code, StockBasic.name, StockBasic.industry)
+        ).all()
+        if _sector_of(industry) == sector
+    ]
+    if not basics or day is None:
+        return {"sector": sector, "trade_date": None, "count": 0, "items": []}
+
+    names = dict(basics)
+    quotes: dict[str, tuple] = {}
+    caps: dict[str, float | None] = {}
+    for batch in chunked(sorted(names), _IN_BATCH):
+        for code, close, pct_chg, amount in session.execute(
+            select(
+                StockDaily.code,
+                StockDaily.close,
+                StockDaily.pct_chg,
+                StockDaily.amount,
+            ).where(StockDaily.trade_date == day, StockDaily.code.in_(batch))
+        ).all():
+            quotes[code] = (close, pct_chg, amount)
+        caps.update(
+            dict(
+                session.execute(
+                    select(StockUniverse.code, StockUniverse.total_mv).where(
+                        StockUniverse.code.in_(batch)
+                    )
+                ).all()
+            )
+        )
+
+    items = [
+        {
+            "code": code,
+            "name": names[code],
+            "close": close,
+            "pct_chg": pct_chg,
+            "amount": amount,
+            "cap": _cap(caps.get(code)),
+        }
+        for code, (close, pct_chg, amount) in quotes.items()
+    ]
+    # 涨跌幅降序；没有涨跌幅的排最后（`-inf` 而不是 0，否则会被当成「平盘」混在中间）
+    items.sort(
+        key=lambda item: (
+            item["pct_chg"] if item["pct_chg"] is not None else float("-inf")
+        ),
+        reverse=True,
+    )
+    return {
+        "sector": sector,
+        "trade_date": day,
+        "count": len(items),
+        "items": items,
+    }
+
+
+@router.get("/anomaly-map/industry", response_model=IndustryStocksOut)
+def industry_stocks(
+    sector: str = Query(
+        ...,
+        min_length=1,
+        max_length=32,
+        description="板块名＝同花顺行业路径末段（已去 Ⅰ/Ⅱ/Ⅲ 级别记号），如「其他通用设备」",
+    ),
+    day: date | None = Query(None, alias="date", description="交易日，默认库里最新一天"),
+    session: Session = Depends(get_db),
+) -> IndustryStocksOut:
+    """点「板块」后看到的该板块全部个股（异动页的下钻）。"""
+    return IndustryStocksOut.model_validate(
+        build_industry_stocks(session, sector, day)
+    )

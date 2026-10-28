@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
-import type { AnomalyMap, AnomalyRow } from '../api/types'
+import type { AnomalyMap, AnomalyRow, IndustryStocks } from '../api/types'
 import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import SortTh from '../components/SortTh'
-import { fmtPct, toneOf } from '../lib/format'
+import { fmtAmount, fmtPct, toneOf } from '../lib/format'
 import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'
 
@@ -114,6 +114,45 @@ export default function AnomalyPage() {
   const [query, setQuery] = useState('')
   // 筛选只认防抖后的关键字：输入框照常即时响应，filter+sort 等敲字停顿后再跑
   const debouncedQuery = useDebounced(query, SEARCH_DEBOUNCE_MS)
+
+  /**
+   * 点「板块」后的下钻：该板块当天的**全部个股**（不是只有异动的那几只）。
+   *
+   * 带上那一行的 `date`：这一屏是 22 天的窗口，点 10-26 那行就该看 10-26 的行情，
+   * 而不是「顺便」给最新一天 —— 两个日期混着看最容易把旧价当现价。
+   * 再点同一个板块收起（toggle），省得再去点右上角的关闭。
+   */
+  const [drill, setDrill] = useState<{ sector: string; date: string } | null>(null)
+  const [drillData, setDrillData] = useState<IndustryStocks | null>(null)
+  const [drillLoading, setDrillLoading] = useState(false)
+  const [drillError, setDrillError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!drill) {
+      setDrillData(null)
+      setDrillError(null)
+      return
+    }
+    let stale = false
+    setDrillLoading(true)
+    setDrillError(null)
+    // 先清空：换一个板块时留着上一个板块的名单，会闪一下错的内容
+    setDrillData(null)
+    api
+      .anomalyIndustry(drill.sector, drill.date)
+      .then((result) => {
+        if (!stale) setDrillData(result)
+      })
+      .catch((err: Error) => {
+        if (!stale) setDrillError(err.message)
+      })
+      .finally(() => {
+        if (!stale) setDrillLoading(false)
+      })
+    return () => {
+      stale = true
+    }
+  }, [drill])
 
   useEffect(() => {
     let stale = false
@@ -268,6 +307,98 @@ export default function AnomalyPage() {
           </span>
         </div>
 
+        {/* 板块下钻：点表格里的板块名后，这里列出该板块当天的**全部个股** */}
+        {drill && (
+          <div className="border-b border-line-soft">
+            <div className="flex flex-wrap items-center gap-2 px-4 py-2">
+              <span className="text-[13px] text-fg-dim">板块个股</span>
+              <span className="text-[14px] text-fg">{drill.sector}</span>
+              <span className="num text-[12px] text-fg-dim">
+                {drillLoading
+                  ? '加载中…'
+                  : drillData
+                    ? `${drillData.trade_date ?? drill.date} · ${drillData.count} 只`
+                    : ''}
+              </span>
+              <button
+                type="button"
+                onClick={() => setDrill(null)}
+                className="num ml-auto border border-line px-2 py-[2px] text-[12px] text-fg-dim transition-colors hover:border-fg-dim hover:text-fg"
+              >
+                收起
+              </button>
+            </div>
+            {drillError ? (
+              <div className="px-4 pb-3 text-[13px] text-danger">
+                板块个股取数失败：{drillError}
+              </div>
+            ) : drillLoading ? (
+              <div className="px-4 py-6 text-center text-[13px] text-fg-dim">加载中…</div>
+            ) : !drillData || drillData.items.length === 0 ? (
+              <div className="px-4 py-6 text-center text-[13px] text-fg-dim">
+                该板块当天没有行情（停牌或未采集）
+              </div>
+            ) : (
+              // 板块可能有上百只票（如「其他专用设备」），给一个固定高度内部滚动，
+              // 不把下面那张异动表顶出屏幕
+              <div className="max-h-[300px] overflow-auto">
+                <table className="grid-table">
+                  <thead>
+                    <tr>
+                      <th className="!text-left">代码</th>
+                      <th className="!text-left">名称</th>
+                      <th>收盘</th>
+                      <th>涨幅%</th>
+                      <th>成交额</th>
+                      <th>总市值</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drillData.items.map((item) => (
+                      <tr key={item.code}>
+                        <td className="num !text-left">
+                          <Link
+                            to={`/stock/${encodeURIComponent(item.code)}`}
+                            className="text-fg-dim hover:text-accent"
+                          >
+                            {item.code}
+                          </Link>
+                        </td>
+                        <td className="!text-left">
+                          <Link
+                            to={`/stock/${encodeURIComponent(item.code)}`}
+                            className="text-fg hover:text-accent"
+                          >
+                            {item.name ?? item.code}
+                          </Link>
+                        </td>
+                        <td>
+                          <span className="num">
+                            {item.close == null ? '—' : item.close.toFixed(2)}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`num ${toneOf(item.pct_chg)}`}>
+                            {fmtPct(item.pct_chg)}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="num text-fg-muted">{fmtAmount(item.amount)}</span>
+                        </td>
+                        <td>
+                          <span className="num text-fg-muted">
+                            {item.cap == null ? '—' : `${item.cap.toFixed(1)}亿`}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {loading ? (
           <div className="px-4 py-10 text-center text-[14px] text-fg-dim">加载中…</div>
         ) : allCount === 0 ? (
@@ -326,10 +457,25 @@ export default function AnomalyPage() {
                     <td className="!text-left">
                       {/* 板块＝同花顺行业路径的末段（去掉 Ⅰ/Ⅱ/Ⅲ 级别记号），
                           完整路径放悬停提示 —— 2026-10-09 用户指出原先并排的「行业」
-                          列显示的就是同一个值（重复），那一列已删。 */}
-                      <span className="text-fg-muted" title={row.industry ?? undefined}>
+                          列显示的就是同一个值（重复），那一列已删。
+                          点一下在表格上方展开该板块当天的**全部个股**（不是只有异动的那几只），
+                          再点一次收起。 */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDrill((current) =>
+                            current && current.sector === row.sector
+                              ? null
+                              : { sector: row.sector, date: row.date },
+                          )
+                        }
+                        title={`${row.industry ?? row.sector} · 点开看该板块当天的全部个股`}
+                        className={`text-left transition-colors hover:text-accent ${
+                          drill?.sector === row.sector ? 'text-accent' : 'text-fg-muted'
+                        }`}
+                      >
                         {row.sector}
-                      </span>
+                      </button>
                       {row.theme_start && (
                         <span className="ml-1.5 border border-ok/40 px-1 py-[1px] text-[11px] text-ok">
                           题材启动日

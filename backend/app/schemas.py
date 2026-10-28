@@ -1159,6 +1159,35 @@ class AnomalyMapOut(ApiModel):
     rows: list[AnomalyRowOut]
 
 
+class IndustryStockOut(ApiModel):
+    """某板块（同花顺行业末段）在某个交易日的全部个股。
+
+    回答的是「这个板块里都有谁」，与 `AnomalyRowOut` 那张「谁在动」的表不是一回事：
+    这里**不看有没有异动**，板块的每一只票都在。
+    """
+
+    code: str
+    name: str | None
+    close: float | None
+    pct_chg: float | None
+    #: 成交额（元）
+    amount: float | None
+    #: 总市值（**亿元**，保留 1 位，与 `AnomalyRowOut.cap` 同口径）
+    cap: float | None
+
+
+class IndustryStocksOut(ApiModel):
+    """`/api/anomaly-map/industry` 的返回。"""
+
+    #: 板块名（同花顺行业路径末段，已去掉 Ⅰ/Ⅱ/Ⅲ 级别记号）
+    sector: str
+    #: 实际取到的交易日（停牌/未采集的那天可能没有行情）
+    trade_date: date | None
+    count: int
+    #: 按当日涨跌幅降序（没行情的排最后）
+    items: list[IndustryStockOut]
+
+
 # --------------------------------------------------------------- 数据管理
 
 

@@ -845,6 +845,26 @@ export interface AnomalyMap {
   rows: AnomalyRow[]
 }
 
+/** 某板块（同花顺行业末段）在某个交易日的个股。异动页点「板块」后的下钻 */
+export interface IndustryStock {
+  code: string
+  name: string | null
+  close: number | null
+  pct_chg: number | null
+  /** 成交额（元） */
+  amount: number | null
+  /** 总市值（亿元，保留 1 位） */
+  cap: number | null
+}
+
+export interface IndustryStocks {
+  sector: string
+  trade_date: string | null
+  count: number
+  /** 按当日涨跌幅降序 */
+  items: IndustryStock[]
+}
+
 export interface LhbItem {
   trade_date: string
   code: string

@@ -26,6 +26,7 @@ import type {
   FuturesBasis,
   IndexHistory,
   IndustryBreadth,
+  IndustryStocks,
   InstitutionBoard,
   InstitutionOrder,
   Invite,
@@ -517,6 +518,15 @@ export const api = {
    * `api/anomaly_map.py`。
    */
   anomalyMap: (days = 22) => request<AnomalyMap>(`/anomaly-map?days=${days}`),
+
+  /**
+   * 某个板块（同花顺行业末段名）在某交易日的全部个股 —— 异动页点「板块」的下钻。
+   * `date` 不传就取库里最新一天。
+   */
+  anomalyIndustry: (sector: string, date?: string | null) =>
+    request<IndustryStocks>(
+      withDate(`/anomaly-map/industry?sector=${encodeURIComponent(sector)}`, date),
+    ),
 
   watchlist: () => request<WatchlistRow[]>('/watchlist'),
 
