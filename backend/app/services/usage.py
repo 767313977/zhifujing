@@ -16,13 +16,14 @@ import calendar
 import logging
 from datetime import date, timedelta
 from enum import IntEnum
+from math import ceil
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.config import Settings, get_settings
 from app.db import session_scope
-from app.models import IfindUsage, TradeCalendar
+from app.models import IfindUsage, TradeCalendar, Watchlist
 from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,15 @@ HIT_DDE_DAILY = 70  # 「命中前 50 只的 DDE 补齐」
 BASE_DAILY = 28  # 全市场日线 + DDE 全市场扫描（两块地基）
 CORE_DAILY = 43  # 指数 / 涨停三池 / 情绪 / 板块 / 自选
 
+#: 日耗模型里「自选股」按多少只估的。
+#:
+#: ⚠️ 2026-10-28 体检：`CORE_DAILY = 43` 里含「自选股每只 1 次/天」（`sync_watchlist`
+#: 逐只 `sync_stock`），但自选是按用户隔离、可增删的 —— 加到 30 只时真实日耗比模型
+#: 高 20 次，判档会**偏松**（该让路时判成正常）。所以这里不再写死：以 10 只为基线，
+#: 超出部分逐只加到主线日耗上（上限 capped，避免个别用户把模型撑爆）。
+WATCHLIST_BASELINE = 10
+WATCHLIST_EXTRA_CAP = 90  # 每用户上限 100 只，扣掉基线正好 90
+
 
 class QuotaLevel(IntEnum):
     """配额紧张程度，数值越大越紧张，判定一律用 `>=`。
@@ -71,8 +81,9 @@ class QuotaLevel(IntEnum):
     CORE_ONLY = 3
 
 
-#: 让路阶梯：`(这一档还能撑住的日耗, 档位)`，**从宽到窄**，第一个
-#: 「剩余额度 ≥ 日耗 × 还要采的交易日数」成立的就是当前档。
+#: 让路阶梯的**基线**：`(这一档还能撑住的日耗, 档位)`，从宽到窄。
+#: 实际判档用 `_level_for` 按「自选股只数」动态调整前两档（见 `WATCHLIST_BASELINE`），
+#: 这张表保留为口径说明与默认值。
 #:
 #: ⚠️ 「还要采的天数」= 余下交易日（含今天）**− 今天**（见 `quota_status`）：
 #: 判档是在采集途中求值的，今天那一轮要么已经跑完、要么正在跑，再算一天等于白留一天
@@ -257,6 +268,47 @@ def cycle_trade_days(day: date, start: date, end: date) -> tuple[int, int]:
     return trade_days_between(start, day), trade_days_between(start, end)
 
 
+def _calendar_last_day() -> date | None:
+    with session_scope() as session:
+        return session.scalar(select(func.max(TradeCalendar.trade_date)))
+
+
+def _watchlist_extra_calls() -> int:
+    """自选股超出基线部分带来的每日额外调用数。
+
+    读的是 `watchlist` 的**去重代码数**（同一只票被多个用户收藏只算一次，
+    与 `collect_daily.sync_watchlist` 的 `distinct()` 口径一致）。
+    查询失败时返回 0（按基线算）—— 配额守卫不能因为一次读库失败把整轮采集带崩。
+    """
+    try:
+        with session_scope() as session:
+            count = int(
+                session.scalar(select(func.count(func.distinct(Watchlist.code)))) or 0
+            )
+    except Exception:  # noqa: BLE001 - 见 docstring
+        logger.warning("读取自选股只数失败，日耗模型按基线 %d 只算", WATCHLIST_BASELINE)
+        return 0
+    return min(max(count - WATCHLIST_BASELINE, 0), WATCHLIST_EXTRA_CAP)
+
+
+def _gap_trade_days(calendar_last: date | None, today: date, end: date) -> int:
+    """交易日历还没铺到 `end` 的那一段，按「一周 5 个交易日」估算。
+
+    为什么需要（2026-10-28 体检）：日历是**按自然年预置**的（只到当年 12-31），
+    而计量周期跨月滚动 —— 12 月的周期末通常落在次年 1 月。这时
+    `trade_days_between(today, end)` 只数到 12-31，`days_left` 被日历上界截断，
+    判档按「还剩几天」算出来的余量偏大 → **12 月会判得偏松**（该让路时不动作）。
+    这里把缺的那一段按 5/7 折算补上：只是判档用的估计值，不写库、不影响用量统计。
+    """
+    if calendar_last is None or calendar_last >= end:
+        return 0
+    # 从日历末日次日开始估；日历整段缺失时从「今天」之后开始，别把已过的日子算进来
+    start = max(calendar_last, today - timedelta(days=1))
+    if start >= end:
+        return 0
+    return ceil((end - start).days * 5 / 7)
+
+
 def quota_status(day: date | None = None, settings: Settings | None = None) -> dict:
     """当前计量周期的完整视图，供「数据管理」页与配额守卫共用。"""
     settings = settings or get_settings()
@@ -287,12 +339,32 @@ def quota_status(day: date | None = None, settings: Settings | None = None) -> d
 
     # 让路判据（2026-10-13 改）：**剩下的额度够不够按某一档的日耗撑完还要采的交易日**
     days_left = trade_days_between(today, end)  # 含今天，只用于展示
+    # 日历只铺到当年底，周期末在次年 1 月时上面那个数会被截断（见 `_gap_trade_days`）
+    calendar_last = _calendar_last_day()
+    gap_days = _gap_trade_days(calendar_last, today, end)
+    if gap_days:
+        logger.info(
+            "交易日历只到 %s，它之后到周期末 %s 另有 %d 个交易日（按 5/7 估算），已计入判档",
+            calendar_last,
+            end,
+            gap_days,
+        )
+        days_left += gap_days
     remaining = max(quota - used, 0)
+    # 自选股只数会按「每只 1 次/天」直接加在主线日耗上（见 `WATCHLIST_BASELINE`）
+    extra_calls = _watchlist_extra_calls()
+    core_daily = CORE_DAILY + extra_calls
+    full_daily = FULL_DAY_CALLS + extra_calls
     # 判档按「还要采几天」= 上面 − 今天：判档发生在采集途中，今天那轮已经在跑/跑完，
     # 再算一天等于白留一天预算（2026-10-13 用户实测后要求放宽这一天）。
     # ⚠️ 这里可能得到 0（周期最后一天），但 `_level_for` 会按**至少 1 天**算 ——
     # 今天这一轮仍要花额度，剩 0 时不能再判成正常档（2026-10-18 修）。
-    level = _level_for(remaining, max(days_left - 1, 0))
+    level = _level_for(
+        remaining,
+        max(days_left - 1, 0),
+        core_daily=core_daily,
+        full_daily=full_daily,
+    )
     # 手工压档（见 `FORCED_LEVELS`）：只覆盖列出的那一天，其余一律照常。
     # 压档只改「判成哪一档」，不改用量统计 —— 所以页面上的已用/剩余仍是真实值。
     forced = FORCED_LEVELS.get(today)
@@ -300,7 +372,7 @@ def quota_status(day: date | None = None, settings: Settings | None = None) -> d
         level = forced
     # 满负荷的余下需求 ÷ 剩余额度：只给页面看（>1 = 满负荷撑不完，该让路了），
     # 判档本身不用它
-    need_calls = FULL_DAY_CALLS * days_left
+    need_calls = full_daily * days_left
     need_ratio = round(need_calls / remaining, 4) if remaining > 0 else None
 
     return {
@@ -328,15 +400,29 @@ def quota_status(day: date | None = None, settings: Settings | None = None) -> d
     }
 
 
-def _level_for(remaining: int, collect_days: int) -> QuotaLevel:
+def _level_for(
+    remaining: int,
+    collect_days: int,
+    *,
+    core_daily: int = CORE_DAILY,
+    full_daily: int = FULL_DAY_CALLS,
+) -> QuotaLevel:
     """`LEVEL_BUDGETS` 里第一个「剩余额度 ≥ 日耗 × 还要采的交易日数」的档位。
 
     `collect_days` **不含今天**（调用方传 `余下交易日 − 1`），但这里会把它**下限设为 1**：
     周期最后一天传 0，如果直接乘 0，每一档都会成立、恒判正常档 —— 剩 0 额度时也会
     全速跑，当天必然撞墙（2026-10-18 修）。今天这一轮还没跑完，至少要按 1 天算。
+
+    `core_daily` / `full_daily` 默认取基线常量；`quota_status` 会按自选股只数把它们
+    抬高（见 `_watchlist_extra_calls`），保证「日耗模型不写死」。
     """
     days = max(collect_days, 1)
-    for daily, level in LEVEL_BUDGETS:
+    for daily, level in (
+        (full_daily, QuotaLevel.NORMAL),
+        (full_daily - HIT_DDE_DAILY, QuotaLevel.PAUSE_HIT_DDE),
+        (core_daily, QuotaLevel.PAUSE_KLINE),
+        (0, QuotaLevel.CORE_ONLY),
+    ):
         if remaining >= daily * days:
             return level
     return QuotaLevel.CORE_ONLY

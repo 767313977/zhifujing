@@ -126,6 +126,60 @@ def _record(trade_date: date, status: str, rows: int, message: str | None) -> No
         )
 
 
+#: 「这一天在来源侧就短，别再重采」的标记任务。
+#:
+#: 为什么需要（2026-10-28 体检）：历史日的覆盖判据是「库里有全池 80% 的票」
+#: （见 `_RECENT_MISSING_RATIO` 的注释），而早期交易日天然覆盖不到今天股票池里的
+#: 次新股 / 后来上市的新股 —— 这类日子**永远**判缺。`collect(full=True)` 每轮都会
+#: 把它们当缺日重采一遍（一天约 11 次 iFinD 调用），启动一次就烧一笔，而且没有上限。
+#: 采到之后仍然是缺的，就落一条标记；以后直接跳过（要重采就删这条 collect_log）。
+SHORT_TASK = "kline_short"
+
+
+def _is_short_day(trade_date: date) -> bool:
+    with session_scope() as session:
+        return (
+            session.scalar(
+                select(CollectLog.id)
+                .where(
+                    CollectLog.trade_date == trade_date,
+                    CollectLog.task == SHORT_TASK,
+                )
+                .limit(1)
+            )
+            is not None
+        )
+
+
+def _short_days() -> set[date]:
+    """所有已标记「来源侧就短」的交易日（一次查完，避免逐日一条 SQL）。"""
+    with session_scope() as session:
+        return set(
+            session.scalars(
+                select(CollectLog.trade_date).where(
+                    CollectLog.task == SHORT_TASK,
+                    CollectLog.trade_date.is_not(None),
+                )
+            )
+        )
+
+
+def _mark_short_day(trade_date: date, rows: int, message: str) -> None:
+    """落一条「来源侧就短」的标记（同一天只写一次）。"""
+    if _is_short_day(trade_date):
+        return
+    with session_scope() as session:
+        session.add(
+            CollectLog(
+                trade_date=trade_date,
+                task=SHORT_TASK,
+                status="skipped",
+                rows=rows,
+                message=message,
+            )
+        )
+
+
 def _trade_dates(start: date, end: date) -> list[date]:
     with session_scope() as session:
         return list(
@@ -231,6 +285,7 @@ class KlineCollector:
         calls = 0
         failed: list[str] = []
         pending = 0
+        short_days = _short_days()
         for index, day in enumerate(days):
             # 近端几个交易日按「严」判：缺票就重采（见 `_RECENT_MISSING_RATIO`）
             strict = len(days) - index <= _RECENT_STRICT_DAYS
@@ -242,6 +297,11 @@ class KlineCollector:
                 )
                 logger.info("本轮补满 %d 天，窗口内还剩 %d 天待补", max_days, pending)
                 break
+            if day in short_days:
+                # 已经采过、来源侧就短的历史日：再采还是同一批（一天约 11 次调用），
+                # 见 `SHORT_TASK` 的说明。要重采就删掉那天的 collect_log 标记
+                skipped += 1
+                continue
             if not self._needs_day(day, universe, strict=strict):
                 skipped += 1
                 continue
@@ -265,6 +325,19 @@ class KlineCollector:
                 continue
             fetched.append(day)
             logger.info("%s 写入 %d 行（%d 次调用）", day, got, used)
+            # 采完仍判缺 → 这一天在来源侧就短（历史早期日天然缺后来上市的票）。
+            # 落标记后不再重采，避免每次启动都白烧 11 次调用（见 `SHORT_TASK`）。
+            # 近端日（strict）**不标**：那几天真缺就是没采到，该重试
+            if not strict and self._needs_day(day, universe, strict=False):
+                _mark_short_day(
+                    day,
+                    got,
+                    "来源侧就短：采完仍未达覆盖阈值（历史早期交易日缺后来上市的票），"
+                    "以后不再重采；要重采请删除这条 collect_log",
+                )
+                logger.warning(
+                    "%s 采完仍是短日（写入 %d 行），已标记为「不再重采」", day, got
+                )
 
         pruned = self.prune()
         result = {
@@ -434,6 +507,7 @@ class KlineCollector:
         """
         if not days:
             return 0
+        marked = _short_days()
         with session_scope() as session:
             counts = dict(
                 session.execute(
@@ -451,7 +525,8 @@ class KlineCollector:
         return sum(
             1
             for index, day in enumerate(days)
-            if self._needs_day(
+            if day not in marked
+            and self._needs_day(
                 day,
                 universe,
                 strict=len(days) - index <= tail,

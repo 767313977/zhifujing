@@ -682,6 +682,26 @@ def _sync_codes_three_levels(
       **有了腾讯这一级，它其实很少再触发** —— 只有在腾讯也整轮不通时才轮得到它顶上来。
     """
     from app.jobs.collect_daily import DailyCollector
+    from app.services.usage import QuotaLevel, level_label, quota_level
+
+    # ⚠️ 配额让路（2026-10-28 体检）：这一层是「补日线」的第三级，纯属增强 ——
+    # 原来的 iFinD 回退只看 `wudao_ifind_fallback_max`（默认 24 只），**不看当前档位**，
+    # 于是到了 CORE_ONLY 档（余下额度只够主线）仍可能再花 24~48 次。现在与
+    # `collect_kline` / `intraday_b1` 同一判据：到 PAUSE_KLINE 就完全不碰 iFinD，
+    # 候选只走东财 / 腾讯（这也正是形态扫描整体让路的档位）。
+    if allow_ifind:
+        try:
+            level = quota_level()
+        except Exception:  # noqa: BLE001 - 配额查询失败不该挡住补日线
+            level = QuotaLevel.NORMAL
+        if level >= QuotaLevel.PAUSE_KLINE:
+            allow_ifind = False
+            logger.info(
+                "补日线跳过 iFinD 兜底：%s（%d 只%s只走东财 / 腾讯）",
+                level_label(level),
+                len(need),
+                label,
+            )
 
     collector = DailyCollector()
     synced = 0
