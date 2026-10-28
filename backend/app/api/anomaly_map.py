@@ -55,16 +55,26 @@ logger = logging.getLogger(__name__)
 # 按 900 一批拆（给 999 留余量），结果内存合并；窗口（约 22 天）那种小 IN 不用管。
 _IN_BATCH = 900
 
-# 主板前缀**白名单**（含 002 中小板 / 001 / 003 深市主板）。
-# 白名单本身就是排除：300/301（创业板）、688/689（科创板）、8/4（北交所）、
-# 9（B 股）都不在名单里 —— 不必再单独判一遍，单独判反而容易漏一个前缀。
+# 展示范围**白名单**：主板（含 002 中小板 / 001 / 003）+ 创业板（300/301/302）
+# + 科创板（688/689）。
+#
+# 2026-10-28 放开 20cm：原先只收主板，于是这张表里一只 300/688 都没有 —— 而题材
+# 往往正是被 20cm 带起来的（用户连续两次指出）。白名单仍然是排除法：北交所
+# （4/8/920）、B 股（9xx）不在名单里，不必再单独判一遍。
 _MAINBOARD_PREFIXES = ("600", "601", "603", "605", "000", "001", "002", "003")
+_WIDE_BOARD_PREFIXES = ("300", "301", "302", "688", "689")
+_DISPLAY_BOARD_PREFIXES = _MAINBOARD_PREFIXES + _WIDE_BOARD_PREFIXES
 
 # 总市值门槛（元）：40 亿。⚠️ 是**总市值**，原型用的流通市值（见模块说明 1）。
 MIN_TOTAL_MV = 40e8
 
-# 中大阳线阈值：当日涨幅 ≥ 5%（`stock_daily.pct_chg` 是百分数口径，5.0 = +5%）
+# 中大阳线阈值：当日涨幅 ≥ 5%（`stock_daily.pct_chg` 是百分数口径，5.0 = +5%）。
+#
+# ⚠️ **20cm 板块（创业板 / 科创板）要 10%**：对它们 5% 只是半根阳线，实测 10-28
+# 一天就有 431 只（≥40 亿的 346 只），按 5% 收会把这张表彻底淹掉；10% 相当于
+# 「自己涨跌停幅度的一半」，与主板的 5% 是同一强度。
 BIG_YANG_PCT = 5.0
+BIG_YANG_PCT_WIDE = 10.0
 
 # 类型标签。用常量而不是散落的字面量：前端/统计都按这几个值对齐
 TYPE_LIMIT_UP = "涨停"
@@ -92,7 +102,7 @@ _BSE_PREFIXES = ("4", "8", "92")
 
 THEME_RULE = (
     "题材启动＝本轮首次集群涨停：同板块当日涨停≥2，或涨停≥1且异动≥3"
-    "（判定含创业板/科创板，剔 ST/北交所；回看 120 个交易日，间隔 10 个交易日以上算新一轮）"
+    "（含创业板/科创板，剔 ST/北交所；判定不看市值；回看 120 个交易日，间隔 10 个交易日以上算新一轮）"
 )
 
 # ⚠️ 同一个 40 亿门槛用的是**两套市值**：涨停 / 炸板来自 `limit_pool`（东财、当日值），
@@ -100,7 +110,8 @@ THEME_RULE = (
 # （模型与实际库都确认过），没有「当日值」可换。边界票（40 亿上下波动）可能一类进了
 # 另一类没进，如实写进文案、不改查询。
 FILTER_TEXT = (
-    "主板(含002) / 非ST / 总市值≥40亿（本站口径；原型用流通市值）。"
+    "主板+创业板+科创板（剔北交所/B股）/ 非ST / 总市值≥40亿（本站口径；原型用流通市值）。"
+    "中大阳线：主板涨幅≥5%、20cm(300/688)≥10%。"
     "市值两套来源：涨停/炸板按当日东财值，中大阳按建池日快照（最多7天前），"
     "边界票归类可能略有出入"
 )
@@ -111,9 +122,14 @@ SOURCE_TEXT = "东财涨停/炸板池(limit_pool) + 本地日线 · 板块=同�
 _LEVEL_MARKS = "ⅠⅡⅢⅣⅤ"
 
 
-def _is_mainboard(code: str) -> bool:
-    """是不是主板（含 002 中小板）。判据见 `_MAINBOARD_PREFIXES` 的说明。"""
-    return code[:3] in _MAINBOARD_PREFIXES
+def _is_display_board(code: str) -> bool:
+    """在不在展示范围里：主板 + 创业板 + 科创板（判据见 `_DISPLAY_BOARD_PREFIXES`）。"""
+    return code[:3] in _DISPLAY_BOARD_PREFIXES
+
+
+def _big_yang_pct(code: str) -> float:
+    """该票「中大阳线」的涨幅门槛：20cm 板块 10%，其余 5%（理由见 `BIG_YANG_PCT` 上方）。"""
+    return BIG_YANG_PCT_WIDE if code[:3] in _WIDE_BOARD_PREFIXES else BIG_YANG_PCT
 
 
 def _seal_time(value: str | None) -> str:
@@ -172,8 +188,9 @@ def _cap(total_mv: float | None) -> float | None:
 def _theme_scope(code: str, name: str | None) -> bool:
     """题材启动判定纳入哪些票：**只要不是 ST、不是北交所**。
 
-    与表格的展示过滤（主板 + 非ST + 总市值 ≥40 亿）**不同**，理由见 `THEME_RULE` 上方
-    那段：20cm 的创业板 / 科创板常常才是题材的发起者，按主板口径统计会把它们整段漏掉。
+    展示范围（`_is_display_board`）是主板 + 创业板 + 科创板且市值 ≥40 亿；判定比它宽，
+    **不看市值** —— 题材往往是从小市值的 20cm 票先起来的，用 40 亿门槛统计会把
+    发起者整段漏掉（2026-10-28 用户指出）。
     """
     return not is_st(name) and not str(code or "").startswith(_BSE_PREFIXES)
 
@@ -232,8 +249,10 @@ def _theme_counts(
         if pool_type == "up":
             cell[0] += 1
 
-    for day, code, name in db.execute(
-        select(StockDaily.trade_date, StockDaily.code, StockDaily.name).where(
+    for day, code, name, pct in db.execute(
+        select(
+            StockDaily.trade_date, StockDaily.code, StockDaily.name, StockDaily.pct_chg
+        ).where(
             StockDaily.trade_date.in_(dates),
             StockDaily.pct_chg >= BIG_YANG_PCT,
         )
@@ -241,6 +260,9 @@ def _theme_counts(
         if code in pooled.get(day, ()):
             continue
         if not _theme_scope(code, name or names.get(code)):
+            continue
+        # 20cm 的票要 10% 才算中大阳线，与表格的展示门槛一致（见 `_big_yang_pct`）
+        if pct is None or pct < _big_yang_pct(code):
             continue
         counts.setdefault((day, sectors.get(code, "其他")), [0, 0])[1] += 1
     return counts, dates
@@ -409,11 +431,11 @@ def build_anomaly_map(session: Session | None = None, days: int = 22) -> dict:
             """名称：池子 / 日线自带的优先，取不到退回建池表，再取不到退回代码。"""
             return name or basics.get(code, (None, None))[0] or code
 
-        # 1) 涨停：过滤 主板(含002) / 非ST / 总市值≥40亿
+        # 1) 涨停：过滤 主板+创业板+科创板 / 非ST / 总市值≥40亿
         #    reason 取同花顺涨停原因（可能没有 → None）
         for day in window:
             for row in up_by_day.get(day, []):
-                if not _is_mainboard(row.code) or is_st(row.name):
+                if not _is_display_board(row.code) or is_st(row.name):
                     continue
                 if row.total_mv is None or row.total_mv < MIN_TOTAL_MV:
                     continue
@@ -438,7 +460,7 @@ def build_anomaly_map(session: Session | None = None, days: int = 22) -> dict:
             for row in broken_by_day.get(day, []):
                 if row.code in seen_up:
                     continue
-                if not _is_mainboard(row.code) or is_st(row.name):
+                if not _is_display_board(row.code) or is_st(row.name):
                     continue
                 if row.total_mv is None or row.total_mv < MIN_TOTAL_MV:
                     continue
@@ -457,14 +479,18 @@ def build_anomaly_map(session: Session | None = None, days: int = 22) -> dict:
                     )
                 )
 
-        # 3) 中大阳线异动：当日**未在涨停/炸板池**、日线涨幅 ≥5% 的票。
+        # 3) 中大阳线异动：当日**未在涨停/炸板池**、涨幅过门槛的票。
+        #    门槛按板块：主板 5%，20cm（300/688）10%（见 `BIG_YANG_PCT` 上方）。
         #    市值取 `stock_universe`（日线表不存市值）—— 与上面两类的 `limit_pool`
         #    当日值是两套口径，边界票归类可能略有出入（已在 FILTER_TEXT 注明）。
         for row in daily_rows:
             day = row.trade_date
             if row.code in pool_codes.get(day, set()):
                 continue
-            if not _is_mainboard(row.code) or is_st(row.name):
+            if not _is_display_board(row.code) or is_st(row.name):
+                continue
+            # SQL 那边按全市场 5% 兜底捞，20cm 的 10% 门槛在这里补一刀
+            if row.pct_chg is None or row.pct_chg < _big_yang_pct(row.code):
                 continue
             total_mv = mv_map.get(row.code)
             if total_mv is None or total_mv < MIN_TOTAL_MV:

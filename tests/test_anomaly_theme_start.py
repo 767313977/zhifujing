@@ -14,8 +14,36 @@ from datetime import date, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.api.anomaly_map import _start_days, _theme_counts, _theme_scope
+from app.api.anomaly_map import (
+    _big_yang_pct,
+    _is_display_board,
+    _start_days,
+    _theme_counts,
+    _theme_scope,
+)
 from app.models import LimitPool, StockBasic, StockDaily
+
+
+def test_display_board_includes_20cm():
+    """展示范围 2026-10-28 放开：创业板 / 科创板要进表（原先只有主板）。"""
+    assert _is_display_board("600000")
+    assert _is_display_board("300001")
+    assert _is_display_board("301001")
+    assert _is_display_board("688001")
+
+
+def test_display_board_excludes_bse_and_b_share():
+    assert not _is_display_board("830799")  # 北交所
+    assert not _is_display_board("920001")  # 北交所新段
+    assert not _is_display_board("900901")  # 沪 B
+    assert not _is_display_board("200002")  # 深 B
+
+
+def test_big_yang_threshold_is_double_for_20cm():
+    """20cm 的「中大阳线」门槛是 10%，主板仍是 5% —— 否则一天几百只淹掉整张表。"""
+    assert _big_yang_pct("600000") == 5.0
+    assert _big_yang_pct("300001") == 10.0
+    assert _big_yang_pct("688001") == 10.0
 
 
 def _calendar(n: int) -> list[date]:
