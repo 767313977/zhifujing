@@ -1,15 +1,29 @@
-"""按**当前规则**重扫一段交易日（零 iFinD 配额）。
+"""用**当前**的形态口径重扫历史命中（`pattern_hit`）。
 
-为什么需要它：形态判定改过多次，而 `pattern_hit` 里留着旧规则扫出来的历史行。
-成绩单 / 胜率跟踪要求「同一套口径」才可比，所以改完规则要先把历史重扫一遍。
-这个脚本就是把之前手动敲的那段循环固定下来：
+## 为什么需要它
 
-    python scripts/rescan_patterns.py --start 2026-09-24 --end 2026-10-16
+2026-10-28 第六轮体检改了两个会动形态结果的口径：
 
-- **只重扫交易日**（以 `trade_calendar` 为准），且不越过库里有日线的最后一天；
-- `scan(..., no_ifind=True)`：候选补日线只走东财 / 腾讯，**不碰 iFinD**；
-- `scan()` 是「整段替换当天命中」，重复跑幂等；
-- 单日失败不中断后面的日期，最后汇总失败天数并以非 0 退出。
+- 涨停门槛从「全市场 9.5%」改成按板块分档（主板 9.5 / 创业板·科创板 19.5 / 北交所 29.5），
+  影响 `limit_surge_flat`、`shrink_limit_up`；
+- 「洗后可盯」的箱体上沿 `wash_high` 改成不含当日，`broke` / `gone` 重新可达。
+
+而 `pattern_hit` 是**每天收盘后按当时的规则**落库的 —— 历史命中仍是旧口径，形态成绩单
+把新旧混在一起统计，胜率就说不清是哪一套规则的。这个脚本把指定区间用现在的代码重算
+一遍（`scan()` 本来就按日整段替换，幂等，跑几次结果一样）。
+
+## 用法
+
+    python scripts/rescan_patterns.py --days 60
+    python scripts/rescan_patterns.py --start 2026-07-01 --end 2026-10-28
+    python scripts/rescan_patterns.py --days 60 --dry-run
+
+## 两点注意
+
+- **零 iFinD 配额**：全程 `no_ifind=True`，候选补日线只走东财 / 腾讯。重扫是维护操作，
+  不该为此消耗当天的额度（东财 / 腾讯那两级仍可能发请求，但都不占配额）。
+- **会改写 `pattern_hit`，以及那几天的 `collect_log(task=patterns)`**。只扫「交易日历里
+  有的、且不晚于最新日线」的日子；`--dry-run` 只打印清单与现有命中数，不写库。
 """
 
 import argparse
@@ -19,66 +33,112 @@ import time
 from datetime import date
 from pathlib import Path
 
-BACKEND = Path(__file__).resolve().parent.parent / "backend"
-if str(BACKEND) not in sys.path:
-    sys.path.insert(0, str(BACKEND))
+SCRIPTS = Path(__file__).resolve().parent
+BACKEND = SCRIPTS.parent / "backend"
+for path in (str(BACKEND), str(SCRIPTS)):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 from sqlalchemy import func, select  # noqa: E402
 
 from app.db import session_scope  # noqa: E402
 from app.jobs.scan_patterns import scan  # noqa: E402
-from app.models import StockDaily, TradeCalendar  # noqa: E402
+from app.models import PatternHit, StockDaily, TradeCalendar  # noqa: E402
 
 logger = logging.getLogger("rescan")
 
 
-def _days(start: date, end: date | None) -> list[date]:
+def _target_days(args: argparse.Namespace) -> list[date]:
+    """要重扫的交易日（升序）。
+
+    上限取 `max(stock_daily.trade_date)` 而不是 `date.today()`：交易日历预置到了年底，
+    按今天算会把还没有日线的未来日也排进来（那些日子 `scan()` 会直接抛错）。
+    """
     with session_scope() as session:
-        data_end = session.scalar(select(func.max(StockDaily.trade_date)))
-        days = list(
-            session.scalars(
-                select(TradeCalendar.trade_date)
-                .where(TradeCalendar.trade_date >= start)
-                .order_by(TradeCalendar.trade_date)
-            )
+        latest = session.scalar(select(func.max(StockDaily.trade_date)))
+        if latest is None:
+            return []
+        statement = select(TradeCalendar.trade_date).where(
+            TradeCalendar.trade_date <= latest
         )
-    if data_end is None:
-        return []
-    return [day for day in days if day <= data_end and (end is None or day <= end)]
+        if args.start:
+            statement = statement.where(TradeCalendar.trade_date >= args.start)
+        if args.end:
+            statement = statement.where(TradeCalendar.trade_date <= min(args.end, latest))
+        statement = statement.order_by(TradeCalendar.trade_date)
+        days = list(session.scalars(statement))
+    if args.days and not args.start:
+        days = days[-args.days :]
+    return days
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="按当前规则重扫交易日（零 iFinD 配额）")
-    parser.add_argument("--start", required=True, type=date.fromisoformat)
-    parser.add_argument("--end", type=date.fromisoformat, default=None)
+    parser = argparse.ArgumentParser(description="用当前口径重扫历史形态命中")
+    parser.add_argument("--days", type=int, help="最近 N 个交易日（与 --start 二选一）")
+    parser.add_argument("--start", type=date.fromisoformat, help="起始交易日 YYYY-MM-DD")
+    parser.add_argument("--end", type=date.fromisoformat, help="结束交易日 YYYY-MM-DD")
+    parser.add_argument("--dry-run", action="store_true", help="只打印清单与现有命中数，不写库")
+    parser.add_argument("--verbose", action="store_true", help="打印扫描器的 INFO 日志")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    days = _days(args.start, args.end)
-    if not days:
-        print("==> 区间内没有可重扫的交易日（或库里还没有日线）")
-        return 1
-    print(f"==> 重扫 {len(days)} 个交易日：{days[0]} ~ {days[-1]}（no_ifind=True）")
+    logging.basicConfig(
+        level=logging.INFO if args.verbose else logging.WARNING,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
 
-    failures = 0
+    days = _target_days(args)
+    if not days:
+        print("没有可重扫的交易日（检查 --start/--end 与日线覆盖）")
+        return 1
+
+    print(f"准备重扫 {len(days)} 个交易日：{days[0]} ~ {days[-1]}")
+    # 逐日对比：旧命中条数 → 新命中条数，这样一眼能看出口径改动的影响面
+    failed: list[tuple[date, str]] = []
+    changed: list[tuple[date, int, int]] = []
     started = time.monotonic()
-    for day in days:
-        day_started = time.monotonic()
+
+    for index, day in enumerate(days, 1):
+        with session_scope() as session:
+            old = session.scalar(
+                select(func.count())
+                .select_from(PatternHit)
+                .where(PatternHit.trade_date == day)
+            )
+        if args.dry_run:
+            print(f"[{index}/{len(days)}] {day} 现有命中 {old} 条（dry-run，不写库）")
+            continue
         try:
             result = scan(day, no_ifind=True)
-            print(
-                f"  {day} ok {time.monotonic() - day_started:.1f}s "
-                f"codes={result.get('codes')} stale={result.get('stale')}"
-            )
-        except Exception as exc:  # noqa: BLE001 - 单日失败继续跑后面的日期
-            failures += 1
-            print(f"  {day} FAILED：{exc}")
-    print(
-        f"==> 完成：{len(days) - failures}/{len(days)} 成功，"
-        f"用时 {time.monotonic() - started:.0f}s"
-    )
-    return 1 if failures else 0
+        except Exception as exc:  # noqa: BLE001 - 单日失败不该中断整批
+            logger.warning("%s 重扫失败：%s", day, exc)
+            failed.append((day, str(exc)))
+            print(f"[{index}/{len(days)}] {day} 失败：{exc}")
+            continue
+        new = result["rows"]
+        changed.append((day, old, new))
+        print(
+            f"[{index}/{len(days)}] {day} 命中 {old} → {new} 条"
+            f"（{result['codes']} 只 / {result['cost_seconds']}s）"
+        )
+
+    if args.dry_run:
+        return 0
+
+    cost = time.monotonic() - started
+    print(f"\n完成：{len(changed)} 天成功、{len(failed)} 天失败，总用时 {cost:.1f}s")
+    if changed:
+        delta = sum(new - old for _, old, new in changed)
+        print(f"命中总数 {sum(old for _, old, _ in changed)} → {sum(new for _, _, new in changed)}（{delta:+d}）")
+        biggest = sorted(changed, key=lambda item: item[2] - item[1])[:5]
+        for day, old, new in biggest:
+            print(f"  变动最大：{day} {old} → {new}（{new - old:+d}）")
+    if failed:
+        print("失败的日子（可重跑同一区间，已成功的会被整段替换，幂等）：")
+        for day, message in failed:
+            print(f"  {day} {message}")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
