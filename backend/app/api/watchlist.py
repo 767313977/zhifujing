@@ -97,11 +97,22 @@ def _known_name(session: Session, code: str) -> str | None:
     return basic.name if basic and basic.name else None
 
 
-def _row(session: Session, item: Watchlist, quote: StockDaily | None) -> WatchlistRow:
+def _row(
+    session: Session,
+    item: Watchlist,
+    quote: StockDaily | None,
+    names: dict[str, str | None] | None = None,
+) -> WatchlistRow:
     # 兜底：老数据里 `name` 可能是空的（2026-09-27 之前加自选时不落名字）。
     # 这里只补到内存对象上供本次响应使用，**不写库** —— 读路径不做写操作
+    #
+    # `names` 由列表接口一次批量查好传进来（2026-10-28 体检）：原来是逐行
+    # `_known_name()` 一次 `session.get` —— 100 只自选就是 100 次单行查询（N+1）。
     if not item.name:
-        item.name = _known_name(session, item.code)
+        if names is not None:
+            item.name = names.get(item.code)
+        else:
+            item.name = _known_name(session, item.code)
     return WatchlistRow(
         code=item.code,
         name=item.name,
@@ -126,7 +137,18 @@ def list_watchlist(
         )
     )
     quotes = _latest_quotes(session, [item.code for item in items])
-    return [_row(session, item, quotes.get(item.code)) for item in items]
+    # 缺名字的老数据一次查完（见 `_row` 的说明），别在循环里逐只 `session.get`
+    missing = [item.code for item in items if not item.name]
+    names: dict[str, str | None] = {}
+    if missing:
+        names = dict(
+            session.execute(
+                select(StockBasic.code, StockBasic.name).where(
+                    StockBasic.code.in_(missing)
+                )
+            ).all()
+        )
+    return [_row(session, item, quotes.get(item.code), names) for item in items]
 
 
 @router.post("", response_model=WatchlistRow)

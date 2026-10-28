@@ -34,7 +34,7 @@
 
 import logging
 import threading
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -307,25 +307,96 @@ def _start_days(
     return starts
 
 
-# 回看 120 天的两次查询约 0.8 秒，而结果一天只变一次 —— 按「数据截止日」缓存。
+# 回看 120 天的两次查询约 0.8 秒，而结果一天只变一次 —— 按「数据版本」缓存。
 # 多进程部署下每个进程各算一次，不影响正确性（纯读、无副作用）。
+#
+# ⚠️ 缓存键**不能只有「截止日」**（2026-10-28 体检）：补采 / 重采同一个交易日
+# （回填涨停池、补涨停原因）之后截止日不变，旧结果会一直挂着 —— 而这里没有任何
+# 失效入口。现在键里带一个**数据签名**（窗口内涨停池的最大日期 + 行数），
+# 行数一变就自动重算；再加一道 TTL 兜住「同一天数据被原地改写」的极端情况。
 _START_CACHE_MAX = 4
-_START_CACHE: dict[date, dict[str, date]] = {}
+_START_TTL = timedelta(minutes=30)
+_START_CACHE: dict[tuple, tuple[datetime, dict[str, date]]] = {}
 _START_LOCK = threading.Lock()
 
 
-def _cached_start_days(db: Session, end: date) -> dict[str, date]:
-    """`_start_days` 的缓存版，键是数据截止日。"""
+def _theme_signature(db: Session, end: date) -> tuple:
+    """题材启动日缓存的数据签名：回看区间内涨停池的（最大日期, 行数）。
+
+    行数用得上：回填同一天时最大日期不变，但行数会变 —— 那是唯一能在不改成交量的
+    前提下察觉「数据被补过」的廉价信号。
+    """
+    # 只扫回看窗口覆盖的自然日范围（120 个交易日 ≈ 175 个自然日），别扫全表
+    start = end - timedelta(days=int(THEME_HISTORY_DAYS * 1.5) + 7)
+    row = db.execute(
+        select(func.max(LimitPool.trade_date), func.count())
+        .select_from(LimitPool)
+        .where(LimitPool.trade_date >= start, LimitPool.trade_date <= end)
+    ).one()
+    return (row[0], int(row[1] or 0))
+
+
+def invalidate_theme_cache() -> None:
+    """清空题材启动日缓存（重采 / 补采后可主动调用）。
+
+    ⚠️ 缓存本身已经按数据签名失效（见 `_theme_signature`），这里保留一个**显式**
+    入口给「同一批行被原地改写」的情况用（签名只看行数，值变了察觉不到）。
+    放在 api 层而不是 services：缓存与调用方都只在这里，不引入跨层依赖。
+    """
     with _START_LOCK:
-        cached = _START_CACHE.get(end)
-    if cached is not None:
-        return cached
+        _START_CACHE.clear()
+    with _MAP_LOCK:
+        _MAP_CACHE.clear()
+
+
+# 整份响应的短 TTL 缓存（只给**接口**用，`build_anomaly_map` 本身不缓存 ——
+# 脚本 / 单测直接调它时必须拿到当前库的内容，见 test_anomaly_theme_start）。
+#
+# 为什么要它（2026-10-28 体检）：这一页冷启约 1.5 秒（两次 120 天扫描 + 全市场
+# 日线窗口），但前台翻来覆去点筛选时数据根本没变；读的是纯内存分组结果，键带数据签名，
+# 补采后会自然失效，所以不会把旧数据当成新的。
+_MAP_TTL = timedelta(seconds=90)
+_MAP_CACHE_MAX = 3
+_MAP_CACHE: dict[tuple, tuple[datetime, dict]] = {}
+_MAP_LOCK = threading.Lock()
+
+
+def cached_anomaly_map(db: Session, days: int) -> dict:
+    """接口用的 `build_anomaly_map`：按（窗口天数, 数据签名）缓存 90 秒。"""
+    end = db.scalar(
+        select(func.max(LimitPool.trade_date)).where(LimitPool.pool_type == "up")
+    )
+    if end is None:
+        return build_anomaly_map(db, days)
+    key = (days, end, _theme_signature(db, end))
+    now = datetime.now()
+    with _MAP_LOCK:
+        hit = _MAP_CACHE.get(key)
+        if hit is not None and now - hit[0] <= _MAP_TTL:
+            return hit[1]
+    data = build_anomaly_map(db, days)
+    with _MAP_LOCK:
+        _MAP_CACHE[key] = (now, data)
+        while len(_MAP_CACHE) > _MAP_CACHE_MAX:
+            _MAP_CACHE.pop(min(_MAP_CACHE, key=lambda item: _MAP_CACHE[item][0]))
+    return data
+
+
+def _cached_start_days(db: Session, end: date) -> dict[str, date]:
+    """`_start_days` 的缓存版，键是（数据截止日, 数据签名）。"""
+    signature = _theme_signature(db, end)
+    key = (end, signature)
+    now = datetime.now()
+    with _START_LOCK:
+        cached = _START_CACHE.get(key)
+        if cached is not None and now - cached[0] <= _START_TTL:
+            return cached[1]
     counts, dates = _theme_counts(db, end)
     starts = _start_days(counts, dates)
     with _START_LOCK:
-        _START_CACHE[end] = starts
+        _START_CACHE[key] = (now, starts)
         while len(_START_CACHE) > _START_CACHE_MAX:
-            _START_CACHE.pop(min(_START_CACHE))
+            _START_CACHE.pop(min(_START_CACHE, key=lambda item: _START_CACHE[item][0]))
     return starts
 
 
@@ -642,7 +713,7 @@ def anomaly_map(
     session: Session = Depends(get_db),
 ) -> AnomalyMapOut:
     """个股异动图谱。口径与取数细节见模块说明与 `build_anomaly_map`。"""
-    return AnomalyMapOut.model_validate(build_anomaly_map(session, days))
+    return AnomalyMapOut.model_validate(cached_anomaly_map(session, days))
 
 
 def build_industry_stocks(

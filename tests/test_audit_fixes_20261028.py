@@ -264,3 +264,19 @@ def test_kaipanhong_members_stop_when_short_page_adds_nothing(monkeypatch):
     members = kaipanhong.KaipanhongSource.board_members(source, "P1", date(2026, 10, 27))
     assert [m["code"] for m in members] == ["600000", "600001"]
     assert fake.indexes == ["0", "2"]
+
+
+# ------------------------------------------------ 题材启动日缓存：有显式失效入口
+
+
+def test_theme_cache_has_invalidation_entry():
+    """`invalidate_theme_cache()` 必须同时清掉启动日缓存与整份响应缓存。"""
+    from datetime import datetime
+
+    from app.api import anomaly_map as am
+
+    am._START_CACHE[(date(2026, 1, 1), (None, 0))] = (datetime.now(), {})
+    am._MAP_CACHE[(22, date(2026, 1, 1), (None, 0))] = (datetime.now(), {})
+    am.invalidate_theme_cache()
+    assert am._START_CACHE == {}
+    assert am._MAP_CACHE == {}

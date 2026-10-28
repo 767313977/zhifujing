@@ -131,7 +131,7 @@ def create_plan(
         _fill(plan, name, payload)
         session.commit()
     session.refresh(plan)
-    return _row(session, user, plan.id)
+    return _row(session, user, plan.id, plan.plan_date)
 
 
 @router.put("/{plan_id}", response_model=TradePlanRow)
@@ -172,7 +172,7 @@ def update_plan(
         raise HTTPException(
             status_code=400, detail="该票当天已有一条计划，请直接编辑那一条"
         ) from None
-    return _row(session, user, plan.id)
+    return _row(session, user, plan.id, plan.plan_date)
 
 
 @router.delete("/{plan_id}")
@@ -189,8 +189,18 @@ def delete_plan(
     return {"ok": True}
 
 
-def _row(session: Session, user: AppUser, plan_id: int) -> TradePlanRow:
-    for row in trade_plan.load(session, user.id):
+def _row(
+    session: Session, user: AppUser, plan_id: int, plan_date: date
+) -> TradePlanRow:
+    """保存后回一行。
+
+    ⚠️ 只按**这条计划的计划日**取（2026-10-28 体检）：原来调 `trade_plan.load(session, user.id)`
+    把该用户**全部**计划连同验证（每条都要读日线、算 1/3/5 日收益）重算一遍，只为了挑
+    出刚保存的那一条 —— 计划攒到几十条时，每次点保存都要多等几百毫秒。计划日相同的
+    计划通常只有几条，口径与列表页完全一致（同一个 `load`）。
+    """
+    rows = trade_plan.load(session, user.id, plan_date)
+    for row in rows:
         if row["id"] == plan_id:
             return TradePlanRow.model_validate(row)
     raise HTTPException(status_code=404, detail="这条计划不存在")
