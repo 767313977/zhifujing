@@ -252,6 +252,14 @@ export default function AnomalyPage() {
           <Stat label="题材启动日事件" value={stats.themeStart} />
         </div>
 
+        {/* 题材启动日的判定口径：这条规则不容易从表格里看出来（回看 120 天、含 20cm、
+            按 10 个交易日断代），所以原样写在标题卡下面 */}
+        {data?.theme_rule && (
+          <div className="border-b border-line-soft px-4 py-1.5 text-[12px] leading-relaxed text-fg-dim">
+            {data.theme_rule}
+          </div>
+        )}
+
         {/* 筛选行：板块下拉来自接口 sectors（已按条数降序），其余是本地条件 */}
         <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-2.5">
           <select
@@ -479,6 +487,16 @@ export default function AnomalyPage() {
                       {row.theme_start && (
                         <span className="ml-1.5 border border-ok/40 px-1 py-[1px] text-[11px] text-ok">
                           题材启动日
+                        </span>
+                      )}
+                      {/* 启动日早于窗口的板块：只在这一板块窗口内首次出现的那行提示一次，
+                          不加绿底 —— 它今天不是启动日，只是「早就启动了还在动」 */}
+                      {!row.theme_start && row.early_start && (
+                        <span
+                          className="ml-1.5 border border-line px-1 py-[1px] text-[11px] text-fg-dim"
+                          title={`该板块本轮启动于 ${row.early_start}，早于当前 ${data?.days ?? 22} 天窗口`}
+                        >
+                          启动于 {row.early_start.slice(5)}
                         </span>
                       )}
                     </td>

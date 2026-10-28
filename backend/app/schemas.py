@@ -1137,8 +1137,10 @@ class AnomalyRowOut(ApiModel):
     reason: str | None
     #: 同批异动（同一天同一板块的全部行），标签形如「名称(涨停@09:31)」，含自己
     cohort: list[str]
-    #: 该行所在 (交易日, 板块) 是不是窗口内该板块的题材启动日
+    #: 该行所在 (交易日, 板块) 是不是「本轮首次集群涨停」那天
     theme_start: bool
+    #: 该板块本轮启动日**早于窗口**时，只在它在窗口内首次出现的那行给这个真实日期
+    early_start: str | None
 
 
 class AnomalyMapOut(ApiModel):
@@ -1152,9 +1154,11 @@ class AnomalyMapOut(ApiModel):
     filter: str
     #: 数据来源文案
     source: str
+    #: 题材启动日的判定口径（前端原样展示，别在前端再拼一遍）
+    theme_rule: str
     #: 板块下拉的选项（已按命中条数降序）
     sectors: list[str]
-    #: 被标记为题材启动日的 (交易日, 板块) 对数
+    #: 窗口内亮了绿标（本轮启动日落在窗口里）的板块数
     theme_start_days: int
     rows: list[AnomalyRowOut]
 

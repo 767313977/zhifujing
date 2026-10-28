@@ -827,8 +827,13 @@ export interface AnomalyRow {
   reason: string | null
   /** 同批异动标签（同一天同一板块的全部行，含自己） */
   cohort: string[]
-  /** 所在 (交易日, 板块) 是不是窗口内该板块的题材启动日 */
+  /** 所在 (交易日, 板块) 是不是「本轮首次集群涨停」那天 */
   theme_start: boolean
+  /**
+   * 该板块本轮启动日**早于窗口**时，只在它在窗口内首次出现的那行给这个真实日期
+   * （YYYY-MM-DD）；其余情况为 null。
+   */
+  early_start: string | null
 }
 
 export interface AnomalyMap {
@@ -839,6 +844,8 @@ export interface AnomalyMap {
   /** 过滤口径文案，原样展示 */
   filter: string
   source: string
+  /** 题材启动日的判定口径，原样展示 */
+  theme_rule: string
   /** 板块下拉选项（已按命中条数降序） */
   sectors: string[]
   theme_start_days: number

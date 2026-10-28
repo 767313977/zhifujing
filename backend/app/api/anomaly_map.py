@@ -33,6 +33,7 @@
 """
 
 import logging
+import threading
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, Query
@@ -69,6 +70,30 @@ BIG_YANG_PCT = 5.0
 TYPE_LIMIT_UP = "涨停"
 TYPE_BROKEN = "涨停炸板"
 TYPE_BIG_YANG = "中大阳线异动"
+
+# ---- 题材启动日 ----
+#
+# 判定：同板块当日**涨停 ≥2**，或**涨停 ≥1 且异动 ≥3**（异动＝涨停+炸板+中大阳线）。
+#
+# 两处口径要注意：
+#
+# 1. **纳入范围与表格的展示过滤不同**。表格只收主板(含002) + 非ST + 总市值≥40亿，
+#    但 20cm 的创业板 / 科创板往往才是题材的发起者 —— 按展示口径统计会把它们整段漏掉
+#    （2026-10-28 用户指出）。所以判定时只剔 **ST 与北交所**，不限主板、不限市值。
+# 2. **往回看 120 个交易日、并按 10 个交易日断代**。原来只在页面窗口（22 天）里找
+#    「最早达标的那天」，于是窗口首日就活跃的板块统统被标成「当天启动」—— 那是窗口的
+#    边界，不是题材的起点。往前回看之后还要断代：常年活跃的板块（半导体之类）若只认
+#    「历史第一次」，启动日会停在半年前，标签就失去意义了；间隔超过 10 个交易日算换了一轮。
+THEME_HISTORY_DAYS = 120
+THEME_RUN_GAP = 10
+
+# 北交所代码段：4 / 8 开头，另有 920 新段。判定口径里剔掉，与全站其它口径一致
+_BSE_PREFIXES = ("4", "8", "92")
+
+THEME_RULE = (
+    "题材启动＝本轮首次集群涨停：同板块当日涨停≥2，或涨停≥1且异动≥3"
+    "（判定含创业板/科创板，剔 ST/北交所；回看 120 个交易日，间隔 10 个交易日以上算新一轮）"
+)
 
 # ⚠️ 同一个 40 亿门槛用的是**两套市值**：涨停 / 炸板来自 `limit_pool`（东财、当日值），
 # 中大阳来自 `stock_universe`（iFinD 建池快照、最多 7 天前）—— `stock_daily` 不存市值
@@ -142,6 +167,134 @@ def _cap(total_mv: float | None) -> float | None:
     if total_mv is None:
         return None
     return round(total_mv / 1e8, 1)
+
+
+def _theme_scope(code: str, name: str | None) -> bool:
+    """题材启动判定纳入哪些票：**只要不是 ST、不是北交所**。
+
+    与表格的展示过滤（主板 + 非ST + 总市值 ≥40 亿）**不同**，理由见 `THEME_RULE` 上方
+    那段：20cm 的创业板 / 科创板常常才是题材的发起者，按主板口径统计会把它们整段漏掉。
+    """
+    return not is_st(name) and not str(code or "").startswith(_BSE_PREFIXES)
+
+
+def _theme_counts(
+    db: Session, end: date
+) -> tuple[dict[tuple[date, str], list[int]], list[date]]:
+    """回看 `THEME_HISTORY_DAYS` 个交易日，按 (交易日, 板块) 数 `[涨停数, 异动数]`。
+
+    异动数 = 涨停 + 炸板 + 中大阳线（当日不在涨停/炸板池里、涨幅 ≥5%），与表格那三类
+    的定义一致，只是**不加主板 / 市值门槛**（见 `_theme_scope`）。一只票一天只算一行：
+    涨停与炸板互斥、进了池子就不再算中大阳线。
+
+    返回 `(counts, dates)`，`dates` 升序 —— 后面用它算「两次达标隔了几个交易日」。
+    """
+    dates = sorted(
+        db.scalars(
+            select(LimitPool.trade_date)
+            .distinct()
+            .where(LimitPool.pool_type == "up", LimitPool.trade_date <= end)
+            .order_by(LimitPool.trade_date.desc())
+            .limit(THEME_HISTORY_DAYS)
+        )
+    )
+    if not dates:
+        return {}, []
+
+    names: dict[str, str | None] = {}
+    sectors: dict[str, str] = {}
+    for code, name, industry in db.execute(
+        select(StockBasic.code, StockBasic.name, StockBasic.industry)
+    ).all():
+        names[code] = name
+        sectors[code] = _sector_of(industry)
+
+    counts: dict[tuple[date, str], list[int]] = {}
+    pooled: dict[date, set[str]] = {}
+    # ST 判定用**当日**的名称（池子里带的），不是 `stock_basic` 的当前名 ——
+    # 往回看 120 天，一只票可能中途才戴帽/摘帽，拿今天的名字判历史会判错。
+    for day, code, pool_type, name in db.execute(
+        select(
+            LimitPool.trade_date,
+            LimitPool.code,
+            LimitPool.pool_type,
+            LimitPool.name,
+        ).where(
+            LimitPool.trade_date.in_(dates),
+            LimitPool.pool_type.in_(("up", "broken")),
+        )
+    ).all():
+        pooled.setdefault(day, set()).add(code)
+        if not _theme_scope(code, name or names.get(code)):
+            continue
+        cell = counts.setdefault((day, sectors.get(code, "其他")), [0, 0])
+        cell[1] += 1
+        if pool_type == "up":
+            cell[0] += 1
+
+    for day, code, name in db.execute(
+        select(StockDaily.trade_date, StockDaily.code, StockDaily.name).where(
+            StockDaily.trade_date.in_(dates),
+            StockDaily.pct_chg >= BIG_YANG_PCT,
+        )
+    ).all():
+        if code in pooled.get(day, ()):
+            continue
+        if not _theme_scope(code, name or names.get(code)):
+            continue
+        counts.setdefault((day, sectors.get(code, "其他")), [0, 0])[1] += 1
+    return counts, dates
+
+
+def _start_days(
+    counts: dict[tuple[date, str], list[int]], dates: list[date]
+) -> dict[str, date]:
+    """每个板块**本轮**的启动日（首次达标那天）。
+
+    从该板块最近一次达标往回走，只要与上一次达标相隔 ≤ `THEME_RUN_GAP` 个交易日就
+    继续往前，直到断开 —— 断开处之后的那一天就是本轮起点。不这么断代的话，常年活跃
+    的板块会一直被标成「启动于半年前」。
+    """
+    if not dates:
+        return {}
+    pos = {day: index for index, day in enumerate(dates)}
+    qualified: dict[str, list[date]] = {}
+    for (day, sector), (limit_ups, total) in counts.items():
+        if limit_ups >= 2 or (limit_ups >= 1 and total >= 3):
+            qualified.setdefault(sector, []).append(day)
+
+    starts: dict[str, date] = {}
+    for sector, days in qualified.items():
+        days.sort()
+        start = days[-1]
+        for day in reversed(days[:-1]):
+            if pos[start] - pos[day] > THEME_RUN_GAP:
+                break
+            start = day
+        starts[sector] = start
+    return starts
+
+
+# 回看 120 天的两次查询约 0.8 秒，而结果一天只变一次 —— 按「数据截止日」缓存。
+# 多进程部署下每个进程各算一次，不影响正确性（纯读、无副作用）。
+_START_CACHE_MAX = 4
+_START_CACHE: dict[date, dict[str, date]] = {}
+_START_LOCK = threading.Lock()
+
+
+def _cached_start_days(db: Session, end: date) -> dict[str, date]:
+    """`_start_days` 的缓存版，键是数据截止日。"""
+    with _START_LOCK:
+        cached = _START_CACHE.get(end)
+    if cached is not None:
+        return cached
+    counts, dates = _theme_counts(db, end)
+    starts = _start_days(counts, dates)
+    with _START_LOCK:
+        _START_CACHE[end] = starts
+        while len(_START_CACHE) > _START_CACHE_MAX:
+            _START_CACHE.pop(min(_START_CACHE))
+    return starts
 
 
 def build_anomaly_map(session: Session | None = None, days: int = 22) -> dict:
@@ -348,23 +501,30 @@ def build_anomaly_map(session: Session | None = None, days: int = 22) -> dict:
             for row in items:
                 row["cohort"] = labels
 
-        # ---- 题材启动日：窗口内该板块**最早**满足条件的那一天 ----
+        # ---- 题材启动日：本轮首次集群涨停 ----
         # 判据二选一：当日该板块涨停 ≥2 只；或 涨停 ≥1 只且该板块当日异动 ≥3 条。
-        # 按 (交易日, 板块) 升序遍历，每个板块只在**第一次**满足时落标记。
-        stats: dict[tuple[str, str], list[int]] = {}
+        # 统计口径与回看深度见 `THEME_RULE` 上方那段（含创业板/科创板、回看 120 天、按 10 天断代）。
+        window_start = window[0]
+        start_days = _cached_start_days(db, window[-1])
+
+        # 每个板块在**窗口内**第一次出现的那天。启动日早于窗口时只在这一行提示，
+        # 否则同一板块的几十行都挂一个「启动于 XX」，反而是噪声。
+        first_seen: dict[str, str] = {}
         for row in rows:
-            cell = stats.setdefault((row["date"], row["sector"]), [0, 0])
-            cell[1] += 1
-            if row["type"] == TYPE_LIMIT_UP:
-                cell[0] += 1
-        first_key: dict[str, tuple[str, str]] = {}
-        for key in sorted(stats):  # (日期, 板块) 元组升序 → 日期早的在前
-            limit_count, total = stats[key]
-            if limit_count >= 2 or (limit_count >= 1 and total >= 3):
-                first_key.setdefault(key[1], key)
+            current = first_seen.get(row["sector"])
+            if current is None or row["date"] < current:
+                first_seen[row["sector"]] = row["date"]
+
         for row in rows:
-            row["theme_start"] = (
-                first_key.get(row["sector"]) == (row["date"], row["sector"])
+            sector = row["sector"]
+            start = start_days.get(sector)
+            row["theme_start"] = start is not None and start.isoformat() == row["date"]
+            row["early_start"] = (
+                start.isoformat()
+                if start is not None
+                and start < window_start
+                and first_seen.get(sector) == row["date"]
+                else None
             )
 
         # 板块下拉的选项：按命中条数降序（最活跃的排前面），同数按名字稳定排
@@ -380,9 +540,10 @@ def build_anomaly_map(session: Session | None = None, days: int = 22) -> dict:
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "filter": FILTER_TEXT,
             "source": SOURCE_TEXT,
+            "theme_rule": THEME_RULE,
             "sectors": sectors,
-            # 「题材启动板块日」的个数 = 被标记的 (交易日, 板块) 对数
-            "theme_start_days": len(first_key),
+            # 「题材启动板块日」的个数 = 窗口内确实亮了绿标的板块数（与屏幕上的标签对得上）
+            "theme_start_days": len({row["sector"] for row in rows if row["theme_start"]}),
             "rows": rows,
         }
     finally:
@@ -403,7 +564,7 @@ def _make_row(
     cap: float | None,
     reason: str | None,
 ) -> dict:
-    """组一行。`cohort` / `theme_start` 先占位，分组之后再回填。"""
+    """组一行。`cohort` / `theme_start` / `early_start` 先占位，分组之后再回填。"""
     return {
         "sector": _sector_of(sector_industry),
         "date": str(day),
@@ -419,6 +580,7 @@ def _make_row(
         "reason": reason,
         "cohort": [],
         "theme_start": False,
+        "early_start": None,
     }
 
 
@@ -431,6 +593,7 @@ def _empty() -> dict:
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "filter": FILTER_TEXT,
         "source": SOURCE_TEXT,
+        "theme_rule": THEME_RULE,
         "sectors": [],
         "theme_start_days": 0,
         "rows": [],
