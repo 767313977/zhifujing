@@ -452,14 +452,73 @@ def _market_oversold(db: Session, target: date) -> dict[str, float]:
     return load_oversold(db, codes)
 
 
+def _sectors_of(db: Session, codes: set[str]) -> dict[str, list[str]]:
+    """每只票「最近一次涨停是因为哪个板块」→ `{code: [板块名, ...]}`。
+
+    口径与个股页「所属题材」一致（见 `PatternStockOut.sectors`）。
+
+    ⚠️ 取「该股出现过的**最近一天**」而不是当天：`stock_concept` 来自涨停天梯、只有
+    涨停股有值，按当天口径这个列表里 97% 的行会是空的。
+    **一次查全、在内存里按 code 挑最新的那天**：写成「每只票一条相关子查询」会把这个
+    接口从一次查询变成上千次（`code` 不是那张表主键的首列，每次都要扫）。
+    """
+    if not codes:
+        return {}
+    concept_rows = []
+    for batch in chunked(sorted(codes), _IN_BATCH):
+        concept_rows.extend(
+            db.execute(
+                select(
+                    StockConcept.code, StockConcept.trade_date, StockConcept.concept
+                ).where(StockConcept.code.in_(batch))
+            ).all()
+        )
+    latest_seen: dict[str, tuple[date, list[str]]] = {}
+    for code, seen_on, concept in concept_rows:
+        current = latest_seen.get(code)
+        if current is None or seen_on > current[0]:
+            latest_seen[code] = (seen_on, [concept])
+        elif seen_on == current[0]:
+            current[1].append(concept)
+    return {code: sorted(names) for code, (_, names) in latest_seen.items()}
+
+
+def _industries_of(db: Session, codes: set[str]) -> dict[str, str | None]:
+    """同花顺行业（三级路径）。与板块**不是一套分类**，见 `PatternStockOut.industry`。
+
+    一次查全即可 —— 建池 7 天一次、覆盖全 A，所以基本没有查不到的行；查不到就是 None。
+    """
+    if not codes:
+        return {}
+    industries: dict[str, str | None] = {}
+    for batch in chunked(sorted(codes), _IN_BATCH):
+        industries.update(
+            dict(
+                db.execute(
+                    select(StockBasic.code, StockBasic.industry).where(
+                        StockBasic.code.in_(batch)
+                    )
+                ).all()
+            )
+        )
+    return industries
+
+
 def _oversold_only_rows(
     db: Session, target: date, codes: list[str], devs: dict[str, float]
 ) -> list[PatternStockOut]:
     """把「没进今天命中表、但超跌」的票造成列表行（`patterns` 为空）。
 
     这些行没有形态、因而没有评分（`score=0`），排序放在命中行之后、按乖离从深到浅
-    —— 做 T 的人先看跌得最狠的那几只。板块 / 行业留空：它们没有涨停记录，`stock_concept`
-    本来就没有值；`industry` 若一并查会多一次全表 IN，收益不大。
+    —— 做 T 的人先看跌得最狠的那几只。
+
+    板块 / 行业**照常给**（2026-10-28 改）：原先这里直接把两个字段写死成空，理由是
+    「没涨停过就没有板块值」—— 但线上实测（10-28 的 278 只超跌票）**全部**查得到行业、
+    248 只查得到板块，三列全空只会让人以为数据没加载出来。查询走 `_sectors_of` /
+    `_industries_of`，与命中行同源同口径。
+
+    「命中形态」仍然空着，这是事实：这些票今天一个形态都没中（它们就是因为「没进命中表」
+    才被补进来的）。
     """
     if not codes:
         return []
@@ -475,6 +534,9 @@ def _oversold_only_rows(
             ).where(StockDaily.trade_date == target, StockDaily.code.in_(batch))
         ).all():
             basic[code] = (name, close, pct_chg, amount)
+
+    sector_map = _sectors_of(db, set(codes))
+    industry_map = _industries_of(db, set(codes))
 
     out: list[PatternStockOut] = []
     for code in sorted(codes, key=lambda item: devs.get(item, 0.0)):
@@ -494,8 +556,8 @@ def _oversold_only_rows(
                 amount=amount,
                 avg_amount=None,
                 total_mv=None,
-                sectors=[],
-                industry=None,
+                sectors=sector_map.get(code, []),
+                industry=industry_map.get(code),
                 score=0.0,
                 patterns=[],
             )
@@ -694,43 +756,9 @@ def hits(
             }
         )
 
-    # 板块（口径与个股页「所属题材」一致，见 `PatternStockOut.sectors` 的说明）。
-    #
-    # ⚠️ 取「该股出现过的**最近一天**」而不是命中当天：`stock_concept` 来自涨停天梯、
-    # 只有涨停股有值，用当天口径的话这个列表里 97% 的行会是空的。
-    # **一次查全、在内存里按 code 挑最新的那天**：写成「每只票一条相关子查询」会把这个
-    # 接口从一次查询变成上千次（`code` 不是那张表主键的首列，每次都要扫）。
-    concept_rows = []
-    for batch in chunked(hit_codes, _IN_BATCH):
-        concept_rows.extend(
-            db.execute(
-                select(
-                    StockConcept.code, StockConcept.trade_date, StockConcept.concept
-                ).where(StockConcept.code.in_(batch))
-            ).all()
-        )
-    latest_seen: dict[str, tuple[date, list[str]]] = {}
-    for code, seen_on, concept in concept_rows:
-        current = latest_seen.get(code)
-        if current is None or seen_on > current[0]:
-            latest_seen[code] = (seen_on, [concept])
-        elif seen_on == current[0]:
-            current[1].append(concept)
-    sectors = {code: sorted(names) for code, (_, names) in latest_seen.items()}
-
-    # 同花顺行业（三级路径）。与上面的板块**不是一套分类**，见 `PatternStockOut.industry`。
-    # 一次查全即可 —— 建池 7 天一次、覆盖全 A，所以基本没有查不到的行；查不到就是 None。
-    industries: dict[str, str | None] = {}
-    for batch in chunked(hit_codes, _IN_BATCH):
-        industries.update(
-            dict(
-                db.execute(
-                    select(StockBasic.code, StockBasic.industry).where(
-                        StockBasic.code.in_(batch)
-                    )
-                ).all()
-            )
-        )
+    # 板块 / 行业：两处查询的口径与代价见 `_sectors_of` / `_industries_of`
+    sectors = _sectors_of(db, set(hit_codes))
+    industries = _industries_of(db, set(hit_codes))
 
     grouped: dict[str, PatternStockOut] = {}
     for row in rows:
