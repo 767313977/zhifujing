@@ -26,6 +26,7 @@ from app.models import (
     Watchlist,
 )
 from app.services.patterns import PATTERNS
+from app.services.stock_meta import industries_of, sectors_of
 from app.sources.base import chunked
 
 logger = logging.getLogger(__name__)
@@ -302,4 +303,14 @@ def suggestions(session: Session, user_id: int) -> list[dict]:
             }
         )
         added += 1
+
+    # 板块 / 行业走 `stock_meta`，与形态页同一口径：这一屏要回答「这只票是什么、
+    # 做过什么题材」，只给形态名不够。按最终名单查一次，不按候选池查（后者会白查
+    # 被 `added >= 10` 截掉的票）。
+    codes = {row["code"] for row in result}
+    sectors = sectors_of(session, codes)
+    industries = industries_of(session, codes)
+    for row in result:
+        row["sectors"] = sectors.get(row["code"], [])
+        row["industry"] = industries.get(row["code"])
     return result

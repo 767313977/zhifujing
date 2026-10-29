@@ -1956,6 +1956,10 @@ export interface TradePlanSuggestion {
   pattern_name: string | null
   buy_price: number | null
   stop_price: number | null
+  /** 开盘红精选板块（最近一次涨停挂的题材），没涨停过就是空数组 */
+  sectors: string[]
+  /** 同花顺三级行业路径，与 `sectors` 不是一套分类 */
+  industry: string | null
 }
 
 export interface TradePlanSuggestionsOut {

@@ -1866,6 +1866,11 @@ class TradePlanSuggestion(ApiModel):
     pattern_name: str | None = None
     buy_price: float | None = None
     stop_price: float | None = None
+    #: 开盘红精选板块（该股最近一次涨停挂的题材；没涨停过就是空列表）。
+    #: 与 `industry` **不是一套分类**：前者回答「做过什么题材」，后者回答「做什么生意」。
+    sectors: list[str] = Field(default_factory=list)
+    #: 同花顺三级行业路径（`电子-半导体-集成电路Ⅲ`），与形态页同源
+    industry: str | None = None
 
 
 class TradePlanSuggestionsOut(ApiModel):

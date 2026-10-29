@@ -310,6 +310,8 @@ export default function PlansPage() {
                     <th className="!text-left">股票</th>
                     <th className="!text-left">来源</th>
                     <th className="!text-left">形态 / 理由</th>
+                    <th className="!text-left">板块</th>
+                    <th className="!text-left">行业</th>
                     <th>建议买点</th>
                     <th>建议放弃位</th>
                     <th></th>
@@ -327,6 +329,16 @@ export default function PlansPage() {
                       </td>
                       <td className="!text-left text-[12px] text-fg-muted">
                         {item.pattern_name ?? '—'}
+                      </td>
+                      <td className="!text-left text-[12px] text-fg-dim">
+                        {item.sectors.length === 0 ? '—' : item.sectors.join(' / ')}
+                      </td>
+                      <td className="!text-left text-[12px] text-fg-dim">
+                        {item.industry ? (
+                          <span title={item.industry}>{item.industry.split('-')[0]}</span>
+                        ) : (
+                          '—'
+                        )}
                       </td>
                       <td>
                         <span className="num">
