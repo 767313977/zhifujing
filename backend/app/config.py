@@ -387,8 +387,10 @@ class Settings(BaseSettings):
     # 23:10：晚于 22:30 的成分股兜底，把当天最后一次写库也覆盖进去
     backup_hour: int = 23
     backup_minute: int = 10
-    # 保留份数。线上库约 660 MB，10 份约 6.6 GB（磁盘 50 GB 余量）
-    backup_keep: int = 10
+    # 保留份数。**2026-10-29 从 10 降到 5**：库已长到 1.5 GB（不再是注释里的 660 MB），
+    # 10 份接近 10 GB，占整盘 31%；5 份约 7.5 GB、够覆盖「当天采集中毒、次日发现」这种
+    # 最常见的事故。真要更久的历史，别调大这个数 —— 上 `backup_sync_dir` 做异地。
+    backup_keep: int = 5
     # 额外同步目录（挂载盘 / COS 同步客户端的落地目录）。空 = 只留本机。
     # 不直接调 COS SDK：那需要额外依赖与密钥，先用「任意可写目录」做接口。
     backup_sync_dir: str = ""
