@@ -3032,3 +3032,74 @@ class CbStockBondOut(BaseModel):
     state: str | None = None
 
 
+class CbPointOut(BaseModel):
+    """单券走势的一个点（盘后快照）。"""
+
+    trade_date: date
+    close: float | None = None
+    conv_value: float | None = None
+    premium_pct: float | None = None
+    ytm_pct: float | None = None
+
+
+class CbDetailOut(BaseModel):
+    """单券详情：条款摘要 + 最近一份快照 + 走势序列。
+
+    没有事件表（`cb_event` 未做），所以不带事件列表。`as_of` 是这份快照的日期 ——
+    转债快照只能当天采，已摘牌 / 当天停牌的券会落到它自己最近的一份。
+    """
+
+    as_of: date | None = None
+    bond_code: str
+    bond_name: str | None = None
+    stock_code: str | None = None
+    stock_name: str | None = None
+
+    # ---- 条款 ----
+    list_date: date | None = None
+    maturity_date: date | None = None
+    convert_start_date: date | None = None
+    issue_size: float | None = None
+    rating: str | None = None
+    maturity_call_price: float | None = None
+    coupon_text: str | None = None
+    redeem_trigger_pct: float | None = None
+    resale_trigger_pct: float | None = None
+    revise_trigger_pct: float | None = None
+    #: 非空 = 已到期 / 已强赎完成 / 已摘牌
+    delist_date: date | None = None
+
+    # ---- 最近快照 ----
+    close: float | None = None
+    pct_chg: float | None = None
+    high: float | None = None
+    low: float | None = None
+    amount: float | None = None
+    amplitude: float | None = None
+    turnover: float | None = None
+    stock_close: float | None = None
+    stock_pct_chg: float | None = None
+    conv_price: float | None = None
+    conv_value: float | None = None
+    premium_pct: float | None = None
+    double_low: float | None = None
+    ytm_pct: float | None = None
+    remain_size: float | None = None
+    years_left: float | None = None
+    redeem_status: str | None = None
+    redeem_count: int | None = None
+    redeem_required: int | None = None
+    redeem_complete: bool = False
+    revise_count: int | None = None
+    revise_complete: bool = False
+    resale_count: int | None = None
+    last_trade_date: date | None = None
+    days_left: int | None = None
+    labels: list[str] = []
+    risks: list[str] = []
+    #: 行情来源；不是 `sina+em+jsl` 说明当天走了兜底
+    source: str | None = None
+
+    series: list[CbPointOut] = []
+
+

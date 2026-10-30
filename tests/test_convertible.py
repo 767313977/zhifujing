@@ -301,6 +301,71 @@ def test_radar_orders_announced_before_met_and_near(db):
     assert rows[1].redeem_status == "已满足强赎条件"
 
 
+def test_detail_returns_terms_snapshot_and_ascending_series(db):
+    fill_calendar(db, DAY)
+    add_basic(db)
+    add_daily(db, date(2026, 10, 28), close=112.0, premium_pct=22.0)
+    add_daily(db, date(2026, 10, 29), close=113.0, premium_pct=21.0)
+    add_daily(db, DAY, close=115.0, premium_pct=20.0, redeem_days=12, redeem_days_required=15)
+    db.commit()
+
+    out = convertible.detail(db, "113042")
+
+    assert out is not None
+    assert out.as_of == DAY
+    assert out.bond_name == "113042转债"
+    assert out.stock_code == "601229"
+    assert out.close == 115.0
+    # 双低 = 现价 + 溢价率（% 口径，不再 ×100）
+    assert out.double_low == 135.0
+    assert out.years_left == pytest.approx(round((date(2027, 1, 25) - DAY).days / 365, 2))
+    # 走势按日期升序，最后一点就是快照当天
+    assert [point.trade_date for point in out.series] == [
+        date(2026, 10, 28),
+        date(2026, 10, 29),
+        DAY,
+    ]
+    assert out.series[-1].close == 115.0
+    # 集思录的计数优先，分母是「触发所需天数」
+    assert out.redeem_count == 12
+    assert out.redeem_required == 15
+    assert out.labels == ["强赎临近 12/15"]
+
+
+def test_detail_series_respects_days_limit(db):
+    fill_calendar(db, DAY)
+    add_basic(db)
+    add_daily(db, date(2026, 10, 28))
+    add_daily(db, date(2026, 10, 29))
+    add_daily(db, DAY)
+    db.commit()
+
+    out = convertible.detail(db, "113042", days=2)
+
+    assert out is not None
+    assert [point.trade_date for point in out.series] == [date(2026, 10, 29), DAY]
+
+
+def test_detail_falls_back_to_bond_latest_snapshot(db):
+    """当天停牌 / 已摘牌的券要能打开：as_of 落到它自己最近的一份，不是全市场最新日。"""
+    fill_calendar(db, DAY)
+    add_basic(db)
+    add_daily(db, date(2026, 10, 29))
+    # 另一只券在 DAY 有快照，但这只没有
+    add_daily(db, DAY, code="111002")
+    db.commit()
+
+    out = convertible.detail(db, "113042")
+
+    assert out is not None
+    assert out.as_of == date(2026, 10, 29)
+    assert out.close == 115.0
+
+
+def test_detail_unknown_code_is_none(db):
+    assert convertible.detail(db, "999999") is None
+
+
 def test_t0_preset_scores_and_keeps_cash_gates(db):
     fill_calendar(db, DAY)
     # 到期日放远一点，避免「剩余年限 < 1 年」先把它剔掉，专测成交额这道闸

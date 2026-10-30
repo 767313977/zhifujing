@@ -813,3 +813,201 @@ def bonds_of_stock(
             )
         )
     return result
+
+
+# ---------------------------------------------------------------- 单券详情
+
+
+@dataclass(frozen=True, slots=True)
+class CbPoint:
+    """详情页走势的一个点。"""
+
+    trade_date: date
+    close: float | None
+    conv_value: float | None
+    premium_pct: float | None
+    ytm_pct: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class CbDetail:
+    """单券详情：条款摘要 + 最近快照 + 走势序列（可转债-3 §3.1）。
+
+    没有事件表（`cb_event` 还没做），所以这里不带事件列表；强赎 / 下修只能看
+    `redeem_status` 与各项计数。
+    """
+
+    as_of: date | None
+    bond_code: str
+    bond_name: str | None
+    stock_code: str | None
+    stock_name: str | None
+
+    # ---- 条款（`cb_basic`）----
+    list_date: date | None
+    maturity_date: date | None
+    convert_start_date: date | None
+    issue_size: float | None
+    rating: str | None
+    maturity_call_price: float | None
+    coupon_text: str | None
+    redeem_trigger_pct: float | None
+    resale_trigger_pct: float | None
+    revise_trigger_pct: float | None
+    #: 到期 / 强赎完成 / 摘牌日；非空说明这只券已经不在市场上了
+    delist_date: date | None
+
+    # ---- 最近一份快照（`cb_daily`）----
+    close: float | None
+    pct_chg: float | None
+    high: float | None
+    low: float | None
+    amount: float | None
+    amplitude: float | None
+    turnover: float | None
+    stock_close: float | None
+    stock_pct_chg: float | None
+    conv_price: float | None
+    conv_value: float | None
+    premium_pct: float | None
+    double_low: float | None
+    ytm_pct: float | None
+    remain_size: float | None
+    years_left: float | None
+    redeem_status: str | None
+    #: 已满足天数（集思录优先，否则本地近 30 日窗口）
+    redeem_count: int | None
+    #: 触发所需天数（标签分母）
+    redeem_required: int | None
+    redeem_complete: bool
+    revise_count: int | None
+    revise_complete: bool
+    resale_count: int | None
+    last_trade_date: date | None
+    #: 距最后交易日的自然日数（负数 = 已过）
+    days_left: int | None
+    labels: list[str]
+    risks: list[str]
+    #: 当天快照的行情来源（不是 `sina+em+jsl` 说明走了兜底）
+    source: str | None
+
+    #: 走势（升序）。历史只有从上线那天起累积的那些天 —— 快照不可回补
+    series: list[CbPoint]
+
+
+def detail(
+    session: Session,
+    bond_code: str,
+    day: date | None = None,
+    days: int = COUNT_WINDOW * 8,
+) -> CbDetail | None:
+    """单券详情，纯读库。查不到这只券返回 None（接口层转 404）。
+
+    `day` 缺省取该券**最近一份**快照，而不是全市场的最新日期 —— 已摘牌 / 当天停牌的
+    券也要能打开详情，页面上的 `as_of` 会写明是哪一天。
+
+    `series` 最多 `days` 个交易日（按 `cb_daily` 自身的日期，不看日历）：转债快照
+    只能当天采，所以序列长度就是「上线以来采到几天」，别假装是 250 天。
+    """
+    basic = session.get(CbBasic, bond_code)
+    if basic is None:
+        return None
+    if day is None:
+        daily = session.scalar(
+            select(CbDaily)
+            .where(CbDaily.bond_code == bond_code)
+            .order_by(CbDaily.trade_date.desc())
+            .limit(1)
+        )
+    else:
+        daily = session.get(CbDaily, (day, bond_code))
+    as_of = daily.trade_date if daily is not None else None
+
+    counts = None
+    if as_of is not None:
+        counts = _counts(session, as_of, {bond_code}, {bond_code: basic}).get(bond_code)
+    labels: list[str] = []
+    risks: list[str] = []
+    if daily is not None:
+        labels, risks = _labels(basic, daily, counts)
+
+    series: list[CbPoint] = []
+    if as_of is not None:
+        rows = session.scalars(
+            select(CbDaily)
+            .where(CbDaily.bond_code == bond_code, CbDaily.trade_date <= as_of)
+            .order_by(CbDaily.trade_date.desc())
+            .limit(days)
+        ).all()
+        series = [
+            CbPoint(
+                trade_date=row.trade_date,
+                close=row.close,
+                conv_value=row.conv_value,
+                premium_pct=row.premium_pct,
+                ytm_pct=row.ytm_pct,
+            )
+            for row in reversed(rows)
+        ]
+
+    # 计数口径与筛选页一致：集思录的完整计数优先，本地窗口只作兜底
+    redeem = None
+    redeem_complete = False
+    if daily is not None:
+        if daily.redeem_days is not None:
+            redeem, redeem_complete = daily.redeem_days, True
+        elif counts is not None:
+            redeem, redeem_complete = counts.redeem, counts.complete
+
+    return CbDetail(
+        as_of=as_of,
+        bond_code=bond_code,
+        bond_name=basic.bond_name,
+        stock_code=basic.stock_code,
+        stock_name=basic.stock_name,
+        list_date=basic.list_date,
+        maturity_date=basic.maturity_date,
+        convert_start_date=basic.convert_start_date,
+        issue_size=basic.issue_size,
+        rating=basic.rating,
+        maturity_call_price=basic.maturity_call_price,
+        coupon_text=basic.coupon_text,
+        redeem_trigger_pct=basic.redeem_trigger_pct,
+        resale_trigger_pct=basic.resale_trigger_pct,
+        revise_trigger_pct=basic.revise_trigger_pct,
+        delist_date=basic.delist_date,
+        close=daily.close if daily else None,
+        pct_chg=daily.pct_chg if daily else None,
+        high=daily.high if daily else None,
+        low=daily.low if daily else None,
+        amount=daily.amount if daily else None,
+        amplitude=daily.amplitude if daily else None,
+        turnover=daily.turnover if daily else None,
+        stock_close=daily.stock_close if daily else None,
+        stock_pct_chg=daily.stock_pct_chg if daily else None,
+        conv_price=daily.conv_price if daily else None,
+        conv_value=daily.conv_value if daily else None,
+        premium_pct=daily.premium_pct if daily else None,
+        double_low=double_low(
+            daily.close if daily else None, daily.premium_pct if daily else None
+        ),
+        ytm_pct=daily.ytm_pct if daily else None,
+        remain_size=daily.remain_size if daily else None,
+        years_left=years_left(basic.maturity_date, as_of) if as_of else None,
+        redeem_status=daily.redeem_status if daily else None,
+        redeem_count=redeem,
+        redeem_required=(daily.redeem_days_required if daily else None)
+        or (DEFAULT_REDEEM_DAYS if redeem is not None else None),
+        redeem_complete=redeem_complete,
+        revise_count=counts.revise if counts else None,
+        revise_complete=bool(counts.complete) if counts else False,
+        resale_count=counts.resale if counts else None,
+        last_trade_date=daily.last_trade_date if daily else None,
+        days_left=(daily.last_trade_date - as_of).days
+        if daily and daily.last_trade_date and as_of
+        else None,
+        labels=labels,
+        risks=risks,
+        source=daily.source if daily else None,
+        series=series,
+    )

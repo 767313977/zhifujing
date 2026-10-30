@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.schemas import (
+    CbDetailOut,
     CbRadarOut,
     CbRadarRowOut,
     CbScreenOut,
@@ -108,3 +109,22 @@ def by_stock(
         CbStockBondOut(**asdict(row))
         for row in convertible.bonds_of_stock(session, code)
     ]
+
+
+# ⚠️ 这条**必须放在 /screen /radar /by-stock 之后**：`/api/cb/{bond_code}` 只是一段路径，
+# 注册在静态路径之前就会把 `/api/cb/screen` 这类请求吃掉。FastAPI 按注册顺序匹配。
+@router.get("/{bond_code}", response_model=CbDetailOut)
+def detail(
+    bond_code: str,
+    days: int = Query(250, ge=5, le=1000, description="走势取多少个交易日"),
+    trade_date: date | None = Query(None, alias="date", description="缺省 = 该券最近一份快照"),
+    session: Session = Depends(get_db),
+) -> CbDetailOut:
+    """单券详情：条款摘要 + 最近一份快照 + 走势序列。纯读库，不联网。"""
+    code = normalize_code(bond_code)
+    if len(code) != 6:
+        raise HTTPException(status_code=400, detail=f"转债代码应为 6 位数字：{bond_code}")
+    data = convertible.detail(session, code, trade_date, days)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"没有这只转债：{code}")
+    return CbDetailOut(**asdict(data))
