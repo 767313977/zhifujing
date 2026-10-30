@@ -113,10 +113,13 @@ def _stock_pct_map(trade_date: date, codes: set[str]) -> dict[str, float]:
     return result
 
 
-def _basic_rows(cov: list[dict]) -> dict[str, dict]:
+def _basic_rows(cov: list[dict], redeem: dict[str, dict]) -> dict[str, dict]:
     """从东财一览里取**已上市**的券，拼出 `cb_basic` 的静态列。
 
     未上市的（`上市时间` 为空）跳过：它们还没有行情，进了每日采集只会让覆盖率闸误判。
+
+    `maturity_date` 优先用集思录强赎表里的「到期日」—— 它每天都有，**不必等条款补齐**；
+    剩余年限这个筛选条件依赖它，没有它整个筛选池会是空的（2026-10-30 实测踩过）。
     """
     result: dict[str, dict] = {}
     for row in cov:
@@ -124,12 +127,14 @@ def _basic_rows(cov: list[dict]) -> dict[str, dict]:
         list_date = _date(row.get("上市时间"))
         if not code or list_date is None:
             continue
+        extra = redeem.get(code, {})
         result[code] = {
             "bond_code": code,
             "bond_name": _text(row.get("债券简称")),
             "stock_code": _text(row.get("正股代码")),
             "stock_name": _text(row.get("正股简称")),
             "list_date": list_date,
+            "maturity_date": _date(extra.get("到期日")),
             "issue_size": _num(row.get("发行规模")),
             "rating": _text(row.get("信用评级")),
         }
@@ -304,7 +309,8 @@ def refresh(settings: Settings | None = None, trade_date: date | None = None) ->
         raise RuntimeError("可转债一览（东财）返回 0 行，无法归类正股 / 溢价率")
 
     # 1) 静态条款：**fill 语义**（新的 None 不覆盖库里已有的非空值）
-    basic_by_code = _basic_rows(cov)
+    redeem_by_code = {str(row.get("代码")): row for row in redeem if row.get("代码")}
+    basic_by_code = _basic_rows(cov, redeem_by_code)
     with session_scope() as session:
         upsert_many_fill(session, CbBasic, list(basic_by_code.values()))
 
@@ -315,7 +321,6 @@ def refresh(settings: Settings | None = None, trade_date: date | None = None) ->
 
     # 3) 当日行情
     cov_by_code = {str(row.get("债券代码")): row for row in cov if row.get("债券代码")}
-    redeem_by_code = {str(row.get("代码")): row for row in redeem if row.get("代码")}
     rows = _merge_daily(spot, cov_by_code, redeem_by_code, basics, day)
     if not rows:
         raise RuntimeError("可转债快照合并后 0 行")

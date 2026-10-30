@@ -128,11 +128,14 @@ def test_num_and_date_normalisation():
 
 def test_basic_rows_skip_unlisted():
     rows = collect_cb._basic_rows(
-        [cov_row(), cov_row(code="123291", **{"上市时间": None})]
+        [cov_row(), cov_row(code="123291", **{"上市时间": None})],
+        {"127110": redeem_row()},
     )
 
     assert list(rows) == ["127110"]
     assert rows["127110"]["issue_size"] == pytest.approx(49.0)
+    # 到期日取自集思录强赎表（每天都有），不必等条款补齐
+    assert rows["127110"]["maturity_date"] == date(2031, 7, 9)
 
 
 def test_merge_daily_skips_zero_price_and_computes_derived():
