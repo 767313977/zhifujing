@@ -6,9 +6,12 @@
 
 用法（在 backend 目录下）：
 
-    python ../scripts/fill_cb_terms.py            # 只补还没有票息的
-    python ../scripts/fill_cb_terms.py --all      # 全部重拉一遍（条款可能被改）
+    python ../scripts/fill_cb_terms.py            # 只补「今天还在交易、且没有票息」的券
+    python ../scripts/fill_cb_terms.py --all      # 连已退市的一起补（回测用）
     python ../scripts/fill_cb_terms.py --limit 50 # 只补 50 只，控制耗时
+
+限速是 1 请求/秒，311 只「在交易的」约 5 分钟；带 `--all` 会把 1000 多只全拉一遍，
+十几分钟起步，仅首次建库 / 回测时用。
 """
 
 import argparse
@@ -22,7 +25,7 @@ from sqlalchemy import select  # noqa: E402
 
 from app.db import session_scope, upsert_many_fill  # noqa: E402
 from app.jobs.collect_cb import _date, _num, _text  # noqa: E402
-from app.models import CbBasic  # noqa: E402
+from app.models import CbBasic, CbDaily  # noqa: E402
 from app.sources.akshare_source import AkshareSource  # noqa: E402
 
 logger = logging.getLogger("fill_cb_terms")
@@ -60,16 +63,29 @@ def fill(codes: list[str], source: AkshareSource) -> int:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="补齐可转债条款（票息 / 到期赎回价）")
-    parser.add_argument("--all", action="store_true", help="全部重拉，不只是缺票息的")
+    parser.add_argument(
+        "--all", action="store_true", help="连已退市的一起补（默认只补最近一次快照里在交易的）"
+    )
     parser.add_argument("--limit", type=int, default=0, help="最多补多少只（0 = 不限）")
     parser.add_argument("--codes", default="", help="只补这些代码，逗号分隔")
     args = parser.parse_args()
 
     with session_scope() as session:
         statement = select(CbBasic.bond_code).order_by(CbBasic.bond_code)
-        if not args.all:
-            statement = statement.where(CbBasic.coupon_text.is_(None))
+        statement = statement.where(CbBasic.coupon_text.is_(None))
         codes = list(session.scalars(statement))
+        if not args.all:
+            # 默认只补「最近一次快照里还在交易」的券：YTM 只对它们有意义，
+            # 带 --all 会把 1000 多只已退市的也拉一遍（十几分钟）
+            latest = session.scalar(
+                select(CbDaily.trade_date).order_by(CbDaily.trade_date.desc())
+            )
+            alive = (
+                set(session.scalars(select(CbDaily.bond_code).where(CbDaily.trade_date == latest)))
+                if latest
+                else set()
+            )
+            codes = [code for code in codes if code in alive]
 
     if args.codes:
         wanted = {code.strip() for code in args.codes.split(",") if code.strip()}
