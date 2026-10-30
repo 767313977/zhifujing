@@ -126,6 +126,19 @@ def test_num_and_date_normalisation():
     assert collect_cb._date("2025-07-25") == date(2025, 7, 25)
 
 
+def test_call_price_falls_back_to_clause_text():
+    """`EXECUTE_PRICE_SH` 只有发生强赎 / 摘牌的券才有（371 只里仅 66 只），
+    所以要从条款原文里抠「面值的 112%」。"""
+    assert collect_cb.call_price_from_terms({"EXECUTE_PRICE_SH": 112}) == 112
+    clause = (
+        "到期赎回条款在本次发行的可转债期满后五个交易日内，公司将以本次发行的可转债的"
+        "票面面值的112%（含最后一期计息年度利息）的价格向投资者赎回全部未转股的可转债。"
+    )
+    assert collect_cb.call_price_from_terms({"REDEEM_CLAUSE": clause}) == 112.0
+    assert collect_cb.call_price_from_terms({"REDEEM_CLAUSE": "面值的 108% 赎回"}) == 108.0
+    assert collect_cb.call_price_from_terms({}) is None
+
+
 def test_basic_rows_skip_unlisted():
     rows = collect_cb._basic_rows(
         [cov_row(), cov_row(code="123291", **{"上市时间": None})],

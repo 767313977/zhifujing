@@ -23,9 +23,10 @@
 """
 
 import logging
+import re
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.config import Settings, get_settings
 from app.db import session_scope, upsert_many, upsert_many_fill
@@ -88,6 +89,26 @@ def _date(value: object) -> date | None:
 def _text(value: object) -> str | None:
     text = str(value or "").strip()
     return text or None
+
+
+#: 到期赎回价在条款原文里的写法：「票面面值的112%（含最后一期计息年度利息）」
+_CALL_PRICE_RE = re.compile(r"面值(?:的)?\s*(\d+(?:\.\d+)?)\s*%")
+
+
+def call_price_from_terms(info: dict) -> float | None:
+    """到期赎回价（含最后一期利息）。
+
+    `EXECUTE_PRICE_SH` 只有**已经发生强赎 / 摘牌**的券才有值（实测 371 只里只有 66 只
+    有），光靠它 YTM 基本算不出来。所以缺的时候从 `REDEEM_CLAUSE` 原文里抠
+    「面值的 112%」这种写法 —— 条款原文每只券都有。
+    """
+    price = _num(info.get("EXECUTE_PRICE_SH"))
+    if price:
+        return price
+    match = _CALL_PRICE_RE.search(str(info.get("REDEEM_CLAUSE") or ""))
+    if match:
+        return float(match.group(1))
+    return None
 
 
 def _stock_pct_map(trade_date: date, codes: set[str]) -> dict[str, float]:
@@ -221,7 +242,13 @@ def _fill_terms(source: AkshareSource) -> int:
         pending = list(
             session.scalars(
                 select(CbBasic.bond_code)
-                .where(CbBasic.coupon_text.is_(None))
+                # 票息与到期赎回价缺任一个 YTM 都算不出来，两个都要补
+                .where(
+                    or_(
+                        CbBasic.coupon_text.is_(None),
+                        CbBasic.maturity_call_price.is_(None),
+                    )
+                )
                 .order_by(CbBasic.bond_code)
                 .limit(TERMS_PER_RUN)
             )
@@ -238,8 +265,7 @@ def _fill_terms(source: AkshareSource) -> int:
         row: dict = {
             "bond_code": code,
             "coupon_text": _text(info.get("INTEREST_RATE_EXPLAIN")),
-            # `EXECUTE_PRICE_SH` 实测就是「到期赎回价 112」这类值（含最后一期利息）
-            "maturity_call_price": _num(info.get("EXECUTE_PRICE_SH")),
+            "maturity_call_price": call_price_from_terms(info),
             "maturity_date": _date(info.get("EXPIRE_DATE")),
             "convert_start_date": _date(info.get("TRANSFER_START_DATE")),
         }

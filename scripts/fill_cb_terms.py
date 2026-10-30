@@ -21,10 +21,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import or_, select  # noqa: E402
 
 from app.db import session_scope, upsert_many_fill  # noqa: E402
-from app.jobs.collect_cb import _date, _num, _text  # noqa: E402
+from app.jobs.collect_cb import _date, _num, _text, call_price_from_terms  # noqa: E402
 from app.models import CbBasic, CbDaily  # noqa: E402
 from app.sources.akshare_source import AkshareSource  # noqa: E402
 
@@ -41,7 +41,7 @@ def fill(codes: list[str], source: AkshareSource) -> int:
         row: dict = {
             "bond_code": code,
             "coupon_text": _text(info.get("INTEREST_RATE_EXPLAIN")),
-            "maturity_call_price": _num(info.get("EXECUTE_PRICE_SH")),
+            "maturity_call_price": call_price_from_terms(info),
             "maturity_date": _date(info.get("EXPIRE_DATE")),
             "convert_start_date": _date(info.get("TRANSFER_START_DATE")),
         }
@@ -72,7 +72,10 @@ def main() -> None:
 
     with session_scope() as session:
         statement = select(CbBasic.bond_code).order_by(CbBasic.bond_code)
-        statement = statement.where(CbBasic.coupon_text.is_(None))
+        # 票息与到期赎回价缺任一个 YTM 都算不出来，两个都补
+        statement = statement.where(
+            or_(CbBasic.coupon_text.is_(None), CbBasic.maturity_call_price.is_(None))
+        )
         codes = list(session.scalars(statement))
         if not args.all:
             # 默认只补「最近一次快照里还在交易」的券：YTM 只对它们有意义，
