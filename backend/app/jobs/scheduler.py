@@ -972,7 +972,9 @@ class DailyScheduler:
                 skipped or "无",
             )
 
-    def _catch_up_members(self, today: date, reason: str) -> None:
+    def _catch_up_members(
+        self, today: date, reason: str, *, retry_non_ok: bool = False
+    ) -> None:
         """把最近几天漏采的「板块成分股预取」补上（上限同上）。
 
         **为什么要有**：`_run_members` 只看当天，跨天重启时那天的成分股名单就永久缺
@@ -980,13 +982,20 @@ class DailyScheduler:
         接口**历史与当日同一条路径**（`sources/kaipanhong._post` 按日期切历史域名），
         所以传历史日期能真取到那天的名单。
 
-        **判据用 `collect_log`**：`_run_members` / 本方法各写一条 `members` 记录，
-        某天**没有**这条记录才去补 —— 有记录（哪怕 `empty`/`failed`）就不再重试。
-        这道闸门是必需的：否则「当天名单一直没发布」的日子会每晚重打约 370 个板块
-        请求（`collect_all_members` 内部 `only_missing` 只能跳过已在库的板块）。
+        **判据用 `collect_log`**：某天有 **`ok`** 记录才跳过。只有 `empty`/`failed`
+        时的处理分两种（2026-10-30 修）：
+
+        - `retry_non_ok=False`（22:00 / 22:30 / 启动回看）：仍然跳过 —— 否则「当天名单
+          一直没发布」的日子会每晚重打约 370 个板块请求；
+        - `retry_non_ok=True`（次日早间那趟）：只给**最近一个交易日**一次机会。开盘红
+          的当日名单经常要次日早上才发布（实测 10-26 到次日 08:39 才有），而先前写的
+          `empty` 记录会把它永久挡在门外 —— 2026-10-29 就是这样丢了一天成分股，
+          `sector_daily.leader_name`（页面上的「龙一」）跟着空了一整天。
         """
-        for day in _recent_trade_days(today, CATCHUP_LOOKBACK_TRADING_DAYS):
-            if _logged_tasks(day, (MEMBERS_TASK,), None):
+        for index, day in enumerate(_recent_trade_days(today, CATCHUP_LOOKBACK_TRADING_DAYS)):
+            if _logged_tasks(day, (MEMBERS_TASK,), "ok"):
+                continue
+            if _logged_tasks(day, (MEMBERS_TASK,), None) and not (retry_non_ok and index == 0):
                 continue
             try:
                 result = SectorCollector(self.settings).collect_all_members(day)
@@ -1136,11 +1145,14 @@ class DailyScheduler:
 
         `_catch_up_members` 只看「今天之前」的日子（`_recent_trade_days` 不含 `end`），
         所以不会给今天写 `collect_log` —— 今天那份仍由 22:00 / 22:30 负责。
+
+        `retry_non_ok=True`：前一天的记录若是 `empty`（当晚还没发布），这趟要再试一次，
+        否则它会永久缺 —— 见 `_catch_up_members` 的说明。
         """
         if not is_trade_day(today_cn()):
             return
         try:
-            self._catch_up_members(today_cn(), "次日早间补采成分股")
+            self._catch_up_members(today_cn(), "次日早间补采成分股", retry_non_ok=True)
         except Exception:  # noqa: BLE001 - 定时任务绝不能因异常中断调度
             logger.exception("次日早间补采成分股失败")
 
