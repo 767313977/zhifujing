@@ -289,6 +289,9 @@ def test_parse_redeem_days_is_strict():
     """只认开头的 `已满足/需要`；日期与超范围的一律不认（复查：宽松匹配会把日期当计数）。"""
     assert collect_cb._parse_redeem_days("12/15 | 30") == (12, 15)
     assert collect_cb._parse_redeem_days(" 15/15 | 30") == (15, 15)
+    # `0/15 | 30` 是「一天都还没满足」，是有效计数（实测占绝大多数），不能当成解析失败
+    assert collect_cb._parse_redeem_days("0/15 | 30") == (0, 15)
+    assert collect_cb._parse_redeem_days("0/20 | 30") == (0, 20)
     # 日期不能被读成「已满足 2026 天」
     assert collect_cb._parse_redeem_days("2026/11/05") is None
     assert collect_cb._parse_redeem_days("临近到期 <span>2026/11/05 最后交易</span>") is None

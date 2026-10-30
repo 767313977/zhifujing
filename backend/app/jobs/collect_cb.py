@@ -100,7 +100,9 @@ def _date(value: object) -> date | None:
 #: 集思录「强赎天计数」只认**开头**的 `已满足/需要` 这种写法（如 `12/15 | 30`）。
 #: ⚠️ 不能用「文字里出现 x/y 就算」的宽松匹配：这一栏偶尔是日期（`2026/11/05`）或
 #: 一段 HTML，宽松匹配会把日期读成「已满足 2026 天」（2026-10-30 复查）。
-#: 另外分子上限 30 —— 条款窗口就是 30 个交易日，超过的一定不是计数。
+#: 另外分子上限 30 —— 条款窗口就是 30 个交易日，超过的一定不是计数；
+#: 下限是 0（实测 318 只里 299 只是 `0/15 | 30`，那是真的「一天都没满足」，
+#: 不能当解析失败丢掉，否则整条计数会退回本地窗口、白白丢掉集思录的完整口径）。
 _REDEEM_DAYS_RE = re.compile(r"^\s*(\d{1,2})\s*/\s*(\d{1,2})\b")
 
 
@@ -110,7 +112,7 @@ def _parse_redeem_days(value: object) -> tuple[int, int] | None:
     if not match:
         return None
     done, need = int(match.group(1)), int(match.group(2))
-    if not (0 < done <= 30) or not (0 < need <= 30):
+    if not (0 <= done <= 30) or not (0 < need <= 30):
         return None
     return done, need
 
