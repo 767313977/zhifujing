@@ -430,3 +430,28 @@ class AkshareSource:
         """
         df = self._call(ak.bond_cb_redeem_jsl, "akshare 可转债强赎")
         return _records(df)
+
+    def cb_terms(self, bond_code: str) -> dict:
+        """单只转债的**条款详情**（东财 `bond_zh_cov_info` 的「基本信息」）。
+
+        ⚠️ **一券一次调用**，全市场要 400 多次，所以只在首次见到这只券时补一次
+        （见 `jobs/collect_cb._fill_terms`，每天最多补 `TERMS_PER_RUN` 只）。
+        返回里有用的列（实测 2026-10-30）：
+
+        - `INTEREST_RATE_EXPLAIN`：逐年票息的原文，YTM 解析用；
+        - `EXECUTE_PRICE_SH`：到期赎回价（含最后一期利息，上银转债 112）；
+        - `EXPIRE_DATE` / `TRANSFER_START_DATE`：到期日 / 转股起始日；
+        - `REDEEM_TRIG_PRICE` / `RESALE_TRIG_PRICE`：触发价（`"-"` = 没有该条款）。
+
+        取不到就返回空 dict，调用方跳过 —— 条款是增强数据，不该拖垮采集。
+        """
+        try:
+            df = self._call(
+                lambda: ak.bond_zh_cov_info(symbol=bond_code, indicator="基本信息"),
+                f"akshare 可转债条款 {bond_code}",
+            )
+        except Exception:  # noqa: BLE001 - 单券条款失败只影响这只券的 YTM
+            logger.warning("可转债条款取数失败：%s", bond_code, exc_info=True)
+            return {}
+        rows = _records(df)
+        return rows[0] if rows else {}

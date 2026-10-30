@@ -2934,65 +2934,82 @@ class SectorStockTrackOut(BaseModel):
     rows: list[SectorStockTrackDayOut]
 
 
-class CbPoolRowOut(BaseModel):
-    """可转债 T+0 观察池的一行（已通过硬门槛、已打分）。"""
+class CbScreenRowOut(BaseModel):
+    """可转债筛选结果的一行（转债 + 正股 + 派生指标 + 标签）。"""
 
-    code: str
-    name: str | None = None
-    close: float | None = None
-    pct_chg: float | None = None
-    #: 当日振幅（%）
-    amplitude: float | None = None
-    #: 成交额（元）
-    amount: float | None = None
-    #: 换手率（%），只在剩余规模已知时才有
-    turnover_rate: float | None = None
-    premium_rt: float | None = None
-    convert_value: float | None = None
-    remain_size: float | None = None
-    issue_size: float | None = None
-    rating: str | None = None
-    redeem_status: str | None = None
-    years_left: float | None = None
+    bond_code: str
+    bond_name: str | None = None
     stock_code: str | None = None
     stock_name: str | None = None
-    stock_pct_chg: float | None = None
-    #: 收盘价 + 转股溢价率，越低越便宜
-    double_low: float | None = None
-    #: 0~100，权重见 `services.cb_pool`
-    score: float
-
-
-class CbGateOut(BaseModel):
-    """一条硬门槛剔掉了多少只 —— 页面用它解释「为什么池子只剩这么点」。"""
-
-    label: str
-    count: int
-
-
-class CbExcludedRowOut(BaseModel):
-    """没过门槛的一行。**只给第一条原因**，够解释就行。"""
-
-    code: str
-    name: str | None = None
     close: float | None = None
+    pct_chg: float | None = None
+    #: 转股溢价率（%）
+    premium_pct: float | None = None
+    #: 双低 = 现价 + 转股溢价率
+    double_low: float | None = None
+    conv_value: float | None = None
+    conv_price: float | None = None
+    #: 到期 YTM（%）；票息没补齐时为 None，**不是 0**
+    ytm_pct: float | None = None
+    remain_size: float | None = None
+    issue_size: float | None = None
+    years_left: float | None = None
+    rating: str | None = None
+    #: 成交额（元）
     amount: float | None = None
-    premium_rt: float | None = None
-    reason: str
+    #: 换手率（%）
+    turnover: float | None = None
+    stock_close: float | None = None
+    stock_pct_chg: float | None = None
+    redeem_count: int | None = None
+    revise_count: int | None = None
+    resale_count: int | None = None
+    #: 计数窗口是否完整。false 时页面显示「≥n」
+    count_complete: bool = False
+    redeem_status: str | None = None
+    last_trade_date: date | None = None
+    #: 状态标签（已公告强赎 / 承诺不强赎 / 强赎临近 / 下修临近）
+    labels: list[str] = []
+    #: 风险标签（正股 ST / 正股 < 2 元 / 评级 ≤ A+ …）。只提示，不默认剔除
+    risks: list[str] = []
+    #: 只有 `t0` 预设会算分
+    score: float | None = None
 
 
-class CbPoolOut(BaseModel):
-    """可转债 T+0 观察池。
+class CbScreenOut(BaseModel):
+    """可转债筛选。
 
-    ⚠️ 快照**只能当天采**（三个来源都只有实时行情），所以 `trade_date` 只会是最近
-    一个采集日；页面必须把它写出来，否则会被当成「今天的数据」。
+    `filters` 是**实际生效**的条件（预设展开 + 用户覆盖），原样回给页面 ——
+    页面要能显示「这一屏到底按什么筛的」。
     """
 
-    trade_date: date | None
-    #: 当天快照里的全部转债只数
+    as_of: date | None
+    filters: dict
     total: int
-    rows: list[CbPoolRowOut] = []
-    excluded: list[CbExcludedRowOut] = []
-    gates: list[CbGateOut] = []
+    items: list[CbScreenRowOut] = []
+
+
+class CbRadarRowOut(BaseModel):
+    """强赎雷达的一行。"""
+
+    bond_code: str
+    bond_name: str | None = None
+    stock_code: str | None = None
+    stock_name: str | None = None
+    close: float | None = None
+    premium_pct: float | None = None
+    redeem_status: str | None = None
+    last_trade_date: date | None = None
+    #: 距最后交易日的自然日数（负数 = 已过）
+    days_left: int | None = None
+    redeem_count: int = 0
+    count_complete: bool = False
+
+
+class CbRadarOut(BaseModel):
+    """强赎雷达：已公告的按最后交易日升序，临近的按计数降序。"""
+
+    as_of: date | None
+    items: list[CbRadarRowOut] = []
 
 

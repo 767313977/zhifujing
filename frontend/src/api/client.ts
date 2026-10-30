@@ -6,7 +6,9 @@ import type {
   AuctionList,
   AuctionQuery,
   Breadth,
-  CbPool,
+  CbRadar,
+  CbScreen,
+  CbScreenQuery,
   ChipDistribution,
   DdeBoard,
   DdeOrder,
@@ -1109,8 +1111,19 @@ export const api = {
   valuationSeries: (code: string) =>
     request<ValuationSeries>(`/valuation/${encodeURIComponent(code)}`),
 
-  /** 可转债 T+0 观察池（不传日期 = 最近一次快照）。 */
-  cbPool: (date?: string | null) => request<CbPool>(withDate('/cb/pool', date)),
+  /** 可转债筛选（预设 + 覆盖条件；不传日期 = 最近一次快照）。 */
+  cbScreen: (params: CbScreenQuery = {}) => {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(params)) {
+      if (value === null || value === undefined || value === '') continue
+      query.set(key, String(value))
+    }
+    const text = query.toString()
+    return request<CbScreen>(`/cb/screen${text ? `?${text}` : ''}`)
+  },
+
+  /** 强赎雷达：已公告 / 临近 / 承诺不强赎。 */
+  cbRadar: (date?: string | null) => request<CbRadar>(withDate('/cb/radar', date)),
 
   note: (date: string) => request<ReviewNote>(`/note/${date}`),
 

@@ -1223,30 +1223,79 @@ class FuturesPosition(Base):
     citic_change: Mapped[int | None] = mapped_column(Integer)  # 中信当日变化
 
 
+class CbBasic(Base):
+    """可转债的**静态条款**（2026-10-30 加）。每天整表 upsert，**不删行**。
+
+    为什么单独一张表：转股价 / 评级 / 规模 / 票息这些是转债的**属性**，不是某一天的
+    属性。词典（条款）改了重跑一次采集，全部历史立刻跟着变；塞进日表就得逐天回填。
+
+    来源与实测（2026-10-30 在线上服务器跑的探测）：
+
+    - 名称 / 正股 / 评级 / 发行规模 / 上市日 / 转股价 / 溢价率：东财 `bond_zh_cov`
+      （一次调用给全市场，约 1000 行，其中未上市的占大头）；
+    - 票息原文 / 到期赎回价 / 到期日 / 转股起始日 / 强赎触发价：东财
+      `bond_zh_cov_info(symbol, "基本信息")`，**一券一次调用**，所以只在首次见到这只券时
+      补一次（见 `scripts/fill_cb_terms.py`），不进每日采集。
+
+    ⚠️ **代码格式**：站内 `stock_daily.code` / `stock_basic.code` 都是**不带后缀**的 6 位
+    （实测线上库：`000001`），所以转债代码也统一成 `113042` 这种，**不加 `.SH`**。
+    原始指令里写的「113xxx.SH（与 stock_daily.code 同口径）」前提有误，以实测为准。
+    """
+
+    __tablename__ = "cb_basic"
+
+    bond_code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    bond_name: Mapped[str | None] = mapped_column(String(32))
+    stock_code: Mapped[str | None] = mapped_column(String(16))
+    #: 正股名称。**判断 ST 用**（名字带 ST / *ST / 退）
+    stock_name: Mapped[str | None] = mapped_column(String(32))
+
+    list_date: Mapped[date | None] = mapped_column(Date)
+    maturity_date: Mapped[date | None] = mapped_column(Date)
+    #: 转股起始日。晚于今天 = 还没进转股期
+    convert_start_date: Mapped[date | None] = mapped_column(Date)
+
+    #: 发行规模（亿元）
+    issue_size: Mapped[float | None] = mapped_column(Float)
+    rating: Mapped[str | None] = mapped_column(String(16))
+    #: 到期赎回价（含最后一期利息），YTM 的终值用
+    maturity_call_price: Mapped[float | None] = mapped_column(Float)
+    #: 利率说明原文（如「第一年0.30%、第二年0.80%…」），YTM 解析用
+    coupon_text: Mapped[str | None] = mapped_column(Text)
+
+    #: 条款触发比例（%），默认按常见条款 130 / 70 / 85；能从条款原文解析出来就覆盖
+    redeem_trigger_pct: Mapped[float | None] = mapped_column(Float)
+    resale_trigger_pct: Mapped[float | None] = mapped_column(Float)
+    revise_trigger_pct: Mapped[float | None] = mapped_column(Float)
+
+    #: 到期 / 强赎完成 / 摘牌的日期。**写日期，不删行** —— 删了回测就有幸存者偏差
+    delist_date: Mapped[date | None] = mapped_column(Date)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class CbDaily(Base):
-    """可转债**当日快照**（T+0 观察池用，2026-10-30 加）。零 iFinD 配额。
+    """可转债**当日快照**（2026-10-30 加）。零 iFinD 配额。
 
-    三个来源各补一段，缺一不可（见 `jobs/collect_cb.py`）：
+    来源（2026-10-30 实测，线上服务器）：
 
-    - **行情**：新浪 `bond_zh_hs_cov_spot` —— 现价 / 涨跌幅 / 最高最低 / 成交额；
-    - **条款与估值**：东财 `bond_zh_cov` —— 正股代码、转股价、转股价值、转股溢价率、
-      发行规模、信用评级、上市日。它的 `债现价` 与新浪逐位一致，可以用来交叉校验；
-    - **强赎与剩余规模**：集思录 `bond_cb_redeem_jsl` —— 强赎状态 / 剩余规模 / 到期日 /
-      最后交易日。免费接口只给 300 多行（其余转债没有这条记录），缺的按「未知」处理，
-      **不拿发行规模冒充剩余规模**（两个数的差别就是「还剩多少没转股」）。
+    - **行情**：新浪 `bond_zh_hs_cov_spot` —— 现价 / 涨跌幅 / 最高最低 / 成交额。
+      东财的比价表 `bond_cov_comparison` **两条链路都连不上**（`RemoteDisconnected`），
+      所以不用它；
+    - **条款与估值**：东财 `bond_zh_cov` —— 正股、转股价、转股价值、转股溢价率、
+      发行规模、评级、上市日；
+    - **剩余规模 / 强赎状态**：集思录 `bond_cb_redeem_jsl` —— 免费、不带 cookie 就有
+      300 多行（实测 318 行），其中**剩余规模齐全**。缺的按「未知」处理，
+      **不拿发行规模冒充**（两个数差的就是「还剩多少没转股」）。
 
-    ⚠️ **只能当天采，不能回补**：三个来源都只有实时快照，没有按日的历史接口。所以
-    采集器会拒绝非今天的日期 —— 拿今天的行情写进昨天的日期是比「缺一天」严重得多
-    的错误（`services/cb_pool` 的百分位与打分都会跟着算错）。
+    ⚠️ **只能当天采，不能回补**：三个来源都只有实时快照，没有按日的历史接口
+    （`bond_zh_cov_value_analysis` 在 akshare 1.18.96 上直接 `Length mismatch` 报错）。
+    所以采集器拒绝非今天的日期 —— 拿今天的行情写进昨天的日期，比缺一天严重得多。
     """
 
     __tablename__ = "cb_daily"
 
     trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
-    code: Mapped[str] = mapped_column(String(16), primary_key=True)  # 转债代码
-    name: Mapped[str | None] = mapped_column(String(32))
-    stock_code: Mapped[str | None] = mapped_column(String(16))
-    stock_name: Mapped[str | None] = mapped_column(String(32))
+    bond_code: Mapped[str] = mapped_column(String(16), primary_key=True)
 
     # ---- 行情（新浪）----
     close: Mapped[float | None] = mapped_column(Float)
@@ -1256,31 +1305,32 @@ class CbDaily(Base):
     low: Mapped[float | None] = mapped_column(Float)
     #: 成交额（元）
     amount: Mapped[float | None] = mapped_column(Float)
-    #: 当日振幅（%）= (最高 − 最低) ÷ 昨收 × 100，采集时就算好
+    #: 当日振幅（%）= (最高 − 最低) ÷ 昨收 × 100
     amplitude: Mapped[float | None] = mapped_column(Float)
-
-    # ---- 条款与估值（东财）----
-    convert_price: Mapped[float | None] = mapped_column(Float)  # 转股价
-    convert_value: Mapped[float | None] = mapped_column(Float)  # 转股价值
-    premium_rt: Mapped[float | None] = mapped_column(Float)  # 转股溢价率（%）
-    #: 发行规模（亿元）
-    issue_size: Mapped[float | None] = mapped_column(Float)
-    rating: Mapped[str | None] = mapped_column(String(16))
-    list_date: Mapped[date | None] = mapped_column(Date)
-
-    # ---- 强赎与剩余（集思录）----
-    #: 剩余规模（亿元）。集思录没这条记录时为 None —— **不要用 `issue_size` 顶替**，
-    #: 页面上分行显示「剩余未知 / 发行 X 亿」。
-    remain_size: Mapped[float | None] = mapped_column(Float)
     #: 换手率（%）= 成交额 ÷ 剩余规模 × 100，只在剩余规模已知时才给
-    turnover_rate: Mapped[float | None] = mapped_column(Float)
-    maturity_date: Mapped[date | None] = mapped_column(Date)
-    last_trade_date: Mapped[date | None] = mapped_column(Date)
-    #: 原样保留集思录的说法：已公告强赎 / 已满足强赎条件 / 公告不强赎 / 空
-    redeem_status: Mapped[str | None] = mapped_column(String(32))
+    turnover: Mapped[float | None] = mapped_column(Float)
 
-    # ---- 正股（东财正股价 + 本地 stock_daily 的涨跌幅）----
+    # ---- 正股 ----
     stock_close: Mapped[float | None] = mapped_column(Float)
     stock_pct_chg: Mapped[float | None] = mapped_column(Float)
+
+    # ---- 转债估值（东财）----
+    #: 当天生效的转股价
+    conv_price: Mapped[float | None] = mapped_column(Float)
+    #: 转股价值 = 100 ÷ 转股价 × 正股价
+    conv_value: Mapped[float | None] = mapped_column(Float)
+    #: 转股溢价率（%）。**统一用 % 数值**（2.5 表示 2.5%），不再混小数
+    premium_pct: Mapped[float | None] = mapped_column(Float)
+    #: 到期 YTM（%），由 `services.convertible.ytm` 用票息 + 到期赎回价二分求得；
+    #: 票息没补齐（`cb_basic.coupon_text` 为空）时为 None，**不拿 0 顶**
+    ytm_pct: Mapped[float | None] = mapped_column(Float)
+
+    # ---- 剩余 / 强赎（集思录）----
+    #: 剩余规模（亿元）。集思录没这条记录时为 None
+    remain_size: Mapped[float | None] = mapped_column(Float)
+    #: 原样保留集思录的说法：已公告强赎 / 已满足强赎条件 / 公告不强赎 / 空
+    redeem_status: Mapped[str | None] = mapped_column(String(32))
+    #: 最后交易日（强赎完成日通常等同于最后转股日）
+    last_trade_date: Mapped[date | None] = mapped_column(Date)
 
     source: Mapped[str | None] = mapped_column(String(32))

@@ -16,7 +16,7 @@ import { WatchlistProvider } from './lib/watchlist'
 const Account = lazy(() => import('./pages/Account'))
 const AnomalyPage = lazy(() => import('./pages/Anomaly'))
 const AuctionPage = lazy(() => import('./pages/Auction'))
-const CbPoolPage = lazy(() => import('./pages/CbPool'))
+const ConvertiblePage = lazy(() => import('./pages/Convertible'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Funds = lazy(() => import('./pages/Funds'))
 const JournalPage = lazy(() => import('./pages/Journal'))
@@ -144,12 +144,12 @@ export default function App() {
                   </RequireAuth>
                 }
               />
-              {/* 可转债 T+0 观察池：硬门槛 + 打分，数据在收盘后 17:30 那趟采 */}
+              {/* 可转债：盘后筛选 + 强赎雷达（数据在收盘后 17:30 那趟采） */}
               <Route
                 path="/cb"
                 element={
                   <RequireAuth>
-                    <CbPoolPage />
+                    <ConvertiblePage />
                   </RequireAuth>
                 }
               />

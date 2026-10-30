@@ -2575,61 +2575,93 @@ export interface SectorStockTrack {
   rows: SectorStockTrackDay[]
 }
 
-/** 可转债 T+0 观察池的一行（已通过硬门槛、已打分）。 */
-export interface CbPoolRow {
-  code: string
-  name: string | null
-  close: number | null
-  pct_chg: number | null
-  /** 当日振幅（%） */
-  amplitude: number | null
-  /** 成交额（元） */
-  amount: number | null
-  /** 换手率（%），只在剩余规模已知时才有 */
-  turnover_rate: number | null
-  premium_rt: number | null
-  convert_value: number | null
-  remain_size: number | null
-  issue_size: number | null
-  rating: string | null
-  redeem_status: string | null
-  years_left: number | null
+/** 可转债筛选结果的一行（转债 + 正股 + 派生指标 + 标签）。 */
+export interface CbScreenRow {
+  bond_code: string
+  bond_name: string | null
   stock_code: string | null
   stock_name: string | null
-  stock_pct_chg: number | null
-  /** 收盘价 + 转股溢价率，越低越便宜 */
-  double_low: number | null
-  /** 0~100，权重见后端 `services/cb_pool` */
-  score: number
-}
-
-/** 一条硬门槛剔掉了多少只。 */
-export interface CbGate {
-  label: string
-  count: number
-}
-
-/** 没过门槛的一行（只给第一条原因）。 */
-export interface CbExcludedRow {
-  code: string
-  name: string | null
   close: number | null
+  pct_chg: number | null
+  /** 转股溢价率（%） */
+  premium_pct: number | null
+  /** 双低 = 现价 + 转股溢价率 */
+  double_low: number | null
+  conv_value: number | null
+  conv_price: number | null
+  /** 到期 YTM（%）；票息没补齐时为 null，不是 0 */
+  ytm_pct: number | null
+  remain_size: number | null
+  issue_size: number | null
+  years_left: number | null
+  rating: string | null
+  /** 成交额（元） */
   amount: number | null
-  premium_rt: number | null
-  reason: string
+  /** 换手率（%） */
+  turnover: number | null
+  stock_close: number | null
+  stock_pct_chg: number | null
+  redeem_count: number | null
+  revise_count: number | null
+  resale_count: number | null
+  /** 计数窗口是否完整；false 时页面显示「≥n」 */
+  count_complete: boolean
+  redeem_status: string | null
+  last_trade_date: string | null
+  /** 状态标签（已公告强赎 / 承诺不强赎 / 强赎临近 / 下修临近） */
+  labels: string[]
+  /** 风险标签（正股 ST / 正股 < 2 元 / 评级 ≤ A+ …），只提示不默认剔除 */
+  risks: string[]
+  /** 只有 T+0 预设会算分 */
+  score: number | null
 }
 
-/**
- * 可转债 T+0 观察池。
- *
- * ⚠️ 快照**只能当天采**（三个来源都只有实时行情），所以 `trade_date` 只会是最近
- * 一个采集日，页面必须把它写出来。
- */
-export interface CbPool {
-  trade_date: string | null
+/** 可转债筛选：`filters` 是实际生效的条件（预设展开 + 用户覆盖）。 */
+export interface CbScreen {
+  as_of: string | null
+  filters: Record<string, number | string | boolean | null>
   total: number
-  rows: CbPoolRow[]
-  excluded: CbExcludedRow[]
-  gates: CbGate[]
+  items: CbScreenRow[]
+}
+
+/** 强赎雷达的一行。 */
+export interface CbRadarRow {
+  bond_code: string
+  bond_name: string | null
+  stock_code: string | null
+  stock_name: string | null
+  close: number | null
+  premium_pct: number | null
+  redeem_status: string | null
+  last_trade_date: string | null
+  /** 距最后交易日的自然日数（负数 = 已过） */
+  days_left: number | null
+  redeem_count: number
+  count_complete: boolean
+}
+
+export interface CbRadar {
+  as_of: string | null
+  items: CbRadarRow[]
+}
+
+/** 筛选参数（页面 → 接口）。 */
+export interface CbScreenQuery {
+  preset?: string
+  price_min?: number | null
+  price_max?: number | null
+  premium_max?: number | null
+  size_min?: number | null
+  size_max?: number | null
+  years_min?: number | null
+  years_max?: number | null
+  rating_min?: string | null
+  amount_min?: number | null
+  exclude_redeem?: boolean | null
+  exclude_st?: boolean | null
+  exclude_not_convertible?: boolean | null
+  sort?: string
+  limit?: number
+  date?: string | null
 }
 
