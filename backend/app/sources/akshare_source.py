@@ -398,3 +398,35 @@ class AkshareSource:
             if key:
                 activity[key] = row.get("value")
         return activity
+
+    # ------------------------------------------------------------ 可转债快照
+
+    def cb_spot(self) -> list[dict]:
+        """沪深可转债**实时行情**（新浪）。字段：symbol/code/name/trade/changepercent/
+        buy/sell/settlement/open/high/low/volume/amount。
+
+        ⚠️ 它是「行情」不是「历史」：只能当日用。返回里含北交所定向转债（`bj` 前缀、
+        价格恒为 0），调用方按 `trade > 0` 剔除。
+        """
+        df = self._call(ak.bond_zh_hs_cov_spot, "akshare 可转债行情")
+        return _records(df)
+
+    def cb_basic(self) -> list[dict]:
+        """全部可转债的**条款与估值**一览（东财）。含正股代码 / 转股价 / 转股价值 /
+        转股溢价率 / 发行规模 / 信用评级 / 上市日。
+
+        行数约 1000，其中**未上市**（`上市时间` 为空）的占大头 —— 那是待发 / 已发行
+        未上市的债，调用方只取有上市日的。
+        """
+        df = self._call(ak.bond_zh_cov, "akshare 可转债一览")
+        return _records(df)
+
+    def cb_redeem(self) -> list[dict]:
+        """可转债**强赎与剩余规模**（集思录）。含强赎状态 / 剩余规模 / 到期日 /
+        最后交易日 / 强赎触发价 / 强赎天计数。
+
+        免费接口只给 300 多行，没在这张表里的转债是「没有强赎条款记录」，不是数据出错 ——
+        调用方按「剩余规模未知」处理，别拿发行规模顶替（见 `models.CbDaily`）。
+        """
+        df = self._call(ak.bond_cb_redeem_jsl, "akshare 可转债强赎")
+        return _records(df)

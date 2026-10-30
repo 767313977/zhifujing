@@ -2575,3 +2575,61 @@ export interface SectorStockTrack {
   rows: SectorStockTrackDay[]
 }
 
+/** 可转债 T+0 观察池的一行（已通过硬门槛、已打分）。 */
+export interface CbPoolRow {
+  code: string
+  name: string | null
+  close: number | null
+  pct_chg: number | null
+  /** 当日振幅（%） */
+  amplitude: number | null
+  /** 成交额（元） */
+  amount: number | null
+  /** 换手率（%），只在剩余规模已知时才有 */
+  turnover_rate: number | null
+  premium_rt: number | null
+  convert_value: number | null
+  remain_size: number | null
+  issue_size: number | null
+  rating: string | null
+  redeem_status: string | null
+  years_left: number | null
+  stock_code: string | null
+  stock_name: string | null
+  stock_pct_chg: number | null
+  /** 收盘价 + 转股溢价率，越低越便宜 */
+  double_low: number | null
+  /** 0~100，权重见后端 `services/cb_pool` */
+  score: number
+}
+
+/** 一条硬门槛剔掉了多少只。 */
+export interface CbGate {
+  label: string
+  count: number
+}
+
+/** 没过门槛的一行（只给第一条原因）。 */
+export interface CbExcludedRow {
+  code: string
+  name: string | null
+  close: number | null
+  amount: number | null
+  premium_rt: number | null
+  reason: string
+}
+
+/**
+ * 可转债 T+0 观察池。
+ *
+ * ⚠️ 快照**只能当天采**（三个来源都只有实时行情），所以 `trade_date` 只会是最近
+ * 一个采集日，页面必须把它写出来。
+ */
+export interface CbPool {
+  trade_date: string | null
+  total: number
+  rows: CbPoolRow[]
+  excluded: CbExcludedRow[]
+  gates: CbGate[]
+}
+

@@ -1221,3 +1221,66 @@ class FuturesPosition(Base):
     top_change: Mapped[int | None] = mapped_column(Integer)  # 前20当日变化
     citic_net_short: Mapped[int | None] = mapped_column(Integer)  # 中信净空
     citic_change: Mapped[int | None] = mapped_column(Integer)  # 中信当日变化
+
+
+class CbDaily(Base):
+    """可转债**当日快照**（T+0 观察池用，2026-10-30 加）。零 iFinD 配额。
+
+    三个来源各补一段，缺一不可（见 `jobs/collect_cb.py`）：
+
+    - **行情**：新浪 `bond_zh_hs_cov_spot` —— 现价 / 涨跌幅 / 最高最低 / 成交额；
+    - **条款与估值**：东财 `bond_zh_cov` —— 正股代码、转股价、转股价值、转股溢价率、
+      发行规模、信用评级、上市日。它的 `债现价` 与新浪逐位一致，可以用来交叉校验；
+    - **强赎与剩余规模**：集思录 `bond_cb_redeem_jsl` —— 强赎状态 / 剩余规模 / 到期日 /
+      最后交易日。免费接口只给 300 多行（其余转债没有这条记录），缺的按「未知」处理，
+      **不拿发行规模冒充剩余规模**（两个数的差别就是「还剩多少没转股」）。
+
+    ⚠️ **只能当天采，不能回补**：三个来源都只有实时快照，没有按日的历史接口。所以
+    采集器会拒绝非今天的日期 —— 拿今天的行情写进昨天的日期是比「缺一天」严重得多
+    的错误（`services/cb_pool` 的百分位与打分都会跟着算错）。
+    """
+
+    __tablename__ = "cb_daily"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    code: Mapped[str] = mapped_column(String(16), primary_key=True)  # 转债代码
+    name: Mapped[str | None] = mapped_column(String(32))
+    stock_code: Mapped[str | None] = mapped_column(String(16))
+    stock_name: Mapped[str | None] = mapped_column(String(32))
+
+    # ---- 行情（新浪）----
+    close: Mapped[float | None] = mapped_column(Float)
+    prev_close: Mapped[float | None] = mapped_column(Float)
+    pct_chg: Mapped[float | None] = mapped_column(Float)
+    high: Mapped[float | None] = mapped_column(Float)
+    low: Mapped[float | None] = mapped_column(Float)
+    #: 成交额（元）
+    amount: Mapped[float | None] = mapped_column(Float)
+    #: 当日振幅（%）= (最高 − 最低) ÷ 昨收 × 100，采集时就算好
+    amplitude: Mapped[float | None] = mapped_column(Float)
+
+    # ---- 条款与估值（东财）----
+    convert_price: Mapped[float | None] = mapped_column(Float)  # 转股价
+    convert_value: Mapped[float | None] = mapped_column(Float)  # 转股价值
+    premium_rt: Mapped[float | None] = mapped_column(Float)  # 转股溢价率（%）
+    #: 发行规模（亿元）
+    issue_size: Mapped[float | None] = mapped_column(Float)
+    rating: Mapped[str | None] = mapped_column(String(16))
+    list_date: Mapped[date | None] = mapped_column(Date)
+
+    # ---- 强赎与剩余（集思录）----
+    #: 剩余规模（亿元）。集思录没这条记录时为 None —— **不要用 `issue_size` 顶替**，
+    #: 页面上分行显示「剩余未知 / 发行 X 亿」。
+    remain_size: Mapped[float | None] = mapped_column(Float)
+    #: 换手率（%）= 成交额 ÷ 剩余规模 × 100，只在剩余规模已知时才给
+    turnover_rate: Mapped[float | None] = mapped_column(Float)
+    maturity_date: Mapped[date | None] = mapped_column(Date)
+    last_trade_date: Mapped[date | None] = mapped_column(Date)
+    #: 原样保留集思录的说法：已公告强赎 / 已满足强赎条件 / 公告不强赎 / 空
+    redeem_status: Mapped[str | None] = mapped_column(String(32))
+
+    # ---- 正股（东财正股价 + 本地 stock_daily 的涨跌幅）----
+    stock_close: Mapped[float | None] = mapped_column(Float)
+    stock_pct_chg: Mapped[float | None] = mapped_column(Float)
+
+    source: Mapped[str | None] = mapped_column(String(32))

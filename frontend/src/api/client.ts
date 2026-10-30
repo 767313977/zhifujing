@@ -6,6 +6,7 @@ import type {
   AuctionList,
   AuctionQuery,
   Breadth,
+  CbPool,
   ChipDistribution,
   DdeBoard,
   DdeOrder,
@@ -1107,6 +1108,9 @@ export const api = {
   /** 单个指数的近 10 年 PE/PB 序列。清单外的代码返回 404。 */
   valuationSeries: (code: string) =>
     request<ValuationSeries>(`/valuation/${encodeURIComponent(code)}`),
+
+  /** 可转债 T+0 观察池（不传日期 = 最近一次快照）。 */
+  cbPool: (date?: string | null) => request<CbPool>(withDate('/cb/pool', date)),
 
   note: (date: string) => request<ReviewNote>(`/note/${date}`),
 

@@ -18,6 +18,7 @@ from app.api import (
     anomaly_map,
     auction,
     auth as auth_api,
+    cb,
     funds,
     journal,
     limit,
@@ -257,6 +258,7 @@ app.include_router(patterns.router)
 app.include_router(pools.router)
 app.include_router(anomaly_map.router)
 app.include_router(valuation.router)
+app.include_router(cb.router)
 app.include_router(admin.router)
 
 

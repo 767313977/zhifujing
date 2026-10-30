@@ -1665,4 +1665,12 @@ class DailyCollector:
             steps["hsgt"] = late_step("hsgt", lambda: self.collect_hsgt(target))
         else:
             logger.warning("配额已达 95%，收盘后这一趟只采零配额那三项（龙虎榜 / 机构席位 / 题材）")
+
+        # 可转债快照（T+0 观察池）：三个来源都只有**实时**行情，只能采今天。
+        # `_catch_up_late` 会拿**旧日期**再调一次本方法，那种情况必须跳过 ——
+        # 把今天的行情写进昨天的日期，比缺一天严重得多（见 `jobs/collect_cb`）。
+        from app.jobs.collect_cb import refresh as refresh_cb
+
+        if target == today_cn():
+            steps["cb"] = late_step("cb", lambda: refresh_cb(self.settings, target))
         return {"trade_date": target.isoformat(), "steps": steps}

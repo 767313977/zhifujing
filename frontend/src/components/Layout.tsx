@@ -29,6 +29,8 @@ const NAV: NavItem[] = [
   { to: '/patterns/track', label: '胜率跟踪' },
   // 选股池（2026-10-24 用户要求）：首板一进二候选 + RPS 相对强度榜
   { to: '/pools', label: '选股池' },
+  // 可转债 T+0 观察池（2026-10-30 用户要求）：硬门槛 + 打分，只做盘后候选
+  { to: '/cb', label: '可转债' },
   { to: '/watchlist', label: '自选股' },
   // 交易日志（2026-10-18 清单 #1）：复盘自己的买卖，而不是只看市场。
   { to: '/journal', label: '交易日志' },

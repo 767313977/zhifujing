@@ -2934,3 +2934,65 @@ class SectorStockTrackOut(BaseModel):
     rows: list[SectorStockTrackDayOut]
 
 
+class CbPoolRowOut(BaseModel):
+    """可转债 T+0 观察池的一行（已通过硬门槛、已打分）。"""
+
+    code: str
+    name: str | None = None
+    close: float | None = None
+    pct_chg: float | None = None
+    #: 当日振幅（%）
+    amplitude: float | None = None
+    #: 成交额（元）
+    amount: float | None = None
+    #: 换手率（%），只在剩余规模已知时才有
+    turnover_rate: float | None = None
+    premium_rt: float | None = None
+    convert_value: float | None = None
+    remain_size: float | None = None
+    issue_size: float | None = None
+    rating: str | None = None
+    redeem_status: str | None = None
+    years_left: float | None = None
+    stock_code: str | None = None
+    stock_name: str | None = None
+    stock_pct_chg: float | None = None
+    #: 收盘价 + 转股溢价率，越低越便宜
+    double_low: float | None = None
+    #: 0~100，权重见 `services.cb_pool`
+    score: float
+
+
+class CbGateOut(BaseModel):
+    """一条硬门槛剔掉了多少只 —— 页面用它解释「为什么池子只剩这么点」。"""
+
+    label: str
+    count: int
+
+
+class CbExcludedRowOut(BaseModel):
+    """没过门槛的一行。**只给第一条原因**，够解释就行。"""
+
+    code: str
+    name: str | None = None
+    close: float | None = None
+    amount: float | None = None
+    premium_rt: float | None = None
+    reason: str
+
+
+class CbPoolOut(BaseModel):
+    """可转债 T+0 观察池。
+
+    ⚠️ 快照**只能当天采**（三个来源都只有实时行情），所以 `trade_date` 只会是最近
+    一个采集日；页面必须把它写出来，否则会被当成「今天的数据」。
+    """
+
+    trade_date: date | None
+    #: 当天快照里的全部转债只数
+    total: int
+    rows: list[CbPoolRowOut] = []
+    excluded: list[CbExcludedRowOut] = []
+    gates: list[CbGateOut] = []
+
+
