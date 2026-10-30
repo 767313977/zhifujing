@@ -1339,6 +1339,9 @@ class CbDaily(Base):
     #: 完整计数**，比我们自算的近 30 日窗口可靠 —— 本地 10-30 才开始有数据，自算要等到
     #: 12 月中旬才凑满窗口（复查 P1-4）
     redeem_days: Mapped[int | None] = mapped_column(Integer)
+    #: 同一串计数里的「触发所需天数」（通常 15）。标签的分母要用它，
+    #: 写成 30 会让人以为「12/30 还差很远」—— 其实 12/15 就差 3 天
+    redeem_days_required: Mapped[int | None] = mapped_column(Integer)
     #: 最后交易日（强赎完成日通常等同于最后转股日）
     last_trade_date: Mapped[date | None] = mapped_column(Date)
 

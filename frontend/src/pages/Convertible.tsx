@@ -274,8 +274,11 @@ export default function Convertible() {
 
           {data?.source && data.source !== 'sina+em+jsl' && (
             <div className="border-b border-line-soft bg-ink-850 px-4 py-2 text-[12px] text-warn">
-              今天行情来自兜底源（{data.source}）：价格来自东财债现价，成交额来自 iFinD，
-              <span className="text-fg-muted"> 涨跌幅 / 最高最低缺失</span>
+              今天行情来自兜底源（{data.source}）：
+              {data.source === 'em'
+                ? '价格来自东财债现价，没有成交额（iFinD 兜底未取到）'
+                : '价格来自东财债现价、成交额来自 iFinD'}
+              ，<span className="text-fg-muted">涨跌幅 / 最高最低缺失</span>
               。「日内 T+0」预设的成交额门槛会把缺数据的券剔掉，池子可能为空。
             </div>
           )}

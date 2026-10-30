@@ -245,10 +245,13 @@ def test_met_is_not_treated_as_announced(db):
 
 
 def test_jisilu_redeem_days_works_before_window_is_full(db):
-    """本地窗口只有 1 天，但集思录的强赎天计数是完整的（复查 P1-4）。"""
+    """本地窗口只有 1 天，但集思录的强赎天计数是完整的（复查 P1-4）。
+
+    标签分母是「触发所需天数」（15），不是 30 —— 12/15 与 12/30 的紧迫感完全不同。
+    """
     fill_calendar(db, DAY, size=1)
     add_basic(db)
-    add_daily(db, DAY, redeem_days=12)
+    add_daily(db, DAY, redeem_days=12, redeem_days_required=15)
     db.commit()
 
     result = convertible.screen(db, DAY, preset="double_low")
@@ -256,7 +259,23 @@ def test_jisilu_redeem_days_works_before_window_is_full(db):
 
     assert row.redeem_count == 12
     assert row.redeem_complete is True
-    assert "强赎临近 12/30" in row.labels
+    assert "强赎临近 12/15" in row.labels
+
+
+def test_screen_source_takes_majority(db):
+    """同一天先走兜底、后来新浪恢复时，source 取出现最多的那个（复查）。"""
+    fill_calendar(db, DAY)
+    add_basic(db, code="111001")
+    add_basic(db, code="111002")
+    add_basic(db, code="111003")
+    add_daily(db, DAY, code="111001", source="em+ifind")
+    add_daily(db, DAY, code="111002", source="sina+em+jsl")
+    add_daily(db, DAY, code="111003", source="sina+em+jsl")
+    db.commit()
+
+    result = convertible.screen(db, DAY, preset="double_low")
+
+    assert result.source == "sina+em+jsl"
 
 
 def test_radar_orders_announced_before_met_and_near(db):

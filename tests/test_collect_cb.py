@@ -90,6 +90,7 @@ def redeem_row(code="127110", **kwargs):
         "到期日": "2031-07-09",
         "最后交易日": "2031-06-25",
         "强赎状态": None,
+        "强赎天计数": "12/15 | 30",
     }
     row.update(kwargs)
     return row
@@ -284,6 +285,32 @@ def test_merge_daily_records_fallback_source():
     assert rows[0]["source"] == "em+ifind"
 
 
+def test_parse_redeem_days_is_strict():
+    """只认开头的 `已满足/需要`；日期与超范围的一律不认（复查：宽松匹配会把日期当计数）。"""
+    assert collect_cb._parse_redeem_days("12/15 | 30") == (12, 15)
+    assert collect_cb._parse_redeem_days(" 15/15 | 30") == (15, 15)
+    # 日期不能被读成「已满足 2026 天」
+    assert collect_cb._parse_redeem_days("2026/11/05") is None
+    assert collect_cb._parse_redeem_days("临近到期 <span>2026/11/05 最后交易</span>") is None
+    # 分子超过 30 的一律不是计数
+    assert collect_cb._parse_redeem_days("99/15") is None
+    assert collect_cb._parse_redeem_days("") is None
+    assert collect_cb._parse_redeem_days(None) is None
+
+
+def test_merge_daily_records_redeem_days_and_required():
+    rows = collect_cb._merge_daily(
+        [spot_row()],
+        {"127110": cov_row()},
+        {"127110": redeem_row()},
+        {"127110": CbBasic(bond_code="127110", list_date=date(2025, 7, 25))},
+        DAY,
+    )
+
+    assert rows[0]["redeem_days"] == 12
+    assert rows[0]["redeem_days_required"] == 15
+
+
 def test_trigger_pct_only_accepts_common_bands():
     bands = collect_cb.REDEEM_TRIGGER_PCTS
     assert collect_cb._trigger_pct(16.796, 12.92, bands) == 130.0
@@ -395,6 +422,11 @@ def test_mark_delisted_handles_redeem_delisting(env):
 
 def test_ifind_fallback_respects_quota_and_dedup(env):
     _, maker, monkeypatch = env
+    # 与 DDE 补齐同一个门槛：DDE 都让路了，成交额兜底也不该花
+    monkeypatch.setattr(
+        collect_cb, "quota_level", lambda settings=None: collect_cb.QuotaLevel.PAUSE_HIT_DDE
+    )
+    assert collect_cb._ifind_allowed(None, DAY) is False
     monkeypatch.setattr(
         collect_cb, "quota_level", lambda settings=None: collect_cb.QuotaLevel.CORE_ONLY
     )

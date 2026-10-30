@@ -97,16 +97,22 @@ def _date(value: object) -> date | None:
         return None
 
 
-#: 集思录「强赎天计数」形如 `12/15 | 30`（已满足 12 天 / 需 15 天、窗口 30 天），
-#: 也可能是一段 HTML（「临近到期 …」）。只认前一种。
-_REDEEM_DAYS_RE = re.compile(r"(\d+)\s*/\s*(\d+)")
+#: 集思录「强赎天计数」只认**开头**的 `已满足/需要` 这种写法（如 `12/15 | 30`）。
+#: ⚠️ 不能用「文字里出现 x/y 就算」的宽松匹配：这一栏偶尔是日期（`2026/11/05`）或
+#: 一段 HTML，宽松匹配会把日期读成「已满足 2026 天」（2026-10-30 复查）。
+#: 另外分子上限 30 —— 条款窗口就是 30 个交易日，超过的一定不是计数。
+_REDEEM_DAYS_RE = re.compile(r"^\s*(\d{1,2})\s*/\s*(\d{1,2})\b")
 
 
-def _parse_redeem_days(value: object) -> int | None:
-    match = _REDEEM_DAYS_RE.search(str(value or ""))
+def _parse_redeem_days(value: object) -> tuple[int, int] | None:
+    """返回 (已满足天数, 触发所需天数)；认不出来就 None。"""
+    match = _REDEEM_DAYS_RE.match(str(value or ""))
     if not match:
         return None
-    return int(match.group(1))
+    done, need = int(match.group(1)), int(match.group(2))
+    if not (0 < done <= 30) or not (0 < need <= 30):
+        return None
+    return done, need
 
 
 def _text(value: object) -> str | None:
@@ -318,6 +324,7 @@ def _merge_daily(
         if conv_value is None and conv_price and stock_close:
             # 东财没给转股价值时自己算：100 ÷ 转股价 × 正股价
             conv_value = round(100 / conv_price * stock_close, 2)
+        redeem_days = _parse_redeem_days(extra.get("强赎天计数"))
 
         rows.append(
             {
@@ -339,7 +346,8 @@ def _merge_daily(
                 "ytm_pct": None,  # 票息齐全之后再算（见 refresh）
                 "remain_size": remain_size,
                 "redeem_status": _text(extra.get("强赎状态")),
-                "redeem_days": _parse_redeem_days(extra.get("强赎天计数")),
+                "redeem_days": redeem_days[0] if redeem_days else None,
+                "redeem_days_required": redeem_days[1] if redeem_days else None,
                 "last_trade_date": _date(extra.get("最后交易日")),
                 "source": source,
             }
@@ -570,12 +578,14 @@ def _ifind_allowed(settings: Settings | None, day: date) -> bool:
     """兜底要不要花 iFinD 配额（复查 P2-2）。
 
     两道闸：
-    - **配额档位**：CORE_ONLY 及以下不花 —— iFinD 配额是最稀缺的资源，兜底只是「有更好」；
+    - **配额档位**：与 DDE 补齐用同一个门槛（`PAUSE_HIT_DDE`）。连「命中前 50 只的
+      DDE」都让路时，可转债成交额这种纯增强数据更没有理由花配额；
     - **当天已经兜过一次**：17:30 / 19:30 / 22:35 三趟是全量重跑，新浪挂一整天就是
       31 批 × 3 次。同一天已经有 `em+ifind` 的行就不再取。
     """
-    if quota_level(settings=settings) >= QuotaLevel.CORE_ONLY:
-        logger.warning("配额档位已到 %s，跳过 iFinD 成交额兜底", QuotaLevel.CORE_ONLY.name)
+    level = quota_level(settings=settings)
+    if level >= QuotaLevel.PAUSE_HIT_DDE:
+        logger.warning("配额档位已到 %s（DDE 都已让路），跳过 iFinD 成交额兜底", level.name)
         return False
     with session_scope() as session:
         done = session.scalar(

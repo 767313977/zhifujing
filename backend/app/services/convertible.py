@@ -20,6 +20,7 @@
 
 import math
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
@@ -32,6 +33,8 @@ from app.models import CbBasic, CbDaily, TradeCalendar
 COUNT_WINDOW = 30
 #: 强赎 / 下修「临近」的计数门槛（条款是 15/30，这里给一个更早的预警值）
 NEAR_COUNT = 10
+#: 集思录没给「所需天数」时标签用的分母（常见条款是 15/30，拿 30 当分母会显得还早）
+DEFAULT_REDEEM_DAYS = 15
 #: 回售期：到期前这么多自然日进入（常见条款是「最后两个计息年度」）
 RESALE_YEARS_BEFORE = 2
 
@@ -336,9 +339,11 @@ def _labels(
         # 才有意义（12 月中旬之前都缺），所以优先用它（复查 P1-4）
         redeem = daily.redeem_days if daily.redeem_days is not None else counts.redeem
         redeem_complete = daily.redeem_days is not None or counts.complete
+        # 分母是「触发所需天数」（通常 15），不是 30 —— 12/30 与 12/15 的紧迫感完全不同
+        need = daily.redeem_days_required or DEFAULT_REDEEM_DAYS
         if redeem >= NEAR_COUNT and kind not in ("announced", "met"):
             labels.append(
-                f"强赎临近 {redeem}/30" if redeem_complete else f"强赎临近 ≥{redeem}/30"
+                f"强赎临近 {redeem}/{need}" if redeem_complete else f"强赎临近 ≥{redeem}/{need}"
             )
         if counts.revise >= NEAR_COUNT:
             labels.append(
@@ -597,12 +602,16 @@ def screen(session: Session, day: date | None = None, **overrides) -> CbScreen:
     limit = int(filters.get("limit") or 200)
     total = len(passed)
     items = [_row_out(row) for row in passed[:limit]]
+    # 同一天可能先走兜底、后来新浪恢复，两种来源混在一起 —— 取**出现最多**的那个，
+    # 而不是第一行的（2026-10-30 复查）
+    sources = Counter(row.source for row in dailies if row.source)
+    source = sources.most_common(1)[0][0] if sources else None
     return CbScreen(
         as_of=day,
         filters=filters,
         items=items,
         total=total,
-        source=dailies[0].source,
+        source=source,
     )
 
 
