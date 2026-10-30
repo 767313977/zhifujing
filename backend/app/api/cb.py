@@ -12,8 +12,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.schemas import CbRadarOut, CbRadarRowOut, CbScreenOut, CbScreenRowOut
+from app.schemas import (
+    CbRadarOut,
+    CbRadarRowOut,
+    CbScreenOut,
+    CbScreenRowOut,
+    CbStockBondOut,
+)
 from app.services import convertible
+from app.sources.ifind import normalize_code
 
 router = APIRouter(prefix="/api/cb", tags=["可转债"])
 
@@ -83,3 +90,21 @@ def radar(
     """
     as_of, rows = convertible.radar(session, trade_date)
     return CbRadarOut(as_of=as_of, items=[CbRadarRowOut(**asdict(row)) for row in rows])
+
+
+@router.get("/by-stock/{stock_code}", response_model=list[CbStockBondOut])
+def by_stock(
+    stock_code: str,
+    session: Session = Depends(get_db),
+) -> list[CbStockBondOut]:
+    """某只正股**存续**的转债（个股详情页的小卡片）。
+
+    只读最近一次盘后快照；不联网。没有转债就返回空数组（页面据此不渲染卡片）。
+    """
+    code = normalize_code(stock_code)
+    if len(code) != 6:
+        raise HTTPException(status_code=400, detail=f"正股代码应为 6 位数字：{stock_code}")
+    return [
+        CbStockBondOut(**asdict(row))
+        for row in convertible.bonds_of_stock(session, code)
+    ]

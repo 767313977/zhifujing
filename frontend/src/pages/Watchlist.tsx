@@ -6,6 +6,7 @@ import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import SortTh from '../components/SortTh'
+import { isBondCode } from '../lib/bondCode'
 import { fmtNum, fmtPct, toneOf } from '../lib/format'
 import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'
@@ -61,9 +62,16 @@ export default function WatchlistPage() {
     if (!trimmed || submitting) return
     try {
       setSubmitting(true)
-      await api.addWatchlist(trimmed)
+      const row = await api.addWatchlist(trimmed)
       setCode('')
-      setNotice('已加入自选，本地还没有行情 —— 点「同步行情」拉取')
+      // 转债的日线来自盘后快照，点「同步行情」也拉不到它，提示语不能一刀切
+      setNotice(
+        row.latest_date
+          ? '已加入自选'
+          : isBondCode(row.code)
+            ? '已加入自选；转债行情每天盘后自动更新，不需要「同步行情」'
+            : '已加入自选，本地还没有行情 —— 点「同步行情」拉取',
+      )
       await reload()
     } catch (err) {
       setError((err as Error).message)
@@ -108,7 +116,8 @@ export default function WatchlistPage() {
     }
   }, [reload])
 
-  const missing = rows.filter((row) => row.close == null).length
+  // 转债没有行情时提示「去同步」是错的（同步只拉股票日线），所以只数股票
+  const missing = rows.filter((row) => row.close == null && !isBondCode(row.code)).length
   // 首屏不排，保持后端顺序（按代码）；点列头才排
   const [sort, shown] = useSort(rows, WATCH_SORTS, { key: null })
 
@@ -140,7 +149,7 @@ export default function WatchlistPage() {
       <div className="space-y-4">
         <Panel
           title="加入自选"
-          meta={<span className="num">支持 600519 / 贵州茅台 / gzmt</span>}
+          meta={<span className="num">支持 600519 / 贵州茅台 / gzmt · 也可直接加转债代码</span>}
           delay={40}
         >
           <div className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row">
@@ -220,22 +229,40 @@ export default function WatchlistPage() {
                     <tr
                       key={row.code}
                       onClick={() => {
-                        // 点行时把当前自选列表存下，个股页就能 ← → 前后翻
-                        rememberStockList(shown.map((item) => item.code))
+                        // 点行时把当前自选列表存下，个股页就能 ← → 前后翻。
+                        // 转债代码要剔掉：← → 走到它只会打开一个「代码不存在」的页面
+                        rememberStockList(
+                          shown.filter((item) => !isBondCode(item.code)).map((item) => item.code),
+                        )
                       }}
                     >
                       <td className="!text-left">
-                        <Link
-                          to={`/stock/${encodeURIComponent(row.code)}`}
-                          className="num text-accent hover:underline"
-                        >
-                          {row.code}
-                        </Link>
+                        {isBondCode(row.code) ? (
+                          // 转债没有个股详情页，不做假跳转
+                          <span className="num text-fg">{row.code}</span>
+                        ) : (
+                          <Link
+                            to={`/stock/${encodeURIComponent(row.code)}`}
+                            className="num text-accent hover:underline"
+                          >
+                            {row.code}
+                          </Link>
+                        )}
                       </td>
                       <td className="!text-left">
-                        <Link to={`/stock/${encodeURIComponent(row.code)}`} className="text-fg hover:underline">
-                          {row.name ?? '—'}
-                        </Link>
+                        {isBondCode(row.code) ? (
+                          <span className="text-fg">
+                            {row.name ?? '—'}
+                            <span className="ml-1.5 text-[11px] text-warn">债</span>
+                          </span>
+                        ) : (
+                          <Link
+                            to={`/stock/${encodeURIComponent(row.code)}`}
+                            className="text-fg hover:underline"
+                          >
+                            {row.name ?? '—'}
+                          </Link>
+                        )}
                       </td>
                       <td>
                         <span className="num text-fg-muted">{row.latest_date ?? '—'}</span>
@@ -285,6 +312,10 @@ export default function WatchlistPage() {
               </li>
               <li>
                 · 本站不做全市场落库（会触发数据源频控），所以只有自选股与主动看过的个股会被缓存到本地。
+              </li>
+              <li>
+                · 可转债代码（如 113042）也能加自选，价格来自每天盘后的转债快照；
+                它没有个股页，所以不做跳转。
               </li>
             </ul>
           </div>

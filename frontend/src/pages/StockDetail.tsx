@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError, isNoDataError } from '../api/client'
 import type {
+  CbStockBond,
   ChipDistribution,
   FqMode,
   StockDde,
@@ -328,6 +329,8 @@ export default function StockDetail() {
   const [dde, setDde] = useState<StockDde | null>(null)
   // 筹码分布（本地计算，零外部请求）。增强读数：请求失败只当 null，不拖垮整页
   const [chips, setChips] = useState<ChipDistribution | null>(null)
+  // 这只正股存续的转债（可转债-5，读本地盘的盘后快照）。没有就是空数组 → 不渲染卡片
+  const [bonds, setBonds] = useState<CbStockBond[]>([])
   // 杀猪盘体检（库内信号 + 东财新闻）。同样按增强读数处理
   const [trap, setTrap] = useState<TrapCheck | null>(null)
   // 用户补充背景（朋友推荐 / 群里说…）与重新体检的进行态
@@ -431,15 +434,19 @@ export default function StockDetail() {
         setTrap(data)
         setTrapLoading(false)
       })
-      const [p, themeData, chipData] = await Promise.all([
+      // 转债是纯本地库读取（毫秒级），跟着首屏一起等；没有转债就是空数组
+      const bondsRequest = api.cbByStock(target).catch(() => [])
+      const [p, themeData, chipData, bondData] = await Promise.all([
         api.stockProfile(target),
         api.stockThemes(target).catch(() => null),
         chipsRequest,
+        bondsRequest,
       ])
       if (isCancelled()) return p
       setProfile(p)
       setThemes(themeData)
       setChips(chipData)
+      setBonds(bondData)
       return p
     },
     [],
@@ -455,6 +462,7 @@ export default function StockDetail() {
     setDde(null)
     setDdeError(null)
     setChips(null)
+    setBonds([])
     setTrap(null)
     // 两块异步请求的标志跟着一起复位，否则切票后新票的面板会沿用上一只票的「已加载」态
     setDdeLoading(true)
@@ -824,6 +832,58 @@ export default function StockDetail() {
             </div>
           )}
         </Panel>
+
+        {/* 存续转债：只在正股确实有转债时出现（可转债-5）。
+            不做「点击进详情」—— 转债详情页还没做，做成可点却跳回筛选页是假链接；
+            需要看全市场时从侧栏「可转债」进。 */}
+        {bonds.length > 0 && (
+          <Panel
+            title="存续转债"
+            meta={
+              <span className="num text-fg-dim">
+                {bonds.length} 只 · 盘后快照
+              </span>
+            }
+            delay={60}
+          >
+            <div className="divide-y divide-line-soft">
+              {bonds.map((bond) => (
+                <div
+                  key={bond.bond_code}
+                  className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 text-[13px]"
+                >
+                  <span className="text-fg">{bond.bond_name ?? bond.bond_code}</span>
+                  <span className="num text-fg-dim">{bond.bond_code}</span>
+                  <span className="num">{fmtNum(bond.close, 2)}</span>
+                  <span className={`num ${toneOf(bond.pct_chg)}`}>{fmtPct(bond.pct_chg)}</span>
+                  <span className="num text-fg-dim">
+                    溢价 {fmtNum(bond.premium_pct, 1, '%')}
+                  </span>
+                  <span className="num text-fg-dim">
+                    转股价值 {fmtNum(bond.conv_value, 1)}
+                  </span>
+                  {bond.state && (
+                    <span
+                      className={
+                        bond.state === '已公告强赎' ? 'text-warn' : 'text-fg-muted'
+                      }
+                    >
+                      {bond.state}
+                    </span>
+                  )}
+                  {bond.last_trade_date && (
+                    <span className="num text-fg-dim">
+                      最后交易日 {bond.last_trade_date}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="border-t border-line-soft px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
+              转债行情是每天盘后采一次的快照，不是实时价；强赎计数口径与「可转债」页一致。
+            </p>
+          </Panel>
+        )}
 
         <Panel
           title={`${VIEW_LABEL[kline.view]} 线`}

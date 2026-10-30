@@ -9,6 +9,7 @@ import type {
   CbRadar,
   CbScreen,
   CbScreenQuery,
+  CbStockBond,
   ChipDistribution,
   DdeBoard,
   DdeOrder,
@@ -1124,6 +1125,10 @@ export const api = {
 
   /** 强赎雷达：已公告 / 临近 / 承诺不强赎。 */
   cbRadar: (date?: string | null) => request<CbRadar>(withDate('/cb/radar', date)),
+
+  /** 某只正股存续的转债（个股页小卡片；最近一次盘后快照）。 */
+  cbByStock: (code: string) =>
+    request<CbStockBond[]>(`/cb/by-stock/${encodeURIComponent(code)}`),
 
   note: (date: string) => request<ReviewNote>(`/note/${date}`),
 

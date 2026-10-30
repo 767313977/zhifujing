@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
-from app.models import AppUser, StockBasic, StockDaily, Watchlist
+from app.models import AppUser, CbBasic, CbDaily, StockBasic, StockDaily, Watchlist
 from app.schemas import WatchlistIn, WatchlistRow
 from app.services import auth
 from app.services.auth import current_user
@@ -58,7 +58,9 @@ def _resolve(raw: str) -> str:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _latest_quotes(session: Session, codes: list[str]) -> dict[str, StockDaily]:
+def _latest_quotes(
+    session: Session, codes: list[str]
+) -> dict[str, StockDaily | CbDaily]:
     """每个代码取最新一条本地缓存的日线。
 
     取的是缓存而不是实时行情：页面因此不必联网、打开即读。
@@ -67,6 +69,10 @@ def _latest_quotes(session: Session, codes: list[str]) -> dict[str, StockDaily]:
     ⚠️ 「最新」要滤掉停牌残行（iFinD 给停牌日写的那种只有收盘价、`pct_chg` 为空的行）：
     不滤的话停牌股的最新日会停在停牌那天、涨跌幅显示成「—」，看起来像当天没成交；
     与 `services/stock_phase.usable_bar`、个股页的取数口径保持一致（2026-10-22 修）。
+
+    自选里可以放**可转债代码**（2026-10-30 可转债-5）：它们在 `stock_daily` 里
+    永远查不到，所以查不到行的代码再去 `cb_daily` 找一次。两张表的
+    `trade_date / close / pct_chg` 语义一致，调用方（`_row`）不必区分。
     """
     if not codes:
         return {}
@@ -83,7 +89,26 @@ def _latest_quotes(session: Session, codes: list[str]) -> dict[str, StockDaily]:
             & (StockDaily.trade_date == newest.c.latest),
         )
     )
-    return {row.code: row for row in rows}
+    quotes: dict[str, StockDaily | CbDaily] = {row.code: row for row in rows}
+
+    missing = [code for code in codes if code not in quotes]
+    if not missing:
+        return quotes
+    newest_cb = (
+        select(CbDaily.bond_code, func.max(CbDaily.trade_date).label("latest"))
+        .where(CbDaily.bond_code.in_(missing), CbDaily.pct_chg.is_not(None))
+        .group_by(CbDaily.bond_code)
+        .subquery()
+    )
+    for row in session.scalars(
+        select(CbDaily).join(
+            newest_cb,
+            (CbDaily.bond_code == newest_cb.c.bond_code)
+            & (CbDaily.trade_date == newest_cb.c.latest),
+        )
+    ):
+        quotes[row.bond_code] = row
+    return quotes
 
 
 def _known_name(session: Session, code: str) -> str | None:
@@ -92,9 +117,14 @@ def _known_name(session: Session, code: str) -> str | None:
     加自选时用它把名字**落库**：不落的话 `watchlist.name` 永远是 None，
     每次列表都要回查 `stock_basic` 才显示得出名字（`_row` 的兜底，且那条路不写库）。
     刚加自选时本地可能还没有这只票（要等一次日线同步才有），那就留空。
+
+    自选里也可以放可转债代码（2026-10-30）：股票表里没有时退到 `cb_basic.bond_name`。
     """
     basic = session.get(StockBasic, code)
-    return basic.name if basic and basic.name else None
+    if basic and basic.name:
+        return basic.name
+    bond = session.get(CbBasic, code)
+    return bond.bond_name if bond and bond.bond_name else None
 
 
 def _row(
@@ -148,6 +178,13 @@ def list_watchlist(
                 )
             ).all()
         )
+        # 转债代码在 `stock_basic` 里查不到，补一次 `cb_basic`（可转债-5）
+        for code, name in session.execute(
+            select(CbBasic.bond_code, CbBasic.bond_name).where(
+                CbBasic.bond_code.in_([item for item in missing if item not in names])
+            )
+        ).all():
+            names[code] = name
     return [_row(session, item, quotes.get(item.code), names) for item in items]
 
 
@@ -165,11 +202,11 @@ def add_watchlist(
         # 重复加入当成功处理，前端连点不会报错
         return _row(session, existing, _latest_quotes(session, [code]).get(code))
 
-    # 代码必须真在 `stock_basic` 里。`resolve_code` 对 6 位数字是**不查库直接放行**的
-    # （它是通用解析器，改名/别处都要用，不该在这里收紧），所以「库里有没有这只票」
-    # 只能在这一层兜住：不查的话，加一个 999999 之类的假代码进去，随后的同步就会
-    # 拿它去问 iFinD —— 全是白花的配额（2026-10-11 加，见自选配额收紧）。
-    if session.get(StockBasic, code) is None:
+    # 代码必须真在 `stock_basic`（或 `cb_basic`，可转债-5）里。`resolve_code` 对 6 位
+    # 数字是**不查库直接放行**的（它是通用解析器，改名/别处都要用，不该在这里收紧），
+    # 所以「库里有没有这只票」只能在这一层兜住：不查的话，加一个 999999 之类的假代码
+    # 进去，随后的同步就会拿它去问 iFinD —— 全是白花的配额（2026-10-11 加）。
+    if session.get(StockBasic, code) is None and session.get(CbBasic, code) is None:
         raise HTTPException(
             status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
         )
@@ -291,6 +328,12 @@ def sync_watchlist(
     codes = list(
         session.scalars(select(Watchlist.code).where(Watchlist.user_id == user.id))
     )
+    if codes:
+        # 只同步**股票**：自选里可能混着可转债代码（可转债-5），转债日线由每日
+        # 采集写 `cb_daily`，拿它去问 iFinD 股票日线接口只会白花配额、还报错。
+        codes = list(
+            session.scalars(select(StockBasic.code).where(StockBasic.code.in_(codes)))
+        )
     if not codes:
         return {"rows": 0}
 

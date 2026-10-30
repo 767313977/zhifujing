@@ -24,7 +24,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import CbBasic, CbDaily, TradeCalendar
@@ -725,3 +725,91 @@ def radar(session: Session, day: date | None = None) -> tuple[date | None, list[
 
     rows.sort(key=sort_key)
     return day, rows
+
+
+# ---------------------------------------------------------------- 个股联动
+
+
+@dataclass(frozen=True, slots=True)
+class StockBond:
+    """个股详情页「存续转债」小卡片的一行（可转债-5）。"""
+
+    bond_code: str
+    bond_name: str | None
+    close: float | None
+    pct_chg: float | None
+    premium_pct: float | None
+    conv_value: float | None
+    redeem_status: str | None
+    last_trade_date: date | None
+    #: 一句话状态（已公告强赎 / 已满足强赎条件 / 承诺不强赎 / 强赎临近 n/m），没有就 None
+    state: str | None
+
+
+def _state_text(daily: CbDaily) -> str | None:
+    """卡片上的一句话状态。口径与筛选页标签一致，只是不展开「下修」。"""
+    kind = redeem_kind(daily.redeem_status)
+    if kind == "announced":
+        return "已公告强赎"
+    if kind == "met":
+        return "已满足强赎条件"
+    if kind == "no_redeem":
+        return "承诺不强赎"
+    if daily.redeem_days is not None and daily.redeem_days >= NEAR_COUNT:
+        need = daily.redeem_days_required or DEFAULT_REDEEM_DAYS
+        return f"强赎临近 {daily.redeem_days}/{need}"
+    return None
+
+
+def bonds_of_stock(
+    session: Session, stock_code: str, day: date | None = None
+) -> list[StockBond]:
+    """某只正股**存续**的转债（个股页联动用）。
+
+    「存续」= `cb_basic.delist_date` 为空或不早于快照日 —— 已摘牌的券不往个股页上摆，
+    但库里保留（回测要用）。
+
+    快照日缺省取 `cb_daily` 的最新一天：转债快照**只能当天采**，所以这里显示的就是
+    最近一次采集的盘后数据，不是实时价。
+    """
+    if not stock_code:
+        return []
+    if day is None:
+        day = session.scalar(select(func.max(CbDaily.trade_date)))
+    basics = [
+        row
+        for row in session.scalars(
+            select(CbBasic).where(CbBasic.stock_code == stock_code).order_by(CbBasic.bond_code)
+        )
+        if row.delist_date is None or (day is not None and row.delist_date >= day)
+    ]
+    if not basics:
+        return []
+    dailies: dict[str, CbDaily] = {}
+    if day is not None:
+        dailies = {
+            row.bond_code: row
+            for row in session.scalars(
+                select(CbDaily).where(
+                    CbDaily.trade_date == day,
+                    CbDaily.bond_code.in_([row.bond_code for row in basics]),
+                )
+            )
+        }
+    result: list[StockBond] = []
+    for basic in basics:
+        daily = dailies.get(basic.bond_code)
+        result.append(
+            StockBond(
+                bond_code=basic.bond_code,
+                bond_name=basic.bond_name,
+                close=daily.close if daily else None,
+                pct_chg=daily.pct_chg if daily else None,
+                premium_pct=daily.premium_pct if daily else None,
+                conv_value=daily.conv_value if daily else None,
+                redeem_status=daily.redeem_status if daily else None,
+                last_trade_date=daily.last_trade_date if daily else None,
+                state=_state_text(daily) if daily else None,
+            )
+        )
+    return result

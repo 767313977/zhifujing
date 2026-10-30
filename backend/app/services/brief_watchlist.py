@@ -14,11 +14,12 @@ import time
 from collections import defaultdict
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import PatternHit, StockBasic, StockDaily, Watchlist
+from app.models import CbBasic, CbDaily, PatternHit, StockBasic, StockDaily, Watchlist
 from app.services import stock_events, trade_plan, trap
+from app.services.convertible import redeem_kind
 from app.services.patterns import PATTERNS
 
 logger = logging.getLogger(__name__)
@@ -179,3 +180,84 @@ def block(session: Session, trade_date: date) -> str:
     if not lines:
         return ""
     return "**自选股异动**\n" + "\n".join(lines)
+
+
+def redeem_block(session: Session, trade_date: date) -> str:
+    """「转债强赎提醒」：自选（或其正股）对应转债**今天新进入**「已公告强赎」。
+
+    为什么值得单开一节：公告之后转债按约 100 元被赎回，没转股的持仓几天里就亏掉
+    20%~30%。这个提醒只在**状态切换的那天**出现一次 —— 每天都列会变成噪音，
+    而过了一周再提醒就来不及转股了。
+
+    「新进入」= 今天快照是已公告，而**上一份快照**不是（或这只券上一份快照里还
+    没有记录）。上一份快照按 `cb_daily` 的交易日取，不看自然日 —— 转债快照只能
+    当天采，跳一天就是没有可比对象。今天的快照没采到时整节省略：拿旧状态冒充
+    「今天新公告」比不提醒更糟。
+    """
+    user_id = trade_plan.admin_user_id(session)
+    if user_id is None:
+        return ""
+    day = session.scalar(select(func.max(CbDaily.trade_date)))
+    if day is None or day < trade_date:
+        return ""
+    codes = list(
+        session.scalars(select(Watchlist.code).where(Watchlist.user_id == user_id))
+    )
+    if not codes:
+        return ""
+    basics = list(
+        session.scalars(
+            select(CbBasic).where(
+                or_(CbBasic.bond_code.in_(codes), CbBasic.stock_code.in_(codes))
+            )
+        )
+    )
+    if not basics:
+        return ""
+    bond_codes = [row.bond_code for row in basics]
+    today = {
+        row.bond_code: row
+        for row in session.scalars(
+            select(CbDaily).where(
+                CbDaily.trade_date == day, CbDaily.bond_code.in_(bond_codes)
+            )
+        )
+    }
+    prev_day = session.scalar(
+        select(func.max(CbDaily.trade_date)).where(CbDaily.trade_date < day)
+    )
+    before: dict[str, CbDaily] = {}
+    if prev_day is not None:
+        before = {
+            row.bond_code: row
+            for row in session.scalars(
+                select(CbDaily).where(
+                    CbDaily.trade_date == prev_day,
+                    CbDaily.bond_code.in_(bond_codes),
+                )
+            )
+        }
+
+    lines: list[str] = []
+    for basic in sorted(basics, key=lambda row: row.bond_code):
+        current = today.get(basic.bond_code)
+        if current is None or redeem_kind(current.redeem_status) != "announced":
+            continue
+        old = before.get(basic.bond_code)
+        if old is not None and redeem_kind(old.redeem_status) == "announced":
+            continue
+        name = basic.bond_name or basic.bond_code
+        stock = ""
+        if basic.stock_code:
+            label = f"{basic.stock_code} {basic.stock_name}" if basic.stock_name else basic.stock_code
+            stock = f"（正股 {label}）"
+        text = f"- {basic.bond_code} {name}{stock}：**已公告强赎**"
+        if current.last_trade_date:
+            left = (current.last_trade_date - trade_date).days
+            text += f"，最后交易日 {current.last_trade_date}"
+            text += f"（还剩 {left} 天）" if left >= 0 else "（已过）"
+        text += "；没转股会按约 100 元赎回"
+        lines.append(text)
+    if not lines:
+        return ""
+    return "**转债强赎提醒**\n" + "\n".join(lines)

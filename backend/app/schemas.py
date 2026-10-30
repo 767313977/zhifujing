@@ -3017,3 +3017,18 @@ class CbRadarOut(BaseModel):
     items: list[CbRadarRowOut] = []
 
 
+class CbStockBondOut(BaseModel):
+    """个股页「存续转债」卡片的一行（最近一次盘后快照）。"""
+
+    bond_code: str
+    bond_name: str | None = None
+    close: float | None = None
+    pct_chg: float | None = None
+    premium_pct: float | None = None
+    conv_value: float | None = None
+    redeem_status: str | None = None
+    last_trade_date: date | None = None
+    #: 一句话状态（已公告强赎 / 已满足强赎条件 / 承诺不强赎 / 强赎临近 n/m）
+    state: str | None = None
+
+

@@ -461,6 +461,16 @@ def _watchlist_block(session, trade_date: date) -> str:
     return brief_watchlist.block(session, trade_date)
 
 
+def _cb_redeem_block(session, trade_date: date) -> str:
+    """「转债强赎提醒」：自选（或其正股）的转债**当天新进入**已公告强赎。
+
+    只在状态切换那天出现一次，见 `services.brief_watchlist.redeem_block` 的说明。
+    """
+    from app.services import brief_watchlist
+
+    return brief_watchlist.redeem_block(session, trade_date)
+
+
 def build_brief(trade_date: date) -> str:
     """把某个交易日的复盘要点拼成一段飞书可渲染的 Markdown。
 
@@ -489,6 +499,8 @@ def build_brief(trade_date: date) -> str:
             _pattern_block(session, trade_date),
             _plan_block(session, trade_date),
             _watchlist_block(session, trade_date),
+            # 强赎提醒紧跟自选异动：它同样是「持仓相关」，但漏看一次的代价大得多
+            _cb_redeem_block(session, trade_date),
         ]
     return "\n\n".join(block for block in blocks if block)
 

@@ -1,4 +1,5 @@
 import type { WatchlistRow } from '../api/types'
+import { isBondCode } from '../lib/bondCode'
 import { fmtNum, fmtPct, toneOf } from '../lib/format'
 import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'
@@ -72,17 +73,31 @@ export default function WatchlistPanel({ rows, delay = 0, loading = false }: Wat
                 <tr
                   key={row.code}
                   onClick={() => {
-                    // 点行时把自选列表存下，个股页就能 ← → 前后翻
-                    rememberStockList(shown.map((item) => item.code))
+                    // 点行时把自选列表存下，个股页就能 ← → 前后翻。
+                    // 转债代码剔掉：它们没有个股页，← → 走到只会打开「代码不存在」
+                    rememberStockList(
+                      shown.filter((item) => !isBondCode(item.code)).map((item) => item.code),
+                    )
                   }}
                 >
                   <td className="!text-left">
-                    <StockLink code={row.code} className="num text-fg-muted">
-                      {row.code}
-                    </StockLink>
+                    {isBondCode(row.code) ? (
+                      <span className="num text-fg-muted">{row.code}</span>
+                    ) : (
+                      <StockLink code={row.code} className="num text-fg-muted">
+                        {row.code}
+                      </StockLink>
+                    )}
                   </td>
                   <td className="!text-left">
-                    <StockLink code={row.code}>{row.name ?? row.code}</StockLink>
+                    {isBondCode(row.code) ? (
+                      <span className="text-fg">
+                        {row.name ?? row.code}
+                        <span className="ml-1.5 text-[11px] text-warn">债</span>
+                      </span>
+                    ) : (
+                      <StockLink code={row.code}>{row.name ?? row.code}</StockLink>
+                    )}
                   </td>
                   <td>
                     <span className={`num ${toneOf(row.pct_chg)}`}>

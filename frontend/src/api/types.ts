@@ -2649,6 +2649,20 @@ export interface CbRadar {
   items: CbRadarRow[]
 }
 
+/** 个股页「存续转债」卡片的一行（最近一次盘后快照）。 */
+export interface CbStockBond {
+  bond_code: string
+  bond_name: string | null
+  close: number | null
+  pct_chg: number | null
+  premium_pct: number | null
+  conv_value: number | null
+  redeem_status: string | null
+  last_trade_date: string | null
+  /** 一句话状态：已公告强赎 / 已满足强赎条件 / 承诺不强赎 / 强赎临近 n/m */
+  state: string | null
+}
+
 /** 筛选参数（页面 → 接口）。 */
 export interface CbScreenQuery {
   preset?: string
