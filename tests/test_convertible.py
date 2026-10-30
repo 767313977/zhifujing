@@ -161,6 +161,36 @@ def test_revise_count_uses_new_conv_price(db):
     assert "下修临近 10/30" in row.labels
 
 
+def test_resale_count_defaults_to_70_when_pct_missing(db):
+    """条款里 `resale_trigger_pct` 空着（补采队列轮不到它）时按 70 算，不能整列 None。"""
+    days = fill_calendar(db, DAY)
+    # 正股不是银行 → 有回售条款；到期日在两年内 → 已进回售期
+    add_basic(db, code="110077", stock_name="洪城环境", maturity_date=date(2026, 11, 20))
+    for index, day in enumerate(days):
+        add_daily(db, day, code="110077", conv_value=68.0 if index >= 27 else 100.0)
+    db.commit()
+
+    basic = db.get(CbBasic, "110077")
+    counts = convertible._counts(db, DAY, {"110077"}, {"110077": basic})
+
+    # 最近 3 天转股价值 ≤ 70（默认档位）
+    assert counts["110077"].resale == 3
+
+
+def test_resale_count_is_none_for_bank_bond(db):
+    """银行转债没有回售条款，即使比例为空也不能套默认 70。"""
+    days = fill_calendar(db, DAY)
+    add_basic(db)  # 正股「上海银行」，到期 2027-01-25 已在回售期内
+    for day in days:
+        add_daily(db, day, conv_value=60.0)
+    db.commit()
+
+    basic = db.get(CbBasic, "113042")
+    counts = convertible._counts(db, DAY, {"113042"}, {"113042": basic})
+
+    assert counts["113042"].resale is None
+
+
 def test_st_risk_tag(db):
     fill_calendar(db, DAY)
     add_basic(db, stock_name="ST 上海")

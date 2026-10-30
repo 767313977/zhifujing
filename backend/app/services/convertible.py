@@ -37,6 +37,11 @@ NEAR_COUNT = 10
 DEFAULT_REDEEM_DAYS = 15
 #: 回售期：到期前这么多自然日进入（常见条款是「最后两个计息年度」）
 RESALE_YEARS_BEFORE = 2
+#: 回售触发比例的默认档位（常见条款是「30 日均价 ≤ 转股价 70%」）。
+#: `cb_basic.resale_trigger_pct` 覆盖率很低（条款补采队列只挑缺票息 / 缺到期赎回价的券，
+#: 早已补齐的券轮不到，见 `jobs/collect_cb._fill_terms`），缺了按 70 算，
+#: 否则几乎所有券都没有回售计数。银行转债没这条款，仍按 None 处理。
+DEFAULT_RESALE_PCT = 70.0
 
 #: 评级 → 序。`AA+sti` 这类定向转债按 `AA+` 算
 RATING_RANK = {
@@ -264,6 +269,11 @@ class Counts:
     complete: bool
 
 
+def _is_bank_bond(basic: CbBasic | None) -> bool:
+    """银行转债没有回售条款（东财 `RESALE_TRIG_PRICE` 给的是 `"-"`）。"""
+    return ((basic.stock_name if basic else None) or "").endswith("银行")
+
+
 def _counts(
     session: Session,
     day: date,
@@ -296,6 +306,8 @@ def _counts(
         redeem_pct = (basic.redeem_trigger_pct if basic else None) or 130.0
         revise_pct = (basic.revise_trigger_pct if basic else None) or 85.0
         resale_pct = basic.resale_trigger_pct if basic else None
+        if resale_pct is None and basic is not None and not _is_bank_bond(basic):
+            resale_pct = DEFAULT_RESALE_PCT
         redeem = sum(1 for value in series.values() if value >= redeem_pct)
         revise = sum(1 for value in series.values() if value <= revise_pct)
         resale: int | None = None
