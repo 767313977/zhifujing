@@ -920,7 +920,12 @@ export default function Pools() {
                     <th>RPS5</th>
                     <th>5 日</th>
                     <th>成分</th>
-                    <th className="!text-left">龙一</th>
+                    <th
+                      className="!text-left"
+                      title="开盘红当日成分名单 22:00 后才发布，「龙一」由那趟预取顺带写入 —— 白天看当天通常是「—」，切到更早的日期才有值"
+                    >
+                      龙一
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
