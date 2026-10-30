@@ -46,6 +46,7 @@ from app.schemas import (
     SectorTrackStatOut,
 )
 from app.services import pools, sector_rps as sector_rps_service
+from app.services.stock_meta import industries_of, sectors_of
 
 router = APIRouter(prefix="/api/pools", tags=["选股池"])
 
@@ -311,6 +312,12 @@ def sector_rps_members(
     if not rows and trade_date is not None:
         day, rows = latest, _rows(latest)
 
+    # 板块 / 行业与形态页同源（`stock_meta`）：成分表要回答「这只票是什么、做过什么」。
+    # 332 只的板块一次查完（内部按 900 分批），不会变成每只一条查询。
+    codes = {row.code for row in rows}
+    sectors = sectors_of(session, codes)
+    industries = industries_of(session, codes)
+
     return SectorMembersOut(
         trade_date=day,
         sector_code=code,
@@ -322,6 +329,8 @@ def sector_rps_members(
                 pct_chg=row.pct_chg,
                 amount=row.amount,
                 turnover=row.turnover,
+                sectors=sectors.get(row.code, []),
+                industry=industries.get(row.code),
             )
             for row in rows
         ],

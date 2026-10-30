@@ -2480,6 +2480,10 @@ export interface SectorRpsMemberRow {
   pct_chg: number | null
   amount: number | null
   turnover: number | null
+  /** 开盘红精选板块（最近一次涨停挂的题材） */
+  sectors: string[]
+  /** 同花顺三级行业路径，与 `sectors` 不是一套分类 */
+  industry: string | null
 }
 
 export interface SectorRpsMembers {

@@ -864,6 +864,8 @@ export default function Pools() {
                         <thead>
                           <tr>
                             <th className="!text-left">股票</th>
+                            <th className="!text-left">板块</th>
+                            <th className="!text-left">行业</th>
                             <th>收盘</th>
                             <th>涨幅</th>
                             <th>成交额</th>
@@ -876,6 +878,16 @@ export default function Pools() {
                               <td className="!text-left">
                                 <StockLink code={item.code}>{item.name ?? item.code}</StockLink>
                                 <div className="num text-[11px] text-fg-dim">{item.code}</div>
+                              </td>
+                              <td className="!text-left text-[12px] text-fg-dim">
+                                {item.sectors.length === 0 ? '—' : item.sectors.join(' / ')}
+                              </td>
+                              <td className="!text-left text-[12px] text-fg-dim">
+                                {item.industry ? (
+                                  <span title={item.industry}>{item.industry.split('-')[0]}</span>
+                                ) : (
+                                  '—'
+                                )}
                               </td>
                               <td className="num">
                                 {item.close == null ? '—' : fmtNum(item.close, 2)}

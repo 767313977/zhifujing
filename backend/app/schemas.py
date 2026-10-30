@@ -2823,6 +2823,10 @@ class SectorMemberRowOut(BaseModel):
     pct_chg: float | None
     amount: float | None
     turnover: float | None
+    #: 开盘红精选板块（该股最近一次涨停挂的题材），与 `industry` 不是一套分类
+    sectors: list[str] = []
+    #: 同花顺三级行业路径（`电子-半导体-集成电路Ⅲ`）
+    industry: str | None = None
 
 
 class SectorMembersOut(BaseModel):

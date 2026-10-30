@@ -15,7 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.api.pools import sector_rps_members
-from app.models import Base, SectorMember
+from app.models import Base, SectorMember, StockBasic, StockConcept
 
 D1 = date(2026, 10, 27)
 D2 = date(2026, 10, 28)
@@ -58,6 +58,13 @@ def db(tmp_path):
                     amount=3e9,
                     turnover=0.3,
                 ),
+                # 板块 / 行业两个口径：前者来自涨停题材，后者来自 stock_basic
+                StockBasic(
+                    code="600036",
+                    name="招商银行",
+                    industry="银行-银行-股份制银行Ⅲ",
+                ),
+                StockConcept(code="600036", trade_date=D1, concept="金融科技"),
             ]
         )
         session.commit()
@@ -70,6 +77,11 @@ def test_members_default_latest_sorted_by_pct_desc(db):
     assert out.trade_date == D2
     assert [row.code for row in out.rows] == ["600036", "601398"]
     assert out.rows[0].pct_chg == 2.5
+    # 板块 / 行业两个口径都要带出来；没涨停过、没登记行业的票给空 / None，不编占位值
+    assert out.rows[0].sectors == ["金融科技"]
+    assert out.rows[0].industry == "银行-银行-股份制银行Ⅲ"
+    assert out.rows[1].sectors == []
+    assert out.rows[1].industry is None
 
 
 def test_old_date_falls_back_to_latest_snapshot(db):
