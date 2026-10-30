@@ -9,8 +9,11 @@ import type {
 import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
+import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
 import { fmtNum, fmtPct, todayLocal, toneOf } from '../lib/format'
+import { useSort } from '../lib/sort'
+import type { SortSpecs } from '../lib/sort'
 
 interface FormState {
   code: string
@@ -43,6 +46,31 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       {hint && <span className="text-[11px] text-fg-dim">{hint}</span>}
     </label>
   )
+}
+
+/** 候选建议表的排序口径。 */
+const SUGGEST_SORTS: SortSpecs<TradePlanSuggestion> = {
+  name: { value: (row) => row.name ?? row.code, first: 'asc' },
+  source: { value: (row) => (row.in_watchlist ? '自选股' : '形态命中'), first: 'asc' },
+  pattern_name: { value: (row) => row.pattern_name, first: 'asc' },
+  sectors: { value: (row) => row.sectors.join(' / '), first: 'asc' },
+  industry: { value: (row) => row.industry, first: 'asc' },
+  buy_price: { value: (row) => row.buy_price },
+  stop_price: { value: (row) => row.stop_price },
+}
+
+/** 「我的计划」的排序口径：计划日默认从新到旧，其余数值列先看大的。 */
+const PLAN_SORTS: SortSpecs<TradePlanRow> = {
+  plan_date: { value: (row) => row.plan_date, first: 'desc' },
+  name: { value: (row) => row.name ?? row.code, first: 'asc' },
+  buy_price: { value: (row) => row.buy_price },
+  stop_price: { value: (row) => row.stop_price },
+  status: { value: (row) => row.status, first: 'asc' },
+  day_close_pct: { value: (row) => row.day_close_pct },
+  next_1d_pct: { value: (row) => row.next_1d_pct },
+  next_3d_pct: { value: (row) => row.next_3d_pct },
+  next_5d_pct: { value: (row) => row.next_5d_pct },
+  note: { value: (row) => row.note, first: 'asc' },
 }
 
 /** 计划状态的颜色：触发最显眼，破位 / 同日破位压暗或标红。 */
@@ -185,6 +213,9 @@ export default function PlansPage() {
     () => suggestions.filter((item) => item.in_watchlist || item.buy_price != null),
     [suggestions],
   )
+  // 两张表都默认保持后端顺序，点表头才重排
+  const [suggestSort, suggestRows] = useSort(shownSuggestions, SUGGEST_SORTS, { key: null })
+  const [planSort, planRows] = useSort(rows, PLAN_SORTS, { key: null })
 
   return (
     <Layout>
@@ -307,18 +338,32 @@ export default function PlansPage() {
               <table className="grid-table">
                 <thead>
                   <tr>
-                    <th className="!text-left">股票</th>
-                    <th className="!text-left">来源</th>
-                    <th className="!text-left">形态 / 理由</th>
-                    <th className="!text-left">板块</th>
-                    <th className="!text-left">行业</th>
-                    <th>建议买点</th>
-                    <th>建议放弃位</th>
+                    <SortTh sortKey="name" align="left" {...suggestSort}>
+                      股票
+                    </SortTh>
+                    <SortTh sortKey="source" align="left" {...suggestSort}>
+                      来源
+                    </SortTh>
+                    <SortTh sortKey="pattern_name" align="left" {...suggestSort}>
+                      形态 / 理由
+                    </SortTh>
+                    <SortTh sortKey="sectors" align="left" {...suggestSort}>
+                      板块
+                    </SortTh>
+                    <SortTh sortKey="industry" align="left" {...suggestSort}>
+                      行业
+                    </SortTh>
+                    <SortTh sortKey="buy_price" {...suggestSort}>
+                      建议买点
+                    </SortTh>
+                    <SortTh sortKey="stop_price" {...suggestSort}>
+                      建议放弃位
+                    </SortTh>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {shownSuggestions.map((item) => (
+                  {suggestRows.map((item) => (
                     <tr key={`${item.source}-${item.code}`}>
                       <td className="!text-left">
                         <StockLink code={item.code}>{item.name ?? item.code}</StockLink>
@@ -393,21 +438,41 @@ export default function PlansPage() {
               <table className="grid-table">
                 <thead>
                   <tr>
-                    <th className="!text-left">计划日</th>
-                    <th className="!text-left">股票</th>
-                    <th>买点</th>
-                    <th>放弃位</th>
-                    <th className="!text-left">结果</th>
-                    <th>当日收盘</th>
-                    <th>次日</th>
-                    <th>3 日</th>
-                    <th>5 日</th>
-                    <th className="!text-left">备注</th>
+                    <SortTh sortKey="plan_date" align="left" {...planSort}>
+                      计划日
+                    </SortTh>
+                    <SortTh sortKey="name" align="left" {...planSort}>
+                      股票
+                    </SortTh>
+                    <SortTh sortKey="buy_price" {...planSort}>
+                      买点
+                    </SortTh>
+                    <SortTh sortKey="stop_price" {...planSort}>
+                      放弃位
+                    </SortTh>
+                    <SortTh sortKey="status" align="left" {...planSort}>
+                      结果
+                    </SortTh>
+                    <SortTh sortKey="day_close_pct" {...planSort}>
+                      当日收盘
+                    </SortTh>
+                    <SortTh sortKey="next_1d_pct" {...planSort}>
+                      次日
+                    </SortTh>
+                    <SortTh sortKey="next_3d_pct" {...planSort}>
+                      3 日
+                    </SortTh>
+                    <SortTh sortKey="next_5d_pct" {...planSort}>
+                      5 日
+                    </SortTh>
+                    <SortTh sortKey="note" align="left" {...planSort}>
+                      备注
+                    </SortTh>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => (
+                  {planRows.map((row) => (
                     <tr key={row.id}>
                       <td className="!text-left">
                         <span className="num">{row.plan_date}</span>

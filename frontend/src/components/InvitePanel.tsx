@@ -3,13 +3,30 @@ import { api } from '../api/client'
 import type { Invite } from '../api/types'
 import Alert from './Alert'
 import Panel from './Panel'
+import SortTh from './SortTh'
 import { copyText } from '../lib/clipboard'
 import { fmtDateTime } from '../lib/format'
+import { useSort } from '../lib/sort'
+import type { SortSpecs } from '../lib/sort'
 
 const INPUT =
   'border border-line bg-ink-850 px-2 py-1 text-[13px] text-fg outline-none transition-colors focus:border-fg-dim'
 const BUTTON =
   'border border-line px-3 py-1 text-[12px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg disabled:cursor-not-allowed disabled:opacity-40'
+
+/** 邀请码表的排序口径。状态按「已使用 / 已停用 / 未使用」的文字排。 */
+const INVITE_SORTS: SortSpecs<Invite> = {
+  code: { value: (row) => row.code, first: 'asc' },
+  note: { value: (row) => row.note, first: 'asc' },
+  status: {
+    value: (row) => (row.used_by !== null ? '已使用' : row.disabled_at ? '已停用' : '未使用'),
+    first: 'asc',
+  },
+  used_by_name: { value: (row) => row.used_by_name, first: 'asc' },
+  created_at: { value: (row) => row.created_at },
+}
+
+const NO_INVITES: Invite[] = []
 
 /**
  * 邀请码管理（只出现在管理员看得到的「数据管理」页里）。
@@ -35,6 +52,8 @@ export default function InvitePanel() {
   const [copied, setCopied] = useState<string | null>(null)
   // 「已复制」反馈的复原定时器：卸载时清掉，避免对已卸载组件 setState
   const copiedTimer = useRef<number | null>(null)
+  // 名单默认保持后端顺序，点表头才重排
+  const [inviteSort, inviteRows] = useSort(invites ?? NO_INVITES, INVITE_SORTS, { key: null })
 
   useEffect(() => {
     return () => {
@@ -181,16 +200,26 @@ export default function InvitePanel() {
           <table className="grid-table">
             <thead>
               <tr>
-                <th className="!text-left">邀请码</th>
-                <th className="!text-left">备注</th>
-                <th className="!text-left">状态</th>
-                <th className="!text-left">使用者</th>
-                <th>创建时间</th>
+                <SortTh sortKey="code" align="left" {...inviteSort}>
+                  邀请码
+                </SortTh>
+                <SortTh sortKey="note" align="left" {...inviteSort}>
+                  备注
+                </SortTh>
+                <SortTh sortKey="status" align="left" {...inviteSort}>
+                  状态
+                </SortTh>
+                <SortTh sortKey="used_by_name" align="left" {...inviteSort}>
+                  使用者
+                </SortTh>
+                <SortTh sortKey="created_at" {...inviteSort}>
+                  创建时间
+                </SortTh>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {invites.map((item) => (
+              {inviteRows.map((item) => (
                 <tr key={item.code}>
                   <td className="!text-left">
                     <button

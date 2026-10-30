@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
-import type { AnomalyMap, AnomalyRow, IndustryStocks } from '../api/types'
+import type { AnomalyMap, AnomalyRow, IndustryStock, IndustryStocks } from '../api/types'
 import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
@@ -57,6 +57,20 @@ const SORTS: SortSpecs<AnomalyRow> = {
   pct: { value: (row) => row.pct },
   cap: { value: (row) => row.cap },
 }
+
+/**
+ * 板块下钻表的排序口径。后端默认按涨幅降序，这里只是把同一套排序能力补上。
+ */
+const DRILL_SORTS: SortSpecs<IndustryStock> = {
+  code: { value: (row) => row.code, first: 'asc' },
+  name: { value: (row) => row.name ?? row.code, first: 'asc' },
+  close: { value: (row) => row.close },
+  pct_chg: { value: (row) => row.pct_chg },
+  amount: { value: (row) => row.amount },
+  cap: { value: (row) => row.cap },
+}
+
+const NO_DRILL_ITEMS: IndustryStock[] = []
 
 /**
  * 个股异动：把最近若干个交易日的涨停 / 涨停炸板 / 中大阳线摊成一张图。
@@ -126,6 +140,10 @@ export default function AnomalyPage() {
   const [drillData, setDrillData] = useState<IndustryStocks | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
   const [drillError, setDrillError] = useState<string | null>(null)
+  // 下钻表默认保持后端顺序（涨幅降序），点表头才重排
+  const [drillSort, drillRows] = useSort(drillData?.items ?? NO_DRILL_ITEMS, DRILL_SORTS, {
+    key: null,
+  })
 
   useEffect(() => {
     if (!drill) {
@@ -353,16 +371,28 @@ export default function AnomalyPage() {
                 <table className="grid-table">
                   <thead>
                     <tr>
-                      <th className="!text-left">代码</th>
-                      <th className="!text-left">名称</th>
-                      <th>收盘</th>
-                      <th>涨幅%</th>
-                      <th>成交额</th>
-                      <th>总市值</th>
+                      <SortTh sortKey="code" align="left" {...drillSort}>
+                        代码
+                      </SortTh>
+                      <SortTh sortKey="name" align="left" {...drillSort}>
+                        名称
+                      </SortTh>
+                      <SortTh sortKey="close" {...drillSort}>
+                        收盘
+                      </SortTh>
+                      <SortTh sortKey="pct_chg" {...drillSort}>
+                        涨幅%
+                      </SortTh>
+                      <SortTh sortKey="amount" {...drillSort}>
+                        成交额
+                      </SortTh>
+                      <SortTh sortKey="cap" {...drillSort}>
+                        总市值
+                      </SortTh>
                     </tr>
                   </thead>
                   <tbody>
-                    {drillData.items.map((item) => (
+                    {drillRows.map((item) => (
                       <tr key={item.code}>
                         <td className="num !text-left">
                           <Link

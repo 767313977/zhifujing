@@ -1,11 +1,24 @@
 import { Link } from 'react-router-dom'
 import type { PatternStock, PatternSummary } from '../api/types'
 import { fmtAmount, fmtPct, toneOf } from '../lib/format'
+import { useSort } from '../lib/sort'
+import type { SortSpecs } from '../lib/sort'
 import { rememberStockList } from '../lib/stockNav'
 import Panel from './Panel'
+import SortTh from './SortTh'
 
 /** 首页列几只。首页要的是「今天有什么值得看」，不是完整榜单 */
 const TOP_SHOWN = 8
+
+/** 首页形态表的排序口径：只在这 8 只里重排，不改变「前 8 是谁」。 */
+const PATTERN_SORTS: SortSpecs<PatternStock> = {
+  score: { value: (row) => row.score },
+  name: { value: (row) => row.name ?? row.code, first: 'asc' },
+  patterns: { value: (row) => row.patterns.map((item) => item.pattern_name).join(' · '), first: 'asc' },
+  pct_chg: { value: (row) => row.pct_chg },
+  avg_amount: { value: (row) => row.avg_amount },
+  total_mv: { value: (row) => row.total_mv },
+}
 
 interface PatternPanelProps {
   summary: PatternSummary | null
@@ -35,6 +48,7 @@ export default function PatternPanel({
   delay = 0,
 }: PatternPanelProps) {
   const counts = summary?.by_pattern ?? []
+  const [sort, rows] = useSort(stocks.slice(0, TOP_SHOWN), PATTERN_SORTS, { key: null })
 
   return (
     <Panel
@@ -83,16 +97,28 @@ export default function PatternPanel({
             <table className="grid-table">
               <thead>
                 <tr>
-                  <th>评分</th>
-                  <th className="!text-left">代码 / 名称</th>
-                  <th className="!text-left">命中形态</th>
-                  <th>涨跌幅</th>
-                  <th title="近 20 日日均成交额">日均额</th>
-                  <th title="总市值：是题材小票还是权重">市值</th>
+                  <SortTh sortKey="score" {...sort}>
+                    评分
+                  </SortTh>
+                  <SortTh sortKey="name" align="left" {...sort}>
+                    代码 / 名称
+                  </SortTh>
+                  <SortTh sortKey="patterns" align="left" {...sort}>
+                    命中形态
+                  </SortTh>
+                  <SortTh sortKey="pct_chg" {...sort}>
+                    涨跌幅
+                  </SortTh>
+                  <SortTh sortKey="avg_amount" title="近 20 日日均成交额" {...sort}>
+                    日均额
+                  </SortTh>
+                  <SortTh sortKey="total_mv" title="总市值：是题材小票还是权重" {...sort}>
+                    市值
+                  </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {stocks.slice(0, TOP_SHOWN).map((stock) => (
+                {rows.map((stock) => (
                   <tr
                     key={stock.code}
                     onClick={() => {

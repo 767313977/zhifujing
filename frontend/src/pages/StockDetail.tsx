@@ -11,6 +11,7 @@ import type {
   StockProfile,
   StockReports,
   StockThemes,
+  StockUnlockRow,
   StockUnlocks,
   TrapCheck,
   TrapSignal,
@@ -24,6 +25,7 @@ import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import PhasePanel from '../components/PhasePanel'
 import Segmented from '../components/Segmented'
+import SortTh from '../components/SortTh'
 import {
   AXIS_LABEL,
   AXIS_LINE,
@@ -35,6 +37,8 @@ import {
 import { fmtAmount, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
 import { K_VIEWS, fqLabel, useKLine } from '../lib/klinePeriod'
 import { alreadySynced, markSynced, readStockList } from '../lib/stockNav'
+import { useSort } from '../lib/sort'
+import type { SortSpecs } from '../lib/sort'
 
 /**
  * 少于这么多根 K 就认为「历史不全」，打开时补一次。
@@ -305,6 +309,18 @@ function buildDdeOption(rows: StockDdeRow[]): ChartOption {
   }
 }
 
+/** 解禁表的排序口径：默认按解禁日从近到远，比例 / 市值先看大的。 */
+const UNLOCK_SORTS: SortSpecs<StockUnlockRow> = {
+  unlock_date: { value: (row) => row.unlock_date, first: 'asc' },
+  ratio_float: { value: (row) => row.ratio_float },
+  ratio_total: { value: (row) => row.ratio_total },
+  market_value: { value: (row) => row.market_value },
+  shares: { value: (row) => row.shares },
+  share_type: { value: (row) => row.share_type, first: 'asc' },
+}
+
+const NO_UNLOCK_ROWS: StockUnlockRow[] = []
+
 export default function StockDetail() {
   const { code = '' } = useParams<{ code: string }>()
   const [profile, setProfile] = useState<StockProfile | null>(null)
@@ -322,6 +338,10 @@ export default function StockDetail() {
   const [notices, setNotices] = useState<StockNotices | null>(null)
   const [reports, setReports] = useState<StockReports | null>(null)
   const [unlocks, setUnlocks] = useState<StockUnlocks | null>(null)
+  // 解禁表默认保持后端顺序（按解禁日），点表头才重排
+  const [unlockSort, unlockRows] = useSort(unlocks?.rows ?? NO_UNLOCK_ROWS, UNLOCK_SORTS, {
+    key: null,
+  })
   const [eventsLoading, setEventsLoading] = useState(false)
   const [eventsError, setEventsError] = useState<string | null>(null)
   // DDE 请求本身失败的原因（网络 / 超时 / 5xx）。null 表示请求成功 —— 此时 `dde`
@@ -1202,16 +1222,28 @@ export default function StockDetail() {
                   <table className="grid-table">
                     <thead>
                       <tr>
-                        <th className="!text-left">解禁日</th>
-                        <th title="解禁数量占流通市值的比例">占流通市值</th>
-                        <th title="解禁数量占总市值的比例">占总市值</th>
-                        <th>解禁市值</th>
-                        <th>解禁股数</th>
-                        <th className="!text-left">类型</th>
+                        <SortTh sortKey="unlock_date" align="left" {...unlockSort}>
+                          解禁日
+                        </SortTh>
+                        <SortTh sortKey="ratio_float" title="解禁数量占流通市值的比例" {...unlockSort}>
+                          占流通市值
+                        </SortTh>
+                        <SortTh sortKey="ratio_total" title="解禁数量占总市值的比例" {...unlockSort}>
+                          占总市值
+                        </SortTh>
+                        <SortTh sortKey="market_value" {...unlockSort}>
+                          解禁市值
+                        </SortTh>
+                        <SortTh sortKey="shares" {...unlockSort}>
+                          解禁股数
+                        </SortTh>
+                        <SortTh sortKey="share_type" align="left" {...unlockSort}>
+                          类型
+                        </SortTh>
                       </tr>
                     </thead>
                     <tbody>
-                      {unlocks.rows.map((row) => (
+                      {unlockRows.map((row) => (
                         <tr key={`${row.unlock_date}-${row.share_type}`}>
                           <td className="!text-left">
                             <span className="num">{row.unlock_date}</span>

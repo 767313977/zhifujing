@@ -15,8 +15,11 @@ import type {
 import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
+import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
 import { fmtDrawdown, fmtNum, fmtPct, todayLocal, toneOf } from '../lib/format'
+import { useSort } from '../lib/sort'
+import type { SortSpecs } from '../lib/sort'
 
 /** 理由来源。与后端 `services/trade_journal.REASON_TYPES` 一一对应。 */
 const REASON_TYPES = [
@@ -169,8 +172,47 @@ function stopText(row: TradeJournalRow): { text: string; className: string; titl
   }
 }
 
+/** 分组统计表（按理由 / 情绪 / 板块）的排序口径。 */
+const STATS_SORTS: SortSpecs<TradeStatsRow> = {
+  label: { value: (row) => row.label, first: 'asc' },
+  trades: { value: (row) => row.trades },
+  closed: { value: (row) => row.closed },
+  win_rate: { value: (row) => row.win_rate },
+  avg_return: { value: (row) => row.avg_return },
+  avg_drawdown: { value: (row) => row.avg_drawdown },
+  avg_holding_days: { value: (row) => row.avg_holding_days },
+}
+
+/** 做 T 分组表的排序口径。 */
+const T_STATS_SORTS: SortSpecs<TradeTStatsRow> = {
+  label: { value: (row) => row.label, first: 'asc' },
+  count: { value: (row) => row.count },
+  completed: { value: (row) => row.completed },
+  success_rate: { value: (row) => row.success_rate },
+  avg_net_pct: { value: (row) => row.avg_net_pct },
+  total_contrib_pct: { value: (row) => row.total_contrib_pct },
+  fly_count: { value: (row) => row.fly_count },
+}
+
+/** 「我的交易」的排序口径。买入日默认从新到旧。 */
+const JOURNAL_SORTS: SortSpecs<TradeJournalRow> = {
+  entry_date: { value: (row) => row.entry_date, first: 'desc' },
+  name: { value: (row) => row.name ?? row.code, first: 'asc' },
+  reason_label: { value: (row) => row.reason_label, first: 'asc' },
+  sentiment_level: { value: (row) => row.sentiment_level, first: 'asc' },
+  sector: { value: (row) => row.sector, first: 'asc' },
+  entry_price: { value: (row) => row.entry_price },
+  shares: { value: (row) => row.shares },
+  position_pct: { value: (row) => row.position_pct },
+  return_pct: { value: (row) => row.return_pct },
+  max_drawdown_pct: { value: (row) => row.max_drawdown_pct },
+  holding_days: { value: (row) => row.holding_days },
+  note: { value: (row) => row.note, first: 'asc' },
+}
+
 /** 一张分组统计表。 */
 function StatsTable({ title, rows }: { title: string; rows: TradeStatsRow[] }) {
+  const [sort, shown] = useSort(rows, STATS_SORTS, { key: null })
   return (
     <div className="min-w-0">
       <div className="mb-1.5 text-[12px] text-fg-dim">{title}</div>
@@ -183,17 +225,31 @@ function StatsTable({ title, rows }: { title: string; rows: TradeStatsRow[] }) {
           <table className="grid-table">
             <thead>
               <tr>
-                <th className="!text-left">分组</th>
-                <th>笔数</th>
-                <th>已平 / 未平</th>
-                <th>胜率</th>
-                <th>平均收益</th>
-                <th>平均回撤</th>
-                <th>平均持有</th>
+                <SortTh sortKey="label" align="left" {...sort}>
+                  分组
+                </SortTh>
+                <SortTh sortKey="trades" {...sort}>
+                  笔数
+                </SortTh>
+                <SortTh sortKey="closed" {...sort}>
+                  已平 / 未平
+                </SortTh>
+                <SortTh sortKey="win_rate" {...sort}>
+                  胜率
+                </SortTh>
+                <SortTh sortKey="avg_return" {...sort}>
+                  平均收益
+                </SortTh>
+                <SortTh sortKey="avg_drawdown" {...sort}>
+                  平均回撤
+                </SortTh>
+                <SortTh sortKey="avg_holding_days" {...sort}>
+                  平均持有
+                </SortTh>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {shown.map((row) => (
                 <tr key={row.label}>
                   <td className="!text-left text-fg">{row.label}</td>
                   <td>
@@ -579,6 +635,7 @@ function TForm({
 
 /** 做 T 的分组表（按方向 / 按触发）。 */
 function TStatsTable({ title, rows }: { title: string; rows: TradeTStatsRow[] }) {
+  const [sort, shown] = useSort(rows, T_STATS_SORTS, { key: null })
   return (
     <div className="min-w-0">
       <div className="mb-1.5 text-[12px] text-fg-dim">{title}</div>
@@ -586,17 +643,31 @@ function TStatsTable({ title, rows }: { title: string; rows: TradeTStatsRow[] })
         <table className="grid-table">
           <thead>
             <tr>
-              <th className="!text-left">分组</th>
-              <th>次数</th>
-              <th>已完成 / 未完成</th>
-              <th>成功率</th>
-              <th>平均扣费后</th>
-              <th>累计降本</th>
-              <th>卖飞</th>
+              <SortTh sortKey="label" align="left" {...sort}>
+                分组
+              </SortTh>
+              <SortTh sortKey="count" {...sort}>
+                次数
+              </SortTh>
+              <SortTh sortKey="completed" {...sort}>
+                已完成 / 未完成
+              </SortTh>
+              <SortTh sortKey="success_rate" {...sort}>
+                成功率
+              </SortTh>
+              <SortTh sortKey="avg_net_pct" {...sort}>
+                平均扣费后
+              </SortTh>
+              <SortTh sortKey="total_contrib_pct" {...sort}>
+                累计降本
+              </SortTh>
+              <SortTh sortKey="fly_count" {...sort}>
+                卖飞
+              </SortTh>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {shown.map((row) => (
               <tr key={row.label}>
                 <td className="!text-left text-fg">{row.label}</td>
                 <td>
@@ -674,6 +745,8 @@ export default function JournalPage() {
   const [statsError, setStatsError] = useState<string | null>(null)
   // 「买入日那天这只票命中了什么」——按代码 + 买入日回溯（2026-10-21 用户要求）
   const [suggest, setSuggest] = useState<JournalReasonSuggestion | null>(null)
+  // 交易列表默认保持后端顺序（按买入日），点表头才重排
+  const [journalSort, journalRows] = useSort(rows, JOURNAL_SORTS, { key: null })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1197,24 +1270,48 @@ export default function JournalPage() {
                 <thead>
                   <tr>
                     <th></th>
-                    <th className="!text-left">买入日</th>
-                    <th className="!text-left">股票</th>
-                    <th className="!text-left">理由</th>
-                    <th>情绪</th>
-                    <th className="!text-left">板块</th>
-                    <th>买入 → 卖出</th>
-                    <th>股数 / 金额</th>
-                    <th>仓位</th>
-                    <th>收益</th>
-                    <th>最大回撤</th>
-                    <th>持有</th>
+                    <SortTh sortKey="entry_date" align="left" {...journalSort}>
+                      买入日
+                    </SortTh>
+                    <SortTh sortKey="name" align="left" {...journalSort}>
+                      股票
+                    </SortTh>
+                    <SortTh sortKey="reason_label" align="left" {...journalSort}>
+                      理由
+                    </SortTh>
+                    <SortTh sortKey="sentiment_level" {...journalSort}>
+                      情绪
+                    </SortTh>
+                    <SortTh sortKey="sector" align="left" {...journalSort}>
+                      板块
+                    </SortTh>
+                    <SortTh sortKey="entry_price" {...journalSort}>
+                      买入 → 卖出
+                    </SortTh>
+                    <SortTh sortKey="shares" {...journalSort}>
+                      股数 / 金额
+                    </SortTh>
+                    <SortTh sortKey="position_pct" {...journalSort}>
+                      仓位
+                    </SortTh>
+                    <SortTh sortKey="return_pct" {...journalSort}>
+                      收益
+                    </SortTh>
+                    <SortTh sortKey="max_drawdown_pct" {...journalSort}>
+                      最大回撤
+                    </SortTh>
+                    <SortTh sortKey="holding_days" {...journalSort}>
+                      持有
+                    </SortTh>
                     <th>止损</th>
-                    <th className="!text-left">备注</th>
+                    <SortTh sortKey="note" align="left" {...journalSort}>
+                      备注
+                    </SortTh>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => {
+                  {journalRows.map((row) => {
                     const stop = stopText(row)
                     // 有 T 记录、或还没平仓时才给展开钮；已平仓又没做过 T 的没有内容可展
                     const canExpand = row.t_count > 0 || row.open

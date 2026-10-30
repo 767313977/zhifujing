@@ -7,8 +7,11 @@ import type { ChartOption } from '../components/EChart'
 import Layout from '../components/Layout'
 import LoadState from '../components/LoadState'
 import Panel from '../components/Panel'
+import SortTh from '../components/SortTh'
 import { AXIS_LABEL, AXIS_LINE, CHART, GRID, SPLIT_LINE, TOOLTIP, withAlpha } from '../lib/chart'
 import { fmtNum, fmtShortDate } from '../lib/format'
+import { useSort } from '../lib/sort'
+import type { SortSpecs } from '../lib/sort'
 
 /** 温度档 → 颜色。冷=便宜（绿）、热=贵（红），与全站红涨绿跌的色义一致。 */
 const TONE_COLOR: Record<string, string> = {
@@ -26,6 +29,19 @@ function toneStyle(tone: string | null): { color: string } {
 function pctText(value: number | null): string {
   return value == null ? '—' : `${value.toFixed(1)}%`
 }
+
+/** 核心指数表的排序口径。名字从 A 开始，分位默认先看最贵的。 */
+const VALUATION_SORTS: SortSpecs<IndexValuationItem> = {
+  name: { value: (row) => row.name, first: 'asc' },
+  as_of: { value: (row) => row.as_of, first: 'asc' },
+  pe_ttm: { value: (row) => row.pe_ttm },
+  pe_pct: { value: (row) => row.pe_pct },
+  pb: { value: (row) => row.pb },
+  pb_pct: { value: (row) => row.pb_pct },
+  tone: { value: (row) => row.tone, first: 'asc' },
+}
+
+const NO_ITEMS: IndexValuationItem[] = []
 
 /** 分位值：从升序序列里取 q 分位点（线性无关紧要，取最近下标就够看位置）。 */
 function quantile(sorted: number[], q: number): number | null {
@@ -75,6 +91,8 @@ export default function Valuation() {
   const pick = useCallback((item: IndexValuationItem) => {
     setSelected(item.code)
   }, [])
+
+  const [valSort, valRows] = useSort(data?.items ?? NO_ITEMS, VALUATION_SORTS, { key: null })
 
   const chart = useMemo<ChartOption>(() => {
     if (!series || series.points.length === 0) return {}
@@ -215,17 +233,31 @@ export default function Valuation() {
             <table className="grid-table">
               <thead>
                 <tr>
-                  <th className="!text-left">指数</th>
-                  <th>数据日</th>
-                  <th>PE-TTM</th>
-                  <th>PE 分位</th>
-                  <th>PB</th>
-                  <th>PB 分位</th>
-                  <th>温度</th>
+                  <SortTh sortKey="name" align="left" {...valSort}>
+                    指数
+                  </SortTh>
+                  <SortTh sortKey="as_of" {...valSort}>
+                    数据日
+                  </SortTh>
+                  <SortTh sortKey="pe_ttm" {...valSort}>
+                    PE-TTM
+                  </SortTh>
+                  <SortTh sortKey="pe_pct" {...valSort}>
+                    PE 分位
+                  </SortTh>
+                  <SortTh sortKey="pb" {...valSort}>
+                    PB
+                  </SortTh>
+                  <SortTh sortKey="pb_pct" {...valSort}>
+                    PB 分位
+                  </SortTh>
+                  <SortTh sortKey="tone" {...valSort}>
+                    温度
+                  </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {(data?.items ?? []).map((item) => (
+                {valRows.map((item) => (
                   <tr
                     key={item.code}
                     onClick={() => pick(item)}

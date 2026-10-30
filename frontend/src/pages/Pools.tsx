@@ -2,21 +2,32 @@ import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type {
   FirstBoardBoard,
+  FirstBoardRow,
   FirstBoardTrack,
+  FirstBoardTrackDay,
   RpsBoard,
+  RpsRow,
   RpsTrack,
+  RpsTrackDay,
   SectorRpsBoard,
+  SectorRpsMemberRow,
   SectorRpsMembers,
+  SectorRpsRow,
   SectorStockBoard,
+  SectorStockRow,
   SectorStockTrack,
+  SectorStockTrackDay,
   SectorTrack,
 } from '../api/types'
 import Layout from '../components/Layout'
 import LoadState from '../components/LoadState'
 import Panel from '../components/Panel'
 import Segmented from '../components/Segmented'
+import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
 import { fmtAmount, fmtNum, fmtPct, fmtSealTime, toneOf } from '../lib/format'
+import { useSort } from '../lib/sort'
+import type { SortSpecs } from '../lib/sort'
 
 /**
  * 选股池：首板一进二候选 + RPS 相对强度榜。
@@ -116,6 +127,112 @@ const STOCK_PER_ITEMS = [
   { key: '3', label: '3 只' },
   { key: '5', label: '5 只' },
 ]
+
+/** 首板候选表的排序口径。文字列从 A 开始，数值列默认先看最大的。 */
+const FB_SORTS: SortSpecs<FirstBoardRow> = {
+  name: { value: (row) => row.name ?? row.code, first: 'asc' },
+  first_seal_time: { value: (row) => row.first_seal_time, first: 'asc' },
+  seal_ratio: { value: (row) => row.seal_ratio },
+  seal_amount: { value: (row) => row.seal_amount },
+  seal_to_amount: { value: (row) => row.seal_to_amount },
+  float_mv: { value: (row) => row.float_mv },
+  amount: { value: (row) => row.amount },
+  turnover: { value: (row) => row.turnover },
+  recent_limit_ups: { value: (row) => row.recent_limit_ups },
+  factor_score: { value: (row) => row.factor_score },
+  theme: { value: (row) => row.theme, first: 'asc' },
+  industry: { value: (row) => row.industry, first: 'asc' },
+}
+
+/** 首板验证的逐日明细。行本身按日期从新到旧，默认保持后端顺序。 */
+const FB_DAY_SORTS: SortSpecs<FirstBoardTrackDay> = {
+  trade_date: { value: (row) => row.trade_date, first: 'asc' },
+  next_date: { value: (row) => row.next_date, first: 'asc' },
+  candidates: { value: (row) => row.candidates },
+  // 「待验证」的天没有晋级数，缺数据排最后
+  promoted: { value: (row) => (row.status === 'pending' ? null : row.promoted) },
+  open_premium_mean: { value: (row) => row.open_premium_mean },
+  close_ret_mean: { value: (row) => row.close_ret_mean },
+  unbuyable: { value: (row) => row.unbuyable },
+  no_quote: { value: (row) => row.no_quote },
+}
+
+/** RPS 榜的排序口径。 */
+const RPS_SORTS: SortSpecs<RpsRow> = {
+  name: { value: (row) => row.name ?? row.code, first: 'asc' },
+  close: { value: (row) => row.close },
+  pct_chg: { value: (row) => row.pct_chg },
+  rps50: { value: (row) => row.rps50 },
+  ret50: { value: (row) => row.ret50 },
+  rps120: { value: (row) => row.rps120 },
+  ret120: { value: (row) => row.ret120 },
+  rps250: { value: (row) => row.rps250 },
+  ret250: { value: (row) => row.ret250 },
+  off_high_pct: { value: (row) => row.off_high_pct },
+  factor_score: { value: (row) => row.factor_score },
+  hits: { value: (row) => row.hits.join(' · '), first: 'asc' },
+  industry: { value: (row) => row.industry, first: 'asc' },
+}
+
+const RPS_DAY_SORTS: SortSpecs<RpsTrackDay> = {
+  trade_date: { value: (row) => row.trade_date, first: 'asc' },
+  picks: { value: (row) => row.picks },
+  ret1: { value: (row) => row.ret1 },
+  excess1: { value: (row) => row.excess1 },
+  ret5: { value: (row) => row.ret5 },
+  excess5: { value: (row) => row.excess5 },
+}
+
+/** 板块 RPS 榜。 */
+const SECTOR_SORTS: SortSpecs<SectorRpsRow> = {
+  name: { value: (row) => row.name ?? row.code, first: 'asc' },
+  rps20: { value: (row) => row.rps20 },
+  ret20: { value: (row) => row.ret20 },
+  rps5: { value: (row) => row.rps5 },
+  ret5: { value: (row) => row.ret5 },
+  member_count: { value: (row) => row.member_count },
+  leader_name: { value: (row) => row.leader_name, first: 'asc' },
+}
+
+/**
+ * 板块成分股表。板块 / 行业是「拼成一串」再比 —— 按第一个题材排，
+ * 能把同题材的票排在一起，比按代码排有用。
+ */
+const MEMBER_SORTS: SortSpecs<SectorRpsMemberRow> = {
+  name: { value: (row) => row.name ?? row.code, first: 'asc' },
+  sectors: { value: (row) => row.sectors.join(' / '), first: 'asc' },
+  industry: { value: (row) => row.industry, first: 'asc' },
+  close: { value: (row) => row.close },
+  pct_chg: { value: (row) => row.pct_chg },
+  amount: { value: (row) => row.amount },
+  turnover: { value: (row) => row.turnover },
+}
+
+/** 板块 → 个股。 */
+const STOCK_SORTS: SortSpecs<SectorStockRow> = {
+  sector_name: { value: (row) => row.sector_name ?? row.sector_code, first: 'asc' },
+  name: { value: (row) => row.name ?? row.code, first: 'asc' },
+  pct_chg: { value: (row) => row.pct_chg },
+  sector_pct_chg: { value: (row) => row.sector_pct_chg },
+  factor_score: { value: (row) => row.factor_score },
+}
+
+const STOCK_DAY_SORTS: SortSpecs<SectorStockTrackDay> = {
+  trade_date: { value: (row) => row.trade_date, first: 'asc' },
+  picks: { value: (row) => row.picks },
+  ret1: { value: (row) => row.ret1 },
+  excess1: { value: (row) => row.excess1 },
+}
+
+/** 各表的空数组常量：`useSort` 必须在组件顶层无条件调用，数据没到时得有东西可传。 */
+const NO_FB_ROWS: FirstBoardRow[] = []
+const NO_FB_DAYS: FirstBoardTrackDay[] = []
+const NO_RPS_ROWS: RpsRow[] = []
+const NO_RPS_DAYS: RpsTrackDay[] = []
+const NO_SECTOR_ROWS: SectorRpsRow[] = []
+const NO_MEMBER_ROWS: SectorRpsMemberRow[] = []
+const NO_STOCK_ROWS: SectorStockRow[] = []
+const NO_STOCK_DAYS: SectorStockTrackDay[] = []
 
 /** RPS 分位的颜色：只有两档极端才染色，中间一律中性（避免满屏红绿）。 */
 function rpsTone(value: number | null): string {
@@ -398,6 +515,32 @@ export default function Pools() {
   // 逐日明细只展开当前选中档 —— 两档并排看汇总，明细看一份就够了
   const activeRpsTrack = rpsOrder === 'factor' ? rpsTrackFactor : rpsTrack
 
+  // 排序状态：hooks 必须在顶层无条件调用，所以数据没到时传空数组常量。
+  // 只有成分股表默认按涨幅排（后端本来就是这个顺序，列头能指出当前排的是哪一列），
+  // 其余表首屏保持后端顺序 —— 那个顺序本身有意义（按综合分 / 首封时间 / 日期）。
+  const [fbSort, fbRows] = useSort(firstBoard?.rows ?? NO_FB_ROWS, FB_SORTS, { key: null })
+  const [fbDaySort, fbDayRows] = useSort(fbTrack?.days ?? NO_FB_DAYS, FB_DAY_SORTS, {
+    key: null,
+  })
+  const [rpsSort, rpsRows] = useSort(rps?.rows ?? NO_RPS_ROWS, RPS_SORTS, { key: null })
+  const [rpsDaySort, rpsDayRows] = useSort(activeRpsTrack?.rows ?? NO_RPS_DAYS, RPS_DAY_SORTS, {
+    key: null,
+  })
+  const [sectorSort, sectorRows] = useSort(sectorBoard?.rows ?? NO_SECTOR_ROWS, SECTOR_SORTS, {
+    key: null,
+  })
+  const [memberSort, memberRows] = useSort(memberBoard?.rows ?? NO_MEMBER_ROWS, MEMBER_SORTS, {
+    key: 'pct_chg',
+  })
+  const [stockSort, stockRows] = useSort(sectorStock?.rows ?? NO_STOCK_ROWS, STOCK_SORTS, {
+    key: null,
+  })
+  const [stockDaySort, stockDayRows] = useSort(
+    sectorStockTrack?.rows ?? NO_STOCK_DAYS,
+    STOCK_DAY_SORTS,
+    { key: null },
+  )
+
   return (
     <Layout
       toolbar={
@@ -476,19 +619,39 @@ export default function Pools() {
                   <table className="grid-table">
                     <thead>
                       <tr>
-                        <th className="!text-left">信号日</th>
-                        <th className="!text-left">次日</th>
-                        <th>候选</th>
-                        <th>晋级</th>
-                        <th>开盘溢价</th>
+                        <SortTh sortKey="trade_date" align="left" {...fbDaySort}>
+                          信号日
+                        </SortTh>
+                        <SortTh sortKey="next_date" align="left" {...fbDaySort}>
+                          次日
+                        </SortTh>
+                        <SortTh sortKey="candidates" {...fbDaySort}>
+                          候选
+                        </SortTh>
+                        <SortTh sortKey="promoted" {...fbDaySort}>
+                          晋级
+                        </SortTh>
+                        <SortTh sortKey="open_premium_mean" {...fbDaySort}>
+                          开盘溢价
+                        </SortTh>
                         {/* 买入价 = T+1 开盘（2026-10-28 拍板），所以这一列是开盘→收盘 */}
-                        <th title="T+1 开盘买入到收盘的收益">收盘</th>
-                        <th>一字</th>
-                        <th>缺日线</th>
+                        <SortTh
+                          sortKey="close_ret_mean"
+                          title="T+1 开盘买入到收盘的收益"
+                          {...fbDaySort}
+                        >
+                          收盘
+                        </SortTh>
+                        <SortTh sortKey="unbuyable" {...fbDaySort}>
+                          一字
+                        </SortTh>
+                        <SortTh sortKey="no_quote" {...fbDaySort}>
+                          缺日线
+                        </SortTh>
                       </tr>
                     </thead>
                     <tbody>
-                      {fbTrack.days.map((row) => (
+                      {fbDayRows.map((row) => (
                         <tr key={row.trade_date}>
                           <td className="num !text-left">{row.trade_date}</td>
                           <td className="num !text-left text-fg-muted">
@@ -526,22 +689,48 @@ export default function Pools() {
               <table className="grid-table">
                 <thead>
                   <tr>
-                    <th className="!text-left">名称</th>
-                    <th>首封</th>
-                    <th>封单/流通</th>
-                    <th>封单额</th>
-                    <th>封成比</th>
-                    <th>流通市值</th>
-                    <th>成交额</th>
-                    <th>换手</th>
-                    <th>近10日涨停</th>
-                    {fbOrder === 'factor' && <th>因子分</th>}
-                    <th className="!text-left">题材（当日涨停家数 / 题材内首封排名）</th>
-                    <th className="!text-left">行业</th>
+                    <SortTh sortKey="name" align="left" {...fbSort}>
+                      名称
+                    </SortTh>
+                    <SortTh sortKey="first_seal_time" {...fbSort}>
+                      首封
+                    </SortTh>
+                    <SortTh sortKey="seal_ratio" {...fbSort}>
+                      封单/流通
+                    </SortTh>
+                    <SortTh sortKey="seal_amount" {...fbSort}>
+                      封单额
+                    </SortTh>
+                    <SortTh sortKey="seal_to_amount" {...fbSort}>
+                      封成比
+                    </SortTh>
+                    <SortTh sortKey="float_mv" {...fbSort}>
+                      流通市值
+                    </SortTh>
+                    <SortTh sortKey="amount" {...fbSort}>
+                      成交额
+                    </SortTh>
+                    <SortTh sortKey="turnover" {...fbSort}>
+                      换手
+                    </SortTh>
+                    <SortTh sortKey="recent_limit_ups" {...fbSort}>
+                      近10日涨停
+                    </SortTh>
+                    {fbOrder === 'factor' && (
+                      <SortTh sortKey="factor_score" {...fbSort}>
+                        因子分
+                      </SortTh>
+                    )}
+                    <SortTh sortKey="theme" align="left" {...fbSort}>
+                      题材（当日涨停家数 / 题材内首封排名）
+                    </SortTh>
+                    <SortTh sortKey="industry" align="left" {...fbSort}>
+                      行业
+                    </SortTh>
                   </tr>
                 </thead>
                 <tbody>
-                  {firstBoard.rows.map((row) => (
+                  {fbRows.map((row) => (
                     <tr key={row.code}>
                       <td className="!text-left">
                         <StockLink code={row.code} className="text-fg">
@@ -686,17 +875,29 @@ export default function Pools() {
                   <table className="grid-table">
                     <thead>
                       <tr>
-                        <th className="!text-left">日期</th>
-                        <th>只数</th>
-                        <th>1 日</th>
-                        <th>超额</th>
-                        <th>5 日</th>
-                        <th>超额</th>
-                        <th className="!text-left">状态</th>
+                        <SortTh sortKey="trade_date" align="left" {...rpsDaySort}>
+                          日期
+                        </SortTh>
+                        <SortTh sortKey="picks" {...rpsDaySort}>
+                          只数
+                        </SortTh>
+                        <SortTh sortKey="ret1" {...rpsDaySort}>
+                          1 日
+                        </SortTh>
+                        <SortTh sortKey="excess1" {...rpsDaySort}>
+                          超额
+                        </SortTh>
+                        <SortTh sortKey="ret5" {...rpsDaySort}>
+                          5 日
+                        </SortTh>
+                        <SortTh sortKey="excess5" {...rpsDaySort}>
+                          超额
+                        </SortTh>
+                        <SortTh align="left">状态</SortTh>
                       </tr>
                     </thead>
                     <tbody>
-                      {activeRpsTrack.rows.map((row) => (
+                      {rpsDayRows.map((row) => (
                         <tr key={row.trade_date}>
                           <td className="num !text-left">{row.trade_date}</td>
                           <td className="num">{row.picks}</td>
@@ -730,23 +931,51 @@ export default function Pools() {
                 <thead>
                   <tr>
                     <th>#</th>
-                    <th className="!text-left">名称</th>
-                    <th>收盘</th>
-                    <th>当日</th>
-                    <th>RPS50</th>
-                    <th>50 日</th>
-                    <th>RPS120</th>
-                    <th>120 日</th>
-                    <th>RPS250</th>
-                    <th>250 日</th>
-                    <th>距新高</th>
-                    {rpsOrder === 'factor' && <th>因子分</th>}
-                    <th className="!text-left">今日形态 / 标签</th>
-                    <th className="!text-left">行业</th>
+                    <SortTh sortKey="name" align="left" {...rpsSort}>
+                      名称
+                    </SortTh>
+                    <SortTh sortKey="close" {...rpsSort}>
+                      收盘
+                    </SortTh>
+                    <SortTh sortKey="pct_chg" {...rpsSort}>
+                      当日
+                    </SortTh>
+                    <SortTh sortKey="rps50" {...rpsSort}>
+                      RPS50
+                    </SortTh>
+                    <SortTh sortKey="ret50" {...rpsSort}>
+                      50 日
+                    </SortTh>
+                    <SortTh sortKey="rps120" {...rpsSort}>
+                      RPS120
+                    </SortTh>
+                    <SortTh sortKey="ret120" {...rpsSort}>
+                      120 日
+                    </SortTh>
+                    <SortTh sortKey="rps250" {...rpsSort}>
+                      RPS250
+                    </SortTh>
+                    <SortTh sortKey="ret250" {...rpsSort}>
+                      250 日
+                    </SortTh>
+                    <SortTh sortKey="off_high_pct" {...rpsSort}>
+                      距新高
+                    </SortTh>
+                    {rpsOrder === 'factor' && (
+                      <SortTh sortKey="factor_score" {...rpsSort}>
+                        因子分
+                      </SortTh>
+                    )}
+                    <SortTh sortKey="hits" align="left" {...rpsSort}>
+                      今日形态 / 标签
+                    </SortTh>
+                    <SortTh sortKey="industry" align="left" {...rpsSort}>
+                      行业
+                    </SortTh>
                   </tr>
                 </thead>
                 <tbody>
-                  {rps.rows.map((row, index) => (
+                  {rpsRows.map((row, index) => (
                     <tr key={row.code}>
                       <td className="num text-fg-dim">{index + 1}</td>
                       <td className="!text-left">
@@ -863,17 +1092,31 @@ export default function Pools() {
                       <table className="grid-table">
                         <thead>
                           <tr>
-                            <th className="!text-left">股票</th>
-                            <th className="!text-left">板块</th>
-                            <th className="!text-left">行业</th>
-                            <th>收盘</th>
-                            <th>涨幅</th>
-                            <th>成交额</th>
-                            <th>换手</th>
+                            <SortTh sortKey="name" align="left" {...memberSort}>
+                              股票
+                            </SortTh>
+                            <SortTh sortKey="sectors" align="left" {...memberSort}>
+                              板块
+                            </SortTh>
+                            <SortTh sortKey="industry" align="left" {...memberSort}>
+                              行业
+                            </SortTh>
+                            <SortTh sortKey="close" {...memberSort}>
+                              收盘
+                            </SortTh>
+                            <SortTh sortKey="pct_chg" {...memberSort}>
+                              涨幅
+                            </SortTh>
+                            <SortTh sortKey="amount" {...memberSort}>
+                              成交额
+                            </SortTh>
+                            <SortTh sortKey="turnover" {...memberSort}>
+                              换手
+                            </SortTh>
                           </tr>
                         </thead>
                         <tbody>
-                          {memberBoard.rows.map((item) => (
+                          {memberRows.map((item) => (
                             <tr key={item.code}>
                               <td className="!text-left">
                                 <StockLink code={item.code}>{item.name ?? item.code}</StockLink>
@@ -914,22 +1157,36 @@ export default function Pools() {
                 <thead>
                   <tr>
                     <th>#</th>
-                    <th className="!text-left">板块</th>
-                    <th>RPS20</th>
-                    <th>20 日</th>
-                    <th>RPS5</th>
-                    <th>5 日</th>
-                    <th>成分</th>
-                    <th
-                      className="!text-left"
+                    <SortTh sortKey="name" align="left" {...sectorSort}>
+                      板块
+                    </SortTh>
+                    <SortTh sortKey="rps20" {...sectorSort}>
+                      RPS20
+                    </SortTh>
+                    <SortTh sortKey="ret20" {...sectorSort}>
+                      20 日
+                    </SortTh>
+                    <SortTh sortKey="rps5" {...sectorSort}>
+                      RPS5
+                    </SortTh>
+                    <SortTh sortKey="ret5" {...sectorSort}>
+                      5 日
+                    </SortTh>
+                    <SortTh sortKey="member_count" {...sectorSort}>
+                      成分
+                    </SortTh>
+                    <SortTh
+                      sortKey="leader_name"
+                      align="left"
                       title="开盘红当日成分名单 22:00 后才发布，「龙一」由那趟预取顺带写入 —— 白天看当天通常是「—」，切到更早的日期才有值"
+                      {...sectorSort}
                     >
                       龙一
-                    </th>
+                    </SortTh>
                   </tr>
                 </thead>
                 <tbody>
-                  {sectorBoard.rows.map((row, index) => (
+                  {sectorRows.map((row, index) => (
                     <tr key={row.code}>
                       <td className="num text-fg-dim">{index + 1}</td>
                       <td className="!text-left">
@@ -1012,15 +1269,23 @@ export default function Pools() {
                   <table className="grid-table">
                     <thead>
                       <tr>
-                        <th className="!text-left">日期</th>
-                        <th>只数</th>
-                        <th>1 日</th>
-                        <th>超额</th>
-                        <th className="!text-left">状态</th>
+                        <SortTh sortKey="trade_date" align="left" {...stockDaySort}>
+                          日期
+                        </SortTh>
+                        <SortTh sortKey="picks" {...stockDaySort}>
+                          只数
+                        </SortTh>
+                        <SortTh sortKey="ret1" {...stockDaySort}>
+                          1 日
+                        </SortTh>
+                        <SortTh sortKey="excess1" {...stockDaySort}>
+                          超额
+                        </SortTh>
+                        <SortTh align="left">状态</SortTh>
                       </tr>
                     </thead>
                     <tbody>
-                      {sectorStockTrack.rows.map((row) => (
+                      {stockDayRows.map((row) => (
                         <tr key={row.trade_date}>
                           <td className="num !text-left">{row.trade_date}</td>
                           <td className="num">{row.picks}</td>
@@ -1090,15 +1355,27 @@ export default function Pools() {
                   <thead>
                     <tr>
                       <th>#</th>
-                      <th className="!text-left">板块</th>
-                      <th className="!text-left">个股</th>
-                      <th>当日涨幅</th>
-                      <th>板块当日</th>
-                      {stockOrder === 'factor' && <th>因子分</th>}
+                      <SortTh sortKey="sector_name" align="left" {...stockSort}>
+                        板块
+                      </SortTh>
+                      <SortTh sortKey="name" align="left" {...stockSort}>
+                        个股
+                      </SortTh>
+                      <SortTh sortKey="pct_chg" {...stockSort}>
+                        当日涨幅
+                      </SortTh>
+                      <SortTh sortKey="sector_pct_chg" {...stockSort}>
+                        板块当日
+                      </SortTh>
+                      {stockOrder === 'factor' && (
+                        <SortTh sortKey="factor_score" {...stockSort}>
+                          因子分
+                        </SortTh>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
-                    {sectorStock.rows.map((row, index) => (
+                    {stockRows.map((row, index) => (
                       <tr key={row.code}>
                         <td className="num text-fg-dim">{index + 1}</td>
                         <td className="!text-left text-fg-muted">

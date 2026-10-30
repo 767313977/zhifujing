@@ -3,11 +3,25 @@ import { api } from '../api/client'
 import type { Member } from '../api/types'
 import { useAuth } from '../lib/auth'
 import { fmtDateTime } from '../lib/format'
+import { useSort } from '../lib/sort'
+import type { SortSpecs } from '../lib/sort'
 import Alert from './Alert'
 import Panel from './Panel'
+import SortTh from './SortTh'
 
 const INPUT =
   'border border-line bg-ink-850 px-2 py-1 text-[13px] text-fg outline-none transition-colors focus:border-fg-dim'
+
+/** 会员表的排序口径。 */
+const MEMBER_SORTS: SortSpecs<Member> = {
+  username: { value: (row) => row.username, first: 'asc' },
+  role: { value: (row) => (row.is_admin ? '管理员' : '会员'), first: 'asc' },
+  invite_code: { value: (row) => row.invite_code, first: 'asc' },
+  created_at: { value: (row) => row.created_at },
+  last_seen_at: { value: (row) => row.last_seen_at },
+}
+
+const NO_MEMBERS: Member[] = []
 
 /**
  * 会员列表（只出现在管理员看得到的「数据管理」页里）。
@@ -31,6 +45,8 @@ export default function MembersPanel() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // 名单默认保持后端顺序，点表头才重排
+  const [memberSort, memberRows] = useSort(members ?? NO_MEMBERS, MEMBER_SORTS, { key: null })
 
   const load = useCallback(async () => {
     try {
@@ -139,16 +155,26 @@ export default function MembersPanel() {
           <table className="grid-table">
             <thead>
               <tr>
-                <th className="!text-left">用户名</th>
-                <th className="!text-left">角色</th>
-                <th className="!text-left">来源邀请码</th>
-                <th>注册时间</th>
-                <th>最近访问</th>
+                <SortTh sortKey="username" align="left" {...memberSort}>
+                  用户名
+                </SortTh>
+                <SortTh sortKey="role" align="left" {...memberSort}>
+                  角色
+                </SortTh>
+                <SortTh sortKey="invite_code" align="left" {...memberSort}>
+                  来源邀请码
+                </SortTh>
+                <SortTh sortKey="created_at" {...memberSort}>
+                  注册时间
+                </SortTh>
+                <SortTh sortKey="last_seen_at" {...memberSort}>
+                  最近访问
+                </SortTh>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {members.map((member) => (
+              {memberRows.map((member) => (
                 <tr key={member.id}>
                   <td className="!text-left">
                     <span className={member.disabled_at ? 'text-fg-dim line-through' : 'text-fg'}>

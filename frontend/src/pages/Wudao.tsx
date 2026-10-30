@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, isNoDataError } from '../api/client'
-import type { PatternStock, PatternSummary } from '../api/types'
+import type { PatternHitItem, PatternStock, PatternSummary } from '../api/types'
 import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
+import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
 import { fmtNum, fmtPct, toneOf } from '../lib/format'
 import { rememberStockList } from '../lib/stockNav'
+import { useSort } from '../lib/sort'
+import type { SortSpecs } from '../lib/sort'
 
 /**
  * 悟道之路（移植自 zhaohuibin7/yangban-desk 的选股逻辑）。
@@ -32,6 +35,34 @@ interface Section {
   page: string
   note: string
   pools: Pool[]
+}
+
+/** 表里的一行：股票本身 + 它在本池的命中记录 + 还命中了哪些池子。 */
+interface PoolRow {
+  row: PatternStock
+  hit: PatternHitItem | undefined
+  others: string[]
+}
+
+/**
+ * 每池表的排序口径：基础列 + 该池自己的关键位列。
+ * 关键位列的字段名来自 `pool.levels`（`watch_high` / `breakout` 等），
+ * 所以只能按池现拼，不能写成一张固定的表。
+ */
+function poolSorts(pool: Pool): SortSpecs<PoolRow> {
+  const specs: SortSpecs<PoolRow> = {
+    code: { value: (item) => item.row.code, first: 'asc' },
+    name: { value: (item) => item.row.name ?? item.row.code, first: 'asc' },
+    sectors: { value: (item) => item.row.sectors.join('、'), first: 'asc' },
+    industry: { value: (item) => item.row.industry, first: 'asc' },
+    close: { value: (item) => item.row.close },
+    pct_chg: { value: (item) => item.row.pct_chg },
+    score: { value: (item) => item.hit?.score ?? item.row.score },
+  }
+  for (const [field] of pool.levels) {
+    specs[field] = { value: (item) => item.hit?.key_levels?.[field] ?? null }
+  }
+  return specs
 }
 
 /** 按它的三个页面分块，块内顺序也照它（早期池排在主逻辑之后）。 */
@@ -287,7 +318,10 @@ function PoolPanel({
     [rows, pool.key],
   )
   // 分数降序（后端已排过），但只渲染前 RENDER_LIMIT 行 —— 见那个常量的注释
-  const shown = useMemo(() => pick.slice(0, RENDER_LIMIT), [pick])
+  // 排序在截断之前做：点了「涨跌幅」要看到全池最强的，而不是前 N 只里最强的
+  const sortSpecs = useMemo(() => poolSorts(pool), [pool])
+  const [sort, sortedPick] = useSort(pick, sortSpecs, { key: null })
+  const shown = useMemo(() => sortedPick.slice(0, RENDER_LIMIT), [sortedPick])
   const hidden = pick.length - shown.length
 
   return (
@@ -320,15 +354,31 @@ function PoolPanel({
             <table className="grid-table">
               <thead>
                 <tr>
-                  <th>代码</th>
-                  <th className="!text-left">名称</th>
-                  <th className="!text-left">板块</th>
-                  <th className="!text-left">行业</th>
-                  <th>收盘</th>
-                  <th>涨跌幅</th>
-                  <th>分数</th>
+                  <SortTh sortKey="code" {...sort}>
+                    代码
+                  </SortTh>
+                  <SortTh sortKey="name" align="left" {...sort}>
+                    名称
+                  </SortTh>
+                  <SortTh sortKey="sectors" align="left" {...sort}>
+                    板块
+                  </SortTh>
+                  <SortTh sortKey="industry" align="left" {...sort}>
+                    行业
+                  </SortTh>
+                  <SortTh sortKey="close" {...sort}>
+                    收盘
+                  </SortTh>
+                  <SortTh sortKey="pct_chg" {...sort}>
+                    涨跌幅
+                  </SortTh>
+                  <SortTh sortKey="score" {...sort}>
+                    分数
+                  </SortTh>
                   {pool.levels.map(([field, label]) => (
-                    <th key={field}>{label}</th>
+                    <SortTh key={field} sortKey={field} {...sort}>
+                      {label}
+                    </SortTh>
                   ))}
                 </tr>
               </thead>
@@ -404,7 +454,7 @@ function PoolPanel({
           </div>
           {hidden > 0 && (
             <div className="border-t border-line-soft px-4 py-2 text-[12px] text-fg-dim">
-              按分数只显示前 {RENDER_LIMIT} 只，另有 {hidden} 只没显示
+              按当前排序只显示前 {RENDER_LIMIT} 只，另有 {hidden} 只没显示
             </div>
           )}
           {count != null && count > rows.length && (
