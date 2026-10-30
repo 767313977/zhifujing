@@ -2814,6 +2814,27 @@ class SectorRpsRowOut(BaseModel):
     net_inflow: float | None
 
 
+class SectorMemberRowOut(BaseModel):
+    """板块成分股的一行。行情取自成分快照（开盘红口径），不是现算日线。"""
+
+    code: str
+    name: str | None
+    close: float | None
+    pct_chg: float | None
+    amount: float | None
+    turnover: float | None
+
+
+class SectorMembersOut(BaseModel):
+    """点开 RPS 榜里的板块时看到的成分股名单。"""
+
+    #: 实际取到快照的那一天。`sector_member` 只有快照、没有历史回补，
+    #: 点一个很旧的日期会回落到最近一次，**必须把日期回给页面**，否则会误读成当天的名单。
+    trade_date: date | None
+    sector_code: str
+    rows: list[SectorMemberRowOut] = []
+
+
 class SectorRpsOut(BaseModel):
     trade_date: date | None
     #: `kph_selected` 精选板块 / `kph_industry` 行业，**两个口径不可混比**

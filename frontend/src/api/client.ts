@@ -60,6 +60,7 @@ import type {
   RpsTrack,
   SectorCompare,
   SectorRpsBoard,
+  SectorRpsMembers,
   SectorStockBoard,
   SectorStockTrack,
   SectorTrack,
@@ -976,6 +977,12 @@ export const api = {
   sectorRps: (taxonomy: 'kph_selected' | 'kph_industry', limit = 30) =>
     request<SectorRpsBoard>(
       `/pools/sector-rps?taxonomy=${taxonomy}&limit=${limit}`,
+    ),
+
+  /** 板块成分股（点开 RPS 榜的板块名）：取该板块最近一次快照，成分没有历史回补 */
+  sectorRpsMembers: (code: string, date?: string | null) =>
+    request<SectorRpsMembers>(
+      withDate(`/pools/sector-rps/members?code=${encodeURIComponent(code)}`, date),
     ),
 
   /** 板块动量延续性：最强 top 个板块之后 5 / 20 日的表现与超额 */

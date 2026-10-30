@@ -2473,6 +2473,22 @@ export interface SectorRpsBoard {
   rows: SectorRpsRow[]
 }
 
+export interface SectorRpsMemberRow {
+  code: string
+  name: string | null
+  close: number | null
+  pct_chg: number | null
+  amount: number | null
+  turnover: number | null
+}
+
+export interface SectorRpsMembers {
+  /** 实际取到成分快照的那一天（可能早于页面所选日期，板块成分没有历史回补） */
+  trade_date: string | null
+  sector_code: string
+  rows: SectorRpsMemberRow[]
+}
+
 export interface SectorTrackDay {
   trade_date: string
   accepted: number

@@ -31,6 +31,8 @@ from app.schemas import (
     RpsTrackDayOut,
     RpsTrackOut,
     RpsTrackStatOut,
+    SectorMembersOut,
+    SectorMemberRowOut,
     SectorRpsOut,
     SectorRpsRowOut,
     SectorStockOut,
@@ -270,6 +272,59 @@ def sector_rps(
         trade_date=board_result.trade_date,
         taxonomy=board_result.taxonomy,
         rows=[SectorRpsRowOut(**asdict(row)) for row in board_result.rows],
+    )
+
+
+@router.get("/sector-rps/members", response_model=SectorMembersOut)
+def sector_rps_members(
+    code: str = Query(..., description="板块代码，取自 `/sector-rps` 每行的 `code`"),
+    trade_date: date | None = Query(None, alias="date", description="缺省 = 该板块最近一次快照日"),
+    session: Session = Depends(get_db),
+) -> SectorMembersOut:
+    """板块成分股：点开 RPS 榜里的板块名时看「这个板块里都有谁」。
+
+    ⚠️ 数据是 `sector_member` 的**快照**（22:00 预取 + 打开时现取），没有历史回补：
+    点一个旧日期可能根本没有快照。那种情况回落到该板块最近一次快照，并把实际日期
+    回给页面 —— 给一张空表会让人以为「板块是空的」。
+    """
+
+    def _rows(day: date) -> list[SectorMember]:
+        return list(
+            session.scalars(
+                select(SectorMember)
+                .where(
+                    SectorMember.sector_code == code,
+                    SectorMember.trade_date == day,
+                )
+                .order_by(SectorMember.pct_chg.desc().nulls_last(), SectorMember.code)
+            )
+        )
+
+    latest = session.scalar(
+        select(func.max(SectorMember.trade_date)).where(SectorMember.sector_code == code)
+    )
+    if latest is None:
+        return SectorMembersOut(trade_date=None, sector_code=code, rows=[])
+
+    day = trade_date or latest
+    rows = _rows(day)
+    if not rows and trade_date is not None:
+        day, rows = latest, _rows(latest)
+
+    return SectorMembersOut(
+        trade_date=day,
+        sector_code=code,
+        rows=[
+            SectorMemberRowOut(
+                code=row.code,
+                name=row.name,
+                close=row.close,
+                pct_chg=row.pct_chg,
+                amount=row.amount,
+                turnover=row.turnover,
+            )
+            for row in rows
+        ],
     )
 
 

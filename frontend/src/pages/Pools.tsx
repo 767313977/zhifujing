@@ -6,6 +6,7 @@ import type {
   RpsBoard,
   RpsTrack,
   SectorRpsBoard,
+  SectorRpsMembers,
   SectorStockBoard,
   SectorStockTrack,
   SectorTrack,
@@ -159,6 +160,37 @@ export default function Pools() {
   const [sectorStockError, setSectorStockError] = useState<string | null>(null)
   const [sectorStockTrack, setSectorStockTrack] = useState<SectorStockTrack | null>(null)
   const [sectorStockOpen, setSectorStockOpen] = useState(false)
+  // 点开板块 RPS 里的板块名 → 看该板块的成分股
+  const [memberSector, setMemberSector] = useState<{ code: string; name: string | null } | null>(
+    null,
+  )
+  const [memberBoard, setMemberBoard] = useState<SectorRpsMembers | null>(null)
+  const [memberError, setMemberError] = useState<string | null>(null)
+
+  // 成分股**不传页面所选日期**：`sector_member` 只有快照（22:00 预取 + 打开时现取），
+  // 没有历史回补，传一个旧日期只会拿到空表。后端回落到最近一次快照并把实际日期带回来，
+  // 页面上写清「这是哪一天的名单」。
+  useEffect(() => {
+    if (!memberSector) {
+      setMemberBoard(null)
+      setMemberError(null)
+      return
+    }
+    let stale = false
+    setMemberBoard(null)
+    setMemberError(null)
+    api
+      .sectorRpsMembers(memberSector.code)
+      .then((value) => {
+        if (!stale) setMemberBoard(value)
+      })
+      .catch((err: Error) => {
+        if (!stale) setMemberError(err.message)
+      })
+    return () => {
+      stale = true
+    }
+  }, [memberSector])
 
   useEffect(() => {
     let stale = false
@@ -798,7 +830,74 @@ export default function Pools() {
           ) : sectorBoard.rows.length === 0 ? (
             <LoadState loading={false} emptyText="还没有板块日线数据" />
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              {memberSector && (
+                <div className="border-b border-line">
+                  <div className="flex items-center justify-between px-1 py-2 text-[12px] text-fg-muted">
+                    <span>
+                      {memberSector.name ?? memberSector.code} 的成分股
+                      {memberBoard?.trade_date
+                        ? `（快照日 ${memberBoard.trade_date}，共 ${memberBoard.rows.length} 只）`
+                        : ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setMemberSector(null)}
+                      className="text-accent hover:underline"
+                    >
+                      收起
+                    </button>
+                  </div>
+                  {memberError ? (
+                    <div className="px-1 pb-3 text-[12px] text-danger">
+                      成分股取数失败：{memberError}
+                    </div>
+                  ) : memberBoard === null ? (
+                    <div className="px-1 pb-3 text-[12px] text-fg-dim">加载中…</div>
+                  ) : memberBoard.rows.length === 0 ? (
+                    <div className="px-1 pb-3 text-[12px] text-fg-dim">
+                      这个板块还没有成分快照（开盘红当天未发布，或该板块当天没有名单）
+                    </div>
+                  ) : (
+                    <div className="max-h-[320px] overflow-y-auto">
+                      <table className="grid-table">
+                        <thead>
+                          <tr>
+                            <th className="!text-left">股票</th>
+                            <th>收盘</th>
+                            <th>涨幅</th>
+                            <th>成交额</th>
+                            <th>换手</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {memberBoard.rows.map((item) => (
+                            <tr key={item.code}>
+                              <td className="!text-left">
+                                <StockLink code={item.code}>{item.name ?? item.code}</StockLink>
+                                <div className="num text-[11px] text-fg-dim">{item.code}</div>
+                              </td>
+                              <td className="num">
+                                {item.close == null ? '—' : fmtNum(item.close, 2)}
+                              </td>
+                              <td className={`num ${toneOf(item.pct_chg)}`}>
+                                {fmtPct(item.pct_chg)}
+                              </td>
+                              <td className="num">
+                                {item.amount == null ? '—' : fmtAmount(item.amount)}
+                              </td>
+                              <td className="num">
+                                {item.turnover == null ? '—' : fmtPct(item.turnover)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="overflow-x-auto">
               <table className="grid-table">
                 <thead>
                   <tr>
@@ -817,7 +916,22 @@ export default function Pools() {
                     <tr key={row.code}>
                       <td className="num text-fg-dim">{index + 1}</td>
                       <td className="!text-left">
-                        <span className="text-fg">{row.name ?? row.code}</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setMemberSector((prev) =>
+                              prev?.code === row.code
+                                ? null
+                                : { code: row.code, name: row.name },
+                            )
+                          }
+                          className={`text-left hover:underline ${
+                            memberSector?.code === row.code ? 'text-accent' : 'text-fg'
+                          }`}
+                          title="点开看这个板块的成分股"
+                        >
+                          {row.name ?? row.code}
+                        </button>
                         <span className="num ml-2 text-[12px] text-fg-dim">{row.code}</span>
                       </td>
                       <td className={`num ${rpsTone(row.rps20)}`}>{fmtNum(row.rps20, 1)}</td>
@@ -831,6 +945,7 @@ export default function Pools() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </Panel>
 
