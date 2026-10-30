@@ -2604,8 +2604,10 @@ export interface CbScreenRow {
   redeem_count: number | null
   revise_count: number | null
   resale_count: number | null
-  /** 计数窗口是否完整；false 时页面显示「≥n」 */
-  count_complete: boolean
+  /** 强赎计数是否精确；false 时页面显示「≥n」 */
+  redeem_complete: boolean
+  /** 下修计数是否精确 */
+  revise_complete: boolean
   redeem_status: string | null
   last_trade_date: string | null
   /** 状态标签（已公告强赎 / 承诺不强赎 / 强赎临近 / 下修临近） */
@@ -2622,6 +2624,8 @@ export interface CbScreen {
   filters: Record<string, number | string | boolean | null>
   total: number
   items: CbScreenRow[]
+  /** 当天快照的行情来源；不是 `sina+em+jsl` 就是走了兜底 */
+  source: string | null
 }
 
 /** 强赎雷达的一行。 */
@@ -2637,7 +2641,7 @@ export interface CbRadarRow {
   /** 距最后交易日的自然日数（负数 = 已过） */
   days_left: number | null
   redeem_count: number
-  count_complete: boolean
+  redeem_complete: boolean
 }
 
 export interface CbRadar {

@@ -1270,6 +1270,9 @@ class CbBasic(Base):
 
     #: 到期 / 强赎完成 / 摘牌的日期。**写日期，不删行** —— 删了回测就有幸存者偏差
     delist_date: Mapped[date | None] = mapped_column(Date)
+    #: 上一次尝试补条款的日期（不管成功与否）。用来把「永远补不上」的券排到一周之后，
+    #: 否则每天的前 N 只永远被它们占着，新券永远轮不到（2026-10-30 复查 P1-2）
+    terms_tried_at: Mapped[date | None] = mapped_column(Date)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
@@ -1328,8 +1331,14 @@ class CbDaily(Base):
     # ---- 剩余 / 强赎（集思录）----
     #: 剩余规模（亿元）。集思录没这条记录时为 None
     remain_size: Mapped[float | None] = mapped_column(Float)
-    #: 原样保留集思录的说法：已公告强赎 / 已满足强赎条件 / 公告不强赎 / 空
+    #: 原样保留集思录的说法：已公告强赎 / 公告要强赎 / 公告不强赎 / 已满足强赎条件 / 空。
+    #: ⚠️ 「已满足强赎条件」**不等于**已公告强赎 —— 公司还没表态，很多后来会公告不强赎，
+    #: 所以不能按「强赎风险」剔除（2026-10-30 复查 P1-1）
     redeem_status: Mapped[str | None] = mapped_column(String(32))
+    #: 集思录「强赎天计数」里的已满足天数（如 `12/15 | 30` 取 12）。它是**从条款生效起算的
+    #: 完整计数**，比我们自算的近 30 日窗口可靠 —— 本地 10-30 才开始有数据，自算要等到
+    #: 12 月中旬才凑满窗口（复查 P1-4）
+    redeem_days: Mapped[int | None] = mapped_column(Integer)
     #: 最后交易日（强赎完成日通常等同于最后转股日）
     last_trade_date: Mapped[date | None] = mapped_column(Date)
 

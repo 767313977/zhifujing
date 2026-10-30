@@ -127,7 +127,7 @@ def test_counts_follow_conv_value_and_window_completeness(db):
 
     assert row.redeem_count == 5
     # 30 天全在窗口里 → 计数是精确值
-    assert row.count_complete is True
+    assert row.redeem_complete is True
 
 
 def test_counts_are_incomplete_when_window_has_holes(db):
@@ -142,7 +142,7 @@ def test_counts_are_incomplete_when_window_has_holes(db):
     row = next(item for item in result.items if item.bond_code == "113042")
 
     assert row.redeem_count == 3
-    assert row.count_complete is False
+    assert row.redeem_complete is False
 
 
 def test_revise_count_uses_new_conv_price(db):
@@ -214,6 +214,74 @@ def test_bond_floor_preset_requires_positive_ytm(db):
     assert result.items == []
 
 
+def test_parse_coupons_accepts_arabic_numerals():
+    """「第1年 0.3%」这种写法也要认，不然这部分券静默没有 YTM（复查 P2-6）。"""
+    text = "第一年0.3%、第2年0.5%、第三年1.0%"
+    assert convertible.parse_coupons(text) == [0.3, 0.5, 1.0]
+
+
+def test_redeem_kind_covers_four_statuses():
+    assert convertible.redeem_kind("已公告强赎") == "announced"
+    assert convertible.redeem_kind("公告要强赎") == "announced"
+    assert convertible.redeem_kind("已满足强赎条件") == "met"
+    assert convertible.redeem_kind("公告不强赎") == "no_redeem"
+    assert convertible.redeem_kind(None) is None
+    assert convertible.redeem_kind("") is None
+
+
+def test_met_is_not_treated_as_announced(db):
+    """「已满足强赎条件」公司还没表态，不能被当成强赎风险剔掉（复查 P1-1）。"""
+    fill_calendar(db, DAY)
+    add_basic(db)
+    add_daily(db, DAY, redeem_status="已满足强赎条件")
+    db.commit()
+
+    result = convertible.screen(db, DAY, preset="double_low")
+
+    assert [item.bond_code for item in result.items] == ["113042"]
+    labels = result.items[0].labels
+    assert "已满足强赎条件" in labels
+    assert "已公告强赎" not in labels
+
+
+def test_jisilu_redeem_days_works_before_window_is_full(db):
+    """本地窗口只有 1 天，但集思录的强赎天计数是完整的（复查 P1-4）。"""
+    fill_calendar(db, DAY, size=1)
+    add_basic(db)
+    add_daily(db, DAY, redeem_days=12)
+    db.commit()
+
+    result = convertible.screen(db, DAY, preset="double_low")
+    row = result.items[0]
+
+    assert row.redeem_count == 12
+    assert row.redeem_complete is True
+    assert "强赎临近 12/30" in row.labels
+
+
+def test_radar_orders_announced_before_met_and_near(db):
+    fill_calendar(db, DAY)
+    add_basic(db, code="111001", bond_name="公告债")
+    add_basic(db, code="111002", bond_name="满足债")
+    add_basic(db, code="111003", bond_name="临近债")
+    add_daily(
+        db,
+        DAY,
+        code="111001",
+        redeem_status="已公告强赎",
+        last_trade_date=date(2026, 11, 10),
+    )
+    add_daily(db, DAY, code="111002", redeem_status="已满足强赎条件", redeem_days=15)
+    add_daily(db, DAY, code="111003", redeem_days=12)
+    db.commit()
+
+    _, rows = convertible.radar(db, DAY)
+
+    assert [row.bond_code for row in rows] == ["111001", "111002", "111003"]
+    assert rows[0].last_trade_date == date(2026, 11, 10)
+    assert rows[1].redeem_status == "已满足强赎条件"
+
+
 def test_t0_preset_scores_and_keeps_cash_gates(db):
     fill_calendar(db, DAY)
     # 到期日放远一点，避免「剩余年限 < 1 年」先把它剔掉，专测成交额这道闸
@@ -225,3 +293,4 @@ def test_t0_preset_scores_and_keeps_cash_gates(db):
 
     assert result.items == []
     assert result.filters["amount_min"] == 50_000_000.0
+

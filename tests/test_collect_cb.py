@@ -16,6 +16,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app.jobs import collect_cb
+from app.jobs.collect_cb import _fill_terms as fill_terms_real
 from app.models import Base, CbBasic, CbDaily
 from app.sources.ifind import to_bond_symbol
 
@@ -44,7 +45,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(collect_cb, "session_scope", scope)
     monkeypatch.setattr(collect_cb, "today_cn", lambda: DAY)
     # 条款是单券请求，这里不测
-    monkeypatch.setattr(collect_cb, "_fill_terms", lambda source: 0)
+    monkeypatch.setattr(collect_cb, "_fill_terms", lambda *args, **kwargs: 0)
     return engine, maker, monkeypatch
 
 
@@ -230,6 +231,7 @@ def test_load_spot_falls_back_to_em_price_plus_ifind_amount(monkeypatch):
 
     monkeypatch.setattr(collect_cb, "MIN_SPOT_ROWS", 1)
     monkeypatch.setattr(collect_cb, "_recent_universe", lambda: {"127110", "113042"})
+    monkeypatch.setattr(collect_cb, "_ifind_allowed", lambda settings, day: True)
     monkeypatch.setattr(collect_cb, "_ifind_amounts", lambda settings, codes: {"127110": 3.9e8})
     cov = [cov_row(), cov_row(code="113042", **{"债券简称": "上银转债", "债现价": "115.328"})]
 
@@ -280,6 +282,134 @@ def test_merge_daily_records_fallback_source():
     )
 
     assert rows[0]["source"] == "em+ifind"
+
+
+def test_trigger_pct_only_accepts_common_bands():
+    bands = collect_cb.REDEEM_TRIGGER_PCTS
+    assert collect_cb._trigger_pct(16.796, 12.92, bands) == 130.0
+    assert collect_cb._trigger_pct(10.47, 8.05, bands) == 130.0
+    # 算出来不像常见档位（东财触发价没跟着下修更新）就丢弃
+    assert collect_cb._trigger_pct(9.0, 8.05, bands) is None
+    assert collect_cb._trigger_pct(None, 8.05, bands) is None
+    # 回售是 70%，不能拿强赎的档位去卡
+    assert collect_cb._trigger_pct(2.51, 3.58, collect_cb.RESALE_TRIGGER_PCTS) == 70.0
+
+
+def test_call_price_out_of_range_is_dropped():
+    assert collect_cb.call_price_from_terms({"EXECUTE_PRICE_SH": 112}) == 112
+    # 条款里的「转股价的 130%」不能被当成到期赎回价（复查 P2-6）
+    assert collect_cb.call_price_from_terms({"EXECUTE_PRICE_SH": 130}) == 130
+    assert collect_cb.call_price_from_terms({"REDEEM_CLAUSE": "面值的 135% 赎回"}) is None
+    assert collect_cb.call_price_from_terms({"REDEEM_CLAUSE": "面值的 108% 赎回"}) == 108.0
+
+
+def test_fill_terms_keeps_columns_consistent(env):
+    """银行转债没有回售条款（RESALE_TRIG_PRICE='-'），不能让它那一行少个键（复查 P1-3）。"""
+    _, maker, monkeypatch = env
+    with maker() as session:
+        session.add_all(
+            [
+                CbBasic(bond_code="127110", bond_name="广核转债", list_date=date(2025, 1, 1)),
+                CbBasic(bond_code="113042", bond_name="上银转债", list_date=date(2025, 6, 1)),
+                # `_fill_terms` 的队列按昨日名单划范围
+                CbDaily(trade_date=date(2026, 10, 29), bond_code="127110", close=133.0),
+                CbDaily(trade_date=date(2026, 10, 29), bond_code="113042", close=115.0),
+            ]
+        )
+        session.commit()
+
+    class FakeTerms:
+        def cb_terms(self, code):
+            if code == "113042":
+                # 银行转债：没有回售条款
+                return {
+                    "INTEREST_RATE_EXPLAIN": "第一年0.3%、第二年0.8%",
+                    "EXPIRE_DATE": "2027-01-25",
+                    "TRANSFER_START_DATE": "2021-07-29",
+                    "TRANSFER_PRICE": "8.05",
+                    "REDEEM_TRIG_PRICE": "10.47",
+                    "RESALE_TRIG_PRICE": "-",
+                    "REDEEM_CLAUSE": "面值的112%赎回",
+                }
+            return {
+                "INTEREST_RATE_EXPLAIN": "第一年0.3%、第二年0.8%",
+                "EXPIRE_DATE": "2031-07-09",
+                "TRANSFER_START_DATE": "2026-01-09",
+                "TRANSFER_PRICE": "3.58",
+                "REDEEM_TRIG_PRICE": "4.65",
+                "RESALE_TRIG_PRICE": "2.51",
+                "REDEEM_CLAUSE": "面值的108%赎回",
+            }
+
+    assert fill_terms_real(FakeTerms(), DAY) == 2
+
+    with maker() as session:
+        bank = session.get(CbBasic, "113042")
+        assert bank.resale_trigger_pct is None
+        assert bank.redeem_trigger_pct == 130.0
+        assert bank.maturity_call_price == 112.0
+        assert bank.terms_tried_at == DAY
+        other = session.get(CbBasic, "127110")
+        assert other.resale_trigger_pct == 70.0
+        assert other.terms_tried_at == DAY
+
+
+def test_fill_terms_marks_failures_so_queue_does_not_stall(env):
+    """补不上的券也要写 `terms_tried_at`，否则明天还是它占着队头（复查 P1-2）。"""
+    _, maker, monkeypatch = env
+    with maker() as session:
+        session.add(CbBasic(bond_code="127110", bond_name="广核转债", list_date=date(2025, 1, 1)))
+        session.add(CbDaily(trade_date=date(2026, 10, 29), bond_code="127110", close=133.0))
+        session.commit()
+
+    class Failing:
+        def cb_terms(self, code):
+            return {}
+
+    assert fill_terms_real(Failing(), DAY) == 0
+    with maker() as session:
+        row = session.get(CbBasic, "127110")
+        assert row.terms_tried_at == DAY
+        assert row.coupon_text is None
+
+
+def test_mark_delisted_handles_redeem_delisting(env):
+    """强赎摘牌的券到期日还没到，也要按最后交易日写 delist_date（复查 P2-5）。"""
+    _, maker, _ = env
+    with maker() as session:
+        session.add(CbBasic(bond_code="127025", bond_name="Z东转债"))
+        session.add(
+            CbDaily(
+                trade_date=date(2026, 10, 29),
+                bond_code="127025",
+                close=105.9,
+                last_trade_date=date(2026, 10, 30),
+            )
+        )
+        session.commit()
+
+    assert collect_cb._mark_delisted(DAY, set()) == 1
+    with maker() as session:
+        assert session.get(CbBasic, "127025").delist_date == date(2026, 10, 30)
+
+
+def test_ifind_fallback_respects_quota_and_dedup(env):
+    _, maker, monkeypatch = env
+    monkeypatch.setattr(
+        collect_cb, "quota_level", lambda settings=None: collect_cb.QuotaLevel.CORE_ONLY
+    )
+    assert collect_cb._ifind_allowed(None, DAY) is False
+
+    monkeypatch.setattr(
+        collect_cb, "quota_level", lambda settings=None: collect_cb.QuotaLevel.NORMAL
+    )
+    assert collect_cb._ifind_allowed(None, DAY) is True
+    with maker() as session:
+        session.add(
+            CbDaily(trade_date=DAY, bond_code="127110", close=133.0, source="em+ifind")
+        )
+        session.commit()
+    assert collect_cb._ifind_allowed(None, DAY) is False
 
 
 def test_refresh_refuses_non_today(env):
@@ -350,3 +480,4 @@ def test_refresh_marks_delisted_but_keeps_basic(env):
         assert gone.delist_date == date(2026, 10, 20)
         assert session.get(CbBasic, "127110") is not None
         assert session.scalars(select(CbDaily).where(CbDaily.trade_date == DAY)).all()
+

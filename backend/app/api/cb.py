@@ -68,6 +68,7 @@ def screen(
         filters=data.filters,
         total=data.total,
         items=[CbScreenRowOut(**asdict(row)) for row in data.items],
+        source=data.source,
     )
 
 

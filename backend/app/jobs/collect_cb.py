@@ -24,7 +24,7 @@
 
 import logging
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import func, or_, select
 
@@ -32,6 +32,7 @@ from app.config import Settings, get_settings
 from app.db import session_scope, upsert_many, upsert_many_fill
 from app.models import CbBasic, CbDaily, StockDaily
 from app.services.convertible import parse_coupons, ytm
+from app.services.usage import QuotaLevel, quota_level
 from app.sources.akshare_source import AkshareSource
 from app.sources.ifind import IfindClient, to_bond_symbol
 from app.timeutil import today_cn
@@ -96,6 +97,18 @@ def _date(value: object) -> date | None:
         return None
 
 
+#: 集思录「强赎天计数」形如 `12/15 | 30`（已满足 12 天 / 需 15 天、窗口 30 天），
+#: 也可能是一段 HTML（「临近到期 …」）。只认前一种。
+_REDEEM_DAYS_RE = re.compile(r"(\d+)\s*/\s*(\d+)")
+
+
+def _parse_redeem_days(value: object) -> int | None:
+    match = _REDEEM_DAYS_RE.search(str(value or ""))
+    if not match:
+        return None
+    return int(match.group(1))
+
+
 def _text(value: object) -> str | None:
     text = str(value or "").strip()
     return text or None
@@ -111,14 +124,18 @@ def call_price_from_terms(info: dict) -> float | None:
     `EXECUTE_PRICE_SH` 只有**已经发生强赎 / 摘牌**的券才有值（实测 371 只里只有 66 只
     有），光靠它 YTM 基本算不出来。所以缺的时候从 `REDEEM_CLAUSE` 原文里抠
     「面值的 112%」这种写法 —— 条款原文每只券都有。
+
+    抠出来的值只接受 100~130（复查 P2-6）：条款里还会出现「转股价的 130%」这类比例，
+    或者别的百分数，超出范围一律当作没解析出来，宁可不给 YTM 也不给错值。
     """
     price = _num(info.get("EXECUTE_PRICE_SH"))
-    if price:
-        return price
-    match = _CALL_PRICE_RE.search(str(info.get("REDEEM_CLAUSE") or ""))
-    if match:
-        return float(match.group(1))
-    return None
+    if price is None:
+        match = _CALL_PRICE_RE.search(str(info.get("REDEEM_CLAUSE") or ""))
+        if match:
+            price = float(match.group(1))
+    if price is None or not 100 <= price <= 130:
+        return None
+    return price
 
 
 def _stock_pct_map(trade_date: date, codes: set[str]) -> dict[str, float]:
@@ -159,6 +176,7 @@ def _basic_rows(cov: list[dict], redeem: dict[str, dict]) -> dict[str, dict]:
         if not code or list_date is None:
             continue
         extra = redeem.get(code, {})
+        trigger = _num(extra.get("强赎触发比"))
         result[code] = {
             "bond_code": code,
             "bond_name": _text(row.get("债券简称")),
@@ -168,6 +186,9 @@ def _basic_rows(cov: list[dict], redeem: dict[str, dict]) -> dict[str, dict]:
             "maturity_date": _date(extra.get("到期日")),
             "issue_size": _num(row.get("发行规模")),
             "rating": _text(row.get("信用评级")),
+            # 强赎触发比例直接用集思录的「强赎触发比」（130 / 150 这种），
+            # 比自己用「触发价 ÷ 转股价」算可靠 —— 下修后东财的触发价未必同步更新
+            "redeem_trigger_pct": trigger if trigger and 100 < trigger < 200 else None,
         }
     return result
 
@@ -318,6 +339,7 @@ def _merge_daily(
                 "ytm_pct": None,  # 票息齐全之后再算（见 refresh）
                 "remain_size": remain_size,
                 "redeem_status": _text(extra.get("强赎状态")),
+                "redeem_days": _parse_redeem_days(extra.get("强赎天计数")),
                 "last_trade_date": _date(extra.get("最后交易日")),
                 "source": source,
             }
@@ -325,23 +347,58 @@ def _merge_daily(
     return rows
 
 
-def _fill_terms(source: AkshareSource) -> int:
-    """给还没票息的券补条款（每天最多 `TERMS_PER_RUN` 只），返回补了几只。
+#: 条款补采失败的券隔几天再试（复查 P1-2：不设这个间隔，前 N 只会被「永远补不上」的券占死）
+TERMS_RETRY_DAYS = 7
+
+#: 触发比例只认常见档位。自己用「触发价 ÷ 转股价」算出来的值如果不像话，
+#: 说明东财的触发价没跟着下修更新，宁可留空由服务默认值兜底（复查 P2-1）
+REDEEM_TRIGGER_PCTS = (120.0, 125.0, 130.0, 150.0)
+RESALE_TRIGGER_PCTS = (70.0,)
+
+
+def _trigger_pct(
+    price: float | None, conv_price: float | None, bands: tuple[float, ...]
+) -> float | None:
+    """触发价 ÷ 转股价 → 比例（%）。只认 `bands` 里的档位（差 2 个百分点以内）。"""
+    if not price or not conv_price:
+        return None
+    value = round(price / conv_price * 100, 2)
+    nearest = min(bands, key=lambda item: abs(item - value))
+    return nearest if abs(nearest - value) <= 2 else None
+
+
+def _fill_terms(source: AkshareSource, day: date) -> int:
+    """给在交易的券补条款（每天最多 `TERMS_PER_RUN` 只），返回补了几只。
+
+    队列口径（复查 P1-2）：
+    - **只补在交易的券**（昨日名单），否则 30 次请求全花在已退市的 110/113 老债上；
+    - 按 `list_date` 倒序，新券优先；
+    - 试过一次就写 `terms_tried_at`（不管成败），失败的券隔 `TERMS_RETRY_DAYS` 天再试，
+      不然「解析不出票息」的那几十只会永久霸占队头。
 
     条款只影响 YTM 与回售计数，缺了不影响页面主体，所以失败只记日志、不抛。
     """
+    universe = _recent_universe()
+    if not universe:
+        return 0
+    retry_before = day - timedelta(days=TERMS_RETRY_DAYS)
     with session_scope() as session:
         pending = list(
             session.scalars(
                 select(CbBasic.bond_code)
-                # 票息与到期赎回价缺任一个 YTM 都算不出来，两个都要补
                 .where(
+                    CbBasic.bond_code.in_(universe),
+                    # 票息与到期赎回价缺任一个 YTM 都算不出来，两个都要补
                     or_(
                         CbBasic.coupon_text.is_(None),
                         CbBasic.maturity_call_price.is_(None),
-                    )
+                    ),
+                    or_(
+                        CbBasic.terms_tried_at.is_(None),
+                        CbBasic.terms_tried_at < retry_before,
+                    ),
                 )
-                .order_by(CbBasic.bond_code)
+                .order_by(CbBasic.list_date.desc().nulls_last(), CbBasic.bond_code)
                 .limit(TERMS_PER_RUN)
             )
         )
@@ -354,26 +411,36 @@ def _fill_terms(source: AkshareSource) -> int:
         if not info:
             continue
         conv_price = _num(info.get("TRANSFER_PRICE"))
-        row: dict = {
-            "bond_code": code,
-            "coupon_text": _text(info.get("INTEREST_RATE_EXPLAIN")),
-            "maturity_call_price": call_price_from_terms(info),
-            "maturity_date": _date(info.get("EXPIRE_DATE")),
-            "convert_start_date": _date(info.get("TRANSFER_START_DATE")),
-        }
-        # 触发价 ÷ 转股价 = 触发比例（130 / 70），解析不出来就留空、由服务的默认值兜底
-        redeem_price = _num(info.get("REDEEM_TRIG_PRICE"))
-        if redeem_price and conv_price:
-            row["redeem_trigger_pct"] = round(redeem_price / conv_price * 100, 2)
-        resale_price = _num(info.get("RESALE_TRIG_PRICE"))
-        if resale_price and conv_price:
-            row["resale_trigger_pct"] = round(resale_price / conv_price * 100, 2)
-        rows.append(row)
+        # ⚠️ 所有键**每行都要有**（算不出来给 None）：`upsert_many_fill` 只按第一行取列，
+        # 后面的行少键会抛 CompileError、多键会被静默丢掉（复查 P1-3）。
+        # 银行转债没有回售条款（RESALE_TRIG_PRICE 是 "-"），混在一批里就会踩到。
+        rows.append(
+            {
+                "bond_code": code,
+                "coupon_text": _text(info.get("INTEREST_RATE_EXPLAIN")),
+                "maturity_call_price": call_price_from_terms(info),
+                "maturity_date": _date(info.get("EXPIRE_DATE")),
+                "convert_start_date": _date(info.get("TRANSFER_START_DATE")),
+                "redeem_trigger_pct": _trigger_pct(
+                    _num(info.get("REDEEM_TRIG_PRICE")), conv_price, REDEEM_TRIGGER_PCTS
+                ),
+                "resale_trigger_pct": _trigger_pct(
+                    _num(info.get("RESALE_TRIG_PRICE")), conv_price, RESALE_TRIGGER_PCTS
+                ),
+            }
+        )
 
     if rows:
         with session_scope() as session:
             upsert_many_fill(session, CbBasic, rows)
-    logger.info("可转债条款补采：%d/%d 只", len(rows), len(pending))
+    # 失败的也要打上「试过了」，否则明天还是这 30 只
+    with session_scope() as session:
+        upsert_many_fill(
+            session,
+            CbBasic,
+            [{"bond_code": code, "terms_tried_at": day} for code in pending],
+        )
+    logger.info("可转债条款补采：%d/%d 只（失败 %d）", len(rows), len(pending), len(pending) - len(rows))
     return len(rows)
 
 
@@ -392,9 +459,27 @@ def _previous_count(session, day: date) -> int:
 
 
 def _mark_delisted(day: date, alive: set[str]) -> int:
-    """消失的券：到期日已过的写 `delist_date`，其余原样保留（不删行）。"""
+    """消失的券写 `delist_date`（不删行）。
+
+    两种「消失」都要认（复查 P2-5）：
+    - **到期**：`maturity_date ≤ 今天`；
+    - **强赎完成**：上一次快照里记着 `last_trade_date ≤ 今天`。强赎摘牌时到期日往往
+      还有好几年，只按到期日判断的话这类券永远不会被标退市。
+    """
     marked = 0
     with session_scope() as session:
+        previous = session.scalar(
+            select(func.max(CbDaily.trade_date)).where(CbDaily.trade_date < day)
+        )
+        last_days: dict[str, date | None] = {}
+        if previous is not None:
+            for code, last_trade in session.execute(
+                select(CbDaily.bond_code, CbDaily.last_trade_date).where(
+                    CbDaily.trade_date == previous
+                )
+            ).all():
+                last_days[str(code)] = last_trade
+
         for basic in session.scalars(
             select(CbBasic).where(CbBasic.delist_date.is_(None))
         ):
@@ -402,6 +487,11 @@ def _mark_delisted(day: date, alive: set[str]) -> int:
                 continue
             if basic.maturity_date is not None and basic.maturity_date <= day:
                 basic.delist_date = basic.maturity_date
+                marked += 1
+                continue
+            last_trade = last_days.get(basic.bond_code)
+            if last_trade is not None and last_trade <= day:
+                basic.delist_date = last_trade
                 marked += 1
     return marked
 
@@ -463,7 +553,9 @@ def _load_spot(
             f"东财兜底也只有 {len(fallback)} 只"
         )
 
-    amounts = _ifind_amounts(settings, [row["code"] for row in fallback])
+    amounts: dict[str, float] = {}
+    if _ifind_allowed(settings, day):
+        amounts = _ifind_amounts(settings, [row["code"] for row in fallback])
     if amounts:
         for row in fallback:
             row["amount"] = amounts.get(row["code"])
@@ -472,6 +564,29 @@ def _load_spot(
 
     logger.warning("兜底完成：只有价格、没有成交额（source=%s）", SOURCE_EM)
     return fallback, SOURCE_EM
+
+
+def _ifind_allowed(settings: Settings | None, day: date) -> bool:
+    """兜底要不要花 iFinD 配额（复查 P2-2）。
+
+    两道闸：
+    - **配额档位**：CORE_ONLY 及以下不花 —— iFinD 配额是最稀缺的资源，兜底只是「有更好」；
+    - **当天已经兜过一次**：17:30 / 19:30 / 22:35 三趟是全量重跑，新浪挂一整天就是
+      31 批 × 3 次。同一天已经有 `em+ifind` 的行就不再取。
+    """
+    if quota_level(settings=settings) >= QuotaLevel.CORE_ONLY:
+        logger.warning("配额档位已到 %s，跳过 iFinD 成交额兜底", QuotaLevel.CORE_ONLY.name)
+        return False
+    with session_scope() as session:
+        done = session.scalar(
+            select(func.count())
+            .select_from(CbDaily)
+            .where(CbDaily.trade_date == day, CbDaily.source == SOURCE_EM_IFIND)
+        )
+    if done:
+        logger.info("今天的成交额已经从 iFinD 兜过（%d 行），不再重复取", done)
+        return False
+    return True
 
 
 def refresh(settings: Settings | None = None, trade_date: date | None = None) -> int:
@@ -497,8 +612,13 @@ def refresh(settings: Settings | None = None, trade_date: date | None = None) ->
     with session_scope() as session:
         upsert_many_fill(session, CbBasic, list(basic_by_code.values()))
 
-    # 2) 票息 / 到期赎回价：每天补一批，补齐之后 YTM 才有值
-    _fill_terms(source)
+    # 2) 票息 / 到期赎回价：每天补一批，补齐之后 YTM 才有值。
+    # 条款是增强数据，**绝不能让异常冒到 refresh** —— 那会把当天整步记成 failed，
+    # 页面就停在前一天（复查 P1-3）。
+    try:
+        _fill_terms(source, day)
+    except Exception:  # noqa: BLE001
+        logger.exception("可转债条款补采失败（不影响行情落库）")
     with session_scope() as session:
         basics = {row.bond_code: row for row in session.scalars(select(CbBasic))}
 

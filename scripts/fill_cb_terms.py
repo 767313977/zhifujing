@@ -24,7 +24,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from sqlalchemy import or_, select  # noqa: E402
 
 from app.db import session_scope, upsert_many_fill  # noqa: E402
-from app.jobs.collect_cb import _date, _num, _text, call_price_from_terms  # noqa: E402
+from app.jobs.collect_cb import (  # noqa: E402
+    REDEEM_TRIGGER_PCTS,
+    RESALE_TRIGGER_PCTS,
+    _date,
+    _num,
+    _text,
+    _trigger_pct,
+    call_price_from_terms,
+)
 from app.models import CbBasic, CbDaily  # noqa: E402
 from app.sources.akshare_source import AkshareSource  # noqa: E402
 
@@ -44,13 +52,15 @@ def fill(codes: list[str], source: AkshareSource) -> int:
             "maturity_call_price": call_price_from_terms(info),
             "maturity_date": _date(info.get("EXPIRE_DATE")),
             "convert_start_date": _date(info.get("TRANSFER_START_DATE")),
+            # 两个触发比例**每行都要有**（算不出来给 None）：批量 upsert 只按第一行取列，
+            # 后面的行少键会抛 CompileError（银行转债没有回售条款，很容易踩到）
+            "redeem_trigger_pct": _trigger_pct(
+                _num(info.get("REDEEM_TRIG_PRICE")), conv_price, REDEEM_TRIGGER_PCTS
+            ),
+            "resale_trigger_pct": _trigger_pct(
+                _num(info.get("RESALE_TRIG_PRICE")), conv_price, RESALE_TRIGGER_PCTS
+            ),
         }
-        redeem_price = _num(info.get("REDEEM_TRIG_PRICE"))
-        if redeem_price and conv_price:
-            row["redeem_trigger_pct"] = round(redeem_price / conv_price * 100, 2)
-        resale_price = _num(info.get("RESALE_TRIG_PRICE"))
-        if resale_price and conv_price:
-            row["resale_trigger_pct"] = round(resale_price / conv_price * 100, 2)
         rows.append(row)
         if index % 50 == 0:
             logger.info("已取 %d/%d", index, len(codes))

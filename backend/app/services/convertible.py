@@ -92,8 +92,10 @@ class CbScreenRow:
     redeem_count: int | None
     revise_count: int | None
     resale_count: int | None
-    #: 计数窗口是否完整（缺天时页面显示「≥n」）
-    count_complete: bool
+    #: 强赎计数是否精确（集思录的强赎天计数优先；本地窗口不足时只能给「≥n」）
+    redeem_complete: bool
+    #: 下修计数是否精确（本地窗口不足时只能给「≥n」）
+    revise_complete: bool
     redeem_status: str | None
     last_trade_date: date | None
     labels: list[str]
@@ -110,6 +112,8 @@ class CbScreen:
     items: list[CbScreenRow] = field(default_factory=list)
     #: 过完条件、截断**之前**的条数
     total: int = 0
+    #: 当天快照的行情来源。不是 `sina+em+jsl` 就说明走了兜底（页面要挂横幅）
+    source: str | None = None
 
 
 # ---------------------------------------------------------------- 纯计算
@@ -119,6 +123,23 @@ def rating_rank(rating: str | None) -> int | None:
     if not rating:
         return None
     return RATING_RANK.get(str(rating).strip().upper().removesuffix("STI"))
+
+
+def redeem_kind(status: str | None) -> str | None:
+    """集思录强赎状态 → 四分类。
+
+    ⚠️ 「已满足强赎条件」里也有「强赎」两个字，但它是**公司还没表态**，
+    很多后来会公告不强赎 —— 不能当成已公告强赎去剔除（2026-10-30 复查 P1-1）。
+    akshare 实际会给出：已公告强赎 / 公告要强赎 / 公告不强赎 / 已满足强赎条件。
+    """
+    text = status or ""
+    if "不强赎" in text:
+        return "no_redeem"
+    if "已满足" in text:
+        return "met"
+    if "强赎" in text:
+        return "announced"
+    return None
 
 
 def years_left(maturity: date | None, day: date) -> float | None:
@@ -134,7 +155,7 @@ def double_low(close: float | None, premium_pct: float | None) -> float | None:
     return round(close + premium_pct, 2)
 
 
-_COUPON_RE = re.compile(r"第[一二三四五六七八九十]年[^0-9]{0,6}(\d+(?:\.\d+)?)\s*%")
+_COUPON_RE = re.compile(r"第[一二三四五六七八九十1-9]\s*年[^0-9]{0,6}(\d+(?:\.\d+)?)\s*%")
 _COUPON_ORDER = "一二三四五六七八九十"
 
 
@@ -144,6 +165,9 @@ def parse_coupons(text: str | None) -> list[float]:
     实测原文（上银转债）：「本次发行可转债票面利率:第一年为0.30%、第二年为0.80%、
     第三年为1.50%、第四年为2.80%、第五年为3.50%、第六年为4.00%。」
 
+    两种写法都要认：中文序数（第一年 / 第二年）与阿拉伯数字（第1年 / 第2年）——
+    只认前者会让一部分券静默拿不到 YTM（复查 P2-6）。
+
     解析不出来就返回空列表 —— 调用方据此把 YTM 记成 None，**不拿 0 顶**。
     """
     if not text:
@@ -151,7 +175,10 @@ def parse_coupons(text: str | None) -> list[float]:
     found: dict[int, float] = {}
     for match in _COUPON_RE.finditer(text):
         year_char = match.group(0)[1]
-        index = _COUPON_ORDER.find(year_char)
+        if year_char.isdigit():
+            index = int(year_char) - 1
+        else:
+            index = _COUPON_ORDER.find(year_char)
         if index >= 0:
             found[index] = float(match.group(1))
     if not found:
@@ -295,15 +322,30 @@ def _labels(
     risks: list[str] = []
 
     status = daily.redeem_status or ""
-    if "强赎" in status and "不强赎" not in status:
+    kind = redeem_kind(status)
+    if kind == "announced":
         labels.append("已公告强赎")
-    elif "不强赎" in status:
+    elif kind == "met":
+        # 只满足条件、公司还没表态：单独一个标签，**不算强赎风险**
+        labels.append("已满足强赎条件")
+    elif kind == "no_redeem":
         labels.append("承诺不强赎")
-    if counts is not None and counts.complete:
-        if counts.redeem >= NEAR_COUNT and "已公告强赎" not in labels:
-            labels.append(f"强赎临近 {counts.redeem}/30")
+
+    if counts is not None:
+        # 集思录的「强赎天计数」是从条款生效起算的完整计数，本地自算要凑满 30 个交易日
+        # 才有意义（12 月中旬之前都缺），所以优先用它（复查 P1-4）
+        redeem = daily.redeem_days if daily.redeem_days is not None else counts.redeem
+        redeem_complete = daily.redeem_days is not None or counts.complete
+        if redeem >= NEAR_COUNT and kind not in ("announced", "met"):
+            labels.append(
+                f"强赎临近 {redeem}/30" if redeem_complete else f"强赎临近 ≥{redeem}/30"
+            )
         if counts.revise >= NEAR_COUNT:
-            labels.append(f"下修临近 {counts.revise}/30")
+            labels.append(
+                f"下修临近 {counts.revise}/30"
+                if counts.complete
+                else f"下修临近 ≥{counts.revise}/30"
+            )
 
     name = f"{basic.stock_name if basic else ''}{basic.bond_name if basic else ''}".upper()
     if "ST" in name or "退" in name:
@@ -516,10 +558,18 @@ def screen(session: Session, day: date | None = None, **overrides) -> CbScreen:
                 "amplitude": daily.amplitude,
                 "stock_close": daily.stock_close,
                 "stock_pct_chg": daily.stock_pct_chg,
-                "redeem_count": counter.redeem if counter else 0,
+                "redeem_count": (
+                    daily.redeem_days
+                    if daily.redeem_days is not None
+                    else (counter.redeem if counter else 0)
+                ),
                 "revise_count": counter.revise if counter else 0,
                 "resale_count": counter.resale if counter else None,
-                "count_complete": bool(counter and counter.complete),
+                # 强赎计数优先用集思录（从条款生效起算，第一天就完整）；下修只能自算
+                "redeem_complete": bool(
+                    daily.redeem_days is not None or (counter and counter.complete)
+                ),
+                "revise_complete": bool(counter and counter.complete),
                 "redeem_status": daily.redeem_status,
                 "last_trade_date": daily.last_trade_date,
                 "labels": labels,
@@ -547,7 +597,13 @@ def screen(session: Session, day: date | None = None, **overrides) -> CbScreen:
     limit = int(filters.get("limit") or 200)
     total = len(passed)
     items = [_row_out(row) for row in passed[:limit]]
-    return CbScreen(as_of=day, filters=filters, items=items, total=total)
+    return CbScreen(
+        as_of=day,
+        filters=filters,
+        items=items,
+        total=total,
+        source=dailies[0].source,
+    )
 
 
 def _row_out(row: dict) -> CbScreenRow:
@@ -574,7 +630,8 @@ def _row_out(row: dict) -> CbScreenRow:
         redeem_count=row["redeem_count"],
         revise_count=row["revise_count"],
         resale_count=row["resale_count"],
-        count_complete=row["count_complete"],
+        redeem_complete=row["redeem_complete"],
+        revise_complete=row["revise_complete"],
         redeem_status=row["redeem_status"],
         last_trade_date=row["last_trade_date"],
         labels=row["labels"],
@@ -596,14 +653,17 @@ class RadarRow:
     #: 距最后交易日的自然日数（负数 = 已经过了）
     days_left: int | None
     redeem_count: int
-    count_complete: bool
+    redeem_complete: bool
 
 
 def radar(session: Session, day: date | None = None) -> tuple[date | None, list[RadarRow]]:
-    """强赎雷达：已公告的按最后交易日升序，临近的按计数降序。
+    """强赎雷达：已公告的按最后交易日升序，其后是「已满足条件」与「临近」。
 
     这是**防踩坑**的一栏，不是选股：强赎公告之后按约 100 元被赎回，没转股的人
     会在几天里亏掉 20%~30%。
+
+    「已满足强赎条件」单独排在已公告之后 —— 它是公司还没表态，和「已公告」不是一回事
+    （复查 P1-1）。
     """
     if day is None:
         day = session.scalar(select(CbDaily.trade_date).order_by(CbDaily.trade_date.desc()))
@@ -616,10 +676,14 @@ def radar(session: Session, day: date | None = None) -> tuple[date | None, list[
     rows: list[RadarRow] = []
     for daily in dailies:
         counter = counts.get(daily.bond_code)
-        status = daily.redeem_status or ""
-        announced = "强赎" in status and "不强赎" not in status
-        near = bool(counter and counter.complete and counter.redeem >= NEAR_COUNT)
-        if not announced and not near and "不强赎" not in status:
+        kind = redeem_kind(daily.redeem_status)
+        redeem = daily.redeem_days if daily.redeem_days is not None else (
+            counter.redeem if counter else 0
+        )
+        complete = daily.redeem_days is not None or bool(counter and counter.complete)
+        # 窗口不完整时计数是**下界**：已经 ≥10 就一定 ≥10，没有理由不显示（复查 P1-4）
+        near = redeem >= NEAR_COUNT and kind not in ("announced", "met")
+        if kind is None and not near:
             continue
         basic = basics.get(daily.bond_code)
         days = (daily.last_trade_date - day).days if daily.last_trade_date else None
@@ -634,21 +698,21 @@ def radar(session: Session, day: date | None = None) -> tuple[date | None, list[
                 redeem_status=daily.redeem_status,
                 last_trade_date=daily.last_trade_date,
                 days_left=days,
-                redeem_count=counter.redeem if counter else 0,
-                count_complete=bool(counter and counter.complete),
+                redeem_count=redeem,
+                redeem_complete=complete,
             )
         )
 
+    #: 已公告（0）→ 已满足条件（1）→ 临近（2）→ 承诺不强赎（3）
+    priority = {"announced": 0, "met": 1, None: 2, "no_redeem": 3}
+
     def sort_key(row: RadarRow):
-        announced = bool(
-            row.redeem_status
-            and "强赎" in row.redeem_status
-            and "不强赎" not in row.redeem_status
-        )
-        # 已公告：按最后交易日升序（越紧急越前）；其余按强赎计数降序
-        if announced:
+        kind = redeem_kind(row.redeem_status)
+        rank = priority.get(kind, 3)
+        if rank == 0:
+            # 已公告：按最后交易日升序（越紧急越前）
             return (0, row.last_trade_date or date.max, 0)
-        return (1, date.max, -row.redeem_count)
+        return (rank, date.max, -row.redeem_count)
 
     rows.sort(key=sort_key)
     return day, rows

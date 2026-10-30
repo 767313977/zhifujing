@@ -2964,8 +2964,10 @@ class CbScreenRowOut(BaseModel):
     redeem_count: int | None = None
     revise_count: int | None = None
     resale_count: int | None = None
-    #: 计数窗口是否完整。false 时页面显示「≥n」
-    count_complete: bool = False
+    #: 强赎计数是否精确（页面否则显示「≥n」）
+    redeem_complete: bool = False
+    #: 下修计数是否精确
+    revise_complete: bool = False
     redeem_status: str | None = None
     last_trade_date: date | None = None
     #: 状态标签（已公告强赎 / 承诺不强赎 / 强赎临近 / 下修临近）
@@ -2987,6 +2989,8 @@ class CbScreenOut(BaseModel):
     filters: dict
     total: int
     items: list[CbScreenRowOut] = []
+    #: 当天快照的行情来源。不是 `sina+em+jsl` 就说明走了兜底，页面要提示
+    source: str | None = None
 
 
 class CbRadarRowOut(BaseModel):
@@ -3003,7 +3007,7 @@ class CbRadarRowOut(BaseModel):
     #: 距最后交易日的自然日数（负数 = 已过）
     days_left: int | None = None
     redeem_count: int = 0
-    count_complete: bool = False
+    redeem_complete: bool = False
 
 
 class CbRadarOut(BaseModel):

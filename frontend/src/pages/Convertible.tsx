@@ -140,8 +140,10 @@ export default function Convertible() {
   const [sizeMin, setSizeMin] = useState('')
   const [amountMin, setAmountMin] = useState('')
   const [ratingMin, setRatingMin] = useState('')
-  const [excludeRedeem, setExcludeRedeem] = useState(true)
-  const [excludeSt, setExcludeSt] = useState(true)
+  // 三态：null = 跟随预设默认值（不传），用户点过才传明确值（复查 P2-4）。
+  // 一开始写成固定 true，会把这个开关强加给本来不剔 ST 的「低溢价 / 博下修」预设。
+  const [excludeRedeem, setExcludeRedeem] = useState<boolean | null>(null)
+  const [excludeSt, setExcludeSt] = useState<boolean | null>(null)
 
   const [data, setData] = useState<CbScreen | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -149,7 +151,10 @@ export default function Convertible() {
   const [radarError, setRadarError] = useState<string | null>(null)
 
   const params = useMemo<CbScreenQuery>(() => {
-    const query: CbScreenQuery = { preset, exclude_redeem: excludeRedeem, exclude_st: excludeSt }
+    const query: CbScreenQuery = { preset }
+    // 三态开关：null 就不传，交给后端的预设默认值
+    if (excludeRedeem !== null) query.exclude_redeem = excludeRedeem
+    if (excludeSt !== null) query.exclude_st = excludeSt
     const numbers: [keyof CbScreenQuery, string][] = [
       ['price_max', priceMax],
       ['premium_max', premiumMax],
@@ -167,6 +172,22 @@ export default function Convertible() {
     if (ratingMin) query.rating_min = ratingMin
     return query
   }, [preset, priceMax, premiumMax, sizeMin, amountMin, ratingMin, excludeRedeem, excludeSt])
+
+  /** 切预设时把覆盖条件清空，回到该预设的默认口径。 */
+  const changePreset = (value: string) => {
+    setPreset(value)
+    setPriceMax('')
+    setPremiumMax('')
+    setSizeMin('')
+    setAmountMin('')
+    setRatingMin('')
+    setExcludeRedeem(null)
+    setExcludeSt(null)
+  }
+
+  // 开关的显示状态跟随「实际生效的条件」（没点过时就是预设默认）
+  const redeemChecked = excludeRedeem ?? Boolean(data?.filters.exclude_redeem)
+  const stChecked = excludeSt ?? Boolean(data?.filters.exclude_st)
 
   useEffect(() => {
     if (tab !== 'screen') return
@@ -246,13 +267,23 @@ export default function Convertible() {
             <span className="text-fg-muted"> 剩余规模 </span>
             （缺了就是「—」，不拿发行规模顶替）；YTM 是票息 + 到期赎回价算的
             <span className="text-fg-muted"> 复利 IRR </span>
-            ，未计税。强赎 / 下修计数看近 30 个交易日的转股价值，历史不足 30 天时显示「≥n」。
+            ，未计税。强赎计数优先用集思录的「强赎天计数」（从条款生效起算，第一天就完整）；
+            下修计数看近 30 个交易日的转股价值，历史不足 30 天时显示「≥n」。
+            「已满足强赎条件」只是触发条件达成、公司还没表态，<span className="text-fg-muted">不算强赎风险</span>。
           </p>
+
+          {data?.source && data.source !== 'sina+em+jsl' && (
+            <div className="border-b border-line-soft bg-ink-850 px-4 py-2 text-[12px] text-warn">
+              今天行情来自兜底源（{data.source}）：价格来自东财债现价，成交额来自 iFinD，
+              <span className="text-fg-muted"> 涨跌幅 / 最高最低缺失</span>
+              。「日内 T+0」预设的成交额门槛会把缺数据的券剔掉，池子可能为空。
+            </div>
+          )}
 
           {tab === 'screen' ? (
             <>
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
-                <Segmented value={preset} items={PRESET_ITEMS} onChange={setPreset} />
+                <Segmented value={preset} items={PRESET_ITEMS} onChange={changePreset} />
                 <NumberField label="价格≤" value={priceMax} onChange={setPriceMax} placeholder="不限" />
                 <NumberField
                   label="溢价≤"
@@ -273,8 +304,8 @@ export default function Convertible() {
                   评级
                   <Segmented value={ratingMin} items={RATING_ITEMS} onChange={setRatingMin} />
                 </span>
-                <Toggle label="剔除强赎" value={excludeRedeem} onChange={setExcludeRedeem} />
-                <Toggle label="剔除 ST" value={excludeSt} onChange={setExcludeSt} />
+                <Toggle label="剔除强赎" value={redeemChecked} onChange={setExcludeRedeem} />
+                <Toggle label="剔除 ST" value={stChecked} onChange={setExcludeSt} />
               </div>
 
               {error ? (
@@ -385,17 +416,21 @@ export default function Convertible() {
                           <td className="num text-fg-muted">{row.rating ?? '—'}</td>
                           <td className="num text-fg-muted">{fmtAmount(row.amount)}</td>
                           <td className="num text-fg-muted">
-                            {countText(row.redeem_count, row.count_complete)}
+                            {countText(row.redeem_count, row.redeem_complete)}
                           </td>
                           <td className="num text-fg-muted">
-                            {countText(row.revise_count, row.count_complete)}
+                            {countText(row.revise_count, row.revise_complete)}
                           </td>
                           <td className="!text-left">
                             {row.labels.map((label) => (
                               <span
                                 key={label}
                                 className={`mr-1 whitespace-nowrap rounded border border-line-soft px-1 text-[11px] ${
-                                  label === '已公告强赎' ? 'text-danger' : 'text-warn'
+                                  label === '已公告强赎'
+                                    ? 'text-danger'
+                                    : label.startsWith('强赎临近') || label.startsWith('下修临近')
+                                      ? 'text-warn'
+                                      : 'text-fg-muted'
                                 }`}
                               >
                                 {label}
@@ -501,7 +536,7 @@ export default function Convertible() {
                           {row.days_left == null ? '—' : `${row.days_left} 天`}
                         </td>
                         <td className="num text-fg-muted">
-                          {countText(row.redeem_count, row.count_complete)}
+                          {countText(row.redeem_count, row.redeem_complete)}
                         </td>
                       </tr>
                     ))}
