@@ -33,15 +33,25 @@ from app.db import session_scope, upsert_many, upsert_many_fill
 from app.models import CbBasic, CbDaily, StockDaily
 from app.services.convertible import parse_coupons, ytm
 from app.sources.akshare_source import AkshareSource
+from app.sources.ifind import IfindClient, to_bond_symbol
 from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
 #: 写进两张表的 `source`
 SOURCE = "sina+em+jsl"
+#: iFinD 兜底写入时的 source 标记：`em` = 价格来自东财 `债现价`，
+#: `+ifind` = 成交额来自 iFinD。页面 / 排查时能一眼看出这天的行情不是新浪来的。
+SOURCE_EM = "em"
+SOURCE_EM_IFIND = "em+ifind"
 
 #: 少于这么多只有行情的转债，就认为源挂了（正常 300 只上下）
 MIN_SPOT_ROWS = 50
+
+#: iFinD 兜底时取的列。**只取成交额与成交量**：它的「最新价 / 最高价 / 最低价」是
+#: **净价**（不含应计利息，实测上银转债 112.27 vs 全价 115.33，差的就是当年 4% 票息的
+#: 应计部分），拿它当全价去算溢价率 / 双低 / YTM 会直接算错。价格改由东财 `债现价` 兜底。
+IFIND_INDICATORS = ("成交额", "成交量")
 
 #: 覆盖率闸：低于上一采集日的这个比例就整天不写
 COVERAGE_RATIO = 0.8
@@ -162,12 +172,88 @@ def _basic_rows(cov: list[dict], redeem: dict[str, dict]) -> dict[str, dict]:
     return result
 
 
+def _row_value(row: dict, exact: tuple[str, ...], contains: tuple[str, ...] = (), exclude: tuple[str, ...] = ()) -> object:
+    """从 iFinD 返回的一行里取某个列。
+
+    列名不稳定（「收盘价」/「收盘价(元)」/「前收盘价」混在一起），所以先精确匹配，
+    再按子串兜底，并且用 `exclude` 挡掉「前收盘价」被当成「收盘价」这类误命中。
+    """
+    for name in exact:
+        if name in row:
+            return row[name]
+    for key, value in row.items():
+        text = str(key)
+        if not any(part in text for part in contains):
+            continue
+        if any(part in text for part in exclude):
+            continue
+        return value
+    return None
+
+
+def _spot_from_cov(cov: list[dict]) -> list[dict]:
+    """兜底行情：用东财一览里的 `债现价`（**全价**）拼出与新浪一致的形状。
+
+    实测 `债现价` 与新浪逐位一致（广核 133.11、上银 115.328），所以溢价比、双低、YTM
+    都不会被算歪；缺的只是涨跌幅 / 最高最低（页面显示「—」）。
+    """
+    rows: list[dict] = []
+    for row in cov:
+        code = str(row.get("债券代码") or "").strip()
+        price = _num(row.get("债现价"))
+        # 未上市的券在这张表里也有「债现价」（固定 100），必须按上市日剔掉，
+        # 否则会把几百只还没上市的债当成「100 元的转债」塞进池子
+        if not code or not price or price <= 0 or _date(row.get("上市时间")) is None:
+            continue
+        rows.append(
+            {
+                "code": code,
+                "name": _text(row.get("债券简称")),
+                "trade": price,
+                "settlement": None,
+                "changepercent": None,
+                "high": None,
+                "low": None,
+                "amount": None,
+            }
+        )
+    return rows
+
+
+def _ifind_amounts(settings: Settings | None, codes: list[str]) -> dict[str, float]:
+    """iFinD 兜底：批量取一次成交额（元）。失败返回空 dict。
+
+    只取成交额 / 成交量：它的价格是**净价**，不能当全价用（见 `IFIND_INDICATORS`）。
+    一次批量请求换一份成交额，比「成交额筛选把整池剔空」划算。
+    """
+    if not codes:
+        return {}
+    try:
+        client = IfindClient(settings or get_settings())
+        rows = client.bond_quotes([to_bond_symbol(code) for code in codes], list(IFIND_INDICATORS))
+    except Exception:  # noqa: BLE001 - 兜底失败只少一列，不该让采集换个错误崩
+        logger.exception("iFinD 可转债成交额兜底失败")
+        return {}
+
+    result: dict[str, float] = {}
+    for row in rows:
+        raw = _row_value(row, ("证券代码", "代码", "thscode", "symbol"), ("代码",))
+        digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
+        if len(digits) < 6:
+            continue
+        amount = _num(_row_value(row, ("成交额",), ("成交额",)))
+        if amount is not None:
+            result[digits[:6]] = amount
+    return result
+
+
 def _merge_daily(
     spot: list[dict],
     cov: dict[str, dict],
     redeem: dict[str, dict],
     basics: dict[str, CbBasic],
     day: date,
+    source: str = SOURCE,
 ) -> list[dict]:
     """三个来源按转债代码并成 `cb_daily` 的行。纯函数，便于单测。"""
     rows: list[dict] = []
@@ -227,7 +313,7 @@ def _merge_daily(
                 "remain_size": remain_size,
                 "redeem_status": _text(extra.get("强赎状态")),
                 "last_trade_date": _date(extra.get("最后交易日")),
-                "source": SOURCE,
+                "source": source,
             }
         )
     return rows
@@ -314,6 +400,49 @@ def _mark_delisted(day: date, alive: set[str]) -> int:
     return marked
 
 
+def _load_spot(
+    source: AkshareSource, settings: Settings | None, cov: list[dict]
+) -> tuple[list[dict], str]:
+    """取当日行情：新浪优先；挂了就用东财 `债现价` 兜底，成交额再找 iFinD 补一次。
+
+    为什么值得花这一次 iFinD 配额：可转债页面的**所有**派生指标都以当天快照为基准，
+    新浪是单点，它一挂就是整天全空；而兜底只是「一次批量请求」，不是每只券一次。
+
+    ⚠️ 价格**不能**直接拿 iFinD 的「最新价」：它是净价（不含应计利息，实测上银转债
+    112.27 vs 全价 115.33），拿去算溢价率 / 双低 / YTM 会系统性算错。东财 `债现价`
+    与新浪逐位一致，才是正确的价格兜底。
+
+    返回 `(行, source 标记)`；标记会写进 `cb_daily.source`。
+    """
+    spot: list[dict] = []
+    try:
+        spot = source.cb_spot()
+    except Exception:  # noqa: BLE001 - 失败就走兜底，不让采集整体崩
+        logger.exception("新浪可转债行情取数失败，改用东财 + iFinD 兜底")
+    if len(spot) >= MIN_SPOT_ROWS:
+        return spot, SOURCE
+
+    logger.warning(
+        "可转债行情只取到 %d 只（阈值 %d），改用东财债现价兜底", len(spot), MIN_SPOT_ROWS
+    )
+    fallback = _spot_from_cov(cov)
+    if len(fallback) < MIN_SPOT_ROWS:
+        raise RuntimeError(
+            f"可转债行情只取到 {len(spot)} 只（阈值 {MIN_SPOT_ROWS}），"
+            f"东财兜底也只有 {len(fallback)} 只"
+        )
+
+    amounts = _ifind_amounts(settings, [row["code"] for row in fallback])
+    if amounts:
+        for row in fallback:
+            row["amount"] = amounts.get(row["code"])
+        logger.warning("兜底完成：价格来自东财、成交额来自 iFinD（source=%s）", SOURCE_EM_IFIND)
+        return fallback, SOURCE_EM_IFIND
+
+    logger.warning("兜底完成：只有价格、没有成交额（source=%s）", SOURCE_EM)
+    return fallback, SOURCE_EM
+
+
 def refresh(settings: Settings | None = None, trade_date: date | None = None) -> int:
     """采一次当日快照，返回写入 `cb_daily` 的行数。**只允许今天**（见模块说明）。"""
     day = trade_date or today_cn()
@@ -324,15 +453,12 @@ def refresh(settings: Settings | None = None, trade_date: date | None = None) ->
         )
 
     source = AkshareSource(settings or get_settings())
-    spot = source.cb_spot()
-    if len(spot) < MIN_SPOT_ROWS:
-        raise RuntimeError(
-            f"可转债行情只取到 {len(spot)} 只（阈值 {MIN_SPOT_ROWS}），疑似源异常"
-        )
     cov = source.cb_basic()
     redeem = source.cb_redeem()
     if not cov:
         raise RuntimeError("可转债一览（东财）返回 0 行，无法归类正股 / 溢价率")
+    # 行情放在 cov 之后：新浪挂了要拿东财的 `债现价` 兜底
+    spot, spot_source = _load_spot(source, settings, cov)
 
     # 1) 静态条款：**fill 语义**（新的 None 不覆盖库里已有的非空值）
     redeem_by_code = {str(row.get("代码")): row for row in redeem if row.get("代码")}
@@ -347,7 +473,7 @@ def refresh(settings: Settings | None = None, trade_date: date | None = None) ->
 
     # 3) 当日行情
     cov_by_code = {str(row.get("债券代码")): row for row in cov if row.get("债券代码")}
-    rows = _merge_daily(spot, cov_by_code, redeem_by_code, basics, day)
+    rows = _merge_daily(spot, cov_by_code, redeem_by_code, basics, day, spot_source)
     if not rows:
         raise RuntimeError("可转债快照合并后 0 行")
 
@@ -382,9 +508,10 @@ def refresh(settings: Settings | None = None, trade_date: date | None = None) ->
     marked = _mark_delisted(day, {row["bond_code"] for row in rows})
 
     logger.info(
-        "可转债快照 %s：写入 %d 只（退市标记 %d、缺溢价 %d、缺剩余规模 %d、有 YTM %d）",
+        "可转债快照 %s：写入 %d 只（行情源 %s、退市标记 %d、缺溢价 %d、缺剩余规模 %d、有 YTM %d）",
         day,
         written,
+        spot_source,
         marked,
         sum(1 for row in rows if row["premium_pct"] is None),
         sum(1 for row in rows if row["remain_size"] is None),

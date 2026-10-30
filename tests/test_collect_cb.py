@@ -17,6 +17,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.jobs import collect_cb
 from app.models import Base, CbBasic, CbDaily
+from app.sources.ifind import to_bond_symbol
 
 DAY = date(2026, 10, 30)
 
@@ -72,6 +73,7 @@ def cov_row(code="127110", **kwargs):
         "转股价": "3.58",
         "转股价值": "133.7989",
         "转股溢价率": "-0.51",
+        "债现价": "133.11",
         "发行规模": "49",
         "信用评级": "AAA",
         "上市时间": "2025-07-25",
@@ -189,6 +191,75 @@ def test_merge_daily_does_not_fake_remain_size():
     assert row["turnover"] is None
     # 东财没给转股价值时按 100 ÷ 转股价 × 正股价 自己算
     assert row["conv_value"] == pytest.approx(110.0)
+
+
+def test_bond_symbol_exchange_suffix():
+    """转债不能套股票的前缀规则：11 开头是沪市，不是深市。"""
+    assert to_bond_symbol("113042") == "113042.SH"
+    assert to_bond_symbol("110077") == "110077.SH"
+    assert to_bond_symbol("118001") == "118001.SH"
+    assert to_bond_symbol("127110") == "127110.SZ"
+    assert to_bond_symbol("123076") == "123076.SZ"
+
+
+def test_spot_from_cov_uses_bond_full_price():
+    rows = collect_cb._spot_from_cov(
+        [
+            {"债券代码": "127110", "债券简称": "广核转债", "债现价": "133.11", "上市时间": "2025-07-25"},
+            # 未上市的券债现价固定 100，必须按上市日剔掉
+            {"债券代码": "123291", "债券简称": "待上市", "债现价": 100.0, "上市时间": None},
+            {"债券代码": "123292", "债券简称": "无价", "债现价": None, "上市时间": "2025-01-01"},
+        ]
+    )
+
+    assert [row["code"] for row in rows] == ["127110"]
+    assert rows[0]["trade"] == pytest.approx(133.11)
+    # 涨跌幅 / 成交额兜底时没有，留 None（页面显示「—」），不能写 0
+    assert rows[0]["changepercent"] is None
+    assert rows[0]["amount"] is None
+
+
+def test_load_spot_falls_back_to_em_price_plus_ifind_amount(monkeypatch):
+    class BrokenSina:
+        def cb_spot(self):
+            raise RuntimeError("新浪挂了")
+
+    monkeypatch.setattr(collect_cb, "MIN_SPOT_ROWS", 1)
+    monkeypatch.setattr(collect_cb, "_ifind_amounts", lambda settings, codes: {"127110": 3.9e8})
+    cov = [cov_row(), cov_row(code="113042", **{"债券简称": "上银转债", "债现价": "115.328"})]
+
+    spot, source = collect_cb._load_spot(BrokenSina(), None, cov)
+
+    assert source == collect_cb.SOURCE_EM_IFIND
+    assert {row["code"] for row in spot} == {"127110", "113042"}
+    assert next(row for row in spot if row["code"] == "127110")["amount"] == pytest.approx(3.9e8)
+    # 上银没有成交额兜底值，就留 None
+    assert next(row for row in spot if row["code"] == "113042")["amount"] is None
+
+
+def test_load_spot_raises_when_both_sources_empty(monkeypatch):
+    class BrokenSina:
+        def cb_spot(self):
+            return []
+
+    monkeypatch.setattr(collect_cb, "MIN_SPOT_ROWS", 1)
+
+    with pytest.raises(RuntimeError, match="东财兜底也只有"):
+        collect_cb._load_spot(BrokenSina(), None, [])
+
+
+def test_merge_daily_records_fallback_source():
+    spot = [spot_row()]
+    rows = collect_cb._merge_daily(
+        spot,
+        {"127110": cov_row()},
+        {"127110": redeem_row()},
+        {"127110": CbBasic(bond_code="127110", list_date=date(2025, 7, 25))},
+        DAY,
+        collect_cb.SOURCE_EM_IFIND,
+    )
+
+    assert rows[0]["source"] == "em+ifind"
 
 
 def test_refresh_refuses_non_today(env):

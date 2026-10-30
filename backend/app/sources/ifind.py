@@ -74,6 +74,20 @@ def from_ths_symbol(symbol: str) -> str:
     return str(symbol).strip().split(".")[0].zfill(6)
 
 
+#: 沪市可转债前缀（110/111 公募债、113 可转债、118 科创转债、132 可交换债）。
+#: 深市是 123 / 127 / 128。**不能直接套 `to_ths_symbol`**：它按股票前缀判所，
+#: "11" 开头的转债会被判成深市（2026-10-30 加兜底时踩过）。
+_SH_BOND_PREFIXES = ("110", "111", "113", "118", "132")
+
+
+def to_bond_symbol(code: str) -> str:
+    """6 位可转债代码转同花顺代码，如 113042 → 113042.SH、127110 → 127110.SZ。"""
+    code = str(code).strip().zfill(6)
+    if code.startswith(_SH_BOND_PREFIXES):
+        return f"{code}.SH"
+    return f"{code}.SZ"
+
+
 def normalize_code(raw: str) -> str:
     """把 600519 / 600519.SH / sh600519 等写法统一成 6 位数字。
 
@@ -522,6 +536,20 @@ class IfindClient:
     ) -> list[dict]:
         """个股实时快照 / 高频序列。自动按 10 只分片。"""
         return self._highfreq("stock", "stock_highfreq_quotes", symbols, indicators, data_mode, interval)
+
+    def bond_quotes(
+        self,
+        symbols: list[str],
+        indicators: list[str],
+        data_mode: str = "real_time",
+        interval: int | None = None,
+    ) -> list[dict]:
+        """可转债实时快照（2026-10-30 加，给免费源兜底用）。
+
+        只在 `jobs/collect_cb` 的免费源（新浪）挂掉时调用 —— 一次批量请求换一份
+        收盘快照，比「当天没有可转债数据」划算。符号要先用 `to_bond_symbol` 转换。
+        """
+        return self._highfreq("bond", "bond_highfreq_quotes", symbols, indicators, data_mode, interval)
 
     # ------------------------------------------------------- 自然语言取数
 
