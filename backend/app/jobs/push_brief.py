@@ -461,16 +461,6 @@ def _watchlist_block(session, trade_date: date) -> str:
     return brief_watchlist.block(session, trade_date)
 
 
-def _cb_redeem_block(session, trade_date: date) -> str:
-    """「转债强赎提醒」：自选（或其正股）的转债**当天新进入**已公告强赎。
-
-    只在状态切换那天出现一次，见 `services.brief_watchlist.redeem_block` 的说明。
-    """
-    from app.services import brief_watchlist
-
-    return brief_watchlist.redeem_block(session, trade_date)
-
-
 def build_brief(trade_date: date) -> str:
     """把某个交易日的复盘要点拼成一段飞书可渲染的 Markdown。
 
@@ -499,8 +489,9 @@ def build_brief(trade_date: date) -> str:
             _pattern_block(session, trade_date),
             _plan_block(session, trade_date),
             _watchlist_block(session, trade_date),
-            # 强赎提醒紧跟自选异动：它同样是「持仓相关」，但漏看一次的代价大得多
-            _cb_redeem_block(session, trade_date),
+            # 转债强赎提醒**不在这里**：简报 15:05 就推，而转债快照 17:30 才采，
+            # 那时这一节永远是空的（2026-10-30 复查 P1-2）。改由 `push_cb_redeem`
+            # 在收盘后那趟采完之后单独推送，见该函数的说明。
         ]
     return "\n\n".join(block for block in blocks if block)
 
@@ -745,6 +736,92 @@ def push_pattern_brief(
         "trade_date": target_date.isoformat(),
         "chars": len(markdown),
         **result,
+    }
+
+
+#: 转债强赎提醒的去重任务名前缀，实际记成 `cb_redeem:<券代码>`。
+#: **按券去重、不按日期**：同一只券宣布强赎只提醒一次，中间哪天采集失败、
+#: 连着几天没推出去也不会漏（2026-10-30 复查 P1-2）。
+CB_REDEEM_TASK = "cb_redeem"
+
+
+def _cb_redeem_task(code: str) -> str:
+    return f"{CB_REDEEM_TASK}:{code}"
+
+
+def _cb_redeem_pushed(codes: list[str]) -> set[str]:
+    """已经提醒过的券代码（查全表，不看日期）。"""
+    if not codes:
+        return set()
+    prefix = f"{CB_REDEEM_TASK}:"
+    with session_scope() as session:
+        tasks = session.scalars(
+            select(CollectLog.task).where(
+                CollectLog.task.in_([_cb_redeem_task(code) for code in codes]),
+                CollectLog.status == "ok",
+            )
+        )
+        return {task.removeprefix(prefix) for task in tasks}
+
+
+def push_cb_redeem(
+    trade_date: date | None = None, settings: Settings | None = None
+) -> dict:
+    """自选（或其正股）的转债出现「已公告强赎」时，单独推一条提醒。
+
+    **为什么不放进复盘简报**：简报 15:05 就推，而转债快照 17:30 才采 —— 那一节在
+    正常日子永远是空的（2026-10-30 复查 P1-2）。这里由收盘后那趟采完转债之后调用
+    （`scheduler._run_late_unguarded`），17:30 / 19:30 / 22:35 都会走到，靠去重挡住重复。
+
+    去重按**券**（`cb_redeem:<代码>`），不按天：同一只券只提醒一次。
+    """
+    from app.services import brief_watchlist
+
+    settings = settings or get_settings()
+    if not settings.feishu_push_enabled:
+        return {"status": "skipped", "reason": "推送已关闭（FEISHU_PUSH_ENABLED=false）"}
+    if not settings.feishu_webhook_url.strip() and not settings.feishu_target.strip():
+        return {
+            "status": "skipped",
+            "reason": "未配置 FEISHU_WEBHOOK_URL（群机器人）或 FEISHU_TARGET（收件人）",
+        }
+
+    target_date = trade_date or latest_trade_date()
+    if target_date is None:
+        return {"status": "skipped", "reason": "库里还没有任何交易日数据"}
+
+    with session_scope() as session:
+        alerts = brief_watchlist.redeem_alerts(session, target_date)
+    if not alerts:
+        return {"status": "skipped", "reason": "自选里没有已公告强赎的转债"}
+    try:
+        pushed = _cb_redeem_pushed([alert.bond_code for alert in alerts])
+    except Exception:  # noqa: BLE001 - 去重查询失败：宁可重复一次也别漏
+        logger.exception("检查转债强赎提醒是否已推送失败，本次照常推送")
+        pushed = set()
+    pending = [alert for alert in alerts if alert.bond_code not in pushed]
+    if not pending:
+        return {"status": "skipped", "reason": "这些券都已提醒过"}
+
+    markdown = "**转债强赎提醒**\n" + "\n".join(alert.line() for alert in pending)
+    result = send_markdown(markdown, settings)
+    if not result["ok"]:
+        _record(target_date, "failed", result.get("error") or "推送失败", CB_REDEEM_TASK)
+        logger.warning("转债强赎提醒 %s 推送失败：%s", target_date, result.get("error"))
+        return {"status": "failed", "reason": result.get("error")}
+    for alert in pending:
+        _record(
+            target_date,
+            "ok",
+            f"转债强赎提醒：{alert.bond_code}",
+            _cb_redeem_task(alert.bond_code),
+        )
+    logger.info("转债强赎提醒 %s：已推送 %d 只", target_date, len(pending))
+    return {
+        "status": "ok",
+        "trade_date": target_date.isoformat(),
+        "rows": len(pending),
+        "chars": len(markdown),
     }
 
 

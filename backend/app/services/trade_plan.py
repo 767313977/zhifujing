@@ -23,10 +23,10 @@ from app.models import (
     StockDaily,
     TradeCalendar,
     TradePlan,
-    Watchlist,
 )
 from app.services.patterns import PATTERNS
 from app.services.stock_meta import industries_of, sectors_of
+from app.services.watch_scope import stock_watch_codes
 from app.sources.base import chunked
 
 logger = logging.getLogger(__name__)
@@ -251,10 +251,8 @@ def suggestions(session: Session, user_id: int) -> list[dict]:
     for row in hits:
         best.setdefault(row[0], row)
 
-    watch_codes = list(
-        session.scalars(select(Watchlist.code).where(Watchlist.user_id == user_id))
-    )
-    watch = set(watch_codes)
+    # 只算股票：自选里可能混着可转债代码（可转债-5），给它们排计划没有意义
+    watch = set(stock_watch_codes(session, user_id))
     # 单日命中的票可能上千只，按 900 分批（与 api/patterns、stock_phase 同一约定），
     # 不依赖 SQLite 版本对单条 SQL 变量数的上限
     names: dict[str, str | None] = {}

@@ -23,7 +23,8 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.config import Settings, get_settings
 from app.db import session_scope
-from app.models import IfindUsage, TradeCalendar, Watchlist
+from app.models import IfindUsage, TradeCalendar
+from app.services.watch_scope import stock_watch_count
 from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
@@ -276,15 +277,14 @@ def _calendar_last_day() -> date | None:
 def _watchlist_extra_calls() -> int:
     """自选股超出基线部分带来的每日额外调用数。
 
-    读的是 `watchlist` 的**去重代码数**（同一只票被多个用户收藏只算一次，
-    与 `collect_daily.sync_watchlist` 的 `distinct()` 口径一致）。
+    读的是 `watchlist` 里的**股票**去重代码数（同一只票被多个用户收藏只算一次，
+    与 `collect_daily.sync_watchlist` 的并集口径一致）。自选里可以放可转债代码，
+    但转债不花 iFinD 配额（见 `services/watch_scope`），不能算进日耗。
     查询失败时返回 0（按基线算）—— 配额守卫不能因为一次读库失败把整轮采集带崩。
     """
     try:
         with session_scope() as session:
-            count = int(
-                session.scalar(select(func.count(func.distinct(Watchlist.code)))) or 0
-            )
+            count = stock_watch_count(session)
     except Exception:  # noqa: BLE001 - 见 docstring
         logger.warning("读取自选股只数失败，日耗模型按基线 %d 只算", WATCHLIST_BASELINE)
         return 0

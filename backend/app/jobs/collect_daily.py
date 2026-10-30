@@ -35,11 +35,11 @@ from app.models import (
     StockBasic,
     StockDaily,
     TradeCalendar,
-    Watchlist,
 )
 from app.jobs import collect_funds
 from app.services.sentiment import build_sentiment
 from app.services.usage import QuotaLevel, quota_level
+from app.services.watch_scope import filter_stock_codes, is_bond_code, stock_watch_codes
 from app.sources.akshare_source import AkshareSource
 from app.sources.ifind import IfindClient, IfindError, from_ths_symbol, to_ths_symbol
 from app.sources.markdown_table import pick_float, pick_int, pick_text, to_float, to_int
@@ -793,8 +793,15 @@ class DailyCollector:
         `days=250` 就是 6 次调用、`days=500` 是 11 次，**本地明明已有也照拉** ——
         会员点一次「同步」白烧几十次配额。现在先查库里已有哪些交易日，只对
         「还缺着的日子」所在的块发请求；一块都不缺就一次接口都不打。
+
+        ⚠️ **转债直接返回 0**（2026-10-30 复查 P1-1）：转债没有股票日线，任何一个
+        入口（自选并集 / 个股页手动同步）拿它去问 iFinD 都是白花配额（`11x` 还会被
+        换算成 `.SZ`，问的是不存在的代码）。这一层兜住所有调用方。
         """
         code = str(code).strip().zfill(6)
+        if is_bond_code(code):
+            logger.info("跳过转债代码 %s：没有股票日线可同步", code)
+            return 0
         end = self.latest_trade_date()
         # 交易日 → 日历日按 1.5 倍粗算，多取一些无妨（交易日历会过滤掉多余的）
         start = end - timedelta(days=int(days * 1.5))
@@ -871,10 +878,18 @@ class DailyCollector:
         几十只票连着超时会让整轮持锁几个小时（其它采集全部 `CollectionBusy`）。
         所以连着 `WATCHLIST_CONSECUTIVE_FAILURES` 只都失败就**中止本轮**并抛错 ——
         源整体不可用时没必要一只只耗下去。
+
+        ⚠️ **只同步股票**（2026-10-30 复查 P1-1）：自选里可能混着可转债代码，它们
+        在 `stock_daily` 里永远没有行 —— 每日都要白白打一整套 iFinD 股票日线，
+        连续 3 只失败还会把 `watchlist` 记成 failed、连带当天被判成「没采完」。
+        代码口径见 `services/watch_scope`。
         """
         if codes is None:
             with session_scope() as session:
-                codes = list(session.scalars(select(Watchlist.code).distinct()))
+                codes = stock_watch_codes(session)
+        else:
+            with session_scope() as session:
+                codes = filter_stock_codes(session, codes)
         if not codes:
             return 0
 

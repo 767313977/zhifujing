@@ -73,6 +73,10 @@ def _latest_quotes(
     自选里可以放**可转债代码**（2026-10-30 可转债-5）：它们在 `stock_daily` 里
     永远查不到，所以查不到行的代码再去 `cb_daily` 找一次。两张表的
     `trade_date / close / pct_chg` 语义一致，调用方（`_row`）不必区分。
+
+    ⚠️ 转债那条只要求 `close` 非空（2026-10-30 复查 P2-3）：兜底源（`em` /
+    `em+ifind`）那天没有涨跌幅，若照抄股票那条「`pct_chg` 非空」的过滤，
+    兜底日会被整个跳过、页面显示前一天的价格且没有任何提示。
     """
     if not codes:
         return {}
@@ -96,7 +100,7 @@ def _latest_quotes(
         return quotes
     newest_cb = (
         select(CbDaily.bond_code, func.max(CbDaily.trade_date).label("latest"))
-        .where(CbDaily.bond_code.in_(missing), CbDaily.pct_chg.is_not(None))
+        .where(CbDaily.bond_code.in_(missing), CbDaily.close.is_not(None))
         .group_by(CbDaily.bond_code)
         .subquery()
     )

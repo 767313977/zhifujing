@@ -893,6 +893,30 @@ class DailyScheduler:
         # 三条定时链（17:30 / 19:30 / 22:35）与启动补采都会走到这里。
         self._push_if_ready(collector, today, reason)
 
+        # 转债强赎提醒必须**排在这里**（2026-10-30 复查 P1-2）：它读的是当天的转债
+        # 快照，而快照在 `run_late` 的 `cb` 步骤才采（17:30）。放进 15:05 的复盘简报
+        # 里时那一节永远是空的，而且「新进入」只认当天，漏了就永久丢。
+        # 这里去重按券记，17:30 / 19:30 / 22:35 三趟只会推一次。
+        self._push_cb_redeem(today, reason)
+
+    def _push_cb_redeem(self, trade_date: date, reason: str) -> None:
+        """推送「自选里的转债已公告强赎」（见 `push_brief.push_cb_redeem`）。
+
+        失败只记日志、绝不抛：它是提醒，不是采集步骤，不能把已经成功的收盘后这一趟
+        记成失败（那样 `has_collected` 与补采逻辑都会跟着乱）。
+        """
+        from app.jobs.push_brief import push_cb_redeem
+
+        try:
+            result = push_cb_redeem(trade_date, self.settings)
+        except Exception:  # noqa: BLE001 - 提醒失败不能拖垮调度
+            logger.exception("%s：推送转债强赎提醒失败", reason)
+            return
+        if result.get("status") == "failed":
+            logger.warning("%s：转债强赎提醒推送失败：%s", reason, result.get("reason") or "")
+        elif result.get("status") == "ok":
+            logger.info("%s：转债强赎提醒已推送 %s 只", reason, result.get("rows"))
+
     def _push_if_ready(
         self, collector: DailyCollector, today: date, reason: str
     ) -> None:

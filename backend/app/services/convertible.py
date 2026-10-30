@@ -778,8 +778,10 @@ def bonds_of_stock(
 ) -> list[StockBond]:
     """某只正股**存续**的转债（个股页联动用）。
 
-    「存续」= `cb_basic.delist_date` 为空或不早于快照日 —— 已摘牌的券不往个股页上摆，
-    但库里保留（回测要用）。
+    「存续」= **最新快照那天还有行情**（2026-10-30 复查 P2-1）：只看 `delist_date`
+    不够 —— `cb_basic` 里那 700 多只早已退市的老券这一列大多是空的（`_mark_delisted`
+    只能标「到期日已知」或「上一份快照里出现过」的券），结果是十几年前发过的转债
+    会以全「—」的样子挂在个股页上。
 
     快照日缺省取 `cb_daily` 的最新一天：转债快照**只能当天采**，所以这里显示的就是
     最近一次采集的盘后数据，不是实时价。
@@ -811,17 +813,20 @@ def bonds_of_stock(
     result: list[StockBond] = []
     for basic in basics:
         daily = dailies.get(basic.bond_code)
+        if daily is None:
+            # 最新快照里没有它 = 已经不在市场上了（即使 delist_date 还没补上）
+            continue
         result.append(
             StockBond(
                 bond_code=basic.bond_code,
                 bond_name=basic.bond_name,
-                close=daily.close if daily else None,
-                pct_chg=daily.pct_chg if daily else None,
-                premium_pct=daily.premium_pct if daily else None,
-                conv_value=daily.conv_value if daily else None,
-                redeem_status=daily.redeem_status if daily else None,
-                last_trade_date=daily.last_trade_date if daily else None,
-                state=_state_text(daily) if daily else None,
+                close=daily.close,
+                pct_chg=daily.pct_chg,
+                premium_pct=daily.premium_pct,
+                conv_value=daily.conv_value,
+                redeem_status=daily.redeem_status,
+                last_trade_date=daily.last_trade_date,
+                state=_state_text(daily),
             )
         )
     return result
