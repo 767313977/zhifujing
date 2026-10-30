@@ -206,10 +206,14 @@ def test_spot_from_cov_uses_bond_full_price():
     rows = collect_cb._spot_from_cov(
         [
             {"债券代码": "127110", "债券简称": "广核转债", "债现价": "133.11", "上市时间": "2025-07-25"},
-            # 未上市的券债现价固定 100，必须按上市日剔掉
+            # 未上市：上市日为空，债现价固定 100，必须剔掉
             {"债券代码": "123291", "债券简称": "待上市", "债现价": 100.0, "上市时间": None},
+            # 已退市：债现价也停在 100，且不在昨日名单里
+            {"债券代码": "110001", "债券简称": "老债", "债现价": 100.0, "上市时间": "2018-01-01"},
             {"债券代码": "123292", "债券简称": "无价", "债现价": None, "上市时间": "2025-01-01"},
-        ]
+        ],
+        DAY,
+        {"127110", "123292"},
     )
 
     assert [row["code"] for row in rows] == ["127110"]
@@ -225,10 +229,11 @@ def test_load_spot_falls_back_to_em_price_plus_ifind_amount(monkeypatch):
             raise RuntimeError("新浪挂了")
 
     monkeypatch.setattr(collect_cb, "MIN_SPOT_ROWS", 1)
+    monkeypatch.setattr(collect_cb, "_recent_universe", lambda: {"127110", "113042"})
     monkeypatch.setattr(collect_cb, "_ifind_amounts", lambda settings, codes: {"127110": 3.9e8})
     cov = [cov_row(), cov_row(code="113042", **{"债券简称": "上银转债", "债现价": "115.328"})]
 
-    spot, source = collect_cb._load_spot(BrokenSina(), None, cov)
+    spot, source = collect_cb._load_spot(BrokenSina(), None, cov, DAY)
 
     assert source == collect_cb.SOURCE_EM_IFIND
     assert {row["code"] for row in spot} == {"127110", "113042"}
@@ -243,9 +248,24 @@ def test_load_spot_raises_when_both_sources_empty(monkeypatch):
             return []
 
     monkeypatch.setattr(collect_cb, "MIN_SPOT_ROWS", 1)
+    monkeypatch.setattr(collect_cb, "_recent_universe", lambda: {"127110"})
 
     with pytest.raises(RuntimeError, match="东财兜底也只有"):
-        collect_cb._load_spot(BrokenSina(), None, [])
+        collect_cb._load_spot(BrokenSina(), None, [], DAY)
+
+
+def test_load_spot_raises_without_previous_universe(monkeypatch):
+    """库里一次都没采过时不能兜底 —— 没有「今天该有谁」的基准，宁可报错。"""
+
+    class BrokenSina:
+        def cb_spot(self):
+            return []
+
+    monkeypatch.setattr(collect_cb, "MIN_SPOT_ROWS", 1)
+    monkeypatch.setattr(collect_cb, "_recent_universe", lambda: set())
+
+    with pytest.raises(RuntimeError, match="无法兜底"):
+        collect_cb._load_spot(BrokenSina(), None, [cov_row()], DAY)
 
 
 def test_merge_daily_records_fallback_source():

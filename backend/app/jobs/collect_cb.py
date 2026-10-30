@@ -191,19 +191,25 @@ def _row_value(row: dict, exact: tuple[str, ...], contains: tuple[str, ...] = ()
     return None
 
 
-def _spot_from_cov(cov: list[dict]) -> list[dict]:
+def _spot_from_cov(cov: list[dict], day: date, universe: set[str]) -> list[dict]:
     """兜底行情：用东财一览里的 `债现价`（**全价**）拼出与新浪一致的形状。
 
     实测 `债现价` 与新浪逐位一致（广核 133.11、上银 115.328），所以溢价比、双低、YTM
     都不会被算歪；缺的只是涨跌幅 / 最高最低（页面显示「—」）。
+
+    两道过滤是必须的（2026-10-30 实测踩过）：东财这张表里**已退市**的 700 多只券
+    `债现价` 仍停在 100，未上市的也是 100 —— 不过滤会把它们当成「100 元的转债」
+    全塞进池子，覆盖率闸反而会因「行数变多」放行。所以只收
+    `上市日 ≤ 今天` **且** 在昨日名单里（`universe`）的券。
     """
     rows: list[dict] = []
     for row in cov:
         code = str(row.get("债券代码") or "").strip()
         price = _num(row.get("债现价"))
-        # 未上市的券在这张表里也有「债现价」（固定 100），必须按上市日剔掉，
-        # 否则会把几百只还没上市的债当成「100 元的转债」塞进池子
-        if not code or not price or price <= 0 or _date(row.get("上市时间")) is None:
+        list_date = _date(row.get("上市时间"))
+        if not code or not price or price <= 0 or code not in universe:
+            continue
+        if list_date is None or list_date > day:
             continue
         rows.append(
             {
@@ -400,13 +406,32 @@ def _mark_delisted(day: date, alive: set[str]) -> int:
     return marked
 
 
+def _recent_universe() -> set[str]:
+    """上一次快照里的转债代码集合 —— 兜底时用它划「今天该有行情的券」。
+
+    为什么不用 `cb_basic`：那张表里有 1000 多只（含已退市、未上市的），
+    东财对它们的 `债现价` 一律给 100，直接拿去兜底会造出一整屏假行情。
+    """
+    with session_scope() as session:
+        latest = session.scalar(select(func.max(CbDaily.trade_date)))
+        if latest is None:
+            return set()
+        return set(
+            session.scalars(select(CbDaily.bond_code).where(CbDaily.trade_date == latest))
+        )
+
+
 def _load_spot(
-    source: AkshareSource, settings: Settings | None, cov: list[dict]
+    source: AkshareSource,
+    settings: Settings | None,
+    cov: list[dict],
+    day: date,
 ) -> tuple[list[dict], str]:
     """取当日行情：新浪优先；挂了就用东财 `债现价` 兜底，成交额再找 iFinD 补一次。
 
-    为什么值得花这一次 iFinD 配额：可转债页面的**所有**派生指标都以当天快照为基准，
-    新浪是单点，它一挂就是整天全空；而兜底只是「一次批量请求」，不是每只券一次。
+    为什么值得花 iFinD 配额：可转债页面的**所有**派生指标都以当天快照为基准，
+    新浪是单点，它一挂就是整天全空。代价是一次批量请求（按 10 只/批，约 31 批），
+    只在这条少见的路径上烧。
 
     ⚠️ 价格**不能**直接拿 iFinD 的「最新价」：它是净价（不含应计利息，实测上银转债
     112.27 vs 全价 115.33），拿去算溢价率 / 双低 / YTM 会系统性算错。东财 `债现价`
@@ -425,7 +450,13 @@ def _load_spot(
     logger.warning(
         "可转债行情只取到 %d 只（阈值 %d），改用东财债现价兜底", len(spot), MIN_SPOT_ROWS
     )
-    fallback = _spot_from_cov(cov)
+    universe = _recent_universe()
+    if not universe:
+        raise RuntimeError(
+            f"可转债行情只取到 {len(spot)} 只（阈值 {MIN_SPOT_ROWS}），"
+            "而且库里还没有昨日名单，无法兜底"
+        )
+    fallback = _spot_from_cov(cov, day, universe)
     if len(fallback) < MIN_SPOT_ROWS:
         raise RuntimeError(
             f"可转债行情只取到 {len(spot)} 只（阈值 {MIN_SPOT_ROWS}），"
@@ -458,7 +489,7 @@ def refresh(settings: Settings | None = None, trade_date: date | None = None) ->
     if not cov:
         raise RuntimeError("可转债一览（东财）返回 0 行，无法归类正股 / 溢价率")
     # 行情放在 cov 之后：新浪挂了要拿东财的 `债现价` 兜底
-    spot, spot_source = _load_spot(source, settings, cov)
+    spot, spot_source = _load_spot(source, settings, cov, day)
 
     # 1) 静态条款：**fill 语义**（新的 None 不覆盖库里已有的非空值）
     redeem_by_code = {str(row.get("代码")): row for row in redeem if row.get("代码")}
