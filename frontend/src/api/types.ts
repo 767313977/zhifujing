@@ -2663,6 +2663,69 @@ export interface CbStockBond {
   state: string | null
 }
 
+/** 单券走势的一个点（盘后快照）。 */
+export interface CbDetailPoint {
+  trade_date: string
+  close: number | null
+  conv_value: number | null
+  premium_pct: number | null
+  ytm_pct: number | null
+}
+
+/**
+ * 单券详情：条款摘要 + 最近一份快照 + 走势序列。
+ *
+ * `as_of` 是这份快照的日期（该券自己最近的一份，已摘牌 / 当天停牌也打开得开）；
+ * `series` 长度 = 上线以来采到几天，不是固定的 250 天。
+ */
+export interface CbDetail {
+  as_of: string | null
+  bond_code: string
+  bond_name: string | null
+  stock_code: string | null
+  stock_name: string | null
+  list_date: string | null
+  maturity_date: string | null
+  convert_start_date: string | null
+  issue_size: number | null
+  rating: string | null
+  maturity_call_price: number | null
+  coupon_text: string | null
+  redeem_trigger_pct: number | null
+  resale_trigger_pct: number | null
+  revise_trigger_pct: number | null
+  delist_date: string | null
+  close: number | null
+  pct_chg: number | null
+  high: number | null
+  low: number | null
+  amount: number | null
+  amplitude: number | null
+  turnover: number | null
+  stock_close: number | null
+  stock_pct_chg: number | null
+  conv_price: number | null
+  conv_value: number | null
+  premium_pct: number | null
+  double_low: number | null
+  ytm_pct: number | null
+  remain_size: number | null
+  years_left: number | null
+  redeem_status: string | null
+  redeem_count: number | null
+  redeem_required: number | null
+  redeem_complete: boolean
+  revise_count: number | null
+  revise_complete: boolean
+  resale_count: number | null
+  last_trade_date: string | null
+  days_left: number | null
+  labels: string[]
+  risks: string[]
+  source: string | null
+  series: CbDetailPoint[]
+}
+
 /** 筛选参数（页面 → 接口）。 */
 export interface CbScreenQuery {
   preset?: string

@@ -17,6 +17,7 @@ const Account = lazy(() => import('./pages/Account'))
 const AnomalyPage = lazy(() => import('./pages/Anomaly'))
 const AuctionPage = lazy(() => import('./pages/Auction'))
 const ConvertiblePage = lazy(() => import('./pages/Convertible'))
+const CbDetailPage = lazy(() => import('./pages/CbDetail'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Funds = lazy(() => import('./pages/Funds'))
 const JournalPage = lazy(() => import('./pages/Journal'))
@@ -150,6 +151,15 @@ export default function App() {
                 element={
                   <RequireAuth>
                     <ConvertiblePage />
+                  </RequireAuth>
+                }
+              />
+              {/* 单券详情：条款 + 最近快照 + 走势（盘后口径，见 pages/CbDetail） */}
+              <Route
+                path="/cb/:code"
+                element={
+                  <RequireAuth>
+                    <CbDetailPage />
                   </RequireAuth>
                 }
               />

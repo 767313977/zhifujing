@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import type { WatchlistRow } from '../api/types'
 import { isBondCode } from '../lib/bondCode'
 import { fmtNum, fmtPct, toneOf } from '../lib/format'
@@ -82,7 +83,12 @@ export default function WatchlistPanel({ rows, delay = 0, loading = false }: Wat
                 >
                   <td className="!text-left">
                     {isBondCode(row.code) ? (
-                      <span className="num text-fg-muted">{row.code}</span>
+                      <Link
+                        to={`/cb/${encodeURIComponent(row.code)}`}
+                        className="num text-fg-muted hover:text-accent"
+                      >
+                        {row.code}
+                      </Link>
                     ) : (
                       <StockLink code={row.code} className="num text-fg-muted">
                         {row.code}

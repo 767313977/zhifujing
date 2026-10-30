@@ -238,8 +238,13 @@ export default function WatchlistPage() {
                     >
                       <td className="!text-left">
                         {isBondCode(row.code) ? (
-                          // 转债没有个股详情页，不做假跳转
-                          <span className="num text-fg">{row.code}</span>
+                          // 转债没有个股页，走 `/cb/:code` 单券详情
+                          <Link
+                            to={`/cb/${encodeURIComponent(row.code)}`}
+                            className="num text-accent hover:underline"
+                          >
+                            {row.code}
+                          </Link>
                         ) : (
                           <Link
                             to={`/stock/${encodeURIComponent(row.code)}`}
@@ -315,7 +320,7 @@ export default function WatchlistPage() {
               </li>
               <li>
                 · 可转债代码（如 113042）也能加自选，价格来自每天盘后的转债快照；
-                它没有个股页，所以不做跳转。
+                点代码进的是转债详情（个股页只对股票有效）。
               </li>
             </ul>
           </div>

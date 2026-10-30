@@ -6,6 +6,7 @@ import type {
   AuctionList,
   AuctionQuery,
   Breadth,
+  CbDetail,
   CbRadar,
   CbScreen,
   CbScreenQuery,
@@ -1129,6 +1130,10 @@ export const api = {
   /** 某只正股存续的转债（个股页小卡片；最近一次盘后快照）。 */
   cbByStock: (code: string) =>
     request<CbStockBond[]>(`/cb/by-stock/${encodeURIComponent(code)}`),
+
+  /** 单券详情：条款摘要 + 最近一份快照 + 走势序列。 */
+  cbDetail: (code: string, days = 250) =>
+    request<CbDetail>(`/cb/${encodeURIComponent(code)}?days=${days}`),
 
   note: (date: string) => request<ReviewNote>(`/note/${date}`),
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { CbRadar, CbRadarRow, CbScreen, CbScreenQuery, CbScreenRow } from '../api/types'
 import Layout from '../components/Layout'
@@ -386,7 +387,12 @@ export default function Convertible() {
                             <td className="num">{row.score == null ? '—' : fmtNum(row.score, 1)}</td>
                           )}
                           <td className="!text-left">
-                            <span className="text-fg">{row.bond_name ?? row.bond_code}</span>
+                            <Link
+                              to={`/cb/${encodeURIComponent(row.bond_code)}`}
+                              className="text-fg hover:text-accent hover:underline"
+                            >
+                              {row.bond_name ?? row.bond_code}
+                            </Link>
                             <span className="num ml-2 text-[11px] text-fg-dim">{row.bond_code}</span>
                           </td>
                           <td className="!text-left">
@@ -513,7 +519,12 @@ export default function Convertible() {
                     {radarRows.map((row) => (
                       <tr key={row.bond_code}>
                         <td className="!text-left">
-                          <span className="text-fg">{row.bond_name ?? row.bond_code}</span>
+                          <Link
+                            to={`/cb/${encodeURIComponent(row.bond_code)}`}
+                            className="text-fg hover:text-accent hover:underline"
+                          >
+                            {row.bond_name ?? row.bond_code}
+                          </Link>
                           <span className="num ml-2 text-[11px] text-fg-dim">{row.bond_code}</span>
                           {row.stock_name && (
                             <span className="ml-2 text-[11px] text-fg-dim">/{row.stock_name}</span>

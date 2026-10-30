@@ -833,9 +833,7 @@ export default function StockDetail() {
           )}
         </Panel>
 
-        {/* 存续转债：只在正股确实有转债时出现（可转债-5）。
-            不做「点击进详情」—— 转债详情页还没做，做成可点却跳回筛选页是假链接；
-            需要看全市场时从侧栏「可转债」进。 */}
+        {/* 存续转债：只在正股确实有转债时出现（可转债-5）。点名字进 `/cb/:code` 单券详情 */}
         {bonds.length > 0 && (
           <Panel
             title="存续转债"
@@ -852,7 +850,12 @@ export default function StockDetail() {
                   key={bond.bond_code}
                   className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 text-[13px]"
                 >
-                  <span className="text-fg">{bond.bond_name ?? bond.bond_code}</span>
+                  <Link
+                    to={`/cb/${encodeURIComponent(bond.bond_code)}`}
+                    className="text-fg hover:text-accent hover:underline"
+                  >
+                    {bond.bond_name ?? bond.bond_code}
+                  </Link>
                   <span className="num text-fg-dim">{bond.bond_code}</span>
                   <span className="num">{fmtNum(bond.close, 2)}</span>
                   <span className={`num ${toneOf(bond.pct_chg)}`}>{fmtPct(bond.pct_chg)}</span>
