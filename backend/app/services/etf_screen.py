@@ -229,20 +229,32 @@ def _raw_rows(session: Session, day: date, days: list[date], grouped: dict) -> l
     shares = _share_rows(session, day)
     money = etf_flow.money_fund_codes(session)
 
-    # 逐只净申赎：只取最近 21 个交易日（5 / 20 日累计够用）
-    pairs = [(days[index], days[index - 1]) for index in range(1, len(days))]
-    nets = etf_flow.code_nets(session, pairs[-21:], money)
+    # 净申赎的窗口按**份额快照日**铺，不按日线日铺：份额 2026-09-18 才开始有，
+    # 且中间有几天没采到；按日线铺会有一半的 pair 因为「基准日没份额」而丢掉，
+    # 结果 20 日窗口永远凑不满（实测只剩 14 个有效值 → 全市场 flow20 都是 None）。
+    share_days = list(
+        session.scalars(
+            select(EtfShare.trade_date)
+            .where(EtfShare.trade_date <= day)
+            .distinct()
+            .order_by(EtfShare.trade_date)
+        )
+    )
+    flow_pairs = [
+        (share_days[index], share_days[index - 1])
+        for index in range(1, len(share_days))
+    ][-max(FLOW_WINDOWS):]
+    nets = etf_flow.code_nets(session, flow_pairs, money)
 
     # 只在「当天有日线」的券里算；`values` 按日期升序，最后一条就是 day
     today_codes = {code for code, values in grouped.items() if values[-1][0] == day}
 
-    # 净申赎逐只取最近 21 个交易日；份额 2026-09-21 才有，缺的日子不进窗口
-    recent_days = days[-21:]
+    flow_keys = [day_key for day_key, _ in flow_pairs]
     flows: dict[int, dict[str, float | None]] = {window: {} for window in FLOW_WINDOWS}
     for code in today_codes:
-        values = [nets.get(flow_day, {}).get(code) for flow_day in recent_days]
+        series = [nets.get(key, {}).get(code) for key in flow_keys]
         for window in FLOW_WINDOWS:
-            available = [value for value in values[-window:] if value is not None]
+            available = [value for value in series[-window:] if value is not None]
             # 窗口里有效天数不足就记 None（**不拿 0 顶**）
             flows[window][code] = sum(available) if len(available) >= window else None
     per_code_flow = flows
