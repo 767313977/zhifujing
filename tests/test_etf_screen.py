@@ -13,7 +13,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.models import Base, EtfBar, EtfBasic, EtfCategory, EtfShare
-from app.services import etf_screen
+from app.services import etf_flow, etf_screen
 
 END = date(2026, 10, 30)
 DAYS = 70
@@ -281,3 +281,66 @@ def test_scale_and_flow_are_none_when_missing(db):
     assert row.scale is None
     assert row.flow20 is None
     assert row.flow20_ratio is None
+
+
+def test_flow_skips_partial_share_days(db, monkeypatch):
+    """份额快照有「只有几只」的碎片日时要跳过，不能拿它当基准日。
+
+    碎片日只有 1 只券有份额 → 第二天其余券都配不上基准，整个 5 日窗口少两天，
+    累计出来就是「残缺日之和」。判断门槛用 `etf_flow.MIN_ROWS`（这里调到 3）。
+    """
+    for code in ("510300", "510310", "512880"):
+        seed(db, code, f"{code}ETF", f"指数{code}", "宽基", "股票", amount=5e8)
+    db.commit()
+    fragment = _dates(25)[-3]
+    for code in ("510300", "510310"):
+        row = db.scalars(
+            select(EtfShare).where(
+                EtfShare.code == code, EtfShare.trade_date == fragment
+            )
+        ).one()
+        db.delete(row)
+    db.commit()
+    monkeypatch.setattr(etf_flow, "MIN_ROWS", 3)
+
+    data = etf_screen.screen(
+        db, END, preset="momentum", dedup=False, scale_min=0, amount_min=0, above_ma20=False
+    )
+    row = next(item for item in data.items if item.code == "510300")
+
+    # 份额一直没变 → 5 日净申赎是 0（有值），不是 None
+    assert row.flow5 == pytest.approx(0.0)
+
+
+def test_detail_rps_matches_list(db):
+    """详情页的 RPS 与列表逐位一致；去重开关也不再改变 RPS（2026-10-31 尾项修）。"""
+    for index in range(24):
+        seed(
+            db,
+            f"51{index:04d}",
+            f"测试ETF{index}",
+            f"指数{index}",
+            "宽基",
+            "股票",
+            amount=1e8 + index,
+            step=0.1 * (index % 5 + 1),
+        )
+    # 同一指数再来一只小的：会被去重折叠，详情页仍要打得开
+    seed(db, "510310", "沪深300ETF易方达", "指数0", "宽基", "股票", amount=1e6, step=0.5)
+    db.commit()
+
+    listed = etf_screen.screen(
+        db, END, preset="momentum", dedup=True, scale_min=0, amount_min=0, above_ma20=False
+    )
+    row = next(item for item in listed.items if item.code == "510000")
+    unfolded = etf_screen.screen(
+        db, END, preset="momentum", dedup=False, scale_min=0, amount_min=0, above_ma20=False
+    )
+    same = next(item for item in unfolded.items if item.code == "510000")
+    detail = etf_screen.detail(db, "510000", END)
+    folded = etf_screen.detail(db, "510310", END)
+
+    assert row.rps60 is not None
+    assert same.rps60 == row.rps60
+    assert detail is not None and detail.row.rps60 == row.rps60
+    assert folded is not None and folded.row.same_count == 2

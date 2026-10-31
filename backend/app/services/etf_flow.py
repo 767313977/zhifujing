@@ -190,6 +190,25 @@ def split_codes(session: Session, days: list[date]) -> dict[date, set[str]]:
     return result
 
 
+def covered_days(session: Session, end: date | None = None) -> list[date]:
+    """截至 `end` 的**覆盖达标**份额快照日（升序），判据只看行数 ≥ `MIN_ROWS`。
+
+    为什么不带交易日历：这里要的是「能当基准 / 能进窗口」的日子，非交易日那批
+    货基快照只有十几行，行数门槛自然挡住（`usable_days` 那套日历判据是给
+    「当天能不能算净申赎」用的，两者目的不同）。
+
+    一天都不达标时（份额刚上线只有几十只、或测试库）**回退到全部快照日** ——
+    否则净申赎会整片变成 None，看起来像「功能坏了」。
+    """
+    counts = row_counts(session)
+    qualified = sorted(
+        day for day, count in counts.items() if count >= MIN_ROWS and (end is None or day <= end)
+    )
+    if qualified:
+        return qualified
+    return sorted(day for day in counts if end is None or day <= end)
+
+
 def snapshot_rows(session: Session, day: date) -> int:
     """某天有多少只 ETF 有份额快照行（`MIN_ROWS` 判据的输入）。"""
     return int(

@@ -298,9 +298,9 @@ def _load(session: Session) -> _Dataset:
         share_days[code] = [item[0] for item in rows]
         share_values[code] = [item[1] for item in rows]
 
-    snapshot_days = list(
-        session.scalars(select(EtfShare.trade_date).distinct().order_by(EtfShare.trade_date))
-    )
+    # 只取覆盖达标的份额日（碎片快照当基准会让第二天几乎所有券配不上，
+    # 与 `etf_screen` 同一口径，见 `etf_flow.covered_days`）
+    snapshot_days = etf_flow.covered_days(session)
     pairs = [
         (snapshot_days[index], snapshot_days[index - 1])
         for index in range(1, len(snapshot_days))

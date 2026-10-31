@@ -267,18 +267,16 @@ def _raw_rows(session: Session, day: date, days: list[date], grouped: dict) -> l
     # 净申赎的窗口按**份额快照日**铺，不按日线日铺：份额 2026-09-18 才开始有，
     # 且中间有几天没采到；按日线铺会有一半的 pair 因为「基准日没份额」而丢掉，
     # 结果 20 日窗口永远凑不满（实测只剩 14 个有效值 → 全市场 flow20 都是 None）。
-    share_days = list(
-        session.scalars(
-            select(EtfShare.trade_date)
-            .where(EtfShare.trade_date <= day)
-            .distinct()
-            .order_by(EtfShare.trade_date)
-        )
-    )
+    #
+    # ⚠️ 只取**覆盖达标**的份额日（`etf_flow.covered_days`，2026-10-31 尾项修）：
+    # `etf_share` 里有只有几十行的碎片快照（跨境/QDII 滞后一天那种），拿它当基准，
+    # 第二天几乎所有券都配不上 → 整个窗口少一天，累计出来的是「残缺日之和」。
+    share_days = etf_flow.covered_days(session, day)
+    recent = share_days[-(max(FLOW_WINDOWS) + 1):]
     flow_pairs = [
-        (share_days[index], share_days[index - 1])
-        for index in range(1, len(share_days))
-    ][-max(FLOW_WINDOWS):]
+        (recent[index], recent[index - 1])
+        for index in range(1, len(recent))
+    ]
     nets = etf_flow.code_nets(session, flow_pairs, money)
 
     # 只在「当天有日线」的券里算；`values` 按日期升序，最后一条就是 day
@@ -412,32 +410,28 @@ def _dedup(rows: list[_Raw]) -> tuple[list[_Raw], dict[str, int]]:
     return keep, counts
 
 
-def _rps(rows: list[_Raw]) -> dict[str, dict[int, float | None]]:
-    """在**去重后的股票类 ETF** 里算各窗口的涨幅分位（中位秩，0~100）。
+def _rps_universe(rows: list[_Raw]) -> dict[int, list[float]]:
+    """各窗口的分位基准：**去重后的股票类 ETF** 的涨幅（升序）。
 
-    先排序再二分求「低于 / 等于」的个数（原来是逐个 `sum(...)` 扫全表）：
-    结果逐位相同（中位秩的定义没变），但单日从 O(n²) 降到 O(n log n)。
-    ETF-4 的验证面板要对 120 个交易日逐日算，旧写法在那里要跑几分钟。
+    去重是必须的：沪深300 有二十几只，不去重会把排名挤歪。这里只算一次，
+    详情页里被折叠的成员也能查自己的分位（见 `to_rows(keep_all=True)`）。
     """
-    universe = [
-        row for row in rows if row.fund_type == "股票"
-    ] or rows
-    result: dict[str, dict[int, float | None]] = {}
-    for window in RPS_WINDOWS:
-        values = sorted(
+    universe = [row for row in rows if row.fund_type == "股票"] or rows
+    return {
+        window: sorted(
             row.returns[window] for row in universe if row.returns[window] is not None
         )
-        for row in universe:
-            value = row.returns[window]
-            if value is None or len(values) < 20:
-                result.setdefault(row.code, {})[window] = None
-                continue
-            below = bisect_left(values, value)
-            equal = bisect_right(values, value) - below
-            result.setdefault(row.code, {})[window] = round(
-                (below + equal / 2) / len(values) * 100, 1
-            )
-    return result
+        for window in RPS_WINDOWS
+    }
+
+
+def _rps_value(values: list[float], value: float | None) -> float | None:
+    """中位秩分位（0~100）；样本少于 20 个就不给值。"""
+    if value is None or len(values) < 20:
+        return None
+    below = bisect_left(values, value)
+    equal = bisect_right(values, value) - below
+    return round((below + equal / 2) / len(values) * 100, 1)
 
 
 def _labels(row: _Raw, same_count: int) -> tuple[list[str], list[str]]:
@@ -461,20 +455,32 @@ def _labels(row: _Raw, same_count: int) -> tuple[list[str], list[str]]:
     return labels, risks
 
 
-def to_rows(raws: list[_Raw], dedup: bool = True) -> list[EtfRow]:
+def to_rows(
+    raws: list[_Raw], dedup: bool = True, keep_all: bool = False
+) -> list[EtfRow]:
     """把某一天算好的原始行去重、算 RPS、转成页面用的 `EtfRow`。
 
     与 `screen` 共用（ETF-4 的验证面板要逐日重放历史筛选，不能另写一份
     —— 两份口径迟早会分叉，形态回测就吃过这个亏）。
+
+    **RPS 一律按去重后的股票类算**（2026-10-31 尾项修）：它与「页面去重开关」无关，
+    否则同一只 ETF 在列表（去重）与详情页（不去重）里会给出两个 RPS，看起来像坏了。
+    `keep_all=True` 时把被折叠的成员也返回（详情页要能打开任意一只）——
+    它们的 RPS 是「把自己放进那个分布里」的分位，组的只数仍记在 `same_count`。
     """
-    if dedup:
-        raws, counts = _dedup(raws)
-    else:
-        counts = {row.norm: 1 for row in raws}
-    rps = _rps(raws)
+    reps, counts = _dedup(raws)
+    universe = _rps_universe(reps)
+    target = raws if keep_all else (reps if dedup else raws)
+    rps = {
+        raw.code: {
+            window: _rps_value(universe[window], raw.returns[window])
+            for window in RPS_WINDOWS
+        }
+        for raw in target
+    }
 
     rows: list[EtfRow] = []
-    for raw in raws:
+    for raw in target:
         labels, risks = _labels(raw, counts.get(raw.norm, 1))
         rows.append(
             EtfRow(
@@ -489,9 +495,9 @@ def to_rows(raws: list[_Raw], dedup: bool = True) -> list[EtfRow]:
                 ret20=raw.returns[20],
                 ret60=raw.returns[60],
                 ret120=raw.returns[120],
-                rps20=rps.get(raw.code, {}).get(20),
-                rps60=rps.get(raw.code, {}).get(60),
-                rps120=rps.get(raw.code, {}).get(120),
+                rps20=rps[raw.code].get(20),
+                rps60=rps[raw.code].get(60),
+                rps120=rps[raw.code].get(120),
                 ma20=raw.ma20,
                 ma60=raw.ma60,
                 drawdown=raw.drawdown,
@@ -642,19 +648,11 @@ def detail(session: Session, code: str, day: date | None = None) -> EtfDetail | 
         day = session.scalar(select(func.max(EtfBar.trade_date)))
     if day is None:
         return None
-    # 详情不套动量预设的门槛：货币 / 债券 ETF 也要打得开
-    data = screen(
-        session,
-        day,
-        preset="momentum",
-        fund_type="",
-        scale_min=0,
-        amount_min=0,
-        above_ma20=False,
-        dedup=False,
-        limit=0,
-    )
-    row = next((item for item in data.items if item.code == code), None)
+    # 详情不套任何门槛：货币 / 债券 ETF 也要打得开；被同指数去重折叠掉的那只也能开。
+    # RPS / 同类只数仍按**去重后**的分布算，与列表逐位一致（2026-10-31 尾项修）。
+    _, _, raws = _load_raw(session, day)
+    rows = to_rows(raws, dedup=True, keep_all=True)
+    row = next((item for item in rows if item.code == code), None)
     if row is None:
         return None
 
@@ -680,7 +678,7 @@ def detail(session: Session, code: str, day: date | None = None) -> EtfDetail | 
 
     basic = session.get(EtfBasic, code)
     norm = (basic.norm_name or basic.name) if basic else None
-    by_code = {item.code: item for item in data.items}
+    by_code = {item.code: item for item in rows}
     peers: list[dict] = []
     if norm:
         same = session.scalars(
