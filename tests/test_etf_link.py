@@ -176,11 +176,13 @@ def test_related_etf_from_stock_industry(db):
     seed_etf(db, code="512480", name="半导体ETF", category="电子通信")
     seed_etf(db, code="159755", name="电池ETF", category="电池储能")
     seed_etf(db, code="512010", name="医药ETF", category="医药医疗")
+    seed_etf(db, code="560280", name="工程机械ETF", category="基建制造")
     db.add_all(
         [
             StockBasic(code="300750", name="宁德时代", industry="电力设备-电池-锂电池"),
             StockBasic(code="600276", name="恒瑞医药", industry="医药生物-化学制药"),
             StockBasic(code="600519", name="贵州茅台", industry="食品饮料-白酒-白酒Ⅲ"),
+            StockBasic(code="300124", name="汇川技术", industry="机械设备-自动化设备-工控设备"),
         ]
     )
     db.commit()
@@ -191,6 +193,10 @@ def test_related_etf_from_stock_industry(db):
 
     medicine = etf_api.related(code="600276", text=None, limit=3, session=db)
     assert medicine.category == "医药医疗"
+
+    # 「机械设备」只数最多（622 只），必须能归到类，否则一大批票没有卡片
+    machinery = etf_api.related(code="300124", text=None, limit=3, session=db)
+    assert machinery.category == "基建制造"
 
     # 板块 / 行业名才走名称词典；查不到就是「其他」，不硬猜
     assert etf_api.related(code=None, text="锂电池", limit=3, session=db).category == "电池储能"
