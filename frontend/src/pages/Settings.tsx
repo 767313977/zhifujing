@@ -108,6 +108,21 @@ export default function Settings() {
   })
   const [logSort, logRows] = useSort(status?.recent_logs ?? [], LOG_SORTS, { key: null })
 
+  /** 数据健康（FEAT-DATA-HEALTH）：最近一个有日志的交易日，按状态归类 + 失败影响面。 */
+  const health = (() => {
+    const logs = status?.recent_logs ?? []
+    const days = logs
+      .map((log) => log.trade_date)
+      .filter((day): day is string => Boolean(day))
+      .sort()
+    const day = days.length > 0 ? days[days.length - 1] : null
+    const dayLogs = day ? logs.filter((log) => log.trade_date === day) : logs
+    const failed = dayLogs.filter((log) => log.status === 'failed')
+    const empty = dayLogs.filter((log) => log.status === 'empty')
+    const ok = dayLogs.filter((log) => log.status === 'ok')
+    return { day, dayLogs, failed, empty, ok }
+  })()
+
   const reload = useCallback(() => {
     setStatusError(null)
     setStatusLoading(true)
@@ -501,6 +516,70 @@ export default function Settings() {
         </Panel>
 
         <Panel
+          title="数据健康"
+          meta={
+            <span className="num">
+              {health.day ? `${health.day} · 采集 ${health.dayLogs.length} 步` : '暂无日志'}
+            </span>
+          }
+          delay={180}
+        >
+          {!status || health.dayLogs.length === 0 ? (
+            <div className="px-4 py-6 text-center text-[13px] text-fg-dim">
+              还没有采集日志 —— 第一次采集跑完后这里会显示「哪一步坏了、哪些页面会缺数据」
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2 px-4 py-3 text-[13px]">
+                <span className="border border-line px-2 py-[2px] text-fg-muted">
+                  正常 <span className="num text-fg">{health.ok.length}</span>
+                </span>
+                <span className="border border-danger/50 px-2 py-[2px] text-danger">
+                  失败 <span className="num">{health.failed.length}</span>
+                </span>
+                <span className="border border-warn/50 px-2 py-[2px] text-warn">
+                  空数据 <span className="num">{health.empty.length}</span>
+                </span>
+              </div>
+              {health.failed.length === 0 && health.empty.length === 0 ? (
+                <p className="px-4 pb-3 text-[13px] text-fg-muted">
+                  这一天的采集没有失败步骤，页面数据完整。
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="grid-table">
+                    <thead>
+                      <tr>
+                        <th className="text-left">步骤</th>
+                        <th className="text-left">状态</th>
+                        <th className="text-left">影响的页面 / 功能</th>
+                        <th className="text-left">消息</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...health.failed, ...health.empty].map((log) => (
+                        <tr key={`${log.created_at}-${log.task}`}>
+                          <td className="text-left num">{log.task}</td>
+                          <td className={`text-left ${log.status === 'failed' ? 'text-danger' : 'text-warn'}`}>
+                            {log.status === 'failed' ? '失败' : '空数据'}
+                          </td>
+                          <td className="text-left text-[12px] text-fg-muted">
+                            {TASK_IMPACT[log.task] ?? '未知步骤 —— 看右侧消息与设计文档'}
+                          </td>
+                          <td className="text-left text-[12px] text-fg-dim">
+                            {log.message ?? '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </Panel>
+
+        <Panel
           title="采集日志"
           meta={<span className="num">最近 30 条 · 点列头排序</span>}
           delay={200}
@@ -547,6 +626,38 @@ export default function Settings() {
       </div>
     </Layout>
   )
+}
+
+/**
+ * 采集步骤 → 影响的页面（FEAT-DATA-HEALTH）。
+ *
+ * 写死一张映射表就够了：步骤名由 `collect_daily` / `run_late` 固定产生，
+ * 目的只是让人一眼知道「昨晚这一步坏了，今天哪个页面会缺数据」。
+ */
+const TASK_IMPACT: Record<string, string> = {
+  calendar: '交易日历（几乎所有按日接口、计划校验）',
+  index: '首页指数卡 / 情绪周期 / 估值分位',
+  pool_up: '涨停复盘 / 涨停梯队 / 情绪 / 主线',
+  pool_down: '涨停复盘（跌停池）',
+  pool_broken: '涨停复盘（炸板率）',
+  sentiment: '首页情绪温度 / 情绪周期',
+  reasons: '涨停复盘「涨停原因」',
+  lhb: '资金面龙虎榜 / 个股页龙虎榜',
+  lhb_institution: '资金面机构席位',
+  etf: 'ETF 页 / 资金面 ETF 申赎',
+  board_ranking: '板块题材排行',
+  themes: '主线看板 / 板块题材（涨停题材）',
+  margin: '资金面两融 / 风控过热判断',
+  hsgt: '资金面北向成交额',
+  kline: '形态选股 / 个股页日线 / 计划核对 / 回测',
+  patterns: '形态选股 / 悟道 / 胜率跟踪',
+  dde: '资金面个股 DDE / 板块资金流',
+  board_flow: '板块资金流向',
+  members: '板块成分股',
+  watchlist: '自选股行情同步',
+  cb: '可转债筛选 / 强赎雷达',
+  auction: '盘前页 / 竞价强度',
+  fear_greed: '情绪周期恐贪指数 / 风控阈值',
 }
 
 const COVERAGE_NOTES: Record<string, string> = {
