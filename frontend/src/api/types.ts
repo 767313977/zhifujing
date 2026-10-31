@@ -3102,6 +3102,13 @@ export interface ThemeLeader {
   total_mv: number | null
 }
 
+export interface ThemeEtf {
+  code: string
+  name: string | null
+  /** 当日净申赎（元）。只返回真有数的 */
+  net: number
+}
+
 export interface ThemeBoardRow {
   concept: string
   rank: number
@@ -3115,6 +3122,8 @@ export interface ThemeBoardRow {
   pct_chg: number | null
   net_inflow: number | null
   leaders: ThemeLeader[]
+  /** 相关 ETF 净申赎（静态映射）；没映射 / 没份额数据时为空 */
+  etfs: ThemeEtf[]
 }
 
 export interface ThemeFadeRow {
@@ -3131,6 +3140,8 @@ export interface ThemeBoard {
   limit_up_total: number
   rows: ThemeBoardRow[]
   fading: ThemeFadeRow[]
+  /** 相关 ETF 用的份额快照日（可能早于 trade_date；没份额数据时为 null） */
+  etf_date: string | null
   note: string | null
 }
 

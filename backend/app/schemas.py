@@ -3463,6 +3463,15 @@ class ThemeLeaderOut(ApiModel):
     total_mv: float | None = None
 
 
+class ThemeEtfOut(ApiModel):
+    """主线旁的相关 ETF（FEAT-ETF-THEME，静态映射见 `services.theme_board.THEME_ETFS`）。"""
+
+    code: str
+    name: str | None = None
+    #: 当日净申赎（元）。只放真有数的，缺数据时整条不返回
+    net: float
+
+
 class ThemeBoardRowOut(ApiModel):
     concept: str
     rank: int
@@ -3476,6 +3485,8 @@ class ThemeBoardRowOut(ApiModel):
     pct_chg: float | None = None
     net_inflow: float | None = None
     leaders: list[ThemeLeaderOut] = []
+    #: 相关 ETF 净申赎；没有映射或没有份额数据时为空列表
+    etfs: list[ThemeEtfOut] = []
 
 
 class ThemeFadeRowOut(ApiModel):
@@ -3492,6 +3503,8 @@ class ThemeBoardOut(ApiModel):
     limit_up_total: int
     rows: list[ThemeBoardRowOut] = []
     fading: list[ThemeFadeRowOut] = []
+    #: 相关 ETF 用的份额快照日（可能早于 `trade_date`；没有份额数据时为 null）
+    etf_date: date | None = None
     note: str | None = None
 
 

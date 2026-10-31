@@ -16,6 +16,9 @@
 - 主线切换：与**上一交易日**的同名题材集合比较 —— 昨天不在今天在 = 新晋；
   两天都在 = 延续；昨天在、今天不在（或跌破共振门槛）= 退潮（放在 `fading` 里）。
   排名变化 = 昨日名次 − 今日名次（正数 = 上升）；新晋没有昨日名次，记 null。
+- 相关 ETF 净申赎（FEAT-ETF-THEME）：题材关键词 ↔ ETF 的**手工静态表**（`THEME_ETFS`），
+  净额复用 `services.etf_flow.code_nets`；没有映射 / 没有份额数据时该行 `etfs` 为空，
+  页面就不显示这一段（不猜、不拿 0 顶）。
 """
 
 from datetime import date
@@ -24,11 +27,104 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import LimitPool, SectorDaily
+from app.models import EtfBasic, LimitPool, SectorDaily
+from app.services.etf_flow import (
+    code_nets,
+    latest_covered_day,
+    money_fund_codes,
+    prev_covered_day,
+)
 from app.services.themes import limit_up_themes
 from app.services.trading_days import previous_trade_day
 from app.sources.kaipanhong import TAXONOMY_SELECTED
 from app.timeutil import today_cn
+
+#: 主线题材 → 相关 ETF（**手工静态表**，2026-10-31 加）。
+#:
+#: 为什么手工：没有数据源给「概念板块 → ETF」的映射，按名称模糊匹配会把宽基
+#: （「创业板人工智能」）混进主题里。只挑各方向最有代表性的一两只，宁缺毋滥 ——
+#: 匹配不上的主线就不显示 ETF 这一段。
+#:
+#: 匹配规则：键按「**包含**」命中板块名（开盘红的板块名常带「概念 / 设备 / 产业链」后缀），
+#: 顺序即优先级，越具体的越靠前（「新能源车」要排在「新能源」那种泛词之前）。
+THEME_ETFS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("芯片", ("512760", "159995")),
+    ("半导体", ("512480",)),
+    ("光刻", ("512480",)),
+    ("算力", ("159819",)),
+    ("人工智能", ("159819",)),
+    ("机器人", ("562500",)),
+    ("工业母机", ("562500",)),
+    ("军工", ("512660",)),
+    ("低空", ("512660",)),
+    ("创新药", ("159992",)),
+    ("医药", ("512010",)),
+    ("医疗", ("512170",)),
+    ("证券", ("512880",)),
+    ("白酒", ("512690",)),
+    ("食品饮料", ("512690",)),
+    ("光伏", ("515790",)),
+    ("新能源车", ("515030",)),
+    ("汽车", ("515030",)),
+    ("锂电池", ("515030",)),
+    ("稀土", ("516780",)),
+    ("有色", ("512400",)),
+    ("黄金", ("518880",)),
+    ("煤炭", ("515220",)),
+    ("电力", ("561560",)),
+    ("游戏", ("159869",)),
+    ("传媒", ("512980",)),
+    ("通信", ("515050",)),
+    ("消费电子", ("159732",)),
+    ("恒生科技", ("513130",)),
+    ("银行", ("512800",)),
+    ("地产", ("512200",)),
+    ("养殖", ("159865",)),
+    ("化工", ("159870",)),
+    ("基建", ("516950",)),
+)
+
+
+def _theme_etf_codes(concept: str) -> tuple[str, ...]:
+    """按静态表给题材挑 ETF 代码；没有映射返回空元组。"""
+    for keyword, codes in THEME_ETFS:
+        if keyword in concept:
+            return codes
+    return ()
+
+
+def _etf_flow_map(
+    session: Session, day: date, codes: set[str]
+) -> tuple[date | None, dict[str, float]]:
+    """`{code: 当日净申赎}`（元）+ 实际用的快照日。
+
+    份额快照未必覆盖 `day` 当天（上交所 22:15 才发布，或这天还没采），所以取
+    **不晚于 day 的最近一个覆盖达标日**（`latest_covered_day`），再取它前一个覆盖日
+    做基准 —— 与 ETF 页完全同一套口径（`etf_flow` 的模块说明里有三个坑的由来）。
+    """
+    if not codes:
+        return None, {}
+    snapshot = latest_covered_day(session, day)
+    if snapshot is None:
+        return None, {}
+    prev = prev_covered_day(session, snapshot)
+    if prev is None:
+        return snapshot, {}
+    nets = code_nets(
+        session, [(snapshot, prev)], money=money_fund_codes(session)
+    ).get(snapshot, {})
+    return snapshot, nets
+
+
+def _etf_names(session: Session, codes: set[str]) -> dict[str, str | None]:
+    if not codes:
+        return {}
+    return dict(
+        session.execute(
+            select(EtfBasic.code, EtfBasic.name).where(EtfBasic.code.in_(codes))
+        ).all()
+    )
+
 
 
 def _latest_limit_day(session: Session) -> date | None:
@@ -124,6 +220,14 @@ def board(session: Session, trade_date: date | None = None) -> dict[str, Any]:
     prev_clusters = limit_up_themes(session, prev)[0] if prev is not None else []
     prev_rank = _rank_map(prev_clusters)
 
+    # 相关 ETF：先把各题材要看的代码并起来，**一次**算净申赎（ETF 页也这么取数）
+    codes_by_concept = {
+        cluster.concept: _theme_etf_codes(cluster.concept) for cluster in clusters
+    }
+    wanted = {code for codes in codes_by_concept.values() for code in codes}
+    etf_day, etf_net = _etf_flow_map(session, day, wanted)
+    etf_names = _etf_names(session, wanted)
+
     rank = _rank_map(clusters)
     today_set = set(rank)
     rows: list[dict[str, Any]] = []
@@ -152,6 +256,16 @@ def board(session: Session, trade_date: date | None = None) -> dict[str, Any]:
                 "pct_chg": cluster.pct_chg,
                 "net_inflow": sector.net_inflow if sector is not None else None,
                 "leaders": leaders,
+                # 只放**真有净额**的 ETF：没有份额数据（或没映射）就是空列表
+                "etfs": [
+                    {
+                        "code": code,
+                        "name": etf_names.get(code),
+                        "net": etf_net[code],
+                    }
+                    for code in codes_by_concept[cluster.concept]
+                    if code in etf_net
+                ],
             }
         )
 
@@ -184,5 +298,7 @@ def board(session: Session, trade_date: date | None = None) -> dict[str, Any]:
         "limit_up_total": len(pool),
         "rows": rows,
         "fading": fading,
+        # 相关 ETF 净申赎用的是哪一天的份额快照（可能早于 `trade_date`，见 `_etf_flow_map`）
+        "etf_date": etf_day,
         "note": note,
     }

@@ -75,6 +75,7 @@ export default function ThemeBoardPanel({
               {data.trade_date}
               {data.prev_trade_date ? ` · 对比 ${data.prev_trade_date}` : ''} · 涨停{' '}
               {data.limit_up_total} 只
+              {data.etf_date ? ` · ETF 份额 ${data.etf_date}` : ''}
             </span>
           ) : null
         }
@@ -97,6 +98,7 @@ export default function ThemeBoardPanel({
                     <th>最高板</th>
                     <th>涨幅</th>
                     <th>净流入</th>
+                    <th className="text-left">相关ETF</th>
                     <th className="text-left">龙头 / 中军 / 跟风</th>
                   </tr>
                 </thead>
@@ -137,6 +139,30 @@ export default function ThemeBoardPanel({
                       <td className="num">{row.max_consecutive ?? '—'}</td>
                       <td className={`num ${toneOf(row.pct_chg)}`}>{fmtPct(row.pct_chg)}</td>
                       <td className="num text-fg-muted">{fmtAmount(row.net_inflow)}</td>
+                      <td className="!text-left">
+                        {row.etfs.length === 0 ? (
+                          <span className="text-fg-dim">—</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                            {row.etfs.map((etf) => (
+                              <span
+                                key={etf.code}
+                                className="whitespace-nowrap text-[12px] text-fg-muted"
+                                title={`${etf.code} 当日净申赎`}
+                              >
+                                {etf.name ?? etf.code}
+                                <span
+                                  className={`num ml-1 ${
+                                    etf.net > 0 ? 'text-up' : etf.net < 0 ? 'text-down' : ''
+                                  }`}
+                                >
+                                  {fmtAmount(etf.net)}
+                                </span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
                       <td className="!text-left">
                         <div className="flex flex-wrap gap-x-2 gap-y-1">
                           {row.leaders.map((item) => (
@@ -193,6 +219,8 @@ export default function ThemeBoardPanel({
             主线的「涨停数」按**开盘红精选板块**归属统计，与板块页、涨停复盘同源；
             一只票可以挂多个题材，所以各行之和会大于当日涨停总数（{data.limit_up_total} 只）。
             龙头 / 中军 / 跟风是规则排出来的，不是荐股。
+            「相关ETF」是**手工映射**（每个方向一两只代表 ETF），净申赎只在该 ETF
+            有份额快照时才显示，没数据就是「—」。
           </p>
         )}
       </Panel>

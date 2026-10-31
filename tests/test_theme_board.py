@@ -10,7 +10,15 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models import Base, LimitPool, SectorDaily, StockConcept, TradeCalendar
+from app.models import (
+    Base,
+    EtfBasic,
+    EtfShare,
+    LimitPool,
+    SectorDaily,
+    StockConcept,
+    TradeCalendar,
+)
 from app.services import theme_board
 
 PREV = date(2026, 10, 29)
@@ -177,3 +185,61 @@ def test_below_threshold_is_not_mainline(db):
         data = theme_board.board(session, date(2026, 11, 2))
     assert data["rows"] == []
     assert "共振" in (data["note"] or "")
+
+
+# ------------------------------------------------------------ 相关 ETF（FEAT-ETF-THEME）
+
+
+def test_etf_mapping_matches_by_keyword():
+    # 板块名常带后缀，按「包含」匹配
+    assert theme_board._theme_etf_codes("机器人概念") == ("562500",)
+    assert theme_board._theme_etf_codes("半导体设备") == ("512480",)
+    # 没有映射的题材返回空（页面不显示这一段，也不猜）
+    assert theme_board._theme_etf_codes("独角兽") == ()
+
+
+def test_etf_flow_attached_only_when_share_data_exists(db):
+    with Session(db.bind) as session:
+        # 两个快照日各凑够 MIN_ROWS（300 只）才会被当成「覆盖达标」的基准日
+        fillers = []
+        for day in (PREV, DAY):
+            fillers.extend(
+                EtfShare(
+                    trade_date=day,
+                    code=f"5{index:05d}",
+                    name=f"填充{index}",
+                    shares=100.0,
+                    close=1.0,
+                )
+                for index in range(299)
+            )
+        session.add_all(fillers)
+        session.add_all(
+            [
+                EtfShare(
+                    trade_date=PREV,
+                    code="562500",
+                    name="机器人ETF",
+                    shares=1000.0,
+                    close=2.0,
+                ),
+                EtfShare(
+                    trade_date=DAY,
+                    code="562500",
+                    name="机器人ETF",
+                    shares=1100.0,
+                    close=2.0,
+                ),
+                EtfBasic(code="562500", name="机器人ETF"),
+            ]
+        )
+        session.commit()
+        data = theme_board.board(session, DAY)
+
+    assert data["etf_date"] == DAY
+    robot = next(row for row in data["rows"] if row["concept"] == "机器人")
+    # (1100 − 1000) × 2.0 = 200 元净申购
+    assert robot["etfs"] == [{"code": "562500", "name": "机器人ETF", "net": 200.0}]
+    # 「固态电池」没有映射 → 空列表（页面显示 —）
+    battery = next(row for row in data["rows"] if row["concept"] == "固态电池")
+    assert battery["etfs"] == []
