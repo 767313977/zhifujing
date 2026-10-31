@@ -3020,6 +3020,86 @@ class CbRadarOut(BaseModel):
     items: list[CbRadarRowOut] = []
 
 
+class EtfRowOut(BaseModel):
+    """ETF 筛选结果的一行（2026-10-31 加）。"""
+
+    code: str
+    name: str | None = None
+    category: str
+    fund_type: str | None = None
+    t0: bool = False
+    close: float | None = None
+    pct_chg: float | None = None
+    ret5: float | None = None
+    ret20: float | None = None
+    ret60: float | None = None
+    ret120: float | None = None
+    rps20: float | None = None
+    rps60: float | None = None
+    rps120: float | None = None
+    ma20: float | None = None
+    ma60: float | None = None
+    drawdown: float | None = None
+    volatility: float | None = None
+    #: 规模（亿）= 份额 × 收盘价；份额缺失时为 None
+    scale: float | None = None
+    amount: float | None = None
+    avg_amount: float | None = None
+    flow5: float | None = None
+    flow20: float | None = None
+    #: 20 日净申赎 ÷ 规模（%）
+    flow20_ratio: float | None = None
+    same_count: int = 1
+    new_high: bool = False
+    labels: list[str] = []
+    risks: list[str] = []
+
+
+class EtfScreenOut(BaseModel):
+    """ETF 筛选：`filters` 是实际生效的条件（预设展开 + 用户覆盖）。"""
+
+    as_of: date | None
+    filters: dict
+    total: int
+    items: list[EtfRowOut] = []
+
+
+class EtfPointOut(BaseModel):
+    """单只 ETF 走势的一个点（价格 + 份额）。"""
+
+    trade_date: date
+    close: float | None = None
+    pct_chg: float | None = None
+    shares: float | None = None
+
+
+class EtfPeerOut(BaseModel):
+    """同指数（`norm_name` 相同）的其它只。"""
+
+    code: str
+    name: str | None = None
+    scale: float | None = None
+    ret60: float | None = None
+    rps60: float | None = None
+    avg_amount: float | None = None
+
+
+class EtfDetailOut(BaseModel):
+    as_of: date | None
+    row: EtfRowOut
+    series: list[EtfPointOut] = []
+    peers: list[EtfPeerOut] = []
+
+
+class EtfCategoryOut(BaseModel):
+    """行业强弱一览的一行。"""
+
+    category: str
+    count: int
+    rps60_median: float | None = None
+    flow20: float | None = None
+
+
 class CbStockBondOut(BaseModel):
     """个股页「存续转债」卡片的一行（最近一次盘后快照）。"""
 

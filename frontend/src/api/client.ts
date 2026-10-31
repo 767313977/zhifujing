@@ -12,6 +12,10 @@ import type {
   CbScreenQuery,
   CbStockBond,
   ChipDistribution,
+  EtfCategoryRow,
+  EtfDetail,
+  EtfScreen,
+  EtfScreenQuery,
   DdeBoard,
   DdeOrder,
   Erp,
@@ -1134,6 +1138,25 @@ export const api = {
   /** 单券详情：条款摘要 + 最近一份快照 + 走势序列。 */
   cbDetail: (code: string, days = 250) =>
     request<CbDetail>(`/cb/${encodeURIComponent(code)}?days=${days}`),
+
+  /** ETF 筛选（预设 + 覆盖条件；不传日期 = 最近一份日线）。 */
+  etfScreen: (params: EtfScreenQuery = {}) => {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(params)) {
+      if (value === null || value === undefined || value === '') continue
+      query.set(key, String(value))
+    }
+    const text = query.toString()
+    return request<EtfScreen>(`/etf/screen${text ? `?${text}` : ''}`)
+  },
+
+  /** 行业强弱一览：每类的 RPS60 中位数与 20 日净申赎。 */
+  etfCategories: (date?: string | null) =>
+    request<EtfCategoryRow[]>(withDate('/etf/categories', date)),
+
+  /** 单只 ETF 详情：指标 + 250 日走势 + 同类。 */
+  etfDetail: (code: string, date?: string | null) =>
+    request<EtfDetail>(withDate(`/etf/${encodeURIComponent(code)}`, date)),
 
   note: (date: string) => request<ReviewNote>(`/note/${date}`),
 

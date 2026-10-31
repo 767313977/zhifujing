@@ -2666,6 +2666,93 @@ export interface CbStockBond {
   state: string | null
 }
 
+/** ETF 筛选结果的一行（2026-10-31 加）。 */
+export interface EtfRow {
+  code: string
+  name: string | null
+  category: string
+  fund_type: string | null
+  t0: boolean
+  close: number | null
+  pct_chg: number | null
+  ret5: number | null
+  ret20: number | null
+  ret60: number | null
+  ret120: number | null
+  rps20: number | null
+  rps60: number | null
+  rps120: number | null
+  ma20: number | null
+  ma60: number | null
+  drawdown: number | null
+  volatility: number | null
+  /** 规模（亿）= 份额 × 收盘价；没有份额快照时为空 */
+  scale: number | null
+  amount: number | null
+  avg_amount: number | null
+  flow5: number | null
+  flow20: number | null
+  /** 20 日净申赎 ÷ 规模（%） */
+  flow20_ratio: number | null
+  /** 同指数只数（>1 表示页面显示「同类 N 只」） */
+  same_count: number
+  new_high: boolean
+  labels: string[]
+  risks: string[]
+}
+
+export interface EtfScreen {
+  as_of: string | null
+  filters: Record<string, unknown>
+  total: number
+  items: EtfRow[]
+}
+
+export interface EtfScreenQuery {
+  preset?: string
+  scale_min?: number | null
+  amount_min?: number | null
+  category?: string | null
+  dedup?: boolean | null
+  exclude_money?: boolean | null
+  exclude_bond?: boolean | null
+  sort?: string
+  limit?: number
+  date?: string | null
+}
+
+/** 单只 ETF 走势的一个点（价格 + 份额）。 */
+export interface EtfPoint {
+  trade_date: string
+  close: number | null
+  pct_chg: number | null
+  shares: number | null
+}
+
+export interface EtfPeer {
+  code: string
+  name: string | null
+  scale: number | null
+  ret60: number | null
+  rps60: number | null
+  avg_amount: number | null
+}
+
+export interface EtfDetail {
+  as_of: string | null
+  row: EtfRow
+  series: EtfPoint[]
+  peers: EtfPeer[]
+}
+
+/** 行业强弱一览的一行。 */
+export interface EtfCategoryRow {
+  category: string
+  count: number
+  rps60_median: number | null
+  flow20: number | null
+}
+
 /** 单券走势的一个点（盘后快照）。 */
 export interface CbDetailPoint {
   trade_date: string

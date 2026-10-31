@@ -18,6 +18,7 @@ const AnomalyPage = lazy(() => import('./pages/Anomaly'))
 const AuctionPage = lazy(() => import('./pages/Auction'))
 const ConvertiblePage = lazy(() => import('./pages/Convertible'))
 const CbDetailPage = lazy(() => import('./pages/CbDetail'))
+const EtfPage = lazy(() => import('./pages/Etf'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Funds = lazy(() => import('./pages/Funds'))
 const JournalPage = lazy(() => import('./pages/Journal'))
@@ -160,6 +161,15 @@ export default function App() {
                 element={
                   <RequireAuth>
                     <CbDetailPage />
+                  </RequireAuth>
+                }
+              />
+              {/* ETF：盘后筛选 + 行业强弱（日线来自通达信盘后包，可回补一年） */}
+              <Route
+                path="/etf"
+                element={
+                  <RequireAuth>
+                    <EtfPage />
                   </RequireAuth>
                 }
               />
