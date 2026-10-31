@@ -29,7 +29,7 @@ from datetime import date, timedelta
 from sqlalchemy import func, or_, select
 
 from app.config import Settings, get_settings
-from app.db import session_scope, upsert_many, upsert_many_fill
+from app.db import session_scope, upsert_many_fill
 from app.models import CbBasic, CbDaily, StockDaily
 from app.services.convertible import parse_coupons, ytm
 from app.services.usage import QuotaLevel, quota_level
@@ -572,8 +572,35 @@ def _load_spot(
         logger.warning("兜底完成：价格来自东财、成交额来自 iFinD（source=%s）", SOURCE_EM_IFIND)
         return fallback, SOURCE_EM_IFIND
 
+    # 今天早先已经兜过一次：这一趟只拿到价格（`amount` 全空），但库里早先那批
+    # `em+ifind` 的成交额还在 —— `refresh` 用 fill 语义落库不会把它抹掉，
+    # 所以 source 仍标 em+ifind 才与数据一致（2026-10-31 复查 P1）。
+    if _already_fetched_amounts(day):
+        logger.info(
+            "兜底完成：价格来自东财；成交额沿用今天早先 iFinD 兜到的值（source=%s）",
+            SOURCE_EM_IFIND,
+        )
+        return fallback, SOURCE_EM_IFIND
+
     logger.warning("兜底完成：只有价格、没有成交额（source=%s）", SOURCE_EM)
     return fallback, SOURCE_EM
+
+
+def _already_fetched_amounts(day: date) -> int:
+    """今天是否已经有「价格来自东财、成交额来自 iFinD」的行；返回行数（0 = 还没有）。
+
+    单独一个函数是为了让 `_load_spot` 能区分**为什么**不取 iFinD：配额让路 vs 今天已经取过。
+    两者的后续处理完全不同 —— 前者这一趟确实没有成交额，后者库里的成交额还在。
+    """
+    with session_scope() as session:
+        return int(
+            session.scalar(
+                select(func.count())
+                .select_from(CbDaily)
+                .where(CbDaily.trade_date == day, CbDaily.source == SOURCE_EM_IFIND)
+            )
+            or 0
+        )
 
 
 def _ifind_allowed(settings: Settings | None, day: date) -> bool:
@@ -589,12 +616,7 @@ def _ifind_allowed(settings: Settings | None, day: date) -> bool:
     if level >= QuotaLevel.PAUSE_HIT_DDE:
         logger.warning("配额档位已到 %s（DDE 都已让路），跳过 iFinD 成交额兜底", level.name)
         return False
-    with session_scope() as session:
-        done = session.scalar(
-            select(func.count())
-            .select_from(CbDaily)
-            .where(CbDaily.trade_date == day, CbDaily.source == SOURCE_EM_IFIND)
-        )
+    done = _already_fetched_amounts(day)
     if done:
         logger.info("今天的成交额已经从 iFinD 兜过（%d 行），不再重复取", done)
         return False
@@ -664,8 +686,14 @@ def refresh(settings: Settings | None = None, trade_date: date | None = None) ->
                 basic.maturity_call_price,
             )
 
+    # 用 **fill** 语义写（2026-10-31 复查 P1）：17:30 / 19:30 是全量重跑，而新浪是单点 ——
+    # 「17:30 新浪正常（有成交额/最高最低）、19:30 新浪挂了（这些列全空）」这种组合下，
+    # `upsert_many` 会把已经采到的成交额 / 换手 / 涨跌幅**整列刷成 NULL**。
+    # 后果不是「少一列」：`t0` 预设要求成交额 ≥5000 万，19:30 之后整池会变空，页面显示
+    # 「当前条件下没有可转债」。fill 语义下新的非空值照常覆盖（新浪恢复后仍是新价），
+    # 只有「这次没取到」的列保留旧值。
     with session_scope() as session:
-        written = upsert_many(session, CbDaily, rows)
+        written = upsert_many_fill(session, CbDaily, rows)
 
     # 6) 消失的券写退市日期（不删行）
     marked = _mark_delisted(day, {row["bond_code"] for row in rows})

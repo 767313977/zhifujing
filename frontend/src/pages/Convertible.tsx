@@ -92,6 +92,31 @@ function Toggle({
   )
 }
 
+/**
+ * 评级 → 序（与后端 `services.convertible.RATING_RANK` 同一套）。
+ *
+ * 为什么不直接按字符串排：`'AA' < 'AA+' < 'AA-' < 'AAA'` —— 按字符串升序会先出现 AA、
+ * 最后才出现 AAA，正好与「评级越高越好」相反（2026-10-31 体检）。
+ */
+const RATING_ORDER: Record<string, number> = {
+  AAA: 7,
+  'AA+': 6,
+  AA: 5,
+  'AA-': 4,
+  'A+': 3,
+  A: 2,
+  'A-': 1,
+  'BBB+': 0,
+  BBB: -1,
+  'BBB-': -2,
+}
+
+function ratingRank(rating: string | null): number | null {
+  if (!rating) return null
+  // `AA+sti` 这类定向转债按 `AA+` 算（与后端 `removesuffix('STI')` 一致）
+  return RATING_ORDER[rating.trim().toUpperCase().replace(/STI$/, '')] ?? null
+}
+
 /** 筛选表的排序口径（后端已按预设排好，前端只是把能力补齐）。 */
 const SCREEN_SORTS: SortSpecs<CbScreenRow> = {
   score: { value: (row) => row.score },
@@ -104,7 +129,8 @@ const SCREEN_SORTS: SortSpecs<CbScreenRow> = {
   ytm_pct: { value: (row) => row.ytm_pct },
   remain_size: { value: (row) => row.remain_size },
   years_left: { value: (row) => row.years_left },
-  rating: { value: (row) => row.rating, first: 'asc' },
+  // 按等级序排（不是字符串），首次点击先看 AAA
+  rating: { value: (row) => ratingRank(row.rating), first: 'desc' },
   amount: { value: (row) => row.amount },
   stock_pct_chg: { value: (row) => row.stock_pct_chg },
   redeem_count: { value: (row) => row.redeem_count },
@@ -322,7 +348,11 @@ export default function Convertible() {
                   emptyText={
                     data.as_of === null
                       ? '还没有可转债数据 —— 收盘后 17:30 那趟才会采'
-                      : '当前条件下没有可转债 —— 放宽价格 / 溢价 / 规模再看'
+                      : preset === 'revise'
+                        ? // 「博下修」靠本地自算的 30 交易日窗口，10-30 才开始采 ——
+                          // 约 12 月中旬才凑得满。说清楚，别让人以为是筛选条件写错了
+                          '「博下修」要等本地攒满 30 个交易日的转股价值才算得出（2026-10-30 起采，约 12 月中旬才有第一批）；先看「强赎雷达」或换其它预设'
+                        : '当前条件下没有可转债 —— 放宽价格 / 溢价 / 规模再看'
                   }
                 />
               ) : (
@@ -463,6 +493,15 @@ export default function Convertible() {
                     </tbody>
                   </table>
                 </div>
+              )}
+
+              {/* 后端单次最多返回 200 行：命中数大于表格行数时要说清楚，
+                  否则「命中 300 只」和表里 200 行对不上（2026-10-31 体检） */}
+              {data && data.total > data.items.length && (
+                <p className="border-t border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+                  命中 {data.total} 只，上表只显示排序后的前 {data.items.length} 只 ——
+                  收窄价格 / 溢价 / 规模可以让你关注的候选排到前面
+                </p>
               )}
 
               <p className="px-4 py-3 text-[12px] leading-relaxed text-fg-dim">

@@ -516,3 +516,76 @@ def test_refresh_marks_delisted_but_keeps_basic(env):
         assert session.get(CbBasic, "127110") is not None
         assert session.scalars(select(CbDaily).where(CbDaily.trade_date == DAY)).all()
 
+def test_rerun_without_amounts_keeps_earlier_ifind_values(env, monkeypatch):
+    """新浪挂一整天时，19:30 的全量重跑不能把 17:30 兜到的成交额抹掉（复查 P1）。
+
+    原来的 `upsert_many` 会把这一趟的 `amount=None` / `turnover=None` 直接刷进库，
+    而 `t0` 预设要求成交额 ≥5000 万 —— 19:30 之后整池就变空了。
+    """
+    _, maker, _ = env
+    with maker() as session:
+        session.add(
+            CbBasic(
+                bond_code="127110",
+                bond_name="广核转债",
+                stock_code="003816",
+                stock_name="中国广核",
+                list_date=date(2025, 7, 25),
+            )
+        )
+        # 昨日名单：兜底要拿它划「今天该有行情的券」
+        session.add(CbDaily(trade_date=date(2026, 10, 29), bond_code="127110", close=133.0))
+        # 今天 17:30 那一趟：价格来自东财、成交额来自 iFinD
+        session.add(
+            CbDaily(
+                trade_date=DAY,
+                bond_code="127110",
+                close=133.11,
+                amount=3.9e8,
+                turnover=0.8,
+                source=collect_cb.SOURCE_EM_IFIND,
+            )
+        )
+        session.commit()
+
+    # 新浪仍然挂着（spot 为空 → 走东财兜底），iFinD 今天已经取过 → 不再取
+    install(monkeypatch, [], [cov_row()], [redeem_row()])
+    monkeypatch.setattr(collect_cb, "MIN_SPOT_ROWS", 1)
+    monkeypatch.setattr(collect_cb, "_ifind_allowed", lambda settings, day: False)
+
+    assert collect_cb.refresh(trade_date=DAY) == 1
+
+    with maker() as session:
+        row = session.get(CbDaily, (DAY, "127110"))
+        assert row.amount == pytest.approx(3.9e8), "成交额被重跑抹掉了"
+        assert row.turnover == pytest.approx(0.8)
+        assert row.close == pytest.approx(133.11)
+        # 库里成交额是 iFinD 兜来的，source 就该继续标 em+ifind
+        assert row.source == collect_cb.SOURCE_EM_IFIND
+
+
+def test_load_spot_labels_source_by_amount_presence(env, monkeypatch):
+    """没有成交额 → source=em；今天早先已兜过 → 仍标 em+ifind（与库里的数据一致）。"""
+    _, maker, _ = env
+    source = FakeSource([], [cov_row()], [redeem_row()])
+    monkeypatch.setattr(collect_cb, "_recent_universe", lambda: {"127110"})
+    monkeypatch.setattr(collect_cb, "_ifind_allowed", lambda settings, day: False)
+    monkeypatch.setattr(collect_cb, "MIN_SPOT_ROWS", 1)
+
+    _, label = collect_cb._load_spot(source, None, [cov_row()], DAY)
+    assert label == collect_cb.SOURCE_EM
+
+    with maker() as session:
+        session.add(
+            CbDaily(
+                trade_date=DAY,
+                bond_code="127110",
+                close=133.11,
+                amount=3.9e8,
+                source=collect_cb.SOURCE_EM_IFIND,
+            )
+        )
+        session.commit()
+
+    _, label = collect_cb._load_spot(source, None, [cov_row()], DAY)
+    assert label == collect_cb.SOURCE_EM_IFIND
