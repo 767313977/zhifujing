@@ -514,10 +514,12 @@ def screen(session: Session, day: date | None = None, **overrides) -> EtfScreen:
             )
         )
 
+    # `limit=0` = 不截断（行业强弱 / 详情要全量算，不能被页面的 200 上限切掉尾巴）
     limit = int(filters.get("limit", 200))
     rows = [row for row in rows if _keep(row, filters)]
     rows.sort(key=_sort_key(filters.get("sort") or "rps60"))
-    return EtfScreen(as_of=day, filters=filters, items=rows[:limit], total=len(rows))
+    items = rows[:limit] if limit > 0 else rows
+    return EtfScreen(as_of=day, filters=filters, items=items, total=len(rows))
 
 
 def _keep(row: EtfRow, filters: dict) -> bool:
@@ -604,7 +606,7 @@ def detail(session: Session, code: str, day: date | None = None) -> EtfDetail | 
         amount_min=0,
         above_ma20=False,
         dedup=False,
-        limit=5000,
+        limit=0,
     )
     row = next((item for item in data.items if item.code == code), None)
     if row is None:
@@ -672,7 +674,9 @@ def categories(session: Session, day: date | None = None) -> list[dict]:
         scale_min=0,
         amount_min=0,
         above_ma20=False,
-        limit=2000,
+        # 不设上限：全市场 ETF 每年新增约 400 只，写死 2000 会让超出的那部分
+        # 资金悄悄不计入行业合计（2026-10-31 复查提示）
+        limit=0,
     )
     reps = screen(session, day, dedup=True, **base)
     every = screen(session, day, dedup=False, **base)

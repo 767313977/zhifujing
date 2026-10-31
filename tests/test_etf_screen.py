@@ -199,6 +199,20 @@ def test_breakout_excludes_money_etf(db):
     assert data.filters["fund_type"] == "股票"
 
 
+def test_limit_zero_means_no_truncation(db):
+    """`limit=0` 不截断：行业强弱/详情要全量，不能被页面的上限切掉尾巴。"""
+    for code in ("510300", "510310", "512880"):
+        seed(db, code, f"{code}ETF", f"指数{code}", "宽基", "股票", amount=5e8)
+    db.commit()
+
+    data = etf_screen.screen(
+        db, END, preset="momentum", dedup=False, limit=0, scale_min=0, amount_min=0
+    )
+
+    assert data.total == 3
+    assert len(data.items) == 3
+
+
 def test_raw_rows_are_cached(db):
     """同一 (基准日, 日线最新日, 份额最新日) 下重复调用直接用缓存。"""
     seed(db, "510300", "沪深300ETF", "沪深300", "宽基", "股票", amount=5e8)
