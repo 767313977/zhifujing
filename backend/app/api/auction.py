@@ -24,7 +24,6 @@ from app.models import (
     LimitPool,
     StockBasic,
     StockDaily,
-    TradeCalendar,
 )
 from app.schemas import (
     AuctionBoardItem,
@@ -33,6 +32,7 @@ from app.schemas import (
     AuctionRow,
     AuctionSummary,
 )
+from app.services.trading_days import previous_trade_day, recent_trade_days
 from app.timeutil import today_cn
 
 router = APIRouter(prefix="/api", tags=["复盘"])
@@ -74,16 +74,6 @@ def _latest_date(session: Session) -> date | None:
     return session.scalar(select(func.max(AuctionSnapshot.trade_date)))
 
 
-def _prev_trade_date(session: Session, day: date) -> date | None:
-    """上一个交易日（按交易日历，不按 snapshot 自己的日期）。"""
-    return session.scalar(
-        select(TradeCalendar.trade_date)
-        .where(TradeCalendar.trade_date < day)
-        .order_by(TradeCalendar.trade_date.desc())
-        .limit(1)
-    )
-
-
 # 「竞价量比」的回看天数与最小样本数（见 `_auction_ratios`）。
 RATIO_LOOKBACK = 5
 RATIO_MIN_DAYS = 3
@@ -109,14 +99,7 @@ def _auction_ratios(
     """
     if not rows:
         return {}
-    days = list(
-        session.scalars(
-            select(TradeCalendar.trade_date)
-            .where(TradeCalendar.trade_date < trade_date)
-            .order_by(TradeCalendar.trade_date.desc())
-            .limit(RATIO_LOOKBACK)
-        )
-    )
+    days = recent_trade_days(trade_date, RATIO_LOOKBACK, session)
     if len(days) < RATIO_MIN_DAYS:
         return {}
 
@@ -251,7 +234,7 @@ def _metrics(
     「昨日首板 / 连板」不在这里 —— 它就是 `AuctionRow.consecutive`（昨日涨停池的连板数）；
     这里只补「昨日炸板」（查昨日的炸板池，与涨停池互斥）和「昨日换手」。
     """
-    prev = _prev_trade_date(session, trade_date)
+    prev = previous_trade_day(trade_date, session)
     codes = [row.code for row in rows]
 
     # --- 全市场涨幅排名 + 行业内排名 ---
@@ -502,7 +485,7 @@ def auction_list(
             return AuctionListOut(trade_date=today_cn(), total=0, shown=0, rows=[])
 
     # 昨日连板数：当日 9:25 时今日的涨停池还没有，所以「几板」只能取昨日口径
-    prev = _prev_trade_date(session, trade_date)
+    prev = previous_trade_day(trade_date, session)
     boards: dict[str, int] = {}
     if prev is not None:
         boards = {

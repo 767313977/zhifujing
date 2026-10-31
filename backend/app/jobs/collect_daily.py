@@ -38,6 +38,7 @@ from app.models import (
 )
 from app.jobs import collect_funds
 from app.services.sentiment import build_sentiment
+from app.services.trading_days import is_trade_day, previous_trade_day
 from app.services.usage import QuotaLevel, quota_level
 from app.services.watch_scope import (
     filter_stock_codes,
@@ -517,17 +518,15 @@ class DailyCollector:
     def is_trade_day(self, day: date) -> bool:
         """该日期是否交易日。定时任务靠它跳过周末与节假日。
 
+        **2026-10-31 起直接转调 `services.trading_days.is_trade_day`** —— 原来这里
+        自己写了一遍 `count(*)` 查询，与共用版是同一个口径的两份实现。保留这个方法
+        只是历史调用点（`scheduler` 上有采集器实例）不用改签名。
+
         交易日历没数据时保守返回 False，避免在非交易日白跑一遍采集
         —— 但这会让**全新库**永远起不来，调用方要先 `calendar_empty()` 判断，
         见 `scheduler._run_daily`。
         """
-        with session_scope() as session:
-            count = session.scalar(
-                select(func.count())
-                .select_from(TradeCalendar)
-                .where(TradeCalendar.trade_date == day)
-            )
-        return bool(count)
+        return is_trade_day(day)
 
     def calendar_empty(self) -> bool:
         """交易日历表是否为空。全新部署第一次启动时就是这样。"""
@@ -1124,12 +1123,7 @@ class DailyCollector:
         """
         _require_today(trade_date, "昨日涨停股今日涨幅")
         with session_scope() as session:
-            prev_date = session.scalar(
-                select(TradeCalendar.trade_date)
-                .where(TradeCalendar.trade_date < trade_date)
-                .order_by(TradeCalendar.trade_date.desc())
-                .limit(1)
-            )
+            prev_date = previous_trade_day(trade_date, session)
             if prev_date is None:
                 return None
             codes = list(

@@ -17,8 +17,9 @@ from sqlalchemy import func, select
 
 from app.config import Settings, get_settings
 from app.db import session_scope
-from app.models import CollectLog, TradeCalendar
+from app.models import CollectLog
 from app.services.usage import QuotaLevel, quota_status
+from app.services.trading_days import is_trade_day
 from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
@@ -31,16 +32,6 @@ TAIL_TASK = "daily_tail"
 PUSH_TASK = "push_brief"
 #: 与 `jobs/backup.py` 的 `TASK` 必须一致
 BACKUP_TASK = "db_backup"
-
-
-def _is_trading_day(day: date) -> bool:
-    with session_scope() as session:
-        return (
-            session.scalar(
-                select(TradeCalendar.trade_date).where(TradeCalendar.trade_date == day)
-            )
-            is not None
-        )
 
 
 def _log_statuses(day: date, task: str) -> set[str]:
@@ -112,7 +103,7 @@ def check(day: date | None = None, settings: Settings | None = None) -> dict:
         return {"status": "skipped", "reason": "推送已关闭"}
     if not settings.feishu_webhook_url.strip() and not settings.feishu_target.strip():
         return {"status": "skipped", "reason": "未配置飞书推送通道"}
-    if not _is_trading_day(today):
+    if not is_trade_day(today):
         return {"status": "skipped", "reason": f"{today} 不是交易日"}
     if "sent" in _log_statuses(today, TASK):
         return {"status": "skipped", "reason": "今天已经发过告警"}

@@ -30,6 +30,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.models import EtfCategory, EtfShare, TradeCalendar
+from app.services.trading_days import is_trade_day
 
 # 货币现金类的分类名（词典见 services/etf_category.py 的「货币现金」条目）。
 MONEY_CATEGORY = "货币现金"
@@ -223,12 +224,7 @@ def _is_covered_day(session: Session, day: date) -> bool:
     """这一天是否**覆盖达标**（判据与 `usable_days` 完全一致：日历内 + 行数 ≥ MIN_ROWS）。"""
     if snapshot_rows(session, day) < MIN_ROWS:
         return False
-    return (
-        session.scalar(
-            select(TradeCalendar.trade_date).where(TradeCalendar.trade_date == day)
-        )
-        is not None
-    )
+    return is_trade_day(day, session)
 
 
 def _recent_snapshot_days(

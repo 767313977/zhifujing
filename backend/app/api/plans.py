@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import AppUser, StockBasic, TradeCalendar, TradePlan
+from app.models import AppUser, StockBasic, TradePlan
 from app.schemas import (
     TradePlanIn,
     TradePlanOut,
@@ -22,6 +22,7 @@ from app.schemas import (
 )
 from app.services import trade_plan
 from app.services.auth import current_user
+from app.services.trading_days import is_trade_day
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +50,7 @@ def _validate(session: Session, payload: TradePlanIn) -> tuple[str, str | None]:
         raise HTTPException(
             status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
         )
-    exists = session.scalar(
-        select(TradeCalendar.trade_date).where(
-            TradeCalendar.trade_date == payload.plan_date
-        )
-    )
-    if exists is None:
+    if not is_trade_day(payload.plan_date, session):
         raise HTTPException(status_code=400, detail=f"{payload.plan_date} 不是交易日")
     name = (payload.name or "").strip() or None
     if name is None:

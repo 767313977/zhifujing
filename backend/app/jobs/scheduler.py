@@ -34,9 +34,9 @@ from app.db import session_scope
 from app.jobs.collect_auction import collect_auction
 from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
 from app.jobs.collect_sectors import SectorCollector
-from app.models import CollectLog, TradeCalendar
+from app.models import CollectLog
 from app.services.usage import QuotaLevel, quota_level
-from app.services.trading_days import is_trade_day
+from app.services.trading_days import is_trade_day, previous_trade_day, recent_trade_days
 from app.sources.ifind import IfindError
 from app.timeutil import now_cn, today_cn
 
@@ -106,16 +106,12 @@ MEMBERS_TASK = "members"
 
 
 def _recent_trade_days(end: date, count: int) -> list[date]:
-    """`end` 之前（不含 `end`）最近的 `count` 个交易日，由近及远。"""
-    with session_scope() as session:
-        return list(
-            session.scalars(
-                select(TradeCalendar.trade_date)
-                .where(TradeCalendar.trade_date < end)
-                .order_by(TradeCalendar.trade_date.desc())
-                .limit(count)
-            )
-        )
+    """`end` 之前（不含 `end`）最近的 `count` 个交易日，由近及远。
+
+    统一转调 `services.trading_days.recent_trade_days`（2026-10-31 收口）——
+    保留这个薄壳是为了测试与调用点的 monkeypatch 不用改。
+    """
+    return recent_trade_days(end, count)
 
 
 def _logged_tasks(day: date, tasks: tuple[str, ...], status: str | None) -> set[str]:
@@ -139,20 +135,6 @@ def _record_log(day: date, task: str, status: str, rows: int, message: str | Non
             )
     except Exception:  # noqa: BLE001 - 见 docstring
         logger.warning("写采集日志失败：%s %s", task, day, exc_info=True)
-
-
-def _previous_trade_day(day: date) -> date | None:
-    """`day` 之前最近的一个交易日（不含 `day` 本身）。日历为空时返回 None。
-
-    给「成分股当日还没发布」的回落用（见 `_run_members`）。
-    """
-    with session_scope() as session:
-        return session.scalar(
-            select(TradeCalendar.trade_date)
-            .where(TradeCalendar.trade_date < day)
-            .order_by(TradeCalendar.trade_date.desc())
-            .limit(1)
-        )
 
 
 # 尾部链路的去重标记（写在 `collect_log`），每个交易日一条。
@@ -1234,7 +1216,7 @@ class DailyScheduler:
             # 为什么不能只等「当日」：实测它发布得很晚 —— 2026-10-08 连 22:42 都还是
             # `errcode=1020`，而这一趟固定 22:00 / 22:30 跑，等于每晚必空。
             # 补最近可用日之后，每个板块都有名单可回落，页面一打开就能看到票。
-            prev = _previous_trade_day(today)
+            prev = previous_trade_day(today)
             if prev is None:
                 _record_log(today, MEMBERS_TASK, "empty", 0, "名单未发布，且没有上一交易日可回落")
                 return

@@ -35,12 +35,13 @@ import logging
 import time
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.config import Settings, get_settings
 from app.db import session_scope, upsert_fill
-from app.models import CollectLog, SectorDaily, StockDde, TradeCalendar
+from app.models import CollectLog, SectorDaily, StockDde
 from app.sources.kaipanhong import KaipanhongSource
+from app.services.trading_days import previous_trade_day
 
 logger = logging.getLogger(__name__)
 
@@ -55,15 +56,6 @@ MIN_COVERAGE = 1000
 # 板块成分股要逐个板块请求、一轮约 370 次；开盘啦整体不可用时没必要把请求全耗完，
 # 早停早让出采集锁。
 MAX_CONSECUTIVE_FAILURES = 10
-
-
-def _prev_trade_date(day: date) -> date | None:
-    with session_scope() as session:
-        return session.scalar(
-            select(func.max(TradeCalendar.trade_date)).where(
-                TradeCalendar.trade_date < day
-            )
-        )
 
 
 def _flow_map(day: date) -> dict[str, float]:
@@ -132,7 +124,7 @@ def aggregate(day: date, settings: Settings | None = None) -> dict:
         calls += 1
         source.board_members(probe_code, day)
     except RuntimeError:
-        fallback = _prev_trade_date(day)
+        fallback = previous_trade_day(day)
         if fallback is None:
             raise RuntimeError(f"{day} 的板块成分股取不到，日历里也没有上一交易日") from None
         member_day = fallback

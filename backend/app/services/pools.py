@@ -39,6 +39,7 @@ from app.services import (
     trend,
 )
 from app.services.patterns import PATTERNS, Bars, build_bars, is_st, usable_bar
+from app.services.trading_days import recent_trade_days
 from app.sources.base import chunked
 
 logger = logging.getLogger(__name__)
@@ -761,14 +762,7 @@ def first_board(
         }
 
     # 近 10 个交易日涨停次数（真首板 = 0）。按交易日历取，停牌日不算
-    prior_days = list(
-        session.scalars(
-            select(TradeCalendar.trade_date)
-            .where(TradeCalendar.trade_date < target)
-            .order_by(TradeCalendar.trade_date.desc())
-            .limit(TRUE_FIRST_BOARD_LOOKBACK)
-        )
-    )
+    prior_days = recent_trade_days(target, TRUE_FIRST_BOARD_LOOKBACK, session)
     recent_limit_ups: dict[str, int] = {}
     if prior_days:
         recent_limit_ups = dict(

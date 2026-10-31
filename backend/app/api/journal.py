@@ -23,7 +23,6 @@ from app.models import (
     StockBasic,
     StockConcept,
     StockDaily,
-    TradeCalendar,
     TradeJournal,
     TradeT,
 )
@@ -40,6 +39,7 @@ from app.services import trade_journal
 from app.services.auth import current_user
 from app.services.patterns import PATTERNS
 from app.services.stock_phase import load_oversold
+from app.services.trading_days import is_trade_day
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +56,7 @@ def _normalize_code(code: str) -> str:
 
 
 def _require_trade_day(session: Session, day, label: str) -> None:
-    exists = session.scalar(
-        select(TradeCalendar.trade_date).where(TradeCalendar.trade_date == day)
-    )
-    if exists is None:
+    if not is_trade_day(day, session):
         raise HTTPException(status_code=400, detail=f"{label} {day} 不是交易日")
 
 

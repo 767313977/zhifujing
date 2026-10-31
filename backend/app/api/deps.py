@@ -7,7 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import MarketSentiment, TradeCalendar
+from app.models import MarketSentiment
+from app.services.trading_days import is_trade_day
 from app.timeutil import today_cn
 
 
@@ -41,18 +42,12 @@ def resolve_trade_date(
                 status_code=404,
                 detail=f"{trade_date} 还没到，没有数据",
             )
-        exists = session.scalar(
-            select(TradeCalendar.trade_date).where(
-                TradeCalendar.trade_date == trade_date
-            )
-        )
-        if exists is None:
+        if not is_trade_day(trade_date, session):
             raise HTTPException(
                 status_code=404,
                 detail=f"{trade_date} 不是交易日或暂无数据",
             )
         return trade_date
-
     latest = session.scalar(
         select(MarketSentiment.trade_date)
         .order_by(MarketSentiment.trade_date.desc())

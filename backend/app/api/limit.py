@@ -33,6 +33,7 @@ from app.schemas import (
     PromotionSeries,
 )
 from app.services.themes import limit_up_themes
+from app.services.trading_days import previous_trade_day
 
 router = APIRouter(prefix="/api", tags=["复盘"])
 
@@ -58,21 +59,6 @@ LADDER_BOARD_ROW_LIMIT = 120
 
 # 行内排序：晋级在前、炸板次之、未晋级最后
 _LADDER_STATUS_ORDER = {"up": 0, "broken": 1, "other": 2}
-
-
-def _prev_trade_date(session: Session, day: date) -> date | None:
-    """上一个交易日。
-
-    ⚠️ 按**交易日历**取，不按 `limit_pool` 自己的日期：池子缺一天时（回补没跑到、
-    上游那天没数据），拿池子的「上一个有数据的日子」会把 3 天前的批次当成「昨日」，
-    晋级率整个错位（`/limit/promotion` 里有同样的坑与修法）。
-    """
-    return session.scalar(
-        select(TradeCalendar.trade_date)
-        .where(TradeCalendar.trade_date < day)
-        .order_by(TradeCalendar.trade_date.desc())
-        .limit(1)
-    )
 
 
 def _boards(session: Session, trade_date: date) -> dict[str, str]:
@@ -309,7 +295,7 @@ def ladder_board(
 
     `level=0` 是「首板」行：昨日非涨停、今日涨停或炸板的票 —— 看今天的首板成功率。
     """
-    prev = _prev_trade_date(session, trade_date)
+    prev = previous_trade_day(trade_date, session)
     if prev is None:
         return LadderBoardOut(trade_date=trade_date, prev_date=None, rows=[])
 

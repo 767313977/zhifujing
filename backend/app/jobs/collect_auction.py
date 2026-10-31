@@ -20,7 +20,7 @@
 
 import logging
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 
 from sqlalchemy import select
 
@@ -28,6 +28,7 @@ from app.db import session_scope, upsert_many
 from app.models import AuctionSnapshot, StockBasic
 from app.services.trading_days import is_trade_day
 from app.sources.tencent import fetch_spot
+from app.timeutil import now_cn
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +41,6 @@ RATIO_SAMPLE = "0931"
 
 #: 采样窗口内**计划**采的那几刻（HHMM，升序）。见 `_frame_hhmm`。
 PLANNED_MINUTES = [f"09{minute:02d}" for minute in range(15, 27)] + [RATIO_SAMPLE]
-
-_CST = timezone(timedelta(hours=8))
 
 
 def _frame_hhmm(moment: datetime) -> str | None:
@@ -91,8 +90,12 @@ def _positive(value: float | None) -> float | None:
 
 
 def now_cst() -> datetime:
-    """当前本地时间（Asia/Shanghai）。容器时区不可信，显式按固定偏移取。"""
-    return datetime.now(_CST)
+    """当前北京时间 —— 统一走 `timeutil.now_cn()`（固定 +8，不看容器时区）。
+
+    2026-10-31 收口：这里原来自带一份 `timezone(timedelta(hours=8))`，与
+    `timeutil.CST` 是同一个口径的两份定义；现在只保留一处。
+    """
+    return now_cn()
 
 
 def _universe() -> list[str]:

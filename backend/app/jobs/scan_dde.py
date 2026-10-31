@@ -54,6 +54,7 @@ from app.jobs.push_brief import already_pushed, send_elements
 from app.models import CollectLog, StockBasic, StockDaily, StockDde, TradeCalendar
 from app.sources.ifind import get_shared_client
 from app.sources.markdown_table import pick_float, pick_text, to_float
+from app.services.trading_days import previous_trade_day
 from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
@@ -184,16 +185,6 @@ def _names(session, codes: set[str]) -> dict[str, str | None]:
     return {code: named.get(code) for code in codes}
 
 
-def _prev_trade_date(session, day: date) -> date | None:
-    """`day` 之前最近的一个交易日。"""
-    return session.scalar(
-        select(TradeCalendar.trade_date)
-        .where(TradeCalendar.trade_date < day)
-        .order_by(TradeCalendar.trade_date.desc())
-        .limit(1)
-    )
-
-
 # 推送里两张榜各取前几名。**10 是表格组件的上限**（`page_size` 最多 10 行），
 # 再多就得在卡片里翻页 —— 而榜本来就是「先看头部」
 BOARD_LIMIT = 10
@@ -210,7 +201,7 @@ def rankings(day: date, *, limit: int = BOARD_LIMIT) -> dict[str, list[dict]]:
     （「没有数据」与「是 0」是两件事），符号列那时显示「—」。
     """
     with session_scope() as session:
-        prev = _prev_trade_date(session, day)
+        prev = previous_trade_day(day, session)
         today = {
             row.code: row
             for row in session.scalars(select(StockDde).where(StockDde.trade_date == day))
@@ -261,7 +252,7 @@ def rankings(day: date, *, limit: int = BOARD_LIMIT) -> dict[str, list[dict]]:
 def scan(day: date) -> list[dict]:
     """找出 5日DDE 由负转正的票，按当日 DDE 降序。"""
     with session_scope() as session:
-        prev = _prev_trade_date(session, day)
+        prev = previous_trade_day(day, session)
         if prev is None:
             logger.warning("交易日历里 %s 之前没有交易日，跳过扫描", day)
             return []

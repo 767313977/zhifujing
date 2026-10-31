@@ -44,6 +44,7 @@ from app.schemas import (
 from app.services import etf_flow
 from app.services.etf_category import UNKNOWN
 from app.services.stock_meta import industries_of, sectors_of
+from app.services.trading_days import previous_trade_day
 
 router = APIRouter(prefix="/api/funds", tags=["资金面"])
 
@@ -54,12 +55,6 @@ MILLION = 1e6
 # 走势图最多回看这么多个交易日
 SERIES_MAX_DAYS = 250
 SERIES_DEFAULT_DAYS = 60
-
-
-def _prev_trade_date(session: Session, day: date) -> date | None:
-    return session.scalar(
-        select(func.max(TradeCalendar.trade_date)).where(TradeCalendar.trade_date < day)
-    )
 
 
 def _hsgt_total(rows: list[HsgtDaily]) -> float | None:
@@ -129,7 +124,7 @@ def overview(
     session: Session = Depends(get_db),
 ) -> FundFlowOverview:
     """资金面总览：当日两融、北向成交额、ETF 净申赎、机构席位。"""
-    prev = _prev_trade_date(session, target)
+    prev = previous_trade_day(target, session)
 
     # 两融回落到最近一个「沪深都齐全」的交易日，理由见 `_latest_complete_margin_day`
     margin_date = _latest_complete_margin_day(session, target)
