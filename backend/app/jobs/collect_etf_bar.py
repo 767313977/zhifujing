@@ -69,10 +69,23 @@ def is_etf_row(row: dict, share_codes: set[str]) -> bool:
     return "ETF" in name or code in share_codes
 
 
+#: `etf_share` 代码集合的进程内缓存：`(引擎, 代码集合)`。
+#: 这张表生产约 40 万行，`select distinct code` 实测要 8~9 秒 —— 回补 240 天就等于
+#: 白扫 240 次。它一天最多变几只（新上市），进程内复用一次足够（2026-10-31 加）。
+_SHARE_CODES_CACHE: tuple[object, set[str]] | None = None
+
+
 def _share_codes() -> set[str]:
     """`etf_share` 历史里出现过的全部代码（用来补「名称被截断」的漏网之鱼）。"""
+    global _SHARE_CODES_CACHE
     with session_scope() as session:
-        return set(session.scalars(select(EtfShare.code).distinct()))
+        bind = session.get_bind()
+        cached = _SHARE_CODES_CACHE
+        if cached is not None and cached[0] is bind:
+            return cached[1]
+        codes = set(session.scalars(select(EtfShare.code).distinct()))
+    _SHARE_CODES_CACHE = (bind, codes)
+    return codes
 
 
 def fetch_bars(day: date) -> tuple[list[dict], dict[str, str]]:
