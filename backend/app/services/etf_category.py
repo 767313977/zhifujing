@@ -127,9 +127,38 @@ _TAIL = re.compile(r"(ETF|基金|联接|LOF)$")
 UNKNOWN = "其他"
 
 
+#: 盘后包里的除权除息标记：XD（除息）/ UC（除权、份额折算）/ XR / DR。
+#: 名字带这些前缀时，同一只 ETF 在相邻两天的名称不一样，去重前必须先剥掉。
+_EX_PREFIX = re.compile(r"^(?:XD|UC|XR|DR)+")
+
+
+def norm_name(name: str | None) -> str:
+    """ETF 名称 → 用于「同指数去重」的规范名。
+
+    去掉盘后包的除权除息前缀（`XD` / `UC` / `XR` / `DR`）、管理人（`HOUSES`）、
+    以及结尾的 `ETF` / `基金` / `联接` / `LOF`。例：
+
+    - `华夏沪深300ETF` → `沪深300`
+    - `沪深300ETF易方达` → `沪深300`
+    - `XD红利ETF汇添富` → `红利`
+    """
+    text = _EX_PREFIX.sub("", (name or "").strip()).strip()
+    if not text:
+        return ""
+    for house in HOUSES:
+        text = text.replace(house, "")
+    for _ in range(2):
+        text = _TAIL.sub("", text)
+    return text.strip()
+
+
 def classify(name: str | None) -> str:
-    """ETF 名称 → 分类。归不出来时返回「其他」。"""
-    text = (name or "").strip()
+    """ETF 名称 → 分类。归不出来时返回「其他」。
+
+    盘后包的名称可能带 `XD` / `UC` 等除权除息前缀（如 `XD红利ETF汇添富`），
+    先剥掉再分类 —— 否则前缀会挤掉主题词的位置（2026-10-31 加）。
+    """
+    text = _EX_PREFIX.sub("", (name or "").strip()).strip()
     if not text:
         return UNKNOWN
     # 先摘掉管理人名字，避免「招商中证白酒」里的「招商」干扰、

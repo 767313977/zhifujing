@@ -24,6 +24,7 @@ LATE_STEP_METHODS = (
     "collect_themes",
     "collect_activity",
     "collect_etf",
+    "collect_etf_bar",
     "collect_margin",
     "collect_hsgt",
 )
@@ -152,6 +153,7 @@ def test_run_late_skip_done_only_runs_missing(monkeypatch):
     assert set(called) == {
         "collect_activity",
         "collect_etf",
+        "collect_etf_bar",
         "collect_futures_position",
         "collect_margin",
         "collect_hsgt",

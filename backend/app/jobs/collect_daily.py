@@ -1195,6 +1195,23 @@ class DailyCollector:
             self._step_note = str(exc)
             return 0
 
+    def collect_etf_bar(self, trade_date: date) -> int:
+        """ETF 日线（通达信盘后包，**零 iFinD 配额**）。
+
+        盘后包发布得比收盘晚：17:30 / 19:30 拿不到就记 `skipped`（不是坏掉），
+        22:35 终局那趟再补；盘后包残缺才记 failed（见 `jobs/collect_etf_bar`）。
+        """
+        from app.jobs.collect_etf_bar import TdxUnavailable
+        from app.jobs.collect_etf_bar import refresh as refresh_etf_bar
+
+        try:
+            return refresh_etf_bar(trade_date)
+        except TdxUnavailable as exc:
+            logger.info("ETF 盘后包还没发布：%s", exc)
+            self._step_status = "skipped"
+            self._step_note = "盘后包还没发布，等 22:35 那一趟"
+            return 0
+
     def collect_lhb_institution(self, trade_date: date) -> int:
         """龙虎榜机构席位统计（akshare，零配额）。"""
         return collect_funds.collect_lhb_institutions(self.ak, trade_date)
@@ -1668,6 +1685,9 @@ class DailyCollector:
         # ETF 份额与行情：两所都要收盘后才发布，盘后包也要数小时 —— 放在这一趟
         # （17:30 试一次、19:30 再试一次）。零 iFinD 配额，但两所各一次 HTTP。
         steps["etf"] = late_step("etf", lambda: self.collect_etf(target))
+        # ETF 日线（独立表 `etf_bar`）：与份额同源（都是盘后包），但单独一步 ——
+        # 份额失败不该拖累日线，反之亦然。零配额，前两趟拿不到就 skipped。
+        steps["etf_bar"] = late_step("etf_bar", lambda: self.collect_etf_bar(target))
         # 期指持仓（中金所前 20 席位）：约 16:00 才发布，同样放这一趟。零配额
         from app.jobs.collect_futures_position import collect as collect_futures_position
 

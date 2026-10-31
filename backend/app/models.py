@@ -4,6 +4,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     Date,
     DateTime,
@@ -1061,6 +1062,69 @@ class EtfCategory(Base):
     code: Mapped[str] = mapped_column(String(16), primary_key=True)
     name: Mapped[str | None] = mapped_column(String(64))
     category: Mapped[str] = mapped_column(String(32))
+
+
+class EtfBar(Base):
+    """ETF 日线（通达信盘后包，2026-10-31 加）。零 iFinD 配额。
+
+    **为什么不合并进 `etf_share`**：`etf_flow.usable_days` 用「每天的行数」判断某天
+    能不能当基准日。往 `etf_share` 回补 2026-09-21 之前只有行情、没有份额的行，会让
+    这些天也被判成「可用日」，净申赎就会拿空份额去配对（见 `services/etf_flow`）。
+
+    `prev_close` 是**交易所口径的前收**，除息与份额折算日已经调整过 —— 2026-10-31
+    实测：510100（XD 除息）用 `close / prev_close - 1` 是 +0.43%（拿前一日收盘算是
+    −2.69%）、159583（1 拆 2）是 +2.83%（拿前一日收盘算是 −48.58%）。所以 `pct_chg`
+    直接存这个比值，价格序列按它复利即可，不会在分红日出现假跌。
+
+    来源按日期整包下载，**历史可回补**（官网保留 ≥ 3 年），与只能当天采的转债不同。
+    """
+
+    __tablename__ = "etf_bar"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    #: 6 位代码。沪 5xxxxx / 深 1xxxxx，两所不重号
+    code: Mapped[str] = mapped_column(String(16), primary_key=True)
+
+    open: Mapped[float | None] = mapped_column(Float)
+    high: Mapped[float | None] = mapped_column(Float)
+    low: Mapped[float | None] = mapped_column(Float)
+    close: Mapped[float | None] = mapped_column(Float)
+    #: 交易所前收（除息 / 折算日已调整）
+    prev_close: Mapped[float | None] = mapped_column(Float)
+    #: 涨跌幅（%）= close / prev_close − 1。序列按它复利，不直接除 close
+    pct_chg: Mapped[float | None] = mapped_column(Float)
+    #: 成交量（股/份）
+    volume: Mapped[int | None] = mapped_column(BigInteger)
+    #: 成交额（元）
+    amount: Mapped[float | None] = mapped_column(Float)
+    source: Mapped[str | None] = mapped_column(String(16))
+
+
+class EtfBasic(Base):
+    """ETF 属性（名称 / 归类 / 是否 T+0），每天 upsert，**不删行**。
+
+    名单口径（2026-10-31 探测结论）：**当天盘后包里名称含「ETF」**为准，再用
+    「代码在 `etf_share` 历史里出现过」补一次并集 —— 名称截断的券会漏掉。
+    ⚠️ 不能拿今天的名单去过滤历史日：2026 年新上的约 390 只在 2025 年的包里本来就没有。
+    """
+
+    __tablename__ = "etf_basic"
+
+    code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    name: Mapped[str | None] = mapped_column(String(64))
+    #: 去掉 XD/UC 前缀、管理人、ETF/基金/联接/LOF 后缀后的名字，同指数去重用它
+    norm_name: Mapped[str | None] = mapped_column(String(64))
+    #: 跟踪指数：接口已失效（`fund_individual_basic_info_xq` 报 KeyError），本期留空
+    track_index: Mapped[str | None] = mapped_column(String(64))
+    #: 股票 / QDII / 债券 / 货币 / 商品（来自 `fund_name_em` 的基金类型）
+    fund_type: Mapped[str | None] = mapped_column(String(16))
+    #: 当日可回转交易（跨境 QDII / 债券 / 货币 / 商品），由 `fund_type` 推出
+    t0: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: 本地最早一根日线（近似上市日）
+    first_bar_date: Mapped[date | None] = mapped_column(Date)
+    #: 连续 10 个交易日不在盘后包里就写日期，不删行
+    delist_date: Mapped[date | None] = mapped_column(Date)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
 class LhbInstitution(Base):
