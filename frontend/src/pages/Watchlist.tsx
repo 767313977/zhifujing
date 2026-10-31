@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { WatchlistRow } from '../api/types'
 import Alert from '../components/Alert'
+import RiskMark, { useRiskBadges } from '../components/RiskBadges'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import SortTh from '../components/SortTh'
@@ -23,6 +24,8 @@ const WATCH_SORTS: SortSpecs<WatchlistRow> = {
 
 export default function WatchlistPage() {
   const [rows, setRows] = useState<WatchlistRow[]>([])
+  /** 风险角标：一次批量查（只读缓存，不触发外部请求） */
+  const riskMap = useRiskBadges(useMemo(() => rows.map((row) => row.code), [rows]))
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [code, setCode] = useState('')
@@ -278,6 +281,7 @@ export default function WatchlistPage() {
                             {row.name ?? '—'}
                           </Link>
                         )}
+                        <RiskMark badges={riskMap.get(row.code)} />
                       </td>
                       <td>
                         <span className="num text-fg-muted">{row.latest_date ?? '—'}</span>

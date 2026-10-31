@@ -10,6 +10,7 @@ import type {
   PatternSummary,
 } from '../api/types'
 import Alert from '../components/Alert'
+import RiskMark, { useRiskBadges } from '../components/RiskBadges'
 import KLineChart from '../components/KLineChart'
 import type { KeyLevel } from '../components/KLineChart'
 import Layout from '../components/Layout'
@@ -598,6 +599,8 @@ export default function Patterns() {
 
   /** 走弱形态 key：chip 灰显用（不物理删除） */
   const weakSet = useMemo(() => new Set(action?.weak ?? []), [action])
+  /** 列表风险角标：一次批量查（最多 50 只），只读后端缓存 */
+  const riskMap = useRiskBadges(useMemo(() => hits.map((item) => item.code), [hits]))
 
   const countOf = useMemo(() => {
     const map: Record<string, number> = {}
@@ -1310,6 +1313,7 @@ export default function Patterns() {
                           <span className="num text-fg-dim">{stock.code}</span>
                           <span className="ml-2 text-fg">{stock.name ?? '—'}</span>
                         </Link>
+                        <RiskMark badges={riskMap.get(stock.code)} />
                       </td>
                       {days > 1 && (
                         <td className="!text-left">

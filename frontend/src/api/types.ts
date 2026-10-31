@@ -3124,3 +3124,24 @@ export interface PatternActionSummary {
   note: string | null
 }
 
+// ------------------------------------------------------- 风险角标（FEAT-RISK-BADGES）
+
+export interface RiskBadge {
+  /** trap / unlock / notice */
+  kind: string
+  label: string
+  /** high / medium / low */
+  level: string
+  detail: string | null
+}
+
+export interface StockRiskBadgesRow {
+  code: string
+  badges: RiskBadge[]
+}
+
+export interface StockRiskBadges {
+  rows: StockRiskBadgesRow[]
+  note: string | null
+}
+

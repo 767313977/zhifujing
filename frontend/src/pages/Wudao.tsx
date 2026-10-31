@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, isNoDataError } from '../api/client'
 import type { PatternHitItem, PatternStock, PatternSummary } from '../api/types'
 import Alert from '../components/Alert'
+import RiskMark, { useRiskBadges } from '../components/RiskBadges'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import SortTh from '../components/SortTh'
@@ -327,6 +328,8 @@ function PoolPanel({
   const hidden = pick.length - shown.length
   /** 「加入明日计划」的提示（本池独立，不弹窗） */
   const [planNotice, setPlanNotice] = useState<string | null>(null)
+  /** 风险角标：本池一次性批量查（只读缓存） */
+  const riskMap = useRiskBadges(useMemo(() => rows.map((item) => item.code), [rows]))
 
   const addToPlan = async (code: string, name: string | null, signalDate: string) => {
     setPlanNotice(null)
@@ -427,6 +430,7 @@ function PoolPanel({
                     </td>
                     <td className="!text-left">
                       <StockLink code={row.code}>{row.name ?? row.code}</StockLink>
+                      <RiskMark badges={riskMap.get(row.code)} />
                       {others.length > 0 && (
                         <span className="ml-2 text-[12px] text-fg-dim">
                           也是{others.join('/')}

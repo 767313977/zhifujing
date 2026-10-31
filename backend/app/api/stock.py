@@ -45,6 +45,7 @@ from app.models import (
 from app.schemas import (
     ChipDistributionOut,
     ChipPoint,
+    RiskBadgeOut,
     StockDailyRow,
     StockDdeOut,
     StockDdeRow,
@@ -55,6 +56,8 @@ from app.schemas import (
     StockProfile,
     StockReportRow,
     StockReportsOut,
+    StockRiskBadgesOut,
+    StockRiskBadgesRowOut,
     StockThemeItem,
     StockThemes,
     StockUnlockRow,
@@ -69,8 +72,9 @@ from app.services.stock_phase import load_phase
 from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.em_news import fetch_stock_news
 from app.sources.ifind import IfindError, normalize_code
+from app.timeutil import today_cn
 from app.sources.kaipanhong import TAXONOMY_SELECTED
-from app.timeutil import now_cn, today_cn
+from app.timeutil import now_cn
 
 logger = logging.getLogger(__name__)
 
@@ -318,6 +322,99 @@ def _market_fields(session: Session, code: str, latest: StockDaily | None) -> di
         "actual_turnover": latest.volume / shares * 100 if shares and latest.volume else None,
         "asof": basic.asof,
     }
+
+
+@router.get("/risk-badges", response_model=StockRiskBadgesOut)
+def risk_badges(
+    codes: str = Query(..., description="逗号分隔的 6 位代码，最多 50 个"),
+    user: AppUser = Depends(current_user),
+    session: Session = Depends(get_db),
+) -> StockRiskBadgesOut:
+    """批量风险角标（FEAT-RISK-BADGES）：**只读缓存，不打任何外部接口**。
+
+    数据来源：
+    - 杀猪盘：`trap` 的进程内 10 分钟缓存（个股页体检过才有）；
+    - 解禁：`stock_event_cache` 的 `unlock`（打开过个股页/跑过体检才有）；
+    - 公告：同一张缓存的 `notices`，只看最近 7 天且标题含风险词。
+
+    没有缓存就返回空数组 —— 这里刻意**不触发取数**：列表页一屏几十只，
+    逐个打外部源既慢又会把配额/频控打满（任务书明确禁止）。
+    """
+    raw = [item.strip() for item in (codes or "").split(",") if item.strip()]
+    unique: list[str] = []
+    for item in raw:
+        if item not in unique:
+            unique.append(item)
+    if not unique:
+        return StockRiskBadgesOut(rows=[], note="没有传代码")
+    if len(unique) > 50:
+        raise HTTPException(status_code=400, detail="一次最多查 50 个代码")
+    bad_codes = [item for item in unique if len(item) != 6 or not item.isdigit()]
+    if bad_codes:
+        raise HTTPException(status_code=400, detail=f"代码格式不对：{bad_codes[:3]}")
+
+    today = today_cn()
+    rows = []
+    for code in unique:
+        badges: list[RiskBadgeOut] = []
+        cached = _trap_cache_get(_trap_key(code, None))
+        if cached is not None and cached.level in ("high", "medium"):
+            badges.append(
+                RiskBadgeOut(
+                    kind="trap",
+                    label=f"杀猪盘{cached.level_label}",
+                    level=cached.level,
+                    detail=cached.summary,
+                )
+            )
+        for row in stock_events.peek(code, "unlock", session):
+            unlock_date = row.get("unlock_date")
+            if not unlock_date:
+                continue
+            try:
+                days = (date.fromisoformat(str(unlock_date)) - today).days
+            except ValueError:
+                continue
+            ratio = row.get("ratio_total")
+            if 0 <= days <= 30:
+                ratio_text = (
+                    f" · 占总市值 {ratio * 100:.1f}%" if isinstance(ratio, (int, float)) else ""
+                )
+                badges.append(
+                    RiskBadgeOut(
+                        kind="unlock",
+                        label="解禁临近",
+                        level="high" if isinstance(ratio, (int, float)) and ratio >= 0.05 else "medium",
+                        detail=f"{unlock_date}（{days} 天后）{ratio_text}",
+                    )
+                )
+                break
+        risk_words = ("减持", "立案", "问询", "警示", "冻结", "退市", "终止", "诉讼", "处罚", "风险提示")
+        for row in stock_events.peek(code, "notices", session):
+            published = str(row.get("published_at") or "")[:10]
+            title = str(row.get("title") or "")
+            if not published or not title:
+                continue
+            try:
+                age = (today - date.fromisoformat(published)).days
+            except ValueError:
+                continue
+            if 0 <= age <= 7 and any(word in title for word in risk_words):
+                badges.append(
+                    RiskBadgeOut(
+                        kind="notice",
+                        label="公告风险",
+                        level="medium",
+                        detail=title[:40],
+                    )
+                )
+                break
+        rows.append(StockRiskBadgesRowOut(code=code, badges=badges))
+
+    return StockRiskBadgesOut(
+        rows=rows,
+        note="只读缓存：个股页看过/体检过才有角标，这个接口不会为此打外部接口。",
+    )
 
 
 @router.get("/{code}", response_model=StockProfile)

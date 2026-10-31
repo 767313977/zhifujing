@@ -72,6 +72,7 @@ import type {
   PromotionSeries,
   RelayTemp,
   ReviewNote,
+  StockRiskBadges,
   ThemeBoard,
   RotationLeaderDay,
   RotationMetric,
@@ -1339,4 +1340,10 @@ export const api = {
   /** 形态可行动摘要（FEAT-PATTERN-ACTIONABLE）：复用成绩单，只分档。 */
   patternActionSummary: () =>
     request<PatternActionSummary>('/patterns/action-summary'),
+
+  /** 批量风险角标（FEAT-RISK-BADGES）：只读缓存，最多 50 个代码。 */
+  riskBadges: (codes: string[]) =>
+    request<StockRiskBadges>(
+      `/stock/risk-badges?codes=${encodeURIComponent(codes.join(','))}`,
+    ),
 }

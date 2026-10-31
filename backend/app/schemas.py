@@ -3495,3 +3495,25 @@ class PatternActionSummaryOut(ApiModel):
     weak: list[str] = []
     insufficient: list[str] = []
     note: str | None = None
+
+
+# ------------------------------------------------- 风险角标（FEAT-RISK-BADGES）
+
+
+class RiskBadgeOut(ApiModel):
+    #: trap（杀猪盘）/ unlock（解禁）/ notice（公告）
+    kind: str
+    label: str
+    #: high / medium / low
+    level: str
+    detail: str | None = None
+
+
+class StockRiskBadgesRowOut(ApiModel):
+    code: str
+    badges: list[RiskBadgeOut] = []
+
+
+class StockRiskBadgesOut(ApiModel):
+    rows: list[StockRiskBadgesRowOut] = []
+    note: str | None = None

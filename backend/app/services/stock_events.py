@@ -12,6 +12,8 @@ import logging
 from dataclasses import asdict
 from datetime import datetime, timedelta
 
+from sqlalchemy.orm import Session
+
 from app.db import session_scope
 from app.models import StockEventCache
 from app.sources import em_events
@@ -26,9 +28,14 @@ KINDS: dict[str, tuple[object, timedelta]] = {
 }
 
 
-def _read(code: str, kind: str) -> tuple[list[dict] | None, datetime | None]:
-    with session_scope() as session:
+def _read(
+    code: str, kind: str, session: Session | None = None
+) -> tuple[list[dict] | None, datetime | None]:
+    if session is not None:
         row = session.get(StockEventCache, (code, kind))
+        return (None, None) if row is None else (list(row.payload or []), row.fetched_at)
+    with session_scope() as db:
+        row = db.get(StockEventCache, (code, kind))
         if row is None:
             return None, None
         return list(row.payload or []), row.fetched_at
@@ -48,13 +55,16 @@ def _write(code: str, kind: str, rows: list[dict]) -> None:
             row.payload = rows
 
 
-def peek(code: str, kind: str) -> list[dict]:
+def peek(code: str, kind: str, session: Session | None = None) -> list[dict]:
     """只读缓存、**不请求上游**；没有缓存时返回空列表。
 
     给「不想为了看一眼而打外部接口」的场景用（如收盘简报里的自选公告）：
     用户打开过个股页或跑过体检后自然会有缓存。
+
+    批量接口（风险角标）手里已经有会话，传 `session` 复用同一个连接，
+    避免几十只票各开一次 `session_scope`。
     """
-    rows, _ = _read(code, kind)
+    rows, _ = _read(code, kind, session)
     return rows or []
 
 
