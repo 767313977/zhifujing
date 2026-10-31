@@ -141,16 +141,34 @@ def _last_count(day: date) -> int:
         )
 
 
-def _fund_types() -> dict[str, str]:
-    """代码 → 基金类型（`fund_name_em`，一天调一次）。
+#: 基金类型表的进程内缓存：`(缓存日期, 代码 → 类型)`。
+#: akshare 这个接口要拉 2.8 万行、约 4 秒，而 `run_late` 一天会走到三次 ——
+#: 同一天成功拉过一次就不再拉（2026-10-31 复查 P2-1）。
+_FUND_TYPES_CACHE: tuple[date, dict[str, str]] | None = None
+
+#: 拉基金类型表的超时（秒）。akshare 内部不带 timeout，半开连接会把采集锁占死
+#: （与 10-18 复查 em_events 同一个坑），所以必须套 `_call_bounded`。
+FUND_TYPES_TIMEOUT = 30.0
+
+
+def _fund_types(day: date) -> dict[str, str]:
+    """代码 → 基金类型（`fund_name_em`，同一天只拉一次，30 秒超时）。
 
     拿不到就返回空表：调用方据此**不写** `fund_type`（留空），下次再补 ——
     宁可缺，不要拿默认值把已有类型覆盖掉。
     """
+    global _FUND_TYPES_CACHE
+    cached = _FUND_TYPES_CACHE
+    if cached is not None and cached[0] == day:
+        return cached[1]
     try:
         import akshare as ak
 
-        frame = ak.fund_name_em()
+        from app.sources.akshare_source import _call_bounded
+
+        frame = _call_bounded(
+            lambda: ak.fund_name_em(), "ETF 基金类型表", FUND_TYPES_TIMEOUT
+        )
     except Exception:  # noqa: BLE001 - 类型是增强信息，失败不影响日线
         logger.warning("取基金类型失败，本次跳过 fund_type 更新", exc_info=True)
         return {}
@@ -160,11 +178,13 @@ def _fund_types() -> dict[str, str]:
     if type_col not in frame.columns:
         logger.warning("基金类型表没有「基金类型」列，跳过 fund_type 更新")
         return {}
-    return {
+    result = {
         str(code): str(kind or "").strip()
         for code, kind in zip(frame[code_col], frame[type_col])
         if str(code or "").strip()
     }
+    _FUND_TYPES_CACHE = (day, result)
+    return result
 
 
 def _kind_of(raw_type: str, name: str) -> str | None:
@@ -220,7 +240,7 @@ def refresh_basic(day: date, names: dict[str, str] | None = None) -> int:
             }
         names = {code: names.get(code, "") for code in codes}
 
-    types = _fund_types()
+    types = _fund_types(day)
     firsts = _first_dates(list(names))
 
     typed: list[dict] = []

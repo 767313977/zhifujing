@@ -17,7 +17,7 @@
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -57,8 +57,22 @@ _PRESET_FILTERS: dict[str, dict] = {
         "above_ma20": True,
         "sort": "rps60",
     },
-    "breakout": {"new_high": True, "sort": "amount"},
-    "inflow": {"inflow_min": 5.0, "ret20_max": 0.0, "sort": "flow20_ratio"},
+    # 突破 / 资金流入都只收**股票类**：货币 ETF 价格每天缓慢上涨、几乎天天创 60 日
+    # 新高，成交额又大，不限定类型会被它们占满（2026-10-31 复查 P1-3）；
+    # 债券 ETF 的申赎与股票 ETF 也不是一回事。
+    "breakout": {
+        "fund_type": "股票",
+        "new_high": True,
+        "scale_min": 2.0,
+        "amount_min": 20_000_000.0,
+        "sort": "amount",
+    },
+    "inflow": {
+        "fund_type": "股票",
+        "inflow_min": 5.0,
+        "ret20_max": 0.0,
+        "sort": "flow20_ratio",
+    },
     "defensive": {"categories": ("红利策略", "银行"), "sort": "volatility"},
     "t0": {"t0": True, "exclude_qdii": True, "sort": "amount"},
 }
@@ -223,6 +237,26 @@ def _load(session: Session, day: date) -> tuple[list[date], dict[str, list[tuple
     return days, grouped
 
 
+def _adjusted(closes: list[float], pcts: list[float | None]) -> list[float]:
+    """按 `pct_chg` 从后往前复利出**前复权价**（最后一天 = 当天收盘）。
+
+    **为什么必须复权**（2026-10-31 复查 P1-1）：MA / 回撤 / 60 日新高如果直接用
+    `close`，1 拆 2 的 ETF（159583）之后 250 天回撤都显示 −50%、永远站不上 MA20；
+    红利 ETF 每次除息也会让 MA20 偏高 2%~4%，「站上 MA20」系统性偏严。
+    `pct_chg` 为 None 的那天按 0 处理。
+    """
+    size = len(closes)
+    if size == 0:
+        return []
+    adjusted = [0.0] * size
+    adjusted[-1] = closes[-1]
+    for index in range(size - 2, -1, -1):
+        step = pcts[index + 1] if pcts[index + 1] is not None else 0.0
+        factor = 1 + step / 100
+        adjusted[index] = adjusted[index + 1] / factor if factor else adjusted[index + 1]
+    return adjusted
+
+
 def _raw_rows(session: Session, day: date, days: list[date], grouped: dict) -> list[_Raw]:
     basics = {row.code: row for row in session.scalars(select(EtfBasic))}
     categories = {row.code: row.category for row in session.scalars(select(EtfCategory))}
@@ -267,11 +301,15 @@ def _raw_rows(session: Session, day: date, days: list[date], grouped: dict) -> l
     result: list[_Raw] = []
     for code in today_codes:
         values = grouped.get(code) or []
-        closes = [item[1] for item in values if item[1] is not None]
-        pcts = [item[2] for item in values]
+        # 收盘价与涨跌幅**配对**过滤，否则复权序列会错位（`close` 缺一天、`pct` 不缺）
+        bars = [(item[2], float(item[1])) for item in values if item[1] is not None]
         amounts = [item[3] for item in values if item[3] is not None]
-        if not closes:
+        if not bars:
             continue
+        pcts = [pct for pct, _ in bars]
+        closes = [close for _, close in bars]
+        # MA / 回撤 / 新高一律用前复权价（除息与份额折算不会把这几项算歪）
+        adjusted = _adjusted(closes, pcts)
         latest = values[-1]
         close = float(closes[-1])
         basic = basics.get(code)
@@ -280,9 +318,9 @@ def _raw_rows(session: Session, day: date, days: list[date], grouped: dict) -> l
         shares_now = float(share.shares) if share and share.shares else None
         scale = shares_now * close / 1e8 if shares_now is not None else None
 
-        ma20 = _mean(closes[-AVG_DAYS:]) if len(closes) >= AVG_DAYS else None
-        ma60 = _mean(closes[-60:]) if len(closes) >= 60 else None
-        high = max(closes)
+        ma20 = _mean(adjusted[-AVG_DAYS:]) if len(adjusted) >= AVG_DAYS else None
+        ma60 = _mean(adjusted[-60:]) if len(adjusted) >= 60 else None
+        high = max(adjusted)
         drawdown = round((close / high - 1) * 100, 2) if high else None
         avg_amount = _mean(amounts[-AVG_DAYS:]) if len(amounts) >= AVG_DAYS else None
         flow5 = per_code_flow[5].get(code)
@@ -315,10 +353,48 @@ def _raw_rows(session: Session, day: date, days: list[date], grouped: dict) -> l
                 flow20=flow20,
                 flow20_ratio=flow_ratio,
                 bars=len(values),
-                new_high=len(closes) >= NEW_HIGH_DAYS and close >= max(closes[-NEW_HIGH_DAYS:]),
+                # 新高也用前复权价：折算 / 除息后原始 close 与历史不可比
+                new_high=len(adjusted) >= NEW_HIGH_DAYS
+                and close >= max(adjusted[-NEW_HIGH_DAYS:]),
             )
         )
     return result
+
+
+#: 计算结果缓存：`(引擎, 基准日, 日线最新日, 份额最新日, 计算时间, 结果)`。
+#: 一次要扫 250 天 × 1700 只（含净申赎的两次 join），实测 2~3 秒；筛选、行业强弱、
+#: 详情三处用的是**同一份**原始结果，切预设只重新过滤（2026-10-31 复查 P2-5）。
+_RAW_CACHE: (
+    tuple[object, date, date | None, date | None, datetime, tuple[list[date], dict, list[_Raw]]]
+    | None
+) = None
+_RAW_TTL = timedelta(minutes=10)
+
+
+def _load_raw(
+    session: Session, day: date
+) -> tuple[list[date], dict, list[_Raw]]:
+    """带缓存的「取窗口日线 + 算逐只原始指标」。"""
+    global _RAW_CACHE
+    bar_max = session.scalar(select(func.max(EtfBar.trade_date)))
+    share_max = session.scalar(select(func.max(EtfShare.trade_date)))
+    bind = session.get_bind()
+    now = datetime.now()
+    cached = _RAW_CACHE
+    if (
+        cached is not None
+        and cached[0] is bind
+        and cached[1] == day
+        and cached[2] == bar_max
+        and cached[3] == share_max
+        and now - cached[4] < _RAW_TTL
+    ):
+        return cached[5]
+    days, grouped = _load(session, day)
+    raws = _raw_rows(session, day, days, grouped) if days else []
+    payload = (days, grouped, raws)
+    _RAW_CACHE = (bind, day, bar_max, share_max, now, payload)
+    return payload
 
 
 def _dedup(rows: list[_Raw]) -> tuple[list[_Raw], dict[str, int]]:
@@ -394,8 +470,7 @@ def screen(session: Session, day: date | None = None, **overrides) -> EtfScreen:
     if day is None:
         return EtfScreen(as_of=None, filters=filters)
 
-    days, grouped = _load(session, day)
-    raws = _raw_rows(session, day, days, grouped)
+    _, _, raws = _load_raw(session, day)
     dedup = bool(filters.get("dedup", True))
     if dedup:
         raws, counts = _dedup(raws)
@@ -584,11 +659,14 @@ def detail(session: Session, code: str, day: date | None = None) -> EtfDetail | 
 def categories(session: Session, day: date | None = None) -> list[dict]:
     """按分类汇总：代表 ETF 的 RPS60 中位数、20 日净申赎合计（行业强弱一览）。
 
-    用「去重 + 全分类」的口径，不要套动量预设的门槛 —— 那会把小行业整类筛没。
+    两类指标要用**两套口径**（2026-10-31 复查 P1-2）：
+    - `rps60_median` 用**去重后**的代表 —— 否则沪深300 二十几只同指数 ETF 会把排名挤歪；
+    - `flow20` 用**未去重**的全部 ETF 求和 —— 只算代表会漏掉同组其它只的资金，
+      而且与资金面页 `/api/funds/etf-industry` 的口径对不上（两页会自相矛盾）。
+
+    两者都不要套动量预设的门槛，否则小行业整类会被筛没。
     """
-    data = screen(
-        session,
-        day,
+    base = dict(
         preset="momentum",
         fund_type="",
         scale_min=0,
@@ -596,22 +674,28 @@ def categories(session: Session, day: date | None = None) -> list[dict]:
         above_ma20=False,
         limit=2000,
     )
+    reps = screen(session, day, dedup=True, **base)
+    every = screen(session, day, dedup=False, **base)
+
     grouped: dict[str, list[EtfRow]] = defaultdict(list)
-    for row in data.items:
+    for row in reps.items:
         grouped[row.category].append(row)
+    flows: dict[str, list[float]] = defaultdict(list)
+    for row in every.items:
+        if row.flow20 is not None:
+            flows[row.category].append(row.flow20)
+
     result: list[dict] = []
     for name, rows in grouped.items():
         rps_values = sorted(row.rps60 for row in rows if row.rps60 is not None)
-        flows = [row.flow20 for row in rows if row.flow20 is not None]
-        median = (
-            rps_values[len(rps_values) // 2] if rps_values else None
-        )
+        median = rps_values[len(rps_values) // 2] if rps_values else None
+        category_flows = flows.get(name) or []
         result.append(
             {
                 "category": name,
                 "count": len(rows),
                 "rps60_median": median,
-                "flow20": round(sum(flows), 2) if flows else None,
+                "flow20": round(sum(category_flows), 2) if category_flows else None,
             }
         )
     result.sort(key=lambda item: (item["rps60_median"] is None, -(item["rps60_median"] or 0)))

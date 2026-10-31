@@ -9,7 +9,7 @@
 from datetime import date, timedelta
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.models import Base, EtfBar, EtfBasic, EtfCategory, EtfShare
@@ -68,6 +68,23 @@ def seed(
         )
     for day in _dates(25):
         db.add(EtfShare(trade_date=day, code=code, shares=shares, close=close))
+    return close
+
+
+def _bump_last_share(db, code, delta):
+    """最后一份份额快照加 `delta` 份（造一笔净申购）。"""
+    row = db.scalars(
+        select(EtfShare).where(EtfShare.code == code).order_by(EtfShare.trade_date.desc())
+    ).first()
+    row.shares += delta
+
+
+def _spike_last_amount(db, code, amount):
+    """最后一天成交额放大（造「当日额 > 20 日均额 ×1.5」）。"""
+    row = db.scalars(
+        select(EtfBar).where(EtfBar.code == code).order_by(EtfBar.trade_date.desc())
+    ).first()
+    row.amount = amount
 
 
 def test_compound_uses_pct_series():
@@ -114,6 +131,88 @@ def test_momentum_requires_stock_type_and_ma20(db):
 
     assert [row.code for row in data.items] == ["510300"]
     assert data.filters["fund_type"] == "股票"
+
+
+def test_split_series_is_forward_adjusted(db):
+    """1 拆 2 之后，回撤 / MA20 / 新高要用前复权价算（否则永远是 −50%、站不上 MA20）。"""
+    db.add(EtfBasic(code="159583", name="通信设备ETF", norm_name="通信设备", fund_type="股票"))
+    db.add(EtfCategory(code="159583", name="通信设备ETF", category="电子通信"))
+    days = _dates(70)
+    for index, day in enumerate(days):
+        if index < 35:
+            close, pct = 2.0, 0.0
+        elif index < 69:
+            close, pct = 1.0, 0.0
+        else:
+            close, pct = 1.01, 1.0
+        db.add(
+            EtfBar(
+                trade_date=day,
+                code="159583",
+                close=close,
+                prev_close=2.0 if index == 35 else close,
+                pct_chg=pct,
+                amount=1e8,
+                volume=1000,
+                source="tdx",
+            )
+        )
+    db.commit()
+
+    data = etf_screen.screen(
+        db, END, preset="momentum", dedup=False, scale_min=0, amount_min=0, above_ma20=False
+    )
+    row = data.items[0]
+
+    assert row.drawdown == pytest.approx(0.0, abs=0.2)
+    assert row.close > row.ma20
+    assert row.new_high is True
+
+
+def test_category_flow_sums_all_members(db):
+    """行业强弱的净申赎要按**未去重**的全部 ETF 求和（代表只算一只会少一大半）。"""
+    close_a = seed(db, "510300", "沪深300ETF华泰柏瑞", "沪深300", "宽基", "股票", amount=5e8)
+    close_b = seed(db, "510310", "沪深300ETF易方达", "沪深300", "宽基", "股票", amount=1e8)
+    _bump_last_share(db, "510300", 5e7)
+    _bump_last_share(db, "510310", 5e7)
+    db.commit()
+
+    cats = etf_screen.categories(db, END)
+    row = next(item for item in cats if item["category"] == "宽基")
+
+    assert row["count"] == 1  # 代表只数仍是去重后的 1
+    expected = 5e7 * close_a + 5e7 * close_b
+    assert row["flow20"] == pytest.approx(expected, rel=1e-6)
+
+
+def test_breakout_excludes_money_etf(db):
+    """货币 ETF 天天创 60 日新高，不能占满「趋势突破」。"""
+    seed(db, "511990", "华宝添益ETF", "华宝添益", "货币现金", "货币", t0=True, step=0.01)
+    seed(db, "512880", "证券ETF", "证券", "证券保险", "股票", step=0.1)
+    _spike_last_amount(db, "511990", 5e8)
+    _spike_last_amount(db, "512880", 5e8)
+    db.commit()
+
+    data = etf_screen.screen(db, END, preset="breakout")
+
+    assert [row.code for row in data.items] == ["512880"]
+    assert data.filters["fund_type"] == "股票"
+
+
+def test_raw_rows_are_cached(db):
+    """同一 (基准日, 日线最新日, 份额最新日) 下重复调用直接用缓存。"""
+    seed(db, "510300", "沪深300ETF", "沪深300", "宽基", "股票", amount=5e8)
+    db.commit()
+
+    first = etf_screen.screen(db, END, preset="momentum")
+    # 改一只的收盘价（不改任何日期）—— 缓存期内结果不该变
+    row = db.scalars(select(EtfBar).where(EtfBar.code == "510300")).first()
+    row.close = 9.99
+    db.commit()
+    second = etf_screen.screen(db, END, preset="momentum")
+
+    assert etf_screen._RAW_CACHE is not None
+    assert [item.close for item in first.items] == [item.close for item in second.items]
 
 
 def test_detail_opens_non_stock_etf_and_lists_peers(db):

@@ -94,6 +94,39 @@ def test_coverage_gate_refuses_to_write(engine, monkeypatch):
         assert check.scalar(select(func.count()).select_from(EtfBar).where(EtfBar.trade_date == DAY)) == 0
 
 
+def test_fund_types_bounded_and_cached_per_day(monkeypatch):
+    """基金类型表要套 30 秒超时，且同一天只拉一次（复查 P2-1）。"""
+    import akshare as ak
+    import pandas as pd
+
+    monkeypatch.setattr(job, "_FUND_TYPES_CACHE", None)
+    seen: dict = {}
+    calls: list[int] = []
+
+    def fake_call(fn, description, timeout):  # noqa: ANN001 - 对齐 _call_bounded 签名
+        seen["description"] = description
+        seen["timeout"] = timeout
+        return fn()
+
+    def fake_frame():
+        calls.append(1)
+        return pd.DataFrame(
+            {"基金代码": ["510300", "511990"], "基金类型": ["指数型-股票", "货币型-普通货币"]}
+        )
+
+    monkeypatch.setattr("app.sources.akshare_source._call_bounded", fake_call)
+    monkeypatch.setattr(ak, "fund_name_em", fake_frame)
+
+    first = job._fund_types(DAY)
+    second = job._fund_types(DAY)
+    job._fund_types(date(2026, 10, 31))
+
+    assert first == {"510300": "指数型-股票", "511990": "货币型-普通货币"}
+    assert first is second
+    assert seen["timeout"] == job.FUND_TYPES_TIMEOUT
+    assert len(calls) == 2  # 同一天只拉一次，换一天再拉
+
+
 def test_dividend_day_uses_adjusted_prev_close(engine, monkeypatch):
     _patch_scope(monkeypatch, engine)
     monkeypatch.setattr(job, "_share_codes", lambda: set())
