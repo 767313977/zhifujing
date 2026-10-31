@@ -1171,6 +1171,10 @@ export const api = {
   etfRelated: (code: string, limit = 5) =>
     request<EtfRelated>(`/etf/related?code=${encodeURIComponent(code)}&limit=${limit}`),
 
+  /** 板块 / 行业名 → 相关 ETF（按 ETF 名称词典归类）。 */
+  etfRelatedByText: (text: string, limit = 3) =>
+    request<EtfRelated>(`/etf/related?text=${encodeURIComponent(text)}&limit=${limit}`),
+
   note: (date: string) => request<ReviewNote>(`/note/${date}`),
 
   saveNote: (date: string, marketView: string, nextPlan: string) =>

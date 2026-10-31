@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import * as echarts from 'echarts/core'
 import { api, isNoDataError } from '../api/client'
 import type {
+  EtfRelated,
   FundFlowHistoryOut,
   FundFlowMatrixOut,
   RotationLeader,
@@ -506,7 +507,34 @@ export default function Sectors() {
   const summary = summaryOf(values, boards)
 
   const selectedBoard = boards.find((board) => board.code === selected) ?? null
+  const selectedName = selectedBoard?.name ?? null
   const inCompare = selected != null && compareCodes.includes(selected)
+
+  /**
+   * 相关 ETF（ETF-5「板块页」那半条）：按板块名套 ETF 名称词典。
+   *
+   * 只是「名字像」——「光刻机」「固态电池」这类板块名经常归不出来，那时整张卡不出现，
+   * 比硬塞一只不相干的 ETF 强。单独取（后端首次要扫一遍全市场，之后 10 分钟缓存）。
+   */
+  const [relatedEtfs, setRelatedEtfs] = useState<EtfRelated | null>(null)
+  useEffect(() => {
+    if (!selectedName) {
+      setRelatedEtfs(null)
+      return
+    }
+    let stale = false
+    api
+      .etfRelatedByText(selectedName, 3)
+      .then((value) => {
+        if (!stale) setRelatedEtfs(value)
+      })
+      .catch(() => {
+        if (!stale) setRelatedEtfs(null)
+      })
+    return () => {
+      stale = true
+    }
+  }, [selectedName])
 
   const onSelect = useCallback((code: string) => setSelected(code), [])
   /**
@@ -762,6 +790,46 @@ export default function Sectors() {
                 </div>
               )}
             </Panel>
+
+            {relatedEtfs && relatedEtfs.items.length > 0 && (
+              <Panel
+                title="相关 ETF"
+                meta={
+                  <span className="num text-fg-dim">
+                    {relatedEtfs.category} · 盘后
+                  </span>
+                }
+                delay={90}
+              >
+                <div className="divide-y divide-line-soft">
+                  {relatedEtfs.items.map((row) => (
+                    <div
+                      key={row.code}
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-[13px]"
+                    >
+                      <span className="text-fg">{row.name ?? row.code}</span>
+                      <span className="num text-fg-dim">{row.code}</span>
+                      <span className={`num ${toneOf(row.ret20)}`}>
+                        20 日 {fmtPct(row.ret20, 1)}
+                      </span>
+                      <span className="num text-fg-dim">RPS60 {fmtNum(row.rps60, 0)}</span>
+                      <span className={`num ${toneOf(row.flow20)}`}>
+                        净申赎 {fmtAmount(row.flow20)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="border-t border-line-soft px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
+                  按板块名「{selectedBoard?.name}」套 ETF 名称词典归到「{relatedEtfs.category}」——
+                  只是名字像，<span className="text-fg-muted">成分股与该 ETF 的持仓不一定一致</span>。
+                  完整筛选见
+                  <Link to="/etf" className="ml-1 text-accent hover:underline">
+                    ETF 页
+                  </Link>
+                  。
+                </p>
+              </Panel>
+            )}
 
             <Panel
               title="板块近期表现"
