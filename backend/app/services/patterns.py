@@ -2794,6 +2794,11 @@ def _wudao_start(bars: Bars) -> Signal | None:
         score += _band_score(excess, 0.0, 0.04, 0.12) * 25
     score = max(score, 60.0)
 
+    # 2026-10-31 加 `break_state`：入池条件是「盘中最高价过样板高，且收盘不低于
+    # 样板高的 98%」—— 收盘落在 98%~100% 之间时，它只是**盘中突破**，收盘并没有站稳。
+    # 两者混成一句话会让人误读成「已经有效突破」，所以单独给一个状态字段。
+    # ⚠️ 只加展示字段，**不改**入池参数（任务书要求：未经验证不得改原参数）。
+    break_state = "收盘站稳" if today_close >= sample_high else "盘中突破·收盘未站稳"
     return Signal(
         "wudao_start",
         score,
@@ -2803,6 +2808,7 @@ def _wudao_start(bars: Bars) -> Signal | None:
             "pct_chg": round(pct, 2),
             "excess": round(excess, 4),
             "sample_high": round(sample_high, 2),
+            "break_state": break_state,
         },
     )
 
@@ -3699,9 +3705,19 @@ def _huabao_early(bars: Bars) -> Signal | None:
     3. 量：`0.55 ≤ 末日量比 ≤ 4.2`，且（连阳前 5 日缩量 或 连阳里量上台阶）
     4. MACD 抬头
 
-    ⚠️ 它还有两步我们**不做**：`fund_flow.flow_on_dates`（大单/主力净额，我们用 iFinD DDE、
-    口径不同）与分钟线贴 VWAP 校验（要现拉分钟线）。它自己也把「取不到资金流」当不淘汰处理，
-    所以缺这两步只会让清单稍宽一点，不会引入错票。
+    ## 已实现（**只到日线这一层**）
+
+    上面 1~4 条全部实现，判据与原型逐条对齐（阈值见 `WUDAO_HUABAO_*`）。
+
+    ## 未实现（缺数据 / 需要分钟线）
+
+    - `fund_flow.flow_on_dates`：大单 / 主力净额。我们用 iFinD DDE，口径不同，
+      **没有**接进这条判定。
+    - 分钟线贴 VWAP 校验：要现拉分钟线，扫描与回测都没有这份数据。
+
+    原型自己也把「取不到资金流」当不淘汰处理，所以缺这两步只会让清单**稍宽**，
+    不会把本该命中的票误杀；但它也意味着这条形态**不是**原始策略的完整实现 ——
+    资金流与 VWAP 两部分在本项目里**未验证**（没有历史数据支持）。
     """
     n = len(bars.close)
     if n < WUDAO_HUABAO_MIN_BARS:
@@ -5418,6 +5434,35 @@ def _zgb1_detail(fields: dict[str, np.ndarray], idx: int) -> dict[str, float]:
     }
 
 
+def _zgb1_signal_at(common: dict, key: str, idx: int) -> Signal | None:
+    """从算好的逐根数组里取第 `idx` 根（负数下标）的信号；不成立返回 None。"""
+    if not bool(common["fired"][key][idx]):
+        return None
+    support = common["white"] if key in ZGNB_WHITE_SUPPORT_KEYS else common["yellow"]
+    score = ZGNB_BASE_SCORE + float(common["extra"][key][idx])
+    detail = _zgb1_detail(common["fields"], idx)
+    detail["ago"] = -1 - idx
+    return Signal(key, min(score, 100.0), {"support": float(support[idx])}, detail)
+
+
+def zgb1_at(bars: Bars, key: str, index: int) -> Signal | None:
+    """第 `index` 根（0 起）上 `key` 是否成立 —— **回测专用**，与截断到那根逐字等价。
+
+    为什么要有它：回测逐根判形态，直接调 `detect(_upto(bars, t+1))` 会把整条序列的
+    EMA / MA / KDJ / 振幅**每根重算一遍**（O(n²)，全市场五年要跑几个小时）。
+    而这几条指标在第 t 根上的值只依赖 `<= t` 的数据，所以在完整序列上算一次、
+    按 `index` 取值与「先截断再算」完全一样。`test_b1_formula_parity` 里有一条
+    对照测试钉住这一点。
+    """
+    if index < ZGNB_MIN_BARS - 1:
+        # 与「截断后再算」一致：那一段不足预热根数，`_compute_zgb1` 直接判不够
+        return None
+    common = _zgb1_common(bars)
+    if not common["enough"]:
+        return None
+    return _zgb1_signal_at(common, key, index - len(bars))
+
+
 def _zgb1_signal(bars: Bars, key: str, *, window: int) -> Signal | None:
     """知行B1 各形态共用的出口：**最近 `window` 个交易日里出现过** `key` 就算命中。
 
@@ -5432,12 +5477,7 @@ def _zgb1_signal(bars: Bars, key: str, *, window: int) -> Signal | None:
     hit = np.flatnonzero(common["fired"][key][-window:])
     if hit.size == 0:
         return None
-    idx = int(hit[-1]) - window  # 负数下标，指到整条序列上
-    support = common["white"] if key in ZGNB_WHITE_SUPPORT_KEYS else common["yellow"]
-    score = ZGNB_BASE_SCORE + float(common["extra"][key][idx])
-    detail = _zgb1_detail(common["fields"], idx)
-    detail["ago"] = -1 - idx
-    return Signal(key, min(score, 100.0), {"support": float(support[idx])}, detail)
+    return _zgb1_signal_at(common, key, int(hit[-1]) - window)
 
 
 def _zgnb_turn(bars: Bars) -> Signal | None:

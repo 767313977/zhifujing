@@ -229,6 +229,24 @@ def is_pattern_board(code: str) -> bool:
     return c.startswith(_PATTERN_BOARD_PREFIXES)
 
 
+def pattern_board_allowed(pattern: str, code: str) -> bool:
+    """某个形态允不允许出现在这个板块 —— 生产与回测**唯一的板块判据**。
+
+    1. 任何形态先过 `is_pattern_board`（主板 + 创业板 + 科创板，不含北交所）；
+    2. 悟道六池 + 金叉大阳（`WUDAO_POOL_KEYS`）**再收一次**，只收创业板 + 科创板 ——
+       它们那套阈值按 20cm 校准，主板进去会失准（见 `WUDAO_POOL_KEYS` 的注释）。
+
+    `pattern=""` 时只判第一层：回测按落库闸门预筛股票池时用（那时还不知道形态）。
+    2026-10-31 从 `_signal_allowed` 里抽出来 —— 原来回测只按代码过滤板块、不区分形态，
+    `--board prod` 下悟道六池会混进主板，与生产口径不一致。
+    """
+    if not is_pattern_board(code):
+        return False
+    if pattern and pattern in WUDAO_POOL_KEYS and not is_wudao_board(code):
+        return False
+    return True
+
+
 def already_scanned(trade_date: date) -> bool:
     """该交易日是否已经扫过。
 
@@ -434,10 +452,8 @@ def _signal_allowed(
       用「今天强势」当候选等于把它们全筛掉，见模块顶部那张表），
       华宝早期另外排掉同一只票上已经命中的样板/启动。
     """
-    if not is_pattern_board(code):
-        return False
-    # 悟道六池 + 金叉大阳**仍然只收 20cm 那两块**（理由见 `WUDAO_POOL_KEYS`）
-    if pattern in WUDAO_POOL_KEYS and not is_wudao_board(code):
+    # 板块关（两层判据都在 `pattern_board_allowed`，回测也用同一个函数）
+    if not pattern_board_allowed(pattern, code):
         return False
     if pattern in WUDAO_CAND_KEYS:
         return code in cands
@@ -907,6 +923,16 @@ def scan(
     grouped = _load_bars(target, scan_codes)
     if not grouped:
         raise IfindError(f"{target} 没有日线数据，先跑 collect_kline")
+    # 「没有日线」≠「今天没选出票」：把缺口单独打出来，否则事后只能看到 0 条命中
+    missing = scan_codes - set(grouped)
+    if missing:
+        logger.warning(
+            "%s：%d 只票没有任何可用日线（数据缺口，不是「今天没信号」）：%s%s",
+            target,
+            len(missing),
+            ", ".join(sorted(missing)[:8]),
+            " …" if len(missing) > 8 else "",
+        )
 
     # **日线停在过去的票一律不出信号**。它的「最新」K 线可能是几天前、甚至几周前的，
     # 而命中列表那一列写的是「最新价」—— 混进去就是给用户看旧价（8.64 那次：

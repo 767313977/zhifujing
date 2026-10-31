@@ -50,12 +50,30 @@
 涨停 / 突破类形态上这个偏差是致命的 —— 用收盘价等于「买在条件成立的那根 K 线上」，
 凭空吃掉次日的高开。**打板类必须用 `--entry next_open`。**
 
-两处口径的**卖出日不变**（仍是信号日之后第 h 个交易日的收盘），只换入场价，所以
-「5 日」指的都是「在 t+1 开盘买入、持有到 t+5 收盘」。基准表也换成同一入场口径 ——
+两处口径的**正常情况**下卖出日不变（仍是信号日之后第 h 个交易日的收盘），只换入场价，
+所以「5 日」指的都是「在 t+1 开盘买入、持有到 t+5 收盘」。基准表也换成同一入场口径 ——
 否则超额里会混进「全市场平均高开幅度」这个与形态无关的量。
 
-停牌时 `next_open` 取**这只票自己的下一根 K 线开盘价**（复牌首日，最早能成交的价格）；
-持有期仍按全局交易日轴定位，所以停牌会让实际持有天数变短，不做补偿。
+### 2026-10-31 修正：入场日 = 实际成交日，持有期从它起算
+
+原来 `next_open` 取**这只票自己的下一根 K 线开盘价**（停牌时那就是复牌首日），但
+`_forward_outcomes` 仍按**信号日**的全局位置算目标日 —— 于是「周四才买到」的样本，
+被当成「周一就买到」，持有期整体提前了停牌的天数。现在改成：
+
+- `_entry()` 返回 `Entry(price, index, date)`：`next_open` 的 `date` 是**实际成交日**
+  （T+1 停牌就是复牌那天）；拿不到下一根 K 线才返回 None（记「无法成交」）。
+- **持有期定义**：`next_open` 时买入日算**第 1 个持有交易日**（周四买 → 5 日收益 =
+  第 5 个持有交易日收盘，正常 T+1 时正好还是 `close[t+5]`，历史口径不变）；
+  `close` 时买在收盘价、买入日算第 0 天，5 日收益 = `close[t+5]`。两种口径的
+  `close[t+h]` 都没被机械改动，改的只是「入场日晚于 T+1」这一类。
+- **预定退出日停牌**：不再静默丢样本，而是**顺延到复牌后第一个有行情的交易日收盘**
+  （现实中停牌也卖不出去）；报告里记录计划退出日 / 实际退出日 / 实际持有天数。
+- **数据末端或长期停牌**：该档记「无法退出」（不计入该档均值），并单独计数。
+- **基准按实际入场日聚合**：策略组哪天入场，就拿那一天入场的全池平均作基准 ——
+  两组同起点、同终点、同持有期，停牌延迟入场的样本不会与别的窗口比。
+
+⚠️ `close` 口径仍是**理论口径**：形态在收盘后才成立，现实中最早只能次日开盘成交。
+它只用于与历史数字对照，**不能**当作可交易收益读。
 
 ### `--skip-unbuyable`：剔除买不到的信号
 
@@ -122,6 +140,7 @@ from array import array
 from bisect import bisect_left
 from collections import Counter, defaultdict, deque
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
@@ -134,7 +153,17 @@ from sqlalchemy import create_engine, func, select  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.db import session_scope  # noqa: E402
-from app.jobs.scan_patterns import _load_bars  # noqa: E402
+from app.jobs.scan_patterns import (  # noqa: E402
+    _load_bars,
+    is_wudao_board,
+    pattern_board_allowed,
+    WUDAO_CAND_MAX_HIGH,
+    WUDAO_CAND_MAX_PCT,
+    WUDAO_CAND_KEYS,
+    WUDAO_CAND_MIN_HIGH,
+    WUDAO_CAND_MIN_PCT,
+    WUDAO_POOL_KEYS,
+)
 from app.models import StockDaily  # noqa: E402
 from app.services import limit_rules, rps as rps_rules, trend as trend_rules  # noqa: E402
 from app.services.patterns import (  # noqa: E402
@@ -150,12 +179,15 @@ from app.services.patterns import (  # noqa: E402
     is_st,
     limit_threshold,
     usable_bar,
+    zgb1_at,
 )
 from draft_patterns import DRAFT_PATTERNS  # noqa: E402  （同目录的脚本）
 
 logger = logging.getLogger("backtest")
 
-HORIZONS = (5, 10, 20, 60)
+# 持有期（交易日）。1/3 日是 2026-10-31 按用户的整改要求补的：短持有期才能看出
+# 「次日开盘买入」这种口径下的真实分布；5/10/20/60 保留，历史结论与它们对齐。
+HORIZONS = (1, 3, 5, 10, 20, 60)
 MIN_BARS = 80
 # 同一只票这么多交易日内的重复信号只留第一个（见模块说明第 2 条）
 DEDUP_DAYS = 20
@@ -234,20 +266,57 @@ def _as_hit(signal) -> dict | None:
     return {**signal.detail, "score": round(signal.score, 1)}
 
 
-def _entry_price(bars: Bars, t: int, mode: str) -> float | None:
-    """`t` 日信号对应的入场价；拿不到（`next_open` 已到序列末尾）时返回 None。
+@dataclass(frozen=True, slots=True)
+class Entry:
+    """一次实际入场：价格、在**这只票**序列里的行号、成交交易日。
 
-    - `close`：信号日收盘价；
-    - `next_open`：**次日开盘价**（形态收盘后才成立，最早只能次日开盘成交）。
+    2026-10-31 加：原来只有价格，停牌时「信号日」与「成交日」会差好几天，持有期却
+    仍从信号日算 —— 这就是那次整改的入口。`date` 是**实际成交日**。
+    """
 
-    `next_open` 取的是**这只票自己的下一根 K 线**：中间停牌时那根就是复牌首日，
-    也就是「最早能成交的价格」。
+    price: float
+    index: int
+    date: date
+
+
+@dataclass(frozen=True, slots=True)
+class Exit:
+    """某一档持有期的出场结果（见模块说明「入场日 = 实际成交日」）。
+
+    - `planned`：按交易日轴算出来的计划退出日；
+    - `actual`：实际退出日 —— 计划日停牌时**顺延到复牌后第一个有行情的交易日**；
+    - `held`：实际持有交易日数（`next_open` 时买入日算第 1 天；`close` 时算第 0 天）；
+    - `rolled`：实际退出日晚于计划退出日（顺延过）；
+    - `value` 为 None：**退不出来**（数据末端 / 长期停牌），不计入该档均值。
+    """
+
+    horizon: int
+    value: float | None
+    planned: date | None
+    actual: date | None
+    held: int | None
+    rolled: bool
+
+
+def _entry(bars: Bars, t: int, mode: str) -> Entry | None:
+    """`t` 日信号的实际入场（价格 + 成交日）；拿不到可成交的开盘价时返回 None。
+
+    - `close`：信号日收盘价，成交日就是信号日（**理论口径** —— 形态在收盘后才成立，
+      现实中最早只能次日开盘成交，见模块说明 P0-3）；
+    - `next_open`：**这只票自己的下一根 K 线开盘价**。T+1 停牌时那根就是复牌首日，
+      也就是「最早能成交的价格」；成交日取那根 K 线的日期，不一定等于 T+1。
     """
     if mode == ENTRY_CLOSE:
-        return float(bars.close[t])
+        return Entry(float(bars.close[t]), t, bars.dates[t])
     if t + 1 >= len(bars):
         return None
-    return float(bars.open[t + 1])
+    return Entry(float(bars.open[t + 1]), t + 1, bars.dates[t + 1])
+
+
+def _entry_price(bars: Bars, t: int, mode: str) -> float | None:
+    """只要价格的薄封装（历史调用点与单测用）。"""
+    entry = _entry(bars, t, mode)
+    return None if entry is None else entry.price
 
 
 #: 板价四舍五入到分带来的相对误差上限（`0.005 元 / 前收`），再大就封顶半个百分点。
@@ -281,35 +350,95 @@ def _unbuyable(bars: Bars, t: int, mode: str, limit_pct: float) -> bool:
     return price / prev_close - 1 >= limit_pct / 100.0 - tol
 
 
+def _exit_point(
+    all_dates: list[date], date_index: dict, target_g: int
+) -> tuple[int, int] | None:
+    """目标交易日 `target_g` 的 `(该股行号, 全局位置)`；该日停牌则顺延到之后第一个有行的交易日。
+
+    顺延到交易日轴末尾仍然没有行情 → None（**退不出来**：数据末端或长期停牌）。
+    正常「目标日有行」在第一次循环就命中，顺延几乎不会走。
+    """
+    n = len(all_dates)
+    g = max(target_g, 0)
+    while g < n:
+        j = date_index.get(all_dates[g])
+        if j is not None:
+            return j, g
+        g += 1
+    return None
+
+
 def _forward_outcomes(
     bars: Bars,
     date_index: dict,
-    g: int,
     all_dates: list,
-    entry: float,
-) -> list[float | None]:
-    """按**交易日**对齐算 `HORIZONS` 各档收益（`close[目标日] / entry − 1`）。
+    entry: Entry,
+    *,
+    g_entry: int,
+    hold_from_entry: bool,
+) -> list[Exit]:
+    """从**实际入场日**算 `HORIZONS` 各档收益（`close[实际退出日] / 入场价 − 1`）。
 
-    **2026-10-10 从「按行」改为「按交易日」**，理由：`stock_daily` 没有停牌日的行，
-    原来的 `close[t + h]` 取到的是**第 h 行**而不是「第 h 个交易日」，停牌空洞会把
-    实际持有期拉长（例：000010 2026-04-23 按行 5 日 −25.68% vs 按日历 −21.89%）；
-    而线上 `pattern_track._curves_from` 是按 `TradeCalendar` 定位、不受空洞影响，
-    回测必须与它同口径。
+    **2026-10-10 从「按行」改为「按交易日」**：`stock_daily` 没有停牌日的行，原来的
+    `close[t + h]` 取的是第 h **行**而不是第 h 个**交易日**，停牌空洞会把实际持有期
+    拉长；而线上 `pattern_track._curves_from` 按 `TradeCalendar` 定位、不受空洞影响。
 
-    「第 h 个交易日」用数据自身的日期并集（`all_dates`）来定位：`g` 是命中日在
-    `all_dates` 里的全局位置，`all_dates[g + h]` 就是目标交易日；再用该股的
-    `date_index` 把目标交易日换回这只票的行号。目标日**该股停牌（没行）**时该档返回
-    `None` —— 线上对这种票也是「这一档不算样本」，而不是拿一个假的 0% 顶进去。
+    **2026-10-31 再修：起点改成实际入场日**（原来固定用信号日 `g`，停牌延迟入场时
+    持有期整体提前）。持有期定义见模块说明：
+
+    - `hold_from_entry=True`（`next_open`）：买入日算**第 1 个持有交易日**，
+      目标日 = `g_entry + h - 1`。正常 T+1 入场时正好是 `close[t+h]`，历史口径不变；
+    - `hold_from_entry=False`（`close`）：买在收盘价、买入日算第 0 天，
+      目标日 = `g_entry + h`，与历史完全一致。
+
+    计划退出日停牌 → 顺延到复牌后第一个有行的交易日（`Exit.rolled=True`）；
+    一直找不到 → `value=None`（**无法退出**，该档不计样本），由调用方计数，不再静默丢弃。
     """
-    outcomes: list[float | None] = []
+    outcomes: list[Exit] = []
+    total = len(all_dates)
     for h in HORIZONS:
-        target = g + h
-        if target >= len(all_dates):
-            outcomes.append(None)
+        target_g = g_entry + h - (1 if hold_from_entry else 0)
+        planned = all_dates[target_g] if 0 <= target_g < total else None
+        point = _exit_point(all_dates, date_index, target_g)
+        if point is None:
+            outcomes.append(Exit(h, None, planned, None, None, False))
             continue
-        j = date_index.get(all_dates[target])
-        outcomes.append(None if j is None else float(bars.close[j]) / entry - 1)
+        j, g = point
+        held = g - g_entry + (1 if hold_from_entry else 0)
+        outcomes.append(
+            Exit(
+                h,
+                float(bars.close[j]) / entry.price - 1,
+                planned,
+                all_dates[g],
+                held,
+                g != target_g,
+            )
+        )
     return outcomes
+
+
+def _forward_values(
+    bars: Bars,
+    date_index: dict,
+    all_dates: list,
+    entry: Entry,
+    *,
+    g_entry: int,
+    hold_from_entry: bool,
+) -> list[float | None]:
+    """`_forward_outcomes` 的**轻量版**（只给基准表用：全池 × 全历史 × 6 档）。
+
+    基准只累加均值，不需要计划/实际退出日与持有天数；这里省掉 `Exit` 对象的分配，
+    逻辑与 `_forward_outcomes` 一字不差（同一套目标日 + 顺延规则）。
+    """
+    values: list[float | None] = []
+    for h in HORIZONS:
+        point = _exit_point(
+            all_dates, date_index, g_entry + h - (1 if hold_from_entry else 0)
+        )
+        values.append(None if point is None else float(bars.close[point[0]]) / entry.price - 1)
+    return values
 
 
 def _fmt_pct(value: float | None) -> str:
@@ -758,7 +887,20 @@ class Tally:
     - 基准只累加「当日全市场平均」的和，不保留日期
     """
 
-    __slots__ = ("returns", "bench", "counts", "months", "samples")
+    __slots__ = (
+        "returns",
+        "bench",
+        "counts",
+        "months",
+        "samples",
+        "total",
+        "delayed",
+        "no_entry",
+        "exit_rolled",
+        "exit_missing",
+        "samples_rolled",
+        "samples_missing",
+    )
 
     def __init__(self, horizons: int = len(HORIZONS)) -> None:
         self.returns = [array("d") for _ in range(horizons)]
@@ -766,23 +908,50 @@ class Tally:
         self.counts = [0] * horizons
         self.months: Counter[str] = Counter()
         self.samples: deque[dict] = deque(maxlen=40)
+        #: 加入统计的信号条数（与「某档有效样本」是两回事：退不出来 / 数据不够的档会少）
+        self.total = 0
+        #: 入场日晚于正常 T+1（停牌后复牌才买到）的条数
+        self.delayed = 0
+        #: 出了信号但拿不到入场价（无法成交）的条数 —— 由调用方累加
+        self.no_entry = 0
+        #: 各档「计划退出日停牌、顺延成交」与「退不出来」的条数
+        self.exit_rolled = [0] * horizons
+        self.exit_missing = [0] * horizons
+        #: 至少有一档顺延 / 至少有一档退不出来的信号条数
+        self.samples_rolled = 0
+        self.samples_missing = 0
 
     def add(
         self,
-        outcomes: list[float | None],
+        outcomes: list[Exit],
         bench_means: list[float],
         month: str,
         sample: dict | None = None,
+        *,
+        delayed: bool = False,
     ) -> None:
-        # 某一档为 None = 该股在那一档的目标交易日停牌（没行），**该档不计样本** ——
-        # 与线上 `pattern_track`「两端都要有行」同口径（2026-10-10）。
-        for index, value in enumerate(outcomes):
-            if value is None:
+        # `value is None` = 该档退不出来（数据末端 / 长期停牌），**该档不计样本**：
+        # 原来是静默丢掉，现在单独计数并在报告里交代（见 `Exit`）。
+        rolled_any = missing_any = False
+        for index, outcome in enumerate(outcomes):
+            if outcome.value is None:
+                self.exit_missing[index] += 1
+                missing_any = True
                 continue
-            self.returns[index].append(value)
+            self.returns[index].append(outcome.value)
             self.bench[index] += bench_means[index]
             self.counts[index] += 1
+            if outcome.rolled:
+                self.exit_rolled[index] += 1
+                rolled_any = True
+        self.total += 1
         self.months[month] += 1
+        if delayed:
+            self.delayed += 1
+        if rolled_any:
+            self.samples_rolled += 1
+        if missing_any:
+            self.samples_missing += 1
         if sample is not None:
             self.samples.append(sample)
 
@@ -790,7 +959,7 @@ class Tally:
 
     @property
     def size(self) -> int:
-        return self.counts[0] if self.counts else 0
+        return self.total
 
     def values(self, index: int) -> np.ndarray:
         """第 index 个持有期的收益数组（只读视图，不复制）。"""
@@ -811,6 +980,149 @@ class Tally:
             float(values.max()),
             float(values.min()),
         )
+
+
+def _st_rows(grouped: dict[str, list[dict]]) -> tuple[dict[str, set[date]], dict]:
+    """按**交易日**判 ST：`{代码: {该日为 ST 的日期}}` + 一份统计。
+
+    2026-10-31 整改：原来用「最后一根 K 线的名称」把整段历史剔掉 —— 那会把
+    「后天才变 ST」的票在变 ST 之前那段也一起剔掉，也把「现在是 ST」当成「过去一直
+    是 ST」。现在逐行看 `stock_daily.name`：**某天是 ST 就只有那天不参与**，摘帽后
+    符合条件可以重新进来。
+
+    ⚠️ 历史名称的可靠性有限：`history.db` 是后来回补的，同一只票所有行可能都写着
+    **当前**名称。这种情况无法还原逐日状态 —— 只能统计出来（`constant_st`）并在
+    报告里披露，**不伪造**。
+    """
+    st_days: dict[str, set[date]] = {}
+    no_name = 0
+    constant_st = 0
+    for code, records in grouped.items():
+        names = {str(record.get("name") or "").strip() for record in records}
+        no_name += sum(1 for record in records if not str(record.get("name") or "").strip())
+        days = {record["date"] for record in records if is_st(record.get("name"))}
+        if days:
+            st_days[code] = days
+            # 全历史名称只有一个值、且带 ST → 无法区分「一直 ST」与「后来才 ST」
+            if len(names) == 1:
+                constant_st += 1
+    return st_days, {
+        "codes": len(st_days),
+        "rows": sum(len(days) for days in st_days.values()),
+        "no_name": no_name,
+        "constant_st": constant_st,
+    }
+
+
+def _candidate_sets(bars_by_code: dict[str, Bars]) -> dict[date, set[str]]:
+    """复现生产 `scan_patterns._candidate_codes`：创业板 + 科创板里「今天出过线」的票。
+
+    口径与生产逐条一致（当日冲高 4.5%~22%、收盘涨跌 −3%~20.5%、板块 300/301/302/688/689），
+    只用**当天及之前**的数据，不碰未来。只有「明天盯 / 明天预案」用它，其余四个池子
+    不限候选池（理由见 `scan_patterns` 模块顶部那张表）。
+    """
+    out: dict[date, set[str]] = defaultdict(set)
+    for code, bars in bars_by_code.items():
+        if not is_wudao_board(code):
+            continue
+        for t in range(1, len(bars)):
+            pct = float(bars.pct_chg[t])
+            if not (WUDAO_CAND_MIN_PCT <= pct <= WUDAO_CAND_MAX_PCT):
+                continue
+            close = float(bars.close[t])
+            high = float(bars.high[t])
+            denominator = 1.0 + pct / 100.0
+            if denominator <= 0 or close <= 0 or high <= 0:
+                continue
+            # 与生产同一个反推口径（昨收 = 今收 / (1+涨跌幅)），不另查一根 K 线
+            prev_close = close / denominator
+            if prev_close <= 0:
+                continue
+            high_pct = (high / prev_close - 1.0) * 100.0
+            if WUDAO_CAND_MIN_HIGH <= high_pct <= WUDAO_CAND_MAX_HIGH:
+                out[bars.dates[t]].add(code)
+    return out
+
+
+def _benchmark(
+    bars_by_code: dict[str, Bars],
+    grouped: dict[str, list[dict]],
+    all_dates: list[date],
+    global_pos: dict[date, int],
+    mode: str,
+    *,
+    skip_unbuyable: bool,
+    st_days: dict[str, set[date]],
+) -> tuple[dict[int, dict[date, float]], dict[int, dict[date, float]], dict]:
+    """按**实际入场日**聚合的横截面基准：全池一份、悟道池（创业板+科创板）一份。
+
+    2026-10-31 改：原来按**信号日** `day` 聚合 —— 样本因停牌晚两天入场时，基准却是
+    「信号日入场」那批票的收益，两组不是同一段时间。现在策略组哪天入场就拿哪天入场的
+    全池平均作基准（同起点、同终点、同持有期）。
+
+    口径与样本完全一致：ST 按交易日剔、`--skip-unbuyable` 同口径剔、入场日晚于 T+1
+    的票按**它的实际入场日**计入对应那一天，不并到信号日。
+    """
+    hold_from_entry = mode == ENTRY_NEXT_OPEN
+    sums = {h: defaultdict(float) for h in HORIZONS}
+    counts = {h: defaultdict(int) for h in HORIZONS}
+    wsums = {h: defaultdict(float) for h in HORIZONS}
+    wcounts = {h: defaultdict(int) for h in HORIZONS}
+    stats: Counter[str] = Counter()
+
+    for code, bars in bars_by_code.items():
+        date_index = {day: i for i, day in enumerate(bars.dates)}
+        code_st = st_days.get(code, set())
+        wudao = is_wudao_board(code)
+        for i, day in enumerate(bars.dates):
+            if day in code_st:
+                stats["st"] += 1
+                continue
+            entry = _entry(bars, i, mode)
+            if entry is None:
+                stats["no_entry"] += 1
+                continue
+            if entry.date in code_st:
+                # 信号日正常、成交日已经是 ST（极端但会出现）：同样不参与
+                stats["st"] += 1
+                continue
+            if skip_unbuyable and _unbuyable(
+                bars, i, mode, limit_rules.limit_pct(code, grouped[code][i].get("name"))
+            ):
+                stats["unbuyable"] += 1
+                continue
+            g_entry = global_pos[entry.date]
+            if g_entry > global_pos[day] + (0 if mode == ENTRY_CLOSE else 1):
+                stats["delayed"] += 1
+            values = _forward_values(
+                bars,
+                date_index,
+                all_dates,
+                entry,
+                g_entry=g_entry,
+                hold_from_entry=hold_from_entry,
+            )
+            for index, value in enumerate(values):
+                if value is None:
+                    continue
+                horizon = HORIZONS[index]
+                sums[horizon][entry.date] += value
+                counts[horizon][entry.date] += 1
+                if wudao:
+                    wsums[horizon][entry.date] += value
+                    wcounts[horizon][entry.date] += 1
+
+    def _means(total: dict, number: dict) -> dict[int, dict[date, float]]:
+        return {
+            horizon: {
+                day: total[horizon][day] / count
+                for day, count in number[horizon].items()
+                if count
+            }
+            for horizon in HORIZONS
+        }
+
+    return _means(sums, counts), _means(wsums, wcounts), dict(stats)
 
 
 def _resolve_targets(name: str) -> dict[str, dict]:
@@ -847,12 +1159,21 @@ def main() -> int:
         default="all",
         choices=("all", "wudao", "prod"),
         help=(
-            "**要与生产对齐就跑 prod**（= 线上落库闸门 `scan_patterns.is_pattern_board`："
-            "主板 + 创业板 + 科创板，不含北交所；2026-10-14 起）；"
-            "wudao = 只创业板 + 科创板（`is_wudao_board`，悟道六池那一套，它们的阈值按 "
-            "20cm 校准；`patterns.py` 各段旧回测表就是这个口径）；"
-            "all = 池子里全部（含北交所）"
+            "prod = 线上落库闸门（主板 + 创业板 + 科创板，不含北交所），且**按形态**"
+            "再套生产边界：悟道六池 + 金叉大阳仍只收创业板 + 科创板"
+            "（`pattern_board_allowed`）；"
+            "wudao = 全部形态都只扫创业板 + 科创板（`is_wudao_board`，20cm 口径，"
+            "`patterns.py` 各段旧回测表就是这个口径）；"
+            "all = 研究口径：池子里全部（含北交所），**不等于生产口径**，只用于形态间相对比较"
         ),
+    )
+    parser.add_argument(
+        "--production-parity",
+        action="store_true",
+        help=(
+            "尽量复现生产扫描的全部可获得条件：按形态分板块边界、ST 按交易日剔、"
+            "「明天盯 / 明天预案」限当日候选池、华宝早期排掉同票已命中的样板/启动。"
+            "总市值 2000 亿那道**无法复现**（库里没有历史市值），会单独披露")
     )
     parser.add_argument("--history", action="store_true", help="用长历史库 history.db")
     parser.add_argument(
@@ -914,15 +1235,25 @@ def main() -> int:
 
     codes = load_codes()
     if args.board == "wudao":
-        from app.jobs.scan_patterns import is_wudao_board
-
         codes = [code for code in codes if is_wudao_board(code)]
         logger.info("只扫创业板 + 科创板：%d 只（与悟道六池同板块口径）", len(codes))
     elif args.board == "prod":
-        from app.jobs.scan_patterns import is_pattern_board
-
-        codes = [code for code in codes if is_pattern_board(code)]
+        # 只保留落库闸门允许的代码；**形态级**的再收窄（悟道六池 + 金叉大阳仍只收 20cm）
+        # 在逐条命中的循环里做 —— 两处用同一个 `pattern_board_allowed`。
+        codes = [code for code in codes if pattern_board_allowed("", code)]
         logger.info("按线上落库闸门：%d 只（主板 + 创业板 + 科创板，不含北交所）", len(codes))
+    else:
+        logger.warning(
+            "--board all 是**研究口径**（含北交所、不限形态），数字不能当生产效果读；"
+            "要与生产对照请加 --board prod --production-parity"
+        )
+    if args.production_parity and args.board != "prod":
+        logger.warning(
+            "--production-parity 已开但 --board=%s：候选池按生产口径只收创业板 + 科创板，"
+            "板块仍按 %s —— 想完整对齐请同时给 --board prod",
+            args.board,
+            args.board,
+        )
     if args.stocks:
         codes = codes[: args.stocks]
     if not codes:
@@ -945,16 +1276,33 @@ def main() -> int:
             raise SystemExit("stock_daily 是空的，先跑 collect_kline")
         grouped = _load_bars(latest, codes)
 
-    # **ST 一律不参与**，判据与线上扫描**同一个函数**（`patterns.is_st`）——
-    # 各写一份的话，回测数字就不再代表生产（8.68 那批形态就是栽在这上面）。
-    # ⚠️ 必须在这里剔（`grouped` 一份），**不能只剔样本**：下面那张基准表是拿
-    # 同一份逐票序列算出来的「同一天全市场平均」，样本剔了 ST 而基准不剔，
-    # 两组就不是对照了。
-    st_dropped = [code for code, records in grouped.items() if is_st(records[-1].get("name"))]
-    for code in st_dropped:
-        grouped.pop(code, None)
-    if st_dropped:
-        logger.info("剔除 %d 只 ST 票（与线上扫描同口径）", len(st_dropped))
+    # 数据缺口要单独说：没有日线的票**不是**「没有信号」，而是这批票根本没进回测。
+    missing = set(codes) - set(grouped)
+    if missing:
+        logger.warning(
+            "%d 只票在库/窗口里没有任何可用日线（数据缺口，不是「没有信号」）：%s%s",
+            len(missing),
+            ", ".join(sorted(missing)[:8]),
+            " …" if len(missing) > 8 else "",
+        )
+    short = sum(1 for records in grouped.values() if len(records) < MIN_BARS)
+    if short:
+        logger.warning("%d 只票的历史不足 %d 根，不参与判定", short, MIN_BARS)
+
+    # **ST 按交易日剔**（2026-10-31 整改）。判据仍是线上同一个 `patterns.is_st`，
+    # 但作用域从「整段」改成「那一天」：某天名称带 ST 就只有那天不参与，摘帽后可以
+    # 重新进来。样本与基准共用这一份 `st_days`，两组仍是对照关系。
+    # ⚠️ 历史名称可能整段都是当前名称（`history.db` 是回补的），那种情况无法还原，
+    # 只能统计并在日志/报告里披露 —— 不伪造逐日状态。
+    st_days, st_stats = _st_rows(grouped)
+    logger.info(
+        "ST 按交易日剔除：%d 只票 / %d 个(票,日)（名称缺失 %d 行；"
+        "%d 只票全历史名称恒为当前名、无法区分历史 ST 状态）",
+        st_stats["codes"],
+        st_stats["rows"],
+        st_stats["no_name"],
+        st_stats["constant_st"],
+    )
 
     bars_by_code = {
         code: build_bars(records, code)
@@ -1028,68 +1376,68 @@ def main() -> int:
     if filter_names:
         filter_ctx = _filter_context(filter_names, bars_by_code, all_dates)
 
-    # 基准：每个交易日 → 该日之后**第 h 个交易日**的平均收益。
+    # 基准：**按实际入场日**聚合的横截面平均（策略组哪天入场，就比哪一天入场的基准）。
     #
-    # ⚠️ **分母就是参与本次回测的那批票**（下面这份 `bars_by_code`）—— 所以
-    # `--board wudao` 时基准是「**创业板 + 科创板等权**」而不是全市场，超额里**不含**
-    # 板块 beta。（2026-10-14 更正：这里原来写的是「全市场平均」，措辞与代码不符，
-    # 曾让人误判成「超额混着板块 beta、只能比相对强弱」。）
+    # ⚠️ **分母就是参与本次回测的那批票**（`bars_by_code`）—— `--board wudao` 时基准是
+    # 「创业板 + 科创板等权」。另算一份「悟道池」基准（只有 20cm 那两块），供悟道六池与
+    # 金叉大阳在生产口径下使用：它们的生产边界本来就只有那两块。
     #
-    # 必须按**同一天**比，否则「形态命中组涨了 6%」可能只是那段时间大盘在涨。
+    # 2026-10-31 改：原来按**信号日**聚合，样本因停牌晚两天入场时，基准仍是「信号日入场」
+    # 那批票的收益 —— 两组不是同一段时间。现在按下标 `entry.date` 存，策略与基准
+    # 同起点、同终点、同持有期；停牌延迟入场的票计入**它自己的入场日**，不并到信号日。
     #
-    # 这里只累加 sum 与 count（而不是把每天的收益都存成一个列表）：5 年 × 全池会攒下
-    # 上千万个浮点数，存列表峰值能吃掉好几个 GB，而报告只需要那个均值。
-    # 口径与命中样本一致：按交易日对齐，目标日停牌的票不计入该日基准。
-    bench_sum: dict[int, dict[object, float]] = {h: defaultdict(float) for h in HORIZONS}
-    bench_count: dict[int, dict[object, int]] = {h: defaultdict(int) for h in HORIZONS}
-    for code, bars in bars_by_code.items():
-        date_index = {day: i for i, day in enumerate(bars.dates)}
-        # 限幅只跟板块有关（ST 已整段剔除，日期那档用不上），每只票算一次就够
-        code_limit = (
-            limit_rules.limit_pct(code, grouped[code][-1].get("name"))
-            if args.skip_unbuyable
-            else 0.0
-        )
-        for i, day in enumerate(bars.dates):
-            if args.skip_unbuyable and _unbuyable(bars, i, args.entry, code_limit):
-                continue
-            entry = _entry_price(bars, i, args.entry)
-            if entry is None or entry <= 0:
-                continue
-            g = global_pos[day]
-            for h, value in zip(
-                HORIZONS, _forward_outcomes(bars, date_index, g, all_dates, entry)
-            ):
-                if value is None:
-                    continue
-                bench_sum[h][day] += value
-                bench_count[h][day] += 1
-    bench: dict[int, dict[object, float]] = {
-        h: {day: bench_sum[h][day] / count for day, count in bench_count[h].items() if count}
-        for h in HORIZONS
-    }
-    logger.info("基准表：%d 个交易日", len(bench[HORIZONS[0]]))
+    # 只累加 sum 与 count（不保留每天的收益列表）：5 年 × 全池会攒下上千万个浮点数。
+    bench_all, bench_wudao, bench_stats = _benchmark(
+        bars_by_code,
+        grouped,
+        all_dates,
+        global_pos,
+        args.entry,
+        skip_unbuyable=args.skip_unbuyable,
+        st_days=st_days,
+    )
+    logger.info(
+        "基准表：%d 个入场日（全池）/ %d 个（创业板+科创板）；"
+        "基准侧 ST 剔除 %d 个(票,日)、延迟入场 %d 个、无法成交 %d 个",
+        len(bench_all[HORIZONS[0]]),
+        len(bench_wudao[HORIZONS[0]]),
+        bench_stats.get("st", 0),
+        bench_stats.get("delayed", 0),
+        bench_stats.get("no_entry", 0),
+    )
+    # 悟道六池 + 金叉大阳的生产基准是「创业板 + 科创板」那一份
+    use_wudao_bench = args.production_parity or args.board in ("prod", "wudao")
+
+    def _bench_table(key: str) -> dict[int, dict[date, float]]:
+        return bench_wudao if use_wudao_bench and key in WUDAO_POOL_KEYS else bench_all
 
     tallies = {key: Tally() for key in targets}
-    # `--skip-unbuyable` 剔掉了多少条（按形态），报告里要交代，否则「信号少」看不出原因
+    # 各种「信号被挡掉」的原因分开计数：报告里要交代，否则「信号少」看不出原因
     unbuyable: Counter[str] = Counter()
+    no_entry: Counter[str] = Counter()
+    st_entry: Counter[str] = Counter()
+    board_dropped: Counter[str] = Counter()
+    candidate_dropped: Counter[str] = Counter()
+    huabao_dropped: Counter[str] = Counter()
     last_hit: dict[tuple[str, str], int] = {}
     started = time.monotonic()
+    hold_from_entry = args.entry == ENTRY_NEXT_OPEN
+    prod_board_gate = args.board == "prod"
+    # 候选池只对「明天盯 / 明天预案」生效；其余四个池子不限（生产就是这样）
+    candidates = _candidate_sets(bars_by_code) if args.production_parity else {}
 
     for done, (code, bars) in enumerate(bars_by_code.items(), start=1):
         n = len(bars)
         date_index = {day: i for i, day in enumerate(bars.dates)}
-        code_limit = (
-            limit_rules.limit_pct(code, grouped[code][-1].get("name"))
-            if args.skip_unbuyable
-            else 0.0
-        )
+        code_st = st_days.get(code, set())
         for t in range(MIN_BARS, n):
             day = bars.dates[t]
             g = global_pos[day]
             if g + max(HORIZONS) >= len(all_dates):
                 # 命中日之后不足 `max(HORIZONS)` 个交易日了。日期升序，可以直接停这一只票。
                 break
+            if day in code_st:
+                continue
             if rps_extra is not None:
                 rps50 = _rps_lookup(filter_ctx, 50, code, day)
                 if (
@@ -1097,58 +1445,122 @@ def main() -> int:
                     and rps50 >= RPS_TOP
                     and t - last_rps.get(code, -10**6) >= DEDUP_DAYS
                 ):
-                    entry_rps = _entry_price(bars, t, args.entry)
+                    entry_rps = _entry(bars, t, args.entry)
                     # 买不到的信号连去重位都不占：后面几天若能成交，仍该算样本
-                    if (
-                        entry_rps is not None
-                        and entry_rps > 0
-                        and not (
-                            args.skip_unbuyable
-                            and _unbuyable(bars, t, args.entry, code_limit)
+                    if entry_rps is not None and entry_rps.price > 0 and not (
+                        args.skip_unbuyable
+                        and _unbuyable(
+                            bars,
+                            t,
+                            args.entry,
+                            limit_rules.limit_pct(code, grouped[code][t].get("name")),
                         )
                     ):
                         last_rps[code] = t
+                        g_entry = global_pos[entry_rps.date]
                         rps_extra.add(
-                            _forward_outcomes(bars, date_index, g, all_dates, entry_rps),
-                            [bench[h].get(day, 0.0) for h in HORIZONS],
+                            _forward_outcomes(
+                                bars,
+                                date_index,
+                                all_dates,
+                                entry_rps,
+                                g_entry=g_entry,
+                                hold_from_entry=hold_from_entry,
+                            ),
+                            [bench_all[h].get(entry_rps.date, 0.0) for h in HORIZONS],
                             str(day)[:7],
+                            delayed=g_entry > g + (1 if hold_from_entry else 0),
                         )
             sample: Bars | None = None
             # 同一个 (票, 交易日) 的蜡烛形态只判一次：多个形态同日命中时共用
             candle_flags: tuple[str, ...] | None = None
             for key, target in targets.items():
+                # 板块关：prod 口径下按形态再收一次（悟道六池 + 金叉大阳只收 20cm）
+                if prod_board_gate and not pattern_board_allowed(key, code):
+                    board_dropped[key] += 1
+                    continue
+                if (
+                    args.production_parity
+                    and key in WUDAO_CAND_KEYS
+                    and code not in candidates.get(day, ())
+                ):
+                    candidate_dropped[key] += 1
+                    continue
                 screen = target["screen"]
                 if screen is not None and not screen(bars, t):
                     continue
-                if sample is None:
-                    sample = _upto(bars, t + 1)
-                hit = _as_hit(_BY_KEY[key].detect(sample))
+                if key.startswith("zgnb_"):
+                    # 知行B1：指标只依赖 `<= t`，整条序列算一次、按根取值即可
+                    # （`patterns.zgb1_at` 与「截断后再判」有对照测试）
+                    hit = _as_hit(zgb1_at(bars, key, t))
+                    if candle_tallies and sample is None:
+                        sample = _upto(bars, t + 1)
+                else:
+                    if sample is None:
+                        sample = _upto(bars, t + 1)
+                    hit = _as_hit(_BY_KEY[key].detect(sample))
                 if hit is None:
                     continue
                 # 同一只票 DEDUP_DAYS 个交易日内只留第一个信号：一波行情里连着几天
                 # 都满足条件，会被当成几个「独立样本」，把统计显著性算得虚高
                 if t - last_hit.get((key, code), -10**6) < DEDUP_DAYS:
                     continue
-                entry = _entry_price(bars, t, args.entry)
-                if entry is None or entry <= 0:
+                entry = _entry(bars, t, args.entry)
+                if entry is None:
+                    # 拿不到可成交的开盘价（序列末尾）—— 记「无法成交」，不静默丢
+                    no_entry[key] += 1
+                    continue
+                if entry.date in code_st:
+                    # 信号日正常、成交日已是 ST：与基准同规则，剔除并计数
+                    st_entry[key] += 1
                     continue
                 # 买不到的信号不占去重位：20 日窗口内后面能成交的那次仍该算
-                if args.skip_unbuyable and _unbuyable(bars, t, args.entry, code_limit):
+                if args.skip_unbuyable and _unbuyable(
+                    bars,
+                    t,
+                    args.entry,
+                    limit_rules.limit_pct(code, grouped[code][t].get("name")),
+                ):
                     unbuyable[key] += 1
                     continue
+                # 华宝早期：同一只票当天已经出过样板 / 启动就不收（生产 `_signal_allowed`）
+                if args.production_parity and key == "huabao_early":
+                    flagged = any(
+                        _as_hit(_BY_KEY[other].detect(sample)) is not None
+                        for other in ("wudao_sample", "wudao_start")
+                    )
+                    if flagged:
+                        huabao_dropped[key] += 1
+                        continue
+                g_entry = global_pos[entry.date]
+                delayed = g_entry > g + (1 if hold_from_entry else 0)
                 last_hit[(key, code)] = t
-                outcomes = _forward_outcomes(bars, date_index, g, all_dates, entry)
+                outcomes = _forward_outcomes(
+                    bars,
+                    date_index,
+                    all_dates,
+                    entry,
+                    g_entry=g_entry,
+                    hold_from_entry=hold_from_entry,
+                )
+                table = _bench_table(key)
+                bench_means = [table[h].get(entry.date, 0.0) for h in HORIZONS]
                 tallies[key].add(
                     outcomes,
-                    [bench[h].get(day, 0.0) for h in HORIZONS],
+                    bench_means,
                     str(day)[:7],
                     {
                         "code": code,
-                        "name": grouped[code][-1].get("name") or "",
+                        # 用**当天**的名字（不是最后一根），与 ST 判定同源
+                        "name": grouped[code][t].get("name") or "",
                         "date": day,
+                        "entry_date": entry.date,
+                        "delayed": delayed,
                         "hit": hit,
-                        "outcomes": dict(zip(HORIZONS, outcomes)),
+                        "outcomes": {item.horizon: item.value for item in outcomes},
+                        "exits": {item.horizon: item.actual for item in outcomes},
                     },
+                    delayed=delayed,
                 )
                 if candle_tallies:
                     if candle_flags is None:
@@ -1159,9 +1571,7 @@ def main() -> int:
                         )
                     for candle in candle_flags:
                         candle_tallies[(key, candle)].add(
-                            outcomes,
-                            [bench[h].get(day, 0.0) for h in HORIZONS],
-                            str(day)[:7],
+                            outcomes, bench_means, str(day)[:7]
                         )
                 if filter_tallies:
                     for name in filter_names:
@@ -1170,11 +1580,7 @@ def main() -> int:
                             if FILTER_CHECKS[name](code, bars, t, filter_ctx)
                             else filter_base_tallies
                         )
-                        bucket[(key, name)].add(
-                            outcomes,
-                            [bench[h].get(day, 0.0) for h in HORIZONS],
-                            str(day)[:7],
-                        )
+                        bucket[(key, name)].add(outcomes, bench_means, str(day)[:7])
         if done % 1000 == 0:
             logger.info(
                 "  扫过 %d/%d 只，命中 %d 条，用时 %.0fs",
@@ -1194,15 +1600,56 @@ def main() -> int:
             dropped / (total + dropped) * 100,
             ", ".join(f"{key}×{count}" for key, count in unbuyable.most_common()),
         )
+    if no_entry:
+        logger.warning(
+            "%d 条信号拿不到可成交的开盘价（序列末尾，记「无法成交」）：%s",
+            sum(no_entry.values()),
+            ", ".join(f"{key}×{count}" for key, count in no_entry.most_common()),
+        )
+    if st_entry:
+        logger.info(
+            "成交日已是 ST（信号日不是）挡掉 %d 条：%s",
+            sum(st_entry.values()),
+            ", ".join(f"{key}×{count}" for key, count in st_entry.most_common()),
+        )
+    if board_dropped:
+        logger.info(
+            "按形态板块边界挡掉：%s",
+            ", ".join(f"{key}×{count}" for key, count in board_dropped.most_common()),
+        )
+    if candidate_dropped:
+        logger.info(
+            "不在当日候选池（仅明天盯 / 明天预案）挡掉：%s",
+            ", ".join(f"{key}×{count}" for key, count in candidate_dropped.most_common()),
+        )
+    if huabao_dropped:
+        logger.info(
+            "华宝早期：同票同日已出样板/启动，挡掉 %d 条", sum(huabao_dropped.values())
+        )
     if total == 0:
-        logger.warning("一个都没命中 —— 条件太严或数据太短")
+        logger.warning(
+            "一个都没命中 —— 条件太严或数据太短（不是「今天没选出票」，是本次回测没有样本）"
+        )
         return 1
 
     if args.entry == ENTRY_NEXT_OPEN:
         # 口径不同不能和文档里的历史数字混读，报告开头点明
-        print("\n★ 入场 = 次日开盘（open[t+1]）；历史结论均为信号日收盘入场，两者不可直接比较")
+        print(
+            "\n★ 入场 = 次日开盘（open[t+1]）；历史结论均为信号日收盘入场，两者不可直接比较。"
+            "\n  停牌导致入场晚于 T+1 时，持有期从**实际成交日**起算，计划退出日停牌则顺延到复牌首日收盘。"
+        )
+    else:
+        print(
+            "\n★ 入场 = 信号日收盘价（**理论口径**：形态在收盘后才成立，现实中最早只能次日开盘成交）。"
+            "\n  这一口径只用于与历史数字对照，不能当作可交易收益；实盘模拟请用 --entry next_open。"
+        )
     if args.skip_unbuyable:
         print("★ 已剔除入场价已在涨停价上的信号（买不到），基准表同口径")
+    if args.production_parity:
+        print(
+            "★ 生产口径（--production-parity）：按形态分板块边界 + 当日候选池（仅明天盯/明天预案）"
+            " + 华宝早期互斥。**总市值 2000 亿未复现**（库里没有历史市值），见报告末「数据限制」。"
+        )
 
     if len(targets) == 1:
         key = next(iter(targets))
@@ -1215,6 +1662,7 @@ def main() -> int:
         _report_filter_split(filter_tallies, filter_base_tallies)
     if rps_extra is not None and rps_extra.size:
         _report_rps_standalone(rps_extra)
+    _report_data_limits(args, grouped, st_stats)
     return 0
 
 
@@ -1232,18 +1680,28 @@ def _report_single(key: str, tally: Tally, samples: int) -> None:
     print("-" * 92)
     print(
         f"{'持有':>6} {'样本':>6} {'均值':>9} {'中位':>9} {'胜率':>7} "
-        f"{'基准均值':>10} {'超额':>9} {'最好':>9} {'最差':>9}"
+        f"{'基准均值':>10} {'超额':>9} {'顺延':>6} {'无法退出':>8} {'最好':>9} {'最差':>9}"
     )
-    print("-" * 92)
+    print("-" * 100)
     for index, horizon in enumerate(HORIZONS):
         mean, median, win, best, worst = tally.stats(index)
         base = tally.bench_mean(index)
         print(
             f"{horizon:>4}日 {tally.counts[index]:>6} {mean * 100:>8.2f}% {median * 100:>8.2f}% "
             f"{win * 100:>6.1f}% {base * 100:>9.2f}% {(mean - base) * 100:>8.2f}% "
+            f"{tally.exit_rolled[index]:>6} {tally.exit_missing[index]:>8} "
             f"{best * 100:>8.1f}% {worst * 100:>8.1f}%"
         )
-    print("=" * 92)
+    print("=" * 100)
+
+    dropped = tally.no_entry
+    print()
+    print(
+        f"成交与退出：延迟入场 {tally.delayed} 条（停牌后复牌才买到）；"
+        f"无法成交 {dropped} 条（占 {dropped / (tally.size + dropped) * 100 if tally.size + dropped else 0:.1f}%）；"
+        f"至少一档无法退出 {tally.samples_missing} 条；至少一档顺延 {tally.samples_rolled} 条"
+    )
+    print("（无法退出 = 数据末端或长期停牌，该档不计样本；顺延 = 计划退出日停牌，按复牌首日收盘退出）")
 
     print()
     print("--- 信号按月分布（全挤在某一两个月 = 可能只在特定行情下成立）---")
@@ -1255,10 +1713,12 @@ def _report_single(key: str, tally: Tally, samples: int) -> None:
         # 注意别写成 rows[-samples:]：samples=0 时那是 [-0:] 等于整段，会把全部明细打出来
         for item in sorted(tally.samples, key=lambda entry: entry["date"])[-samples:]:
             out = item["outcomes"]
+            flag = " ⚠延迟" if item.get("delayed") else ""
             print(
                 f"  {item['date']} {item['code']} {str(item.get('name') or ''):<6} "
-                f"分数{item['hit'].get('score', 0):>5.1f}"
-                f"  → 5日{_fmt_pct(out.get(5))} 10日{_fmt_pct(out.get(10))} "
+                f"分数{item['hit'].get('score', 0):>5.1f} 入场{item['entry_date']}{flag}"
+                f"  → 1日{_fmt_pct(out.get(1))} 3日{_fmt_pct(out.get(3))} "
+                f"5日{_fmt_pct(out.get(5))} 10日{_fmt_pct(out.get(10))} "
                 f"20日{_fmt_pct(out.get(20))}"
             )
 
@@ -1276,31 +1736,80 @@ def _report_multi(tallies: dict[str, Tally]) -> None:
         }
         rows.append({"key": key, "meta": meta, "tally": tally, "excess": excess})
 
+    idx1, idx3, idx5, idx10, idx20, idx60 = (
+        HORIZONS.index(h) for h in (1, 3, 5, 10, 20, 60)
+    )
+
     # 按 10 日超额排序：做这张表的全部意义就是「一眼看出哪些形态值得留」
-    rows.sort(key=lambda item: (item["excess"][1] if item["excess"] else -99), reverse=True)
+    rows.sort(
+        key=lambda item: (item["excess"][idx10] if item["excess"] else -99), reverse=True
+    )
 
     print()
-    print("=" * 110)
+    print("=" * 132)
     print(
-        f"{'分组':<12}{'形态':<18}{'信号':>7}{'5日超额':>10}{'10日超额':>10}"
+        f"{'分组':<12}{'形态':<18}{'信号':>7}{'1日超额':>10}{'3日超额':>10}"
+        f"{'5日超额':>10}{'10日超额':>10}"
         f"{'20日超额':>10}{'60日超额':>10}{'10日胜率':>9}{'10日中位':>10}"
     )
-    print("-" * 110)
+    print("-" * 132)
     for item in rows:
         meta, tally = item["meta"], item["tally"]
         if item["excess"] is None:
-            print(f"{meta.group:<12}{meta.name:<18}{0:>7}{'—':>10}{'—':>10}{'—':>10}{'—':>10}{'—':>9}{'—':>10}")
+            print(
+                f"{meta.group:<12}{meta.name:<18}{0:>7}{'—':>10}{'—':>10}{'—':>10}"
+                f"{'—':>10}{'—':>10}{'—':>10}{'—':>9}{'—':>10}"
+            )
             continue
         excess = item["excess"]
-        median10 = tally.stats(1)[1]
-        win10 = tally.stats(1)[2]
+        median10 = tally.stats(idx10)[1]
+        win10 = tally.stats(idx10)[2]
         print(
             f"{meta.group:<12}{meta.name:<18}{tally.size:>7}"
-            f"{excess[0] * 100:>9.2f}%{excess[1] * 100:>9.2f}%{excess[2] * 100:>9.2f}%"
-            f"{excess[3] * 100:>9.2f}%{win10 * 100:>8.1f}%{median10 * 100:>9.2f}%"
+            f"{excess[idx1] * 100:>9.2f}%{excess[idx3] * 100:>9.2f}%"
+            f"{excess[idx5] * 100:>9.2f}%{excess[idx10] * 100:>9.2f}%"
+            f"{excess[idx20] * 100:>9.2f}%"
+            f"{excess[idx60] * 100:>9.2f}%{win10 * 100:>8.1f}%{median10 * 100:>9.2f}%"
         )
-    print("=" * 110)
-    print("（超额 = 命中组平均收益 − 同一天全市场平均收益，单位 %，未年化）")
+    print("=" * 132)
+    print(
+        "（超额 = 命中组平均收益 − 同**实际入场日**全池平均收益，单位 %，未年化；"
+        "「同一天」指同一天入场、同一天退出）"
+    )
+
+    print()
+    print("--- 分档明细（绝对收益，%；基准 = 同实际入场日的全池平均）---")
+    for item in rows:
+        tally = item["tally"]
+        if not tally.size:
+            continue
+        print(f"  {item['meta'].name}")
+        for index, horizon in enumerate(HORIZONS):
+            mean, median, win, _best, _worst = tally.stats(index)
+            base = tally.bench_mean(index)
+            print(
+                f"    {horizon:>3}日  样本{tally.counts[index]:>6}  均值{mean * 100:>7.2f}%"
+                f"  中位{median * 100:>7.2f}%  胜率{win * 100:>5.1f}%"
+                f"  基准{base * 100:>7.2f}%  超额{(mean - base) * 100:>+6.2f}%"
+            )
+
+    print()
+    print("--- 成交与退出（无法成交 = 拿不到可成交开盘价；无法退出 = 数据末端/长期停牌）---")
+    print(
+        f"{'形态':<20}{'信号':>7}{'延迟入场':>9}{'无法成交':>9}{'无法成交率':>11}"
+        f"{'无法退出':>9}{'退出顺延':>9}"
+    )
+    print("-" * 76)
+    for item in rows:
+        tally = item["tally"]
+        if not tally.size:
+            continue
+        rate = tally.no_entry / (tally.size + tally.no_entry) * 100 if tally.size + tally.no_entry else 0.0
+        print(
+            f"{item['meta'].name:<20}{tally.size:>7}{tally.delayed:>9}{tally.no_entry:>9}"
+            f"{rate:>10.1f}%{tally.samples_missing:>9}{tally.samples_rolled:>9}"
+        )
+    print("=" * 76)
 
     print()
     print("--- 各形态信号按月分布（看是不是只在某一两个月成立）---")
@@ -1320,7 +1829,9 @@ def _report_candle_split(
     且确认组样本 ≥200，才考虑在命中明细里加 `candle_confirm` 标签；
     否则这一项结束，把结论写进 `patterns.py` 的注释，免得以后又想做一遍。
     """
+    index5 = HORIZONS.index(5)
     index10 = HORIZONS.index(10)
+    index20 = HORIZONS.index(20)
     rows = []
     for (key, candle), tally in split.items():
         base = tallies.get(key)
@@ -1336,9 +1847,9 @@ def _report_candle_split(
                 "key": key,
                 "candle": candle,
                 "samples": tally.size,
-                "excess5": tally.stats(0)[0] - tally.bench_mean(0),
+                "excess5": tally.stats(index5)[0] - tally.bench_mean(index5),
                 "excess10": excess,
-                "excess20": tally.stats(2)[0] - tally.bench_mean(2),
+                "excess20": tally.stats(index20)[0] - tally.bench_mean(index20),
                 "win10": tally.stats(index10)[2],
                 "diff": (excess - base_excess) * 100,
                 "win_diff": (tally.stats(index10)[2] - base.stats(index10)[2]) * 100,
@@ -1405,7 +1916,10 @@ def _report_filter_split(
     决策线（2026-10-19 清单）：过滤组样本 ≥200 且 10 日超额比基础组高 ≥1pp，
     才算这个条件对这个形态有效；长历史方向一致才上线。
     """
+    index5 = HORIZONS.index(5)
     index10 = HORIZONS.index(10)
+    index20 = HORIZONS.index(20)
+    index60 = HORIZONS.index(60)
     rows = []
     for (key, name), tally in matched.items():
         reference = base.get((key, name))
@@ -1422,14 +1936,14 @@ def _report_filter_split(
                 "filter": name,
                 "samples": tally.size,
                 "base_samples": reference.size,
-                "excess5": tally.stats(0)[0] - tally.bench_mean(0),
+                "excess5": tally.stats(index5)[0] - tally.bench_mean(index5),
                 "excess10": excess,
-                "excess20": tally.stats(2)[0] - tally.bench_mean(2),
+                "excess20": tally.stats(index20)[0] - tally.bench_mean(index20),
                 # 60 日要命中后再走 60 个交易日，窗口末端那批信号没有样本 ——
                 # 为 0 时打印 `—`，不能当「超额 0」看
                 "excess60": (
-                    tally.stats(3)[0] - tally.bench_mean(3)
-                    if tally.counts[3]
+                    tally.stats(index60)[0] - tally.bench_mean(index60)
+                    if tally.counts[index60]
                     else None
                 ),
                 "win10": tally.stats(index10)[2],
@@ -1521,6 +2035,52 @@ def _report_rps_standalone(tally: Tally) -> None:
     print(line)
     print("=" * 104)
     print("（超额 = 命中组平均收益 − 同一天全市场平均收益；与形态表同一套基准）")
+
+
+def _over_cap_now(grouped: dict[str, list[dict]]) -> set[str]:
+    """当前总市值超过生产上限的代码（与本次样本池求交）。拿不到时返回空集。"""
+    try:
+        from app.jobs.scan_patterns import PATTERN_MAX_TOTAL_MV, _over_cap_codes
+
+        return set(grouped) & _over_cap_codes(PATTERN_MAX_TOTAL_MV)
+    except Exception:  # noqa: BLE001  披露用，查不到就不披露这一条
+        return set()
+
+
+def _report_data_limits(args, grouped: dict[str, list[dict]], st_stats: dict) -> None:
+    """把**用现有数据修不掉**的偏差逐条列出来（任务书要求：有偏差必须披露）。
+
+    这些不是 bug，是数据限制：列出来是为了避免把「回测跑出来的数字」当成
+    「上生产能赚这么多」。任何一条能修的前提都是补数据，而不是改代码。
+    """
+    print()
+    print("=" * 100)
+    print("数据限制（决定这些数字能不能当「上生产能赚多少」）")
+    print("-" * 100)
+    print(
+        f"0) 本次口径：board={args.board} / entry={args.entry} / "
+        f"production_parity={args.production_parity} / HORIZONS={list(HORIZONS)}"
+    )
+    print("1) 幸存者偏差：股票池来自 load_codes() —— **当前**在池的票。退市 / 出池的票整段")
+    print("   缺席，样本与基准同向偏乐观；未按历史交易日的真实上市状态还原股票池。")
+    print("2) 总市值 2000 亿过滤**未复现**：库里没有历史市值（stock_daily 无 total_mv，")
+    print("   stock_universe 只有当前快照）。不用今天的市值代替历史市值，也不伪造。")
+    over = _over_cap_now(grouped)
+    if over:
+        print(
+            f"   当前超线、且在本次样本池里的票 {len(over)} 只 —— 生产会把它们整段剔除，"
+            "回测没有；含这些票的样本/基准数字都偏宽。"
+        )
+    print(
+        f"3) ST 按交易日剔除 {st_stats['rows']} 个(票,日)（{st_stats['codes']} 只票）；"
+        f"其中 {st_stats['constant_st']} 只票全历史名称恒为当前名称，"
+    )
+    print("   无法区分「一直 ST」与「后来才 ST」；名称缺失的行按非 ST 处理。")
+    print(f"   名称缺失 {st_stats['no_name']} 行。")
+    print("4) 成交假设：入场用当日开盘价、退出用收盘价，**未计**佣金 / 印花税 / 滑点 /")
+    print("   冲击成本；涨停买不到只在 --skip-unbuyable 时剔除，跌停卖不出未建模。")
+    print("5) 去重：同一只票 20 个交易日内的重复信号只留第一个（只是独立样本的近似）。")
+    print("=" * 100)
 
 
 if __name__ == "__main__":

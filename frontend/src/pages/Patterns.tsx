@@ -967,7 +967,14 @@ export default function Patterns() {
                 ⚠️ 只支持**最新交易日**：阶段与超跌都按库里最新的日线算，翻历史日期时
                 候选池是那天的、判定却是今天的，两端不同日（后端会直接 400） */}
             <div className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-2.5">
-              <span className="text-[13px] text-fg-dim">阶段判定</span>
+              {/* 2026-10-31 加说明：标签是**技术阶段识别**，≠ 正式入池 ——
+                  入池还要过板块（悟道名单只收创业板 + 科创板）与收盘位置等条件 */}
+              <span
+                className="cursor-help text-[13px] text-fg-dim"
+                title="阶段标签只回答「这只票今天像哪一档」（技术识别）；正式入池还要过板块（悟道名单只收创业板 + 科创板）与收盘位置等条件，两者口径不同"
+              >
+                阶段判定
+              </span>
               {PHASES.map((item) => {
                 const on = phases.includes(item.value)
                 const off = date !== null
