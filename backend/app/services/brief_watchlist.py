@@ -18,8 +18,17 @@ from datetime import date, timedelta
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import CbBasic, CbDaily, PatternHit, StockBasic, StockDaily, Watchlist
-from app.services import stock_events, trade_plan, trap
+from app.models import (
+    CbBasic,
+    CbDaily,
+    EtfBasic,
+    EtfShare,
+    PatternHit,
+    StockBasic,
+    StockDaily,
+    Watchlist,
+)
+from app.services import etf_flow, stock_events, trade_plan, trap
 from app.services.convertible import redeem_kind
 from app.services.patterns import PATTERNS
 from app.services.watch_scope import stock_watch_codes
@@ -53,6 +62,66 @@ def _levels(key_levels: dict | None) -> tuple[float | None, float | None]:
     )
 
 
+#: 自选 ETF 的份额异动阈值：近 5 个份额日的净赎回超过当前规模的 20%
+ETF_FLOW5_DROP = -0.20
+
+
+def _etf_block(session: Session, user_id: int) -> str:
+    """自选里的 ETF：**份额 5 日减少超过 20%** 时提醒一句（ETF-5）。
+
+    为什么用 `etf_share` 现算、而不是调 `etf_screen`：简报 15:05 推，而当天的 ETF
+    日线（`etf_bar`，通达信盘后包）要到晚上才采 —— 用筛选模块的「最新日」会晚一天；
+    份额快照 15:05 就已经入库。
+    折溢价这一期没有数据源（见 ETF 模块的口径），所以这里只报份额这一条。
+    """
+    codes = set(
+        session.scalars(
+            select(Watchlist.code)
+            .distinct()
+            .where(
+                Watchlist.user_id == user_id,
+                Watchlist.code.in_(select(EtfBasic.code)),
+            )
+        )
+    )
+    if not codes:
+        return ""
+    days = etf_flow.usable_days(session)
+    if len(days) < 6:
+        return ""
+    window = days[-6:]
+    pairs = [(window[index], window[index - 1]) for index in range(1, len(window))]
+    nets = etf_flow.code_nets(session, pairs, etf_flow.money_fund_codes(session))
+    snapshots = {
+        row.code: row
+        for row in session.scalars(
+            select(EtfShare).where(
+                EtfShare.trade_date == window[-1], EtfShare.code.in_(codes)
+            )
+        )
+    }
+    lines: list[str] = []
+    for code, row in sorted(snapshots.items()):
+        if not row.shares or not row.close:
+            continue
+        values = [nets.get(day, {}).get(code) for day, _ in pairs]
+        available = [value for value in values if value is not None]
+        # 5 日窗口的 90%（与 `etf_screen.MIN_COVERAGE` 同一判据）
+        if len(available) < 4:
+            continue
+        flow5 = sum(available[-5:])
+        ratio = flow5 / (row.shares * row.close)
+        if ratio > ETF_FLOW5_DROP:
+            continue
+        lines.append(
+            f"- {code} {row.name or code}：近 5 日份额减少 {abs(ratio) * 100:.0f}%"
+            f"（净赎回 {_amount(abs(flow5))}，份额快照 {window[-1]}）"
+        )
+    if not lines:
+        return ""
+    return "**自选 ETF 份额异动**\n" + "\n".join(lines)
+
+
 def _recent_notice(code: str, trade_date: date) -> str | None:
     """最近一条**当天或前一天**的公告；没有就返回 None。
 
@@ -75,10 +144,10 @@ def block(session: Session, trade_date: date) -> str:
     user_id = trade_plan.admin_user_id(session)
     if user_id is None:
         return ""
-    # 只算股票：转债代码在 `stock_daily` 里没有行，拿它查公告/形态纯属白花调用
+    # 只算股票：转债 / ETF 代码在 `stock_daily` 里没有行，拿它们查公告/形态纯属白花调用
     codes = stock_watch_codes(session, user_id)
     if not codes:
-        return ""
+        return _etf_block(session, user_id)
 
     # 当天命中的最高分形态（一只票多个形态时取分最高的那个）
     hit_rows = session.execute(
@@ -178,9 +247,9 @@ def block(session: Session, trade_date: date) -> str:
 
     if notice_cut:
         lines.append("- （公告取数超出时间预算，部分自选的公告未覆盖）")
-    if not lines:
-        return ""
-    return "**自选股异动**\n" + "\n".join(lines)
+    stock_text = "**自选股异动**\n" + "\n".join(lines) if lines else ""
+    etf_text = _etf_block(session, user_id)
+    return "\n\n".join(part for part in (stock_text, etf_text) if part)
 
 
 @dataclass(frozen=True, slots=True)

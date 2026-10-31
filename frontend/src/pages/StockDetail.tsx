@@ -14,6 +14,7 @@ import type {
   StockThemes,
   StockUnlockRow,
   StockUnlocks,
+  EtfRelated,
   TrapCheck,
   TrapSignal,
 } from '../api/types'
@@ -331,6 +332,8 @@ export default function StockDetail() {
   const [chips, setChips] = useState<ChipDistribution | null>(null)
   // 这只正股存续的转债（可转债-5，读本地盘的盘后快照）。没有就是空数组 → 不渲染卡片
   const [bonds, setBonds] = useState<CbStockBond[]>([])
+  // 相关 ETF（ETF-5）：按同花顺行业套 ETF 名称词典。单独取 —— 首次要扫一遍全市场
+  const [relatedEtfs, setRelatedEtfs] = useState<EtfRelated | null>(null)
   // 杀猪盘体检（库内信号 + 东财新闻）。同样按增强读数处理
   const [trap, setTrap] = useState<TrapCheck | null>(null)
   // 用户补充背景（朋友推荐 / 群里说…）与重新体检的进行态
@@ -463,6 +466,7 @@ export default function StockDetail() {
     setDdeError(null)
     setChips(null)
     setBonds([])
+    setRelatedEtfs(null)
     setTrap(null)
     // 两块异步请求的标志跟着一起复位，否则切票后新票的面板会沿用上一只票的「已加载」态
     setDdeLoading(true)
@@ -522,6 +526,28 @@ export default function StockDetail() {
       cancelled = true
     }
   }, [code, load, reloadKline])
+
+  /**
+   * 相关 ETF（ETF-5）：按同花顺行业套 ETF 名称词典，单独取。
+   *
+   * 不跟概况 `Promise.all`：后端第一次要扫一遍全市场（约 3 秒，之后 10 分钟缓存），
+   * 塞进首屏会把 K 线也拖慢。失败只是没有这张卡，不影响其它块。
+   */
+  useEffect(() => {
+    if (!code) return
+    let cancelled = false
+    api
+      .etfRelated(code, 5)
+      .then((value) => {
+        if (!cancelled) setRelatedEtfs(value)
+      })
+      .catch(() => {
+        if (!cancelled) setRelatedEtfs(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [code])
 
   /**
    * 个股事件：**切到哪个 tab 才拉哪个**。
@@ -884,6 +910,47 @@ export default function StockDetail() {
             </div>
             <p className="border-t border-line-soft px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
               转债行情是每天盘后采一次的快照，不是实时价；强赎计数口径与「可转债」页一致。
+            </p>
+          </Panel>
+        )}
+
+        {/* 相关 ETF（ETF-5）：按行业套 ETF 名称词典，只是「名字像」，卡片里写明 */}
+        {relatedEtfs && relatedEtfs.items.length > 0 && (
+          <Panel
+            title="相关 ETF"
+            meta={
+              <span className="num text-fg-dim">
+                {relatedEtfs.category} · {relatedEtfs.items.length} 只 · 盘后
+              </span>
+            }
+            delay={70}
+          >
+            <div className="divide-y divide-line-soft">
+              {relatedEtfs.items.map((row) => (
+                <div
+                  key={row.code}
+                  className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 text-[13px]"
+                >
+                  <span className="text-fg">{row.name ?? row.code}</span>
+                  <span className="num text-fg-dim">{row.code}</span>
+                  <span className="num">{fmtNum(row.close, 3)}</span>
+                  <span className={`num ${toneOf(row.pct_chg)}`}>{fmtPct(row.pct_chg)}</span>
+                  <span className={`num ${toneOf(row.ret20)}`}>20 日 {fmtPct(row.ret20, 1)}</span>
+                  <span className="num text-fg-dim">RPS60 {fmtNum(row.rps60, 0)}</span>
+                  <span className={`num ${toneOf(row.flow20)}`}>
+                    20 日净申赎 {fmtAmount(row.flow20)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="border-t border-line-soft px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
+              按「{relatedEtfs.industry ?? '—'}」用 ETF 名称词典归到「{relatedEtfs.category}」——
+              只是名字像、<span className="text-fg-muted">不是严格的行业映射</span>；
+              指标是盘后口径，与个股不是同一天的实时对照。完整筛选见
+              <Link to="/etf" className="ml-1 text-accent hover:underline">
+                ETF 页
+              </Link>
+              。
             </p>
           </Panel>
         )}

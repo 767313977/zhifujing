@@ -6,7 +6,7 @@ import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import SortTh from '../components/SortTh'
-import { isBondCode } from '../lib/bondCode'
+import { hasStockPage, isBondCode, isEtfCode } from '../lib/bondCode'
 import { fmtNum, fmtPct, toneOf } from '../lib/format'
 import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'
@@ -64,13 +64,15 @@ export default function WatchlistPage() {
       setSubmitting(true)
       const row = await api.addWatchlist(trimmed)
       setCode('')
-      // 转债的日线来自盘后快照，点「同步行情」也拉不到它，提示语不能一刀切
+      // 转债 / ETF 的行情来自盘后快照，点「同步行情」也拉不到，提示语不能一刀切
       setNotice(
         row.latest_date
           ? '已加入自选'
           : isBondCode(row.code)
             ? '已加入自选；转债行情每天盘后自动更新，不需要「同步行情」'
-            : '已加入自选，本地还没有行情 —— 点「同步行情」拉取',
+            : isEtfCode(row.code)
+              ? '已加入自选；ETF 行情每天盘后自动更新，不需要「同步行情」'
+              : '已加入自选，本地还没有行情 —— 点「同步行情」拉取',
       )
       await reload()
     } catch (err) {
@@ -116,8 +118,8 @@ export default function WatchlistPage() {
     }
   }, [reload])
 
-  // 转债没有行情时提示「去同步」是错的（同步只拉股票日线），所以只数股票
-  const missing = rows.filter((row) => row.close == null && !isBondCode(row.code)).length
+  // 转债 / ETF 没有行情时提示「去同步」是错的（同步只拉股票日线），所以只数股票
+  const missing = rows.filter((row) => row.close == null && hasStockPage(row.code)).length
   // 首屏不排，保持后端顺序（按代码）；点列头才排
   const [sort, shown] = useSort(rows, WATCH_SORTS, { key: null })
 
@@ -230,9 +232,9 @@ export default function WatchlistPage() {
                       key={row.code}
                       onClick={() => {
                         // 点行时把当前自选列表存下，个股页就能 ← → 前后翻。
-                        // 转债代码要剔掉：← → 走到它只会打开一个「代码不存在」的页面
+                        // 转债 / ETF 代码要剔掉：← → 走到它们只会打开一个「代码不存在」的页面
                         rememberStockList(
-                          shown.filter((item) => !isBondCode(item.code)).map((item) => item.code),
+                          shown.filter((item) => hasStockPage(item.code)).map((item) => item.code),
                         )
                       }}
                     >
@@ -245,6 +247,9 @@ export default function WatchlistPage() {
                           >
                             {row.code}
                           </Link>
+                        ) : isEtfCode(row.code) ? (
+                          // ETF 没有单只页面（只有筛选页），纯文本，不做假跳转
+                          <span className="num text-fg-muted">{row.code}</span>
                         ) : (
                           <Link
                             to={`/stock/${encodeURIComponent(row.code)}`}
@@ -259,6 +264,11 @@ export default function WatchlistPage() {
                           <span className="text-fg">
                             {row.name ?? '—'}
                             <span className="ml-1.5 text-[11px] text-warn">债</span>
+                          </span>
+                        ) : isEtfCode(row.code) ? (
+                          <span className="text-fg">
+                            {row.name ?? '—'}
+                            <span className="ml-1.5 text-[11px] text-accent">ETF</span>
                           </span>
                         ) : (
                           <Link

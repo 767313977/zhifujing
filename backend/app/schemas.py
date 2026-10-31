@@ -3161,6 +3161,18 @@ class EtfTrackOut(BaseModel):
     rows: list[EtfTrackDayOut] = []
 
 
+class EtfRelatedOut(BaseModel):
+    """个股 / 板块 → 相关 ETF 的代表只（按 ETF 名称词典归类，ETF-5）。
+
+    `category` 是把 `industry` 按同一份词典归出来的分类，页面要显示出来 ——
+    它只是「名字像」，不是严格映射。
+    """
+
+    industry: str | None = None
+    category: str
+    items: list[EtfRowOut] = []
+
+
 class CbStockBondOut(BaseModel):
     """个股页「存续转债」卡片的一行（最近一次盘后快照）。"""
 

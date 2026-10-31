@@ -2813,6 +2813,18 @@ export interface EtfTrack {
   rows: EtfTrackDay[]
 }
 
+/**
+ * 个股 / 板块 → 相关 ETF（ETF-5）。
+ *
+ * `category` 是把 `industry` 用 ETF 名称词典归出来的分类，只是「名字像」，
+ * 页面必须原样显示，别当成严格的行业映射。
+ */
+export interface EtfRelated {
+  industry: string | null
+  category: string
+  items: EtfRow[]
+}
+
 /** 单券走势的一个点（盘后快照）。 */
 export interface CbDetailPoint {
   trade_date: string

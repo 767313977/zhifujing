@@ -17,6 +17,7 @@ import type {
   EtfScreen,
   EtfScreenQuery,
   EtfTrack,
+  EtfRelated,
   DdeBoard,
   DdeOrder,
   Erp,
@@ -1165,6 +1166,10 @@ export const api = {
    */
   etfTrack: (preset = 'momentum', top = 5, hold = 5, days = 120) =>
     request<EtfTrack>(`/etf/track?preset=${preset}&top=${top}&hold=${hold}&days=${days}`),
+
+  /** 个股 → 相关 ETF：按同花顺行业套 ETF 名称词典，返回该分类的代表只。 */
+  etfRelated: (code: string, limit = 5) =>
+    request<EtfRelated>(`/etf/related?code=${encodeURIComponent(code)}&limit=${limit}`),
 
   note: (date: string) => request<ReviewNote>(`/note/${date}`),
 

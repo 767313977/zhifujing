@@ -14,12 +14,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import EtfBar, EtfShare
+from app.models import EtfBar, EtfShare, StockBasic
 from app.schemas import (
     EtfCategoryOut,
     EtfDetailOut,
     EtfPeerOut,
     EtfPointOut,
+    EtfRelatedOut,
     EtfRowOut,
     EtfScreenOut,
     EtfTrackCurveOut,
@@ -29,7 +30,7 @@ from app.schemas import (
     EtfTrackStatOut,
     EtfTrackStatsOut,
 )
-from app.services import etf_screen, etf_track
+from app.services import etf_category, etf_screen, etf_track
 from app.sources.ifind import normalize_code
 
 router = APIRouter(prefix="/api/etf", tags=["ETF"])
@@ -189,6 +190,50 @@ def track(
         ),
         curve=[EtfTrackCurveOut(**point) for point in data.curve],
         rows=rows,
+    )
+
+
+@router.get("/related", response_model=EtfRelatedOut)
+def related(
+    code: str | None = Query(None, description="股票代码：按它的同花顺行业归类"),
+    text: str | None = Query(None, description="行业 / 板块名（按 ETF 名称词典归类）"),
+    limit: int = Query(5, ge=1, le=20),
+    session: Session = Depends(get_db),
+) -> EtfRelatedOut:
+    """个股 / 板块 → 相关 ETF 的代表只（ETF-5）。
+
+    归类用的是 `etf_category.classify`（ETF 名称词典），所以**只是「名字像」**：
+    页面必须把 `category` 显示出来，别让人以为这是严格的行业映射。
+    """
+    industry = (text or "").strip() or None
+    if code:
+        plain = normalize_code(code)
+        basic = session.get(StockBasic, plain)
+        if basic and basic.industry:
+            industry = basic.industry
+    if not industry:
+        raise HTTPException(status_code=422, detail="要给 code（股票代码）或 text（行业 / 板块名）")
+    category = etf_category.classify(industry)
+    if category == etf_category.UNKNOWN:
+        return EtfRelatedOut(industry=industry, category=category, items=[])
+    data = etf_screen.screen(
+        session,
+        None,
+        preset="momentum",
+        fund_type="",
+        scale_min=0,
+        amount_min=0,
+        above_ma20=False,
+        dedup=True,
+        limit=0,
+    )
+    items = [row for row in data.items if row.category == category]
+    # 代表只：规模大的在前，规模缺的排最后，再看 20 日均额
+    items.sort(key=lambda row: (row.scale is None, -(row.scale or 0), -(row.avg_amount or 0)))
+    return EtfRelatedOut(
+        industry=industry,
+        category=category,
+        items=[EtfRowOut(**asdict(row)) for row in items[:limit]],
     )
 
 

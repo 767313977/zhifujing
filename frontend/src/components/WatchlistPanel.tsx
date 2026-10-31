@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { WatchlistRow } from '../api/types'
-import { isBondCode } from '../lib/bondCode'
+import { hasStockPage, isBondCode, isEtfCode } from '../lib/bondCode'
 import { fmtNum, fmtPct, toneOf } from '../lib/format'
 import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'
@@ -75,9 +75,9 @@ export default function WatchlistPanel({ rows, delay = 0, loading = false }: Wat
                   key={row.code}
                   onClick={() => {
                     // 点行时把自选列表存下，个股页就能 ← → 前后翻。
-                    // 转债代码剔掉：它们没有个股页，← → 走到只会打开「代码不存在」
+                    // 转债 / ETF 剔掉：它们没有个股页，← → 走到只会打开「代码不存在」
                     rememberStockList(
-                      shown.filter((item) => !isBondCode(item.code)).map((item) => item.code),
+                      shown.filter((item) => hasStockPage(item.code)).map((item) => item.code),
                     )
                   }}
                 >
@@ -89,6 +89,9 @@ export default function WatchlistPanel({ rows, delay = 0, loading = false }: Wat
                       >
                         {row.code}
                       </Link>
+                    ) : isEtfCode(row.code) ? (
+                      // ETF 没有单只页面，纯文本（别做 `/stock/510300` 的假跳转）
+                      <span className="num text-fg-muted">{row.code}</span>
                     ) : (
                       <StockLink code={row.code} className="num text-fg-muted">
                         {row.code}
@@ -100,6 +103,11 @@ export default function WatchlistPanel({ rows, delay = 0, loading = false }: Wat
                       <span className="text-fg">
                         {row.name ?? row.code}
                         <span className="ml-1.5 text-[11px] text-warn">债</span>
+                      </span>
+                    ) : isEtfCode(row.code) ? (
+                      <span className="text-fg">
+                        {row.name ?? row.code}
+                        <span className="ml-1.5 text-[11px] text-accent">ETF</span>
                       </span>
                     ) : (
                       <StockLink code={row.code}>{row.name ?? row.code}</StockLink>

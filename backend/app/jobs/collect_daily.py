@@ -39,7 +39,12 @@ from app.models import (
 from app.jobs import collect_funds
 from app.services.sentiment import build_sentiment
 from app.services.usage import QuotaLevel, quota_level
-from app.services.watch_scope import filter_stock_codes, is_bond_code, stock_watch_codes
+from app.services.watch_scope import (
+    filter_stock_codes,
+    is_bond_code,
+    is_etf_code,
+    stock_watch_codes,
+)
 from app.sources.akshare_source import AkshareSource
 from app.sources.ifind import IfindClient, IfindError, from_ths_symbol, to_ths_symbol
 from app.sources.markdown_table import pick_float, pick_int, pick_text, to_float, to_int
@@ -794,13 +799,14 @@ class DailyCollector:
         会员点一次「同步」白烧几十次配额。现在先查库里已有哪些交易日，只对
         「还缺着的日子」所在的块发请求；一块都不缺就一次接口都不打。
 
-        ⚠️ **转债直接返回 0**（2026-10-30 复查 P1-1）：转债没有股票日线，任何一个
-        入口（自选并集 / 个股页手动同步）拿它去问 iFinD 都是白花配额（`11x` 还会被
-        换算成 `.SZ`，问的是不存在的代码）。这一层兜住所有调用方。
+        ⚠️ **转债 / ETF 直接返回 0**（2026-10-30 / 10-31）：它们没有股票日线 —— 转债走
+        `cb_daily`、ETF 走 `etf_bar`。任何一个入口（自选并集 / 个股页手动同步）拿它们
+        去问 iFinD 都是白花配额（`11x` 还会被换算成 `.SZ`，问的是不存在的代码）。
+        这一层兜住所有调用方。
         """
         code = str(code).strip().zfill(6)
-        if is_bond_code(code):
-            logger.info("跳过转债代码 %s：没有股票日线可同步", code)
+        if is_bond_code(code) or is_etf_code(code):
+            logger.info("跳过转债 / ETF 代码 %s：没有股票日线可同步", code)
             return 0
         end = self.latest_trade_date()
         # 交易日 → 日历日按 1.5 倍粗算，多取一些无妨（交易日历会过滤掉多余的）
