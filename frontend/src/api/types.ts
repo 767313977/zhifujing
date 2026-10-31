@@ -3198,3 +3198,32 @@ export interface PositionOut {
   rows: PositionRow[]
 }
 
+// --------------------------------------------------------- 风控（FEAT-RISK-GUARD）
+
+export interface RiskPref {
+  max_position_pct: number | null
+  max_theme_pct: number | null
+  heat_consecutive: number
+  heat_temperature: number
+  strict_mode: boolean
+}
+
+export interface RiskConcentration {
+  /** position（单票）/ theme（单题材） */
+  kind: string
+  name: string
+  code: string | null
+  pct: number
+  limit: number
+  text: string
+}
+
+export interface RiskStatus {
+  overheat: boolean
+  strict_mode: boolean
+  triggers: string[]
+  concentration: RiskConcentration[]
+  message: string
+  pref: RiskPref
+}
+

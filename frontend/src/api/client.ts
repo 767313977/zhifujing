@@ -76,6 +76,8 @@ import type {
   RelayTemp,
   ReviewNote,
   NoteSummary,
+  RiskPref,
+  RiskStatus,
   StockRiskBadges,
   ThemeBoard,
   RotationLeaderDay,
@@ -1389,4 +1391,16 @@ export const api = {
   /** 从计划转入持仓（成本取实际价，没回填就用计划买点）。 */
   positionFromPlan: (planId: number) =>
     request<PositionRow>(`/positions/from-plan/${planId}`, { method: 'POST' }),
+
+  /** 风控偏好与状态（FEAT-RISK-GUARD）：只提示，不阻止操作。 */
+  riskPref: () => request<RiskPref>('/risk/pref'),
+
+  saveRiskPref: (payload: RiskPref) =>
+    request<RiskPref>('/risk/pref', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  riskStatus: () => request<RiskStatus>('/risk/status'),
 }

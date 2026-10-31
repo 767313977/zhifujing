@@ -6,6 +6,7 @@ import Alert from '../components/Alert'
 import RiskMark, { useRiskBadges } from '../components/RiskBadges'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
+import { RiskBanner } from '../components/RiskGuard'
 import SortTh from '../components/SortTh'
 import { hasStockPage, isBondCode, isEtfCode } from '../lib/bondCode'
 import { fmtNum, fmtPct, toneOf } from '../lib/format'
@@ -144,6 +145,7 @@ export default function WatchlistPage() {
 
   return (
     <Layout toolbar={toolbar}>
+      <RiskBanner />
       {error && <Alert onClose={() => setError(null)}>{error}</Alert>}
       {notice && (
         <Alert tone="accent" onClose={() => setNotice(null)}>

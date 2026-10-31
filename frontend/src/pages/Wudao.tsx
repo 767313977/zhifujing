@@ -5,6 +5,7 @@ import Alert from '../components/Alert'
 import RiskMark, { useRiskBadges } from '../components/RiskBadges'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
+import { RiskBanner } from '../components/RiskGuard'
 import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
 import { fmtNum, fmtPct, toneOf } from '../lib/format'
@@ -231,6 +232,7 @@ export default function Wudao() {
         </>
       }
     >
+      <RiskBanner />
       {error && <Alert onClose={() => setError(null)}>{error}</Alert>}
 
       <div className="space-y-4">

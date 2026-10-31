@@ -10,6 +10,7 @@ import type {
 import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
+import { RiskBanner } from '../components/RiskGuard'
 import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
 import { fmtNum, fmtPct, todayLocal, toneOf } from '../lib/format'
@@ -377,6 +378,7 @@ export default function PlansPage() {
 
   return (
     <Layout>
+      <RiskBanner />
       {error && <Alert onClose={() => setError(null)}>{error}</Alert>}
       {notice && (
         <Alert tone="accent" onClose={() => setNotice(null)}>

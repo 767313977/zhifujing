@@ -3575,3 +3575,33 @@ class PositionRow(PositionIn):
 
 class PositionOut(ApiModel):
     rows: list[PositionRow] = []
+
+
+# --------------------------------------------------------- 风控（FEAT-RISK-GUARD）
+
+
+class RiskPrefIn(ApiModel):
+    max_position_pct: float | None = None
+    max_theme_pct: float | None = None
+    heat_consecutive: int = 6
+    heat_temperature: int = 80
+    strict_mode: bool = False
+
+
+class RiskConcentrationOut(ApiModel):
+    #: position（单票）/ theme（单题材）
+    kind: str
+    name: str
+    code: str | None = None
+    pct: float
+    limit: float
+    text: str
+
+
+class RiskStatusOut(ApiModel):
+    overheat: bool
+    strict_mode: bool = False
+    triggers: list[str] = []
+    concentration: list[RiskConcentrationOut] = []
+    message: str
+    pref: RiskPrefIn

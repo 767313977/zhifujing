@@ -30,6 +30,7 @@ from app.api import (
     pools,
     positions,
     premarket,
+    risk,
     sector,
     stock,
     themes,
@@ -297,6 +298,7 @@ app.include_router(note.router)
 app.include_router(journal.router)
 app.include_router(plans.router)
 app.include_router(positions.router)
+app.include_router(risk.router)
 app.include_router(patterns.router)
 app.include_router(pools.router)
 app.include_router(anomaly_map.router)

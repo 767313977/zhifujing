@@ -5,6 +5,7 @@ import Alert from '../components/Alert'
 import ContactQr from '../components/ContactQr'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
+import { RiskPrefPanel } from '../components/RiskGuard'
 import { useAuth } from '../lib/auth'
 
 const INPUT =
@@ -129,6 +130,8 @@ export default function Account() {
           忘记密码的话找管理员重置。
         </div>
       </Panel>
+
+      <RiskPrefPanel />
 
       {/* 联系站长（2026-09-30 用户要求）。图放在登录后（这里），不放登录页 ——
           登录页是唯一公开的页面，挂那儿等于把个人微信公开（见文件头说明）。

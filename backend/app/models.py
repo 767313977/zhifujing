@@ -786,6 +786,26 @@ class ReviewNote(Base):
     )
 
 
+class UserRiskPref(Base):
+    """用户风控偏好（FEAT-RISK-GUARD，2026-10-31）。**只做提醒，不阻止操作**。
+
+    默认值刻意保守：单票 30%、单题材 50%、连板高度 ≥6 或恐贪 ≥80 视为过热。
+    `strict_mode` 目前只影响前端提示强度（默认仍只提示）。
+    """
+
+    __tablename__ = "user_risk_pref"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"), primary_key=True)
+    max_position_pct: Mapped[float | None] = mapped_column(Float)
+    max_theme_pct: Mapped[float | None] = mapped_column(Float)
+    heat_consecutive: Mapped[int] = mapped_column(Integer, default=6)
+    heat_temperature: Mapped[int] = mapped_column(Integer, default=80)
+    strict_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_now, onupdate=_now
+    )
+
+
 class TradeJournal(Base):
     """交易日志：**一笔完整的买卖回合**（2026-10-18 清单 #1）。
 
