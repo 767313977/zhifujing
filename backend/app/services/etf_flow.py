@@ -41,8 +41,12 @@ MONEY_CATEGORY = "货币现金"
 # 与正常日差 35~120 倍。取 300 能把两类碎片稳稳切开，而正常日离下限还有 5 倍余量。
 MIN_ROWS = 300
 
-# 净申赎的累计口径：近 N 个**有数的交易日**之和（与分位窗口同一套约定）
+# 净申赎的累计口径：近 N 个**有数的交易日之和**（与分位窗口同一套约定）
 SUM_WINDOWS = (5, 20)
+
+#: 份额折算（拆分 / 合并）的判定阈值：`|前一日 close ÷ 当日 prev_close − 1|` 超过它，
+#: 就认为那天是折算日，不是真实涨跌。除息一般在 5% 以内，不会误判（2026-10-31 加）。
+SPLIT_RATIO = 0.20
 
 
 def money_fund_codes(session: Session) -> set[str]:
@@ -95,6 +99,9 @@ def usable_days(session: Session) -> list[date]:
 _USABLE_CACHE: tuple[object, date | None, datetime, list[date]] | None = None
 _USABLE_TTL = timedelta(minutes=10)
 
+#: 折算日缓存（结构：引擎, 窗口起, 窗口止, 计算时间, 结果）。理由同上：它要扫全表。
+_SPLIT_CACHE: tuple[object, date, date, datetime, dict[date, set[str]]] | None = None
+
 
 def _usable_days_cached(session: Session) -> list[date]:
     global _USABLE_CACHE
@@ -117,6 +124,70 @@ def _usable_days_cached(session: Session) -> list[date]:
 #: 「找最近覆盖达标日」时最多往前翻几个快照日。碎片日与正常日相邻（见 `MIN_ROWS`
 #: 的实测记录），翻 5 天足够。
 _RECENT_DAY_LOOKBACK = 5
+
+
+def split_codes(session: Session, days: list[date]) -> dict[date, set[str]]:
+    """这些交易日里发生**份额折算**的 ETF 代码（`{day: {code}}`）。
+
+    **为什么必须剔**：折算日份额翻倍、价格减半，`(今日份额 − 基准份额) × 今日收盘`
+    会被算成「净申购 = 原规模」。2026-10-31 实测 159583（通信设备ETF）1 拆 2 就是
+    这种情形 —— 资金面面板当天会凭空多出一笔与原规模等额的假流入。
+
+    判据用 `etf_bar` 的**交易所前收**：折算日的 `prev_close` 已按比例调整，与前一日
+    `close` 差得很远（2.118 → 1.059）。除息一般 < 5%，用 20% 阈值不会误判。
+    `etf_bar` 还没回补（空表）时返回空 dict，行为与改造前一致。
+    """
+    wanted = set(days)
+    if not wanted:
+        return {}
+    start, end = min(days), max(days)
+    bind = session.get_bind()
+    global _SPLIT_CACHE
+    now = datetime.now()
+    cached = _SPLIT_CACHE
+    if (
+        cached is not None
+        and cached[0] is bind
+        and cached[1] == start
+        and cached[2] == end
+        and now - cached[3] < _USABLE_TTL
+    ):
+        return cached[4]
+
+    # LAG 要拿到窗口前一根，所以往前多取一段（自然日 40 天足够覆盖假期）
+    floor = start - timedelta(days=40)
+    rows = session.execute(
+        text(
+            """
+            WITH bars AS (
+                SELECT trade_date, code, prev_close,
+                       LAG(close) OVER (PARTITION BY code ORDER BY trade_date) AS prior_close
+                FROM etf_bar
+                WHERE trade_date >= :floor AND trade_date <= :end
+            )
+            SELECT trade_date, code
+            FROM bars
+            WHERE trade_date >= :start AND trade_date <= :end
+              AND prior_close IS NOT NULL
+              AND prev_close IS NOT NULL
+              AND prev_close > 0
+              AND ABS(prior_close / prev_close - 1) > :ratio
+            """
+        ),
+        {
+            "floor": floor.isoformat(),
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "ratio": SPLIT_RATIO,
+        },
+    ).all()
+    result: dict[date, set[str]] = {}
+    for day, code in rows:
+        day = date.fromisoformat(str(day))
+        if day in wanted:
+            result.setdefault(day, set()).add(str(code))
+    _SPLIT_CACHE = (bind, start, end, now, result)
+    return result
 
 
 def snapshot_rows(session: Session, day: date) -> int:
@@ -204,9 +275,14 @@ def day_nets(
     基准日份额非空、剔除货基**；缺配对的日期不会出现在结果里（调用方按 None 处理）。
 
     没有可配对的只时该日不进结果 —— 「今天一分钱没进来」与「没得比」必须能区分。
+
+    **份额折算日整只跳过**（2026-10-31 加，见 `split_codes`）：折算当天份额翻倍、
+    价格减半，差分出来是「净申购 = 原规模」的假流入。跳过它 = 这一只当天不参与
+    合计（不是记 0）；跨折算日的 5 / 20 日累计自然也不会把它算进去。
     """
     if not pairs:
         return {}
+    splits = split_codes(session, [day for day, _ in pairs])
     values = ", ".join(
         f"(CAST(:d{index} AS TEXT), CAST(:p{index} AS TEXT))"
         for index in range(len(pairs))
@@ -215,6 +291,25 @@ def day_nets(
     for index, (day, prev) in enumerate(pairs):
         params[f"d{index}"] = day.isoformat()
         params[f"p{index}"] = prev.isoformat()
+
+    split_items = [
+        (day, code) for day, codes in sorted(splits.items()) for code in sorted(codes)
+    ]
+    split_cte = ""
+    split_join = ""
+    split_filter = ""
+    if split_items:
+        split_values = ", ".join(
+            f"(CAST(:sd{index} AS TEXT), CAST(:sc{index} AS TEXT))"
+            for index in range(len(split_items))
+        )
+        split_cte = f",\n            splits(day, code) AS (VALUES {split_values})"
+        split_join = "LEFT JOIN splits sp ON sp.day = p.day AND sp.code = t.code"
+        split_filter = "AND sp.code IS NULL"
+        for index, (day, code) in enumerate(split_items):
+            params[f"sd{index}"] = day.isoformat()
+            params[f"sc{index}"] = code
+
     money_clause = ""
     if money:
         names = []
@@ -225,16 +320,18 @@ def day_nets(
     rows = session.execute(
         text(
             f"""
-            WITH pairs(day, prev) AS (VALUES {values})
+            WITH pairs(day, prev) AS (VALUES {values}){split_cte}
             SELECT p.day AS day, SUM((t.shares - b.shares) * t.close) AS net
             FROM pairs p
             JOIN etf_share t ON t.trade_date = p.day
             JOIN etf_share b ON b.trade_date = p.prev AND b.code = t.code
+            {split_join}
             WHERE t.shares IS NOT NULL
               AND b.shares IS NOT NULL
               AND t.close IS NOT NULL
               AND t.close != 0
               {money_clause}
+              {split_filter}
             GROUP BY p.day
             """
         ),
