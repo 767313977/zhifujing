@@ -2753,6 +2753,66 @@ export interface EtfCategoryRow {
   flow20: number | null
 }
 
+/** 验证面板某一天里选中的一只（持有期收益，%）。 */
+export interface EtfTrackPick {
+  code: string
+  name: string | null
+  ret: number | null
+}
+
+/**
+ * 一个信号日的验证结果：`entry_date` 收盘买入、`exit_date` 收盘卖出。
+ *
+ * 信号日 `t` 收盘后出名单，次日收盘才有成交价 —— 所以 `entry_date` 一定晚于
+ * `trade_date`，`ret` 也不是「信号日收盘买入」的收益。
+ */
+export interface EtfTrackDay {
+  trade_date: string
+  entry_date: string | null
+  exit_date: string | null
+  ret: number | null
+  hs300_ret: number | null
+  universe_ret: number | null
+  excess_hs300: number | null
+  excess_universe: number | null
+  picks: EtfTrackPick[]
+}
+
+/** 累计收益曲线的一个点（%，逐日复利）。 */
+export interface EtfTrackCurvePoint {
+  trade_date: string
+  strategy: number | null
+  hs300: number | null
+  universe: number | null
+}
+
+export interface EtfTrackStat {
+  samples: number
+  mean: number | null
+  median: number | null
+  win_rate: number | null
+  total: number | null
+  best: number | null
+  worst: number | null
+}
+
+export interface EtfTrack {
+  preset: string
+  top: number
+  hold: number
+  days: number
+  as_of: string | null
+  /** 样本说明：份额快照之前的交易日没有规模数据、未满持有期的天数等 */
+  note: string | null
+  stats: {
+    strategy: EtfTrackStat
+    hs300: EtfTrackStat
+    universe: EtfTrackStat
+  }
+  curve: EtfTrackCurvePoint[]
+  rows: EtfTrackDay[]
+}
+
 /** 单券走势的一个点（盘后快照）。 */
 export interface CbDetailPoint {
   trade_date: string

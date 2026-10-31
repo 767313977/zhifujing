@@ -3100,6 +3100,67 @@ class EtfCategoryOut(BaseModel):
     flow20: float | None = None
 
 
+class EtfTrackPickOut(BaseModel):
+    """验证面板一天里选中的一只（持有期收益，%）。"""
+
+    code: str
+    name: str | None = None
+    ret: float | None = None
+
+
+class EtfTrackDayOut(BaseModel):
+    """一个信号日的验证结果：`entry_date` 收盘买入，`exit_date` 收盘卖出。"""
+
+    trade_date: date
+    entry_date: date | None = None
+    exit_date: date | None = None
+    ret: float | None = None
+    hs300_ret: float | None = None
+    universe_ret: float | None = None
+    excess_hs300: float | None = None
+    excess_universe: float | None = None
+    picks: list[EtfTrackPickOut] = []
+
+
+class EtfTrackCurveOut(BaseModel):
+    """累计收益曲线的一个点（%，逐日复利）。"""
+
+    trade_date: date
+    strategy: float | None = None
+    hs300: float | None = None
+    universe: float | None = None
+
+
+class EtfTrackStatOut(BaseModel):
+    samples: int = 0
+    mean: float | None = None
+    median: float | None = None
+    win_rate: float | None = None
+    total: float | None = None
+    best: float | None = None
+    worst: float | None = None
+
+
+class EtfTrackStatsOut(BaseModel):
+    strategy: EtfTrackStatOut
+    hs300: EtfTrackStatOut
+    universe: EtfTrackStatOut
+
+
+class EtfTrackOut(BaseModel):
+    """次日验证：策略 / 510300 / 去重后全体等权三条线。"""
+
+    preset: str
+    top: int
+    hold: int
+    days: int
+    as_of: date | None = None
+    note: str | None = None
+    stats: EtfTrackStatsOut
+    curve: list[EtfTrackCurveOut] = []
+    rows: list[EtfTrackDayOut] = []
+
+
 class CbStockBondOut(BaseModel):
     """个股页「存续转债」卡片的一行（最近一次盘后快照）。"""
 

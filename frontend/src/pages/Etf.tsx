@@ -1,12 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
-import type { EtfCategoryRow, EtfRow, EtfScreen, EtfScreenQuery } from '../api/types'
+import type {
+  EtfCategoryRow,
+  EtfRow,
+  EtfScreen,
+  EtfScreenQuery,
+  EtfTrack,
+  EtfTrackDay,
+  EtfTrackStat,
+} from '../api/types'
+import EChart from '../components/EChart'
+import type { ChartOption } from '../components/EChart'
 import Layout from '../components/Layout'
 import LoadState from '../components/LoadState'
 import Panel from '../components/Panel'
 import Segmented from '../components/Segmented'
 import SortTh from '../components/SortTh'
-import { fmtAmount, fmtNum, fmtPct, toneOf } from '../lib/format'
+import { AXIS_LABEL, AXIS_LINE, CHART, GRID, LEGEND, SERIES_PALETTE, SPLIT_LINE, TOOLTIP } from '../lib/chart'
+import { fmtAmount, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
 import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'
 
@@ -96,6 +107,49 @@ function Toggle({
 
 const NO_ROWS: EtfRow[] = []
 
+/** 验证面板的参数选项（后端 `top` 上限 20、`days` 上限 240） */
+const TRACK_TOP_ITEMS = [
+  { key: '3', label: '3 只' },
+  { key: '5', label: '5 只' },
+  { key: '10', label: '10 只' },
+]
+
+const TRACK_HOLD_ITEMS = [
+  { key: '5', label: '5 日' },
+  { key: '20', label: '20 日' },
+]
+
+const TRACK_DAYS_ITEMS = [
+  { key: '60', label: '60 日' },
+  { key: '120', label: '120 日' },
+  { key: '240', label: '240 日' },
+]
+
+const TRACK_DAY_SORTS: SortSpecs<EtfTrackDay> = {
+  trade_date: { value: (row) => row.trade_date, first: 'desc' },
+  entry_date: { value: (row) => row.entry_date, first: 'desc' },
+  ret: { value: (row) => row.ret },
+  hs300_ret: { value: (row) => row.hs300_ret },
+  universe_ret: { value: (row) => row.universe_ret },
+  excess_universe: { value: (row) => row.excess_universe },
+}
+
+const NO_TRACK_DAYS: EtfTrackDay[] = []
+
+function StatBlock({ label, stat }: { label: string; stat: EtfTrackStat }) {
+  return (
+    <div className="min-w-[132px]">
+      <div className="text-[11px] tracking-[0.06em] text-fg-dim">{label}</div>
+      <div className={`num mt-0.5 text-[16px] font-semibold ${toneOf(stat.total)}`}>
+        {fmtPct(stat.total, 1)}
+      </div>
+      <div className="num text-[11px] text-fg-dim">
+        均值 {fmtPct(stat.mean)} · 胜率 {fmtNum(stat.win_rate, 1, '%')}
+      </div>
+    </div>
+  )
+}
+
 export default function EtfPage() {
   const [tab, setTab] = useState<'screen' | 'categories' | 'verify'>('screen')
   const [preset, setPreset] = useState('momentum')
@@ -109,6 +163,15 @@ export default function EtfPage() {
   const [error, setError] = useState<string | null>(null)
   const [categories, setCategories] = useState<EtfCategoryRow[] | null>(null)
   const [categoryError, setCategoryError] = useState<string | null>(null)
+
+  // --- 验证 Tab（ETF-4）---
+  const [trackPreset, setTrackPreset] = useState('momentum')
+  const [trackTop, setTrackTop] = useState(5)
+  const [trackHold, setTrackHold] = useState(5)
+  const [trackDays, setTrackDays] = useState(120)
+  const [track, setTrack] = useState<EtfTrack | null>(null)
+  const [trackError, setTrackError] = useState<string | null>(null)
+  const [trackLoading, setTrackLoading] = useState(false)
 
   const params = useMemo<EtfScreenQuery>(() => {
     const query: EtfScreenQuery = { preset }
@@ -166,8 +229,111 @@ export default function EtfPage() {
     }
   }, [tab, categories])
 
+  useEffect(() => {
+    if (tab !== 'verify') return
+    let stale = false
+    setTrackLoading(true)
+    setTrackError(null)
+    api
+      .etfTrack(trackPreset, trackTop, trackHold, trackDays)
+      .then((value) => {
+        if (stale) return
+        setTrack(value)
+        setTrackLoading(false)
+      })
+      .catch((err: Error) => {
+        if (stale) return
+        setTrackError(err.message)
+        setTrackLoading(false)
+      })
+    return () => {
+      stale = true
+    }
+  }, [tab, trackPreset, trackTop, trackHold, trackDays])
+
   const [sort, rows] = useSort(data?.items ?? NO_ROWS, SCREEN_SORTS, { key: null })
+  const [daySort, dayRows] = useSort(track?.rows ?? NO_TRACK_DAYS, TRACK_DAY_SORTS, {
+    key: 'trade_date',
+    dir: 'desc',
+  })
   const asOf = data?.as_of ?? null
+
+  /** 平均超额（对去重后等权）：后端只给逐日超额，均值在页面上算 */
+  const excessMean = useMemo(() => {
+    const values = (track?.rows ?? [])
+      .map((row) => row.excess_universe)
+      .filter((value): value is number => value != null)
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null
+  }, [track])
+
+  const chartOption = useMemo<ChartOption>(() => {
+    if (!track || track.curve.length === 0) return {}
+    const dates = track.curve.map((point) => fmtShortDate(point.trade_date))
+    return {
+      grid: { ...GRID, top: 30, bottom: 16 },
+      legend: {
+        ...LEGEND,
+        top: 0,
+        right: 0,
+        data: ['策略', '510300', '去重后等权'],
+      },
+      tooltip: {
+        ...TOOLTIP,
+        trigger: 'axis' as const,
+        formatter: (params: unknown) => {
+          const items = params as { dataIndex: number }[]
+          if (!items?.length) return ''
+          const point = track.curve[items[0].dataIndex]
+          return [
+            point.trade_date,
+            `● 策略：${fmtPct(point.strategy)}`,
+            `● 510300：${fmtPct(point.hs300)}`,
+            `● 去重后等权：${fmtPct(point.universe)}`,
+          ].join('<br/>')
+        },
+      },
+      xAxis: {
+        type: 'category' as const,
+        data: dates,
+        axisLabel: { ...AXIS_LABEL, interval: Math.max(0, Math.floor(dates.length / 10)) },
+        axisLine: AXIS_LINE,
+        axisTick: { show: false },
+      },
+      yAxis: {
+        type: 'value' as const,
+        scale: true,
+        axisLabel: { ...AXIS_LABEL, formatter: '{value}%' },
+        splitLine: SPLIT_LINE,
+        axisLine: { show: false },
+      },
+      series: [
+        {
+          type: 'line' as const,
+          name: '策略',
+          data: track.curve.map((point) => point.strategy),
+          symbol: 'none' as const,
+          lineStyle: { width: 2, color: CHART.accent },
+          itemStyle: { color: CHART.accent },
+        },
+        {
+          type: 'line' as const,
+          name: '510300',
+          data: track.curve.map((point) => point.hs300),
+          symbol: 'none' as const,
+          lineStyle: { width: 1.4, color: SERIES_PALETTE[0] },
+          itemStyle: { color: SERIES_PALETTE[0] },
+        },
+        {
+          type: 'line' as const,
+          name: '去重后等权',
+          data: track.curve.map((point) => point.universe),
+          symbol: 'none' as const,
+          lineStyle: { width: 1.4, color: SERIES_PALETTE[2], type: 'dashed' as const },
+          itemStyle: { color: SERIES_PALETTE[2] },
+        },
+      ],
+    }
+  }, [track])
 
   return (
     <Layout
@@ -200,7 +366,9 @@ export default function EtfPage() {
                     ? categories
                       ? `${categories.length} 类`
                       : '—'
-                    : '建设中'}
+                    : track
+                      ? `${track.rows.length} 个信号日`
+                      : '—'}
               </span>
             </span>
           }
@@ -388,10 +556,127 @@ export default function EtfPage() {
               </div>
             )
           ) : (
-            <LoadState
-              loading={false}
-              emptyText="次日验证与回测安排在 ETF-4，这一期先上线筛选与行业强弱"
-            />
+            <>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
+                <Segmented value={trackPreset} items={PRESET_ITEMS} onChange={setTrackPreset} />
+                <span className="flex items-center gap-1.5">
+                  取前
+                  <Segmented
+                    value={String(trackTop)}
+                    items={TRACK_TOP_ITEMS}
+                    onChange={(value) => setTrackTop(Number(value))}
+                  />
+                </span>
+                <span className="flex items-center gap-1.5">
+                  持有
+                  <Segmented
+                    value={String(trackHold)}
+                    items={TRACK_HOLD_ITEMS}
+                    onChange={(value) => setTrackHold(Number(value))}
+                  />
+                </span>
+                <span className="flex items-center gap-1.5">
+                  回看
+                  <Segmented
+                    value={String(trackDays)}
+                    items={TRACK_DAYS_ITEMS}
+                    onChange={(value) => setTrackDays(Number(value))}
+                  />
+                </span>
+              </div>
+
+              {trackError ? (
+                <LoadState loading={false} error={trackError} />
+              ) : track === null || trackLoading ? (
+                <LoadState loading emptyText="加载中（首次约 3 秒）" />
+              ) : track.rows.length === 0 ? (
+                <LoadState loading={false} emptyText={track.note ?? '样本还不够'} />
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-start gap-x-8 gap-y-3 border-b border-line-soft px-4 py-3">
+                    <StatBlock label={`策略累计（${track.rows.length} 个信号日）`} stat={track.stats.strategy} />
+                    <StatBlock label="510300 累计" stat={track.stats.hs300} />
+                    <StatBlock label="去重后等权累计" stat={track.stats.universe} />
+                    <div className="min-w-[132px]">
+                      <div className="text-[11px] tracking-[0.06em] text-fg-dim">平均超额（对等权）</div>
+                      <div className={`num mt-0.5 text-[16px] font-semibold ${toneOf(excessMean)}`}>
+                        {fmtPct(excessMean)}
+                      </div>
+                      <div className="num text-[11px] text-fg-dim">
+                        最好 {fmtPct(track.stats.strategy.best)} · 最差{' '}
+                        {fmtPct(track.stats.strategy.worst)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {track.note && (
+                    <p className="border-b border-line-soft px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
+                      {track.note}
+                    </p>
+                  )}
+
+                  <EChart option={chartOption} height={280} />
+
+                  <div className="overflow-x-auto">
+                    <table className="grid-table">
+                      <thead>
+                        <tr>
+                          <SortTh sortKey="trade_date" align="left" {...daySort}>
+                            信号日
+                          </SortTh>
+                          <SortTh sortKey="entry_date" align="left" {...daySort}>
+                            建仓
+                          </SortTh>
+                          <SortTh sortKey="ret" title="次日收盘买入、持有后收盘卖出的等权收益" {...daySort}>
+                            策略
+                          </SortTh>
+                          <SortTh sortKey="hs300_ret" {...daySort}>
+                            510300
+                          </SortTh>
+                          <SortTh sortKey="universe_ret" {...daySort}>
+                            去重等权
+                          </SortTh>
+                          <SortTh sortKey="excess_universe" {...daySort}>
+                            超额
+                          </SortTh>
+                          <th className="!text-left">当日名单（持有期收益）</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dayRows.map((row) => (
+                          <tr key={row.trade_date}>
+                            <td className="num !text-left">{row.trade_date}</td>
+                            <td className="num !text-left text-fg-dim">{row.entry_date ?? '—'}</td>
+                            <td className={`num ${toneOf(row.ret)}`}>{fmtPct(row.ret)}</td>
+                            <td className={`num ${toneOf(row.hs300_ret)}`}>{fmtPct(row.hs300_ret)}</td>
+                            <td className={`num ${toneOf(row.universe_ret)}`}>
+                              {fmtPct(row.universe_ret)}
+                            </td>
+                            <td className={`num ${toneOf(row.excess_universe)}`}>
+                              {fmtPct(row.excess_universe)}
+                            </td>
+                            <td className="!text-left text-[12px] text-fg-muted">
+                              {row.picks
+                                .map((pick) => `${pick.name ?? pick.code} ${fmtPct(pick.ret, 1)}`)
+                                .join(' · ')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <p className="px-4 py-3 text-[12px] leading-relaxed text-fg-dim">
+                    口径：信号日收盘出名单，<span className="text-fg-muted">次日收盘</span>
+                    买入、持有 {trackHold} 个交易日后收盘卖出；只用当天及之前的数据
+                    （去重代表按当时的 20 日均额选），没有未来函数。基准是 510300 与「同指数去重后
+                    全体等权」，入场 / 出场日与被测策略相同。累计为逐日复利、
+                    <span className="text-fg-muted"> 不含交易成本 </span>
+                    （带成本的轮动回测见 <span className="num">scripts/backtest_etf.py</span>）。
+                  </p>
+                </>
+              )}
+            </>
           )}
         </Panel>
       </div>

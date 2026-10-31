@@ -16,6 +16,7 @@ import type {
   EtfDetail,
   EtfScreen,
   EtfScreenQuery,
+  EtfTrack,
   DdeBoard,
   DdeOrder,
   Erp,
@@ -1157,6 +1158,13 @@ export const api = {
   /** 单只 ETF 详情：指标 + 250 日走势 + 同类。 */
   etfDetail: (code: string, date?: string | null) =>
     request<EtfDetail>(withDate(`/etf/${encodeURIComponent(code)}`, date)),
+
+  /**
+   * 次日验证：近 `days` 天每天按预设选前 `top` 只，次日收盘起持有 `hold` 天。
+   * 后端按「参数 + 最新日线日 + 最新份额日」缓存 10 分钟，换参数才会重算。
+   */
+  etfTrack: (preset = 'momentum', top = 5, hold = 5, days = 120) =>
+    request<EtfTrack>(`/etf/track?preset=${preset}&top=${top}&hold=${hold}&days=${days}`),
 
   note: (date: string) => request<ReviewNote>(`/note/${date}`),
 
