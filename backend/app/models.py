@@ -771,6 +771,16 @@ class ReviewNote(Base):
     trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
     market_view: Mapped[str | None] = mapped_column(Text)
     next_plan: Mapped[str | None] = mapped_column(Text)
+    # --- 结构化笔记（FEAT-JOURNAL-STRUCT，2026-10-31）---
+    #: 今日主线（自由标签，去重后存）
+    mainlines: Mapped[list | None] = mapped_column(JSON)
+    #: 做错 / 做得好的标签（前端给固定候选，也允许自由输入）
+    mistake_tags: Mapped[list | None] = mapped_column(JSON)
+    good_tags: Mapped[list | None] = mapped_column(JSON)
+    #: 明日观察点（自由文本）
+    watch_points: Mapped[str | None] = mapped_column(Text)
+    #: 关联的明日计划 id（可空）
+    plan_ids: Mapped[list | None] = mapped_column(JSON)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_now, onupdate=_now
     )

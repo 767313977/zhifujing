@@ -2086,13 +2086,40 @@ class NoteIn(BaseModel):
     # 按「一天写满两屏」量级给 20000 字，正常写根本碰不到。
     market_view: str | None = Field(None, max_length=20000)
     next_plan: str | None = Field(None, max_length=20000)
+    # --- 结构化（FEAT-JOURNAL-STRUCT）---
+    mainlines: list[str] = Field(default_factory=list)
+    mistake_tags: list[str] = Field(default_factory=list)
+    good_tags: list[str] = Field(default_factory=list)
+    watch_points: str | None = Field(None, max_length=5000)
+    plan_ids: list[int] = Field(default_factory=list)
 
 
 class NoteOut(ApiModel):
     trade_date: date
     market_view: str | None
     next_plan: str | None
+    mainlines: list[str] = Field(default_factory=list)
+    mistake_tags: list[str] = Field(default_factory=list)
+    good_tags: list[str] = Field(default_factory=list)
+    watch_points: str | None = None
+    plan_ids: list[int] = Field(default_factory=list)
     updated_at: datetime | None
+
+
+class NoteTagCount(ApiModel):
+    tag: str
+    count: int
+
+
+class NoteSummaryOut(ApiModel):
+    month: str
+    notes: int
+    mainlines: list[NoteTagCount] = Field(default_factory=list)
+    mistakes: list[NoteTagCount] = Field(default_factory=list)
+    goods: list[NoteTagCount] = Field(default_factory=list)
+    #: 最近的观察点（最多 10 条）
+    watch_points: list[str] = Field(default_factory=list)
+    plan_links: int = 0
 
 
 # ------------------------------------------------------------------ 形态选股

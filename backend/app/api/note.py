@@ -5,15 +5,17 @@
 所以「取某天的笔记」必须同时给用户 id。
 """
 
-from datetime import date, timedelta
+from collections import Counter
+from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import AppUser, ReviewNote
-from app.schemas import NoteIn, NoteOut
+from app.schemas import NoteIn, NoteOut, NoteSummaryOut, NoteTagCount
 from app.services.auth import current_user
 from app.timeutil import today_cn
 
@@ -44,6 +46,84 @@ def _check_date(trade_date: date) -> None:
         )
 
 
+def _clean_tags(values: list[str] | None) -> list[str]:
+    """标签清洗：去空白、去重、单条 ≤20 字、最多 20 个（防刷库）。"""
+    result: list[str] = []
+    for raw in values or []:
+        tag = str(raw).strip()[:20]
+        if tag and tag not in result:
+            result.append(tag)
+        if len(result) >= 20:
+            break
+    return result
+
+
+def _fill(row: ReviewNote, payload: NoteIn) -> None:
+    row.market_view = payload.market_view
+    row.next_plan = payload.next_plan
+    row.mainlines = _clean_tags(payload.mainlines)
+    row.mistake_tags = _clean_tags(payload.mistake_tags)
+    row.good_tags = _clean_tags(payload.good_tags)
+    row.watch_points = (payload.watch_points or "").strip() or None
+    row.plan_ids = [int(item) for item in payload.plan_ids][:50]
+
+
+@router.get("/summary", response_model=NoteSummaryOut)
+def note_summary(
+    month: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="YYYY-MM"),
+    user: AppUser = Depends(current_user),
+    session: Session = Depends(get_db),
+) -> NoteSummaryOut:
+    """某月的笔记标签统计（FEAT-JOURNAL-STRUCT）：主线 / 做错 / 做对各出现多少次。
+
+    只统计**当前用户**；观察点取最近 10 条非空文本，供月末回看。
+    """
+    try:
+        start = datetime.strptime(month, "%Y-%m").date()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"月份格式应为 YYYY-MM：{month}") from exc
+    end = (start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+
+    rows = list(
+        session.scalars(
+            select(ReviewNote)
+            .where(
+                ReviewNote.user_id == user.id,
+                ReviewNote.trade_date >= start,
+                ReviewNote.trade_date <= end,
+            )
+            .order_by(ReviewNote.trade_date.desc())
+        )
+    )
+
+    def counts(field: str) -> list[NoteTagCount]:
+        counter: Counter[str] = Counter()
+        for row in rows:
+            for tag in getattr(row, field) or []:
+                if tag:
+                    counter[str(tag)] += 1
+        return [
+            NoteTagCount(tag=tag, count=count)
+            for tag, count in counter.most_common()
+        ]
+
+    watch_points = [
+        (row.watch_points or "").strip()
+        for row in rows
+        if (row.watch_points or "").strip()
+    ][:10]
+
+    return NoteSummaryOut(
+        month=month,
+        notes=len(rows),
+        mainlines=counts("mainlines"),
+        mistakes=counts("mistake_tags"),
+        goods=counts("good_tags"),
+        watch_points=watch_points,
+        plan_links=sum(1 for row in rows if row.plan_ids),
+    )
+
+
 @router.get("/{trade_date}", response_model=NoteOut)
 def get_note(
     trade_date: date,
@@ -72,8 +152,7 @@ def save_note(
     if row is None:
         row = ReviewNote(user_id=user.id, trade_date=trade_date)
         session.add(row)
-    row.market_view = payload.market_view
-    row.next_plan = payload.next_plan
+    _fill(row, payload)
     try:
         session.commit()
     except IntegrityError:
@@ -85,8 +164,7 @@ def save_note(
         if row is None:
             # 理论上不会走到：主键冲突说明这一行已经在库里
             raise
-        row.market_view = payload.market_view
-        row.next_plan = payload.next_plan
+        _fill(row, payload)
         session.commit()
     session.refresh(row)
     return NoteOut.model_validate(row)

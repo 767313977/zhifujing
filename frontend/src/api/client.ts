@@ -75,6 +75,7 @@ import type {
   PromotionSeries,
   RelayTemp,
   ReviewNote,
+  NoteSummary,
   StockRiskBadges,
   ThemeBoard,
   RotationLeaderDay,
@@ -1222,12 +1223,27 @@ export const api = {
 
   note: (date: string) => request<ReviewNote>(`/note/${date}`),
 
-  saveNote: (date: string, marketView: string, nextPlan: string) =>
+  saveNote: (
+    date: string,
+    payload: {
+      market_view: string | null
+      next_plan: string | null
+      mainlines: string[]
+      mistake_tags: string[]
+      good_tags: string[]
+      watch_points: string | null
+      plan_ids: number[]
+    },
+  ) =>
     request<ReviewNote>(`/note/${date}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ market_view: marketView, next_plan: nextPlan }),
+      body: JSON.stringify(payload),
     }),
+
+  /** 某月笔记标签统计（FEAT-JOURNAL-STRUCT）。 */
+  noteSummary: (month: string) =>
+    request<NoteSummary>(`/note/summary?month=${encodeURIComponent(month)}`),
 
   adminStatus: () => request<AdminStatus>('/admin/status'),
 

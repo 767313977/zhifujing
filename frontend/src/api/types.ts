@@ -2115,7 +2115,32 @@ export interface ReviewNote {
   trade_date: string
   market_view: string | null
   next_plan: string | null
+  /** 今日主线标签 */
+  mainlines: string[]
+  /** 做错标签 */
+  mistake_tags: string[]
+  /** 做得好标签 */
+  good_tags: string[]
+  /** 明日观察点 */
+  watch_points: string | null
+  /** 关联的明日计划 id */
+  plan_ids: number[]
   updated_at: string | null
+}
+
+export interface NoteTagCount {
+  tag: string
+  count: number
+}
+
+export interface NoteSummary {
+  month: string
+  notes: number
+  mainlines: NoteTagCount[]
+  mistakes: NoteTagCount[]
+  goods: NoteTagCount[]
+  watch_points: string[]
+  plan_links: number
 }
 
 /** 单个市场的两融快照。金额单位与下面所有资金面字段一样，统一是「元」。 */
