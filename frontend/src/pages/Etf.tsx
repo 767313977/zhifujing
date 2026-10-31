@@ -588,7 +588,7 @@ export default function EtfPage() {
               {trackError ? (
                 <LoadState loading={false} error={trackError} />
               ) : track === null || trackLoading ? (
-                <LoadState loading emptyText="加载中（首次约 3 秒）" />
+                <LoadState loading emptyText="加载中（首次约 10 秒，之后切参数秒出）" />
               ) : track.rows.length === 0 ? (
                 <LoadState loading={false} emptyText={track.note ?? '样本还不够'} />
               ) : (
@@ -670,9 +670,10 @@ export default function EtfPage() {
                     口径：信号日收盘出名单，<span className="text-fg-muted">次日收盘</span>
                     买入、持有 {trackHold} 个交易日后收盘卖出；只用当天及之前的数据
                     （去重代表按当时的 20 日均额选），没有未来函数。基准是 510300 与「同指数去重后
-                    全体等权」，入场 / 出场日与被测策略相同。累计为逐日复利、
-                    <span className="text-fg-muted"> 不含交易成本 </span>
-                    （带成本的轮动回测见 <span className="num">scripts/backtest_etf.py</span>）。
+                    全体等权」，入场 / 出场日与被测策略相同。累计是
+                    <span className="text-fg-muted">每天各持有一份、窗口相互重叠</span>
+                    的复利，不是一笔可执行净值，也不含交易成本 —— 可执行的轮动净值（周 / 双周调仓、
+                    扣万 0.5）见 <span className="num">scripts/backtest_etf.py</span>。
                   </p>
                 </>
               )}

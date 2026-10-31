@@ -23,14 +23,15 @@
 策略相同。收益单位是 %，累计是逐期复利。
 
 性能：`etf_bar` 一次性读全量（约 40 万行），逐日指标用**前缀和**算（涨幅 = pct 的
-log 累加、MA = 复权价的窗口均值），120 天 × 1700 只实测 2~4 秒；结果在
-`api/etf.py` 按「参数 + 最新日线日 + 最新份额日」缓存 10 分钟。
+log 累加、MA = 复权价的窗口均值）。线上实测 120 天首次约 10 秒（数据集 4 秒 +
+逐日算 7 秒），**逐日行缓存**之后换预设 / 只数 / 持有期约 1 秒；最终结果在
+`api/etf.py` 按「参数 + 最新日线日 + 最新份额日」再缓存 10 分钟。
 """
 
 import statistics
 from bisect import bisect_left, bisect_right
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from math import exp, log, sqrt
 
@@ -136,6 +137,9 @@ class _Dataset:
     net_keys: list[date]
     #: 最早一份份额快照日；之前算不出规模（历史重放要跳过规模门槛，见 `track`）
     first_share_day: date | None
+    #: 逐日「去重后全量行」缓存：每天约 1000 行，与预设 / top / hold 都无关，
+    #: 换参数时直接复用（首次 10 秒 → 之后约 1 秒）。上限见 `_ROWS_CACHE_DAYS`
+    rows_cache: dict[int, list] = field(default_factory=dict)
 
 
 def _rolling_max(values: list[float], size: int) -> list[float]:
@@ -420,6 +424,25 @@ def _raws_at(data: _Dataset, index: int) -> list[_Raw]:
     return raws
 
 
+#: 逐日行缓存最多留多少个交易日（一天约 1000 行，几十 MB；超过就整份清掉）
+_ROWS_CACHE_DAYS = 130
+
+
+def _rows_at(data: _Dataset, index: int) -> list:
+    """某一天**去重后**的全量行（带缓存，与预设 / top / hold 都无关）。
+
+    换预设 / 只数 / 持有期时省掉重算（实测 120 天首次约 10 秒、之后约 1 秒）。
+    """
+    cached = data.rows_cache.get(index)
+    if cached is not None:
+        return cached
+    rows = etf_screen.to_rows(_raws_at(data, index), dedup=True)
+    if len(data.rows_cache) >= _ROWS_CACHE_DAYS:
+        data.rows_cache.clear()
+    data.rows_cache[index] = rows
+    return rows
+
+
 def _forward(series: _Ser | None, entry: int, exit_index: int) -> float | None:
     """从 `entry`（含）之后第一份日线收盘，持有到 `exit_index`（含）之前最后一份。
 
@@ -499,11 +522,10 @@ def track(
             continue
         # 份额快照之前没有规模数据：那段时间跳过规模门槛（不拿后来的份额倒推）
         skip_scale = data.first_share_day is None or data.days[index] < data.first_share_day
-        raws = _raws_at(data, index)
-        if not raws:
+        universe = _rows_at(data, index)
+        if not universe:
             empty += 1
             continue
-        universe = etf_screen.to_rows(raws, dedup=True)
         picked = etf_screen.select_rows(universe, preset, top, skip_scale=skip_scale)
         if not picked:
             empty += 1
@@ -610,12 +632,11 @@ def rotation(
     bench_raw: list[float] = []
     hs300_raw: list[float] = []
     for index in range(start, last - step, step):
-        raws = _raws_at(data, index)
-        if not raws:
-            continue
         # 份额快照之前没有规模数据 → 那段时间跳过规模门槛（与 `track` 同一口径）
         skip_scale = data.first_share_day is None or data.days[index] < data.first_share_day
-        universe = etf_screen.to_rows(raws, dedup=True)
+        universe = _rows_at(data, index)
+        if not universe:
+            continue
         picked = etf_screen.select_rows(universe, preset, top, skip_scale=skip_scale)
         if not picked:
             continue
