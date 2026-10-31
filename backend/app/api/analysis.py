@@ -34,8 +34,16 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Lhb, LimitPool, StockBasic, StockConcept, StockDaily
-from app.schemas import StockAnalysis, StockResolveOut
+from app.models import AppUser, Lhb, LimitPool, StockBasic, StockConcept, StockDaily
+from app.schemas import (
+    AnalysisSnapshotIn,
+    AnalysisSnapshotListOut,
+    AnalysisSnapshotOut,
+    StockAnalysis,
+    StockResolveOut,
+)
+from app.services import analysis_snapshot
+from app.services.auth import current_user
 from app.services.stock_lookup import LookupError, resolve_code
 from app.services.stock_phase import load_phase
 
@@ -162,3 +170,69 @@ def lookup(
         limit_up_days=int(limit_up_days),
         lhb_days=int(lhb_days),
     )
+
+
+# ------------------------------------------------- 结论快照（FEAT-ANALYSIS-SNAPSHOT）
+
+
+def _normalize_code(code: str) -> str:
+    digits = "".join(char for char in str(code or "").strip() if char.isdigit())[:6]
+    if len(digits) != 6:
+        raise HTTPException(status_code=400, detail="股票代码需要 6 位数字")
+    return digits
+
+
+@router.post("/snapshots", response_model=AnalysisSnapshotOut, status_code=201)
+def create_snapshot(
+    body: AnalysisSnapshotIn,
+    session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> AnalysisSnapshotOut:
+    """保存一条查票结论。**只存不重算** —— 结论以调用方传上来的为准。"""
+    summary = (body.summary or "").strip()
+    if not summary:
+        raise HTTPException(status_code=400, detail="结论文本不能为空")
+    if len(summary) > 2000:
+        raise HTTPException(status_code=400, detail="结论文本太长（上限 2000 字）")
+    code = _normalize_code(body.code)
+    row = analysis_snapshot.save(
+        session,
+        user.id,
+        code,
+        (body.name or "").strip() or None,
+        summary,
+        body.payload,
+    )
+    session.commit()
+    return AnalysisSnapshotOut.model_validate(row)
+
+
+@router.get("/snapshots", response_model=AnalysisSnapshotListOut)
+def list_snapshots(
+    code: str | None = Query(default=None, max_length=16),
+    limit: int = Query(default=50, ge=1, le=200),
+    session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> AnalysisSnapshotListOut:
+    """我的历史结论（新的在前）。`code` 可选，用来只看某只票。"""
+    rows = analysis_snapshot.rows(
+        session,
+        user.id,
+        _normalize_code(code) if code else None,
+        limit,
+    )
+    return AnalysisSnapshotListOut(
+        rows=[AnalysisSnapshotOut.model_validate(row) for row in rows]
+    )
+
+
+@router.delete("/snapshots/{snap_id}", status_code=204)
+def delete_snapshot(
+    snap_id: int,
+    session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> None:
+    """删掉自己的一条快照。别人的 id 一律 404（不确认「存在但无权」）。"""
+    if not analysis_snapshot.remove(session, user.id, snap_id):
+        raise HTTPException(status_code=404, detail="没有这条结论")
+    session.commit()

@@ -1,12 +1,12 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
-import type { StockAnalysis, StockNews } from '../api/types'
+import type { AnalysisSnapshot, StockAnalysis, StockNews } from '../api/types'
 import Alert from '../components/Alert'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import PhasePanel from '../components/PhasePanel'
-import { fmtNum, fmtPct, toneOf } from '../lib/format'
+import { fmtDateTime, fmtNum, fmtPct, toneOf } from '../lib/format'
 
 /**
  * 个股分析（移植自 zhaohuibin7/yangban-desk 的「查票分析」）。
@@ -41,6 +41,26 @@ export default function StockAnalysisPage() {
   // 连查两只票时先发的若后返回，会把页面上的结论覆盖成**另一只票**。每次 run 自增一次，
   // 回调先比对序号，只认最新那次请求（新闻那三条状态也一起受它保护）。
   const runSeqRef = useRef(0)
+
+  // 结论快照（FEAT-ANALYSIS-SNAPSHOT）：我的历史结论 + 保存/删除的忙碌态。
+  // 列表在页面打开时就取：查票前先能翻旧结论，才谈得上「不用重复输入」。
+  const [snapshots, setSnapshots] = useState<AnalysisSnapshot[]>([])
+  const [snapBusy, setSnapBusy] = useState<number | 'save' | null>(null)
+  const [snapHint, setSnapHint] = useState<string | null>(null)
+
+  const loadSnapshots = useCallback(async () => {
+    try {
+      const data = await api.analysisSnapshots({ limit: 50 })
+      setSnapshots(data.rows)
+    } catch {
+      // 快照列表取不到不该挡住查票本身：静默保留空列表
+      setSnapshots([])
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadSnapshots()
+  }, [loadSnapshots])
 
   const run = useCallback(async (raw: string) => {
     const q = raw.trim()
@@ -91,6 +111,53 @@ export default function StockAnalysisPage() {
       if (seq === runSeqRef.current) setLoading(false)
     }
   }, [])
+
+  const saveSnapshot = useCallback(async () => {
+    if (!result || snapBusy) return
+    setSnapBusy('save')
+    setSnapHint(null)
+    try {
+      await api.saveAnalysisSnapshot({
+        code: result.code,
+        name: result.name,
+        summary: summarize(result),
+        payload: result,
+      })
+      await loadSnapshots()
+      setSnapHint('已保存，可在下方「我的结论」点开复原')
+    } catch (err) {
+      setSnapHint(`保存失败：${(err as Error).message}`)
+    } finally {
+      setSnapBusy(null)
+    }
+  }, [result, snapBusy, loadSnapshots])
+
+  /** 点开历史结论：**原样复原**当时的结论卡，不重新分析（那会变成今天的结论）。 */
+  const restore = useCallback((snap: AnalysisSnapshot) => {
+    if (!snap.payload) return
+    // 作废进行中的查询 / 新闻：恢复的是历史那份，不能被后到的响应覆盖
+    runSeqRef.current += 1
+    newsCodeRef.current = null
+    setLoading(false)
+    setNewsLoading(false)
+    setNews(null)
+    setError(null)
+    setQuery(snap.code)
+    setResult(snap.payload)
+  }, [])
+
+  const removeSnapshot = async (snap: AnalysisSnapshot) => {
+    setSnapBusy(snap.id)
+    setSnapHint(null)
+    try {
+      await api.deleteAnalysisSnapshot(snap.id)
+      setSnapshots((rows) => rows.filter((row) => row.id !== snap.id))
+    } catch (err) {
+      setSnapHint(`删除失败：${(err as Error).message}`)
+    } finally {
+      setSnapBusy(null)
+    }
+  }
 
   return (
     <Layout>
@@ -149,6 +216,63 @@ export default function StockAnalysisPage() {
           </div>
         </Panel>
 
+        <Panel
+          title="我的结论"
+          meta={
+            <span className="text-[13px] text-fg-dim">
+              {snapshots.length} 条 · 点开复原当时的结论
+            </span>
+          }
+          delay={38}
+        >
+          {snapHint && (
+            <div className="border-b border-line-soft px-4 py-2 text-[12px] text-fg-muted">
+              {snapHint}
+            </div>
+          )}
+          {snapshots.length === 0 ? (
+            <div className="px-4 py-6 text-center text-[13px] text-fg-dim">
+              还没保存过结论 —— 查到想留的，点结论卡右上角「保存结论」
+            </div>
+          ) : (
+            <ul className="divide-y divide-line-soft">
+              {snapshots.map((snap) => (
+                <li
+                  key={snap.id}
+                  className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5"
+                >
+                  <button
+                    type="button"
+                    onClick={() => restore(snap)}
+                    disabled={!snap.payload}
+                    className="shrink-0 text-left text-[13px] text-fg transition-colors hover:text-accent disabled:opacity-50"
+                  >
+                    {snap.name ?? snap.code}
+                    <span className="num ml-1.5 text-[12px] text-fg-dim">{snap.code}</span>
+                  </button>
+                  <span className="min-w-0 flex-1 break-words text-[12px] text-fg-muted">
+                    {snap.summary}
+                  </span>
+                  <span className="num shrink-0 text-[12px] text-fg-dim">
+                    {fmtDateTime(snap.created_at)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void removeSnapshot(snap)}
+                    disabled={snapBusy === snap.id}
+                    className="shrink-0 text-[12px] text-fg-dim transition-colors hover:text-danger disabled:opacity-50"
+                  >
+                    {snapBusy === snap.id ? '删除中…' : '删除'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="px-4 py-2 text-[12px] text-fg-dim">
+            快照只存结论；新闻不随快照保存（每次现取）。同一只票只留最近 20 条。
+          </p>
+        </Panel>
+
         {result && (
           <>
             <Panel
@@ -174,6 +298,14 @@ export default function StockAnalysisPage() {
                   >
                     看完整个股页（K 线 / 资金）→
                   </Link>
+                  <button
+                    type="button"
+                    onClick={() => void saveSnapshot()}
+                    disabled={snapBusy === 'save'}
+                    className="ml-3 border border-line px-2 py-0.5 text-[12px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {snapBusy === 'save' ? '保存中…' : '保存结论'}
+                  </button>
                 </span>
               }
               delay={45}
@@ -229,6 +361,18 @@ export default function StockAnalysisPage() {
       </div>
     </Layout>
   )
+}
+
+/**
+ * 快照列表里那一行结论。用「阶段 + 日期 + 收盘」三件套 —— 与结论卡的头部同口径，
+ * 不在这里另造一套摘要（避免列表与复原后的结论卡看起来不是同一件事）。
+ */
+function summarize(result: StockAnalysis): string {
+  const parts = [result.phase?.label ?? '暂无判定', result.trade_date ?? '无日线']
+  if (result.close != null) {
+    parts.push(`收盘 ${fmtNum(result.close, 2)}${result.pct_chg != null ? `（${fmtPct(result.pct_chg)}）` : ''}`)
+  }
+  return parts.join(' · ')
 }
 
 /**

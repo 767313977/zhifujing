@@ -1479,3 +1479,28 @@ class CbDaily(Base):
     last_trade_date: Mapped[date | None] = mapped_column(Date)
 
     source: Mapped[str | None] = mapped_column(String(32))
+
+
+class AnalysisSnapshot(Base):
+    """查票分析的结论快照（FEAT-ANALYSIS-SNAPSHOT，2026-10-31）。**按用户隔离**。
+
+    存两份东西，各有用途，别只留一份：
+    - `summary`：一行能读的结论文本，列表页直接展示，不用反序列化 JSON；
+    - `payload`：当时 `/api/analysis/lookup` 的完整返回（阶段、收盘、行业…），
+      点开时原样复原结论卡。
+
+    为什么不复用 `pattern_hit` 或重新查一遍：结论依赖**当时**的日线与模板判据，
+    几个月后重查得到的是新结论 —— 快照的意义就是「我当时看到的是什么」。
+    """
+
+    __tablename__ = "analysis_snapshot"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"), index=True)
+    code: Mapped[str] = mapped_column(String(16), index=True)
+    name: Mapped[str | None] = mapped_column(String(32))
+    #: 列表展示用的一句话结论
+    summary: Mapped[str] = mapped_column(Text)
+    #: 当时分析接口的完整返回（恢复结论卡用）
+    payload: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

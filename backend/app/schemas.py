@@ -3609,3 +3609,28 @@ class RiskStatusOut(ApiModel):
     concentration: list[RiskConcentrationOut] = []
     message: str
     pref: RiskPrefIn
+
+
+# --------------------------------------------------- 查票结论快照（FEAT-ANALYSIS-SNAPSHOT）
+
+
+class AnalysisSnapshotIn(ApiModel):
+    code: str
+    name: str | None = None
+    #: 一句话结论（列表页展示）
+    summary: str
+    #: 当时 `/api/analysis/lookup` 的完整返回，点开时整体复原
+    payload: dict | None = None
+
+
+class AnalysisSnapshotOut(ApiModel):
+    id: int
+    code: str
+    name: str | None = None
+    summary: str
+    payload: dict | None = None
+    created_at: datetime
+
+
+class AnalysisSnapshotListOut(ApiModel):
+    rows: list[AnalysisSnapshotOut] = []

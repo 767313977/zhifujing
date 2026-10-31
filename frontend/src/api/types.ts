@@ -2084,6 +2084,17 @@ export interface StockAnalysis {
   lhb_days: number
 }
 
+/** 查票结论快照（FEAT-ANALYSIS-SNAPSHOT）：我当时看到的那份结论。 */
+export interface AnalysisSnapshot {
+  id: number
+  code: string
+  name: string | null
+  summary: string
+  /** 当时 `/api/analysis/lookup` 的完整返回，点开时整体复原结论卡 */
+  payload: StockAnalysis | null
+  created_at: string
+}
+
 export interface StockProfile {
   code: string
   name: string | null

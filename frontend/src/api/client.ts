@@ -99,6 +99,7 @@ import type {
   SectorTaxonomy,
   Sentiment,
   JournalReasonSuggestion,
+  AnalysisSnapshot,
   StockAnalysis,
   StockDailyRow,
   StockDde,
@@ -824,6 +825,32 @@ export const api = {
    */
   analysisLookup: (q: string) =>
     request<StockAnalysis>(`/analysis/lookup?q=${encodeURIComponent(q)}`),
+
+  /**
+   * 查票结论快照（FEAT-ANALYSIS-SNAPSHOT）：保存 / 我的历史 / 删除。
+   *
+   * `payload` 传整份 `StockAnalysis`：点开历史时原样复原结论卡，不再重新分析
+   * —— 快照的意义就是「我当时看到的是什么」。
+   */
+  analysisSnapshots: (params?: { code?: string; limit?: number }) => {
+    const search = new URLSearchParams()
+    if (params?.code) search.set('code', params.code)
+    if (params?.limit) search.set('limit', String(params.limit))
+    const suffix = search.toString()
+    return request<{ rows: AnalysisSnapshot[] }>(
+      `/analysis/snapshots${suffix ? `?${suffix}` : ''}`,
+    )
+  },
+
+  saveAnalysisSnapshot: (body: {
+    code: string
+    name?: string | null
+    summary: string
+    payload?: StockAnalysis | null
+  }) => send<AnalysisSnapshot>('POST', '/analysis/snapshots', body),
+
+  deleteAnalysisSnapshot: (id: number) =>
+    request<void>(`/analysis/snapshots/${id}`, { method: 'DELETE' }),
 
   /**
    * 名称 / 拼音首字母 / 代码 → `{code, name}`（**只查股票池、不算行情**）。
