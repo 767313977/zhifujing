@@ -2131,6 +2131,8 @@ class PatternMeta(BaseModel):
     key: str
     name: str
     group: str
+    #: 实验态：默认在筛选条隐藏（扫描照跑，不删注册表）
+    experimental: bool = False
 
 
 class PatternHitItem(BaseModel):

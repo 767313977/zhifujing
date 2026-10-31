@@ -1062,6 +1062,9 @@ class Pattern:
     # 趋势 / 突破 / 量价 / 几何
     group: str
     detect: Callable[[Bars], Signal | None]
+    #: 实验态（FEAT-PATTERN-EXPERIMENTAL，2026-10-31）：默认在筛选条里隐藏，
+    #: **不从注册表删除、扫描照跑**（否则打开开关后没有历史命中可用）。
+    experimental: bool = False
 
 
 # ---------------------------------------------------------------- 复权
@@ -5992,13 +5995,16 @@ PATTERNS: tuple[Pattern, ...] = (
     # ⚠️ 「量价底背离」「矩形箱体」「下降楔形」2026-10-18 已撤下（用户要求）：
     # 判定函数、`VP_DIVERGE_*` / `RECT_*` / `WEDGE_FALL_*` 阈值、前端明细标签、
     # 库里的历史命中同样一并删了。
-    Pattern("ma_squeeze", "均线粘合", "趋势", _ma_squeeze),
+    # 实验态（2026-10-31）：2026-09-25 全池回测里「本该是买点、10 日超额却为负」
+    # 的三个形态（均线粘合 −0.87%、下降趋势线突破 −0.27%、地量见底 −0.43%）。
+    # 默认在筛选条隐藏，扫描照跑；打开「显示实验形态」仍可见（不删注册表）。
+    Pattern("ma_squeeze", "均线粘合", "趋势", _ma_squeeze, experimental=True),
     Pattern("ma_golden_cross", "金叉共振", "趋势", _ma_golden_cross),
-    Pattern("downtrend_breakout", "下降趋势线突破", "突破", _downtrend_breakout),
+    Pattern("downtrend_breakout", "下降趋势线突破", "突破", _downtrend_breakout, experimental=True),
     Pattern("gap_up_breakout", "向上跳空缺口突破", "突破", _gap_up_breakout),
     Pattern("gap_fill", "缺口回补", "突破", _gap_fill),
     Pattern("box_breakout", "箱体突破", "突破", _box_breakout),
-    Pattern("volume_dry_bottom", "地量见底", "量价", _volume_dry_bottom),
+    Pattern("volume_dry_bottom", "地量见底", "量价", _volume_dry_bottom, experimental=True),
     Pattern("shrink_limit_up", "缩量涨停", "量价", _shrink_limit_up),
     # ⚠️ 「放量滞涨」2026-10-20 已按用户要求删除（判定函数、`STALL_*` 阈值、
     # 前端明细标签、库里的历史命中一并删）。

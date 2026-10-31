@@ -417,6 +417,8 @@ export default function Patterns() {
   const [action, setAction] = useState<PatternActionSummary | null>(null)
   /** 隐藏走弱形态（只影响 chip 列表，不改查询与注册表） */
   const [hideWeak, setHideWeak] = useState(false)
+  /** 显示实验形态（FEAT-PATTERN-EXPERIMENTAL）：默认隐藏，不删注册表 */
+  const [showExperimental, setShowExperimental] = useState(false)
   // 选中的形态：**多选**（交集）。空数组 = 默认视图（全市场按评分取前 HIT_LIMIT 只）
   const [picked, setPicked] = useState<string[]>(() => splitPatterns(params.get('patterns')))
   /**
@@ -588,6 +590,8 @@ export default function Patterns() {
     for (const item of catalog) {
       // 「隐藏走弱」只过滤 chip 列表，不动注册表、也不改当前已选中的形态
       if (hideWeak && weak.has(item.key) && !picked.includes(item.key)) continue
+      // 实验形态默认收起；打开开关后照常出现（扫描任务不受影响）
+      if (!showExperimental && item.experimental && !picked.includes(item.key)) continue
       const list = map.get(item.group) ?? []
       list.push(item)
       map.set(item.group, list)
@@ -595,7 +599,7 @@ export default function Patterns() {
     return [...map.entries()]
       .filter(([, items]) => items.length > 0)
       .sort((a, b) => GROUP_ORDER.indexOf(a[0]) - GROUP_ORDER.indexOf(b[0]))
-  }, [catalog, action, hideWeak, picked])
+  }, [catalog, action, hideWeak, picked, showExperimental])
 
   /** 走弱形态 key：chip 灰显用（不物理删除） */
   const weakSet = useMemo(() => new Set(action?.weak ?? []), [action])
@@ -952,6 +956,14 @@ export default function Patterns() {
                       }`}
                     >
                       {item.name}
+                      {item.experimental && (
+                        <span
+                          className="ml-1 text-[11px] text-fg-dim"
+                          title="实验形态：回测里 10 日超额为负，默认收起"
+                        >
+                          实
+                        </span>
+                      )}
                       {stats?.verdict === '噪声' && (
                         <span
                           className="ml-1 text-[11px] text-fg-dim"
@@ -1074,6 +1086,14 @@ export default function Patterns() {
             <div className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-2.5">
               {/* 2026-10-31 加说明：标签是**技术阶段识别**，≠ 正式入池 ——
                   入池还要过板块（悟道名单只收创业板 + 科创板）与收盘位置等条件 */}
+              <label className="flex items-center gap-1.5 text-[12px] text-fg-muted">
+                <input
+                  type="checkbox"
+                  checked={showExperimental}
+                  onChange={(event) => setShowExperimental(event.target.checked)}
+                />
+                显示实验形态
+              </label>
               <span
                 className="cursor-help text-[13px] text-fg-dim"
                 title="阶段标签只回答「这只票今天像哪一档」（技术识别）；正式入池还要过板块（悟道名单只收创业板 + 科创板）与收盘位置等条件，两者口径不同"

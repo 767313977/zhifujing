@@ -160,7 +160,10 @@ def _latest_date(db: Session) -> date | None:
 def catalog() -> list[PatternMeta]:
     """形态清单，前端据此生成分组筛选条。"""
     return [
-        PatternMeta(key=p.key, name=p.name, group=p.group) for p in PATTERNS
+        PatternMeta(
+            key=p.key, name=p.name, group=p.group, experimental=p.experimental
+        )
+        for p in PATTERNS
     ]
 
 

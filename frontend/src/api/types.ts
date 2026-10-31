@@ -1229,6 +1229,8 @@ export interface PatternMeta {
   name: string
   /** 趋势 / 突破 / 量价 / 几何 */
   group: string
+  /** 实验态：默认在筛选条隐藏（扫描照跑，不删注册表） */
+  experimental: boolean
 }
 
 export interface PatternHitItem {

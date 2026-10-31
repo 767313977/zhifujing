@@ -42,3 +42,12 @@ def test_empty_card_has_note():
     assert data["rows"] == []
     assert data["active"] == []
     assert data["note"]
+
+
+def test_experimental_patterns_are_marked_not_removed():
+    """FEAT-PATTERN-EXPERIMENTAL：实验形态只在注册表里打标，不物理删除。"""
+    from app.services.patterns import PATTERNS
+
+    experimental = {pattern.key for pattern in PATTERNS if pattern.experimental}
+    assert experimental == {"ma_squeeze", "downtrend_breakout", "volume_dry_bottom"}
+    assert all(pattern.key for pattern in PATTERNS)
