@@ -502,7 +502,18 @@ def detail(session: Session, code: str, day: date | None = None) -> EtfDetail | 
         day = session.scalar(select(func.max(EtfBar.trade_date)))
     if day is None:
         return None
-    data = screen(session, day, preset="momentum", dedup=False, limit=5000)
+    # 详情不套动量预设的门槛：货币 / 债券 ETF 也要打得开
+    data = screen(
+        session,
+        day,
+        preset="momentum",
+        fund_type="",
+        scale_min=0,
+        amount_min=0,
+        above_ma20=False,
+        dedup=False,
+        limit=5000,
+    )
     row = next((item for item in data.items if item.code == code), None)
     if row is None:
         return None

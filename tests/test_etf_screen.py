@@ -116,6 +116,22 @@ def test_momentum_requires_stock_type_and_ma20(db):
     assert data.filters["fund_type"] == "股票"
 
 
+def test_detail_opens_non_stock_etf_and_lists_peers(db):
+    # 货币 ETF 不能被动量预设挡住（详情不套门槛）
+    seed(db, "511990", "华宝添益ETF", "华宝添益", "货币现金", "货币", t0=True)
+    seed(db, "510300", "沪深300ETF华泰柏瑞", "沪深300", "宽基", "股票", amount=5e8)
+    seed(db, "510310", "沪深300ETF易方达", "沪深300", "宽基", "股票", amount=1e8)
+    db.commit()
+
+    money = etf_screen.detail(db, "511990", END)
+    broad = etf_screen.detail(db, "510300", END)
+
+    assert money is not None and money.row.code == "511990"
+    assert len(money.series) == DAYS
+    assert broad is not None
+    assert [peer["code"] for peer in broad.peers] == ["510310"]
+
+
 def test_scale_and_flow_are_none_when_missing(db):
     """没有份额快照时规模 / 净申赎记 None（不拿 0 顶）。"""
     db.add(EtfBasic(code="510500", name="中证500ETF", norm_name="中证500", fund_type="股票"))
