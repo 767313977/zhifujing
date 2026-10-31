@@ -75,3 +75,22 @@ def previous_trade_day(day: date, session: Session | None = None) -> date | None
     """
     days = recent_trade_days(day, 1, session)
     return days[0] if days else None
+
+
+def next_trade_day(day: date, session: Session | None = None) -> date | None:
+    """`day` 之后最近的一个交易日（**不含 `day` 本身**）；日历里没有时返回 None。
+
+    名单一键生成计划时用（信号日的下一个交易日才是执行日）。日历只铺到当年年底，
+    跨年那几天会返回 None —— 调用方必须处理，不能拿 `day + 1 天` 顶替
+    （那就是把周末当交易日）。
+    """
+    stmt = (
+        select(TradeCalendar.trade_date)
+        .where(TradeCalendar.trade_date > day)
+        .order_by(TradeCalendar.trade_date)
+        .limit(1)
+    )
+    if session is not None:
+        return session.scalar(stmt)
+    with session_scope() as db:
+        return db.scalar(stmt)

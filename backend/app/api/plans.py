@@ -5,7 +5,7 @@
 """
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -13,8 +13,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import AppUser, StockBasic, TradePlan
+from app.models import AppUser, StockBasic, TradeJournal, TradePlan
 from app.schemas import (
+    PlanExecuteIn,
+    PlanExecuteOut,
+    PlanFromSignalIn,
+    PlanFromSignalOut,
+    PlanStatsOut,
+    PlanStatusIn,
     TradePlanIn,
     TradePlanOut,
     TradePlanRow,
@@ -23,6 +29,7 @@ from app.schemas import (
 from app.services import trade_plan
 from app.services.auth import current_user
 from app.services.trading_days import is_trade_day
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +48,8 @@ def _validate(session: Session, payload: TradePlanIn) -> tuple[str, str | None]:
         raise HTTPException(status_code=400, detail="买点与放弃位都必须大于 0")
     if payload.stop_price >= payload.buy_price:
         raise HTTPException(status_code=400, detail="放弃位要低于买点（过 X 买、破 Y 放弃）")
+    if payload.buy_high is not None and payload.buy_high < payload.buy_price:
+        raise HTTPException(status_code=400, detail="买入价区上限不能低于触发价")
     code = _normalize_code(payload.code)
     # 代码必须真在 `stock_basic` 里（2026-10-23 体检修，文案与
     # `api/watchlist.add_watchlist` 对齐）：`_normalize_code` 只校验"6 位数字"，
@@ -80,12 +89,77 @@ def suggestions(
     )
 
 
+@router.post("/from-signal", response_model=PlanFromSignalOut)
+def create_from_signal(
+    payload: PlanFromSignalIn,
+    session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> PlanFromSignalOut:
+    """从形态 / 悟道名单一键生成计划（FEAT-PLAN-LOOP A）。
+
+    默认不覆盖同一 (用户, 代码, 执行日) 的既有计划：用户可能已经改过价位，
+    重复点击只把原计划原样返回（`created=false`）。
+    """
+    try:
+        row, created = trade_plan.create_from_signal(
+            session,
+            user.id,
+            payload.code,
+            payload.pattern,
+            signal_date=payload.signal_date,
+            plan_date=payload.plan_date,
+            overwrite=payload.overwrite,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return PlanFromSignalOut(
+        created=created, row=TradePlanRow.model_validate(row)
+    )
+
+
+@router.get("/stats", response_model=PlanStatsOut)
+def plan_stats(
+    date_from: date | None = Query(None, alias="from", description="起始计划日（含）"),
+    date_to: date | None = Query(None, alias="to", description="结束计划日（含）"),
+    session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> PlanStatsOut:
+    """区间执行质量：计划数 / 执行率 / 按计划执行率 / 关联日志盈亏（有则算）。"""
+    end = date_to or today_cn()
+    start = date_from or (end - timedelta(days=30))
+    if start > end:
+        raise HTTPException(status_code=400, detail="起始日期不能晚于结束日期")
+    return PlanStatsOut(**trade_plan.stats(session, user.id, start, end))
+
+
 def _fill(plan: TradePlan, name: str | None, payload: TradePlanIn) -> None:
-    """把入参写回计划行：新增、并发冲突后改走「更新」、修改三处共用这一份。"""
+    """把入参写回计划行：新增、并发冲突后改走「更新」、修改三处共用这一份。
+
+    来源类字段（source / signal_date / ref_price）**空值不覆盖**：手工编辑时表单
+    不带这些字段，直接写 None 会把「从哪份名单来的」抹掉。
+    """
     plan.name = name
     plan.buy_price = float(payload.buy_price)
     plan.stop_price = float(payload.stop_price)
     plan.note = (payload.note or "").strip() or None
+    plan.source = payload.source or plan.source
+    plan.source_name = payload.source_name or plan.source_name
+    plan.signal_date = payload.signal_date or plan.signal_date
+    if payload.ref_price is not None:
+        plan.ref_price = float(payload.ref_price)
+    plan.buy_high = float(payload.buy_high) if payload.buy_high is not None else None
+    plan.target_price = (
+        float(payload.target_price) if payload.target_price is not None else None
+    )
+    plan.position_note = (payload.position_note or "").strip() or None
+    plan.observe_only = bool(payload.observe_only)
+    if payload.actual_price is not None:
+        plan.actual_price = float(payload.actual_price)
+    if payload.followed_plan is not None:
+        plan.followed_plan = bool(payload.followed_plan)
+    plan.deviation = (payload.deviation or "").strip() or None
 
 
 @router.post("", response_model=TradePlanRow)
@@ -168,6 +242,99 @@ def update_plan(
         raise HTTPException(
             status_code=400, detail="该票当天已有一条计划，请直接编辑那一条"
         ) from None
+    return _row(session, user, plan.id, plan.plan_date)
+
+
+@router.post("/{plan_id}/execute", response_model=PlanExecuteOut)
+def execute_plan(
+    plan_id: int,
+    payload: PlanExecuteIn,
+    session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> PlanExecuteOut:
+    """回填实际买入价 + 是否按计划，并写一笔关联交易日志（FEAT-PLAN-LOOP C）。
+
+    同一条计划重复提交时**更新原日志**，不会生成多笔 —— 否则周度执行率会把
+    同一次交易算成两次。
+    """
+    plan = session.get(TradePlan, plan_id)
+    if plan is None or plan.user_id != user.id:
+        raise HTTPException(status_code=404, detail="这条计划不存在")
+    if payload.actual_price <= 0:
+        raise HTTPException(status_code=400, detail="实际买入价必须大于 0")
+    entry_date = payload.entry_date or plan.plan_date
+    if entry_date > today_cn():
+        raise HTTPException(status_code=400, detail="成交日不能晚于今天")
+
+    plan.actual_price = float(payload.actual_price)
+    plan.followed_plan = bool(payload.followed_plan)
+    plan.deviation = (payload.deviation or "").strip() or None
+    # 手动回填 = 已执行，且锁定状态：自动核对不再把它改回「过期」
+    plan.status = "executed"
+    plan.status_source = "manual"
+
+    reason_type = "other"
+    if plan.source:
+        reason_type = "wudao" if plan.source.startswith("wudao") else "pattern"
+    journal = session.scalar(
+        select(TradeJournal)
+        .where(TradeJournal.user_id == user.id, TradeJournal.plan_id == plan.id)
+        .order_by(TradeJournal.id.desc())
+        .limit(1)
+    )
+    if journal is None:
+        journal = TradeJournal(
+            user_id=user.id,
+            code=plan.code,
+            name=plan.name,
+            entry_date=entry_date,
+            entry_price=float(payload.actual_price),
+            shares=payload.shares,
+            position_pct=payload.position_pct,
+            reason_type=reason_type,
+            reason_key=plan.source,
+            reason_text=plan.deviation,
+            plan_stop=plan.stop_price,
+            plan_id=plan.id,
+            note=(payload.note or "").strip() or None,
+        )
+        session.add(journal)
+    else:
+        journal.entry_date = entry_date
+        journal.entry_price = float(payload.actual_price)
+        journal.plan_stop = plan.stop_price
+        if plan.deviation:
+            journal.reason_text = plan.deviation
+        if payload.shares is not None:
+            journal.shares = payload.shares
+        if payload.position_pct is not None:
+            journal.position_pct = payload.position_pct
+        if payload.note:
+            journal.note = payload.note.strip() or journal.note
+    session.commit()
+    session.refresh(journal)
+    return PlanExecuteOut(
+        row=_row(session, user, plan.id, plan.plan_date), journal_id=journal.id
+    )
+
+
+@router.put("/{plan_id}/status", response_model=TradePlanRow)
+def set_plan_status(
+    plan_id: int,
+    payload: PlanStatusIn,
+    session: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+) -> TradePlanRow:
+    """手动改计划状态；传 `status=null` 交回自动同步（FEAT-PLAN-LOOP B）。"""
+    status = payload.status
+    if status is not None and status not in trade_plan.PLAN_STATUSES:
+        raise HTTPException(status_code=400, detail=f"未知状态：{status}")
+    plan = session.get(TradePlan, plan_id)
+    if plan is None or plan.user_id != user.id:
+        raise HTTPException(status_code=404, detail="这条计划不存在")
+    plan.status = status
+    plan.status_source = "manual" if status is not None else None
+    session.commit()
     return _row(session, user, plan.id, plan.plan_date)
 
 

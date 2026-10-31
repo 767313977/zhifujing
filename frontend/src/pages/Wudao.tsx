@@ -325,6 +325,26 @@ function PoolPanel({
   const [sort, sortedPick] = useSort(pick, sortSpecs, { key: null })
   const shown = useMemo(() => sortedPick.slice(0, RENDER_LIMIT), [sortedPick])
   const hidden = pick.length - shown.length
+  /** 「加入明日计划」的提示（本池独立，不弹窗） */
+  const [planNotice, setPlanNotice] = useState<string | null>(null)
+
+  const addToPlan = async (code: string, name: string | null, signalDate: string) => {
+    setPlanNotice(null)
+    try {
+      const result = await api.planFromSignal({
+        code,
+        pattern: pool.key,
+        signal_date: signalDate,
+      })
+      setPlanNotice(
+        result.created
+          ? `${name ?? code} 已加入 ${result.row.plan_date} 的明日计划`
+          : `${name ?? code} 在 ${result.row.plan_date} 已有计划，未覆盖`,
+      )
+    } catch (err) {
+      setPlanNotice(`加入计划失败：${(err as Error).message}`)
+    }
+  }
 
   return (
     <Panel
@@ -352,6 +372,11 @@ function PoolPanel({
         <div className="px-4 py-8 text-center text-[14px] text-fg-dim">当日无命中</div>
       ) : (
         <>
+          {planNotice && (
+            <div className="border-b border-line-soft px-4 py-2 text-[12px] text-accent">
+              {planNotice}
+            </div>
+          )}
           <div className="max-h-[520px] overflow-auto">
             <table className="grid-table">
               <thead>
@@ -382,6 +407,7 @@ function PoolPanel({
                       {label}
                     </SortTh>
                   ))}
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -449,6 +475,19 @@ function PoolPanel({
                         </span>
                       </td>
                     ))}
+                    <td>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          void addToPlan(row.code, row.name, row.trade_date)
+                        }}
+                        className="whitespace-nowrap text-[12px] text-accent hover:underline"
+                        title="按本池形态生成执行日的计划（已有计划不会被覆盖）"
+                      >
+                        加计划
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

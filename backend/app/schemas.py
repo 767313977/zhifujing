@@ -1827,17 +1827,41 @@ class TradePlanIn(ApiModel):
     code: str
     name: str | None = None
     plan_date: date
-    #: 过这个价买
+    #: 过这个价买（买入价区的下限 / 触发价）
     buy_price: float
     #: 破这个价放弃
     stop_price: float
     note: str | None = None
+    # --- 计划闭环（FEAT-PLAN-LOOP）---
+    #: 来源：形态 key / 悟道池 key / manual
+    source: str | None = None
+    source_name: str | None = None
+    signal_date: date | None = None
+    ref_price: float | None = None
+    #: 买入价区上限；超过它不再追（可空 = 不设上限）
+    buy_high: float | None = None
+    target_price: float | None = None
+    position_note: str | None = None
+    observe_only: bool = False
+    #: 回填的实际买入价（填了就视为已执行）
+    actual_price: float | None = None
+    followed_plan: bool | None = None
+    #: 偏差原因：追高 / 未等到 / 情绪误判 / 其它
+    deviation: str | None = None
 
 
 class TradePlanRow(TradePlanIn):
     id: int
-    #: 触发 / 未触发 / 放弃（破位）/ 同日触发并跌破 / 待验证 / 无日线…
+    #: 日线核对结果：触发 / 未触发 / 放弃（破位）/ 同日触发并跌破 / 待验证 / 无日线…
     status: str
+    #: 计划状态（落库）：observe / pending / executed / cancelled / expired
+    plan_status: str | None = None
+    plan_status_label: str | None = None
+    #: manual = 用户手动改过；auto = 自动同步
+    status_source: str | None = None
+    #: 关联的交易日志（「记一笔」写回）
+    journal_id: int | None = None
+    journal_exit_price: float | None = None
     high: float | None = None
     low: float | None = None
     close: float | None = None
@@ -1857,6 +1881,73 @@ class TradePlanRow(TradePlanIn):
 
 class TradePlanOut(ApiModel):
     rows: list[TradePlanRow] = Field(default_factory=list)
+
+
+class PlanFromSignalIn(ApiModel):
+    """从形态 / 悟道名单一键生成计划。"""
+
+    code: str
+    pattern: str
+    #: 名单命中日；缺省取该形态最近一次命中
+    signal_date: date | None = None
+    #: 执行日；缺省 = 信号日的下一个交易日
+    plan_date: date | None = None
+    #: 已存在时是否覆盖价位（默认不覆盖，避免冲掉用户改过的计划）
+    overwrite: bool = False
+
+
+class PlanFromSignalOut(ApiModel):
+    #: true = 新建；false = 该票当天已有计划，原样返回
+    created: bool
+    row: TradePlanRow
+
+
+class PlanExecuteIn(ApiModel):
+    """计划回填：实际买入价 + 是否按计划 + 偏差原因。"""
+
+    actual_price: float
+    followed_plan: bool = True
+    deviation: str | None = None
+    #: 成交日；缺省 = 计划日
+    entry_date: date | None = None
+    shares: int | None = None
+    position_pct: float | None = None
+    note: str | None = None
+
+
+class PlanExecuteOut(ApiModel):
+    row: TradePlanRow
+    journal_id: int
+
+
+class PlanStatusIn(ApiModel):
+    """手动改计划状态；`status=null` 表示交回自动同步。"""
+
+    status: str | None = None
+
+
+class PlanStatsOut(ApiModel):
+    """区间执行质量（FEAT-PLAN-LOOP D）。"""
+
+    start: date
+    end: date
+    plans: int
+    #: 参与执行率分母的条数（总数 − 仅观察）
+    observable: int
+    executed: int
+    cancelled: int
+    expired: int
+    pending: int
+    observe: int
+    execution_rate: float | None = None
+    followed: int
+    follow_rate: float | None = None
+    linked_journals: int
+    closed: int
+    win_rate: float | None = None
+    avg_return_pct: float | None = None
+    by_deviation: dict[str, int] = Field(default_factory=dict)
+    note: str | None = None
 
 
 class TradePlanSuggestion(ApiModel):

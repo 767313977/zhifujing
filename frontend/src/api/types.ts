@@ -1919,17 +1919,43 @@ export interface TradePlanIn {
   name?: string | null
   /** YYYY-MM-DD，计划针对的交易日 */
   plan_date: string
-  /** 过这个价买 */
+  /** 过这个价买（买入价区下限 / 触发价） */
   buy_price: number
   /** 破这个价放弃 */
   stop_price: number
   note?: string | null
+  // --- 计划闭环（FEAT-PLAN-LOOP）---
+  /** 来源：形态 key / 悟道池 key / manual */
+  source?: string | null
+  source_name?: string | null
+  /** 名单信号日（与 plan_date 区分） */
+  signal_date?: string | null
+  /** 名单给的参考价 */
+  ref_price?: number | null
+  /** 买入价区上限；超过不再追 */
+  buy_high?: number | null
+  target_price?: number | null
+  position_note?: string | null
+  /** 仅观察：不进执行率 */
+  observe_only?: boolean
+  actual_price?: number | null
+  followed_plan?: boolean | null
+  /** 追高 / 未等到 / 情绪误判 / 其它 */
+  deviation?: string | null
 }
 
 export interface TradePlanRow extends TradePlanIn {
   id: number
-  /** 触发 / 未触发 / 放弃（破位）/ 同日触发并跌破 / 待验证 / 无日线… */
+  /** 日线核对结果：触发 / 未触发 / 放弃（破位）/ 同日触发并跌破 / 待验证 / 无日线… */
   status: string
+  /** 计划状态（落库）：observe / pending / executed / cancelled / expired */
+  plan_status: string | null
+  plan_status_label: string | null
+  /** manual = 用户手动改过；auto = 自动同步 */
+  status_source: string | null
+  /** 关联的交易日志（「记一笔」写回） */
+  journal_id: number | null
+  journal_exit_price: number | null
   high: number | null
   low: number | null
   close: number | null
@@ -1947,6 +1973,59 @@ export interface TradePlanRow extends TradePlanIn {
 
 export interface TradePlanOut {
   rows: TradePlanRow[]
+}
+
+/** 从名单一键生成计划。 */
+export interface PlanFromSignalIn {
+  code: string
+  pattern: string
+  signal_date?: string | null
+  plan_date?: string | null
+  overwrite?: boolean
+}
+
+export interface PlanFromSignalOut {
+  /** true = 新建；false = 该票当天已有计划，原样返回 */
+  created: boolean
+  row: TradePlanRow
+}
+
+/** 计划回填：实际买入价 + 是否按计划 + 偏差原因。 */
+export interface PlanExecuteIn {
+  actual_price: number
+  followed_plan?: boolean
+  deviation?: string | null
+  entry_date?: string | null
+  shares?: number | null
+  position_pct?: number | null
+  note?: string | null
+}
+
+export interface PlanExecuteOut {
+  row: TradePlanRow
+  journal_id: number
+}
+
+/** 区间执行质量。 */
+export interface PlanStats {
+  start: string
+  end: string
+  plans: number
+  observable: number
+  executed: number
+  cancelled: number
+  expired: number
+  pending: number
+  observe: number
+  execution_rate: number | null
+  followed: number
+  follow_rate: number | null
+  linked_journals: number
+  closed: number
+  win_rate: number | null
+  avg_return_pct: number | null
+  by_deviation: Record<string, number>
+  note: string | null
 }
 
 /** 次日计划候选：自选股 + 当日形态命中（带 key_levels）。 */

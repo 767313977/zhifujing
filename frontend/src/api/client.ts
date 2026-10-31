@@ -61,6 +61,11 @@ import type {
   PatternSummary,
   PatternTrack,
   PatternTrackDetail,
+  PlanExecuteIn,
+  PlanExecuteOut,
+  PlanFromSignalIn,
+  PlanFromSignalOut,
+  PlanStats,
   PoolStandingOut,
   PremarketSummary,
   PromotionSeries,
@@ -768,6 +773,39 @@ export const api = {
 
   deletePlan: (id: number) =>
     request<{ ok: boolean }>(`/plans/${id}`, { method: 'DELETE' }),
+
+  /** 从形态 / 悟道名单一键生成明日计划（FEAT-PLAN-LOOP）。 */
+  planFromSignal: (payload: PlanFromSignalIn) =>
+    request<PlanFromSignalOut>('/plans/from-signal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  /** 回填实际买入价：写/更新一笔关联交易日志。 */
+  executePlan: (id: number, payload: PlanExecuteIn) =>
+    request<PlanExecuteOut>(`/plans/${id}/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  /** 手动改计划状态；`status=null` 交回自动同步。 */
+  setPlanStatus: (id: number, status: string | null) =>
+    request<TradePlanRow>(`/plans/${id}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    }),
+
+  /** 区间执行质量（默认最近 30 天）。 */
+  planStats: (from?: string | null, to?: string | null) => {
+    const query = new URLSearchParams()
+    if (from) query.set('from', from)
+    if (to) query.set('to', to)
+    const suffix = query.toString()
+    return request<PlanStats>(`/plans/stats${suffix ? `?${suffix}` : ''}`)
+  },
 
   /**
    * 个股分析：把「代码 / 名称 / 拼音首字母」解析成结论（阶段判定 + 旁证）。

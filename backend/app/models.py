@@ -808,11 +808,17 @@ class TradeJournal(Base):
     reason_text: Mapped[str | None] = mapped_column(Text)
     #: 计划止损位（元）。没设就是 None，止损相关指标也返回 None
     plan_stop: Mapped[float | None] = mapped_column(Float)
+    #: 来自哪条计划（`trade_plan.id`，可空）。计划页「记一笔」写在这里，
+    #: 计划侧据此算执行率与计划价 vs 实际价（FEAT-PLAN-LOOP）。
+    plan_id: Mapped[int | None] = mapped_column(Integer)
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
-    __table_args__ = (Index("ix_trade_journal_user_entry", "user_id", "entry_date"),)
+    __table_args__ = (
+        Index("ix_trade_journal_user_entry", "user_id", "entry_date"),
+        Index("ix_trade_journal_plan", "plan_id"),
+    )
 
 
 class TradeT(Base):
@@ -871,6 +877,34 @@ class TradePlan(Base):
     buy_price: Mapped[float] = mapped_column(Float)
     stop_price: Mapped[float] = mapped_column(Float)
     note: Mapped[str | None] = mapped_column(Text)
+
+    # --- 计划闭环（FEAT-PLAN-LOOP，2026-10-31）------------------------------
+    #: 来源：形态 key（`wudao_sample` 等）/ 悟道池 key / `manual`
+    source: Mapped[str | None] = mapped_column(String(32))
+    #: 来源显示名（形态中文名 / 悟道池名），列表直接展示，免回查注册表
+    source_name: Mapped[str | None] = mapped_column(String(64))
+    #: 名单信号日（形态命中的那一天），与 `plan_date`（执行日）区分开
+    signal_date: Mapped[date | None] = mapped_column(Date)
+    #: 名单给的参考价（信号日收盘 / 突破价），用户改计划时仍留着对照
+    ref_price: Mapped[float | None] = mapped_column(Float)
+    #: 买入价区上限：`buy_price` 仍是触发价（下限），超过 `buy_high` 不再追
+    buy_high: Mapped[float | None] = mapped_column(Float)
+    target_price: Mapped[float | None] = mapped_column(Float)
+    #: 仓位备注（自由文本：几成仓、分几笔），只是提示，不参与计算
+    position_note: Mapped[str | None] = mapped_column(Text)
+    #: 仅观察：不进入执行统计
+    observe_only: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: 计划状态：observe / pending / executed / cancelled / expired（null = 还没同步过）
+    status: Mapped[str | None] = mapped_column(String(16))
+    #: `manual` = 用户手动改过，自动核对不再覆盖；`auto` = 由日线核对同步
+    status_source: Mapped[str | None] = mapped_column(String(8))
+    #: 实际买入价（用户回填）；填了就算「已执行」
+    actual_price: Mapped[float | None] = mapped_column(Float)
+    #: 是否按计划执行（回填）
+    followed_plan: Mapped[bool | None] = mapped_column(Boolean)
+    #: 偏差原因：追高 / 未等到 / 情绪误判 / 其它
+    deviation: Mapped[str | None] = mapped_column(String(32))
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api } from '../api/client'
 import type {
+  PlanStats,
   TradePlanIn,
   TradePlanRow,
   TradePlanSuggestion,
@@ -21,7 +22,26 @@ interface FormState {
   planDate: string
   buyPrice: string
   stopPrice: string
+  buyHigh: string
+  target: string
+  positionNote: string
+  observeOnly: boolean
   note: string
+}
+
+/** 名单来源信息（编辑时保留，手填时为空）。 */
+interface Origin {
+  source: string | null
+  sourceName: string | null
+  signalDate: string | null
+  refPrice: number | null
+}
+
+const EMPTY_ORIGIN: Origin = {
+  source: null,
+  sourceName: null,
+  signalDate: null,
+  refPrice: null,
 }
 
 function emptyForm(): FormState {
@@ -31,6 +51,10 @@ function emptyForm(): FormState {
     planDate: todayLocal(),
     buyPrice: '',
     stopPrice: '',
+    buyHigh: '',
+    target: '',
+    positionNote: '',
+    observeOnly: false,
     note: '',
   }
 }
@@ -48,6 +72,26 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   )
 }
 
+/** 执行质量的一格。比率类没有样本时显示「—」，不写成 0%。 */
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="border border-line-soft px-3 py-2">
+      <div className="text-[12px] text-fg-dim">{label}</div>
+      <div className="num mt-0.5 text-[15px] text-fg">{value}</div>
+      {hint && <div className="mt-0.5 text-[11px] text-fg-muted">{hint}</div>}
+    </div>
+  )
+}
+
+const DEVIATIONS = ['追高', '未等到', '情绪误判', '其它']
+
+const GROUP_TABS = [
+  { key: 'all', label: '全部' },
+  { key: 'tomorrow', label: '明日计划' },
+  { key: 'today', label: '今日待执行' },
+  { key: 'ended', label: '已结束' },
+] as const
+
 /** 候选建议表的排序口径。 */
 const SUGGEST_SORTS: SortSpecs<TradePlanSuggestion> = {
   name: { value: (row) => row.name ?? row.code, first: 'asc' },
@@ -62,6 +106,7 @@ const SUGGEST_SORTS: SortSpecs<TradePlanSuggestion> = {
 /** 「我的计划」的排序口径：计划日默认从新到旧，其余数值列先看大的。 */
 const PLAN_SORTS: SortSpecs<TradePlanRow> = {
   plan_date: { value: (row) => row.plan_date, first: 'desc' },
+  plan_status: { value: (row) => row.plan_status_label, first: 'asc' },
   name: { value: (row) => row.name ?? row.code, first: 'asc' },
   buy_price: { value: (row) => row.buy_price },
   stop_price: { value: (row) => row.stop_price },
@@ -87,7 +132,19 @@ export default function PlansPage() {
   const [rows, setRows] = useState<TradePlanRow[]>([])
   const [suggestions, setSuggestions] = useState<TradePlanSuggestion[]>([])
   const [form, setForm] = useState<FormState>(emptyForm)
+  const [origin, setOrigin] = useState<Origin>(EMPTY_ORIGIN)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [stats, setStats] = useState<PlanStats | null>(null)
+  /** 计划分组：明日 / 今日 / 已结束（按计划日与今天比） */
+  const [group, setGroup] = useState<'all' | 'tomorrow' | 'today' | 'ended'>('all')
+  /** 正在回填执行的那一条计划 */
+  const [execRow, setExecRow] = useState<TradePlanRow | null>(null)
+  const [execForm, setExecForm] = useState({
+    actual: '',
+    followed: '1',
+    deviation: '',
+    note: '',
+  })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -107,7 +164,7 @@ export default function PlansPage() {
     setPlansError(null)
     setSuggestError(null)
     // 两个请求各自转成「数据 + 失败原因」，谁挂了都不影响另一块（见上面 state 处的说明）
-    const [plansResult, suggestResult] = await Promise.all([
+    const [plansResult, suggestResult, statsResult] = await Promise.all([
       api.plans().then(
         (data) => ({ data, error: null as string | null }),
         (err: Error) => ({ data: null, error: err.message }),
@@ -116,10 +173,15 @@ export default function PlansPage() {
         (data) => ({ data, error: null as string | null }),
         (err: Error) => ({ data: null, error: err.message }),
       ),
+      api.planStats().then(
+        (data) => ({ data, error: null as string | null }),
+        (err: Error) => ({ data: null, error: err.message }),
+      ),
     ])
     // 只在真拿到数据时覆盖：失败时保留上一份，别把用户已看到的计划清成空表
     if (plansResult.data) setRows(plansResult.data.rows)
     if (suggestResult.data) setSuggestions(suggestResult.data.rows)
+    if (statsResult.data) setStats(statsResult.data)
     setPlansError(plansResult.error)
     setSuggestError(suggestResult.error)
     setLoading(false)
@@ -135,17 +197,28 @@ export default function PlansPage() {
 
   const reset = () => {
     setForm(emptyForm())
+    setOrigin(EMPTY_ORIGIN)
     setEditingId(null)
   }
 
   const fill = (item: TradePlanSuggestion) => {
     setEditingId(null)
+    setOrigin({
+      source: item.pattern,
+      sourceName: item.pattern_name,
+      signalDate: null,
+      refPrice: item.buy_price,
+    })
     setForm({
       code: item.code,
       name: item.name ?? '',
       planDate: form.planDate || todayLocal(),
       buyPrice: item.buy_price == null ? '' : String(item.buy_price),
       stopPrice: item.stop_price == null ? '' : String(item.stop_price),
+      buyHigh: '',
+      target: '',
+      positionNote: '',
+      observeOnly: false,
       note: item.pattern_name ? `来自形态：${item.pattern_name}` : '',
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -162,6 +235,14 @@ export default function PlansPage() {
       plan_date: form.planDate,
       buy_price: Number(form.buyPrice),
       stop_price: Number(form.stopPrice),
+      buy_high: form.buyHigh.trim() ? Number(form.buyHigh) : null,
+      target_price: form.target.trim() ? Number(form.target) : null,
+      position_note: form.positionNote.trim() || null,
+      observe_only: form.observeOnly,
+      source: origin.source,
+      source_name: origin.sourceName,
+      signal_date: origin.signalDate,
+      ref_price: origin.refPrice,
       note: form.note.trim() || null,
     }
     setSaving(true)
@@ -185,15 +266,66 @@ export default function PlansPage() {
 
   const edit = (row: TradePlanRow) => {
     setEditingId(row.id)
+    setOrigin({
+      source: row.source ?? null,
+      sourceName: row.source_name ?? null,
+      signalDate: row.signal_date ?? null,
+      refPrice: row.ref_price ?? null,
+    })
     setForm({
       code: row.code,
       name: row.name ?? '',
       planDate: row.plan_date,
       buyPrice: String(row.buy_price),
       stopPrice: String(row.stop_price),
+      buyHigh: row.buy_high == null ? '' : String(row.buy_high),
+      target: row.target_price == null ? '' : String(row.target_price),
+      positionNote: row.position_note ?? '',
+      observeOnly: row.observe_only ?? false,
       note: row.note ?? '',
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const changeStatus = async (row: TradePlanRow, status: string | null) => {
+    try {
+      await api.setPlanStatus(row.id, status)
+      setNotice(status === null ? '已交回自动同步' : '状态已更新')
+      await load()
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  const startExec = (row: TradePlanRow) => {
+    setExecRow(row)
+    setExecForm({
+      actual: row.actual_price == null ? '' : String(row.actual_price),
+      followed: row.followed_plan === false ? '0' : '1',
+      deviation: row.deviation ?? '',
+      note: '',
+    })
+  }
+
+  const submitExec = async () => {
+    if (!execRow) return
+    if (!execForm.actual.trim()) {
+      setError('实际买入价是必填项')
+      return
+    }
+    try {
+      await api.executePlan(execRow.id, {
+        actual_price: Number(execForm.actual),
+        followed_plan: execForm.followed === '1',
+        deviation: execForm.deviation || null,
+        note: execForm.note.trim() || null,
+      })
+      setNotice('已回填，并写入一笔关联交易日志')
+      setExecRow(null)
+      await load()
+    } catch (err) {
+      setError((err as Error).message)
+    }
   }
 
   const remove = async (row: TradePlanRow) => {
@@ -215,7 +347,23 @@ export default function PlansPage() {
   )
   // 两张表都默认保持后端顺序，点表头才重排
   const [suggestSort, suggestRows] = useSort(shownSuggestions, SUGGEST_SORTS, { key: null })
-  const [planSort, planRows] = useSort(rows, PLAN_SORTS, { key: null })
+  const today = todayLocal()
+  const visibleRows = useMemo(() => {
+    if (group === 'tomorrow') return rows.filter((row) => row.plan_date > today)
+    if (group === 'today') return rows.filter((row) => row.plan_date === today)
+    if (group === 'ended') return rows.filter((row) => row.plan_date < today)
+    return rows
+  }, [rows, group, today])
+  const [planSort, planRows] = useSort(visibleRows, PLAN_SORTS, { key: null })
+  const groupCounts = useMemo(
+    () => ({
+      all: rows.length,
+      tomorrow: rows.filter((row) => row.plan_date > today).length,
+      today: rows.filter((row) => row.plan_date === today).length,
+      ended: rows.filter((row) => row.plan_date < today).length,
+    }),
+    [rows, today],
+  )
 
   return (
     <Layout>
@@ -227,6 +375,64 @@ export default function PlansPage() {
       )}
 
       <div className="space-y-4">
+        <Panel
+          title="执行质量（近 30 天）"
+          meta={
+            stats ? (
+              <span className="num">
+                {stats.start} ~ {stats.end}
+              </span>
+            ) : null
+          }
+          delay={20}
+        >
+          {stats === null ? (
+            <div className="px-4 py-6 text-center text-[13px] text-fg-dim">
+              暂无执行统计（接口失败或还没有计划）
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-2 px-4 pt-3 md:grid-cols-4">
+                <Stat
+                  label="计划条数"
+                  value={String(stats.plans)}
+                  hint={`可执行 ${stats.observable} · 仅观察 ${stats.observe}`}
+                />
+                <Stat
+                  label="执行率"
+                  value={stats.execution_rate == null ? '—' : `${fmtNum(stats.execution_rate, 1)}%`}
+                  hint={`已执行 ${stats.executed} · 过期 ${stats.expired}`}
+                />
+                <Stat
+                  label="按计划执行率"
+                  value={stats.follow_rate == null ? '—' : `${fmtNum(stats.follow_rate, 1)}%`}
+                  hint={`按计划 ${stats.followed} 笔`}
+                />
+                <Stat
+                  label="关联日志"
+                  value={`${stats.linked_journals} 笔`}
+                  hint={
+                    stats.closed
+                      ? `已平仓 ${stats.closed} · 胜率 ${fmtNum(stats.win_rate, 1)}% · 均值 ${fmtPct(stats.avg_return_pct)}`
+                      : '还没有已平仓的日志'
+                  }
+                />
+              </div>
+              {stats.note && (
+                <p className="px-4 pt-2 pb-3 text-[12px] text-fg-dim">{stats.note}</p>
+              )}
+              {Object.keys(stats.by_deviation).length > 0 && (
+                <p className="px-4 pb-3 text-[12px] text-fg-muted">
+                  偏差原因：
+                  {Object.entries(stats.by_deviation)
+                    .map(([key, value]) => `${key} ${value}`)
+                    .join(' · ')}
+                </p>
+              )}
+            </>
+          )}
+        </Panel>
+
         <Panel
           title={editingId === null ? '写一条次日计划' : `编辑计划 #${editingId}`}
           meta={
@@ -281,6 +487,45 @@ export default function PlansPage() {
                 className={INPUT}
               />
             </Field>
+            <Field label="买入价区上限" hint="超过就不再追；可空">
+              <input
+                type="number"
+                step="0.01"
+                value={form.buyHigh}
+                onChange={(event) => set('buyHigh', event.target.value)}
+                placeholder="0.00"
+                className={INPUT}
+              />
+            </Field>
+            <Field label="目标价" hint="可空，只做记录">
+              <input
+                type="number"
+                step="0.01"
+                value={form.target}
+                onChange={(event) => set('target', event.target.value)}
+                placeholder="0.00"
+                className={INPUT}
+              />
+            </Field>
+            <Field label="仓位备注" hint="几成仓 / 分几笔，仅提示">
+              <input
+                value={form.positionNote}
+                onChange={(event) => set('positionNote', event.target.value)}
+                placeholder="如：3 成，分两笔"
+                className={INPUT}
+              />
+            </Field>
+            <label className="flex items-end gap-2 pb-1 text-[13px] text-fg-muted">
+              <input
+                type="checkbox"
+                checked={form.observeOnly}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, observeOnly: event.target.checked }))
+                }
+                className="h-[14px] w-[14px] accent-current"
+              />
+              仅观察（不进执行率）
+            </label>
             <Field label="备注">
               <input
                 value={form.note}
@@ -315,6 +560,90 @@ export default function PlansPage() {
             触发后还会给当日收盘与未来 1/3/5 个交易日的表现。全部本地计算，零配额。
           </p>
         </Panel>
+
+        {execRow && (
+          <Panel
+            title={`回填执行：${execRow.name ?? execRow.code}`}
+            meta={
+              <span className="num">
+                {execRow.plan_date} · 计划买点 {fmtNum(execRow.buy_price, 2)}
+              </span>
+            }
+            delay={60}
+          >
+            <div className="grid grid-cols-2 gap-3 px-4 py-3 md:grid-cols-4">
+              <Field label="实际买入价 *">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={execForm.actual}
+                  onChange={(event) =>
+                    setExecForm((prev) => ({ ...prev, actual: event.target.value }))
+                  }
+                  placeholder="0.00"
+                  className={INPUT}
+                />
+              </Field>
+              <Field label="是否按计划">
+                <select
+                  value={execForm.followed}
+                  onChange={(event) =>
+                    setExecForm((prev) => ({ ...prev, followed: event.target.value }))
+                  }
+                  className={INPUT}
+                >
+                  <option value="1">按计划</option>
+                  <option value="0">没按计划</option>
+                </select>
+              </Field>
+              <Field label="偏差原因">
+                <select
+                  value={execForm.deviation}
+                  onChange={(event) =>
+                    setExecForm((prev) => ({ ...prev, deviation: event.target.value }))
+                  }
+                  className={INPUT}
+                >
+                  <option value="">—</option>
+                  {DEVIATIONS.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="备注">
+                <input
+                  value={execForm.note}
+                  onChange={(event) =>
+                    setExecForm((prev) => ({ ...prev, note: event.target.value }))
+                  }
+                  placeholder="可选"
+                  className={INPUT}
+                />
+              </Field>
+            </div>
+            <div className="flex gap-2 px-4 pb-3">
+              <button
+                type="button"
+                onClick={() => void submitExec()}
+                className="border border-accent/60 bg-accent/10 px-3 py-[6px] text-[13px] text-accent transition-colors hover:bg-accent/20"
+              >
+                保存并记一笔
+              </button>
+              <button
+                type="button"
+                onClick={() => setExecRow(null)}
+                className="border border-line px-3 py-[6px] text-[13px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg"
+              >
+                取消
+              </button>
+            </div>
+            <p className="px-4 pb-3 text-[12px] text-fg-dim">
+              会在「交易日志」写一笔关联记录（plan_id 回填）；同一条计划重复回填只更新那一笔，不会重复计数。
+            </p>
+          </Panel>
+        )}
 
         <Panel
           title="候选：自选股 + 当日形态命中"
@@ -434,6 +763,32 @@ export default function PlansPage() {
               {loading ? '加载中…' : '还没有计划 —— 从上面写一条，或从候选里带入'}
             </div>
           ) : (
+            <>
+              <div className="flex flex-wrap gap-2 border-b border-line-soft px-4 py-2">
+                {GROUP_TABS.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setGroup(item.key)}
+                    className={[
+                      'border px-2 py-[3px] text-[13px] transition-colors',
+                      group === item.key
+                        ? 'border-fg-dim bg-ink-700 text-fg'
+                        : 'border-line text-fg-muted hover:text-fg',
+                    ].join(' ')}
+                  >
+                    {item.label}
+                    <span className="num ml-1 text-[11px] text-fg-dim">
+                      {groupCounts[item.key]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {planRows.length === 0 ? (
+                <div className="px-4 py-8 text-center text-[13px] text-fg-dim">
+                  该分组暂无计划
+                </div>
+              ) : (
             <div className="overflow-auto">
               <table className="grid-table">
                 <thead>
@@ -444,15 +799,20 @@ export default function PlansPage() {
                     <SortTh sortKey="name" align="left" {...planSort}>
                       股票
                     </SortTh>
+                    <SortTh sortKey="plan_status" align="left" {...planSort}>
+                      计划状态
+                    </SortTh>
                     <SortTh sortKey="buy_price" {...planSort}>
-                      买点
+                      买点区间
                     </SortTh>
                     <SortTh sortKey="stop_price" {...planSort}>
                       放弃位
                     </SortTh>
+                    <th>目标</th>
                     <SortTh sortKey="status" align="left" {...planSort}>
                       结果
                     </SortTh>
+                    <th className="text-left">实际对照</th>
                     <SortTh sortKey="day_close_pct" {...planSort}>
                       当日收盘
                     </SortTh>
@@ -480,12 +840,30 @@ export default function PlansPage() {
                       <td className="!text-left">
                         <StockLink code={row.code}>{row.name ?? row.code}</StockLink>
                         <div className="num text-[11px] text-fg-dim">{row.code}</div>
+                        {row.source_name && (
+                          <div className="text-[11px] text-fg-dim">来自 {row.source_name}</div>
+                        )}
+                      </td>
+                      <td className="!text-left">
+                        <span className="text-[12px] text-fg">
+                          {row.plan_status_label ?? '—'}
+                        </span>
+                        {row.status_source === 'manual' && (
+                          <div className="text-[11px] text-fg-dim">手动</div>
+                        )}
                       </td>
                       <td>
-                        <span className="num">{fmtNum(row.buy_price, 2)}</span>
+                        <span className="num">
+                          {row.buy_high == null
+                            ? fmtNum(row.buy_price, 2)
+                            : `${fmtNum(row.buy_price, 2)} ~ ${fmtNum(row.buy_high, 2)}`}
+                        </span>
                       </td>
                       <td>
                         <span className="num">{fmtNum(row.stop_price, 2)}</span>
+                      </td>
+                      <td>
+                        <span className="num">{fmtNum(row.target_price, 2)}</span>
                       </td>
                       <td className="!text-left">
                         <span className={`text-[12px] ${statusClass(row.status)}`}>
@@ -500,6 +878,32 @@ export default function PlansPage() {
                           <div className="num text-[11px] text-fg-dim">
                             高 {fmtNum(row.high, 2)} / 低 {fmtNum(row.low, 2)}
                           </div>
+                        )}
+                      </td>
+                      <td className="!text-left">
+                        {row.actual_price == null ? (
+                          <span className="text-[12px] text-fg-dim">未回填</span>
+                        ) : (
+                          <>
+                            <span className="num text-[12px]">
+                              实际 {fmtNum(row.actual_price, 2)}
+                            </span>
+                            <div className="text-[11px] text-fg-dim">
+                              计划 {fmtNum(row.buy_price, 2)} ·{' '}
+                              {row.followed_plan ? '按计划' : '没按计划'}
+                              {row.deviation ? ` · ${row.deviation}` : ''}
+                            </div>
+                            {row.journal_exit_price != null && (
+                              <div
+                                className={`num text-[11px] ${toneOf(
+                                  (row.journal_exit_price / row.actual_price - 1) * 100,
+                                )}`}
+                              >
+                                平仓 {fmtNum(row.journal_exit_price, 2)} ·{' '}
+                                {fmtPct((row.journal_exit_price / row.actual_price - 1) * 100)}
+                              </div>
+                            )}
+                          </>
                         )}
                       </td>
                       <td>
@@ -525,6 +929,25 @@ export default function PlansPage() {
                         <div className="flex gap-2 whitespace-nowrap">
                           <button
                             type="button"
+                            onClick={() => startExec(row)}
+                            className="text-[12px] text-accent hover:underline"
+                          >
+                            {row.actual_price == null ? '回填' : '改回填'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void changeStatus(
+                                row,
+                                row.plan_status === 'cancelled' ? null : 'cancelled',
+                              )
+                            }
+                            className="text-[12px] text-fg-dim hover:text-fg"
+                          >
+                            {row.plan_status === 'cancelled' ? '恢复' : '取消'}
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => edit(row)}
                             className="text-[12px] text-accent hover:underline"
                           >
@@ -544,6 +967,8 @@ export default function PlansPage() {
                 </tbody>
               </table>
             </div>
+              )}
+            </>
           )}
           <p className="px-4 py-3 text-[12px] leading-relaxed text-fg-dim">
             次日 / 3 日 / 5 日是<span className="text-fg-muted">触发后</span>从买点起算的收盘收益；还没走到对应交易日时显示

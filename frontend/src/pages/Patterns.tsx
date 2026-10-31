@@ -401,6 +401,8 @@ export default function Patterns() {
   const [dates, setDates] = useState<string[]>([])
   const [catalog, setCatalog] = useState<PatternMeta[]>([])
   const [hits, setHits] = useState<PatternStock[]>([])
+  /** 「加入明日计划」的结果提示（只停在本页，不弹窗） */
+  const [planNotice, setPlanNotice] = useState<string | null>(null)
   /** 这一屏**截断前**的条数（后端 `/hits` 的 `total`）—— 判断有没有更多全靠它 */
   const [hitsTotal, setHitsTotal] = useState(0)
   const [summary, setSummary] = useState<PatternSummary | null>(null)
@@ -756,6 +758,33 @@ export default function Patterns() {
     )
   }
 
+  /**
+   * 加入明日计划（FEAT-PLAN-LOOP A）：用这只票**评分最高**的那个形态当来源，
+   * 信号日取命中日。后端默认不覆盖已有计划，重复点只会提示「已有」。
+   */
+  const addToPlan = async (stock: PatternStock) => {
+    const best = [...stock.patterns].sort((a, b) => b.score - a.score)[0]
+    if (!best) {
+      setPlanNotice(`${stock.name ?? stock.code} 没有形态 key，无法生成计划`)
+      return
+    }
+    setPlanNotice(null)
+    try {
+      const result = await api.planFromSignal({
+        code: stock.code,
+        pattern: best.pattern,
+        signal_date: stock.trade_date,
+      })
+      setPlanNotice(
+        result.created
+          ? `${stock.name ?? stock.code} 已加入 ${result.row.plan_date} 的明日计划`
+          : `${stock.name ?? stock.code} 在 ${result.row.plan_date} 已有计划，未覆盖`,
+      )
+    } catch (err) {
+      setPlanNotice(`加入计划失败：${(err as Error).message}`)
+    }
+  }
+
   const toolbar = (
     <>
       <span className="num hidden text-[13px] text-fg-dim lg:inline">
@@ -780,6 +809,11 @@ export default function Patterns() {
   return (
     <Layout toolbar={toolbar}>
       {error && <Alert onClose={() => setError(null)}>{error}</Alert>}
+      {planNotice && (
+        <Alert tone="accent" onClose={() => setPlanNotice(null)}>
+          {planNotice}
+        </Alert>
+      )}
 
       <div className="space-y-4">
         <Panel
@@ -1170,6 +1204,7 @@ export default function Patterns() {
                     <SortTh sortKey="total_mv" {...hitSort} title="总市值：是题材小票还是权重">
                       市值
                     </SortTh>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1298,6 +1333,20 @@ export default function Patterns() {
                       </td>
                       <td>
                         <span className="num text-fg-dim">{fmtAmount(stock.total_mv)}</span>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            // 不冒泡到整行（那会切换右侧预览图）；这里只加计划
+                            event.stopPropagation()
+                            void addToPlan(stock)
+                          }}
+                          className="whitespace-nowrap text-[12px] text-accent hover:underline"
+                          title="用评分最高的形态生成执行日的计划（保留你已改过的计划）"
+                        >
+                          加计划
+                        </button>
                       </td>
                     </tr>
                   ))}
