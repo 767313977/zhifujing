@@ -3416,3 +3416,49 @@ class PremarketSummaryOut(ApiModel):
     limit_up: list[PremarketLimitRowOut] = []
     wudao: list[PremarketWudaoRowOut] = []
     watchlist: list[PremarketWatchRowOut] = []
+
+
+# ------------------------------------------------------------- 主线（FEAT-THEME-BOARD）
+
+
+class ThemeLeaderOut(ApiModel):
+    """题材里的龙头 / 中军 / 跟风（规则见 `services.theme_board`）。"""
+
+    code: str
+    name: str | None = None
+    role: str  # 龙头 / 中军 / 跟风
+    consecutive: int | None = None
+    seal_amount: float | None = None
+    total_mv: float | None = None
+
+
+class ThemeBoardRowOut(ApiModel):
+    concept: str
+    rank: int
+    prev_rank: int | None = None
+    #: 昨日名次 − 今日名次（正数 = 上升）；新晋为 null
+    rank_change: int | None = None
+    #: 新晋 / 延续（退潮单独放在 `fading`）
+    state: str
+    limit_up_count: int
+    max_consecutive: int | None = None
+    pct_chg: float | None = None
+    net_inflow: float | None = None
+    leaders: list[ThemeLeaderOut] = []
+
+
+class ThemeFadeRowOut(ApiModel):
+    concept: str
+    prev_rank: int | None = None
+    prev_count: int
+    pct_chg: float | None = None
+
+
+class ThemeBoardOut(ApiModel):
+    trade_date: date
+    prev_trade_date: date | None = None
+    #: 当日涨停总数（各题材家数之和可以大于它：一只票可挂多个题材）
+    limit_up_total: int
+    rows: list[ThemeBoardRowOut] = []
+    fading: list[ThemeFadeRowOut] = []
+    note: str | None = None

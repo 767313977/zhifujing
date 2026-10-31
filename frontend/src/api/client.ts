@@ -71,6 +71,7 @@ import type {
   PromotionSeries,
   RelayTemp,
   ReviewNote,
+  ThemeBoard,
   RotationLeaderDay,
   RotationMetric,
   RpsBoard,
@@ -1329,4 +1330,8 @@ export const api = {
   /** 盘前聚合（FEAT-PREMARKET）：纯读库，竞价来自 9:15–9:31 的采样。 */
   premarketSummary: (date?: string | null) =>
     request<PremarketSummary>(withDate('/premarket/summary', date)),
+
+  /** 今日主线看板（FEAT-THEME-BOARD）：纯聚合涨停池 + 精选板块 + 板块日线。 */
+  themeBoard: (date?: string | null) =>
+    request<ThemeBoard>(withDate('/themes/board', date)),
 }

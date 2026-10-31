@@ -26,6 +26,7 @@ import SectorFlowPanel, { FLOW_SPANS } from '../components/SectorFlowPanel'
 import SectorRotationPanel, { ROTATION_SPANS } from '../components/SectorRotationPanel'
 import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
+import ThemeBoardPanel from '../components/ThemeBoardPanel'
 import {
   AXIS_LABEL,
   AXIS_LINE,
@@ -106,6 +107,13 @@ export default function Sectors() {
    * 最新日期」，前面选的板块就白选了。
    */
   const [params, setParams] = useSearchParams()
+  /**
+   * 视图：板块（原有四块） / 主线（FEAT-THEME-BOARD）。
+   * 在主页面内切换而不是新造路由 —— 用户要求「优先少造路由」。
+   */
+  const [view, setView] = useState<'boards' | 'themes'>(() =>
+    params.get('view') === 'themes' ? 'themes' : 'boards',
+  )
   const [taxonomy, setTaxonomy] = useState<SectorTaxonomy>(() =>
     params.get('taxonomy') === 'kph_industry' ? 'kph_industry' : 'kph_selected',
   )
@@ -197,6 +205,8 @@ export default function Sectors() {
   // 历史里塞一条，想退出这一页得连按十几次返回
   useEffect(() => {
     const next = new URLSearchParams(params)
+    if (view === 'boards') next.delete('view')
+    else next.set('view', 'themes')
     if (taxonomy === 'kph_selected') next.delete('taxonomy')
     else next.set('taxonomy', taxonomy)
     if (date) next.set('date', date)
@@ -218,6 +228,7 @@ export default function Sectors() {
     else next.set('flowdays', String(flowDays))
     if (next.toString() !== params.toString()) setParams(next, { replace: true })
   }, [
+    view,
     taxonomy,
     date,
     selected,
@@ -590,20 +601,40 @@ export default function Sectors() {
   const toolbar = (
     <>
       <div className="flex items-stretch border border-line">
-        {TAXONOMIES.map((item) => (
+        {[
+          { key: 'boards' as const, label: '板块' },
+          { key: 'themes' as const, label: '主线' },
+        ].map((item) => (
           <button
             key={item.key}
             type="button"
-            onClick={() => switchTaxonomy(item.key)}
+            onClick={() => setView(item.key)}
             className={[
               'px-2.5 py-[3px] text-[13px] transition-colors',
-              taxonomy === item.key ? 'bg-ink-700 text-fg' : 'text-fg-muted hover:text-fg',
+              view === item.key ? 'bg-ink-700 text-fg' : 'text-fg-muted hover:text-fg',
             ].join(' ')}
           >
             {item.label}
           </button>
         ))}
       </div>
+      {view === 'boards' && (
+        <div className="flex items-stretch border border-line">
+          {TAXONOMIES.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => switchTaxonomy(item.key)}
+              className={[
+                'px-2.5 py-[3px] text-[13px] transition-colors',
+                taxonomy === item.key ? 'bg-ink-700 text-fg' : 'text-fg-muted hover:text-fg',
+              ].join(' ')}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
       <select
         value={date ?? ''}
         onChange={(event) => setDate(event.target.value || null)}
@@ -624,13 +655,26 @@ export default function Sectors() {
     <Layout toolbar={toolbar}>
       {error && <Alert onClose={() => setError(null)}>{error}</Alert>}
 
-      {ranking && ranking.missing > 0 && (
+      {view === 'boards' && ranking && ranking.missing > 0 && (
         <Alert tone="accent">
           {`${ranking.missing} 个板块当日数据源尚未更新，涨跌幅显示为「—」而不是 0。`}
         </Alert>
       )}
 
       <div className="space-y-4">
+        {view === 'themes' ? (
+          <ThemeBoardPanel
+            date={date}
+            onSelectConcept={(concept) => {
+              const board = ranking?.boards.find((item) => item.name === concept)
+              if (board) {
+                setView('boards')
+                setSelected(board.code)
+              }
+            }}
+          />
+        ) : (
+          <>
         {rankingError ? (
           // 排行取不到时这一排统计量按 `boards=[]` 算出来全是 0 —— 0 个板块上涨是个
           // 结论，而这里只是没取到。整排换成一句失败说明，别让 0 被当成事实
@@ -999,6 +1043,8 @@ export default function Sectors() {
             pageDate={date ?? ranking?.trade_date ?? null}
           />
         </Panel>
+          </>
+        )}
       </div>
     </Layout>
   )

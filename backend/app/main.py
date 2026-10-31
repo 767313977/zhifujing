@@ -31,6 +31,7 @@ from app.api import (
     premarket,
     sector,
     stock,
+    themes,
     valuation,
     watchlist,
 )
@@ -285,6 +286,7 @@ app.include_router(premarket.router)
 app.include_router(market.router)
 app.include_router(auction.router)
 app.include_router(limit.router)
+app.include_router(themes.router)
 app.include_router(funds.router)
 app.include_router(sector.router)
 app.include_router(stock.router)

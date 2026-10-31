@@ -3050,3 +3050,47 @@ export interface PremarketSummary {
   watchlist: PremarketWatchRow[]
 }
 
+// ---------------------------------------------------------------- 主线（FEAT-THEME-BOARD）
+
+export interface ThemeLeader {
+  code: string
+  name: string | null
+  /** 龙头 / 中军 / 跟风 */
+  role: string
+  consecutive: number | null
+  seal_amount: number | null
+  total_mv: number | null
+}
+
+export interface ThemeBoardRow {
+  concept: string
+  rank: number
+  prev_rank: number | null
+  /** 昨日名次 − 今日名次（正数 = 上升）；新晋为 null */
+  rank_change: number | null
+  /** 新晋 / 延续；退潮在 fading 里 */
+  state: string
+  limit_up_count: number
+  max_consecutive: number | null
+  pct_chg: number | null
+  net_inflow: number | null
+  leaders: ThemeLeader[]
+}
+
+export interface ThemeFadeRow {
+  concept: string
+  prev_rank: number | null
+  prev_count: number
+  pct_chg: number | null
+}
+
+export interface ThemeBoard {
+  trade_date: string
+  prev_trade_date: string | null
+  /** 当日涨停总数（各题材家数之和可以大于它：一只票可挂多个题材） */
+  limit_up_total: number
+  rows: ThemeBoardRow[]
+  fading: ThemeFadeRow[]
+  note: string | null
+}
+
