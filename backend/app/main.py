@@ -28,6 +28,7 @@ from app.api import (
     patterns,
     plans,
     pools,
+    premarket,
     sector,
     stock,
     valuation,
@@ -280,6 +281,7 @@ async def cache_headers(request: Request, call_next):
 
 
 app.include_router(auth_api.router)
+app.include_router(premarket.router)
 app.include_router(market.router)
 app.include_router(auction.router)
 app.include_router(limit.router)

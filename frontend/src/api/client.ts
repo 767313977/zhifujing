@@ -62,6 +62,7 @@ import type {
   PatternTrack,
   PatternTrackDetail,
   PoolStandingOut,
+  PremarketSummary,
   PromotionSeries,
   RelayTemp,
   ReviewNote,
@@ -1286,4 +1287,8 @@ export const api = {
       `/admin/users/${id}/disabled`,
       { disabled },
     ),
+
+  /** 盘前聚合（FEAT-PREMARKET）：纯读库，竞价来自 9:15–9:31 的采样。 */
+  premarketSummary: (date?: string | null) =>
+    request<PremarketSummary>(withDate('/premarket/summary', date)),
 }

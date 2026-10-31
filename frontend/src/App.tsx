@@ -28,6 +28,7 @@ const NotFound = lazy(() => import('./pages/NotFound'))
 const Patterns = lazy(() => import('./pages/Patterns'))
 const PatternTrack = lazy(() => import('./pages/PatternTrack'))
 const PlansPage = lazy(() => import('./pages/Plans'))
+const PremarketPage = lazy(() => import('./pages/Premarket'))
 const PoolsPage = lazy(() => import('./pages/Pools'))
 const Sectors = lazy(() => import('./pages/Sectors'))
 const SentimentPage = lazy(() => import('./pages/Sentiment'))
@@ -79,6 +80,15 @@ export default function App() {
                 element={
                   <RequireAuth>
                     <SentimentPage />
+                  </RequireAuth>
+                }
+              />
+              {/* 盘前 / 开盘（FEAT-PREMARKET）：昨日涨停今开 + 悟道名单 + 自选，纯读库 */}
+              <Route
+                path="/premarket"
+                element={
+                  <RequireAuth>
+                    <PremarketPage />
                   </RequireAuth>
                 }
               />

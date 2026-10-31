@@ -17,7 +17,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import StockBasic, Watchlist
+from app.models import CbDaily, EtfBar, StockBasic, StockDaily, Watchlist
 
 #: 可转债代码前缀：沪 110/111/113/118/132、深 123/127/128。
 #: 与前端 `lib/bondCode.ts` 同一套；A 股没有以这些开头的代码。
@@ -72,3 +72,68 @@ def stock_watch_count(session: Session) -> int:
         )
         or 0
     )
+
+
+def latest_quotes(
+    session: Session, codes: list[str]
+) -> dict[str, StockDaily | CbDaily | EtfBar]:
+    """每个代码取最新一条本地缓存的日线（自选 / 盘前页共用，2026-10-31 从 api 层搬来）。
+
+    取的是缓存而不是实时行情：页面因此不必联网、打开即读。
+
+    ⚠️ 「最新」要滤掉停牌残行（iFinD 给停牌日写的那种只有收盘价、`pct_chg` 为空的行）；
+    转债 / ETF 在 `stock_daily` 里永远查不到，回落 `cb_daily` / `etf_bar`，那两张表
+    只要求 `close` 非空（兜底源那天没有涨跌幅）。
+    """
+    if not codes:
+        return {}
+    newest = (
+        select(StockDaily.code, func.max(StockDaily.trade_date).label("latest"))
+        .where(StockDaily.code.in_(codes), StockDaily.pct_chg.is_not(None))
+        .group_by(StockDaily.code)
+        .subquery()
+    )
+    rows = session.scalars(
+        select(StockDaily).join(
+            newest,
+            (StockDaily.code == newest.c.code)
+            & (StockDaily.trade_date == newest.c.latest),
+        )
+    )
+    quotes: dict[str, StockDaily | CbDaily | EtfBar] = {row.code: row for row in rows}
+
+    missing = [code for code in codes if code not in quotes]
+    if not missing:
+        return quotes
+    newest_cb = (
+        select(CbDaily.bond_code, func.max(CbDaily.trade_date).label("latest"))
+        .where(CbDaily.bond_code.in_(missing), CbDaily.close.is_not(None))
+        .group_by(CbDaily.bond_code)
+        .subquery()
+    )
+    for row in session.scalars(
+        select(CbDaily).join(
+            newest_cb,
+            (CbDaily.bond_code == newest_cb.c.bond_code)
+            & (CbDaily.trade_date == newest_cb.c.latest),
+        )
+    ):
+        quotes[row.bond_code] = row
+
+    missing = [code for code in codes if code not in quotes]
+    if not missing:
+        return quotes
+    newest_etf = (
+        select(EtfBar.code, func.max(EtfBar.trade_date).label("latest"))
+        .where(EtfBar.code.in_(missing), EtfBar.close.is_not(None))
+        .group_by(EtfBar.code)
+        .subquery()
+    )
+    for row in session.scalars(
+        select(EtfBar).join(
+            newest_etf,
+            (EtfBar.code == newest_etf.c.code) & (EtfBar.trade_date == newest_etf.c.latest),
+        )
+    ):
+        quotes[row.code] = row
+    return quotes

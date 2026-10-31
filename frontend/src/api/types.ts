@@ -2908,3 +2908,66 @@ export interface CbScreenQuery {
   date?: string | null
 }
 
+// ---------------------------------------------------------------- 盘前（FEAT-PREMARKET）
+
+/** 昨日涨停 / 炸板票的今日开盘表现。竞价没采到时相关字段为 null。 */
+export interface PremarketLimitRow {
+  code: string
+  name: string | null
+  /** 涨停 / 炸板 */
+  pool_type: string
+  consecutive: number | null
+  prev_close: number | null
+  prev_high: number | null
+  auction_price: number | null
+  /** 竞价涨幅（%）；A 股开盘价 = 竞价成交价，它同时就是今开涨幅 */
+  auction_pct: number | null
+  /** 9:31 现价相对昨收（%），看高开之后站没站住 */
+  post_open_pct: number | null
+  /** 一字 / 一字跌停 / 高开 / 平开 / 低开 */
+  status: string | null
+}
+
+/** 上一交易日「明天盯 / 明天预案」在今日竞价里的位置。 */
+export interface PremarketWudaoRow {
+  code: string
+  name: string | null
+  pattern: string
+  pattern_name: string
+  score: number | null
+  prev_close: number | null
+  key_price: number | null
+  key_label: string
+  auction_price: number | null
+  auction_pct: number | null
+  vs_key_pct: number | null
+  above_key: boolean
+  break_state: string | null
+}
+
+/** 自选盘前摘要。close 是本地最新交易日收盘，不是实时价。 */
+export interface PremarketWatchRow {
+  code: string
+  name: string | null
+  close: number | null
+  quote_date: string | null
+  pct_chg: number | null
+  auction_pct: number | null
+  post_open_pct: number | null
+  tags: string[]
+}
+
+export interface PremarketSummary {
+  trade_date: string
+  is_trade_day: boolean
+  prev_trade_date: string | null
+  auction_available: boolean
+  auction_count: number
+  auction_result_count: number
+  auction_updated_at: string | null
+  note: string | null
+  limit_up: PremarketLimitRow[]
+  wudao: PremarketWudaoRow[]
+  watchlist: PremarketWatchRow[]
+}
+

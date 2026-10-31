@@ -16,8 +16,6 @@ from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
 from app.models import (
     AppUser,
     CbBasic,
-    CbDaily,
-    EtfBar,
     EtfBasic,
     StockBasic,
     StockDaily,
@@ -28,6 +26,7 @@ from app.services import auth
 from app.services.auth import current_user
 from app.services.stock_lookup import LookupError, resolve_code
 from app.services.usage import QuotaLevel, level_label, quota_level
+from app.services.watch_scope import latest_quotes
 from app.sources.ifind import IfindError, normalize_code
 
 logger = logging.getLogger(__name__)
@@ -67,80 +66,9 @@ def _resolve(raw: str) -> str:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _latest_quotes(
-    session: Session, codes: list[str]
-) -> dict[str, StockDaily | CbDaily | EtfBar]:
-    """每个代码取最新一条本地缓存的日线。
-
-    取的是缓存而不是实时行情：页面因此不必联网、打开即读。
-    实时性由采集任务与页面的「同步行情」按钮保证。
-
-    ⚠️ 「最新」要滤掉停牌残行（iFinD 给停牌日写的那种只有收盘价、`pct_chg` 为空的行）：
-    不滤的话停牌股的最新日会停在停牌那天、涨跌幅显示成「—」，看起来像当天没成交；
-    与 `services/stock_phase.usable_bar`、个股页的取数口径保持一致（2026-10-22 修）。
-
-    自选里可以放**可转债代码**（2026-10-30 可转债-5），也可以放 **ETF**（2026-10-31
-    ETF-5）：它们在 `stock_daily` 里永远查不到，所以查不到行的代码再去 `cb_daily` /
-    `etf_bar` 找一次。三张表的 `trade_date / close / pct_chg` 语义一致，调用方
-    （`_row`）不必区分。
-
-    ⚠️ 转债 / ETF 那两条只要求 `close` 非空（2026-10-30 复查 P2-3）：兜底源（`em` /
-    `em+ifind`）那天没有涨跌幅，若照抄股票那条「`pct_chg` 非空」的过滤，
-    兜底日会被整个跳过、页面显示前一天的价格且没有任何提示。
-    """
-    if not codes:
-        return {}
-    newest = (
-        select(StockDaily.code, func.max(StockDaily.trade_date).label("latest"))
-        .where(StockDaily.code.in_(codes), StockDaily.pct_chg.is_not(None))
-        .group_by(StockDaily.code)
-        .subquery()
-    )
-    rows = session.scalars(
-        select(StockDaily).join(
-            newest,
-            (StockDaily.code == newest.c.code)
-            & (StockDaily.trade_date == newest.c.latest),
-        )
-    )
-    quotes: dict[str, StockDaily | CbDaily] = {row.code: row for row in rows}
-
-    missing = [code for code in codes if code not in quotes]
-    if not missing:
-        return quotes
-    newest_cb = (
-        select(CbDaily.bond_code, func.max(CbDaily.trade_date).label("latest"))
-        .where(CbDaily.bond_code.in_(missing), CbDaily.close.is_not(None))
-        .group_by(CbDaily.bond_code)
-        .subquery()
-    )
-    for row in session.scalars(
-        select(CbDaily).join(
-            newest_cb,
-            (CbDaily.bond_code == newest_cb.c.bond_code)
-            & (CbDaily.trade_date == newest_cb.c.latest),
-        )
-    ):
-        quotes[row.bond_code] = row
-
-    # ETF 走 `etf_bar`（通达信盘后包，零 iFinD 配额）
-    missing = [code for code in codes if code not in quotes]
-    if not missing:
-        return quotes
-    newest_etf = (
-        select(EtfBar.code, func.max(EtfBar.trade_date).label("latest"))
-        .where(EtfBar.code.in_(missing), EtfBar.close.is_not(None))
-        .group_by(EtfBar.code)
-        .subquery()
-    )
-    for row in session.scalars(
-        select(EtfBar).join(
-            newest_etf,
-            (EtfBar.code == newest_etf.c.code) & (EtfBar.trade_date == newest_etf.c.latest),
-        )
-    ):
-        quotes[row.code] = row
-    return quotes
+# 2026-10-31：查询搬到 `services.watch_scope.latest_quotes`，盘前页要按同一口径取昨收。
+# 这里保留私有别名，调用点不用改。
+_latest_quotes = latest_quotes
 
 
 def _known_name(session: Session, code: str) -> str | None:

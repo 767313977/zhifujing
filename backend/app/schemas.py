@@ -3259,3 +3259,69 @@ class CbDetailOut(BaseModel):
     series: list[CbPointOut] = []
 
 
+
+
+# ----------------------------------------------------------------- 盘前（FEAT-PREMARKET）
+
+
+class PremarketLimitRowOut(ApiModel):
+    """昨日涨停 / 炸板票的今日开盘表现。竞价字段缺失时一律 null。"""
+
+    code: str
+    name: str | None = None
+    pool_type: str  # 涨停 / 炸板
+    consecutive: int | None = None
+    prev_close: float | None = None
+    prev_high: float | None = None
+    auction_price: float | None = None
+    #: 竞价涨幅（%）。A 股开盘价 = 竞价成交价，所以它同时也是「今开涨幅」
+    auction_pct: float | None = None
+    #: 9:31 现价相对昨收（%），看高开之后站没站住
+    post_open_pct: float | None = None
+    status: str | None = None  # 一字 / 一字跌停 / 高开 / 平开 / 低开
+
+
+class PremarketWudaoRowOut(ApiModel):
+    """上一交易日「明天盯 / 明天预案」在今日竞价里的位置。"""
+
+    code: str
+    name: str | None = None
+    pattern: str
+    pattern_name: str
+    score: float | None = None
+    prev_close: float | None = None
+    key_price: float | None = None
+    key_label: str
+    auction_price: float | None = None
+    auction_pct: float | None = None
+    #: 竞价价相对关键价的偏离（%）；没有竞价数据时为 null
+    vs_key_pct: float | None = None
+    above_key: bool = False
+    break_state: str | None = None
+
+
+class PremarketWatchRowOut(ApiModel):
+    """自选盘前摘要。`close` 是本地最新一个交易日的收盘（不是实时价）。"""
+
+    code: str
+    name: str | None = None
+    close: float | None = None
+    quote_date: date | None = None
+    pct_chg: float | None = None
+    auction_pct: float | None = None
+    post_open_pct: float | None = None
+    tags: list[str] = []
+
+
+class PremarketSummaryOut(ApiModel):
+    trade_date: date
+    is_trade_day: bool
+    prev_trade_date: date | None = None
+    auction_available: bool
+    auction_count: int
+    auction_result_count: int
+    auction_updated_at: datetime | None = None
+    note: str | None = None
+    limit_up: list[PremarketLimitRowOut] = []
+    wudao: list[PremarketWudaoRowOut] = []
+    watchlist: list[PremarketWatchRowOut] = []
