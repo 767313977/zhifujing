@@ -15,6 +15,7 @@
 """
 
 import math
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -411,26 +412,30 @@ def _dedup(rows: list[_Raw]) -> tuple[list[_Raw], dict[str, int]]:
     return keep, counts
 
 
-def _percentile(values: list[float], value: float) -> float:
-    below = sum(1 for item in values if item < value)
-    equal = sum(1 for item in values if item == value)
-    return round((below + equal / 2) / len(values) * 100, 1)
-
-
 def _rps(rows: list[_Raw]) -> dict[str, dict[int, float | None]]:
-    """在**去重后的股票类 ETF** 里算各窗口的涨幅分位（中位秩，0~100）。"""
+    """在**去重后的股票类 ETF** 里算各窗口的涨幅分位（中位秩，0~100）。
+
+    先排序再二分求「低于 / 等于」的个数（原来是逐个 `sum(...)` 扫全表）：
+    结果逐位相同（中位秩的定义没变），但单日从 O(n²) 降到 O(n log n)。
+    ETF-4 的验证面板要对 120 个交易日逐日算，旧写法在那里要跑几分钟。
+    """
     universe = [
         row for row in rows if row.fund_type == "股票"
     ] or rows
     result: dict[str, dict[int, float | None]] = {}
     for window in RPS_WINDOWS:
-        values = [row.returns[window] for row in universe if row.returns[window] is not None]
+        values = sorted(
+            row.returns[window] for row in universe if row.returns[window] is not None
+        )
         for row in universe:
             value = row.returns[window]
-            result.setdefault(row.code, {})[window] = (
-                _percentile(values, value)
-                if value is not None and len(values) >= 20
-                else None
+            if value is None or len(values) < 20:
+                result.setdefault(row.code, {})[window] = None
+                continue
+            below = bisect_left(values, value)
+            equal = bisect_right(values, value) - below
+            result.setdefault(row.code, {})[window] = round(
+                (below + equal / 2) / len(values) * 100, 1
             )
     return result
 
@@ -456,26 +461,16 @@ def _labels(row: _Raw, same_count: int) -> tuple[list[str], list[str]]:
     return labels, risks
 
 
-def screen(session: Session, day: date | None = None, **overrides) -> EtfScreen:
-    """按预设 + 覆盖条件筛一遍，返回行与**实际生效**的条件。"""
-    preset = overrides.pop("preset", None) or "momentum"
-    filters = dict(_PRESET_FILTERS.get(preset, _PRESET_FILTERS["momentum"]))
-    for key, value in overrides.items():
-        if value is not None:
-            filters[key] = value
-    filters["preset"] = preset
+def to_rows(raws: list[_Raw], dedup: bool = True) -> list[EtfRow]:
+    """把某一天算好的原始行去重、算 RPS、转成页面用的 `EtfRow`。
 
-    if day is None:
-        day = session.scalar(select(func.max(EtfBar.trade_date)))
-    if day is None:
-        return EtfScreen(as_of=None, filters=filters)
-
-    _, _, raws = _load_raw(session, day)
-    dedup = bool(filters.get("dedup", True))
+    与 `screen` 共用（ETF-4 的验证面板要逐日重放历史筛选，不能另写一份
+    —— 两份口径迟早会分叉，形态回测就吃过这个亏）。
+    """
     if dedup:
         raws, counts = _dedup(raws)
     else:
-        raws, counts = raws, {row.norm: 1 for row in raws}
+        counts = {row.norm: 1 for row in raws}
     rps = _rps(raws)
 
     rows: list[EtfRow] = []
@@ -513,6 +508,57 @@ def screen(session: Session, day: date | None = None, **overrides) -> EtfScreen:
                 risks=risks,
             )
         )
+    return rows
+
+
+def select_rows(
+    rows: list[EtfRow], preset: str = "momentum", top: int = 0, skip_scale: bool = False
+) -> list[EtfRow]:
+    """在已经算好的行里按预设过滤 + 排序，返回前 `top` 只（`top=0` = 全部）。
+
+    `skip_scale=True` 去掉规模门槛 —— ETF-4 的历史重放用：份额快照 2026-09-21 才有，
+    更早的交易日根本算不出规模，拿后来的份额倒推就是前视偏差。那段时间只保留
+    20 日均额这条流动性门槛（`amount_min`），页面把这件事写出来。
+    """
+    filters = dict(_PRESET_FILTERS.get(preset, _PRESET_FILTERS["momentum"]))
+    if skip_scale:
+        filters.pop("scale_min", None)
+    picked = [row for row in rows if _keep(row, filters)]
+    picked.sort(key=_sort_key(filters.get("sort") or "rps60"))
+    return picked[:top] if top > 0 else picked
+
+
+def rank(
+    raws: list[_Raw],
+    preset: str = "momentum",
+    top: int = 0,
+    dedup: bool = True,
+    skip_scale: bool = False,
+) -> list[EtfRow]:
+    """按预设把**某一天**的原始行排好序，返回前 `top` 只（`top=0` = 全部）。
+
+    条件、去重、RPS、排序全部走 `_PRESET_FILTERS` / `_keep` / `_sort_key`，
+    与 `/api/etf/screen` 是同一套；ETF-4 的历史重放与回测脚本都调它。
+    """
+    return select_rows(to_rows(raws, dedup), preset, top, skip_scale=skip_scale)
+
+
+def screen(session: Session, day: date | None = None, **overrides) -> EtfScreen:
+    """按预设 + 覆盖条件筛一遍，返回行与**实际生效**的条件。"""
+    preset = overrides.pop("preset", None) or "momentum"
+    filters = dict(_PRESET_FILTERS.get(preset, _PRESET_FILTERS["momentum"]))
+    for key, value in overrides.items():
+        if value is not None:
+            filters[key] = value
+    filters["preset"] = preset
+
+    if day is None:
+        day = session.scalar(select(func.max(EtfBar.trade_date)))
+    if day is None:
+        return EtfScreen(as_of=None, filters=filters)
+
+    _, _, raws = _load_raw(session, day)
+    rows = to_rows(raws, dedup=bool(filters.get("dedup", True)))
 
     # `limit=0` = 不截断（行业强弱 / 详情要全量算，不能被页面的 200 上限切掉尾巴）
     limit = int(filters.get("limit", 200))
