@@ -255,8 +255,13 @@ def _raw_rows(session: Session, day: date, days: list[date], grouped: dict) -> l
         series = [nets.get(key, {}).get(code) for key in flow_keys]
         for window in FLOW_WINDOWS:
             available = [value for value in series[-window:] if value is not None]
-            # 窗口里有效天数不足就记 None（**不拿 0 顶**）
-            flows[window][code] = sum(available) if len(available) >= window else None
+            # 有效天数不到窗口的 90% 就记 None（**不拿 0 顶**）：
+            # 份额 2026-09-18 才开始有，且中间两三天是只有行情的碎片快照，
+            # 严格「必须满 20 天」会让全市场长期显示「—」（2026-10-31 实测 18/20）。
+            # 90% 与涨幅 / 波动率窗口同一套判据（`MIN_COVERAGE`）。
+            flows[window][code] = (
+                sum(available) if len(available) >= window * MIN_COVERAGE else None
+            )
     per_code_flow = flows
 
     result: list[_Raw] = []
