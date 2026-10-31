@@ -830,7 +830,8 @@ def test_b1_intraday_skips_when_lock_busy(monkeypatch):
 
     monkeypatch.setattr(scheduler, "collect_guard", _busy)
     sched = scheduler.DailyScheduler.__new__(scheduler.DailyScheduler)
-    sched.settings = object()
+    # `_run_b1_intraday` 会先看 `ifind_auth_token`（无 token 软跳过），桩里得有这个字段
+    sched.settings = SimpleNamespace(ifind_auth_token="test")
 
     sched._run_b1_intraday()
 
@@ -851,11 +852,27 @@ def test_b1_intraday_runs_inside_lock(monkeypatch):
 
     monkeypatch.setattr(scheduler, "collect_guard", _guard)
     sched = scheduler.DailyScheduler.__new__(scheduler.DailyScheduler)
-    sched.settings = object()
+    sched.settings = SimpleNamespace(ifind_auth_token="test")
 
     sched._run_b1_intraday()
 
     assert called == [1]
+
+
+def test_b1_intraday_soft_skips_without_token(monkeypatch):
+    """没配 token → 软跳过（一条 warning），不调用数据源、也不抛堆栈。"""
+    called: list[int] = []
+    monkeypatch.setattr(
+        "app.jobs.intraday_b1.run",
+        lambda settings=None: called.append(1) or {"status": "sent"},
+    )
+
+    sched = scheduler.DailyScheduler.__new__(scheduler.DailyScheduler)
+    sched.settings = SimpleNamespace(ifind_auth_token="")
+
+    sched._run_b1_intraday()
+
+    assert called == []
 
 
 def test_fetch_snapshot_uses_shared_client(monkeypatch):

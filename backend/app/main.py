@@ -36,6 +36,7 @@ from app.api import (
 from app.config import ROOT, get_settings
 from app.db import init_db
 from app.jobs.scheduler import start_scheduler, stop_scheduler
+from app.services.auth import client_ip as auth_client_ip
 from app.services.auth import require_login
 
 settings = get_settings()
@@ -140,12 +141,47 @@ def _warm_pattern_cache() -> None:
     )
 
 
+def _log_quota_config() -> None:
+    """启动时把 iFinD 配额的关键配置打一行日志（2026-10-31 加）。
+
+    为什么需要：`ifind_monthly_quota`（分母）和 `ifind_cycle_start_day`（周期起点）
+    填错时**不会有任何报错** —— 守卫只是算出一个偏小的已用量、该让路时不让路，
+    然后真撞墙。这里把「配置值 + 由它推出的本周期窗口」一起打出来，人一启动就能
+    和 iFinD 后台的「计量区间」对照，省掉一次「为什么又 429 了」的排查。
+
+    ⚠️ 只打**是否已配置 token**（是/否），不打 token 本身；也不改配额算法。
+    任何异常都吞掉：启动日志不该有能力拦住服务。
+    """
+    try:
+        from app.services.usage import cycle_end, cycle_start
+        from app.timeutil import today_cn
+
+        start = cycle_start(today_cn(), settings.ifind_cycle_start_day)
+        end = cycle_end(start, settings.ifind_cycle_start_day)
+        logger.info(
+            "iFinD 配额配置：token 已配置=%s，月度上限=%d，周期起点日=%d，"
+            "本周期=%s ~ %s",
+            "是" if settings.ifind_auth_token else "否",
+            settings.ifind_monthly_quota,
+            settings.ifind_cycle_start_day,
+            start,
+            end,
+        )
+    except Exception:  # noqa: BLE001 - 打日志失败绝不能拦住启动
+        logger.warning("打印 iFinD 配额配置失败（不影响启动）", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
     logger.info("数据库就绪: %s", settings.db_path)
     if not settings.ifind_auth_token:
         logger.warning("未配置 IFIND_AUTH_TOKEN，iFinD 相关采集将失败")
+    # 配额关键配置（2026-10-31 加）：分母（月度上限）和周期起点日一旦填错，配额
+    # 守卫会**低估**已用量 —— 该让路时不动作，最后直接撞 iFinD 的墙，而那一刻
+    # 日志里没有任何线索能说明是「参数填错了」。启动时把**算出来的窗口**也打出来，
+    # 与 iFinD 后台的「计量区间」对一眼就能发现偏差。只打配置值与日期，不含 token。
+    _log_quota_config()
     if not FRONTEND_DIST.exists():
         logger.warning("未找到前端构建产物 %s，开发期请另起 Vite", FRONTEND_DIST)
 
@@ -265,19 +301,35 @@ app.include_router(admin.router)
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])
-def health() -> dict:
-    """探活接口。**只回最小状态**。
+def health(request: Request, detail: int = 0) -> dict:
+    """探活接口。**默认只回最小状态**，`detail=1` 且来自内网时才带排查字段。
 
     ⚠️ **同时支持 HEAD**（2026-10-23 加）：监控/部署脚本常用 `curl -I`（HEAD），
     以前只挂 GET、HEAD 一律 405，会把「服务正常」判成失败。GET 行为不变。
 
-    这里原来带回 `db`（数据库**绝对路径**）、`ifind_token`、`frontend_built`，那是给
-    部署排查用的；但它挂在**免登录**的探活口上，等于对外泄露服务器路径与配置
-    （2026-10-10 修）。前端与 `deploy/*.sh` / `_deploy_check.py` 都只按 200 判活、
-    不读这些字段（已搜），需要细节看启动日志 —— db 路径与「未配置 token / 未构建前端」
-    的告警都已经记在那里。
+    **默认最小**（2026-10-10 定，2026-10-31 保留）：这里原来无条件带回 `db`
+    （数据库**绝对路径**）、`ifind_token`、`frontend_built`；但它挂在**免登录**的
+    探活口上，等于对公网泄露服务器路径与配置。前端与 `deploy/*.sh` /
+    `_deploy_check.py` 都只按 200 判活、不读这些字段（已搜），所以默认形态一个字
+    都不能加回去，否则又把漏洞开回来 —— 部署/监控的兼容性也正靠这一份最小响应。
+
+    **detail=1 只对内网生效**（2026-10-31 加）：排查时确实想知道「token 填没填、
+    前端构建没构建、库在不在」，但不想为看一眼就翻服务器日志。判据复用登录那道闸
+    的 `_is_local_or_private(auth.client_ip(request))` —— 看的是**连接对端 IP**，
+    客户端伪造 `Host` / `X-Forwarded-For` 说了不算。公网即使带 `detail=1` 也只拿
+    最小响应；返回的只有三个 bool，**不含**路径、token 内容、配额数字、主机名。
+
+    仍然**免登录**（在 `services/auth.PUBLIC_PATHS` 里）：部署脚本要靠它验「服务
+    起来了没有」，而它给公网的那一份没有任何业务数据；内网那一份也仅为布尔状态。
     """
-    return {"status": "ok"}
+    payload: dict = {"status": "ok"}
+    if detail == 1 and auth_api._is_local_or_private(auth_client_ip(request)):
+        payload.update(
+            ifind_configured=bool(settings.ifind_auth_token),
+            frontend_built=FRONTEND_DIST.exists(),
+            db_exists=settings.db_path.exists(),
+        )
+    return payload
 
 
 #: SPA 兜底要**直接 404**（而不是回落 `index.html`）的路径特征。

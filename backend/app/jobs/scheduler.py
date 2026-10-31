@@ -645,6 +645,14 @@ class DailyScheduler:
         """
         from app.jobs.intraday_b1 import run as run_intraday
 
+        # 无 token 时**软跳过**（2026-10-31 加）：这一步整条都依赖 iFinD，没配
+        # token 时 `IfindClient` 构造即抛 `IfindError`，会走下面的 `logger.exception`
+        # 每天刷一整段堆栈 —— 而这是**配置问题、不是故障**。主采集 / 收盘后 / 成分股
+        # 三处入口在构造 `DailyCollector` 时已经是「warning + return」，这里补齐。
+        if not self.settings.ifind_auth_token:
+            logger.warning("知行B1 盘中预览跳过：未配置 IFIND_AUTH_TOKEN")
+            return
+
         try:
             with collect_guard("B1盘中预览"):
                 result = run_intraday(settings=self.settings)
