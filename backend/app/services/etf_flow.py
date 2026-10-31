@@ -342,6 +342,79 @@ def day_nets(
     }
 
 
+def code_nets(
+    session: Session, pairs: list[tuple[date, date]], money: set[str] | None = None
+) -> dict[date, dict[str, float]]:
+    """逐只净申赎：`{day: {code: 净额}}`。判据与 `day_nets` 完全一致（含折算日跳过）。
+
+    ETF 筛选页要「这只 ETF 近 5 / 20 日净申赎」，而 `day_nets` 只给全市场合计。
+    这里按 (day, code) 分组；只用于最近 20 来个交易日，行数不大。
+    """
+    if not pairs:
+        return {}
+    splits = split_codes(session, [day for day, _ in pairs])
+    values = ", ".join(
+        f"(CAST(:d{index} AS TEXT), CAST(:p{index} AS TEXT))"
+        for index in range(len(pairs))
+    )
+    params: dict[str, object] = {}
+    for index, (day, prev) in enumerate(pairs):
+        params[f"d{index}"] = day.isoformat()
+        params[f"p{index}"] = prev.isoformat()
+
+    split_items = [
+        (day, code) for day, codes in sorted(splits.items()) for code in sorted(codes)
+    ]
+    split_cte = split_join = split_filter = ""
+    if split_items:
+        split_values = ", ".join(
+            f"(CAST(:sd{index} AS TEXT), CAST(:sc{index} AS TEXT))"
+            for index in range(len(split_items))
+        )
+        split_cte = f",\n            splits(day, code) AS (VALUES {split_values})"
+        split_join = "LEFT JOIN splits sp ON sp.day = p.day AND sp.code = t.code"
+        split_filter = "AND sp.code IS NULL"
+        for index, (day, code) in enumerate(split_items):
+            params[f"sd{index}"] = day.isoformat()
+            params[f"sc{index}"] = code
+
+    money_clause = ""
+    if money:
+        names = []
+        for index, code in enumerate(sorted(money)):
+            params[f"m{index}"] = code
+            names.append(f":m{index}")
+        money_clause = f"AND t.code NOT IN ({', '.join(names)})"
+
+    rows = session.execute(
+        text(
+            f"""
+            WITH pairs(day, prev) AS (VALUES {values}){split_cte}
+            SELECT p.day AS day, t.code AS code,
+                   SUM((t.shares - b.shares) * t.close) AS net
+            FROM pairs p
+            JOIN etf_share t ON t.trade_date = p.day
+            JOIN etf_share b ON b.trade_date = p.prev AND b.code = t.code
+            {split_join}
+            WHERE t.shares IS NOT NULL
+              AND b.shares IS NOT NULL
+              AND t.close IS NOT NULL
+              AND t.close != 0
+              {money_clause}
+              {split_filter}
+            GROUP BY p.day, t.code
+            """
+        ),
+        params,
+    ).all()
+    result: dict[date, dict[str, float]] = {}
+    for day, code, net in rows:
+        if net is None:
+            continue
+        result.setdefault(date.fromisoformat(str(day)), {})[str(code)] = float(net)
+    return result
+
+
 @dataclass
 class Term:
     """窗口里的一天：`(日期, 基准日, 交易日跨度, 净申赎)`。
