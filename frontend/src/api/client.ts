@@ -58,6 +58,7 @@ import type {
   PatternHitsPage,
   PatternMeta,
   PatternScorecardOut,
+  PatternActionSummary,
   PatternSummary,
   PatternTrack,
   PatternTrackDetail,
@@ -1334,4 +1335,8 @@ export const api = {
   /** 今日主线看板（FEAT-THEME-BOARD）：纯聚合涨停池 + 精选板块 + 板块日线。 */
   themeBoard: (date?: string | null) =>
     request<ThemeBoard>(withDate('/themes/board', date)),
+
+  /** 形态可行动摘要（FEAT-PATTERN-ACTIONABLE）：复用成绩单，只分档。 */
+  patternActionSummary: () =>
+    request<PatternActionSummary>('/patterns/action-summary'),
 }

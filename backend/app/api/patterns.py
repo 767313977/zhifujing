@@ -28,6 +28,7 @@ from app.models import (
     TradeCalendar,
 )
 from app.schemas import (
+    PatternActionSummaryOut,
     PatternCount,
     PatternHitItem,
     PatternHitsOut,
@@ -1050,6 +1051,30 @@ def scorecard(
     )
     _TRACK_CACHE.set(key, result)
     return result
+
+
+@router.get("/action-summary", response_model=PatternActionSummaryOut)
+def action_summary(
+    db: Session = Depends(get_db),
+    cohorts: int = Query(pattern_track.DEFAULT_COHORTS, ge=1, le=120),
+    track_days: int = Query(max(pattern_track.HORIZONS), ge=1, le=60),
+    line_days: int = Query(5, ge=1, le=30),
+    dedup_days: int = Query(pattern_track.SCORECARD_DEDUP_DAYS, ge=0, le=120),
+) -> PatternActionSummaryOut:
+    """「今天该信哪些形态」：把成绩单折成 仍有效 / 走弱 / 样本不足（FEAT-PATTERN-ACTIONABLE）。
+
+    **不重算**指标：直接复用 `/scorecard` 的结果（同一份缓存），只按 `verdict` 分档。
+    """
+    card = scorecard(
+        db=db,
+        cohorts=cohorts,
+        track_days=track_days,
+        line_days=line_days,
+        dedup_days=dedup_days,
+    )
+    return PatternActionSummaryOut(
+        **pattern_track.action_summary(card.model_dump())
+    )
 
 
 @router.get("/track/detail", response_model=PatternTrackDetail)

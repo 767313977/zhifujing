@@ -3094,3 +3094,33 @@ export interface ThemeBoard {
   note: string | null
 }
 
+// ------------------------------------------------ 形态可行动摘要（FEAT-PATTERN-ACTIONABLE）
+
+export interface PatternActionRow {
+  pattern: string
+  name: string
+  group: string
+  /** 成绩单结论：有效 / 观察 / 噪声 / 样本不足 */
+  verdict: string
+  /** active（仍有效）/ weak（走弱）/ insufficient（样本不足） */
+  bucket: string
+  hits: number
+  stocks: number
+  excess: number | null
+  beat_pct: number | null
+  touch: number | null
+  stop: number | null
+}
+
+export interface PatternActionSummary {
+  start: string | null
+  cohorts: number
+  track_days: number
+  rows: PatternActionRow[]
+  /** 仍有效的 pattern key */
+  active: string[]
+  weak: string[]
+  insufficient: string[]
+  note: string | null
+}
+

@@ -5,6 +5,7 @@ import type {
   PatternCount,
   PatternMeta,
   PatternScorecardOut,
+  PatternActionSummary,
   PatternStock,
   PatternSummary,
 } from '../api/types'
@@ -411,6 +412,10 @@ export default function Patterns() {
   // 全形态成绩单：只用来给 chip 的悬停提示补一行「近 N 日线上表现」。
   // 取不到就当没有（`null`），**不影响筛选与列表** —— 它是增强信息，不是主体。
   const [scorecard, setScorecard] = useState<PatternScorecardOut | null>(null)
+  /** 可行动摘要（FEAT-PATTERN-ACTIONABLE）：仍有效 / 走弱 / 样本不足 */
+  const [action, setAction] = useState<PatternActionSummary | null>(null)
+  /** 隐藏走弱形态（只影响 chip 列表，不改查询与注册表） */
+  const [hideWeak, setHideWeak] = useState(false)
   // 选中的形态：**多选**（交集）。空数组 = 默认视图（全市场按评分取前 HIT_LIMIT 只）
   const [picked, setPicked] = useState<string[]>(() => splitPatterns(params.get('patterns')))
   /**
@@ -493,6 +498,8 @@ export default function Patterns() {
       .catch(() => setCatalog([]))
     // 成绩单是增强信息：失败就静默当没有，不弹错（筛选条照常可用）
     api.patternScorecard().then(setScorecard).catch(() => setScorecard(null))
+    // 可行动摘要同理：失败就当没有，不影响筛选
+    api.patternActionSummary().then(setAction).catch(() => setAction(null))
   }, [])
 
   /**
@@ -576,15 +583,21 @@ export default function Patterns() {
 
   const groups = useMemo(() => {
     const map = new Map<string, PatternMeta[]>()
+    const weak = new Set(action?.weak ?? [])
     for (const item of catalog) {
+      // 「隐藏走弱」只过滤 chip 列表，不动注册表、也不改当前已选中的形态
+      if (hideWeak && weak.has(item.key) && !picked.includes(item.key)) continue
       const list = map.get(item.group) ?? []
       list.push(item)
       map.set(item.group, list)
     }
-    return [...map.entries()].sort(
-      (a, b) => GROUP_ORDER.indexOf(a[0]) - GROUP_ORDER.indexOf(b[0]),
-    )
-  }, [catalog])
+    return [...map.entries()]
+      .filter(([, items]) => items.length > 0)
+      .sort((a, b) => GROUP_ORDER.indexOf(a[0]) - GROUP_ORDER.indexOf(b[0]))
+  }, [catalog, action, hideWeak, picked])
+
+  /** 走弱形态 key：chip 灰显用（不物理删除） */
+  const weakSet = useMemo(() => new Set(action?.weak ?? []), [action])
 
   const countOf = useMemo(() => {
     const map: Record<string, number> = {}
@@ -816,6 +829,59 @@ export default function Patterns() {
       )}
 
       <div className="space-y-4">
+        {action && (
+          <Panel
+            title="形态可行动摘要"
+            meta={
+              <span className="num">
+                近 {action.cohorts} 个交易日 · 10 日口径
+              </span>
+            }
+            delay={10}
+          >
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+              <span className="text-[13px] text-fg">
+                仍有效 <span className="num text-accent">{action.active.length}</span>
+              </span>
+              <span className="flex flex-wrap gap-1.5">
+                {action.rows
+                  .filter((row) => row.bucket === 'active')
+                  .map((row) => (
+                    <span
+                      key={row.pattern}
+                      className="border border-accent/40 bg-accent/10 px-1.5 py-[1px] text-[12px] text-accent"
+                      title={`10 日超额 ${fmtPct(row.excess)} · 跑赢 ${fmtNum(row.beat_pct, 0, '%')} · 样本 ${row.hits}`}
+                    >
+                      {row.name}
+                    </span>
+                  ))}
+                {action.active.length === 0 && (
+                  <span className="text-[12px] text-fg-dim">暂无达标形态</span>
+                )}
+              </span>
+              <span className="text-[12px] text-fg-dim">
+                走弱 <span className="num">{action.weak.length}</span> · 样本不足{' '}
+                <span className="num">{action.insufficient.length}</span>
+              </span>
+              <label className="ml-auto flex items-center gap-1.5 text-[12px] text-fg-muted">
+                <input
+                  type="checkbox"
+                  checked={hideWeak}
+                  onChange={(event) => setHideWeak(event.target.checked)}
+                />
+                隐藏走弱形态
+              </label>
+            </div>
+            {action.note && (
+              <p className="px-4 pb-3 text-[12px] text-fg-dim">{action.note}</p>
+            )}
+            <p className="px-4 pb-3 text-[12px] leading-relaxed text-fg-dim">
+              分档直接沿用成绩单结论（有效 / 观察 / 噪声 / 样本不足），不重算指标、不删注册表；
+              走弱形态默认灰显，勾上面才从筛选条里收起。
+            </p>
+          </Panel>
+        )}
+
         <Panel
           title="形态筛选"
           meta={
@@ -877,7 +943,9 @@ export default function Patterns() {
                           ? 'border-accent bg-accent/10 text-accent'
                           : empty
                             ? 'border-line text-fg-dim opacity-60 hover:border-fg-dim hover:text-fg'
-                            : 'border-line text-fg-muted hover:border-fg-dim hover:text-fg'
+                            : weakSet.has(item.key)
+                              ? 'border-line text-fg-dim opacity-40 hover:border-fg-dim hover:text-fg'
+                              : 'border-line text-fg-muted hover:border-fg-dim hover:text-fg'
                       }`}
                     >
                       {item.name}

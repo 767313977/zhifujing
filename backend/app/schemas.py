@@ -3462,3 +3462,36 @@ class ThemeBoardOut(ApiModel):
     rows: list[ThemeBoardRowOut] = []
     fading: list[ThemeFadeRowOut] = []
     note: str | None = None
+
+
+# --------------------------------------------------- 形态可行动摘要（FEAT-PATTERN-ACTIONABLE）
+
+
+class PatternActionRow(ApiModel):
+    """一个形态的可行动分档。"""
+
+    pattern: str
+    name: str
+    group: str = ""
+    #: 成绩单结论：有效 / 观察 / 噪声 / 样本不足
+    verdict: str
+    #: 分档：active（仍有效）/ weak（走弱）/ insufficient（样本不足）
+    bucket: str
+    hits: int = 0
+    stocks: int = 0
+    #: 10 日超额 / 跑赢率 / 到线率 / 破位率（口径与 `/scorecard` 完全一致）
+    excess: float | None = None
+    beat_pct: float | None = None
+    touch: float | None = None
+    stop: float | None = None
+
+
+class PatternActionSummaryOut(ApiModel):
+    start: str | None = None
+    cohorts: int
+    track_days: int
+    rows: list[PatternActionRow] = []
+    active: list[str] = []
+    weak: list[str] = []
+    insufficient: list[str] = []
+    note: str | None = None

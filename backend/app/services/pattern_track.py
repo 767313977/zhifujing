@@ -969,3 +969,58 @@ def scorecard(
         entry["verdict"] = _verdict(entry)
         out.append(entry)
     return {**base, "patterns": out}
+
+
+def action_summary(card: dict) -> dict:
+    """把 `/scorecard` 的结果折成「今天该信哪些形态」（FEAT-PATTERN-ACTIONABLE）。
+
+    **不重算**任何指标：直接读成绩单里的 `verdict` 与 10 日超额，只做分档：
+
+    - `有效` → 仍有效（推荐关注）；
+    - `噪声` / `观察` → 走弱（默认灰显，不物理删除）；
+    - `样本不足` → 样本不足（继续观察，不给结论）。
+
+    返回的 `active / weak / insufficient` 是 key 列表，前端用它做 UI 过滤。
+    """
+    rows: list[dict] = []
+    for item in card.get("patterns") or []:
+        verdict = item.get("verdict") or "观察"
+        if verdict == "有效":
+            bucket = "active"
+        elif verdict == "样本不足":
+            bucket = "insufficient"
+        else:
+            bucket = "weak"
+        h10 = next(
+            (row for row in item.get("returns") or [] if row.get("days") == 10),
+            None,
+        )
+        rows.append(
+            {
+                "pattern": item.get("pattern"),
+                "name": item.get("name"),
+                "group": item.get("group") or "",
+                "verdict": verdict,
+                "bucket": bucket,
+                "hits": item.get("hits") or 0,
+                "stocks": item.get("stocks") or 0,
+                "excess": h10.get("excess") if h10 else None,
+                "beat_pct": h10.get("beat_pct") if h10 else None,
+                "touch": item.get("touch"),
+                "stop": item.get("stop"),
+            }
+        )
+    return {
+        "start": card.get("start"),
+        "cohorts": card.get("cohorts") or 0,
+        "track_days": card.get("track_days") or 0,
+        "rows": rows,
+        "active": [row["pattern"] for row in rows if row["bucket"] == "active"],
+        "weak": [row["pattern"] for row in rows if row["bucket"] == "weak"],
+        "insufficient": [
+            row["pattern"] for row in rows if row["bucket"] == "insufficient"
+        ],
+        "note": None
+        if rows
+        else "还没有成绩单样本：等形态扫描与跟踪跑出数据后再看。",
+    }
