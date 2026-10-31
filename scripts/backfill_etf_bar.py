@@ -89,7 +89,8 @@ def main() -> int:
             cursor += timedelta(days=1)
             continue
         try:
-            written = refresh(cursor)
+            # 不逐日刷 etf_basic：那会每天拉一次 2.8 万行的基金类型表（约 4 秒）
+            written = refresh(cursor, update_basic=False)
         except TdxUnavailable:
             missing += 1
             logger.info("%s 没有盘后包（非交易日 / 未发布 / 超保留期），跳过", cursor)

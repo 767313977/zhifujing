@@ -274,11 +274,15 @@ def _mark_delisted(day: date) -> int:
         return marked
 
 
-def refresh(day: date) -> int:
+def refresh(day: date, *, update_basic: bool = True) -> int:
     """采某一天的 ETF 日线并更新属性，返回写入 `etf_bar` 的行数。
 
     非交易日 / 包还没发布时抛 `TdxUnavailable`（调用方记 skipped），
     包残缺或覆盖率不足抛 `TdxError`（记 failed，等下一趟）。
+
+    `update_basic=False` 给**回补脚本**用：`refresh_basic` 要拉一次
+    `fund_name_em`（2.8 万行，约 4 秒）+ 算首次出现日，回补 240 天就等于白拉 240 次。
+    回补结束时统一跑一次即可（首次出现日按库里的 min 日期算，与逐日跑结果一致）。
     """
     bars, names = fetch_bars(day)
     if not bars:
@@ -291,6 +295,7 @@ def refresh(day: date) -> int:
         )
     with session_scope() as session:
         written = upsert_many(session, EtfBar, bars)
-    refresh_basic(day, names)
+    if update_basic:
+        refresh_basic(day, names)
     logger.info("ETF 日线 %s：写入 %d 只（上一份 %d）", day, written, previous)
     return written
