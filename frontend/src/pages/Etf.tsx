@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
   EtfCategoryRow,
@@ -380,6 +381,13 @@ export default function EtfPage() {
             （除息 / 份额折算已调整）；净申赎自 2026-09-21 起（份额从那天才有）；
             <span className="text-fg-muted"> 暂无折溢价数据，T+0 预设已排除 QDII </span>
             。规模 = 份额 × 收盘价，缺份额时显示「—」。
+            <span className="ml-1">
+              另见
+              <Link to="/cb" className="ml-1 text-accent hover:underline">
+                可转债
+              </Link>
+              （它的「日内 T+0」是同一用途的另一类品种）。
+            </span>
           </p>
 
           {tab === 'screen' ? (

@@ -297,6 +297,13 @@ export default function Convertible() {
             ，未计税。强赎计数优先用集思录的「强赎天计数」（从条款生效起算，第一天就完整）；
             下修计数看近 30 个交易日的转股价值，历史不足 30 天时显示「≥n」。
             「已满足强赎条件」只是触发条件达成、公司还没表态，<span className="text-fg-muted">不算强赎风险</span>。
+            <span className="ml-1">
+              另见
+              <Link to="/etf" className="ml-1 text-accent hover:underline">
+                ETF 筛选
+              </Link>
+              （同样是盘后口径，也有 T+0 品种）。
+            </span>
           </p>
 
           {data?.source && data.source !== 'sina+em+jsl' && (
