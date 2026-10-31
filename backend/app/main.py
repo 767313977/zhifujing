@@ -7,7 +7,7 @@ import time
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -300,12 +300,16 @@ app.include_router(etf.router)
 app.include_router(admin.router)
 
 
-@app.api_route("/api/health", methods=["GET", "HEAD"])
+@app.get("/api/health")
 def health(request: Request, detail: int = 0) -> dict:
     """探活接口。**默认只回最小状态**，`detail=1` 且来自内网时才带排查字段。
 
     ⚠️ **同时支持 HEAD**（2026-10-23 加）：监控/部署脚本常用 `curl -I`（HEAD），
     以前只挂 GET、HEAD 一律 405，会把「服务正常」判成失败。GET 行为不变。
+    **2026-10-31**：HEAD 从同一条 `api_route(methods=[...])` 拆成独立路由（见下面
+    `health_head`）—— 原来两个 method 共用一条路由会让 OpenAPI 生成两个同名
+    `operationId`（`health_api_health_get` / 同名 head），启动时刷重复警告。
+    HEAD 只回 200 空响应，`include_in_schema=False`，不进文档。
 
     **默认最小**（2026-10-10 定，2026-10-31 保留）：这里原来无条件带回 `db`
     （数据库**绝对路径**）、`ifind_token`、`frontend_built`；但它挂在**免登录**的
@@ -330,6 +334,16 @@ def health(request: Request, detail: int = 0) -> dict:
             db_exists=settings.db_path.exists(),
         )
     return payload
+
+
+@app.head("/api/health", include_in_schema=False)
+def health_head() -> Response:
+    """探活（HEAD）：只回 200 空响应，给 `curl -I` / 监控脚本用。
+
+    与 GET 的业务字段无关（HEAD 本来就不回 body），所以不共享那个函数 ——
+    拆开之后 OpenAPI 里 `GET /api/health` 只有一个 operationId。
+    """
+    return Response(status_code=200)
 
 
 #: SPA 兜底要**直接 404**（而不是回落 `index.html`）的路径特征。

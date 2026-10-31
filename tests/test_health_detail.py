@@ -25,10 +25,36 @@ def test_health_minimal():
 
 
 def test_health_head_supported():
-    """HEAD 与 GET 挂在同一条路由上（监控常用 `curl -I`）。"""
+    """HEAD 仍然可用（监控常用 `curl -I`），但**与 GET 分开挂**。"""
     routes = [route for route in app.routes if getattr(route, "path", None) == "/api/health"]
-    assert routes, "没找到 /api/health 路由"
-    assert {"GET", "HEAD"} <= set(routes[0].methods)
+    methods = set().union(*(set(route.methods) for route in routes))
+    assert {"GET", "HEAD"} <= methods
+    # 2026-10-31：拆成两条路由，避免 OpenAPI 出现重复 operationId
+    get_routes = [route for route in routes if "GET" in route.methods]
+    head_routes = [route for route in routes if "HEAD" in route.methods]
+    assert len(get_routes) == 1 and len(head_routes) == 1
+    assert get_routes[0] is not head_routes[0]
+    assert head_routes[0].include_in_schema is False
+
+
+def test_openapi_has_no_duplicate_operation_ids():
+    """OpenAPI 里不能有重复 operationId —— 否则 /docs 与生成器都会告警。"""
+    schema = app.openapi()
+    ids = [
+        operation["operationId"]
+        for path in schema["paths"].values()
+        for operation in path.values()
+        if isinstance(operation, dict) and "operationId" in operation
+    ]
+    duplicated = {item for item in ids if ids.count(item) > 1}
+    assert not duplicated, f"重复的 operationId：{duplicated}"
+
+
+def test_health_path_item_only_documents_get():
+    schema = app.openapi()
+    item = schema["paths"]["/api/health"]
+    assert "get" in item
+    assert "head" not in item
 
 
 def test_health_detail_local():

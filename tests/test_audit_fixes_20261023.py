@@ -202,9 +202,15 @@ def test_normal_frontend_route_not_treated_as_scan_probe():
 
 
 def test_health_route_supports_get_and_head():
+    """HEAD 仍然可用（`curl -I` 判活），2026-10-31 起与 GET **分成两条路由**。
+
+    原来两个 method 挂在同一条 `api_route` 上，OpenAPI 会生成两个同名 operationId；
+    拆开之后 HEAD 走 `include_in_schema=False` 的独立路由。
+    """
     routes = [route for route in app.routes if getattr(route, "path", None) == "/api/health"]
     assert routes, "没找到 /api/health 路由"
-    assert {"GET", "HEAD"} <= set(routes[0].methods)
+    methods = set().union(*(set(route.methods) for route in routes))
+    assert {"GET", "HEAD"} <= methods
 
 
 # ---------------------------------------------------------------- 过期会话清理
