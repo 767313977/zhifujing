@@ -1,12 +1,16 @@
-"""恐贪六项原始值的两处口径修复（2026-10-31 复查）。
+"""恐贪六项原始值的口径修复（2026-10-31 复查）。
 
 1. **两融只认沪、深两所都齐的交易日**：只有一所时合计只有正常的一半，20 日变化率
    会被算成 −40%~−50%，那一项必然打到「极度恐慌」，整条指数跟着偏；
 2. **两融缺最新一天时沿用上一个齐全日**（最多 3 个交易日），保证每天都是 6 项；
-3. **市场宽度当天日线覆盖不足 90% 时记 None**，不拿几十只票冒充全市场。
+   沿用时要把「取自哪一天」记下来（`margin_date`），前端才能标「沿用 10-29」；
+3. **市场宽度当天日线覆盖不足 90% 时记 None**，不拿几十只票冒充全市场；
+4. **市场宽度只统计股票代码段**：自选同步写进 `stock_daily` 的 ETF / 可转债
+   不是「家数」，会把上涨占比与覆盖率一起带偏。
 """
 
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
@@ -14,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.jobs import collect_fear_greed as fg
 from app.models import Base, MarginDaily, StockDaily, StockUniverse
+from app.services.fear_greed import build_series
 
 DAY = date(2026, 10, 30)
 PREV = date(2026, 10, 29)
@@ -77,6 +82,36 @@ def test_carry_forward_keeps_leading_gaps_empty():
     assert fg._carry_forward([None, None, 5.0]) == [None, None, 5.0]
 
 
+def test_carry_forward_dated_reports_source_day():
+    """沿用的值要能追到「取自哪一天」，前端才标得出「沿用 10-29」。"""
+    calendar = [date(2026, 10, 27), date(2026, 10, 28), PREV, DAY]
+    out, sources = fg._carry_forward_dated(calendar, [100.0, None, None, 130.0], limit=3)
+
+    assert out == [100.0, 100.0, 100.0, 130.0]
+    assert sources == [calendar[0], calendar[0], calendar[0], DAY]
+
+
+def test_build_series_marks_carried_margin():
+    """`margin_date` 早于当日 → 该子指标带 carried；等于当日 → None。"""
+    row = SimpleNamespace(
+        trade_date=DAY,
+        volatility=None,
+        rsi14=None,
+        turnover_ratio=None,
+        margin_chg=1.0,
+        margin_date=PREV,
+        breadth=None,
+        limit_strength=None,
+    )
+    current = SimpleNamespace(**{**vars(row), "trade_date": PREV, "margin_date": PREV})
+
+    carried = next(sub for sub in build_series([current, row])[-1]["subs"] if sub["key"] == "margin_chg")
+    same_day = next(sub for sub in build_series([current])[-1]["subs"] if sub["key"] == "margin_chg")
+
+    assert carried["carried"] == PREV
+    assert same_day["carried"] is None
+
+
 def test_breadth_requires_daily_coverage(db):
     """覆盖不到股票池 90% 的交易日不给宽度值（10 只池子，3 只算不出「全市场」）。"""
     for index in range(10):
@@ -99,3 +134,27 @@ def test_breadth_skips_check_when_pool_missing(db):
     db.commit()
 
     assert fg._breadth_by_date(db, DAY, DAY) == {DAY: 100.0}
+
+
+def test_breadth_ignores_non_stock_codes(db):
+    """ETF（5xx）/ 可转债（12x）不能算进上涨下跌家数。"""
+    for index in range(3):
+        db.add(StockUniverse(code=f"6000{index:02d}", name=f"票{index}"))
+        db.add(StockDaily(code=f"6000{index:02d}", trade_date=DAY, pct_chg=1.0))
+    db.add(StockDaily(code="510300", trade_date=DAY, pct_chg=-1.0))
+    db.add(StockDaily(code="123456", trade_date=DAY, pct_chg=-1.0))
+    db.commit()
+
+    assert fg._breadth_by_date(db, DAY, DAY) == {DAY: 100.0}
+
+
+def test_breadth_coverage_counts_stocks_only(db):
+    """覆盖率分子只算股票：9 只 ETF 不能把「1 只股票」垫成 90% 覆盖。"""
+    for index in range(10):
+        db.add(StockUniverse(code=f"6000{index:02d}", name=f"票{index}"))
+    db.add(StockDaily(code="600000", trade_date=DAY, pct_chg=1.0))
+    for index in range(9):
+        db.add(StockDaily(code=f"51030{index}", trade_date=DAY, pct_chg=1.0))
+    db.commit()
+
+    assert fg._breadth_by_date(db, DAY, DAY) == {}

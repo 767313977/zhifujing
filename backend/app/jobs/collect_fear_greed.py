@@ -18,7 +18,7 @@ import logging
 import math
 from datetime import date, timedelta
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 
 from app.db import session_scope, upsert_many
 from app.models import (
@@ -57,6 +57,17 @@ BASE_DAYS = 20
 #: 两融缺值时最多沿用多少个交易日的旧值（T+1 披露，正常只差一天）。
 #: 超过这个长度就记 None —— 数据源长期没更新时不能拿几周前的数冒充今天。
 MARGIN_CARRY_DAYS = 3
+
+#: 算「全市场宽度」时只认**股票**代码段：沪 6xx（含 688）、深 0xx/3xx、
+#: 北交所 4xx/8xx/92x。`stock_daily` 里还会有自选同步写进来的 ETF（5xx/1xx）
+#: 与可转债（11x/12x）—— 它们不是「家数」，计进去会同时污染上涨占比和覆盖率
+#: （2026-10-31 复查：每天 5100~5234 行，比 5098 只的股票池还多）。
+STOCK_CODE_PREFIXES = ("6", "0", "3", "4", "8", "92")
+
+
+def _stock_code_filter():
+    """`stock_daily.code` 属于股票代码段的条件（SQL 侧过滤，见上面常量）。"""
+    return or_(*[StockDaily.code.like(f"{prefix}%") for prefix in STOCK_CODE_PREFIXES])
 
 
 def _trade_calendar(session, start: date, end: date) -> list[date]:
@@ -147,6 +158,10 @@ def _breadth_by_date(session, start: date, end: date) -> dict[date, float]:
     （停牌复牌、一字板平开）两边都不算 —— 与 `market_sentiment.up_count`
     的分母口径一致。
 
+    ⚠️ **只统计股票代码段**（`STOCK_CODE_PREFIXES`）：自选同步会把 ETF / 可转债
+    也写进 `stock_daily`，它们既不是「家数」，又会把覆盖率垫高到 100% 以上 ——
+    2026-10-31 复查时每天比 5098 只的股票池多出 30~130 行，就是这些东西。
+
     ⚠️ **覆盖率不到 90% 的交易日直接不给值**（2026-10-31 复查，遗留项）：
     只采到几十只票时照样能算出一个占比，但那是「采样」不是「全市场」——
     与 `scan_patterns` 的覆盖率闸同一条判据（`services.coverage.MIN_DAY_COVERAGE`），
@@ -164,6 +179,7 @@ def _breadth_by_date(session, start: date, end: date) -> dict[date, float]:
             StockDaily.trade_date >= start,
             StockDaily.trade_date <= end,
             StockDaily.pct_chg.is_not(None),
+            _stock_code_filter(),
         )
         .group_by(StockDaily.trade_date)
     ).all()
@@ -225,17 +241,37 @@ def _carry_forward(
     是「恐慌」而不是「极度恐慌」）；沿用之后每天稳定 6 项，等真数据到了下一趟重算
     会覆盖掉。连续缺失超过 `limit` 说明源出问题了，那时宁可记 None。
     """
+    return _carry_forward_dated(list(range(len(values))), values, limit)[0]
+
+
+def _carry_forward_dated(
+    calendar: list, values: list[float | None], limit: int = MARGIN_CARRY_DAYS
+) -> tuple[list[float | None], list]:
+    """`_carry_forward` 的**带来源版本**：同时返回每个位置「值取自哪一天」。
+
+    有了来源日期，落库时才能区分「今天的两融」与「沿用的昨天（或更早）的两融」——
+    15:05 到深夜那段深交所还没披露，页面上那一项其实是前一天的数，不标注的话
+    读者会当成当天的（2026-10-31 用户反馈）。
+    """
     out: list[float | None] = []
+    sources: list = []
     last: float | None = None
+    last_day = None
     gap = 0
-    for value in values:
+    for day, value in zip(calendar, values):
         if value is not None:
-            last, gap = value, 0
+            last, last_day, gap = value, day, 0
             out.append(value)
+            sources.append(day)
             continue
         gap += 1
-        out.append(last if last is not None and gap <= limit else None)
-    return out
+        if last is not None and gap <= limit:
+            out.append(last)
+            sources.append(last_day)
+        else:
+            out.append(None)
+            sources.append(None)
+    return out, sources
 
 
 def _index_by_date(session, start: date, end: date) -> dict[date, float]:
@@ -283,8 +319,9 @@ def compute_range(start: date, end: date) -> list[dict]:
     amounts, _, _ = _align(calendar, amount_by_date)
     closes, close_rank, close_compact = _align(calendar, closes_by_date)
     margins, _, _ = _align(calendar, margin_by_date)
-    # 两融 T+1 才齐：最新一天沿用一个齐全日，保证当天也是 6 项（见 `_carry_forward`）
-    margins = _carry_forward(margins)
+    # 两融 T+1 才齐：最新一天沿用一个齐全日，保证当天也是 6 项（见 `_carry_forward`）。
+    # 同时记下每个位置的值「取自哪一天」，落库到 `margin_date` 供前端标注「沿用」。
+    margins, margin_sources = _carry_forward_dated(calendar, margins)
     rsi = _rsi_series(close_compact)
 
     rows: list[dict] = []
@@ -307,9 +344,12 @@ def compute_range(start: date, end: date) -> list[dict]:
             turnover_ratio = round(amounts[i] / (sum(window_amounts) / BASE_DAYS), 4)
 
         margin_chg = None
+        margin_date = None
         base_margin = margins[i - BASE_DAYS] if i >= BASE_DAYS else None
         if margins[i] is not None and base_margin:
             margin_chg = round((margins[i] / base_margin - 1) * 100, 4)
+            # 变化率算不出来（比如窗口里缺值）时不留来源日期：那天页面上本来就是「—」
+            margin_date = margin_sources[i]
 
         limit_up, limit_down = limit_by_date.get(day, (None, None))
         limit_strength = None
@@ -323,6 +363,7 @@ def compute_range(start: date, end: date) -> list[dict]:
                 "rsi14": rsi14,
                 "turnover_ratio": turnover_ratio,
                 "margin_chg": margin_chg,
+                "margin_date": margin_date,
                 "breadth": breadth_by_date.get(day),
                 "limit_strength": limit_strength,
             }

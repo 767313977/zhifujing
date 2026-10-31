@@ -111,6 +111,9 @@ class FearGreedSub(BaseModel):
     unit: str
     # 一句话口径说明，给 tooltip 用
     hint: str
+    # 这一项沿用更早某天的数据时给那个日期（目前只有两融：T+1 才披露，当天常缺）。
+    # None 表示就是当日值；前端据此在数值旁标「沿用 10-29」。
+    carried: date | None = None
 
 
 class FearGreedLatest(BaseModel):

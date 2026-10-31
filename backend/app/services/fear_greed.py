@@ -64,6 +64,9 @@ SUBS: tuple[dict, ...] = (
         "invert": False,
         "unit": "%",
         "hint": "沪深两市两融余额的 20 日变化率 —— 加杠杆越猛越贪婪",
+        # 两融 T+1 披露，最新一天常沿用前一日的余额（见 `collect_fear_greed`）。
+        # 这一列记下「实际用的是哪天的数」，读取时标成 carried 让前端注明。
+        "carried_field": "margin_date",
     },
     {
         "key": "breadth",
@@ -128,8 +131,11 @@ def percentile_score(values: list[float], value: float, invert: bool = False) ->
 def build_series(rows) -> list[dict]:
     """把 `fear_greed_daily` 的行（**按 trade_date 升序**）折算成逐日读数序列。
 
-    每个元素：`{trade_date, score, level, subs: [{key,label,value,score,unit,hint}]}`。
+    每个元素：`{trade_date, score, level, subs: [{key,label,value,score,unit,hint,carried}]}`。
     行可以是 ORM 对象，也可以是有同名属性的行对象。
+
+    `carried` 是该子指标**沿用了更早日期的数据**时给出的那个日期（目前只有两融会
+    发生：T+1 才齐，当天缺数时用上一个齐全日）。None 表示就是当天值。
     """
     history: dict[str, list[float]] = {key: [] for key in SUB_KEYS}
     series: list[dict] = []
@@ -148,6 +154,12 @@ def build_series(rows) -> list[dict]:
                 score = percentile_score(window[-WINDOW:], value, invert=sub["invert"])
             if score is not None:
                 scores.append(score)
+            carried = None
+            carried_field = sub.get("carried_field")
+            if carried_field:
+                source = getattr(row, carried_field, None)
+                if source is not None and source != row.trade_date:
+                    carried = source
             subs.append(
                 {
                     "key": sub["key"],
@@ -156,6 +168,7 @@ def build_series(rows) -> list[dict]:
                     "score": score,
                     "unit": sub["unit"],
                     "hint": sub["hint"],
+                    "carried": carried,
                 }
             )
         total = round(sum(scores) / len(scores), 1) if len(scores) >= MIN_SUBS else None

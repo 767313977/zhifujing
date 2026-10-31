@@ -302,6 +302,16 @@ export default function FearGreedPanel({
             <span className="num w-[96px] shrink-0 text-[13px] text-fg">
               {sub.value == null ? '—' : `${fmtNum(sub.value, 2)}${sub.unit}`}
             </span>
+            {/* 沿用的旧值必须标出来：15:05 之后两融还没披露，这一格其实是前一天的数，
+                不注明就会被读成「今天的融资融券」 */}
+            {sub.carried && sub.value != null && (
+              <span
+                className="shrink-0 bg-ink-800 px-1.5 py-0.5 text-[11px] text-fg-dim"
+                title={`两融 T+1 才披露，这一项用的是 ${sub.carried} 的余额`}
+              >
+                沿用 {fmtShortDate(sub.carried)}
+              </span>
+            )}
             <div className="flex min-w-[140px] flex-1 items-center gap-3">
               <div className="relative h-[6px] flex-1 bg-ink-800">
                 <div

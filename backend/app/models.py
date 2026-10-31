@@ -500,6 +500,11 @@ class FearGreedDaily(Base):
     turnover_ratio: Mapped[float | None] = mapped_column(Float)
     # 沪深两市融资余额 + 融券余额 合计的 20 日变化率（%）
     margin_chg: Mapped[float | None] = mapped_column(Float)
+    # `margin_chg` 用的两融合计值**来自哪一天**：两融 T+1 才齐，最新一天缺数时
+    # 沿用上一个齐全日（最多 3 个交易日，见 `jobs/collect_fear_greed._carry_forward`）。
+    # 等于 `trade_date` 或空表示当天值；早于它表示这一项是沿用的旧值 —— 前端据此
+    # 在数值旁标「沿用 10-29」，否则 15:05 之后读者会把前一天的数当成当天的。
+    margin_date: Mapped[date | None] = mapped_column(Date)
     # 上涨家数 /（上涨 + 下跌）× 100，%
     breadth: Mapped[float | None] = mapped_column(Float)
     # (涨停 - 跌停) / (涨停 + 跌停) × 100，%

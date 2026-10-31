@@ -61,6 +61,9 @@ export interface FearGreedSub {
   unit: string
   /** 一句话口径说明，放 tooltip */
   hint: string
+  /** 这一项沿用更早某天的数据时给那个日期（UTC+8 的 YYYY-MM-DD），否则 null。
+   *  目前只有两融会出现：T+1 才披露，当天缺数时沿用上一个齐全日 */
+  carried: string | null
 }
 
 export interface FearGreedLatest {
