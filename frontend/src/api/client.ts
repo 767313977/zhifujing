@@ -68,6 +68,9 @@ import type {
   PlanFromSignalOut,
   PlanStats,
   PoolStandingOut,
+  PositionIn,
+  PositionOut,
+  PositionRow,
   PremarketSummary,
   PromotionSeries,
   RelayTemp,
@@ -1346,4 +1349,28 @@ export const api = {
     request<StockRiskBadges>(
       `/stock/risk-badges?codes=${encodeURIComponent(codes.join(','))}`,
     ),
+
+  /** 持仓（FEAT-POSITIONS）：未平仓记录 + 本地最新收盘。 */
+  positions: () => request<PositionOut>('/positions'),
+
+  createPosition: (payload: PositionIn) =>
+    request<PositionRow>('/positions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  updatePosition: (id: number, payload: PositionIn) =>
+    request<PositionRow>(`/positions/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  deletePosition: (id: number) =>
+    request<{ ok: boolean }>(`/positions/${id}`, { method: 'DELETE' }),
+
+  /** 从计划转入持仓（成本取实际价，没回填就用计划买点）。 */
+  positionFromPlan: (planId: number) =>
+    request<PositionRow>(`/positions/from-plan/${planId}`, { method: 'POST' }),
 }

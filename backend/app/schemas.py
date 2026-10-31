@@ -3517,3 +3517,34 @@ class StockRiskBadgesRowOut(ApiModel):
 class StockRiskBadgesOut(ApiModel):
     rows: list[StockRiskBadgesRowOut] = []
     note: str | None = None
+
+
+# --------------------------------------------------------- 持仓（FEAT-POSITIONS）
+
+
+class PositionIn(ApiModel):
+    """一笔手工持仓（= trade_journal 的未平仓记录）。"""
+
+    code: str
+    name: str | None = None
+    entry_date: date
+    entry_price: float
+    shares: int | None = None
+    position_pct: float | None = None
+    note: str | None = None
+    plan_id: int | None = None
+
+
+class PositionRow(PositionIn):
+    id: int
+    #: 本地最新收盘（与自选/盘前同一口径，不联网）
+    latest_date: date | None = None
+    latest_close: float | None = None
+    market_value: float | None = None
+    #: 浮盈（有数量才给）；没有现价时全部为 null
+    pnl: float | None = None
+    pnl_pct: float | None = None
+
+
+class PositionOut(ApiModel):
+    rows: list[PositionRow] = []

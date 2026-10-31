@@ -28,6 +28,7 @@ const NotFound = lazy(() => import('./pages/NotFound'))
 const Patterns = lazy(() => import('./pages/Patterns'))
 const PatternTrack = lazy(() => import('./pages/PatternTrack'))
 const PlansPage = lazy(() => import('./pages/Plans'))
+const PositionsPage = lazy(() => import('./pages/Positions'))
 const PremarketPage = lazy(() => import('./pages/Premarket'))
 const PoolsPage = lazy(() => import('./pages/Pools'))
 const Sectors = lazy(() => import('./pages/Sectors'))
@@ -204,6 +205,15 @@ export default function App() {
                 element={
                   <RequireAuth>
                     <PlansPage />
+                  </RequireAuth>
+                }
+              />
+              {/* 持仓（FEAT-POSITIONS）：手工持仓 = 交易日志的未平仓记录 */}
+              <Route
+                path="/positions"
+                element={
+                  <RequireAuth>
+                    <PositionsPage />
                   </RequireAuth>
                 }
               />

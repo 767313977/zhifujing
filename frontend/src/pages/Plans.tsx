@@ -328,6 +328,16 @@ export default function PlansPage() {
     }
   }
 
+  const toPosition = async (row: TradePlanRow) => {
+    try {
+      const position = await api.positionFromPlan(row.id)
+      setNotice(`已转为持仓（成本 ${fmtNum(position.entry_price, 2)}）`)
+      await load()
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
   const remove = async (row: TradePlanRow) => {
     if (!window.confirm(`删除 ${row.plan_date} 的 ${row.name ?? row.code} 计划？`)) return
     try {
@@ -945,6 +955,14 @@ export default function PlansPage() {
                             className="text-[12px] text-fg-dim hover:text-fg"
                           >
                             {row.plan_status === 'cancelled' ? '恢复' : '取消'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void toPosition(row)}
+                            className="text-[12px] text-fg-dim hover:text-fg"
+                            title="把这条计划转成持仓（未平仓日志）"
+                          >
+                            转持仓
                           </button>
                           <button
                             type="button"

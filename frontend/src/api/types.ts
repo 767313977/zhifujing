@@ -3145,3 +3145,31 @@ export interface StockRiskBadges {
   note: string | null
 }
 
+// --------------------------------------------------------- 持仓（FEAT-POSITIONS）
+
+/** 一笔手工持仓（= trade_journal 的未平仓记录）。 */
+export interface PositionIn {
+  code: string
+  name?: string | null
+  entry_date: string
+  entry_price: number
+  shares?: number | null
+  position_pct?: number | null
+  note?: string | null
+  plan_id?: number | null
+}
+
+export interface PositionRow extends PositionIn {
+  id: number
+  latest_date: string | null
+  latest_close: number | null
+  market_value: number | null
+  /** 浮盈（有数量才给）；没有现价时为 null */
+  pnl: number | null
+  pnl_pct: number | null
+}
+
+export interface PositionOut {
+  rows: PositionRow[]
+}
+
