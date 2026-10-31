@@ -889,6 +889,12 @@ class DailyScheduler:
             except Exception:  # noqa: BLE001 - 补尾部失败不该拖垮收盘后这一趟
                 logger.exception("%s：补当天尾部链路失败", reason)
 
+        # 恐贪要在**两融入库之后**再算一遍（2026-10-31 用户要求）：两融当天到晚上才
+        # 发布，15:05 那趟算出的当天读数缺这一项（实测 10-30 只用了 5 项、分数被抬高
+        # 约 4 分）。`refresh()` 只读库、重算最近 30 个交易日、幂等且零配额，所以
+        # 17:30 / 19:30 / 22:35 各跑一次没负担；哪一趟拿到两融，当晚就修正当天分数。
+        self._collect_fear_greed(today, record_failure=False)
+
         # 15:05 的推送若因「基础采集没采全」被推迟，在这里补推（2026-10-22 复查 P1-2）。
         # 三条定时链（17:30 / 19:30 / 22:35）与启动补采都会走到这里。
         self._push_if_ready(collector, today, reason)
@@ -1297,6 +1303,9 @@ class DailyScheduler:
         self._backfill_kline(today)
         # 恐惧贪婪指数：只读库、零 iFinD 配额。排在 `_collect_kline` **之后**是硬要求 ——
         # 「市场宽度」要用当天的全市场个股日线反算，排在它之前会算到昨天的宽度。
+        # ⚠️ 这只是**第一版**：两融要晚上才发布，这里算出的当天读数缺那一项。
+        # 收盘后那几趟（17:30 / 19:30 / 22:35）会在两融入库后重算并修正当天分数
+        # （见 `_run_late_unguarded`），所以页面在 15:05~17:30 之间看到的是初值。
         self._collect_fear_greed(today)
         # 市场宽度温度计：同样只读库（stock_daily 窗口函数反算）、零配额，
         # 依赖与恐贪相同（必须在 `_collect_kline` 之后）。
@@ -1358,11 +1367,18 @@ class DailyScheduler:
         # 有步骤失败时记 `partial`（失败步骤名进 message），不再一律写 `ok`。
         _mark_tail(today, reason, self._tail_failures)
 
-    def _collect_fear_greed(self, trade_date: date) -> None:
+    def _collect_fear_greed(
+        self, trade_date: date, *, record_failure: bool = True
+    ) -> None:
         """恐惧贪婪指数：只读库、零 iFinD 配额，失败只登记不影响其它步骤。
 
         `refresh()` 会重算最近 `REFRESH_DAYS` 个交易日，表为空时自动退回全量回补
         （新库 / 新部署第一趟就自带完整历史），所以这里不必区分首次与日常。
+
+        `record_failure=False` 给**收盘后那几趟**用：那里不是尾部链、没有 `partial`
+        可记，失败只该进日志。同时它是「补算当天」的第二次机会 —— 两融要晚上才发布，
+        15:05 算出的当天读数缺这一项（2026-10-31 实测 10-30 少了 4 分），
+        晚上重算后同一天的分数会被 upsert 修正（见 `_run_late_unguarded`）。
         """
         from app.jobs.collect_fear_greed import refresh
 
@@ -1370,7 +1386,8 @@ class DailyScheduler:
             written = refresh()
         except Exception:  # noqa: BLE001 - 恐贪是增强读数，不该拖垮尾部链
             logger.exception("恐贪指数计算失败")
-            self._tail_failures.append("fear_greed")
+            if record_failure:
+                self._tail_failures.append("fear_greed")
             return
         logger.info("恐贪指数 %s：重算写入 %d 天", trade_date, written)
 

@@ -487,6 +487,54 @@ def test_push_if_ready_does_not_repeat(monkeypatch):
     assert called == []
 
 
+# ------------------------------------------- #6 收盘后重算恐贪（等两融入库）
+def test_run_late_recomputes_fear_greed_before_pushes(monkeypatch):
+    """17:30 / 19:30 / 22:35 这几趟要在两融入库之后重算恐贪（2026-10-31 加）。
+
+    15:05 那趟算出的当天读数缺两融（当天晚上才发布），不能只靠它；重算必须排在
+    推送之前，顺序错了当晚的页面与简报还是旧分数。
+    """
+    sched = scheduler.DailyScheduler.__new__(scheduler.DailyScheduler)
+    sched.settings = object()
+    sched._tail_failures = []
+    called: list[str] = []
+    monkeypatch.setattr(sched, "_catch_up_late", lambda *a, **k: None)
+    monkeypatch.setattr(scheduler, "tail_done", lambda day: True)
+    monkeypatch.setattr(sched, "_push_if_ready", lambda *a, **k: called.append("push"))
+    monkeypatch.setattr(sched, "_push_cb_redeem", lambda *a, **k: called.append("cb"))
+    monkeypatch.setattr(
+        sched,
+        "_collect_fear_greed",
+        lambda day, **k: called.append(f"fear:{k.get('record_failure', True)}"),
+    )
+    collector = SimpleNamespace(
+        is_trade_day=lambda day: True,
+        run_late=lambda day, skip_done=False: {"steps": {}, "trade_date": day},
+    )
+
+    sched._run_late_unguarded(collector, DAY, "测试")
+
+    # `record_failure=False`：这里不是尾部链，失败不该记进 `_tail_failures`
+    assert called == ["fear:False", "push", "cb"]
+
+
+def test_late_fear_greed_failure_keeps_tail_failures_clean(monkeypatch):
+    """收盘后那趟重算失败只进日志；尾部链那趟（默认参数）仍要登记，好记 partial。"""
+    sched = scheduler.DailyScheduler.__new__(scheduler.DailyScheduler)
+    sched._tail_failures = ["stale"]
+
+    def boom():
+        raise RuntimeError("数据库锁了")
+
+    monkeypatch.setattr("app.jobs.collect_fear_greed.refresh", boom)
+
+    sched._collect_fear_greed(DAY, record_failure=False)
+    assert sched._tail_failures == ["stale"]
+
+    sched._collect_fear_greed(DAY)
+    assert sched._tail_failures == ["stale", "fear_greed"]
+
+
 def _patch_run_daily(monkeypatch, collected_after: bool):
     """造一个假的 `_run_daily` 环境，返回捕获 `allow_push` 的字典。"""
 
