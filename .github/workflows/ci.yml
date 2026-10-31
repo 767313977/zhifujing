@@ -7,6 +7,13 @@ name: CI
 # 三条口径：后端全量语法编译 + pyflakes 那一族静态检查；前端类型检查 + 构建。
 # ⚠️ 这个仓库有**两端同时在改**的情况，CI 只跑在推上去的提交上，别指望它替代人工对读。
 
+#
+# 2026-10-31 升级 Action 版本（Node20 运行时已从 runner 移除）：
+#   actions/checkout v4 → v7、actions/setup-python v5 → v7、actions/setup-node v4 → v7。
+# 依据：GitHub changelog「Deprecation of Node 20 on GitHub Actions runners」
+# （迁移日期 2026-06-16，2026-09-23 从 runner 移除）与 actions-latest 的版本清单
+# （checkout/setup-python/setup-node 均为 v7）。Python 3.13 / Node 22 的版本号不动，
+# 只换运行 Action 的运行时。
 on:
   push:
     branches: ["**"]
@@ -16,8 +23,8 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
@@ -39,8 +46,8 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
