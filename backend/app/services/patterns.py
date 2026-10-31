@@ -1055,6 +1055,21 @@ class Signal:
     detail: dict[str, float | int | str] = field(default_factory=dict)
 
 
+#: 同花顺公式对照（FEAT-THS-MAP，2026-10-31）：形态 key → 仓库 `同花顺公式/` 里的文件名。
+#: 只做**静态对照展示**，不解析公式引擎。目录里只有下面这 3 组公式，所以只映射这 9 个 key。
+THS_MAP: dict[str, str] = {
+    "ma_cross_big_yang": "金叉大阳_技术指标（主图叠加）.txt",
+    "t_buy": "V5日线做T_深B★B双B（主图叠加）.txt",
+    "zgnb_turn": "知行超级B1_主图叠加.txt",
+    "zgnb_shrink": "知行超级B1_主图叠加.txt",
+    "zgnb_origin": "知行超级B1_主图叠加.txt",
+    "zgnb_super_shrink": "知行超级B1_主图叠加.txt",
+    "zgnb_pull_white": "知行超级B1_主图叠加.txt",
+    "zgnb_pull_super": "知行超级B1_主图叠加.txt",
+    "zgnb_pull_yellow": "知行超级B1_主图叠加.txt",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class Pattern:
     key: str

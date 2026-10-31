@@ -2133,6 +2133,8 @@ class PatternMeta(BaseModel):
     group: str
     #: 实验态：默认在筛选条隐藏（扫描照跑，不删注册表）
     experimental: bool = False
+    #: 对应的同花顺公式文件名（静态对照，见 `services.patterns.THS_MAP`）
+    ths: str | None = None
 
 
 class PatternHitItem(BaseModel):

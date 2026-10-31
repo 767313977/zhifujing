@@ -41,7 +41,13 @@ from app.schemas import (
     PoolStandingOut,
 )
 from app.services import pattern_track
-from app.services.patterns import PATTERNS, SCORE_EXCLUDED, WUDAO_PHASE_LABELS, is_st
+from app.services.patterns import (
+    PATTERNS,
+    SCORE_EXCLUDED,
+    THS_MAP,
+    WUDAO_PHASE_LABELS,
+    is_st,
+)
 from app.services.stock_meta import industries_of, sectors_of
 from app.services.stock_phase import load_oversold, load_phases
 from app.sources.base import chunked
@@ -161,7 +167,11 @@ def catalog() -> list[PatternMeta]:
     """形态清单，前端据此生成分组筛选条。"""
     return [
         PatternMeta(
-            key=p.key, name=p.name, group=p.group, experimental=p.experimental
+            key=p.key,
+            name=p.name,
+            group=p.group,
+            experimental=p.experimental,
+            ths=THS_MAP.get(p.key),
         )
         for p in PATTERNS
     ]

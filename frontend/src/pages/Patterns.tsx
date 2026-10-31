@@ -934,6 +934,7 @@ export default function Patterns() {
                       `${fmtPct(h10?.excess ?? null)} · 跑赢 ${fmtNum(h10?.beat_pct ?? null, 0, '%')}` +
                       ` · 样本 ${stats.hits}`
                     : ''
+                  const ths = item.ths ? `\n对应 THS：${item.ths}` : ''
                   return (
                     <button
                       key={item.key}
@@ -943,7 +944,7 @@ export default function Patterns() {
                       title={
                         (picked.length > 0
                           ? `再加上「${item.name}」后剩 ${count} 只`
-                          : `「${item.name}」全市场命中 ${count} 只`) + perf
+                          : `「${item.name}」全市场命中 ${count} 只`) + perf + ths
                       }
                       className={`num border px-2 py-[2px] text-[13px] transition-colors ${
                         on

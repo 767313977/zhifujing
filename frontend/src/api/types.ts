@@ -1231,6 +1231,8 @@ export interface PatternMeta {
   group: string
   /** 实验态：默认在筛选条隐藏（扫描照跑，不删注册表） */
   experimental: boolean
+  /** 对应的同花顺公式文件名（静态对照） */
+  ths: string | null
 }
 
 export interface PatternHitItem {

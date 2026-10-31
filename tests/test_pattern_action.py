@@ -51,3 +51,13 @@ def test_experimental_patterns_are_marked_not_removed():
     experimental = {pattern.key for pattern in PATTERNS if pattern.experimental}
     assert experimental == {"ma_squeeze", "downtrend_breakout", "volume_dry_bottom"}
     assert all(pattern.key for pattern in PATTERNS)
+
+
+def test_ths_mapping_points_to_existing_keys():
+    """FEAT-THS-MAP：至少 5 个核心形态有对照，且 key 都在注册表里。"""
+    from app.services.patterns import PATTERNS, THS_MAP
+
+    keys = {pattern.key for pattern in PATTERNS}
+    assert len(THS_MAP) >= 5
+    assert set(THS_MAP) <= keys
+    assert THS_MAP["zgnb_turn"].startswith("知行超级B1")
