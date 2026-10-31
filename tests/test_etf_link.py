@@ -167,15 +167,31 @@ def test_brief_warns_on_etf_share_drop(db, monkeypatch):
 
 
 def test_related_etf_from_stock_industry(db):
-    """个股 → 相关 ETF：用同一份 ETF 名称词典归类，并把 `category` 原样带出去。"""
-    seed_etf(db, code="512480", name="半导体ETF", category="芯片半导体")
-    db.add(StockBasic(code="600519", name="贵州茅台", industry="电子-半导体-集成电路"))
+    """个股 → 相关 ETF：走一级行业表，别拿 ETF 名称词典猜行业路径。
+
+    回归两处线上实测错（2026-10-31）：
+    - 「电力设备-电池-锂电池」曾被猜成电力公用（该是电池储能）；
+    - 「医药生物-化学制药」曾被猜成化工材料（该是医药医疗）。
+    """
+    seed_etf(db, code="512480", name="半导体ETF", category="电子通信")
+    seed_etf(db, code="159755", name="电池ETF", category="电池储能")
+    seed_etf(db, code="512010", name="医药ETF", category="医药医疗")
+    db.add_all(
+        [
+            StockBasic(code="300750", name="宁德时代", industry="电力设备-电池-锂电池"),
+            StockBasic(code="600276", name="恒瑞医药", industry="医药生物-化学制药"),
+            StockBasic(code="600519", name="贵州茅台", industry="食品饮料-白酒-白酒Ⅲ"),
+        ]
+    )
     db.commit()
 
-    out = etf_api.related(code="600519", text=None, limit=3, session=db)
+    battery = etf_api.related(code="300750", text=None, limit=3, session=db)
+    assert battery.category == "电池储能"
+    assert [row.code for row in battery.items] == ["159755"]
 
-    assert out.category == "芯片半导体"
-    assert [row.code for row in out.items] == ["512480"]
+    medicine = etf_api.related(code="600276", text=None, limit=3, session=db)
+    assert medicine.category == "医药医疗"
 
-    unknown = etf_api.related(code=None, text="综合", limit=3, session=db)
-    assert unknown.items == []
+    # 板块 / 行业名才走名称词典；查不到就是「其他」，不硬猜
+    assert etf_api.related(code=None, text="锂电池", limit=3, session=db).category == "电池储能"
+    assert etf_api.related(code=None, text="综合", limit=3, session=db).items == []

@@ -3162,10 +3162,10 @@ class EtfTrackOut(BaseModel):
 
 
 class EtfRelatedOut(BaseModel):
-    """个股 / 板块 → 相关 ETF 的代表只（按 ETF 名称词典归类，ETF-5）。
+    """个股 / 板块 → 相关 ETF 的代表只（ETF-5）。
 
-    `category` 是把 `industry` 按同一份词典归出来的分类，页面要显示出来 ——
-    它只是「名字像」，不是严格映射。
+    个股按**一级行业表**（`etf_category.classify_industry`）归类，板块名按 ETF
+    名称词典；`category` 要原样显示 —— 它是粗口径对应，不是严格行业映射。
     """
 
     industry: str | None = None

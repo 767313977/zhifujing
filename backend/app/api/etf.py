@@ -202,18 +202,25 @@ def related(
 ) -> EtfRelatedOut:
     """个股 / 板块 → 相关 ETF 的代表只（ETF-5）。
 
-    归类用的是 `etf_category.classify`（ETF 名称词典），所以**只是「名字像」**：
-    页面必须把 `category` 显示出来，别让人以为这是严格的行业映射。
+    个股走**一级行业表**（`etf_category.classify_industry`），板块 / 行业名走
+    **ETF 名称词典**（`classify`）；两者不是一套词表 —— 用名称词典套行业路径会把
+    「电力设备」猜成电力公用（2026-10-31 线上实测）。页面必须把 `category` 显示
+    出来，别让人以为这是严格的行业映射。
     """
-    industry = (text or "").strip() or None
+    industry: str | None = None
+    category = etf_category.UNKNOWN
     if code:
-        plain = normalize_code(code)
-        basic = session.get(StockBasic, plain)
+        basic = session.get(StockBasic, normalize_code(code))
         if basic and basic.industry:
             industry = basic.industry
-    if not industry:
-        raise HTTPException(status_code=422, detail="要给 code（股票代码）或 text（行业 / 板块名）")
-    category = etf_category.classify(industry)
+            category = etf_category.classify_industry(industry)
+    if industry is None:
+        industry = (text or "").strip() or None
+        if not industry:
+            raise HTTPException(
+                status_code=422, detail="要给 code（股票代码）或 text（行业 / 板块名）"
+            )
+        category = etf_category.classify(industry)
     if category == etf_category.UNKNOWN:
         return EtfRelatedOut(industry=industry, category=category, items=[])
     data = etf_screen.screen(

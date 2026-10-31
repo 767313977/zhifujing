@@ -944,8 +944,8 @@ export default function StockDetail() {
               ))}
             </div>
             <p className="border-t border-line-soft px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
-              按「{relatedEtfs.industry ?? '—'}」用 ETF 名称词典归到「{relatedEtfs.category}」——
-              只是名字像、<span className="text-fg-muted">不是严格的行业映射</span>；
+              按一级行业「{relatedEtfs.industry ?? '—'}」归到「{relatedEtfs.category}」——
+              是粗口径的一一对应、<span className="text-fg-muted">不是精确的行业映射</span>；
               指标是盘后口径，与个股不是同一天的实时对照。完整筛选见
               <Link to="/etf" className="ml-1 text-accent hover:underline">
                 ETF 页
