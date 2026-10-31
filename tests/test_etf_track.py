@@ -178,3 +178,22 @@ def test_rotation_charges_turnover_once(db):
     assert first["ret"] == pytest.approx(first["gross"] - 0.005, abs=0.01)
     # 同一只 ETF 一直持有 → 没有换手
     assert result.periods[1]["cost"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_api_track_shape(db):
+    """接口层的字段映射：逐日超额、统计与曲线都要给齐（页面直接拿来渲染）。"""
+    from app.api import etf as api_etf
+
+    api_etf._track_cache.clear()
+    seed(db, "510300", "沪深300ETF", "沪深300", step=1.0, share_days=25)
+    db.commit()
+
+    out = api_etf.track(preset="momentum", top=5, hold=5, days=20, session=db)
+
+    assert out.preset == "momentum"
+    assert out.rows
+    first = out.rows[0]
+    assert first.entry_date is not None and first.entry_date > first.trade_date
+    assert first.excess_universe is not None
+    assert out.stats.strategy.samples == len(out.rows)
+    assert out.curve and out.curve[-1].strategy is not None
