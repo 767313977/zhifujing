@@ -21,7 +21,15 @@ from datetime import date, timedelta
 from sqlalchemy import case, func, select
 
 from app.db import session_scope, upsert_many
-from app.models import FearGreedDaily, IndexDaily, MarginDaily, MarketSentiment, StockDaily
+from app.models import (
+    FearGreedDaily,
+    IndexDaily,
+    MarginDaily,
+    MarketSentiment,
+    StockDaily,
+    StockUniverse,
+)
+from app.services.coverage import coverage_ok
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +53,10 @@ VOL_DAYS = 20
 RSI_PERIOD = 14
 # 「相对」类指标的基准回看长度（相对换手率、两融变化率）
 BASE_DAYS = 20
+
+#: 两融缺值时最多沿用多少个交易日的旧值（T+1 披露，正常只差一天）。
+#: 超过这个长度就记 None —— 数据源长期没更新时不能拿几周前的数冒充今天。
+MARGIN_CARRY_DAYS = 3
 
 
 def _trade_calendar(session, start: date, end: date) -> list[date]:
@@ -134,12 +146,19 @@ def _breadth_by_date(session, start: date, end: date) -> dict[date, float]:
     一条 GROUP BY 扫过去：区间内每个交易日一行。涨跌幅恰好为 0 的票
     （停牌复牌、一字板平开）两边都不算 —— 与 `market_sentiment.up_count`
     的分母口径一致。
+
+    ⚠️ **覆盖率不到 90% 的交易日直接不给值**（2026-10-31 复查，遗留项）：
+    只采到几十只票时照样能算出一个占比，但那是「采样」不是「全市场」——
+    与 `scan_patterns` 的覆盖率闸同一条判据（`services.coverage.MIN_DAY_COVERAGE`），
+    免得采集没采全的那天静默喂给分位一个假值。股票池还没建（`pool=0`）时不判，
+    保持原来的行为。
     """
     rows = session.execute(
         select(
             StockDaily.trade_date,
             func.sum(case((StockDaily.pct_chg > 0, 1), else_=0)),
             func.sum(case((StockDaily.pct_chg < 0, 1), else_=0)),
+            func.count(),
         )
         .where(
             StockDaily.trade_date >= start,
@@ -148,31 +167,75 @@ def _breadth_by_date(session, start: date, end: date) -> dict[date, float]:
         )
         .group_by(StockDaily.trade_date)
     ).all()
+    pool = session.scalar(select(func.count()).select_from(StockUniverse)) or 0
     result: dict[date, float] = {}
-    for day, up, down in rows:
+    thin: list[date] = []
+    for day, up, down, count in rows:
         up = int(up or 0)
         down = int(down or 0)
-        if up + down > 0:
-            result[day] = round(up / (up + down) * 100, 4)
+        if up + down <= 0:
+            continue
+        if pool and not coverage_ok(int(count or 0), pool):
+            thin.append(day)
+            continue
+        result[day] = round(up / (up + down) * 100, 4)
+    if thin:
+        logger.warning(
+            "市场宽度跳过 %d 个交易日：当天日线覆盖不到股票池的 90%%（%d 只）",
+            len(thin),
+            pool,
+        )
     return result
 
 
 def _margin_by_date(session, start: date, end: date) -> dict[date, float]:
     """沪深两市「融资余额 + 融券余额」合计（亿元），按日。
 
-    ⚠️ 两所披露时点不同（实测深交所晚一天），这里按日求和 —— 某天只有一所的
-    数时会得到一个明显偏小的合计。这是**有意**的：与其跳过一个数都不到的交易日，
-    不如让它参与分位，反正变化率算的是 20 日跨度，单日缺一所不会改变量级。
+    ⚠️ **只认沪、深两所都有数的交易日**（2026-10-31 复查）。模型注释里写着深交所
+    常比上交所晚一天：某天只到一所时，合计只有正常的一半，20 日变化率会变成
+    −40%~−50%，这一项必然被打到「极度恐慌」，整条指数跟着偏。缺一所就**整天不给值**
+    （由 `_carry_forward` 沿用上一个齐全日），绝不求和。
     """
     rows = session.execute(
         select(
             MarginDaily.trade_date,
-            func.sum(func.coalesce(MarginDaily.financing_balance, 0.0) + func.coalesce(MarginDaily.securities_balance, 0.0)),
-        )
-        .where(MarginDaily.trade_date >= start, MarginDaily.trade_date <= end)
-        .group_by(MarginDaily.trade_date)
+            MarginDaily.market,
+            func.coalesce(MarginDaily.financing_balance, 0.0)
+            + func.coalesce(MarginDaily.securities_balance, 0.0),
+        ).where(MarginDaily.trade_date >= start, MarginDaily.trade_date <= end)
     ).all()
-    return {day: float(total) for day, total in rows if total}
+    per_day: dict[date, dict[str, float]] = {}
+    for day, market, total in rows:
+        if total:
+            per_day.setdefault(day, {})[market] = float(total)
+    return {
+        day: sum(by_market.values())
+        for day, by_market in per_day.items()
+        if {"sh", "sz"} <= set(by_market)
+    }
+
+
+def _carry_forward(
+    values: list[float | None], limit: int = MARGIN_CARRY_DAYS
+) -> list[float | None]:
+    """缺值的交易日沿用最近一个有值的（最多连续 `limit` 个交易日）。
+
+    为什么需要：两融是**按交易所分别披露、T+1 才齐**的（深交所更晚），所以最新一天
+    经常还没有数。不沿用的话当天综合分只剩 5 项（2026-10-30 实测少 4 分，读者看到的
+    是「恐慌」而不是「极度恐慌」）；沿用之后每天稳定 6 项，等真数据到了下一趟重算
+    会覆盖掉。连续缺失超过 `limit` 说明源出问题了，那时宁可记 None。
+    """
+    out: list[float | None] = []
+    last: float | None = None
+    gap = 0
+    for value in values:
+        if value is not None:
+            last, gap = value, 0
+            out.append(value)
+            continue
+        gap += 1
+        out.append(last if last is not None and gap <= limit else None)
+    return out
 
 
 def _index_by_date(session, start: date, end: date) -> dict[date, float]:
@@ -220,6 +283,8 @@ def compute_range(start: date, end: date) -> list[dict]:
     amounts, _, _ = _align(calendar, amount_by_date)
     closes, close_rank, close_compact = _align(calendar, closes_by_date)
     margins, _, _ = _align(calendar, margin_by_date)
+    # 两融 T+1 才齐：最新一天沿用一个齐全日，保证当天也是 6 项（见 `_carry_forward`）
+    margins = _carry_forward(margins)
     rsi = _rsi_series(close_compact)
 
     rows: list[dict] = []
