@@ -283,6 +283,17 @@ class Settings(BaseSettings):
     # 只在没配 webhook 时生效。
     feishu_target: str = ""
     feishu_push_enabled: bool = True
+    # --- 推送订阅维度（FEAT-FEISHU-FILTER，2026-10-31）---
+    #: 日报总开关（关掉后形态 / 强赎等独立推送**不受影响**，仍受下面各自开关控制）
+    feishu_daily_enabled: bool = True
+    #: 形态命中：all（全部）/ high（仅高分）/ watchlist（仅自选）/ off（关）
+    feishu_pattern_mode: str = "all"
+    #: `high` 模式的最低评分
+    feishu_pattern_min_score: int = 80
+    #: 悟道池命中开关（当前独立推送清单里还没有悟道 key，先留好闸门）
+    feishu_wudao_enabled: bool = True
+    #: 简报里的「自选股异动」节开关
+    feishu_watchlist_alerts_enabled: bool = True
     # Trae 插件自带的命令行工具，默认在 PATH 上
     lark_cli: str = "lark-cli"
 

@@ -111,6 +111,15 @@ IFIND_CYCLE_START_DAY=17
 # 可选：飞书群自定义机器人的 webhook，用来推每日简报与形态命中
 FEISHU_WEBHOOK_URL=
 
+# 可选：推送订阅维度（都有默认值，按需打开/关闭，减少噪音）
+# 日报总开关；形态命中：all / high（仅高分）/ watchlist（仅自选）/ off
+FEISHU_DAILY_ENABLED=true
+FEISHU_PATTERN_MODE=all
+FEISHU_PATTERN_MIN_SCORE=80
+# 悟道池命中推送开关；简报里的「自选股异动」节开关
+FEISHU_WUDAO_ENABLED=true
+FEISHU_WATCHLIST_ALERTS_ENABLED=true
+
 # 可选：监听地址与端口（0.0.0.0 才能让同一 WiFi 下的手机打开）
 # ⚠️ 后端自己有登录体系（/api/* 一律要登录），但在**明文 http + 公网地址**上会
 # 直接拒登录 / 注册（api/auth.py 的 _require_secure_transport）—— 局域网里用没问题，

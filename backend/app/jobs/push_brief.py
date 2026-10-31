@@ -40,6 +40,7 @@ from app.models import (
     StockDde,
 )
 from app.services import trade_plan
+from app.services.pattern_track import POOL_KEYS
 from app.services.patterns import PATTERN_NAMES
 from app.services.themes import limit_up_themes
 from app.services.usage import QuotaLevel, level_label, quota_level, quota_status
@@ -104,6 +105,42 @@ _WEEKDAY = ("周一", "周二", "周三", "周四", "周五", "周六", "周日"
 
 # lark-cli 发送权限不足时的错误码。专门提出来是因为它最常见、也最好解释
 _SCOPE_DENIED = 230027
+
+# --- 推送订阅维度（FEAT-FEISHU-FILTER，2026-10-31）---
+#: `feishu_pattern_mode` 的合法取值。配错（拼写错误 / 大小写以外的怪值）一律按
+#: `all` 处理 —— 宁可多推，也不要「我明明设开了却没收到任何消息」。
+PATTERN_MODES = ("all", "high", "watchlist", "off")
+
+#: 悟道池的形态 key（`feishu_wudao_enabled=false` 时这些一律不推）。
+#: 与扫描端的 `scan_patterns.WUDAO_POOL_KEYS` 同义，从**同一个源头**
+#: （`pattern_track.POOL_KEYS`）拼出来，不抄两份。
+_WUDAO_KEYS = frozenset((*POOL_KEYS, "ma_cross_big_yang"))
+
+
+def _pattern_mode(settings: Settings) -> str:
+    mode = settings.feishu_pattern_mode.strip().lower()
+    return mode if mode in PATTERN_MODES else "all"
+
+
+def _pattern_filters(
+    session: Session, settings: Settings
+) -> tuple[str, int | None, set[str] | None]:
+    """按订阅维度算出形态过滤条件，返回 `(mode, min_score, only_codes)`。
+
+    `watchlist` 取的是**管理员**的自选：简报与形态推送都是全局单播（只认一个收件人），
+    与其他依赖「当前用户」的页面不同，这里没有请求上下文可用。
+    """
+    from app.services.watch_scope import stock_watch_codes
+
+    mode = _pattern_mode(settings)
+    if mode == "off":
+        return mode, None, None
+    min_score = settings.feishu_pattern_min_score if mode == "high" else None
+    only_codes = None
+    if mode == "watchlist":
+        uid = trade_plan.admin_user_id(session)
+        only_codes = set(stock_watch_codes(session, uid))
+    return mode, min_score, only_codes
 
 
 # ---------------------------------------------------------------------- 格式化
@@ -310,28 +347,36 @@ def _sector_block(session: Session, trade_date: date) -> str:
     return _section("板块热力", lines)
 
 
-def build_pattern_brief(trade_date: date, pattern: str) -> str:
+def build_pattern_brief(
+    trade_date: date,
+    pattern: str,
+    min_score: int | None = None,
+    only_codes: set[str] | None = None,
+) -> str:
     """某个形态当天的独立推送内容（形态清单见 `PUSH_PATTERNS`）。
 
     当日没有命中就返回空串，调用方据此不发。
+    `min_score` / `only_codes` 是订阅维度（FEAT-FEISHU-FILTER）：只影响推送内容，
+    不影响页面与扫描。
     """
     title, _task, desc, hint = PUSH_PATTERNS[pattern]
     with session_scope() as session:
-        rows = session.execute(
-            select(
-                PatternHit.code,
-                PatternHit.name,
-                PatternHit.score,
-                PatternHit.close,
-                PatternHit.pct_chg,
-                PatternHit.key_levels,
-            )
-            .where(
-                PatternHit.trade_date == trade_date,
-                PatternHit.pattern == pattern,
-            )
-            .order_by(PatternHit.score.desc())
-        ).all()
+        statement = select(
+            PatternHit.code,
+            PatternHit.name,
+            PatternHit.score,
+            PatternHit.close,
+            PatternHit.pct_chg,
+            PatternHit.key_levels,
+        ).where(
+            PatternHit.trade_date == trade_date,
+            PatternHit.pattern == pattern,
+        )
+        if min_score is not None:
+            statement = statement.where(PatternHit.score >= min_score)
+        rows = session.execute(statement.order_by(PatternHit.score.desc())).all()
+    if only_codes is not None:
+        rows = [row for row in rows if row[0] in only_codes]
     if not rows:
         return ""
 
@@ -354,17 +399,30 @@ def build_pattern_brief(trade_date: date, pattern: str) -> str:
     return "\n".join(lines)
 
 
-def _pattern_block(session, trade_date: date) -> str:
+def _pattern_block(
+    session,
+    trade_date: date,
+    min_score: int | None = None,
+    only_codes: set[str] | None = None,
+) -> str:
     """形态选股：各形态命中家数 + 每个形态最强的几只。
 
     只列前三名 —— 简报是给人扫一眼「今天发生了什么」的，不是给人挑票用的；
     挑票去页面上按形态和评分筛。
+
+    `min_score` / `only_codes` 是订阅维度（FEAT-FEISHU-FILTER）：传进来就照过滤，
+    与独立形态推送（`build_pattern_brief`）用同一套判据。
     """
+    statement = select(
+        PatternHit.pattern, PatternHit.name, PatternHit.code, PatternHit.score
+    ).where(PatternHit.trade_date == trade_date, PatternHit.pattern.in_(_PATTERN_KEYS))
+    if min_score is not None:
+        statement = statement.where(PatternHit.score >= min_score)
     rows = session.execute(
-        select(PatternHit.pattern, PatternHit.name, PatternHit.code, PatternHit.score)
-        .where(PatternHit.trade_date == trade_date, PatternHit.pattern.in_(_PATTERN_KEYS))
-        .order_by(PatternHit.pattern, PatternHit.score.desc())
+        statement.order_by(PatternHit.pattern, PatternHit.score.desc())
     ).all()
+    if only_codes is not None:
+        rows = [row for row in rows if row.code in only_codes]
     if not rows:
         return ""
 
@@ -461,13 +519,18 @@ def _watchlist_block(session, trade_date: date) -> str:
     return brief_watchlist.block(session, trade_date)
 
 
-def build_brief(trade_date: date) -> str:
+def build_brief(trade_date: date, settings: Settings | None = None) -> str:
     """把某个交易日的复盘要点拼成一段飞书可渲染的 Markdown。
 
     故意**不用表格**：飞书消息体是富文本（post），不支持 Markdown 表格，
     写进去只会渲染成一串竖线原文。全部用「小节标题 + 列表」表达。
+    `settings` 用来读「自选股异动」开关（FEAT-FEISHU-FILTER）。
     """
+    settings = settings or get_settings()
     with session_scope() as session:
+        # 形态命中按订阅维度过滤（FEAT-FEISHU-FILTER）：off 时整节不出现，
+        # high / watchlist 时只保留对应的命中。
+        mode, min_score, only_codes = _pattern_filters(session, settings)
         blocks = [
             f"**收盘复盘 · {trade_date.isoformat()}（{_WEEKDAY[trade_date.weekday()]}）**",
             # 配额告警放最前：它是「这份简报本身可能不完整」的前提说明
@@ -486,9 +549,13 @@ def build_brief(trade_date: date) -> str:
             # 见 config.collect_hour 的注释与设计文档 §8.70。
             # 「共达模式选股」不在这里 —— 它有命中时单独发一条
             # （`build_gongda_brief` + `push_gongda`），混进复盘简报会被淹掉
-            _pattern_block(session, trade_date),
+            _pattern_block(session, trade_date, min_score, only_codes)
+            if mode != "off"
+            else "",
             _plan_block(session, trade_date),
-            _watchlist_block(session, trade_date),
+            _watchlist_block(session, trade_date)
+            if settings.feishu_watchlist_alerts_enabled
+            else "",
             # 转债强赎提醒**不在这里**：简报 15:05 就推，而转债快照 17:30 才采，
             # 那时这一节永远是空的（2026-10-30 复查 P1-2）。改由 `push_cb_redeem`
             # 在收盘后那趟采完之后单独推送，见该函数的说明。
@@ -658,6 +725,10 @@ def push(trade_date: date | None = None, settings: Settings | None = None) -> di
     settings = settings or get_settings()
     if not settings.feishu_push_enabled:
         return {"status": "skipped", "reason": "推送已关闭（FEISHU_PUSH_ENABLED=false）"}
+    # 日报总开关（FEAT-FEISHU-FILTER）：只管这条复盘简报，形态 / 强赎等独立推送
+    # 各有各的开关，不受它影响。
+    if not settings.feishu_daily_enabled:
+        return {"status": "skipped", "reason": "日报已关闭（FEISHU_DAILY_ENABLED=false）"}
     if not settings.feishu_webhook_url.strip() and not settings.feishu_target.strip():
         return {
             "status": "skipped",
@@ -668,7 +739,7 @@ def push(trade_date: date | None = None, settings: Settings | None = None) -> di
     if target_date is None:
         return {"status": "skipped", "reason": "库里还没有任何交易日数据"}
 
-    markdown = build_brief(target_date)
+    markdown = build_brief(target_date, settings)
     result = send_markdown(markdown, settings)
     status = "ok" if result["ok"] else "failed"
     message = f"已推送 {len(markdown)} 字" if result["ok"] else result["error"]
@@ -700,6 +771,12 @@ def push_pattern_brief(
     settings = settings or get_settings()
     if not settings.feishu_push_enabled:
         return {"status": "skipped", "reason": "推送已关闭（FEISHU_PUSH_ENABLED=false）"}
+    # 订阅维度（FEAT-FEISHU-FILTER）：先判「这类推不推」，再判有没有配通道 ——
+    # 关掉的消息不该因为没配 webhook 而报另一种原因。
+    if _pattern_mode(settings) == "off":
+        return {"status": "skipped", "reason": "形态推送已关闭（FEISHU_PATTERN_MODE=off）"}
+    if pattern in _WUDAO_KEYS and not settings.feishu_wudao_enabled:
+        return {"status": "skipped", "reason": "悟道池推送已关闭（FEISHU_WUDAO_ENABLED=false）"}
     if not settings.feishu_webhook_url.strip() and not settings.feishu_target.strip():
         return {
             "status": "skipped",
@@ -710,11 +787,15 @@ def push_pattern_brief(
     if target_date is None:
         return {"status": "skipped", "reason": "库里还没有任何交易日数据"}
 
-    markdown = build_pattern_brief(target_date, pattern)
+    with session_scope() as session:
+        _mode, min_score, only_codes = _pattern_filters(session, settings)
+    markdown = build_pattern_brief(
+        target_date, pattern, min_score=min_score, only_codes=only_codes
+    )
     if not markdown:
         # 没命中**不写日志**：这些形态本来就稀疏，安静跳过是常态；
         # 写一条 skipped 只会让「数据管理」页天天多一行无意义的记录
-        return {"status": "skipped", "reason": f"当日无 {pattern} 命中"}
+        return {"status": "skipped", "reason": f"当日无 {pattern} 命中（或未通过订阅过滤）"}
 
     result = send_markdown(markdown, settings)
     status = "ok" if result["ok"] else "failed"
