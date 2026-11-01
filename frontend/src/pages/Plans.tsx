@@ -414,7 +414,9 @@ export default function PlansPage() {
                 <Stat
                   label="计划条数"
                   value={String(stats.plans)}
-                  hint={`可执行 ${stats.observable} · 仅观察 ${stats.observe}`}
+                  hint={`可执行 ${stats.observable} · 仅观察 ${stats.observe}${
+                    stats.pending ? ` · 待执行 ${stats.pending}` : ''
+                  }`}
                 />
                 <Stat
                   label="执行率"

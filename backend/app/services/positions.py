@@ -4,7 +4,11 @@
 不另建 position 表（用户已确认「持仓复用日志」，避免两套账）。
 
 - 现价取本地最新 `stock_daily` 收盘（与自选、盘前同一口径），**不联网**；
-- 浮盈 = (现价 − 成本) × 数量；没有数量时只给比例；
+- 浮盈按**买入日口径**（`trade_journal.open_basis`，按 `pct_chg` 复利折算）计算，
+  与交易日志页同一个数；直接用不复权收盘价遇到分红送转会显示假亏损
+  （2026-11-01 审计 P1）；
+- 市值 = 不复权收盘 × 股数（真实市值，与行情软件一致）；除权后股数会变，
+  用户按实际持仓改 `shares` 即可；
 - 平仓仍然在交易日志页做（这里只增删改未平仓记录，不动已平仓的）。
 """
 
@@ -14,19 +18,23 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import StockBasic, TradeJournal, TradePlan
+from app.services import trade_journal
 from app.services.watch_scope import latest_quotes
 
 
-def _row(journal: TradeJournal, quote) -> dict:
+def _row(journal: TradeJournal, quote, basis: float | None) -> dict:
     close = quote.close if quote is not None else None
+    # 买入日口径的等价价；买入日还没日线时退回不复权收盘（那时也没有除权信息可用）
+    price = basis if basis is not None else close
     pnl = None
     pnl_pct = None
     value = None
-    if close is not None:
-        pnl_pct = round((close / journal.entry_price - 1) * 100, 2)
+    if price is not None:
+        pnl_pct = round((price / journal.entry_price - 1) * 100, 2)
         if journal.shares:
-            pnl = round((close - journal.entry_price) * journal.shares, 2)
-            value = round(close * journal.shares, 2)
+            pnl = round((price - journal.entry_price) * journal.shares, 2)
+    if close is not None and journal.shares:
+        value = round(close * journal.shares, 2)
     return {
         "id": journal.id,
         "code": journal.code,
@@ -57,7 +65,11 @@ def load(session: Session, user_id: int) -> list[dict]:
     if not journals:
         return []
     quotes = latest_quotes(session, [journal.code for journal in journals])
-    return [_row(journal, quotes.get(journal.code)) for journal in journals]
+    bases = trade_journal.open_basis(session, journals)
+    return [
+        _row(journal, quotes.get(journal.code), bases.get(journal.id))
+        for journal in journals
+    ]
 
 
 def validate_code(session: Session, code: str) -> str:
@@ -107,11 +119,4 @@ def create(
     session.add(journal)
     session.commit()
     session.refresh(journal)
-    return journal
-
-
-def update(journal: TradeJournal, **fields) -> TradeJournal:
-    for key, value in fields.items():
-        if value is not None:
-            setattr(journal, key, value)
     return journal

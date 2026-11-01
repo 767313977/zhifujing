@@ -127,8 +127,9 @@ def collect_auction(now: datetime | None = None) -> int:
         logger.warning("竞价采样：stock_basic 为空，跳过（先跑一轮采集建池）")
         return 0
 
+    stats: dict = {}
     try:
-        quotes = fetch_spot(codes)
+        quotes = fetch_spot(codes, stats=stats)
     except Exception:  # noqa: BLE001 - 单分钟的失败不该影响下一分钟
         logger.warning("竞价采样：抓取失败 %s %s", day, hhmm, exc_info=True)
         return 0
@@ -250,7 +251,19 @@ def collect_auction(now: datetime | None = None) -> int:
         upsert_many(session, AuctionSnapshot, rows)
 
     elapsed = time.monotonic() - started
-    logger.info("竞价采样 %s %s：%d 只，耗时 %.1f 秒", day, hhmm, len(rows), elapsed)
+    # 丢批数要跟覆盖只数一起写：某一帧丢了批的话，那几只票会停在上一分钟的虚拟
+    # 撮合价，事后对账（盘前页 `auction_count` 偏小）只能靠这行日志判断是「源丢批」
+    # 还是「本来就没数据」（2026-11-01 审计 P3）。
+    logger.info(
+        "竞价采样 %s %s：%d 只 / 请求 %d 只（丢批 %d/%d 批），耗时 %.1f 秒",
+        day,
+        hhmm,
+        len(rows),
+        len(codes),
+        stats.get("failed", 0),
+        stats.get("requests", 0),
+        elapsed,
+    )
     if elapsed > 60:
         # 全市场约 110 个请求。定时任务是 `coalesce=True` + 单实例，一轮超过 60 秒就会
         # 把下一分钟那一帧挤掉（缺帧在 `samples` 里看得出来）。记一条告警便于事后对账。

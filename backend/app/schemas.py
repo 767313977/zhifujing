@@ -3403,7 +3403,7 @@ class PremarketLimitRowOut(ApiModel):
     auction_pct: float | None = None
     #: 9:31 现价相对昨收（%），看高开之后站没站住
     post_open_pct: float | None = None
-    status: str | None = None  # 一字 / 一字跌停 / 高开 / 平开 / 低开
+    status: str | None = None  # 竞价涨停 / 竞价跌停 / 高开 / 平开 / 低开
 
 
 class PremarketWudaoRowOut(ApiModel):

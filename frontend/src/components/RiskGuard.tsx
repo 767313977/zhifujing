@@ -24,11 +24,14 @@ export function RiskBanner() {
       .catch(() => setStatus(null))
   }, [])
   if (!status || (!status.overheat && status.concentration.length === 0)) return null
+  // 规范 v1 §4.8：风控是**提醒**不是系统错误，一律琥珀色、不用 danger 红。
+  // 严格模式（用户主动开启）加重成实底 + 白字，用 #b45309（`warn`）而不是
+  // `warn-strong` —— 后者压白字只有 3.19:1（见 index.css）。
   return (
     <div
       className={`border px-4 py-2 text-[13px] ${
-        status.overheat
-          ? 'border-danger/50 bg-danger/5 text-danger'
+        status.strict_mode
+          ? 'border-warn bg-warn text-white'
           : 'border-warn/50 bg-warn/5 text-warn'
       }`}
     >

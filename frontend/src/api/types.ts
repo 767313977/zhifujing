@@ -3043,7 +3043,7 @@ export interface PremarketLimitRow {
   auction_pct: number | null
   /** 9:31 现价相对昨收（%），看高开之后站没站住 */
   post_open_pct: number | null
-  /** 一字 / 一字跌停 / 高开 / 平开 / 低开 */
+  /** 竞价涨停 / 竞价跌停 / 高开 / 平开 / 低开 */
   status: string | null
 }
 

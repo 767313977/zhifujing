@@ -115,14 +115,19 @@ def _daily_map(session: Session, day: date, codes: list[str]) -> dict[str, Stock
 
 
 def _open_status(auction: AuctionSnapshot | None) -> str | None:
-    """开盘状态标签。**只在有竞价数据时给**，缺数据一律 null（页面显示「—」）。"""
+    """开盘状态标签。**只在有竞价数据时给**，缺数据一律 null（页面显示「—」）。
+
+    「竞价涨停 / 竞价跌停」而不是「一字」：竞价价顶在涨停价只能说明**开盘**封在
+    板上，全天是不是一字（开 = 高 = 低 = 收）要收盘才知道，盘前说成「一字」不准
+    （2026-11-01 审计 P3）。
+    """
     if auction is None or auction.pct_chg is None:
         return None
     price, limit_up, limit_down = auction.price, auction.limit_up, auction.limit_down
     if price is not None and limit_up is not None and limit_up > 0 and price >= limit_up:
-        return "一字"
+        return "竞价涨停"
     if price is not None and limit_down is not None and limit_down > 0 and price <= limit_down:
-        return "一字跌停"
+        return "竞价跌停"
     if auction.pct_chg >= FLAT_BAND:
         return "高开"
     if auction.pct_chg <= -FLAT_BAND:

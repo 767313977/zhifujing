@@ -18,7 +18,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.sector import BOARD_EXCLUDE
 from app.db import get_db, session_scope
 from app.jobs.collect_daily import (
     STOCK_FULL_DAYS,
@@ -32,11 +31,8 @@ from app.models import (
     AppUser,
     Lhb,
     LimitPool,
-    SectorBasic,
     SectorDaily,
-    SectorMember,
     StockBasic,
-    StockConcept,
     StockDaily,
     StockDde,
     TradeCalendar,
@@ -69,6 +65,7 @@ from app.services import chip, limit_rules, stock_events, trap
 from app.services.auth import Cooldown, RateLimiter, current_user
 from app.services.patterns import build_bars
 from app.services.stock_phase import load_phase
+from app.services.themes import Attribution, attribute
 from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.em_news import fetch_stock_news
 from app.sources.ifind import IfindError, normalize_code
@@ -1149,15 +1146,6 @@ def unlock(
     )
 
 
-def _is_non_theme(name: str) -> bool:
-    """「身份 / 地域 / 业绩」类标签不算题材。
-
-    名单直接用资金流榜那份 `api.sector.BOARD_EXCLUDE`（科创板、低价股、送转、
-    中报增长、地域…），**不复制第二份** —— 两处各写一遍早晚会漂移。
-    """
-    return any(word in name for word in BOARD_EXCLUDE)
-
-
 @router.get("/{code}/themes", response_model=StockThemes)
 def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
     """该股所属的开盘红精选板块，附带板块最近一个交易日的涨跌幅。
@@ -1198,60 +1186,20 @@ def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
             if row.name
         }
 
-    # ① 当前所属板块：这只票最近一次成分股快照，只留精选口径（行业板块不进「题材」）
-    member_date = session.scalar(
-        select(func.max(SectorMember.trade_date)).where(SectorMember.code == code)
-    )
-    member_names: dict[str, str] = {}
-    if member_date is not None:
-        member_rows = session.execute(
-            select(SectorMember.sector_code, SectorBasic.name)
-            .join(SectorBasic, SectorBasic.code == SectorMember.sector_code)
-            .where(
-                SectorMember.code == code,
-                SectorMember.trade_date == member_date,
-                SectorBasic.taxonomy == TAXONOMY_SELECTED,
-            )
-        ).all()
-        for sector_code, sector_name in member_rows:
-            if sector_name:
-                member_names.setdefault(sector_name, sector_code)
-
-    if member_names:
-        items = [
-            StockThemeItem(
-                concept=concept,
-                board_code=sector_code,
-                pct_chg=boards.get(concept, (None, None))[1],
-            )
-            for concept, sector_code in member_names.items()
-        ]
-    else:
-        # ② 退回旧口径：最近一次涨停所属的精选板块
-        latest = session.scalar(
-            select(func.max(StockConcept.trade_date)).where(StockConcept.code == code)
+    # ① / ② 题材归属：成分股快照优先、涨停天梯兜底，口径抽在 `services.themes.attribute`
+    # （风控「单题材集中度」用的是同一份，避免两个页面各算一套）。
+    attribution = attribute(session, [code]).get(code) or Attribution({}, ())
+    items = [
+        StockThemeItem(
+            concept=concept,
+            # 快照口径自带板块代码；天梯口径没有，按名字去板块表里对
+            board_code=sector_code or boards.get(concept, (None, None))[0],
+            pct_chg=boards.get(concept, (None, None))[1],
         )
-        concepts: list[str] = []
-        if latest is not None:
-            concepts = sorted(
-                session.scalars(
-                    select(StockConcept.concept).where(
-                        StockConcept.code == code, StockConcept.trade_date == latest
-                    )
-                )
-            )
-        items = [
-            StockThemeItem(
-                concept=concept,
-                board_code=boards.get(concept, (None, None))[0],
-                pct_chg=boards.get(concept, (None, None))[1],
-            )
-            for concept in concepts
-        ]
-
-    # 「身份 / 地域 / 业绩」类标签不算题材：剔掉，另存一份供前端做悬浮说明
-    suppressed = [item.concept for item in items if _is_non_theme(item.concept)]
-    items = [item for item in items if not _is_non_theme(item.concept)]
+        for concept, sector_code in attribution.themes.items()
+    ]
+    # 「身份 / 地域 / 业绩」类标签不算题材，另存一份供前端做悬浮说明
+    suppressed = list(attribution.suppressed)
 
     # 能对上板块的排前面，其次按板块涨跌幅降序 —— 一眼看到这只票最热的题材
     items.sort(key=lambda item: (item.board_code is None, -(item.pct_chg or 0)))

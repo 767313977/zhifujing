@@ -204,6 +204,35 @@ def _adjust(window: list[tuple[date, float, float | None]]) -> list[tuple[date, 
     return adjusted
 
 
+def open_basis(
+    session: Session, trades: list[TradeJournal]
+) -> dict[int, float | None]:
+    """未平仓交易的「买入日口径」等价现价：`{交易 id: 等价收盘价}`。
+
+    持仓页只需要「现在值多少」，但价格口径必须和交易日志一致 —— 直接用不复权
+    收盘价遇到 10 送 10 会显示 −50% 的假亏损（2026-11-01 审计 P1）。这里复用
+    `_bars` + `_adjust`，**不需要交易日历**，所以持仓页在日历还没采到的日子里
+    也能出数。
+
+    买入日没有日线（停牌 / 还没入库）时给 None —— 调用方自己决定退回什么。
+    """
+    if not trades:
+        return {}
+    codes = {trade.code for trade in trades}
+    start = min(trade.entry_date for trade in trades)
+    bars = _bars(session, codes, start)
+    result: dict[int, float | None] = {}
+    for trade in trades:
+        window = [
+            row for row in bars.get(trade.code, []) if row[0] >= trade.entry_date
+        ]
+        if not window or window[0][0] != trade.entry_date or window[0][1] <= 0:
+            result[trade.id] = None
+            continue
+        result[trade.id] = _adjust(window)[-1][1]
+    return result
+
+
 #: 判断「持仓窗口内有没有除权」的容差（等价价 ÷ 不复权收盘 与 1 的差）。
 #:
 #: 没有除权时两者只差「涨跌幅四舍五入到 0.01pp」的复利漂移：每个交易日最多约
@@ -339,6 +368,26 @@ def _metrics(
         "latest_close": window[-1][1],
         # 卖出日无日线时的口径说明（见 `_end_basis`）；正常路径是 None
         "metrics_note": basis_note,
+    }
+
+
+def metrics_for(session: Session, trades: list[TradeJournal]) -> dict[int, dict]:
+    """按 id 给一批交易现算指标（`load_enriched` 的核心部分，不做 T / 板块那套）。
+
+    计划闭环的区间统计要「这笔已平仓到底赚了多少」，口径必须与交易日志页一致：
+    用 `_metrics` 的 `return_pct`（买入日口径、按 `pct_chg` 复利），而不是
+    `exit_price / entry_price` 的原价比 —— 除权后两个页面会显示两个数。
+    """
+    if not trades:
+        return {}
+    codes = {trade.code for trade in trades}
+    start = min(trade.entry_date for trade in trades)
+    bars = _bars(session, codes, start)
+    calendar_pos = _calendar_position(session)
+    data_end = session.scalar(select(func.max(StockDaily.trade_date)))
+    return {
+        trade.id: _metrics(trade, bars.get(trade.code, []), calendar_pos, data_end)
+        for trade in trades
     }
 
 

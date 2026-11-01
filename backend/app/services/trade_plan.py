@@ -27,6 +27,7 @@ from app.models import (
 )
 from app.services.patterns import PATTERNS
 from app.services.stock_meta import industries_of, sectors_of
+from app.services.trade_journal import metrics_for
 from app.services.trading_days import next_trade_day
 from app.services.watch_scope import stock_watch_codes
 from app.sources.base import chunked
@@ -380,9 +381,14 @@ def create_from_signal(
 def stats(session: Session, user_id: int, start: date, end: date) -> dict:
     """周度 / 区间执行质量（FEAT-PLAN-LOOP D）。
 
-    只统计**区间内计划日**的计划；执行率 = 已执行 ÷（总数 − 仅观察）。
+    只统计**区间内计划日**的计划；执行率 = 已执行 ÷（总数 − 仅观察 − 待执行）。
+    待执行（计划日就是今天、还没回填）不该算进分母 —— 否则盘中看执行率永远偏低
+    （2026-11-01 审计 P2）。
+
     「按计划执行率」= `followed_plan=True` ÷ 已执行。盈亏只用**关联日志且已平仓**
-    的记录算（`exit_price` 非空），没有就返回 null，不拿 0 顶。
+    的记录算，口径与交易日志页一致（`trade_journal.metrics_for` 的买入日复利
+    `return_pct`，不是 `exit_price / entry_price` 的原价比），没有就返回 null，
+    不拿 0 顶。做 T 收益不并入（日志页也是分开列）。
     """
     plans = list(
         session.scalars(
@@ -398,7 +404,7 @@ def stats(session: Session, user_id: int, start: date, end: date) -> dict:
     counts = {key: 0 for key in PLAN_STATUSES}
     for plan in plans:
         counts[plan.status or "observe"] = counts.get(plan.status or "observe", 0) + 1
-    observable = len(plans) - counts["observe"]
+    observable = len(plans) - counts["observe"] - counts["pending"]
     executed = counts["executed"]
     followed = sum(1 for plan in plans if plan.actual_price is not None and plan.followed_plan)
 
@@ -415,8 +421,12 @@ def stats(session: Session, user_id: int, start: date, end: date) -> dict:
         for journal in journals
         if journal.entry_price and journal.exit_price
     ]
+    # 盈亏走交易日志同一套口径（买入日复利），除权后两个页面不会对不上
+    metrics = metrics_for(session, closed)
     returns = [
-        (journal.exit_price / journal.entry_price - 1) * 100 for journal in closed
+        item["return_pct"]
+        for item in metrics.values()
+        if item["return_pct"] is not None
     ]
     wins = sum(1 for value in returns if value > 0)
 
@@ -428,9 +438,14 @@ def stats(session: Session, user_id: int, start: date, end: date) -> dict:
     def rate(part: int, whole: int) -> float | None:
         return round(part / whole * 100, 1) if whole else None
 
-    note = None
+    notes: list[str] = []
     if not closed:
-        note = "区间内没有已平仓的关联日志，只能看执行率；平仓后再回来看盈亏。"
+        notes.append("区间内没有已平仓的关联日志，只能看执行率；平仓后再回来看盈亏。")
+    elif not returns:
+        notes.append("关联日志已平仓，但买入日 / 卖出日的日线还没入库，暂时算不出收益。")
+    if counts["pending"]:
+        notes.append(f"{counts['pending']} 条待执行计划未计入执行率分母。")
+    note = "".join(notes) or None
 
     return {
         "start": start,
@@ -447,7 +462,7 @@ def stats(session: Session, user_id: int, start: date, end: date) -> dict:
         "follow_rate": rate(followed, executed),
         "linked_journals": len(journals),
         "closed": len(closed),
-        "win_rate": rate(wins, len(closed)),
+        "win_rate": rate(wins, len(returns)),
         "avg_return_pct": round(sum(returns) / len(returns), 2) if returns else None,
         "by_deviation": dict(by_deviation),
         "note": note,

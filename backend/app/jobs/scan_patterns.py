@@ -80,6 +80,7 @@ from app.models import (
 # 东财/腾讯两条兜底线的抓取逻辑都抽到了 `sources/` —— 本地回测往回补多年历史
 # （scripts/backfill_history.py）也要用它们。口径（不复权价 + 真实涨跌幅）只能有一份。
 from app.sources.eastmoney import fetch_daily as _fetch_daily_eastmoney
+from app.sources.eastmoney import push2his_enabled
 from app.sources.tencent import fetch_daily as _fetch_tencent_daily
 from app.services.patterns import (
     MIN_SCORE,
@@ -688,6 +689,8 @@ def _sync_codes_three_levels(
 
     **三道闸门**（为同时省时间与配额；阈值见 `Settings` 的注释）：
 
+    - **东财默认关闭**：`push2his_enabled()` 为假（未设 `ENABLE_PUSH2HIS`，线上默认）
+      时整级跳过，实际顺序是腾讯 → iFinD；
     - **东财熔断**：连续失败 `wudao_em_breaker_failures` 次就本轮不再试它。
       云端连不上东财直连（1.7 / 8.51.3 记过），而这里是**逐只**补 —— 不熔断的话每只都要
       等一次约 10 秒的超时。实测 09-24：48 只候选白等约 8 分钟，且最终全部落到 iFinD。
@@ -731,7 +734,16 @@ def _sync_codes_three_levels(
     skipped_quota = 0
     skip_ifind = False
     em_failures = 0
-    em_dead = False
+    # push2his 默认关闭（见 `sources/eastmoney` 的模块说明）：关着的时候别进 try ——
+    # 否则每只候选都要走一遍「返回空 → 打一条 info」的无用调用，几十条日志把真正
+    # 有用的信息淹掉（2026-11-01 审计 P3）。
+    em_dead = not push2his_enabled()
+    if em_dead:
+        logger.info(
+            "补日线跳过东财：push2his 未启用（ENABLE_PUSH2HIS），%d 只%s只走腾讯 / iFinD",
+            len(need),
+            label,
+        )
     tx_failures = 0
     tx_dead = False
     for code in sorted(need):

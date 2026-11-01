@@ -417,7 +417,9 @@ def _raws_at(data: _Dataset, index: int) -> list[_Raw]:
                 flow5=flows[5],
                 flow20=flow20,
                 flow20_ratio=flow_ratio,
-                bars=len(series.pos),
+                # 截至这一天**已上市**的交易日数：重放历史某天时不能拿全量日线数，
+                # 否则「上市不足 60 日」的标签会偏乐观（2026-11-01 审计 P3）
+                bars=pos + 1,
                 new_high=series.hi60[pos],
             )
         )

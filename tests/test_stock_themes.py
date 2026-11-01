@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
-from app.api.stock import _is_non_theme, themes
+from app.api.stock import themes
 from app.models import (
     Base,
     SectorBasic,
@@ -19,6 +19,7 @@ from app.models import (
     StockBasic,
     StockConcept,
 )
+from app.services.themes import is_non_theme
 
 MEMBER_DAY = date(2026, 10, 19)
 BOARD_DAY = date(2026, 10, 21)
@@ -151,7 +152,7 @@ def test_fallback_branch_suppresses_when_filtered_empty(db):
 def test_event_labels_are_filtered():
     """2026-10-21 补进共享黑名单的融资 / 事件型标签。"""
     for name in ("再融资", "可转债", "分拆上市预期", "实控人变更", "壳资源"):
-        assert _is_non_theme(name)
+        assert is_non_theme(name)
 
 
 def test_unknown_code_returns_empty(db):

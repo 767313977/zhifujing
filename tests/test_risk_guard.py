@@ -3,13 +3,15 @@
 from datetime import date
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, delete
 from sqlalchemy.orm import Session
 
 from app.models import (
     AppUser,
     Base,
     MarketSentiment,
+    SectorBasic,
+    SectorMember,
     StockConcept,
     TradeJournal,
 )
@@ -72,6 +74,54 @@ def test_defaults_and_overheat(db):
     kinds = {(item["kind"], item["name"]) for item in data["concentration"]}
     assert ("position", "测试A") in kinds
     assert ("theme", "机器人") in kinds
+
+
+def test_theme_concentration_reads_sector_member(db):
+    """没涨停过的持仓也要能归到题材：`stock_concept` 只记当日涨停股，查不到就静默跳过。"""
+    session, user = db
+    session.add_all(
+        [
+            SectorBasic(code="801100", name="白酒", taxonomy="kph_selected"),
+            SectorMember(
+                trade_date=DAY, sector_code="801100", code="600519", name="测试C"
+            ),
+            TradeJournal(
+                user_id=user.id,
+                code="600519",
+                name="测试C",
+                entry_date=DAY,
+                entry_price=100.0,
+                position_pct=60.0,
+            ),
+        ]
+    )
+    session.commit()
+
+    data = risk.status(session, user.id)
+    kinds = {(item["kind"], item["name"]) for item in data["concentration"]}
+    assert ("theme", "白酒") in kinds
+
+
+def test_missing_theme_is_disclosed(db):
+    """整只票查不到题材时，必须写清「这几笔没进题材集中度」，不能静默跳过。"""
+    session, user = db
+    session.execute(delete(StockConcept))
+    session.commit()
+    risk.save_pref(
+        session,
+        user.id,
+        {
+            "max_position_pct": 80.0,
+            "max_theme_pct": 90.0,
+            "heat_consecutive": 10,
+            "heat_temperature": 100,
+            "strict_mode": False,
+        },
+    )
+
+    data = risk.status(session, user.id)
+    assert data["concentration"] == []
+    assert "3 笔持仓查不到题材归属" in data["message"]
 
 
 def test_missing_position_pct_is_disclosed(db):

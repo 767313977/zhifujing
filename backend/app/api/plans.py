@@ -313,7 +313,10 @@ def execute_plan(
             position_pct=payload.position_pct,
             reason_type=reason_type,
             reason_key=plan.source,
-            reason_text=plan.deviation,
+            # 偏差（追高 / 提前买…）是**执行质量**，不是买入理由：只留在
+            # `plan.deviation`，日志的理由由 `reason_key` 指向计划来源
+            # （2026-11-01 审计 P2）
+            reason_text=None,
             plan_stop=plan.stop_price,
             plan_id=plan.id,
             note=(payload.note or "").strip() or None,
@@ -323,8 +326,6 @@ def execute_plan(
         journal.entry_date = entry_date
         journal.entry_price = float(payload.actual_price)
         journal.plan_stop = plan.stop_price
-        if plan.deviation:
-            journal.reason_text = plan.deviation
         if payload.shares is not None:
             journal.shares = payload.shares
         if payload.position_pct is not None:

@@ -4,7 +4,8 @@
 - 一键生成不覆盖用户改过的计划（重复点击返回原计划）；
 - 计划状态落库并自动同步，手动改（取消/已执行）优先；
 - 回填实际价会写一笔关联日志，重复回填只更新同一笔；
-- 统计分母排除「仅观察」，没有平仓日志时盈亏给 null 而不是 0。
+- 统计分母排除「仅观察」与「待执行」，没有平仓日志时盈亏给 null 而不是 0；
+- 盈亏走交易日志的买入日复利口径，除权后不会和日志页对不上。
 """
 
 from datetime import date, timedelta
@@ -18,6 +19,7 @@ from app.models import (
     Base,
     PatternHit,
     StockBasic,
+    StockDaily,
     TradeCalendar,
     TradeJournal,
     TradePlan,
@@ -198,21 +200,27 @@ def test_execute_creates_one_linked_journal(db):
     )
     assert len(journals) == 1
     assert journals[0].entry_price == 10.3
-    assert journals[0].reason_text == "追高"
+    # 偏差是执行质量，不是买入理由：只留在计划上，不写进日志的 reason_text
+    assert journals[0].reason_text is None
+    assert journals[0].reason_key == "wudao_start"
     refreshed = session.get(TradePlan, plan.id)
     assert refreshed.status == "executed"
     assert refreshed.status_source == "manual"
+    assert refreshed.deviation == "追高"
 
 
 def test_stats_excludes_observe_and_reports_rates(db):
     session, user_id, _ = db
     today = today_cn()
+    # 用交易日历里的两天（避开周末），盈亏口径要走日线复利
+    entry_day = [day for day in CALENDAR if day < TODAY][-2]
+    exit_day = [day for day in CALENDAR if day < TODAY][-1]
     session.add_all(
         [
             TradePlan(
                 user_id=user_id,
                 code="300001",
-                plan_date=today - timedelta(days=2),
+                plan_date=entry_day,
                 buy_price=10.0,
                 stop_price=9.0,
                 actual_price=10.1,
@@ -224,7 +232,7 @@ def test_stats_excludes_observe_and_reports_rates(db):
             TradePlan(
                 user_id=user_id,
                 code="300002",
-                plan_date=today - timedelta(days=2),
+                plan_date=entry_day,
                 buy_price=8.0,
                 stop_price=7.0,
                 observe_only=True,
@@ -237,16 +245,20 @@ def test_stats_excludes_observe_and_reports_rates(db):
             TradePlan.user_id == user_id, TradePlan.code == "300001"
         )
     )
-    session.add(
-        TradeJournal(
-            user_id=user_id,
-            code="300001",
-            entry_date=today - timedelta(days=2),
-            entry_price=10.0,
-            exit_date=today - timedelta(days=1),
-            exit_price=11.0,
-            plan_id=plan.id,
-        )
+    session.add_all(
+        [
+            StockDaily(trade_date=entry_day, code="300001", close=10.0, pct_chg=0.0),
+            StockDaily(trade_date=exit_day, code="300001", close=11.0, pct_chg=10.0),
+            TradeJournal(
+                user_id=user_id,
+                code="300001",
+                entry_date=entry_day,
+                entry_price=10.0,
+                exit_date=exit_day,
+                exit_price=11.0,
+                plan_id=plan.id,
+            ),
+        ]
     )
     session.commit()
 
@@ -266,6 +278,47 @@ def test_stats_excludes_observe_and_reports_rates(db):
     assert data["note"] is None
 
 
+def test_stats_return_follows_adjusted_basis(db):
+    """除权后不能拿 `exit_price / entry_price` 原价比（10 送 10 会显示 −50%）。"""
+    session, user_id, _ = db
+    entry_day = [day for day in CALENDAR if day < TODAY][-2]
+    exit_day = [day for day in CALENDAR if day < TODAY][-1]
+    plan = TradePlan(
+        user_id=user_id,
+        code="300001",
+        plan_date=entry_day,
+        buy_price=10.0,
+        stop_price=9.0,
+        actual_price=10.0,
+        followed_plan=True,
+        status="executed",
+        status_source="manual",
+    )
+    session.add(plan)
+    session.flush()
+    session.add_all(
+        [
+            # 买入日 10 元；第二天 10 送 10 → 不复权收盘 5 元，真实收益 0
+            StockDaily(trade_date=entry_day, code="300001", close=10.0, pct_chg=0.0),
+            StockDaily(trade_date=exit_day, code="300001", close=5.0, pct_chg=0.0),
+            TradeJournal(
+                user_id=user_id,
+                code="300001",
+                entry_date=entry_day,
+                entry_price=10.0,
+                exit_date=exit_day,
+                exit_price=5.0,
+                plan_id=plan.id,
+            ),
+        ]
+    )
+    session.commit()
+
+    data = trade_plan.stats(session, user_id, TODAY - timedelta(days=10), TODAY)
+    assert data["avg_return_pct"] == 0.0
+    assert data["win_rate"] == 0.0
+
+
 def test_stats_without_closed_journal_gives_null_not_zero(db):
     session, user_id, _ = db
     today = today_cn()
@@ -280,7 +333,10 @@ def test_stats_without_closed_journal_gives_null_not_zero(db):
     )
     session.commit()
     data = trade_plan.stats(session, user_id, today, today)
-    assert data["execution_rate"] == 0.0
+    # 计划日就是今天、还没回填 → 待执行，不进分母；没有任何可观察计划时分母为 0
+    assert data["pending"] == 1
+    assert data["observable"] == 0
+    assert data["execution_rate"] is None
     assert data["win_rate"] is None
     assert data["avg_return_pct"] is None
-    assert data["note"]
+    assert "待执行" in data["note"]
