@@ -145,6 +145,111 @@ function readPhases(raw: string | null): string[] {
     .filter((item) => PHASES.some((phase) => phase.value === item))
 }
 
+/**
+ * 一键预设（2026-11-01）。
+ *
+ * 只做「把几个筛选状态一次性摆好」：形态 key 必须与后端 `PATTERNS` 一致，
+ * 判定逻辑一行没改、也不新增接口。`boards` 不写 = 用 `DEFAULT_BOARDS`。
+ */
+type PatternPreset = {
+  id: string
+  label: string
+  title: string
+  patterns: string[]
+  boards?: Board[]
+  days: number
+  hideWeak: boolean
+  showExperimental: boolean
+  minScore: number
+}
+
+const PATTERN_PRESETS: PatternPreset[] = [
+  {
+    id: 'daily_effective',
+    label: '日常有效',
+    title: '仍有效优先：堆量上涨后缩量、圆弧底、做T、均线粘合；隐藏走弱',
+    patterns: ['pile_up_shrink', 'round_bottom', 't_buy', 'ma_squeeze'],
+    days: 1,
+    hideWeak: true,
+    showExperimental: true,
+    minScore: 0,
+  },
+  {
+    id: 'theme_relay',
+    label: '主线接力',
+    title: '悟道盯/预案 + 放量上涨/突破前高/平台突破；仅创业+科创；隐藏走弱',
+    patterns: [
+      'wudao_sample',
+      'wudao_start',
+      'volume_surge',
+      'volume_breakout',
+      'platform_breakout',
+    ],
+    boards: ['创业板', '科创板'],
+    days: 1,
+    hideWeak: true,
+    showExperimental: false,
+    minScore: 0,
+  },
+  {
+    id: 'weak_t',
+    label: '弱市做T',
+    title: '做T + 堆量后缩量 + 圆弧底；近5日；隐藏走弱',
+    patterns: ['t_buy', 'pile_up_shrink', 'round_bottom'],
+    days: 5,
+    hideWeak: true,
+    showExperimental: false,
+    minScore: 0,
+  },
+]
+
+/** 两个列表是不是同一集合（顺序无关；重复项按集合看待）。 */
+function sameSet(left: string[], right: string[]): boolean {
+  const a = new Set(left)
+  const b = new Set(right)
+  if (a.size !== b.size) return false
+  for (const item of a) if (!b.has(item)) return false
+  return true
+}
+
+/** URL 里的布尔开关：只有 `1` 算开，其余（缺省 / 0 / 乱写）都当关。 */
+function readFlag(raw: string | null): boolean {
+  return raw === '1'
+}
+
+/** URL 里的评分下限：只接受 0–100 的有限数，其余回落 0（与滑块的区间一致）。 */
+function readMinScore(raw: string | null): number {
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? Math.min(Math.round(value), 100) : 0
+}
+
+/**
+ * 当前筛选状态与哪个预设「等效」（顺序无关）。
+ *
+ * 用它**推导**高亮与 `preset` 参数，而不是单独存一份 preset 状态：
+ * 手动改任意一个 chip 后状态不再等效，按钮自然取消选中、URL 里的 `preset` 也随之删掉
+ * —— 不会出现「按钮亮着但筛选其实已经改了」的双源问题。
+ */
+function presetOf(state: {
+  picked: string[]
+  days: number
+  boards: Board[]
+  hideWeak: boolean
+  showExperimental: boolean
+  minScore: number
+}): string | null {
+  const found = PATTERN_PRESETS.find(
+    (preset) =>
+      sameSet(state.picked, preset.patterns) &&
+      state.days === preset.days &&
+      sameSet(state.boards, preset.boards ?? DEFAULT_BOARDS) &&
+      state.hideWeak === preset.hideWeak &&
+      state.showExperimental === preset.showExperimental &&
+      state.minScore === preset.minScore,
+  )
+  return found?.id ?? null
+}
+
 /** 解析 URL 里的 `boards`（逗号分隔）。**空值 / 全是非法值一律回落到默认**
  * （`DEFAULT_BOARDS`，与后端那道闸门同一范围）—— 而不是空列表
  * （空列表 = 一只都不显示，最难理解）。
@@ -416,10 +521,12 @@ export default function Patterns() {
   const [scorecard, setScorecard] = useState<PatternScorecardOut | null>(null)
   /** 可行动摘要（FEAT-PATTERN-ACTIONABLE）：仍有效 / 走弱 / 样本不足 */
   const [action, setAction] = useState<PatternActionSummary | null>(null)
-  /** 隐藏走弱形态（只影响 chip 列表，不改查询与注册表） */
-  const [hideWeak, setHideWeak] = useState(false)
-  /** 显示实验形态（FEAT-PATTERN-EXPERIMENTAL）：默认隐藏，不删注册表 */
-  const [showExperimental, setShowExperimental] = useState(false)
+  /** 隐藏走弱形态（只影响 chip 列表，不改查询与注册表）。默认关；URL 的 hide_weak=1 可打开 */
+  const [hideWeak, setHideWeak] = useState(() => readFlag(params.get('hide_weak')))
+  /** 显示实验形态（FEAT-PATTERN-EXPERIMENTAL）：默认隐藏；URL 的 experimental=1 可打开 */
+  const [showExperimental, setShowExperimental] = useState(() =>
+    readFlag(params.get('experimental')),
+  )
   // 选中的形态：**多选**（交集）。空数组 = 默认视图（全市场按评分取前 HIT_LIMIT 只）
   const [picked, setPicked] = useState<string[]>(() => splitPatterns(params.get('patterns')))
   /**
@@ -435,7 +542,7 @@ export default function Patterns() {
   useEffect(() => {
     pickedRef.current = picked
   }, [picked])
-  const [minScore, setMinScore] = useState(0)
+  const [minScore, setMinScore] = useState(() => readMinScore(params.get('min_score')))
   // 「近 N 日」窗口：>1 时后端把窗口内同一只票的重复命中合并成一条（见 `WINDOWS`）
   const [days, setDays] = useState(() => {
     const raw = Number(params.get('days'))
@@ -469,9 +576,10 @@ export default function Patterns() {
     if (date) next.set('date', date)
     else next.delete('date')
     // 「看图的那只票」刻意不写进 URL，原因见 ACTIVE_KEY 上面的说明
-    if (picked.length > 0) next.set('patterns', picked.join(','))
+    // 形态 key **排序后**再写：集合相同、顺序不同不该产生一条无意义的地址 diff
+    if (picked.length > 0) next.set('patterns', [...picked].sort().join(','))
     else next.delete('patterns')
-    // 「近 N 日」写进地址：换了窗口的名单是可以分享的（评分下限则故意不写，见上）
+    // 「近 N 日」写进地址：换了窗口的名单是可以分享的
     if (days > 1) next.set('days', String(days))
     else next.delete('days')
     // 板块：与默认（创业板 + 科创板）一致时不写进地址，少点噪声；改过才写
@@ -481,8 +589,31 @@ export default function Patterns() {
     // 阶段判定筛选：空 = 不筛（默认），不写进地址
     if (phases.length > 0) next.set('phase', [...phases].sort().join(','))
     else next.delete('phase')
+    // 三个开关与评分下限（2026-11-01 加）：缺省值不写，URL 尽量短
+    if (hideWeak) next.set('hide_weak', '1')
+    else next.delete('hide_weak')
+    if (showExperimental) next.set('experimental', '1')
+    else next.delete('experimental')
+    if (minScore > 0) next.set('min_score', String(minScore))
+    else next.delete('min_score')
+    // 预设：不单独存状态，**由当前筛选推导** —— 手动改 chip 后这里自然变 null，
+    // 地址里的 preset 随同被删，不会出现「按钮还亮着但筛选已经改了」
+    const presetId = presetOf({ picked, days, boards, hideWeak, showExperimental, minScore })
+    if (presetId) next.set('preset', presetId)
+    else next.delete('preset')
     if (next.toString() !== params.toString()) setParams(next, { replace: true })
-  }, [date, picked, days, boards, phases, params, setParams])
+  }, [
+    date,
+    picked,
+    days,
+    boards,
+    phases,
+    hideWeak,
+    showExperimental,
+    minScore,
+    params,
+    setParams,
+  ])
 
   useEffect(() => {
     api.dates().then(setDates).catch(() => setDates([]))
@@ -677,6 +808,30 @@ export default function Patterns() {
   // 只把前 RENDER_LIMIT 行放进 DOM（排序结果本身不截断，← → 翻票与复制代码仍用全量）
   const rendered = useMemo(() => shown.slice(0, RENDER_LIMIT), [shown])
   const hiddenCount = shown.length - rendered.length
+
+  /** 当前状态等效于哪个预设（只用于按钮高亮，以及 URL 里的 preset 参数）。 */
+  const activePresetId = presetOf({
+    picked,
+    days,
+    boards,
+    hideWeak,
+    showExperimental,
+    minScore,
+  })
+
+  /**
+   * 应用一键预设：**覆盖**而不是合并 —— 预设本身就是「一整套状态」。
+   * 同时清空阶段筛选：预设里没有阶段维度，留着会让结果比预期少一截。
+   */
+  const applyPreset = (preset: PatternPreset) => {
+    setPicked([...preset.patterns])
+    setDays(preset.days)
+    setBoards(preset.boards ? [...preset.boards] : [...DEFAULT_BOARDS])
+    setHideWeak(preset.hideWeak)
+    setShowExperimental(preset.showExperimental)
+    setMinScore(preset.minScore)
+    setPhases([])
+  }
 
   /**
    * 把当前筛选结果的代码复制下来（每行一个），方便导进同花顺的自选股。
@@ -915,6 +1070,40 @@ export default function Patterns() {
           delay={40}
         >
           <div className="space-y-2 px-4 py-3">
+            {/* 一键预设（2026-11-01）：点一下把形态/窗口/板块/三个开关整套摆好；
+                当前状态与某个预设等效时该按钮高亮，手动改任一 chip 即自动取消。 */}
+            <div className="flex flex-wrap items-center gap-1.5 border-b border-line-soft pb-2">
+              <span className="mr-1 text-[12px] tracking-[0.08em] text-fg-dim">预设</span>
+              {PATTERN_PRESETS.map((preset) => {
+                const on = activePresetId === preset.id
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    title={preset.title}
+                    aria-pressed={on}
+                    onClick={() => applyPreset(preset)}
+                    className={[
+                      'border px-2 py-[3px] text-[13px] transition-colors',
+                      on
+                        ? 'border-accent/60 bg-accent/10 text-accent'
+                        : 'border-line text-fg-muted hover:text-fg',
+                    ].join(' ')}
+                  >
+                    {preset.label}
+                  </button>
+                )
+              })}
+              <button
+                type="button"
+                onClick={() => setPicked([])}
+                disabled={picked.length === 0}
+                title="清空已选形态（窗口 / 板块 / 开关保持不变）"
+                className="ml-1 border border-line px-2 py-[3px] text-[13px] text-fg-dim transition-colors hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                清空形态
+              </button>
+            </div>
             {groups.map(([group, items]) => (
               <div key={group} className="flex flex-wrap items-center gap-2">
                 <span className="w-24 shrink-0 text-[13px] text-fg-dim">{group}</span>
