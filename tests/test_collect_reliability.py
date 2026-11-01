@@ -500,6 +500,11 @@ def test_run_late_recomputes_fear_greed_before_pushes(monkeypatch):
     sched._tail_failures = []
     called: list[str] = []
     monkeypatch.setattr(sched, "_catch_up_late", lambda *a, **k: None)
+    # `_run_late_unguarded` 2026-11-01 起改走带日历自愈的 `is_trade_day_fresh`，
+    # 它会去**真实库**查 trade_calendar。CI 是新环境（没有 backend/data/fupan.db 里的表），
+    # 不替换就会报 `no such table: trade_calendar`（CI #234 的失败就是这条）。
+    # 本用例只验证「重算恐贪 → 推送 → 转债提醒」的顺序，与日历无关，直接放行。
+    monkeypatch.setattr(scheduler, "is_trade_day_fresh", lambda day: True)
     monkeypatch.setattr(scheduler, "tail_done", lambda day: True)
     monkeypatch.setattr(sched, "_push_if_ready", lambda *a, **k: called.append("push"))
     monkeypatch.setattr(sched, "_push_cb_redeem", lambda *a, **k: called.append("cb"))
