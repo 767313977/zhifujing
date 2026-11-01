@@ -121,8 +121,10 @@ function NavEntry({ item }: { item: NavItem }) {
       className={({ isActive }) =>
         [
           'relative flex items-center px-3 text-[13px] whitespace-nowrap transition-colors',
-          // 1024 起收紧密度（与「导航必须显式 basis-0 grow」无关，纯省宽度）
-          'lg:px-1.5 lg:text-[12px]',
+          // ≥1024 改 14px（规范 v1，2026-11-01 复查后改）：入口收纳成 12 个之后
+          // 宽度已经够用，旧写法把桌面端压到 12px 是「放不下」年代的遗留。
+          // 内边距用 8px（不是规范的 10px）：给 1280 单行留余量。
+          'lg:px-2 lg:text-[14px]',
           isActive ? 'text-fg' : 'text-fg-muted hover:text-fg',
         ].join(' ')
       }
@@ -161,7 +163,8 @@ function GroupEntry({
         onClick={onToggle}
         className={[
           'relative flex items-center gap-1 px-3 text-[13px] whitespace-nowrap transition-colors',
-          'lg:px-1.5 lg:text-[12px]',
+          // 与固定项同一档（14px / 8px），两排按钮的视觉重量必须一致
+          'lg:px-2 lg:text-[14px]',
           active || open ? 'text-fg' : 'text-fg-muted hover:text-fg',
         ].join(' ')}
       >
@@ -191,10 +194,12 @@ function GroupEntry({
               role="menuitem"
               className={({ isActive }) =>
                 [
-                  'block px-3 py-1.5 text-[13px] whitespace-nowrap transition-colors',
+                  // 当前项：浅蓝底 + 左侧 2px 竖条 + 加粗（规范 v1，2026-11-01 复查后补）。
+                  // `border-l-2` 两种状态都写，切换时文字不会被 2px 推一下。
+                  'block border-l-2 px-3 py-1.5 text-[13px] whitespace-nowrap transition-colors',
                   isActive
-                    ? 'text-accent'
-                    : 'text-fg-muted hover:bg-ink-850 hover:text-fg',
+                    ? 'border-accent bg-accent/[0.08] font-semibold text-accent'
+                    : 'border-transparent text-fg-muted hover:bg-ink-850 hover:text-fg',
                 ].join(' ')
               }
             >
@@ -289,7 +294,9 @@ export default function Layout({ children, toolbar }: LayoutProps) {
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-20 border-b border-line bg-ink-950/95 backdrop-blur-sm">
+      {/* 顶栏：纯白底、无模糊（规范 v1：禁止玻璃拟态；2026-11-01 复查后改）。
+          高度保持 52px —— 48px 会把 14px 导航挤得太紧。 */}
+      <header className="sticky top-0 z-20 border-b border-line bg-ink-900">
         {/*
           折行断点是 xl（1280）：以下两行（第一行品牌 + 导航，第二行操作区），
           1280 及以上回到一行。这一条从 2026-09-28 起就是如此，保持不动。

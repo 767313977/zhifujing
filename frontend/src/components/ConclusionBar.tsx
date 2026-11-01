@@ -36,7 +36,7 @@ export default function ConclusionBar({
             </div>
           )}
         </div>
-        <div className="num ml-auto flex flex-wrap items-baseline gap-x-5 gap-y-1">
+        <div className="num ml-auto flex flex-wrap items-baseline gap-x-4 gap-y-1">
           {stats}
         </div>
       </div>
@@ -44,7 +44,9 @@ export default function ConclusionBar({
   )
 }
 
-/** 结论条里的一个「标签 + 数值」。 */
+/** 结论条里的一个「标签 + 数值」。
+ *  数值放大到 20px / 600（规范 v1）：标签保持 12px，靠**字号与字重**把「结论」这一层
+ *  从正文里拎出来 —— 原来 13px 和普通表格数字一样大，层级出不来。 */
 export function ConclusionStat({
   label,
   value,
@@ -59,7 +61,9 @@ export function ConclusionStat({
   return (
     <span className="inline-flex items-baseline gap-1.5" title={title}>
       <span className="text-[12px] text-fg-dim">{label}</span>
-      <span className={`num text-[13px] ${tone ?? 'text-fg'}`}>{value}</span>
+      <span className={`num text-[20px] leading-tight font-semibold ${tone ?? 'text-fg'}`}>
+        {value}
+      </span>
     </span>
   )
 }
