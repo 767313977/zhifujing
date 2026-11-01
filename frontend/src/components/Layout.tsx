@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ReactNode, Ref } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
@@ -12,65 +12,106 @@ interface NavItem {
   end?: boolean
 }
 
-const NAV: NavItem[] = [
+/**
+ * 固定项（规范 v1 §4.1，2026-11-01）：**顺序是用户点名的，不要调换**。
+ *
+ * 7 个入口全是一天里反复用的页面：复盘 → 盘前 → 涨停 / 板块 → 选股名单 → 自选。
+ * 其余入口按领域收进 `GROUPS`，**一个都没删**，URL 与书签全部不变。
+ */
+const PINNED: NavItem[] = [
   { to: '/', label: '今日复盘', end: true },
   // 盘前 / 开盘（FEAT-PREMARKET，2026-10-31）：服务 9:15–10:00 的短线习惯，
   // 纯读库（昨日涨停今开 + 悟道名单 + 自选），不做分时盯盘。
   { to: '/premarket', label: '盘前' },
-  { to: '/sentiment', label: '情绪周期' },
-  // 估值分位（2026-10-23 用户要求）：核心指数 PE/PB 的十年分位与估值温度
-  { to: '/valuation', label: '估值分位' },
-  { to: '/sectors', label: '板块题材' },
-  // 竞价强度（2026-10-11 用户要求「放在涨停复盘前边」）：集合竞价的涨幅 / 金额 /
-  // 量比 / 换手，数据来自腾讯批量行情逐分钟采样（见后端 jobs/collect_auction.py）。
-  { to: '/auction', label: '竞价强度' },
   { to: '/limit-up', label: '涨停复盘' },
-  { to: '/funds', label: '资金面' },
-  // ⚠️ `end: true` 是必须的：下面 `胜率跟踪` 挂在 `/patterns/track` 下，不写的话
-  // 站在跟踪页时「形态选股」也会一起高亮（NavLink 默认按前缀匹配）
+  { to: '/sectors', label: '板块题材' },
+  // ⚠️ `end: true` 是必须的：`胜率跟踪` 挂在 `/patterns/track` 下（现在收在「选股」组里），
+  // 不写的话站在跟踪页时「形态选股」也会一起高亮（NavLink 默认按前缀匹配）
   { to: '/patterns', label: '形态选股', end: true },
-  { to: '/patterns/track', label: '胜率跟踪' },
-  // 选股池（2026-10-24 用户要求）：首板一进二候选 + RPS 相对强度榜
-  { to: '/pools', label: '选股池' },
-  // 可转债 T+0 观察池（2026-10-30 用户要求）：硬门槛 + 打分，只做盘后候选
-  { to: '/cb', label: '可转债' },
-  // ETF 筛选（2026-10-31 用户要求）：紧挨「可转债」放，独立页面 /etf
-  { to: '/etf', label: 'ETF' },
-  { to: '/watchlist', label: '自选股' },
-  // 交易日志（2026-10-18 清单 #1）：复盘自己的买卖，而不是只看市场。
-  { to: '/journal', label: '交易日志' },
-  // 明日计划（2026-10-18 清单 #2）：过 X 买、破 Y 放弃，收盘自动核对。
-  { to: '/plans', label: '明日计划' },
-  // 持仓（FEAT-POSITIONS，2026-10-31）：手工持仓，复用交易日志未平仓记录。
-  { to: '/positions', label: '持仓' },
-  // 悟道之路（2026-10-08 用户要求加在「自选股」之后）。
-  // ⚠️ 一开始做成了**指向 GitHub 仓库的外链**，用户随即反馈「点进去还是跳转」——
-  // 他要的是站内的选股池页面。现在判定逻辑已经移植进来（`services/patterns.py` 的
-  // `wudao_*` / `pile_wash_*` / `huabao_early`），所以这里通向站内 `/wudao`；
-  // 仓库地址挪到那个页面里当「出处」链接。别再改回外链。
+  // 悟道之路（2026-10-08 用户要求）：判定逻辑已移植进站内，别再改回 GitHub 外链。
   { to: '/wudao', label: '悟道之路' },
-  // 个股异动（2026-10-09 用户要求加在「悟道之路」与「个股分析」**之间**）：
-  // 复刻原型的「豆包异动图谱」，数据全来自本站库（涨停池 + 本地日线），不外链。
-  { to: '/anomaly', label: '个股异动' },
-  // 个股分析（2026-10-09 用户要求「单独做个页面，放在悟道之路的右侧」）：
-  // 就是把原型那个「查票分析」框搬进站内 —— 输代码 / 名称 / 拼音首字母，出阶段判定。
-  { to: '/stock-analysis', label: '个股分析' },
-  { to: '/settings', label: '数据管理' },
+  { to: '/watchlist', label: '自选股' },
 ]
 
 /**
- * 顶栏导航：**16 项全部平铺**，放不下就横向滚动。
+ * 分组（规范 v1 §7.4）：复盘 / 选股 / 交易 / 个股 / 系统。
  *
- * 2026-10-23 曾改成「主项 + 更多 ▾」收纳（理由是 1024–1440 下会被裁切，而滚动条
- * 被藏起来了）。2026-10-24 用户明确要求「不要压缩，能放得下」—— 他的屏幕放得下，
- * 宁可在窄屏上横向滚动，也不要多一次点击。所以这里回到全部平铺。
+ * 每个入口**只出现一次**（固定项与分组不重复），点开是**下拉菜单**而不是 hover ——
+ * 鼠标在顶栏横向扫过时不该弹出一堆菜单（2026-11-01 规范要求）。
+ */
+const GROUPS: { key: string; label: string; items: NavItem[] }[] = [
+  {
+    key: 'review',
+    label: '复盘',
+    items: [
+      { to: '/sentiment', label: '情绪周期' },
+      { to: '/auction', label: '竞价强度' },
+      { to: '/funds', label: '资金面' },
+      { to: '/valuation', label: '估值分位' },
+    ],
+  },
+  {
+    key: 'pick',
+    label: '选股',
+    items: [
+      { to: '/pools', label: '选股池' },
+      { to: '/patterns/track', label: '胜率跟踪' },
+      { to: '/cb', label: '可转债' },
+      { to: '/etf', label: 'ETF' },
+    ],
+  },
+  {
+    key: 'trade',
+    label: '交易',
+    items: [
+      { to: '/journal', label: '交易日志' },
+      { to: '/plans', label: '明日计划' },
+      { to: '/positions', label: '持仓' },
+    ],
+  },
+  {
+    key: 'stock',
+    label: '个股',
+    items: [
+      { to: '/anomaly', label: '个股异动' },
+      { to: '/stock-analysis', label: '个股分析' },
+    ],
+  },
+  {
+    // 「系统」组**只给管理员**：数据管理页能触发采集（烧 iFinD 配额），还显示邀请码与
+    // 会员名单。前端隐藏只是体面，真正的拦截在后端（/api/admin/* 一律 403）。
+    key: 'system',
+    label: '系统',
+    items: [{ to: '/settings', label: '数据管理' }],
+  },
+]
+
+/**
+ * 路由是否命中该入口。
  *
- * ⚠️ 不要再加 `.no-scrollbar`：横滑是这项决定的兜底，滚动条必须看得见，
- * 否则又回到「用户不知道右边还有」的老问题。
+ * 与 NavLink 的匹配规则保持一致（`end` 用全等、其余用「相等或子路径」）——
+ * 下拉按钮的「当前分组高亮」用它，不然会出现「菜单里亮着、按钮不亮」。
+ */
+function isActivePath(pathname: string, item: NavItem): boolean {
+  if (item.end) return pathname === item.to
+  return pathname === item.to || pathname.startsWith(`${item.to}/`)
+}
+
+/**
+ * 顶栏导航（规范 v1 §4.1，2026-11-01 改版）。
+ *
+ * 结构：7 个固定项平铺 + 5 个分组下拉。历史背景：
+ * 2026-10-23 曾做过「主项 + 更多 ▾」收纳，2026-10-24 用户要求「不要压缩、全部平铺」；
+ * 现在入口涨到 21 个，规范 v1 重新要求按领域收组 —— 这次是**有明确分组**的收纳，
+ * 不是把东西塞进「更多」，所以不违背当时那条「别多一次点击」的诉求：
+ * 常用 7 个仍然一点就到，其余按领域最多多一次点击。
+ *
+ * ⚠️ 分组按钮**必须放在滚动容器之外**：固定项那条 nav 是 `overflow-x-auto`（窄屏兜底），
+ * 下拉菜单挂在里面会被裁掉。
  */
 
 /**
- * 一个导航项。下划线贴容器底边 —— 往外溢出会逼出竖向滚动条（2026-09 踩过）。
+ * 一个固定项。下划线贴容器底边 —— 往外溢出会逼出竖向滚动条（2026-09 踩过）。
  */
 function NavEntry({ item }: { item: NavItem }) {
   return (
@@ -98,6 +139,95 @@ function NavEntry({ item }: { item: NavItem }) {
   )
 }
 
+/** 分组下拉。点击展开（不是 hover），Esc / 点外部收起。 */
+function GroupEntry({
+  group,
+  open,
+  onToggle,
+}: {
+  group: { key: string; label: string; items: NavItem[] }
+  open: boolean
+  onToggle: () => void
+}) {
+  const { pathname } = useLocation()
+  const active = group.items.some((item) => isActivePath(pathname, item))
+  return (
+    <div className="relative flex items-stretch">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={`nav-group-${group.key}`}
+        onClick={onToggle}
+        className={[
+          'relative flex items-center gap-1 px-3 text-[13px] whitespace-nowrap transition-colors',
+          'lg:px-1.5 lg:text-[12px]',
+          active || open ? 'text-fg' : 'text-fg-muted hover:text-fg',
+        ].join(' ')}
+      >
+        {group.label}
+        <span
+          aria-hidden
+          className={`text-[9px] transition-transform ${open ? 'rotate-180' : ''}`}
+        >
+          ▾
+        </span>
+        {active && (
+          <span className="absolute inset-x-2 bottom-0 h-[2px] bg-accent wipe" aria-hidden />
+        )}
+      </button>
+      {open && (
+        <div
+          id={`nav-group-${group.key}`}
+          role="menu"
+          aria-label={`${group.label}菜单`}
+          className="absolute left-0 top-full z-30 mt-0.5 min-w-[132px] border border-line bg-ink-900 py-1 rounded-sm shadow-pop"
+        >
+          {group.items.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              role="menuitem"
+              className={({ isActive }) =>
+                [
+                  'block px-3 py-1.5 text-[13px] whitespace-nowrap transition-colors',
+                  isActive
+                    ? 'text-accent'
+                    : 'text-fg-muted hover:bg-ink-850 hover:text-fg',
+                ].join(' ')
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 抽屉里的一个入口（手机 / 平板 <1024）。 */
+function DrawerLink({ item, itemRef }: { item: NavItem; itemRef?: Ref<HTMLAnchorElement> }) {
+  return (
+    <NavLink
+      to={item.to}
+      end={item.end}
+      ref={itemRef}
+      className={({ isActive }) =>
+        [
+          'flex min-h-[42px] items-center border px-3 text-[14px] transition-colors',
+          isActive
+            ? 'border-accent/60 bg-accent/10 text-accent'
+            : 'border-line-soft text-fg-muted hover:border-fg-dim hover:text-fg',
+        ].join(' ')
+      }
+    >
+      {item.label}
+    </NavLink>
+  )
+}
+
 interface LayoutProps {
   children: ReactNode
   /** 顶栏右侧的操作区，由各页面自行注入（日期切换、刷新等） */
@@ -107,17 +237,39 @@ interface LayoutProps {
 export default function Layout({ children, toolbar }: LayoutProps) {
   const { me } = useAuth()
   const location = useLocation()
-  // 「数据管理」只给管理员看：那一页能触发采集（烧 iFinD 配额），还会显示邀请码与
-  // 会员名单。前端隐藏只是体面，真正的拦截在后端（/api/admin/* 一律 403）。
-  const items = me?.is_admin ? NAV : NAV.filter((item) => item.to !== '/settings')
+  const groups = me?.is_admin ? GROUPS : GROUPS.filter((group) => group.key !== 'system')
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const drawerFirstLinkRef = useRef<HTMLAnchorElement>(null)
 
-  // 换页即收起抽屉（包括点抽屉里的项、用 ← → 切个股）
+  // 桌面端的分组下拉：同一时间只开一个（点击切换，不 hover）
+  const [openGroup, setOpenGroup] = useState<string | null>(null)
+  const groupsRef = useRef<HTMLDivElement>(null)
+
+  // 换页即收起抽屉与下拉（包括点菜单项、用 ← → 切个股）
   useEffect(() => {
     setDrawerOpen(false)
+    setOpenGroup(null)
   }, [location.pathname, location.search])
+
+  // 下拉的点外部关闭 + Esc 关闭。用 mousedown 而不是 click：
+  // click 要等 mouseup，按钮上的第二次点击会先被这个监听判成「外部」再触发 toggle，
+  // 表现为「点不关」。
+  useEffect(() => {
+    if (!openGroup) return
+    const onPointerDown = (event: MouseEvent) => {
+      if (!groupsRef.current?.contains(event.target as Node)) setOpenGroup(null)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenGroup(null)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [openGroup])
 
   // 手机抽屉：Esc 关闭、锁住背景滚动、打开时焦点进第一个链接
   useEffect(() => {
@@ -152,22 +304,41 @@ export default function Layout({ children, toolbar }: LayoutProps) {
             <span className="text-[14px] font-semibold tracking-[0.05em] text-fg whitespace-nowrap md:text-[15px] md:tracking-[0.1em]">
               致富经
             </span>
-            <span className="num hidden text-[12px] tracking-[0.28em] text-fg-dim xl:inline">
+            {/* 规范 v1：ZHIFUJING 只在 ≥1536（2xl）出现，1280–1535 把宽度让给入口 */}
+            <span className="num hidden text-[12px] tracking-[0.28em] text-fg-dim 2xl:inline">
               ZHIFUJING
             </span>
           </div>
 
           <span className="hidden h-4 w-px shrink-0 bg-line lg:block" />
 
-          {/* 桌面/平板（≥1024）：**全部平铺**；装不下就横向滚动（见上面那段说明） */}
+          {/* 桌面/平板（≥1024）：7 个固定项平铺；装不下就横向滚动（见上面那段说明） */}
           <nav
             aria-label="主导航"
             className="hidden h-[52px] min-w-0 grow basis-0 items-stretch gap-1 overflow-x-auto overflow-y-hidden lg:flex lg:gap-0"
           >
-            {items.map((item) => (
+            {PINNED.map((item) => (
               <NavEntry key={item.to} item={item} />
             ))}
           </nav>
+
+          {/* 分组入口：**在滚动容器外**，否则下拉会被 overflow 裁掉 */}
+          <div
+            ref={groupsRef}
+            className="hidden h-[52px] shrink-0 items-stretch lg:flex"
+            aria-label="分组导航"
+          >
+            {groups.map((group) => (
+              <GroupEntry
+                key={group.key}
+                group={group}
+                open={openGroup === group.key}
+                onToggle={() =>
+                  setOpenGroup((current) => (current === group.key ? null : group.key))
+                }
+              />
+            ))}
+          </div>
 
           {/* <1024：整条导航收进抽屉（汉堡）。放第一行右端，操作区仍占第二行 */}
           <button
@@ -204,7 +375,7 @@ export default function Layout({ children, toolbar }: LayoutProps) {
         </div>
       </header>
 
-      {/* 手机/窄屏抽屉：全部导航项（管理员多一项「数据管理」） */}
+      {/* 手机/窄屏抽屉：固定项 + 按组平铺（管理员多一组「系统」） */}
       {drawerOpen && (
         <div
           className="fixed inset-0 z-40 lg:hidden"
@@ -234,26 +405,28 @@ export default function Layout({ children, toolbar }: LayoutProps) {
               </button>
             </div>
             <nav aria-label="全部导航" className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+              {/* 固定项：不写小标题，它们是「一眼就要点」的那批 */}
               <div className="grid grid-cols-2 gap-1">
-                {items.map((item, index) => (
-                  <NavLink
+                {PINNED.map((item, index) => (
+                  <DrawerLink
                     key={item.to}
-                    to={item.to}
-                    end={item.end}
-                    ref={index === 0 ? drawerFirstLinkRef : undefined}
-                    className={({ isActive }) =>
-                      [
-                        'flex min-h-[42px] items-center border px-3 text-[14px] transition-colors',
-                        isActive
-                          ? 'border-accent/60 bg-accent/10 text-accent'
-                          : 'border-line-soft text-fg-muted hover:border-fg-dim hover:text-fg',
-                      ].join(' ')
-                    }
-                  >
-                    {item.label}
-                  </NavLink>
+                    item={item}
+                    itemRef={index === 0 ? drawerFirstLinkRef : undefined}
+                  />
                 ))}
               </div>
+              {groups.map((group) => (
+                <div key={group.key} className="mt-3">
+                  <div className="px-1 pb-1 text-[12px] tracking-[0.08em] text-fg-dim">
+                    {group.label}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1">
+                    {group.items.map((item) => (
+                      <DrawerLink key={item.to} item={item} />
+                    ))}
+                  </div>
+                </div>
+              ))}
             </nav>
             <div className="border-t border-line-soft px-4 py-3 text-[12px] text-fg-dim">
               点右上角 ✕ 或遮罩关闭；关闭后回到原页面滚动位置

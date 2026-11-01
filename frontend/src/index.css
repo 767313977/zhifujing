@@ -25,13 +25,15 @@
 
   /* ---- 文字三档：近黑 → 中灰 → 浅灰（三档都过 WCAG AA）----
      浅底上文字改成**深色**：正文 #1f2328（对白 15.4:1、对页面底 14.2:1），
-     次文字 #57606a（对白 6.9:1），弱化 #6e7781（对白 4.6:1）。
+     次文字 #57606a（对白 6.9:1），弱化 #6a717d（对白 4.9:1）。
      三档拉开，「正文 > 表头/标签 > 注释」的层级靠颜色就能读出来，不用靠字号硬撑。
      ⚠️ 弱化这一档**别再往浅里调**：2026-09-22 用户拿涨停页截图提过「灰字看不清」，
      那次的问题是只有 3.1:1。4.5:1 是这条线的下限（小字过 AA 的门槛）。 */
   --color-fg: #1f2328;
   --color-fg-muted: #57606a;
-  --color-fg-dim: #6e7781;
+  /* 2026-11-01 按规范 v1 定为 #6A717D（原 #6e7781）：对白 4.9:1，比原来深半档，
+     长段注释与表头在浅灰底上更清楚 —— 用户反复提过「灰字看不清」。 */
+  --color-fg-dim: #6a717d;
 
   /*
    * 内容外壳的宽度上限（`max-w-shell`）。用户 2026-09-25 要「占屏幕 80%」。
@@ -52,15 +54,20 @@
      | 色 | 对白 | 说明 |
      | --- | --- | --- |
      | 涨 #d92d20 | **4.83:1** | 正红，不做深色版那种提亮（浅底上提亮反而掉对比度） |
-     | 跌 #0a7d4a | **5.19:1** | 深一档的绿，浅底上才够读 |
+     | 跌 #0a8458 | **4.83:1** | 规范 v1 定的绿（原 #0a7d4a）；与涨色亮度几乎相同 |
 
-     两色亮度差只有 1.07 倍 —— 深色版曾专门把涨跌亮度差从 2.9 倍收到 1.19 倍，
+     两色亮度差只有 1.0 倍 —— 深色版曾专门把涨跌亮度差从 2.9 倍收到 1.19 倍，
      这条原则在浅色下同样成立：一屏里跌落数字不该被高亮。 */
   --color-up: #d92d20;
-  --color-down: #0a7d4a;
+  --color-down: #0a8458;
   /* 强调色从金改成蓝。金 #e0b055 对白只有 2.2:1 —— 做描边还行，做文字（排序指示、
      激活的板块名、关键位虚线）就不够；用户给的参考图主色也是蓝。 #1b64da 对白 5.4:1。 */
   --color-accent: #1b64da;
+  /* 灰底上的**链接文字**用这支（规范 v1）：比 accent 再深一档，
+     在页面底 #f1f3f6 上约 7.6:1（accent 在灰底只有 4.78:1）。
+     分工：accent = 描边 / 选中底 / 图表；accent-ink = 灰底上的文字链接。
+     页面改造时逐处替换 text-accent → text-accent-ink（本阶段只定义 token）。 */
+  --color-accent-ink: #1550b4;
 
   /* 语义色。**不能复用 up / down** —— 那两个表达的是行情涨跌，拿跌色（绿）去表示
      「失败」会读成完全相反的意思（绿在 A 股惯例里是「跌」，不是「负面」）。
@@ -73,6 +80,28 @@
      **不拦截保存的提醒**。不能用 accent 蓝（那是可点/强调），也不能用 danger 红
      （那是错误，而这些其实存下来了）。#b45309 对白 4.8:1。 */
   --color-warn: #b45309;
+  /* 规范 v1：warn 的**文字**用上面的 #b45309，**实心色块**用这支 #d97706
+     （底色上压白字时才够醒目）。目前站内所有 warn 都是文字形态，暂无引用者 ——
+     加 token 是为了下次做告警块时不再临时写死一个十六进制。 */
+  --color-warn-strong: #d97706;
+
+  /* ---- 字号阶梯（规范 v1 本阶段沿用现状）----
+     11 徽标 / 12 注释与表头附注 / 13 表格与标签 / 14 正文 / 15 面板标题 /
+     22 指数收盘价。页面里是 `text-[13px]` 这类任意值写法，**不另造 `--text-*`
+     工具类** —— 那会多出一套没人引用的令牌，反而让「以哪个为准」更难判断。 */
+
+  /* ---- 圆角（规范 v1）----
+     终端风格：结构件（panel / 表格 / 页面）保持**直角**，不套 rounded；
+     只有控件与弹层用这三档。 */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+
+  /* ---- 弹层阴影（规范 v1）----
+     与原来 AdjustMenu 里写死的值一致，收敛成 token 供后续弹层复用。
+     顶栏导航抽屉用的是**左向**阴影（`box-shadow: -12px 0 32px`），方向不同，
+     仍写在 Layout 里，不要硬套这一支。 */
+  --shadow-pop: 0 8px 24px rgb(15 23 42 / 0.14);
 
   /* 字体走系统栈：**不引任何 webfont**，直接从操作系统已装的字体里取
      （2026-09-25 用户指定）。首位是思源黑体 —— 思源黑体（Source Han Sans）
@@ -122,32 +151,10 @@
     text-rendering: optimizeLegibility;
   }
 
-  /* 极淡的网格，给平面一点纵深；顶部浓、向下淡出。
-     浅底上改用**深色**线（深色版是白线）：浅底铺白线等于看不见。 */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    background-image:
-      linear-gradient(to right, rgb(15 23 42 / 0.03) 1px, transparent 1px),
-      linear-gradient(to bottom, rgb(15 23 42 / 0.03) 1px, transparent 1px);
-    background-size: 52px 52px;
-    mask-image: radial-gradient(ellipse 90% 55% at 50% 0%, #000 35%, transparent 100%);
-  }
-
-  /* 颗粒噪点，消除大色块的塑料感。浅底上比深底显脏（白底杂质更抢眼），
-     所以不透明度从 0.022 降到 0.014。 */
-  body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    opacity: 0.014;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
+  /* 2026-11-01 按《界面设计规范 v1》7.1 去掉 body 装饰层：
+     原先这里有一层极淡网格（body::before）与颗粒噪点（body::after）。
+     浅色终端要的是「干净的纸面」，装饰线/噪点只会让白底显脏、也让截图看不清发丝线。
+     **不要再加回来**；层次靠底色差（ink-950 / 900 / 850）与 line-soft 表达。 */
 
   #root {
     position: relative;
@@ -186,21 +193,44 @@
     letter-spacing: -0.01em;
   }
 
-  /* 区块外壳：无圆角、发丝描边，主要靠底色差（比页面底亮 1 阶）与页面分开 */
-  .panel {
-    background-color: var(--color-ink-900);
-    border: 1px solid var(--color-line-soft);
+  /* 灰底上的文字链接（规范 v1）：用 accent-ink，不用 accent。
+     Phase 2 逐处把 `text-accent` 的**文字链接**换成它；描边 / 选中底 / 图表仍用 accent。
+     保留成组件类而不是只留 @theme 变量：未被引用的 theme token 会被 Tailwind 摇掉，
+     留这条规则确保产物里始终有这支颜色，改造时不用怀疑「是不是没生效」。 */
+  .link-ink {
+    color: var(--color-accent-ink);
+  }
+  .link-ink:hover {
+    color: var(--color-accent);
   }
 
+  /* 区块外壳（规范 v1 §4.2）：外框 `line`、圆角 2px。
+     原来是「无圆角 + line-soft 描边」—— 浅色下 line-soft 几乎看不见，面板与页面底
+     之间只剩一阶底色差，整页读起来是散的。改用 line 之后再收 2px 圆角，
+     既保留终端的硬朗感，又不至于四个尖角扎眼。 */
+  .panel {
+    background-color: var(--color-ink-900);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-sm);
+  }
+
+  /* 页头（规范 v1 §4.2）：h-9（36px）+ bg-ink-850。
+     ⚠️ 用 `min-height` 而不是固定 `height`：窄屏下 meta 会换行（下面的 flex-wrap），
+     固定高度会把第二行压出面板。正常一行时高度就是 36px，与规范一致。
+     `border-radius` 只给上两角 —— 面板本身没有 `overflow:hidden`（AdjustMenu 这类
+     弹层就挂在面板里，裁切会把它们切掉），所以页头的浅灰底要自己贴住圆角。 */
   .panel-title {
     display: flex;
     /* 窄屏（FEAT-MOBILE-READONLY，2026-10-31）：标题右侧那串 meta 太长时换到第二行，
        而不是把标题挤扁或顶破面板。宽屏一行放得下，不改变现有观感 */
     flex-wrap: wrap;
-    align-items: baseline;
+    align-items: center;
     gap: 0.25rem 0.5rem;
-    padding: 0.625rem 0.875rem;
+    min-height: 2.25rem;
+    padding: 0.25rem 0.875rem;
+    background-color: var(--color-ink-850);
     border-bottom: 1px solid var(--color-line-soft);
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
     /* 一级标题（模块名）：全页最大的正文字号 + 中粗字重，做每个区块的视觉锚点。
        2026-09-25 从 13px/常规字重 提上来（改版要求「中粗字重，全页最大字号」）；
        字距同时从 0.14em 收到 0.04em —— 宽字距是装饰，与「弱装饰」的基调相冲。
@@ -217,6 +247,9 @@
     border-collapse: collapse;
     /* 14px（2026-09-25 从 0.8125rem 上调） */
     font-size: 0.875rem;
+    /* 行高口径（规范 v1 §4.2）：默认行高约 32px = 14px × 1.45 + 上下各 6px。
+       紧凑档 `.grid-table.dense` 见下面（约 28px）。 */
+    line-height: 1.45;
   }
   .grid-table thead th {
     position: sticky;
@@ -268,6 +301,18 @@
       padding-left: 0.375rem;
       padding-right: 0.375rem;
     }
+  }
+
+  /* 紧凑档（规范 v1 §4.2）：行高约 28px = 14px × 1.25 + 上下各 5px。
+     用法：`<table className="grid-table dense">` —— 只在「行多、单行信息少」的
+     列表里用（如成分股、龙虎榜席位），复盘主表保持默认 32px。
+
+     ⚠️ 写在窄屏 media 之后，且选择器带 `.dense` 复合类（0,2,x > 0,1,x）：
+     否则会被上面那条 media 里的左右内边距覆盖掉一半，出现「上下紧、左右松」。 */
+  .grid-table.dense thead th,
+  .grid-table.dense tbody td {
+    padding: 0.3125rem 0.5rem;
+    line-height: 1.25;
   }
 
   /* 可排序表头。onClick 挂在 th 上（见 SortTh），整格都是热区 ——
