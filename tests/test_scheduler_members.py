@@ -22,7 +22,8 @@ def job():
 
 def test_morning_catch_up_skips_non_trade_day(job, monkeypatch):
     touches = []
-    monkeypatch.setattr(scheduler_module, "is_trade_day", lambda day: False)
+    # 2026-11-01 起改走带日历自愈的 `is_trade_day_fresh`（日历停更时会先补一次）
+    monkeypatch.setattr(scheduler_module, "is_trade_day_fresh", lambda day: False)
     monkeypatch.setattr(
         job, "_catch_up_members", lambda today, reason, **kw: touches.append((today, reason))
     )
@@ -34,7 +35,7 @@ def test_morning_catch_up_skips_non_trade_day(job, monkeypatch):
 
 def test_morning_catch_up_uses_today(job, monkeypatch):
     recorded = []
-    monkeypatch.setattr(scheduler_module, "is_trade_day", lambda day: True)
+    monkeypatch.setattr(scheduler_module, "is_trade_day_fresh", lambda day: True)
     monkeypatch.setattr(scheduler_module, "today_cn", lambda: date(2026, 10, 27))
     monkeypatch.setattr(
         job,

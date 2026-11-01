@@ -24,6 +24,14 @@ from app.sources.base import TokenBucket, retry_call
 
 logger = logging.getLogger(__name__)
 
+# 本地「限时包装」超时后，那个守护线程还挂在 socket 上、收不回来 —— 常驻进程里
+# 这种线程会按天累积（每次采集都可能有 1～2 个）。没法强杀，只能**计数告警**：
+# 出现即 warning，累计到阈值再 error（提示该重启），否则这事永远没人看得见。
+_ABANDONED_LOCK = threading.Lock()
+_abandoned_calls = 0
+#: 累计到这个数量就升级成 error（一次告警不是一个 bug，而是一整天的泄漏）
+_ABANDONED_ALERT_AT = 50
+
 
 def _ymd(value: date) -> str:
     return value.strftime("%Y%m%d")
@@ -108,9 +116,34 @@ def _call_bounded(fn: Callable[[], pd.DataFrame], description: str, timeout: flo
     try:
         return future.result(timeout=timeout)
     except FuturesTimeoutError as exc:
+        _note_abandoned(description)
         raise TimeoutError(
             f"{description} 超时（{timeout}s，akshare 内部无超时）"
         ) from exc
+
+
+def _note_abandoned(description: str) -> None:
+    """记一次「超时后挂住的线程」，累计过多升级为 error。"""
+    global _abandoned_calls
+    with _ABANDONED_LOCK:
+        _abandoned_calls += 1
+        count = _abandoned_calls
+    if count >= _ABANDONED_ALERT_AT:
+        logger.error(
+            "akshare 已被放弃的挂死线程累计 %d 个（最近一次：%s），建议在低峰期重启进程",
+            count,
+            description,
+        )
+    else:
+        logger.warning(
+            "akshare 调用超时并放弃一个线程（累计 %d 个，%s）", count, description
+        )
+
+
+def abandoned_calls() -> int:
+    """当前进程累计放弃的挂死线程数（测试与运维探针用）。"""
+    with _ABANDONED_LOCK:
+        return _abandoned_calls
 
 
 class AkshareSource:

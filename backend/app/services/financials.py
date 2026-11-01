@@ -103,8 +103,13 @@ def _snapshot(row: StockFinancial) -> Snapshot:
     )
 
 
-def latest(code: str) -> Snapshot | None:
-    """取最新一期财务摘要；缓存 7 天，取不到时回落到旧缓存。"""
+def latest(code: str, *, allow_fetch: bool = True) -> Snapshot | None:
+    """取最新一期财务摘要；缓存 7 天，取不到时回落到旧缓存。
+
+    `allow_fetch=False` 是**纯只读**模式：缓存过期也只返回旧缓存（没有就 None），
+    绝不发请求。收盘简报的 `fast=True` 路径用它 —— 那条路径承诺「跑得足够快、
+    不受外网拖累」，而缓存过期时串行打同花顺会让整份简报卡住（2026-11-01 修）。
+    """
     cached: Snapshot | None = None
     with session_scope() as session:
         row = session.get(StockFinancial, code)
@@ -114,6 +119,8 @@ def latest(code: str) -> Snapshot | None:
                 datetime.now() - row.fetched_at
             ).days < CACHE_DAYS:
                 return cached
+    if not allow_fetch:
+        return cached
 
     try:
         records = AkshareSource().financial_abstract_ths(code)

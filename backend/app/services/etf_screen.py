@@ -711,6 +711,21 @@ def detail(session: Session, code: str, day: date | None = None) -> EtfDetail | 
     return EtfDetail(as_of=day, row=row, series=series, peers=peers)
 
 
+def _median(values: list[float]) -> float | None:
+    """标准中位数：偶数个取中间两个的平均（`statistics.median` 同口径）。
+
+    站内其它三处中位（交易日志、行业宽度、形态跟踪的 `np.median`）都是这个口径；
+    这里原来是 `values[len//2]`（上中位），偶数个时会系统性偏高。
+    """
+    if not values:
+        return None
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2
+
+
 def categories(session: Session, day: date | None = None) -> list[dict]:
     """按分类汇总：代表 ETF 的 RPS60 中位数、20 日净申赎合计（行业强弱一览）。
 
@@ -745,7 +760,9 @@ def categories(session: Session, day: date | None = None) -> list[dict]:
     result: list[dict] = []
     for name, rows in grouped.items():
         rps_values = sorted(row.rps60 for row in rows if row.rps60 is not None)
-        median = rps_values[len(rps_values) // 2] if rps_values else None
+        # 偶数个必须取中间两个的**平均**（2026-11-01 审计 P3-14）：
+        # 原来取 `[len//2]` 是「上中位」，与站内其它三处中位口径不一致。
+        median = _median(rps_values)
         category_flows = flows.get(name) or []
         result.append(
             {

@@ -673,6 +673,16 @@ def test_themes_zero_rows_without_pool_is_normal(monkeypatch):
     assert _theme_collector([]).collect(DAY) == 0
 
 
+def test_themes_empty_pool_marks_partial(monkeypatch):
+    """涨停天梯 0 行且站内涨停池 0 只：记 `partial`（P3-3），不再记 ok。"""
+    engine = _engine()
+    _patch_scope(monkeypatch, collect_themes, engine)
+    collector = _theme_collector([])
+
+    assert collector.collect(DAY) == 0
+    assert collector._step_status == "partial"
+
+
 def test_themes_rows_still_work(monkeypatch):
     engine = _engine()
     _patch_scope(monkeypatch, collect_themes, engine)
@@ -700,6 +710,54 @@ def test_collect_lhb_empty_marks_partial(monkeypatch):
             select(CollectLog.status).where(CollectLog.task == "lhb")
         )
     assert status == "partial"
+
+
+def test_latest_logged_tasks_uses_last_record(monkeypatch):
+    """补采判据看「每个任务的最后一条」：先 ok、后重跑失败的日子要能再补。"""
+    engine = _engine()
+    _patch_scope(monkeypatch, scheduler, engine)
+    _add_log(engine, "lhb", "ok")
+    _add_log(engine, "lhb", "partial")
+
+    assert scheduler._latest_logged_tasks(DAY, ("lhb",), "ok") == set()
+    assert scheduler._latest_logged_tasks(DAY, ("lhb",), "partial") == {"lhb"}
+
+    _add_log(engine, "lhb", "ok")
+    assert scheduler._latest_logged_tasks(DAY, ("lhb",), "ok") == {"lhb"}
+
+
+def test_lhb_institution_empty_marks_partial(monkeypatch):
+    """机构席位 0 行 → `partial`（P1-1：记 ok 会让补采永久短路）。"""
+    engine = _engine()
+    _patch_scope(monkeypatch, collect_daily, engine)
+    _patch_scope(monkeypatch, collect_funds, engine)
+    collector = _collector(
+        ak=SimpleNamespace(lhb_institutions_range=lambda start, end: [])
+    )
+
+    row = collector._step(
+        DAY, "lhb_institution", lambda: collector.collect_lhb_institution(DAY)
+    )
+
+    assert row["status"] == "partial"
+    assert "机构席位" in (row["message"] or "")
+
+
+def test_lhb_institution_rows_are_ok(monkeypatch):
+    """有行时照旧 ok —— 不能把正常的机构席位采集判成 partial。"""
+    engine = _engine()
+    _patch_scope(monkeypatch, collect_daily, engine)
+    monkeypatch.setattr(
+        collect_funds, "collect_lhb_institutions", lambda ak, day: 7
+    )
+    collector = _collector(ak=SimpleNamespace())
+
+    row = collector._step(
+        DAY, "lhb_institution", lambda: collector.collect_lhb_institution(DAY)
+    )
+
+    assert row["status"] == "ok"
+    assert row["rows"] == 7
 
 
 def test_collect_lhb_rows_are_ok(monkeypatch):

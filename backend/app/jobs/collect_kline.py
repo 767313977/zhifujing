@@ -70,6 +70,18 @@ _COVERED_RATIO = 0.99
 # 1000 行以内，不必再按行数分批。
 _SNAPSHOT_COLUMNS = "开盘价、最高价、最低价、收盘价、成交量、成交额、涨跌幅、换手率"
 
+# 一次 `IN (...)` 里放多少个代码。SQLite 3.32 之前的绑定参数上限是 999
+# （之后是 32766），全市场约 3000 只塞进单个子句在老版本上直接抛
+# `too many SQL variables` —— 而这只是统计「某天/某几天采到多少只」的辅助查询，
+# 没理由为它踩版本线。口径与 `collect_cb._IN_BATCH` 一致。
+_IN_BATCH = 900
+
+
+def _code_batches(codes: list[str]) -> list[list[str]]:
+    """把代码列表切成 `_IN_BATCH` 一批，供 `IN (...)` 查询用。"""
+    return [codes[start : start + _IN_BATCH] for start in range(0, len(codes), _IN_BATCH)]
+
+
 # 某天缺的票超过这个比例，才认为那天是真的没采到（而不是停牌这种正常缺失）。
 # 正常交易日实测缺 0.3%（8/3032）；被抽样截断的那天缺 80% 以上 ——
 # 隔着两个数量级，取 20% 不会误伤，也不会让「那天没采」被当成正常而跳过。
@@ -486,15 +498,17 @@ class KlineCollector:
         这一处** —— 别在外面照抄这两个比例。
         """
         if got is None:
+            got = 0
             with session_scope() as session:
-                got = (
-                    session.scalar(
-                        select(func.count(func.distinct(StockDaily.code))).where(
-                            StockDaily.trade_date == day, StockDaily.code.in_(universe)
+                for chunk in _code_batches(universe):
+                    got += (
+                        session.scalar(
+                            select(func.count(func.distinct(StockDaily.code))).where(
+                                StockDaily.trade_date == day, StockDaily.code.in_(chunk)
+                            )
                         )
+                        or 0
                     )
-                    or 0
-                )
         ratio = _RECENT_MISSING_RATIO if strict else _REPAIR_MISSING_RATIO
         return len(universe) - got > len(universe) * ratio
 
@@ -508,20 +522,23 @@ class KlineCollector:
         if not days:
             return 0
         marked = _short_days()
+        counts: dict[date, int] = {}
         with session_scope() as session:
-            counts = dict(
-                session.execute(
+            for chunk in _code_batches(universe):
+                batch_counts = session.execute(
                     select(
                         StockDaily.trade_date,
                         func.count(func.distinct(StockDaily.code)),
                     )
                     .where(
                         StockDaily.trade_date.in_(days),
-                        StockDaily.code.in_(universe),
+                        StockDaily.code.in_(chunk),
                     )
                     .group_by(StockDaily.trade_date)
                 ).all()
-            )
+                for trade_date, count in batch_counts:
+                    # 各批的代码集合互不相交，直接相加就是当天的去重只数
+                    counts[trade_date] = counts.get(trade_date, 0) + count
         return sum(
             1
             for index, day in enumerate(days)

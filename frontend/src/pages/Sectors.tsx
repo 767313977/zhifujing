@@ -558,10 +558,13 @@ export default function Sectors() {
    */
   const onSelectFlow = useCallback(
     (code: string) => {
+      // 口径要变就先把对比列表清掉：`compareCodes` 属于另一个分类，跨分类对比
+      // 没有意义（与 `switchTaxonomy` 同一个不变量；2026-11-01 修）
+      if (flowTaxonomy !== taxonomy) setCompareCodes([])
       setTaxonomy(flowTaxonomy)
       setSelected(code)
     },
-    [flowTaxonomy],
+    [flowTaxonomy, taxonomy],
   )
 
   const switchTaxonomy = useCallback((next: SectorTaxonomy) => {
@@ -670,6 +673,19 @@ export default function Sectors() {
               if (board) {
                 setView('boards')
                 setSelected(board.code)
+                return
+              }
+              // 题材名在当前口径里找不到时原来什么都不发生，而按钮 title 说「会跳转」。
+              // 题材是「涨停题材」口径的名称，所以在「行业」口径下必然找不到 ——
+              // 这时切到题材口径并说明一句，别让点击静默失效（2026-11-01 修）。
+              if (taxonomy !== 'kph_selected') {
+                switchTaxonomy('kph_selected')
+                setView('boards')
+                setError(
+                  `「${concept}」不在「行业」口径的排行里，已切到「涨停题材」口径，请在排行里选择对应板块`,
+                )
+              } else {
+                setError(`「${concept}」不在今天的涨停题材排行里（可能今天没有对应板块）`)
               }
             }}
           />

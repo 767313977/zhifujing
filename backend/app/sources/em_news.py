@@ -18,6 +18,9 @@ import logging
 import re
 from dataclasses import dataclass
 
+from app.config import get_settings
+from app.sources.akshare_source import _call_bounded
+
 logger = logging.getLogger(__name__)
 
 # 标题/正文里被高亮的命中词包在 `<em>` 里（接口的 preTag/postTag），展示时要去掉。
@@ -92,7 +95,13 @@ def fetch_stock_news(
     """
     import akshare as ak
 
-    df = ak.stock_news_em(symbol=str(code).zfill(6))
+    # 必须限时：akshare 内部直接 requests 且不带 timeout，这条路跑在 FastAPI 的
+    # 请求线程里，半开连接会把 worker 无限期挂住（公告/研报那几条早就套了同一层）。
+    df = _call_bounded(
+        lambda: ak.stock_news_em(symbol=str(code).zfill(6)),
+        f"{code} 新闻",
+        get_settings().http_timeout,
+    )
     if df is None or getattr(df, "empty", True):
         return NewsResult(items=[], hidden=0)
 

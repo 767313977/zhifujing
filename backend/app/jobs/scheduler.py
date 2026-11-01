@@ -36,7 +36,11 @@ from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
 from app.jobs.collect_sectors import SectorCollector
 from app.models import CollectLog
 from app.services.usage import QuotaLevel, quota_level
-from app.services.trading_days import is_trade_day, previous_trade_day, recent_trade_days
+from app.services.trading_days import (
+    is_trade_day_fresh,
+    previous_trade_day,
+    recent_trade_days,
+)
 from app.sources.ifind import IfindError
 from app.timeutil import now_cn, today_cn
 
@@ -119,6 +123,31 @@ def _logged_tasks(day: date, tasks: tuple[str, ...], status: str | None) -> set[
     with session_scope() as session:
         statement = select(CollectLog.task).where(
             CollectLog.trade_date == day, CollectLog.task.in_(tasks)
+        )
+        if status is not None:
+            statement = statement.where(CollectLog.status == status)
+        return set(session.scalars(statement))
+
+
+def _latest_logged_tasks(
+    day: date, tasks: tuple[str, ...], status: str | None
+) -> set[str]:
+    """该日**每个任务最后一条**记录命中 `status` 的任务名。
+
+    与 `_logged_tasks` 的区别：后者是「当天只要有过一条 ok 就算」，于是
+    「先 ok、后来重跑又失败」的日子会被判成已采完，回看补采不再重试
+    （2026-11-01 审计 P1-1 的顺带项）。这里按自增 id 取每个任务的最后一条，
+    只看那条的状态；`status=None` 表示不限状态（有记录就算）。
+    """
+    with session_scope() as session:
+        latest = (
+            select(func.max(CollectLog.id).label("last_id"))
+            .where(CollectLog.trade_date == day, CollectLog.task.in_(tasks))
+            .group_by(CollectLog.task)
+            .subquery()
+        )
+        statement = select(CollectLog.task).join(
+            latest, CollectLog.id == latest.c.last_id
         )
         if status is not None:
             statement = statement.where(CollectLog.status == status)
@@ -255,7 +284,14 @@ class DailyScheduler:
         # 不能让整条尾巴断掉），于是外面无从知道「这天其实缺了东西」—— 让它们在
         # except 分支里把步骤名登记到这里，`_run_tail` 结束时据此把记录记成
         # `partial`（见 `_mark_tail`）。用实例属性而不是加参数：各步的签名与行为
-        # 保持不动（见任务约束）。尾部链在采集锁内串行执行，不会有并发写这个问题。
+        # 保持不动（见任务约束）。
+        #
+        # ⚠️ **并发语义（2026-11-01 对齐注释与实现）**：整条尾部链在采集锁内串行执行，
+        # 但 `_heal_derived`（尾部已跑过、只补零配额派生步骤那条路）是在**锁外**调的。
+        # 它与启动补采线程可能同时进入，`list.append` 本身是原子的，最坏结果是
+        # 日志串味 / 重复登记 —— 而派生步骤都是 `refresh()` 幂等重算，不影响结果；
+        # 真要彻底串行化会把「补几个只读读数」也压进采集锁、挡住用户触发的同步，
+        # 代价大于收益。知道这一点即可，别再照着「不会有并发写」去推理。
         self._tail_failures: list[str] = []
 
     # ---------------------------------------------------------------- 生命周期
@@ -841,7 +877,9 @@ class DailyScheduler:
         # 放在这里而不是 `_run_late` 末尾：跨天重启时今天可能已经跑过、但漏的那天还没有。
         self._catch_up_late(collector, today, reason)
 
-        if not collector.is_trade_day(today):
+        # 带日历自愈（2026-11-01）：裸 `is_trade_day` 在日历停更期间保守返回 False，
+        # 会让「收盘后链路」跨年那几天静默空跑；日历为空/落后时先补一次再判断。
+        if not is_trade_day_fresh(today):
             logger.info("%s 跳过：%s 不是交易日", reason, today)
             return
 
@@ -971,7 +1009,8 @@ class DailyScheduler:
         才会走到，且被 5 天上限兜住 —— 为「不漏」付出的这点配额是可以接受的。
         """
         for day in _recent_trade_days(today, CATCHUP_LOOKBACK_TRADING_DAYS):
-            if _logged_tasks(day, LATE_TASKS, "ok") >= set(LATE_TASKS):
+            # 用「每个任务的最后一条」判：先 ok、后来重跑又失败的日子要能再补
+            if _latest_logged_tasks(day, LATE_TASKS, "ok") >= set(LATE_TASKS):
                 continue
             try:
                 # `skip_done=True`：回看补采只为「补缺口」，已经 ok 的步骤不要再花
@@ -1169,7 +1208,7 @@ class DailyScheduler:
         `retry_non_ok=True`：前一天的记录若是 `empty`（当晚还没发布），这趟要再试一次，
         否则它会永久缺 —— 见 `_catch_up_members` 的说明。
         """
-        if not is_trade_day(today_cn()):
+        if not is_trade_day_fresh(today_cn()):
             return
         try:
             self._catch_up_members(today_cn(), "次日早间补采成分股", retry_non_ok=True)
@@ -1189,7 +1228,7 @@ class DailyScheduler:
         # 漏采再跑一轮，还给它补一条「回看补采 ok」（与事实不符，只靠 `only_missing`
         # 让它多数时候 0 请求而没被发现）。
         self._catch_up_members(today, reason)
-        if not is_trade_day(today):
+        if not is_trade_day_fresh(today):
             logger.info("%s 跳过：%s 不是交易日", reason, today)
             return
 

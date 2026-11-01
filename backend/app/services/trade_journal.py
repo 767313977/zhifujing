@@ -411,7 +411,10 @@ def _t_metrics(
         base = adj_by_day.get(day)
         if close is not None and base is not None and close > 0:
             return price * base / close
-        if window and day > window[-1][0] and window[-1][1] > 0:
+        # ⚠️ 必须同时要求 `adjusted` 非空（2026-11-01 审计 P2-1）：买入日缺日线时
+        # 调用方会把 adjusted 置空，而「盘中当场记的 T」日期晚于窗口最后一天，
+        # 这个分支照样成立 —— 再取 `adjusted[-1]` 就越界 500，把整个交易日志页带崩。
+        if window and adjusted and day > window[-1][0] and window[-1][1] > 0:
             return price * adjusted[-1][1] / window[-1][1]
         return None
 

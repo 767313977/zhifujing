@@ -58,3 +58,8 @@ jobs:
       - name: 类型检查 + 构建
         working-directory: frontend
         run: npm run build
+      # 2026-11-01 加：以前 CI 不跑 lint，风格/易错规则只能靠本地记得跑。
+      # oxlint 现在 0 error、74 warning（`set-state-in-effect` 等），只当提示，不拦 CI。
+      - name: 静态检查（oxlint）
+        working-directory: frontend
+        run: npm run lint

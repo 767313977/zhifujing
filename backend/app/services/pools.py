@@ -1322,7 +1322,11 @@ def rps_track(
         summary={
             "days": len(day_rows),
             "verified_days": sum(1 for row in day_rows if row.status == "ok"),
-            "samples": sum(row.picks for row in day_rows if row.status == "ok"),
+            # 样本 = **真正进了曲线**的只数（两端都有日线），不是名单只数 ——
+            # 停牌 / 退市 / 当日没采到的票不该进分母（见 `entry_samples` 的注释）。
+            "samples": sum(
+                entry_samples[row.trade_date] for row in day_rows if row.status == "ok"
+            ),
             "ret1": _summarize(1),
             "ret5": _summarize(5),
         },

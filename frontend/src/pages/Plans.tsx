@@ -148,6 +148,8 @@ export default function PlansPage() {
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  /** 正在「转持仓」的计划 id：连点会发多个 POST，每笔都建一条持仓（2026-11-01 修） */
+  const [positionBusy, setPositionBusy] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   /**
@@ -330,12 +332,16 @@ export default function PlansPage() {
   }
 
   const toPosition = async (row: TradePlanRow) => {
+    if (positionBusy != null) return // 已有一次在途，忽略连点
+    setPositionBusy(row.id)
     try {
       const position = await api.positionFromPlan(row.id)
       setNotice(`已转为持仓（成本 ${fmtNum(position.entry_price, 2)}）`)
       await load()
     } catch (err) {
       setError((err as Error).message)
+    } finally {
+      setPositionBusy(null)
     }
   }
 
@@ -961,10 +967,11 @@ export default function PlansPage() {
                           <button
                             type="button"
                             onClick={() => void toPosition(row)}
-                            className="text-[12px] text-fg-dim hover:text-fg"
+                            disabled={positionBusy != null}
+                            className="text-[12px] text-fg-dim hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
                             title="把这条计划转成持仓（未平仓日志）"
                           >
-                            转持仓
+                            {positionBusy === row.id ? '转换中…' : '转持仓'}
                           </button>
                           <button
                             type="button"

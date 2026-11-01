@@ -277,17 +277,28 @@ def _parse_spot(payload: str) -> dict | None:
 def fetch_spot(codes: Sequence[str]) -> list[dict]:
     """批量实时快照：`codes` 为 6 位代码（自动补 sh/sz/bj 前缀）。
 
-    返回字段见 `_parse_spot`。取不到的票（停牌、退市、代码不存在）直接跳过；
-    整批网络 / HTTP 失败则抛出（由调用方决定是否重试）。
+    返回字段见 `_parse_spot`。取不到的票（停牌、退市、代码不存在）直接跳过。
+
+    **单批失败只丢该批、不放弃整帧**：一次竞价采集要顺序发约 110 批，任何一批
+    `raise_for_status` 抛出都会让整帧作废，而竞价数据**不可回补**（错过 9:25 就没了）。
+    降级成「丢这一批、记一条 warning」后，其余批次照常落库（2026-11-01 修）。
     """
     wanted = [str(code).zfill(6) for code in codes]
     rows: list[dict] = []
+    failed = 0
     for batch in chunked(wanted, _SPOT_BATCH):
         symbols = ",".join(tx_symbol(code) for code in batch)
-        response = requests.get(_SPOT_URL + symbols, timeout=_SPOT_TIMEOUT)
-        response.raise_for_status()
-        # 腾讯返回 GBK；用 replace 兜住个别名字里的坏字节，不让整批解析失败
-        text = response.content.decode("gbk", errors="replace")
+        try:
+            response = requests.get(_SPOT_URL + symbols, timeout=_SPOT_TIMEOUT)
+            response.raise_for_status()
+            # 腾讯返回 GBK；用 replace 兜住个别名字里的坏字节，不让整批解析失败
+            text = response.content.decode("gbk", errors="replace")
+        except Exception as exc:  # noqa: BLE001 - 单批网络/HTTP 失败降级为丢批
+            failed += 1
+            logger.warning(
+                "腾讯快照有一批失败（%d 只，%s）：%s", len(batch), batch[0], exc
+            )
+            continue
         for chunk in text.split(";"):
             chunk = chunk.strip()
             if "=" not in chunk:
@@ -296,4 +307,7 @@ def fetch_spot(codes: Sequence[str]) -> list[dict]:
             parsed = _parse_spot(payload)
             if parsed is not None:
                 rows.append(parsed)
+    if failed and not rows:
+        # 全批失败仍然抛：调用方靠异常判定「这一轮源挂了」，不能静默当成空帧
+        raise RuntimeError(f"腾讯快照全部失败（{failed} 批）")
     return rows

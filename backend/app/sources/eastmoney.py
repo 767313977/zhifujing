@@ -17,6 +17,17 @@ akshare 自己的 `stock_zh_a_hist` 也失败。**本机与云端一致，跟网
 ⚠️ 这里原先写的是「云端连不上东财直连」—— **那个判断是错的**：本机一样连不上，
 而且原因不是网络层，是**这条路径本身**。照那个说法去查网络/代理，方向全错。
 
+## 2026-11-01 起**默认关闭**（审计 P2-5）
+
+README 写明「只用 `push2ex`，不碰 `push2*` 集群」：这一系的惩罚期会**殃及涨停三池
+依赖的 `push2ex`**。上面的「路径级拒绝」只是当下状态 —— 一旦哪天恢复，调用方会对
+`push2his` 连发几十次请求，正好触发记在这里的 IP 惩罚模式。所以加一道显式开关：
+
+- 默认**不发任何请求**，`fetch_daily` 直接返回空列表，调用方自然落到下一级（腾讯）；
+- 只有显式设 `ENABLE_PUSH2HIS=1`（或 `true` / `yes`）才恢复原行为，仅供临时排查用。
+
+这不是删功能：代码与口径都留着，开关打开即恢复；默认路径与 README 的约束一致。
+
 > 2026-10-08 前这里还有第二条路：**快照** `/api/qt/clist/get`（`fetch_board_spot`，
 > 给悟道候选池取「涨幅榜」）。候选池改成读本地 `stock_daily` 之后它没有调用者了，
 > 连同它的 `fs` 常量一起删掉 —— 当时那一路的约束记在这里备查：**每次请求都吃这个 IP
@@ -64,23 +75,6 @@ def _pct_or_none(raw: str | None) -> float | None:
         return None
 
 
-def clear_proxies() -> None:
-    """把进程里的代理环境变量清掉。
-
-    本机环境变量里可能挂着代理（装过 VPN/抓包工具留下的），而东财是**直连可达**的 ——
-    带上代理反而会被拒。放在源模块里而不是调用点，是为了别在调用处漏了清。
-    """
-    for key in (
-        "HTTP_PROXY",
-        "HTTPS_PROXY",
-        "http_proxy",
-        "https_proxy",
-        "ALL_PROXY",
-        "all_proxy",
-    ):
-        os.environ.pop(key, None)
-
-
 def em_secid(code: str) -> str:
     """东财的证券 ID：沪市（5 / 6 / 900 开头的 B 股）加 `1.`，其余加 `0.`。
 
@@ -90,6 +84,11 @@ def em_secid(code: str) -> str:
     """
     c = str(code).zfill(6)
     return f"1.{c}" if c.startswith(("5", "6", "90")) else f"0.{c}"
+
+
+def push2his_enabled() -> bool:
+    """`push2his` 这条线是否启用（默认关闭，见模块说明 2026-11-01）。"""
+    return os.getenv("ENABLE_PUSH2HIS", "").strip().lower() in {"1", "true", "yes"}
 
 
 def fetch_daily(code: str, *, days: int) -> list[dict]:
@@ -115,16 +114,24 @@ def fetch_daily(code: str, *, days: int) -> list[dict]:
     —— 后者会触发上层的熔断，把整条源关掉（见 `scan_patterns._NoBars`）。
 
     ⚠️ **这条路 2026-09-29 起被东财路径级拒绝**（见模块说明），调用方得自己有兜底。
+    **2026-11-01 起默认关闭**（`ENABLE_PUSH2HIS` 未设时直接返回空列表）——
+    避免它哪天恢复后对 `push2*` 连发请求、把 `push2ex` 一起拖进 IP 惩罚期。
     """
+    if not push2his_enabled():
+        logger.debug("push2his 未启用（ENABLE_PUSH2HIS），%s 跳过东财这一级", code)
+        return []
     import requests
 
-    clear_proxies()
     end = today_cn()
     beg = (end - timedelta(days=int(days * 1.5) + 5)).strftime("%Y%m%d")
     end_text = end.strftime("%Y%m%d")
 
     last_err: Exception | None = None
     payload = None
+    # 绕开代理只用**本请求**的局部设置：`trust_env=False` + `proxies=None`。
+    # 原先这里是 `clear_proxies()`，它会把进程级 `HTTP(S)_PROXY` 环境变量一起删掉 ——
+    # 同进程里 trust_env=True 的其它出口（飞书 webhook 之类的 `_post_card`）会被静默
+    # 打断，在依赖代理的机器上表现为「莫名发不出去」（2026-11-01 修）。
     session = requests.Session()
     session.trust_env = False
     for attempt in range(_RETRIES):

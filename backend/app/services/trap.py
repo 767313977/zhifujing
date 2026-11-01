@@ -527,15 +527,18 @@ def _yoy_text(value: float | None) -> str:
 
 
 def _check_fundamental(
-    code: str, trade_date: date, daily: list[StockDaily]
+    code: str, trade_date: date, daily: list[StockDaily], *, allow_fetch: bool = True
 ) -> TrapSignal:
     """基本面与热度脱节：**业绩明显走弱** + **股价/换手明显过热**。
 
     为什么必须加热度条件：只看「净利下滑」会把所有周期股都标成风险；
     「基本面差 + 股价/换手异常热」才是脱节。也正因为如此，它不是「财务差」信号，
     而是「财务差还被炒」信号。
+
+    `allow_fetch=False`（简报 `fast=True`）时财务摘要只读缓存：缓存过期也不联网，
+    拿不到就沿用「财务摘要取不到」的低风险结论，不拖住整份简报。
     """
-    snapshot = financials.latest(code)
+    snapshot = financials.latest(code, allow_fetch=allow_fetch)
     if snapshot is None:
         return TrapSignal(
             "fundamental", "基本面与热度脱节", "unknown", "low", "财务摘要取不到"
@@ -714,7 +717,7 @@ def check(
         ]
 
     # 财务摘要与新闻都会各自开连接 / 发请求，放在 session 之外，避免嵌套会话。
-    signals.append(_check_fundamental(code, trade_date, daily))
+    signals.append(_check_fundamental(code, trade_date, daily, allow_fetch=not fast))
     if fast:
         # 只读硬证据：公告 / 解禁读缓存，不碰新闻、互动易、人气榜
         signals.append(_check_notices(code, trade_date, allow_fetch=False))

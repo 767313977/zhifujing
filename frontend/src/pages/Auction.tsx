@@ -378,6 +378,8 @@ export default function AuctionPage() {
   const [boards, setBoards] = useState<AuctionBoards | null>(null)
   /** 板块榜的失败原因；null = 取数成功。与主表的 `error` 分开（两块是独立请求） */
   const [boardsError, setBoardsError] = useState<string | null>(null)
+  /** 板块榜自己的加载态：主表的 `loading` 管不到这块（独立请求） */
+  const [boardsLoading, setBoardsLoading] = useState(false)
 
   // 板块榜在前端排（数据少）；默认按平均竞价涨幅降序，与后端给的一致
   const [boardSort, boardItems] = useSort(boards?.items ?? [], BOARD_SORTS, { key: 'avg_pct' })
@@ -403,6 +405,10 @@ export default function AuctionPage() {
   // 板块榜只随**日期**变（与上面的筛选无关，是全市场口径）
   useEffect(() => {
     let stale = false
+    setBoardsLoading(true)
+    // 先清空再取（参照 `pages/Funds.tsx`）：切日期时旧日期的板块榜留在表里，
+    // 会被当成新日期的数据读；主表有 loading 门板，这两块原来都没有（2026-11-01 修）。
+    setBoards(null)
     setBoardsError(null)
     api
       .auctionBoards(date)
@@ -417,6 +423,9 @@ export default function AuctionPage() {
           setBoards(null)
           setBoardsError(isNoDataError(err) ? null : err.message)
         }
+      })
+      .finally(() => {
+        if (!stale) setBoardsLoading(false)
       })
     return () => {
       stale = true
@@ -513,8 +522,10 @@ export default function AuctionPage() {
     <Layout toolbar={toolbar}>
       <div className="space-y-4">
         {/* 市场级情绪带：盘前先回答「今天该不该出手」，再逐个看票。
-            口径是**全市场**，不受下方筛选影响 */}
-        {data?.summary && (
+            口径是**全市场**，不受下方筛选影响。
+            `!loading` 是必须的：切日期时 `data` 还留着上一个日期的 summary，
+            不加门板会先把旧日期的情绪温度当成新日期的读（2026-11-01 修） */}
+        {!loading && data?.summary && (
           <Panel
             title="竞价情绪"
             meta={<span className="num">全市场口径 · 不受下方筛选影响</span>}
@@ -549,7 +560,13 @@ export default function AuctionPage() {
         )}
 
         {/* 板块竞价强度：判断「个股独立行情」还是「板块共振」——个股高开 + 板块整体高开才有持续性 */}
-        {boardsError && (
+        {boardsLoading && (
+          // 自己的加载态：这块与主表是独立请求，切日期时不能什么都不显示
+          <Panel title="板块竞价强度" delay={60}>
+            <LoadState loading className="px-4 py-8" />
+          </Panel>
+        )}
+        {!boardsLoading && boardsError && (
           // 失败要在原位置说清楚：这块原来是「有数据才出现」，一挂就整块消失，
           // 而它回答的正是「今天有没有板块共振」（2026-10-22 体检 #10）
           <Panel title="板块竞价强度" delay={60}>
@@ -561,7 +578,7 @@ export default function AuctionPage() {
             </div>
           </Panel>
         )}
-        {!boardsError && boards && boards.items.length > 0 && (
+        {!boardsLoading && !boardsError && boards && boards.items.length > 0 && (
           <Panel
             title="板块竞价强度"
             meta={

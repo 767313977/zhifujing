@@ -27,6 +27,7 @@
   （想看市值等去个股页）。所以「基本面」这个词是**借来的**，别当它真做了基本面分析。
 """
 
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -34,7 +35,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import AppUser, Lhb, LimitPool, StockBasic, StockConcept, StockDaily
+from app.models import (
+    AnalysisSnapshot,
+    AppUser,
+    Lhb,
+    LimitPool,
+    StockBasic,
+    StockConcept,
+    StockDaily,
+)
 from app.schemas import (
     AnalysisSnapshotIn,
     AnalysisSnapshotListOut,
@@ -182,6 +191,14 @@ def _normalize_code(code: str) -> str:
     return digits
 
 
+#: 单个用户最多保留多少条查票快照 —— 快照里带整份 payload，比交易日志更重
+#: （2026-11-01 审计 P2-2，与 `MAX_WATCHLIST` 同一套做法）
+MAX_SNAPSHOTS = 200
+#: 单条快照 `payload` 序列化后的上限（字节）。`/api/analysis/lookup` 的正常返回
+#: 远小于它，超过基本只能是恶意 / 异常数据。
+MAX_SNAPSHOT_PAYLOAD_BYTES = 64 * 1024
+
+
 @router.post("/snapshots", response_model=AnalysisSnapshotOut, status_code=201)
 def create_snapshot(
     body: AnalysisSnapshotIn,
@@ -194,6 +211,27 @@ def create_snapshot(
         raise HTTPException(status_code=400, detail="结论文本不能为空")
     if len(summary) > 2000:
         raise HTTPException(status_code=400, detail="结论文本太长（上限 2000 字）")
+    if body.payload is not None:
+        # 体积上限：只卡字段长度不够 —— payload 是嵌套 dict，可以塞任意大
+        raw = json.dumps(body.payload, ensure_ascii=False, separators=(",", ":"))
+        if len(raw.encode("utf-8")) > MAX_SNAPSHOT_PAYLOAD_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"快照内容太大（上限 {MAX_SNAPSHOT_PAYLOAD_BYTES // 1024}KB）",
+            )
+    count = (
+        session.scalar(
+            select(func.count())
+            .select_from(AnalysisSnapshot)
+            .where(AnalysisSnapshot.user_id == user.id)
+        )
+        or 0
+    )
+    if count >= MAX_SNAPSHOTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"查票快照最多 {MAX_SNAPSHOTS} 条，你现在有 {count} 条，先删掉一些再存",
+        )
     code = _normalize_code(body.code)
     row = analysis_snapshot.save(
         session,

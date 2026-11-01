@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api/client'
+import { api, isNoDataError } from '../api/client'
 import type {
   FirstBoardBoard,
   FirstBoardRow,
@@ -256,8 +256,12 @@ export default function Pools() {
 
   const [firstBoard, setFirstBoard] = useState<FirstBoardBoard | null>(null)
   const [firstBoardError, setFirstBoardError] = useState<string | null>(null)
+  /** 后端 404 = 还没有涨停池数据，是**空态**不是失败（见 `components/LoadState` 注释） */
+  const [firstBoardEmpty, setFirstBoardEmpty] = useState(false)
   const [rps, setRps] = useState<RpsBoard | null>(null)
   const [rpsError, setRpsError] = useState<string | null>(null)
+  /** 同上：404 = 还没有 RPS 数据（收盘扫描还没跑过） */
+  const [rpsEmpty, setRpsEmpty] = useState(false)
   // 次日验证：参数与上面的候选完全一致，所以「改条件 → 汇总立刻变」
   const [fbTrack, setFbTrack] = useState<FirstBoardTrack | null>(null)
   const [fbTrackOpen, setFbTrackOpen] = useState(false)
@@ -313,6 +317,7 @@ export default function Pools() {
     let stale = false
     setFirstBoard(null)
     setFirstBoardError(null)
+    setFirstBoardEmpty(false)
     const [minFloatMv, maxFloatMv] = cap.split('-').map(Number)
     api
       .firstBoard({
@@ -329,7 +334,11 @@ export default function Pools() {
         if (!stale) setFirstBoard(value)
       })
       .catch((err: Error) => {
-        if (!stale) setFirstBoardError(err.message)
+        // 404 是「还没有涨停池数据」的刻意空态，不能显示成「接口出错」
+        if (!stale) {
+          if (isNoDataError(err)) setFirstBoardEmpty(true)
+          else setFirstBoardError(err.message)
+        }
       })
     return () => {
       stale = true
@@ -340,6 +349,7 @@ export default function Pools() {
     let stale = false
     setRps(null)
     setRpsError(null)
+    setRpsEmpty(false)
     api
       .rpsBoard({
         mode: rpsMode as 'dual' | 'line_red' | 'all',
@@ -352,7 +362,11 @@ export default function Pools() {
         if (!stale) setRps(value)
       })
       .catch((err: Error) => {
-        if (!stale) setRpsError(err.message)
+        // 404 是「还没有 RPS 数据」的刻意空态，不能显示成「接口出错」
+        if (!stale) {
+          if (isNoDataError(err)) setRpsEmpty(true)
+          else setRpsError(err.message)
+        }
       })
     return () => {
       stale = true
@@ -680,6 +694,11 @@ export default function Pools() {
 
           {firstBoardError ? (
             <LoadState loading={false} error={firstBoardError} />
+          ) : firstBoardEmpty ? (
+            <LoadState
+              loading={false}
+              emptyText="还没有涨停池数据 —— 采集任务在交易日收盘后生成，跑过一轮后再来"
+            />
           ) : firstBoard === null ? (
             <LoadState loading emptyText="加载中" />
           ) : firstBoard.rows.length === 0 ? (
@@ -918,6 +937,8 @@ export default function Pools() {
           )}
           {rpsError ? (
             <LoadState loading={false} error={rpsError} />
+          ) : rpsEmpty ? (
+            <LoadState loading={false} emptyText="还没有 RPS 数据 —— 等收盘扫描跑一轮" />
           ) : rps === null ? (
             <LoadState loading emptyText="加载中" />
           ) : rps.rows.length === 0 ? (

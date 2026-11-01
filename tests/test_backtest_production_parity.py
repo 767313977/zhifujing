@@ -184,6 +184,39 @@ def test_max_drawdown_compounds_monthly_batches():
     assert tally.max_drawdown(0) == pytest.approx(-0.2)
 
 
+def _add_month(tally, month: str, value: float) -> None:
+    outcomes = [bt.Exit(bt.HORIZONS[0], value, None, None, None, False)]
+    outcomes += [
+        bt.Exit(horizon, None, None, None, None, False) for horizon in bt.HORIZONS[1:]
+    ]
+    tally.add(outcomes, [0.0] * len(bt.HORIZONS), month)
+
+
+def test_max_drawdown_counts_first_month_loss():
+    """首月 −20%：峰值要从初始净值 1.0 起算，回撤 −20%（不是 0）。"""
+    tally = bt.Tally()
+    _add_month(tally, "2026-01", -0.20)
+    assert tally.max_drawdown(0) == pytest.approx(-0.20)
+
+
+def test_max_drawdown_two_losing_months():
+    """−20% 后再 −10%：净值 0.72，回撤 −28%。"""
+    tally = bt.Tally()
+    _add_month(tally, "2026-01", -0.20)
+    _add_month(tally, "2026-02", -0.10)
+    assert tally.max_drawdown(0) == pytest.approx(-0.28)
+
+
+def test_production_parity_requires_prod_board(monkeypatch):
+    """`--production-parity` 单独开（默认 board=all）必须直接拒跑（P1-2）。"""
+    monkeypatch.setattr(
+        sys, "argv", ["backtest_patterns.py", "--production-parity"]
+    )
+    with pytest.raises(SystemExit) as exc:
+        bt.main()
+    assert "--board prod" in str(exc.value.code)
+
+
 def test_st_days_do_not_remove_non_st_portion():
     """摘帽之后那段必须能重新参与 —— 旧实现会把整只票剔掉。"""
     bars = _flat(list(range(5)))

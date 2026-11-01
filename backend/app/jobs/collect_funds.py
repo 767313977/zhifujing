@@ -628,8 +628,11 @@ def collect_etf(
         return _collect_etf_exchange(target)
     except etf_exchange.EtfNotReady:
         raise
-    except Exception:  # noqa: BLE001 - 交易所源真坏了才退回 iFinD
-        logger.exception("交易所 ETF 源失败，回退 iFinD（约 59 次调用）")
+    except etf_exchange.EtfSourceError as exc:
+        # 只对「交易所源坏了」（网络 / 结构变化）回退 iFinD。**别捕 Exception**
+        # （2026-11-01 审计 P2-4）：写库路径的 `database is locked` 等本地错误
+        # 也会被当成源故障，先白烧约 59 次 iFinD 调用，再在同一个 DB 错误上失败。
+        logger.warning("交易所 ETF 源失败，回退 iFinD（约 59 次调用）：%s", exc)
         return _collect_etf_ifind(ak, ifind)
 
 

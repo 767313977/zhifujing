@@ -19,7 +19,7 @@ from app.config import Settings, get_settings
 from app.db import session_scope
 from app.models import CollectLog
 from app.services.usage import QuotaLevel, quota_status
-from app.services.trading_days import is_trade_day
+from app.services.trading_days import is_trade_day_fresh
 from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
@@ -103,7 +103,8 @@ def check(day: date | None = None, settings: Settings | None = None) -> dict:
         return {"status": "skipped", "reason": "推送已关闭"}
     if not settings.feishu_webhook_url.strip() and not settings.feishu_target.strip():
         return {"status": "skipped", "reason": "未配置飞书推送通道"}
-    if not is_trade_day(today):
+    # 带日历自愈：日历停更（跨年）时裸判断会把每个交易日都当成非交易日、静默不发告警
+    if not is_trade_day_fresh(today):
         return {"status": "skipped", "reason": f"{today} 不是交易日"}
     if "sent" in _log_statuses(today, TASK):
         return {"status": "skipped", "reason": "今天已经发过告警"}

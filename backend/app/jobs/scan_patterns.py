@@ -699,6 +699,7 @@ def _sync_codes_three_levels(
     """
     from app.jobs.collect_daily import DailyCollector
     from app.services.usage import QuotaLevel, level_label, quota_level
+    from app.sources.ifind import get_shared_client
 
     # ⚠️ 配额让路（2026-10-28 体检）：这一层是「补日线」的第三级，纯属增强 ——
     # 原来的 iFinD 回退只看 `wudao_ifind_fallback_max`（默认 24 只），**不看当前档位**，
@@ -719,7 +720,9 @@ def _sync_codes_three_levels(
                 label,
             )
 
-    collector = DailyCollector()
+    # 用进程内共享客户端：这一轮可能连补几十只，私有实例的令牌桶不共享，
+    # 与 API 线程并发时实际 QPS 翻倍会撞 429（2026-11-01 修）。
+    collector = DailyCollector(ifind=get_shared_client())
     synced = 0
     failed = 0
     via_em = 0

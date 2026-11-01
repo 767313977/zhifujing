@@ -34,7 +34,7 @@ from app.models import CbBasic, CbDaily, StockDaily
 from app.services.convertible import parse_coupons, ytm
 from app.services.usage import QuotaLevel, quota_level
 from app.sources.akshare_source import AkshareSource
-from app.sources.ifind import IfindClient, to_bond_symbol
+from app.sources.ifind import get_shared_client, to_bond_symbol
 from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
@@ -264,7 +264,9 @@ def _ifind_amounts(settings: Settings | None, codes: list[str]) -> dict[str, flo
     if not codes:
         return {}
     try:
-        client = IfindClient(settings or get_settings())
+        # 共享客户端：这里一次能连发二十几批，私有实例的令牌桶不共享，
+        # 与 API 线程并发时实际 QPS 翻倍会撞 429（2026-11-01 修）。
+        client = get_shared_client(settings)
         rows = client.bond_quotes([to_bond_symbol(code) for code in codes], list(IFIND_INDICATORS))
     except Exception:  # noqa: BLE001 - 兜底失败只少一列，不该让采集换个错误崩
         logger.exception("iFinD 可转债成交额兜底失败")

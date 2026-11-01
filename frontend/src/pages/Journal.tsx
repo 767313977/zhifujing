@@ -357,6 +357,10 @@ function TForm({
   // 当天日线的最低价 / 最高价，只用来做 placeholder（软提示，不拦截）
   const [range, setRange] = useState<{ low: number; high: number } | null>(null)
   const [saving, setSaving] = useState(false)
+  // 防重复提交（2026-11-01 审计 P2-7）：Enter 挂在六个输入框上，POST 在途时
+  // `saving` 还没重新渲染，第二次 Enter 会再发一条 createTradeT —— 同一笔底仓
+  // 出现两条重复的 T，做 T 统计被重复计。用 ref 挡在**发起请求之前**。
+  const savingRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
   /** 本次表单里「已经新建成功」的那条 T 的 id。
@@ -428,6 +432,7 @@ function TForm({
   const secondPrice = direction === 'long' ? sellPrice : buyPrice
 
   const submit = async () => {
+    if (savingRef.current) return
     if (direction === 'long' && !buyPrice) {
       setError('正T 要先填买入价')
       return
@@ -451,6 +456,7 @@ function TForm({
       trigger,
       note: note.trim() || null,
     }
+    savingRef.current = true
     setSaving(true)
     setError(null)
     setWarnings([])
@@ -477,6 +483,7 @@ function TForm({
     } catch (err) {
       setError((err as Error).message)
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }

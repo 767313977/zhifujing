@@ -18,13 +18,55 @@ job 模块里需要「只查日历、不为了一次判断去构造采集器」�
 这种纯查询。
 """
 
+import logging
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import session_scope
 from app.models import TradeCalendar
+from app.timeutil import today_cn
+
+logger = logging.getLogger(__name__)
+
+
+def calendar_needs_refresh(session: Session | None = None) -> bool:
+    """交易日历是否为空或已落后（跨年时上游还没发布次年日历）。
+
+    口径只有这一处：`collect_daily.DailyCollector.calendar_needs_refresh` 直接转调它。
+    """
+    stmt = select(func.max(TradeCalendar.trade_date))
+    if session is not None:
+        latest = session.scalar(stmt)
+    else:
+        with session_scope() as db:
+            latest = db.scalar(stmt)
+    return latest is None or latest < today_cn()
+
+
+def is_trade_day_fresh(day: date, session: Session | None = None) -> bool:
+    """带**日历自愈**的交易日判断：日历为空/停更时先补一次再判断。
+
+    裸 `is_trade_day` 在日历停更期间保守返回 False，于是跨年那几天（上游还没发布
+    次年日历）所有定时链都静默空跑、没人发现。`scheduler._run_daily` 早就带了这个
+    自愈，其余几处（收盘后链路、次日早间补采、告警检查）漏了 —— 2026-11-01 统一。
+
+    补日历要构造采集器（iFinD 没配好时会抛 `IfindError`），所以只在「确实需要刷新」
+    时才付这个代价；补失败照旧返回 False，不让调度崩掉。
+    """
+    if is_trade_day(day, session):
+        return True
+    if not calendar_needs_refresh(session):
+        return False
+    try:
+        from app.jobs.collect_daily import DailyCollector
+
+        DailyCollector().collect_calendar()
+    except Exception:  # noqa: BLE001 - 自愈失败不该让「今天是不是交易日」抛异常
+        logger.exception("补交易日历失败（日历为空或已落后），本次按非交易日处理")
+        return False
+    return is_trade_day(day, session)
 
 
 def is_trade_day(day: date, session: Session | None = None) -> bool:

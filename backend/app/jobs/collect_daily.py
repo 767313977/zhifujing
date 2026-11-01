@@ -38,7 +38,11 @@ from app.models import (
 )
 from app.jobs import collect_funds
 from app.services.sentiment import build_sentiment
-from app.services.trading_days import is_trade_day, previous_trade_day
+from app.services.trading_days import (
+    calendar_needs_refresh,
+    is_trade_day,
+    previous_trade_day,
+)
 from app.services.usage import QuotaLevel, quota_level
 from app.services.watch_scope import (
     filter_stock_codes,
@@ -461,9 +465,14 @@ def _stock_rows(records: list[dict], trade_dates: set[date]) -> list[dict]:
 class DailyCollector:
     """日线采集器。"""
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(
+        self, settings: Settings | None = None, *, ifind: IfindClient | None = None
+    ) -> None:
         self.settings = settings or get_settings()
-        self.ifind = IfindClient(self.settings)
+        # 允许注入共享客户端：形态扫描等「每轮新建采集器」的短任务原来各建一个
+        # `IfindClient`，令牌桶不共享，与 API 线程并发时实际 QPS 翻倍 → 429
+        # （2026-11-01 修，与 intraday_b1 / collect_dde 同口径）。
+        self.ifind = ifind or IfindClient(self.settings)
         self.ak = AkshareSource(self.settings)
         # 步骤自己写的一句说明（如自选股「失败 3 只」）。`_step` 在每个步骤开始时
         # 清零、结束后读走写进 `collect_log.message` —— 部分失败不该让整步记 failed，
@@ -485,11 +494,6 @@ class DailyCollector:
                 .limit(1)
             )
 
-    def _calendar_max(self) -> date | None:
-        """日历表里**最大**的日期（不按今天过滤，可能是未来日期）。"""
-        with session_scope() as session:
-            return session.scalar(select(func.max(TradeCalendar.trade_date)))
-
     def calendar_needs_refresh(self) -> bool:
         """交易日历是否需要（重新）拉取。
 
@@ -498,9 +502,11 @@ class DailyCollector:
           又只覆盖到已知的那一年 —— 不刷新就会**永久停更**：所有任务都判成
           「今天不是交易日」而整条定时链一次都跑不起来，且无法自愈。
           改成「最大日期早于今天就刷新一次」，上游一发布次年日历就能自己补上。
+
+        2026-11-01 起直接转调 `services.trading_days.calendar_needs_refresh`
+        （口径只有一处，调度侧的自愈判断也用同一份）。
         """
-        latest = self._calendar_max()
-        return latest is None or latest < today_cn()
+        return calendar_needs_refresh()
 
     def latest_trade_date(self) -> date:
         """取不晚于今天的最近交易日。
@@ -1213,8 +1219,21 @@ class DailyCollector:
             return 0
 
     def collect_lhb_institution(self, trade_date: date) -> int:
-        """龙虎榜机构席位统计（akshare，零配额）。"""
-        return collect_funds.collect_lhb_institutions(self.ak, trade_date)
+        """龙虎榜机构席位统计（akshare，零配额）。
+
+        **0 行不能记 ok**（2026-11-01 审计 P1-1）：上游还没发布时
+        `ak.stock_lhb_jgmmtj_em` 抛的 TypeError 会被吞成空表，函数返回 0 且不抛 ——
+        记 ok 会让 `_catch_up_late`（只认 ok）与 22:35 终局都以为「已采完」，该日
+        机构席位就**永久缺**（该源支持区间回查，本可自动补）。
+        与 `collect_lhb` 同口径记 `partial`：页面看得见、不挡 15:05 主链、晚间/次日会再试。
+        """
+        written = collect_funds.collect_lhb_institutions(self.ak, trade_date)
+        if not written:
+            self._step_status = "partial"
+            self._step_note = (
+                "机构席位 0 行（东财该日尚未发布或来源异常），等晚间那趟 / 次日回看重采"
+            )
+        return written
 
     # -------------------------------------------------------------------- 编排
 

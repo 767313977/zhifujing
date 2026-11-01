@@ -1287,6 +1287,7 @@ def _guard_quota() -> None:
 def sync(
     code: str,
     days: int = Query(STOCK_FULL_DAYS, ge=5, le=SYNC_MAX_DAYS, description="回看的交易日数"),
+    session: Session = Depends(get_db),
     user: AppUser = Depends(current_user),
 ) -> dict:
     """同步该股日线到本地缓存。首次打开个股页时调用。
@@ -1296,6 +1297,14 @@ def sync(
     冷却**只在真去取过数时**才记账（成功或 `IfindError`）—— `CollectionBusy`（采集
     正忙）根本没发起取数，不占冷却，前端可立刻重试（与自选同步同一口径，2026-10-11 统一）。
     """
+    digits = _code(code)
+    # 代码必须真在库里（2026-11-01 审计 P2-3）：`_code()` 只保证 6 位数字，999999
+    # 也能过 —— 不挡的话任意假代码都会按缺块发 iFinD 请求（days=500 约 11 次），
+    # 循环打就能把共享配额烧掉。文案与 `_stock_dde` / 自选同一套。
+    if session.get(StockBasic, digits) is None:
+        raise HTTPException(
+            status_code=400, detail=f"查不到这个代码「{digits}」，请确认后重试"
+        )
     _guard_quota()
 
     wait = _sync_cooldown.remaining(f"user:{user.id}")
@@ -1307,7 +1316,7 @@ def sync(
         )
     try:
         with collect_guard("个股同步"):
-            written = DailyCollector().sync_stock(_code(code), days=days)
+            written = DailyCollector().sync_stock(digits, days=days)
     except CollectionBusy as exc:
         # 采集正忙：没发起取数，不占冷却
         raise HTTPException(status_code=409, detail=str(exc)) from exc

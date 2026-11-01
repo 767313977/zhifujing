@@ -8,7 +8,7 @@ import logging
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -34,6 +34,11 @@ from app.timeutil import today_cn
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/plans", tags=["次日计划"])
+
+
+#: 单个用户最多保留多少条计划 —— 与自选股 `MAX_WATCHLIST` 同一套做法
+#: （2026-11-01 审计 P2-2）。按「代码 × 日期」一天一条，200 条足够覆盖大半年。
+MAX_PLANS = 200
 
 
 def _normalize_code(code: str) -> str:
@@ -177,6 +182,21 @@ def create_plan(
         )
     )
     if plan is None:
+        # 行数上限（2026-11-01 审计 P2-2）：只有**新增**才数 —— 同一天同一只票是
+        # upsert（已有行就改写），不该被上限挡掉。
+        count = (
+            session.scalar(
+                select(func.count())
+                .select_from(TradePlan)
+                .where(TradePlan.user_id == user.id)
+            )
+            or 0
+        )
+        if count >= MAX_PLANS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"交易计划最多 {MAX_PLANS} 条，你现在有 {count} 条，先删掉一些再加",
+            )
         plan = TradePlan(user_id=user.id, code=code, plan_date=payload.plan_date)
         session.add(plan)
     _fill(plan, name, payload)

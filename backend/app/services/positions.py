@@ -13,7 +13,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import StockBasic, TradeJournal
+from app.models import StockBasic, TradeJournal, TradePlan
 from app.services.watch_scope import latest_quotes
 
 
@@ -85,6 +85,12 @@ def create(
     digits = validate_code(session, code)
     if entry_price <= 0:
         raise ValueError("成本价必须大于 0")
+    if plan_id is not None:
+        # 归属校验：手工建仓也能带 plan_id，不校验就能把持仓挂到别人的计划 id 上，
+        # 计划页的「已执行 / 跟随情况」统计会被污染（无数据泄露，但口径全错）。
+        plan = session.get(TradePlan, plan_id)
+        if plan is None or plan.user_id != user_id:
+            raise ValueError("关联的计划不存在")
     basic = session.get(StockBasic, digits)
     journal = TradeJournal(
         user_id=user_id,

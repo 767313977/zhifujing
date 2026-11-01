@@ -25,6 +25,14 @@ engine = create_engine(
     # 所以这里影响的只是少数写路径。不给更大是因为「等太久」比「快点报错」更难排查：
     # 上限要留着（2026-10-10 加）。
     connect_args={"check_same_thread": False, "timeout": 15},
+    # 连接池要和线程池匹配：FastAPI 的同步执行器默认 40 个工作线程，
+    # 而默认池只有 5 + 10 溢出 = 15 条连接，高峰时剩下 25 个请求在池上排队，
+    # 等满 30 秒（默认 pool_timeout）直接抛 TimeoutError → 500。
+    # 这里把池放大到 20 + 20 = 40，并把排队上限压到 10 秒：
+    # 排不到连接说明确实过载，宁可快点报错，也不要让请求卡 30 秒（2026-11-01 修）。
+    pool_size=20,
+    max_overflow=20,
+    pool_timeout=10,
     future=True,
 )
 

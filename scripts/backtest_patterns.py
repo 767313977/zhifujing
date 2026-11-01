@@ -176,6 +176,11 @@ from app.services.patterns import (  # noqa: E402
     LS_LOOKBACK,
     MIN_SCORE,
     PATTERNS,
+    PILE_MIN_BARS,
+    WUDAO_HUABAO_MIN_BARS,
+    WUDAO_MIN_BARS,
+    WUDAO_WASH_MIN_BARS,
+    ZGNB_MIN_BARS,
     Bars,
     build_bars,
     is_st,
@@ -191,6 +196,50 @@ logger = logging.getLogger("backtest")
 # 「次日开盘买入」这种口径下的真实分布；5/10/20/60 保留，历史结论与它们对齐。
 HORIZONS = (1, 3, 5, 10, 20, 60)
 MIN_BARS = 80
+
+#: 各形态**真正**需要的最少 K 线根数 —— 直接取生产常量，别在这里另定一套。
+#: 回测原来统一卡 80 根，会把「只有 22~79 根、但生产端确实会判定」的票整只漏掉
+#: （2026-11-01 审计 P1-3）。没列出的形态仍用 `MIN_BARS`（它们的判定本身就要那么长）。
+PATTERN_MIN_BARS: dict[str, int] = {
+    "wudao_sample": WUDAO_MIN_BARS,
+    # 明天预案还要回看「昨天」那根样板，比样板日多 1 根（见 `_wudao_start` 的 len 守卫）
+    "wudao_start": WUDAO_MIN_BARS + 1,
+    "wudao_wash2": WUDAO_WASH_MIN_BARS,
+    "huabao_early": WUDAO_HUABAO_MIN_BARS,
+    "pile_wash_ready": PILE_MIN_BARS,
+    "pile_wash_wash": PILE_MIN_BARS,
+    # 知行B1 有 MA144 + EVERY(…,20) 的预热，必须留在 170
+    "zgnb_turn": ZGNB_MIN_BARS,
+    "zgnb_shrink": ZGNB_MIN_BARS,
+    "zgnb_origin": ZGNB_MIN_BARS,
+    "zgnb_super_shrink": ZGNB_MIN_BARS,
+    "zgnb_pull_white": ZGNB_MIN_BARS,
+    "zgnb_pull_super": ZGNB_MIN_BARS,
+    "zgnb_pull_yellow": ZGNB_MIN_BARS,
+}
+
+
+def _warmup(key: str) -> int:
+    """该形态判定需要的最少 K 线根数（生产常量优先，未列出的用 `MIN_BARS`）。"""
+    return PATTERN_MIN_BARS.get(key, MIN_BARS)
+
+
+def _select_bars(
+    grouped: dict[str, list[dict]], targets: dict[str, dict]
+) -> dict[str, Bars]:
+    """按**目标形态里最短的门槛**筛序列。
+
+    只为悟道六池跑时门槛会降到 22 —— 那些「只有 20 来根、但生产端照样判定」的票
+    必须留在池子里，否则样本与基准都系统性偏向「上市很久的票」。
+    """
+    need = min((_warmup(key) for key in targets), default=MIN_BARS)
+    return {
+        code: build_bars(records, code)
+        for code, records in grouped.items()
+        if len(records) >= need
+    }
+
+
 # 同一只票这么多交易日内的重复信号只留第一个（见模块说明第 2 条）
 DEDUP_DAYS = 20
 
@@ -1068,7 +1117,10 @@ class Tally:
         if not buckets:
             return None
         equity = 1.0
-        peak = 0.0
+        # 峰值从**初始净值 1.0** 起算（2026-11-01 审计 P1-1）：原来写 0.0，第一个月
+        # 下跌时 `max(0, 0.8) = 0.8`，回撤被算成 0 —— 开仓即亏的那种形态会被报告成
+        # 「没有回撤」。只有当月上涨时才碰不到这个初始峰值。
+        peak = 1.0
         worst = 0.0
         for month in sorted(buckets):
             total, count = buckets[month]
@@ -1333,6 +1385,15 @@ def main() -> int:
     until = date.fromisoformat(args.until) if args.until else None
     if since is not None and until is not None and since > until:
         raise SystemExit(f"--since（{since}）晚于 --until（{until}），检查一下")
+    # `--production-parity` 必须配 `--board prod`（2026-11-01 审计 P1-2）：只警告不拦的话，
+    # 默认 `board=all` 下悟道六池里**不受候选池限制**的四个形态会混进主板票，而基准仍按
+    # 创业板 + 科创板算 —— 样本与基准口径不一致，数字直接失真。宁可直接拒跑。
+    if args.production_parity and args.board != "prod":
+        raise SystemExit(
+            "--production-parity 必须与 --board prod 一起使用（当前 --board="
+            f"{args.board}）：它复现的是「主板 + 创业板 + 科创板、悟道六池只收 20cm」"
+            "的生产口径，单独开会让板块边界与基准口径不一致"
+        )
 
     filter_names = [name.strip() for name in args.filter_split.split(",") if name.strip()]
     unknown_filters = [name for name in filter_names if name not in FILTER_CHECKS]
@@ -1366,13 +1427,6 @@ def main() -> int:
             "--board all 是**研究口径**（含北交所、不限形态），数字不能当生产效果读；"
             "要与生产对照请加 --board prod --production-parity"
         )
-    if args.production_parity and args.board != "prod":
-        logger.warning(
-            "--production-parity 已开但 --board=%s：候选池按生产口径只收创业板 + 科创板，"
-            "板块仍按 %s —— 想完整对齐请同时给 --board prod",
-            args.board,
-            args.board,
-        )
     if args.stocks:
         codes = codes[: args.stocks]
     if not codes:
@@ -1404,9 +1458,16 @@ def main() -> int:
             ", ".join(sorted(missing)[:8]),
             " …" if len(missing) > 8 else "",
         )
-    short = sum(1 for records in grouped.values() if len(records) < MIN_BARS)
+    # 形态目标要在筛序列**之前**解析：门槛按目标形态定（见 `PATTERN_MIN_BARS`）
+    targets = _resolve_targets(args.pattern)
+    need = min((_warmup(key) for key in targets), default=MIN_BARS)
+    short = sum(1 for records in grouped.values() if len(records) < need)
     if short:
-        logger.warning("%d 只票的历史不足 %d 根，不参与判定", short, MIN_BARS)
+        logger.warning(
+            "%d 只票的历史不足 %d 根（本次目标形态里最短的预热门槛），不参与判定",
+            short,
+            need,
+        )
 
     # **ST 按交易日剔**（2026-10-31 整改）。判据仍是线上同一个 `patterns.is_st`，
     # 但作用域从「整段」改成「那一天」：某天名称带 ST 就只有那天不参与，摘帽后可以
@@ -1423,11 +1484,7 @@ def main() -> int:
         st_stats["constant_st"],
     )
 
-    bars_by_code = {
-        code: build_bars(records, code)
-        for code, records in grouped.items()
-        if len(records) >= MIN_BARS
-    }
+    bars_by_code = _select_bars(grouped, targets)
     if not bars_by_code:
         raise SystemExit("没有可用的日线序列")
     lengths = sorted(len(bars) for bars in bars_by_code.values())
@@ -1439,7 +1496,6 @@ def main() -> int:
         latest,
     )
 
-    targets = _resolve_targets(args.pattern)
     logger.info("目标形态 %d 个：%s", len(targets), ", ".join(targets))
     if _DRAFT_KEYS & set(targets):
         logger.info(
@@ -1544,6 +1600,10 @@ def main() -> int:
     started = time.monotonic()
     hold_from_entry = args.entry == ENTRY_NEXT_OPEN
     prod_board_gate = args.board == "prod"
+    # 每个形态各自的最少根数（见 `PATTERN_MIN_BARS`）：循环从**最短**那个门槛起，
+    # 更长的形态在下面逐条跳过 —— 这样 22 根的票也能被 wudao 判定，而 B1 仍等 170 根。
+    warmups = {key: _warmup(key) for key in targets}
+    loop_start = max(1, min(warmups.values()) - 1)
     # 候选池只对「明天盯 / 明天预案」生效；其余四个池子不限（生产就是这样）
     candidates = _candidate_sets(bars_by_code) if args.production_parity else {}
 
@@ -1551,7 +1611,7 @@ def main() -> int:
         n = len(bars)
         date_index = {day: i for i, day in enumerate(bars.dates)}
         code_st = st_days.get(code, set())
-        for t in range(MIN_BARS, n):
+        for t in range(loop_start, n):
             day = bars.dates[t]
             g = global_pos[day]
             if g + max(HORIZONS) >= len(all_dates):
@@ -1599,6 +1659,9 @@ def main() -> int:
             # 同一个 (票, 交易日) 的蜡烛形态只判一次：多个形态同日命中时共用
             candle_flags: tuple[str, ...] | None = None
             for key, target in targets.items():
+                # 预热不足的形态先跳过（生产里这些票也判不了，见 `_warmup`）
+                if t + 1 < warmups[key]:
+                    continue
                 # 板块关：prod 口径下按形态再收一次（悟道六池 + 金叉大阳只收 20cm）
                 if prod_board_gate and not pattern_board_allowed(key, code):
                     board_dropped[key] += 1

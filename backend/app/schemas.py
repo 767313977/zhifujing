@@ -1639,8 +1639,10 @@ class StockUnlocksOut(StockEventMeta):
 class TradeJournalIn(ApiModel):
     """新增 / 修改一笔交易时的入参（2026-10-18 清单 #1）。"""
 
-    code: str
-    name: str | None = None
+    # 长度上限（2026-11-01 审计 P2-2）：与 WatchlistIn / NoteIn 同一套做法 ——
+    # 没有上限时一个登录用户就能往 TEXT 里塞任意大的字符串，把库和列表响应一起撑大。
+    code: str = Field(..., max_length=16)
+    name: str | None = Field(None, max_length=64)
     entry_date: date
     entry_price: float
     #: 买入股数（可选）。买入金额 = 买入价 × 股数，现算不落库
@@ -1650,12 +1652,12 @@ class TradeJournalIn(ApiModel):
     #: 仓位（占自己总资金的比例，0-100）
     position_pct: float | None = None
     #: pattern / wudao / theme / other
-    reason_type: str = "other"
+    reason_type: str = Field("other", max_length=16)
     #: 形态 key / 悟道池 key / 题材名
-    reason_key: str | None = None
-    reason_text: str | None = None
+    reason_key: str | None = Field(None, max_length=64)
+    reason_text: str | None = Field(None, max_length=20000)
     plan_stop: float | None = None
-    note: str | None = None
+    note: str | None = Field(None, max_length=20000)
 
 
 class JournalReasonHit(ApiModel):
@@ -1702,8 +1704,8 @@ class TradeTIn(ApiModel):
     #: 这次 T 的数量占底仓的比例（0-100）。1/3 仓就填 33
     ratio_pct: float = 33.0
     #: oversold（日线做T超跌）/ intraday_high（分时冲高）/ theme_fade（题材退潮）/ other
-    trigger: str = "other"
-    note: str | None = None
+    trigger: str = Field("other", max_length=16)
+    note: str | None = Field(None, max_length=20000)
 
 
 class TradeTRow(TradeTIn):
@@ -1824,30 +1826,31 @@ class TradeStatsOut(ApiModel):
 class TradePlanIn(ApiModel):
     """新增 / 修改次日计划（2026-10-18 清单 #2）。"""
 
-    code: str
-    name: str | None = None
+    # 长度上限（2026-11-01 审计 P2-2），同 `WatchlistIn`
+    code: str = Field(..., max_length=16)
+    name: str | None = Field(None, max_length=64)
     plan_date: date
     #: 过这个价买（买入价区的下限 / 触发价）
     buy_price: float
     #: 破这个价放弃
     stop_price: float
-    note: str | None = None
+    note: str | None = Field(None, max_length=20000)
     # --- 计划闭环（FEAT-PLAN-LOOP）---
     #: 来源：形态 key / 悟道池 key / manual
-    source: str | None = None
-    source_name: str | None = None
+    source: str | None = Field(None, max_length=64)
+    source_name: str | None = Field(None, max_length=64)
     signal_date: date | None = None
     ref_price: float | None = None
     #: 买入价区上限；超过它不再追（可空 = 不设上限）
     buy_high: float | None = None
     target_price: float | None = None
-    position_note: str | None = None
+    position_note: str | None = Field(None, max_length=20000)
     observe_only: bool = False
     #: 回填的实际买入价（填了就视为已执行）
     actual_price: float | None = None
     followed_plan: bool | None = None
     #: 偏差原因：追高 / 未等到 / 情绪误判 / 其它
-    deviation: str | None = None
+    deviation: str | None = Field(None, max_length=64)
 
 
 class TradePlanRow(TradePlanIn):
@@ -3569,13 +3572,14 @@ class StockRiskBadgesOut(ApiModel):
 class PositionIn(ApiModel):
     """一笔手工持仓（= trade_journal 的未平仓记录）。"""
 
-    code: str
-    name: str | None = None
+    # 长度上限（2026-11-01 审计 P2-2），同 `WatchlistIn`
+    code: str = Field(..., max_length=16)
+    name: str | None = Field(None, max_length=64)
     entry_date: date
     entry_price: float
     shares: int | None = None
     position_pct: float | None = None
-    note: str | None = None
+    note: str | None = Field(None, max_length=20000)
     plan_id: int | None = None
 
 
@@ -3628,10 +3632,12 @@ class RiskStatusOut(ApiModel):
 
 
 class AnalysisSnapshotIn(ApiModel):
-    code: str
-    name: str | None = None
+    # 长度上限（2026-11-01 审计 P2-2）：`payload` 的**体积**在
+    # `api/analysis.create_snapshot` 里按序列化后 ≤64KB 校验。
+    code: str = Field(..., max_length=16)
+    name: str | None = Field(None, max_length=64)
     #: 一句话结论（列表页展示）
-    summary: str
+    summary: str = Field(..., max_length=2000)
     #: 当时 `/api/analysis/lookup` 的完整返回，点开时整体复原
     payload: dict | None = None
 

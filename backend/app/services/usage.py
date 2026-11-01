@@ -417,13 +417,19 @@ def _level_for(
     抬高（见 `_watchlist_extra_calls`），保证「日耗模型不写死」。
     """
     days = max(collect_days, 1)
-    for daily, level in (
-        (full_daily, QuotaLevel.NORMAL),
-        (full_daily - HIT_DDE_DAILY, QuotaLevel.PAUSE_HIT_DDE),
-        (core_daily, QuotaLevel.PAUSE_KLINE),
-        (0, QuotaLevel.CORE_ONLY),
-    ):
-        if remaining >= daily * days:
+    # 阈值**从 `LEVEL_BUDGETS` 派生**（2026-11-01 修）：原来这里另抄了一份同形状的
+    # 元组，注释却承诺「调整顺序只动表一处」—— 只改表会让判档静默漂移。现在表是
+    # 唯一来源，`core_daily` / `full_daily` 只负责把基线平移成「当前自选股只数下的
+    # 日耗」（`extra` = 自选股带来的增量，每只 1 次/天）。
+    extra = full_daily - FULL_DAY_CALLS
+    for daily, level in LEVEL_BUDGETS:
+        if daily == CORE_DAILY:
+            threshold = core_daily
+        elif daily == 0:
+            threshold = 0
+        else:
+            threshold = daily + extra
+        if remaining >= threshold * days:
             return level
     return QuotaLevel.CORE_ONLY
 

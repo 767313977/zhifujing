@@ -95,6 +95,10 @@ def _normalize_username(raw: str) -> str:
         raise HTTPException(status_code=400, detail="用户名不能为空")
     if len(name) > USERNAME_MAX:
         raise HTTPException(status_code=400, detail=f"用户名最多 {USERNAME_MAX} 个字符")
+    # 控制字符会原样进日志（`api/admin.py`）与页面，换行还会伪造日志行
+    # （2026-11-01 审计 P3-1，与 `services/stock_lookup` 同款校验）
+    if any(ord(char) < 32 or ord(char) == 127 for char in name):
+        raise HTTPException(status_code=400, detail="用户名不能包含控制字符")
     return name
 
 
