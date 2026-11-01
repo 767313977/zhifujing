@@ -108,8 +108,9 @@ function isActivePath(pathname: string, item: NavItem): boolean {
  * 不是把东西塞进「更多」，所以不违背当时那条「别多一次点击」的诉求：
  * 常用 7 个仍然一点就到，其余按领域最多多一次点击。
  *
- * ⚠️ 分组按钮**必须放在滚动容器之外**：固定项那条 nav 是 `overflow-x-auto`（窄屏兜底），
- * 下拉菜单挂在里面会被裁掉。
+ * ⚠️ 分组按钮**不要塞进任何 overflow 容器**：下拉菜单是绝对定位，挂在会裁切
+ * 的祖先里会被切掉一半。2026-11-01 起固定项那条 nav 改成 `shrink-0`（不再横滑），
+ * 但这条约束仍然适用 —— 以后谁再把导航包进 `overflow-x-auto` 都会复发。
  */
 
 /**
@@ -300,14 +301,19 @@ export default function Layout({ children, toolbar }: LayoutProps) {
           高度保持 52px —— 48px 会把 14px 导航挤得太紧。 */}
       <header className="sticky top-0 z-20 border-b border-line bg-ink-900">
         {/*
-          折行断点是 xl（1280）：以下两行（第一行品牌 + 导航，第二行操作区），
-          1280 及以上回到一行。这一条从 2026-09-28 起就是如此，保持不动。
+          折行断点是 2xl（1536）：以下两行（第一行品牌 + 导航，第二行操作区），
+          1536 及以上回到一行。
 
-          ⚠️ 操作区是顶栏里唯一「内容不可压缩」的一大块（日期下拉 + 账号区），
-          所以它每宽 1px 都从导航身上扣。判断标准仍是「这是不是全局切换」：
-          日期/口径是（整页跟着变），图表窗口不是。往这里塞控件前先想清楚。
+          2026-11-01 从 xl（1280）提到 2xl —— 实测 1280 单行时导航只剩 12px 余量，
+          工具栏再多一个下拉就会把「自选股」挤出可视区（导航是 overflow-x-auto，
+          且没有滚动条提示，用户根本看不出还有入口）。工具栏宽度各页不同，
+          导航不该跟它抢同一行：两行之后操作区独占一行，加控件不再影响导航。
+
+          ⚠️ 操作区是顶栏里唯一「内容不可压缩」的一大块（日期下拉 + 账号区）。
+          判断标准仍是「这是不是全局切换」：日期/口径是（整页跟着变），
+          图表窗口不是。往这里塞控件前先想清楚。
         */}
-        <div className="mx-auto flex max-w-shell flex-wrap items-center gap-x-3 px-3 md:px-5 xl:flex-nowrap xl:gap-x-5">
+        <div className="mx-auto flex max-w-shell flex-wrap items-center gap-x-3 px-3 md:px-5 2xl:flex-nowrap 2xl:gap-x-5">
           {/* 品牌：中文名做主标识，等宽拉丁字母做辅助标记。 */}
           <div className="flex h-[52px] shrink-0 items-baseline gap-2">
             <span className="text-[14px] font-semibold tracking-[0.05em] text-fg whitespace-nowrap md:text-[15px] md:tracking-[0.1em]">
@@ -321,10 +327,13 @@ export default function Layout({ children, toolbar }: LayoutProps) {
 
           <span className="hidden h-4 w-px shrink-0 bg-line lg:block" />
 
-          {/* 桌面/平板（≥1024）：7 个固定项平铺；装不下就横向滚动（见上面那段说明） */}
+          {/* 桌面/平板（≥1024）：7 个固定项平铺。
+              `shrink-0`（2026-11-01）：固定入口**任何宽度下都不许被压缩**。
+              空间不够时让操作区自己横滑（见下面那段），而不是把最后几个入口裁掉
+              —— 裁掉时没有任何提示，等于入口静默消失。 */}
           <nav
             aria-label="主导航"
-            className="hidden h-[52px] min-w-0 grow basis-0 items-stretch gap-1 overflow-x-auto overflow-y-hidden lg:flex lg:gap-0"
+            className="hidden h-[52px] shrink-0 items-stretch gap-1 lg:flex lg:gap-0"
           >
             {PINNED.map((item) => (
               <NavEntry key={item.to} item={item} />
@@ -369,16 +378,24 @@ export default function Layout({ children, toolbar }: LayoutProps) {
           </button>
 
           {/*
-            操作区。xl 以下 `w-full` 把它挤到第二行并占满整行，1280 以上恢复成
-            「靠右、宽度随内容」（断点 2026-09-28 从 md 挪到 xl）。
+            操作区。<2xl 时 `w-full` 独占第二行（行高 40px，比 52px 的导航行矮，
+            省首屏高度）；≥2xl 恢复成「靠右、宽度随内容」（断点 2026-11-01 从 xl 挪到 2xl）。
 
-            两道兜底都是为了「宁可内部横滑，也不压扁控件、更不顶破页面」：
-            `*:shrink-0` + `overflow-x-auto`（见 2026-09 的排查记录）。
+            结构上分成两块：**工具区可横滑、账号区固定**。
+            - 工具区：`min-w-0 flex-1` + `overflow-x-auto` + `*:shrink-0`（2026-09 的排查
+              记录：宁可内部横滑，也不压扁控件、更不顶破页面）。宽度不够时滑的是工具栏
+              自己，不会去挤导航。
+            - 账号区：不在滚动容器里，右上角的用户名 / 账号 / 退出永远可见。
           */}
-          <div className="no-scrollbar flex w-full shrink-0 items-center gap-3 overflow-x-auto pb-2 *:shrink-0 xl:w-auto xl:pb-0">
-            {toolbar}
-            {/* 账号区放最右端（即整页右上角）。它拼在操作区里而不是单开一块：
-                顶栏的剩余宽度全归导航，单开一块等于再切一刀。 */}
+          <div className="flex w-full min-w-0 items-center gap-2 2xl:ml-auto 2xl:w-auto">
+            {/* 行高 40px：比 52px 的导航行矮一档，两行时少占首屏。
+                用 `min-h-10` 而不是 `h-10` —— 某个页面塞进更高的控件时应该把行撑高，
+                而不是被 `overflow-x-auto` 连带裁掉（overflow-x 会顺带把 y 也变成 auto）。 */}
+            <div className="no-scrollbar flex min-h-10 min-w-0 flex-1 items-center gap-2 overflow-x-auto *:shrink-0">
+              {toolbar}
+            </div>
+            {/* 账号区固定在最右端（即整页右上角），刻意不放进上面的滚动容器：
+                工具区横滑时它也不能跟着滑走。 */}
             <UserMenu />
           </div>
         </div>
