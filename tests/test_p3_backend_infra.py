@@ -155,6 +155,68 @@ def test_call_bounded_counts_abandoned_threads():
     assert abandoned_calls() == before + 1
 
 
+def _wait_idle(timeout: float = 3.0) -> None:
+    """等挂住的调用线程自己退出（它们是不可取消的守护线程）。"""
+    import time
+
+    from app.sources.akshare_source import inflight_calls
+
+    deadline = time.monotonic() + timeout
+    while inflight_calls() and time.monotonic() < deadline:
+        time.sleep(0.02)
+
+
+def test_call_bounded_trips_breaker_instead_of_spawning_more_threads(monkeypatch):
+    """连续超时不能无限开线程：到上限就熔断，抛 TimeoutError 且不再新开。"""
+    import time
+
+    from app.sources import akshare_source as ak
+
+    _wait_idle()
+    monkeypatch.setattr(ak, "_MAX_INFLIGHT", 2)
+    monkeypatch.setattr(ak, "_inflight", 0)
+    monkeypatch.setattr(ak, "_breaker_reported", False)
+
+    def _hang():
+        time.sleep(0.4)
+        return pd.DataFrame()
+
+    for index in range(2):
+        with pytest.raises(TimeoutError) as exc:
+            ak._call_bounded(_hang, f"挂死{index}", 0.01)
+        # 第一次是「超时」，第二次同样是超时（名额还没到顶）
+        assert "超时" in str(exc.value)
+    assert ak.inflight_calls() == 2
+
+    # 第三个请求不再新开线程，直接熔断
+    with pytest.raises(TimeoutError) as exc:
+        ak._call_bounded(_hang, "第三个", 0.01)
+    assert "熔断" in str(exc.value)
+    assert ak.inflight_calls() == 2  # 没有新增
+
+    # 挂住的调用结束后自动恢复
+    _wait_idle()
+    assert ak.inflight_calls() == 0
+    got = ak._call_bounded(lambda: pd.DataFrame([{"ok": 1}]), "恢复后", 1.0)
+    assert len(got) == 1
+
+
+def test_call_bounded_breaker_releases_slot_when_call_returns(monkeypatch):
+    """正常返回 / 抛异常都要释放名额，否则一次失败会把后面的调用永久熔断。"""
+    from app.sources import akshare_source as ak
+
+    _wait_idle()
+    monkeypatch.setattr(ak, "_MAX_INFLIGHT", 2)
+    monkeypatch.setattr(ak, "_inflight", 0)
+
+    ak._call_bounded(lambda: pd.DataFrame(), "正常", 1.0)
+    assert ak.inflight_calls() == 0
+
+    with pytest.raises(RuntimeError):
+        ak._call_bounded(lambda: (_ for _ in ()).throw(RuntimeError("boom")), "异常", 1.0)
+    assert ak.inflight_calls() == 0
+
+
 # ---------------------------------------------------------------- #9 em_news 限时
 
 

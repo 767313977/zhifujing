@@ -32,6 +32,14 @@ _abandoned_calls = 0
 #: 累计到这个数量就升级成 error（一次告警不是一个 bug，而是一整天的泄漏）
 _ABANDONED_ALERT_AT = 50
 
+#: 同时「在跑」的调用上限（含已超时但线程还挂着的）。到顶就熔断、不再新开线程 ——
+#: akshare 每次调用都是一个守护线程，挂住的线程收不回来，只能限制它不再增加。
+#: 8 是「一条采集链同时最多几条外网请求」的余量：正常并发远低于它，触发即说明有连接堆着。
+_MAX_INFLIGHT = 8
+_inflight = 0
+#: 熔断提示只打一次（重试会放大成刷屏），计数回落后复位
+_breaker_reported = False
+
 
 def _ymd(value: date) -> str:
     return value.strftime("%Y%m%d")
@@ -103,7 +111,24 @@ def _call_bounded(fn: Callable[[], pd.DataFrame], description: str, timeout: flo
 
     用普通守护线程（不是线程池）：超时后那个线程可能还挂在 socket 上，守护线程不会
     拖住进程退出；用线程池的话，挂住的 worker 还会占着池子、让后续调用排队。
+
+    ## 熔断（2026-11-01 审计 P3）
+
+    `Future` 超时**取消不了**底层请求：线程会一直挂在 socket 上，常驻进程里按天累积。
+    这里再补一道闸：同时「在跑的调用」最多 `_MAX_INFLIGHT` 个，到顶就**不再新开线程**、
+    直接抛 `TimeoutError`（上层照旧记 failed 并让出采集锁）。等挂住的调用自己结束、
+    计数回落，闸门自动恢复 —— 不需要人工干预，也不会无限开线程把进程拖死。
     """
+    global _inflight
+    with _ABANDONED_LOCK:
+        if _inflight >= _MAX_INFLIGHT:
+            _report_breaker(description)
+            raise TimeoutError(
+                f"{description} 未执行：已有 {_inflight} 个 akshare 调用挂死"
+                f"（上限 {_MAX_INFLIGHT}），本次熔断"
+            )
+        _inflight += 1
+
     future: Future = Future()
 
     def _run() -> None:
@@ -111,8 +136,14 @@ def _call_bounded(fn: Callable[[], pd.DataFrame], description: str, timeout: flo
             future.set_result(fn())
         except BaseException as exc:  # noqa: BLE001 - 原样交给调用方
             future.set_exception(exc)
+        finally:
+            _release_inflight()
 
-    threading.Thread(target=_run, name="akshare-call", daemon=True).start()
+    try:
+        threading.Thread(target=_run, name="akshare-call", daemon=True).start()
+    except BaseException:
+        _release_inflight()
+        raise
     try:
         return future.result(timeout=timeout)
     except FuturesTimeoutError as exc:
@@ -120,6 +151,29 @@ def _call_bounded(fn: Callable[[], pd.DataFrame], description: str, timeout: flo
         raise TimeoutError(
             f"{description} 超时（{timeout}s，akshare 内部无超时）"
         ) from exc
+
+
+def _release_inflight() -> None:
+    """一个调用结束（正常 / 异常 / 超时后终于返回）时释放名额。"""
+    global _inflight, _breaker_reported
+    with _ABANDONED_LOCK:
+        _inflight = max(_inflight - 1, 0)
+        if _inflight < _MAX_INFLIGHT:
+            _breaker_reported = False
+
+
+def _report_breaker(description: str) -> None:
+    """熔断态只吼一次：每次拒绝都打 error 会被重试放大成刷屏。"""
+    global _breaker_reported
+    if _breaker_reported:
+        return
+    _breaker_reported = True
+    logger.error(
+        "akshare 熔断：%d 个调用仍挂死（上限 %d），在它们结束前不再新开请求（最近一次：%s）",
+        _inflight,
+        _MAX_INFLIGHT,
+        description,
+    )
 
 
 def _note_abandoned(description: str) -> None:
@@ -144,6 +198,12 @@ def abandoned_calls() -> int:
     """当前进程累计放弃的挂死线程数（测试与运维探针用）。"""
     with _ABANDONED_LOCK:
         return _abandoned_calls
+
+
+def inflight_calls() -> int:
+    """当前仍在跑（含已超时但线程没退出）的调用数；达到 `_MAX_INFLIGHT` 即熔断。"""
+    with _ABANDONED_LOCK:
+        return _inflight
 
 
 class AkshareSource:
