@@ -74,6 +74,58 @@ def test_defaults_and_overheat(db):
     assert ("theme", "机器人") in kinds
 
 
+def test_missing_position_pct_is_disclosed(db):
+    """未填仓位比例的持仓不参与集中度 —— 必须在 message 里说出来，而不是静默跳过。"""
+    session, user = db
+    session.add(
+        TradeJournal(
+            user_id=user.id,
+            code="600000",
+            name="测试B",
+            entry_date=DAY,
+            entry_price=10.0,
+        )
+    )
+    session.commit()
+
+    data = risk.status(session, user.id)
+    assert "1 笔持仓未填仓位比例" in data["message"]
+    assert "不参与集中度计算" in data["message"]
+    # 只提示、不阻断：过热仍然只看连板 / 恐贪
+    assert data["overheat"] is True
+
+
+def test_missing_position_pct_note_when_no_trigger(db):
+    """没有任何触发时，message 也要带上这句说明。"""
+    session, user = db
+    risk.save_pref(
+        session,
+        user.id,
+        {
+            "max_position_pct": 80.0,
+            "max_theme_pct": 90.0,
+            "heat_consecutive": 10,
+            "heat_temperature": 100,
+            "strict_mode": False,
+        },
+    )
+    session.add(
+        TradeJournal(
+            user_id=user.id,
+            code="600000",
+            name="测试B",
+            entry_date=DAY,
+            entry_price=10.0,
+        )
+    )
+    session.commit()
+
+    data = risk.status(session, user.id)
+    assert data["concentration"] == []
+    assert data["message"].startswith("当前没有触发风控提醒")
+    assert "1 笔持仓未填仓位比例" in data["message"]
+
+
 def test_pref_change_reflects_status(db):
     session, user = db
     risk.save_pref(

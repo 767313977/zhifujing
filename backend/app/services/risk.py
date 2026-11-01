@@ -2,7 +2,8 @@
 
 **只是提醒，不阻止任何操作**（`strict_mode` 也只在页面上加强提示）。
 数据全部读本地库：情绪热度来自 `market_sentiment` 与恐贪指数，集中度来自用户自己
-填的持仓/计划仓位百分比（没有填就跳过，不猜）。
+填的持仓仓位百分比（没有填就跳过，不猜 —— 但会在提示里写明跳过，避免被理解成
+「没告警 = 不集中」）。
 
 口径：
 - 过热：连板高度 ≥ `heat_consecutive`（默认 6）**或** 恐贪指数 ≥ `heat_temperature`
@@ -168,11 +169,38 @@ def status(session: Session, user_id: int) -> dict[str, Any]:
     concentrations = _concentrations(session, user_id, pref)
     overheat = bool(triggers)
     parts = triggers + [item["text"] for item in concentrations]
+
+    # 未填仓位比例的持仓**不参与集中度计算**（见模块说明）。必须写出来 ——
+    # 否则用户会以为「没告警 = 持仓不集中」，而实际是「这几笔根本没算」。
+    missing_pct = (
+        session.scalar(
+            select(func.count())
+            .select_from(TradeJournal)
+            .where(
+                TradeJournal.user_id == user_id,
+                TradeJournal.exit_date.is_(None),
+                TradeJournal.position_pct.is_(None),
+            )
+        )
+        or 0
+    )
+    note = (
+        f"{missing_pct} 笔持仓未填仓位比例，不参与集中度计算"
+        "（交易计划没有仓位字段，也不计入集中度）"
+        if missing_pct
+        else ""
+    )
+    if parts:
+        message = "；".join(parts + ([note] if note else []))
+    elif note:
+        message = f"当前没有触发风控提醒（{note}）"
+    else:
+        message = "当前没有触发风控提醒"
     return {
         "overheat": overheat,
         "strict_mode": pref["strict_mode"],
         "triggers": triggers,
         "concentration": concentrations,
-        "message": "；".join(parts) if parts else "当前没有触发风控提醒",
+        "message": message,
         "pref": pref,
     }

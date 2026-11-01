@@ -99,7 +99,12 @@ export default function ThemeBoardPanel({
                     <th>涨幅</th>
                     <th>净流入</th>
                     <th className="text-left">相关ETF</th>
-                    <th className="text-left">龙头 / 中军 / 跟风</th>
+                    <th
+                      className="cursor-help text-left"
+                      title="龙头 = 连板最高；中军 = 其余里总市值最大；跟风 = 再按连板高度 / 封单金额取前 2。规则排序，不是荐股"
+                    >
+                      龙头 / 中军 / 跟风
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -218,7 +223,8 @@ export default function ThemeBoardPanel({
           <p className="px-4 py-3 text-[12px] leading-relaxed text-fg-dim">
             主线的「涨停数」按**开盘红精选板块**归属统计，与板块页、涨停复盘同源；
             一只票可以挂多个题材，所以各行之和会大于当日涨停总数（{data.limit_up_total} 只）。
-            龙头 / 中军 / 跟风是规则排出来的，不是荐股。
+            龙头 / 中军 / 跟风是规则排出来的：**龙头 = 连板最高，中军 = 其余里总市值最大，
+            跟风 = 再按连板高度 / 封单金额取前 2**（与口头说的「中军」可能不完全一致），不是荐股。
             「相关ETF」是**手工映射**（每个方向一两只代表 ETF），净申赎只在该 ETF
             有份额快照时才显示，没数据就是「—」。
           </p>
