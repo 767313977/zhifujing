@@ -119,6 +119,8 @@ history.db 由 `scripts/backfill_history.py` 用腾讯补出来（零配额）�
     python scripts/backtest_patterns.py --pattern all-new --history --stocks 800   # 限样本试跑
     python scripts/backtest_patterns.py --pattern limit_surge_flat --history --entry next_open --skip-unbuyable
                                                                                    # 打板类：次日开盘 + 剔一字板
+    python scripts/backtest_patterns.py --pattern all-new --history --since 2025-01-01
+                                                                                   # 样本外：只统计该日之后的信号
 
 多目标时**一遍扫描**跑完所有形态（序列只切一次），输出「形态 × 持有期」汇总表；
 单个形态则额外打印按月分布与命中明细，方便逐个人工核对。
@@ -871,7 +873,67 @@ def _load_history(engine, codes: list[str], bars: int) -> tuple[date, dict[str, 
         if not usable_bar(record):
             continue
         grouped[code].append(record)
+    overridden = _overlay_names_from_main(grouped, start, latest)
+    if overridden:
+        logger.info(
+            "名称回补：主库（iFinD 每日采集）覆盖 %d 个(票,日) —— 这些行是按当日名称判 ST 的",
+            overridden,
+        )
     return latest, dict(grouped)
+
+
+def _overlay_names_from_main(
+    grouped: dict[str, list[dict]], start: date, end: date
+) -> int:
+    """用**主库**的逐日名称覆盖 `history.db` 的名称，返回覆盖的 (票,日) 数。
+
+    为什么需要：`history.db` 是事后回补的，同一只票所有行写的都是**当前**名称 ——
+    于是「今天叫 ST 某某」的票，五年前也被当成 ST（逐日判 ST 也救不了）。
+    主库 `stock_daily` 是 iFinD **每天采集**的，最近约 400 个交易日里存的是当天名称，
+    把这段重叠区间覆盖过来，ST 判定在最近一年多至少是真实的；更早那一段仍只能沿用
+    回补名称（报告里已披露）。
+
+    两边的日期都升序，所以按 `(code, trade_date)` 排序后**指针只前进**，
+    不需要再建一份 `{代码: {日期: 下标}}`（那要多占几百 MB）。
+    """
+    with session_scope() as session:
+        result = session.execute(
+            select(StockDaily.code, StockDaily.trade_date, StockDaily.name)
+            .where(
+                StockDaily.trade_date >= start,
+                StockDaily.trade_date <= end,
+                StockDaily.name.is_not(None),
+            )
+            .order_by(StockDaily.code, StockDaily.trade_date)
+            .execution_options(yield_per=20000)
+        )
+        return _apply_names(grouped, result)
+
+
+def _apply_names(grouped: dict[str, list[dict]], rows) -> int:
+    """把 `(代码, 日期, 名称)` 流覆盖进 `grouped`，返回真正改写的行数（纯函数，可单测）。
+
+    `rows` 必须按 `(代码, 日期)` 升序 —— 两边都升序时指针只前进，不用建日期索引。
+    """
+    overridden = 0
+    current: str | None = None
+    records: list[dict] | None = None
+    position = 0
+    for code, day, name in rows:
+        if code != current:
+            current = code
+            records = grouped.get(code)
+            position = 0
+        if not records or not name:
+            continue
+        while position < len(records) and records[position]["date"] < day:
+            position += 1
+        if position >= len(records) or records[position]["date"] != day:
+            continue
+        if records[position].get("name") != name:
+            records[position]["name"] = name
+            overridden += 1
+    return overridden
 
 
 # ---------------------------------------------------------------- 累加器
@@ -900,6 +962,7 @@ class Tally:
         "exit_missing",
         "samples_rolled",
         "samples_missing",
+        "month_returns",
     )
 
     def __init__(self, horizons: int = len(HORIZONS)) -> None:
@@ -920,6 +983,10 @@ class Tally:
         #: 至少有一档顺延 / 至少有一档退不出来的信号条数
         self.samples_rolled = 0
         self.samples_missing = 0
+        #: 每档「月份 → [收益和, 条数]」，用来算按月等权批次的净值回撤
+        self.month_returns: list[dict[str, list[float]]] = [
+            defaultdict(lambda: [0.0, 0.0]) for _ in range(horizons)
+        ]
 
     def add(
         self,
@@ -941,6 +1008,9 @@ class Tally:
             self.returns[index].append(outcome.value)
             self.bench[index] += bench_means[index]
             self.counts[index] += 1
+            bucket = self.month_returns[index][month]
+            bucket[0] += outcome.value
+            bucket[1] += 1.0
             if outcome.rolled:
                 self.exit_rolled[index] += 1
                 rolled_any = True
@@ -980,6 +1050,34 @@ class Tally:
             float(values.max()),
             float(values.min()),
         )
+
+    def max_drawdown(self, index: int) -> float | None:
+        """按月等权批次的**复利净值**最大回撤（负数；无样本返回 None）。
+
+        资金管理假设（统一写死在这里，报告原样引用）：
+        1. 每月视为一个调仓批次：把当月**全部信号等权**买入，持有该档的 h 个交易日；
+        2. 批次按月份顺序复利（`1 + 当月均值收益` 连乘）；
+        3. 不设现金仓位、不加杠杆、不计费用。
+
+        ⚠️ 这是**近似**：同一月内不同信号的持有期会互相重叠，真实组合不可能把同一份
+        钱同时投进好几十笔；按月（而不是按日）聚合就是为了不让「每天十几个批次」的
+        重叠把复利放大成荒谬的数字。它只用来横向比较形态的净值曲线，
+        **不是**可实现组合的回撤。
+        """
+        buckets = self.month_returns[index]
+        if not buckets:
+            return None
+        equity = 1.0
+        peak = 0.0
+        worst = 0.0
+        for month in sorted(buckets):
+            total, count = buckets[month]
+            if count <= 0:
+                continue
+            equity *= 1.0 + total / count
+            peak = max(peak, equity)
+            worst = min(worst, equity / peak - 1.0)
+        return worst
 
 
 def _st_rows(grouped: dict[str, list[dict]]) -> tuple[dict[str, set[date]], dict]:
@@ -1053,6 +1151,8 @@ def _benchmark(
     *,
     skip_unbuyable: bool,
     st_days: dict[str, set[date]],
+    since: date | None = None,
+    until: date | None = None,
 ) -> tuple[dict[int, dict[date, float]], dict[int, dict[date, float]], dict]:
     """按**实际入场日**聚合的横截面基准：全池一份、悟道池（创业板+科创板）一份。
 
@@ -1075,6 +1175,9 @@ def _benchmark(
         code_st = st_days.get(code, set())
         wudao = is_wudao_board(code)
         for i, day in enumerate(bars.dates):
+            # 统计窗口（`--since/--until`）：基准只算窗口内的入场日，与样本同窗
+            if (since is not None and day < since) or (until is not None and day > until):
+                continue
             if day in code_st:
                 stats["st"] += 1
                 continue
@@ -1213,7 +1316,23 @@ def main() -> int:
     parser.add_argument(
         "--bars", type=int, default=DEFAULT_HISTORY_BARS, help=f"长历史窗口（默认 {DEFAULT_HISTORY_BARS} 根）"
     )
+    parser.add_argument(
+        "--since",
+        default="",
+        help=(
+            "只统计该日期（含，YYYY-MM-DD）之后的信号 —— 用于「开发区间 / 样本外」切分。"
+            "按**信号日**筛；入场与退出可以跨到窗口之后（那样才是真实持有）"
+        ),
+    )
+    parser.add_argument(
+        "--until", default="", help="只统计该日期（含，YYYY-MM-DD）之前的信号"
+    )
     args = parser.parse_args()
+
+    since = date.fromisoformat(args.since) if args.since else None
+    until = date.fromisoformat(args.until) if args.until else None
+    if since is not None and until is not None and since > until:
+        raise SystemExit(f"--since（{since}）晚于 --until（{until}），检查一下")
 
     filter_names = [name.strip() for name in args.filter_split.split(",") if name.strip()]
     unknown_filters = [name for name in filter_names if name not in FILTER_CHECKS]
@@ -1395,6 +1514,8 @@ def main() -> int:
         args.entry,
         skip_unbuyable=args.skip_unbuyable,
         st_days=st_days,
+        since=since,
+        until=until,
     )
     logger.info(
         "基准表：%d 个入场日（全池）/ %d 个（创业板+科创板）；"
@@ -1437,6 +1558,9 @@ def main() -> int:
                 # 命中日之后不足 `max(HORIZONS)` 个交易日了。日期升序，可以直接停这一只票。
                 break
             if day in code_st:
+                continue
+            # 统计窗口外的日期直接跳过 —— 既不判形态也不占去重位（同时也是提速手段）
+            if (since is not None and day < since) or (until is not None and day > until):
                 continue
             if rps_extra is not None:
                 rps50 = _rps_lookup(filter_ctx, 50, code, day)
@@ -1645,6 +1769,11 @@ def main() -> int:
         )
     if args.skip_unbuyable:
         print("★ 已剔除入场价已在涨停价上的信号（买不到），基准表同口径")
+    if since is not None or until is not None:
+        print(
+            f"★ 统计窗口：{since or '不限'} ~ {until or '不限'}（按**信号日**；"
+            "入场与退出可以跨出窗口 —— 那样才是真实持有）"
+        )
     if args.production_parity:
         print(
             "★ 生产口径（--production-parity）：按形态分板块边界 + 当日候选池（仅明天盯/明天预案）"
@@ -1680,19 +1809,23 @@ def _report_single(key: str, tally: Tally, samples: int) -> None:
     print("-" * 92)
     print(
         f"{'持有':>6} {'样本':>6} {'均值':>9} {'中位':>9} {'胜率':>7} "
-        f"{'基准均值':>10} {'超额':>9} {'顺延':>6} {'无法退出':>8} {'最好':>9} {'最差':>9}"
+        f"{'基准均值':>10} {'超额':>9} {'回撤':>8} {'顺延':>6} {'无法退出':>8} "
+        f"{'最好':>9} {'最差':>9}"
     )
-    print("-" * 100)
+    print("-" * 110)
     for index, horizon in enumerate(HORIZONS):
         mean, median, win, best, worst = tally.stats(index)
         base = tally.bench_mean(index)
+        drawdown = tally.max_drawdown(index)
         print(
             f"{horizon:>4}日 {tally.counts[index]:>6} {mean * 100:>8.2f}% {median * 100:>8.2f}% "
             f"{win * 100:>6.1f}% {base * 100:>9.2f}% {(mean - base) * 100:>8.2f}% "
+            f"{'—' if drawdown is None else f'{drawdown * 100:>7.1f}%'} "
             f"{tally.exit_rolled[index]:>6} {tally.exit_missing[index]:>8} "
             f"{best * 100:>8.1f}% {worst * 100:>8.1f}%"
         )
-    print("=" * 100)
+    print("=" * 110)
+    print("（回撤 = 按入场日等权批次的复利净值回撤，近似口径，见 `Tally.max_drawdown`）")
 
     dropped = tally.no_entry
     print()
@@ -1787,29 +1920,33 @@ def _report_multi(tallies: dict[str, Tally]) -> None:
         for index, horizon in enumerate(HORIZONS):
             mean, median, win, _best, _worst = tally.stats(index)
             base = tally.bench_mean(index)
+            drawdown = tally.max_drawdown(index)
             print(
                 f"    {horizon:>3}日  样本{tally.counts[index]:>6}  均值{mean * 100:>7.2f}%"
                 f"  中位{median * 100:>7.2f}%  胜率{win * 100:>5.1f}%"
                 f"  基准{base * 100:>7.2f}%  超额{(mean - base) * 100:>+6.2f}%"
+                f"  回撤{'—' if drawdown is None else f'{drawdown * 100:>6.1f}%'}"
             )
 
     print()
     print("--- 成交与退出（无法成交 = 拿不到可成交开盘价；无法退出 = 数据末端/长期停牌）---")
     print(
         f"{'形态':<20}{'信号':>7}{'延迟入场':>9}{'无法成交':>9}{'无法成交率':>11}"
-        f"{'无法退出':>9}{'退出顺延':>9}"
+        f"{'无法退出':>9}{'退出顺延':>9}{'10日回撤':>10}"
     )
-    print("-" * 76)
+    print("-" * 86)
     for item in rows:
         tally = item["tally"]
         if not tally.size:
             continue
         rate = tally.no_entry / (tally.size + tally.no_entry) * 100 if tally.size + tally.no_entry else 0.0
+        drawdown = tally.max_drawdown(idx10)
         print(
             f"{item['meta'].name:<20}{tally.size:>7}{tally.delayed:>9}{tally.no_entry:>9}"
             f"{rate:>10.1f}%{tally.samples_missing:>9}{tally.samples_rolled:>9}"
+            f"{'—' if drawdown is None else f'{drawdown * 100:>9.1f}%'}"
         )
-    print("=" * 76)
+    print("=" * 86)
 
     print()
     print("--- 各形态信号按月分布（看是不是只在某一两个月成立）---")
@@ -2059,7 +2196,8 @@ def _report_data_limits(args, grouped: dict[str, list[dict]], st_stats: dict) ->
     print("-" * 100)
     print(
         f"0) 本次口径：board={args.board} / entry={args.entry} / "
-        f"production_parity={args.production_parity} / HORIZONS={list(HORIZONS)}"
+        f"production_parity={args.production_parity} / HORIZONS={list(HORIZONS)} / "
+        f"窗口={args.since or '不限'}~{args.until or '不限'}"
     )
     print("1) 幸存者偏差：股票池来自 load_codes() —— **当前**在池的票。退市 / 出池的票整段")
     print("   缺席，样本与基准同向偏乐观；未按历史交易日的真实上市状态还原股票池。")
@@ -2077,9 +2215,13 @@ def _report_data_limits(args, grouped: dict[str, list[dict]], st_stats: dict) ->
     )
     print("   无法区分「一直 ST」与「后来才 ST」；名称缺失的行按非 ST 处理。")
     print(f"   名称缺失 {st_stats['no_name']} 行。")
+    print("   最近一段（与主库重叠的约 400 个交易日）已用**主库逐日名称**覆盖，")
+    print("   日志里的「名称回补」就是覆盖行数；更早那一段仍只能沿用回补名称。")
     print("4) 成交假设：入场用当日开盘价、退出用收盘价，**未计**佣金 / 印花税 / 滑点 /")
     print("   冲击成本；涨停买不到只在 --skip-unbuyable 时剔除，跌停卖不出未建模。")
     print("5) 去重：同一只票 20 个交易日内的重复信号只留第一个（只是独立样本的近似）。")
+    print("6) 回撤：按月等权批次的复利净值（月内持有期重叠、未计费用），近似口径，")
+    print("   只能横向比较形态，**不是**可实现组合的回撤。")
     print("=" * 100)
 
 

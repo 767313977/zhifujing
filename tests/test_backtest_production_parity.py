@@ -8,6 +8,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS) not in sys.path:
@@ -129,6 +130,58 @@ def test_benchmark_drops_st_days_for_the_whole_series():
     assert _day(1) in bench_all[1] and _day(4) in bench_all[1]
     # 2 号那一天：既作为信号日被剔，也作为 1 号的成交日被剔 → 计 2 次
     assert bench_stats["st"] == 2
+
+
+def test_apply_names_overrides_only_matching_rows():
+    """主库逐日名称只覆盖「同代码 + 同日期」的行，其余保持回补名称。"""
+    grouped = {
+        "600000": [
+            {"date": _day(0), "name": "旧名"},
+            {"date": _day(1), "name": "旧名"},
+        ]
+    }
+    rows = [("600000", _day(0), "新名"), ("600000", _day(2), "越界")]
+    assert bt._apply_names(grouped, rows) == 1
+    assert grouped["600000"][0]["name"] == "新名"
+    assert grouped["600000"][1]["name"] == "旧名"
+
+
+def test_benchmark_respects_window():
+    """`--since/--until` 同时作用于样本与基准：窗口外的入场日不进基准表。"""
+    bars = _flat(list(range(6)))
+    grouped = {"600000": _records(bars, ["正常股份"] * 6)}
+    axis = [_day(index) for index in range(6)]
+    bench, _, _ = bt._benchmark(
+        {"600000": bars},
+        grouped,
+        axis,
+        {day: index for index, day in enumerate(axis)},
+        bt.ENTRY_NEXT_OPEN,
+        skip_unbuyable=False,
+        st_days={},
+        since=_day(2),
+        until=_day(3),
+    )
+    # 信号日 2、3 → 入场日 3、4
+    assert set(bench[1]) == {_day(3), _day(4)}
+
+
+def test_max_drawdown_compounds_monthly_batches():
+    """回撤口径：按月等权批次、按月复利。+10% → −20% → +5% 的最大回撤是 −20%。"""
+    tally = bt.Tally()
+
+    def add(month, value):
+        outcomes = [bt.Exit(bt.HORIZONS[0], value, None, None, None, False)]
+        outcomes += [
+            bt.Exit(horizon, None, None, None, None, False)
+            for horizon in bt.HORIZONS[1:]
+        ]
+        tally.add(outcomes, [0.0] * len(bt.HORIZONS), month)
+
+    add("2026-01", 0.10)
+    add("2026-02", -0.20)
+    add("2026-03", 0.05)
+    assert tally.max_drawdown(0) == pytest.approx(-0.2)
 
 
 def test_st_days_do_not_remove_non_st_portion():
