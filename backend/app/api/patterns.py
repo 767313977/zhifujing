@@ -23,6 +23,7 @@ from app.config import get_settings
 from app.db import get_db
 from app.models import (
     PatternHit,
+    RpsDaily,
     StockDaily,
     StockUniverse,
     TradeCalendar,
@@ -40,7 +41,9 @@ from app.schemas import (
     PatternTrackOut,
     PoolStandingOut,
 )
+from app.services import factor_score as factor_scores
 from app.services import pattern_track
+from app.services import trend
 from app.services.patterns import (
     PATTERNS,
     SCORE_EXCLUDED,
@@ -614,6 +617,27 @@ def _oversold_only_rows(
     return out
 
 
+def _rps250_map(db: Session, codes: list[str], day: date) -> dict[str, float]:
+    """`{代码: 当天 rps250}`；表里没有这只票（或该值为空）就不出现。
+
+    RS 直接读 `rps_daily`（`jobs/scan_rps` 每天写入，口径就是站内 `services/rps` 那套），
+    线上**不现算**全市场分位。缺值时调用方按「无法判断」（None）处理，不能当成 RS=0。
+    """
+    if not codes:
+        return {}
+    result: dict[str, float] = {}
+    for batch in chunked(sorted(set(codes)), _IN_BATCH):
+        for code, rps250 in db.execute(
+            select(RpsDaily.code, RpsDaily.rps250).where(
+                RpsDaily.trade_date == day,
+                RpsDaily.code.in_(batch),
+            )
+        ):
+            if rps250 is not None:
+                result[code] = float(rps250)
+    return result
+
+
 @router.get("/hits", response_model=PatternHitsOut)
 def hits(
     db: Session = Depends(get_db),
@@ -633,6 +657,12 @@ def hits(
     # `PATTERN_LIMIT`）—— 放开到 3000 只是留了个能把接口拖慢的口子。
     # 真需要全量时按形态 / 日期分段取，别一次拉 2000 行。
     limit: int = Query(50, ge=1, le=1000),
+    order: str = Query(
+        "score",
+        pattern="^(score|factor)$",
+        description="排序口径：score=形态评分（默认，与加参数前完全一致）；"
+        "factor=量价因子分（池内分位，只改顺序不改入选集合）",
+    ),
     phase: list[str] | None = Query(
         None,
         description="只看阶段判定属于这些档的票（可重复传多个，取**并集**）。"
@@ -698,6 +728,21 @@ def hits(
     只有 1 只）。补行只在**不选形态、无评分下限、单日**时发生（选了形态就是在那个
     命中集里挑，补行会混进一个形态都不中的票）；补进来的行 `patterns` 为空、`score`
     为 0，排在命中行之后、按乖离从深到浅。
+
+    ## 排序开关（`order`，2026-11-01）
+
+    `order=factor` 把「命中行」的顺序换成**量价因子分降序**（`services.factor_score`：
+    rev20 / illiq20 / amp20 的**池内分位**加权，与首板池 / RPS 榜同一个机制）。
+    默认 `score` 与加参数前逐字一致。
+
+    - 只改顺序，不改入选集合：`min_score` / `phase` / 板块都在排序**之前**筛完；
+    - 因子日期一律用 `target`（查看的那一天），窗口模式下不用各行首次命中的那天；
+      `_window_days` 只取 `<= day` 的交易日，翻历史不会用到未来数据；
+    - 超跌补行（`patterns == []`）不参与，仍按乖离从深到浅排在命中行之后；
+    - 每行带回 `factor_score`（算不出来的为 None，排最后），`score` 仍是原形态分。
+
+    ⚠️ 因子分是**池内**分位，只回答「这一屏先看哪只」，不跨池比较，也不是收益预测
+    （见 `docs/回测_量价因子IC_20261024.md` §7）。
 
     ⚠️ **只支持最新交易日**（2026-10-21 复查 #3）：阶段与超跌都按库里最新的日线算，
     传历史日期时会直接 400 —— 否则候选池是那天的、判定却是今天的，两端不同日。
@@ -914,6 +959,27 @@ def hits(
             hit_codes_now = {stock.code for stock in result}
             extra = [code for code in oversold_devs if code not in hit_codes_now]
             result.extend(_oversold_only_rows(db, target, extra, oversold_devs))
+    if order == "factor":
+        # 只排「有形态命中」的行；超跌补行（patterns 为空）保持原顺序垫在后面。
+        # 因子分只在这批代码内部算分位，所以必须**过滤完之后**再算（与筛选后的池子一致）。
+        hit_rows = [stock for stock in result if stock.patterns]
+        tail = [stock for stock in result if not stock.patterns]
+        if hit_rows:
+            computed = factor_scores.scores(
+                db, [stock.code for stock in hit_rows], target
+            )
+            for stock in hit_rows:
+                item = computed.get(stock.code)
+                stock.factor_score = round(item.score, 1) if item is not None else None
+            # 因子分降序；算不出来的（None）排最后，同分时沿用原来的评分顺序
+            hit_rows.sort(
+                key=lambda stock: (
+                    stock.factor_score if stock.factor_score is not None else -1.0,
+                    stock.score,
+                ),
+                reverse=True,
+            )
+        result = hit_rows + tail
     page = result[:limit]
     # 阶段判定：与个股页／个股分析页**同一个取数壳**（`stock_phase.load_phase`），
     # 保证同一只票在两处给出同一个判定。**只对真正返回的行算**（默认 50 只；
@@ -925,6 +991,20 @@ def hits(
         if verdict is not None:
             stock.phase = verdict.phase
             stock.phase_label = verdict.label
+    # 趋势模板参考标签（2026-11-01）：与上面的「阶段判定」同一个思路 —— 只对**真正
+    # 返回的行**算，不白算被 limit 截掉的那些。日期用 `target`，结果只取决于这只票的
+    # 日线与当天的 RPS250，与所选形态 / 排序口径都无关。
+    page_codes = [stock.code for stock in page]
+    trend_bars = trend.load_bars(db, page_codes, target)
+    rps250 = _rps250_map(db, page_codes, target)
+    for stock in page:
+        bars = trend_bars.get(stock.code)
+        # `load_bars` 只给凑够 250 根可用日线的票；不足 → None（「无法判断」，不是 ✗）
+        stock.trend_template = (
+            None
+            if bars is None
+            else trend.evaluate(bars, len(bars) - 1, rps250.get(stock.code))
+        )
     # `total` 是**截断前**的条数：窗口模式下去重后的真实条数只有这里知道，
     # 调用方据此显示「还有多少没列出来」（2026-10-22 加的契约）
     return PatternHitsOut(

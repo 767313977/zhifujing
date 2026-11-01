@@ -23,8 +23,8 @@ import { copyText } from '../lib/clipboard'
 import { boardOf, fmtAmount, fmtInt, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
 import type { Board } from '../lib/format'
 import { K_VIEWS, useKLine } from '../lib/klinePeriod'
-import { useSort } from '../lib/sort'
-import type { SortSpecs } from '../lib/sort'
+import { sortRows } from '../lib/sort'
+import type { SortDir, SortProps, SortSpecs } from '../lib/sort'
 import { rememberStockList } from '../lib/stockNav'
 
 /**
@@ -224,6 +224,29 @@ function readMinScore(raw: string | null): number {
 }
 
 /**
+ * 命中列表的排序口径（2026-11-01）：默认按形态评分，`order=factor` 换成量价因子分。
+ *
+ * 因子分是**池内分位**，只回答「同一天这一批命中里先看哪只」，不跨池比较、
+ * 也不是收益预测（见 `docs/回测_量价因子IC_20261024.md` §7）。
+ */
+type HitOrder = 'score' | 'factor'
+
+const ORDER_LABELS: { value: HitOrder; label: string; title: string }[] = [
+  { value: 'score', label: '评分', title: '按形态评分排序（默认，与加这个开关前一致）' },
+  {
+    value: 'factor',
+    label: '因子分',
+    title:
+      '按量价因子分排序：rev20 / illiq20 / amp20 在**当天这批命中**里的分位加权。' +
+      '只改顺序、不改入选集合；不跨池比较，也不代表「分高更会涨」',
+  },
+]
+
+function readOrder(raw: string | null): HitOrder {
+  return raw === 'factor' ? 'factor' : 'score'
+}
+
+/**
  * 当前筛选状态与哪个预设「等效」（顺序无关）。
  *
  * 用它**推导**高亮与 `preset` 参数，而不是单独存一份 preset 状态：
@@ -298,6 +321,8 @@ function splitPatterns(value: string | null): string[] {
  */
 const HIT_SORTS: SortSpecs<PatternStock> = {
   score: { value: (stock) => stock.score },
+  // 只在「因子分」开关打开时才有值（默认排序时后端根本不算，全是 null）
+  factor_score: { value: (stock) => stock.factor_score },
   code: { value: (stock) => stock.code, first: 'asc' },
   close: { value: (stock) => stock.close },
   pct_chg: { value: (stock) => stock.pct_chg },
@@ -527,6 +552,13 @@ export default function Patterns() {
   const [showExperimental, setShowExperimental] = useState(() =>
     readFlag(params.get('experimental')),
   )
+  /**
+   * 只看趋势模板 ✓（2026-11-01）：**只做前端显示层过滤**，默认关；URL 的 trend=1 可打开。
+   *
+   * 它过滤的是「当前已加载的行」（默认视图只有前 50 只），不是全市场里满足模板的全部票 ——
+   * 所以不能当筛选条件用，后端 `/hits` 也不接受这个参数。
+   */
+  const [trendOnly, setTrendOnly] = useState(() => readFlag(params.get('trend')))
   // 选中的形态：**多选**（交集）。空数组 = 默认视图（全市场按评分取前 HIT_LIMIT 只）
   const [picked, setPicked] = useState<string[]>(() => splitPatterns(params.get('patterns')))
   /**
@@ -543,6 +575,16 @@ export default function Patterns() {
     pickedRef.current = picked
   }, [picked])
   const [minScore, setMinScore] = useState(() => readMinScore(params.get('min_score')))
+  // 排序口径（2026-11-01）：默认按评分；切到「因子分」时后端改按量价因子分排
+  const [order, setOrder] = useState<HitOrder>(() => readOrder(params.get('order')))
+  /**
+   * 表头排序：`null` = 跟着 `order` 的默认列走（评分 / 因子分）。
+   *
+   * 不用 `useSort` 的原因：它的排序列只在首次挂载时读一次，切换 `order` 时内部
+   * 状态还停在「评分」，会把后端按因子分给的顺序又排回评分。这里只记「用户点过的
+   * 列」，切换排序口径时清空、回到新口径的默认列。
+   */
+  const [sortChoice, setSortChoice] = useState<{ key: string; dir: SortDir } | null>(null)
   // 「近 N 日」窗口：>1 时后端把窗口内同一只票的重复命中合并成一条（见 `WINDOWS`）
   const [days, setDays] = useState(() => {
     const raw = Number(params.get('days'))
@@ -594,8 +636,13 @@ export default function Patterns() {
     else next.delete('hide_weak')
     if (showExperimental) next.set('experimental', '1')
     else next.delete('experimental')
+    if (trendOnly) next.set('trend', '1')
+    else next.delete('trend')
     if (minScore > 0) next.set('min_score', String(minScore))
     else next.delete('min_score')
+    // 排序口径：默认（评分）不写进地址，切回评分时 `order` 参数随之消失
+    if (order === 'factor') next.set('order', 'factor')
+    else next.delete('order')
     // 预设：不单独存状态，**由当前筛选推导** —— 手动改 chip 后这里自然变 null，
     // 地址里的 preset 随同被删，不会出现「按钮还亮着但筛选已经改了」
     const presetId = presetOf({ picked, days, boards, hideWeak, showExperimental, minScore })
@@ -610,7 +657,9 @@ export default function Patterns() {
     phases,
     hideWeak,
     showExperimental,
+    trendOnly,
     minScore,
+    order,
     params,
     setParams,
   ])
@@ -647,6 +696,7 @@ export default function Patterns() {
       only: string[],
       win: number,
       onlyPhases: string[],
+      orderBy: HitOrder,
       isStale: () => boolean = () => false,
     ) => {
       setLoading(true)
@@ -667,6 +717,7 @@ export default function Patterns() {
             only,
             win,
             onlyPhases,
+            orderBy,
           ),
           api.patternSummary(target),
           // 徽标数据：跟着 `only`、窗口**与阶段**走，所以每次切形态／窗口／阶段都重算
@@ -702,7 +753,7 @@ export default function Patterns() {
     setSummary(null)
     setPreview([])
     // 看历史日期时不带阶段筛选（后端会 400，见「阶段判定」那一行的注释）；切回最新自动恢复
-    void load(date, picked, days, date !== null ? [] : phases, () => stale)
+    void load(date, picked, days, date !== null ? [] : phases, order, () => stale)
     return () => {
       stale = true
     }
@@ -710,7 +761,7 @@ export default function Patterns() {
     // 形态视图取该形态的全部命中），这是 2026-09-27 那次改动的关键一步
     // `days` 同理：换窗口要重新取（>1 时后端合并同一只票的重复命中）
     // `phases` 同理：阶段是在后端算的，换档必须重新请求（前端筛不了全市场）
-  }, [date, picked, days, phases, load])
+  }, [date, picked, days, phases, order, load])
 
   // 2026-10-15 之前这里有一句「没选形态就把 days 拉回 1」—— 那时后端没 `pattern` 会
   // 忽略 `days`，留着「近10日」的选中态而列表其实是当天的，对不上账。现在后端两种模式
@@ -791,6 +842,8 @@ export default function Patterns() {
       // 号段认不出的极端情况保留而不是丢掉 —— 静默少几行比多几行难查得多
       const board = boardOf(stock.code)
       if (board !== null && !boards.includes(board)) return false
+      // 只看趋势模板 ✓：**只看 true**，null（数据不足）与 false 都不显示
+      if (trendOnly && stock.trend_template !== true) return false
       if (picked.length === 0) return true
       // 后端在形态模式下返回的就是「同时满足全部所选形态的票」，所以这里通常全过；
       // 留一道是兜底（也保证每行是按**全部**命中形态判的，不是按展示用的截断列表）
@@ -798,12 +851,31 @@ export default function Patterns() {
       // 那次都塞进 `patterns`，所以这一句照样成立（2026-10-14 修口径不一致）
       return picked.every((key) => stock.patterns.some((item) => item.pattern === key))
     })
-  }, [hits, picked, boards, deferredMinScore])
+  }, [hits, picked, boards, deferredMinScore, trendOnly])
 
-  // 首屏按评分降序（与后端给的一致，所以看到的顺序没变，但列头能正确亮出
-  // 当前排的是哪一列）；点列头改成别的口径。**排的是 visible，不是 hits** ——
-  // 排序与筛选是两个独立动作，先筛后排才符合直觉
-  const [hitSort, shown] = useSort(visible, HIT_SORTS, { key: 'score' })
+  /** 已加载的行里满足趋势模板的条数（只用于「只看 ✓」开启时的计数提示） */
+  const trendCount = useMemo(
+    () => hits.filter((stock) => stock.trend_template === true).length,
+    [hits],
+  )
+
+  // 默认排序列跟着「排序」开关走：评分 / 因子分（后端已经按它排好，这里再排一遍
+  // 是为了让表头能正确亮出当前列，结果与后端顺序一致）。点列头改成别的口径。
+  // **排的是 visible，不是 hits** —— 排序与筛选是两个独立动作，先筛后排才符合直觉
+  const defaultSortKey = order === 'factor' ? 'factor_score' : 'score'
+  const sortKey = sortChoice?.key ?? defaultSortKey
+  const sortDir = sortChoice?.dir ?? HIT_SORTS[sortKey]?.first ?? 'desc'
+  const shown = sortRows(visible, HIT_SORTS, sortKey, sortDir)
+  const hitSort: SortProps = {
+    activeKey: sortKey,
+    dir: sortDir,
+    onToggle: (key) =>
+      setSortChoice((current) =>
+        current !== null && current.key === key
+          ? { key, dir: current.dir === 'desc' ? 'asc' : 'desc' }
+          : { key, dir: HIT_SORTS[key]?.first ?? 'desc' },
+      ),
+  }
 
   // 只把前 RENDER_LIMIT 行放进 DOM（排序结果本身不截断，← → 翻票与复制代码仍用全量）
   const rendered = useMemo(() => shown.slice(0, RENDER_LIMIT), [shown])
@@ -1245,6 +1317,33 @@ export default function Patterns() {
                 className="range-accent h-[3px] w-40"
               />
               <span className="num w-8 text-[13px] text-fg">{minScore}</span>
+              {/* 排序口径（2026-11-01）：默认评分；切到因子分时后端重新排、多出一列。
+                  这个开关**只改顺序不改入选集合**，也不是「因子分高 = 更会涨」的信号。 */}
+              <span className="ml-4 text-[13px] text-fg-dim">排序</span>
+              {ORDER_LABELS.map((item) => {
+                const on = order === item.value
+                return (
+                  <button
+                    key={item.value}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => {
+                      setOrder(item.value)
+                      // 切口径时清掉用户点过的列：否则表头还停在旧列，会把后端
+                      // 按新口径排好的顺序又排回去（见 `sortChoice` 的说明）
+                      setSortChoice(null)
+                    }}
+                    title={item.title}
+                    className={`border px-2 py-[2px] text-[13px] transition-colors ${
+                      on
+                        ? 'border-accent bg-accent/10 text-accent'
+                        : 'border-line text-fg-muted hover:border-fg-dim hover:text-fg'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                )
+              })}
               {(picked.length > 0 ||
                 minScore > 0 ||
                 phases.length > 0 ||
@@ -1284,6 +1383,18 @@ export default function Patterns() {
                   onChange={(event) => setShowExperimental(event.target.checked)}
                 />
                 显示实验形态
+              </label>
+              {/* 只看趋势模板（2026-11-01）：**纯前端过滤已加载的行**，不是全市场筛选 */}
+              <label
+                className="flex items-center gap-1.5 text-[12px] text-fg-muted"
+                title="只过滤当前已加载的行（默认视图为前 50 只），不是全市场里满足模板的全部票"
+              >
+                <input
+                  type="checkbox"
+                  checked={trendOnly}
+                  onChange={(event) => setTrendOnly(event.target.checked)}
+                />
+                只看趋势模板 ✓
               </label>
               <span
                 className="cursor-help text-[13px] text-fg-dim"
@@ -1366,6 +1477,13 @@ export default function Patterns() {
               >
                 {' '}· ST 已剔除
               </span>
+              {/* 「只看 ✓」是**显示层过滤**：必须说清分母是「已加载的行」，
+                  不能让上面的 total 看起来像全市场满足模板的只数 */}
+              {trendOnly && (
+                <span className="text-fg-dim">
+                  {' '}· 已加载 {fmtInt(hits.length)} 行中 ✓ {fmtInt(trendCount)} 行
+                </span>
+              )}
               {visible.length > 0 && (
                 <button
                   type="button"
@@ -1409,7 +1527,7 @@ export default function Patterns() {
                   <>
                     当日共命中
                     <span className="num text-accent"> {fmtInt(expected)} </span>
-                    只，这里只列出评分最高的
+                    只，这里只列出{order === 'factor' ? '因子分' : '评分'}最高的
                     <span className="num text-fg"> {HIT_LIMIT} </span>
                     只，点列头排序也只在这
                     <span className="num text-fg"> {HIT_LIMIT} </span>
@@ -1424,7 +1542,11 @@ export default function Patterns() {
 
           {visible.length === 0 ? (
             <div className="px-4 py-6 text-center text-[13px] text-fg-dim">
-              {loading ? '加载中…' : '当前筛选下没有命中的个股'}
+              {loading
+                ? '加载中…'
+                : trendOnly
+                  ? '当前已加载的行里没有满足趋势模板的票（只过滤已加载的行，不是全市场筛选）'
+                  : '当前筛选下没有命中的个股'}
             </div>
           ) : (
             <div className="max-h-[520px] overflow-auto">
@@ -1434,6 +1556,16 @@ export default function Patterns() {
                     <SortTh sortKey="score" {...hitSort}>
                       评分
                     </SortTh>
+                    {/* 只有切到「因子分」排序时才出现：它是池内分位，不与评分同量纲 */}
+                    {order === 'factor' && (
+                      <SortTh
+                        sortKey="factor_score"
+                        {...hitSort}
+                        title="池内分位，只对当天这一批命中有意义，不跨池比较"
+                      >
+                        因子分
+                      </SortTh>
+                    )}
                     <SortTh sortKey="code" align="left" {...hitSort}>
                       代码 / 名称
                     </SortTh>
@@ -1450,6 +1582,13 @@ export default function Patterns() {
                       title="悟道阶段判定（与个股页／个股分析页同一判据，取最近 130 根日线算）。日线不足 25 根的票留空「—」"
                     >
                       阶段判定
+                    </th>
+                    {/* 趋势模板：**参考标签**，不是筛选依据（5 年回测未过 +1pp 决策线） */}
+                    <th
+                      className="!text-left"
+                      title="参考标签：Minervini 八条，5 年回测未过 +1pp 决策线，不作筛选依据"
+                    >
+                      趋势模板
                     </th>
                     {/* 「板块」是一串名字、没有单一可比值，不排序（与「命中形态」同理） */}
                     <th
@@ -1513,6 +1652,13 @@ export default function Patterns() {
                           {stock.score.toFixed(1)}
                         </span>
                       </td>
+                      {order === 'factor' && (
+                        <td>
+                          <span className="num text-fg-muted">
+                            {stock.factor_score == null ? '—' : stock.factor_score.toFixed(1)}
+                          </span>
+                        </td>
+                      )}
                       <td className="!text-left">
                         {/* 这一层不加 onClick：让 Link 自己完成导航，记住这只票
                             交给事件冒泡到上面那行的 onClick（见 selectStock）。
@@ -1557,6 +1703,22 @@ export default function Patterns() {
                           </span>
                         ) : (
                           <span className="text-fg-dim">—</span>
+                        )}
+                      </td>
+                      <td className="!text-left">
+                        {/* 趋势模板：true=✓ / false=✗ / null=「—」（数据不足 250 根或
+                            当天没有 RPS250 —— 无法判断，**不能画成 ✗**）。只作参考 */}
+                        {stock.trend_template == null ? (
+                          <span
+                            className="text-fg-dim"
+                            title="可用日线不足 250 根，或当天没有 RPS250 —— 无法判断（不是不满足）"
+                          >
+                            —
+                          </span>
+                        ) : stock.trend_template ? (
+                          <span className="text-ok">✓</span>
+                        ) : (
+                          <span className="text-fg-dim">✗</span>
                         )}
                       </td>
                       <td className="!text-left">

@@ -30,8 +30,17 @@ from sqlalchemy.orm import Session
 
 from app.models import StockDaily, TradeCalendar
 from app.services import rps
+from app.sources.base import chunked
 
 logger = logging.getLogger(__name__)
+
+#: 一次 IN 查询最多带多少个代码。老 SQLite 单条 SQL 的变量上限是 999
+#: （与 `api/patterns._IN_BATCH` 同一个数，给上限留余量）。
+#:
+#: 形态页 `min_score=0` 时候选可到 5000+ 只，一次 `code IN (...)` 会直接
+#: OperationalError（CI #234 那类错误）。分批后各批代码不重叠、结果在内存里合并，
+#: 与一次查全等价。
+_IN_BATCH = 900
 
 #: 因子窗口（交易日）
 WINDOW = 20
@@ -69,36 +78,16 @@ def _window_days(session: Session, day: date) -> list[date]:
     return sorted(days)
 
 
-def scores(session: Session, codes: list[str], day: date) -> dict[str, FactorScore]:
-    """给 `codes` 在这一天算因子分（键 = 代码；算不出来的不出现）。
+def score_series(series: dict[str, list[tuple]]) -> dict[str, FactorScore]:
+    """把「每只票窗口内的日线序列」折算成因子分 —— **纯函数，不碰数据库**。
 
-    取数只有一次（窗口内的日线），所以池子几十只时开销可以忽略。
+    `series[code]` 是 `(交易日, 涨跌幅, 最高, 最低, 收盘, 成交额)` 的升序列表
+    （通常 20 根）。分位是**池内**的：传进来的这批代码一起比较，所以页面与回测
+    都必须按「同一天的同一批候选」调用，不能跨池比分数。
+
+    抽出来的原因（2026-11-01）：① `scores()` 只管取数，公式只有一份；
+    ② 回测脚本用内存里已装好的 bars 直接算，不必查库（`history.db` 没有交易日历）。
     """
-    if not codes:
-        return {}
-    days = _window_days(session, day)
-    if not days:
-        return {}
-
-    series: dict[str, list[tuple]] = defaultdict(list)
-    for code, when, pct, high, low, close, amount in session.execute(
-        select(
-            StockDaily.code,
-            StockDaily.trade_date,
-            StockDaily.pct_chg,
-            StockDaily.high,
-            StockDaily.low,
-            StockDaily.close,
-            StockDaily.amount,
-        )
-        .where(
-            StockDaily.trade_date.in_(days),
-            StockDaily.code.in_(codes),
-        )
-        .order_by(StockDaily.code, StockDaily.trade_date)
-    ):
-        series[code].append((when, pct, high, low, close, amount))
-
     minimum = int(WINDOW * MIN_COVERAGE)
     raw: dict[str, dict[str, float | None]] = {}
     for code, items in series.items():
@@ -165,3 +154,39 @@ def scores(session: Session, codes: list[str], day: date) -> dict[str, FactorSco
             score=round(score, 1),
         )
     return out
+
+
+def scores(session: Session, codes: list[str], day: date) -> dict[str, FactorScore]:
+    """给 `codes` 在这一天算因子分（键 = 代码；算不出来的不出现）。
+
+    只负责取数：窗口取 `<= day` 的最近 `WINDOW` 个交易日，按 `_IN_BATCH` 分批查
+    （形态页候选可能到 5000+），再交给 `score_series` 打分。
+    """
+    if not codes:
+        return {}
+    days = _window_days(session, day)
+    if not days:
+        return {}
+
+    series: dict[str, list[tuple]] = defaultdict(list)
+    # 分批前先排序去重：排序让分批稳定可复现，去重保证「一只票只落在一批里」——
+    # 否则同一只票会被查两次、`series` 里出现重复的 K 线，涨跌幅复利直接算错。
+    for batch in chunked(sorted(set(codes)), _IN_BATCH):
+        for code, when, pct, high, low, close, amount in session.execute(
+            select(
+                StockDaily.code,
+                StockDaily.trade_date,
+                StockDaily.pct_chg,
+                StockDaily.high,
+                StockDaily.low,
+                StockDaily.close,
+                StockDaily.amount,
+            )
+            .where(
+                StockDaily.trade_date.in_(days),
+                StockDaily.code.in_(batch),
+            )
+            .order_by(StockDaily.code, StockDaily.trade_date)
+        ):
+            series[code].append((when, pct, high, low, close, amount))
+    return score_series(series)

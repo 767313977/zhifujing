@@ -76,6 +76,25 @@ def test_scores_skip_codes_without_history(session):
     assert "000009" not in scores
 
 
+def test_scores_chunked_batches_match_single_query(session, monkeypatch):
+    """IN 分批（900）不改结果：把批大小临时调成 2，逐只必须与一次查完完全相同。"""
+    session.add_all(TradeCalendar(trade_date=day) for day in DAYS)
+    codes = ["000001", "000002", "000003", "000004", "000005"]
+    for index, code in enumerate(codes):
+        _seed(
+            session,
+            code,
+            pct=-1.0 if index % 2 else 1.0,
+            amplitude=0.01 + index * 0.005,
+            amount_yi=1 + index * 10,
+        )
+    session.commit()
+
+    expected = factor_score.scores(session, codes, DAY)
+    monkeypatch.setattr(factor_score, "_IN_BATCH", 2)
+    assert factor_score.scores(session, codes, DAY) == expected
+
+
 def test_first_board_order_by_factor(session):
     """`order="factor"`：入选集合不变，只把顺序换成因子分。"""
     session.add_all(TradeCalendar(trade_date=day) for day in DAYS)

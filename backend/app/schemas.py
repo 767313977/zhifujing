@@ -2215,7 +2215,19 @@ class PatternStockOut(BaseModel):
     #: 只显示一个词。**日线不足 25 根时为 None**（次新 / 刚缓存），页面按惯例显示「—」。
     phase: str | None = None
     phase_label: str | None = None
+    #: 趋势模板（Minervini 八条）参考标签（2026-11-01）。
+    #:
+    #: `True` / `False` 是明确判定；**可用日线不足 250 根、或当天没有 `rps250` 时是 None**
+    #: —— 「数据不够、不下结论」不能显示成 ✗（新股会被全部打错）。只对返回的行现算，
+    #: 不是筛选条件；5 年回测未过 +1pp 决策线，只作人工二次筛选的参考。
+    trend_template: bool | None = None
     score: float
+    #: 量价因子分（0~100，**池内**分位加权：rev20 / illiq20 / amp20 = 0.30 / 0.30 / 0.40）。
+    #:
+    #: 只有 `order=factor` 时才算，其余情况是 None。⚠️ 它只回答「同一天这一批命中里
+    #: 先看哪只」，不跨池比较，也**不是**「分越高越会涨」的预测（IC 报告 §7）。
+    #: 算不出来的票（日线不足 20 根等）这里是 None，排序时排在最后。
+    factor_score: float | None = None
     patterns: list[PatternHitItem]
 
 

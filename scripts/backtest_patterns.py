@@ -121,6 +121,8 @@ history.db 由 `scripts/backfill_history.py` 用腾讯补出来（零配额）�
                                                                                    # 打板类：次日开盘 + 剔一字板
     python scripts/backtest_patterns.py --pattern all-new --history --since 2025-01-01
                                                                                    # 样本外：只统计该日之后的信号
+    python scripts/backtest_patterns.py --pattern volume_surge --history --board prod --order-split factor
+                                                                                   # 排序对照：评分前 N vs 因子分前 N
 
 多目标时**一遍扫描**跑完所有形态（序列只切一次），输出「形态 × 持有期」汇总表；
 单个形态则额外打印按月分布与命中明细，方便逐个人工核对。
@@ -167,7 +169,9 @@ from app.jobs.scan_patterns import (  # noqa: E402
     WUDAO_POOL_KEYS,
 )
 from app.models import StockDaily  # noqa: E402
+from app.services import factor_score  # noqa: E402
 from app.services import limit_rules, rps as rps_rules, trend as trend_rules  # noqa: E402
+from app.services import patterns as patterns_module  # noqa: E402
 from app.services.patterns import (  # noqa: E402
     BF_MAX_GAP,
     BF_MIN_FLAT,
@@ -192,6 +196,10 @@ logger = logging.getLogger("backtest")
 # 持有期（交易日）。1/3 日是 2026-10-31 按用户的整改要求补的：短持有期才能看出
 # 「次日开盘买入」这种口径下的真实分布；5/10/20/60 保留，历史结论与它们对齐。
 HORIZONS = (1, 3, 5, 10, 20, 60)
+#: 「10 日超额」在 HORIZONS 里的下标（排序对照实验只报这一档）
+_IDX10 = HORIZONS.index(10)
+#: 排序对照实验的 N 档：每个信号日各取「评分前 N / 因子分前 N」
+ORDER_SPLIT_SIZES = (5, 10, 20)
 MIN_BARS = 80
 
 #: 实验形态（**不在生产注册表**）各自需要的最少根数 —— 取它们 detect 里的守卫值。
@@ -1349,12 +1357,34 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--order-split",
+        choices=("factor",),
+        default=None,
+        help=(
+            "排序对照实验：每个信号日对同一形态的全部命中，分别取「形态评分前 N」与"
+            "「量价因子分前 N」（N=5/10/20），输出两组的 10 日超额 / 胜率对照。"
+            "因子分用内存里的 bars 现算（不查库），所以必须配 --history；"
+            "要与生产同一口径再配 --board prod"
+        ),
+    )
+    parser.add_argument(
         "--filter-split",
         default="",
         help=(
             "过滤条件对照：逗号分隔（如 ma60_up、rps50_90）。把每个形态的信号按"
             "「命中当天该条件是否成立」分成过滤组 / 基础组，输出两组之差。"
             f"可选：{', '.join(FILTER_CHECKS)}"
+        ),
+    )
+    parser.add_argument(
+        "--override",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help=(
+            "临时覆盖 `app.services.patterns` 里的**数值常量**，只影响本进程、不改文件。"
+            "可重复：--override SHRINK_LIMIT_VOL_MAX=0.6。判定函数在调用时读模块常量，"
+            "所以覆盖立即生效；非数值（如 PATTERNS 注册表）会被拒绝"
         ),
     )
     parser.add_argument(
@@ -1404,6 +1434,17 @@ def main() -> int:
             "的生产口径，单独开会让板块边界与基准口径不一致"
         )
 
+    # 排序对照实验必须与 5 年长历史 + 生产板块边界一起用（2026-11-01）：
+    # - 主库每只票约 260 根，跑不出 5 年；
+    # - `factor_score.scores()` 要查交易日历，而 history.db 没有那张表 —— 所以实验
+    #   走的是纯函数 `score_series()` + 内存 bars，这里要求 --history 才说得通；
+    # - 不与 --board prod 一起用的话，样本边界与页面（生产口径）不是一回事。
+    if args.order_split and (not args.history or args.board != "prod"):
+        raise SystemExit(
+            "--order-split 必须与 --history --board prod 一起使用（当前："
+            f"--history={args.history} / --board={args.board}）：它报的是 5 年生产口径的对照"
+        )
+
     filter_names = [name.strip() for name in args.filter_split.split(",") if name.strip()]
     unknown_filters = [name for name in filter_names if name not in FILTER_CHECKS]
     if unknown_filters:
@@ -1413,6 +1454,23 @@ def main() -> int:
         )
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    # 临时覆盖模块常量（`--override`，2026-11-01）：判定函数在**调用时**读模块全局，
+    # 所以这里 setattr 就生效；只影响本进程，**不改 `backend/` 里的文件**。
+    for item in args.override:
+        name, _, raw = item.partition("=")
+        name, raw = name.strip(), raw.strip()
+        if not name or not raw:
+            raise SystemExit(f"--override 需要 NAME=VALUE 形式，收到：{item!r}")
+        current = getattr(patterns_module, name, None)
+        if not isinstance(current, (int, float)) or isinstance(current, bool):
+            raise SystemExit(
+                f"patterns.{name} 不是数值常量（或不存在），拒绝覆盖：{item!r}"
+            )
+        value = type(current)(float(raw))
+        setattr(patterns_module, name, value)
+        logger.info(
+            "临时覆盖 patterns.%s：%s → %s（只在本进程生效）", name, current, value
+        )
     if args.entry == ENTRY_NEXT_OPEN:
         logger.info(
             "入场口径：**次日开盘**（close[t+h] / open[t+1] − 1），与默认的收盘入场不可直接比较"
@@ -1595,12 +1653,16 @@ def main() -> int:
     )
     logger.info(
         "基准表：%d 个入场日（全池）/ %d 个（创业板+科创板）；"
-        "基准侧 ST 剔除 %d 个(票,日)、延迟入场 %d 个、无法成交 %d 个",
+        "基准侧 ST 剔除 %d 个(票,日)、延迟入场 %d 个、无法成交 %d 个、"
+        "买不到剔除 %d 个(票,日)",
         len(bench_all[HORIZONS[0]]),
         len(bench_wudao[HORIZONS[0]]),
         bench_stats.get("st", 0),
         bench_stats.get("delayed", 0),
         bench_stats.get("no_entry", 0),
+        # 2026-11-01 加：`--skip-unbuyable` 时基准也逐条剔除「入场价 = 涨停价」的票，
+        # 这里把基准侧的剔除数打出来，报告里才能用**实际计数**证明两边同口径。
+        bench_stats.get("unbuyable", 0),
     )
     # 悟道六池 + 金叉大阳的生产基准是「创业板 + 科创板」那一份
     use_wudao_bench = args.production_parity or args.board in ("prod", "wudao")
@@ -1609,6 +1671,12 @@ def main() -> int:
         return bench_wudao if use_wudao_bench and key in WUDAO_POOL_KEYS else bench_all
 
     tallies = {key: Tally() for key in targets}
+    # 排序对照实验（`--order-split factor`，2026-11-01）：按 (形态, 信号日) 收集当天
+    # 全部命中的 `(代码, 该票序列下标, 形态评分, 10 日超额)`。
+    # 用元组不用 dict：5 年 × 若干形态会攒到几十万条，dict 的对象开销是它的几倍。
+    split_rows: dict[tuple[str, date], list[tuple[str, int, float, float]]] | None = (
+        {} if args.order_split else None
+    )
     # 各种「信号被挡掉」的原因分开计数：报告里要交代，否则「信号少」看不出原因
     unbuyable: Counter[str] = Counter()
     no_entry: Counter[str] = Counter()
@@ -1752,6 +1820,18 @@ def main() -> int:
                 )
                 table = _bench_table(key)
                 bench_means = [table[h].get(entry.date, 0.0) for h in HORIZONS]
+                if split_rows is not None:
+                    # 只在 10 日这一档算得出收益时收集（退不出来的样本两组都没法比）
+                    value10 = outcomes[_IDX10].value
+                    if value10 is not None:
+                        split_rows.setdefault((key, day), []).append(
+                            (
+                                code,
+                                t,
+                                float(hit.get("score") or 0.0),
+                                value10 - bench_means[_IDX10],
+                            )
+                        )
                 tallies[key].add(
                     outcomes,
                     bench_means,
@@ -1874,6 +1954,8 @@ def main() -> int:
         _report_filter_split(filter_tallies, filter_base_tallies)
     if rps_extra is not None and rps_extra.size:
         _report_rps_standalone(rps_extra)
+    if split_rows is not None:
+        _report_order_split(split_rows, bars_by_code)
     _report_data_limits(args, grouped, st_stats)
     return 0
 
@@ -2257,6 +2339,111 @@ def _report_rps_standalone(tally: Tally) -> None:
     print("（超额 = 命中组平均收益 − 同一天全市场平均收益；与形态表同一套基准）")
 
 
+def _mean_median_win(values: list[float]) -> tuple[float, float, float, int]:
+    """（均值, 中位, 胜率, 样本数）。空样本全给 0，与 `Tally.stats` 的处理一致。"""
+    if not values:
+        return (0.0, 0.0, 0.0, 0)
+    data = np.asarray(values, dtype=np.float64)
+    return (float(data.mean()), float(np.median(data)), float(np.mean(data > 0)), len(values))
+
+
+def _order_split_summary(
+    split_rows: dict[tuple[str, date], list[tuple[str, int, float, float]]],
+    bars_by_code: dict[str, Bars],
+) -> dict[tuple[str, int, bool], dict[str, list[float]]]:
+    """按 (形态, N, 是否只看「当天命中数 > N」) 汇总两组各自的 10 日超额。
+
+    ⚠️ 因子分必须在**当天这一组命中内部**算（池内分位）—— 一次把所有票算完再比较，
+    分位就不是同一批候选里的相对位置了，与生产 `/hits?order=factor` 不同口径。
+    """
+    summary: dict[tuple[str, int, bool], dict[str, list[float]]] = defaultdict(
+        lambda: {"score": [], "factor": []}
+    )
+    for (key, _day), rows in split_rows.items():
+        series: dict[str, list[tuple]] = {}
+        for code, t, _score, _excess in rows:
+            bars = bars_by_code.get(code)
+            if bars is None:
+                continue
+            # 用**这只票自己的**最近 20 根（含信号日）——与页面一致；停牌空洞会多跨几天，
+            # 与生产「市场交易日历的 20 个交易日」略有差异（见报告「局限」）。
+            start = max(0, t - factor_score.WINDOW + 1)
+            series[code] = [
+                (
+                    bars.dates[i],
+                    bars.pct_chg[i],
+                    bars.high[i],
+                    bars.low[i],
+                    bars.close[i],
+                    bars.amount[i],
+                )
+                for i in range(start, t + 1)
+            ]
+        computed = factor_score.score_series(series)
+
+        def factor_of(code: str) -> float:
+            item = computed.get(code)
+            # 算不出来的（日线不足）排最后，与 `/hits` 的 None 排最后同义
+            return item.score if item is not None else -1.0
+
+        by_score = sorted(rows, key=lambda row: (-row[2], row[0]))
+        by_factor = sorted(rows, key=lambda row: (-factor_of(row[0]), row[0]))
+        for size in ORDER_SPLIT_SIZES:
+            for whole in (False, True):
+                # 命中数不超过 N 时两组取到的就是同一批人，会把差异稀释掉：单独报一行
+                if whole and len(rows) <= size:
+                    continue
+                summary[(key, size, whole)]["score"].extend(
+                    row[3] for row in by_score[:size]
+                )
+                summary[(key, size, whole)]["factor"].extend(
+                    row[3] for row in by_factor[:size]
+                )
+    return summary
+
+
+def _report_order_split(
+    split_rows: dict[tuple[str, date], list[tuple[str, int, float, float]]],
+    bars_by_code: dict[str, Bars],
+) -> None:
+    """排序对照表（`--order-split factor`）：评分前 N vs 因子分前 N。"""
+    summary = _order_split_summary(split_rows, bars_by_code)
+    print()
+    print("=" * 118)
+    print("排序对照（--order-split factor）：同一信号日、同一形态的全部命中，")
+    print("分别取「形态评分前 N」与「量价因子分前 N」；入场方式 / 持有期 / 基准完全相同，只换排序。")
+    print("-" * 118)
+    print(
+        f"{'形态':<18}{'N':>4} {'口径':<9}{'组':<8}{'样本':>7}"
+        f"{'10日超额均值':>14}{'中位':>10}{'胜率':>9}{'差值':>10}"
+    )
+    print("-" * 118)
+    for (key, size, whole), groups in sorted(summary.items()):
+        meta = _BY_KEY.get(key)
+        name = meta.name if meta else key
+        label = f"命中>{size}" if whole else "全部日"
+        mean_s, median_s, win_s, n_s = _mean_median_win(groups["score"])
+        mean_f, median_f, win_f, n_f = _mean_median_win(groups["factor"])
+        print(
+            f"{name:<18}{size:>4} {label:<9}{'评分':<8}{n_s:>7}"
+            f"{mean_s * 100:>13.2f}%{median_s * 100:>9.2f}%{win_s * 100:>8.1f}%"
+        )
+        print(
+            f"{'':<18}{'':>4} {'':<9}{'因子分':<8}{n_f:>7}"
+            f"{mean_f * 100:>13.2f}%{median_f * 100:>9.2f}%{win_f * 100:>8.1f}%"
+            f"{(mean_f - mean_s) * 100:>+9.2f}%"
+        )
+    print("=" * 118)
+    print(
+        "（差值 = 因子分组 − 评分组，单位 pp；超额 = 样本 10 日收益 − 同实际入场日的基准均值，"
+        "与主表同一套基准。）"
+    )
+    print(
+        "（「命中>N」只统计当天命中数严格大于 N 的日子 —— 其余日子两组取到的是同一批人。"
+        "因子分是当天这批命中的池内分位，用每只票自己的最近 20 根日线现算，不查库。）"
+    )
+
+
 def _over_cap_now(grouped: dict[str, list[dict]]) -> set[str]:
     """当前总市值超过生产上限的代码（与本次样本池求交）。拿不到时返回空集。"""
     try:
@@ -2282,6 +2469,10 @@ def _report_data_limits(args, grouped: dict[str, list[dict]], st_stats: dict) ->
         f"production_parity={args.production_parity} / HORIZONS={list(HORIZONS)} / "
         f"窗口={args.since or '不限'}~{args.until or '不限'}"
     )
+    if args.override:
+        print(
+            f"   常量覆盖（只在本进程生效，backend/ 未改）：{', '.join(args.override)}"
+        )
     bench_size = sum(1 for records in grouped.values() if len(records) >= WUDAO_MIN_BARS)
     print(
         f"   预热门槛：按形态取 max({WUDAO_MIN_BARS}, 形态自身守卫)（`patterns.PATTERN_MIN_BARS`）；"

@@ -1300,7 +1300,22 @@ export interface PatternStock {
    */
   phase: string | null
   phase_label: string | null
+  /**
+   * 趋势模板（Minervini 八条）参考标签。`null` = **无法判断**（可用日线不足 250 根，
+   * 或当天没有 RPS250），**不是**「不满足」，页面必须显示「—」而不是 ✗。
+   *
+   * 只对返回的行现算，不是筛选条件；5 年回测（`docs/回测_RPS与趋势模板_20261024.md`）
+   * 未过 +1pp 决策线，只作人工二次筛选的参考。
+   */
+  trend_template: boolean | null
   score: number
+  /**
+   * 量价因子分（0~100，**池内**分位加权）。只有 `order=factor` 时后端才计算，
+   * 其余情况是 null；算不出来的票（日线不足 20 根等）同样是 null 并排在最后。
+   *
+   * ⚠️ 只对「同一天这一批命中」有意义，不跨池比较，也不是「分越高越会涨」。
+   */
+  factor_score: number | null
   patterns: PatternHitItem[]
 }
 

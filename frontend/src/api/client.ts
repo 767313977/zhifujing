@@ -910,6 +910,7 @@ export const api = {
     patterns?: string[] | null,
     days = 1,
     phases?: string[] | null,
+    order: 'score' | 'factor' = 'score',
   ) => {
     const pick = (patterns ?? [])
       .filter(Boolean)
@@ -925,8 +926,13 @@ export const api = {
       .filter(Boolean)
       .map((key) => `&phase=${encodeURIComponent(key)}`)
       .join('')
+    // 排序开关：默认值不写进 query，URL 与加参数前完全一致
+    const ord = order === 'factor' ? '&order=factor' : ''
     return request<PatternHitsPage>(
-      withDate(`/patterns/hits?min_score=${minScore}&limit=${limit}${pick}${win}${ph}`, date),
+      withDate(
+        `/patterns/hits?min_score=${minScore}&limit=${limit}${pick}${win}${ph}${ord}`,
+        date,
+      ),
     )
   },
 

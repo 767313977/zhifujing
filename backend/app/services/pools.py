@@ -478,64 +478,16 @@ def _filter_trend(
             if trend.passes(sliced, len(sliced) - 1, row.rps250):
                 kept.append(row)
         return kept
-    codes = [row.code for row in rows]
-    # 只读趋势模板需要的窗口：`trend.passes` 要 `TREND_LOOKBACK` 根可用日线，多留 10 天
-    # 缓冲（停牌残行会被 `usable_bar` 剔掉）。不设下限时会把库里保留的 400 天全读出来
-    # —— 全池（约 5000 只）实测 26.6 秒，而 `rps/track` 会乘 20 个循环，必然超时。
-    days = list(
-        session.scalars(
-            select(TradeCalendar.trade_date)
-            .where(TradeCalendar.trade_date <= day)
-            .order_by(TradeCalendar.trade_date.desc())
-            .limit(trend.TREND_LOOKBACK + 10)
-        )
-    )
-    if not days:
-        return []
-    start = min(days)
-
-    records: dict[str, list[dict]] = defaultdict(list)
-    # 全池 5000 只时 IN 参数过多，按 900 一批（与 `api/patterns`、`stock_phase` 同一约定）
-    for batch in chunked(codes, 900):
-        for code, trade_date, open_, high, low, close, volume, amount, pct in session.execute(
-            select(
-                StockDaily.code,
-                StockDaily.trade_date,
-                StockDaily.open,
-                StockDaily.high,
-                StockDaily.low,
-                StockDaily.close,
-                StockDaily.volume,
-                StockDaily.amount,
-                StockDaily.pct_chg,
-            )
-            .where(
-                StockDaily.code.in_(batch),
-                StockDaily.trade_date >= start,
-                StockDaily.trade_date <= day,
-            )
-            .order_by(StockDaily.code, StockDaily.trade_date)
-        ):
-            item = {
-                "date": trade_date,
-                "open": open_,
-                "high": high,
-                "low": low,
-                "close": close,
-                "volume": volume,
-                "amount": amount,
-                "pct_chg": pct,
-                "name": None,
-            }
-            # 停牌残行（只有收盘价）不能当一根 K 线，与扫描 / 回测同口径
-            if usable_bar(item):
-                records[code].append(item)
+    # 取数走 `trend.load_bars`（2026-11-01 抽出）：窗口长度、分批、`usable_bar`、
+    # `build_bars` 与形态页 `/hits` 的「趋势模板」标签**共用同一份**，不再各写一遍。
+    # 只读 `TREND_LOOKBACK + 10` 个交易日的理由见那里 —— 不设下限会把库里保留的
+    # 400 天全读出来，全池（约 5000 只）实测 26.6 秒。
+    bars_map = trend.load_bars(session, [row.code for row in rows], day)
     kept: list[RpsRow] = []
     for row in rows:
-        items = records.get(row.code) or []
-        if len(items) < trend.TREND_LOOKBACK:
+        bars = bars_map.get(row.code)
+        if bars is None:  # 不足 250 根可用日线：选股池按「不满足」处理（与回测一致）
             continue
-        bars: Bars = build_bars(items, row.code)
         if trend.passes(bars, len(bars) - 1, row.rps250):
             kept.append(row)
     return kept
