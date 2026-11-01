@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
 import type { FearGreed } from '../api/types'
-// 五档配色 / 分档判据 / 读数头都在 `FearGreedBrief.tsx`（那个文件**不引 EChart**，
-// 首页只用到它，见该文件头的说明）。这里反向引用，保证两处只有一套阈值。
-import { ScoreHeader, bandColor, bandOf, scoreColor } from './FearGreedBrief'
+// 读数头（组件）在 `FearGreedBrief.tsx`，五档配色 / 分档判据在 `lib/fearGreed.ts`
+//（那两个都不引 EChart，首页只用到它们，见 FearGreedBrief 文件头的说明）。
+// 这里反向引用，保证两处只有一套阈值。
+import { ScoreHeader } from './FearGreedBrief'
+import { bandColor, bandOf, scoreColor } from '../lib/fearGreed'
 import EChart from './EChart'
 import type { ChartOption } from './EChart'
 import Panel from './Panel'

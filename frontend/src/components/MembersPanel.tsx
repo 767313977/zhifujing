@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { Member } from '../api/types'
-import { useAuth } from '../lib/auth'
+import { useAuth } from '../lib/authContext'
 import { fmtDateTime } from '../lib/format'
 import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'

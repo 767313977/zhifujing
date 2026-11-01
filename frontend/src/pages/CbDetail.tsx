@@ -11,7 +11,7 @@ import Panel from '../components/Panel'
 import StockLink from '../components/StockLink'
 import { AXIS_LABEL, AXIS_LINE, CHART, GRID, SPLIT_LINE, TOOLTIP } from '../lib/chart'
 import { fmtAmount, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
-import { useWatchlist } from '../lib/watchlist'
+import { useWatchlist } from '../lib/watchlistContext'
 
 /**
  * 单券详情（可转债-3 §3.1 的前端部分）。

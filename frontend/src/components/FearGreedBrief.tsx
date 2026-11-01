@@ -1,5 +1,5 @@
 import type { FearGreedBand, FearGreedBrief as BriefData } from '../api/types'
-import { CHART } from '../lib/chart'
+import { bandColor, scoreColor } from '../lib/fearGreed'
 import { fmtNum } from '../lib/format'
 import Panel from './Panel'
 
@@ -13,36 +13,11 @@ import Panel from './Panel'
  * gzip 214 kB 的 `chart-*.js` 挂在首页 chunk 的静态依赖上。
  *
  * 所以这里**一个图表相关的东西都不能 import**（连 `EChart` 的类型都不行）。
- * 配色与分档判据仍然只在这里写一份，`FearGreedPanel` 反向从这里引用，避免两套阈值。
+ * 配色与分档判据已挪到 `lib/fearGreed.ts`（拆出是为了 Fast Refresh 不整页重载），
+ * `FearGreedPanel` 反向从那里引用，避免两套阈值。
  */
 
-/** 五档配色：绿→灰→红，与全站「红涨绿跌」一致（恐慌=绿、贪婪=红）。 */
-const BAND_COLOR: Record<string, string> = {
-  // 极端两档用同色相再深一档（与 K 线里涨停/跌停标记同一套取色理由）：
-  // 压在中间档上仍一眼看出是「更重的那一端」，又不引入第三种语义
-  extreme_fear: CHART.limitDown,
-  fear: CHART.down,
-  neutral: CHART.fgDim,
-  greed: CHART.up,
-  extreme_greed: CHART.limitUp,
-}
-
-export function bandColor(key: string): string {
-  return BAND_COLOR[key] ?? CHART.fgDim
-}
-
-/** 分数落在哪一档。返回该档（含后端给的中文名），分数为 null 时返回 null。 */
-export function bandOf(bands: FearGreedBand[], score: number | null): FearGreedBand | null {
-  if (score == null) return null
-  // 与后端 `level_of` 同一判据：命中第一个「score <= upper」的档
-  return bands.find((band) => score <= band.upper) ?? bands[bands.length - 1] ?? null
-}
-
-/** 读数色跟着分档走：红色贪婪 / 绿色恐慌，扫一眼就分得出方向。 */
-export function scoreColor(bands: FearGreedBand[], score: number | null): string {
-  const band = bandOf(bands, score)
-  return band ? bandColor(band.key) : 'var(--color-fg-dim)'
-}
+/** 五档档位的中文名/颜色判据见 `lib/fearGreed.ts`；这里只负责排版。 */
 
 /**
  * 0–100 五档色带 + 位置指针。

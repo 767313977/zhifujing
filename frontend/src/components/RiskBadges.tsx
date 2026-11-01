@@ -1,40 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
-import { api } from '../api/client'
 import type { RiskBadge } from '../api/types'
 
 /**
- * 批量风险角标（FEAT-RISK-BADGES）。
+ * 风险角标的**渲染**部分（FEAT-RISK-BADGES）。
  *
- * 一次请求最多 50 个代码，**后端只读缓存、不打外部接口**；没有缓存就不出角标。
- * 列表页一屏几十只走一个请求，不要逐行调用（那会变成 N 次请求）。
+ * 取数钩子 `useRiskBadges` 在 `lib/riskBadges.ts`：组件与钩子同文件导出会让
+ * Fast Refresh 退化成整页重载（2026-11-01 拆开）。
  */
-export function useRiskBadges(codes: string[]): Map<string, RiskBadge[]> {
-  const [map, setMap] = useState<Map<string, RiskBadge[]>>(new Map())
-  const key = useMemo(
-    () => [...new Set(codes.filter(Boolean))].slice(0, 50).sort().join(','),
-    [codes],
-  )
-  useEffect(() => {
-    if (!key) {
-      setMap(new Map())
-      return
-    }
-    let stale = false
-    api
-      .riskBadges(key.split(','))
-      .then((data) => {
-        if (stale) return
-        setMap(new Map(data.rows.map((row) => [row.code, row.badges])))
-      })
-      .catch(() => {
-        // 角标是增强信息：失败静默，不影响列表
-      })
-    return () => {
-      stale = true
-    }
-  }, [key])
-  return map
-}
 
 const TONE: Record<string, string> = {
   high: 'border-danger/50 text-danger',

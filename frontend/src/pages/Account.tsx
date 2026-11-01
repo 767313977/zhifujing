@@ -6,7 +6,7 @@ import ContactQr from '../components/ContactQr'
 import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import { RiskPrefPanel } from '../components/RiskGuard'
-import { useAuth } from '../lib/auth'
+import { useAuth } from '../lib/authContext'
 
 const INPUT =
   'w-full max-w-[280px] border border-line bg-ink-850 px-2.5 py-1.5 text-[14px] text-fg outline-none transition-colors focus:border-fg-dim'

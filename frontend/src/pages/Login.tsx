@@ -5,7 +5,7 @@ import { api } from '../api/client'
 import Alert from '../components/Alert'
 import ContactQr from '../components/ContactQr'
 import Footer from '../components/Footer'
-import { useAuth } from '../lib/auth'
+import { useAuth } from '../lib/authContext'
 
 type Tab = 'login' | 'register'
 

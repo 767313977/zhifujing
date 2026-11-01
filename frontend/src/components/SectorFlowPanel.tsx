@@ -11,6 +11,7 @@ import EChart from './EChart'
 import type { ChartOption } from './EChart'
 import Segmented from './Segmented'
 import SectorFlowMatrix from './SectorFlowMatrix'
+import { FLOW_SPANS } from '../lib/sectorSpans'
 import {
   AXIS_LABEL,
   AXIS_LINE,
@@ -133,11 +134,9 @@ function buildOption(items: FundFlowItem[], inflow: boolean): ChartOption {
 }
 
 /**
- * 多日窗口的档位。**矩阵与累计曲线共用同一个值** —— 两者都是「近 N 日」的视角，
- * 页面上只放一个选择器（放在面板头部），改一个另一个跟着变是预期的。
- * 后端上限 60（自算口径补不了历史，库里有几天就几列），30 已经是够用的档。
+ * 窗口档位在 `lib/sectorSpans.ts`（`FLOW_SPANS`）—— 数组常量留在组件文件里会让
+ * Fast Refresh 整页重载，而档位清单必须只有一份。
  */
-export const FLOW_SPANS = [10, 20, 30]
 
 /**
  * 累计净流入曲线：一个板块一条线，纵轴是**从窗口起点累加**的值（不是当日值）。

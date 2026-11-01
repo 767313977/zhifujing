@@ -1,7 +1,7 @@
 import type { ReactNode, Ref } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { useAuth } from '../lib/auth'
+import { useAuth } from '../lib/authContext'
 import Footer from './Footer'
 import UserMenu from './UserMenu'
 

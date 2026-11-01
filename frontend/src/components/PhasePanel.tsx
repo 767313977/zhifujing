@@ -1,32 +1,12 @@
 import type { WudaoPhase } from '../api/types'
 import Panel from './Panel'
 import { fmtNum, fmtPct } from '../lib/format'
+import { phaseTone } from '../lib/phase'
 
 /**
- * 「阶段判定」那一档的颜色。
- *
- * 只分三档、只用站内已有的色：能动手（accent）/ 只观察（up）/ 别碰（down 或弱色）。
- * 别为 8 个阶段各配一个颜色 —— 颜色多了反而看不出哪一档要动手。
+ * 「阶段判定」那一档的颜色在 `lib/phase.ts`（拆出是为了 Fast Refresh 不整页重载）。
+ * 卡片与形态选股命中列表共用同一份判据。
  */
-const PHASE_TONE: Record<string, string> = {
-  start: 'text-accent',
-  sample: 'text-up',
-  wake: 'text-fg',
-  digest: 'text-fg',
-  diverge: 'text-down',
-  dump: 'text-down',
-  weak: 'text-down',
-  silent: 'text-fg-muted',
-  unknown: 'text-fg-muted',
-}
-
-/**
- * 阶段 key → 色调类名。卡片与**形态选股命中列表的那一列**共用，免得同一个阶段
- * 在两个页面配出两种颜色（`null`／未知 key 一律落到常规前景色）。
- */
-export function phaseTone(phase: string | null | undefined): string {
-  return (phase ? PHASE_TONE[phase] : undefined) ?? 'text-fg'
-}
 
 /**
  * 悟道「阶段判定」卡片（移植自 yangban-desk 的 8 个标签）。

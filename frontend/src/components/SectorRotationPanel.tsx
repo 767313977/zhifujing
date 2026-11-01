@@ -16,10 +16,14 @@ import {
   TOOLTIP,
 } from '../lib/chart'
 import { fmtAmount, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
+import { ROTATION_SPANS } from '../lib/sectorSpans'
 import EChart from './EChart'
 import type { ChartOption } from './EChart'
 import Segmented from './Segmented'
 import StockLink from './StockLink'
+
+/** 没有数据时的**稳定**空列：每次渲染造新数组会让下面的 memo 全部失效 */
+const NO_COLUMNS: RotationColumn[] = []
 
 /**
  * 板块轮动矩阵：**列是交易日（从新到旧）、行是当天的第 N 名**。
@@ -47,17 +51,9 @@ const METRICS: { key: RotationMetric; label: string; hint: string }[] = [
 ]
 
 /**
- * 周期档位。上限受本地板块日线的天数限制，后端会按库里真有几天返回，
- * 不会用空列凑数。
- *
- * **到这里为止，再加就看不动了** —— 轮动是「横向扫一眼谁在换」，
- * 60 列在 430px 高的表里已经要左右拖；而走势图不一样，越长反而越能看出
- * 位置（所以走势那边开到了 250 天，见页面里的 `CURVE_SPANS`）。
- *
- * **导出**给页面用来校验 URL 里的 `rotdays` —— 档位清单只能有一份，
- * 抄第二份就会在改档位时对不上（这个教训项目里已经吃过一次，见设计文档 8.23.6）。
+ * 周期档位在 `lib/sectorSpans.ts`（`ROTATION_SPANS`）—— 数组常量留在组件文件里
+ * 会让 Fast Refresh 整页重载，而档位清单必须只有一份。
  */
-export const ROTATION_SPANS = [10, 20, 30, 45, 60]
 
 /** 折线图最多画几条板块的轨迹。开盘啦画 4 条，多一条颜色就更难分了 */
 const LADDER_SERIES = 5
@@ -264,7 +260,10 @@ export default function SectorRotationPanel({
    */
   const [hovered, setHovered] = useState<string | null>(null)
 
-  const allColumns = data?.columns ?? []
+  // `data?.columns ?? []` 每次渲染都会造新数组，而下面三个 memo 都以它为依赖 ——
+  // 悬停一次（`setState(hovered)`）就会把整张折线图重建一次。这里先把它 memo 住，
+  // 空数据时落回**同一个**稳定空数组（2026-11-01 修 exhaustive-deps 提示）。
+  const allColumns = useMemo(() => data?.columns ?? NO_COLUMNS, [data])
   // 后端按「两个窗口里较大的那个」取数（一次请求就够），这里各切各的：
   // 矩阵看 `days` 列、上榜统计看 `ladderDays` 列。**切片比再发一个请求便宜得多**。
   const columns = allColumns.slice(0, days)

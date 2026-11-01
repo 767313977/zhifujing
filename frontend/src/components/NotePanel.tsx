@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { NoteSummary } from '../api/types'
-import { useAuth } from '../lib/auth'
+import { useAuth } from '../lib/authContext'
 import Alert from './Alert'
 import Panel from './Panel'
 

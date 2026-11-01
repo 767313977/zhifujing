@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useAuth } from '../lib/auth'
+import { useAuth } from '../lib/authContext'
 
 /**
  * 顶栏右上角的账号区：`用户名 · 账号 · 退出`。

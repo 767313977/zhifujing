@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '../api/client'
 import type { FqMode, KPeriod } from '../api/types'
-import { dailyBars } from '../components/KLineChart'
+import { dailyBars } from './klineBars'
 import type { KLineBar } from '../components/KLineChart'
 import { hasLongHistory, markLongHistory, markSynced } from './stockNav'
 

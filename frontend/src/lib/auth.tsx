@@ -10,24 +10,17 @@
  * 这里收到就把用户清掉，于是下一次渲染自动跳登录页 —— 不用每个页面各自处理。
  */
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { api, UNAUTHORIZED_EVENT } from '../api/client'
 import type { Me } from '../api/types'
+import { AuthContext, useAuth } from './authContext'
 import { clearStockList } from './stockNav'
 
-interface AuthValue {
-  /** 当前用户；null = 没登录（或还在确认，见 `checking`） */
-  me: Me | null
-  /** 首次确认还没结束。**必须区分「没登录」与「还不知道」**，否则刷新页面会闪一下登录页 */
-  checking: boolean
-  /** 登录 / 注册成功后调用，把用户塞进来，省一次 /auth/me */
-  setUser: (me: Me) => void
-  logout: () => Promise<void>
-}
-
-const AuthContext = createContext<AuthValue | null>(null)
+// context / 类型 / `useAuth` 都在 `lib/authContext.ts`（拆开是为了 Fast Refresh）。
+// 这里只放**组件**：Provider 与两个路由守卫。**不要再从这里导出钩子** ——
+// 组件与钩子同文件导出会让整文件的热更新退化成整页重载。
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null)
@@ -107,14 +100,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   )
-}
-
-export function useAuth(): AuthValue {
-  const value = useContext(AuthContext)
-  if (value === null) {
-    throw new Error('useAuth 必须在 AuthProvider 内使用')
-  }
-  return value
 }
 
 /**

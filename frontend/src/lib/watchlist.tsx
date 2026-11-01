@@ -9,20 +9,15 @@
  * 所以不会出现「没有 Provider 就报错」的情况。
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api, WATCHLIST_CHANGED_EVENT } from '../api/client'
-import { useAuth } from './auth'
+import { useAuth } from './authContext'
+import { WatchlistContext } from './watchlistContext'
+import type { WatchlistValue } from './watchlistContext'
 
-interface WatchlistValue {
-  /** 自选代码集合。命中判断用 `isWatched`，不要直接读这个集合 */
-  codes: Set<string>
-  isWatched: (code: string) => boolean
-  /** 手动重拉（一般不用调，增删事件会自动触发） */
-  refresh: () => Promise<void>
-}
-
-const WatchlistContext = createContext<WatchlistValue | null>(null)
+// context / 类型 / `useWatchlist` 都在 `lib/watchlistContext.ts`（拆开是为了 Fast Refresh）。
+// 这里只放**组件** Provider，不要再从这里导出钩子。
 
 export function WatchlistProvider({ children }: { children: ReactNode }) {
   const { me, checking } = useAuth()
@@ -64,12 +59,4 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
   )
 
   return <WatchlistContext.Provider value={value}>{children}</WatchlistContext.Provider>
-}
-
-export function useWatchlist(): WatchlistValue {
-  const value = useContext(WatchlistContext)
-  if (value === null) {
-    throw new Error('useWatchlist 必须在 WatchlistProvider 内使用')
-  }
-  return value
 }

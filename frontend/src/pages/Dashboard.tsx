@@ -32,7 +32,7 @@ import PatternPanel from '../components/PatternPanel'
 import SectorHeatPanel from '../components/SectorHeatPanel'
 import SentimentPanel from '../components/SentimentPanel'
 import WatchlistPanel from '../components/WatchlistPanel'
-import { useAuth } from '../lib/auth'
+import { useAuth } from '../lib/authContext'
 
 /** 次级区块取数失败时的占位：空池子 / 空热力，保证主内容渲染时类型仍完整 */
 function emptyPool(poolType: PoolType): LimitPool {

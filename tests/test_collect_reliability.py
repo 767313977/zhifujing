@@ -514,7 +514,6 @@ def test_run_late_recomputes_fear_greed_before_pushes(monkeypatch):
         lambda day, **k: called.append(f"fear:{k.get('record_failure', True)}"),
     )
     collector = SimpleNamespace(
-        is_trade_day=lambda day: True,
         run_late=lambda day, skip_done=False: {"steps": {}, "trade_date": day},
     )
 

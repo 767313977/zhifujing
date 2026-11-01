@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { useWatchlist } from '../lib/watchlist'
+import { useWatchlist } from '../lib/watchlistContext'
 
 /**
  * 个股链接 —— **凡是在表里/卡片里出现个股代码或名称的地方，都用它包一下**。

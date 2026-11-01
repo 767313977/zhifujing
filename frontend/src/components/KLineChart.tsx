@@ -1,9 +1,8 @@
 import { useMemo } from 'react'
-import type { StockDailyRow } from '../api/types'
 import EChart from './EChart'
 import type { ChartOption } from './EChart'
 import { AXIS_LABEL, CHART, TOOLTIP } from '../lib/chart'
-import { fmtAmount, fmtPct, fmtShortDate } from '../lib/format'
+import { fmtAmount, fmtPct } from '../lib/format'
 
 /*
  * ⚠️ **这张图不画均线**（2026-10-08 用户要求「把均线去掉」：主图 MA5/10/20 与副图
@@ -172,31 +171,9 @@ export interface KLineBar {
 }
 
 /**
- * 日线 / 周线 / 月线 → 图上的 bar（后端已经把周月聚合好了）。
- *
- * `withYear` 给周/月 K 用：它们看的是 2 年，横轴只写 `MM-DD` 会出现两个
- * `09-30`（2024 与 2025）分不清的情况。日线保持短标签，250 根挤得下。
+ * 日线 / 周线 / 月线 → 图上的 bar 的转换在 `lib/klineBars.ts`（拆出是为了 Fast
+ * Refresh 不整页重载）。`KLineBar` 仍定义在这里，供图与调用方共用。
  */
-export function dailyBars(
-  rows: StockDailyRow[],
-  { withYear = false }: { withYear?: boolean } = {},
-): KLineBar[] {
-  return rows.map((row) => ({
-    date: row.trade_date,
-    label: withYear ? row.trade_date.slice(2) : fmtShortDate(row.trade_date),
-    open: row.open,
-    high: row.high,
-    low: row.low,
-    close: row.close,
-    volume: row.volume,
-    amount: row.amount,
-    turnover: row.turnover,
-    pct_chg: row.pct_chg,
-    // 周/月由后端重采样，那边给的是 null（粒度上不成立）
-    limitUp: row.is_limit_up === true,
-    limitDown: row.is_limit_down === true,
-  }))
-}
 
 /** 图上的关键位标记（形态的突破价 / 支撑价）。 */
 export interface KeyLevel {

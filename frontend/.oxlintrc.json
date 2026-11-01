@@ -3,6 +3,16 @@
   "plugins": ["react", "typescript", "oxc"],
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    // `react/set-state-in-effect` **有意关闭**（2026-11-01）。
+    //
+    // 这条是 React Compiler 的提示，不是 bug 判据。它把「effect 里调用了会 setState
+    // 的函数」也一并算作违规（连 `void load()` 这种 async 取数、setState 在 await
+    // 之后的情形都算），而本站每个页面的取数都是同一个写法：
+    //   切日期/筛选 → effect 里先清掉旧数据与旧错误、再发请求。
+    // 全站 60 多处（Etf / Funds / Sectors / Pools / Journal …）都是这个既定的、带
+    // 注释说明的口径，逐处改成「渲染期派生」等于把取数层重写一遍，风险远大于收益。
+    // 真要消掉它，应该是一件单独的、带交互回归的任务，不要顺手改。
+    "react/set-state-in-effect": "off"
   }
 }
