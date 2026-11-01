@@ -187,3 +187,24 @@ def test_hits_trend_matches_pool_filter(db):
     kept = {row.code for row in pools._filter_trend(session, DAY, pool_rows)}
     assert kept == {row.code for row in rows.values() if row.trend_template is True}
     assert kept == {"300001"}
+
+
+def test_trend_templates_are_cached(db, monkeypatch):
+    """同一份数据下第二次取标签不再查日线（形态模式 800 行约 1.6 秒，不能每次都白算）。"""
+    session = db
+    _seed(session, "300001", rising=True)
+    session.commit()
+
+    calls: list[list[str]] = []
+    original = trend.load_bars
+
+    def counting(session_, codes, day):  # noqa: ANN001 - 测试用薄封装
+        calls.append(list(codes))
+        return original(session_, codes, day)
+
+    monkeypatch.setattr(patterns_api.trend, "load_bars", counting)
+
+    first = patterns_api._trend_templates(session, ["300001"], DAY)
+    second = patterns_api._trend_templates(session, ["300001"], DAY)
+    assert first == second == {"300001": True}
+    assert len(calls) == 1  # 第二次全部命中缓存

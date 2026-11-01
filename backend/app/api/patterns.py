@@ -638,6 +638,69 @@ def _rps250_map(db: Session, codes: list[str], day: date) -> dict[str, float]:
     return result
 
 
+#: 趋势模板标签的进程内缓存（2026-11-01 复查 P2）：
+#: `{(数据库引擎, 交易日, 最新日线日, 最新 RPS 日, 最新日行数): {代码: True/False/None}}`。
+#:
+#: 形态模式下一屏最多 800 行、每行要 260 天日线：线上实测 732 只约 **1.6 秒**，而每次
+#: 切筛选 / 刷新都会重算一遍。阶段判定那一路有同款缓存（`stock_phase.load_phases`），
+#: 这里与之对齐。版本取「最新日线日 + 最新 RPS 日 + 最新日行数」：采集写库或补进新行
+#: 都会让它变；带上引擎对象是为了不跨库串味（单测里每个用例都是一个新的内存库）。
+_TREND_CACHE: dict[tuple[object, date, date, date, int], dict[str, bool | None]] = {}
+_TREND_CACHE_LOCK = threading.Lock()
+#: 最多留几天的结果（一天最多约 5000 个布尔，开销可忽略；留 4 天够来回翻）
+_TREND_CACHE_DAYS = 4
+
+
+def _trend_templates(
+    db: Session, codes: list[str], day: date
+) -> dict[str, bool | None]:
+    """每只票当天的趋势模板三态（带进程内缓存）。
+
+    只算缓存里没有的代码、其余直接复用：同一份数据下第二次请求（换筛选 / 换排序 /
+    刷新）几乎不再查日线。
+    """
+    ordered = sorted({code for code in codes if code})
+    if not ordered:
+        return {}
+    latest_bar = db.scalar(select(func.max(StockDaily.trade_date)))
+    latest_rps = db.scalar(select(func.max(RpsDaily.trade_date))) or latest_bar
+    key: tuple[object, date, date, date, int] | None = None
+    if latest_bar is not None:
+        rows_on_latest = (
+            db.scalar(
+                select(func.count())
+                .select_from(StockDaily)
+                .where(StockDaily.trade_date == latest_bar)
+            )
+            or 0
+        )
+        key = (db.get_bind(), day, latest_bar, latest_rps, rows_on_latest)
+
+    cached: dict[str, bool | None] = {}
+    if key is not None:
+        with _TREND_CACHE_LOCK:
+            cached = dict(_TREND_CACHE.get(key) or {})
+    missing = [code for code in ordered if code not in cached]
+    if missing:
+        bars_map = trend.load_bars(db, missing, day)
+        rps250 = _rps250_map(db, missing, day)
+        for code in missing:
+            bars = bars_map.get(code)
+            # `load_bars` 只给凑够 250 根可用日线的票；不足 → None（「无法判断」，不是 ✗）
+            cached[code] = (
+                None
+                if bars is None
+                else trend.evaluate(bars, len(bars) - 1, rps250.get(code))
+            )
+        if key is not None:
+            with _TREND_CACHE_LOCK:
+                _TREND_CACHE[key] = cached
+                # 按插入顺序淘汰最老的一天（key 里有引擎对象，不能排序）
+                while len(_TREND_CACHE) > _TREND_CACHE_DAYS:
+                    _TREND_CACHE.pop(next(iter(_TREND_CACHE)), None)
+    return {code: cached.get(code) for code in ordered}
+
+
 @router.get("/hits", response_model=PatternHitsOut)
 def hits(
     db: Session = Depends(get_db),
@@ -994,17 +1057,9 @@ def hits(
     # 趋势模板参考标签（2026-11-01）：与上面的「阶段判定」同一个思路 —— 只对**真正
     # 返回的行**算，不白算被 limit 截掉的那些。日期用 `target`，结果只取决于这只票的
     # 日线与当天的 RPS250，与所选形态 / 排序口径都无关。
-    page_codes = [stock.code for stock in page]
-    trend_bars = trend.load_bars(db, page_codes, target)
-    rps250 = _rps250_map(db, page_codes, target)
+    templates = _trend_templates(db, [stock.code for stock in page], target)
     for stock in page:
-        bars = trend_bars.get(stock.code)
-        # `load_bars` 只给凑够 250 根可用日线的票；不足 → None（「无法判断」，不是 ✗）
-        stock.trend_template = (
-            None
-            if bars is None
-            else trend.evaluate(bars, len(bars) - 1, rps250.get(stock.code))
-        )
+        stock.trend_template = templates.get(stock.code)
     # `total` 是**截断前**的条数：窗口模式下去重后的真实条数只有这里知道，
     # 调用方据此显示「还有多少没列出来」（2026-10-22 加的契约）
     return PatternHitsOut(

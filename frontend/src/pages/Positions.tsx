@@ -240,7 +240,12 @@ export default function Positions() {
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-[12px] text-fg-dim">数量（股）</span>
+              <span
+                className="text-[12px] text-fg-dim"
+                title="填买入时的股数。市值与浮盈都按「买入日口径价 × 这个股数」算；送转后不要改成除权后的持股数，否则浮盈会翻倍"
+              >
+                数量（股，买入时）
+              </span>
               <input
                 type="number"
                 step="100"
@@ -311,7 +316,9 @@ export default function Positions() {
                     <th className="text-left">名称</th>
                     <th>建仓日</th>
                     <th>成本</th>
-                    <th>数量</th>
+                    <th title="买入时的股数。市值与浮盈都按「买入日口径价 × 这个股数」算；送转后不要改成除权后的持股数，否则浮盈会翻倍">
+                      数量（买入时）
+                    </th>
                     <th>现价</th>
                     <th>浮盈</th>
                     <th>比例</th>

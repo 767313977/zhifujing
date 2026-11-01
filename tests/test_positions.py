@@ -88,7 +88,8 @@ def test_pnl_uses_buy_day_basis_after_split():
         assert row["latest_close"] == 5.0  # 行情口径仍是不复权价
         assert row["pnl_pct"] == 0.0
         assert row["pnl"] == 0.0
-        assert row["market_value"] == 5000.0
+        # 市值与浮盈同口径（买入日等价价 × 股数）：送转后仍是 10 × 1000
+        assert row["market_value"] == 10000.0
 
 
 def test_from_plan_marks_executed(db):

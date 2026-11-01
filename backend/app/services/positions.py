@@ -7,8 +7,9 @@
 - 浮盈按**买入日口径**（`trade_journal.open_basis`，按 `pct_chg` 复利折算）计算，
   与交易日志页同一个数；直接用不复权收盘价遇到分红送转会显示假亏损
   （2026-11-01 审计 P1）；
-- 市值 = 不复权收盘 × 股数（真实市值，与行情软件一致）；除权后股数会变，
-  用户按实际持仓改 `shares` 即可；
+- 市值与浮盈**同一口径**：都按「买入日口径价 × 股数」算 —— `shares` 的含义是
+  **买入时的股数**。这样「市值 = 成本 + 浮盈」在送转前后都成立。代价是除权后它不再
+  等于交易所里的真实市值（那需要按除权后的股数换算），这是刻意的取舍（2026-11-01 复查 P3）；
 - 平仓仍然在交易日志页做（这里只增删改未平仓记录，不动已平仓的）。
 """
 
@@ -33,8 +34,10 @@ def _row(journal: TradeJournal, quote, basis: float | None) -> dict:
         pnl_pct = round((price / journal.entry_price - 1) * 100, 2)
         if journal.shares:
             pnl = round((price - journal.entry_price) * journal.shares, 2)
-    if close is not None and journal.shares:
-        value = round(close * journal.shares, 2)
+    # 市值与浮盈必须同一个价：用不复权收盘的话，送转后会出现
+    # 「市值 ≠ 成本 + 浮盈」（2026-11-01 复查 P3）
+    if price is not None and journal.shares:
+        value = round(price * journal.shares, 2)
     return {
         "id": journal.id,
         "code": journal.code,
