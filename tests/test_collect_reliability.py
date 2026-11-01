@@ -37,6 +37,7 @@ from app.models import (
     StockDde,
     TradeCalendar,
 )
+from app.services import trading_days
 from app.services.usage import QuotaLevel
 from app.sources import kaipanhong
 from app.timeutil import CST
@@ -718,6 +719,10 @@ def test_collect_lhb_rows_are_ok(monkeypatch):
 def _alerts_engine(monkeypatch, *, base_failed: tuple[str, ...] = ()):
     engine = _engine()
     _patch_scope(monkeypatch, alerts, engine)
+    # `alerts.check` 里的「是不是交易日」走的是 `trading_days` 自己的会话（不带 session），
+    # 只 patch `alerts.session_scope` 管不到它 —— 不换掉就会去连真实库，CI 上全新
+    # checkout 没有 `trade_calendar` 表，直接 OperationalError（2026-11-01 修）。
+    _patch_scope(monkeypatch, trading_days, engine)
     _add_calendar(engine, DAY)
     _add_log(engine, "push_brief", "ok")
     _add_log(engine, "daily_tail", "ok")
