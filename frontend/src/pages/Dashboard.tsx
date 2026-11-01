@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api, isNoDataError } from '../api/client'
 import type {
   AdminStatus,
@@ -14,6 +15,7 @@ import type {
   WatchlistRow,
 } from '../api/types'
 import Alert from '../components/Alert'
+import DayConclusion from '../components/DayConclusion'
 import DivergenceNote from '../components/DivergenceNote'
 // ⚠️ 从 `FearGreedBrief` 自己的文件引，**不要**改回 `./FearGreedPanel`：
 // 那个文件顶部静态 import 了 EChart（进而整包 echarts/core），首页自己一个图都不画，
@@ -78,6 +80,20 @@ interface DashboardData {
   patternError: string | null
 }
 
+/**
+ * 明细 Tab（规范 v1 §5，Phase 4）：只有这四张表进 Tab，选中项写进 `?tab=`，
+ * 刷新 / 分享链接都能回到同一张表。四张表的数据在 `load()` 里已经一起取回，
+ * 切 Tab **不发任何请求**。
+ */
+const DETAIL_TABS = [
+  { key: 'up', label: '涨停明细' },
+  { key: 'down', label: '跌停明细' },
+  { key: 'broken', label: '炸板明细' },
+  { key: 'lhb', label: '龙虎榜' },
+] as const
+
+type DetailTab = (typeof DETAIL_TABS)[number]['key']
+
 /** 次级接口失败时在它原来的位置显示一块错误条（可关），不拖白整页 */
 function SectionError({ title, message, onClose }: { title: string; message: string; onClose: () => void }) {
   return (
@@ -119,6 +135,19 @@ export default function Dashboard() {
   const [watchDismissed, setWatchDismissed] = useState(false)
   const dismiss = (key: keyof SectionErrors) =>
     setDismissed((prev) => ({ ...prev, [key]: true }))
+
+  // 明细 Tab 的展示态：写在 URL 里（`?tab=down`），刷新/收藏能回到同一张表。
+  // 非法值按「涨停明细」处理；切 Tab 不触发任何取数（见 DETAIL_TABS 的说明）。
+  const [searchParams, setSearchParams] = useSearchParams()
+  const rawTab = searchParams.get('tab')
+  const tab: DetailTab = DETAIL_TABS.some((item) => item.key === rawTab)
+    ? (rawTab as DetailTab)
+    : 'up'
+  const setTab = (next: DetailTab) => {
+    const params = new URLSearchParams(searchParams)
+    params.set('tab', next)
+    setSearchParams(params, { replace: true })
+  }
 
   /**
    * @param isStale 判断这次请求还算不算数。切日期时两个请求的返回顺序不保证，
@@ -296,6 +325,10 @@ export default function Dashboard() {
         </div>
       ) : data ? (
         <div className="space-y-4">
+          {/* 结论条（规范 v1 §5 Phase 4）：只用 overview 里已有的字段拼一句话 + 几个数，
+              没有新接口。放在指数条之前，先给「今天是什么样」，再给明细 */}
+          <DayConclusion overview={data.overview} />
+
           <IndexStrip
             indexes={data.overview.indexes}
             tradeDate={data.overview.trade_date}
@@ -354,54 +387,101 @@ export default function Dashboard() {
             />
           )}
 
-          {data.sectionErrors.up ? (
-            !dismissed.up ? (
-              <SectionError
-                title="涨停明细"
-                message={data.sectionErrors.up}
-                onClose={() => dismiss('up')}
-              />
-            ) : null
-          ) : (
-            <LimitTable type="up" stocks={data.up.stocks} loading={loading} delay={260} />
-          )}
+          {/* 明细 Tab（规范 v1 §5 Phase 4）：原来涨停/跌停/炸板/龙虎榜四张表纵向堆叠，
+              一页要滚很久；现在同一位置切换。四张表的数据在 load() 里一次取回，
+              切 Tab **不发请求**。
+              「跌停 / 炸板不并排」的原判据仍然成立（两张表各 12 列，并排会溢出），
+              所以每张表依旧整宽显示，只是改为按需切换。 */}
+          <div className="flex flex-wrap items-center gap-1 rounded-sm border border-line bg-ink-900 px-2 py-1.5">
+            <span className="mr-2 px-1 text-[12px] tracking-[0.08em] text-fg-dim">明细</span>
+            {DETAIL_TABS.map((item) => {
+              const active = tab === item.key
+              const count =
+                item.key === 'up'
+                  ? data.up.total
+                  : item.key === 'down'
+                    ? data.down.total
+                    : item.key === 'broken'
+                      ? data.broken.total
+                      : data.lhb.length
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setTab(item.key)}
+                  className={[
+                    'border px-2.5 py-1 text-[13px] transition-colors',
+                    active
+                      ? 'border-accent/60 bg-accent/10 text-accent'
+                      : 'border-transparent text-fg-muted hover:border-line hover:text-fg',
+                  ].join(' ')}
+                >
+                  {item.label}
+                  {!loading && (
+                    <span className="num ml-1 text-[12px] text-fg-dim">{count}</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
 
-          {/* 跌停/炸板不并排：这两张表都有 12 列，并排后单列容器装不下，
-              会在 1280~1500px 这个常用宽度上溢出。整宽堆叠反而更稳。 */}
-          {data.sectionErrors.down ? (
-            !dismissed.down ? (
-              <SectionError
-                title="跌停明细"
-                message={data.sectionErrors.down}
-                onClose={() => dismiss('down')}
-              />
-            ) : null
-          ) : (
-            <LimitTable type="down" stocks={data.down.stocks} loading={loading} delay={300} />
-          )}
-          {data.sectionErrors.broken ? (
-            !dismissed.broken ? (
-              <SectionError
-                title="炸板明细"
-                message={data.sectionErrors.broken}
-                onClose={() => dismiss('broken')}
-              />
-            ) : null
-          ) : (
-            <LimitTable type="broken" stocks={data.broken.stocks} loading={loading} delay={320} />
-          )}
+          {tab === 'up' &&
+            (data.sectionErrors.up ? (
+              !dismissed.up ? (
+                <SectionError
+                  title="涨停明细"
+                  message={data.sectionErrors.up}
+                  onClose={() => dismiss('up')}
+                />
+              ) : null
+            ) : (
+              <LimitTable type="up" stocks={data.up.stocks} loading={loading} delay={260} />
+            ))}
 
-          {data.sectionErrors.lhb ? (
-            !dismissed.lhb ? (
-              <SectionError
-                title="龙虎榜"
-                message={data.sectionErrors.lhb}
-                onClose={() => dismiss('lhb')}
+          {tab === 'down' &&
+            (data.sectionErrors.down ? (
+              !dismissed.down ? (
+                <SectionError
+                  title="跌停明细"
+                  message={data.sectionErrors.down}
+                  onClose={() => dismiss('down')}
+                />
+              ) : null
+            ) : (
+              <LimitTable type="down" stocks={data.down.stocks} loading={loading} delay={300} />
+            ))}
+
+          {tab === 'broken' &&
+            (data.sectionErrors.broken ? (
+              !dismissed.broken ? (
+                <SectionError
+                  title="炸板明细"
+                  message={data.sectionErrors.broken}
+                  onClose={() => dismiss('broken')}
+                />
+              ) : null
+            ) : (
+              <LimitTable
+                type="broken"
+                stocks={data.broken.stocks}
+                loading={loading}
+                delay={320}
               />
-            ) : null
-          ) : (
-            <LhbTable items={data.lhb} loading={loading} delay={360} />
-          )}
+            ))}
+
+          {tab === 'lhb' &&
+            (data.sectionErrors.lhb ? (
+              !dismissed.lhb ? (
+                <SectionError
+                  title="龙虎榜"
+                  message={data.sectionErrors.lhb}
+                  onClose={() => dismiss('lhb')}
+                />
+              ) : null
+            ) : (
+              <LhbTable items={data.lhb} loading={loading} delay={360} />
+            ))}
 
           {/* 形态排在这里：前面几块回答「今天发生了什么」，这一块回答「明天盯什么」，
               再往后才是自己的票（它本来就有独立的 error 态，维持原样） */}
