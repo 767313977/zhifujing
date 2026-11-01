@@ -19,6 +19,7 @@ import NorthboundPanel from '../components/NorthboundPanel'
 import ObvPanel from '../components/ObvPanel'
 import Panel from '../components/Panel'
 import RelayTempPanel from '../components/RelayTempPanel'
+import SentimentConclusion from '../components/SentimentConclusion'
 import VolatilityPanel from '../components/VolatilityPanel'
 import {
   AXIS_LABEL,
@@ -54,6 +55,16 @@ type PanelKey =
   | 'industryBreadth'
   | 'northbound'
   | 'volatility'
+
+/** 分区小标题（规范 v1 §5 Phase 6）：把十几个读数按「温度 / 资金 / 走势」分段。 */
+function SectionTitle({ children, hint }: { children: string; hint?: string }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-2 pt-1">
+      <span className="text-[12px] tracking-[0.12em] text-fg-dim">{children}</span>
+      {hint && <span className="text-[12px] text-fg-dim">· {hint}</span>}
+    </div>
+  )
+}
 
 /** 首日归一为 100，让点位数量级不同的指数能在同一轴上比较。 */
 function normalize(values: (number | null)[]): (number | null)[] {
@@ -369,6 +380,17 @@ export default function SentimentPage() {
       )}
 
       <div className="space-y-4">
+        {/* 结论条（规范 v1 §5 Phase 6）：只用各序列已返回的最新值，缺值一律「—」 */}
+        <SentimentConclusion
+          sentiment={sentiment}
+          fearGreed={fearGreed}
+          relayTemp={relayTemp}
+          breadth={breadth}
+          loading={loading}
+        />
+
+        <SectionTitle hint="先看总读数，再看拆开的各项">温度</SectionTitle>
+
         {/* 恐贪是本页的总读数，排在最前：先给「今天整体冷不冷」，再展开下面拆开的
             指数走势与情绪明细 */}
         <FearGreedPanel
@@ -407,6 +429,7 @@ export default function SentimentPage() {
 
         {/* 基差与 ERP 是「钱怎么看后市」的两面：一个看期货对冲成本（负 = 贴水 = 谨慎），
             一个看股票相对债券便不便宜（高 = 便宜）。紧跟在温度计之后 */}
+        <SectionTitle hint="钱怎么看后市、往哪个方向走">结构与资金</SectionTitle>
         <FuturesBasisPanel
           data={futuresBasis}
           loading={loading}
@@ -457,6 +480,7 @@ export default function SentimentPage() {
           delay={99}
         />
 
+        <SectionTitle hint="短线情绪与指数背景分开看">指数与情绪走势</SectionTitle>
         <Panel
           title="指数走势"
           meta={
