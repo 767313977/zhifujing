@@ -6,6 +6,7 @@ import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
 import LadderBoard from '../components/LadderBoard'
 import Layout from '../components/Layout'
+import LimitConclusion from '../components/LimitConclusion'
 import LoadState from '../components/LoadState'
 import LimitTable from '../components/LimitTable'
 import Panel from '../components/Panel'
@@ -160,6 +161,20 @@ export default function LimitReview() {
         : industryBase,
     [industryBase, industryFilter],
   )
+
+  /**
+   * 题材联动高亮（规范 v1 §5 Phase 5）：选了题材时，**涨停梯队**里命中的 chip 高亮、
+   * 其余淡出 —— 与下方「涨停明细」的筛选用的是同一份 `themeIndex`，两处不会说两套话。
+   * 没选题材时返回 null（不做任何视觉处理）。
+   */
+  const highlightCodes = useMemo(() => {
+    if (!themeFilter) return null
+    return new Set(
+      stocks
+        .filter((stock) => themeIndex[stock.code]?.includes(themeFilter))
+        .map((stock) => stock.code),
+    )
+  }, [themeFilter, stocks, themeIndex])
 
   /** 首封时间分桶计数。 */
   const timeDistribution = useMemo(() => {
@@ -352,6 +367,16 @@ export default function LimitReview() {
       )}
 
       <div className="space-y-4">
+        {/* 结论条（规范 v1 §5 Phase 5）：涨停家数 / 最高板 / 炸板 / 整体晋级率 / 主线，
+            全部取自本页已加载的四份数据，没有新接口 */}
+        <LimitConclusion
+          pool={pool}
+          broken={broken}
+          promotion={promotion}
+          themes={themes}
+          loading={loading}
+        />
+
         <Panel
           title="连板晋级率"
           meta={
@@ -387,6 +412,40 @@ export default function LimitReview() {
               <div className="px-2 pt-2">
                 <EChart option={promotionOption} height={260} />
               </div>
+              {/* 晋级率表（规范 v1 §5 Phase 5）：图看趋势，表看**最新一日**各档的
+                  基数 / 晋级数 / 比率。数据来自同一个 `promotion` 序列，没有另算。 */}
+              <div className="border-t border-line-soft">
+                <table className="grid-table">
+                  <thead>
+                    <tr>
+                      <th className="text-left">档位</th>
+                      <th>昨日基数</th>
+                      <th>今日晋级</th>
+                      <th>晋级率</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {promotion.levels.map((item) => (
+                      <tr key={item.level}>
+                        <td className="text-left">{item.label}</td>
+                        <td className="num">{fmtInt(item.counts.at(-1))}</td>
+                        <td className="num">{fmtInt(item.promoted.at(-1))}</td>
+                        <td className="num">{fmtPct(item.rates.at(-1), 1)}</td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td className="text-left">整体</td>
+                      <td className="num">{fmtInt(promotion.overall_counts.at(-1))}</td>
+                      <td className="num">{fmtInt(promotion.overall_promoted.at(-1))}</td>
+                      <td className="num">{fmtPct(promotion.overall_rates.at(-1), 1)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p className="px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
+                  最新一日为 {promotion.dates.at(-1)}；档位 = 昨日所处板数，晋级 = 今日仍涨停。
+                  高档位基数只有 1–3 只时比率会在 0/100 间反复跳，图里按样本量略去。
+                </p>
+              </div>
             </>
           ) : (
             <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
@@ -400,6 +459,8 @@ export default function LimitReview() {
           total={pool?.total ?? 0}
           loading={loading}
           delay={100}
+          // 选了题材时，梯队里命中的票高亮、其余淡出（与明细筛选同源）
+          highlightCodes={highlightCodes}
         />
 
         <Panel

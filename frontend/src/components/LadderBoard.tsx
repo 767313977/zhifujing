@@ -9,6 +9,11 @@ interface LadderBoardProps {
   delay?: number
   /** 首屏取数期间为真。不加这个的话，空梯队会被显示成「当日无涨停」 */
   loading?: boolean
+  /**
+   * 题材联动高亮（规范 v1 §5 Phase 5）：传集合时，命中的 chip 高亮、其余淡出；
+   * 传 null / 不传 = 不做任何视觉处理。
+   */
+  highlightCodes?: Set<string> | null
 }
 
 /** 梯队越高越醒目：5 板以上用金色强调，这是市场的「高度」。 */
@@ -25,7 +30,14 @@ function tierText(level: number): string {
   return 'text-fg-muted'
 }
 
-function StockChip({ stock }: { stock: LimitStock }) {
+function StockChip({
+  stock,
+  state = 'normal',
+}: {
+  stock: LimitStock
+  /** on = 命中筛选的题材；off = 未命中（淡出）；normal = 没开筛选 */
+  state?: 'normal' | 'on' | 'off'
+}) {
   const reopened = (stock.open_times ?? 0) > 0
   const title = [
     `${stock.name} ${stock.code}`,
@@ -48,7 +60,14 @@ function StockChip({ stock }: { stock: LimitStock }) {
     <StockLink
       code={stock.code}
       title={title}
-      className="inline-flex cursor-pointer items-baseline gap-1.5 border border-line-soft bg-ink-850 px-1.5 py-[3px] text-[13px] hover:border-line hover:bg-ink-700"
+      className={[
+        'inline-flex cursor-pointer items-baseline gap-1.5 border px-1.5 py-[3px] text-[13px] transition-colors hover:border-line',
+        state === 'on'
+          ? 'border-accent/60 bg-accent/10'
+          : state === 'off'
+            ? 'border-line-soft bg-ink-850 opacity-35'
+            : 'border-line-soft bg-ink-850 hover:bg-ink-700',
+      ].join(' ')}
     >
       <span className="text-fg">{stock.name ?? stock.code}</span>
       {stock.board && (
@@ -79,6 +98,7 @@ export default function LadderBoard({
   total,
   delay = 200,
   loading = false,
+  highlightCodes = null,
 }: LadderBoardProps) {
   if (loading) {
     return (
@@ -145,7 +165,17 @@ export default function LadderBoard({
 
           <div className="flex min-w-0 flex-wrap gap-1.5">
             {level.stocks.map((stock) => (
-              <StockChip key={stock.code} stock={stock} />
+              <StockChip
+                key={stock.code}
+                stock={stock}
+                state={
+                  highlightCodes == null
+                    ? 'normal'
+                    : highlightCodes.has(stock.code)
+                      ? 'on'
+                      : 'off'
+                }
+              />
             ))}
           </div>
         </div>
