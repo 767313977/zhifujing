@@ -72,7 +72,8 @@ export default function DayConclusion({ overview }: { overview: MarketOverview }
             title="全市场上涨 / 下跌家数（数据源只给当日）"
           />
           <ConclusionStat label="成交额" value={fmtAmount(sentiment?.total_amount)} />
-          <ConclusionStat label="炸板" value={fmtInt(sentiment?.broken_count)} />
+          {/* 炸板数**不再放进结论条右侧**：左侧句子已经有涨停与封板率，右侧再摆炸板，
+              三个同族数字并排会显得重复；炸板在下方「市场情绪」面板里仍是大字。 */}
           {fearText ? (
             <ConclusionStat
               label="恐贪"

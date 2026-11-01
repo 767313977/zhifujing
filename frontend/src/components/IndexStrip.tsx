@@ -71,17 +71,14 @@ function PrimaryCard({ item, index }: { item: IndexQuote; index: number }) {
 
       <div className="num mt-2 flex items-center gap-3 text-[13px] text-fg-dim">
         <span>额 {fmtAmount(item.amount)}</span>
-        {item.up_count != null && item.down_count != null ? (
+        {/* 涨跌家数只有部分指数有（中证1000 等 iFinD 不返回）。**没有就整段不渲染** ——
+            常驻一个「家数 —」只是占位噪音；有数的指数（上证/深证/创业板）照常显示。
+            2026-11-01 按规范 v1 微调（原来固定显示「家数 —」+ tooltip 说明原因）。 */}
+        {item.up_count != null && item.down_count != null && (
           <span>
             <span className="text-up">{item.up_count}</span>
             <span className="mx-0.5">/</span>
             <span className="text-down">{item.down_count}</span>
-          </span>
-        ) : (
-          // 中证1000 等指数的涨跌家数 iFinD 返回 null，如实留空而非填 0。
-          // 占位符统一用「—」（规范 v1：全站不再出现 n/a），把原因放进 tooltip。
-          <span className="text-fg-dim" title="该指数无涨跌家数字段（数据源未返回）">
-            家数 —
           </span>
         )}
       </div>

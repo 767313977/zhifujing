@@ -103,6 +103,27 @@ function SectionError({ title, message, onClose }: { title: string; message: str
   )
 }
 
+/**
+ * 错误条被关掉之后的占位（复查 P2-1）。
+ *
+ * 原来关掉错误条，Tab 下面就是一片空白 —— 看起来像「这段本来就没有内容」。
+ * 这里明确写「加载失败，已隐藏」并给一个重试入口（重试就是整页重新取数）。
+ */
+function DetailHidden({ title, onRetry }: { title: string; onRetry: () => void }) {
+  return (
+    <div className="panel flex flex-wrap items-center justify-center gap-3 px-4 py-6 text-[13px] text-fg-dim">
+      {title}加载失败，已隐藏
+      <button
+        type="button"
+        onClick={onRetry}
+        className="border border-line px-3 py-1 text-[13px] text-fg-muted transition-colors hover:border-fg-dim hover:text-fg"
+      >
+        重试
+      </button>
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const { me } = useAuth()
   // 采集状态整个 `/admin/*` 都是管理员接口，普通会员调必 403 —— 只有管理员才问它，
@@ -396,6 +417,16 @@ export default function Dashboard() {
             <span className="mr-2 px-1 text-[12px] tracking-[0.08em] text-fg-dim">明细</span>
             {DETAIL_TABS.map((item) => {
               const active = tab === item.key
+              // 取数失败时不能显示 0：失败会回落成空池（total: 0），
+              // 「涨停明细 0」看起来像真的没有涨停（复查 P2-1）。
+              const failed =
+                item.key === 'up'
+                  ? Boolean(data.sectionErrors.up)
+                  : item.key === 'down'
+                    ? Boolean(data.sectionErrors.down)
+                    : item.key === 'broken'
+                      ? Boolean(data.sectionErrors.broken)
+                      : Boolean(data.sectionErrors.lhb)
               const count =
                 item.key === 'up'
                   ? data.up.total
@@ -418,9 +449,15 @@ export default function Dashboard() {
                   ].join(' ')}
                 >
                   {item.label}
-                  {!loading && (
-                    <span className="num ml-1 text-[12px] text-fg-dim">{count}</span>
-                  )}
+                  {!loading &&
+                    (failed ? (
+                      <span
+                        className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-warn align-middle"
+                        title="该明细加载失败，数字未知"
+                      />
+                    ) : (
+                      <span className="num ml-1 text-[12px] text-fg-dim">{count}</span>
+                    ))}
                 </button>
               )
             })}
@@ -434,9 +471,17 @@ export default function Dashboard() {
                   message={data.sectionErrors.up}
                   onClose={() => dismiss('up')}
                 />
-              ) : null
+              ) : (
+                <DetailHidden title="涨停明细" onRetry={() => void load(date)} />
+              )
             ) : (
-              <LimitTable type="up" stocks={data.up.stocks} loading={loading} delay={260} />
+              <LimitTable
+                type="up"
+                stocks={data.up.stocks}
+                loading={loading}
+                delay={260}
+                animate={false}
+              />
             ))}
 
           {tab === 'down' &&
@@ -447,9 +492,17 @@ export default function Dashboard() {
                   message={data.sectionErrors.down}
                   onClose={() => dismiss('down')}
                 />
-              ) : null
+              ) : (
+                <DetailHidden title="跌停明细" onRetry={() => void load(date)} />
+              )
             ) : (
-              <LimitTable type="down" stocks={data.down.stocks} loading={loading} delay={300} />
+              <LimitTable
+                type="down"
+                stocks={data.down.stocks}
+                loading={loading}
+                delay={300}
+                animate={false}
+              />
             ))}
 
           {tab === 'broken' &&
@@ -460,13 +513,16 @@ export default function Dashboard() {
                   message={data.sectionErrors.broken}
                   onClose={() => dismiss('broken')}
                 />
-              ) : null
+              ) : (
+                <DetailHidden title="炸板明细" onRetry={() => void load(date)} />
+              )
             ) : (
               <LimitTable
                 type="broken"
                 stocks={data.broken.stocks}
                 loading={loading}
                 delay={320}
+                animate={false}
               />
             ))}
 
@@ -478,9 +534,16 @@ export default function Dashboard() {
                   message={data.sectionErrors.lhb}
                   onClose={() => dismiss('lhb')}
                 />
-              ) : null
+              ) : (
+                <DetailHidden title="龙虎榜" onRetry={() => void load(date)} />
+              )
             ) : (
-              <LhbTable items={data.lhb} loading={loading} delay={360} />
+              <LhbTable
+                items={data.lhb}
+                loading={loading}
+                delay={360}
+                animate={false}
+              />
             ))}
 
           {/* 形态排在这里：前面几块回答「今天发生了什么」，这一块回答「明天盯什么」，

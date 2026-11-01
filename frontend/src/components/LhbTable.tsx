@@ -11,6 +11,8 @@ interface LhbTableProps {
   /** 切日期取数期间为真，空列表会显示成「当日无数据」而非「加载中」 */
   loading?: boolean
   delay?: number
+  /** 是否播浮现动画（默认开）。Tab 内复用的表传 false，避免每次切换重播（复查 P2-7） */
+  animate?: boolean
 }
 
 /** 先按净买额看谁被抢、再按买卖额看谁换手最大，最后才是文字列 */
@@ -26,7 +28,12 @@ const LHB_SORTS: SortSpecs<LhbItem> = {
   interpretation: { value: (item) => item.interpretation, first: 'asc' },
 }
 
-export default function LhbTable({ items, loading = false, delay = 340 }: LhbTableProps) {
+export default function LhbTable({
+  items,
+  loading = false,
+  delay = 340,
+  animate = true,
+}: LhbTableProps) {
   // 首屏不排：后端已经是「净买额从大到小」，不必再排一遍
   const [sort, shown] = useSort(items, LHB_SORTS, { key: null })
 
@@ -47,6 +54,7 @@ export default function LhbTable({ items, loading = false, delay = 340 }: LhbTab
         </span>
       }
       delay={delay}
+      animate={animate}
     >
       {loading ? (
         <div className="px-4 py-8 text-center text-[14px] text-fg-dim">加载中…</div>

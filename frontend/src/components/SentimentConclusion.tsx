@@ -1,5 +1,5 @@
 import type { Breadth, FearGreed, RelayTemp, Sentiment } from '../api/types'
-import { fmtInt, fmtNum, fmtPct, toneOf } from '../lib/format'
+import { fmtInt, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
 import ConclusionBar, { ConclusionStat } from './ConclusionBar'
 
 /**
@@ -76,6 +76,14 @@ export default function SentimentConclusion({
                 : '—'}
             </span>
           </span>
+          {/* 三条序列的最新日期不一定同一天（恐贪按 250 日窗口、宽度按 K 线覆盖），
+              标出情绪表的数据日，避免把不同日期的读数当成同一天（复查 P2-3）。 */}
+          <span>
+            数据日{' '}
+            <span className="text-fg-muted">
+              {latest ? fmtShortDate(latest.trade_date) : '—'}
+            </span>
+          </span>
         </>
       }
       stats={
@@ -96,11 +104,8 @@ export default function SentimentConclusion({
             tone={toneOf(latest?.yesterday_limit_today_avg)}
             title="昨日涨停股今日平均涨跌幅"
           />
-          <ConclusionStat
-            label="恐贪"
-            value={fearText}
-            title="恐惧贪婪指数（0–100，越高越贪婪）；分位历史不足时显示 —"
-          />
+          {/* 恐贪只在左侧副行出现一次：右侧再摆一遍会成为同一句「恐贪 23 极度恐慌」的复读。
+              恐贪的完整分档与六项子指标在下方「恐贪」面板里。 */}
         </>
       }
     />

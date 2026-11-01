@@ -86,7 +86,7 @@ export default function AdjustMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-20 mt-1 w-[184px] border border-line bg-ink-850 py-1 rounded-md shadow-pop"
+          className="absolute right-0 top-full z-20 mt-1 w-[184px] border border-line bg-ink-850 py-1 rounded-sm shadow-pop"
         >
           {FQ_ITEMS.map((item) => (
             <div key={item.key}>

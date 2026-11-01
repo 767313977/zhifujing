@@ -20,7 +20,7 @@ import {
   SPLIT_LINE,
   TOOLTIP,
 } from '../lib/chart'
-import { fmtInt, fmtPct, fmtShortDate, toneOf } from '../lib/format'
+import { fmtInt, fmtNum, fmtPct, fmtShortDate, toneOf } from '../lib/format'
 
 /** 首封时间分桶。首封越早说明资金越坚决，所以时间分布是强度的直接体现。 */
 const TIME_BUCKETS: { label: string; from: number; to: number }[] = [
@@ -298,9 +298,28 @@ export default function LimitReview() {
     }
   }, [timeDistribution])
 
-  const latestOverall = promotion?.overall_rates.at(-1) ?? null
-  const latestPromoted = promotion?.overall_promoted.at(-1) ?? null
-  const latestBase = promotion?.overall_counts.at(-1) ?? null
+  /**
+   * 晋级率序列里「所选涨停池那一天」的下标。
+   *
+   * ⚠️ 不能直接取 `.at(-1)`（2026-11-01 复查 P1-1）：`promotion` 只在挂载时取一次，
+   * 后端又以**库内最新交易日**为锚，翻到 10-28 时 `.at(-1)` 是「最新一天」的晋级率，
+   * 会和当天的涨停家数混在同一行里。这里按 `pool.trade_date` 反查：
+   * 查不到（所选日不在近 15 日窗口内）就是 -1，所有晋级率一律显示「—」。
+   */
+  const promotionIndex = useMemo(() => {
+    if (!promotion || !pool?.trade_date) return -1
+    return promotion.dates.indexOf(pool.trade_date)
+  }, [promotion, pool])
+
+  const latestOverall =
+    promotionIndex >= 0 ? (promotion?.overall_rates[promotionIndex] ?? null) : null
+  const latestPromoted =
+    promotionIndex >= 0 ? (promotion?.overall_promoted[promotionIndex] ?? null) : null
+  const latestBase =
+    promotionIndex >= 0 ? (promotion?.overall_counts[promotionIndex] ?? null) : null
+  /** 表里每列取「那一天」的值；下标无效时一律 null（表格显示 —）。 */
+  const atDay = (values: (number | null)[]) =>
+    promotionIndex >= 0 ? (values[promotionIndex] ?? null) : null
 
   const toolbar = (
     <>
@@ -367,12 +386,12 @@ export default function LimitReview() {
       )}
 
       <div className="space-y-4">
-        {/* 结论条（规范 v1 §5 Phase 5）：涨停家数 / 最高板 / 炸板 / 整体晋级率 / 主线，
-            全部取自本页已加载的四份数据，没有新接口 */}
+        {/* 结论条（规范 v1 §5 Phase 5）：涨停家数 / 最高板 / 炸板 / 主线，
+            全部取自本页已加载的数据。晋级率只在下面「连板晋级率」面板出现一次，
+            避免同一个数字上下相邻念两遍（2026-11-01 去重） */}
         <LimitConclusion
           pool={pool}
           broken={broken}
-          promotion={promotion}
           themes={themes}
           loading={loading}
         />
@@ -400,7 +419,10 @@ export default function LimitReview() {
           ) : promotion && promotion.dates.length > 0 ? (
             <>
               <div className="flex flex-wrap items-stretch gap-px border-b border-line-soft bg-line-soft">
-                <Stat label="最新一日整体晋级率" value={fmtPct(latestOverall, 1)} tone={toneOf(latestOverall)} />
+                {/* 晋级率是**比率**（0–100），不是涨跌幅：用 fmtPct 会写成「+45.0%」，
+                    正号会让人误读成「比上日多了 45 个点」（复查 P1-2）。也别染色 ——
+                    涨跌色在本站专指价格方向。 */}
+                <Stat label="整体晋级率" value={fmtNum(latestOverall, 1, '%')} />
                 <Stat label="昨日涨停基数" value={fmtInt(latestBase)} unit="只" />
                 <Stat label="今日晋级" value={fmtInt(latestPromoted)} unit="只" />
                 <Stat
@@ -412,7 +434,7 @@ export default function LimitReview() {
               <div className="px-2 pt-2">
                 <EChart option={promotionOption} height={260} />
               </div>
-              {/* 晋级率表（规范 v1 §5 Phase 5）：图看趋势，表看**最新一日**各档的
+              {/* 晋级率表（规范 v1 §5 Phase 5）：图看趋势，表看**所选日期**各档的
                   基数 / 晋级数 / 比率。数据来自同一个 `promotion` 序列，没有另算。 */}
               <div className="border-t border-line-soft">
                 <table className="grid-table">
@@ -428,22 +450,23 @@ export default function LimitReview() {
                     {promotion.levels.map((item) => (
                       <tr key={item.level}>
                         <td className="text-left">{item.label}</td>
-                        <td className="num">{fmtInt(item.counts.at(-1))}</td>
-                        <td className="num">{fmtInt(item.promoted.at(-1))}</td>
-                        <td className="num">{fmtPct(item.rates.at(-1), 1)}</td>
+                        <td className="num">{fmtInt(atDay(item.counts))}</td>
+                        <td className="num">{fmtInt(atDay(item.promoted))}</td>
+                        <td className="num">{fmtNum(atDay(item.rates), 1, '%')}</td>
                       </tr>
                     ))}
                     <tr>
                       <td className="text-left">整体</td>
-                      <td className="num">{fmtInt(promotion.overall_counts.at(-1))}</td>
-                      <td className="num">{fmtInt(promotion.overall_promoted.at(-1))}</td>
-                      <td className="num">{fmtPct(promotion.overall_rates.at(-1), 1)}</td>
+                      <td className="num">{fmtInt(atDay(promotion.overall_counts))}</td>
+                      <td className="num">{fmtInt(atDay(promotion.overall_promoted))}</td>
+                      <td className="num">{fmtNum(atDay(promotion.overall_rates), 1, '%')}</td>
                     </tr>
                   </tbody>
                 </table>
                 <p className="px-4 py-2 text-[12px] leading-relaxed text-fg-dim">
-                  最新一日为 {promotion.dates.at(-1)}；档位 = 昨日所处板数，晋级 = 今日仍涨停。
-                  高档位基数只有 1–3 只时比率会在 0/100 间反复跳，图里按样本量略去。
+                  {promotionIndex >= 0
+                    ? `所选日期为 ${promotion.dates[promotionIndex]}；档位 = 昨日所处板数，晋级 = 今日仍涨停。高档位基数只有 1–3 只时比率会在 0/100 间反复跳，图里按样本量略去。`
+                    : `所选日期 ${pool?.trade_date ?? '—'} 不在晋级率窗口（近 ${promotion.dates.length} 个交易日）内，比例显示 —。`}
                 </p>
               </div>
             </>

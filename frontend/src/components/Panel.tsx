@@ -9,6 +9,12 @@ interface PanelProps {
   className?: string
   /** 首屏错峰浮现的延迟（毫秒） */
   delay?: number
+  /**
+   * 是否播「浮现」动画（默认开）。
+   * 关掉的场景：**Tab 切换**后重新挂载的表格 —— 每切一次都重播一遍，像页面在抖
+   * （2026-11-01 复查 P2-7）。
+   */
+  animate?: boolean
 }
 
 export default function Panel({
@@ -17,11 +23,12 @@ export default function Panel({
   children,
   className = '',
   delay = 0,
+  animate = true,
 }: PanelProps) {
   return (
     <section
-      className={`panel rise ${className}`}
-      style={{ animationDelay: `${delay}ms` }}
+      className={`${animate ? 'panel rise' : 'panel'} ${className}`}
+      style={animate ? { animationDelay: `${delay}ms` } : undefined}
     >
       <div className="panel-title">
         <span className="text-fg">{title}</span>

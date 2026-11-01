@@ -22,6 +22,8 @@ interface LimitTableProps {
   header?: ReactNode
   /** 空态文案。默认「当日无数据」；被筛选筛空时调用方应换成「没有符合条件的票」 */
   emptyText?: string
+  /** 是否播浮现动画（默认开）。Tab 内复用的表传 false，避免每次切换重播（复查 P2-7） */
+  animate?: boolean
 }
 
 interface Column {
@@ -327,6 +329,7 @@ export default function LimitTable({
   loading = false,
   header,
   emptyText = '当日无数据',
+  animate = true,
 }: LimitTableProps) {
   const columns = buildColumns(type, {
     hasBoard: stocks.some((stock) => stock.board),
@@ -347,6 +350,7 @@ export default function LimitTable({
         </span>
       }
       delay={delay}
+      animate={animate}
     >
       {/* 筛选条（如按行业）：取数中不渲染；**空结果时照样渲染**，否则筛到 0 只就没法清除了 */}
       {!loading && header}

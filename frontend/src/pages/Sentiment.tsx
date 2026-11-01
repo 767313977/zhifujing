@@ -389,7 +389,9 @@ export default function SentimentPage() {
           loading={loading}
         />
 
-        <SectionTitle hint="先看总读数，再看拆开的各项">温度</SectionTitle>
+        {/* 分区标题的补充语从「先看总读数，再看拆开的各项」收成「先总后分」：
+            结论条已经把总读数放在最上面，长句与它语义重复（规范 v1 微调） */}
+        <SectionTitle hint="先总后分">温度</SectionTitle>
 
         {/* 恐贪是本页的总读数，排在最前：先给「今天整体冷不冷」，再展开下面拆开的
             指数走势与情绪明细 */}
