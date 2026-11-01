@@ -272,6 +272,8 @@ export default function Pools() {
   const [sectorBoard, setSectorBoard] = useState<SectorRpsBoard | null>(null)
   const [sectorTrack, setSectorTrack] = useState<SectorTrack | null>(null)
   const [sectorError, setSectorError] = useState<string | null>(null)
+  /** 404 = 还没有板块日线数据，是**空态**不是失败（同首板 / RPS 两处，2026-11-01 补齐） */
+  const [sectorEmpty, setSectorEmpty] = useState(false)
   // 板块 → 个股（研究视图）：历史超额为负，页面上必须如实显示
   const [stockScope, setStockScope] = useState('strong')
   const [stockOrder, setStockOrder] = useState('gain')
@@ -279,6 +281,8 @@ export default function Pools() {
   const [stockPer, setStockPer] = useState('3')
   const [sectorStock, setSectorStock] = useState<SectorStockBoard | null>(null)
   const [sectorStockError, setSectorStockError] = useState<string | null>(null)
+  /** 同上：404 = 还没有板块日线数据 */
+  const [sectorStockEmpty, setSectorStockEmpty] = useState(false)
   const [sectorStockTrack, setSectorStockTrack] = useState<SectorStockTrack | null>(null)
   const [sectorStockOpen, setSectorStockOpen] = useState(false)
   // 点开板块 RPS 里的板块名 → 看该板块的成分股
@@ -456,6 +460,7 @@ export default function Pools() {
     setSectorBoard(null)
     setSectorTrack(null)
     setSectorError(null)
+    setSectorEmpty(false)
     const kind = taxonomy as 'kph_selected' | 'kph_industry'
     api
       .sectorRps(kind, 30)
@@ -463,7 +468,11 @@ export default function Pools() {
         if (!stale) setSectorBoard(value)
       })
       .catch((err: Error) => {
-        if (!stale) setSectorError(err.message)
+        // 404 是「还没有板块日线数据」的刻意空态，不能显示成「接口出错」
+        if (!stale) {
+          if (isNoDataError(err)) setSectorEmpty(true)
+          else setSectorError(err.message)
+        }
       })
     api
       .sectorRpsTrack(kind, 5, 20)
@@ -482,6 +491,7 @@ export default function Pools() {
     let stale = false
     setSectorStock(null)
     setSectorStockError(null)
+    setSectorStockEmpty(false)
     api
       .sectorStock({
         taxonomy: taxonomy as 'kph_selected' | 'kph_industry',
@@ -494,7 +504,11 @@ export default function Pools() {
         if (!stale) setSectorStock(value)
       })
       .catch((err: Error) => {
-        if (!stale) setSectorStockError(err.message)
+        // 404 是「还没有板块日线数据」的刻意空态，不能显示成「接口出错」
+        if (!stale) {
+          if (isNoDataError(err)) setSectorStockEmpty(true)
+          else setSectorStockError(err.message)
+        }
       })
     return () => {
       stale = true
@@ -1075,6 +1089,8 @@ export default function Pools() {
           )}
           {sectorError ? (
             <LoadState loading={false} error={sectorError} />
+          ) : sectorEmpty ? (
+            <LoadState loading={false} emptyText="还没有板块日线数据 —— 等收盘扫描跑一轮" />
           ) : sectorBoard === null ? (
             <LoadState loading emptyText="加载中" />
           ) : sectorBoard.rows.length === 0 ? (
@@ -1349,6 +1365,8 @@ export default function Pools() {
           </div>
           {sectorStockError ? (
             <LoadState loading={false} error={sectorStockError} />
+          ) : sectorStockEmpty ? (
+            <LoadState loading={false} emptyText="还没有板块日线数据 —— 等收盘扫描跑一轮" />
           ) : sectorStock === null ? (
             <LoadState loading emptyText="加载中" />
           ) : sectorStock.rows.length === 0 ? (
