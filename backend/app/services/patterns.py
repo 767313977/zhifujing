@@ -5972,6 +5972,84 @@ SCORE_EXCLUDED: frozenset[str] = frozenset(
     }
 )
 
+# ---------------------------------------------------------------- 预热门槛
+#
+#: 各形态判定**真正**需要的最少 K 线根数（2026-11-01 审计 P1）。
+#:
+#: 取值不是拍脑袋：每一条都等于该形态 `detect` 函数里那个 `len(bars) < …` 守卫
+#: （公式写在值后面）。生产扫描还有一道**公共门槛** `WUDAO_MIN_BARS = 22`
+#: （`jobs/scan_patterns` 里 `len(records) < WUDAO_MIN_BARS` 直接跳过），所以
+#: 有效的预热根数是 `max(22, 这里)`，见 `pattern_min_bars()`。
+#:
+#: ⚠️ **回测不要再另抄一份**：抄一份的后果是「只有 22~79 根、生产端照样会判定的票，
+#: 在回测里被整只漏掉」，样本与基准一起偏向上市很久的票（2026-11-01 审计 P1-3）。
+#: 新增形态时**同时**在这里登记，`tests/test_backtest_warmup.py` 会校验覆盖完整。
+PATTERN_MIN_BARS: dict[str, int] = {
+    # ---- 悟道 / 华宝 / 黑白：本来就是短历史口径，直接取生产常量 ----
+    "wudao_sample": WUDAO_MIN_BARS,  # 22 = 昨收 + 近 20 日均量
+    "wudao_start": WUDAO_MIN_BARS + 1,  # 23：还要回看昨天那根样板
+    "wudao_wash2": WUDAO_WASH_MIN_BARS,  # 28：最远用到 bars[-3]
+    "pile_wash_ready": PILE_MIN_BARS,  # 50
+    "pile_wash_wash": PILE_MIN_BARS,  # 50
+    "huabao_early": WUDAO_HUABAO_MIN_BARS,  # 30
+    # ---- 需要长预热的：B1 的 MA144 + EVERY(…,20)、做T 的 120 日背离窗 ----
+    "zgnb_turn": ZGNB_MIN_BARS,  # 170
+    "zgnb_shrink": ZGNB_MIN_BARS,
+    "zgnb_origin": ZGNB_MIN_BARS,
+    "zgnb_super_shrink": ZGNB_MIN_BARS,
+    "zgnb_pull_white": ZGNB_MIN_BARS,
+    "zgnb_pull_super": ZGNB_MIN_BARS,
+    "zgnb_pull_yellow": ZGNB_MIN_BARS,
+    "t_buy": T_BUY_MIN_BARS,  # 150：120 日背离窗 + 5 日观察 + EMA26
+    # ---- 趋势 / 突破 / 量价 / 几何：detect 里的 len 守卫 ----
+    "ma_bull": MIN_BARS,  # 80 = MA60 + 斜率回看 20
+    "new_high": NEW_HIGH_MIN_WINDOW + 1,  # 61：usable = min(window, len−1) ≥ 60
+    "platform_breakout": PLATFORM_DAYS + 5,  # 35
+    "volume_breakout": PRIOR_HIGH_DAYS + PRIOR_HIGH_VOL_WINDOW,  # 80
+    "volume_surge": 6,
+    "dry_pullback": MA_PERIODS[-1] + DRY_PULLBACK_UP_WINDOW + DRY_PULLBACK_MAX_DAYS,  # 80
+    "cup_handle": CUP_WINDOW,  # 110
+    "double_bottom": DOUBLE_BOTTOM_MIN_BARS,  # 90
+    "head_shoulders": HS_MIN_BARS,  # 100
+    "flag": FLAG_POLE_DAYS + FLAG_MAX_DAYS + 10,  # 40
+    # 整理段之前至少留 30 根 + 最短整理 4 根 + 今天
+    "three_stage": 30 + THREE_FLAT_DAYS[0] + 1,  # 35
+    # 「前期平台」40 + 上冲 1 + 最短横盘 LS_FLAT_DAYS[0] 2 + 今天
+    "limit_surge_flat": LS_PLATFORM_DAYS + 5 + LS_FLAT_DAYS[0] + 1,  # 48
+    "breakout_flat": BF_PRIOR_HIGH + BF_MIN_FLAT + 5,  # 68
+    "n_shape": 30,
+    "burst_shrink_pullback": BURST_SHRINK_LOOKBACK + 2,  # 12
+    "pile_up_shrink": PILE_BASE_DAYS + PILE_MIN_DAYS + 1,  # 67
+    "ma_squeeze": MA_PERIODS[-1] + SQUEEZE_DAYS,  # 65
+    "ma_golden_cross": MA_PERIODS[-1] + CANDLE_PRIOR_DAYS + 1,  # 66
+    "ma_volume": MA_VOLUME_SLOW + 1,  # 21
+    "downtrend_breakout": TRENDLINE_DAYS,  # 60
+    "gap_up_breakout": GAP_BREAK_HIGH_DAYS + 2,  # 22
+    "gap_fill": GAP_FILL_LOOKBACK + 3,  # 23
+    "box_breakout": BOX_DAYS + 2,  # 62
+    "volume_dry_bottom": DRY_BOTTOM_DAYS + 1,  # 61
+    "shrink_limit_up": 6,
+    "volume_engulf": 2,
+    "v_bottom": V_BOTTOM_DAYS,  # 40
+    "round_bottom": ROUND_MIN_DAYS,  # 60
+    "triple_bottom": TRIPLE_DAYS,  # 90
+    "three_white_soldiers": 4,
+    "kneading_line": 2,  # 只看昨天与今天两根
+    "jade_pillar": YZ_LOOKBACK + 2,  # 62：还要一根昨收算实体比例
+    "ma_cross_big_yang": GCB_MIN_BARS,  # 30
+    "turtle_breakout": TURTLE_WINDOW + 1,  # 21
+}
+
+
+def pattern_min_bars(key: str) -> int:
+    """生产扫描里这个形态真正需要的最少 K 线根数（已并入公共门槛 22 根）。
+
+    未登记的 key（实验形态）请调用方自己兜底 —— 这里对未知 key 抛 KeyError，
+    宁可炸掉，也不要静默退回一个「看起来正常」的 80。
+    """
+    return max(WUDAO_MIN_BARS, PATTERN_MIN_BARS[key])
+
+
 PATTERNS: tuple[Pattern, ...] = (
     Pattern("wudao_start", "明天预案", "致富", _wudao_start),
     Pattern("wudao_sample", "明天盯", "致富", _wudao_sample),

@@ -176,15 +176,12 @@ from app.services.patterns import (  # noqa: E402
     LS_LOOKBACK,
     MIN_SCORE,
     PATTERNS,
-    PILE_MIN_BARS,
-    WUDAO_HUABAO_MIN_BARS,
     WUDAO_MIN_BARS,
-    WUDAO_WASH_MIN_BARS,
-    ZGNB_MIN_BARS,
     Bars,
     build_bars,
     is_st,
     limit_threshold,
+    pattern_min_bars,
     usable_bar,
     zgb1_at,
 )
@@ -197,31 +194,24 @@ logger = logging.getLogger("backtest")
 HORIZONS = (1, 3, 5, 10, 20, 60)
 MIN_BARS = 80
 
-#: 各形态**真正**需要的最少 K 线根数 —— 直接取生产常量，别在这里另定一套。
-#: 回测原来统一卡 80 根，会把「只有 22~79 根、但生产端确实会判定」的票整只漏掉
-#: （2026-11-01 审计 P1-3）。没列出的形态仍用 `MIN_BARS`（它们的判定本身就要那么长）。
-PATTERN_MIN_BARS: dict[str, int] = {
-    "wudao_sample": WUDAO_MIN_BARS,
-    # 明天预案还要回看「昨天」那根样板，比样板日多 1 根（见 `_wudao_start` 的 len 守卫）
-    "wudao_start": WUDAO_MIN_BARS + 1,
-    "wudao_wash2": WUDAO_WASH_MIN_BARS,
-    "huabao_early": WUDAO_HUABAO_MIN_BARS,
-    "pile_wash_ready": PILE_MIN_BARS,
-    "pile_wash_wash": PILE_MIN_BARS,
-    # 知行B1 有 MA144 + EVERY(…,20) 的预热，必须留在 170
-    "zgnb_turn": ZGNB_MIN_BARS,
-    "zgnb_shrink": ZGNB_MIN_BARS,
-    "zgnb_origin": ZGNB_MIN_BARS,
-    "zgnb_super_shrink": ZGNB_MIN_BARS,
-    "zgnb_pull_white": ZGNB_MIN_BARS,
-    "zgnb_pull_super": ZGNB_MIN_BARS,
-    "zgnb_pull_yellow": ZGNB_MIN_BARS,
+#: 实验形态（**不在生产注册表**）各自需要的最少根数 —— 取它们 detect 里的守卫值。
+#: 生产形态一律走 `patterns.pattern_min_bars()`，这里**不再重复维护一份**。
+DRAFT_MIN_BARS: dict[str, int] = {
+    "pocket_pivot_kacher": 60,  # MA50 + 前 10 日 + 20 日整理窗
+    "pocket_pivot_ths": 91,  # MA90 + 今天
 }
 
 
 def _warmup(key: str) -> int:
-    """该形态判定需要的最少 K 线根数（生产常量优先，未列出的用 `MIN_BARS`）。"""
-    return PATTERN_MIN_BARS.get(key, MIN_BARS)
+    """该形态判定需要的最少 K 线根数。
+
+    生产形态取 `patterns.pattern_min_bars()`（= max(公共 22 根, 形态自身守卫)），
+    实验形态取 `DRAFT_MIN_BARS`；都不在表里才退回 `MIN_BARS`。**不要再按 80 一刀切**：
+    只有 22~79 根、但生产端确实会判定的票会被整只漏掉（2026-11-01 审计 P1）。
+    """
+    if key in DRAFT_MIN_BARS:
+        return DRAFT_MIN_BARS[key]
+    return pattern_min_bars(key)
 
 
 def _select_bars(
@@ -237,6 +227,25 @@ def _select_bars(
         code: build_bars(records, code)
         for code, records in grouped.items()
         if len(records) >= need
+    }
+
+
+def _benchmark_pool(grouped: dict[str, list[dict]]) -> dict[str, Bars]:
+    """基准票池：**只按生产公共门槛 22 根筛，与本次跑哪些形态无关**。
+
+    为什么不能直接用 `_select_bars(grouped, targets)` 的结果当分母（2026-11-01 审计 P2）：
+    那个池子的门槛是「目标形态里最短的那个」—— 单跑 `v_bottom` 时是 40 根，而
+    「v_bottom + 放量上涨」时是 22 根。于是**同一个形态**单独跑与组合跑，基准不是
+    同一批票，超额（策略 − 基准）对不上，跨报告比较没有意义。
+
+    现在的规则：基准 = 库里有 **≥ `WUDAO_MIN_BARS` 根**、且通过 ST / 停牌 / 可成交
+    同口径过滤的全部票（`--board` 的板块限制在外层已经筛过 `codes`）。这条规则与
+    形态无关，所以单跑与组合跑的基准逐日逐票完全一致。
+    """
+    return {
+        code: build_bars(records, code)
+        for code, records in grouped.items()
+        if len(records) >= WUDAO_MIN_BARS
     }
 
 
@@ -1458,7 +1467,7 @@ def main() -> int:
             ", ".join(sorted(missing)[:8]),
             " …" if len(missing) > 8 else "",
         )
-    # 形态目标要在筛序列**之前**解析：门槛按目标形态定（见 `PATTERN_MIN_BARS`）
+    # 形态目标要在筛序列**之前**解析：门槛按目标形态定（见 `patterns.PATTERN_MIN_BARS`）
     targets = _resolve_targets(args.pattern)
     need = min((_warmup(key) for key in targets), default=MIN_BARS)
     short = sum(1 for records in grouped.values() if len(records) < need)
@@ -1487,13 +1496,18 @@ def main() -> int:
     bars_by_code = _select_bars(grouped, targets)
     if not bars_by_code:
         raise SystemExit("没有可用的日线序列")
+    # 基准票池**与本次跑哪些形态无关**（2026-11-01 审计 P2，见 `_benchmark_pool`）：
+    # 单跑 / 组合跑的同一形态必须比同一批票，否则超额不可比。
+    bench_bars = _benchmark_pool(grouped)
     lengths = sorted(len(bars) for bars in bars_by_code.values())
     logger.info(
-        "载入 %d 只票，每票 K 线 中位 %d 根（最长 %d），截至 %s",
+        "载入 %d 只票，每票 K 线 中位 %d 根（最长 %d），截至 %s；基准池 %d 只（≥%d 根）",
         len(bars_by_code),
         lengths[len(lengths) // 2],
         lengths[-1],
         latest,
+        len(bench_bars),
+        WUDAO_MIN_BARS,
     )
 
     logger.info("目标形态 %d 个：%s", len(targets), ", ".join(targets))
@@ -1543,7 +1557,9 @@ def main() -> int:
     # **交易日轴**：取数据自身的日期并集。持有期一律按**交易日**对齐（见 `_forward_outcomes`
     # 与模块顶部「持有期口径」一节）—— 停牌日的行在库里是缺的，只有一条全局日期轴才能
     # 把「第 h 个交易日」和「第 h 行」区分开。
-    all_dates = sorted({day for bars in bars_by_code.values() for day in bars.dates})
+    # 轴取 `bench_bars`（基准池 ⊇ 样本池）：基准里可能有样本池没有的票/日期，
+    # 轴缺了它们 `global_pos[...]` 会 KeyError。
+    all_dates = sorted({day for bars in bench_bars.values() for day in bars.dates})
     global_pos = {day: i for i, day in enumerate(all_dates)}
     logger.info("交易日轴：%d 个交易日（%s ~ %s）", len(all_dates), all_dates[0], all_dates[-1])
 
@@ -1562,8 +1578,12 @@ def main() -> int:
     # 同起点、同终点、同持有期；停牌延迟入场的票计入**它自己的入场日**，不并到信号日。
     #
     # 只累加 sum 与 count（不保留每天的收益列表）：5 年 × 全池会攒下上千万个浮点数。
+    #
+    # ⚠️ 分母用 `bench_bars`（= 库里 ≥22 根的全部票），**不是** `bars_by_code`
+    #（那是按本次目标形态的最短根数筛过的）。用后者会让「同一形态单跑 vs 组合跑」
+    # 的基准票池不同 —— 2026-11-01 审计 P2 修的就是这一条。
     bench_all, bench_wudao, bench_stats = _benchmark(
-        bars_by_code,
+        bench_bars,
         grouped,
         all_dates,
         global_pos,
@@ -1600,7 +1620,7 @@ def main() -> int:
     started = time.monotonic()
     hold_from_entry = args.entry == ENTRY_NEXT_OPEN
     prod_board_gate = args.board == "prod"
-    # 每个形态各自的最少根数（见 `PATTERN_MIN_BARS`）：循环从**最短**那个门槛起，
+    # 每个形态各自的最少根数（见 `patterns.PATTERN_MIN_BARS`）：循环从**最短**那个门槛起，
     # 更长的形态在下面逐条跳过 —— 这样 22 根的票也能被 wudao 判定，而 B1 仍等 170 根。
     warmups = {key: _warmup(key) for key in targets}
     loop_start = max(1, min(warmups.values()) - 1)
@@ -2261,6 +2281,12 @@ def _report_data_limits(args, grouped: dict[str, list[dict]], st_stats: dict) ->
         f"0) 本次口径：board={args.board} / entry={args.entry} / "
         f"production_parity={args.production_parity} / HORIZONS={list(HORIZONS)} / "
         f"窗口={args.since or '不限'}~{args.until or '不限'}"
+    )
+    bench_size = sum(1 for records in grouped.values() if len(records) >= WUDAO_MIN_BARS)
+    print(
+        f"   预热门槛：按形态取 max({WUDAO_MIN_BARS}, 形态自身守卫)（`patterns.PATTERN_MIN_BARS`）；"
+        f"基准池 = 库里有 ≥{WUDAO_MIN_BARS} 根的 {bench_size} 只票，"
+        "**与本次跑哪些形态无关**（单跑与组合跑的基准票池相同）"
     )
     print("1) 幸存者偏差：股票池来自 load_codes() —— **当前**在池的票。退市 / 出池的票整段")
     print("   缺席，样本与基准同向偏乐观；未按历史交易日的真实上市状态还原股票池。")
