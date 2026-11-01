@@ -29,7 +29,9 @@ const PINNED: NavItem[] = [
   // 不写的话站在跟踪页时「形态选股」也会一起高亮（NavLink 默认按前缀匹配）
   { to: '/patterns', label: '形态选股', end: true },
   // 悟道之路（2026-10-08 用户要求）：判定逻辑已移植进站内，别再改回 GitHub 外链。
-  { to: '/wudao', label: '悟道之路' },
+  // 2026-11-01：标签收成「悟道」—— 导航 14px 之后，1280 视口上「工具栏较宽」的页面
+  // （涨停复盘/今日复盘）余量只剩几十像素；这四个字省 28px，是用户预先认可的兜底。
+  { to: '/wudao', label: '悟道' },
   { to: '/watchlist', label: '自选股' },
 ]
 
@@ -305,7 +307,7 @@ export default function Layout({ children, toolbar }: LayoutProps) {
           所以它每宽 1px 都从导航身上扣。判断标准仍是「这是不是全局切换」：
           日期/口径是（整页跟着变），图表窗口不是。往这里塞控件前先想清楚。
         */}
-        <div className="mx-auto flex max-w-shell flex-wrap items-center gap-x-3 px-3 md:px-5 xl:flex-nowrap xl:gap-x-6">
+        <div className="mx-auto flex max-w-shell flex-wrap items-center gap-x-3 px-3 md:px-5 xl:flex-nowrap xl:gap-x-5">
           {/* 品牌：中文名做主标识，等宽拉丁字母做辅助标记。 */}
           <div className="flex h-[52px] shrink-0 items-baseline gap-2">
             <span className="text-[14px] font-semibold tracking-[0.05em] text-fg whitespace-nowrap md:text-[15px] md:tracking-[0.1em]">
