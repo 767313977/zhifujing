@@ -36,7 +36,7 @@ from app.models import (
 from app.services import relay_temp
 from app.services.pattern_track import POOL_KEYS
 from app.services.patterns import PATTERNS
-from app.services.trading_days import is_trade_day
+from app.services.trading_days import calendar_latest, is_trade_day
 from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,15 @@ def validate_entry(
     if entry_date > today_cn():
         raise ValueError("买入日不能晚于今天")
     if not is_trade_day(entry_date, session):
-        raise ValueError(f"买入日 {entry_date} 不是交易日")
+        # 跨年那几天上游还没发布次年日历，`is_trade_day` 对**覆盖范围之外**的日子
+        # 也一律返回 False —— 那是「判断不了」，不是「不是交易日」，不能拒绝用户。
+        #
+        # ⚠️ 这里**不换成 `is_trade_day_fresh`**：它的自愈分支要构造采集器打 iFinD，
+        # 等于往这几个写接口里塞一次外部取数（可能秒级、可能失败）。宁可放行，
+        # 也不让「保存一笔交易」依赖外网。
+        covered_to = calendar_latest(session)
+        if covered_to is not None and entry_date <= covered_to:
+            raise ValueError(f"买入日 {entry_date} 不是交易日")
 
 
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}

@@ -31,17 +31,26 @@ from app.timeutil import today_cn
 logger = logging.getLogger(__name__)
 
 
+def calendar_latest(session: Session | None = None) -> date | None:
+    """日历铺到的**最后一天**；日历为空时返回 None。
+
+    用来区分两件不同的事：「这一天不是交易日」与「日历根本没铺到这一天」
+    （跨年时上游还没发布次年日历）。后者判断不了，调用方应放行而不是误拒 ——
+    见 `trade_journal.validate_entry`。
+    """
+    stmt = select(func.max(TradeCalendar.trade_date))
+    if session is not None:
+        return session.scalar(stmt)
+    with session_scope() as db:
+        return db.scalar(stmt)
+
+
 def calendar_needs_refresh(session: Session | None = None) -> bool:
     """交易日历是否为空或已落后（跨年时上游还没发布次年日历）。
 
     口径只有这一处：`collect_daily.DailyCollector.calendar_needs_refresh` 直接转调它。
     """
-    stmt = select(func.max(TradeCalendar.trade_date))
-    if session is not None:
-        latest = session.scalar(stmt)
-    else:
-        with session_scope() as db:
-            latest = db.scalar(stmt)
+    latest = calendar_latest(session)
     return latest is None or latest < today_cn()
 
 

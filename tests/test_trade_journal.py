@@ -10,7 +10,12 @@ from sqlalchemy.orm import Session
 from app.api.journal import _apply, suggest_reason
 from app.models import AppUser, Base, StockDaily, TradeCalendar, TradeJournal
 from app.schemas import TradeJournalIn
-from app.services.trade_journal import _metrics, load_enriched, reason_label
+from app.services.trade_journal import (
+    _metrics,
+    load_enriched,
+    reason_label,
+    validate_entry,
+)
 
 
 def _trade(**overrides) -> TradeJournal:
@@ -215,3 +220,38 @@ def test_suggest_oversold_date_uses_own_last_bar(db, monkeypatch):
     out = suggest_reason("600519", date(2026, 8, 3), session=db, user=None)
     assert out.oversold_dev == -18.0
     assert out.oversold_date == date(2026, 8, 3)
+
+
+# ----------------------------- 建仓校验：日历没铺到那天 ≠ 那天不是交易日
+#
+# 背景（2026-11-04）：跨年时上游还没发布次年日历，`is_trade_day` 对覆盖范围之外的
+# 日子也返回 False，于是元旦后第一个交易日建仓会被误拒。这里把两种情况分开：
+# 在覆盖范围内 → 真的不是交易日，拒绝；覆盖范围之外 → 判断不了，放行。
+
+
+def test_entry_beyond_calendar_is_allowed(db, monkeypatch):
+    """日历最后一天是 8-04，8-05 落在覆盖范围外（跨年同理）→ 放行。"""
+    monkeypatch.setattr(
+        "app.services.trade_journal.today_cn", lambda: date(2026, 8, 10)
+    )
+    validate_entry(db, entry_date=date(2026, 8, 5), entry_price=10.0)
+
+
+def test_entry_inside_calendar_but_not_trade_day_is_rejected(db, monkeypatch):
+    """8-01 在覆盖范围内（≤ 日历最后一天）却不在日历里 → 确实不是交易日。"""
+    monkeypatch.setattr(
+        "app.services.trade_journal.today_cn", lambda: date(2026, 8, 10)
+    )
+    with pytest.raises(ValueError, match="不是交易日"):
+        validate_entry(db, entry_date=date(2026, 8, 1), entry_price=10.0)
+
+
+def test_entry_with_empty_calendar_is_allowed(monkeypatch):
+    """全新部署、日历还没铺开：同样判断不了，不能把人挡在外面。"""
+    monkeypatch.setattr(
+        "app.services.trade_journal.today_cn", lambda: date(2026, 8, 10)
+    )
+    engine = create_engine("sqlite://", future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        validate_entry(session, entry_date=date(2026, 8, 3), entry_price=10.0)

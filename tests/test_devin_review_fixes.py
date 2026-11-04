@@ -58,6 +58,14 @@ def db(tmp_path):
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         session.add_all([TradeCalendar(trade_date=day) for day in DAYS])
+        # 日历还要铺到 DAY **之后**：否则 DAY+1 落在覆盖范围之外，校验会按「判断不了」
+        # 放行（跨年场景，见 `test_trade_journal.py` 那三条），测不到「不是交易日」
+        session.add_all(
+            [
+                TradeCalendar(trade_date=DAY + timedelta(days=offset))
+                for offset in (2, 3, 4)
+            ]
+        )
         session.add(StockBasic(code="300001", name="测试A"))
         for day in DAYS:
             session.add(
