@@ -26,7 +26,7 @@ from app.schemas import (
     TradePlanRow,
     TradePlanSuggestionsOut,
 )
-from app.services import trade_plan
+from app.services import trade_journal, trade_plan
 from app.services.auth import current_user
 from app.services.trading_days import is_trade_day
 from app.timeutil import today_cn
@@ -280,11 +280,19 @@ def execute_plan(
     plan = session.get(TradePlan, plan_id)
     if plan is None or plan.user_id != user.id:
         raise HTTPException(status_code=404, detail="这条计划不存在")
-    if payload.actual_price <= 0:
-        raise HTTPException(status_code=400, detail="实际买入价必须大于 0")
     entry_date = payload.entry_date or plan.plan_date
-    if entry_date > today_cn():
-        raise HTTPException(status_code=400, detail="成交日不能晚于今天")
+    # 与交易日志 / 持仓共用同一份建仓校验（2026-11-04）：以前这里只挡「不晚于今天」，
+    # 非交易日、股数 ≤ 0、仓位越界都能落库，与日志页口径对不上
+    try:
+        trade_journal.validate_entry(
+            session,
+            entry_date=entry_date,
+            entry_price=float(payload.actual_price),
+            shares=payload.shares,
+            position_pct=payload.position_pct,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     plan.actual_price = float(payload.actual_price)
     plan.followed_plan = bool(payload.followed_plan)

@@ -149,23 +149,35 @@ def _cache_news(key: tuple[str, int], value: StockNewsOut) -> None:
 
 # 「杀猪盘体检」的进程内 TTL 缓存（2026-10-23 加）。体检要出外网（财务摘要 / 东财新闻 /
 # 公告 / 解禁 / 人气榜），一次 1~2 秒，而它**每次打开个股页都会跑**；同一只票 10 分钟内
-# 的结论不会变。键取 `(code, context)`（context 会改变等级上调，不能忽略）。
+# 的结论不会变。
+#
+# ⚠️ 键**只按 code**（2026-11-04 改）：以前带 `context`，而 context 是用户随便填的文字，
+# 换一个字就绕过缓存、重新打 5~6 个外部源 —— 等于一个免费的外网放大器。现在缓存的是
+# `trap.base_check` 的基准结果（与背景无关），背景那一档由 `apply_context` 现算叠加。
 #
 # ⚠️ 与新闻缓存同一套：加锁（同步接口跑在线程池里会并发写）、有上限、只缓存成功结果
-# （`trap.check` 返回 None 或抛异常都不写缓存 —— 否则一次源故障会让这只票 10 分钟内
+# （`trap.base_check` 返回 None 或抛异常都不写缓存 —— 否则一次源故障会让这只票 10 分钟内
 # 都显示"查不到这个代码"）。
 TRAP_TTL_SEC = 600
 TRAP_CACHE_MAX = 256
-_trap_cache: dict[tuple[str, str], tuple[datetime, "trap.TrapResult"]] = {}
+#: 缓存未命中、真要打外网时的按用户限流（命中缓存不计数）
+TRAP_FETCH_LIMIT = 30
+TRAP_FETCH_WINDOW_SEC = 600
+_trap_cache: dict[str, tuple[datetime, "trap.TrapResult"]] = {}
 _trap_cache_lock = threading.Lock()
+_trap_fetch_limiter = RateLimiter(
+    limit=TRAP_FETCH_LIMIT,
+    window_sec=TRAP_FETCH_WINDOW_SEC,
+    lock_sec=TRAP_FETCH_WINDOW_SEC,
+)
 
 
-def _trap_key(code: str, context: str | None) -> tuple[str, str]:
-    """缓存键：代码 + 归一化后的 context（strip 后为空 → 空串）。"""
-    return code, (context or "").strip()
+def _trap_key(code: str) -> str:
+    """缓存键：只看代码（体检的基准结果与用户填的背景无关）。"""
+    return code
 
 
-def _trap_cache_get(key: tuple[str, str]) -> "trap.TrapResult | None":
+def _trap_cache_get(key: str) -> "trap.TrapResult | None":
     """取未过期的体检结果；命中过期项顺手删掉。"""
     with _trap_cache_lock:
         item = _trap_cache.get(key)
@@ -177,7 +189,7 @@ def _trap_cache_get(key: tuple[str, str]) -> "trap.TrapResult | None":
         return None
 
 
-def _trap_cache_put(key: tuple[str, str], value: "trap.TrapResult") -> None:
+def _trap_cache_put(key: str, value: "trap.TrapResult") -> None:
     """写体检缓存并维持上限（先清过期，再超就丢最旧一条）。"""
     now = datetime.now()
     ttl = timedelta(seconds=TRAP_TTL_SEC)
@@ -354,7 +366,7 @@ def risk_badges(
     rows = []
     for code in unique:
         badges: list[RiskBadgeOut] = []
-        cached = _trap_cache_get(_trap_key(code, None))
+        cached = _trap_cache_get(_trap_key(code))
         if cached is not None and cached.level in ("high", "medium"):
             badges.append(
                 RiskBadgeOut(
@@ -961,22 +973,36 @@ def trap_check(
     检查推广话术与澄清报道（**辟谣算保护性证据，不算风险**）。
 
     ⚠️ **进程内 TTL 缓存 10 分钟**（2026-10-23 加，见 `TRAP_TTL_SEC`）：体检要出外网
-    （财务摘要 / 新闻 / 公告 / 解禁 / 人气榜），一次 1~2 秒，而它每次打开个股页都跑；
-    同一 `(code, context)` 10 分钟内直接返回上次结论。失败（None / 异常）**不缓存**。
+    （财务摘要 / 新闻 / 公告 / 解禁 / 人气榜），一次 1~2 秒，而它每次打开个股页都跑。
+    缓存**只按 code**（2026-11-04 改）：context 是用户随手填的字，进缓存键等于换一个
+    说法就能重打一遍外网。基准结果进缓存、背景每次现叠加；缓存未命中且真要打外网时
+    才过按用户限流（照个股新闻那套）。失败（None / 异常）**不缓存**。
 
     `unknown`（数据不足）**不投票**：既不当 0 分装成安全，也不凭空扣分。
     `context` 命中「朋友推荐 / 群里 / 老师 / 内幕」等词时**只上调等级、不改评分**。
     """
     code = _code(code)
-    key = _trap_key(code, context)
-    result = _trap_cache_get(key)
-    if result is None:
-        result = trap.check(code, context)
-        if result is None:
+    key = _trap_key(code)
+    base = _trap_cache_get(key)
+    if base is None:
+        # 只有真要出外网时才计数：同一只票 10 分钟内的反复打开全部命中缓存、不占额度
+        user_key = f"trap:{user.id}"
+        wait = _trap_fetch_limiter.retry_after(user_key)
+        if wait is not None:
+            raise HTTPException(
+                status_code=429,
+                detail=f"体检刷新过于频繁，请 {int(wait) + 1} 秒后再试",
+                headers={"Retry-After": str(int(wait) + 1)},
+            )
+        _trap_fetch_limiter.fail(user_key)
+        base = trap.base_check(code)
+        if base is None:
             raise HTTPException(
                 status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
             )
-        _trap_cache_put(key, result)
+        _trap_cache_put(key, base)
+    # 背景只上调等级、不改评分，且是纯本地计算 —— 每次现算，不写回缓存
+    result = trap.apply_context(base, context)
     return TrapCheckOut(
         code=result.code,
         name=result.name,

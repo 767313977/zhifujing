@@ -16,6 +16,11 @@ import re
 import sys
 from pathlib import Path
 
+# Windows 控制台默认是 GBK：脚本里的中文说明一 print 就 UnicodeEncodeError
+# （2026-11-04 复查）。先切 UTF-8，再往下 import app。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 

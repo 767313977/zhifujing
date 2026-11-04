@@ -114,16 +114,22 @@ def _check_t_conflicts(
 def _apply(session: Session, trade: TradeJournal, payload: TradeJournalIn) -> None:
     """校验并入参 → 写回模型。新增与修改共用。"""
     code = _normalize_code(payload.code)
-    if payload.entry_price <= 0:
-        raise HTTPException(status_code=400, detail="买入价必须大于 0")
-    if payload.shares is not None and payload.shares <= 0:
-        raise HTTPException(status_code=400, detail="买入股数必须大于 0")
+    # 建仓入参（买入价 / 股数 / 仓位 / 买入日）走三处共用的那份校验 ——
+    # 持仓、计划执行与这里同一个口径（2026-11-04）
+    try:
+        trade_journal.validate_entry(
+            session,
+            entry_date=payload.entry_date,
+            entry_price=payload.entry_price,
+            shares=payload.shares,
+            position_pct=payload.position_pct,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if payload.exit_price is not None and payload.exit_price <= 0:
         raise HTTPException(status_code=400, detail="卖出价必须大于 0")
     if payload.plan_stop is not None and payload.plan_stop <= 0:
         raise HTTPException(status_code=400, detail="止损位必须大于 0")
-    if payload.position_pct is not None and not (0 <= payload.position_pct <= 100):
-        raise HTTPException(status_code=400, detail="仓位需要在 0-100 之间")
     if (payload.exit_date is None) != (payload.exit_price is None):
         raise HTTPException(status_code=400, detail="卖出日期与卖出价要同时填或同时留空")
     if payload.exit_date is not None and payload.exit_date < payload.entry_date:
@@ -133,7 +139,7 @@ def _apply(session: Session, trade: TradeJournal, payload: TradeJournalIn) -> No
     if payload.reason_type in ("pattern", "wudao") and not payload.reason_key:
         raise HTTPException(status_code=400, detail="请选择具体的形态 / 悟道池")
 
-    _require_trade_day(session, payload.entry_date, "买入日")
+    # 买入日已在上面 `validate_entry` 校验过（含交易日）
     if payload.exit_date is not None:
         _require_trade_day(session, payload.exit_date, "卖出日")
 

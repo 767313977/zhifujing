@@ -39,7 +39,7 @@ from app.services import auth
 from app.services.auth import require_admin
 from app.services.usage import quota_status
 from app.sources.ifind import IfindError
-from app.timeutil import today_cn
+from app.timeutil import now_cn, today_cn
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +56,8 @@ router = APIRouter(
 _CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 # 8 位 ≈ 32^8 ≈ 1.1e12 种，配合登录/注册限流足够；再短就开始担心被猜
 _CODE_LENGTH = 8
-# 一次最多生成几个：够发给一个群，又不至于让清单变成一坨
-_CODE_MAX_BATCH = 20
+# 一次最多生成几个：上限写在 `InviteIn.count`（le=20）—— 超出直接 422，
+# 这里不再静默截断（2026-11-04）
 
 
 def _build_collector() -> DailyCollector:
@@ -305,7 +305,7 @@ def create_invites(
     payload: InviteIn, session: Session = Depends(get_db)
 ) -> list[InviteOut]:
     """生成邀请码。`count` 可以一次多生成几个（最多 20）。"""
-    count = max(1, min(payload.count, _CODE_MAX_BATCH))
+    count = payload.count
     rows = []
     for _ in range(count):
         row = InviteCode(code=_new_invite_code(session), note=payload.note)
@@ -399,7 +399,8 @@ def set_disabled(
     row = session.get(AppUser, user_id)
     if row is None:
         raise HTTPException(status_code=404, detail="没有这个账号")
-    row.disabled_at = datetime.now() if payload.disabled else None
+    # 统一用北京时间（2026-11-04 复查）：服务器 TZ 不一定是 +08
+    row.disabled_at = now_cn() if payload.disabled else None
     session.commit()
     kicked = auth.delete_user_sessions(session, user_id) if payload.disabled else 0
     logger.info(

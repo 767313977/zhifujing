@@ -1314,6 +1314,17 @@ class AdminStatus(BaseModel):
 # -------------------------------------------------------------------- 自选股
 
 
+class WatchlistPatchIn(BaseModel):
+    """`PATCH /api/watchlist/{code}` 的入参：只有可改的字段（2026-11-04）。
+
+    以前这个接口复用 `WatchlistIn`，body 里必须带 `code` —— 但 code 在路径里，
+    body 那个既用不上、又像是"能改代码"。新建一只票仍然用 `WatchlistIn`。
+    """
+
+    name: str | None = Field(None, max_length=64)
+    note: str | None = Field(None, max_length=2000)
+
+
 class WatchlistIn(BaseModel):
     # 长度上限（2026-10-10 加）：这些字段以前没有上限，一个登录用户就能塞进来
     # 任意大的字符串（备注是 TEXT，只进不出地占库）。上限按「人写得出来的量」给。
@@ -2553,8 +2564,10 @@ class InviteIn(BaseModel):
     # 长度 / 数量上限（2026-10-11 加）：以前两者都没有上限，一个管理员请求就能塞超长 note
     # 或让循环次数失控。note 按「人写得出来的量」给 2000；count 由 admin 侧再夹到 20。
     note: str | None = Field(None, max_length=2000)
-    # 一次生成几个。发一群人时省得点很多次
-    count: int = Field(1, ge=1, le=1000)
+    # 一次生成几个。发一群人时省得点很多次。
+    # 上限写死 20（2026-11-04）：以前这里是 1000、再在 admin 里静默夹到 20，
+    # 用户填 50 只会拿到 20 个码却看不到任何提示 —— 现在直接 422。
+    count: int = Field(1, ge=1, le=20)
 
 
 class InviteOut(ApiModel):

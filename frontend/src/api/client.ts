@@ -614,7 +614,8 @@ export const api = {
     request<WatchlistRow>(`/watchlist/${encodeURIComponent(code)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, note }),
+      // code 在路径里：后端的 PATCH 只收可改字段（WatchlistPatchIn，2026-11-04）
+      body: JSON.stringify({ note }),
     }),
 
   syncWatchlist: (days = 250) =>

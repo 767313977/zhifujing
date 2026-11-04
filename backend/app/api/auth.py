@@ -236,7 +236,11 @@ def login(
 def logout(
     request: Request, response: Response, db: Session = Depends(get_db)
 ) -> dict:
-    """删掉这个会话并清 cookie。重复调用无害。"""
+    """删掉这个会话并清 cookie。重复调用无害。
+
+    免登录（在 `PUBLIC_PATHS` 里）：会话已过期时也要能"登出"，否则前端拿到 401
+    就清不掉 cookie（2026-11-04）。
+    """
     auth.delete_session(db, request.cookies.get(auth.COOKIE_NAME))
     response.delete_cookie(auth.COOKIE_NAME, path="/")
     return {"ok": True}

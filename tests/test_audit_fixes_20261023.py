@@ -269,11 +269,12 @@ def _trap_result() -> trap.TrapResult:
 def test_trap_result_is_cached(db, monkeypatch):
     calls: list[tuple[str, str | None]] = []
 
-    def fake_check(code, context):
-        calls.append((code, context))
+    # 缓存只按 code（2026-11-04 改）：入口是 `base_check`，背景在 API 层现叠加
+    def fake_base(code, *, fast: bool = False):
+        calls.append((code, None))
         return _trap_result()
 
-    monkeypatch.setattr(stock_api.trap, "check", fake_check)
+    monkeypatch.setattr(stock_api.trap, "base_check", fake_base)
     stock_api._trap_cache.clear()
     first = stock_api.trap_check("000001", None, db, _user())
     second = stock_api.trap_check("000001", None, db, _user())
@@ -285,11 +286,11 @@ def test_trap_result_is_cached(db, monkeypatch):
 def test_trap_failure_is_not_cached(db, monkeypatch):
     calls: list[str] = []
 
-    def fake_check(code, context):
+    def fake_base(code, *, fast: bool = False):
         calls.append(code)
         return None
 
-    monkeypatch.setattr(stock_api.trap, "check", fake_check)
+    monkeypatch.setattr(stock_api.trap, "base_check", fake_base)
     stock_api._trap_cache.clear()
     for _ in range(2):
         with pytest.raises(HTTPException) as exc:

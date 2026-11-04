@@ -7,7 +7,15 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.api import positions as positions_api
-from app.models import AppUser, Base, StockBasic, StockDaily, TradeJournal, TradePlan
+from app.models import (
+    AppUser,
+    Base,
+    StockBasic,
+    StockDaily,
+    TradeCalendar,
+    TradeJournal,
+    TradePlan,
+)
 from app.schemas import PositionIn
 from app.services import positions
 
@@ -22,6 +30,8 @@ def db(tmp_path):
         session.add_all(
             [
                 StockBasic(code="300001", name="测试A"),
+                # 建仓校验要求买入日是交易日（2026-11-04 起与交易日志 / 计划共用）
+                TradeCalendar(trade_date=DAY),
                 StockDaily(trade_date=DAY, code="300001", close=11.0, pct_chg=2.0),
             ]
         )
@@ -68,6 +78,8 @@ def test_pnl_uses_buy_day_basis_after_split():
         session.add_all(
             [
                 StockBasic(code="300001", name="测试A"),
+                TradeCalendar(trade_date=entry),
+                TradeCalendar(trade_date=split),
                 # 买入日 10 元；次日 10 送 10 → 不复权收盘 5 元，真实收益 0
                 StockDaily(trade_date=entry, code="300001", close=10.0, pct_chg=0.0),
                 StockDaily(trade_date=split, code="300001", close=5.0, pct_chg=0.0),

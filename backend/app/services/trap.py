@@ -668,13 +668,12 @@ def _check_hot_rank(code: str) -> TrapSignal:
     return signal
 
 
-def check(
-    code: str, context: str | None = None, *, fast: bool = False
-) -> TrapResult | None:
-    """跑完信号。代码不在 `stock_basic` 里时返回 None。
+def base_check(code: str, *, fast: bool = False) -> TrapResult | None:
+    """跑完信号（**不含用户补充背景**）。代码不在 `stock_basic` 里时返回 None。
 
-    `context` 是用户补充的背景（"朋友推荐我" / "群里说的" / "老师带单"）；命中触发词时
-    **只上调最终等级、不改评分** —— 评分是数据证据，用户背景是额外的一档判断。
+    只依赖 `code`（和 fast 模式），所以调用方可以按 code 缓存这一半结果；用户补充背景
+    走 `apply_context`，是纯本地计算、不进缓存键（2026-11-04 整改：以前缓存键里带
+    context，换一个字就能绕过缓存重新打 5~6 个外部源）。
 
     `fast=True` 是给收盘简报用的**只读硬证据**模式：跳过新闻 / 互动易 / 人气榜
     （这几个都要出外网），公告与解禁也只读缓存。分数会低于完整体检，不能拿它替代
@@ -746,18 +745,6 @@ def check(
         )
         signals.append(_check_hot_rank(code))
 
-    boost, context_text = _context_boost(context)
-    if boost:
-        signals.append(
-            TrapSignal(
-                "context",
-                "用户补充背景",
-                "hit",
-                "high" if boost >= 2 else "medium",
-                f"你提到「{context_text[:40]}」；风险等级上调 {boost} 档",
-            )
-        )
-
     score = min(
         100,
         sum(
@@ -771,17 +758,9 @@ def check(
         for threshold, level_name, label in LEVELS
         if score >= threshold
     )
-    if boost:
-        index = min(len(LEVEL_ORDER) - 1, LEVEL_ORDER.index(level) + boost)
-        level = LEVEL_ORDER[index]
-        level_label = LEVEL_LABELS[level]
 
-    hits = [
-        signal.name
-        for signal in signals
-        if signal.status == "hit" and signal.key != "context"
-    ]
     unknown = [signal.name for signal in signals if signal.status == "unknown"]
+    hits = [signal.name for signal in signals if signal.status == "hit"]
     if hits:
         summary = f"命中 {len(hits)} 个信号：{'、'.join(hits)}"
         if unknown:
@@ -790,8 +769,6 @@ def check(
         summary = "已核对的信号均未命中"
         if unknown:
             summary += f"（{len(unknown)} 项数据不足：{'、'.join(unknown)}）"
-    if boost:
-        summary += f"；你补充的背景「{context_text[:30]}」使等级上调 {boost} 档"
 
     return TrapResult(
         code=code,
@@ -802,5 +779,48 @@ def check(
         level_label=level_label,
         summary=summary,
         signals=signals,
+    )
+
+
+def apply_context(result: TrapResult, context: str | None) -> TrapResult:
+    """把用户补充背景叠到基准结果上（**纯本地计算**，可每次现算）。
+
+    命中触发词只**上调等级、不改评分**。`signals` 先复制再追加 —— 传进来的对象可能
+    正躺在缓存里，不能就地改。
+    """
+    boost, context_text = _context_boost(context)
+    if not boost:
+        return result
+    signals = list(result.signals)
+    signals.append(
+        TrapSignal(
+            "context",
+            "用户补充背景",
+            "hit",
+            "high" if boost >= 2 else "medium",
+            f"你提到「{context_text[:40]}」；风险等级上调 {boost} 档",
+        )
+    )
+    index = min(len(LEVEL_ORDER) - 1, LEVEL_ORDER.index(result.level) + boost)
+    level = LEVEL_ORDER[index]
+    return TrapResult(
+        code=result.code,
+        name=result.name,
+        trade_date=result.trade_date,
+        score=result.score,
+        level=level,
+        level_label=LEVEL_LABELS[level],
+        summary=(
+            f"{result.summary}；你补充的背景「{context_text[:30]}」使等级上调 {boost} 档"
+        ),
+        signals=signals,
         context_boost=boost,
     )
+
+
+def check(code: str, context: str | None = None, *, fast: bool = False) -> TrapResult | None:
+    """体检完整入口：基准结果 + 用户背景（`api/stock` 走缓存时要分开调用这两步）。"""
+    result = base_check(code, fast=fast)
+    if result is None:
+        return None
+    return apply_context(result, context)

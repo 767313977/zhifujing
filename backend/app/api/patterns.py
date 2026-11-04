@@ -337,7 +337,9 @@ def preview(
 
     counts: dict[str, int] = {}
     if picked:
-        codes = _intersection_codes(db, window, picked, min_score)
+        # `_intersection_codes` 返回 list（`/hits` 也直接用），与 set 求交前必须转换：
+        # `list &= set` 会抛 TypeError（2026-11-04 修：形态 + 阶段同时选必 500）
+        codes = set(_intersection_codes(db, window, picked, min_score))
         if keep is not None:
             codes &= keep
         # codes 为空 → counts 保持全 0（交集为空，任何候选都还是 0）

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import AppUser, TradeJournal, TradePlan
 from app.schemas import PositionIn, PositionOut, PositionRow
-from app.services import positions
+from app.services import positions, trade_journal
 from app.services.auth import current_user
 
 router = APIRouter(prefix="/api/positions", tags=["持仓"])
@@ -112,8 +112,17 @@ def update_position(
         code = positions.validate_code(session, payload.code)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if payload.entry_price <= 0:
-        raise HTTPException(status_code=400, detail="成本价必须大于 0")
+    # 与新建 / 交易日志 / 计划执行同一份校验（交易日、不晚于今天、股数、仓位）
+    try:
+        trade_journal.validate_entry(
+            session,
+            entry_date=payload.entry_date,
+            entry_price=float(payload.entry_price),
+            shares=payload.shares,
+            position_pct=payload.position_pct,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     journal.code = code
     journal.name = (payload.name or "").strip() or journal.name
     journal.entry_date = payload.entry_date

@@ -36,8 +36,38 @@ from app.models import (
 from app.services import relay_temp
 from app.services.pattern_track import POOL_KEYS
 from app.services.patterns import PATTERNS
+from app.services.trading_days import is_trade_day
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
+
+
+def validate_entry(
+    session: Session,
+    *,
+    entry_date: date,
+    entry_price: float,
+    shares: int | None = None,
+    position_pct: float | None = None,
+) -> None:
+    """校验一笔建仓（含持仓）的入参 —— **交易日志 / 持仓 / 计划执行三处共用**。
+
+    2026-11-04 统一：`trade_journal` 这张表以前有三条写入路径，校验各写一份，
+    持仓与计划执行都漏了「必须是交易日」「不能晚于今天」，同一天能存出三种口径。
+
+    失败抛 `ValueError`（文案直接给用户看）；API 层统一转成 400。
+    """
+    if entry_price <= 0:
+        raise ValueError("买入价必须大于 0")
+    if shares is not None and shares <= 0:
+        raise ValueError("买入股数必须大于 0")
+    if position_pct is not None and not (0 <= position_pct <= 100):
+        raise ValueError("仓位需要在 0-100 之间")
+    if entry_date > today_cn():
+        raise ValueError("买入日不能晚于今天")
+    if not is_trade_day(entry_date, session):
+        raise ValueError(f"买入日 {entry_date} 不是交易日")
+
 
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}
 POOL_NAMES = {

@@ -21,7 +21,7 @@ from app.models import (
     StockDaily,
     Watchlist,
 )
-from app.schemas import WatchlistIn, WatchlistRow
+from app.schemas import WatchlistIn, WatchlistPatchIn, WatchlistRow
 from app.services import auth
 from app.services.auth import current_user
 from app.services.stock_lookup import LookupError, resolve_code
@@ -232,7 +232,7 @@ def add_watchlist(
 @router.patch("/{code}", response_model=WatchlistRow)
 def update_watchlist(
     code: str,
-    payload: WatchlistIn,
+    payload: WatchlistPatchIn,
     user: AppUser = Depends(current_user),
     session: Session = Depends(get_db),
 ) -> WatchlistRow:

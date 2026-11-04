@@ -53,8 +53,8 @@ def db(tmp_path):
             ]
         )
         session.commit()
-        # 体检缓存：模拟个股页刚看过
-        stock_api._trap_cache[(CODE, "")] = (
+        # 体检缓存：模拟个股页刚看过（2026-11-04 起缓存键只按 code）
+        stock_api._trap_cache[stock_api._trap_key(CODE)] = (
             datetime.now(),
             trap.TrapResult(
                 code=CODE,
@@ -68,7 +68,7 @@ def db(tmp_path):
             ),
         )
         yield session, user
-        stock_api._trap_cache.pop((CODE, ""), None)
+        stock_api._trap_cache.pop(stock_api._trap_key(CODE), None)
 
 
 def test_badges_from_cache_only(db):

@@ -98,8 +98,14 @@ def create(
     plan_id: int | None = None,
 ) -> TradeJournal:
     digits = validate_code(session, code)
-    if entry_price <= 0:
-        raise ValueError("成本价必须大于 0")
+    # 与交易日志 / 计划执行共用同一份校验：交易日、不晚于今天、股数 > 0、仓位 0-100
+    trade_journal.validate_entry(
+        session,
+        entry_date=entry_date,
+        entry_price=float(entry_price),
+        shares=shares,
+        position_pct=position_pct,
+    )
     if plan_id is not None:
         # 归属校验：手工建仓也能带 plan_id，不校验就能把持仓挂到别人的计划 id 上，
         # 计划页的「已执行 / 跟随情况」统计会被污染（无数据泄露，但口径全错）。

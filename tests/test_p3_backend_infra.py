@@ -14,7 +14,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app import db as db_module
-from app.models import AppUser, Base, StockBasic, StockDaily, StockFinancial, TradeJournal, TradePlan
+from app.models import (
+    AppUser,
+    Base,
+    StockBasic,
+    StockDaily,
+    StockFinancial,
+    TradeCalendar,
+    TradeJournal,
+    TradePlan,
+)
 from app.services import positions as positions_service
 
 
@@ -44,6 +53,8 @@ def test_create_position_rejects_other_users_plan():
             AppUser(id=1, username="a", password_hash="x"),
             AppUser(id=2, username="b", password_hash="x"),
             StockBasic(code="600519", name="贵州茅台"),
+            # 建仓校验要求买入日是交易日（2026-11-04 起与交易日志 / 计划共用）
+            TradeCalendar(trade_date=date(2026, 10, 30)),
         ]
     )
     session.add(

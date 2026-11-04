@@ -341,10 +341,14 @@ def require_login(request: Request) -> None:
         request.state.user = user
 
 
-# 不需要登录的接口。**只有这三个**：
+# 不需要登录的接口：
 #   - login / register 是登录本身
 #   - health 是部署脚本用来验「服务起来了没有」的（它不含任何业务数据）
-PUBLIC_PATHS = frozenset({"/api/auth/login", "/api/auth/register", "/api/health"})
+#   - logout 要能"登出已过期的会话"（2026-11-04 加）：会话过期时整页会跳登录页，
+#     前端登出按钮再打一下这里，拿到 401 反而把"清 cookie"这件事做了半截
+PUBLIC_PATHS = frozenset(
+    {"/api/auth/login", "/api/auth/register", "/api/auth/logout", "/api/health"}
+)
 
 
 # ---------------------------------------------------------------- 限流
