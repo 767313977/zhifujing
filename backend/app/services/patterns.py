@@ -6190,6 +6190,23 @@ PATTERNS: tuple[Pattern, ...] = (
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}
 
 
+# ---------------------------------------------------------------- 「汇总」chip（别名）
+#
+# 2026-11-07 用户要求：知行B1 那一组后面加一个「汇总」，把这一组选出来的票并成一条。
+#
+# ⚠️ **别名不是形态**：注册表里没有这个 `Pattern`、扫描也不会写 `zgnb_all` 的命中行
+# （历史数据里本来就没有，补数据要重扫，没必要）。它只在**查询层**被展开成成员 ——
+# 选「汇总」=「命中这 7 个里任意一个」，与其它所选形态之间仍然是**交集**。
+#
+# 与 `POOL_KEYS` 那类「页面分组」的区别：那是展示用的分组名，这里是一个可提交的
+# `pattern` 取值，`/hits`、`/preview` 都必须认它。
+ZGNB_KEYS: tuple[str, ...] = tuple(p.key for p in PATTERNS if p.group == ZGNB_GROUP)
+#: 别名 key → 成员形态（并集）
+PATTERN_ALIASES: dict[str, tuple[str, ...]] = {"zgnb_all": ZGNB_KEYS}
+#: 别名 key → (展示名, 分组)。顺序决定它在筛选条里排在**该组末尾**。
+PATTERN_ALIAS_META: dict[str, tuple[str, str]] = {"zgnb_all": ("汇总", ZGNB_GROUP)}
+
+
 def evaluate(bars: Bars, *, min_score: float = MIN_SCORE) -> list[Signal]:
     """跑完所有形态，返回达标的结果（按分数降序）。
 

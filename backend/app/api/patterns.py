@@ -45,6 +45,8 @@ from app.services import factor_score as factor_scores
 from app.services import pattern_track
 from app.services import trend
 from app.services.patterns import (
+    PATTERN_ALIASES,
+    PATTERN_ALIAS_META,
     PATTERNS,
     SCORE_EXCLUDED,
     THS_MAP,
@@ -75,6 +77,22 @@ _META = {pattern.key: pattern for pattern in PATTERNS}
 # 过滤放在查询侧而不是去删库：删库要在云端也执行一遍 SQL，而过滤跟着代码走，
 # 一次部署就生效，历史行留着也无害。
 _KEYS = tuple(_META)
+
+
+def _chip_members(key: str) -> tuple[str, ...]:
+    """chip key → 它代表的真实形态。
+
+    普通 chip 就是它自己；「汇总」这类**别名**展开成一组（定义见
+    `services.patterns.PATTERN_ALIASES`）。扫描侧不认别名，它只活在这一层 ——
+    于是历史数据不用补，选「汇总」= 「命中组里任意一个」。
+    """
+    return PATTERN_ALIASES.get(key, (key,))
+
+
+def _ok_pattern(key: str) -> bool:
+    """`pattern` 参数认不认这个取值：真实形态或别名。"""
+    return key in _META or key in PATTERN_ALIASES
+
 
 # 默认视图（没选形态）开窗口时，**整个窗口最多读这么多行**，按天均分（见 `_hits_window`）。
 #
@@ -167,8 +185,8 @@ def _latest_date(db: Session) -> date | None:
 
 @router.get("/catalog", response_model=list[PatternMeta])
 def catalog() -> list[PatternMeta]:
-    """形态清单，前端据此生成分组筛选条。"""
-    return [
+    """形态清单，前端据此生成分组筛选条（含「汇总」这类别名 chip）。"""
+    metas = [
         PatternMeta(
             key=p.key,
             name=p.name,
@@ -178,6 +196,13 @@ def catalog() -> list[PatternMeta]:
         )
         for p in PATTERNS
     ]
+    # 别名排在清单**末尾**（前端按分组收集、组内保持这个顺序），于是「汇总」正好是
+    # 知行B1 那一行的最后一个 chip（2026-11-07 用户指定位置）
+    metas.extend(
+        PatternMeta(key=key, name=name, group=group, experimental=False, ths=None)
+        for key, (name, group) in PATTERN_ALIAS_META.items()
+    )
+    return metas
 
 
 def _window_dates(db: Session, target: date, days: int) -> list[date]:
@@ -200,36 +225,43 @@ def _window_dates(db: Session, target: date, days: int) -> list[date]:
 def _intersection_codes(
     db: Session, dates: list[date], keys: list[str], min_score: float = 0.0
 ) -> list[str]:
-    """在 `dates` 这几个交易日里命中**全部** `keys` 的 code 列表（多选=**交集**）。
+    """在 `dates` 这几个交易日里命中**全部所选 chip** 的 code 列表。
 
-    `having count(distinct pattern) = len(keys)` 一步求交 —— 不用把每个形态的 code
-    集合都取回内存再求交。`/hits` 与 `/preview` 共用这一条定义，免得两处口径漂移。
+    - **chip 之间**是交集（与 UI 的多选一致，2026-09-27 定的口径）；
+    - **chip 内部**是并集 —— 「汇总」这类别名展开成一组形态，命中任意一个就算命中
+      这个 chip（2026-11-07 加的 `PATTERN_ALIASES`）。
 
-    - 单日模式传 `[target]`：交集 = **同一天**命中全部所选形态（2026-09-27 定的口径）。
+    - 单日模式传 `[target]`：交集 = **同一天**命中全部所选 chip。
     - 窗口模式传窗口那几天：交集 = **窗口内先后命中过每一个**，不要求同一天
-      （2026-10-14 补 —— 原先窗口模式取的是「命中任意一个」，前端再拿首次那天的标签
-      去要求全部命中，一只票第 1 天中 A、第 3 天中 B 会被筛掉）。
+      （2026-10-14 补）。
 
-    ⚠️ 先**去重**再比个数：判据是「命中的不同形态个数 = 传入个数」，重复的 key 会让
-    右边多算一个、把本该非空的结果打成空。**去重必须在这一层**（两个调用方都靠它），
-    调用方各自去重早晚会漏一处 —— `?pattern=a&pattern=a` 这种手工拼的 URL 不该悄悄
-    变成「0 只」。
+    ⚠️ 先**去重**再求交：`?pattern=a&pattern=a` 这种手工拼的 URL 不该悄悄变成「0 只」。
+
+    ⚠️ 实现从「一条 `having count(distinct pattern) = N`」改成**每个 chip 一条
+    `distinct code` 再在内存里求交**：别名没法用原来的写法 —— 一只票命中组里两个
+    成员也只算「命中 1 个 chip」，SQL 里得先把 pattern 映射成 chip 才能数。
+    所选 chip 通常 ≤ 5 个，几条走索引的 distinct 比一条带 CASE 的 having 更直白。
     """
-    uniq = list(dict.fromkeys(keys))
-    if not uniq or not dates:
+    chips = list(dict.fromkeys(keys))
+    if not chips or not dates:
         return []
-    return list(
-        db.scalars(
-            select(PatternHit.code)
-            .where(
-                PatternHit.trade_date.in_(dates),
-                PatternHit.pattern.in_(uniq),
-                PatternHit.score >= min_score,
+    codes: set[str] | None = None
+    for chip in chips:
+        hit = set(
+            db.scalars(
+                select(PatternHit.code)
+                .distinct()
+                .where(
+                    PatternHit.trade_date.in_(dates),
+                    PatternHit.pattern.in_(_chip_members(chip)),
+                    PatternHit.score >= min_score,
+                )
             )
-            .group_by(PatternHit.code)
-            .having(func.count(func.distinct(PatternHit.pattern)) == len(uniq))
         )
-    )
+        codes = hit if codes is None else codes & hit
+        if not codes:
+            return []
+    return sorted(codes or ())
 
 
 @router.get("/preview", response_model=list[PatternCount])
@@ -269,8 +301,9 @@ def preview(
     （用户 2026-10-14 报的那个不一致）。两个接口共用 `_window_dates` 与
     `_intersection_codes`，所以只要参数一致，口径就一致。
 
-    只发两条查询（求交 + 分组计数），与候选形态个数无关；与 `/hits` 共用
-    `_intersection_codes` 这一条定义，所以徽标数点进去的行数不会打架。
+    查询条数与**候选形态个数无关**（每个已选 chip 一条 distinct + 按批分组计数）；
+    与 `/hits` 共用 `_intersection_codes` 这一条定义，所以徽标数点进去的行数不会打架。
+    「汇总」这类别名的徽标按**成员并集去重**再数（2026-11-07），不是把成员家数相加。
 
     ⚠️ **`phase` 必须跟着 `/hits` 一起传**（2026-10-28 体检）：徽标要反映「按当前阶段
     筛选之后，再点这个形态会剩多少只」。不传的话选了「明天预案」徽标还是全市场家数，
@@ -301,11 +334,11 @@ def preview(
             )
 
     picked = [key for key in (pattern or []) if key]
-    unknown = [key for key in picked if key not in _META]
+    unknown = [key for key in picked if not _ok_pattern(key)]
     if unknown:
         raise HTTPException(
             status_code=400,
-            detail=f"未知形态 {', '.join(unknown)}，可选：{', '.join(_META)}",
+            detail=f"未知形态 {', '.join(unknown)}，可选：{', '.join((*_META, *PATTERN_ALIASES))}",
         )
 
     window = _window_dates(db, target, days)
@@ -336,12 +369,15 @@ def preview(
             keep |= set(_market_oversold(db, target))
 
     counts: dict[str, int] = {}
+    # 「当前选择已经筛出来的票」；None = 没选形态也没选阶段（全市场口径）
+    base_codes: set[str] | None = None
     if picked:
         # `_intersection_codes` 返回 list（`/hits` 也直接用），与 set 求交前必须转换：
         # `list &= set` 会抛 TypeError（2026-11-04 修：形态 + 阶段同时选必 500）
         codes = set(_intersection_codes(db, window, picked, min_score))
         if keep is not None:
             codes &= keep
+        base_codes = codes
         # codes 为空 → counts 保持全 0（交集为空，任何候选都还是 0）
         for batch in chunked(sorted(codes), _IN_BATCH):
             rows = db.execute(
@@ -360,6 +396,7 @@ def preview(
             for key, n in rows:
                 counts[key] = counts.get(key, 0) + n
     elif keep is not None:
+        base_codes = set(keep)
         for batch in chunked(sorted(keep), _IN_BATCH):
             rows = db.execute(
                 select(PatternHit.pattern, func.count(func.distinct(PatternHit.code)))
@@ -385,7 +422,23 @@ def preview(
         ).all()
         counts = {key: n for key, n in rows}
 
-    return [
+    # 别名（「汇总」）的徽标：成员**并集去重**后的家数。
+    # ⚠️ 不能拿成员家数相加 —— 一只票同时命中两个成员会被算两次（和会大于实际）。
+    for alias, members in PATTERN_ALIASES.items():
+        stmt = select(func.count(func.distinct(PatternHit.code))).where(
+            PatternHit.trade_date.in_(window),
+            PatternHit.pattern.in_(members),
+            PatternHit.score >= min_score,
+        )
+        if base_codes is None:
+            counts[alias] = db.scalar(stmt) or 0
+            continue
+        total = 0
+        for batch in chunked(sorted(base_codes), _IN_BATCH):
+            total += db.scalar(stmt.where(PatternHit.code.in_(batch))) or 0
+        counts[alias] = total
+
+    result = [
         PatternCount(
             pattern=p.key,
             pattern_name=p.name,
@@ -394,6 +447,18 @@ def preview(
         )
         for p in PATTERNS
     ]
+    # 别名排在整个清单末尾；前端按分组收集、组内保持这个顺序，
+    # 于是「汇总」正好落在知行B1 那一行的最后一个 chip（2026-11-07 用户要求的位置）
+    result.extend(
+        PatternCount(
+            pattern=key,
+            pattern_name=name,
+            group=group,
+            stocks=counts.get(key, 0),
+        )
+        for key, (name, group) in PATTERN_ALIAS_META.items()
+    )
+    return result
 
 
 def _hits_window(
@@ -433,13 +498,20 @@ def _hits_window(
     if not window:
         return [], {}
 
-    uniq = list(dict.fromkeys(picked))
-    if uniq:
+    chips = list(dict.fromkeys(picked))
+    # 真实形态 → 它属于哪几个所选 chip（一个成员可能同时属于「汇总」和它自己）。
+    # 不能用单值映射：选了「汇总 + 缩量B1」时，`zgnb_shrink` 的行要同时算给两个 chip，
+    # 否则交集里那个 chip 永远差一个、整屏变空。
+    member_chips: dict[str, list[str]] = {}
+    if chips:
+        for chip in chips:
+            for member in _chip_members(chip):
+                member_chips.setdefault(member, []).append(chip)
         rows = db.scalars(
             select(PatternHit)
             .where(
                 PatternHit.trade_date.in_(window),
-                PatternHit.pattern.in_(uniq),
+                PatternHit.pattern.in_(list(member_chips)),
                 PatternHit.score >= min_score,
             )
             .order_by(PatternHit.trade_date, PatternHit.score.desc())
@@ -474,8 +546,10 @@ def _hits_window(
     last: dict[str, date] = {}
     for row in rows:
         # rows 按日期升序，所以同一形态的第一条就是它的首次、最后一条就是最近那次
-        hit_keys.setdefault(row.code, set()).add(row.pattern)
-        first_row.setdefault(row.code, {}).setdefault(row.pattern, row)
+        # 判「命中没命中」按 **chip** 算：别名（「汇总」）展开后，组里哪个成员先出都算它
+        for chip in member_chips.get(row.pattern, [row.pattern]):
+            hit_keys.setdefault(row.code, set()).add(chip)
+            first_row.setdefault(row.code, {}).setdefault(chip, row)
         seen.setdefault(row.code, set()).add(row.trade_date)
         last[row.code] = row.trade_date
         # 「首次那天」的全部命中：第一次见到这只票就记下那天，之后落在同一天的都收进来
@@ -485,12 +559,12 @@ def _hits_window(
     keep: list[PatternHit] = []
     run_info: dict[str, tuple[int, date]] = {}
     for code in first_date:
-        if uniq:
-            # `hit_keys[code]` 一定 `⊆ uniq`，所以个数相等就是「一个不漏」
-            if len(hit_keys[code]) < len(uniq):
+        if chips:
+            # `hit_keys[code]` 一定 `⊆ chips`，所以个数相等就是「一个不漏」
+            if len(hit_keys[code]) < len(chips):
                 continue
             keep.extend(
-                sorted((first_row[code][key] for key in uniq), key=lambda row: row.trade_date)
+                sorted((first_row[code][chip] for chip in chips), key=lambda row: row.trade_date)
             )
         else:
             keep.extend(first_rows[code])
@@ -552,10 +626,14 @@ def _score_basis(picked: list[str]) -> set[str]:
     （`patterns.SCORE_EXCLUDED`：明天预案 / 明天盯 / 洗完可盯 / 洗后可盯 / 华宝早期）时，
     退回「所选形态自身」—— 否则整列会被回填成 0.0，看着像没有评分（2026-10-28 用户指出）。
 
+    「汇总」这类别名先展开成成员（2026-11-07）：这一屏讲的是那一组，评分就该由组里
+    最像样的那个成员代表，不能被同一天恰好命中的别的形态顶上去。
+
     默认视图（没有 `picked`）不走这条路径：那几个池在默认榜里仍然记 0 分、不参与排序。
     """
-    wanted = set(picked) - SCORE_EXCLUDED
-    return wanted or set(picked)
+    members = {member for key in picked for member in _chip_members(key)}
+    wanted = members - SCORE_EXCLUDED
+    return wanted or members
 
 
 def _oversold_only_rows(
@@ -842,11 +920,11 @@ def hits(
     # 那不该被当成一个「未知形态」而报 400
     picked = [key for key in (pattern or []) if key]
     if picked:
-        unknown = [key for key in picked if key not in _META]
+        unknown = [key for key in picked if not _ok_pattern(key)]
         if unknown:
             raise HTTPException(
                 status_code=400,
-                detail=f"未知形态 {', '.join(unknown)}，可选：{', '.join(_META)}",
+                detail=f"未知形态 {', '.join(unknown)}，可选：{', '.join((*_META, *PATTERN_ALIASES))}",
             )
 
     # 窗口模式下要回填「这一轮持续了几天 / 最近哪天」；单日模式留空。

@@ -167,7 +167,7 @@ def test_execute_creates_one_linked_journal(db):
         user_id=user_id,
         code="300001",
         name="测试A",
-        plan_date=today_cn(),
+        plan_date=SIGNAL,  # 必须是交易日：回填会走 `validate_entry`（2026-11-04 统一）
         buy_price=10.0,
         stop_price=9.0,
         source="wudao_start",

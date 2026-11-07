@@ -50,6 +50,25 @@ const GROUP_ORDER = [
 ]
 
 /**
+ * 「汇总」这类**别名 chip**：一个 key 代表一组形态，命中组里**任意一个**就算命中它。
+ *
+ * 权威定义在后端 `services/patterns.py` 的 `PATTERN_ALIASES`（扫描不写别名行，
+ * `pattern` 参数在查询层展开）。这里只用于**前端兜底过滤**：列表行里的 `patterns`
+ * 永远带真实形态，不展开的话 `picked.every(...)` 会把整屏都筛掉。
+ */
+const PATTERN_ALIAS_MEMBERS: Record<string, string[]> = {
+  zgnb_all: [
+    'zgnb_turn',
+    'zgnb_shrink',
+    'zgnb_origin',
+    'zgnb_super_shrink',
+    'zgnb_pull_white',
+    'zgnb_pull_super',
+    'zgnb_pull_yellow',
+  ],
+}
+
+/**
  * 默认视图（没选形态）一次取多少只。
  *
  * **2026-09-26 用户定为 50**（原 500）：这个列表是「今天最值得看的几十只」，
@@ -849,7 +868,13 @@ export default function Patterns() {
       // 留一道是兜底（也保证每行是按**全部**命中形态判的，不是按展示用的截断列表）
       // 窗口模式下后端放宽成「窗口内先后命中过每一个」，并把所选形态**各自首次命中**
       // 那次都塞进 `patterns`，所以这一句照样成立（2026-10-14 修口径不一致）
-      return picked.every((key) => stock.patterns.some((item) => item.pattern === key))
+      // 「汇总」这类别名要展开成成员：行里带的是真实形态，不是别名 key（2026-11-07）
+      return picked.every((key) => {
+        const members = PATTERN_ALIAS_MEMBERS[key] ?? [key]
+        return members.some((member) =>
+          stock.patterns.some((item) => item.pattern === member),
+        )
+      })
     })
   }, [hits, picked, boards, deferredMinScore, trendOnly])
 
