@@ -91,6 +91,15 @@ def validate_code(session: Session, code: str) -> str:
     return digits
 
 
+class PlanJournalClosed(Exception):
+    """这条计划已经有一笔**已平仓**的日志，不能再转成持仓。
+
+    2026-11-08 第二轮复审 P2-NEW-03：以前直接返回那笔已平仓记录，随后计划被标成
+    「已执行」，API 再从「未平仓列表」里取它 → 404；更糟的是重复转持仓看起来
+    「成功了」但持仓页永远看不到。现在明确 409，且计划 / 交易都不动。
+    """
+
+
 def create(
     session: Session,
     user_id: int,
@@ -110,9 +119,10 @@ def create(
     **一条计划最多一笔**（2026-11-08 审计 P1-01）：带 `plan_id` 时先查是否已有
     日志，有就直接返回那一笔（幂等）；并发仍可能同时看不到，靠
     `ux_trade_journal_user_plan` 这个唯一索引兜底 —— 撞上了回滚再查一次。
+    **已平仓**的日志不能再当成「持仓」返回，抛 `PlanJournalClosed`（API 层 409）。
 
     `commit=False` 给「要和别的写同一事务」的调用方用（如 `from-plan` 要同时改
-    计划状态，见 P2-06）。此时只 `flush()` 拿到 id，由调用方统一提交。
+    计划状态，见 P2-06）。插入本身已在该事务里执行，由调用方统一提交。
     """
     digits = validate_code(session, code)
     # 与交易日志 / 计划执行共用同一份校验：交易日、不晚于今天、股数 > 0、仓位 0-100
@@ -131,28 +141,28 @@ def create(
             raise ValueError("关联的计划不存在")
         existing = _journal_of_plan(session, user_id, plan_id)
         if existing is not None:
+            if existing.exit_date is not None:
+                raise PlanJournalClosed(
+                    "这条计划关联的交易已经平仓，不能再转为持仓；如需重新建仓，请新建一笔交易"
+                )
             return existing
-    # 行数上限由服务层统一把关（2026-11-08 审计 P2-03）：这个入口以前完全不看 500 条
-    trade_journal.ensure_under_limit(session, user_id)
     basic = session.get(StockBasic, digits)
-    journal = TradeJournal(
-        user_id=user_id,
-        code=digits,
-        name=(name or "").strip() or (basic.name if basic else None),
-        entry_date=entry_date,
-        entry_price=float(entry_price),
-        shares=shares,
-        position_pct=position_pct,
-        plan_id=plan_id,
-        reason_type="other",
-        note=(note or "").strip() or None,
-    )
-    session.add(journal)
     try:
+        journal = trade_journal.insert_trade(
+            session,
+            user_id,
+            code=digits,
+            name=(name or "").strip() or (basic.name if basic else None),
+            entry_date=entry_date,
+            entry_price=float(entry_price),
+            shares=shares,
+            position_pct=position_pct,
+            plan_id=plan_id,
+            reason_type="other",
+            note=(note or "").strip() or None,
+        )
         if commit:
             session.commit()
-        else:
-            session.flush()
     except IntegrityError:
         # 并发下另一个请求已经给这条计划建了日志 —— 回滚后把那一笔查出来返回。
         # 走到这里说明前面的 get-or-create 没看到它（两个请求同时 SELECT 到空）。
@@ -162,8 +172,11 @@ def create(
         )
         if existing is None:
             raise
+        if existing.exit_date is not None:
+            raise PlanJournalClosed(
+                "这条计划关联的交易已经平仓，不能再转为持仓；如需重新建仓，请新建一笔交易"
+            ) from None
         return existing
-    session.refresh(journal)
     return journal
 
 

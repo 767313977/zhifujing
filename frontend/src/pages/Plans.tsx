@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api } from '../api/client'
 import type {
@@ -155,6 +155,13 @@ export default function PlansPage() {
    * 并发下可能各插一笔日志。后端已用唯一索引兜底，前端这层是让用户点不出第二次。
    */
   const [execBusy, setExecBusy] = useState(false)
+  /**
+   * 在途标记的**同步副本**（2026-11-08 第二轮复审）：`useState` 的更新要等下一次渲染，
+   * 浏览器把双击的两个 click 放在同一个任务里派发时，第二次 click 仍会读到旧的
+   * `execBusy=false`，于是照发第二次请求。ref 在第一次 click 时立刻置位，挡住同 tick。
+   */
+  const execBusyRef = useRef(false)
+  const positionBusyRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   /**
@@ -316,11 +323,12 @@ export default function PlansPage() {
   }
 
   const submitExec = async () => {
-    if (!execRow || execBusy) return
+    if (!execRow || execBusyRef.current) return
     if (!execForm.actual.trim()) {
       setError('实际买入价是必填项')
       return
     }
+    execBusyRef.current = true
     setExecBusy(true)
     try {
       await api.executePlan(execRow.id, {
@@ -335,12 +343,14 @@ export default function PlansPage() {
     } catch (err) {
       setError((err as Error).message)
     } finally {
+      execBusyRef.current = false
       setExecBusy(false)
     }
   }
 
   const toPosition = async (row: TradePlanRow) => {
-    if (positionBusy != null) return // 已有一次在途，忽略连点
+    if (positionBusyRef.current) return // 已有一次在途，忽略连点（ref 挡同 tick 双击）
+    positionBusyRef.current = true
     setPositionBusy(row.id)
     try {
       const position = await api.positionFromPlan(row.id)
@@ -349,6 +359,7 @@ export default function PlansPage() {
     } catch (err) {
       setError((err as Error).message)
     } finally {
+      positionBusyRef.current = false
       setPositionBusy(null)
     }
   }

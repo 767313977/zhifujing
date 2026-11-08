@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
@@ -24,7 +24,7 @@ const LABEL = 'mb-1 block text-[12px] text-fg-dim'
  * 注册要邀请码 —— 这是整套系统的门：没有码连账号都建不出来（比限流更硬的边界）。
  */
 export default function Login() {
-  const { me, setUser } = useAuth()
+  const { me, setUser, logoutPending, retryLogout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   // 被 RequireAuth 拦下来时会带上原来要去的地址，登完直接回去
@@ -35,17 +35,29 @@ export default function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [inviteCode, setInviteCode] = useState('')
-  // 上一次登出请求没送达服务端（断网 / 超时）：HttpOnly cookie 只能由服务端删，
-  // 那意味着**会话可能还活着**，进页面就如实说出来（2026-11-08 审计 P2-05）
-  const [error, setError] = useState<string | null>(
-    state?.logoutFailed
-      ? '上次登出请求没有送达服务端，登录状态可能仍然有效。如使用公共设备，请关闭浏览器后再离开。'
-      : null,
-  )
+  // 上一次登出请求没送达服务端（断网 / 超时 / 5xx）：HttpOnly cookie 只能由服务端删，
+  // 那意味着**服务端会话可能还活着**。必须如实提示，不能显示成「已安全退出」
+  // （2026-11-08 第二轮复审 P1-NEW-02）。
+  const [logoutWarning, setLogoutWarning] = useState(Boolean(state?.logoutFailed))
+  const [retrying, setRetrying] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // 已登录就不用看这一页了（例如按了浏览器后退）
+  useEffect(() => {
+    // 刷新后标记仍在（Provider 已静默重试过）：照样把警告显示出来，别因为
+    // 路由 state 丢了就静默。
+    if (logoutPending) setLogoutWarning(true)
+  }, [logoutPending])
+
   if (me !== null) return <Navigate to={from} replace />
+
+  async function retry() {
+    setRetrying(true)
+    const revoked = await retryLogout()
+    setRetrying(false)
+    // 只有服务端真的撤销了才撤掉警告
+    setLogoutWarning(!revoked)
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -63,6 +75,8 @@ export default function Login() {
           ? await api.login(username.trim(), password)
           : await api.register(inviteCode.trim(), username.trim(), password)
       setUser(user)
+      // 登录成功 = 新会话已建立，旧的待撤销状态不再成立（setUser 内部也会清标记）
+      setLogoutWarning(false)
       // replace：别让「后退」回到登录页
       navigate(from, { replace: true })
     } catch (err) {
@@ -110,6 +124,29 @@ export default function Login() {
                 </button>
               ))}
             </div>
+
+            {logoutWarning && (
+              <Alert onClose={() => setLogoutWarning(false)}>
+                <div className="space-y-2">
+                  <div>
+                    上次登出没有完成：<b>本地界面已退出，但服务端会话可能仍然有效</b>
+                    。关闭浏览器不一定清除持久化 Cookie。
+                  </div>
+                  <div>
+                    请恢复网络后重试注销；如果这是公共设备，也可以用浏览器的「清除网站数据」
+                    手动删除该站点的 Cookie。
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void retry()}
+                    disabled={retrying}
+                    className="border border-danger/40 px-2.5 py-1 text-[13px] transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {retrying ? '重试中…' : '重试注销'}
+                  </button>
+                </div>
+              </Alert>
+            )}
 
             {error && <Alert onClose={() => setError(null)}>{error}</Alert>}
 

@@ -68,47 +68,13 @@ def _check_t_conflicts(
 ) -> None:
     """改底仓的买入 / 卖出日时，已有的做 T 不能越界（做 T 记录需求 §2）。
 
-    做 T 的前提是「买入日之后才有底仓可 T」（#3）且不能晚于底仓卖出日（#4）；
-    一旦底仓日期改得让某条 T 不满足，就报 400 并列出是哪几条 —— 静默放行会让
-    那些 T 的指标算在窗口外，看起来只是「数字不对」，很难往回找。
+    校验本体在 `services.trade_journal.check_t_bounds`（2026-11-08 第二轮复审
+    P1-NEW-01 挪过去的）：计划回填也必须走同一份校验，不能各写一套。
     """
-    rows = list(session.scalars(select(TradeT).where(TradeT.trade_id == trade_id)))
-    if not rows:
-        return
-    out_of_range = [
-        row
-        for row in rows
-        if row.trade_date <= entry_date
-        or (
-            exit_date is not None
-            and (
-                row.trade_date > exit_date
-                or (row.leg2_date is not None and row.leg2_date > exit_date)
-            )
-        )
-    ]
-    if out_of_range:
-        names = "、".join(
-            f"T#{row.id}（{row.trade_date}）" for row in out_of_range
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=f"买入日 / 卖出日改动后这些做 T 越界：{names}，请先调整或删除",
-        )
-    if exit_date is not None:
-        unfinished = [
-            row
-            for row in rows
-            if row.buy_price is None or row.sell_price is None
-        ]
-        if unfinished:
-            names = "、".join(
-                f"T#{row.id}（{row.trade_date}）" for row in unfinished
-            )
-            raise HTTPException(
-                status_code=400,
-                detail=f"底仓已平仓，但这些做 T 还没补第二腿：{names}，请先补上或删除",
-            )
+    try:
+        trade_journal.check_t_bounds(session, trade_id, entry_date, exit_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _apply(session: Session, trade: TradeJournal, payload: TradeJournalIn) -> None:
@@ -280,17 +246,32 @@ def create_trade(
     session: Session = Depends(get_db),
     user: AppUser = Depends(current_user),
 ) -> TradeJournalRow:
-    # 行数上限收敛到服务层（2026-11-08 审计 P2-03）：手工建持仓 / 转持仓 / 计划回填
-    # 都往同一张表写，只在「交易日志」这一个入口拦是拦不住的。
-    try:
-        trade_journal.ensure_under_limit(session, user.id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # 上限与插入必须是同一个原子操作（2026-11-08 第二轮复审 P2-NEW-04）：
+    # 先查一次行数再 add/commit 的写法在并发下会一起穿过 500 条。
     trade = TradeJournal(user_id=user.id)
     _apply(session, trade, payload)
-    session.add(trade)
+    try:
+        trade = trade_journal.insert_trade(
+            session,
+            user.id,
+            code=trade.code,
+            name=trade.name,
+            entry_date=trade.entry_date,
+            entry_price=trade.entry_price,
+            shares=trade.shares,
+            exit_date=trade.exit_date,
+            exit_price=trade.exit_price,
+            position_pct=trade.position_pct,
+            reason_type=trade.reason_type,
+            reason_key=trade.reason_key,
+            reason_text=trade.reason_text,
+            plan_stop=trade.plan_stop,
+            note=trade.note,
+        )
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     session.commit()
-    session.refresh(trade)
     return _row(session, user, trade.id)
 
 

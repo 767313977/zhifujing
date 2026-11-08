@@ -62,6 +62,9 @@ def create_position(
             note=payload.note,
             plan_id=payload.plan_id,
         )
+    except positions.PlanJournalClosed as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _row(session, user, journal)
@@ -96,6 +99,9 @@ def create_from_plan(
             plan_id=plan.id,
             commit=False,
         )
+    except positions.PlanJournalClosed as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc

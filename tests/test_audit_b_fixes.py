@@ -32,7 +32,7 @@ from app.models import (
     TradePlan,
 )
 from app.schemas import NoteIn, TradePlanIn
-from app.services import etf_flow
+from app.services import etf_flow, trade_plan
 from app.timeutil import today_cn
 
 DAY = date(2026, 10, 9)
@@ -67,9 +67,11 @@ def _racing_session_local(bind, race):
 # ------------------------------------------------------------------ #1 并发 500
 
 
-def test_create_plan_race_returns_existing_row(engine):
-    def race(bind):
-        with Session(bind) as other:
+def test_create_plan_race_returns_existing_row(engine, monkeypatch):
+    """初始 SELECT 之后、真正 INSERT 之前，另一个请求先提交了同键计划。"""
+
+    def race():
+        with Session(engine) as other:
             other.add(
                 TradePlan(
                     user_id=1,
@@ -82,7 +84,14 @@ def test_create_plan_race_returns_existing_row(engine):
             )
             other.commit()
 
-    with _racing_session_local(engine, race)() as session:
+    original = trade_plan.insert_plan
+
+    def racy_insert(session, user_id, values):
+        race()
+        return original(session, user_id, values)
+
+    monkeypatch.setattr(trade_plan, "insert_plan", racy_insert)
+    with Session(engine) as session:
         user = session.get(AppUser, 1)
         payload = TradePlanIn(
             code="600519",

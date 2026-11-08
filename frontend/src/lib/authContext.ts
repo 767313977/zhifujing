@@ -13,6 +13,45 @@
 import { createContext, useContext } from 'react'
 import type { Me } from '../api/types'
 
+/**
+ * 「服务端会话还没撤销」的本地标记（2026-11-08 第二轮复审 P1-NEW-02）。
+ *
+ * ⚠️ **只存时间戳，绝不存令牌**：登录态在 HttpOnly Cookie 里，JS 读不到也不该读。
+ * 标记的作用只有两个：① 刷新时不要拿还活着的会话自动恢复到业务页；② 提醒前端
+ * 在网络恢复后重试注销。用 localStorage 而不是 sessionStorage，是因为「关掉浏览器」
+ * 不一定清掉持久化 Cookie，风险跨浏览器会话存在。
+ */
+const LOGOUT_PENDING_KEY = 'fupan.logout.pending'
+
+function _storage(): Storage | null {
+  try {
+    return window.localStorage
+  } catch {
+    // 隐私模式 / 禁用存储：退化为「只能在当前页面提示」，不阻断登出流程
+    return null
+  }
+}
+
+export function hasPendingLogout(): boolean {
+  return _storage()?.getItem(LOGOUT_PENDING_KEY) !== null
+}
+
+export function markLogoutPending(): void {
+  try {
+    _storage()?.setItem(LOGOUT_PENDING_KEY, String(Date.now()))
+  } catch {
+    // 存不进去（配额 / 隐私模式）时至少当前页面仍会显示失败提示
+  }
+}
+
+export function clearPendingLogout(): void {
+  try {
+    _storage()?.removeItem(LOGOUT_PENDING_KEY)
+  } catch {
+    // 删不掉不影响登录：下次成功登录仍会覆盖同名的会话 Cookie
+  }
+}
+
 export interface AuthValue {
   /** 当前用户；null = 没登录（或还在确认，见 `checking`） */
   me: Me | null
@@ -21,10 +60,14 @@ export interface AuthValue {
   /** 登录 / 注册成功后调用，把用户塞进来，省一次 /auth/me */
   setUser: (me: Me) => void
   /**
-   * 登出。返回 `false` 表示**登出请求没送达服务端**（断网 / 超时）——
-   * 本地状态照样清，但会话可能仍有效，调用方要如实告诉用户（见 2026-11-08 审计 P2-05）。
+   * 登出。返回 `false` 表示**登出请求没送达服务端**（断网 / 超时 / 服务端异常）——
+   * 本地状态照样清，但会话可能仍有效，调用方要如实告诉用户。
    */
   logout: () => Promise<boolean>
+  /** 上一次登出请求没送达服务端：页面必须显示「服务端会话可能仍有效」的警告 */
+  logoutPending: boolean
+  /** 重试注销；返回 `true` 表示服务端会话已撤销、待撤销标记已清除 */
+  retryLogout: () => Promise<boolean>
 }
 
 export const AuthContext = createContext<AuthValue | null>(null)

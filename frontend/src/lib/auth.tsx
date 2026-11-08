@@ -15,7 +15,13 @@ import type { ReactNode } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { api, UNAUTHORIZED_EVENT } from '../api/client'
 import type { Me } from '../api/types'
-import { AuthContext, useAuth } from './authContext'
+import {
+  AuthContext,
+  clearPendingLogout,
+  hasPendingLogout,
+  markLogoutPending,
+  useAuth,
+} from './authContext'
 import { clearStockList } from './stockNav'
 
 // context / 类型 / `useAuth` 都在 `lib/authContext.ts`（拆开是为了 Fast Refresh）。
@@ -34,15 +40,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * 刚登录成功的人立刻被踢回登录页。用 ref 记「已经有人登录过」，晚到的初始结果一律忽略。
    */
   const userRef = useRef<Me | null>(null)
+  /**
+   * 服务端会话是否**还没撤销**（2026-11-08 第二轮复审 P1-NEW-02）。
+   *
+   * 断网 / 超时 / 服务端异常时，本地界面可以退出，但 HttpOnly Cookie 只能由服务端
+   * 删除 —— 那种状态下必须如实提示，并在网络恢复后重试。初值从 localStorage 读，
+   * 刷新后仍然有效。
+   */
+  const [logoutPending, setLogoutPending] = useState<boolean>(() => hasPendingLogout())
 
   const setUser = useCallback((user: Me) => {
+    // 登录成功 = 新会话已建立：旧的「待撤销」标记不能留到下一次刷新
+    clearPendingLogout()
+    setLogoutPending(false)
     userRef.current = user
     setMe(user)
     setChecking(false)
   }, [])
 
+  /**
+   * 真正撤销服务端会话。成功才清掉待撤销标记；失败则保留（**不含令牌**）。
+   *
+   * 返回 `true` = 服务端已撤销（或本来就没有会话），`false` = 请求没送达。
+   */
+  const revokeSession = useCallback(async () => {
+    // 已经登录成功的人不要再发注销：那会把刚建立的新会话删掉
+    if (userRef.current !== null) {
+      clearPendingLogout()
+      setLogoutPending(false)
+      return true
+    }
+    try {
+      await api.logout()
+      clearPendingLogout()
+      setLogoutPending(false)
+      return true
+    } catch (err) {
+      // 断网 / 超时 / 5xx：cookie 还在浏览器里，会话可能仍然有效。
+      // 只记一条日志，不把 rejection 冒泡成 Unhandled Promise rejection。
+      console.warn('登出请求未送达服务端，会话可能仍然有效：', err)
+      markLogoutPending()
+      setLogoutPending(true)
+      return false
+    }
+  }, [])
+
   useEffect(() => {
     let alive = true
+    if (hasPendingLogout()) {
+      // 待撤销状态：**不能**再走 /auth/me —— 即使服务端会话还活着，也不该因为
+      // 刷新页面就自动恢复到已登录的业务页。直接当未登录处理，并静默重试注销。
+      setChecking(false)
+      void revokeSession()
+      return () => {
+        alive = false
+      }
+    }
     api
       .authMe()
       .then((user) => {
@@ -64,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       alive = false
     }
-  }, [setUser])
+  }, [revokeSession, setUser])
 
   useEffect(() => {
     const onUnauthorized = () => {
@@ -76,32 +129,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(async () => {
-    let delivered = true
-    try {
-      await api.logout()
-    } catch (err) {
-      // 后端失败（网断了、后台标签里登出请求 30s 超时…）只记一条：登出是**尽力而为**
-      // 的，服务端那次失败不能让 rejection 冒泡成 Unhandled Promise rejection，
-      // 也不能挡住下面的本地清理与跳转（不等它、不阻塞）。
-      console.warn('登出请求失败，仍按已登出处理：', err)
-      delivered = false
-    }
-    // 无论服务端成功与否都把本地状态清掉：目标是「别再显示成已登录」——
-    // 会话可能已失效、或请求根本没发出去，不该让用户卡在已登录界面。
+    // 先退出**本地界面**：目标是「别再显示成已登录」——会话可能已失效、或请求根本
+    // 没发出去，不该让用户卡在已登录界面。
     userRef.current = null
     setMe(null)
     // 详情页「← → 切换」用的列表存在 sessionStorage 里，是上一个用户点过的上下文，
     // 登出时清掉，别带给下一个登录的人（2026-10-10 修）
     clearStockList()
+    // 再撤销**服务端会话**。失败时保留待撤销标记（不含令牌），登录页会明确警告
+    // 「服务端会话可能仍然有效」，并提供重试（2026-11-08 第二轮复审 P1-NEW-02）。
+    const revoked = await revokeSession()
     // 未登录时进登录页不能用 push，否则用户按返回又回到需要登录的页面。
-    // ⚠️ 请求没送达时把这件事带给登录页（2026-11-08 审计 P2-05）：HttpOnly cookie
-    // 只能由服务端删，请求没到就等于**会话还活着**，不能静默假装退出了。
-    navigate('/login', { replace: true, state: { logoutFailed: !delivered } })
-    return delivered
-  }, [navigate])
+    navigate('/login', { replace: true, state: { logoutFailed: !revoked } })
+    return revoked
+  }, [navigate, revokeSession])
 
   return (
-    <AuthContext.Provider value={{ me, checking, setUser, logout }}>
+    <AuthContext.Provider
+      value={{ me, checking, setUser, logout, logoutPending, retryLogout: revokeSession }}
+    >
       {children}
     </AuthContext.Provider>
   )

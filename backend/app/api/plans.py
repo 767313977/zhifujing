@@ -8,7 +8,7 @@ import logging
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -47,6 +47,35 @@ def _journal_of_plan(session: Session, user_id: int, plan_id: int) -> TradeJourn
         .order_by(TradeJournal.id)
         .limit(1)
     )
+
+
+def _guard_journal_backfill(
+    session: Session, journal: TradeJournal, entry_date: date
+) -> None:
+    """计划回填命中**已有日志**时的历史保护（2026-11-08 第二轮复审 P1-NEW-01）。
+
+    - 已平仓：不允许再改买入日 / 成本等历史（409）；若新买入日晚于卖出日，先给
+      更具体的 400；
+    - 未平仓但有做 T：改日期必须走交易日志同一份做 T 边界校验（400）。
+    """
+    try:
+        trade_journal.check_journal_dates(entry_date, journal.exit_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if journal.exit_date is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "这条计划关联的交易已平仓，计划回填不能再修改买入日 / 成本等历史数据。"
+                "如需修正，请到「交易日志」页直接编辑那笔记录。"
+            ),
+        )
+    try:
+        trade_journal.check_t_bounds(
+            session, journal.id, entry_date, journal.exit_date
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _apply_plan(plan: TradePlan, payload: PlanExecuteIn) -> None:
@@ -199,6 +228,31 @@ def _fill(plan: TradePlan, name: str | None, payload: TradePlanIn) -> None:
     plan.deviation = (payload.deviation or "").strip() or None
 
 
+def _plan_values(plan: TradePlan) -> dict:
+    """把计划行摊成插入用的字段表（`trade_plan.insert_plan` 的原子插入用）。"""
+    return {
+        "code": plan.code,
+        "name": plan.name,
+        "plan_date": plan.plan_date,
+        "buy_price": plan.buy_price,
+        "stop_price": plan.stop_price,
+        "note": plan.note,
+        "source": plan.source,
+        "source_name": plan.source_name,
+        "signal_date": plan.signal_date,
+        "ref_price": plan.ref_price,
+        "buy_high": plan.buy_high,
+        "target_price": plan.target_price,
+        "position_note": plan.position_note,
+        "observe_only": plan.observe_only,
+        "status": plan.status,
+        "status_source": plan.status_source,
+        "actual_price": plan.actual_price,
+        "followed_plan": plan.followed_plan,
+        "deviation": plan.deviation,
+    }
+
+
 @router.post("", response_model=TradePlanRow)
 def create_plan(
     payload: TradePlanIn,
@@ -214,26 +268,20 @@ def create_plan(
         )
     )
     if plan is None:
-        # 行数上限（2026-11-01 审计 P2-2）：只有**新增**才数 —— 同一天同一只票是
-        # upsert（已有行就改写），不该被上限挡掉。
-        count = (
-            session.scalar(
-                select(func.count())
-                .select_from(TradePlan)
-                .where(TradePlan.user_id == user.id)
-            )
-            or 0
-        )
-        if count >= trade_plan.MAX_PLANS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"交易计划最多 {trade_plan.MAX_PLANS} 条，你现在有 {count} 条，先删掉一些再加",
-            )
-        plan = TradePlan(user_id=user.id, code=code, plan_date=payload.plan_date)
-        session.add(plan)
-    _fill(plan, name, payload)
+        # 只有**新增**才受 200 条上限约束：同一天同一只票是 upsert（已有行就改写）。
+        # 上限检查与插入由 `trade_plan.insert_plan` 在同一个 SQL 语句里完成
+        # （2026-11-08 第二轮复审 P2-NEW-04）。
+        draft = TradePlan(user_id=user.id, code=code, plan_date=payload.plan_date)
+        _fill(draft, name, payload)
+    else:
+        _fill(plan, name, payload)
     try:
+        if plan is None:
+            plan = trade_plan.insert_plan(session, user.id, _plan_values(draft))
         session.commit()
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except IntegrityError:
         # 并发连点 / 两个标签页同时保存：两个请求都在上面「查不到」，后者 INSERT 撞
         # `ux_trade_plan_user_code_date`。这不是错误 —— 结果与串行路径完全一样（那一行
@@ -326,41 +374,40 @@ def execute_plan(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    _apply_plan(plan, payload)
-
     reason_type = "other"
     if plan.source:
         reason_type = "wudao" if plan.source.startswith("wudao") else "pattern"
     journal = _journal_of_plan(session, user.id, plan.id)
-    if journal is None:
-        # 行数上限与「交易日志」入口共用同一份（2026-11-08 审计 P2-03）：
-        # 只在确实要新增时检查 —— 重复回填是更新那一笔，不能被上限挡住。
-        try:
-            trade_journal.ensure_under_limit(session, user.id)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        journal = TradeJournal(
-            user_id=user.id,
-            code=plan.code,
-            name=plan.name,
-            entry_date=entry_date,
-            entry_price=float(payload.actual_price),
-            shares=payload.shares,
-            position_pct=payload.position_pct,
-            reason_type=reason_type,
-            reason_key=plan.source,
-            # 偏差（追高 / 提前买…）是**执行质量**，不是买入理由：只留在
-            # `plan.deviation`，日志的理由由 `reason_key` 指向计划来源
-            # （2026-11-01 审计 P2）
-            reason_text=None,
-            plan_stop=plan.stop_price,
-            plan_id=plan.id,
-            note=(payload.note or "").strip() or None,
-        )
-        session.add(journal)
-    else:
-        _apply_journal(journal, plan, entry_date, payload)
+    created = journal is None
     try:
+        if journal is not None:
+            # 已有关联日志：先做历史保护，再动计划（校验失败时计划一个字都不改）
+            _guard_journal_backfill(session, journal, entry_date)
+        else:
+            # 上限与插入是同一个原子操作（2026-11-08 第二轮复审 P2-NEW-04）。
+            # 先插日志再改计划：避免 `_apply_plan` 的待写字段被 autoflush 提前落库。
+            journal = trade_journal.insert_trade(
+                session,
+                user.id,
+                code=plan.code,
+                name=plan.name,
+                entry_date=entry_date,
+                entry_price=float(payload.actual_price),
+                shares=payload.shares,
+                position_pct=payload.position_pct,
+                reason_type=reason_type,
+                reason_key=plan.source,
+                # 偏差（追高 / 提前买…）是**执行质量**，不是买入理由：只留在
+                # `plan.deviation`，日志的理由由 `reason_key` 指向计划来源
+                # （2026-11-01 审计 P2）
+                reason_text=None,
+                plan_stop=plan.stop_price,
+                plan_id=plan.id,
+                note=(payload.note or "").strip() or None,
+            )
+        _apply_plan(plan, payload)
+        if not created:
+            _apply_journal(journal, plan, entry_date, payload)
         session.commit()
     except IntegrityError:
         # 两个请求同时回填同一条计划：唯一索引只让一笔落库，输的那笔改成**更新已有记录**，
@@ -372,9 +419,18 @@ def execute_plan(
                 status_code=409, detail="同一条计划正在被并发提交，请重试"
             ) from None
         plan = session.get(TradePlan, plan_id)
+        if plan is None:  # 另一种可能：计划刚好被删掉
+            raise HTTPException(status_code=404, detail="这条计划不存在") from None
+        _guard_journal_backfill(session, journal, entry_date)
         _apply_plan(plan, payload)
         _apply_journal(journal, plan, entry_date, payload)
         session.commit()
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        session.rollback()
+        raise
     session.refresh(journal)
     return PlanExecuteOut(
         row=_row(session, user, plan.id, plan.plan_date), journal_id=journal.id
@@ -407,9 +463,20 @@ def delete_plan(
     session: Session = Depends(get_db),
     user: AppUser = Depends(current_user),
 ) -> dict:
+    """删除计划，并把关联日志的 `plan_id` 置空（2026-11-08 第二轮复审 P2-NEW-05）。
+
+    `trade_journal.plan_id` 没有外键，直接删计划会在日志里留下悬空 id。这里只
+    **解除关联**：交易日志、做 T、收益历史全部原样保留 —— 删计划不该删掉交易。
+    两步在同一个事务里提交，不存在「日志还指着已删计划」的中间态。
+    """
     plan = session.get(TradePlan, plan_id)
     if plan is None or plan.user_id != user.id:
         raise HTTPException(status_code=404, detail="这条计划不存在")
+    session.execute(
+        update(TradeJournal)
+        .where(TradeJournal.user_id == user.id, TradeJournal.plan_id == plan.id)
+        .values(plan_id=None)
+    )
     session.delete(plan)
     session.commit()
     return {"ok": True}

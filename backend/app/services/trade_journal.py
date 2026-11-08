@@ -20,7 +20,7 @@ import logging
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, literal, select
 from sqlalchemy.orm import Session
 
 from app.config import FEE_BUY, FEE_SELL
@@ -82,25 +82,136 @@ def validate_entry(
 MAX_ENTRIES = 500
 
 
-def ensure_under_limit(session: Session, user_id: int, *, adding: int = 1) -> None:
-    """交易日志行数上限。**所有写入口共用**，别再各自写一份。
+def _limit_message() -> str:
+    return f"交易日志最多 {MAX_ENTRIES} 笔，先删掉一些再加"
 
-    以前只有 `POST /api/journal` 检查 500 条，手工建持仓 / 从计划转持仓 / 计划回填
-    都往同一张表插、完全不看上限 —— 同一个用户能靠别的入口突破设计上限。
-    超限抛 `ValueError`（文案直接给用户看），API 层转 400。
+
+def insert_trade(
+    session: Session,
+    user_id: int,
+    *,
+    code: str,
+    entry_date: date,
+    entry_price: float,
+    name: str | None = None,
+    shares: int | None = None,
+    exit_date: date | None = None,
+    exit_price: float | None = None,
+    position_pct: float | None = None,
+    reason_type: str = "other",
+    reason_key: str | None = None,
+    reason_text: str | None = None,
+    plan_stop: float | None = None,
+    plan_id: int | None = None,
+    note: str | None = None,
+) -> TradeJournal:
+    """新增一笔交易日志，**原子地**执行「500 笔上限检查 + 插入」。
+
+    为什么不用「先 COUNT 一次、再 session.add()」：那是两条语句，两个并发请求
+    会同时看到「499 笔」然后各插一笔，落到 501（2026-11-08 第二轮复审 P2-NEW-04）。
+
+    这里用一条 `INSERT ... SELECT ... WHERE (SELECT COUNT(*) ...) < 500`：计数与插入
+    在 SQLite 的同一个写语句里完成，写锁只在执行这一行期间持有，不是全局长事务。
+    超限时 `rowcount == 0`，抛 `ValueError`（文案直接给用户看）。
+
+    `plan_id` 的唯一索引 `ux_trade_journal_user_plan` 仍由数据库兜底：并发给同一条
+    计划插第二笔会抛 `IntegrityError`，由调用方回滚后改走「更新已有记录」。
     """
+    table = TradeJournal.__table__
+    values = {
+        "user_id": user_id,
+        "code": code,
+        "name": name,
+        "entry_date": entry_date,
+        "entry_price": float(entry_price),
+        "shares": shares,
+        "exit_date": exit_date,
+        "exit_price": float(exit_price) if exit_price is not None else None,
+        "position_pct": position_pct,
+        "reason_type": reason_type,
+        "reason_key": reason_key,
+        "reason_text": reason_text,
+        "plan_stop": plan_stop,
+        "plan_id": plan_id,
+        "note": note,
+    }
     count = (
-        session.scalar(
-            select(func.count())
-            .select_from(TradeJournal)
-            .where(TradeJournal.user_id == user_id)
-        )
-        or 0
+        select(func.count())
+        .select_from(table)
+        .where(table.c.user_id == user_id)
+        .scalar_subquery()
     )
-    if count + adding > MAX_ENTRIES:
-        raise ValueError(
-            f"交易日志最多 {MAX_ENTRIES} 笔，你现在有 {count} 笔，先删掉一些再加"
+    statement = insert(table).from_select(
+        list(values),
+        select(
+            *[
+                literal(value, type_=table.c[column].type)
+                for column, value in values.items()
+            ]
+        ).where(count < MAX_ENTRIES),
+    )
+    result = session.execute(statement)
+    if result.rowcount != 1:
+        raise ValueError(_limit_message())
+    journal = session.get(TradeJournal, result.lastrowid)
+    if journal is None:  # 理论上不会发生：刚插进去的行
+        raise RuntimeError("交易日志写入后读不回来")
+    return journal
+
+
+def check_journal_dates(entry_date: date, exit_date: date | None) -> None:
+    """买入日不得晚于已有卖出日（计划回填与日志编辑共用）。"""
+    if exit_date is not None and entry_date > exit_date:
+        raise ValueError("买入日期不能晚于卖出日期")
+
+
+def check_t_bounds(
+    session: Session,
+    trade_id: int,
+    entry_date: date,
+    exit_date: date | None,
+) -> None:
+    """改底仓的买入 / 卖出日时，已有的做 T 不能越界（做 T 记录需求 §2）。
+
+    做 T 的前提是「买入日之后才有底仓可 T」（#3）且不能晚于底仓卖出日（#4）；
+    一旦底仓日期改得让某条 T 不满足，就报错并列出是哪几条 —— 静默放行会让
+    那些 T 的指标算在窗口外，看起来只是「数字不对」，很难往回找。
+
+    2026-11-08 第二轮复审 P1-NEW-01：从 `api/journal.py` 挪到这里，计划回填
+    （`api/plans.execute_plan`）与交易日志编辑共用同一份校验，避免计划回填
+    绕开做 T 边界。抛 `ValueError`，API 层统一转 400。
+    """
+    rows = list(session.scalars(select(TradeT).where(TradeT.trade_id == trade_id)))
+    if not rows:
+        return
+    out_of_range = [
+        row
+        for row in rows
+        if row.trade_date <= entry_date
+        or (
+            exit_date is not None
+            and (
+                row.trade_date > exit_date
+                or (row.leg2_date is not None and row.leg2_date > exit_date)
+            )
         )
+    ]
+    if out_of_range:
+        names = "、".join(
+            f"T#{row.id}（{row.trade_date}）" for row in out_of_range
+        )
+        raise ValueError(f"买入日 / 卖出日改动后这些做 T 越界：{names}，请先调整或删除")
+    if exit_date is not None:
+        unfinished = [
+            row
+            for row in rows
+            if row.buy_price is None or row.sell_price is None
+        ]
+        if unfinished:
+            names = "、".join(
+                f"T#{row.id}（{row.trade_date}）" for row in unfinished
+            )
+            raise ValueError(f"底仓已平仓，但这些做 T 还没补第二腿：{names}，请先补上或删除")
 
 
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}

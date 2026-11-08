@@ -13,7 +13,7 @@ import logging
 from collections import defaultdict
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, literal, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -53,6 +53,45 @@ PLAN_STATUSES = tuple(PLAN_STATUS_LABELS)
 #: 2026-11-08 审计 P2-04：上限以前只在 `api/plans.create_plan` 那条路检查，
 #: 「从名单一键生成」可以无限追加；现在收敛到这里，两个入口共用。
 MAX_PLANS = 200
+
+
+def insert_plan(session: Session, user_id: int, values: dict) -> TradePlan:
+    """新增一条计划，**原子地**执行「200 条上限检查 + 插入」。
+
+    2026-11-08 第二轮复审 P2-NEW-04：以前两个入口都是「先 COUNT 再 add/commit」，
+    并发新增不同计划时会同时看到 199 条、各自插一条，落成 201。这里改成一条
+    `INSERT ... SELECT ... WHERE (SELECT COUNT(*) ...) < 200`，计数与插入在 SQLite
+    的同一个写语句里完成，写锁只在这一行执行期间持有。
+
+    超限抛 `ValueError`（文案直接给用户看）；唯一索引冲突仍会抛 `IntegrityError`，
+    由调用方按「改成更新已有计划」处理。
+    """
+    table = TradePlan.__table__
+    data = {"user_id": user_id, **values}
+    count = (
+        select(func.count())
+        .select_from(table)
+        .where(table.c.user_id == user_id)
+        .scalar_subquery()
+    )
+    statement = insert(table).from_select(
+        list(data),
+        select(
+            *[
+                literal(value, type_=table.c[column].type)
+                for column, value in data.items()
+            ]
+        ).where(count < MAX_PLANS),
+    )
+    result = session.execute(statement)
+    if result.rowcount != 1:
+        raise ValueError(
+            f"交易计划最多 {MAX_PLANS} 条，先删掉一些再加"
+        )
+    plan = session.get(TradePlan, result.lastrowid)
+    if plan is None:  # 理论上不会发生：刚插进去的行
+        raise RuntimeError("交易计划写入后读不回来")
+    return plan
 
 
 def _auto_status(plan: TradePlan, today: date) -> str:
@@ -359,33 +398,38 @@ def create_from_signal(
         raise ValueError("这条命中没有可用价位，请手工建计划")
     fallback_stop = round(float(buy) * 0.95, 2)
     stop = stop if stop and stop < buy else fallback_stop
-
-    plan = existing or TradePlan(user_id=user_id, code=digits, plan_date=target)
+    values = {
+        "code": digits,
+        "name": hit.name or basic.name,
+        "plan_date": target,
+        "buy_price": round(float(buy), 2),
+        "stop_price": round(float(stop), 2),
+        "source": pattern,
+        "source_name": PATTERN_NAMES.get(pattern, pattern),
+        "signal_date": hit.trade_date,
+        "ref_price": hit.close,
+    }
     if existing is None:
-        # 只在**确实新增**时数：同一只票同一天重复生成是更新，不该被上限挡掉
-        count = (
-            session.scalar(
-                select(func.count())
-                .select_from(TradePlan)
-                .where(TradePlan.user_id == user_id)
-            )
-            or 0
+        # 上限与插入在服务层做成一个原子操作（2026-11-08 第二轮复审 P2-NEW-04）：
+        # 只有**确实新增**才检查，重复生成同一只票同一天仍是更新。
+        plan = insert_plan(
+            session,
+            user_id,
+            {
+                **values,
+                "note": (
+                    "放弃位由系统按触发价 × 0.95 兜底，请按自己的规则改"
+                    if stop == fallback_stop
+                    else None
+                ),
+            },
         )
-        if count >= MAX_PLANS:
-            raise ValueError(
-                f"交易计划最多 {MAX_PLANS} 条，你现在有 {count} 条，先删掉一些再加"
-            )
-        session.add(plan)
-    plan.name = hit.name or basic.name
-    plan.buy_price = round(float(buy), 2)
-    plan.stop_price = round(float(stop), 2)
-    plan.source = pattern
-    plan.source_name = PATTERN_NAMES.get(pattern, pattern)
-    plan.signal_date = hit.trade_date
-    plan.ref_price = hit.close
-    if existing is None and stop == fallback_stop:
-        plan.note = "放弃位由系统按触发价 × 0.95 兜底，请按自己的规则改"
-    plan.status_source = None  # 新计划交给自动状态
+    else:
+        # 重复生成不覆盖用户已经改过的备注
+        for key, value in values.items():
+            setattr(existing, key, value)
+        existing.status_source = None  # 交回自动状态
+        plan = existing
     session.commit()
     session.refresh(plan)
 
