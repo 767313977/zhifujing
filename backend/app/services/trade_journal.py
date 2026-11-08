@@ -82,6 +82,15 @@ def validate_entry(
 MAX_ENTRIES = 500
 
 
+class JournalLimitExceeded(ValueError):
+    """交易日志已达到硬上限（500 笔）。
+
+    单独一个类型（仍是 `ValueError`，旧调用方不受影响）是为了让「额度最后一位 +
+    同一计划已被并发请求插入」的调用方能够**只**针对上限做重查，而不是把所有
+    `ValueError` 都当成幂等（2026-11-08 第三轮复审 P2-C）。
+    """
+
+
 def _limit_message() -> str:
     return f"交易日志最多 {MAX_ENTRIES} 笔，先删掉一些再加"
 
@@ -152,7 +161,7 @@ def insert_trade(
     )
     result = session.execute(statement)
     if result.rowcount != 1:
-        raise ValueError(_limit_message())
+        raise JournalLimitExceeded(_limit_message())
     journal = session.get(TradeJournal, result.lastrowid)
     if journal is None:  # 理论上不会发生：刚插进去的行
         raise RuntimeError("交易日志写入后读不回来")

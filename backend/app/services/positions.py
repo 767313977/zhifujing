@@ -163,6 +163,21 @@ def create(
         )
         if commit:
             session.commit()
+    except trade_journal.JournalLimitExceeded:
+        # 499→500 的最后一位被**同一计划**的并发请求先占走：原子插入拿到 0 行，
+        # 但目标记录其实已经存在。按业务唯一键重查，返回同一笔（2026-11-08
+        # 第三轮复审 P2-C）；plan_id 为空时没有业务键可查，原样抛上限错误。
+        if plan_id is None:
+            raise
+        session.rollback()
+        existing = _journal_of_plan(session, user_id, plan_id)
+        if existing is None:
+            raise
+        if existing.exit_date is not None:
+            raise PlanJournalClosed(
+                "这条计划关联的交易已经平仓，不能再转为持仓；如需重新建仓，请新建一笔交易"
+            ) from None
+        return existing
     except IntegrityError:
         # 并发下另一个请求已经给这条计划建了日志 —— 回滚后把那一笔查出来返回。
         # 走到这里说明前面的 get-or-create 没看到它（两个请求同时 SELECT 到空）。

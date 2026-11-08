@@ -122,6 +122,23 @@ def _set_cookie(response: Response, token: str, request: Request) -> None:
     )
 
 
+def _revoke_presented_session(db: Session, request: Request) -> None:
+    """登录 / 注册成功时，撤销请求里带进来的旧会话（2026-11-08 第三轮复审 P1-C）。
+
+    为什么必须在这里做：前端的「登出待撤销」标记只说明**上一次注销请求没送达**，
+    HttpOnly Cookie 还在浏览器里、旧 `UserSession` 可能仍有效。用户不等重试、
+    直接重新登录时，如果只建新会话而不删旧会话，服务端就会同时留下两条有效会话；
+    前端 `setUser()` 再清掉标记，等于把风险静默了。
+
+    这里只删**请求自己携带的那个 token**（调用方本来就持有它），不会碰到其它设备
+    的会话。只执行 DELETE、不单独 commit：与 `create_session()` 同属一个事务，
+    新会话建失败时旧会话也不会被半截删掉（整体回滚，登录失败、提示保留）。
+    """
+    auth.delete_session(
+        db, request.cookies.get(auth.COOKIE_NAME), commit=False
+    )
+
+
 @router.post("/register", response_model=MeOut)
 def register(
     payload: RegisterIn,
@@ -188,6 +205,8 @@ def register(
         auth.login_limiter.fail(ip)
         raise HTTPException(status_code=400, detail="邀请码无效或已被使用")
 
+    # 只在登录成功后撤销旧会话：上面的校验失败时用户还没登录，旧会话不该被误删
+    _revoke_presented_session(db, request)
     token = auth.create_session(db, user, request.headers.get("user-agent"))
     db.commit()
     db.refresh(user)
@@ -236,6 +255,9 @@ def login(
     if user.disabled_at is not None:
         raise HTTPException(status_code=403, detail="这个账号已被停用")
 
+    # 与注册同一条规则（2026-11-08 第三轮复审 P1-C）：登录成功时在同一事务里
+    # 撤销请求携带的旧会话，避免用户「注销失败后直接重新登录」留下两条有效会话。
+    _revoke_presented_session(db, request)
     token = auth.create_session(db, user, request.headers.get("user-agent"))
     db.commit()
     auth.login_limiter.reset(ip)

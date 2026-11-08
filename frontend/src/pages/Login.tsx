@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
@@ -24,7 +24,7 @@ const LABEL = 'mb-1 block text-[12px] text-fg-dim'
  * 注册要邀请码 —— 这是整套系统的门：没有码连账号都建不出来（比限流更硬的边界）。
  */
 export default function Login() {
-  const { me, setUser, logoutPending, retryLogout } = useAuth()
+  const { me, setUser, logoutPending, retryLogout, waitForLogoutIdle } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   // 被 RequireAuth 拦下来时会带上原来要去的地址，登完直接回去
@@ -42,11 +42,19 @@ export default function Login() {
   const [retrying, setRetrying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  /** 曾经因为「待撤销标记」显示过警告：标记消失时要把警告一起收掉。 */
+  const warnedByPendingRef = useRef(false)
 
   useEffect(() => {
     // 刷新后标记仍在（Provider 已静默重试过）：照样把警告显示出来，别因为
-    // 路由 state 丢了就静默。
-    if (logoutPending) setLogoutWarning(true)
+    // 路由 state 丢了就静默。另一个标签页撤销成功（标记被清）时也要同步收起。
+    if (logoutPending) {
+      warnedByPendingRef.current = true
+      setLogoutWarning(true)
+    } else if (warnedByPendingRef.current) {
+      warnedByPendingRef.current = false
+      setLogoutWarning(false)
+    }
   }, [logoutPending])
 
   if (me !== null) return <Navigate to={from} replace />
@@ -70,6 +78,9 @@ export default function Login() {
     setBusy(true)
     setError(null)
     try {
+      // 先等所有标签页的注销请求落地（2026-11-08 第三轮复审 P1-C）：
+      // 迟到的注销响应会清同名 cookie，不能让它把这次登录刚种下的新会话清掉。
+      await waitForLogoutIdle()
       const user =
         tab === 'login'
           ? await api.login(username.trim(), password)

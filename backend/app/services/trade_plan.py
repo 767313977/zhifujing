@@ -14,6 +14,7 @@ from collections import defaultdict
 from datetime import date
 
 from sqlalchemy import func, insert, literal, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -55,6 +56,32 @@ PLAN_STATUSES = tuple(PLAN_STATUS_LABELS)
 MAX_PLANS = 200
 
 
+class PlanLimitExceeded(ValueError):
+    """计划已达到硬上限（200 条）。
+
+    与 `trade_journal.JournalLimitExceeded` 同理：保留 `ValueError` 兼容旧调用方，
+    同时让「额度最后一位 + 同业务键已被并发请求创建」能精确识别（P2-D）。
+    """
+
+
+def _is_same_plan_unique_violation(exc: IntegrityError) -> bool:
+    """只认 `(user_id, code, plan_date)` 这条业务唯一键，别的约束错误不吞。
+
+    SQLite 的报错形如
+    `UNIQUE constraint failed: trade_plan.user_id, trade_plan.code, trade_plan.plan_date`；
+    其它 NOT NULL / 外键 / 别的索引冲突一律返回 False，由调用方原样抛出。
+    """
+    text = str(getattr(exc, "orig", exc)).lower()
+    return "unique constraint failed" in text and all(
+        column in text
+        for column in (
+            "trade_plan.user_id",
+            "trade_plan.code",
+            "trade_plan.plan_date",
+        )
+    )
+
+
 def insert_plan(session: Session, user_id: int, values: dict) -> TradePlan:
     """新增一条计划，**原子地**执行「200 条上限检查 + 插入」。
 
@@ -85,7 +112,7 @@ def insert_plan(session: Session, user_id: int, values: dict) -> TradePlan:
     )
     result = session.execute(statement)
     if result.rowcount != 1:
-        raise ValueError(
+        raise PlanLimitExceeded(
             f"交易计划最多 {MAX_PLANS} 条，先删掉一些再加"
         )
     plan = session.get(TradePlan, result.lastrowid)
@@ -409,35 +436,65 @@ def create_from_signal(
         "signal_date": hit.trade_date,
         "ref_price": hit.close,
     }
-    if existing is None:
-        # 上限与插入在服务层做成一个原子操作（2026-11-08 第二轮复审 P2-NEW-04）：
-        # 只有**确实新增**才检查，重复生成同一只票同一天仍是更新。
-        plan = insert_plan(
-            session,
-            user_id,
-            {
-                **values,
-                "note": (
-                    "放弃位由系统按触发价 × 0.95 兜底，请按自己的规则改"
-                    if stop == fallback_stop
-                    else None
-                ),
-            },
-        )
-    else:
+
+    def _reload(plan_id: int) -> dict:
+        rows = load(session, user_id, target)
+        for item in rows:
+            if item["id"] == plan_id:
+                return item
+        raise LookupError("计划已保存，但读取失败")
+
+    def _overwrite(plan: TradePlan) -> None:
         # 重复生成不覆盖用户已经改过的备注
         for key, value in values.items():
-            setattr(existing, key, value)
-        existing.status_source = None  # 交回自动状态
-        plan = existing
-    session.commit()
-    session.refresh(plan)
+            setattr(plan, key, value)
+        plan.status_source = None  # 交回自动状态
 
-    rows = load(session, user_id, target)
-    for row in rows:
-        if row["id"] == plan.id:
-            return row, True
-    raise LookupError("计划已保存，但读取失败")
+    if existing is not None:
+        if not overwrite:
+            return _reload(existing.id), False
+        _overwrite(existing)
+        session.commit()
+        session.refresh(existing)
+        return _reload(existing.id), False
+
+    # 上限与插入在服务层做成一个原子操作（2026-11-08 第二轮复审 P2-NEW-04）：
+    # 只有**确实新增**才检查，重复生成同一只票同一天仍是更新。
+    note = (
+        "放弃位由系统按触发价 × 0.95 兜底，请按自己的规则改"
+        if stop == fallback_stop
+        else None
+    )
+    try:
+        plan = insert_plan(session, user_id, {**values, "note": note})
+        session.commit()
+    except (PlanLimitExceeded, IntegrityError) as exc:
+        # 两个并发请求都没看到对方：后者可能撞唯一索引，或在「额度最后一位」
+        # 被前者先插走而拿到 0 行。**只有**这两种已识别的业务情况才允许回滚后
+        # 重查同一业务键；其它 IntegrityError 原样抛出（2026-11-08 第三轮 P2-D）。
+        if isinstance(exc, IntegrityError) and not _is_same_plan_unique_violation(exc):
+            session.rollback()
+            raise
+        session.rollback()
+        existing = session.scalar(
+            select(TradePlan).where(
+                TradePlan.user_id == user_id,
+                TradePlan.code == digits,
+                TradePlan.plan_date == target,
+            )
+        )
+        if existing is None:
+            # 额度确实已满、目标又不是这条键 → 保持原有的明确上限错误
+            raise
+        if not overwrite:
+            return _reload(existing.id), False
+        _overwrite(existing)
+        session.commit()
+        session.refresh(existing)
+        return _reload(existing.id), False
+
+    session.refresh(plan)
+    return _reload(plan.id), True
 
 
 def stats(session: Session, user_id: int, start: date, end: date) -> dict:

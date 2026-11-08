@@ -386,25 +386,36 @@ def execute_plan(
         else:
             # 上限与插入是同一个原子操作（2026-11-08 第二轮复审 P2-NEW-04）。
             # 先插日志再改计划：避免 `_apply_plan` 的待写字段被 autoflush 提前落库。
-            journal = trade_journal.insert_trade(
-                session,
-                user.id,
-                code=plan.code,
-                name=plan.name,
-                entry_date=entry_date,
-                entry_price=float(payload.actual_price),
-                shares=payload.shares,
-                position_pct=payload.position_pct,
-                reason_type=reason_type,
-                reason_key=plan.source,
-                # 偏差（追高 / 提前买…）是**执行质量**，不是买入理由：只留在
-                # `plan.deviation`，日志的理由由 `reason_key` 指向计划来源
-                # （2026-11-01 审计 P2）
-                reason_text=None,
-                plan_stop=plan.stop_price,
-                plan_id=plan.id,
-                note=(payload.note or "").strip() or None,
-            )
+            try:
+                journal = trade_journal.insert_trade(
+                    session,
+                    user.id,
+                    code=plan.code,
+                    name=plan.name,
+                    entry_date=entry_date,
+                    entry_price=float(payload.actual_price),
+                    shares=payload.shares,
+                    position_pct=payload.position_pct,
+                    reason_type=reason_type,
+                    reason_key=plan.source,
+                    # 偏差（追高 / 提前买…）是**执行质量**，不是买入理由：只留在
+                    # `plan.deviation`，日志的理由由 `reason_key` 指向计划来源
+                    # （2026-11-01 审计 P2）
+                    reason_text=None,
+                    plan_stop=plan.stop_price,
+                    plan_id=plan.id,
+                    note=(payload.note or "").strip() or None,
+                )
+            except trade_journal.JournalLimitExceeded:
+                # 499→500 的最后一位被**同一计划**的并发请求先占走：原子插入拿到
+                # 0 行，但目标记录其实已经存在。回滚后按业务唯一键重查，走更新路径，
+                # 而不是误报「额度已满」（2026-11-08 第三轮复审 P2-C）。
+                existing = _journal_of_plan(session, user.id, plan.id)
+                if existing is None:
+                    raise
+                journal = existing
+                created = False
+                _guard_journal_backfill(session, journal, entry_date)
         _apply_plan(plan, payload)
         if not created:
             _apply_journal(journal, plan, entry_date, payload)

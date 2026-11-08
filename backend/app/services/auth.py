@@ -225,11 +225,17 @@ def resolve_session(db: Session, token: str | None) -> AppUser | None:
     return user
 
 
-def delete_session(db: Session, token: str | None) -> None:
-    """退出登录：删掉这一行。"""
+def delete_session(db: Session, token: str | None, *, commit: bool = True) -> None:
+    """退出登录：删掉这一行。
+
+    `commit=False` 给「要和别的写同一事务」的调用方用（2026-11-08 第三轮复审
+    P1-C：登录成功时在同一事务里撤销请求携带的旧会话，避免「新会话已建立、
+    旧会话还活着」的中间态）。此时代码只执行 DELETE，由调用方统一提交。
+    """
     if token:
         db.execute(delete(UserSession).where(UserSession.token_hash == _digest(token)))
-        db.commit()
+        if commit:
+            db.commit()
 
 
 def delete_user_sessions(db: Session, user_id: int, keep: str | None = None) -> int:

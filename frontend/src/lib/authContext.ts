@@ -23,6 +23,39 @@ import type { Me } from '../api/types'
  */
 const LOGOUT_PENDING_KEY = 'fupan.logout.pending'
 
+/** 跨标签页的登录态事件（logout-start / logout-revoked / logout-failed / login）。 */
+const AUTH_EVENT_KEY = 'fupan.auth.event'
+
+/**
+ * 「注销请求正在途中」的共享标记（2026-11-08 第三轮复审 P1-C）。
+ *
+ * 为什么需要跨标签页：注销响应的 `Set-Cookie: Max-Age=0` 清的是**浏览器 cookie 罐**
+ * 里的同名 cookie。如果 A 标签页的注销请求还在途中、B 标签页已经登录并种下新 cookie，
+ * 迟到的注销响应会把**新 cookie** 一并清掉（服务端新会话变成孤儿）。登录前等到
+ * 这个标记消失，保证注销响应已经落地，再发登录请求。
+ * 只存随机 id + 时间戳，不含令牌；40 秒后视为过期，避免标签页崩溃留下永久锁。
+ */
+const LOGOUT_INFLIGHT_KEY = 'fupan.auth.logout.inflight'
+const INFLIGHT_TTL_MS = 40_000
+
+export { AUTH_EVENT_KEY, LOGOUT_PENDING_KEY }
+
+export type AuthEventType =
+  | 'logout-start'
+  | 'logout-revoked'
+  | 'logout-failed'
+  | 'login'
+
+export interface AuthEvent {
+  type: AuthEventType
+  at: number
+}
+
+interface InflightLock {
+  id: string
+  at: number
+}
+
 function _storage(): Storage | null {
   try {
     return window.localStorage
@@ -52,6 +85,68 @@ export function clearPendingLogout(): void {
   }
 }
 
+export function publishAuthEvent(type: AuthEventType): void {
+  try {
+    _storage()?.setItem(AUTH_EVENT_KEY, JSON.stringify({ type, at: Date.now() }))
+  } catch {
+    // 隐私模式 / 禁用存储：跨标签页同步退化为「各标签页下一次请求时自己发现」
+  }
+}
+
+function _readInflight(): InflightLock | null {
+  try {
+    const raw = _storage()?.getItem(LOGOUT_INFLIGHT_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<InflightLock>
+    if (
+      typeof parsed.id !== 'string' ||
+      typeof parsed.at !== 'number' ||
+      Date.now() - parsed.at > INFLIGHT_TTL_MS
+    ) {
+      return null
+    }
+    return { id: parsed.id, at: parsed.at }
+  } catch {
+    return null
+  }
+}
+
+export function markLogoutInFlight(): string {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  try {
+    _storage()?.setItem(
+      LOGOUT_INFLIGHT_KEY,
+      JSON.stringify({ id, at: Date.now() } satisfies InflightLock),
+    )
+  } catch {
+    // 存不进去只能靠同标签页的 Promise 串行；跨标签页窗口重新暴露，属可接受退化
+  }
+  return id
+}
+
+export function clearLogoutInFlight(id: string): void {
+  try {
+    if (_readInflight()?.id === id) _storage()?.removeItem(LOGOUT_INFLIGHT_KEY)
+  } catch {
+    // 清不掉会在 40 秒后自然过期
+  }
+}
+
+/**
+ * 等「任何标签页的注销请求」都落地再继续（最多等 `timeoutMs`）。
+ *
+ * 只用于**登录前**：保证迟到的注销响应（会清同名 cookie）不会把刚种下的新会话
+ * cookie 清掉。超时后放行是不得已 —— 40 秒的 in-flight 标记本身会过期，
+ * 宁可让用户偶尔重登，也不要把登录页永久锁死。
+ */
+export async function waitForNoLogoutInFlight(timeoutMs = 35_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (_readInflight() === null) return
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+}
+
 export interface AuthValue {
   /** 当前用户；null = 没登录（或还在确认，见 `checking`） */
   me: Me | null
@@ -68,6 +163,12 @@ export interface AuthValue {
   logoutPending: boolean
   /** 重试注销；返回 `true` 表示服务端会话已撤销、待撤销标记已清除 */
   retryLogout: () => Promise<boolean>
+  /**
+   * 等当前标签页与其它标签页的注销请求都落地（登录前调用）。
+   *
+   * 目的：避免迟到的注销响应把刚种下的新会话 cookie 清掉（2026-11-08 第三轮 P1-C）。
+   */
+  waitForLogoutIdle: () => Promise<void>
 }
 
 export const AuthContext = createContext<AuthValue | null>(null)

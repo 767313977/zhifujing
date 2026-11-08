@@ -16,12 +16,19 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { api, UNAUTHORIZED_EVENT } from '../api/client'
 import type { Me } from '../api/types'
 import {
+  AUTH_EVENT_KEY,
   AuthContext,
+  clearLogoutInFlight,
   clearPendingLogout,
   hasPendingLogout,
+  LOGOUT_PENDING_KEY,
+  markLogoutInFlight,
   markLogoutPending,
+  publishAuthEvent,
   useAuth,
+  waitForNoLogoutInFlight,
 } from './authContext'
+import type { AuthEvent } from './authContext'
 import { clearStockList } from './stockNav'
 
 // context / 类型 / `useAuth` 都在 `lib/authContext.ts`（拆开是为了 Fast Refresh）。
@@ -41,6 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const userRef = useRef<Me | null>(null)
   /**
+   * 当前标签页正在进行的注销任务（2026-11-08 第三轮复审 P1-C）。
+   *
+   * 作用：① 多个入口（点退出 / 刷新后静默重试 / 人工重试）同时触发时只发一次请求；
+   * ② 登录前可以 `await` 它，保证「注销响应先落地、再种新 cookie」。
+   */
+  const logoutTaskRef = useRef<Promise<boolean> | null>(null)
+  /**
    * 服务端会话是否**还没撤销**（2026-11-08 第二轮复审 P1-NEW-02）。
    *
    * 断网 / 超时 / 服务端异常时，本地界面可以退出，但 HttpOnly Cookie 只能由服务端
@@ -50,9 +64,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [logoutPending, setLogoutPending] = useState<boolean>(() => hasPendingLogout())
 
   const setUser = useCallback((user: Me) => {
-    // 登录成功 = 新会话已建立：旧的「待撤销」标记不能留到下一次刷新
+    // 登录请求会把旧 Cookie 一起带给服务端，服务端在**同一事务**里撤销旧会话
+    // （见 `api/auth._revoke_presented_session`）。到这里才允许清掉待撤销标记 ——
+    // 不是「登录成功 = 旧会话已撤销」，而是「服务端确认撤销后才登录成功」。
     clearPendingLogout()
     setLogoutPending(false)
+    publishAuthEvent('login')
     userRef.current = user
     setMe(user)
     setChecking(false)
@@ -63,26 +80,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    *
    * 返回 `true` = 服务端已撤销（或本来就没有会话），`false` = 请求没送达。
    */
-  const revokeSession = useCallback(async () => {
+  const revokeSession = useCallback(() => {
     // 已经登录成功的人不要再发注销：那会把刚建立的新会话删掉
     if (userRef.current !== null) {
       clearPendingLogout()
       setLogoutPending(false)
-      return true
+      return Promise.resolve(true)
     }
-    try {
-      await api.logout()
-      clearPendingLogout()
-      setLogoutPending(false)
-      return true
-    } catch (err) {
-      // 断网 / 超时 / 5xx：cookie 还在浏览器里，会话可能仍然有效。
-      // 只记一条日志，不把 rejection 冒泡成 Unhandled Promise rejection。
-      console.warn('登出请求未送达服务端，会话可能仍然有效：', err)
-      markLogoutPending()
-      setLogoutPending(true)
-      return false
-    }
+    // 同一标签页只允许一个注销请求在途；并发调用共享同一个 Promise
+    if (logoutTaskRef.current !== null) return logoutTaskRef.current
+    const task = (async () => {
+      // 跨标签页共享的「注销在途」标记：别的标签页登录前会等它消失
+      const inflightId = markLogoutInFlight()
+      try {
+        await api.logout()
+        clearPendingLogout()
+        setLogoutPending(false)
+        publishAuthEvent('logout-revoked')
+        return true
+      } catch (err) {
+        // 断网 / 超时 / 5xx：cookie 还在浏览器里，会话可能仍然有效。
+        // 只记一条日志，不把 rejection 冒泡成 Unhandled Promise rejection。
+        console.warn('登出请求未送达服务端，会话可能仍然有效：', err)
+        markLogoutPending()
+        setLogoutPending(true)
+        publishAuthEvent('logout-failed')
+        return false
+      } finally {
+        clearLogoutInFlight(inflightId)
+      }
+    })()
+    logoutTaskRef.current = task
+    void task.finally(() => {
+      if (logoutTaskRef.current === task) logoutTaskRef.current = null
+    })
+    return task
+  }, [])
+
+  /**
+   * 登录前等所有标签页的注销请求落地。除了当前标签页的 Promise，还要轮询
+   * localStorage 里的共享标记 —— 另一个标签页的注销响应同样会清同名 cookie。
+   */
+  const waitForLogoutIdle = useCallback(async () => {
+    const task = logoutTaskRef.current
+    if (task !== null) await task
+    await waitForNoLogoutInFlight()
   }, [])
 
   useEffect(() => {
@@ -128,7 +170,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
   }, [])
 
+  /**
+   * 多标签页同步（2026-11-08 第三轮复审 P1-C）。
+   *
+   * 一个标签页退出后，其它标签页不能继续展示「已登录」的过期界面：
+   * - `logout-start` 一到就先清本地用户（结果未知，先按退出处理）；
+   * - `logout-revoked` 表示服务端会话真的没了；`logout-failed` 表示风险仍在；
+   * - 待撤销标记本身的增删也要同步，避免两个标签页一个显示警告、一个什么都没有。
+   */
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === LOGOUT_PENDING_KEY) {
+        setLogoutPending(event.newValue !== null)
+        if (event.newValue !== null) {
+          userRef.current = null
+          setMe(null)
+        }
+        return
+      }
+      if (event.key !== AUTH_EVENT_KEY || !event.newValue) return
+      let data: AuthEvent
+      try {
+        data = JSON.parse(event.newValue) as AuthEvent
+      } catch {
+        return
+      }
+      if (data.type === 'logout-start') {
+        userRef.current = null
+        setMe(null)
+        setLogoutPending(true)
+      } else if (data.type === 'logout-revoked') {
+        userRef.current = null
+        setMe(null)
+        setLogoutPending(false)
+      } else if (data.type === 'logout-failed') {
+        setLogoutPending(true)
+      } else if (data.type === 'login') {
+        // 另一标签页重新登录成功：服务端已在同一事务里撤销旧会话，风险解除
+        setLogoutPending(false)
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
   const logout = useCallback(async () => {
+    // 先告诉其它标签页「这个浏览器正在退出」：不能让它们继续展示过期登录态
+    publishAuthEvent('logout-start')
     // 先退出**本地界面**：目标是「别再显示成已登录」——会话可能已失效、或请求根本
     // 没发出去，不该让用户卡在已登录界面。
     userRef.current = null
@@ -146,7 +234,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ me, checking, setUser, logout, logoutPending, retryLogout: revokeSession }}
+      value={{
+        me,
+        checking,
+        setUser,
+        logout,
+        logoutPending,
+        retryLogout: revokeSession,
+        waitForLogoutIdle,
+      }}
     >
       {children}
     </AuthContext.Provider>
