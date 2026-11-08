@@ -32,11 +32,25 @@ const AUTH_EVENT_KEY = 'fupan.auth.event'
  * 为什么需要跨标签页：注销响应的 `Set-Cookie: Max-Age=0` 清的是**浏览器 cookie 罐**
  * 里的同名 cookie。如果 A 标签页的注销请求还在途中、B 标签页已经登录并种下新 cookie，
  * 迟到的注销响应会把**新 cookie** 一并清掉（服务端新会话变成孤儿）。登录前等到
- * 这个标记消失，保证注销响应已经落地，再发登录请求。
- * 只存随机 id + 时间戳，不含令牌；40 秒后视为过期，避免标签页崩溃留下永久锁。
+ * 所有在途注销都落地，再发登录请求。
+ *
+ * ⚠️ 2026-11-08 第四轮复审 P1-E：每个注销任务用**独立的 key**
+ * （`fupan.auth.logout.inflight.<id>`），不再共用单个键 —— 否则先完成的任务会把
+ * 另一个仍在途的任务的锁一起删掉，登录侧误以为「所有注销都结束了」。
+ * 只存随机 id + 时间戳，不含令牌；超过 TTL 视为废弃（标签页关闭 / 崩溃），
+ * 由下一次扫描清理。
  */
-const LOGOUT_INFLIGHT_KEY = 'fupan.auth.logout.inflight'
-const INFLIGHT_TTL_MS = 40_000
+const LOGOUT_INFLIGHT_PREFIX = 'fupan.auth.logout.inflight.'
+const INFLIGHT_TTL_MS = 35_000
+/**
+ * 登录前最多等多久。
+ *
+ * ⚠️ 必须 **小于** `INFLIGHT_TTL_MS`（2026-11-08 第四轮复审 P1-E）：否则等待期间
+ * 锁会先过期并被判成「已结束」，`timeout` 分支永远走不到，又变成静默放行。
+ * 25 秒 < 35 秒：真在途的任务会让登录明确失败，由用户重试；被关闭标签页留下的
+ * 锁则会在 TTL 之后由下一次扫描清理。
+ */
+const INFLIGHT_WAIT_MS = 25_000
 
 export { AUTH_EVENT_KEY, LOGOUT_PENDING_KEY }
 
@@ -51,8 +65,27 @@ export interface AuthEvent {
   at: number
 }
 
-interface InflightLock {
-  id: string
+/** 「待注销标记」的三种状态；存储不可用时**不能**当成「存在」。 */
+export type PendingLogoutState = 'present' | 'absent' | 'unavailable'
+
+export interface LogoutInflightScan {
+  /** localStorage 是否可读；false 时 live / stale 没有意义 */
+  available: boolean
+  /** 仍未过期、可能还在途的注销任务数 */
+  live: number
+  /** 已过期、本次扫描顺手清理掉的废弃任务数 */
+  stale: number
+}
+
+export type LogoutWaitStatus = 'clear' | 'timeout' | 'unavailable'
+
+export interface LogoutWaitResult {
+  status: LogoutWaitStatus
+  live: number
+  stale: number
+}
+
+interface InflightEntry {
   at: number
 }
 
@@ -60,28 +93,69 @@ function _storage(): Storage | null {
   try {
     return window.localStorage
   } catch {
-    // 隐私模式 / 禁用存储：退化为「只能在当前页面提示」，不阻断登出流程
+    // 隐私模式 / 禁用存储：退化为「只能在当前页面提示」，不阻断登录 / 登出流程
     return null
   }
 }
 
-export function hasPendingLogout(): boolean {
-  return _storage()?.getItem(LOGOUT_PENDING_KEY) !== null
-}
-
-export function markLogoutPending(): void {
+/**
+ * 读取待注销标记的**三态**状态（2026-11-08 第四轮复审 P1-D）。
+ *
+ * 旧实现 `_storage()?.getItem(...) !== null` 在存储不可用时得到
+ * `undefined !== null === true`，会被误判成「有待注销标记」，于是页面一加载就自动
+ * 去调 `/api/auth/logout`。这里明确区分：
+ * - `present`：确实有标记；
+ * - `absent`：存储可读、确实没有标记；
+ * - `unavailable`：存储访问 / 读取抛异常（SecurityError 等），**不能**当成有标记。
+ */
+export function pendingLogoutState(): PendingLogoutState {
+  const storage = _storage()
+  if (storage === null) return 'unavailable'
   try {
-    _storage()?.setItem(LOGOUT_PENDING_KEY, String(Date.now()))
+    return storage.getItem(LOGOUT_PENDING_KEY) === null ? 'absent' : 'present'
   } catch {
-    // 存不进去（配额 / 隐私模式）时至少当前页面仍会显示失败提示
+    // SecurityError：存储被浏览器策略禁用；不能据此自动登出
+    return 'unavailable'
   }
 }
 
-export function clearPendingLogout(): void {
+export function hasPendingLogout(): boolean {
+  return pendingLogoutState() === 'present'
+}
+
+export function isStorageAvailable(): boolean {
+  const storage = _storage()
+  if (storage === null) return false
   try {
-    _storage()?.removeItem(LOGOUT_PENDING_KEY)
+    storage.getItem(LOGOUT_PENDING_KEY)
+    return true
   } catch {
-    // 删不掉不影响登录：下次成功登录仍会覆盖同名的会话 Cookie
+    return false
+  }
+}
+
+/** 写待注销标记；返回是否真的写进存储（false = 存储不可用，仅本页内存有效）。 */
+export function markLogoutPending(): boolean {
+  const storage = _storage()
+  if (storage === null) return false
+  try {
+    storage.setItem(LOGOUT_PENDING_KEY, String(Date.now()))
+    return true
+  } catch {
+    // 配额 / 隐私模式：本页仍会显示失败提示，但不能声称跨刷新同步可靠
+    return false
+  }
+}
+
+/** 清待注销标记；返回是否真的从存储删除（false = 存储不可用或删除失败）。 */
+export function clearPendingLogout(): boolean {
+  const storage = _storage()
+  if (storage === null) return false
+  try {
+    storage.removeItem(LOGOUT_PENDING_KEY)
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -93,21 +167,50 @@ export function publishAuthEvent(type: AuthEventType): void {
   }
 }
 
-function _readInflight(): InflightLock | null {
+/**
+ * 扫描所有在途注销标记。
+ *
+ * - 每个任务一个 key，互不覆盖；
+ * - 超过 `INFLIGHT_TTL_MS` 的 key 视为废弃并**尽力**清理（标签页关闭 / 崩溃）；
+ * - 存储不可读时返回 `available=false`，调用方必须显式处理，不能当作「已结束」。
+ */
+export function scanLogoutInFlight(now = Date.now()): LogoutInflightScan {
+  const storage = _storage()
+  if (storage === null) return { available: false, live: 0, stale: 0 }
+  // ⚠️ 不能只看 `storage.length`：存储被策略禁用时 length 可能仍返回 0，
+  // 一次 getItem 都不调用就会把「不可用」误判成「没有在途任务」。先探一次读。
+  if (!isStorageAvailable()) return { available: false, live: 0, stale: 0 }
+  const staleKeys: string[] = []
+  let live = 0
   try {
-    const raw = _storage()?.getItem(LOGOUT_INFLIGHT_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<InflightLock>
-    if (
-      typeof parsed.id !== 'string' ||
-      typeof parsed.at !== 'number' ||
-      Date.now() - parsed.at > INFLIGHT_TTL_MS
-    ) {
-      return null
+    const keys: string[] = []
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index)
+      if (key !== null && key.startsWith(LOGOUT_INFLIGHT_PREFIX)) keys.push(key)
     }
-    return { id: parsed.id, at: parsed.at }
+    for (const key of keys) {
+      const raw = storage.getItem(key)
+      let at: number | null = null
+      try {
+        const parsed = JSON.parse(raw ?? '') as Partial<InflightEntry>
+        at = typeof parsed.at === 'number' ? parsed.at : null
+      } catch {
+        at = null
+      }
+      if (at === null || now - at > INFLIGHT_TTL_MS) staleKeys.push(key)
+      else live += 1
+    }
+    for (const key of staleKeys) {
+      try {
+        storage.removeItem(key)
+      } catch {
+        // 只读存储：清理失败，但本次仍把它当成废弃
+      }
+    }
+    return { available: true, live, stale: staleKeys.length }
   } catch {
-    return null
+    // 遍历 / 读取中途抛 SecurityError：整体视为不可用
+    return { available: false, live: 0, stale: 0 }
   }
 }
 
@@ -115,36 +218,54 @@ export function markLogoutInFlight(): string {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
   try {
     _storage()?.setItem(
-      LOGOUT_INFLIGHT_KEY,
-      JSON.stringify({ id, at: Date.now() } satisfies InflightLock),
+      `${LOGOUT_INFLIGHT_PREFIX}${id}`,
+      JSON.stringify({ at: Date.now() } satisfies InflightEntry),
     )
   } catch {
-    // 存不进去只能靠同标签页的 Promise 串行；跨标签页窗口重新暴露，属可接受退化
+    // 存不进去只能靠同标签页的 Promise 串行；跨标签页窗口会重新暴露
   }
   return id
 }
 
 export function clearLogoutInFlight(id: string): void {
   try {
-    if (_readInflight()?.id === id) _storage()?.removeItem(LOGOUT_INFLIGHT_KEY)
+    // 只删自己的 key：绝不碰其它标签页仍在途的任务
+    _storage()?.removeItem(`${LOGOUT_INFLIGHT_PREFIX}${id}`)
   } catch {
-    // 清不掉会在 40 秒后自然过期
+    // 清不掉会在 TTL 后由扫描清理
   }
 }
 
+function _sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 /**
- * 等「任何标签页的注销请求」都落地再继续（最多等 `timeoutMs`）。
+ * 等「所有标签页的注销请求」都落地（最多等 `timeoutMs`）。
  *
- * 只用于**登录前**：保证迟到的注销响应（会清同名 cookie）不会把刚种下的新会话
- * cookie 清掉。超时后放行是不得已 —— 40 秒的 in-flight 标记本身会过期，
- * 宁可让用户偶尔重登，也不要把登录页永久锁死。
+ * 返回**明确结果**，不再用 void 静默放行（2026-11-08 第四轮复审 P1-E）：
+ * - `clear`：没有在途任务（`stale` 是顺手清理的废弃任务数）；
+ * - `timeout`：仍有未过期的在途任务，调用方必须提示用户、不得假装已结束；
+ * - `unavailable`：存储不可读，无法跨标签页协调，调用方必须显式退化。
  */
-export async function waitForNoLogoutInFlight(timeoutMs = 35_000): Promise<void> {
+export async function waitForNoLogoutInFlight(
+  timeoutMs = INFLIGHT_WAIT_MS,
+): Promise<LogoutWaitResult> {
+  const first = scanLogoutInFlight()
+  if (!first.available) return { status: 'unavailable', live: 0, stale: 0 }
+  if (first.live === 0) return { status: 'clear', live: 0, stale: first.stale }
+
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    if (_readInflight() === null) return
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await _sleep(100)
+    const scan = scanLogoutInFlight()
+    if (!scan.available) return { status: 'unavailable', live: 0, stale: 0 }
+    if (scan.live === 0) return { status: 'clear', live: 0, stale: scan.stale }
   }
+  const last = scanLogoutInFlight()
+  if (!last.available) return { status: 'unavailable', live: 0, stale: 0 }
+  if (last.live === 0) return { status: 'clear', live: 0, stale: last.stale }
+  return { status: 'timeout', live: last.live, stale: last.stale }
 }
 
 export interface AuthValue {
@@ -166,9 +287,10 @@ export interface AuthValue {
   /**
    * 等当前标签页与其它标签页的注销请求都落地（登录前调用）。
    *
-   * 目的：避免迟到的注销响应把刚种下的新会话 cookie 清掉（2026-11-08 第三轮 P1-C）。
+   * 返回明确结果：`clear` 才能安全登录；`timeout` / `unavailable` 必须由调用方
+   * 显式处理，不能静默当成「注销已完成」（2026-11-08 第四轮复审 P1-E）。
    */
-  waitForLogoutIdle: () => Promise<void>
+  waitForLogoutIdle: () => Promise<LogoutWaitResult>
 }
 
 export const AuthContext = createContext<AuthValue | null>(null)

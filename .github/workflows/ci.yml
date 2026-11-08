@@ -63,3 +63,8 @@ jobs:
       - name: 静态检查（oxlint）
         working-directory: frontend
         run: npm run lint
+      # 2026-11-08 加：登录状态机（待注销三态 / 跨标签页注销锁 / 过期 authMe）的
+      # 单元测试，锁住 localStorage 不可用、锁竞争和身份代次这几条边界。
+      - name: 前端状态机测试（vitest）
+        working-directory: frontend
+        run: npm test

@@ -42,6 +42,12 @@ export default function Login() {
   const [retrying, setRetrying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  /**
+   * 跨标签页协调降级提示（2026-11-08 第四轮复审 P1-E）：
+   * 存储不可用时不能假装「注销已结束」，但也不能因此禁止登录 —— 明确告知用户，
+   * 并在登录后用 /auth/me 校验新会话是否真的还在。
+   */
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null)
   /** 曾经因为「待撤销标记」显示过警告：标记消失时要把警告一起收掉。 */
   const warnedByPendingRef = useRef(false)
 
@@ -77,14 +83,41 @@ export default function Login() {
     }
     setBusy(true)
     setError(null)
+    setSessionNotice(null)
     try {
-      // 先等所有标签页的注销请求落地（2026-11-08 第三轮复审 P1-C）：
+      // 先等所有标签页的注销请求落地（2026-11-08 第三轮复审 P1-C / 第四轮 P1-E）：
       // 迟到的注销响应会清同名 cookie，不能让它把这次登录刚种下的新会话清掉。
-      await waitForLogoutIdle()
+      const idle = await waitForLogoutIdle()
+      if (idle.status === 'timeout') {
+        // 不能静默放行：仍有未过期的注销在途，登录可能马上被清掉
+        setError(
+          '另一个标签页的注销请求仍未完成，为避免新会话被清掉，请稍后重试登录。',
+        )
+        return
+      }
+      if (idle.status === 'unavailable') {
+        // 存储不可用：无法跨标签页协调，明确告知并依赖登录后的 /auth/me 校验
+        setSessionNotice(
+          '浏览器本地存储不可用，无法与其它标签页协调注销。若刚在其它标签页退出，登录后可能需要重新登录。',
+        )
+      }
       const user =
         tab === 'login'
           ? await api.login(username.trim(), password)
           : await api.register(inviteCode.trim(), username.trim(), password)
+      // 登录接口成功 ≠ 浏览器 Cookie 还在：迟到的注销响应可能已经把新 Cookie
+      // 清掉。这里再用 /auth/me 确认一次；校验失败就不建立前端登录态。
+      let confirmed
+      try {
+        confirmed = await api.authMe()
+      } catch {
+        throw new Error(
+          '登录后会话校验失败：可能有另一个标签页的注销请求刚刚完成，请重试。',
+        )
+      }
+      if (confirmed.id !== user.id) {
+        throw new Error('登录后会话校验失败，请重试。')
+      }
       setUser(user)
       // 登录成功 = 新会话已建立，旧的待撤销状态不再成立（setUser 内部也会清标记）
       setLogoutWarning(false)
@@ -135,6 +168,12 @@ export default function Login() {
                 </button>
               ))}
             </div>
+
+            {sessionNotice && (
+              <Alert tone="accent" onClose={() => setSessionNotice(null)}>
+                {sessionNotice}
+              </Alert>
+            )}
 
             {logoutWarning && (
               <Alert onClose={() => setLogoutWarning(false)}>

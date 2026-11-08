@@ -28,7 +28,7 @@ import {
   useAuth,
   waitForNoLogoutInFlight,
 } from './authContext'
-import type { AuthEvent } from './authContext'
+import type { AuthEvent, LogoutWaitResult } from './authContext'
 import { clearStockList } from './stockNav'
 
 // context / 类型 / `useAuth` 都在 `lib/authContext.ts`（拆开是为了 Fast Refresh）。
@@ -55,6 +55,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const logoutTaskRef = useRef<Promise<boolean> | null>(null)
   /**
+   * 身份代次（2026-11-08 第四轮复审 P2-F）。
+   *
+   * 启动时那次 `/auth/me` 可能很慢；如果期间另一个标签页广播了退出、或本页开始
+   * 注销，这份迟到的响应不能把旧登录态重新装回来。每次身份失效都自增代次，
+   * 探测请求只在「发起时的代次 === 当前代次」时才允许 `setUser`。
+   */
+  const identityEpochRef = useRef(0)
+  /**
    * 服务端会话是否**还没撤销**（2026-11-08 第二轮复审 P1-NEW-02）。
    *
    * 断网 / 超时 / 服务端异常时，本地界面可以退出，但 HttpOnly Cookie 只能由服务端
@@ -63,17 +71,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const [logoutPending, setLogoutPending] = useState<boolean>(() => hasPendingLogout())
 
-  const setUser = useCallback((user: Me) => {
+  /** 让所有在途的身份探测失效，并清掉当前本地登录态。 */
+  const invalidateIdentity = useCallback(() => {
+    identityEpochRef.current += 1
+    userRef.current = null
+    setMe(null)
+    // 身份已失效时不能一直停在 checking：RequireAuth 要立刻按「未登录」跳登录页
+    setChecking(false)
+  }, [])
+
+  /**
+   * 写入登录态。
+   *
+   * `announce` 区分**登录接口成功**与**启动时 authMe 恢复既有会话**（2026-11-08
+   * 第四轮复审 P2-F 要求 5）：只有前者才广播 `login` 事件，避免一个标签页刷新页面
+   * 就把其它标签页的待注销警告清掉。
+   */
+  const applyUser = useCallback((user: Me, announce: boolean) => {
     // 登录请求会把旧 Cookie 一起带给服务端，服务端在**同一事务**里撤销旧会话
     // （见 `api/auth._revoke_presented_session`）。到这里才允许清掉待撤销标记 ——
     // 不是「登录成功 = 旧会话已撤销」，而是「服务端确认撤销后才登录成功」。
     clearPendingLogout()
     setLogoutPending(false)
-    publishAuthEvent('login')
+    if (announce) publishAuthEvent('login')
+    // 登录成功也让旧的身份探测失效（例如启动时那次 /auth/me 晚到）
+    identityEpochRef.current += 1
     userRef.current = user
     setMe(user)
     setChecking(false)
   }, [])
+
+  const setUser = useCallback(
+    (user: Me) => {
+      applyUser(user, true)
+    },
+    [applyUser],
+  )
 
   /**
    * 真正撤销服务端会话。成功才清掉待撤销标记；失败则保留（**不含令牌**）。
@@ -121,10 +154,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * 登录前等所有标签页的注销请求落地。除了当前标签页的 Promise，还要轮询
    * localStorage 里的共享标记 —— 另一个标签页的注销响应同样会清同名 cookie。
    */
-  const waitForLogoutIdle = useCallback(async () => {
+  const waitForLogoutIdle = useCallback(async (): Promise<LogoutWaitResult> => {
     const task = logoutTaskRef.current
     if (task !== null) await task
-    await waitForNoLogoutInFlight()
+    return waitForNoLogoutInFlight()
   }, [])
 
   useEffect(() => {
@@ -138,11 +171,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         alive = false
       }
     }
+    // 记下发起时的身份代次：期间若收到 logout-start / logout-revoked / 本地注销，
+    // 代次会变，这次迟到的响应必须作废（2026-11-08 第四轮复审 P2-F）。
+    const epoch = identityEpochRef.current
     api
       .authMe()
       .then((user) => {
-        // 期间用户已登录 → 这次「我是谁」已经过时，别覆盖
-        if (alive && userRef.current === null) setUser(user)
+        // 期间用户已登录 / 身份已失效 → 这次「我是谁」已经过时，别覆盖
+        if (
+          alive &&
+          epoch === identityEpochRef.current &&
+          userRef.current === null
+        ) {
+          // 启动恢复**不广播 login**：它不是一次新的登录成功，不能清掉其它标签页
+          // 的待注销警告（P2-F 要求 5）
+          applyUser(user, false)
+        }
       })
       .catch(() => {
         // 401（没登录）与网络错误都当作「没登录」：这一层只决定要不要跳登录页，
@@ -150,8 +194,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // ⚠️ 网络错误也要能走到这里 —— `authMe` 带 10 秒超时（见 api/client.ts 的
         // AUTH_CHECK_TIMEOUT_MS），否则弱网下这个 promise 永不 settle，下面的
         // `checking` 就永远是 true、RequireAuth 渲染的空白页就永远白着（2026-10-10 修）。
-        // ⚠️ 只在**还没人登录**时才清（2026-10-28 修）：迟到的 401 不该踢掉刚登录的用户。
-        if (alive && userRef.current === null) {
+        // ⚠️ 只在**还没人登录 / 身份没失效**时才清（2026-10-28 / 2026-11-08 修）。
+        if (
+          alive &&
+          epoch === identityEpochRef.current &&
+          userRef.current === null
+        ) {
           setMe(null)
           setChecking(false)
         }
@@ -159,33 +207,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       alive = false
     }
-  }, [revokeSession, setUser])
+  }, [applyUser, revokeSession])
 
   useEffect(() => {
     const onUnauthorized = () => {
-      userRef.current = null
-      setMe(null)
+      invalidateIdentity()
     }
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
-  }, [])
+  }, [invalidateIdentity])
 
   /**
-   * 多标签页同步（2026-11-08 第三轮复审 P1-C）。
+   * 多标签页同步（2026-11-08 第三轮复审 P1-C / 第四轮 P2-F）。
    *
    * 一个标签页退出后，其它标签页不能继续展示「已登录」的过期界面：
-   * - `logout-start` 一到就先清本地用户（结果未知，先按退出处理）；
-   * - `logout-revoked` 表示服务端会话真的没了；`logout-failed` 表示风险仍在；
-   * - 待撤销标记本身的增删也要同步，避免两个标签页一个显示警告、一个什么都没有。
+   * - `logout-start` / `logout-revoked` / 待撤销标记出现 → 身份代次自增，
+   *   迟到的 `/auth/me` 响应作废，不能把旧登录态装回来；
+   * - `logout-failed` 表示风险仍在；`login` 表示另一个标签页已重新登录、风险解除。
    */
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (event.key === LOGOUT_PENDING_KEY) {
         setLogoutPending(event.newValue !== null)
-        if (event.newValue !== null) {
-          userRef.current = null
-          setMe(null)
-        }
+        if (event.newValue !== null) invalidateIdentity()
         return
       }
       if (event.key !== AUTH_EVENT_KEY || !event.newValue) return
@@ -196,31 +240,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return
       }
       if (data.type === 'logout-start') {
-        userRef.current = null
-        setMe(null)
+        invalidateIdentity()
         setLogoutPending(true)
       } else if (data.type === 'logout-revoked') {
-        userRef.current = null
-        setMe(null)
+        invalidateIdentity()
         setLogoutPending(false)
       } else if (data.type === 'logout-failed') {
+        invalidateIdentity()
         setLogoutPending(true)
       } else if (data.type === 'login') {
-        // 另一标签页重新登录成功：服务端已在同一事务里撤销旧会话，风险解除
+        // 另一标签页重新登录成功：服务端已在同一事务里撤销旧会话，风险解除。
+        // 本标签页的旧身份探测同样要作废（会话已换成另一份）。
+        invalidateIdentity()
         setLogoutPending(false)
       }
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
-  }, [])
+  }, [invalidateIdentity])
 
   const logout = useCallback(async () => {
-    // 先告诉其它标签页「这个浏览器正在退出」：不能让它们继续展示过期登录态
+    // 本地注销开始 = 旧身份探测立即失效（P2-F 要求 2）
+    invalidateIdentity()
+    // 告诉其它标签页「这个浏览器正在退出」：不能让它们继续展示过期登录态
     publishAuthEvent('logout-start')
-    // 先退出**本地界面**：目标是「别再显示成已登录」——会话可能已失效、或请求根本
-    // 没发出去，不该让用户卡在已登录界面。
-    userRef.current = null
-    setMe(null)
     // 详情页「← → 切换」用的列表存在 sessionStorage 里，是上一个用户点过的上下文，
     // 登出时清掉，别带给下一个登录的人（2026-10-10 修）
     clearStockList()
@@ -230,7 +273,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 未登录时进登录页不能用 push，否则用户按返回又回到需要登录的页面。
     navigate('/login', { replace: true, state: { logoutFailed: !revoked } })
     return revoked
-  }, [navigate, revokeSession])
+  }, [invalidateIdentity, navigate, revokeSession])
 
   return (
     <AuthContext.Provider
