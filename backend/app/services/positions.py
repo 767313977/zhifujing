@@ -16,6 +16,7 @@
 from datetime import date
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import StockBasic, TradeJournal, TradePlan
@@ -25,6 +26,12 @@ from app.services.watch_scope import latest_quotes
 
 def _row(journal: TradeJournal, quote, basis: float | None) -> dict:
     close = quote.close if quote is not None else None
+    # 行情日期早于买入日 = 本地日线还没覆盖买入日（当天刚建仓、停牌、补采缺口）。
+    # 拿更早的收盘价当现价会算出「昨天的浮盈」，口径跨了一天 —— 宁可不给数
+    # （2026-11-08 审计 P2-02）。最新日期照常带出，页面上能看出行情停在哪天。
+    stale = quote is not None and quote.trade_date < journal.entry_date
+    if stale:
+        close = None
     # 买入日口径的等价价；买入日还没日线时退回不复权收盘（那时也没有除权信息可用）
     price = basis if basis is not None else close
     pnl = None
@@ -96,7 +103,17 @@ def create(
     position_pct: float | None = None,
     note: str | None = None,
     plan_id: int | None = None,
+    commit: bool = True,
 ) -> TradeJournal:
+    """建一笔持仓（= 一条未平仓的交易日志）。
+
+    **一条计划最多一笔**（2026-11-08 审计 P1-01）：带 `plan_id` 时先查是否已有
+    日志，有就直接返回那一笔（幂等）；并发仍可能同时看不到，靠
+    `ux_trade_journal_user_plan` 这个唯一索引兜底 —— 撞上了回滚再查一次。
+
+    `commit=False` 给「要和别的写同一事务」的调用方用（如 `from-plan` 要同时改
+    计划状态，见 P2-06）。此时只 `flush()` 拿到 id，由调用方统一提交。
+    """
     digits = validate_code(session, code)
     # 与交易日志 / 计划执行共用同一份校验：交易日、不晚于今天、股数 > 0、仓位 0-100
     trade_journal.validate_entry(
@@ -112,6 +129,11 @@ def create(
         plan = session.get(TradePlan, plan_id)
         if plan is None or plan.user_id != user_id:
             raise ValueError("关联的计划不存在")
+        existing = _journal_of_plan(session, user_id, plan_id)
+        if existing is not None:
+            return existing
+    # 行数上限由服务层统一把关（2026-11-08 审计 P2-03）：这个入口以前完全不看 500 条
+    trade_journal.ensure_under_limit(session, user_id)
     basic = session.get(StockBasic, digits)
     journal = TradeJournal(
         user_id=user_id,
@@ -126,6 +148,30 @@ def create(
         note=(note or "").strip() or None,
     )
     session.add(journal)
-    session.commit()
+    try:
+        if commit:
+            session.commit()
+        else:
+            session.flush()
+    except IntegrityError:
+        # 并发下另一个请求已经给这条计划建了日志 —— 回滚后把那一笔查出来返回。
+        # 走到这里说明前面的 get-or-create 没看到它（两个请求同时 SELECT 到空）。
+        session.rollback()
+        existing = (
+            _journal_of_plan(session, user_id, plan_id) if plan_id is not None else None
+        )
+        if existing is None:
+            raise
+        return existing
     session.refresh(journal)
     return journal
+
+
+def _journal_of_plan(session: Session, user_id: int, plan_id: int) -> TradeJournal | None:
+    """这条计划已经写过的日志（最多一笔，唯一索引保证）。"""
+    return session.scalar(
+        select(TradeJournal)
+        .where(TradeJournal.user_id == user_id, TradeJournal.plan_id == plan_id)
+        .order_by(TradeJournal.id)
+        .limit(1)
+    )

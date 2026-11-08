@@ -77,6 +77,32 @@ def validate_entry(
             raise ValueError(f"买入日 {entry_date} 不是交易日")
 
 
+#: 单个用户最多保留多少笔交易 —— 与自选股 `MAX_WATCHLIST` 同一套做法
+#: （2026-11-01 审计 P2-2；2026-11-08 审计 P2-03 把它收敛到这里，四个写入口共用）
+MAX_ENTRIES = 500
+
+
+def ensure_under_limit(session: Session, user_id: int, *, adding: int = 1) -> None:
+    """交易日志行数上限。**所有写入口共用**，别再各自写一份。
+
+    以前只有 `POST /api/journal` 检查 500 条，手工建持仓 / 从计划转持仓 / 计划回填
+    都往同一张表插、完全不看上限 —— 同一个用户能靠别的入口突破设计上限。
+    超限抛 `ValueError`（文案直接给用户看），API 层转 400。
+    """
+    count = (
+        session.scalar(
+            select(func.count())
+            .select_from(TradeJournal)
+            .where(TradeJournal.user_id == user_id)
+        )
+        or 0
+    )
+    if count + adding > MAX_ENTRIES:
+        raise ValueError(
+            f"交易日志最多 {MAX_ENTRIES} 笔，你现在有 {count} 笔，先删掉一些再加"
+        )
+
+
 PATTERN_NAMES = {pattern.key: pattern.name for pattern in PATTERNS}
 POOL_NAMES = {
     pattern.key: pattern.name for pattern in PATTERNS if pattern.key in POOL_KEYS

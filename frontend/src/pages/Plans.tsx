@@ -150,6 +150,11 @@ export default function PlansPage() {
   const [saving, setSaving] = useState(false)
   /** 正在「转持仓」的计划 id：连点会发多个 POST，每笔都建一条持仓（2026-11-01 修） */
   const [positionBusy, setPositionBusy] = useState<number | null>(null)
+  /**
+   * 「保存并记一笔」在途标记（2026-11-08 审计 P1-02）：以前没有，双击就会发两次回填，
+   * 并发下可能各插一笔日志。后端已用唯一索引兜底，前端这层是让用户点不出第二次。
+   */
+  const [execBusy, setExecBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   /**
@@ -311,11 +316,12 @@ export default function PlansPage() {
   }
 
   const submitExec = async () => {
-    if (!execRow) return
+    if (!execRow || execBusy) return
     if (!execForm.actual.trim()) {
       setError('实际买入价是必填项')
       return
     }
+    setExecBusy(true)
     try {
       await api.executePlan(execRow.id, {
         actual_price: Number(execForm.actual),
@@ -328,6 +334,8 @@ export default function PlansPage() {
       await load()
     } catch (err) {
       setError((err as Error).message)
+    } finally {
+      setExecBusy(false)
     }
   }
 
@@ -647,9 +655,10 @@ export default function PlansPage() {
               <button
                 type="button"
                 onClick={() => void submitExec()}
-                className="border border-accent/60 bg-accent/10 px-3 py-[6px] text-[13px] text-accent transition-colors hover:bg-accent/20"
+                disabled={execBusy}
+                className="border border-accent/60 bg-accent/10 px-3 py-[6px] text-[13px] text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                保存并记一笔
+                {execBusy ? '保存中…' : '保存并记一笔'}
               </button>
               <button
                 type="button"

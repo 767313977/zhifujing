@@ -274,30 +274,18 @@ def list_trades(
     return TradeJournalOut(rows=[TradeJournalRow.model_validate(row) for row in rows])
 
 
-#: 单个用户最多保留多少笔交易 —— 与自选股 `MAX_WATCHLIST` 同一套做法
-#: （2026-11-01 审计 P2-2：journal / plans / 快照都没有行数上限，可被无限追加）
-MAX_JOURNAL = 500
-
-
 @router.post("", response_model=TradeJournalRow)
 def create_trade(
     payload: TradeJournalIn,
     session: Session = Depends(get_db),
     user: AppUser = Depends(current_user),
 ) -> TradeJournalRow:
-    count = (
-        session.scalar(
-            select(func.count())
-            .select_from(TradeJournal)
-            .where(TradeJournal.user_id == user.id)
-        )
-        or 0
-    )
-    if count >= MAX_JOURNAL:
-        raise HTTPException(
-            status_code=400,
-            detail=f"交易日志最多 {MAX_JOURNAL} 笔，你现在有 {count} 笔，先删掉一些再加",
-        )
+    # 行数上限收敛到服务层（2026-11-08 审计 P2-03）：手工建持仓 / 转持仓 / 计划回填
+    # 都往同一张表写，只在「交易日志」这一个入口拦是拦不住的。
+    try:
+        trade_journal.ensure_under_limit(session, user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     trade = TradeJournal(user_id=user.id)
     _apply(session, trade, payload)
     session.add(trade)

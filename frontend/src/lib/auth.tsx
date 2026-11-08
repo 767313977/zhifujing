@@ -76,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(async () => {
+    let delivered = true
     try {
       await api.logout()
     } catch (err) {
@@ -83,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // 的，服务端那次失败不能让 rejection 冒泡成 Unhandled Promise rejection，
       // 也不能挡住下面的本地清理与跳转（不等它、不阻塞）。
       console.warn('登出请求失败，仍按已登出处理：', err)
+      delivered = false
     }
     // 无论服务端成功与否都把本地状态清掉：目标是「别再显示成已登录」——
     // 会话可能已失效、或请求根本没发出去，不该让用户卡在已登录界面。
@@ -91,8 +93,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 详情页「← → 切换」用的列表存在 sessionStorage 里，是上一个用户点过的上下文，
     // 登出时清掉，别带给下一个登录的人（2026-10-10 修）
     clearStockList()
-    // 未登录时进登录页不能用 push，否则用户按返回又回到需要登录的页面
-    navigate('/login', { replace: true })
+    // 未登录时进登录页不能用 push，否则用户按返回又回到需要登录的页面。
+    // ⚠️ 请求没送达时把这件事带给登录页（2026-11-08 审计 P2-05）：HttpOnly cookie
+    // 只能由服务端删，请求没到就等于**会话还活着**，不能静默假装退出了。
+    navigate('/login', { replace: true, state: { logoutFailed: !delivered } })
+    return delivered
   }, [navigate])
 
   return (

@@ -341,7 +341,14 @@ export default function Positions() {
                       <td className="num">{row.entry_date}</td>
                       <td className="num">{fmtNum(row.entry_price)}</td>
                       <td className="num">{row.shares ?? '—'}</td>
-                      <td className="num" title={row.latest_date ?? ''}>
+                      <td
+                        className="num"
+                        title={
+                          row.latest_date && row.latest_date < row.entry_date
+                            ? `行情只到 ${row.latest_date}（早于买入日），暂不计浮盈`
+                            : row.latest_date ?? ''
+                        }
+                      >
                         {fmtNum(row.latest_close)}
                       </td>
                       <td className={`num ${toneOf(row.pnl)}`}>

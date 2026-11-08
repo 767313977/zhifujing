@@ -20,7 +20,11 @@ export interface AuthValue {
   checking: boolean
   /** 登录 / 注册成功后调用，把用户塞进来，省一次 /auth/me */
   setUser: (me: Me) => void
-  logout: () => Promise<void>
+  /**
+   * 登出。返回 `false` 表示**登出请求没送达服务端**（断网 / 超时）——
+   * 本地状态照样清，但会话可能仍有效，调用方要如实告诉用户（见 2026-11-08 审计 P2-05）。
+   */
+  logout: () => Promise<boolean>
 }
 
 export const AuthContext = createContext<AuthValue | null>(null)

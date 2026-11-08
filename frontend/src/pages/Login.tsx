@@ -28,13 +28,20 @@ export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
   // 被 RequireAuth 拦下来时会带上原来要去的地址，登完直接回去
-  const from = (location.state as { from?: string } | null)?.from ?? '/'
+  const state = location.state as { from?: string; logoutFailed?: boolean } | null
+  const from = state?.from ?? '/'
 
   const [tab, setTab] = useState<Tab>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [inviteCode, setInviteCode] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  // 上一次登出请求没送达服务端（断网 / 超时）：HttpOnly cookie 只能由服务端删，
+  // 那意味着**会话可能还活着**，进页面就如实说出来（2026-11-08 审计 P2-05）
+  const [error, setError] = useState<string | null>(
+    state?.logoutFailed
+      ? '上次登出请求没有送达服务端，登录状态可能仍然有效。如使用公共设备，请关闭浏览器后再离开。'
+      : null,
+  )
   const [busy, setBusy] = useState(false)
 
   // 已登录就不用看这一页了（例如按了浏览器后退）

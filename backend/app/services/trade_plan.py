@@ -49,6 +49,11 @@ PLAN_STATUS_LABELS = {
 }
 PLAN_STATUSES = tuple(PLAN_STATUS_LABELS)
 
+#: 单个用户最多保留多少条计划 —— 与自选股 / 交易日志同一套做法。
+#: 2026-11-08 审计 P2-04：上限以前只在 `api/plans.create_plan` 那条路检查，
+#: 「从名单一键生成」可以无限追加；现在收敛到这里，两个入口共用。
+MAX_PLANS = 200
+
 
 def _auto_status(plan: TradePlan, today: date) -> str:
     """按日期与回填情况推计划状态。
@@ -357,6 +362,19 @@ def create_from_signal(
 
     plan = existing or TradePlan(user_id=user_id, code=digits, plan_date=target)
     if existing is None:
+        # 只在**确实新增**时数：同一只票同一天重复生成是更新，不该被上限挡掉
+        count = (
+            session.scalar(
+                select(func.count())
+                .select_from(TradePlan)
+                .where(TradePlan.user_id == user_id)
+            )
+            or 0
+        )
+        if count >= MAX_PLANS:
+            raise ValueError(
+                f"交易计划最多 {MAX_PLANS} 条，你现在有 {count} 条，先删掉一些再加"
+            )
         session.add(plan)
     plan.name = hit.name or basic.name
     plan.buy_price = round(float(buy), 2)

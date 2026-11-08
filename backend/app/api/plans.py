@@ -36,9 +36,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plans", tags=["次日计划"])
 
 
-#: 单个用户最多保留多少条计划 —— 与自选股 `MAX_WATCHLIST` 同一套做法
-#: （2026-11-01 审计 P2-2）。按「代码 × 日期」一天一条，200 条足够覆盖大半年。
-MAX_PLANS = 200
+#: 计划条数上限在服务层（`trade_plan.MAX_PLANS`），两个入口共用 —— 见 2026-11-08 审计 P2-04
+
+
+def _journal_of_plan(session: Session, user_id: int, plan_id: int) -> TradeJournal | None:
+    """这条计划已经写过的那笔日志（`ux_trade_journal_user_plan` 保证最多一笔）。"""
+    return session.scalar(
+        select(TradeJournal)
+        .where(TradeJournal.user_id == user_id, TradeJournal.plan_id == plan_id)
+        .order_by(TradeJournal.id)
+        .limit(1)
+    )
+
+
+def _apply_plan(plan: TradePlan, payload: PlanExecuteIn) -> None:
+    """把回填写到计划上：手动回填 = 已执行，且锁定状态（自动核对不再改回「过期」）。"""
+    plan.actual_price = float(payload.actual_price)
+    plan.followed_plan = bool(payload.followed_plan)
+    plan.deviation = (payload.deviation or "").strip() or None
+    plan.status = "executed"
+    plan.status_source = "manual"
+
+
+def _apply_journal(
+    journal: TradeJournal, plan: TradePlan, entry_date: date, payload: PlanExecuteIn
+) -> None:
+    """把回填写到已有日志上 —— 重复回填只更新这一笔，不会新增。"""
+    journal.entry_date = entry_date
+    journal.entry_price = float(payload.actual_price)
+    journal.plan_stop = plan.stop_price
+    if payload.shares is not None:
+        journal.shares = payload.shares
+    if payload.position_pct is not None:
+        journal.position_pct = payload.position_pct
+    if payload.note:
+        journal.note = payload.note.strip() or journal.note
 
 
 def _normalize_code(code: str) -> str:
@@ -192,10 +224,10 @@ def create_plan(
             )
             or 0
         )
-        if count >= MAX_PLANS:
+        if count >= trade_plan.MAX_PLANS:
             raise HTTPException(
                 status_code=400,
-                detail=f"交易计划最多 {MAX_PLANS} 条，你现在有 {count} 条，先删掉一些再加",
+                detail=f"交易计划最多 {trade_plan.MAX_PLANS} 条，你现在有 {count} 条，先删掉一些再加",
             )
         plan = TradePlan(user_id=user.id, code=code, plan_date=payload.plan_date)
         session.add(plan)
@@ -294,23 +326,19 @@ def execute_plan(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    plan.actual_price = float(payload.actual_price)
-    plan.followed_plan = bool(payload.followed_plan)
-    plan.deviation = (payload.deviation or "").strip() or None
-    # 手动回填 = 已执行，且锁定状态：自动核对不再把它改回「过期」
-    plan.status = "executed"
-    plan.status_source = "manual"
+    _apply_plan(plan, payload)
 
     reason_type = "other"
     if plan.source:
         reason_type = "wudao" if plan.source.startswith("wudao") else "pattern"
-    journal = session.scalar(
-        select(TradeJournal)
-        .where(TradeJournal.user_id == user.id, TradeJournal.plan_id == plan.id)
-        .order_by(TradeJournal.id.desc())
-        .limit(1)
-    )
+    journal = _journal_of_plan(session, user.id, plan.id)
     if journal is None:
+        # 行数上限与「交易日志」入口共用同一份（2026-11-08 审计 P2-03）：
+        # 只在确实要新增时检查 —— 重复回填是更新那一笔，不能被上限挡住。
+        try:
+            trade_journal.ensure_under_limit(session, user.id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         journal = TradeJournal(
             user_id=user.id,
             code=plan.code,
@@ -331,16 +359,22 @@ def execute_plan(
         )
         session.add(journal)
     else:
-        journal.entry_date = entry_date
-        journal.entry_price = float(payload.actual_price)
-        journal.plan_stop = plan.stop_price
-        if payload.shares is not None:
-            journal.shares = payload.shares
-        if payload.position_pct is not None:
-            journal.position_pct = payload.position_pct
-        if payload.note:
-            journal.note = payload.note.strip() or journal.note
-    session.commit()
+        _apply_journal(journal, plan, entry_date, payload)
+    try:
+        session.commit()
+    except IntegrityError:
+        # 两个请求同时回填同一条计划：唯一索引只让一笔落库，输的那笔改成**更新已有记录**，
+        # 而不是 500（2026-11-08 审计 P1-02 / P2-06）。回滚后 ORM 对象全部过期，要重取。
+        session.rollback()
+        journal = _journal_of_plan(session, user.id, plan.id)
+        if journal is None:
+            raise HTTPException(
+                status_code=409, detail="同一条计划正在被并发提交，请重试"
+            ) from None
+        plan = session.get(TradePlan, plan_id)
+        _apply_plan(plan, payload)
+        _apply_journal(journal, plan, entry_date, payload)
+        session.commit()
     session.refresh(journal)
     return PlanExecuteOut(
         row=_row(session, user, plan.id, plan.plan_date), journal_id=journal.id

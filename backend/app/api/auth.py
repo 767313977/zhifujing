@@ -103,11 +103,18 @@ def _normalize_username(raw: str) -> str:
 
 
 def _set_cookie(response: Response, token: str, request: Request) -> None:
-    """种会话 cookie。`Secure` 按实际协议（见模块说明）。"""
+    """种会话 cookie。`Secure` 按实际协议（见模块说明）。
+
+    ⚠️ cookie 的寿命取**绝对上限**（90 天），不是滑动的 30 天（2026-11-08 审计 P2-07）：
+    数据库里的 `expires_at` 每次访问会往后推，但 `Set-Cookie` 只在登录/注册时发一次 ——
+    若这里也写 30 天，浏览器会在首次登录第 30 天把 cookie 删掉，哪怕用户天天在用、
+    服务端会话早已续到第 90 天，「在用就不过期」直接落空。
+    真正「闲置 30 天失效」由服务端兜住：数据库会话 30 天没动就过期，90 天绝对上限。
+    """
     response.set_cookie(
         key=auth.COOKIE_NAME,
         value=token,
-        max_age=auth.SESSION_DAYS * 24 * 3600,
+        max_age=auth.SESSION_ABSOLUTE_DAYS * 24 * 3600,
         httponly=True,
         samesite="lax",
         secure=request.url.scheme == "https",
@@ -212,7 +219,12 @@ def login(
     # （`services.auth.DUMMY_PASSWORD_HASH`）：空串会卡在解析那步直接返回 False、
     # **scrypt 根本不跑**，于是「有没有这个人」就从响应快慢上漏出去了（2026-10-10 修）
     stored = user.password_hash if user is not None else auth.DUMMY_PASSWORD_HASH
-    if user is None or not auth.verify_password(payload.password, stored):
+    # ⚠️ 必须**先无条件验一次**，再判 `user is None`（2026-11-08 审计 P2-01）：
+    # 写成 `if user is None or not auth.verify_password(...)` 时，用户名不存在会在
+    # `or` 的第一个条件就短路，**scrypt 根本不执行** —— 上面那句「同样开销」的注释
+    # 就变成了空话，响应快慢照样能看出用户名是否存在。
+    valid = auth.verify_password(payload.password, stored)
+    if user is None or not valid:
         # 两条限流**都**记一笔 —— 用户名不存在也照记，否则按名计数本身就成了
         # 「哪些用户名有效」的探测口（见 services/auth.login_user_limiter）
         # ⚠️ `fail` / `reset` 必须与上面的 `guard_user_rate` 用**同一把键**

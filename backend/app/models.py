@@ -847,7 +847,12 @@ class TradeJournal(Base):
 
     __table_args__ = (
         Index("ix_trade_journal_user_entry", "user_id", "entry_date"),
-        Index("ix_trade_journal_plan", "plan_id"),
+        # 一条计划**最多**对应一笔交易日志（2026-11-08 审计 P1-01/P1-02）。
+        # 以前只有普通索引：`from-plan` 连点两次就会插两笔，`execute` 并发也会各插一笔。
+        # SQLite 里 NULL 互不相等，所以手工持仓（`plan_id` 为空）不会互相冲突。
+        # 老库由 `db._add_missing_indexes` 自动补建 —— 上线前已核对线上库没有重复
+        # （带 plan_id 的日志 0 行），否则建索引会失败。
+        Index("ux_trade_journal_user_plan", "user_id", "plan_id", unique=True),
     )
 
 

@@ -73,7 +73,13 @@ def create_from_plan(
     session: Session = Depends(get_db),
     user: AppUser = Depends(current_user),
 ) -> PositionRow:
-    """把一条计划转成持仓：成本取回填的实际价，没回填就用计划买点。"""
+    """把一条计划转成持仓：成本取回填的实际价，没回填就用计划买点。
+
+    **幂等**（2026-11-08 审计 P1-01）：同一条计划再点一次，返回已有的那笔持仓，
+    不会插第二笔（服务层 + 唯一索引双保险）。
+    **一个事务**（P2-06）：持仓与计划状态一起提交 —— 以前分成两次 commit，
+    第二步失败就留下「有持仓、计划还没标执行」的半成品。
+    """
     plan = session.get(TradePlan, plan_id)
     if plan is None or plan.user_id != user.id:
         raise HTTPException(status_code=404, detail="这条计划不存在")
@@ -88,8 +94,10 @@ def create_from_plan(
             position_pct=None,
             note=(plan.position_note or plan.note),
             plan_id=plan.id,
+            commit=False,
         )
     except ValueError as exc:
+        session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     plan.status = "executed"
     plan.status_source = "manual"
