@@ -188,3 +188,25 @@ def test_dry_run_does_not_write(db, monkeypatch):
     assert summary["written"] == 0
     assert "dry-run" in summary["reason"]
     assert db.scalar(select(MarketSentiment)) is None
+
+
+def test_cli_prints_summary_containing_a_date(monkeypatch, capsys):
+    """摘要里带 `date` 对象，命令行必须在落库之后也能正常打印（json 需要 default=str）。"""
+
+    class _FakeCollector:
+        def __init__(self, settings=None) -> None:
+            pass
+
+        def collect(self, trade_date, *, dry_run=False):
+            return {
+                "task": "kph_sentiment",
+                "trade_date": trade_date.isoformat(),
+                "written": 1,
+                "row": {"trade_date": trade_date, "up_count": 2567},
+            }
+
+    monkeypatch.setattr(collect_kph, "KphCollector", _FakeCollector)
+    assert collect_kph.main(["--date", DAY.isoformat()]) == 0
+    out = capsys.readouterr().out
+    assert DAY.isoformat() in out
+    assert '"written": 1' in out

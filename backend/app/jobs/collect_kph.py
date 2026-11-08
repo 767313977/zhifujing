@@ -193,7 +193,8 @@ def main(argv: list[str] | None = None) -> int:
     except KphLocalError as exc:
         print(f"✗ {exc}")
         return 1
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    # `default=str`：摘要里的 `row.trade_date` 是 date 对象，不转就抛 TypeError
+    print(json.dumps(summary, ensure_ascii=False, indent=2, default=str))
     return 0
 
 
