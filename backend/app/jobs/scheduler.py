@@ -77,6 +77,10 @@ B1_INTRADAY_JOB_ID = "b1_intraday"
 # 过期登录会话清理（见 config.session_cleanup_hour，2026-10-23 加）：每天凌晨删一次
 # `user_session` 里已过期 / 超绝对上限的行，别让长期不登录的账号一直占着。
 SESSION_CLEANUP_JOB_ID = "session_cleanup"
+# 开盘红本地数据服务的补采（见 config.kph_local_hour）：只补 `market_sentiment`
+# 里 iFinD 没采到的空值。**默认不注册**，要 `kph_local_enabled=true` 才挂上 ——
+# 那个服务跑在内网，云端 VPS 一般访问不到。
+KPH_LOCAL_JOB_ID = "collect_kph_local"
 
 # 「错过 17:30 / 22:00」的回看上限（单位：交易日）。本机常年关机，重启往往发生在
 # 次日 —— 那一天的**龙虎榜 / 机构席位 / 涨停题材**（`_run_late`）与**板块成分股**
@@ -440,6 +444,24 @@ class DailyScheduler:
             misfire_grace_time=90,
             coalesce=True,
         )
+        # 开盘红本地服务补采（2026-11-08 加）：只补 `market_sentiment` 里 iFinD 没采到的
+        # 空值（`upsert_fill`），跑在 15:30、晚于主链。默认关闭 —— 那个服务在内网，
+        # 云端访问不到；本机跑站点时把 `KPH_LOCAL_ENABLED=true` 打开即可。
+        if self.settings.kph_local_enabled:
+            scheduler.add_job(
+                self._run_kph_local,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour=self.settings.kph_local_hour,
+                    minute=self.settings.kph_local_minute,
+                    timezone=TIMEZONE,
+                ),
+                id=KPH_LOCAL_JOB_ID,
+                name="开盘红本地补采（情绪）",
+                replace_existing=True,
+                misfire_grace_time=1800,
+                coalesce=True,
+            )
         scheduler.start()
         self._scheduler = scheduler
         # 数据库备份：放在 22:30 成分股兜底之后，把当天所有写库都收进去。
@@ -694,6 +716,21 @@ class DailyScheduler:
             return
         if count == 0:
             logger.debug("集合竞价采样：本次无数据（非交易日 / 不在采样窗口）")
+
+    def _run_kph_local(self) -> None:
+        """跑一次开盘红本地补采（见 `jobs/collect_kph.py`）。
+
+        失败只告警、不重试：它补的是 `market_sentiment` 的空值，主链 iFinD 已经写过一遍，
+        失败不影响当天的主数据；第二天同一时刻会自然再补。
+        """
+        from app.jobs.collect_kph import KphCollector, TASK  # 局部导入：可选链路，别拖慢启动
+
+        try:
+            summary = KphCollector(self.settings).collect(today_cn())
+        except Exception:  # noqa: BLE001 - 见 docstring
+            logger.warning("%s 补采失败", TASK, exc_info=True)
+            return
+        logger.info("%s 补采：%s", TASK, summary)
 
     def _run_daily(self, reason: str = "定时采集") -> None:
         today = today_cn()

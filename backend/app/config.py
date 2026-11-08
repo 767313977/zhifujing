@@ -124,6 +124,24 @@ class Settings(BaseSettings):
     # 板块排行 270 个要翻 7 页、成分股单次可能几百 KB，实测 3/s 未被限。
     kph_rate_limit: float = 3.0
 
+    # --- 开盘红本地数据服务（StockDataServer.exe）---
+    #
+    # 与上面那两个域名不是一回事：这是一个**跑在内网的包装程序**（说明书 v2.7.2），
+    # 把开盘红的 mTLS 长连接、腾讯/东财代理都收成 HTTP JSON，默认监听 5000 端口。
+    # 它**没有鉴权**，只能内网/本机用；云端 VPS 一般访问不到，所以默认关闭。
+    #
+    # 当前只接了两类**字段明确**的数据（2026-11-08，见 `jobs/collect_kph.py`）：
+    # 市场情绪与涨跌统计；涨停三池 / 竞价 / 龙虎榜要等探针拿到真实列顺序再补
+    # （打板类接口的 `100` 是「原始列数组」，猜列号会把数据悄悄写错位）。
+    kph_local_enabled: bool = False
+    kph_local_base: str = "http://127.0.0.1:5000"
+    # 本地服务背后是 mTLS 长连接，正常几十毫秒；给 15 秒足够，不要用 60 秒的
+    # `http_timeout`（那是给 iFinD 自然语言工具留的），卡住时能早点失败。
+    kph_local_timeout: float = 15.0
+    # 补采时刻：晚于主链 15:05，用 `upsert_fill` 只补空值，不覆盖 iFinD 采到的数
+    kph_local_hour: int = 15
+    kph_local_minute: int = 30
+
     # --- 通用 HTTP ---
     http_retries: int = 3
     http_backoff: float = 2.0
