@@ -1,0 +1,964 @@
+{
+  "archive": "dist-deploy\\fupan-fe2005f.tar.gz",
+  "archive_size": 1619194,
+  "archive_sha256": "3824316f73facc82539d40648fea69a8115b3c4820de5188ae1a115796d2cfe8",
+  "file_count": 235,
+  "top_level": [
+    "backend",
+    "deploy",
+    "frontend",
+    "scripts"
+  ],
+  "forbidden_entries": [],
+  "source_files_checked": 181,
+  "source_mismatch": [],
+  "dist_expected_digest": "2f819e0bb05fb230425936451e656ddfd48f45e0ab2e9bfd73c665cd20ac436d",
+  "dist_actual_digest": "2f819e0bb05fb230425936451e656ddfd48f45e0ab2e9bfd73c665cd20ac436d",
+  "dist_file_count": 54,
+  "dist_mismatch": [],
+  "dist_missing": [],
+  "dist_extra": [],
+  "frozen_commit": "fe2005f226015cb97a175c2aadc47a87f8085f50",
+  "files": {
+    "backend/app/__init__.py": {
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "backend/app/api/__init__.py": {
+      "size": 24,
+      "sha256": "cefc3034a60785c7646b2d3dbd4e87e079eb6e9cf136130c4cedfaa68ba5bb91"
+    },
+    "backend/app/api/admin.py": {
+      "size": 17101,
+      "sha256": "5c8da1ab58b1174a93fa42103ed710de1eb1ff5eb0b3844f7a7dda22adbd3ee9"
+    },
+    "backend/app/api/analysis.py": {
+      "size": 12041,
+      "sha256": "6727a8f5eb55cd0b5d39c0b0d35b19919f9a7ea912b87164382c9d92d890c044"
+    },
+    "backend/app/api/anomaly_map.py": {
+      "size": 36070,
+      "sha256": "04de53678e1b5b7435083cfec1dba400bfe3939f3816b32bb8bc7c04aeea50af"
+    },
+    "backend/app/api/auction.py": {
+      "size": 30634,
+      "sha256": "6eddda4e93647953642219a8cff61510500b3267ee07b1187ff8f9c8037e0603"
+    },
+    "backend/app/api/auth.py": {
+      "size": 16075,
+      "sha256": "dccadc1fd951e78c8a0a15de6b3ed0d5fa437df053b6c30aba8df0f487167721"
+    },
+    "backend/app/api/cb.py": {
+      "size": 5625,
+      "sha256": "673b12cc172c377c32b1366a92054846b50c5d7bec6b0ccb2026e30bbabe14f5"
+    },
+    "backend/app/api/deps.py": {
+      "size": 2499,
+      "sha256": "b27ad82088c8480319719ecad13b4ad443a45c92dabbd5f7b3dce33eebc300e5"
+    },
+    "backend/app/api/etf.py": {
+      "size": 10761,
+      "sha256": "e6713bbb17e9ead72782892eda84ded1d262ba717cc681e93e16f1454fbf799a"
+    },
+    "backend/app/api/funds.py": {
+      "size": 32049,
+      "sha256": "9a4aed97957c71eef0f15cb60e659ff881600604dd49a51e8d0996ccd93e297e"
+    },
+    "backend/app/api/journal.py": {
+      "size": 17455,
+      "sha256": "76d01829817253b7fd6075ee47eb0fb0cce27ed713bdfc589dc01aba59e53efe"
+    },
+    "backend/app/api/limit.py": {
+      "size": 24546,
+      "sha256": "869cce64a2b125b8d0b630cb60aba60ddf416f8c59f6c3b8348b46ee47c7ee68"
+    },
+    "backend/app/api/market.py": {
+      "size": 53179,
+      "sha256": "80fc2d31f2423ec09ab4103943ccd10889ceb7ec5f84fdd244ac724a58d161df"
+    },
+    "backend/app/api/note.py": {
+      "size": 6499,
+      "sha256": "8a7fa6f37e0ddd4efb2f5745e3d7e81f25eeb71c51165c7c9ed713a4a5cbd982"
+    },
+    "backend/app/api/patterns.py": {
+      "size": 68970,
+      "sha256": "35a3587cc6884215443d02c7843cc800100eb2c1f98f1148bb80e7a29f559a3e"
+    },
+    "backend/app/api/plans.py": {
+      "size": 22256,
+      "sha256": "b5946e27c92fe15d6ae2cb0338069ab0efd2602d3c5e872f9c0a092cbd5cf8d1"
+    },
+    "backend/app/api/pools.py": {
+      "size": 20601,
+      "sha256": "35ac0baa2a55a5727e60ee6c29896742fca9874802c43723eda968e83260a3ae"
+    },
+    "backend/app/api/positions.py": {
+      "size": 5917,
+      "sha256": "06dedd45dbf4200785c5eaa748d345df29e11f0340127631ea89064a330548e7"
+    },
+    "backend/app/api/premarket.py": {
+      "size": 1517,
+      "sha256": "df243ef09d67842aa0e587ad444c56c5948871c53d3b02284214a6c99b4db9b4"
+    },
+    "backend/app/api/research.py": {
+      "size": 4876,
+      "sha256": "c616f39bd2fc03e8c34cdb55d8324bd478b06911bfef9c188ef434176fc849e5"
+    },
+    "backend/app/api/risk.py": {
+      "size": 1371,
+      "sha256": "1d1df5e8efafd7e12eb0fb622cba6dd0576359e65121a84168038a37525b464a"
+    },
+    "backend/app/api/sector.py": {
+      "size": 62568,
+      "sha256": "097b4148bc1d4260c34a6bdcc56c6761e238425be0ada6c6e0a20df50f3df81d"
+    },
+    "backend/app/api/stock.py": {
+      "size": 59544,
+      "sha256": "a1399569b97da0811ca8ad5fa480ce27357c8c191c9b2e11b2992632a3063b65"
+    },
+    "backend/app/api/themes.py": {
+      "size": 1181,
+      "sha256": "ac427d320a2621ab407c43e444498195a4962cf61b02aa3e281fce8141d42745"
+    },
+    "backend/app/api/valuation.py": {
+      "size": 1969,
+      "sha256": "7198d596804db8ded9c33543419e940a8942a1c77464a69f39cb3f11f466cb3d"
+    },
+    "backend/app/api/watchlist.py": {
+      "size": 13988,
+      "sha256": "fcad47dd57085610ab1116cb88105562178d1758421a04b6ab4cedb8e4d62433"
+    },
+    "backend/app/config.py": {
+      "size": 32380,
+      "sha256": "199829cffbc60b7ff57dc3b1374522e03cd32818aecf3fb597e70f3ed97693af"
+    },
+    "backend/app/db.py": {
+      "size": 22706,
+      "sha256": "3a12a70c209efa7088a2581451d02bcb861aead4e2605b8ade1322c929fe717a"
+    },
+    "backend/app/jobs/__init__.py": {
+      "size": 23,
+      "sha256": "4af746bf0550e455c69e2b0f5dec29916b66426862a7978ad6270b1bb8a88def"
+    },
+    "backend/app/jobs/alerts.py": {
+      "size": 8735,
+      "sha256": "89d6f9b1c59319fd83fc7c3437a3426e6d5d206332f63fbee90b81333b53e66e"
+    },
+    "backend/app/jobs/backfill_pools.py": {
+      "size": 22370,
+      "sha256": "a6cdf7f7d067efafc78f382c14c363dbee10933f3304b9e7e6552e13c8e0be06"
+    },
+    "backend/app/jobs/backup.py": {
+      "size": 5630,
+      "sha256": "6844583b7d5d8a81553654a4d04eb933698d7cd210d4d2888d6c360401c7efc8"
+    },
+    "backend/app/jobs/collect_auction.py": {
+      "size": 13677,
+      "sha256": "d32cfd3163d6248be1beb1099abf6bf516159cf77c7229ceb977721e901c532b"
+    },
+    "backend/app/jobs/collect_avg_price.py": {
+      "size": 6947,
+      "sha256": "73041bb7af814007942b55fd5d98a53c47d835c8ca50249a83e4254c2e1edb52"
+    },
+    "backend/app/jobs/collect_board_flow.py": {
+      "size": 10439,
+      "sha256": "4497a8b262900eccfd99cb3ca582fe95f0903910266d2c5deac3447669593665"
+    },
+    "backend/app/jobs/collect_breadth.py": {
+      "size": 8543,
+      "sha256": "806fb3902630d86a4615d66215d611eb093530dcff595a768e070441eb15a57b"
+    },
+    "backend/app/jobs/collect_cb.py": {
+      "size": 31385,
+      "sha256": "023d949cb6214723052a334d1b0472b351259931aaf77d3e03fec93c5ad7de5e"
+    },
+    "backend/app/jobs/collect_daily.py": {
+      "size": 88000,
+      "sha256": "7028150d6327beb5baf109f02a9c50b5f53b7ccb665c57e92530461dccc82656"
+    },
+    "backend/app/jobs/collect_dde.py": {
+      "size": 18671,
+      "sha256": "debbf71f1d272db284357e910fffb9d144da7a75e1d92d9742d21978314721db"
+    },
+    "backend/app/jobs/collect_erp.py": {
+      "size": 8017,
+      "sha256": "69f2738f4a467da6509902485f63630a3ad14b9447836efc7612b4d4a87f8129"
+    },
+    "backend/app/jobs/collect_etf_bar.py": {
+      "size": 13173,
+      "sha256": "e70c916c164c01981bc62ab3298b363fa138e5a9e80ba723fee380e7b7f4b5a2"
+    },
+    "backend/app/jobs/collect_fear_greed.py": {
+      "size": 17723,
+      "sha256": "6134de393424da595226004c0c70ecccfebb7b35e0aacbfe9bc0582685cfcda4"
+    },
+    "backend/app/jobs/collect_funds.py": {
+      "size": 41263,
+      "sha256": "25fc8c8d532f12bdd0b874debe62b26ade2c3b9e3397cb420d6abd4b59f35650"
+    },
+    "backend/app/jobs/collect_futures_basis.py": {
+      "size": 8984,
+      "sha256": "193ae4063454f04a4868f9c8a2cf5743e09ade17f5b384d8d8c946022d6e5ffa"
+    },
+    "backend/app/jobs/collect_futures_position.py": {
+      "size": 4985,
+      "sha256": "32f36e79f56b387331c672e13296e4ee2132a13d4f8be20789b02312eaa695a4"
+    },
+    "backend/app/jobs/collect_kline.py": {
+      "size": 30597,
+      "sha256": "8cbb60e983f6990fe6736883569df1634cb267aeda09bb118a99717b2215b552"
+    },
+    "backend/app/jobs/collect_kph.py": {
+      "size": 9294,
+      "sha256": "97ebcc401a83c5ccee5f56ad51a5b9d51c8fd046194c1860b21682e43dcc623e"
+    },
+    "backend/app/jobs/collect_qvix.py": {
+      "size": 5656,
+      "sha256": "c424dbbfa7714508ea09034a560a9b717eae6c3c8f7f04fab53f010cae5f4eb2"
+    },
+    "backend/app/jobs/collect_reasons.py": {
+      "size": 7474,
+      "sha256": "02af3afdce4a4eb3ff1da979f835f0eb5dbe6163b8df00910c4db542949584d0"
+    },
+    "backend/app/jobs/collect_sectors.py": {
+      "size": 24805,
+      "sha256": "395ee9e0a248eebd5aac7456f763adba11df7b5ed90774d7cf4d6e444d132e10"
+    },
+    "backend/app/jobs/collect_themes.py": {
+      "size": 6656,
+      "sha256": "12c8e5c93a81cf46e1f3b646aecdc3f8e3f56accb5f72af9e94586a825c02423"
+    },
+    "backend/app/jobs/collect_universe.py": {
+      "size": 15515,
+      "sha256": "c89d7aede30521708185f8f4c9d811055455516d20125f23ab5493cf1fe4d4c6"
+    },
+    "backend/app/jobs/collect_valuation.py": {
+      "size": 2680,
+      "sha256": "a4034f6b47167bbe59b7c8bff11c8cae6d477965a14f8be2922ad936fe267366"
+    },
+    "backend/app/jobs/intraday_b1.py": {
+      "size": 19448,
+      "sha256": "59ab82970f346bc25db1f3d043a06f9d91b5a76911f9420eb7a50b6d7a066ebc"
+    },
+    "backend/app/jobs/push_brief.py": {
+      "size": 42046,
+      "sha256": "80ff53a05c72d08e984d6437b58510b1dc42e205129f5a1750c32a9baad7fc1a"
+    },
+    "backend/app/jobs/scan_dde.py": {
+      "size": 22062,
+      "sha256": "e950c18b4220f2b1c49e0914c276c6b429c8f4c85ee462a2f1fbaeeca4250ec0"
+    },
+    "backend/app/jobs/scan_patterns.py": {
+      "size": 58231,
+      "sha256": "16abc003df9329f7caeecd138199361c5e4a17961e39de98ed213f732e6ee5da"
+    },
+    "backend/app/jobs/scan_rps.py": {
+      "size": 11226,
+      "sha256": "37527325c6d8157a4f08676229fe7e97009fa09a41bc87cf270005372523e305"
+    },
+    "backend/app/jobs/scheduler.py": {
+      "size": 117350,
+      "sha256": "fbf0ac26502033e877b844f824acda9e257028a0bf4b3856844c54aa9c9e3b0f"
+    },
+    "backend/app/main.py": {
+      "size": 24416,
+      "sha256": "5505eba766c53f80420f4c8c31c2ffcc0afc19028c4684cf7de614f6fd757afb"
+    },
+    "backend/app/models.py": {
+      "size": 85419,
+      "sha256": "7dfb0fac2f487d037555fc5e378e7e290ee919adcae4ea97d4f29524d79606fd"
+    },
+    "backend/app/schemas.py": {
+      "size": 134891,
+      "sha256": "235101d73c13471c1e752337651fa04ab49436e230995b195884686cd7f054a8"
+    },
+    "backend/app/services/__init__.py": {
+      "size": 26,
+      "sha256": "200e8d08b692b988addf895ea6d82d7310efad94852b69f27d12593d8e11ea32"
+    },
+    "backend/app/services/analysis_snapshot.py": {
+      "size": 2587,
+      "sha256": "004895047aa43a817d42bef76b1e2098d61361a7b392edfd70c90409da102f3e"
+    },
+    "backend/app/services/auth.py": {
+      "size": 24404,
+      "sha256": "4635b20ee589ef1471640f700d0516ecc0e075835a672239c8fa0a531f0b54ae"
+    },
+    "backend/app/services/brief_watchlist.py": {
+      "size": 13041,
+      "sha256": "952ca79d31dd8adb8080e9e2f24e8d1f346fcae8cbd380b6c47e334c0980d78b"
+    },
+    "backend/app/services/chip.py": {
+      "size": 10021,
+      "sha256": "52f74a41ca2880c7c89472bec8f8bbf6e69350404c99a5d5e65415f6a29b6f1f"
+    },
+    "backend/app/services/convertible.py": {
+      "size": 38837,
+      "sha256": "c8321eff8d13951c447e3a2398dbbb627b41d5afc17d4d60c28a65afd4a3055d"
+    },
+    "backend/app/services/coverage.py": {
+      "size": 902,
+      "sha256": "46a2bac935fb3d4fc3db1fa4cf2587b642943e8dc0b127dc200de30788783966"
+    },
+    "backend/app/services/data_revision.py": {
+      "size": 7689,
+      "sha256": "4d8647d1872f724ee11480e0fc0abdd4bdc07a36a4e879a66ebad6e05921cac7"
+    },
+    "backend/app/services/etf_category.py": {
+      "size": 12875,
+      "sha256": "ffe7528f077bb56cf4b2218e02856077160fb50377b20e247d0e57642e9cf17a"
+    },
+    "backend/app/services/etf_flow.py": {
+      "size": 23934,
+      "sha256": "9b700249de3a2cd0e1011a50badea9773d382d288148cb5f087bf23a5d799b31"
+    },
+    "backend/app/services/etf_screen.py": {
+      "size": 30487,
+      "sha256": "c3ecfeade28291697eeb09587d983450263596886d40f5db83e81626b71cc7bf"
+    },
+    "backend/app/services/etf_track.py": {
+      "size": 26771,
+      "sha256": "92c2a9c8e3241cfaec1b4e4a3be618bd640317bd20b7632abdffffa2e97d7090"
+    },
+    "backend/app/services/factor_score.py": {
+      "size": 7376,
+      "sha256": "7063bb9dc0db7f88f04a869db097d1d211292ce1e27635ca9c2f0da412d6c88e"
+    },
+    "backend/app/services/fear_greed.py": {
+      "size": 8492,
+      "sha256": "1d351b422ca8ccf0a54d745ef70eae7c6021d4df685d700e381366a5f1d321de"
+    },
+    "backend/app/services/financials.py": {
+      "size": 5476,
+      "sha256": "eb82a0606ec9109a3538382efd3642693d908bd2716d42cda154824e751f32c2"
+    },
+    "backend/app/services/index_tech.py": {
+      "size": 6446,
+      "sha256": "24a889d4b24ebb2b3548a9b60492eb50aea090c1ba7491e4c0955b8d17b82562"
+    },
+    "backend/app/services/industry_breadth.py": {
+      "size": 2597,
+      "sha256": "33c06f40ff17de1a7f2d9f5370331489ba57565efc02741f93dcd6a87d213a35"
+    },
+    "backend/app/services/limit_rules.py": {
+      "size": 13689,
+      "sha256": "356774b84f35412fcca2bbe051fc568ccd307349d44b3a05adb1005a74ceafb2"
+    },
+    "backend/app/services/margin_temp.py": {
+      "size": 2090,
+      "sha256": "2d8442d926c236a1c8bb2a1602cb269fd9dc9ba3da89ba7436d71c7aff138f31"
+    },
+    "backend/app/services/nhnl.py": {
+      "size": 2218,
+      "sha256": "14b57d3992c0b1fda971e533b1992f30c640c5d589ee23b40c43bc60756b98ee"
+    },
+    "backend/app/services/northbound.py": {
+      "size": 2629,
+      "sha256": "842483e174dcbe150996953ffc39fd8d21d8247bf1ec4ed1976b5ad919be7298"
+    },
+    "backend/app/services/obv.py": {
+      "size": 2335,
+      "sha256": "ec61772e1b5d1c4576b7488225561528c252befb1699abde2a786aa6b48e6512"
+    },
+    "backend/app/services/pattern_track.py": {
+      "size": 49061,
+      "sha256": "6c5bf183a627941397384ae1a5644f0ebe15f980e612a32ee990e6a8e05bdad9"
+    },
+    "backend/app/services/patterns.py": {
+      "size": 300647,
+      "sha256": "e75fffcda0d82a37fbfa0ef379ffbcdd45ed0f677622771954a714d16e8f7a98"
+    },
+    "backend/app/services/pools.py": {
+      "size": 60289,
+      "sha256": "6fdec9a8cbc07f2e7ce3d3961f9ddba96c508623d61b70d9cdd5b3465f2606c2"
+    },
+    "backend/app/services/positions.py": {
+      "size": 9119,
+      "sha256": "b83411aacefaf10a95d13611b94dafa1026fadb066d86b9222903cfd65a20702"
+    },
+    "backend/app/services/premarket.py": {
+      "size": 13524,
+      "sha256": "e2bd630e9e04df2627833673d122c2a673c796379f2a914f32583011f95b48a9"
+    },
+    "backend/app/services/relay_temp.py": {
+      "size": 8648,
+      "sha256": "b5f22b268a93adbbae706aee5085a4ff08b910084e8f953951972ba2b681c635"
+    },
+    "backend/app/services/research_backtest.py": {
+      "size": 38467,
+      "sha256": "ac83c5852c9d42e62bdb9772863dd466f5247c978c1bd985c30dd5460842de5e"
+    },
+    "backend/app/services/research_screen.py": {
+      "size": 48632,
+      "sha256": "be7334410d46d46141cdcea29f0a0605a5a564acf691c64849e03e7b73bacf48"
+    },
+    "backend/app/services/risk.py": {
+      "size": 8646,
+      "sha256": "a7a1d8f727f12b9f8b1112d93697784513937b2d1b5a5fff5c13a26ef8b0fb5c"
+    },
+    "backend/app/services/rps.py": {
+      "size": 3771,
+      "sha256": "1e9d151cfee18ef89a870f0121ccd4586987e2fe21fe3426cfee0a25d675b3ec"
+    },
+    "backend/app/services/sector_rps.py": {
+      "size": 14674,
+      "sha256": "1a3f0d1ea2468259a26b9bc72f51bb90a4b8c88390ef7f0662c963f172cc4823"
+    },
+    "backend/app/services/sentiment.py": {
+      "size": 2611,
+      "sha256": "eb33dc5dfbd378edc0d231c280c6e34d4ae4a8fe2f944bc118faae77903b8734"
+    },
+    "backend/app/services/stock_events.py": {
+      "size": 4763,
+      "sha256": "d01f388921983ef730d31b4befee422af5588809173368c3a590bbabedbebe83"
+    },
+    "backend/app/services/stock_lookup.py": {
+      "size": 6235,
+      "sha256": "9d0f6ce1e803a8a27fe4dccad9ed6ea18a6a3110f3c0c5b5d372a5f7184ce3c0"
+    },
+    "backend/app/services/stock_meta.py": {
+      "size": 2765,
+      "sha256": "a3615ce560ef42c55329d6cafcf1e3593719abaaad5e0b808556bf0c3e27cdd2"
+    },
+    "backend/app/services/stock_phase.py": {
+      "size": 20794,
+      "sha256": "c3618c0a45a39efde25139731a0e1a86f1b62843812947d02477572f9d32c937"
+    },
+    "backend/app/services/theme_board.py": {
+      "size": 11936,
+      "sha256": "7a656a52ade32d458103ec69fbcc5f222c5265bfb32129d40f3fd9039520314c"
+    },
+    "backend/app/services/themes.py": {
+      "size": 8730,
+      "sha256": "d9ef647657279daa61601f9194881049c5a5ee3250c2ce8331736b4b39866054"
+    },
+    "backend/app/services/trade_journal.py": {
+      "size": 41321,
+      "sha256": "691ead402b0da61131537899dd506a4abf7421f23c405599ca69c6d22587768c"
+    },
+    "backend/app/services/trade_plan.py": {
+      "size": 26088,
+      "sha256": "7d9f11c554125d9d037cd298764ab392282167f33c9e3a34a21f25aaea9e4d29"
+    },
+    "backend/app/services/trading_days.py": {
+      "size": 6641,
+      "sha256": "5d04a95f7fbe002307dc98555005ab18323bccdc602e527460ed85f17db153e1"
+    },
+    "backend/app/services/trap.py": {
+      "size": 32803,
+      "sha256": "b7da05cdd892a4a4ae9f6a10b856306c5de78151f664efca73f1b31c0d3b3082"
+    },
+    "backend/app/services/trend.py": {
+      "size": 5683,
+      "sha256": "8472733d171131186d3b275f8319cd9773d0ad6c1affacce575130a4ddd458f5"
+    },
+    "backend/app/services/usage.py": {
+      "size": 23033,
+      "sha256": "6e40b1f2704d9cf91745e2e733c9a379db1bac264517e294df76e5d00005897a"
+    },
+    "backend/app/services/valuation.py": {
+      "size": 7239,
+      "sha256": "30b8d494d965cb1f78e0e3f1ba1cfa388ecaf93435f573cd9c3bc6daf92296fc"
+    },
+    "backend/app/services/watch_scope.py": {
+      "size": 5609,
+      "sha256": "c63fda9bfd9cb32fdfa6698ccb50bccfdcf73cad69072f9d080c3e4fd23c51be"
+    },
+    "backend/app/sources/__init__.py": {
+      "size": 74,
+      "sha256": "caab6d5d9dea52aa43b05b61512a6a6ff3c8e2b3f40566cad60de3f1822db571"
+    },
+    "backend/app/sources/akshare_source.py": {
+      "size": 24663,
+      "sha256": "7db9bd71b3f9564b2c4babb2c363fa9c49f356474a7c32d57fe8d636cae5e6f4"
+    },
+    "backend/app/sources/base.py": {
+      "size": 5683,
+      "sha256": "2c0d63e9489f232648edd5ef1dfc736400cc77b4598c76dceef873d85e6cbced"
+    },
+    "backend/app/sources/danjuan.py": {
+      "size": 4322,
+      "sha256": "4d33c0ee95aa3dffec094b12d4f33b55c2a00f273694660cc185fea2eea716fb"
+    },
+    "backend/app/sources/eastmoney.py": {
+      "size": 9619,
+      "sha256": "6cea1d157b4447425cee74f55e3047b40f677f392506b924425ca929413abbd5"
+    },
+    "backend/app/sources/em_events.py": {
+      "size": 7694,
+      "sha256": "9cbe68beb481ffcfa6af5e48b8a7f83d01f259b942446ff1191327e74afe9805"
+    },
+    "backend/app/sources/em_news.py": {
+      "size": 6285,
+      "sha256": "f6c8d2bf69bdabf3bbe0f72c8d2bac541ec792f226fdee241e56b319b0d730d5"
+    },
+    "backend/app/sources/etf_exchange.py": {
+      "size": 10296,
+      "sha256": "44de92b2542055c4e3e4629501f924597ccda0cf9ef3740e3dc6db67c29116d5"
+    },
+    "backend/app/sources/ifind.py": {
+      "size": 37519,
+      "sha256": "7e1d96e402409e65076452402f903520fd520b672b377bc976aacfe1f38aaf7e"
+    },
+    "backend/app/sources/kaipanhong.py": {
+      "size": 24839,
+      "sha256": "ba1899832aa38995c6501be053b988c2dba42e4ccbbe502970e0fd20b04d9338"
+    },
+    "backend/app/sources/kph_local.py": {
+      "size": 4900,
+      "sha256": "0bec1aa2fd425677f2dcb52f83b034aed82e806c3786a5a1b1c6d6a2a0b6eacf"
+    },
+    "backend/app/sources/markdown_table.py": {
+      "size": 4120,
+      "sha256": "c5ed4ec036a11a85c2b3928cf12ed4e7e99da39f12becbd7b2e59bcef56e3109"
+    },
+    "backend/app/sources/tdx.py": {
+      "size": 7119,
+      "sha256": "95f215a94c471264407d29ecd9d03049612b33f677ff2adedd06331a7466a717"
+    },
+    "backend/app/sources/tencent.py": {
+      "size": 16555,
+      "sha256": "f0ee2c6ce4ed04116840adc2376e51de84933d4a4e21c99c75e031a950fe67cb"
+    },
+    "backend/app/sources/ths_limit_up.py": {
+      "size": 7068,
+      "sha256": "f786a1d0d6acc3ddb6a396f0848de9f96fb8741fd897387643323f8a0c93faaa"
+    },
+    "backend/app/timeutil.py": {
+      "size": 1217,
+      "sha256": "c86f01ea2cb869644b790b5c21e138f4c64bb5c2acb5bca5807a876d2931795b"
+    },
+    "backend/requirements.txt": {
+      "size": 514,
+      "sha256": "6725ed3ce6cb45d0470c6cba707946eba3b93d4bf5c871df22d83928738efe80"
+    },
+    "deploy/install.sh": {
+      "size": 15032,
+      "sha256": "7d3d3b37564b2bf24255c605a3706533cd5012e301b8d40012e93b13f4103d07"
+    },
+    "deploy/prod_probe.sh": {
+      "size": 2686,
+      "sha256": "153c93d162aa1a900c5da76414777ca0f1520e315b325e6bf6bb03f857972e3f"
+    },
+    "deploy/setup_nginx.sh": {
+      "size": 22662,
+      "sha256": "e079ee4d0ab993a5d5fa2a465ff423b4e01dfc47521a8e870764c6c91dd65bf3"
+    },
+    "frontend/dist/assets/Account-Q4xnJFcR-r2.js": {
+      "size": 3553,
+      "sha256": "5c7e2e7734bcc34c3abe0787bd93772fd841f4ea8a6810ecd0335569c213dda5"
+    },
+    "frontend/dist/assets/Alert-CPNCXewV-r2.js": {
+      "size": 566,
+      "sha256": "cc6b020fbfdc95a0cac3e6c46e9cd2df883fa7c22bfeb96ed32b8ab0617fe5f0"
+    },
+    "frontend/dist/assets/Anomaly-BcW-SWSr-r2.js": {
+      "size": 12101,
+      "sha256": "82ff4fef66d5f5acc6b0bc0a635751a1845d4adf76f20b378310decc1e9e356f"
+    },
+    "frontend/dist/assets/Auction-DIioE8KI-r2.js": {
+      "size": 16386,
+      "sha256": "ec2673e0fe1033e9270f3433b723246549ea119c9625670cef89d8be4cd21eee"
+    },
+    "frontend/dist/assets/bondCode-DECVrQek-r2.js": {
+      "size": 197,
+      "sha256": "9f2fbd308b4de30f82252544f0489c532495c46a5d99e4db6d9a3f0ae095c1ba"
+    },
+    "frontend/dist/assets/CbDetail-neMyMvjb-r2.js": {
+      "size": 10153,
+      "sha256": "1d55239df3ec969cfa94b31aa075edb65d7f0b286ec60b8f9387c18d8be14fe6"
+    },
+    "frontend/dist/assets/chart-CgaoE3j0-r2.js": {
+      "size": 1136,
+      "sha256": "b877941cb535da2fb532772c38917f0976d6da8d619a1cf2bc23c65f2f7cd0f5"
+    },
+    "frontend/dist/assets/clipboard-DYsl6j7j-r2.js": {
+      "size": 260,
+      "sha256": "96662fef158b80c6bcf22818da832ec919e1853cacc180a58c7dc44253c2a492"
+    },
+    "frontend/dist/assets/ConclusionBar-CKkavzuy-r2.js": {
+      "size": 1105,
+      "sha256": "bad60df149db1f6633f564acae986f6d455ed4c328a7e7558d7b0d6ae3682a63"
+    },
+    "frontend/dist/assets/ContactQr-4USTY2O--r2.js": {
+      "size": 347,
+      "sha256": "144696d257f9fa381186764b9f1a7bfa0b042a98c258853d164866deefa41f8e"
+    },
+    "frontend/dist/assets/Convertible-D28P7ku6-r2.js": {
+      "size": 14643,
+      "sha256": "a62b7be651b0a6a24605d78dd3fca69e817b2511cc9fdc25e842d2338b270f19"
+    },
+    "frontend/dist/assets/Dashboard-Ct-no01v-r2.js": {
+      "size": 42970,
+      "sha256": "64e8f81e429d918aff189b84062c288f80ceb256fdbfe23449eb516f7fcf3ccf"
+    },
+    "frontend/dist/assets/EChart-BcIIYdH7-r2.js": {
+      "size": 640661,
+      "sha256": "d4bcea60367a90ebb5ea3fb8b90dbb6f9df4925bd9c220f8aed429ae1b93cf64"
+    },
+    "frontend/dist/assets/Etf-Dlc8UGMZ-r2.js": {
+      "size": 16006,
+      "sha256": "fc8bad72e064bd2afef13492cc2aef2c769b8fc6277c161ac5b13854258c173c"
+    },
+    "frontend/dist/assets/FearGreedBrief-CrK5ChXv-r2.js": {
+      "size": 2572,
+      "sha256": "a8d35b93f0068b5aec74bca293e25a45049803c9b11be7f0ccb2ec7cdce08eda"
+    },
+    "frontend/dist/assets/Footer-aB4Nbyl7-r2.js": {
+      "size": 369,
+      "sha256": "951be428392387419626a37211c0200928b847eabde9978bce3d645329aafb4c"
+    },
+    "frontend/dist/assets/format-BDjUdh0R-r2.js": {
+      "size": 1500,
+      "sha256": "8f60272912a2e39eda43f50a58751d3c3b6ecf9e48bb0bc2b04ca0d86463985e"
+    },
+    "frontend/dist/assets/Funds-B7cWn8bJ-r2.js": {
+      "size": 27660,
+      "sha256": "a5f73deb53e56daee8cefd3024185a66e5a38dca2a3e06abe30fb7151b3d60a7"
+    },
+    "frontend/dist/assets/index-2e01jQTT-r2.js": {
+      "size": 291242,
+      "sha256": "4540797ef157e141d638aef9a769364ec60a05c843bcefe396652df29e5a3ded"
+    },
+    "frontend/dist/assets/index-BbBntTOT.css": {
+      "size": 40181,
+      "sha256": "4e9d774e04d944b2cf9581bff34e9774e7d7aad90f397b511d9b78e33f6e431f"
+    },
+    "frontend/dist/assets/Journal-C97MXs5H-r2.js": {
+      "size": 33099,
+      "sha256": "8fddc0cf0c5781f54fa4a9219104b403408dfb522f602e4ebd9b7b95643b76e9"
+    },
+    "frontend/dist/assets/klinePeriod-O9MwhluW-r2.js": {
+      "size": 6222,
+      "sha256": "521b849eab6b5e749a5d65d199ec00da393f52bb2de7384fd90ffc9cea2231ab"
+    },
+    "frontend/dist/assets/Layout-B2qUtzyy-r2.js": {
+      "size": 8245,
+      "sha256": "946a4e6a274995f8fe8e1eb7d7d0be22c99cd06aeff128dbdab88b415d35344a"
+    },
+    "frontend/dist/assets/LimitReview-DTtJgdvO-r2.js": {
+      "size": 16387,
+      "sha256": "8b0348bbc14ced472592812e04798bfd074bdc38d4639bba7e565793461af43d"
+    },
+    "frontend/dist/assets/LimitTable-BgH0hhGu-r2.js": {
+      "size": 5020,
+      "sha256": "eb019258a6402ede15229b8029f8a55f340e905e11a4089b7250d2f97c8f8fb8"
+    },
+    "frontend/dist/assets/LoadState-CZ-uQBDn-r2.js": {
+      "size": 682,
+      "sha256": "1ca4cfb46a9fbd31f893f7954824a340e8d4b29e96798be2af23d525a7123133"
+    },
+    "frontend/dist/assets/Login-CAvB-Eld-r2.js": {
+      "size": 5789,
+      "sha256": "949701bf4a9c028c91ff9afcbd86a47eca7e1276e9241773932175865f75feed"
+    },
+    "frontend/dist/assets/NotFound-BuQMCgHF-r2.js": {
+      "size": 704,
+      "sha256": "d69490e517795387192e92747262b004b35652047860a74f9225344ed8f7f9a6"
+    },
+    "frontend/dist/assets/Panel-DkTUg16Z-r2.js": {
+      "size": 491,
+      "sha256": "340cd0c2c4bda59594917653cc1ad363bd383619f4914eb8e44652756fe6f08f"
+    },
+    "frontend/dist/assets/Patterns-D-4y7N8h-r2.js": {
+      "size": 33989,
+      "sha256": "4072fca9ca4c600d1a564b6f34cafed65c783964af95db1db4126b595a371f9d"
+    },
+    "frontend/dist/assets/PatternTrack-9ueChWki-r2.js": {
+      "size": 13331,
+      "sha256": "199754ae1696a0a675a1d809a722d0b3c9806e9985afb558067e8f743a493cac"
+    },
+    "frontend/dist/assets/phase-BRFDcSGx-r2.js": {
+      "size": 235,
+      "sha256": "5c53e4ceffc573ff159c7609718b06418fc32b9c7b5c96fdcccf2dcf2fb65c34"
+    },
+    "frontend/dist/assets/PhasePanel-CXV1t9k_-r2.js": {
+      "size": 2074,
+      "sha256": "d800470896b5082066c3e254b35e0b6da61f06ce4b5a4c071a97ee6e4c9bc30a"
+    },
+    "frontend/dist/assets/Plans-BJGe8X5R-r2.js": {
+      "size": 22103,
+      "sha256": "5597bd71f5509ae15fa492c8bf224c0b54e600f2439ca04f160b945ea0567a8a"
+    },
+    "frontend/dist/assets/Pools-CrCDKJqP-r2.js": {
+      "size": 31182,
+      "sha256": "5123fcc19e54f4a86bcd8763d00e7da870d39fea59d90a74e6697ef7901bc1c5"
+    },
+    "frontend/dist/assets/Positions-fOWMgzoK-r2.js": {
+      "size": 9247,
+      "sha256": "ff0f040bbd0ce44338a80ece7feda8b3151aba949e0a56ce3dd5cee76ebb703e"
+    },
+    "frontend/dist/assets/Premarket-Dh_NHb-z-r2.js": {
+      "size": 8584,
+      "sha256": "42fda8528e9fde9105bab5245628726cc15ad814427456a025c30f4a08be392c"
+    },
+    "frontend/dist/assets/Research-BGj_pt0t-r2.js": {
+      "size": 14113,
+      "sha256": "ab054b73b93a9026288127409fe3075397db522064b8299a0a14f1b5010d81a0"
+    },
+    "frontend/dist/assets/riskBadges-7uuazTEY-r2.js": {
+      "size": 884,
+      "sha256": "09a7abea8c56eb2e622bddf6ed624ad35e0cbeb8706264defb6a0be8de1fa7e3"
+    },
+    "frontend/dist/assets/RiskGuard-DF25jiX3-r2.js": {
+      "size": 4107,
+      "sha256": "6a0104c2079f0bb3e287d2b1fd197a40a2721cf962c2635919bf2ade407b6467"
+    },
+    "frontend/dist/assets/Sectors-CV6Vr6OA-r2.js": {
+      "size": 41229,
+      "sha256": "940a43e7cbca40fa8e061720c7aefa92e9c608f1e50d13792ab99b58b4b9da38"
+    },
+    "frontend/dist/assets/Segmented-QgQ1sIHD-r2.js": {
+      "size": 497,
+      "sha256": "08f7a7f8183e15214350ea41c5cc54ea29cb6221d2df26d3ed062ab4083c9040"
+    },
+    "frontend/dist/assets/Sentiment-DFsaxPE1-r2.js": {
+      "size": 67305,
+      "sha256": "cfa94202b23e876520de09dc6e31556d1ea254cc694be15a8b71e228d17b5744"
+    },
+    "frontend/dist/assets/Settings-CRNpGbMj-r2.js": {
+      "size": 29926,
+      "sha256": "f31b18cd88b41cfc66632bdfdf30aebd578fe6d035e751eed9b806036fa0f7a7"
+    },
+    "frontend/dist/assets/sort-DuTO2UuZ-r2.js": {
+      "size": 1359,
+      "sha256": "aa8feb23ce101f6adffc238ec2f06ff27d13dd39619204392d0b51f472cca0cf"
+    },
+    "frontend/dist/assets/StockAnalysis-BqlUVyzh-r2.js": {
+      "size": 9615,
+      "sha256": "ae1a3ae5f913d34e45bb9315e13aefe43101298ccb3796cba2c3780f2cd29b13"
+    },
+    "frontend/dist/assets/StockDetail-DDeeNEMx-r2.js": {
+      "size": 29798,
+      "sha256": "255b7ef9fed7ee0e3ddc3d69e4adcacb685b30ec1b55776fc3d1263183a81dc7"
+    },
+    "frontend/dist/assets/StockLink-Cm8kX6T_-r2.js": {
+      "size": 406,
+      "sha256": "ef46c286d9c5209c8c3ec79133d56f6520327bc40a3ac4fc9bb5b3c292bd124d"
+    },
+    "frontend/dist/assets/Valuation-UaJ0IONc-r2.js": {
+      "size": 6669,
+      "sha256": "8a18b4fd4bc4affa0ca7fa6fed8275e00bf374166c0c0e6fac25a176bde26fac"
+    },
+    "frontend/dist/assets/Watchlist-B0-HuDEN-r2.js": {
+      "size": 9065,
+      "sha256": "5dbf25917a9c5f9adc208cc54b4a26a902d261552d501f20ba33cf1350476631"
+    },
+    "frontend/dist/assets/Wudao-Dgax-wQ--r2.js": {
+      "size": 11180,
+      "sha256": "8a12ce446cb5885866076867938db8e1dafce28bce0855161e1ac2df56cd7331"
+    },
+    "frontend/dist/favicon.svg": {
+      "size": 451,
+      "sha256": "89f3d311a9b3606d066e9c59ae4f05a9998e49898ec6bf22a2375306ebb2980b"
+    },
+    "frontend/dist/index.html": {
+      "size": 528,
+      "sha256": "8c075cef13aa4c4d531f72fa6cadf604442034e38238eb888ae8899884c8b74d"
+    },
+    "frontend/dist/wechat-qr.png": {
+      "size": 83140,
+      "sha256": "03c6e1527423245aa83a3aa6c9c38ad70c0fbd756a231c52d7be606ab348e797"
+    },
+    "scripts/audit_research_data.py": {
+      "size": 21908,
+      "sha256": "38d920b036ae4fd84ef51da28ad33939d29fe4febea6a40594eb739dd49bb957"
+    },
+    "scripts/backfill_dde.py": {
+      "size": 11686,
+      "sha256": "b09b8ed7813aa713b51c9a4123c9970a1260852c0085156e817e64b5cd9f9322"
+    },
+    "scripts/backfill_etf_bar.py": {
+      "size": 5171,
+      "sha256": "7d3bf5532be65a89d6f305238a982440ee306ae8f3815424b40505483426bb60"
+    },
+    "scripts/backfill_fear_greed.py": {
+      "size": 3944,
+      "sha256": "e36b5e8850893b288f11036870346e13cdf0350e260f6de67026ba18c2516dd3"
+    },
+    "scripts/backfill_history.py": {
+      "size": 19170,
+      "sha256": "1cb4224b897f19d99ce9c43a5850d3ad7e8907881b7bd70ea4370e9699043379"
+    },
+    "scripts/backfill_pools.py": {
+      "size": 4496,
+      "sha256": "aa407de8f294c30d43e3aabd1f8c09cd805d350080eaa6aa373455d70f50f0f1"
+    },
+    "scripts/backfill_reasons.py": {
+      "size": 3694,
+      "sha256": "5a0561d9c924a1668e99c0eb8afe606dfe4e33effd94bec66c79aa2b390cc278"
+    },
+    "scripts/backfill_rps.py": {
+      "size": 7910,
+      "sha256": "58f3bd78953d04b28f309164e60c3e004347736c1a3d220b3ac34d7fce6e53c2"
+    },
+    "scripts/backfill_sector_members.py": {
+      "size": 19854,
+      "sha256": "0bb568a2d2b416066c8699e63b495b0fdda2feee7ac5a0781e3aafa44fdc4b69"
+    },
+    "scripts/backfill_sectors.py": {
+      "size": 3526,
+      "sha256": "6c8397842150731b70d4bcfe246b564d15cadfef6dbab45cc611e85095370ef6"
+    },
+    "scripts/backtest_etf.py": {
+      "size": 5341,
+      "sha256": "e3a5797c5dc954ff4fd2173f52031cf45d2d815bc0fe2773c83522562b6f3205"
+    },
+    "scripts/backtest_order.py": {
+      "size": 5820,
+      "sha256": "3ae1a15736e9cb4791c9ba1eb23bf355a620d9445e4289360d39fd1b303e47b7"
+    },
+    "scripts/backtest_patterns.py": {
+      "size": 115592,
+      "sha256": "c408546cb55c52bfbc1e469e6ed7e67d20689efcfdd256ad23275b0bee3b68d2"
+    },
+    "scripts/backtest_relay.py": {
+      "size": 11404,
+      "sha256": "892941885fd1d1dd69ae2fa60cf07b62d50addc7f9a4788108e3eea2967e34f4"
+    },
+    "scripts/backtest_research.py": {
+      "size": 10227,
+      "sha256": "4b2fedaf9a817845d88392a82e544e2fb4bf3737ae9f3e52cedc6125540755b4"
+    },
+    "scripts/backtest_sector_stock.py": {
+      "size": 15927,
+      "sha256": "238cc636d859bdf088a2aa5be7b8c2115aa2adaf40ad0f2de00efd60de3633c4"
+    },
+    "scripts/calibrate_quota.py": {
+      "size": 4696,
+      "sha256": "6ae3397e5968ceeb6c0e66004ea719be9e9d82a4e5b001f8ade851f69b9701d5"
+    },
+    "scripts/check_api_contract.py": {
+      "size": 7868,
+      "sha256": "cccf2f189e9e29fba6833efe8b5d70446d83735245818b9b7dcfadb728e44239"
+    },
+    "scripts/check_day.py": {
+      "size": 7318,
+      "sha256": "b4916c4ffed349568df31db316c84a7ac2add74f7fdd601658f956c9148436d4"
+    },
+    "scripts/check_dist.py": {
+      "size": 3589,
+      "sha256": "8db063bffcbc79b42fb173adf205a01a6e2fccf82e1f414376b94993f64619de"
+    },
+    "scripts/check_kph.ps1": {
+      "size": 24970,
+      "sha256": "dd75807eb60c45258c47681d2c146e7a6569eb590082d1c22207670097883350"
+    },
+    "scripts/check_kph.py": {
+      "size": 19402,
+      "sha256": "f1655080cb54c5409d4772243f43a5ef9b87a055d68303e14565c906e933870e"
+    },
+    "scripts/clean_dist.py": {
+      "size": 5889,
+      "sha256": "678bb0ae0b65574576b471c6b29f06e556c86da211385ef338f5866c03fbb8b9"
+    },
+    "scripts/collect_kline.py": {
+      "size": 4929,
+      "sha256": "c80fb14971f45e8976cc4026579b00778649054415bf2f3eedf50344e1369087"
+    },
+    "scripts/compare_track_kernel.py": {
+      "size": 8284,
+      "sha256": "aa6947324bde5dbcf6245f0d5eee420fd706c81929a3ba98ff98ca579846aec7"
+    },
+    "scripts/draft_patterns.py": {
+      "size": 4648,
+      "sha256": "42a282a9d009bb4f4a76b192694ee890c3bd84849884391ccb3b82d5e538ffc9"
+    },
+    "scripts/factor_ic.py": {
+      "size": 14475,
+      "sha256": "34aa6b9bda83805eee5e71b0264390f05b338ab5dc78f137e887c7da8dee46ea"
+    },
+    "scripts/fill_cb_terms.py": {
+      "size": 4821,
+      "sha256": "1b18bae39ce27a7eaaa6bde75cbc8563bf98354ce91f573753b4a3a46c92b26f"
+    },
+    "scripts/git-push.ps1": {
+      "size": 8505,
+      "sha256": "c30284412d5944c81da0ee996b93d87942232881eac58a4fc0c4856be842c9a0"
+    },
+    "scripts/ifind_skill.py": {
+      "size": 7863,
+      "sha256": "7b434d188cb8e529709d887afa0dba51ea44ed163e184701c152facdb0337a39"
+    },
+    "scripts/import_rps_history.py": {
+      "size": 9344,
+      "sha256": "fa2c9d0be22971e26c6bbd7ee087c876ce6587f443f0e81631824743fe83dd3b"
+    },
+    "scripts/install_data_revision.py": {
+      "size": 3874,
+      "sha256": "0c34b5d12c4601b5b89a90809e986dea62402be005094625d6cc457aa1a91e13"
+    },
+    "scripts/migrate_db.py": {
+      "size": 4236,
+      "sha256": "2c0f65b9530908e8c8079c2f73ee8c6872eef47839dbc40695052e956614db26"
+    },
+    "scripts/migrate_rps_columns.py": {
+      "size": 5209,
+      "sha256": "ab010539bff8e28938541895bf683a5ae7ef03b9ff82b4b5eb7285932f8490d0"
+    },
+    "scripts/migrate_sectors_kph.py": {
+      "size": 8744,
+      "sha256": "111feac84b781aacfd1c0715b79cc3518e8691fe232e0a27b6da22f423ed17ec"
+    },
+    "scripts/multiuser_migrate.py": {
+      "size": 13232,
+      "sha256": "954bf3bbe9d9ab6ad8a7c753f09c3e9f06336af89f125717ee305869098fd359"
+    },
+    "scripts/pack_deploy.py": {
+      "size": 15042,
+      "sha256": "8aae69c6bb41da742f0f83ba5f87becca125ed86d1e37a8da6c58131a8c82306"
+    },
+    "scripts/probe_akshare.py": {
+      "size": 2522,
+      "sha256": "fce66a7fa413252e4e1a35223ece3f5c0fed772f127fca5e19fc53a9ab12d97d"
+    },
+    "scripts/probe_akshare_tx.py": {
+      "size": 6623,
+      "sha256": "cba3ab92041c05ed2724a5c4346cd6616585f78cba7b75b9df586143f001c88c"
+    },
+    "scripts/probe_ifind.py": {
+      "size": 7324,
+      "sha256": "59a1715a8555c91fff125b8ebd1a9b9b42ee9f4a8f7d9365d293246f071ce031"
+    },
+    "scripts/prod_readonly_audit.py": {
+      "size": 8644,
+      "sha256": "9b9abdb8e9282b0fb584c71807226bc8eefa8c9e9fd4909d7920c8e3e0f350c6"
+    },
+    "scripts/push_brief.py": {
+      "size": 4771,
+      "sha256": "9e91d9b88ff77a13cfa8321373a09ead2473e6f02a2569b94fca9bdbe18fce42"
+    },
+    "scripts/refresh_top_kline.py": {
+      "size": 2439,
+      "sha256": "86df778356237669efd1299be1444213066824298deec383e07edd14fba72fdd"
+    },
+    "scripts/release_manifest.py": {
+      "size": 7342,
+      "sha256": "10c20ebcf04ae0c5c705e20effabc2b88b12975c0c00c918b0c09ebc4850f811"
+    },
+    "scripts/rescan_patterns.py": {
+      "size": 6757,
+      "sha256": "f4851346d03bdd748f6541ac03a3192f8a6df1498ff6f6a2bde84fe30bb68117"
+    },
+    "scripts/schema_inventory.py": {
+      "size": 7856,
+      "sha256": "829fa33d4fd08570448afc9a455b22e670ada3315c499489336dcac8fbedb84a"
+    },
+    "scripts/sync_funds.py": {
+      "size": 5008,
+      "sha256": "3e3711c2cbd7ebd7cea8724f155f4df3cc542eb2c30c0c6648b53ab29c2f75e7"
+    },
+    "scripts/undo-github-hosts.ps1": {
+      "size": 2389,
+      "sha256": "0c15ace21ee79c37cb3f6295507d16a9a5c83b83a9e068d9a989a3d411503196"
+    },
+    "scripts/validate_sector_resonance.py": {
+      "size": 17736,
+      "sha256": "9ba86c7bda86b803b5f7f9387e80daae28bd3c164fe37443594ff0ae5ad4b784"
+    },
+    "scripts/validate_trend.py": {
+      "size": 21658,
+      "sha256": "ef20be5ecbfe860551839e517e7351875fe74662f8f61c49c17699e9dfd4543e"
+    }
+  }
+}
