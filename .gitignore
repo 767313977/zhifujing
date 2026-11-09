@@ -12,6 +12,10 @@ backend/data/*.db-*
 backend/data/b0_*
 backend/data/b1_*
 backend/data/b2_*
+# 2026-11-09 P1.1 发布卫生：整个数据目录与 E2E 截图都不入库（含审计 JSON、
+# 备份副本、临时导入报告）。上面的细项保留，便于看出历史意图。
+backend/data/
+.screenshots/
 *.log
 
 # 前端
