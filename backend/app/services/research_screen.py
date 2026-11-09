@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import copy
+import threading
 import time
 from collections import OrderedDict
 from datetime import date
@@ -21,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import RpsDaily, SectorDaily, SectorMember, StockBasic, StockDaily, StockUniverse, TradeCalendar
-from app.services import limit_rules, trend
+from app.services import data_revision, limit_rules, trend
 
 TREND_STRATEGY = {
     "id": "trend_template",
@@ -49,53 +51,113 @@ def target_date(session: Session, trade_date: date | None = None) -> date:
     return value
 
 
-# ---- 结果缓存（P0.3）----
+def _latest_date(session: Session) -> str | None:
+    """库内最新日线日：页面用它提示「所选日期是历史数据」。"""
+    value = session.scalar(select(func.max(StockDaily.trade_date)))
+    return str(value) if value else None
+
+
+# ---- 结果缓存（P0.3 + R5 加固）----
 #
-# 低位启动是**全市场 250 日扫描**（5,261 只 ≈ 130 万行），冷查询约 7 秒。盘后研究是
+# 低位启动是**全市场 250 日扫描**（5,261 只 ≈ 130 万行），冷查询约 6 秒。盘后研究是
 # 按交易日看同一份结果，重复打开页面没有理由再算一遍。
 #
-# 缓存键必须同时包含：交易日、策略参数、**数据版本**（日线/RPS/板块的最新日期）。
-# 回补或重采把数据推进一天后，键会变，不会读到旧结果。
+# 安全边界（R5-01）：
+# - 只有 `data_revision.status()` 判定 ready 才启用缓存；
+# - 修订表/触发器缺失、版本读取失败、库身份不可确定 → **本次请求直接查库，不读不写缓存**；
+# - 数据库本身读失败 → 异常向上抛，绝不用旧缓存冒充当前数据；
+# - 缓存键 = 库身份 + 交易日 + 参数 + 各数据域修订版本。
 #
-# 只缓存文件库：单元测试用 `sqlite://` 内存库，各测试日期/参数相同，若也走缓存会
-# 串味。TTL 10 分钟是兜底（同一天内的数据订正不会改 `max(trade_date)`）。
+# 快照一致性（R5-03）：计算前后各读一次版本，不一致就重算（最多 3 轮），
+# 仍不稳定则本次不写缓存 —— 避免把旧数据标成新版本长期命中。
 _CACHE: OrderedDict[tuple, tuple[float, dict]] = OrderedDict()
 _CACHE_TTL_SECONDS = 600.0
 _CACHE_MAX_ENTRIES = 16
+_VERIFY_ROUNDS = 3
+_INFLIGHT_TIMEOUT = 60.0
+
+#: 同一缓存键的并发请求合并（single-flight）：只有一个线程扫全市场，其余等它。
+_INFLIGHT: dict[tuple, "threading.Event"] = {}
+_INFLIGHT_LOCK = threading.Lock()
 
 
-def _cache_key(session: Session, name: str, day: date, params: tuple) -> tuple | None:
-    url = str(session.get_bind().url)
-    if url in ("sqlite://", "sqlite:///") or ":memory:" in url:
-        return None
-    version = (
-        session.scalar(select(func.max(StockDaily.trade_date))),
-        session.scalar(select(func.max(RpsDaily.trade_date))),
-        session.scalar(select(func.max(SectorDaily.trade_date))),
-    )
-    return (url, name, str(day), version, params)
+def _cache_key(name: str, day: date, params: tuple, state) -> tuple:
+    return (name, str(day), params, state.identity, state.version)
 
 
-def _cached(session: Session, name: str, day: date, params: tuple, compute):
-    key = _cache_key(session, name, day, params)
-    if key is None:
-        return compute()
-    now = time.monotonic()
+def _cache_get(key: tuple) -> dict | None:
     hit = _CACHE.get(key)
-    if hit is not None and now - hit[0] < _CACHE_TTL_SECONDS:
-        _CACHE.move_to_end(key)
-        return hit[1]
-    value = compute()
-    _CACHE[key] = (now, value)
+    if hit is None:
+        return None
+    if time.monotonic() - hit[0] >= _CACHE_TTL_SECONDS:
+        _CACHE.pop(key, None)
+        return None
+    _CACHE.move_to_end(key)
+    return copy.deepcopy(hit[1])
+
+
+def _cache_put(key: tuple, value: dict) -> None:
+    _CACHE[key] = (time.monotonic(), copy.deepcopy(value))
     _CACHE.move_to_end(key)
     while len(_CACHE) > _CACHE_MAX_ENTRIES:
         _CACHE.popitem(last=False)
+
+
+def _compute_verified(session: Session, name: str, day: date, params: tuple, compute, state) -> dict:
+    """计算并校验版本；版本在计算期间变化则重算，最多 `_VERIFY_ROUNDS` 轮。"""
+    for _ in range(_VERIFY_ROUNDS):
+        value = compute()
+        after = data_revision.status(session)
+        if not after.ready:
+            # 版本机制在计算期间失效：本次结果照常返回，但不写缓存
+            data_revision.log_unavailable(after)
+            return value
+        if after.identity == state.identity and after.version == state.version:
+            _cache_put(_cache_key(name, day, params, after), value)
+            return value
+        state = after
     return value
+
+
+def _cached(session: Session, name: str, day: date, params: tuple, compute):
+    state = data_revision.status(session)
+    if not state.ready:
+        # fail closed：不读旧缓存、不写新缓存，直接查库
+        data_revision.log_unavailable(state)
+        return compute()
+    key = _cache_key(name, day, params, state)
+    hit = _cache_get(key)
+    if hit is not None:
+        return hit
+
+    while True:
+        with _INFLIGHT_LOCK:
+            event = _INFLIGHT.get(key)
+            leader = event is None
+            if leader:
+                event = threading.Event()
+                _INFLIGHT[key] = event
+        if leader:
+            break
+        # 等待同键的 leader；超时或 leader 失败时自己尝试
+        event.wait(_INFLIGHT_TIMEOUT)
+        hit = _cache_get(key)
+        if hit is not None:
+            return hit
+
+    try:
+        return _compute_verified(session, name, day, params, compute, state)
+    finally:
+        with _INFLIGHT_LOCK:
+            _INFLIGHT.pop(key, None)
+        event.set()
 
 
 def clear_cache() -> None:
     """测试/脚本用：清空研究结果缓存。"""
     _CACHE.clear()
+    with _INFLIGHT_LOCK:
+        _INFLIGHT.clear()
 
 
 def _trading_days_before(session: Session, day: date, count: int) -> list[date]:
@@ -206,7 +268,7 @@ def trend_rows(
 ) -> dict:
     day = target_date(session, trade_date)
     params = (min_rps60, min_trend_days, limit, exclude_st, exclude_bse)
-    return _cached(
+    result = _cached(
         session,
         "trend",
         day,
@@ -221,6 +283,8 @@ def trend_rows(
             exclude_bse=exclude_bse,
         ),
     )
+    result["data_latest"] = _latest_date(session)
+    return result
 
 
 def _trend_rows(
@@ -378,7 +442,7 @@ def low_start_rows(
         exclude_st,
         exclude_bse,
     )
-    return _cached(
+    result = _cached(
         session,
         "low_start",
         day,
@@ -395,6 +459,8 @@ def low_start_rows(
             exclude_bse=exclude_bse,
         ),
     )
+    result["data_latest"] = _latest_date(session)
+    return result
 
 
 def _low_start_rows(
@@ -506,13 +572,15 @@ def sector_states(
 ) -> dict:
     requested = target_date(session, trade_date)
     params = (taxonomy, limit)
-    return _cached(
+    result = _cached(
         session,
         "sector_state",
         requested,
         params,
         lambda: _sector_states(session, requested, taxonomy=taxonomy, limit=limit),
     )
+    result["data_latest"] = _latest_date(session)
+    return result
 
 
 def _sector_states(

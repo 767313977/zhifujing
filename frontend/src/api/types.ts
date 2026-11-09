@@ -3321,6 +3321,8 @@ export interface ResearchTrendRow {
 
 export interface ResearchTrendOut {
   trade_date: string
+  /** 库内最新日线日；页面据此提示「所选日期是历史数据」 */
+  data_latest?: string | null
   rows: ResearchTrendRow[]
   coverage: ResearchCoverage
   strategy: ResearchStrategy
@@ -3349,6 +3351,7 @@ export interface ResearchLowStartRow {
 
 export interface ResearchLowStartOut {
   trade_date: string
+  data_latest?: string | null
   rows: ResearchLowStartRow[]
   coverage: ResearchCoverage
   strategy: ResearchStrategy
@@ -3375,6 +3378,7 @@ export interface ResearchSectorRow {
 export interface ResearchSectorOut {
   trade_date: string
   requested_date?: string
+  data_latest?: string | null
   rows: ResearchSectorRow[]
   coverage: ResearchCoverage
   strategy: ResearchStrategy

@@ -242,7 +242,18 @@ export default function Research() {
         <div className="mt-2 rounded border border-line bg-ink-800 px-3 py-2 text-[12px] text-fg-muted">
           {data?.strategy?.status ?? '研究指标'}；版本 {data?.strategy?.version ?? '—'}。
           {data?.coverage?.note ? ` ${data.coverage.note}` : ''}
+          {keyword ? ` 搜索仅过滤当前返回的 ${shown} 条，不是全市场排名。` : ''}
         </div>
+        {data?.data_latest && date && date > data.data_latest && (
+          <div className="mt-2 rounded border border-line bg-ink-800 px-3 py-2 text-[12px] text-warn">
+            所选日期 {date} 晚于库内最新数据 {data.data_latest}，结果大概率为空。
+          </div>
+        )}
+        {data?.data_latest && data.trade_date < data.data_latest && (
+          <div className="mt-2 rounded border border-line bg-ink-800 px-3 py-2 text-[12px] text-warn">
+            历史数据：结果截至 {data.trade_date}，库内最新 {data.data_latest}；这不是最新盘后结果。
+          </div>
+        )}
         {loading && <div className="py-6 text-center text-fg-muted">加载中…</div>}
         {error && <div className="py-6 text-center text-loss">{error}</div>}
         {!loading && !error && data && data.rows.length === 0 && (

@@ -19,9 +19,10 @@ const STRATEGY: ResearchStrategy = {
   status: '研究假设：统计稳定性不足，未通过正式策略有效性验证',
 }
 
-function trendOut(rows: ResearchTrendOut['rows']): ResearchTrendOut {
+function trendOut(rows: ResearchTrendOut['rows'], latest = '2026-09-24'): ResearchTrendOut {
   return {
     trade_date: '2026-09-24',
+    data_latest: latest,
     rows,
     coverage: { candidates: rows.length, with_boards: 1, bars: rows.length },
     strategy: STRATEGY,
@@ -202,5 +203,71 @@ describe('P0.2 研究页面', () => {
     await screen.findByText('测试银行')
     fireEvent.click(screen.getByRole('button', { name: '+自选' }))
     await screen.findByRole('button', { name: '已自选' })
+  })
+
+  it('所选日期早于库内最新时提示历史数据', async () => {
+    vi.mocked(researchApi.trend).mockResolvedValue(trendOut([trendRow()], '2026-10-09'))
+    renderPage()
+    await screen.findByText(/历史数据：结果截至 2026-09-24/)
+    expect(screen.getByText(/库内最新 2026-10-09/)).toBeTruthy()
+  })
+
+  it('所选日期晚于库内最新时明确警示', async () => {
+    renderPage()
+    await screen.findByText('测试银行')
+    fireEvent.change(screen.getByLabelText('交易日'), { target: { value: '2026-10-12' } })
+    await screen.findByText(/晚于库内最新数据 2026-09-24/)
+  })
+
+  it('搜索无匹配给出独立空态并提示只过滤当前结果', async () => {
+    renderPage()
+    await screen.findByText('测试银行')
+    fireEvent.change(screen.getByLabelText('搜索'), { target: { value: '<script>!!' } })
+    await screen.findByText(/没有匹配/)
+    expect(screen.getByText(/搜索仅过滤当前返回的 0 条/)).toBeTruthy()
+    expect(screen.queryByText('测试银行')).toBeNull()
+  })
+
+  it('排序时 null 值始终沉底', async () => {
+    vi.mocked(researchApi.trend).mockResolvedValue(
+      trendOut([
+        trendRow({ code: '000001', name: '缺RPS', rps60: null }),
+        trendRow({ code: '600000', name: '有RPS', rps60: 80 }),
+      ]),
+    )
+    renderPage()
+    await screen.findByText('缺RPS')
+    const button = screen.getByRole('button', { name: /RPS20\/60\/120/ })
+    fireEvent.click(button)
+    let rows = screen.getAllByRole('row')
+    expect(rows[1].textContent).toContain('有RPS')
+    fireEvent.click(button)
+    rows = screen.getAllByRole('row')
+    expect(rows[1].textContent).toContain('有RPS')
+  })
+
+  it('并列值排序保持稳定顺序', async () => {
+    vi.mocked(researchApi.trend).mockResolvedValue(
+      trendOut([
+        trendRow({ code: '000001', name: '第一名', trend_days: 8 }),
+        trendRow({ code: '600000', name: '第二名', trend_days: 8 }),
+      ]),
+    )
+    renderPage()
+    await screen.findByText('第一名')
+    fireEvent.click(screen.getByRole('button', { name: /趋势天数/ }))
+    const rows = screen.getAllByRole('row')
+    expect(rows[1].textContent).toContain('第一名')
+    expect(rows[2].textContent).toContain('第二名')
+  })
+
+  it('切换 Tab 清空搜索条件', async () => {
+    renderPage()
+    await screen.findByText('测试银行')
+    fireEvent.change(screen.getByLabelText('搜索'), { target: { value: '600000' } })
+    await screen.findByText(/没有匹配/)
+    fireEvent.click(screen.getByRole('radio', { name: /低位启动/ }))
+    await screen.findByText('低位样本')
+    expect((screen.getByLabelText('搜索') as HTMLInputElement).value).toBe('')
   })
 })

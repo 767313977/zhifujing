@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -15,7 +16,7 @@ from app.models import (
     StockUniverse,
     TradeCalendar,
 )
-from app.services import research_screen
+from app.services import data_revision, research_screen
 
 
 def _engine():
@@ -201,30 +202,26 @@ def test_sector_states_marks_missing_breadth():
     assert by_code["B"]["state"] == "数据不足"
 
 
-def test_result_cache_hits_and_invalidates_on_data_version(tmp_path, monkeypatch):
-    """文件库走缓存；数据版本（最新日线日）变化后必须重算。"""
+def test_file_db_without_revision_is_not_cached(tmp_path, monkeypatch):
+    """R5-01：未安装修订水位的文件库 fail closed —— 每次直接查库，不缓存。"""
     engine = create_engine(f"sqlite:///{tmp_path / 'cache.db'}", future=True)
     Base.metadata.create_all(engine)
     day = date(2026, 9, 24)
-
-    def _seed(when: date) -> None:
-        with Session(engine) as session:
-            session.add(
-                StockDaily(
-                    trade_date=when,
-                    code="000001",
-                    name="测试",
-                    open=10,
-                    high=10.2,
-                    low=9.8,
-                    close=10,
-                    pct_chg=0.0,
-                    amount=1e8,
-                )
+    with Session(engine) as session:
+        session.add(
+            StockDaily(
+                trade_date=day,
+                code="000001",
+                name="测试",
+                open=10,
+                high=10.2,
+                low=9.8,
+                close=10,
+                pct_chg=0.0,
+                amount=1e8,
             )
-            session.commit()
-
-    _seed(day)
+        )
+        session.commit()
     calls = {"n": 0}
 
     def fake(*args, **kwargs):
@@ -234,11 +231,45 @@ def test_result_cache_hits_and_invalidates_on_data_version(tmp_path, monkeypatch
     monkeypatch.setattr(research_screen, "_low_start_rows", fake)
     research_screen.clear_cache()
     with Session(engine) as session:
+        assert data_revision.status(session).state == "not_installed"
         research_screen.low_start_rows(session, trade_date=day)
-        research_screen.low_start_rows(session, trade_date=day)
-    assert calls["n"] == 1
-
-    _seed(date(2026, 9, 25))
-    with Session(engine) as session:
         research_screen.low_start_rows(session, trade_date=day)
     assert calls["n"] == 2
+
+
+def test_data_latest_marks_historical_date():
+    engine = _engine()
+    start = date(2025, 1, 1)
+    days = [start + timedelta(days=i) for i in range(260)]
+    with Session(engine) as session:
+        _calendar(session, days)
+        _seed_trend(session, days)
+        session.commit()
+        out = research_screen.trend_rows(session, trade_date=days[250], limit=10)
+    assert out["data_latest"] == str(days[-1])
+    assert out["trade_date"] == days[250]
+
+
+def test_empty_database_raises_value_error():
+    engine = _engine()
+    with Session(engine) as session:
+        with pytest.raises(ValueError):
+            research_screen.trend_rows(session)
+
+
+def test_research_routes_are_registered_and_guarded():
+    from app.main import app
+    from app.services.auth import PUBLIC_PATHS, require_login
+
+    # FastAPI 新版把 include_router 收成 `_IncludedRouter`，不能只扫 app.routes；
+    # OpenAPI 路径是路由注册的最可靠视图。
+    paths = set(app.openapi()["paths"])
+    for path in (
+        "/api/research/meta",
+        "/api/research/trend",
+        "/api/research/low-start",
+        "/api/research/sector-state",
+    ):
+        assert path in paths
+        assert path not in PUBLIC_PATHS
+    assert any(dep.dependency is require_login for dep in app.router.dependencies)

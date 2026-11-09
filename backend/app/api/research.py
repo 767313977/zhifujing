@@ -11,18 +11,23 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.services import research_screen
+from app.services import data_revision, research_screen
 
 router = APIRouter(prefix="/api/research", tags=["研究"])
 
 
 @router.get("/meta")
-def meta() -> dict:
-    """研究策略版本与验证状态，前端用来显示“研究指标 ≠ 已验证策略”。"""
+def meta(db: Session = Depends(get_db)) -> dict:
+    """研究策略版本与验证状态，前端用来显示“研究指标 ≠ 已验证策略”。
+
+    `cache` 是运维诊断：`ready` 才启用结果缓存；`not_installed` / `unverifiable`
+    时接口每次直接查库（不会返回旧结果）。
+    """
     return {
         "trend": research_screen.TREND_STRATEGY,
         "low_start": research_screen.LOW_START_STRATEGY,
         "sector_state": research_screen.SECTOR_STATE_STRATEGY,
+        "cache": data_revision.cache_status(db),
     }
 
 
