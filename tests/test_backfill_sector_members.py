@@ -84,6 +84,24 @@ def test_day_boards_uses_sector_daily_not_current_directory():
     assert [item["code"] for item in boards] == ["801001", "801002"]
 
 
+def test_day_boards_top_and_taxonomy():
+    engine = create_engine("sqlite://", future=True)
+    Base.metadata.create_all(engine)
+    day = date(2026, 9, 24)
+    with Session(engine) as session:
+        session.add_all(
+            [
+                SectorDaily(trade_date=day, sector_code="801001", name="强", taxonomy="kp", strength=90),
+                SectorDaily(trade_date=day, sector_code="801002", name="中", taxonomy="kp", strength=70),
+                SectorDaily(trade_date=day, sector_code="801003", name="弱", taxonomy="kp", strength=50),
+                SectorDaily(trade_date=day, sector_code="901001", name="行业", taxonomy="ind", strength=99),
+            ]
+        )
+        session.commit()
+        boards = backfill._day_boards(session, day, taxonomy="kp", top=2, order="strength")
+    assert [item["code"] for item in boards] == ["801001", "801002"]
+
+
 def test_target_days_does_not_silently_truncate():
     engine = create_engine("sqlite://", future=True)
     Base.metadata.create_all(engine)

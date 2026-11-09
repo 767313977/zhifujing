@@ -109,6 +109,14 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--start", type=date.fromisoformat, help="起始日（含），优先于 --days")
     parser.add_argument("--end", type=date.fromisoformat, help="截止日（含），缺省=最新日线日")
     parser.add_argument("--boards", help="只处理这些板块代码/名称（逗号分隔）")
+    parser.add_argument("--taxonomy", default="", help="只处理该分类体系（如 kph_selected；空=全部）")
+    parser.add_argument("--top-boards", type=int, default=0, help="每天只处理强度前 N 个板块（0=全部）")
+    parser.add_argument(
+        "--board-order",
+        default="strength",
+        choices=("strength", "pct_chg", "amount"),
+        help="--top-boards 的排序字段（默认 strength）",
+    )
     parser.add_argument("--limit-boards", type=int, default=0, help="每个日期最多处理多少个板块（0=全部）")
     parser.add_argument("--retries", type=int, default=2, help="单个板块失败重试次数（默认 2）")
     parser.add_argument("--retry-sleep", type=float, default=2.0, help="重试间隔秒（默认 2）")
@@ -233,22 +241,40 @@ def _target_days(session, args: argparse.Namespace) -> list[date]:
     return days
 
 
-def _day_boards(session, day: date) -> list[dict]:
-    """当天 `sector_daily` 里的板块清单（代码 / 名称 / taxonomy）。"""
+def _day_boards(
+    session,
+    day: date,
+    taxonomy: str = "",
+    top: int = 0,
+    order: str = "strength",
+) -> list[dict]:
+    """当天 `sector_daily` 里的板块清单（代码 / 名称 / taxonomy）。
+
+    `taxonomy` 非空时只取该口径；`top > 0` 时按 `order` 取前 N。
+    排序只在同一 `taxonomy` 内比较（精选与行业强度不可混比）。
+    """
     from sqlalchemy import select
 
     from app.models import SectorDaily
 
-    rows = session.execute(
-        select(SectorDaily.sector_code, SectorDaily.name, SectorDaily.taxonomy)
-        .where(SectorDaily.trade_date == day)
-        .order_by(SectorDaily.sector_code)
-    ).all()
+    order_col = {
+        "strength": SectorDaily.strength,
+        "pct_chg": SectorDaily.pct_chg,
+        "amount": SectorDaily.amount,
+    }[order]
+    stmt = select(SectorDaily.sector_code, SectorDaily.name, SectorDaily.taxonomy).where(
+        SectorDaily.trade_date == day
+    )
+    if taxonomy:
+        stmt = stmt.where(SectorDaily.taxonomy == taxonomy)
+    stmt = stmt.order_by(order_col.desc(), SectorDaily.sector_code)
+    rows = session.execute(stmt).all()
     seen: dict[str, dict] = {}
-    for code, name, taxonomy in rows:
+    for code, name, tax in rows:
         if code and code not in seen:
-            seen[code] = {"code": code, "name": name, "taxonomy": taxonomy}
-    return list(seen.values())
+            seen[code] = {"code": code, "name": name, "taxonomy": tax}
+    values = list(seen.values())
+    return values[:top] if top else values
 
 
 def _classify(reported: int | None, unique: int, written: int, error: str | None) -> tuple[str, str | None]:
@@ -316,7 +342,13 @@ def main() -> int:
         board_filter = {x.strip() for x in (args.boards or "").split(",") if x.strip()}
         plan: list[tuple[date, list[dict]]] = []
         for day in days:
-            boards = _day_boards(session, day)
+            boards = _day_boards(
+                session,
+                day,
+                taxonomy=args.taxonomy,
+                top=args.top_boards,
+                order=args.board_order,
+            )
             if board_filter:
                 boards = [b for b in boards if b["code"] in board_filter or (b["name"] or "") in board_filter]
             if args.limit_boards:

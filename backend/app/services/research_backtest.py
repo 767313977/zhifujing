@@ -174,6 +174,7 @@ class BarMatrix:
         self.low = np.full(shape, np.nan)
         self.close = np.full(shape, np.nan)
         self.pct = np.full(shape, np.nan)
+        self.amount = np.full(shape, np.nan)
         self.present = np.zeros(shape, dtype=bool)
         self.name = np.full(shape, None, dtype=object)
         self.first_date: dict[str, date] = {}
@@ -252,6 +253,7 @@ def load_matrix(
             StockDaily.low,
             StockDaily.close,
             StockDaily.pct_chg,
+            StockDaily.amount,
             StockDaily.name,
         )
         .where(
@@ -261,7 +263,7 @@ def load_matrix(
         )
         .execution_options(yield_per=20000)
     )
-    for when, code, open_, high, low, close, pct, name in rows:
+    for when, code, open_, high, low, close, pct, amount, name in rows:
         i = matrix.date_pos.get(when)
         j = matrix.code_pos.get(code)
         if i is None or j is None:
@@ -277,6 +279,8 @@ def load_matrix(
             matrix.close[i, j] = float(close)
         if pct is not None:
             matrix.pct[i, j] = float(pct)
+        if amount is not None:
+            matrix.amount[i, j] = float(amount)
         matrix.name[i, j] = name
 
     # 首次出现日（判次新）。只查一次，不能从矩阵里推（矩阵起点会截掉更早历史）
@@ -699,12 +703,17 @@ def run_signals(
     benchmark_mode: str = "market",
     use_universe: Iterable[str] | None = None,
     new_listing_days: int = 5,
+    matrix: BarMatrix | None = None,
+    benchmark: Benchmark | None = None,
 ) -> BacktestResult:
     """对一组信号做成交模拟与统计。
 
     `signals` 必须已经在**各自信号日收盘后**生成；本函数只负责「之后发生什么」。
     `use_universe` 给定时只加载这些代码的矩阵（基准会变窄，报告里会告警）；
     默认全市场，基准才有意义。
+
+    `matrix` / `benchmark` 可传入已加载的实例，供参数敏感性等多组回测复用，
+    避免重复读库；调用方必须保证矩阵覆盖信号区间。
     """
     if entry_mode not in ("next_open", "close"):
         raise ValueError("entry_mode 只能是 next_open / close")
@@ -721,7 +730,8 @@ def run_signals(
     start = min(s.signal_date for s in signals)
     data_end = session.scalar(select(func.max(StockDaily.trade_date)))
     end = data_end or start
-    matrix = load_matrix(session, start, end, codes=use_universe)
+    if matrix is None:
+        matrix = load_matrix(session, start, end, codes=use_universe)
     if not matrix.calendar:
         return BacktestResult(
             strategy=strategy,
@@ -732,7 +742,8 @@ def run_signals(
             cost_bps=cost_bps,
             warnings=["行情矩阵为空"],
         )
-    benchmark = Benchmark(session, matrix, benchmark_mode)
+    if benchmark is None:
+        benchmark = Benchmark(session, matrix, benchmark_mode)
     all_samples: list[Sample] = []
     for signal in signals:
         for horizon in horizons:
