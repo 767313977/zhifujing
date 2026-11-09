@@ -115,3 +115,66 @@ def test_main_lifespan_uses_ensure_schema_not_init_db():
     assert "ensure_schema()" in source
     # 只允许出现在注释里的 `init_db()`：真正的调用行必须是 4 空格缩进的语句
     assert "\n    init_db()\n" not in source
+
+
+# ---- P1.0-02：CLI / 脚本入口的隐式迁移闸 ----
+
+
+def test_init_db_refuses_legacy_db_without_migrate(tmp_path, monkeypatch):
+    """非空旧库 + verify：CLI 走 init_db 也必须失败，且不改库。"""
+    path = tmp_path / "legacy.db"
+    _old_db(path)
+    monkeypatch.setattr(db, "engine", _engine(path))
+    monkeypatch.setenv("FUPAN_SCHEMA_MODE", "verify")
+    with pytest.raises(RuntimeError) as excinfo:
+        db.init_db()
+    assert "migrate_db.py" in str(excinfo.value)
+    columns = {row[1] for row in sqlite3.connect(str(path)).execute("PRAGMA table_info(rps_daily)")}
+    assert "ret20" not in columns
+    tables = {
+        row[0]
+        for row in sqlite3.connect(str(path)).execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+    assert tables == {"rps_daily"}
+
+
+def test_init_db_creates_fresh_database(tmp_path, monkeypatch):
+    """空库属于「初始化」，verify 模式也允许建表（没有历史数据可破坏）。"""
+    path = tmp_path / "fresh.db"
+    monkeypatch.setattr(db, "engine", _engine(path))
+    monkeypatch.setenv("FUPAN_SCHEMA_MODE", "verify")
+    db.init_db()
+    assert db.schema_report()["ok"] is True
+
+
+def test_init_db_migrates_when_explicitly_allowed(tmp_path, monkeypatch):
+    path = tmp_path / "legacy.db"
+    _old_db(path)
+    monkeypatch.setattr(db, "engine", _engine(path))
+    monkeypatch.setenv("FUPAN_SCHEMA_MODE", "verify")
+    db.init_db(allow_migrate=True)
+    assert db.schema_report()["ok"] is True
+    db.init_db(allow_migrate=True)  # 幂等
+
+
+def test_scheduler_not_started_when_schema_invalid(monkeypatch):
+    """Schema 不兼容时，启动流程必须停在 ensure_schema，不能拉起采集调度器。"""
+    import asyncio
+
+    from app import main as main_module
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        main_module, "ensure_schema", lambda: (_ for _ in ()).throw(RuntimeError("schema"))
+    )
+    monkeypatch.setattr(main_module, "start_scheduler", lambda: calls.append("start"))
+
+    async def enter():
+        async with main_module.lifespan(main_module.app):
+            raise AssertionError("不该进入 lifespan 主体")
+
+    with pytest.raises(RuntimeError, match="schema"):
+        asyncio.run(enter())
+    assert calls == []

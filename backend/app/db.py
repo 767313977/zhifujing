@@ -56,14 +56,46 @@ def _enable_sqlite_pragmas(dbapi_conn, _record) -> None:
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
-def init_db() -> None:
-    """**显式初始化**：建表 + 补列 + 补索引（= 迁移）。
+def init_db(*, allow_migrate: bool | None = None) -> None:
+    """**显式初始化**入口（脚本 / 测试）；应用启动走 `ensure_schema()`。
 
-    脚本与测试用它；**应用启动不再调用它**（见 `ensure_schema`，P0.9-08）：
-    以前 `main.lifespan` 直接调这个函数，于是「启动候选服务看一眼配置」= 一次
-    隐式 Schema 迁移，生产上无法区分「只读检查」与「改库」。
+    规则（P1.0-02）：
+    - **空库**（一张表都没有）：直接建表 —— 没有历史数据可破坏，属于「初始化」；
+    - **非空且兼容**：no-op；
+    - **非空且不兼容**：只有 `allow_migrate=True` 或 `FUPAN_SCHEMA_MODE=migrate` 才补列，
+      否则抛 `RuntimeError`，要求先跑 `scripts/migrate_db.py --apply`。
+
+    为什么要这层闸：`collect_kline` / `backfill_*` 等 CLI 以前直接调 `init_db()`，
+    运维对生产库跑一次采集脚本就会**隐式迁移**，这正是「未经授权不迁移」要挡的情形。
     """
-    migrate_schema()
+    from app import models  # noqa: F401  触发模型注册
+    from app.models import Base
+
+    report = schema_report()
+    if report["ok"]:
+        return
+    fresh = report.get("table_count", 0) == 0
+    mode = "migrate" if allow_migrate else schema_mode()
+    if not fresh and mode != "migrate":
+        message = (
+            "数据库 Schema 与应用不兼容，且当前不是 migrate 模式，拒绝自动改库。"
+            f"缺表 {len(report['missing_tables'])}、缺列 {len(report['missing_columns'])}、"
+            f"缺索引 {len(report['missing_indexes'])}。"
+            "请先执行 `python scripts/migrate_db.py --db <库文件> --apply`，"
+            f"或在明确授权下用 {SCHEMA_MODE_ENV}=migrate 运行。"
+        )
+        logger.error(message)
+        raise RuntimeError(message)
+    Base.metadata.create_all(engine)
+    columns = _add_missing_columns(Base)
+    indexes = _add_missing_indexes(Base)
+    logger.info(
+        "初始化/迁移完成：新建表 %d（fresh=%s）、补列 %d、补索引 %d",
+        len(report["missing_tables"]) if fresh else 0,
+        fresh,
+        len(columns),
+        len(indexes),
+    )
 
 
 #: 启动时 Schema 处理方式的显式开关（P0.9-08）：
@@ -138,6 +170,7 @@ def schema_report(target_engine=None) -> dict:
 
     return {
         "ok": not (missing_tables or missing_columns or missing_indexes),
+        "table_count": len(existing_tables),
         "missing_tables": missing_tables,
         "missing_columns": missing_columns,
         "missing_indexes": missing_indexes,
