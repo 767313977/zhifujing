@@ -296,4 +296,143 @@ describe('P0.2 研究页面', () => {
     await screen.findByText('研究计算繁忙，请稍后重试')
     expect(screen.queryByText(/当前日期没有可展示的数据/)).toBeNull()
   })
+
+  it('RPS 未采集时给出覆盖原因而不是「无结果」', async () => {
+    const base = trendOut([])
+    vi.mocked(researchApi.trend).mockResolvedValue({
+      ...base,
+      coverage: {
+        ...base.coverage,
+        data_status: 'no_rps',
+        status_text: '当日个股日线已入库，但没有 RPS 记录（RPS 未采集）',
+        daily_rows: 5249,
+        rps_rows: 0,
+        rps60_rows: 0,
+      },
+    })
+    renderPage()
+    await screen.findAllByText(/没有 RPS 记录/)
+    expect(screen.getByText(/当日日线 5249 行/)).toBeTruthy()
+    expect(screen.queryByText(/当前日期没有可展示的数据/)).toBeNull()
+  })
+
+  it('数据完整且无候选时显示正常空态', async () => {
+    const base = trendOut([])
+    vi.mocked(researchApi.trend).mockResolvedValue({
+      ...base,
+      coverage: {
+        ...base.coverage,
+        data_status: 'ok',
+        status_text: '行情与 RPS 覆盖正常',
+        daily_rows: 5000,
+        rps_rows: 4900,
+        rps60_rows: 4800,
+        note: '当日数据完整，但没有 RPS60 ≥ 60 的股票',
+      },
+    })
+    renderPage()
+    await screen.findByText(/当前日期没有可展示的数据/)
+    expect(screen.queryByText(/没有 RPS 记录/)).toBeNull()
+  })
+
+  it('低位启动展示行级 RPS 缺失原因', async () => {
+    vi.mocked(researchApi.lowStart).mockResolvedValue({
+      ...lowOut([
+        lowRow({
+          rps20: null,
+          rps_status: 'day_missing',
+          missing: ['RPS20 缺失（当日 RPS 未采集）'],
+        }),
+      ]),
+      coverage: {
+        candidates: 5261,
+        bars: 4985,
+        data_status: 'no_rps',
+        status_text: '当日个股日线已入库，但没有 RPS 记录（RPS 未采集）',
+        rps_missing_rows: 1,
+      },
+    })
+    renderPage()
+    await screen.findByText('测试银行')
+    fireEvent.click(screen.getByRole('radio', { name: /低位启动/ }))
+    await screen.findByText('低位样本')
+    expect(screen.getByText(/缺失：RPS20 缺失（当日 RPS 未采集）/)).toBeTruthy()
+    expect(screen.getByText(/没有 RPS 记录/)).toBeTruthy()
+  })
+
+  it('板块回退时显示实际数据日与计数关系', async () => {
+    const row = {
+      sector_code: 'A',
+      name: '板块A',
+      trade_date: '2026-09-24',
+      rps20: 91,
+      ret5: 1.2,
+      ret10: 2.3,
+      ret20: 3.4,
+      ret60: 4.5,
+      amount_ratio20: 1.1,
+      up_ratio: null,
+      strong_days: 3,
+      state: '数据不足',
+      state_daily: '新晋强势',
+      breadth_status: 'missing_manifest',
+      core: [],
+      missing: ['成分股广度不可用：没有 manifest 记录，完整性未知'],
+      strategy: STRATEGY,
+    }
+    vi.mocked(researchApi.sectorState).mockResolvedValue({
+      trade_date: '2026-09-24',
+      requested_date: '2026-10-08',
+      actual_data_date: '2026-09-24',
+      fallback: {
+        applied: true,
+        requested_date: '2026-10-08',
+        actual_data_date: '2026-09-24',
+        gap_trading_days: 5,
+        severity: 'high',
+        reason: '所选日期 2026-10-08 没有板块日线，已回退到最近可用交易日 2026-09-24（相差 5 个交易日，结果不代表所选日期的板块状态）',
+      },
+      rows: [row],
+      coverage: {
+        days: 61,
+        data_status: 'fallback',
+        boards_in_day: 7,
+        boards_with_rps20: 6,
+        excluded_short_history: 1,
+        excluded_no_rps20: 0,
+        matched: 6,
+        returned: 1,
+        truncated: 5,
+        manifest_installed: false,
+        breadth_complete: 0,
+        breadth_mismatch: 0,
+        breadth_partial: 0,
+        breadth_unknown: 6,
+      },
+      strategy: STRATEGY,
+    })
+    renderPage()
+    await screen.findByText('测试银行')
+    fireEvent.click(screen.getByRole('radio', { name: /板块状态/ }))
+    await screen.findByText('板块A')
+    expect(screen.getByText(/已回退到最近可用交易日 2026-09-24/)).toBeTruthy()
+    expect(screen.getByText(/实际数据日 2026-09-24/)).toBeTruthy()
+    expect(screen.getByText(/历史不足 1/)).toBeTruthy()
+    expect(screen.getByText(/另有 5 条被截断/)).toBeTruthy()
+    expect(screen.getByText('无 manifest')).toBeTruthy()
+    expect(screen.getByText(/日线强弱：新晋强势/)).toBeTruthy()
+  })
+
+  it('严格日期开关会以 allowFallback=false 重新请求', async () => {
+    renderPage()
+    await screen.findByText('测试银行')
+    fireEvent.click(screen.getByRole('radio', { name: /板块状态/ }))
+    await waitFor(() => expect(vi.mocked(researchApi.sectorState)).toHaveBeenCalled())
+    fireEvent.click(screen.getByLabelText(/严格日期/))
+    await waitFor(() =>
+      expect(vi.mocked(researchApi.sectorState)).toHaveBeenLastCalledWith(
+        expect.objectContaining({ allowFallback: false }),
+      ),
+    )
+  })
 })

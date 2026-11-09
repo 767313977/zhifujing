@@ -1,6 +1,7 @@
 """SQLite 连接与会话管理。"""
 
 import logging
+import os
 from collections.abc import Generator
 from contextlib import contextmanager
 
@@ -56,15 +57,138 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 
 def init_db() -> None:
+    """**显式初始化**：建表 + 补列 + 补索引（= 迁移）。
+
+    脚本与测试用它；**应用启动不再调用它**（见 `ensure_schema`，P0.9-08）：
+    以前 `main.lifespan` 直接调这个函数，于是「启动候选服务看一眼配置」= 一次
+    隐式 Schema 迁移，生产上无法区分「只读检查」与「改库」。
+    """
+    migrate_schema()
+
+
+#: 启动时 Schema 处理方式的显式开关（P0.9-08）：
+#: - `verify`（默认）：只检查，不改库；模型要求的表/列/索引缺失 → 启动失败并提示迁移命令
+#: - `migrate`：启动时执行 `migrate_schema()`（开发机 `python -m app.main` 显式打开）
+#:
+#: 读的是**环境变量**而不是 `Settings` 缓存：`python -m app.main` 在 `__main__` 里
+#: 设置该变量时，`get_settings()` 早已缓存过一轮，读环境变量才能生效。
+SCHEMA_MODE_ENV = "FUPAN_SCHEMA_MODE"
+SCHEMA_MODES = ("verify", "migrate")
+
+
+def schema_mode() -> str:
+    raw = (os.environ.get(SCHEMA_MODE_ENV) or settings.schema_mode or "verify").strip().lower()
+    if raw not in SCHEMA_MODES:
+        raise RuntimeError(
+            f"{SCHEMA_MODE_ENV} 只能是 {'/'.join(SCHEMA_MODES)}，当前是 {raw!r}"
+        )
+    return raw
+
+
+def migrate_schema(target_engine=None) -> dict:
+    """建表 + 补列 + 补索引，返回本次补上的列/索引（幂等）。"""
     from app import models  # noqa: F401  触发模型注册
     from app.models import Base
 
-    Base.metadata.create_all(engine)
-    _add_missing_columns(Base)
-    _add_missing_indexes(Base)
+    engine_ = target_engine or engine
+    Base.metadata.create_all(engine_)
+    columns = _add_missing_columns(Base, engine_)
+    indexes = _add_missing_indexes(Base, engine_)
+    return {"columns": columns, "indexes": indexes}
 
 
-def _add_missing_columns(base) -> list[str]:
+def schema_report(target_engine=None) -> dict:
+    """**只读**对比「模型要求」与「库里实际有什么」（P0.9-08）。
+
+    不建表、不补列、不补索引、不装触发器 —— 只用 `PRAGMA table_info` 一类的
+    读查询。用于启动前的兼容性检查，也可在只读数据库上安全执行。
+    """
+    from sqlalchemy import inspect
+
+    from app import models  # noqa: F401
+    from app.models import Base
+
+    engine_ = target_engine or engine
+    inspector = inspect(engine_)
+    existing_tables = set(inspector.get_table_names())
+
+    missing_tables: list[str] = []
+    missing_columns: list[str] = []
+    missing_indexes: list[str] = []
+
+    existing_indexes: set[str] = set()
+    with engine_.connect() as connection:
+        existing_indexes = {
+            row[0]
+            for row in connection.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+            )
+        }
+    for table in Base.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            missing_tables.append(table.name)
+            continue
+        columns = {column["name"] for column in inspector.get_columns(table.name)}
+        for column in table.columns:
+            if column.name not in columns:
+                missing_columns.append(f"{table.name}.{column.name}")
+        for index in table.indexes:
+            if index.name and index.name not in existing_indexes:
+                missing_indexes.append(index.name)
+
+    return {
+        "ok": not (missing_tables or missing_columns or missing_indexes),
+        "missing_tables": missing_tables,
+        "missing_columns": missing_columns,
+        "missing_indexes": missing_indexes,
+    }
+
+
+def ensure_schema(mode: str | None = None, target_engine=None) -> dict:
+    """应用启动时的 Schema 门禁（P0.9-08）。
+
+    - `verify`（默认）：只读检查；缺表/缺列/缺索引 → `RuntimeError`（附迁移命令）
+    - `migrate`：显式打开时执行迁移（开发机 / 显式授权的运维命令）
+
+    返回实际执行的动作，供调用方打日志 / 测试断言。
+    """
+    chosen = (mode or schema_mode()).strip().lower()
+    if chosen not in SCHEMA_MODES:
+        raise RuntimeError(f"未知的 Schema 模式 {chosen!r}")
+
+    if chosen == "migrate":
+        changed = migrate_schema(target_engine)
+        logger.info(
+            "Schema 迁移已执行（%s= migrate）：补列 %d、补索引 %d",
+            SCHEMA_MODE_ENV,
+            len(changed["columns"]),
+            len(changed["indexes"]),
+        )
+        return {"mode": "migrate", **changed}
+
+    report = schema_report(target_engine)
+    if not report["ok"]:
+        detail = []
+        if report["missing_tables"]:
+            detail.append("缺表 " + "、".join(report["missing_tables"][:8]))
+        if report["missing_columns"]:
+            detail.append("缺列 " + "、".join(report["missing_columns"][:8]))
+        if report["missing_indexes"]:
+            detail.append("缺索引 " + "、".join(report["missing_indexes"][:8]))
+        message = (
+            "数据库 Schema 与应用不兼容（"
+            + "；".join(detail)
+            + "）。普通启动不会自动改库，请先执行显式迁移："
+            "`python scripts/migrate_db.py --db <库文件> --apply`"
+            f"（开发机可用 {SCHEMA_MODE_ENV}=migrate 启动）"
+        )
+        logger.error(message)
+        raise RuntimeError(message)
+    logger.info("Schema 检查通过（%s=verify，未执行任何 DDL）", SCHEMA_MODE_ENV)
+    return {"mode": "verify", **report}
+
+
+def _add_missing_columns(base, target_engine=None) -> list[str]:
     """给**已存在**的表补上模型里新增的列。
 
     `create_all` 只建缺的表，**不会给已有的表加列**：模型里新加一个字段
@@ -79,9 +203,10 @@ def _add_missing_columns(base) -> list[str]:
     """
     from sqlalchemy import inspect, text
 
+    engine_ = target_engine or engine
     added: list[str] = []
-    inspector = inspect(engine)
-    with engine.begin() as connection:
+    inspector = inspect(engine_)
+    with engine_.begin() as connection:
         for table in base.metadata.sorted_tables:
             if not inspector.has_table(table.name):
                 continue  # create_all 刚建的（或这张表还没建），列肯定是全的
@@ -106,7 +231,7 @@ def _add_missing_columns(base) -> list[str]:
                     )
                     logger.error(message)
                     raise RuntimeError(message)
-                column_type = column.type.compile(engine.dialect)
+                column_type = column.type.compile(engine_.dialect)
                 # 有可用常量默认值时**显式带上 DEFAULT**：不带的话老行一律是 NULL
                 #（对非空列不可接受，对可空列也会让「缺省值」语义丢失）。2026-10-10 修。
                 clause = f" DEFAULT {default_sql}" if default_sql is not None else ""
@@ -150,7 +275,7 @@ def _column_default_sql(column) -> str | None:
     return None
 
 
-def _add_missing_indexes(base) -> list[str]:
+def _add_missing_indexes(base, target_engine=None) -> list[str]:
     """给**已存在**的表补上模型里新增的索引。
 
     ⚠️ 为什么需要它：`create_all` 只给「还没有的表」建索引，已存在的表**连索引一起
@@ -165,9 +290,10 @@ def _add_missing_indexes(base) -> list[str]:
     from sqlalchemy import inspect
     from sqlalchemy.schema import CreateIndex
 
+    engine_ = target_engine or engine
     added: list[str] = []
-    inspector = inspect(engine)
-    with engine.begin() as connection:
+    inspector = inspect(engine_)
+    with engine_.begin() as connection:
         existing = {
             row[0]
             for row in connection.exec_driver_sql(

@@ -42,6 +42,9 @@ def meta(user: AppUser = Depends(current_user), db: Session = Depends(get_db)) -
             # 进程内计数：重启归零；用于确认「这次请求是否命中缓存」
             "stats": research_screen.cache_stats(),
         }
+        # 数据时点诊断（P0.9-07）：孤儿 RPS 日期、有行情但缺 RPS 的交易日。
+        # 只给管理员 —— 普通用户看到的是接口层的覆盖状态，不需要库级诊断。
+        payload["data_health"] = research_screen.data_health(db)
     return payload
 
 
@@ -108,11 +111,19 @@ def sector_state(
     trade_date: date | None = Query(None, alias="date"),
     taxonomy: str = Query("kph_selected", pattern="^(kph_selected|kph_industry)$"),
     limit: int = Query(100, ge=1, le=200),
+    allow_fallback: bool = Query(
+        True,
+        description="所选日期没有板块日线时，是否允许回退到最近可用交易日（P0.9-03）",
+    ),
     db: Session = Depends(get_db),
 ) -> dict:
     try:
         return research_screen.sector_states(
-            db, trade_date=trade_date, taxonomy=taxonomy, limit=limit
+            db,
+            trade_date=trade_date,
+            taxonomy=taxonomy,
+            limit=limit,
+            allow_fallback=allow_fallback,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -170,6 +170,24 @@ def test_low_start_uses_only_data_up_to_trade_date():
     assert row["state"] == "低位观察"
 
 
+def _manifest(session: Session, rows: list[tuple]) -> None:
+    """建 manifest 表（生产由 backfill_sector_members.py 建，不在 Base.metadata 里）。"""
+    session.connection().exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS sector_member_backfill ("
+        " trade_date TEXT NOT NULL, sector_code TEXT NOT NULL, board_name TEXT, taxonomy TEXT,"
+        " status TEXT NOT NULL, reported INTEGER, unique_count INTEGER, written INTEGER,"
+        " attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, updated_at TEXT NOT NULL,"
+        " PRIMARY KEY (trade_date, sector_code))"
+    )
+    for day, board, status, reported, unique, written in rows:
+        session.connection().exec_driver_sql(
+            "INSERT INTO sector_member_backfill"
+            " (trade_date, sector_code, status, reported, unique_count, written, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (str(day), board, status, reported, unique, written, "2026-11-09T00:00:00"),
+        )
+
+
 def test_sector_states_marks_missing_breadth():
     engine = _engine()
     start = date(2025, 1, 1)
@@ -192,6 +210,8 @@ def test_sector_states_marks_missing_breadth():
                 trade_date=days[-1], sector_code="A", code="000001", name="测试", pct_chg=3.0
             )
         )
+        # P0.9-05：只有 manifest 完整且与来源 Count 一致，广度才算可信。
+        _manifest(session, [(days[-1], "A", "complete", 1, 1, 1)])
         session.commit()
         out = research_screen.sector_states(session, trade_date=days[-1], limit=10)
     assert out["trade_date"] == str(days[-1])
@@ -199,7 +219,12 @@ def test_sector_states_marks_missing_breadth():
     by_code = {row["sector_code"]: row for row in out["rows"]}
     assert by_code["A"]["state"] != "数据不足"
     assert by_code["A"]["up_ratio"] == 100.0
+    assert by_code["A"]["breadth_status"] == "complete"
     assert by_code["B"]["state"] == "数据不足"
+    assert by_code["B"]["breadth_status"] == "no_members"
+    # 广度不可用不能连板块日线层面的强弱一起抹掉（P0.9-05）
+    assert by_code["B"]["state_daily"] != "数据不足"
+    assert by_code["B"]["rps20"] is not None
 
 
 def test_file_db_without_revision_is_not_cached(tmp_path, monkeypatch):

@@ -58,6 +58,82 @@ def _latest_date(session: Session) -> str | None:
     return str(value) if value else None
 
 
+# ---- 数据覆盖状态（P0.9-01 / P0.9-07）----
+#
+# 研究接口必须能区分四种「空结果」：
+#   - 底层个股日线没有（未来日期 / RPS 孤儿日）        → no_bars
+#   - 有日线但当日 RPS 一条都没有（未采集）             → no_rps
+#   - 有 RPS 行但 60 日值全为空（旧版本 / 窗口不足）    → no_rps60
+#   - RPS60 覆盖明显偏低（横截面不完整、分位不可比）    → partial_rps
+# 只有 `ok` 时的空结果才是「筛选后确实没有符合条件的股票」。
+DATA_STATUS_OK = "ok"
+DATA_STATUS_NO_BARS = "no_bars"
+DATA_STATUS_NO_RPS = "no_rps"
+DATA_STATUS_NO_RPS60 = "no_rps60"
+DATA_STATUS_PARTIAL_RPS = "partial_rps"
+
+#: RPS60 的当日覆盖下限（相对当日个股日线行数）。低于它时横截面分位不可比：
+#: RPS 的分母是「当天该窗口有值的票」，缺一大片之后 90 分位已经不是同一个横截面。
+RPS_COVERAGE_MIN = 0.9
+
+DATA_STATUS_TEXT = {
+    DATA_STATUS_OK: "行情与 RPS 覆盖正常",
+    DATA_STATUS_NO_BARS: "所选日期没有任何个股日线（底层行情缺失），无法计算研究指标",
+    DATA_STATUS_NO_RPS: "当日个股日线已入库，但没有 RPS 记录（RPS 未采集）",
+    DATA_STATUS_NO_RPS60: "当日有 RPS 行，但 60 日值全部为空（旧版本数据或窗口不足）",
+    DATA_STATUS_PARTIAL_RPS: "当日 RPS60 覆盖不足，横截面分位不可比，结果仅供参考",
+}
+
+
+def day_coverage(session: Session, day: date) -> dict:
+    """某一交易日的「个股日线 / RPS」覆盖（P0.9-01）。
+
+    只用 COUNT 查询，不读全表；`rps_coverage = rps60_rows / daily_rows`。
+    不用 `MAX(trade_date)` 判断，因为 RPS 可能比行情更新（孤儿行）或更旧。
+    """
+    daily_rows = int(
+        session.scalar(
+            select(func.count()).select_from(StockDaily).where(StockDaily.trade_date == day)
+        )
+        or 0
+    )
+    rps_rows = int(
+        session.scalar(
+            select(func.count()).select_from(RpsDaily).where(RpsDaily.trade_date == day)
+        )
+        or 0
+    )
+    rps60_rows = int(
+        session.scalar(
+            select(func.count())
+            .select_from(RpsDaily)
+            .where(RpsDaily.trade_date == day, RpsDaily.rps60.is_not(None))
+        )
+        or 0
+    )
+    coverage = (rps60_rows / daily_rows) if daily_rows else None
+    if daily_rows == 0:
+        status = DATA_STATUS_NO_BARS
+    elif rps_rows == 0:
+        status = DATA_STATUS_NO_RPS
+    elif rps60_rows == 0:
+        status = DATA_STATUS_NO_RPS60
+    elif coverage is not None and coverage < RPS_COVERAGE_MIN:
+        status = DATA_STATUS_PARTIAL_RPS
+    else:
+        status = DATA_STATUS_OK
+    return {
+        "daily_rows": daily_rows,
+        "rps_rows": rps_rows,
+        "rps60_rows": rps60_rows,
+        "rps_coverage": round(coverage, 4) if coverage is not None else None,
+        # RPS 有行、行情没有：孤儿 RPS（日期晚于底层行情末日）
+        "orphan_rps": bool(rps_rows and not daily_rows),
+        "data_status": status,
+        "status_text": DATA_STATUS_TEXT[status],
+    }
+
+
 # ---- 结果缓存（P0.3 + R5 加固）----
 #
 # 低位启动是**全市场 250 日扫描**（5,261 只 ≈ 130 万行），冷查询约 6 秒。盘后研究是
@@ -331,6 +407,16 @@ def _trend_rows(
     exclude_st: bool = True,
     exclude_bse: bool = True,
 ) -> dict:
+    # 先判覆盖，再看候选（P0.9-01）：不能因为 candidates 为空就说「没有符合条件的票」，
+    # 也不能反过来把「RPS 没采」当成「市场没有强势股」。
+    cover = day_coverage(session, day)
+    if cover["data_status"] != DATA_STATUS_OK:
+        return {
+            "trade_date": day,
+            "rows": [],
+            "coverage": {"candidates": 0, **cover},
+            "strategy": TREND_STRATEGY,
+        }
     candidates = list(
         session.scalars(
             select(RpsDaily.code)
@@ -340,7 +426,16 @@ def _trend_rows(
         )
     )
     if not candidates:
-        return {"trade_date": day, "rows": [], "coverage": {"candidates": 0}, "strategy": TREND_STRATEGY}
+        return {
+            "trade_date": day,
+            "rows": [],
+            "coverage": {
+                "candidates": 0,
+                **cover,
+                "note": f"当日数据完整，但没有 RPS60 ≥ {min_rps60:g} 的股票",
+            },
+            "strategy": TREND_STRATEGY,
+        }
     names = _names(session, day, candidates)
     industries = _industries(session, candidates)
     boards = _boards(session, day, candidates)
@@ -454,6 +549,7 @@ def _trend_rows(
             "candidates": len(candidates),
             "with_boards": sum(1 for code in candidates if boards.get(code)),
             "bars": len(bars_by_code),
+            **cover,
         },
         "strategy": TREND_STRATEGY,
     }
@@ -514,9 +610,24 @@ def _low_start_rows(
     exclude_st: bool = True,
     exclude_bse: bool = True,
 ) -> dict:
+    cover = day_coverage(session, day)
+    if cover["data_status"] == DATA_STATUS_NO_BARS:
+        # 没有底层日线（未来日期 / RPS 孤儿日）：不扫全市场，直接返回明确的覆盖状态。
+        return {
+            "trade_date": day,
+            "rows": [],
+            "coverage": {"candidates": 0, "bars": 0, **cover},
+            "strategy": LOW_START_STRATEGY,
+        }
+    day_rps_rows = cover["rps_rows"]
     codes = list(session.scalars(select(StockUniverse.code).limit(6000)))
     if not codes:
-        return {"trade_date": day, "rows": [], "coverage": {"candidates": 0}, "strategy": LOW_START_STRATEGY}
+        return {
+            "trade_date": day,
+            "rows": [],
+            "coverage": {"candidates": 0, **cover},
+            "strategy": LOW_START_STRATEGY,
+        }
     names = _names(session, day, codes)
     industries = _industries(session, codes)
     rps = _rps(session, day, codes)
@@ -537,15 +648,16 @@ def _low_start_rows(
         return {
             "trade_date": day,
             "rows": [],
-            "coverage": {"candidates": len(codes), "bars": 0},
+            "coverage": {"candidates": len(codes), "bars": 0, **cover},
             "strategy": LOW_START_STRATEGY,
         }
     start = min(window_days)
     rows: list[dict] = []
     built = 0
+    rps_missing = 0
 
     def flush(code: str | None, items: list[dict]) -> None:
-        nonlocal built
+        nonlocal built, rps_missing
         if code is None or len(items) < trend.TREND_LOOKBACK:
             return
         built += 1
@@ -583,6 +695,25 @@ def _low_start_rows(
         breakout = close[-1] > ph * 1.001
         rps_row = rps.get(code)
         rps20 = rps_row.rps20 if rps_row else None
+        # RPS 缺失必须写在行上（P0.9-02）：低位启动本身**不依赖** RPS，
+        # 所以缺失不能让这只票被剔除，但也不能悄悄留一个空的 rps20 加 missing=[]。
+        # 三种原因要分开：整日没采 / 当日没有该股记录 / 有记录但 20 日窗口不足。
+        if day_rps_rows == 0:
+            rps_status = "day_missing"
+            missing = ["RPS20 缺失（当日 RPS 未采集）"]
+        elif rps_row is None:
+            rps_status = "no_row"
+            missing = ["RPS20 缺失（当日无该股 RPS 记录）"]
+        elif rps_row.rps20 is None:
+            # 能走到这里的票都有 250 根可用日线（`flush` 的门槛），所以不存在
+            # 「上市不足 20 日」—— 只可能是窗口内停牌/缺数据，覆盖不到 90%。
+            rps_status = "window"
+            missing = ["RPS20 缺失（20 日窗口覆盖不足：停牌或数据缺失）"]
+        else:
+            rps_status = "value"
+            missing = []
+        if missing:
+            rps_missing += 1
         if breakout and amount_ratio and amount_ratio >= 1.3 and (s20 or 0) > 0:
             state = "突破确认"
         elif breakout:
@@ -607,13 +738,14 @@ def _low_start_rows(
                 "ma20": round(ma20, 2) if ma20 else None,
                 "ma20_slope": s20,
                 "rps20": rps20,
+                "rps_status": rps_status,
                 "state": state,
                 "reasons": [
                     f"区间位置 {pos:.1f}%",
                     f"平台 {platform} 天、振幅 {height:.1f}%",
                     f"波动收敛 {contraction:.2f}",
                 ],
-                "missing": [],
+                "missing": missing,
                 "strategy": LOW_START_STRATEGY,
             }
         )
@@ -666,8 +798,125 @@ def _low_start_rows(
     return {
         "trade_date": day,
         "rows": rows[:limit],
-        "coverage": {"candidates": len(codes), "bars": built},
+        "coverage": {
+            "candidates": len(codes),
+            "bars": built,
+            # 未满 250 根可用日线的票（新股 / 历史不足）：与 RPS 缺失是两回事
+            "excluded_short_bars": max(0, len(codes) - built),
+            "rps_missing_rows": rps_missing,
+            **cover,
+        },
         "strategy": LOW_START_STRATEGY,
+    }
+
+
+MEMBER_STATUS_TEXT = {
+    "complete": "成分股完整（manifest 与来源 Count 一致）",
+    "partial": "部分覆盖：来源 Count 大于实际取到的去重数",
+    "source_empty": "来源当日没有成分股",
+    "failed": "采集失败",
+    "unsupported": "来源不支持该日期",
+    "unsupported_history": "来源不支持该日期",
+    "unverified": "来源没给 Count，无法对账",
+    "not_collected": "尚未采集",
+    "mismatch": "manifest 标记完整，但库内成员数与来源 Count 不一致",
+    "missing_manifest": "没有 manifest 记录，完整性未知",
+    "no_members": "当日没有成分股记录",
+}
+
+#: manifest 里算「完整」的状态值（与 `scripts/backfill_sector_members.py` 一致）
+MEMBER_COMPLETE = "complete"
+
+
+def _member_manifest(session: Session, day: date) -> dict[str, dict] | None:
+    """读取当日的成分股回补 manifest。
+
+    表不存在（生产尚未安装回补链路）时返回 `None` —— 调用方据此标「完整性未知」，
+    **不能**因为 `sector_member` 表里有行就认定完整。
+    """
+    exists = session.connection().exec_driver_sql(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sector_member_backfill'"
+    ).first()
+    if not exists:
+        return None
+    rows = session.connection().exec_driver_sql(
+        "SELECT sector_code, status, reported, unique_count, written"
+        " FROM sector_member_backfill WHERE trade_date = ?",
+        (day.isoformat(),),
+    ).all()
+    return {
+        row[0]: {
+            "status": row[1],
+            "reported": row[2],
+            "unique": row[3],
+            "written": row[4],
+        }
+        for row in rows
+    }
+
+
+def _breadth_status(
+    manifest_installed: bool, entry: dict | None, actual_rows: int
+) -> tuple[str, str]:
+    """把 manifest 状态翻译成「广度可不可信」（P0.9-05）。
+
+    返回 `(status, reason)`；只有 `status == "complete"` 才允许用成分股计算广度。
+    """
+    if actual_rows == 0 and entry is None:
+        return "no_members", MEMBER_STATUS_TEXT["no_members"]
+    if not manifest_installed:
+        return "missing_manifest", "库内没有 manifest 表，无法认定成分股完整"
+    if entry is None:
+        return "missing_manifest", "该板块当日没有 manifest 记录，完整性未知"
+
+    status = (entry.get("status") or "").lower()
+    if status == MEMBER_COMPLETE:
+        expected = entry.get("unique")
+        if expected is None:
+            expected = entry.get("reported")
+        if expected is None:
+            return "unverified", "manifest 标记完整但没有来源 Count，无法对账"
+        if actual_rows != int(expected):
+            return (
+                "mismatch",
+                f"manifest 标记完整，但库内成员 {actual_rows} 行 ≠ 来源 {int(expected)}",
+            )
+        return "complete", ""
+
+    mapped = status or "unknown"
+    return mapped, MEMBER_STATUS_TEXT.get(mapped, f"manifest 状态 {mapped}，完整性未知")
+
+
+def _fallback_info(session: Session, requested: date, actual: date) -> dict:
+    """板块数据的日期回退说明（P0.9-03）。"""
+    if actual == requested:
+        return {
+            "applied": False,
+            "requested_date": str(requested),
+            "actual_data_date": str(actual),
+            "gap_trading_days": 0,
+            "severity": "none",
+            "reason": None,
+        }
+    gap = int(
+        session.scalar(
+            select(func.count())
+            .select_from(TradeCalendar)
+            .where(TradeCalendar.trade_date > actual, TradeCalendar.trade_date <= requested)
+        )
+        or 0
+    )
+    severity = "high" if gap >= 5 else "warn"
+    reason = f"所选日期 {requested} 没有板块日线，已回退到最近可用交易日 {actual}"
+    if gap >= 5:
+        reason += f"（相差 {gap} 个交易日，结果不代表所选日期的板块状态）"
+    return {
+        "applied": True,
+        "requested_date": str(requested),
+        "actual_data_date": str(actual),
+        "gap_trading_days": gap,
+        "severity": severity,
+        "reason": reason,
     }
 
 
@@ -677,15 +926,22 @@ def sector_states(
     trade_date: date | None = None,
     taxonomy: str = "kph_selected",
     limit: int = 100,
+    allow_fallback: bool = True,
 ) -> dict:
     requested = target_date(session, trade_date)
-    params = (taxonomy, limit)
+    params = (taxonomy, limit, bool(allow_fallback))
     result = _cached(
         session,
         "sector_state",
         requested,
         params,
-        lambda: _sector_states(session, requested, taxonomy=taxonomy, limit=limit),
+        lambda: _sector_states(
+            session,
+            requested,
+            taxonomy=taxonomy,
+            limit=limit,
+            allow_fallback=allow_fallback,
+        ),
     )
     result["data_latest"] = _latest_date(session)
     return result
@@ -697,6 +953,7 @@ def _sector_states(
     *,
     taxonomy: str = "kph_selected",
     limit: int = 100,
+    allow_fallback: bool = True,
 ) -> dict:
     available = session.scalar(
         select(func.max(SectorDaily.trade_date)).where(
@@ -706,11 +963,39 @@ def _sector_states(
     if available is None:
         return {
             "trade_date": str(requested),
+            "requested_date": str(requested),
+            "actual_data_date": None,
+            "fallback": {
+                "applied": False,
+                "requested_date": str(requested),
+                "actual_data_date": None,
+                "gap_trading_days": None,
+                "severity": "high",
+                "reason": "库里没有该分类的板块日线",
+            },
             "rows": [],
-            "coverage": {"days": 0, "status": "数据不足"},
+            "coverage": {"days": 0, "status": "数据不足", "data_status": "no_data"},
             "strategy": SECTOR_STATE_STRATEGY,
         }
     day = available
+    fallback = _fallback_info(session, requested, day)
+    if fallback["applied"] and not allow_fallback:
+        # 严格模式（P0.9-03）：宁可返回「不可用」，也不把旧日期当成请求日的结果。
+        return {
+            "trade_date": str(day),
+            "requested_date": str(requested),
+            "actual_data_date": str(day),
+            "fallback": fallback,
+            "rows": [],
+            "coverage": {
+                "days": 0,
+                "status": "数据不足",
+                "data_status": "requested_date_unavailable",
+                "note": fallback["reason"],
+            },
+            "strategy": SECTOR_STATE_STRATEGY,
+        }
+    data_status = "fallback" if fallback["applied"] else "ok"
     days = list(
         session.scalars(
             select(SectorDaily.trade_date)
@@ -725,8 +1010,15 @@ def _sector_states(
         return {
             "trade_date": str(day),
             "requested_date": str(requested),
+            "actual_data_date": str(day),
+            "fallback": fallback,
             "rows": [],
-            "coverage": {"days": len(days), "status": "数据不足"},
+            "coverage": {
+                "days": len(days),
+                "status": "数据不足",
+                "data_status": "insufficient_history",
+                "note": f"板块日线只有 {len(days)} 个交易日，不足 20 日 RPS 所需窗口",
+            },
             "strategy": SECTOR_STATE_STRATEGY,
         }
     rows = session.execute(
@@ -773,6 +1065,14 @@ def _sector_states(
                     value *= 1 + pct / 100
             ret[window][board] = (value - 1) * 100
     rps20 = rps20_by_day.get(day, {})
+    member_counts = dict(
+        session.execute(
+            select(SectorMember.sector_code, func.count()).where(
+                SectorMember.trade_date == day
+            ).group_by(SectorMember.sector_code)
+        ).all()
+    )
+    manifest = _member_manifest(session, day)
     members = session.execute(
         select(SectorMember.code, SectorMember.sector_code, SectorMember.pct_chg).where(
             SectorMember.trade_date == day
@@ -786,11 +1086,22 @@ def _sector_states(
         breadth.setdefault(board, []).append(pct)
         if pct is not None:
             core.setdefault(board, []).append((pct, code))
+
+    # ---- 集合关系（P0.9-04）----
+    # 每个统计都落在明确的分母上，且满足：
+    #   boards_in_day = boards_with_rps20 + excluded_no_rps20 + excluded_short_history
+    #   matched = boards_with_rps20（受 limit 截断后 returned ≤ matched）
+    day_boards = {board for board, series in by_board.items() if day in series}
+    window_boards = set(by_board)
+    hist_boards = {board for board, series in by_board.items() if len(series) >= 20}
+    hist_in_day = hist_boards & day_boards
+    rps_boards = set(rps20)
+
     out = []
-    for board, series in by_board.items():
-        r20 = rps20.get(board)
-        if r20 is None:
-            continue
+    breadth_counts = {MEMBER_COMPLETE: 0, "mismatch": 0, "partial": 0, "unknown": 0}
+    for board in rps_boards:
+        series = by_board[board]
+        r20 = rps20[board]
         amount_series = [v[1] for v in series.values() if v[1] is not None]
         amount_ratio = None
         if len(amount_series) >= 21:
@@ -804,26 +1115,46 @@ def _sector_states(
                 strong_days += 1
             else:
                 break
+
+        # 广度（依赖 sector_member）：只有 manifest 完整且与来源 Count 一致才可信。
+        # 日线类指标（ret*/rps20/amount_ratio）不受 manifest 影响，照常返回。
+        actual_rows = int(member_counts.get(board, 0))
+        breadth_status, breadth_reason = _breadth_status(
+            manifest is not None, (manifest or {}).get(board), actual_rows
+        )
+        trusted = breadth_status == MEMBER_COMPLETE
         pcts = [p for p in breadth.get(board, []) if p is not None]
-        up_ratio = round(sum(1 for p in pcts if p > 0) / len(pcts) * 100, 1) if pcts else None
+        up_ratio = (
+            round(sum(1 for p in pcts if p > 0) / len(pcts) * 100, 1)
+            if trusted and pcts
+            else None
+        )
+        top = sorted(core.get(board, []), reverse=True)[:5] if trusted else []
+
         prev5 = rps20_by_day.get(days[-6], {}).get(board) if len(days) >= 6 else None
         if r20 >= 90 and (prev5 is None or prev5 < 80):
-            state = "新晋强势"
+            state_daily = "新晋强势"
         elif r20 >= 80 and strong_days >= 3:
-            state = "持续走强"
+            state_daily = "持续走强"
         elif r20 >= 60:
-            state = (
+            state_daily = (
                 "强势整理"
                 if abs(ret[5].get(board, 0)) <= 3 and (amount_ratio or 1) < 1
                 else "强度回落"
             )
         elif r20 <= 20:
-            state = "持续弱势"
+            state_daily = "持续弱势"
         else:
-            state = "中性"
-        if up_ratio is None:
-            state = "数据不足"
-        top = sorted(core.get(board, []), reverse=True)[:5]
+            state_daily = "中性"
+        state = state_daily if up_ratio is not None else "数据不足"
+        if breadth_status == MEMBER_COMPLETE:
+            breadth_counts[MEMBER_COMPLETE] += 1
+        elif breadth_status == "mismatch":
+            breadth_counts["mismatch"] += 1
+        elif breadth_status == "partial":
+            breadth_counts["partial"] += 1
+        else:
+            breadth_counts["unknown"] += 1
         out.append(
             {
                 "sector_code": board,
@@ -838,21 +1169,121 @@ def _sector_states(
                 "up_ratio": up_ratio,
                 "strong_days": strong_days,
                 "state": state,
+                # 只用板块日线得出的强弱（不受成分股 manifest 影响），
+                # 这样「广度不可用」不会连板块日线层面的强弱一起被抹掉。
+                "state_daily": state_daily,
+                "breadth_status": breadth_status,
                 "core": [{"code": code, "pct_chg": pct} for pct, code in top],
-                "missing": [] if up_ratio is not None else ["sector_member 当日缺失"],
+                "missing": [] if up_ratio is not None else [f"成分股广度不可用：{breadth_reason}"],
                 "strategy": SECTOR_STATE_STRATEGY,
             }
         )
     out.sort(key=lambda row: (-(row["rps20"] or -1), row["sector_code"]))
+    returned = out[:limit]
     return {
         "trade_date": str(day),
         "requested_date": str(requested),
-        "rows": out[:limit],
+        "actual_data_date": str(day),
+        "fallback": fallback,
+        "rows": returned,
         "coverage": {
             "days": len(days),
-            "boards": len(by_board),
-            "with_members": len(breadth),
-            "note": "sector_member 仅覆盖已回补板块；未覆盖板块的广度显示数据不足",
+            "status": "ok" if data_status in {"ok", "fallback"} else data_status,
+            "data_status": data_status,
+            # --- 集合关系（P0.9-04）---
+            "boards_in_day": len(day_boards),
+            "boards_with_history": len(hist_in_day),
+            "boards_with_rps20": len(rps_boards),
+            "excluded_short_history": len(day_boards - hist_boards),
+            "excluded_no_rps20": len(hist_in_day - rps_boards),
+            "matched": len(out),
+            "returned": len(returned),
+            "truncated": len(out) - len(returned),
+            "window_only_boards": len(window_boards - day_boards),
+            # --- 兼容旧字段 ---
+            "boards": len(window_boards),
+            "with_members": len(member_counts),
+            # --- manifest / 广度（P0.9-05）---
+            "manifest_installed": manifest is not None,
+            "manifest_boards": len(manifest or {}),
+            "breadth_complete": breadth_counts[MEMBER_COMPLETE],
+            "breadth_mismatch": breadth_counts["mismatch"],
+            "breadth_partial": breadth_counts["partial"],
+            "breadth_unknown": breadth_counts["unknown"],
+            "note": (
+                "板块日线指标（Ret/RPS/成交额）不依赖成分股；广度（上涨占比/核心股）"
+                "只在 manifest 完整且与来源 Count 一致时展示。"
+            ),
         },
         "strategy": SECTOR_STATE_STRATEGY,
+    }
+
+
+def data_health(session: Session, *, lookback_days: int = 90, limit: int = 20) -> dict:
+    """研究库的数据时点健康度（P0.9-07，只给管理员诊断用）。
+
+    回答两个问题：
+    1. 哪些日期的 RPS **没有底层个股日线**（孤儿 RPS，不能用于研究结论）；
+    2. 最近 `lookback_days` 个有行情的交易日里，哪些**有行情但没有 RPS**。
+
+    两者都按「逐交易日」统计，不用 `MAX(trade_date)` 代表整段覆盖。
+    """
+    conn = session.connection()
+    bars_latest = session.scalar(select(func.max(StockDaily.trade_date)))
+    rps_latest = session.scalar(select(func.max(RpsDaily.trade_date)))
+
+    orphan_count = int(
+        conn.exec_driver_sql(
+            "SELECT COUNT(*) FROM (SELECT trade_date FROM rps_daily GROUP BY trade_date) r"
+            " WHERE NOT EXISTS (SELECT 1 FROM stock_daily d WHERE d.trade_date = r.trade_date)"
+        ).scalar()
+        or 0
+    )
+    orphan_dates = [
+        {"trade_date": row[0], "rps_rows": row[1], "daily_rows": row[2]}
+        for row in conn.exec_driver_sql(
+            "SELECT r.trade_date, r.n,"
+            " (SELECT COUNT(*) FROM stock_daily d WHERE d.trade_date = r.trade_date) AS bars"
+            " FROM (SELECT trade_date, COUNT(*) AS n FROM rps_daily GROUP BY trade_date) r"
+            " WHERE (SELECT COUNT(*) FROM stock_daily d WHERE d.trade_date = r.trade_date) = 0"
+            " ORDER BY r.trade_date DESC LIMIT ?",
+            (int(limit),),
+        ).all()
+    ]
+
+    missing_rps_count = 0
+    missing_rps_dates: list[str] = []
+    if bars_latest is not None:
+        start = conn.exec_driver_sql(
+            "SELECT trade_date FROM trade_calendar WHERE trade_date <= ?"
+            " ORDER BY trade_date DESC LIMIT 1 OFFSET ?",
+            (bars_latest.isoformat(), int(lookback_days)),
+        ).scalar()
+        base_sql = (
+            " FROM trade_calendar c WHERE c.trade_date <= ? AND c.trade_date >= ?"
+            " AND EXISTS (SELECT 1 FROM stock_daily d WHERE d.trade_date = c.trade_date)"
+            " AND NOT EXISTS (SELECT 1 FROM rps_daily r WHERE r.trade_date = c.trade_date)"
+        )
+        params = (bars_latest.isoformat(), start or "0000-00-00")
+        missing_rps_count = int(
+            conn.exec_driver_sql("SELECT COUNT(*)" + base_sql, params).scalar() or 0
+        )
+        missing_rps_dates = [
+            row[0]
+            for row in conn.exec_driver_sql(
+                "SELECT c.trade_date" + base_sql + " ORDER BY c.trade_date DESC LIMIT ?",
+                (*params, int(limit)),
+            ).all()
+        ]
+
+    return {
+        "bars_latest": str(bars_latest) if bars_latest else None,
+        "rps_latest": str(rps_latest) if rps_latest else None,
+        # RPS 比行情新：10-21 的 RPS 没有 10-21 的底层行情时就是 True
+        "rps_newer_than_bars": bool(bars_latest and rps_latest and rps_latest > bars_latest),
+        "orphan_rps_dates_count": orphan_count,
+        "orphan_rps_dates": orphan_dates,
+        "missing_rps_dates_count": missing_rps_count,
+        "missing_rps_dates": missing_rps_dates,
+        "lookback_days": int(lookback_days),
     }

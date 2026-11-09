@@ -1483,11 +1483,17 @@ export const researchApi = {
     return request<ResearchLowStartOut>(`/research/low-start?${q.toString()}`)
   },
 
-  sectorState: (params: { date?: string | null; taxonomy?: string; limit?: number } = {}) => {
+  sectorState: (params: {
+    date?: string | null
+    taxonomy?: string
+    limit?: number
+    allowFallback?: boolean
+  } = {}) => {
     const q = new URLSearchParams()
     if (params.date) q.set('date', params.date)
     q.set('taxonomy', params.taxonomy ?? 'kph_selected')
     q.set('limit', String(params.limit ?? 100))
+    q.set('allow_fallback', String(params.allowFallback ?? true))
     return request<ResearchSectorOut>(`/research/sector-state?${q.toString()}`)
   },
 }

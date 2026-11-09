@@ -39,7 +39,7 @@ from app.api import (
     watchlist,
 )
 from app.config import ROOT, get_settings
-from app.db import init_db
+from app.db import ensure_schema
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 from app.services.auth import client_ip as auth_client_ip
 from app.services.auth import require_login
@@ -178,8 +178,15 @@ def _log_quota_config() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    init_db()
-    logger.info("数据库就绪: %s", settings.db_path)
+    # Schema 门禁（P0.9-08）：默认只**检查**、不改库。
+    #
+    # 以前这里直接 `init_db()` = create_all + ALTER TABLE，于是「启动候选服务看一眼
+    # 配置」在生产上就是一次隐式迁移，且无法从日志区分。现在：
+    # - 生产（systemd，不设 FUPAN_SCHEMA_MODE）→ verify：缺表/缺列直接启动失败，
+    #   并在错误里给出显式迁移命令；
+    # - 开发机（`python -m app.main` 在 __main__ 里显式设 migrate）→ 保持原来的便利。
+    schema_result = ensure_schema()
+    logger.info("数据库就绪: %s（schema=%s）", settings.db_path, schema_result["mode"])
     if not settings.ifind_auth_token:
         logger.warning("未配置 IFIND_AUTH_TOKEN，iFinD 相关采集将失败")
     # 配额关键配置（2026-10-31 加）：分母（月度上限）和周期起点日一旦填错，配额
@@ -473,7 +480,15 @@ def _lan_ip() -> str | None:
 if __name__ == "__main__":
     # 用 `python -m app.main` 启动，而不是敲 uvicorn 命令：host/port 从 .env 走，
     # 而且顺手把手机能用的地址打出来，省得每次自己查本机 IP。
+    import os
+
     import uvicorn
+
+    # 开发机启动器**显式**打开自动迁移（P0.9-08）：这里就是「开发者自己双击
+    # start.bat / 运行 python -m app.main」的入口，补列建表的便利保留；
+    # 生产走 `python -m uvicorn app.main:app`（systemd），不会设这个变量 → verify。
+    # 必须在 uvicorn.run 之前设置：lifespan 里读的是环境变量（`Settings` 已缓存）。
+    os.environ.setdefault("FUPAN_SCHEMA_MODE", "migrate")
 
     logger.info("本机打开：http://127.0.0.1:%d", settings.port)
     if settings.host not in ("127.0.0.1", "localhost"):

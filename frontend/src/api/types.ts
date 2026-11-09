@@ -3288,6 +3288,41 @@ export interface ResearchCoverage {
   with_members?: number
   note?: string
   status?: string
+  /** P0.9：ok / no_bars / no_rps / no_rps60 / partial_rps / fallback / … */
+  data_status?: string
+  status_text?: string
+  daily_rows?: number
+  rps_rows?: number
+  rps60_rows?: number
+  rps_coverage?: number | null
+  orphan_rps?: boolean
+  rps_missing_rows?: number
+  excluded_short_bars?: number
+  boards_in_day?: number
+  boards_with_history?: number
+  boards_with_rps20?: number
+  excluded_short_history?: number
+  excluded_no_rps20?: number
+  matched?: number
+  returned?: number
+  truncated?: number
+  window_only_boards?: number
+  manifest_installed?: boolean
+  manifest_boards?: number
+  breadth_complete?: number
+  breadth_mismatch?: number
+  breadth_partial?: number
+  breadth_unknown?: number
+}
+
+/** 板块日期回退说明（P0.9-03）：请求日没有板块日线时实际用了哪一天。 */
+export interface ResearchFallback {
+  applied: boolean
+  requested_date: string
+  actual_data_date: string | null
+  gap_trading_days: number | null
+  severity: string
+  reason: string | null
 }
 
 export interface ResearchTrendRow {
@@ -3343,6 +3378,8 @@ export interface ResearchLowStartRow {
   ma20?: number | null
   ma20_slope?: number | null
   rps20?: number | null
+  /** P0.9-02：value / no_row / window / day_missing —— RPS20 为空时说明原因 */
+  rps_status?: string
   state: string
   reasons: string[]
   missing: string[]
@@ -3370,6 +3407,10 @@ export interface ResearchSectorRow {
   up_ratio?: number | null
   strong_days: number
   state: string
+  /** P0.9-05：只用板块日线得出的强弱（不受成分股 manifest 影响） */
+  state_daily?: string
+  /** P0.9-05：complete / partial / failed / mismatch / missing_manifest / no_members … */
+  breadth_status?: string
   core: { code: string; pct_chg: number | null }[]
   missing: string[]
   strategy: ResearchStrategy
@@ -3378,6 +3419,9 @@ export interface ResearchSectorRow {
 export interface ResearchSectorOut {
   trade_date: string
   requested_date?: string
+  /** P0.9-03：实际使用的数据日期（可能早于请求日） */
+  actual_data_date?: string | null
+  fallback?: ResearchFallback
   data_latest?: string | null
   rows: ResearchSectorRow[]
   coverage: ResearchCoverage

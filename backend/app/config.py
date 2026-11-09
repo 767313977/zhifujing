@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # （2026-10-23 体检 P3）。生产在 systemd 里设 `ENABLE_DEV_CORS=false` 即可关掉，
     # 本地默认 true —— 不改 .env 也能继续用 5173 调试。
     enable_dev_cors: bool = True
+    # 启动时如何处理数据库 Schema（P0.9-08）：
+    # - verify（默认）：只做只读兼容性检查，缺表/缺列/缺索引 → 启动失败并提示显式迁移；
+    # - migrate：启动时自动补齐（开发机 `python -m app.main` 会显式打开这个模式）。
+    # 生产 systemd 不设这个值 → verify：**启动候选服务不再等于一次隐式迁移**。
+    # 也可用环境变量 `FUPAN_SCHEMA_MODE` 覆盖（启动时读取，优先级更高）。
+    schema_mode: str = "verify"
     # 启动后是否在后台预热形态成绩单缓存（2026-10-23 加，见 `main._warm_pattern_cache`）。
     #
     # `/api/patterns/scorecard` 是站内最重的读接口（线上冷缓存实测 4.76s，`standing`
