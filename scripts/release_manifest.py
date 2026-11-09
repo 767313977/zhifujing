@@ -130,6 +130,17 @@ def data_source(path: Path, with_hash: bool) -> dict:
     return payload
 
 
+def _tool_version(command: str) -> str | None:
+    """取工具版本；Windows 上 npm 是 .cmd，必须走 shell，取不到就返回 None。"""
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, shell=True, timeout=30
+        )
+        return result.stdout.strip() or None
+    except Exception:  # noqa: BLE001 - 版本信息缺失不该阻断清单生成
+        return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="生成发布候选清单")
     parser.add_argument("--out", required=True, help="输出 JSON 路径")
@@ -172,8 +183,8 @@ def main() -> int:
         "data_source": data_source(ROOT / "backend" / "data" / "b1_research.db", args.hash_data),
         "frontend_dist": dist_digest(),
         "node": {
-            "node": subprocess.run(["node", "-v"], capture_output=True, text=True).stdout.strip(),
-            "npm": subprocess.run(["npm", "-v"], capture_output=True, text=True).stdout.strip(),
+            "node": _tool_version("node -v"),
+            "npm": _tool_version("npm -v"),
         },
     }
     out = Path(args.out)
