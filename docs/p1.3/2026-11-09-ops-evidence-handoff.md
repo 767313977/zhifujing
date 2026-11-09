@@ -28,8 +28,11 @@
 | 3 | 数据连续性 | `python scripts/prod_readonly_audit.py --db <副本> --start 2026-07-03 --end 2026-11-09 --json prod_audit.json` | `prod_audit.json` |
 | 4 | 一致性备份 | 见 §3 | `backup_meta.json` + 备份文件 |
 
-> 首次执行前可先 `bash -n deploy/prod_probe.sh` 自检语法；
-> `prod_probe.sh` 支持 `DB_PATH=/实际路径 bash deploy/prod_probe.sh` 覆盖库路径。
+> 首次执行前可先 `bash -n deploy/prod_probe.sh` 自检语法。
+> `ExecStart` 是 `python -m uvicorn app.main:app`，**不含数据库路径**，所以脚本的
+> 「数据库文件与所在盘」一节会提示「未从 ExecStart 解析到 .db 路径」——
+> 这是预期行为，请手工补两行：`ls -lh <库文件> <库文件>-wal` 与 `df -h <库目录>`。
+> （该脚本已随候选冻结，本轮不再改动；自动解析可放到发布后的小版本。）
 
 ### 1.1 先做副本（任务 2/3 只允许在副本上跑）
 
