@@ -56,6 +56,7 @@
 """
 
 import argparse
+import gzip
 import sqlite3
 import subprocess
 import sys
@@ -84,9 +85,21 @@ INCLUDE = (
 SKIP_DIRS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 SKIP_SUFFIX = (".pyc", ".pyo")
 
+#: **只在开发机上有意义**的脚本：不随发布包上线（P1.2-F4 最小权限）。
+#: - git-push.ps1：本机推送重试，依赖 Windows PowerShell 与开发者环境
+#: - pack_deploy / release_manifest / verify_release_package：需要 Git 仓库才能工作，
+#:   服务器上只有解压后的目录
+#: 这些文件仍保留在仓库里，只是不进包；业务功能不受影响。
+DEV_ONLY = (
+    "scripts/git-push.ps1",
+    "scripts/pack_deploy.py",
+    "scripts/release_manifest.py",
+    "scripts/verify_release_package.py",
+)
+
 
 def normalize_tarinfo(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo:
-    """把包内权限位统一成 **644（文件）/ 755（目录）**。
+    """把包内权限位统一成 **644（文件）/ 755（目录）**，并把 mtime 归零。
 
     ⚠️ 为什么必须有它（2026-10-23 体检发现的生产问题）：这个脚本是在 **Windows**
     上跑的，`tarfile` 会把 NTFS 的 `-rw-rw-rw-` / `drwxrwxrwx` 原样写进 tar。
@@ -97,11 +110,15 @@ def normalize_tarinfo(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo:
     这里从**源头**规整：文件 644、目录 755、属主统一 root（解包后 install.sh 会
     chown 成 fupan）。`.env` / 数据库不在包里（分别由 install.sh chmod 600、
     data 目录 700 兜底），不受影响。
+
+    ✚ 2026-11-09（P1.2-F3）：mtime 一律归零 —— 否则同一份源码在不同时间/机器
+    打出来的 tar 摘要不同，无法用「二进制摘要相同」判断可复现。
     """
     tarinfo.uid = 0
     tarinfo.gid = 0
     tarinfo.uname = "root"
     tarinfo.gname = "root"
+    tarinfo.mtime = 0
     tarinfo.mode = 0o755 if tarinfo.isdir() else 0o644
     return tarinfo
 
@@ -193,7 +210,10 @@ def add_tree(
     skip = skip or set()
     count = 0
     skipped: list[str] = []
-    for path in sorted(src.rglob("*")):
+    # 排序键用 POSIX 字符串（区分大小写）：Windows 的 Path 排序不区分大小写，
+    # Linux 区分，直接用 Path 排序会让两个平台打出的成员顺序不同（P1.2-F3）。
+    paths = sorted(src.rglob("*"), key=lambda item: item.relative_to(src).as_posix())
+    for path in paths:
         relative = path.relative_to(src)
         if any(part in SKIP_DIRS for part in relative.parts):
             continue
@@ -201,6 +221,8 @@ def add_tree(
             continue
         if path.is_file():
             repo_relative = path.relative_to(ROOT).as_posix()
+            if repo_relative in DEV_ONLY:
+                continue  # 开发机专用脚本，不进发布包（P1.2-F4）
             if repo_relative in skip:
                 skipped.append(repo_relative)
                 continue
@@ -267,7 +289,11 @@ def main() -> int:
 
     files = 0
     skipped: list[str] = []
-    with tempfile.TemporaryDirectory() as tmp, tarfile.open(out, "w:gz") as tar:
+    # gzip 头里的 mtime 也归零：默认会写当前时间，导致同一份内容每次打包摘要都不同
+    # （P1.2-F3）。filename 留空，避免把本机路径写进压缩头。
+    with tempfile.TemporaryDirectory() as tmp, open(out, "wb") as raw, gzip.GzipFile(
+        filename="", mode="wb", fileobj=raw, mtime=0
+    ) as gz, tarfile.open(fileobj=gz, mode="w") as tar:
         for item in INCLUDE:
             src = ROOT / item
             if not src.exists():
