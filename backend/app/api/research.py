@@ -94,8 +94,11 @@ def low_start(
             exclude_bse=exclude_bse,
         )
     except research_screen.ResearchBusy as exc:
-        # 全市场扫描并发已满且等待超时：明确告诉客户端稍后重试，而不是无限排队
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        # 全市场扫描并发已满且等待超时：明确告诉客户端稍后重试，而不是无限排队。
+        # `Retry-After` 让前端/网关有明确的退避依据，避免立即重试形成风暴。
+        raise HTTPException(
+            status_code=503, detail=str(exc), headers={"Retry-After": "5"}
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

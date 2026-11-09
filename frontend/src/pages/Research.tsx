@@ -89,6 +89,7 @@ export default function Research() {
   const [sortDir, setSortDir] = useState<1 | -1>(-1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [tick, setTick] = useState(0)
   const [trend, setTrend] = useState<ResearchTrendOut | null>(null)
   const [low, setLow] = useState<ResearchLowStartOut | null>(null)
   const [sector, setSector] = useState<ResearchSectorOut | null>(null)
@@ -110,7 +111,7 @@ export default function Research() {
     return () => {
       alive = false
     }
-  }, [tab, date])
+  }, [tab, date, tick])
 
   const data = tab === 'trend' ? trend : tab === 'low' ? low : sector
 
@@ -255,7 +256,22 @@ export default function Research() {
           </div>
         )}
         {loading && <div className="py-6 text-center text-fg-muted">加载中…</div>}
-        {error && <div className="py-6 text-center text-loss">{error}</div>}
+        {error && (
+          <div className="py-6 text-center">
+            <div className="text-loss">{error}</div>
+            <button
+              type="button"
+              className="mt-2 text-accent disabled:text-fg-dim"
+              disabled={loading}
+              onClick={() => setTick((value) => value + 1)}
+            >
+              重试
+            </button>
+            <div className="mt-1 text-[12px] text-fg-dim">
+              会保留当前 Tab、交易日与筛选条件重新请求
+            </div>
+          </div>
+        )}
         {!loading && !error && data && data.rows.length === 0 && (
           <div className="py-6 text-center text-fg-muted">当前日期没有可展示的数据（或数据覆盖不足）</div>
         )}

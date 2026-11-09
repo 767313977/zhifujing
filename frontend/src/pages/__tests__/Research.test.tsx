@@ -270,4 +270,30 @@ describe('P0.2 研究页面', () => {
     await screen.findByText('低位样本')
     expect((screen.getByLabelText('搜索') as HTMLInputElement).value).toBe('')
   })
+
+  it('请求失败后可重试，且保留当前日期与筛选', async () => {
+    vi.mocked(researchApi.trend).mockRejectedValue(new Error('网络中断或超时，请重试：/research/trend'))
+    renderPage()
+    await screen.findByText(/网络中断或超时/)
+    fireEvent.change(screen.getByLabelText('交易日'), { target: { value: '2026-09-22' } })
+    await waitFor(() =>
+      expect(vi.mocked(researchApi.trend)).toHaveBeenLastCalledWith(
+        expect.objectContaining({ date: '2026-09-22' }),
+      ),
+    )
+    await screen.findByRole('button', { name: '重试' })
+    vi.mocked(researchApi.trend).mockResolvedValue(trendOut([trendRow({ code: '600001', name: '重试成功' })]))
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    await screen.findByText('重试成功')
+    expect(vi.mocked(researchApi.trend)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ date: '2026-09-22' }),
+    )
+  })
+
+  it('服务繁忙时显示 503 文案而不是空结果', async () => {
+    vi.mocked(researchApi.trend).mockRejectedValue(new Error('研究计算繁忙，请稍后重试'))
+    renderPage()
+    await screen.findByText('研究计算繁忙，请稍后重试')
+    expect(screen.queryByText(/当前日期没有可展示的数据/)).toBeNull()
+  })
 })

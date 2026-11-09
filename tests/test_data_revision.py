@@ -469,3 +469,74 @@ def test_required_triggers_exist(tmp_path):
     for table in ("stock_daily", "rps_daily", "sector_member", "sector_daily", "stock_universe", "trade_calendar"):
         for suffix in ("ai", "au", "ad"):
             assert f"trg_{table}_{suffix}" in names
+
+
+def test_cache_stats_count_hit_and_compute(tmp_path, monkeypatch):
+    engine = _installed_engine(tmp_path)
+    _counting(monkeypatch)
+    before = research_screen.cache_stats()
+    with Session(engine) as session:
+        research_screen.low_start_rows(session, trade_date=DAY)
+        research_screen.low_start_rows(session, trade_date=DAY)
+    after = research_screen.cache_stats()
+    assert after["computes"] - before["computes"] == 1
+    assert after["hits"] - before["hits"] == 1
+
+
+def test_cache_stats_count_disabled(tmp_path, monkeypatch):
+    engine = _engine(tmp_path / "plain_stats.db")
+    with Session(engine) as session:
+        _seed_stock(session)
+    _counting(monkeypatch)
+    research_screen.clear_cache()
+    before = research_screen.cache_stats()
+    with Session(engine) as session:
+        research_screen.low_start_rows(session, trade_date=DAY)
+        research_screen.low_start_rows(session, trade_date=DAY)
+    after = research_screen.cache_stats()
+    assert after["cache_disabled"] - before["cache_disabled"] == 2
+    assert after["computes"] == before["computes"]
+
+
+def test_leader_failure_releases_slot_and_waiter_recovers(tmp_path, monkeypatch):
+    """Leader 抛异常时：等待方重算、槽位与 inflight 状态都释放。"""
+    engine = _installed_engine(tmp_path)
+    calls = {"n": 0}
+    lock = threading.Lock()
+
+    def flaky(session, day, **kwargs):
+        with lock:
+            calls["n"] += 1
+            first = calls["n"] == 1
+        if first:
+            raise RuntimeError("leader 失败")
+        time.sleep(0.1)
+        return {"trade_date": DAY, "rows": [], "coverage": {}, "strategy": {}}
+
+    monkeypatch.setattr(research_screen, "_low_start_rows", flaky)
+    results: list[dict] = []
+    errors: list[str] = []
+
+    def worker():
+        try:
+            with Session(engine) as session:
+                results.append(research_screen.low_start_rows(session, trade_date=DAY))
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{type(exc).__name__}: {exc}")
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    # Leader 的请求按语义失败；等待方重算成功，且不会收到 leader 的错误
+    assert len(errors) == 1 and "leader 失败" in errors[0]
+    assert len(results) == 1
+    assert calls["n"] >= 2
+    # 槽位全部归还：两次非阻塞获取都应成功
+    assert research_screen._LOW_START_SLOTS.acquire(blocking=False)
+    assert research_screen._LOW_START_SLOTS.acquire(blocking=False)
+    research_screen._LOW_START_SLOTS.release()
+    research_screen._LOW_START_SLOTS.release()
+    assert not research_screen._INFLIGHT

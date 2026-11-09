@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.models import RpsDaily, SectorDaily, SectorMember, StockBasic, StockDaily, StockUniverse, TradeCalendar
 from app.services import data_revision, limit_rules, trend
+from app.services.patterns import build_bars, usable_bar
 
 TREND_STRATEGY = {
     "id": "trend_template",
@@ -369,6 +370,11 @@ def _trend_rows(
                     "state": "数据不足",
                     "missing": missing,
                     "boards": boards.get(code, []),
+                    # 日线不足时 RPS 仍然有效：保留它，排序与展示才不会把这类票
+                    # 一律沉到列表末尾（否则页面上根本看不到「数据不足」样本）。
+                    "rps20": rps_row.rps20 if rps_row else None,
+                    "rps60": rps_row.rps60 if rps_row else None,
+                    "rps120": rps_row.rps120 if rps_row else None,
                     "strategy": TREND_STRATEGY,
                 }
             )
@@ -514,39 +520,63 @@ def _low_start_rows(
     names = _names(session, day, codes)
     industries = _industries(session, codes)
     rps = _rps(session, day, codes)
-    bars_by_code = trend.load_bars(session, codes, day)
-    rows = []
-    for code in codes:
-        bars = bars_by_code.get(code)
+
+    # 流式扫描（P0.5-03）：按 (code, trade_date) 有序、每 400 只一批读取 250 日窗口，
+    # 逐只构建复权 K 线并计算，算完即丢。既避免「全市场 130 万行 + 5,000 份 Bars」同时
+    # 驻留，也不做逐股票查询。复权仍走 `patterns.build_bars`，窗口仍为
+    # `TREND_LOOKBACK+10` 个交易日，指标函数与旧实现完全相同。
+    window_days = list(
+        session.scalars(
+            select(TradeCalendar.trade_date)
+            .where(TradeCalendar.trade_date <= day)
+            .order_by(TradeCalendar.trade_date.desc())
+            .limit(trend.TREND_LOOKBACK + 10)
+        )
+    )
+    if not window_days:
+        return {
+            "trade_date": day,
+            "rows": [],
+            "coverage": {"candidates": len(codes), "bars": 0},
+            "strategy": LOW_START_STRATEGY,
+        }
+    start = min(window_days)
+    rows: list[dict] = []
+    built = 0
+
+    def flush(code: str | None, items: list[dict]) -> None:
+        nonlocal built
+        if code is None or len(items) < trend.TREND_LOOKBACK:
+            return
+        built += 1
         name = names.get(code)
-        if bars is None or len(bars) < 200:
-            continue
         if exclude_st and name and "ST" in name.upper():
-            continue
+            return
         if exclude_bse and limit_rules.is_bse(code):
-            continue
+            return
+        bars = build_bars(items, code)
         close, high, low = bars.close, bars.high, bars.low
         window = min(250, len(close))
         lo = float(np.min(low[-window:]))
         hi = float(np.max(high[-window:]))
         pos = float(round((close[-1] - lo) / (hi - lo) * 100, 1)) if hi > lo else None
         if pos is None or pos > max_position:
-            continue
+            return
         platform = min(40, len(close) - 21)
         if platform < min_platform_days:
-            continue
+            return
         ph = float(np.max(high[-platform - 1 : -1]))
         pl = float(np.min(low[-platform - 1 : -1]))
         height = round((ph / pl - 1) * 100, 1) if pl > 0 else None
         if height is None or height > max_platform_height:
-            continue
+            return
         # 波动收敛看的是**突破日之前**的平台期：把今天算进去会因突破当日的放量长阳
         # 抬高 vol20，反而把刚刚启动的票筛掉。
         vol20 = float(np.std(bars.pct_chg[-21:-1]))
         vol60 = float(np.std(bars.pct_chg[-61:-1]))
         contraction = round(vol20 / vol60, 2) if vol60 > 0 else 0.0
         if contraction > max_vol_contraction:
-            continue
+            return
         amount_ratio = _amount_ratio(bars)
         ma20 = _ma(close, 20)
         s20 = _slope(close, 20)
@@ -587,11 +617,56 @@ def _low_start_rows(
                 "strategy": LOW_START_STRATEGY,
             }
         )
+
+    current: str | None = None
+    items: list[dict] = []
+    for offset in range(0, len(codes), 400):
+        chunk = codes[offset : offset + 400]
+        result = session.execute(
+            select(
+                StockDaily.code,
+                StockDaily.trade_date,
+                StockDaily.open,
+                StockDaily.high,
+                StockDaily.low,
+                StockDaily.close,
+                StockDaily.volume,
+                StockDaily.amount,
+                StockDaily.pct_chg,
+            )
+            .where(
+                StockDaily.code.in_(chunk),
+                StockDaily.trade_date >= start,
+                StockDaily.trade_date <= day,
+            )
+            .order_by(StockDaily.code, StockDaily.trade_date)
+        )
+        for code, trade_day, open_, high, low, close, volume, amount, pct in result:
+            if code != current:
+                flush(current, items)
+                current = code
+                items = []
+            item = {
+                "date": trade_day,
+                "open": open_,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume,
+                "amount": amount,
+                "pct_chg": pct,
+                "name": None,
+            }
+            # 停牌残行（只有收盘价）不能当一根 K 线，与扫描 / 回测同口径
+            if usable_bar(item):
+                items.append(item)
+    flush(current, items)
+
     rows.sort(key=lambda row: (row["state"] != "突破确认", row["pos_pct"], -(row.get("amount_ratio20") or 0)))
     return {
         "trade_date": day,
         "rows": rows[:limit],
-        "coverage": {"candidates": len(codes), "bars": len(bars_by_code)},
+        "coverage": {"candidates": len(codes), "bars": built},
         "strategy": LOW_START_STRATEGY,
     }
 

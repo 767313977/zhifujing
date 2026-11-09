@@ -334,3 +334,37 @@ def test_low_start_busy_maps_to_503(monkeypatch):
         with pytest.raises(HTTPException) as info:
             research_api.low_start(db=session)
     assert info.value.status_code == 503
+    assert info.value.headers["Retry-After"] == "5"
+
+
+def test_trend_insufficient_row_keeps_rps_and_sorts_first():
+    engine = _engine()
+    start = date(2025, 1, 1)
+    days = [start + timedelta(days=i) for i in range(260)]
+    with Session(engine) as session:
+        _calendar(session, days)
+        _seed_trend(session, days)
+        for index, day in enumerate(days[-50:]):
+            close = 10 + index * 0.01
+            session.add(
+                StockDaily(
+                    trade_date=day,
+                    code="900001",
+                    name="数据不足测试",
+                    open=close,
+                    high=close * 1.01,
+                    low=close * 0.99,
+                    close=close,
+                    pct_chg=0.5,
+                    amount=1e8,
+                )
+            )
+        session.add(RpsDaily(trade_date=days[-1], code="900001", rps20=99, rps60=99, rps120=99))
+        session.add(StockBasic(code="900001", name="数据不足测试", industry="测试"))
+        session.commit()
+        out = research_screen.trend_rows(session, trade_date=days[-1], limit=5)
+    first = out["rows"][0]
+    assert first["code"] == "900001"
+    assert first["state"] == "数据不足"
+    assert first["rps60"] == 99
+    assert any("日线不足 130 根" in item for item in first["missing"])
