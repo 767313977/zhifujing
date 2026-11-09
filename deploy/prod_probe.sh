@@ -43,23 +43,12 @@ df -h
 echo
 
 echo "== 数据库文件与所在盘 =="
-# systemd 的 ExecStart 是 `python -m uvicorn app.main:app`，**不含 .db 路径**；
-# 依次尝试：环境变量 → 服务 .env 的 DB_PATH → 默认安装路径。
-DB_PATH="${DB_PATH:-}"
-if [ -z "$DB_PATH" ] && [ -r /opt/fupan/.env ]; then
-  DB_PATH="$(grep -E '^[[:space:]]*DB_PATH[[:space:]]*=' /opt/fupan/.env | tail -1 \
-    | cut -d= -f2- | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
-    -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
-fi
-if [ -z "$DB_PATH" ] && [ -f /opt/fupan/backend/data/fupan.db ]; then
-  DB_PATH=/opt/fupan/backend/data/fupan.db
-fi
-if [ -n "$DB_PATH" ] && [ -f "$DB_PATH" ]; then
-  echo "库文件：$DB_PATH"
+DB_PATH="$(systemctl show "$SERVICE" -p ExecStart --value | grep -oE '/[^ "]+\.db' | head -1)"
+if [ -n "${DB_PATH:-}" ]; then
   ls -lh "$DB_PATH" "$DB_PATH"-wal "$DB_PATH"-shm 2>/dev/null
   df -h "$(dirname "$DB_PATH")"
 else
-  echo "未解析到 .db 路径（可用 DB_PATH=/path/to/fupan.db 重跑本脚本）"
+  echo "未从 ExecStart 解析到 .db 路径，请手工填写"
 fi
 echo
 
