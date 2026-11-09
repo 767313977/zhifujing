@@ -1,0 +1,5099 @@
+{
+  "pre_existing_keys": 10206,
+  "classes": {
+    "ret20_and_ret60": {
+      "label": "20/60 都有值",
+      "keys": 5045,
+      "filled": {
+        "ret20": 5045,
+        "ret60": 5045,
+        "rps20": 5045,
+        "rps60": 5045
+      },
+      "value_mismatch": 0
+    },
+    "ret20_only": {
+      "label": "仅 20 日有值（60 日窗口不足）",
+      "keys": 11,
+      "filled": {
+        "ret20": 11,
+        "ret60": 0,
+        "rps20": 11,
+        "rps60": 0
+      },
+      "value_mismatch": 0
+    },
+    "ret60_only": {
+      "label": "仅 60 日有值（20 日窗口不足）",
+      "keys": 8,
+      "filled": {
+        "ret20": 0,
+        "ret60": 8,
+        "rps20": 0,
+        "rps60": 8
+      },
+      "value_mismatch": 0
+    },
+    "not_candidate": {
+      "label": "四列全空（不进候选集）",
+      "keys": 5142,
+      "filled": {
+        "ret20": 0,
+        "ret60": 0,
+        "rps20": 0,
+        "rps60": 0
+      },
+      "value_mismatch": 0
+    }
+  },
+  "import": {
+    "source": "backend\\data\\b1_research.db",
+    "target": "backend\\data\\p10_release_copy.db",
+    "before": {
+      "daily": [
+        {
+          "trade_date": "2025-09-22",
+          "source_rows": 4988,
+          "missing_keys": 4988,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-09-23",
+          "source_rows": 4992,
+          "missing_keys": 4992,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-09-24",
+          "source_rows": 4992,
+          "missing_keys": 4992,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-09-25",
+          "source_rows": 4993,
+          "missing_keys": 4993,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-09-26",
+          "source_rows": 4993,
+          "missing_keys": 4993,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-09-29",
+          "source_rows": 4986,
+          "missing_keys": 4986,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-09-30",
+          "source_rows": 4986,
+          "missing_keys": 4986,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-09",
+          "source_rows": 5008,
+          "missing_keys": 5008,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-10",
+          "source_rows": 5010,
+          "missing_keys": 5010,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-13",
+          "source_rows": 5012,
+          "missing_keys": 5012,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-14",
+          "source_rows": 5015,
+          "missing_keys": 5015,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-15",
+          "source_rows": 5016,
+          "missing_keys": 5016,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-16",
+          "source_rows": 5020,
+          "missing_keys": 5020,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-17",
+          "source_rows": 5020,
+          "missing_keys": 5020,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-20",
+          "source_rows": 5017,
+          "missing_keys": 5017,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-21",
+          "source_rows": 5015,
+          "missing_keys": 5015,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-22",
+          "source_rows": 5014,
+          "missing_keys": 5014,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-23",
+          "source_rows": 5016,
+          "missing_keys": 5016,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-24",
+          "source_rows": 5016,
+          "missing_keys": 5016,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-27",
+          "source_rows": 5015,
+          "missing_keys": 5015,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-28",
+          "source_rows": 5012,
+          "missing_keys": 5012,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-29",
+          "source_rows": 5015,
+          "missing_keys": 5015,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-30",
+          "source_rows": 5016,
+          "missing_keys": 5016,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-31",
+          "source_rows": 5019,
+          "missing_keys": 5019,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-03",
+          "source_rows": 5019,
+          "missing_keys": 5019,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-04",
+          "source_rows": 5020,
+          "missing_keys": 5020,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-05",
+          "source_rows": 5019,
+          "missing_keys": 5019,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-06",
+          "source_rows": 5018,
+          "missing_keys": 5018,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-07",
+          "source_rows": 5018,
+          "missing_keys": 5018,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-10",
+          "source_rows": 5021,
+          "missing_keys": 5021,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-11",
+          "source_rows": 5022,
+          "missing_keys": 5022,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-12",
+          "source_rows": 5025,
+          "missing_keys": 5025,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-13",
+          "source_rows": 5025,
+          "missing_keys": 5025,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-14",
+          "source_rows": 5023,
+          "missing_keys": 5023,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-17",
+          "source_rows": 5024,
+          "missing_keys": 5024,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-18",
+          "source_rows": 5024,
+          "missing_keys": 5024,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-19",
+          "source_rows": 5026,
+          "missing_keys": 5026,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-20",
+          "source_rows": 5027,
+          "missing_keys": 5027,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-21",
+          "source_rows": 5030,
+          "missing_keys": 5030,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-24",
+          "source_rows": 5026,
+          "missing_keys": 5026,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-25",
+          "source_rows": 5023,
+          "missing_keys": 5023,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-26",
+          "source_rows": 5023,
+          "missing_keys": 5023,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-27",
+          "source_rows": 5022,
+          "missing_keys": 5022,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-28",
+          "source_rows": 5021,
+          "missing_keys": 5021,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-01",
+          "source_rows": 5022,
+          "missing_keys": 5022,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-02",
+          "source_rows": 5024,
+          "missing_keys": 5024,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-03",
+          "source_rows": 5028,
+          "missing_keys": 5028,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-04",
+          "source_rows": 5028,
+          "missing_keys": 5028,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-05",
+          "source_rows": 5025,
+          "missing_keys": 5025,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-08",
+          "source_rows": 5026,
+          "missing_keys": 5026,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-09",
+          "source_rows": 5025,
+          "missing_keys": 5025,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-10",
+          "source_rows": 5020,
+          "missing_keys": 5020,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-11",
+          "source_rows": 5026,
+          "missing_keys": 5026,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-12",
+          "source_rows": 5030,
+          "missing_keys": 5030,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-15",
+          "source_rows": 5028,
+          "missing_keys": 5028,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-16",
+          "source_rows": 5029,
+          "missing_keys": 5029,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-17",
+          "source_rows": 5029,
+          "missing_keys": 5029,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-18",
+          "source_rows": 5026,
+          "missing_keys": 5026,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-19",
+          "source_rows": 5025,
+          "missing_keys": 5025,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-22",
+          "source_rows": 5022,
+          "missing_keys": 5022,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-23",
+          "source_rows": 5022,
+          "missing_keys": 5022,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-24",
+          "source_rows": 5023,
+          "missing_keys": 5023,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-25",
+          "source_rows": 5025,
+          "missing_keys": 5025,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-26",
+          "source_rows": 5027,
+          "missing_keys": 5027,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-29",
+          "source_rows": 5030,
+          "missing_keys": 5030,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-30",
+          "source_rows": 5029,
+          "missing_keys": 5029,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-31",
+          "source_rows": 5029,
+          "missing_keys": 5029,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-05",
+          "source_rows": 5030,
+          "missing_keys": 5030,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-06",
+          "source_rows": 5031,
+          "missing_keys": 5031,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-07",
+          "source_rows": 5031,
+          "missing_keys": 5031,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-08",
+          "source_rows": 5030,
+          "missing_keys": 5030,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-09",
+          "source_rows": 5030,
+          "missing_keys": 5030,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-12",
+          "source_rows": 5029,
+          "missing_keys": 5029,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-13",
+          "source_rows": 5023,
+          "missing_keys": 5023,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-14",
+          "source_rows": 5029,
+          "missing_keys": 5029,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-15",
+          "source_rows": 5031,
+          "missing_keys": 5031,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-16",
+          "source_rows": 5034,
+          "missing_keys": 5034,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-19",
+          "source_rows": 5034,
+          "missing_keys": 5034,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-20",
+          "source_rows": 5042,
+          "missing_keys": 5042,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-21",
+          "source_rows": 5042,
+          "missing_keys": 5042,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-22",
+          "source_rows": 5043,
+          "missing_keys": 5043,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-23",
+          "source_rows": 5043,
+          "missing_keys": 5043,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-26",
+          "source_rows": 5043,
+          "missing_keys": 5043,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-27",
+          "source_rows": 5048,
+          "missing_keys": 5048,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-28",
+          "source_rows": 5049,
+          "missing_keys": 5049,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-29",
+          "source_rows": 5050,
+          "missing_keys": 5050,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-30",
+          "source_rows": 5049,
+          "missing_keys": 5049,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-02",
+          "source_rows": 5048,
+          "missing_keys": 5048,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-03",
+          "source_rows": 5048,
+          "missing_keys": 5048,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-04",
+          "source_rows": 5049,
+          "missing_keys": 5049,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-05",
+          "source_rows": 5048,
+          "missing_keys": 5048,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-06",
+          "source_rows": 5048,
+          "missing_keys": 5048,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-09",
+          "source_rows": 5049,
+          "missing_keys": 5049,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-10",
+          "source_rows": 5049,
+          "missing_keys": 5049,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-11",
+          "source_rows": 5049,
+          "missing_keys": 5049,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-12",
+          "source_rows": 5053,
+          "missing_keys": 5053,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-13",
+          "source_rows": 5051,
+          "missing_keys": 5051,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-24",
+          "source_rows": 5052,
+          "missing_keys": 5052,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-25",
+          "source_rows": 5051,
+          "missing_keys": 5051,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-26",
+          "source_rows": 5049,
+          "missing_keys": 5049,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-27",
+          "source_rows": 5048,
+          "missing_keys": 5048,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-02",
+          "source_rows": 5048,
+          "missing_keys": 5048,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-03",
+          "source_rows": 5050,
+          "missing_keys": 5050,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-04",
+          "source_rows": 5052,
+          "missing_keys": 5052,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-05",
+          "source_rows": 5056,
+          "missing_keys": 5056,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-06",
+          "source_rows": 5056,
+          "missing_keys": 5056,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-09",
+          "source_rows": 5059,
+          "missing_keys": 5059,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-10",
+          "source_rows": 5057,
+          "missing_keys": 5057,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-11",
+          "source_rows": 5060,
+          "missing_keys": 5060,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-12",
+          "source_rows": 5060,
+          "missing_keys": 5060,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-13",
+          "source_rows": 5062,
+          "missing_keys": 5062,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-16",
+          "source_rows": 5062,
+          "missing_keys": 5062,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-17",
+          "source_rows": 5059,
+          "missing_keys": 5059,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-18",
+          "source_rows": 5059,
+          "missing_keys": 5059,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-19",
+          "source_rows": 5059,
+          "missing_keys": 5059,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-20",
+          "source_rows": 5059,
+          "missing_keys": 5059,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-23",
+          "source_rows": 5061,
+          "missing_keys": 5061,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-24",
+          "source_rows": 5060,
+          "missing_keys": 5060,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-25",
+          "source_rows": 5059,
+          "missing_keys": 5059,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-26",
+          "source_rows": 5059,
+          "missing_keys": 5059,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-27",
+          "source_rows": 5054,
+          "missing_keys": 5054,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-30",
+          "source_rows": 5051,
+          "missing_keys": 5051,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-31",
+          "source_rows": 5052,
+          "missing_keys": 5052,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-01",
+          "source_rows": 5057,
+          "missing_keys": 5057,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-02",
+          "source_rows": 5057,
+          "missing_keys": 5057,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-03",
+          "source_rows": 5059,
+          "missing_keys": 5059,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-07",
+          "source_rows": 5059,
+          "missing_keys": 5059,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-08",
+          "source_rows": 5060,
+          "missing_keys": 5060,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-09",
+          "source_rows": 5062,
+          "missing_keys": 5062,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-10",
+          "source_rows": 5063,
+          "missing_keys": 5063,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-13",
+          "source_rows": 5061,
+          "missing_keys": 5061,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-14",
+          "source_rows": 5064,
+          "missing_keys": 5064,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-15",
+          "source_rows": 5063,
+          "missing_keys": 5063,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-16",
+          "source_rows": 5064,
+          "missing_keys": 5064,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-17",
+          "source_rows": 5062,
+          "missing_keys": 5062,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-20",
+          "source_rows": 5058,
+          "missing_keys": 5058,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-21",
+          "source_rows": 5062,
+          "missing_keys": 5062,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-22",
+          "source_rows": 5060,
+          "missing_keys": 5060,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-23",
+          "source_rows": 5060,
+          "missing_keys": 5060,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-24",
+          "source_rows": 5062,
+          "missing_keys": 5062,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-27",
+          "source_rows": 5060,
+          "missing_keys": 5060,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-28",
+          "source_rows": 5056,
+          "missing_keys": 5056,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-29",
+          "source_rows": 5035,
+          "missing_keys": 5035,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-30",
+          "source_rows": 5039,
+          "missing_keys": 5039,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-06",
+          "source_rows": 5068,
+          "missing_keys": 5068,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-07",
+          "source_rows": 5068,
+          "missing_keys": 5068,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-08",
+          "source_rows": 5068,
+          "missing_keys": 5068,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-11",
+          "source_rows": 5068,
+          "missing_keys": 5068,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-12",
+          "source_rows": 5066,
+          "missing_keys": 5066,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-13",
+          "source_rows": 5069,
+          "missing_keys": 5069,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-14",
+          "source_rows": 5070,
+          "missing_keys": 5070,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-15",
+          "source_rows": 5072,
+          "missing_keys": 5072,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-18",
+          "source_rows": 5075,
+          "missing_keys": 5075,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-19",
+          "source_rows": 5073,
+          "missing_keys": 5073,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-20",
+          "source_rows": 5076,
+          "missing_keys": 5076,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-21",
+          "source_rows": 5079,
+          "missing_keys": 5079,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-22",
+          "source_rows": 5080,
+          "missing_keys": 5080,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-25",
+          "source_rows": 5081,
+          "missing_keys": 5081,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-26",
+          "source_rows": 5080,
+          "missing_keys": 5080,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-27",
+          "source_rows": 5081,
+          "missing_keys": 5081,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-28",
+          "source_rows": 5082,
+          "missing_keys": 5082,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-29",
+          "source_rows": 5081,
+          "missing_keys": 5081,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-01",
+          "source_rows": 5081,
+          "missing_keys": 5081,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-02",
+          "source_rows": 5081,
+          "missing_keys": 5081,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-03",
+          "source_rows": 5087,
+          "missing_keys": 5087,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-04",
+          "source_rows": 5087,
+          "missing_keys": 5087,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-05",
+          "source_rows": 5090,
+          "missing_keys": 5090,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-08",
+          "source_rows": 5088,
+          "missing_keys": 5088,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-09",
+          "source_rows": 5089,
+          "missing_keys": 5089,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-10",
+          "source_rows": 5089,
+          "missing_keys": 5089,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-11",
+          "source_rows": 5086,
+          "missing_keys": 5086,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-12",
+          "source_rows": 5088,
+          "missing_keys": 5088,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-15",
+          "source_rows": 5083,
+          "missing_keys": 5083,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-16",
+          "source_rows": 5090,
+          "missing_keys": 5090,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-17",
+          "source_rows": 5087,
+          "missing_keys": 5087,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-18",
+          "source_rows": 5085,
+          "missing_keys": 5085,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-22",
+          "source_rows": 5089,
+          "missing_keys": 5089,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-23",
+          "source_rows": 5092,
+          "missing_keys": 5092,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-24",
+          "source_rows": 5091,
+          "missing_keys": 5091,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-25",
+          "source_rows": 5090,
+          "missing_keys": 5090,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-26",
+          "source_rows": 5090,
+          "missing_keys": 5090,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-29",
+          "source_rows": 5084,
+          "missing_keys": 5084,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-30",
+          "source_rows": 5084,
+          "missing_keys": 5084,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-01",
+          "source_rows": 5085,
+          "missing_keys": 5085,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-02",
+          "source_rows": 5090,
+          "missing_keys": 5090,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-03",
+          "source_rows": 5090,
+          "missing_keys": 5090,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-06",
+          "source_rows": 5091,
+          "missing_keys": 5091,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-07",
+          "source_rows": 5090,
+          "missing_keys": 5090,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-08",
+          "source_rows": 5089,
+          "missing_keys": 5089,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-09",
+          "source_rows": 5089,
+          "missing_keys": 5089,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-10",
+          "source_rows": 5089,
+          "missing_keys": 5089,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-13",
+          "source_rows": 5089,
+          "missing_keys": 5089,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-14",
+          "source_rows": 5094,
+          "missing_keys": 5094,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-15",
+          "source_rows": 5095,
+          "missing_keys": 5095,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-16",
+          "source_rows": 5095,
+          "missing_keys": 5095,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-17",
+          "source_rows": 5095,
+          "missing_keys": 5095,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-20",
+          "source_rows": 5097,
+          "missing_keys": 5097,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-21",
+          "source_rows": 5098,
+          "missing_keys": 5098,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-22",
+          "source_rows": 5099,
+          "missing_keys": 5099,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-23",
+          "source_rows": 5099,
+          "missing_keys": 5099,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-24",
+          "source_rows": 5099,
+          "missing_keys": 5099,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-27",
+          "source_rows": 5096,
+          "missing_keys": 5096,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-28",
+          "source_rows": 5096,
+          "missing_keys": 5096,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-29",
+          "source_rows": 5095,
+          "missing_keys": 5095,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-30",
+          "source_rows": 5097,
+          "missing_keys": 5097,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-31",
+          "source_rows": 5101,
+          "missing_keys": 5101,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-03",
+          "source_rows": 5101,
+          "missing_keys": 5101,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-04",
+          "source_rows": 5100,
+          "missing_keys": 5100,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-05",
+          "source_rows": 5105,
+          "missing_keys": 5105,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-06",
+          "source_rows": 5105,
+          "missing_keys": 5105,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-07",
+          "source_rows": 5106,
+          "missing_keys": 5106,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-10",
+          "source_rows": 5108,
+          "missing_keys": 5108,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-11",
+          "source_rows": 5106,
+          "missing_keys": 5106,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-12",
+          "source_rows": 5105,
+          "missing_keys": 5105,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-13",
+          "source_rows": 5105,
+          "missing_keys": 5105,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-14",
+          "source_rows": 5107,
+          "missing_keys": 5107,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-17",
+          "source_rows": 5105,
+          "missing_keys": 5105,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-18",
+          "source_rows": 5105,
+          "missing_keys": 5105,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-19",
+          "source_rows": 5107,
+          "missing_keys": 5107,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-20",
+          "source_rows": 5106,
+          "missing_keys": 5106,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-21",
+          "source_rows": 5107,
+          "missing_keys": 5107,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-24",
+          "source_rows": 5110,
+          "missing_keys": 5110,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-25",
+          "source_rows": 5109,
+          "missing_keys": 5109,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-26",
+          "source_rows": 5110,
+          "missing_keys": 5110,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-27",
+          "source_rows": 5111,
+          "missing_keys": 5111,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-28",
+          "source_rows": 5111,
+          "missing_keys": 5111,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-31",
+          "source_rows": 5109,
+          "missing_keys": 5109,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-01",
+          "source_rows": 5111,
+          "missing_keys": 5111,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-02",
+          "source_rows": 5111,
+          "missing_keys": 5111,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-03",
+          "source_rows": 5114,
+          "missing_keys": 5114,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-04",
+          "source_rows": 5113,
+          "missing_keys": 5113,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-07",
+          "source_rows": 5113,
+          "missing_keys": 5113,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-08",
+          "source_rows": 5255,
+          "missing_keys": 5255,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-09",
+          "source_rows": 5255,
+          "missing_keys": 5255,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-10",
+          "source_rows": 5255,
+          "missing_keys": 5255,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-11",
+          "source_rows": 5258,
+          "missing_keys": 5258,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-14",
+          "source_rows": 5257,
+          "missing_keys": 5257,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-15",
+          "source_rows": 5255,
+          "missing_keys": 5255,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-16",
+          "source_rows": 5256,
+          "missing_keys": 5256,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-17",
+          "source_rows": 5260,
+          "missing_keys": 5260,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-18",
+          "source_rows": 5260,
+          "missing_keys": 5260,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-21",
+          "source_rows": 5259,
+          "missing_keys": 5259,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-22",
+          "source_rows": 5259,
+          "missing_keys": 5259,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-23",
+          "source_rows": 5260,
+          "missing_keys": 5260,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-24",
+          "source_rows": 5262,
+          "missing_keys": 5262,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-28",
+          "source_rows": 5264,
+          "missing_keys": 5264,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-29",
+          "source_rows": 5222,
+          "missing_keys": 5222,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-30",
+          "source_rows": 5220,
+          "missing_keys": 5220,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-10-08",
+          "source_rows": 5218,
+          "missing_keys": 5218,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-10-09",
+          "source_rows": 5219,
+          "missing_keys": 155,
+          "fill_ret20": 5056,
+          "fill_ret60": 5053,
+          "fill_rps20": 5056,
+          "fill_rps60": 5053,
+          "conflicts": 0
+        }
+      ],
+      "total": {
+        "source_rows": 1267770,
+        "missing_keys": 1262706,
+        "fill_ret20": 5056,
+        "fill_ret60": 5053,
+        "fill_rps20": 5056,
+        "fill_rps60": 5053,
+        "conflicts": 0
+      }
+    },
+    "applied": {
+      "inserted": 1262706,
+      "updated": 1267770
+    },
+    "after": {
+      "daily": [
+        {
+          "trade_date": "2025-09-22",
+          "source_rows": 4988,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-09-23",
+          "source_rows": 4992,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-09-24",
+          "source_rows": 4992,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-09-25",
+          "source_rows": 4993,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-09-26",
+          "source_rows": 4993,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-09-29",
+          "source_rows": 4986,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-09-30",
+          "source_rows": 4986,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-09",
+          "source_rows": 5008,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-10",
+          "source_rows": 5010,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-13",
+          "source_rows": 5012,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-14",
+          "source_rows": 5015,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-15",
+          "source_rows": 5016,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-16",
+          "source_rows": 5020,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-17",
+          "source_rows": 5020,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-20",
+          "source_rows": 5017,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-21",
+          "source_rows": 5015,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-22",
+          "source_rows": 5014,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-23",
+          "source_rows": 5016,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-24",
+          "source_rows": 5016,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-27",
+          "source_rows": 5015,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-28",
+          "source_rows": 5012,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-29",
+          "source_rows": 5015,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-30",
+          "source_rows": 5016,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-10-31",
+          "source_rows": 5019,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-03",
+          "source_rows": 5019,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-04",
+          "source_rows": 5020,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-05",
+          "source_rows": 5019,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-06",
+          "source_rows": 5018,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-07",
+          "source_rows": 5018,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-10",
+          "source_rows": 5021,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-11",
+          "source_rows": 5022,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-12",
+          "source_rows": 5025,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-13",
+          "source_rows": 5025,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-14",
+          "source_rows": 5023,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-17",
+          "source_rows": 5024,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-18",
+          "source_rows": 5024,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-19",
+          "source_rows": 5026,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-20",
+          "source_rows": 5027,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-21",
+          "source_rows": 5030,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-24",
+          "source_rows": 5026,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-25",
+          "source_rows": 5023,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-26",
+          "source_rows": 5023,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-27",
+          "source_rows": 5022,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-11-28",
+          "source_rows": 5021,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-01",
+          "source_rows": 5022,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-02",
+          "source_rows": 5024,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-03",
+          "source_rows": 5028,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-04",
+          "source_rows": 5028,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-05",
+          "source_rows": 5025,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-08",
+          "source_rows": 5026,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-09",
+          "source_rows": 5025,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-10",
+          "source_rows": 5020,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-11",
+          "source_rows": 5026,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-12",
+          "source_rows": 5030,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-15",
+          "source_rows": 5028,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-16",
+          "source_rows": 5029,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-17",
+          "source_rows": 5029,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-18",
+          "source_rows": 5026,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-19",
+          "source_rows": 5025,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-22",
+          "source_rows": 5022,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-23",
+          "source_rows": 5022,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-24",
+          "source_rows": 5023,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-25",
+          "source_rows": 5025,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-26",
+          "source_rows": 5027,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-29",
+          "source_rows": 5030,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-30",
+          "source_rows": 5029,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2025-12-31",
+          "source_rows": 5029,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-05",
+          "source_rows": 5030,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-06",
+          "source_rows": 5031,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-07",
+          "source_rows": 5031,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-08",
+          "source_rows": 5030,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-09",
+          "source_rows": 5030,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-12",
+          "source_rows": 5029,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-13",
+          "source_rows": 5023,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-14",
+          "source_rows": 5029,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-15",
+          "source_rows": 5031,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-16",
+          "source_rows": 5034,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-19",
+          "source_rows": 5034,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-20",
+          "source_rows": 5042,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-21",
+          "source_rows": 5042,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-22",
+          "source_rows": 5043,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-23",
+          "source_rows": 5043,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-26",
+          "source_rows": 5043,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-27",
+          "source_rows": 5048,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-28",
+          "source_rows": 5049,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-29",
+          "source_rows": 5050,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-01-30",
+          "source_rows": 5049,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-02",
+          "source_rows": 5048,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-03",
+          "source_rows": 5048,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-04",
+          "source_rows": 5049,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-05",
+          "source_rows": 5048,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-06",
+          "source_rows": 5048,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-09",
+          "source_rows": 5049,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-10",
+          "source_rows": 5049,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-11",
+          "source_rows": 5049,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-12",
+          "source_rows": 5053,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-13",
+          "source_rows": 5051,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-24",
+          "source_rows": 5052,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-25",
+          "source_rows": 5051,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-26",
+          "source_rows": 5049,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-02-27",
+          "source_rows": 5048,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-02",
+          "source_rows": 5048,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-03",
+          "source_rows": 5050,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-04",
+          "source_rows": 5052,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-05",
+          "source_rows": 5056,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-06",
+          "source_rows": 5056,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-09",
+          "source_rows": 5059,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-10",
+          "source_rows": 5057,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-11",
+          "source_rows": 5060,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-12",
+          "source_rows": 5060,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-13",
+          "source_rows": 5062,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-16",
+          "source_rows": 5062,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-17",
+          "source_rows": 5059,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-18",
+          "source_rows": 5059,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-19",
+          "source_rows": 5059,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-20",
+          "source_rows": 5059,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-23",
+          "source_rows": 5061,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-24",
+          "source_rows": 5060,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-25",
+          "source_rows": 5059,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-26",
+          "source_rows": 5059,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-27",
+          "source_rows": 5054,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-30",
+          "source_rows": 5051,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-03-31",
+          "source_rows": 5052,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-01",
+          "source_rows": 5057,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-02",
+          "source_rows": 5057,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-03",
+          "source_rows": 5059,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-07",
+          "source_rows": 5059,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-08",
+          "source_rows": 5060,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-09",
+          "source_rows": 5062,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-10",
+          "source_rows": 5063,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-13",
+          "source_rows": 5061,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-14",
+          "source_rows": 5064,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-15",
+          "source_rows": 5063,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-16",
+          "source_rows": 5064,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-17",
+          "source_rows": 5062,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-20",
+          "source_rows": 5058,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-21",
+          "source_rows": 5062,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-22",
+          "source_rows": 5060,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-23",
+          "source_rows": 5060,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-24",
+          "source_rows": 5062,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-27",
+          "source_rows": 5060,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-28",
+          "source_rows": 5056,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-29",
+          "source_rows": 5035,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-04-30",
+          "source_rows": 5039,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-06",
+          "source_rows": 5068,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-07",
+          "source_rows": 5068,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-08",
+          "source_rows": 5068,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-11",
+          "source_rows": 5068,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-12",
+          "source_rows": 5066,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-13",
+          "source_rows": 5069,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-14",
+          "source_rows": 5070,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-15",
+          "source_rows": 5072,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-18",
+          "source_rows": 5075,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-19",
+          "source_rows": 5073,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-20",
+          "source_rows": 5076,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-21",
+          "source_rows": 5079,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-22",
+          "source_rows": 5080,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-25",
+          "source_rows": 5081,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-26",
+          "source_rows": 5080,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-27",
+          "source_rows": 5081,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-28",
+          "source_rows": 5082,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-05-29",
+          "source_rows": 5081,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-01",
+          "source_rows": 5081,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-02",
+          "source_rows": 5081,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-03",
+          "source_rows": 5087,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-04",
+          "source_rows": 5087,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-05",
+          "source_rows": 5090,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-08",
+          "source_rows": 5088,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-09",
+          "source_rows": 5089,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-10",
+          "source_rows": 5089,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-11",
+          "source_rows": 5086,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-12",
+          "source_rows": 5088,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-15",
+          "source_rows": 5083,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-16",
+          "source_rows": 5090,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-17",
+          "source_rows": 5087,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-18",
+          "source_rows": 5085,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-22",
+          "source_rows": 5089,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-23",
+          "source_rows": 5092,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-24",
+          "source_rows": 5091,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-25",
+          "source_rows": 5090,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-26",
+          "source_rows": 5090,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-29",
+          "source_rows": 5084,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-06-30",
+          "source_rows": 5084,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-01",
+          "source_rows": 5085,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-02",
+          "source_rows": 5090,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-03",
+          "source_rows": 5090,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-06",
+          "source_rows": 5091,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-07",
+          "source_rows": 5090,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-08",
+          "source_rows": 5089,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-09",
+          "source_rows": 5089,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-10",
+          "source_rows": 5089,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-13",
+          "source_rows": 5089,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-14",
+          "source_rows": 5094,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-15",
+          "source_rows": 5095,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-16",
+          "source_rows": 5095,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-17",
+          "source_rows": 5095,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-20",
+          "source_rows": 5097,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-21",
+          "source_rows": 5098,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-22",
+          "source_rows": 5099,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-23",
+          "source_rows": 5099,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-24",
+          "source_rows": 5099,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-27",
+          "source_rows": 5096,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-28",
+          "source_rows": 5096,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-29",
+          "source_rows": 5095,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-30",
+          "source_rows": 5097,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-07-31",
+          "source_rows": 5101,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-03",
+          "source_rows": 5101,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-04",
+          "source_rows": 5100,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-05",
+          "source_rows": 5105,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-06",
+          "source_rows": 5105,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-07",
+          "source_rows": 5106,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-10",
+          "source_rows": 5108,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-11",
+          "source_rows": 5106,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-12",
+          "source_rows": 5105,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-13",
+          "source_rows": 5105,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-14",
+          "source_rows": 5107,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-17",
+          "source_rows": 5105,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-18",
+          "source_rows": 5105,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-19",
+          "source_rows": 5107,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-20",
+          "source_rows": 5106,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-21",
+          "source_rows": 5107,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-24",
+          "source_rows": 5110,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-25",
+          "source_rows": 5109,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-26",
+          "source_rows": 5110,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-27",
+          "source_rows": 5111,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-28",
+          "source_rows": 5111,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-08-31",
+          "source_rows": 5109,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-01",
+          "source_rows": 5111,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-02",
+          "source_rows": 5111,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-03",
+          "source_rows": 5114,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-04",
+          "source_rows": 5113,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-07",
+          "source_rows": 5113,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-08",
+          "source_rows": 5255,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-09",
+          "source_rows": 5255,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-10",
+          "source_rows": 5255,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-11",
+          "source_rows": 5258,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-14",
+          "source_rows": 5257,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-15",
+          "source_rows": 5255,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-16",
+          "source_rows": 5256,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-17",
+          "source_rows": 5260,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-18",
+          "source_rows": 5260,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-21",
+          "source_rows": 5259,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-22",
+          "source_rows": 5259,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-23",
+          "source_rows": 5260,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-24",
+          "source_rows": 5262,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-28",
+          "source_rows": 5264,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-29",
+          "source_rows": 5222,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-09-30",
+          "source_rows": 5220,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-10-08",
+          "source_rows": 5218,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        },
+        {
+          "trade_date": "2026-10-09",
+          "source_rows": 5219,
+          "missing_keys": 0,
+          "fill_ret20": 0,
+          "fill_ret60": 0,
+          "fill_rps20": 0,
+          "fill_rps60": 0,
+          "conflicts": 0
+        }
+      ],
+      "total": {
+        "source_rows": 1267770,
+        "missing_keys": 0,
+        "fill_ret20": 0,
+        "fill_ret60": 0,
+        "fill_rps20": 0,
+        "fill_rps60": 0,
+        "conflicts": 0
+      }
+    },
+    "target_rows": 1272912,
+    "zero_new_fields": 5142
+  },
+  "by_date": {
+    "2026-10-09": {
+      "ret20_and_ret60": 5045,
+      "ret20_only": 11,
+      "ret60_only": 8,
+      "not_candidate": 51
+    },
+    "2026-10-21": {
+      "ret20_and_ret60": 0,
+      "ret20_only": 0,
+      "ret60_only": 0,
+      "not_candidate": 5091
+    }
+  }
+}
