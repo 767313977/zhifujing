@@ -3268,3 +3268,114 @@ export interface RiskStatus {
   pref: RiskPref
 }
 
+
+// ---------------------------------------------------------------------------
+// P0.2 研究接口（只读；研究指标 ≠ 已验证策略）
+// ---------------------------------------------------------------------------
+
+export interface ResearchStrategy {
+  id: string
+  version: string
+  status: string
+}
+
+export interface ResearchCoverage {
+  candidates?: number
+  bars?: number
+  with_boards?: number
+  days?: number
+  boards?: number
+  with_members?: number
+  note?: string
+  status?: string
+}
+
+export interface ResearchTrendRow {
+  code: string
+  name: string | null
+  industry: string | null
+  trade_date: string
+  close?: number
+  ma20?: number | null
+  ma60?: number | null
+  ma120?: number | null
+  ma20_slope?: number | null
+  ma60_slope?: number | null
+  ma120_slope?: number | null
+  trend_days?: number
+  ret20?: number | null
+  ret60?: number | null
+  ret120?: number | null
+  rps20?: number | null
+  rps60?: number | null
+  rps120?: number | null
+  amount_ratio20?: number | null
+  off_high60?: number | null
+  boards?: string[]
+  reasons?: string[]
+  unmet?: string[]
+  missing?: string[]
+  state: string
+  strategy: ResearchStrategy
+}
+
+export interface ResearchTrendOut {
+  trade_date: string
+  rows: ResearchTrendRow[]
+  coverage: ResearchCoverage
+  strategy: ResearchStrategy
+}
+
+export interface ResearchLowStartRow {
+  code: string
+  name: string | null
+  industry: string | null
+  trade_date: string
+  close: number
+  pos_pct: number
+  platform_days: number
+  platform_height: number
+  platform_high: number
+  vol_contraction: number
+  amount_ratio20?: number | null
+  ma20?: number | null
+  ma20_slope?: number | null
+  rps20?: number | null
+  state: string
+  reasons: string[]
+  missing: string[]
+  strategy: ResearchStrategy
+}
+
+export interface ResearchLowStartOut {
+  trade_date: string
+  rows: ResearchLowStartRow[]
+  coverage: ResearchCoverage
+  strategy: ResearchStrategy
+}
+
+export interface ResearchSectorRow {
+  sector_code: string
+  name: string
+  trade_date: string
+  ret5?: number | null
+  ret10?: number | null
+  ret20?: number | null
+  ret60?: number | null
+  rps20: number
+  amount_ratio20?: number | null
+  up_ratio?: number | null
+  strong_days: number
+  state: string
+  core: { code: string; pct_chg: number | null }[]
+  missing: string[]
+  strategy: ResearchStrategy
+}
+
+export interface ResearchSectorOut {
+  trade_date: string
+  requested_date?: string
+  rows: ResearchSectorRow[]
+  coverage: ResearchCoverage
+  strategy: ResearchStrategy
+}

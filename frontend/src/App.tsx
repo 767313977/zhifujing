@@ -31,6 +31,7 @@ const PlansPage = lazy(() => import('./pages/Plans'))
 const PositionsPage = lazy(() => import('./pages/Positions'))
 const PremarketPage = lazy(() => import('./pages/Premarket'))
 const PoolsPage = lazy(() => import('./pages/Pools'))
+const ResearchPage = lazy(() => import('./pages/Research'))
 const Sectors = lazy(() => import('./pages/Sectors'))
 const SentimentPage = lazy(() => import('./pages/Sentiment'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -154,6 +155,14 @@ export default function App() {
                 element={
                   <RequireAuth>
                     <PoolsPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/research"
+                element={
+                  <RequireAuth>
+                    <ResearchPage />
                   </RequireAuth>
                 }
               />

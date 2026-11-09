@@ -123,6 +123,10 @@ import type {
   ValuationSummary,
   Volatility,
   WatchlistRow,
+  ResearchTrendOut,
+  ResearchLowStartOut,
+  ResearchSectorOut,
+  ResearchStrategy,
 } from './types'
 
 const BASE = '/api'
@@ -1437,4 +1441,53 @@ export const api = {
     }),
 
   riskStatus: () => request<RiskStatus>('/risk/status'),
+}
+
+/** P0.2 研究接口：只读；研究指标 ≠ 已验证策略。 */
+export const researchApi = {
+  meta: () => request<Record<string, ResearchStrategy>>('/research/meta'),
+
+  trend: (params: {
+    date?: string | null
+    minRps60?: number
+    minTrendDays?: number
+    limit?: number
+    excludeSt?: boolean
+    excludeBse?: boolean
+  } = {}) => {
+    const q = new URLSearchParams()
+    if (params.date) q.set('date', params.date)
+    q.set('min_rps60', String(params.minRps60 ?? 60))
+    q.set('min_trend_days', String(params.minTrendDays ?? 5))
+    q.set('limit', String(params.limit ?? 100))
+    q.set('exclude_st', String(params.excludeSt ?? true))
+    q.set('exclude_bse', String(params.excludeBse ?? true))
+    return request<ResearchTrendOut>(`/research/trend?${q.toString()}`)
+  },
+
+  lowStart: (params: {
+    date?: string | null
+    limit?: number
+    maxPosition?: number
+    minPlatformDays?: number
+    maxPlatformHeight?: number
+    maxVolContraction?: number
+  } = {}) => {
+    const q = new URLSearchParams()
+    if (params.date) q.set('date', params.date)
+    q.set('limit', String(params.limit ?? 100))
+    q.set('max_position', String(params.maxPosition ?? 40))
+    q.set('min_platform_days', String(params.minPlatformDays ?? 15))
+    q.set('max_platform_height', String(params.maxPlatformHeight ?? 18))
+    q.set('max_vol_contraction', String(params.maxVolContraction ?? 0.9))
+    return request<ResearchLowStartOut>(`/research/low-start?${q.toString()}`)
+  },
+
+  sectorState: (params: { date?: string | null; taxonomy?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (params.date) q.set('date', params.date)
+    q.set('taxonomy', params.taxonomy ?? 'kph_selected')
+    q.set('limit', String(params.limit ?? 100))
+    return request<ResearchSectorOut>(`/research/sector-state?${q.toString()}`)
+  },
 }
