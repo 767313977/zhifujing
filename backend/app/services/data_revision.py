@@ -170,19 +170,6 @@ def log_unavailable(state: CacheState) -> None:
     _log_unavailable(state.state, state.reason)
 
 
-def cache_status(session: Session) -> dict:
-    """给 `/api/research/meta` 的诊断信息（不含路径等敏感内容）。"""
-    state = status(session)
-    if not state.ready:
-        log_unavailable(state)
-    return {
-        "state": state.state,
-        "reason": state.reason,
-        "identity": state.identity[2] if state.identity else None,
-        "revisions": dict(state.version[1]) if state.version else None,
-    }
-
-
 def install(session: Session) -> str:
     """安装修订水位，返回库身份 `db_uuid`（幂等）。只用于隔离库/测试库。"""
     connection = session.connection()

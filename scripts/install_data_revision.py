@@ -72,7 +72,7 @@ def main() -> int:
     with Session(engine) as session:
         if args.status:
             if not data_revision.installed(session):
-                print("未安装修订水位（使用过渡回退：data_version + 文件 stat）")
+                print("未安装修订水位：研究缓存按 fail-closed 关闭（每次直接查库）")
                 return 0
             rows = session.connection().exec_driver_sql(
                 "SELECT domain, revision FROM data_revision ORDER BY domain"

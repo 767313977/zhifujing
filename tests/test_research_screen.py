@@ -273,3 +273,64 @@ def test_research_routes_are_registered_and_guarded():
         assert path in paths
         assert path not in PUBLIC_PATHS
     assert any(dep.dependency is require_login for dep in app.router.dependencies)
+
+
+def test_meta_hides_cache_details_from_normal_user(tmp_path):
+    from types import SimpleNamespace
+
+    from app.api import research as research_api
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'meta.db'}", future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        data_revision.install(session)
+        payload = research_api.meta(user=SimpleNamespace(is_admin=False), db=session)
+    assert "cache" not in payload
+    assert payload["trend"]["id"] == "trend_template"
+
+
+def test_meta_shows_cache_details_to_admin(tmp_path):
+    from types import SimpleNamespace
+
+    from app.api import research as research_api
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'meta_admin.db'}", future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        data_revision.install(session)
+        payload = research_api.meta(user=SimpleNamespace(is_admin=True), db=session)
+    assert payload["cache"]["state"] == "ready"
+    assert isinstance(payload["cache"]["identity"], str)
+    assert payload["cache"]["revisions"] == {}
+    assert set(payload["cache"]["stats"]) == {"hits", "computes", "cache_disabled", "busy"}
+
+
+def test_low_start_rejects_when_concurrency_slots_exhausted(monkeypatch):
+    class Busy:
+        def acquire(self, timeout=None):
+            return False
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr(research_screen, "_LOW_START_SLOTS", Busy())
+    engine = _engine()
+    with Session(engine) as session:
+        with pytest.raises(research_screen.ResearchBusy):
+            research_screen._limited_low_start(session, date(2026, 9, 24))
+
+
+def test_low_start_busy_maps_to_503(monkeypatch):
+    from fastapi import HTTPException
+
+    from app.api import research as research_api
+
+    def busy(*args, **kwargs):
+        raise research_screen.ResearchBusy("研究计算繁忙，请稍后重试")
+
+    monkeypatch.setattr(research_screen, "low_start_rows", busy)
+    engine = _engine()
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as info:
+            research_api.low_start(db=session)
+    assert info.value.status_code == 503

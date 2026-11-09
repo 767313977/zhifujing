@@ -80,6 +80,36 @@ _INFLIGHT_TIMEOUT = 60.0
 _INFLIGHT: dict[tuple, "threading.Event"] = {}
 _INFLIGHT_LOCK = threading.Lock()
 
+#: 进程内诊断计数（重启归零）。只用于确认「本次请求是否命中缓存」，
+#: 不参与缓存正确性判断。
+_CACHE_STATS = {"hits": 0, "computes": 0, "cache_disabled": 0, "busy": 0}
+
+
+def cache_stats() -> dict:
+    return dict(_CACHE_STATS)
+
+
+#: 全市场冷扫描（low-start）的并发上限。实测 4 个不同交易日并发时 RSS 接近 3 GB、
+#: 单次延迟被 IO 竞争拉到 40 秒以上；这里限流 + 有界等待，超时明确返回 503，
+#: 不让请求无限堆积（也不通过缩小股票池来掩盖问题）。
+_LOW_START_CONCURRENCY = 2
+_LOW_START_WAIT_SECONDS = 20.0
+_LOW_START_SLOTS = threading.BoundedSemaphore(_LOW_START_CONCURRENCY)
+
+
+class ResearchBusy(RuntimeError):
+    """研究计算繁忙（并发已满且等待超时），由 API 映射为 503。"""
+
+
+def _limited_low_start(session: Session, day: date, **kwargs) -> dict:
+    if not _LOW_START_SLOTS.acquire(timeout=_LOW_START_WAIT_SECONDS):
+        _CACHE_STATS["busy"] += 1
+        raise ResearchBusy("研究计算繁忙，请稍后重试")
+    try:
+        return _low_start_rows(session, day, **kwargs)
+    finally:
+        _LOW_START_SLOTS.release()
+
 
 def _cache_key(name: str, day: date, params: tuple, state) -> tuple:
     return (name, str(day), params, state.identity, state.version)
@@ -106,6 +136,7 @@ def _cache_put(key: tuple, value: dict) -> None:
 def _compute_verified(session: Session, name: str, day: date, params: tuple, compute, state) -> dict:
     """计算并校验版本；版本在计算期间变化则重算，最多 `_VERIFY_ROUNDS` 轮。"""
     for _ in range(_VERIFY_ROUNDS):
+        _CACHE_STATS["computes"] += 1
         value = compute()
         after = data_revision.status(session)
         if not after.ready:
@@ -123,11 +154,13 @@ def _cached(session: Session, name: str, day: date, params: tuple, compute):
     state = data_revision.status(session)
     if not state.ready:
         # fail closed：不读旧缓存、不写新缓存，直接查库
+        _CACHE_STATS["cache_disabled"] += 1
         data_revision.log_unavailable(state)
         return compute()
     key = _cache_key(name, day, params, state)
     hit = _cache_get(key)
     if hit is not None:
+        _CACHE_STATS["hits"] += 1
         return hit
 
     while True:
@@ -447,7 +480,7 @@ def low_start_rows(
         "low_start",
         day,
         params,
-        lambda: _low_start_rows(
+        lambda: _limited_low_start(
             session,
             day,
             limit=limit,

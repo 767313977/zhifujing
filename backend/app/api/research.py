@@ -11,24 +11,38 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.models import AppUser
 from app.services import data_revision, research_screen
+from app.services.auth import current_user
 
 router = APIRouter(prefix="/api/research", tags=["研究"])
 
 
 @router.get("/meta")
-def meta(db: Session = Depends(get_db)) -> dict:
+def meta(user: AppUser = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """研究策略版本与验证状态，前端用来显示“研究指标 ≠ 已验证策略”。
 
-    `cache` 是运维诊断：`ready` 才启用结果缓存；`not_installed` / `unverifiable`
-    时接口每次直接查库（不会返回旧结果）。
+    `cache` 只返回给管理员：普通用户不需要、也不应该看到库身份/修订号等内部诊断。
+    无论是否管理员，缓存不可用都会写服务端日志（60 秒节流）。
     """
-    return {
+    state = data_revision.status(db)
+    if not state.ready:
+        data_revision.log_unavailable(state)
+    payload: dict = {
         "trend": research_screen.TREND_STRATEGY,
         "low_start": research_screen.LOW_START_STRATEGY,
         "sector_state": research_screen.SECTOR_STATE_STRATEGY,
-        "cache": data_revision.cache_status(db),
     }
+    if user.is_admin:
+        payload["cache"] = {
+            "state": state.state,
+            "reason": state.reason,
+            "identity": state.identity[2] if state.identity else None,
+            "revisions": dict(state.version[1]) if state.version else None,
+            # 进程内计数：重启归零；用于确认「这次请求是否命中缓存」
+            "stats": research_screen.cache_stats(),
+        }
+    return payload
 
 
 @router.get("/trend")
@@ -79,6 +93,9 @@ def low_start(
             exclude_st=exclude_st,
             exclude_bse=exclude_bse,
         )
+    except research_screen.ResearchBusy as exc:
+        # 全市场扫描并发已满且等待超时：明确告诉客户端稍后重试，而不是无限排队
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
