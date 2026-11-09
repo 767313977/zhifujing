@@ -1,0 +1,328 @@
+{
+  "target": "c:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\fupan.db",
+  "source": "c:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+  "trade_date": "2026-10-09",
+  "pre_existing_keys": 10206,
+  "classes": {
+    "both": 5045,
+    "not_candidate": 5142,
+    "ret60_only": 8,
+    "ret20_only": 11
+  },
+  "class_total_matches": true,
+  "ret20_only_all_valid20_and_invalid60": true,
+  "ret60_only_all_valid60_and_invalid20": true,
+  "boundary_detail": {
+    "ret20_only": [
+      {
+        "code": "300333",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 20,
+          "coverage": 1.0
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 50,
+          "coverage": 0.833
+        },
+        "valid20": true,
+        "valid60": false
+      },
+      {
+        "code": "300862",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 20,
+          "coverage": 1.0
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 47,
+          "coverage": 0.783
+        },
+        "valid20": true,
+        "valid60": false
+      },
+      {
+        "code": "301234",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 20,
+          "coverage": 1.0
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 52,
+          "coverage": 0.867
+        },
+        "valid20": true,
+        "valid60": false
+      },
+      {
+        "code": "301677",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 20,
+          "coverage": 1.0
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 46,
+          "coverage": 0.767
+        },
+        "valid20": true,
+        "valid60": false
+      },
+      {
+        "code": "600984",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 20,
+          "coverage": 1.0
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 50,
+          "coverage": 0.833
+        },
+        "valid20": true,
+        "valid60": false
+      },
+      {
+        "code": "603221",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 20,
+          "coverage": 1.0
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 52,
+          "coverage": 0.867
+        },
+        "valid20": true,
+        "valid60": false
+      },
+      {
+        "code": "688277",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 20,
+          "coverage": 1.0
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 50,
+          "coverage": 0.833
+        },
+        "valid20": true,
+        "valid60": false
+      },
+      {
+        "code": "688806",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 20,
+          "coverage": 1.0
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 52,
+          "coverage": 0.867
+        },
+        "valid20": true,
+        "valid60": false
+      },
+      {
+        "code": "688825",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 20,
+          "coverage": 1.0
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 49,
+          "coverage": 0.817
+        },
+        "valid20": true,
+        "valid60": false
+      },
+      {
+        "code": "920176",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 20,
+          "coverage": 1.0
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 49,
+          "coverage": 0.817
+        },
+        "valid20": true,
+        "valid60": false
+      },
+      {
+        "code": "920238",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 20,
+          "coverage": 1.0
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 50,
+          "coverage": 0.833
+        },
+        "valid20": true,
+        "valid60": false
+      }
+    ],
+    "ret60_only": [
+      {
+        "code": "002998",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 15,
+          "coverage": 0.75
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 55,
+          "coverage": 0.917
+        },
+        "valid20": false,
+        "valid60": true
+      },
+      {
+        "code": "300585",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 17,
+          "coverage": 0.85
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 57,
+          "coverage": 0.95
+        },
+        "valid20": false,
+        "valid60": true
+      },
+      {
+        "code": "301390",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 15,
+          "coverage": 0.75
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 55,
+          "coverage": 0.917
+        },
+        "valid20": false,
+        "valid60": true
+      },
+      {
+        "code": "600301",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 15,
+          "coverage": 0.75
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 55,
+          "coverage": 0.917
+        },
+        "valid20": false,
+        "valid60": true
+      },
+      {
+        "code": "601995",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 14,
+          "coverage": 0.7
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 54,
+          "coverage": 0.9
+        },
+        "valid20": false,
+        "valid60": true
+      },
+      {
+        "code": "603159",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 15,
+          "coverage": 0.75
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 55,
+          "coverage": 0.917
+        },
+        "valid20": false,
+        "valid60": true
+      },
+      {
+        "code": "605577",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 17,
+          "coverage": 0.85
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 57,
+          "coverage": 0.95
+        },
+        "valid20": false,
+        "valid60": true
+      },
+      {
+        "code": "688291",
+        "window20": {
+          "start": "2026-09-04",
+          "rows": 15,
+          "coverage": 0.75
+        },
+        "window60": {
+          "start": "2026-07-10",
+          "rows": 55,
+          "coverage": 0.917
+        },
+        "valid20": false,
+        "valid60": true
+      }
+    ]
+  },
+  "source_candidate_rows": 1267770,
+  "overlap_keys": 5064,
+  "new_keys": 1262706,
+  "new_keys_matches_p090": true,
+  "formats_target": {
+    "code_len": {
+      "6": 10206
+    },
+    "date_len": {
+      "10": 10206
+    }
+  },
+  "orphan_2026_10_21_rows": 5091,
+  "bars_2026_10_21": 0,
+  "formats_source": {
+    "code_len": {
+      "6": 1274587
+    },
+    "date_len": {
+      "10": 1274587
+    }
+  }
+}
