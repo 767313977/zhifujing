@@ -1,24 +1,25 @@
 {
-  "archive": "dist-deploy\\fupan-fe2005f.tar.gz",
-  "archive_size": 1619194,
-  "archive_sha256": "3824316f73facc82539d40648fea69a8115b3c4820de5188ae1a115796d2cfe8",
-  "file_count": 235,
+  "ok": true,
+  "errors": [],
+  "archive": "dist-deploy\\fupan-fe2005f-r2.tar.gz",
+  "archive_size": 1586884,
+  "archive_sha256": "85efc66660716b50f50d07b991d34fa276258ee86571e78c2fa9a67f455de7c0",
+  "frozen_commit": "fe2005f226015cb97a175c2aadc47a87f8085f50",
+  "frozen_tree": "a3b20acf07c0a36c3ab9bcdd55167edffc340f4d",
+  "file_count": 232,
+  "expected_count": 232,
   "top_level": [
     "backend",
     "deploy",
     "frontend",
     "scripts"
   ],
-  "forbidden_entries": [],
-  "source_files_checked": 181,
-  "source_mismatch": [],
+  "source_files_checked": 178,
+  "byte_mismatch": [],
+  "blob_mismatch": [],
+  "dist_file_count": 54,
   "dist_expected_digest": "2f819e0bb05fb230425936451e656ddfd48f45e0ab2e9bfd73c665cd20ac436d",
   "dist_actual_digest": "2f819e0bb05fb230425936451e656ddfd48f45e0ab2e9bfd73c665cd20ac436d",
-  "dist_file_count": 54,
-  "dist_mismatch": [],
-  "dist_missing": [],
-  "dist_extra": [],
-  "frozen_commit": "fe2005f226015cb97a175c2aadc47a87f8085f50",
   "files": {
     "backend/app/__init__.py": {
       "size": 0,
@@ -872,10 +873,6 @@
       "size": 4821,
       "sha256": "1b18bae39ce27a7eaaa6bde75cbc8563bf98354ce91f573753b4a3a46c92b26f"
     },
-    "scripts/git-push.ps1": {
-      "size": 8505,
-      "sha256": "c30284412d5944c81da0ee996b93d87942232881eac58a4fc0c4856be842c9a0"
-    },
     "scripts/ifind_skill.py": {
       "size": 7863,
       "sha256": "7b434d188cb8e529709d887afa0dba51ea44ed163e184701c152facdb0337a39"
@@ -904,10 +901,6 @@
       "size": 13232,
       "sha256": "954bf3bbe9d9ab6ad8a7c753f09c3e9f06336af89f125717ee305869098fd359"
     },
-    "scripts/pack_deploy.py": {
-      "size": 15042,
-      "sha256": "8aae69c6bb41da742f0f83ba5f87becca125ed86d1e37a8da6c58131a8c82306"
-    },
     "scripts/probe_akshare.py": {
       "size": 2522,
       "sha256": "fce66a7fa413252e4e1a35223ece3f5c0fed772f127fca5e19fc53a9ab12d97d"
@@ -931,10 +924,6 @@
     "scripts/refresh_top_kline.py": {
       "size": 2439,
       "sha256": "86df778356237669efd1299be1444213066824298deec383e07edd14fba72fdd"
-    },
-    "scripts/release_manifest.py": {
-      "size": 7342,
-      "sha256": "10c20ebcf04ae0c5c705e20effabc2b88b12975c0c00c918b0c09ebc4850f811"
     },
     "scripts/rescan_patterns.py": {
       "size": 6757,
