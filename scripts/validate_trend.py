@@ -183,6 +183,30 @@ def _extremes(samples, horizon: int) -> dict:
     }
 
 
+def _industry_excess_stats(samples, horizon: int, industry_returns: dict) -> dict:
+    """个股收益 − 所属行业等权收益；行业归属缺失的样本不计入。"""
+    selected = [
+        sample
+        for sample in _exec(samples, horizon)
+        if industry_returns.get((sample.code, sample.signal_date, horizon)) is not None
+    ]
+    if not selected:
+        return {"samples": 0, "mean": None, "median": None, "beat_pct": None}
+    values = np.array(
+        [
+            sample.gross - industry_returns[(sample.code, sample.signal_date, horizon)]
+            for sample in selected
+        ],
+        dtype=float,
+    )
+    return {
+        "samples": len(selected),
+        "mean": round(float(values.mean()), 2),
+        "median": round(float(np.median(values)), 2),
+        "beat_pct": round(float((values > 0).mean() * 100), 1),
+    }
+
+
 def _industry_map(session, codes):
     from sqlalchemy import select
 
@@ -212,6 +236,61 @@ def _signal_env(session, matrix, signal):
     return {**info, "close": float(close) if np.isfinite(close) else None, "liquidity": liquidity, "mv": mv}
 
 
+def _benchmark_return(matrix, codes: set[str], entry_day: date | None, exit_day: date | None) -> float | None:
+    """一组股票（同行业）的等权收益，口径与全市场基准一致。"""
+    if not entry_day or not exit_day:
+        return None
+    from app.services import research_backtest as rb
+
+    entry_pos = matrix.date_pos.get(entry_day)
+    exit_pos = matrix.date_pos.get(exit_day)
+    if entry_pos is None or exit_pos is None:
+        return None
+    values = []
+    for code in codes:
+        col = matrix.code_pos.get(code)
+        if col is None:
+            continue
+        if not matrix.present[entry_pos, col] or not matrix.present[exit_pos, col]:
+            continue
+        open_ = matrix.open[entry_pos, col]
+        close_e = matrix.close[entry_pos, col]
+        pct_e = matrix.pct[entry_pos, col]
+        if not np.isfinite(open_) or not np.isfinite(close_e) or open_ <= 0:
+            continue
+        if rb._entry_limit_up(
+            code,
+            matrix.name[entry_pos, col],
+            entry_day,
+            float(open_),
+            float(close_e),
+            None if not np.isfinite(pct_e) else float(pct_e),
+        ):
+            continue
+        close_x = matrix.close[exit_pos, col]
+        low_x = matrix.low[exit_pos, col]
+        pct_x = matrix.pct[exit_pos, col]
+        if not np.isfinite(close_x):
+            continue
+        if rb._exit_limit_down(
+            code,
+            matrix.name[exit_pos, col],
+            exit_day,
+            float(close_x),
+            None if not np.isfinite(low_x) else float(low_x),
+            None if not np.isfinite(pct_x) else float(pct_x),
+        ):
+            continue
+        factor = 1 + (close_e / open_ - 1)
+        for pos in range(entry_pos + 1, exit_pos + 1):
+            if matrix.present[pos, col]:
+                pct = matrix.pct[pos, col]
+                if np.isfinite(pct):
+                    factor *= 1 + pct / 100
+        values.append((factor - 1) * 100)
+    return float(np.mean(values)) if values else None
+
+
 def main() -> int:
     args = _args()
     path = Path(args.db).resolve()
@@ -237,6 +316,20 @@ def main() -> int:
             industry, shares = info.get(signal.code, (None, None))
             signal.meta["_info"] = {"industry": industry, "shares": shares}
 
+        # 行业匹配基准：取信号涉及的行业，加载这些行业的全部股票
+        from app.models import StockBasic
+
+        industries = {value[0] for value in info.values() if value[0]}
+        industry_codes = defaultdict(set)
+        if industries:
+            for code, industry in session.execute(
+                select(StockBasic.code, StockBasic.industry).where(
+                    StockBasic.industry.in_(industries)
+                )
+            ):
+                if industry:
+                    industry_codes[industry].add(code)
+
         main_signals = _variant(superset, args.top, args.min_rs)
         data_end = session.scalar(select(func.max(StockDaily.trade_date)))
         matrix = rb.load_matrix(session, args.start, data_end)
@@ -258,6 +351,23 @@ def main() -> int:
         logging.info("主策略回测：%d 条信号", len(main_signals))
         result0 = run(main_signals, 0.0)
         result15 = run(main_signals, 15.0)
+        logging.info("行业匹配基准…")
+        industry_returns = {}
+        industry_cache = {}
+        for sample in result0.samples:
+            if sample.status != "ok" or not sample.entry_date or not sample.exit_date:
+                continue
+            industry = info.get(sample.code, (None, None))[0]
+            if not industry:
+                continue
+            key = (industry, sample.entry_date, sample.exit_date)
+            if key not in industry_cache:
+                industry_cache[key] = _benchmark_return(
+                    matrix, industry_codes.get(industry, set()), sample.entry_date, sample.exit_date
+                )
+            value = industry_cache[key]
+            if value is not None:
+                industry_returns[(sample.code, sample.signal_date, sample.horizon)] = value
         logging.info("参数敏感性…")
         variants = []
         for top, min_rs in ((100, 70), (200, 70), (300, 70), (200, 60), (200, 80)):
@@ -333,6 +443,7 @@ def main() -> int:
             str(h): {
                 **_summary(result0.samples, h),
                 "net15_mean": _net_mean(result15.samples, h),
+                "industry_excess": _industry_excess_stats(result0.samples, h, industry_returns),
                 "counts": result0.horizons[h].counts,
             }
             for h in horizons
@@ -385,6 +496,10 @@ def main() -> int:
                 "matrix_codes": len(matrix.codes),
             },
             "main": main_summary,
+            "industry_neutral": {
+                str(h): main_summary[str(h)]["industry_excess"] for h in horizons
+            },
+            "industry_note": "行业归属用 StockBasic.industry 当前分类，不是历史时点行业；行业基准为同行业全股票等权，结果需按此局限解读。",
             "purged_blocks": block_out,
             "stability": stability,
             "sensitivity": variants,

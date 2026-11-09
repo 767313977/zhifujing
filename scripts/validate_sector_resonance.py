@@ -347,6 +347,48 @@ def main() -> int:
                 **{str(h): _stat(subset, h, sector_returns) for h in horizons},
             }
 
+        # 同样本边际贡献：条件组 vs 同一天未满足条件的对照组
+        eligible_keys = {(s.code, s.signal_date) for s in eligible}
+
+        def marginal(horizon: int, cond_keys: set) -> dict:
+            by_date = defaultdict(lambda: {"cond": [], "control": []})
+            for sample in result.samples:
+                if sample.horizon != horizon or sample.status != "ok" or sample.gross is None:
+                    continue
+                key = (sample.code, sample.signal_date)
+                if key not in eligible_keys:
+                    continue
+                bucket = "cond" if key in cond_keys else "control"
+                by_date[sample.signal_date][bucket].append(sample.gross)
+            cond = [v for day in by_date.values() for v in day["cond"]]
+            control = [v for day in by_date.values() for v in day["control"]]
+            date_diffs = [
+                np.mean(day["cond"]) - np.mean(day["control"])
+                for day in by_date.values()
+                if day["cond"] and day["control"]
+            ]
+            return {
+                "cond_samples": len(cond),
+                "control_samples": len(control),
+                "cond_mean": round(float(np.mean(cond)), 2) if cond else None,
+                "control_mean": round(float(np.mean(control)), 2) if control else None,
+                "overall_diff": round(float(np.mean(cond) - np.mean(control)), 2)
+                if cond and control
+                else None,
+                "date_matched_diff": round(float(np.mean(date_diffs)), 2) if date_diffs else None,
+                "matched_dates": len(date_diffs),
+            }
+
+        marginal_effects = {}
+        condition_keys = {
+            "B": {(s.code, s.signal_date) for s in groups["B"]},
+            "C": {(s.code, s.signal_date) for s in groups["C"]},
+            "D": {(s.code, s.signal_date) for s in groups["D"]},
+            "E": e_keep,
+        }
+        for name, keys in condition_keys.items():
+            marginal_effects[name] = {str(h): marginal(h, keys) for h in horizons}
+
         output = {
             "params": {
                 "start": str(args.start),
@@ -367,7 +409,8 @@ def main() -> int:
                 "data_end": str(data_end),
             },
             "groups": group_output,
-            "note": "40/60 日只统计已走完的样本；样本不足时以 samples/dates 判断，不补造收益。",
+            "marginal_effects": marginal_effects,
+            "note": "40/60 日只统计已走完的样本；样本不足时以 samples/dates 判断，不补造收益。marginal_effects 是条件组 vs 同日未满足条件组的同样本差值。",
         }
     if args.report:
         Path(args.report).write_text(json.dumps(output, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
