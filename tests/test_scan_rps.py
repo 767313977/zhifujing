@@ -132,3 +132,100 @@ def test_stock_without_target_day_is_excluded(engine, monkeypatch):
     with Session(engine) as session:
         codes = list(session.scalars(select(RpsDaily.code)))
     assert codes == ["000001"]
+
+
+# ---------------------------------------------------------------------------
+# B0.3：20 / 60 日扩展
+# ---------------------------------------------------------------------------
+
+
+def test_new_windows_do_not_change_old_semantics(engine, monkeypatch):
+    """新增 20/60 日窗口不能改变 50/120/250 的数值与含义。"""
+    days = _days(260)
+    target = days[-1]
+    with Session(engine) as session:
+        session.add_all(TradeCalendar(trade_date=day) for day in days)
+        _seed(session, days, "000001", 1.0, set())
+        _seed(session, days, "000002", 0.5, set())
+        _seed(session, days, "000003", -0.5, set())
+        session.commit()
+
+    _patch_scope(monkeypatch, engine)
+    result = scan_rps.scan(target, with_meta=True)
+    assert result["rows"] == 3
+    # 默认返回值仍保持旧键（向后兼容）
+    plain = scan_rps.scan(target)
+    assert set(plain) == {"rows", "trade_date", "cost_seconds"}
+
+    with Session(engine) as session:
+        row = session.scalar(select(RpsDaily).where(RpsDaily.code == "000001"))
+    for window in (20, 50, 60, 120, 250):
+        expected = round((1.01**window - 1) * 100, 2)
+        assert getattr(row, f"ret{window}") == pytest.approx(expected)
+        assert getattr(row, f"rps{window}") is not None
+    # 涨得最多的票在每个窗口都应是最高分位（3 只票时中位秩最高是 83.3，不是 100）
+    assert row.rps20 > 80
+    assert row.rps250 > 80
+
+
+def test_pool_count_override_allows_sparse_history(engine, monkeypatch):
+    """历史回补用「当时股票池」估计值，而不是当前 stock_universe。"""
+    days = _days(130)
+    target = days[-1]
+    with Session(engine) as session:
+        session.add_all(TradeCalendar(trade_date=day) for day in days)
+        session.add_all(StockUniverse(code=f"000{index:03d}") for index in range(100))
+        for index in range(50):
+            _seed(session, days, f"000{index:03d}", 1.0, set())
+        session.commit()
+
+    _patch_scope(monkeypatch, engine)
+    # 当前池 100、当天只有 50 行 → 旧口径直接停跑
+    assert scan_rps.scan(target)["skipped"] == "coverage"
+    # 当时池估计 50 → 50/50 通过
+    result = scan_rps.scan(target, pool_count=50, with_meta=True)
+    assert result["rows"] == 50
+    assert result["pool_basis"] == "estimated_history"
+
+
+def test_estimate_pool_count_uses_prior_days(engine):
+    """估计口径 = 目标日之前 20 个交易日行数的中位数（不含目标日）。"""
+    days = _days(30)
+    target = days[-1]
+    with Session(engine) as session:
+        session.add_all(TradeCalendar(trade_date=day) for day in days)
+        # 前 29 天各 10 只，目标日只有 2 只
+        for day in days[:-1]:
+            for index in range(10):
+                session.add(StockDaily(trade_date=day, code=f"000{index:03d}", name="x", close=10, pct_chg=1.0))
+        for index in range(2):
+            session.add(StockDaily(trade_date=target, code=f"000{index:03d}", name="x", close=10, pct_chg=1.0))
+        session.commit()
+        assert scan_rps.estimate_pool_count(session, target) == 10
+
+
+def test_scan_is_idempotent(engine, monkeypatch):
+    """同一输入重复扫描：行数不增、数值不变。"""
+    days = _days(260)
+    target = days[-1]
+    with Session(engine) as session:
+        session.add_all(TradeCalendar(trade_date=day) for day in days)
+        _seed(session, days, "000001", 1.0, set())
+        _seed(session, days, "000002", 0.5, set())
+        session.commit()
+
+    _patch_scope(monkeypatch, engine)
+    first = scan_rps.scan(target)
+    with Session(engine) as session:
+        before = {
+            row.code: (row.ret20, row.ret60, row.rps20, row.rps60)
+            for row in session.scalars(select(RpsDaily))
+        }
+    second = scan_rps.scan(target)
+    with Session(engine) as session:
+        after = {
+            row.code: (row.ret20, row.ret60, row.rps20, row.rps60)
+            for row in session.scalars(select(RpsDaily))
+        }
+    assert first["rows"] == second["rows"] == 2
+    assert before == after

@@ -670,10 +670,18 @@ class RpsDaily(Base):
 
     trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
     code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    #: 20 日窗口（B0 新增，2026-11-08）：趋势/低位启动策略用短周期相对强度。
+    #: 与 50/120/250 **同一套口径**（pct_chg 复利、交易日截窗、90% 覆盖、中位秩），
+    #: 只是窗口不同；新增字段不改旧字段含义。
+    ret20: Mapped[float | None] = mapped_column(Float)
     ret50: Mapped[float | None] = mapped_column(Float)
+    #: 60 日窗口（B0 新增）：中短线趋势的中间档。
+    ret60: Mapped[float | None] = mapped_column(Float)
     ret120: Mapped[float | None] = mapped_column(Float)
     ret250: Mapped[float | None] = mapped_column(Float)
+    rps20: Mapped[float | None] = mapped_column(Float)
     rps50: Mapped[float | None] = mapped_column(Float)
+    rps60: Mapped[float | None] = mapped_column(Float)
     rps120: Mapped[float | None] = mapped_column(Float)
     rps250: Mapped[float | None] = mapped_column(Float)
 
