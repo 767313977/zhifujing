@@ -1,0 +1,326 @@
+{
+  "generated_at": "2026-11-09T15:26:17+08:00",
+  "git": {
+    "head": "fe2005f226015cb97a175c2aadc47a87f8085f50",
+    "tree": "a3b20acf07c0a36c3ab9bcdd55167edffc340f4d",
+    "branch": "feat/p0.2-research-ui",
+    "subject": "fix(release): tolerate missing node/npm when building the manifest",
+    "production_base": "44f0912",
+    "commits_since_production": 18,
+    "merges_since_production": 0,
+    "dirty": false,
+    "worktree_fingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "dependencies": {
+    "python": "3.13.13",
+    "fastapi": "0.141.1",
+    "sqlalchemy": "2.0.54",
+    "uvicorn": "0.53.0"
+  },
+  "schema": {
+    "fingerprint": "8dc4309a52ca2a1e4c9a0547755ad530eaad9c18ba899f2277fd19fcf7674da7",
+    "tables": 47,
+    "columns": 423,
+    "indexes": 21,
+    "startup_mode_default": "verify",
+    "migration_entry": "scripts/migrate_db.py --apply"
+  },
+  "tests": "后端 841 passed / Ruff All checks passed; 前端 43 passed / oxlint 0 / build OK (P1.0 实测; 本轮未改源码)",
+  "data_source": {
+    "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+    "exists": true,
+    "size_bytes": 1441378304,
+    "rps": {
+      "rows": 1274587,
+      "min": "2025-09-22",
+      "max": "2026-10-21"
+    },
+    "sector_member": {
+      "rows": 3646796,
+      "min": "2026-07-03",
+      "max": "2026-09-24"
+    },
+    "manifest_rows": 16190
+  },
+  "frontend_dist": {
+    "exists": true,
+    "files": [
+      {
+        "path": "assets/Account-Q4xnJFcR-r2.js",
+        "size": 3553,
+        "sha256": "5c7e2e7734bcc34c3abe0787bd93772fd841f4ea8a6810ecd0335569c213dda5"
+      },
+      {
+        "path": "assets/Alert-CPNCXewV-r2.js",
+        "size": 566,
+        "sha256": "cc6b020fbfdc95a0cac3e6c46e9cd2df883fa7c22bfeb96ed32b8ab0617fe5f0"
+      },
+      {
+        "path": "assets/Anomaly-BcW-SWSr-r2.js",
+        "size": 12101,
+        "sha256": "82ff4fef66d5f5acc6b0bc0a635751a1845d4adf76f20b378310decc1e9e356f"
+      },
+      {
+        "path": "assets/Auction-DIioE8KI-r2.js",
+        "size": 16386,
+        "sha256": "ec2673e0fe1033e9270f3433b723246549ea119c9625670cef89d8be4cd21eee"
+      },
+      {
+        "path": "assets/bondCode-DECVrQek-r2.js",
+        "size": 197,
+        "sha256": "9f2fbd308b4de30f82252544f0489c532495c46a5d99e4db6d9a3f0ae095c1ba"
+      },
+      {
+        "path": "assets/CbDetail-neMyMvjb-r2.js",
+        "size": 10153,
+        "sha256": "1d55239df3ec969cfa94b31aa075edb65d7f0b286ec60b8f9387c18d8be14fe6"
+      },
+      {
+        "path": "assets/chart-CgaoE3j0-r2.js",
+        "size": 1136,
+        "sha256": "b877941cb535da2fb532772c38917f0976d6da8d619a1cf2bc23c65f2f7cd0f5"
+      },
+      {
+        "path": "assets/clipboard-DYsl6j7j-r2.js",
+        "size": 260,
+        "sha256": "96662fef158b80c6bcf22818da832ec919e1853cacc180a58c7dc44253c2a492"
+      },
+      {
+        "path": "assets/ConclusionBar-CKkavzuy-r2.js",
+        "size": 1105,
+        "sha256": "bad60df149db1f6633f564acae986f6d455ed4c328a7e7558d7b0d6ae3682a63"
+      },
+      {
+        "path": "assets/ContactQr-4USTY2O--r2.js",
+        "size": 347,
+        "sha256": "144696d257f9fa381186764b9f1a7bfa0b042a98c258853d164866deefa41f8e"
+      },
+      {
+        "path": "assets/Convertible-D28P7ku6-r2.js",
+        "size": 14643,
+        "sha256": "a62b7be651b0a6a24605d78dd3fca69e817b2511cc9fdc25e842d2338b270f19"
+      },
+      {
+        "path": "assets/Dashboard-Ct-no01v-r2.js",
+        "size": 42970,
+        "sha256": "64e8f81e429d918aff189b84062c288f80ceb256fdbfe23449eb516f7fcf3ccf"
+      },
+      {
+        "path": "assets/EChart-BcIIYdH7-r2.js",
+        "size": 640661,
+        "sha256": "d4bcea60367a90ebb5ea3fb8b90dbb6f9df4925bd9c220f8aed429ae1b93cf64"
+      },
+      {
+        "path": "assets/Etf-Dlc8UGMZ-r2.js",
+        "size": 16006,
+        "sha256": "fc8bad72e064bd2afef13492cc2aef2c769b8fc6277c161ac5b13854258c173c"
+      },
+      {
+        "path": "assets/FearGreedBrief-CrK5ChXv-r2.js",
+        "size": 2572,
+        "sha256": "a8d35b93f0068b5aec74bca293e25a45049803c9b11be7f0ccb2ec7cdce08eda"
+      },
+      {
+        "path": "assets/Footer-aB4Nbyl7-r2.js",
+        "size": 369,
+        "sha256": "951be428392387419626a37211c0200928b847eabde9978bce3d645329aafb4c"
+      },
+      {
+        "path": "assets/format-BDjUdh0R-r2.js",
+        "size": 1500,
+        "sha256": "8f60272912a2e39eda43f50a58751d3c3b6ecf9e48bb0bc2b04ca0d86463985e"
+      },
+      {
+        "path": "assets/Funds-B7cWn8bJ-r2.js",
+        "size": 27660,
+        "sha256": "a5f73deb53e56daee8cefd3024185a66e5a38dca2a3e06abe30fb7151b3d60a7"
+      },
+      {
+        "path": "assets/index-2e01jQTT-r2.js",
+        "size": 291242,
+        "sha256": "4540797ef157e141d638aef9a769364ec60a05c843bcefe396652df29e5a3ded"
+      },
+      {
+        "path": "assets/index-BbBntTOT.css",
+        "size": 40181,
+        "sha256": "4e9d774e04d944b2cf9581bff34e9774e7d7aad90f397b511d9b78e33f6e431f"
+      },
+      {
+        "path": "assets/Journal-C97MXs5H-r2.js",
+        "size": 33099,
+        "sha256": "8fddc0cf0c5781f54fa4a9219104b403408dfb522f602e4ebd9b7b95643b76e9"
+      },
+      {
+        "path": "assets/klinePeriod-O9MwhluW-r2.js",
+        "size": 6222,
+        "sha256": "521b849eab6b5e749a5d65d199ec00da393f52bb2de7384fd90ffc9cea2231ab"
+      },
+      {
+        "path": "assets/Layout-B2qUtzyy-r2.js",
+        "size": 8245,
+        "sha256": "946a4e6a274995f8fe8e1eb7d7d0be22c99cd06aeff128dbdab88b415d35344a"
+      },
+      {
+        "path": "assets/LimitReview-DTtJgdvO-r2.js",
+        "size": 16387,
+        "sha256": "8b0348bbc14ced472592812e04798bfd074bdc38d4639bba7e565793461af43d"
+      },
+      {
+        "path": "assets/LimitTable-BgH0hhGu-r2.js",
+        "size": 5020,
+        "sha256": "eb019258a6402ede15229b8029f8a55f340e905e11a4089b7250d2f97c8f8fb8"
+      },
+      {
+        "path": "assets/LoadState-CZ-uQBDn-r2.js",
+        "size": 682,
+        "sha256": "1ca4cfb46a9fbd31f893f7954824a340e8d4b29e96798be2af23d525a7123133"
+      },
+      {
+        "path": "assets/Login-CAvB-Eld-r2.js",
+        "size": 5789,
+        "sha256": "949701bf4a9c028c91ff9afcbd86a47eca7e1276e9241773932175865f75feed"
+      },
+      {
+        "path": "assets/NotFound-BuQMCgHF-r2.js",
+        "size": 704,
+        "sha256": "d69490e517795387192e92747262b004b35652047860a74f9225344ed8f7f9a6"
+      },
+      {
+        "path": "assets/Panel-DkTUg16Z-r2.js",
+        "size": 491,
+        "sha256": "340cd0c2c4bda59594917653cc1ad363bd383619f4914eb8e44652756fe6f08f"
+      },
+      {
+        "path": "assets/Patterns-D-4y7N8h-r2.js",
+        "size": 33989,
+        "sha256": "4072fca9ca4c600d1a564b6f34cafed65c783964af95db1db4126b595a371f9d"
+      },
+      {
+        "path": "assets/PatternTrack-9ueChWki-r2.js",
+        "size": 13331,
+        "sha256": "199754ae1696a0a675a1d809a722d0b3c9806e9985afb558067e8f743a493cac"
+      },
+      {
+        "path": "assets/phase-BRFDcSGx-r2.js",
+        "size": 235,
+        "sha256": "5c53e4ceffc573ff159c7609718b06418fc32b9c7b5c96fdcccf2dcf2fb65c34"
+      },
+      {
+        "path": "assets/PhasePanel-CXV1t9k_-r2.js",
+        "size": 2074,
+        "sha256": "d800470896b5082066c3e254b35e0b6da61f06ce4b5a4c071a97ee6e4c9bc30a"
+      },
+      {
+        "path": "assets/Plans-BJGe8X5R-r2.js",
+        "size": 22103,
+        "sha256": "5597bd71f5509ae15fa492c8bf224c0b54e600f2439ca04f160b945ea0567a8a"
+      },
+      {
+        "path": "assets/Pools-CrCDKJqP-r2.js",
+        "size": 31182,
+        "sha256": "5123fcc19e54f4a86bcd8763d00e7da870d39fea59d90a74e6697ef7901bc1c5"
+      },
+      {
+        "path": "assets/Positions-fOWMgzoK-r2.js",
+        "size": 9247,
+        "sha256": "ff0f040bbd0ce44338a80ece7feda8b3151aba949e0a56ce3dd5cee76ebb703e"
+      },
+      {
+        "path": "assets/Premarket-Dh_NHb-z-r2.js",
+        "size": 8584,
+        "sha256": "42fda8528e9fde9105bab5245628726cc15ad814427456a025c30f4a08be392c"
+      },
+      {
+        "path": "assets/Research-BGj_pt0t-r2.js",
+        "size": 14113,
+        "sha256": "ab054b73b93a9026288127409fe3075397db522064b8299a0a14f1b5010d81a0"
+      },
+      {
+        "path": "assets/riskBadges-7uuazTEY-r2.js",
+        "size": 884,
+        "sha256": "09a7abea8c56eb2e622bddf6ed624ad35e0cbeb8706264defb6a0be8de1fa7e3"
+      },
+      {
+        "path": "assets/RiskGuard-DF25jiX3-r2.js",
+        "size": 4107,
+        "sha256": "6a0104c2079f0bb3e287d2b1fd197a40a2721cf962c2635919bf2ade407b6467"
+      },
+      {
+        "path": "assets/Sectors-CV6Vr6OA-r2.js",
+        "size": 41229,
+        "sha256": "940a43e7cbca40fa8e061720c7aefa92e9c608f1e50d13792ab99b58b4b9da38"
+      },
+      {
+        "path": "assets/Segmented-QgQ1sIHD-r2.js",
+        "size": 497,
+        "sha256": "08f7a7f8183e15214350ea41c5cc54ea29cb6221d2df26d3ed062ab4083c9040"
+      },
+      {
+        "path": "assets/Sentiment-DFsaxPE1-r2.js",
+        "size": 67305,
+        "sha256": "cfa94202b23e876520de09dc6e31556d1ea254cc694be15a8b71e228d17b5744"
+      },
+      {
+        "path": "assets/Settings-CRNpGbMj-r2.js",
+        "size": 29926,
+        "sha256": "f31b18cd88b41cfc66632bdfdf30aebd578fe6d035e751eed9b806036fa0f7a7"
+      },
+      {
+        "path": "assets/sort-DuTO2UuZ-r2.js",
+        "size": 1359,
+        "sha256": "aa8feb23ce101f6adffc238ec2f06ff27d13dd39619204392d0b51f472cca0cf"
+      },
+      {
+        "path": "assets/StockAnalysis-BqlUVyzh-r2.js",
+        "size": 9615,
+        "sha256": "ae1a3ae5f913d34e45bb9315e13aefe43101298ccb3796cba2c3780f2cd29b13"
+      },
+      {
+        "path": "assets/StockDetail-DDeeNEMx-r2.js",
+        "size": 29798,
+        "sha256": "255b7ef9fed7ee0e3ddc3d69e4adcacb685b30ec1b55776fc3d1263183a81dc7"
+      },
+      {
+        "path": "assets/StockLink-Cm8kX6T_-r2.js",
+        "size": 406,
+        "sha256": "ef46c286d9c5209c8c3ec79133d56f6520327bc40a3ac4fc9bb5b3c292bd124d"
+      },
+      {
+        "path": "assets/Valuation-UaJ0IONc-r2.js",
+        "size": 6669,
+        "sha256": "8a18b4fd4bc4affa0ca7fa6fed8275e00bf374166c0c0e6fac25a176bde26fac"
+      },
+      {
+        "path": "assets/Watchlist-B0-HuDEN-r2.js",
+        "size": 9065,
+        "sha256": "5dbf25917a9c5f9adc208cc54b4a26a902d261552d501f20ba33cf1350476631"
+      },
+      {
+        "path": "assets/Wudao-Dgax-wQ--r2.js",
+        "size": 11180,
+        "sha256": "8a12ce446cb5885866076867938db8e1dafce28bce0855161e1ac2df56cd7331"
+      },
+      {
+        "path": "favicon.svg",
+        "size": 451,
+        "sha256": "89f3d311a9b3606d066e9c59ae4f05a9998e49898ec6bf22a2375306ebb2980b"
+      },
+      {
+        "path": "index.html",
+        "size": 528,
+        "sha256": "8c075cef13aa4c4d531f72fa6cadf604442034e38238eb888ae8899884c8b74d"
+      },
+      {
+        "path": "wechat-qr.png",
+        "size": 83140,
+        "sha256": "03c6e1527423245aa83a3aa6c9c38ad70c0fbd756a231c52d7be606ab348e797"
+      }
+    ],
+    "count": 54,
+    "digest": "2f819e0bb05fb230425936451e656ddfd48f45e0ab2e9bfd73c665cd20ac436d"
+  },
+  "node": {
+    "node": "v24.19.0",
+    "npm": "11.17.0"
+  }
+}
