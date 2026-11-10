@@ -535,7 +535,7 @@ def _print_years(results: dict) -> None:
                 for sample in _entry_samples(result, 5)
                 if sample.signal_date.year == year and sample.excess is not None
             ]
-            cells.append(f"{np.mean([r.excess for r in rows]):>11.2f}" if rows else f"{'—':>12}")
+            cells.append(f"{np.mean([r.excess for r in rows]):>11.3f}" if rows else f"{'—':>12}")
         total_days = sum(len(v) for v in dayset.values())
         print(f"{result.strategy:<24}" + "".join(cells) + f"{total_days:>9}")
 

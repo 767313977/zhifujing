@@ -279,6 +279,28 @@ def test_paired_reproducible_across_status_mix():
     assert first["mean"] == second["mean"]
 
 
+def test_daily_mean_includes_delayed_exit():
+    """逐日对账：延迟退出必须进入日度均值，且与「仅 ok」的均值不同。"""
+    from app.services.research_backtest import Sample
+
+    day = date(2024, 1, 2)
+    samples = [
+        Sample(code="000001", signal_date=day, horizon=5, status="ok", gross=1.0),
+        Sample(code="000002", signal_date=day, horizon=5, status="ok", gross=1.0),
+        Sample(
+            code="000003", signal_date=day, horizon=5, status="exit_limit_down",
+            gross=-2.0, exit_delay=1,
+        ),
+    ]
+    from types import SimpleNamespace
+
+    result = SimpleNamespace(samples=samples, strategy="X")
+    entry_mean = br._daily_entry_mean(result)[day]
+    ok_only = sum(s.gross for s in br._ok_samples(result, 5)) / 2
+    assert entry_mean == pytest.approx((1.0 + 1.0 - 2.0) / 3)
+    assert entry_mean != ok_only
+
+
 def test_module_does_not_import_main_session():
     """脚本不得持有主库连接入口（只能通过显式传入的只读 engine）。"""
     assert not hasattr(br, "session_scope")
