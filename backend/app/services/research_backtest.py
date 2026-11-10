@@ -196,13 +196,19 @@ def load_matrix(
     `codes=None` 表示全市场（基准需要）；否则只加载指定代码。交易日轴优先用
     `trade_calendar`，缺日历时退化为行情自身日期并集并告警。
     """
-    calendar = list(
-        session.scalars(
-            select(TradeCalendar.trade_date)
-            .where(TradeCalendar.trade_date >= start, TradeCalendar.trade_date <= end)
-            .order_by(TradeCalendar.trade_date)
+    calendar: list[date] = []
+    try:
+        calendar = list(
+            session.scalars(
+                select(TradeCalendar.trade_date)
+                .where(TradeCalendar.trade_date >= start, TradeCalendar.trade_date <= end)
+                .order_by(TradeCalendar.trade_date)
+            )
         )
-    )
+    except Exception:  # noqa: BLE001
+        # `history.db` 只有 stock_daily 一张表，没有交易日历 → 退化到行情日期并集
+        session.rollback()
+        calendar = []
     if not calendar:
         calendar = sorted(
             set(
@@ -836,7 +842,12 @@ def _regime_breakdown(session: Session, samples: list[Sample]) -> dict[str, Hori
         return {}
     start = min(s.signal_date for s in samples)
     end = max(s.signal_date for s in samples)
-    regimes = _regime_map(session, start, end)
+    try:
+        regimes = _regime_map(session, start, end)
+    except Exception:  # noqa: BLE001
+        # `history.db` 没有 index_daily：环境分层跳过，核心统计不受影响
+        session.rollback()
+        return {}
     grouped: dict[str, list[Sample]] = defaultdict(list)
     for sample in samples:
         grouped[regimes.get(sample.signal_date, "未知")].append(sample)
