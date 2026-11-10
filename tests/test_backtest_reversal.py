@@ -192,6 +192,93 @@ def test_engine_is_readonly():
         engine.dispose()
 
 
+# ---- 8. 退出状态与收益口径 ------------------------------------------------
+
+def _fake_result(statuses, strategy="X"):
+    """用真实 `Sample` 构造一个最小结果对象（不跑引擎）。"""
+    from types import SimpleNamespace
+
+    from app.services.research_backtest import Sample
+
+    samples = []
+    for index, status in enumerate(statuses):
+        gross = 1.0 if status in ("ok", "exit_limit_down") else None
+        samples.append(
+            Sample(
+                code=f"{index:06d}",
+                signal_date=date(2024, 1, 2) + timedelta(days=index),
+                horizon=5,
+                status=status,
+                gross=gross,
+                benchmark=0.5 if gross is not None else None,
+                exit_delay=1 if status == "exit_limit_down" else 0,
+            )
+        )
+    return SimpleNamespace(samples=samples, strategy=strategy)
+
+
+def test_state_groups_cover_all_samples():
+    result = _fake_result(["ok", "ok", "exit_limit_down", "no_exit", "pending"])
+    groups = br._state_groups(result, 5)
+    assert groups == {"ok": 2, "exit_limit_down": 1, "no_exit": 1, "pending": 1}
+    assert sum(groups.values()) == len(result.samples)
+
+
+def test_entry_samples_include_delayed_exit_only():
+    result = _fake_result(["ok", "exit_limit_down", "no_exit", "pending"])
+    entry = br._entry_samples(result, 5)
+    assert len(entry) == 2
+    assert {s.status for s in entry} == {"ok", "exit_limit_down"}
+    assert len(br._unresolved_samples(result, 5)) == 1
+
+
+def test_cond_is_subset_of_entry():
+    """条件收益（ok）的样本必须是全部已入场样本的子集。"""
+    result = _fake_result(["ok", "ok", "exit_limit_down"])
+    assert len(br._ok_samples(result, 5)) <= len(br._entry_samples(result, 5))
+
+
+def test_three_excess_definitions_differ():
+    """毛超额、双方净超额、净减毛基准是三个不同口径，不能混用。"""
+    from app.services.research_backtest import Sample
+
+    sample = Sample(
+        code="000001", signal_date=date(2024, 1, 2), horizon=5,
+        status="ok", gross=2.0, benchmark=1.0,
+    )
+    gross_excess = sample.gross - sample.benchmark
+    both_net = br._net(sample.gross, 30.0) - br._net(sample.benchmark, 30.0)
+    net_minus_gross_bench = br._net(sample.gross, 30.0) - sample.benchmark
+    assert gross_excess == pytest.approx(1.0)
+    # 双方都扣费 → 差额只是被成本比例缩小
+    assert both_net == pytest.approx(gross_excess * 0.997, abs=1e-9)
+    # 只扣策略、基准不扣 → 比双方净超额更小（差异 = 基准那笔成本）
+    assert net_minus_gross_bench < both_net < gross_excess
+    assert net_minus_gross_bench == pytest.approx(
+        both_net + (br._net(sample.benchmark, 30.0) - sample.benchmark), abs=1e-9
+    )
+
+
+def test_stress_is_below_entry_mean():
+    """未解决样本按固定亏损计入后，均值必须低于只算已入场样本。"""
+    result = _fake_result(["ok", "ok", "no_exit", "no_exit"])
+    entry = br._entry_samples(result, 5)
+    unresolved = br._unresolved_samples(result, 5)
+    base = sum(s.gross for s in entry)
+    plain = base / len(entry)
+    stress = (base - 10.0 * len(unresolved)) / (len(entry) + len(unresolved))
+    assert stress < plain
+
+
+def test_paired_reproducible_across_status_mix():
+    """同一输入在不同退出状态混合下，配对统计必须可复现。"""
+    result = _fake_result(["ok", "exit_limit_down"])
+    first = br._paired(br._daily_entry_mean(result), br._daily_entry_mean(result))
+    second = br._paired(br._daily_entry_mean(result), br._daily_entry_mean(result))
+    assert first["days"] == second["days"] == 2
+    assert first["mean"] == second["mean"]
+
+
 def test_module_does_not_import_main_session():
     """脚本不得持有主库连接入口（只能通过显式传入的只读 engine）。"""
     assert not hasattr(br, "session_scope")

@@ -1,4 +1,4 @@
-"""低吸反转策略的实盘可行性研究（信号层）。
+﻿"""低吸反转策略的实盘可行性研究（信号层）。
 
 ## 只回答一个问题
 
@@ -304,11 +304,56 @@ def _net(gross: float, cost: float) -> float:
 
 
 def _ok_samples(result, horizon: int) -> list:
+    """正常完成（`ok`）：入场与退出都按预定交易日成交。"""
     return [
         sample
         for sample in result.samples
         if sample.horizon == horizon and sample.status == "ok" and sample.gross is not None
     ]
+
+
+def _entry_samples(result, horizon: int) -> list:
+    """**已入场且有可确定退出价**：`ok` + `exit_limit_down`。
+
+    `exit_limit_down` 的 `exit_price/gross` 是延迟到首个可卖日后的真实价格，
+    不是「理论上卖不掉」的跌停价 —— 因此可以计入收益，只是不算预定 5 日退出。
+    """
+    return [
+        sample
+        for sample in result.samples
+        if sample.horizon == horizon
+        and sample.status in ("ok", "exit_limit_down")
+        and sample.gross is not None
+    ]
+
+
+def _unresolved_samples(result, horizon: int) -> list:
+    """入场成功但**始终没有可确定退出价**（`no_exit`）。`pending` 不算失败，单独统计。"""
+    return [
+        sample
+        for sample in result.samples
+        if sample.horizon == horizon and sample.status == "no_exit"
+    ]
+
+
+def _state_groups(result, horizon: int) -> dict[str, int]:
+    """互斥终态分组（按引擎真实 `STATUSES` 归类，名称不改写）。"""
+    groups: dict[str, int] = defaultdict(int)
+    for sample in result.samples:
+        if sample.horizon != horizon:
+            continue
+        groups[sample.status] += 1
+    return dict(groups)
+
+
+def _entry_delayed_count(result, horizon: int) -> int:
+    return sum(
+        1
+        for sample in result.samples
+        if sample.horizon == horizon
+        and sample.status in ("ok", "exit_limit_down")
+        and sample.exit_delay > 0
+    )
 
 
 def _net_excess(samples, cost: float) -> float | None:
@@ -365,7 +410,7 @@ def _print_summary(results: dict, costs: list[float]) -> None:
     header = f"{'策略':<24}{'可成交':>8}{'5日毛':>9}" + "".join(f"{int(c):>8}" for c in costs)
     header += f"{'毛超额':>9}{'净超额30':>10}{'中位':>9}{'胜率':>8}{'MAE':>9}"
     print()
-    print("五组策略 · 5 日持有 · D+1 开盘入场 · 成本列为净收益(%)")
+    print("五组策略 · 5 日持有 · D+1 开盘入场 · 毛/净均为**仅正常完成样本**(cond) · 成本列为净收益(%)")
     print("-" * len(header))
     print(header)
     print("-" * len(header))
@@ -391,26 +436,85 @@ def _print_summary(results: dict, costs: list[float]) -> None:
 
 def _print_status(results: dict) -> None:
     print()
-    print("样本状态对账（5 日）")
-    print("-" * 96)
+    print("互斥终态计数（5 日；名称直接取引擎 `STATUSES`，不改写）")
+    print("-" * 108)
+    keys = ("ok", "exit_limit_down", "no_exit", "pending", "unbuyable",
+            "suspended", "no_quote", "price_invalid", "new_listing")
+    print(f"{'策略':<24}" + "".join(f"{k:>15}" for k in keys) + f"{'合计':>9}")
+    for result in results.values():
+        groups = _state_groups(result, 5)
+        total = sum(groups.values())
+        print(
+            f"{result.strategy:<24}"
+            + "".join(f"{groups.get(k, 0):>15}" for k in keys)
+            + f"{total:>9}"
+        )
+    print("不变量：ok+exit_limit_down+no_exit+pending+其余 = 全部信号；")
+    print("        exit_limit_down 是「入场成功、退出延迟到首个可卖日」，已有真实退出价；")
+    print("        no_exit 是「入场成功但延迟上限内仍无有效价格」，pending 是「期末未到退出日」。")
+
+
+def _print_exit_sensitivity(results: dict) -> None:
+    print()
+    print("退出状态敏感性（5 日；cond = 仅正常完成，all = 含延迟退出，压力 = 未解决按固定亏损计）")
+    print("-" * 118)
     print(
-        f"{'策略':<24}{'observed':>9}{'entry_filled':>13}{'entry_blocked':>14}"
-        f"{'exit_completed':>15}{'exit_delayed':>13}{'pending':>9}{'no_quote':>9}"
+        f"{'策略':<24}{'ok_n':>8}{'+延迟_n':>10}{'cond毛':>9}{'all毛':>9}"
+        f"{'all净30':>10}{'未解决':>9}{'占比':>8}{'压力-10%':>10}{'压力-20%':>10}"
     )
     for result in results.values():
-        stat = result.horizons.get(5)
-        if stat is None:
+        ok = _ok_samples(result, 5)
+        entry = _entry_samples(result, 5)
+        unresolved = _unresolved_samples(result, 5)
+        if not entry:
             continue
-        counts = stat.counts
-        observed = sum(counts.values())
-        blocked = counts.get("entry_limit_up", 0)
+        cond_gross = float(np.mean([s.gross for s in ok])) if ok else float("nan")
+        all_gross = float(np.mean([s.gross for s in entry]))
+        all_net = float(np.mean([_net(s.gross, 30.0) for s in entry]))
+        base = sum(s.gross for s in entry)
+        n_unres = len(unresolved)
+        share = n_unres / (len(entry) + n_unres) * 100 if n_unres else 0.0
+        stress = []
+        for loss in (10.0, 20.0):
+            total = len(entry) + n_unres
+            stress.append((base - loss * n_unres) / total if total else float("nan"))
         print(
-            f"{result.strategy:<24}{observed:>9}{stat.execution_samples:>13}{blocked:>14}"
-            f"{counts.get('ok', 0):>15}{counts.get('exit_limit_down', 0):>13}"
-            f"{counts.get('pending', 0):>9}{counts.get('no_quote', 0):>9}"
+            f"{result.strategy:<24}{len(ok):>8}{len(entry):>10}"
+            f"{cond_gross:>8.2f}%{all_gross:>8.2f}%{all_net:>9.2f}%"
+            f"{n_unres:>9}{share:>7.1f}%" + "".join(f"{v:>9.2f}%" for v in stress)
         )
-    print("不变式：observed = ok + exit_limit_down + pending + no_quote + entry_limit_up；"
-          "execution_samples = ok（= exit_completed）")
+    print("压力两列**不是历史成交结果**，只是「若未解决样本亏 10% / 20%」的敏感性。")
+
+
+def _print_pairs(results: dict) -> None:
+    pairs = [("C0", "C1"), ("C0", "C2"), ("L1_50", "L2_50"), ("L1_25", "L2_25")]
+    print()
+    print("同信号日配对差（5 日毛收益；人群 = 已入场且有退出价；HAC lag=4）")
+    print("-" * 108)
+    print(
+        f"{'比较':<16}{'共同日':>8}{'A样本':>8}{'B样本':>8}"
+        f"{'均值差':>10}{'t':>8}{'95%CI低':>10}{'95%CI高':>10}"
+    )
+    for left, right in pairs:
+        if left not in results or right not in results:
+            continue
+        a, b = results[left], results[right]
+        stat = _paired(_daily_entry_mean(a), _daily_entry_mean(b))
+        if not stat["days"]:
+            print(f"{left + ' - ' + right:<16}{0:>8}")
+            continue
+        print(
+            f"{left + ' - ' + right:<16}{stat['days']:>8}"
+            f"{len(_entry_samples(a, 5)):>8}{len(_entry_samples(b, 5)):>8}"
+            f"{stat['mean']:>9.3f}{stat['t']:>8.2f}{stat['low']:>10.3f}{stat['high']:>10.3f}"
+        )
+
+
+def _daily_entry_mean(result, horizon: int = 5) -> dict[date, float]:
+    acc: dict[date, list[float]] = defaultdict(list)
+    for sample in _entry_samples(result, horizon):
+        acc[sample.signal_date].append(sample.gross)
+    return {day: float(np.mean(values)) for day, values in acc.items()}
 
 
 def _print_years(results: dict) -> None:
@@ -423,12 +527,12 @@ def _print_years(results: dict) -> None:
     for result in results.values():
         cells = []
         dayset: dict[int, set] = defaultdict(set)
-        for sample in _ok_samples(result, 5):
+        for sample in _entry_samples(result, 5):
             dayset[sample.signal_date.year].add(sample.signal_date)
         for year in years:
             rows = [
                 sample
-                for sample in _ok_samples(result, 5)
+                for sample in _entry_samples(result, 5)
                 if sample.signal_date.year == year and sample.excess is not None
             ]
             cells.append(f"{np.mean([r.excess for r in rows]):>11.2f}" if rows else f"{'—':>12}")
@@ -518,6 +622,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"研究区间 {start} ~ {end}；每日 Top {args.top}；持有 {list(HORIZONS)} 日")
     _print_summary(results, costs)
     _print_status(results)
+    _print_exit_sensitivity(results)
     if args.detail:
         _print_years(results)
         _print_pairs(results)
