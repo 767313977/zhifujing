@@ -862,9 +862,18 @@ FILTER_CHECKS["trend_template"] = _filter_trend_template
 
 
 def _filter_context(
-    names: list[str], bars_by_code: dict[str, Bars], all_dates: list[date]
+    names: list[str],
+    bars_by_code: dict[str, Bars],
+    all_dates: list[date],
+    *,
+    rps_bars: dict[str, "_RpsSeries"] | None = None,
 ) -> dict:
-    """过滤条件需要的横截面预计算（**只算被点名的条件**）。"""
+    """过滤条件需要的横截面预计算（**只算被点名的条件**）。
+
+    `rps_bars`：算 RPS 用的**全池**序列。不给时退回 `bars_by_code`（历史行为，分母会
+    随 `--stocks` 抽样变化）。`--history` 下由 `main()` 传入全池序列，保证同一票
+    同一日的 RPS 值与抽样规模无关。
+    """
     ctx: dict = {}
     windows: set[int] = set()
     for name in names:
@@ -872,20 +881,72 @@ def _filter_context(
     if windows:
         # 额外表（RPS 单独回测）固定用 RPS50，只选 rps120_85 时也要补上
         windows.add(50)
-        logger.info("RPS 预计算：窗口 %s", ", ".join(str(w) for w in sorted(windows)))
-        ctx["rps"] = _rps_context(bars_by_code, windows, all_dates)
+        source = rps_bars if rps_bars else bars_by_code
+        logger.info(
+            "RPS 预计算：窗口 %s；分母池 %d 只%s",
+            ", ".join(str(w) for w in sorted(windows)),
+            len(source),
+            "（全池）" if rps_bars else "（研究样本，分母随抽样变化）",
+        )
+        ctx["rps"] = _rps_context(source, windows, all_dates)
     return ctx
 
 
 # ---------------------------------------------------------------- 数据装载
 
 
-def _load_history(engine, codes: list[str], bars: int) -> tuple[date, dict[str, list[dict]]]:
+@dataclass(frozen=True)
+class _RpsSeries:
+    """横截面 RPS 用的最小序列（`Bars` 的 duck-typed 子集：只含 `dates` / `pct_chg`）。
+
+    单独一个类型是为了让「RPS 全池」不依赖形态评价用的 `Bars` —— 后者带 8 列
+    OHLCV，全市场装不进 4 GB 预算。
+    """
+
+    dates: list[date]
+    pct_chg: array
+
+
+def _readonly_engine(db_path: Path):
+    """以 SQLite `mode=ro` 打开研究库：只读、不创建、不回退到其他库。
+
+    统一入口，便于测试断言「打开的是只读连接」以及在库不存在时**不新建文件**。
+    """
+    return create_engine(f"sqlite:///file:{db_path.as_posix()}?mode=ro&uri=true")
+
+
+def _codes_from_history(db_path: Path) -> list[str]:
+    """从 history.db 取该库出现过的全部代码（只读）。
+
+    `--history` 模式的默认股票池来源：避免仅仅为了拿代码去连主库 `stock_universe`。
+
+    ⚠️ 这**不消除**幸存者偏差：`history.db` 本身是按当时的当前池回补的，退市 /
+    未回补的票仍整段缺席。这里只是把「数据层缺失」与「访问层依赖」分开 ——
+    前者只能补数据解决，后者不该由回测脚本隐式承担。
+    """
+    engine = _readonly_engine(db_path)
+    try:
+        with Session(engine) as session:
+            return sorted(session.scalars(select(StockDaily.code).distinct()))
+    finally:
+        engine.dispose()
+
+
+def _load_history(
+    engine,
+    codes: list[str],
+    bars: int,
+    *,
+    overlay_names_db: Path | None = None,
+) -> tuple[date, dict[str, list[dict]]]:
     """从 `history.db` 装载：每只票最近 `bars` 根日线。
 
     窗口**按数据自身的交易日**切，不用交易日历 —— 这个库只有 `stock_daily` 一张表，
     没有日历表（见 backfill_history 的说明）。线上那条 `_load_bars` 走日历是因为
     它要卡 `SCAN_BARS`，回测要的恰恰是「比线上更长」，所以在这里单独实现。
+
+    `overlay_names_db`：**只有显式传入**才去读另一个库覆盖逐日名称。默认 `None`
+    表示本次回测只访问 `history.db` 一个数据源，不隐式连主库、不猜路径。
     """
     with Session(engine) as session:
         dates = list(
@@ -939,41 +1000,113 @@ def _load_history(engine, codes: list[str], bars: int) -> tuple[date, dict[str, 
         if not usable_bar(record):
             continue
         grouped[code].append(record)
-    overridden = _overlay_names_from_main(grouped, start, latest)
-    if overridden:
+
+    if overlay_names_db is not None:
+        overridden = _overlay_names_from_main(
+            grouped, start, latest, db_path=overlay_names_db
+        )
         logger.info(
-            "名称回补：主库（iFinD 每日采集）覆盖 %d 个(票,日) —— 这些行是按当日名称判 ST 的",
-            overridden,
+            "名称覆盖：%s（只读）覆盖 %d 个(票,日) —— 这些行按当日名称判 ST",
+            overlay_names_db, overridden,
+        )
+    else:
+        logger.info(
+            "名称覆盖未启用：ST 判定只用 history.db 自带名称（回补库可能整段写当前名称，"
+            "历史 ST 状态因此可能不准确）"
         )
     return latest, dict(grouped)
 
 
 def _overlay_names_from_main(
-    grouped: dict[str, list[dict]], start: date, end: date
+    grouped: dict[str, list[dict]], start: date, end: date, *, db_path: Path
 ) -> int:
-    """用**主库**的逐日名称覆盖 `history.db` 的名称，返回覆盖的 (票,日) 数。
+    """用**显式指定**的只读库覆盖 `history.db` 的逐日名称，返回覆盖的 (票,日) 数。
 
     为什么需要：`history.db` 是事后回补的，同一只票所有行写的都是**当前**名称 ——
     于是「今天叫 ST 某某」的票，五年前也被当成 ST（逐日判 ST 也救不了）。
-    主库 `stock_daily` 是 iFinD **每天采集**的，最近约 400 个交易日里存的是当天名称，
-    把这段重叠区间覆盖过来，ST 判定在最近一年多至少是真实的；更早那一段仍只能沿用
-    回补名称（报告里已披露）。
+    若另一个库存的是**每天采集**的名称（如主库 `stock_daily` 的最近 400 个交易日），
+    把重叠区间覆盖过来，ST 判定在那一段才是真实的。
 
-    两边的日期都升序，所以按 `(code, trade_date)` 排序后**指针只前进**，
-    不需要再建一份 `{代码: {日期: 下标}}`（那要多占几百 MB）。
+    2026-11-10 整改（B3）：
+    - **不再隐式连接主库**：路径由调用方显式传入，未传就完全不读第二个库；
+    - 只读连接（`mode=ro`），不会创建文件、不会写入、不会回退到其他库；
+    - 指定的库不存在 → 直接退出，不自动创建。
     """
-    with session_scope() as session:
-        result = session.execute(
-            select(StockDaily.code, StockDaily.trade_date, StockDaily.name)
+    if not db_path.is_file():
+        raise SystemExit(
+            f"名称覆盖库不存在：{db_path}。本脚本不会自动创建数据库；"
+            "如不需要逐日名称，请不要传 --overlay-names-db。"
+        )
+    engine = _readonly_engine(db_path)
+    try:
+        with Session(engine) as session:
+            result = session.execute(
+                select(StockDaily.code, StockDaily.trade_date, StockDaily.name)
+                .where(
+                    StockDaily.trade_date >= start,
+                    StockDaily.trade_date <= end,
+                    StockDaily.name.is_not(None),
+                )
+                .order_by(StockDaily.code, StockDaily.trade_date)
+                .execution_options(yield_per=20000)
+            )
+            return _apply_names(grouped, result)
+    finally:
+        engine.dispose()
+
+
+def _load_rps_series(
+    engine, codes: list[str], bars: int
+) -> dict[str, "_RpsSeries"]:
+    """只加载 `(代码, 交易日, 涨跌幅)`，供**横截面 RPS** 使用（只读）。
+
+    为什么要单独加载：RPS 的分母必须是「数据源内当日满足覆盖要求的**全部**股票」，
+    不能随 `--stocks` 抽样变化。而形态评价只需要一部分票。若为算 RPS 把全池都构造成
+    带 OHLCV 的 `Bars`，5108 只 × 1300 根约 400–600 MB；这里只要一列 `pct_chg`
+    与日期，float32 约 25 MB。
+
+    日期对象用共享池去重：638 万个 `date` 若各存一份约 600 MB，共享后只剩 1300 个对象。
+    """
+    with Session(engine) as session:
+        dates = list(
+            session.scalars(
+                select(StockDaily.trade_date)
+                .group_by(StockDaily.trade_date)
+                .order_by(StockDaily.trade_date.desc())
+                .limit(bars)
+            )
+        )
+        if not dates:
+            return {}
+        start = min(dates)
+        latest = max(dates)
+        rows = session.execute(
+            select(StockDaily.code, StockDaily.trade_date, StockDaily.pct_chg)
             .where(
                 StockDaily.trade_date >= start,
-                StockDaily.trade_date <= end,
-                StockDaily.name.is_not(None),
+                StockDaily.trade_date <= latest,
+                StockDaily.code.in_(codes),
+                StockDaily.pct_chg.is_not(None),
             )
             .order_by(StockDaily.code, StockDaily.trade_date)
-            .execution_options(yield_per=20000)
         )
-        return _apply_names(grouped, result)
+
+        pool: dict[date, date] = {}
+        grouped: dict[str, tuple[list[date], array]] = defaultdict(
+            lambda: ([], array("f"))
+        )
+        for code, day, pct in rows:
+            canonical = pool.get(day)
+            if canonical is None:
+                pool[day] = day
+                canonical = day
+            days_list, values = grouped[code]
+            days_list.append(canonical)
+            values.append(float(pct))
+
+    return {
+        code: _RpsSeries(days, values) for code, (days, values) in grouped.items()
+    }
 
 
 def _apply_names(grouped: dict[str, list[dict]], rows) -> int:
@@ -1317,7 +1450,7 @@ def _resolve_targets(name: str) -> dict[str, dict]:
     return targets
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="形态回测（调生产函数，与线上判定逐字一致）")
     parser.add_argument(
         "--pattern",
@@ -1348,6 +1481,26 @@ def main() -> int:
             "总市值 2000 亿那道**无法复现**（库里没有历史市值），会单独披露")
     )
     parser.add_argument("--history", action="store_true", help="用长历史库 history.db")
+    parser.add_argument(
+        "--codes-source",
+        choices=("history", "main"),
+        default=None,
+        help=(
+            "股票池来源。history（--history 时的默认）：只用 history.db 内出现过的代码，"
+            "不连主库；main：读主库 stock_universe 当前池，带当前池前视与幸存者偏差，"
+            "仅用于与生产口径对照"
+        ),
+    )
+    parser.add_argument(
+        "--overlay-names-db",
+        default="",
+        metavar="PATH",
+        help=(
+            "可选：用这个**已存在**的 SQLite 库覆盖逐日股票名称（只读连接、不创建文件）。"
+            "不指定时本次回测只访问 history.db 一个数据源，不隐式连主库；"
+            "历史 ST 判定只能用回补库自带名称，报告中会标记可能为静态名称。"
+        ),
+    )
     parser.add_argument(
         "--candle-split",
         action="store_true",
@@ -1418,7 +1571,7 @@ def main() -> int:
     parser.add_argument(
         "--until", default="", help="只统计该日期（含，YYYY-MM-DD）之前的信号"
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     since = date.fromisoformat(args.since) if args.since else None
     until = date.fromisoformat(args.until) if args.until else None
@@ -1478,9 +1631,25 @@ def main() -> int:
     if args.skip_unbuyable:
         logger.info("剔除买不到的信号：入场价 = 涨停价（竞价即封 / 一字板），基准表同口径")
 
-    from app.jobs.collect_universe import load_codes
+    # `--history` 模式下股票池默认取自 history.db 自身，**不连主库**。
+    # 只有显式 `--codes-source main` 才读主库 stock_universe（那是当前池快照，
+    # 带当前池前视与幸存者偏差，仅用于与生产口径对照）。
+    codes_source = args.codes_source or ("history" if args.history else "main")
+    if codes_source == "history":
+        if not HISTORY_DB.is_file():
+            raise SystemExit(f"没有 {HISTORY_DB}，先跑 scripts/backfill_history.py")
+        codes = _codes_from_history(HISTORY_DB)
+        logger.info(
+            "股票池：history.db 内 %d 只（只读；未读取主库 stock_universe）", len(codes)
+        )
+    else:
+        from app.jobs.collect_universe import load_codes
 
-    codes = load_codes()
+        codes = load_codes()
+        logger.info(
+            "股票池：主库 stock_universe 当前池 %d 只 —— 存在当前池前视与幸存者偏差，"
+            "数字只能作生产口径对照，不能当无偏样本外结论", len(codes),
+        )
     if args.board == "wudao":
         codes = [code for code in codes if is_wudao_board(code)]
         logger.info("只扫创业板 + 科创板：%d 只（与悟道六池同板块口径）", len(codes))
@@ -1494,18 +1663,34 @@ def main() -> int:
             "--board all 是**研究口径**（含北交所、不限形态），数字不能当生产效果读；"
             "要与生产对照请加 --board prod --production-parity"
         )
-    if args.stocks:
-        codes = codes[: args.stocks]
-    if not codes:
+    # 抽样只影响「形态评价」的股票集合，**不改变 RPS 的横截面分母**。
+    # `universe_codes` 是数据源内该板块口径下的全部票；`research_codes` 才是本次
+    # 实际做形态判定的票。`--stocks` 不允许改变同一票同一日的 RPS 值。
+    universe_codes = list(codes)
+    research_codes = codes[: args.stocks] if args.stocks else list(codes)
+    if not research_codes:
         raise SystemExit("股票池为空，先建池")
+    if args.stocks:
+        logger.info(
+            "抽样：--stocks %d → 形态评价 %d 只；RPS 横截面分母仍用全池 %d 只",
+            args.stocks, len(research_codes), len(universe_codes),
+        )
 
     if args.history:
         if not HISTORY_DB.is_file():
             raise SystemExit(f"没有 {HISTORY_DB}，先跑 scripts/backfill_history.py")
-        engine = create_engine(f"sqlite:///{HISTORY_DB.as_posix()}")
-        latest, grouped = _load_history(engine, codes, args.bars)
-        logger.info("数据源 history.db（窗口 %d 根），截至 %s", args.bars, latest)
+        # 只读连接：研究库不允许被本脚本写入，也不允许因路径不存在而新建空库
+        engine = _readonly_engine(HISTORY_DB)
+        overlay_db = Path(args.overlay_names_db) if args.overlay_names_db else None
+        latest, grouped = _load_history(
+            engine, research_codes, args.bars, overlay_names_db=overlay_db
+        )
+        logger.info("数据源 history.db（只读，窗口 %d 根），截至 %s", args.bars, latest)
     else:
+        if args.overlay_names_db:
+            logger.warning(
+                "--overlay-names-db 只对 --history 生效，本次忽略（数据来自主库，名称已是逐日采集）"
+            )
         with session_scope() as session:
             # 截止日必须取 **stock_daily 的最大日期**，不能取交易日历的最大日期 ——
             # 日历表会预置到年底，拿它当截止日会让 `_load_bars` 的 260 日窗口整体后移，
@@ -1514,10 +1699,10 @@ def main() -> int:
             latest = session.scalar(select(func.max(StockDaily.trade_date)))
         if latest is None:
             raise SystemExit("stock_daily 是空的，先跑 collect_kline")
-        grouped = _load_bars(latest, codes)
+        grouped = _load_bars(latest, research_codes)
 
     # 数据缺口要单独说：没有日线的票**不是**「没有信号」，而是这批票根本没进回测。
-    missing = set(codes) - set(grouped)
+    missing = set(research_codes) - set(grouped)
     if missing:
         logger.warning(
             "%d 只票在库/窗口里没有任何可用日线（数据缺口，不是「没有信号」）：%s%s",
@@ -1568,6 +1753,24 @@ def main() -> int:
         WUDAO_MIN_BARS,
     )
 
+    # ---- RPS 横截面：分母必须是**全池**，不能随 --stocks 抽样变化 ----
+    # 只加载 pct_chg 一列（见 `_load_rps_series` 的内存说明）。
+    needs_rps = any(name in RPS_CONDITIONS for name in filter_names)
+    rps_series: dict[str, _RpsSeries] | None = None
+    if needs_rps:
+        if args.history:
+            rps_series = _load_rps_series(engine, universe_codes, args.bars)
+        else:
+            from app.db import engine as main_engine
+
+            rps_series = _load_rps_series(main_engine, universe_codes, args.bars)
+        logger.info(
+            "RPS 横截面分母：全池 %d 只（形态评价 %d 只；两者相互独立）",
+            len(rps_series), len(bars_by_code),
+        )
+        if not rps_series:
+            rps_series = None
+
     logger.info("目标形态 %d 个：%s", len(targets), ", ".join(targets))
     if _DRAFT_KEYS & set(targets):
         logger.info(
@@ -1617,13 +1820,21 @@ def main() -> int:
     # 把「第 h 个交易日」和「第 h 行」区分开。
     # 轴取 `bench_bars`（基准池 ⊇ 样本池）：基准里可能有样本池没有的票/日期，
     # 轴缺了它们 `global_pos[...]` 会 KeyError。
-    all_dates = sorted({day for bars in bench_bars.values() for day in bars.dates})
+    # 启用横截面 RPS 时改用**全池**序列的日期并集：RPS 的窗口按交易日推进，
+    # 若轴只覆盖研究子集的日期，全池排名会被算在错误的交易日位置上。
+    if rps_series:
+        all_dates = sorted({day for series in rps_series.values() for day in series.dates})
+    else:
+        all_dates = sorted({day for bars in bench_bars.values() for day in bars.dates})
     global_pos = {day: i for i, day in enumerate(all_dates)}
     logger.info("交易日轴：%d 个交易日（%s ~ %s）", len(all_dates), all_dates[0], all_dates[-1])
 
     # 过滤条件的横截面预计算要在交易日轴之后做（RPS / 行业涨幅都按「日」组织）
     if filter_names:
-        filter_ctx = _filter_context(filter_names, bars_by_code, all_dates)
+        # RPS 类过滤用全池序列算横截面；其余条件（ma60_up 等）仍用形态评价用的 bars。
+        filter_ctx = _filter_context(
+            filter_names, bars_by_code, all_dates, rps_bars=rps_series
+        )
 
     # 基准：**按实际入场日**聚合的横截面平均（策略组哪天入场，就比哪一天入场的基准）。
     #
@@ -2473,14 +2684,30 @@ def _report_data_limits(args, grouped: dict[str, list[dict]], st_stats: dict) ->
         print(
             f"   常量覆盖（只在本进程生效，backend/ 未改）：{', '.join(args.override)}"
         )
+    if args.history:
+        print(
+            f"   数据源：history.db（只读）"
+            f"{'；名称覆盖=' + args.overlay_names_db + '（只读）' if args.overlay_names_db else '；名称覆盖=未启用（未访问其他数据库）'}"
+        )
+        if not args.overlay_names_db:
+            print(
+                "   ⚠️ 历史 ST 状态：ST_STATUS_PARTIAL —— 回补库可能把当前名称写满整段历史，"
+                "无法逐日还原；本报告不据此声称严格无偏差。"
+            )
     bench_size = sum(1 for records in grouped.values() if len(records) >= WUDAO_MIN_BARS)
     print(
         f"   预热门槛：按形态取 max({WUDAO_MIN_BARS}, 形态自身守卫)（`patterns.PATTERN_MIN_BARS`）；"
         f"基准池 = 库里有 ≥{WUDAO_MIN_BARS} 根的 {bench_size} 只票，"
         "**与本次跑哪些形态无关**（单跑与组合跑的基准票池相同）"
     )
-    print("1) 幸存者偏差：股票池来自 load_codes() —— **当前**在池的票。退市 / 出池的票整段")
-    print("   缺席，样本与基准同向偏乐观；未按历史交易日的真实上市状态还原股票池。")
+    _source = getattr(args, "codes_source", None) or (
+        "history" if getattr(args, "history", False) else "main"
+    )
+    if _source == "main":
+        print("1) 幸存者偏差：股票池来自主库 `stock_universe` 的**当前**快照。退市 / 出池的票整段")
+    else:
+        print("1) 幸存者偏差：股票池取自 history.db 内出现过的票（回补时按当时的当前池抓取）。")
+    print("   退市 / 未回补的票仍整段缺席，样本与基准同向偏乐观；未按历史交易日还原真实上市状态。")
     print("2) 总市值 2000 亿过滤**未复现**：库里没有历史市值（stock_daily 无 total_mv，")
     print("   stock_universe 只有当前快照）。不用今天的市值代替历史市值，也不伪造。")
     over = _over_cap_now(grouped)
@@ -2495,8 +2722,16 @@ def _report_data_limits(args, grouped: dict[str, list[dict]], st_stats: dict) ->
     )
     print("   无法区分「一直 ST」与「后来才 ST」；名称缺失的行按非 ST 处理。")
     print(f"   名称缺失 {st_stats['no_name']} 行。")
-    print("   最近一段（与主库重叠的约 400 个交易日）已用**主库逐日名称**覆盖，")
-    print("   日志里的「名称回补」就是覆盖行数；更早那一段仍只能沿用回补名称。")
+    if getattr(args, "overlay_names_db", ""):
+        print(
+            f"   已用 {args.overlay_names_db} 的逐日名称覆盖重叠区间（只读）；"
+            "更早那一段仍沿用回补名称。"
+        )
+    else:
+        print(
+            "   未启用名称覆盖（--overlay-names-db）：全部区间沿用回补库名称，"
+            "历史 ST 状态可能整体失真，标 ST_STATUS_PARTIAL。"
+        )
     print("4) 成交假设：入场用当日开盘价、退出用收盘价，**未计**佣金 / 印花税 / 滑点 /")
     print("   冲击成本；涨停买不到只在 --skip-unbuyable 时剔除，跌停卖不出未建模。")
     print("5) 去重：同一只票 20 个交易日内的重复信号只留第一个（只是独立样本的近似）。")
