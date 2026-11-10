@@ -870,6 +870,14 @@ export default function Pools() {
             「双高 × 突破形态」只在近一年样本有效（10 日超额 +3~4%），5 年长历史全部为负，
             所以默认按 RPS250 排、双高只当参考视图；回踩类形态别叠 RPS。
           </p>
+          {rps && rps.selection_scope === 'top_n' && (
+            <div className="border-b border-line-soft bg-amber-500/5 px-4 py-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+              ⓘ 当前为 <span className="num">top-{rps.selection_cap ?? '?'}</span> 预截断口径：
+              突破形态/趋势模板这类昂贵过滤只对强度前 {rps.selection_cap} 只股票施加，
+              最终入选 {rps.rows.length} / 评估 {rps.evaluated_count} 只。
+              对突破形态感兴趣可以降低 limit 到 100 以内或关闭「只看突破」看全市场视图。
+            </div>
+          )}
           {(rpsTrack || rpsTrackFactor) && (
             <div className="border-b border-line-soft px-4 py-2 text-[12px] text-fg-dim">
               <button
@@ -1054,6 +1062,35 @@ export default function Pools() {
                         )}
                       </td>
                       <td className="!text-left text-fg-muted">{row.industry ?? '—'}</td>
+                      <td className="!text-left text-[11px]">
+                        {row.reasons && row.reasons.length > 0 ? (
+                          <details className="group inline-block">
+                            <summary className="cursor-pointer select-none rounded px-1 text-fg-dim hover:text-fg">
+                              原因 ({row.reasons.length})
+                            </summary>
+                            <div className="absolute z-10 mt-1 w-72 rounded border border-line bg-bg p-2 text-[11px] leading-relaxed shadow-lg">
+                              {row.reasons.map((r, i) => (
+                                <div key={i} className="flex justify-between gap-2 border-b border-line-soft py-0.5 last:border-b-0">
+                                  <span>{r.label}</span>
+                                  <span className="num">
+                                    {typeof r.value === 'number' ? fmtNum(r.value, 1) : (r.value ?? '—')}
+                                    {typeof r.threshold === 'number' && (
+                                      <span className="text-fg-dim"> / {fmtNum(r.threshold, 1)}</span>
+                                    )}
+                                    {typeof r.passed === 'boolean' && (
+                                      <span className={r.passed ? 'ml-1 text-up' : 'ml-1 text-down'}>
+                                        {r.passed ? '✓' : '✗'}
+                                      </span>
+                                    )}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        ) : (
+                          <span className="text-fg-dim">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

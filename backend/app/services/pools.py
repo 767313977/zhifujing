@@ -73,6 +73,8 @@ class RpsRow:
     industry: str | None = None
     #: 量价因子分（0~100，仅 `order="factor"` 时计算）
     factor_score: float | None = None
+    #: 入选原因（可解释性，任务书 §5.4）：每项一个 dict，只给事实，不给结论
+    reasons: list[dict] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +83,14 @@ class RpsBoard:
     rows: list[RpsRow]
     #: 返回行里各**一级行业**的只数，取前 5
     industry_top: list[tuple[str, int]] = field(default_factory=list)
+    #: 本轮候选评估口径（任务书 §3.3）
+    #: - "full_market" = 对全市场候选完整筛选
+    #: - "top_n" = 只对强度前 N 只施加昂贵过滤（趋势模板/突破形态）
+    selection_scope: str = "full_market"
+    #: `top_n` 模式下的 N 值（`full_market` 时为 None）
+    selection_cap: int | None = None
+    #: 实际进入最终截断前的候选数（用于"前300只满足了XX，但全市场有500只符合"的说明）
+    evaluated_count: int | None = None
 
 
 #: 「双高」档：RPS50 ≥ 90 且 RPS120 ≥ 85 —— 2026-10-19 实验里唯一站得住的组合，
@@ -179,6 +189,12 @@ def rps_board(
             RpsDaily.rps120 >= RPS_DUAL_120,
         ).order_by((RpsDaily.rps50 + RpsDaily.rps120).desc())
     elif mode == "line_red":
+        # SQLite 多参数 func.max 遇到任意 NULL 会返回 NULL → 用 coalesce 把 NULL 当 -1
+        # 排到最后；哨兵值 -1 不会被写回数据库也不会显示给用户。
+        _c50 = func.coalesce(RpsDaily.rps50, -1.0)
+        _c120 = func.coalesce(RpsDaily.rps120, -1.0)
+        _c250 = func.coalesce(RpsDaily.rps250, -1.0)
+        valid_rps_max = func.max(_c50, _c120, _c250)
         statement = statement.where(
             or_(
                 RpsDaily.rps50 >= RPS_LINE_RED,
@@ -186,7 +202,8 @@ def rps_board(
                 RpsDaily.rps250 >= RPS_LINE_RED,
             )
         ).order_by(
-            func.max(RpsDaily.rps50, RpsDaily.rps120, RpsDaily.rps250).desc()
+            valid_rps_max.desc(),
+            RpsDaily.code.asc(),
         )
     elif mode == "all":
         # 现状口径：两档都要有值、都 ≥ min_rps，按 250 日分位降序
@@ -210,7 +227,7 @@ def rps_board(
         )
     records = session.execute(statement.limit(cap)).all()
     if not records:
-        return RpsBoard(trade_date=target, rows=[])
+        return RpsBoard(trade_date=target, rows=[], selection_scope="full_market")
 
     codes = [row[0] for row in records]
     hits = _breakout_hits(session, target, codes)
@@ -230,8 +247,11 @@ def rps_board(
             rps120,
             rps250,
         ) = record
-        if breakout_only and not hits.get(code):
+        row_hits = hits.get(code, [])
+        if breakout_only and not row_hits:
             continue
+        reasons = _build_rps_reasons(mode, breakout_only, trend_template,
+                                      rps50, rps120, rps250, row_hits, min_rps)
         rows.append(
             RpsRow(
                 code=code,
@@ -244,9 +264,10 @@ def rps_board(
                 rps50=rps50,
                 rps120=rps120,
                 rps250=rps250,
-                hits=hits.get(code, []),
+                hits=row_hits,
                 tags=_rps_tags(rps50, rps120, rps250),
                 industry=industry.split("-")[-1] if industry else None,
+                reasons=reasons,
             )
         )
         if len(rows) >= limit and not trend_template and order != "factor":
@@ -277,11 +298,90 @@ def rps_board(
             replace(row, off_high_pct=off_high.get(row.code)) for row in rows
         ]
 
+    # ---- 评估口径元数据（任务书 §3.3） ----
+    # factor 排序要全池、纯强度排序也没昂贵过滤 → full_market
+    # breakout_only / trend_template / 两者同时开 → top_n（cap = max(limit*3, 300)）
+    selection_scope = (
+        "top_n" if (breakout_only or trend_template) and order != "factor"
+        else "full_market"
+    )
+    selection_cap = cap if selection_scope == "top_n" else None
+    evaluated_count = len(records) if selection_scope == "top_n" else None
+
     return RpsBoard(
         trade_date=target,
         rows=rows,
         industry_top=_industry_top(session, [row.code for row in rows]),
+        selection_scope=selection_scope,
+        selection_cap=selection_cap,
+        evaluated_count=evaluated_count,
     )
+
+
+def _build_rps_reasons(
+    mode: str,
+    breakout_only: bool,
+    trend_template: bool,
+    rps50: float | None,
+    rps120: float | None,
+    rps250: float | None,
+    hits: list[str],
+    min_rps: float,
+) -> list[dict]:
+    """构造入选原因列表（任务书 §5.4）。
+
+    每项一个 dict，只陈述事实（指标值 / 阈值 / 是否通过），**不自动生成"建议买入"**
+    之类的结论。前端展示时只做 ✓ / ✗ 勾和数值。
+    """
+    reasons: list[dict] = []
+
+    # RPS 档位
+    if mode == "dual":
+        passed_50 = rps50 is not None and rps50 >= RPS_DUAL_50
+        passed_120 = rps120 is not None and rps120 >= RPS_DUAL_120
+        if rps50 is not None:
+            reasons.append({
+                "key": "rps50", "label": "RPS50",
+                "value": rps50, "threshold": RPS_DUAL_50, "passed": passed_50,
+            })
+        if rps120 is not None:
+            reasons.append({
+                "key": "rps120", "label": "RPS120",
+                "value": rps120, "threshold": RPS_DUAL_120, "passed": passed_120,
+            })
+    elif mode == "line_red":
+        for value, key, label in (
+            (rps50, "rps50", "RPS50"),
+            (rps120, "rps120", "RPS120"),
+            (rps250, "rps250", "RPS250"),
+        ):
+            if value is not None and value >= RPS_LINE_RED:
+                reasons.append({
+                    "key": key, "label": label,
+                    "value": value, "threshold": RPS_LINE_RED, "passed": True,
+                })
+    else:  # all
+        # 与 rps_board 的 all 分支 SQL 严格对应：RPS250 与 RPS120 都必须非 NULL 且 ≥ min_rps。
+        # 两档都是入选的必要条件，缺一即不入选，因此 reasons 必须同时列出。
+        for value, key, label in (
+            (rps250, "rps250", "RPS250"),
+            (rps120, "rps120", "RPS120"),
+        ):
+            if value is not None:
+                reasons.append({
+                    "key": key, "label": label,
+                    "value": value, "threshold": min_rps, "passed": value >= min_rps,
+                })
+
+    # 突破形态
+    if breakout_only:
+        if hits:
+            for hit_name in hits:
+                reasons.append({"key": "breakout", "label": "突破形态", "value": hit_name, "passed": True})
+        else:
+            reasons.append({"key": "breakout", "label": "突破形态", "value": None, "passed": False})
+
+    return reasons
 
 
 def _latest_rps_day(session: Session) -> date | None:

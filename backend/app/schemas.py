@@ -2819,6 +2819,8 @@ class RpsRowOut(BaseModel):
     industry: str | None = None
     #: 量价因子分（0~100，仅 `order=factor` 时计算）
     factor_score: float | None = None
+    #: 入选原因（任务书 §5.4）：每项一个 dict，只给事实值和是否通过
+    reasons: list[dict] = []
 
 
 class IndustryCountOut(BaseModel):
@@ -2833,6 +2835,12 @@ class RpsOut(BaseModel):
     rows: list[RpsRowOut]
     #: 返回行里各一级行业的只数，取前 5
     industry_top: list[IndustryCountOut] = []
+    #: 评估口径："full_market" = 全市场完整筛选 / "top_n" = 强度前 N 只筛选
+    selection_scope: str = "full_market"
+    #: top_n 模式下的 N 值（full_market 时为 None）
+    selection_cap: int | None = None
+    #: 进入最终截断前的候选数（语义透明化）
+    evaluated_count: int | None = None
 
 
 class FirstBoardRowOut(BaseModel):

@@ -2471,6 +2471,8 @@ export interface RpsRow {
   industry: string | null
   /** 量价因子分（0~100，仅 order=factor 时计算） */
   factor_score: number | null
+  /** 入选原因：每项一个 fact dict（任务书 §5.4） */
+  reasons: Array<{ key: string; label: string; value?: number | string | null; threshold?: number; passed?: boolean }>
 }
 
 export interface IndustryCount {
@@ -2483,6 +2485,12 @@ export interface RpsBoard {
   rows: RpsRow[]
   /** 返回行里各一级行业的只数，取前 5 */
   industry_top: IndustryCount[]
+  /** 评估口径："full_market" 或 "top_n" */
+  selection_scope: string
+  /** top_n 模式下的 N 值 */
+  selection_cap: number | null
+  /** 截断前的候选数 */
+  evaluated_count: number | null
 }
 
 

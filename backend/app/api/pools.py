@@ -3,13 +3,28 @@
 候选池都是**盘后**口径（本站没有盘中数据），参数全部由 `services.pools` 决定；
 响应里把实际使用的筛选条件原样带回去，页面照原样展示，避免「条件悄悄变了」。
 
-## 验证接口为什么要缓存
+## 缓存设计（P0-2 加固）
 
 `/track` 每次要把近 N 天×全市场日线过一遍（20 天约 10 万行），而且页面上的
-参数一动就会重算。缓存键带上**全部条件参数 + 库里的最新交易日**，所以
-「换参数」和「数据更新」都会自然失效，不存在读到隔夜旧数的可能。
+参数一动就会重算。
+
+缓存键现在分两部分：
+1. **条件**：全部筛选参数（与以前相同）
+2. **版本向量**：来自 `services.data_revision.status()` —— 每个相关数据域一张表，
+   表上有 INSERT / UPDATE / DELETE 触发器，任何写入都会推进 revision 计数器。
+   这样同一天里数据修订后旧缓存自动失效，不再依赖「最新交易日」这个粒度太粗的 key。
+
+`data_revision` 不存在或触发器未安装时 → 缓存自动关闭（fail closed），请求直接查库。
+这是 P1.3 已有的安全机制，不是本次重新发明。
+
+## single-flight
+
+`_cached()` 释放全局锁后才调 `build()`，所以多请求并发 miss 同一键时会重复计算。
+用 `_inflight` dict + `threading.Event` 做同键去重：第一个负责计算，其他等它，
+不阻塞不同键的请求。等待设 60 秒超时，防止永久阻塞。
 """
 
+import logging
 import threading
 from dataclasses import asdict
 from datetime import date, datetime, timedelta
@@ -45,36 +60,162 @@ from app.schemas import (
     SectorTrackOut,
     SectorTrackStatOut,
 )
-from app.services import pools, sector_rps as sector_rps_service
+from app.services import data_revision, pools, sector_rps as sector_rps_service
 from app.services.stock_meta import industries_of, sectors_of
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/pools", tags=["选股池"])
 
 #: 验证结果的缓存时间。数据只会在收盘采集后变，10 分钟足够挡住「拖参数」的重复计算
 _TRACK_TTL = timedelta(minutes=10)
 _TRACK_CACHE_MAX = 128
+#: follower 等待 leader 的上限（秒）。超时后**不自行重算**，返回 503 交调用方重试，
+#: 否则被合并的同一请求会在超时瞬间重新分裂成 N 份昂贵计算。
+_SINGLE_FLIGHT_TIMEOUT = 60
+#: 503 响应里的建议重试间隔（秒）
+_RETRY_AFTER_SECONDS = 2
+
 _track_cache: dict[tuple, tuple[datetime, object]] = {}
-#: FastAPI 的同步接口跑在线程池里，多个请求会并发写同一个 dict
 _track_lock = threading.Lock()
+#: single-flight：同一键并发请求的 Event（key → Event）。首个计算完 set，等待者醒。
+_inflight: dict[tuple, threading.Event] = {}
+_inflight_lock = threading.Lock()
+
+#: 缓存未命中的哨兵（缓存值本身可能是 None，不能用 None 表示 miss）
+_MISS = object()
 
 
-def _cached(key: tuple, build):
-    """按 `key` 缓存 `build()` 的结果（带 TTL 与上限）。
+def _effective_key(raw_key: tuple, session: Session) -> tuple | None:
+    """把 `data_revision` 版本向量拼进 `raw_key`，返回最终缓存键。
 
-    键里必须包含**数据版本**（最新交易日），否则同一天里新采的数据读不到。
+    revision 读不到 → 返回 None（跳过缓存）。
     """
-    now = datetime.now()
+    state = data_revision.status(session)
+    if not state.ready:
+        data_revision.log_unavailable(state)
+        return None
+    # version 是 tuple((domain, revision), ...)，identity 是 ("db", (path, dev, ino), uuid)
+    return ("rev", state.identity, state.version) + raw_key
+
+
+def _read_cache(final_key: tuple):
+    """TTL 内命中返回缓存值，否则返回 `_MISS`。"""
     with _track_lock:
-        hit = _track_cache.get(key)
-        if hit is not None and now - hit[0] < _TRACK_TTL:
-            return hit[1]
-    value = build()
+        hit = _track_cache.get(final_key)
+        if hit is None:
+            return _MISS
+        stamp, value = hit
+        if datetime.now() - stamp >= _TRACK_TTL:
+            return _MISS
+        return value
+
+
+def _store_cache(final_key: tuple, value) -> None:
+    """写入缓存并做容量淘汰。"""
     with _track_lock:
-        _track_cache[key] = (now, value)
+        _track_cache[final_key] = (datetime.now(), value)
         if len(_track_cache) > _TRACK_CACHE_MAX:
             oldest = min(_track_cache, key=lambda item: _track_cache[item][0])
             _track_cache.pop(oldest, None)
-    return value
+
+
+def _register_or_join(final_key: tuple) -> tuple[threading.Event, bool]:
+    """抢占同键 leader；已有 leader 则返回它的 Event。
+
+    返回 `(event, is_leader)`。`is_leader=True` 时调用方负责计算与清理。
+    """
+    event = threading.Event()
+    with _inflight_lock:
+        existing = _inflight.get(final_key)
+        if existing is None:
+            _inflight[final_key] = event
+            return event, True
+        return existing, False
+
+
+def _busy() -> HTTPException:
+    """繁忙响应：不暴露内部异常，只给可重试提示。"""
+    return HTTPException(
+        status_code=503,
+        detail="选股结果正在计算中，请稍后重试",
+        headers={"Retry-After": str(_RETRY_AFTER_SECONDS)},
+    )
+
+
+def _run_leader(final_key: tuple, event: threading.Event, build):
+    """执行一次昂贵计算，并保证 inflight 清理与等待者唤醒。
+
+    成功 → 先写缓存再清 inflight，保证醒来的 follower 一定命中缓存；
+    失败 → 不写缓存，异常原样上抛（不吞），但 inflight 仍会被清、event 仍会 set。
+    """
+    try:
+        value = build()
+    except Exception:
+        logger.exception("single-flight leader 计算失败，key=%s", final_key[:4])
+        raise
+    else:
+        _store_cache(final_key, value)
+        return value
+    finally:
+        with _inflight_lock:
+            _inflight.pop(final_key, None)
+        event.set()
+
+
+def _cached(raw_key: tuple, build, session: Session):
+    """带 single-flight + data_revision 版本向量的缓存。
+
+    安全约定：
+    - revision 不可用 → 直查、不读不写缓存（fail closed）
+    - 同一键同一时刻只有 leader 计算；follower 只等待，不重复计算
+    - follower 等待超时 → 复查缓存；仍未命中且 leader 仍在算 → 抛 503（可重试），
+      **绝不自行 build**，避免超时瞬间把合并的请求重新放大成 N 份计算
+    - follower 醒来但缓存未命中且 inflight 已空（leader 异常退出）→ 仅有一个
+      follower 能重新抢到 leader 补算，其余仍返回 503，不会形成风暴
+    - revision / db_uuid 变化 → 键不同，旧计算不会污染新键
+    """
+    final_key = _effective_key(raw_key, session)
+
+    # ---- revision 不可用：直查 ----
+    if final_key is None:
+        return build()
+
+    # ---- 先查缓存 ----
+    hit = _read_cache(final_key)
+    if hit is not _MISS:
+        return hit
+
+    # ---- single-flight：同键去重 ----
+    event, is_leader = _register_or_join(final_key)
+    if is_leader:
+        return _run_leader(final_key, event, build)
+
+    # ---- follower：只等待，不计算 ----
+    event.wait(_SINGLE_FLIGHT_TIMEOUT)
+
+    # leader 成功时缓存必已就绪
+    hit = _read_cache(final_key)
+    if hit is not _MISS:
+        return hit
+
+    # 缓存未命中：判断 leader 是否仍在计算
+    with _inflight_lock:
+        still_running = final_key in _inflight
+
+    if still_running:
+        logger.warning(
+            "single-flight 等待 %ss 未完成，返回 503（不重算），key=%s",
+            _SINGLE_FLIGHT_TIMEOUT, final_key[:4],
+        )
+        raise _busy()
+
+    # leader 异常退出：允许一个 follower 补算，其余继续 503，避免风暴
+    logger.info("leader 已退出但缓存为空，尝试补算，key=%s", final_key[:4])
+    retry_event, retry_is_leader = _register_or_join(final_key)
+    if retry_is_leader:
+        return _run_leader(final_key, retry_event, build)
+    raise _busy()
 
 
 @router.get("/rps", response_model=RpsOut)
@@ -121,6 +262,7 @@ def rps(
             trend_template=trend_template,
             order=order,
         ),
+        session=session,
     )
     if board.trade_date is None:
         raise HTTPException(status_code=404, detail="还没有 RPS 数据（等收盘扫描跑一轮）")
@@ -131,6 +273,9 @@ def rps(
             IndustryCountOut(industry=name, count=count)
             for name, count in board.industry_top
         ],
+        selection_scope=board.selection_scope,
+        selection_cap=board.selection_cap,
+        evaluated_count=board.evaluated_count,
     )
 
 
@@ -239,6 +384,7 @@ def first_board_track(
             order=order,
             top=top,
         ),
+        session=session,
     )
     return FirstBoardTrackOut(
         trade_date=track.trade_date,
@@ -362,6 +508,7 @@ def sector_rps_track(
     track = _cached(
         key,
         lambda: sector_rps_service.track(session, days=days, top=top, taxonomy=taxonomy),
+        session=session,
     )
     return SectorTrackOut(
         trade_date=track.trade_date,
@@ -455,6 +602,7 @@ def sector_stock_track(
             sectors=sectors,
             per_sector=per_sector,
         ),
+        session=session,
     )
     return SectorStockTrackOut(
         trade_date=track.trade_date,
@@ -508,6 +656,7 @@ def rps_track(
             trend_template=trend_template,
             order=order,
         ),
+        session=session,
     )
     return RpsTrackOut(
         trade_date=track.trade_date,
