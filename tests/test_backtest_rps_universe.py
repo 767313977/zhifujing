@@ -53,7 +53,7 @@ def test_rps_identical_regardless_of_sample_size(synthetic, sample_ratio):
     series, days = synthetic
     all_dates = sorted(days)
 
-    universe_ctx = {"rps": bp._rps_context(series, {50, 120, 250}, all_dates)}
+    universe_ctx = bp._rps_context(series, {50, 120, 250}, all_dates)
 
     cut = max(1, int(len(series) * sample_ratio))
     research_codes = list(series)[:cut]
@@ -132,7 +132,7 @@ def test_rps90_filter_matches_independent_ranking(synthetic):
 
     for code, ret in values.items():
         expected = rps_rules.mid_rank(ordered, ret)
-        actual = bp._rps_lookup({"rps": ctx}, 50, code, day)
+        actual = bp._rps_lookup(ctx, 50, code, day)
         assert actual is not None
         assert actual == pytest.approx(expected, abs=0.11), (
             f"{code} RPS50 与独立计算不一致：{actual} vs {expected}"
@@ -148,6 +148,6 @@ def test_no_rps_before_warmup(synthetic):
     ctx = bp._rps_context(series, {250}, all_dates)
 
     code = list(series)[0]
-    assert bp._rps_lookup({"rps": ctx}, 250, code, days[100]) is None
-    assert bp._rps_lookup({"rps": ctx}, 250, code, days[248]) is None
-    assert bp._rps_lookup({"rps": ctx}, 250, code, days[260]) is not None
+    assert bp._rps_lookup(ctx, 250, code, days[100]) is None
+    assert bp._rps_lookup(ctx, 250, code, days[248]) is None
+    assert bp._rps_lookup(ctx, 250, code, days[260]) is not None

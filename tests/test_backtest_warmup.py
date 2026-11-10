@@ -193,29 +193,34 @@ def test_short_series_enter_pool_for_short_patterns():
 
 def test_benchmark_pool_ignores_target_selection():
     """基准池只按 22 根筛，**不随目标形态变**（旧实现拿 `_select_bars` 的结果当分母）。"""
-    grouped = {
+    records = {
         "300001": _records(22),
         "300002": _records(30),
         "300003": _records(80),
     }
-    bench = set(bt._benchmark_pool(grouped))
+    bars_all = {code: bt.build_bars(rows, code) for code, rows in records.items()}
+    bench = set(bt._benchmark_pool(bars_all))
     assert bench == {"300001", "300002", "300003"}
 
     # 样本池会随目标形态变（单跑 v_bottom 时 22/30 根的票被筛掉），基准池不变
-    assert set(bt._select_bars(grouped, {"v_bottom": {}})) == {"300003"}
-    assert set(bt._select_bars(grouped, {"v_bottom": {}, "wudao_sample": {}})) == bench
-    assert set(bt._benchmark_pool(grouped)) == bench
+    assert set(bt._select_bars(bars_all, {"v_bottom": {}})) == {"300003"}
+    assert set(bt._select_bars(bars_all, {"v_bottom": {}, "wudao_sample": {}})) == bench
+    assert set(bt._benchmark_pool(bars_all)) == bench
 
 
 def test_benchmark_values_identical_for_single_and_combined_runs():
     """同一形态单跑 vs 组合跑：基准表逐日逐票完全相同（这正是 P2 要保证的）。"""
-    grouped = {
+    records = {
         "300001": _records(22),
         "300002": _records(50),  # 40 ≤ 50 < 60：单跑 round_bottom 时会被筛掉
         "300003": _records(80),
         "300004": _records(120),
     }
-    bench_bars = bt._benchmark_pool(grouped)
+    bars_all = {code: bt.build_bars(rows, code) for code, rows in records.items()}
+    names_all = {
+        code: [str(row.get("name") or "") for row in rows] for code, rows in records.items()
+    }
+    bench_bars = bt._benchmark_pool(bars_all)
     all_dates = sorted({day for bars in bench_bars.values() for day in bars.dates})
     global_pos = {day: index for index, day in enumerate(all_dates)}
     st_days: dict[str, set[date]] = {}
@@ -223,8 +228,8 @@ def test_benchmark_values_identical_for_single_and_combined_runs():
     def _run() -> dict:
         # 主流程里基准的输入与 targets 无关：两种「跑法」走的是同一个 `_benchmark_pool`
         return bt._benchmark(
-            bt._benchmark_pool(grouped),
-            grouped,
+            bt._benchmark_pool(bars_all),
+            names_all,
             all_dates,
             global_pos,
             bt.ENTRY_CLOSE,
@@ -234,8 +239,8 @@ def test_benchmark_values_identical_for_single_and_combined_runs():
 
     single = _run()  # 对应 --pattern round_bottom（60 根）
     combined = _run()  # 对应 --pattern round_bottom,v_bottom（40 根）
-    assert set(bt._select_bars(grouped, {"round_bottom": {}})) != set(
-        bt._select_bars(grouped, {"round_bottom": {}, "v_bottom": {}})
+    assert set(bt._select_bars(bars_all, {"round_bottom": {}})) != set(
+        bt._select_bars(bars_all, {"round_bottom": {}, "v_bottom": {}})
     )
     assert single == combined
     assert single[bt.HORIZONS[0]], "基准表不应为空（否则这条断言没意义）"

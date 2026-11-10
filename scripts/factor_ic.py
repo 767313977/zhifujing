@@ -40,6 +40,7 @@ import argparse
 import logging
 import math
 import sys
+from datetime import date
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parent.parent / "backend"
@@ -153,9 +154,39 @@ def _spearman(x: np.ndarray, y: np.ndarray) -> float:
     return float((rx * ry).sum() / denominator)
 
 
-def _load(db_path: Path, bars: int, stocks: int) -> tuple[list, list[str], dict[str, np.ndarray]]:
-    """把日线读成 `(交易日, 代码) -> 矩阵`，价格与量额都转成 float32。"""
-    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+def _newey_west_t(values: np.ndarray, lag: int) -> float:
+    """带自相关修正的 t 值（Bartlett 核）。
+
+    5 日前瞻收益在相邻信号日高度重叠，普通 `IR × √n` 会高估显著性。
+    `lag = h − 1` 是持有期重叠的阶数。
+    """
+    n = int(values.size)
+    if n < 3:
+        return float("nan")
+    mean = float(values.mean())
+    dev = values - mean
+    var = float(dev @ dev) / n
+    for offset in range(1, min(lag, n - 1) + 1):
+        cov = float(dev[offset:] @ dev[:-offset]) / n
+        var += 2.0 * (1.0 - offset / (lag + 1.0)) * cov
+    if var <= 0:
+        return float("nan")
+    return mean / math.sqrt(var / n)
+
+
+def _load(
+    db_path: Path,
+    bars: int,
+    stocks: int,
+    since=None,
+    until=None,
+) -> tuple[list, list[str], dict[str, np.ndarray]]:
+    """把日线读成 `(交易日, 代码) -> 矩阵`，价格与量额都转成 float32。
+
+    只读打开（B3，2026-11-10）：`mode=ro` 保证本脚本不会写库、也不会因路径
+    不存在而新建空文件。
+    """
+    engine = create_engine(f"sqlite:///file:{db_path.as_posix()}?mode=ro&uri=true")
     with Session(engine) as session:
         # 交易日直接取 `stock_daily` 自己的日期：history.db 里**没有** trade_calendar
         # （它是 backfill_history 单独建的一个精简库），用日线自己的并集两个库都能跑。
@@ -167,6 +198,12 @@ def _load(db_path: Path, bars: int, stocks: int) -> tuple[list, list[str], dict[
         if not dates:
             raise SystemExit("stock_daily 是空的")
         dates = dates[-bars:]
+        if since is not None:
+            dates = [day for day in dates if day >= since]
+        if until is not None:
+            dates = [day for day in dates if day <= until]
+        if not dates:
+            raise SystemExit("所选区间内没有交易日")
         start = dates[0]
         # 取**窗口内出现过**的全部代码（不只是最后一天还在的）：否则退市股整段缺席，
         # 横截面会带上幸存者偏差。
@@ -271,6 +308,16 @@ def main() -> int:
     parser.add_argument("--bars", type=int, default=1300, help="用多少根日线（默认 1300 ≈ 5 年）")
     parser.add_argument("--horizon", type=int, default=5, help="持有期（交易日）")
     parser.add_argument("--stocks", type=int, default=0, help="只用前 N 只（0 = 全部）")
+    parser.add_argument("--since", default="", help="起始日期（含，YYYY-MM-DD）")
+    parser.add_argument("--until", default="", help="结束日期（含，YYYY-MM-DD）")
+    parser.add_argument(
+        "--detail",
+        action="store_true",
+        help=(
+            "输出稳健性细节：Newey-West t（滞后 h−1）、不重叠观察点、"
+            "按当日成交额分层的 IC、按年度分解"
+        ),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -278,7 +325,9 @@ def main() -> int:
     if not db_path.is_file():
         raise SystemExit(f"没有 {db_path}")
 
-    dates, codes, arrays = _load(db_path, args.bars, args.stocks)
+    since = date.fromisoformat(args.since) if args.since else None
+    until = date.fromisoformat(args.until) if args.until else None
+    dates, codes, arrays = _load(db_path, args.bars, args.stocks, since, until)
     logger.info(
         "载入 %d 个交易日 × %d 只票（%s ~ %s，库 %s）",
         len(dates),
@@ -303,11 +352,16 @@ def main() -> int:
     forward[:-h][~full] = np.nan
 
     factors = _factors(arrays)
+    years = [day.year for day in dates]
     results = []
     for key, matrix in factors.items():
         ics: list[float] = []
         spreads: list[float] = []
         sizes: list[int] = []
+        by_year: dict[int, list[float]] = {}
+        disjoint: list[float] = []          # 不重叠观察点（每 h 天取一个）
+        high_liq: list[float] = []          # 成交额上半区
+        low_liq: list[float] = []           # 成交额下半区
         for row in range(len(dates) - h):
             factor_values = matrix[row]
             returns = forward[row]
@@ -322,6 +376,23 @@ def main() -> int:
                 continue
             ics.append(ic)
             sizes.append(count)
+            by_year.setdefault(years[row], []).append(ic)
+            if row % h == 0:
+                disjoint.append(ic)
+
+            # 流动性分层：按**当日成交额**中位数切两半（只用信号时点已知的量）
+            amounts = arrays["amount"][row][mask].astype(np.float64)
+            half = max(1, MIN_CROSS_SECTION // 2)
+            median = float(np.median(amounts))
+            hi = amounts >= median
+            if int(hi.sum()) >= half and int((~hi).sum()) >= half:
+                ic_hi = _spearman(f[hi], r[hi])
+                ic_lo = _spearman(f[~hi], r[~hi])
+                if not math.isnan(ic_hi):
+                    high_liq.append(ic_hi)
+                if not math.isnan(ic_lo):
+                    low_liq.append(ic_lo)
+
             # 五分组多空：最高组 − 最低组
             rank = _rankdata(f) / count
             top = r[rank >= 0.8].mean()
@@ -345,6 +416,16 @@ def main() -> int:
                 "positive": float((arr > 0).mean()),
                 "spread": float(np.mean(spreads)),
                 "size": int(np.median(sizes)),
+                "nw_t": _newey_west_t(arr, max(1, h - 1)),
+                "disjoint_n": len(disjoint),
+                "disjoint_ic": float(np.mean(disjoint)) if disjoint else float("nan"),
+                "disjoint_t": _newey_west_t(np.array(disjoint), 0) if disjoint else float("nan"),
+                "ic_high_liq": float(np.mean(high_liq)) if high_liq else float("nan"),
+                "ic_low_liq": float(np.mean(low_liq)) if low_liq else float("nan"),
+                "by_year": {
+                    year: (float(np.mean(values)), float((np.array(values) > 0).mean()), len(values))
+                    for year, values in sorted(by_year.items())
+                },
             }
         )
 
@@ -364,6 +445,38 @@ def main() -> int:
         )
     print()
     print("判读：|t| < 2 基本等于没有稳定信号；多空差要看它是否明显大于 0（未扣费用）")
+
+    if args.detail:
+        print()
+        print("稳健性（5 日前瞻收益在相邻日重叠，普通 t 会高估显著性）")
+        print("-" * 104)
+        print(
+            f"{'因子':<12}{'普通t':>8}{'NW t':>8}{'不重叠n':>9}{'不重叠IC':>10}"
+            f"{'不重叠t':>9}{'高流动性IC':>12}{'低流动性IC':>12}"
+        )
+        for item in results:
+            print(
+                f"{item['key']:<12}{item['t']:>8.2f}{item['nw_t']:>8.2f}"
+                f"{item['disjoint_n']:>9}{item['disjoint_ic']:>10.4f}"
+                f"{item['disjoint_t']:>9.2f}{item['ic_high_liq']:>12.4f}"
+                f"{item['ic_low_liq']:>12.4f}"
+            )
+        print()
+        print("按年度均值 IC（括号内为 IC>0 占比 / 有效天数）")
+        print("-" * 104)
+        all_years = sorted({year for item in results for year in item["by_year"]})
+        header = f"{'因子':<12}" + "".join(f"{year:>16}" for year in all_years)
+        print(header)
+        for item in results:
+            line = f"{item['key']:<12}"
+            for year in all_years:
+                stat = item["by_year"].get(year)
+                if stat is None:
+                    line += f"{'—':>16}"
+                else:
+                    mean, positive, count = stat
+                    line += f"{mean:>8.4f}({positive * 100:>3.0f}%/{count:>4})"
+            print(line)
     return 0
 
 

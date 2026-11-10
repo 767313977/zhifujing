@@ -1139,30 +1139,66 @@ def build_bars(records: list[dict], code: str = "") -> Bars:
     if not records:
         raise ValueError("build_bars 收到空序列")
 
-    close = np.array([float(r["close"]) for r in records], dtype=float)
-    pct = np.array([float(r["pct_chg"] or 0.0) for r in records], dtype=float)
+    return build_bars_from_arrays(
+        dates=[r["date"] for r in records],
+        open_=[float(r["open"]) for r in records],
+        high=[float(r["high"]) for r in records],
+        low=[float(r["low"]) for r in records],
+        close=[float(r["close"]) for r in records],
+        volume=[float(r["volume"] or 0.0) for r in records],
+        amount=[float(r["amount"] or 0.0) for r in records],
+        pct_chg=[float(r["pct_chg"] or 0.0) for r in records],
+        code=code,
+    )
+
+
+def build_bars_from_arrays(
+    dates: list,
+    open_: list | np.ndarray,
+    high: list | np.ndarray,
+    low: list | np.ndarray,
+    close: list | np.ndarray,
+    volume: list | np.ndarray,
+    amount: list | np.ndarray,
+    pct_chg: list | np.ndarray,
+    code: str = "",
+) -> "Bars":
+    """与 `build_bars` 完全同一套复权逻辑，只是输入已经是分列数组。
+
+    抽出来的原因（B3，2026-11-10）：全市场 5 年回测的峰值内存卡在
+    `dict[str, list[dict]]` 上 —— 622 万个字典对象约 2.5 GB。改成流式读库、
+    读到一只票就直接转成列式 `Bars`，中间不再保留字典列表。
+
+    ⚠️ 两处必须改同一份实现：`build_bars` 从记录列表转换，`backtest_patterns`
+    从 SQL 游标转换。任何复权口径变化都要改这里，不能各写一份。
+    """
+    if len(dates) == 0:
+        raise ValueError("build_bars 收到空序列")
+
+    close_arr = np.asarray(close, dtype=float)
+    pct = np.asarray(pct_chg, dtype=float)
 
     # 首日没有涨跌幅，净值从 1 起算
-    net = np.empty(len(records), dtype=float)
+    net = np.empty(close_arr.size, dtype=float)
     net[0] = 1.0
-    if len(records) > 1:
+    if close_arr.size > 1:
         net[1:] = np.cumprod(1.0 + pct[1:] / 100.0)
     # 锚到最新价：adj[-1] == 原始收盘价
-    net *= close[-1] / net[-1]
+    net *= close_arr[-1] / net[-1]
 
     # 日内比例换算。close 理论上不会为 0，真出现就整根丢掉意义，直接置 1 避免除零
-    ratio = np.divide(net, close, out=np.ones_like(net), where=close != 0)
+    ratio = np.divide(net, close_arr, out=np.ones_like(net), where=close_arr != 0)
     # 成交量按同一比例**反向**缩放（见 docstring）。ratio 为 0 是病态数据，退回 1 别除爆
     volume_ratio = np.where(ratio != 0, ratio, 1.0)
 
     return Bars(
-        dates=[r["date"] for r in records],
-        open=np.array([float(r["open"]) for r in records]) * ratio,
-        high=np.array([float(r["high"]) for r in records]) * ratio,
-        low=np.array([float(r["low"]) for r in records]) * ratio,
+        dates=list(dates),
+        open=np.asarray(open_, dtype=float) * ratio,
+        high=np.asarray(high, dtype=float) * ratio,
+        low=np.asarray(low, dtype=float) * ratio,
         close=net,
-        volume=np.array([float(r["volume"] or 0.0) for r in records]) / volume_ratio,
-        amount=np.array([float(r["amount"] or 0.0) for r in records]),
+        volume=np.asarray(volume, dtype=float) / volume_ratio,
+        amount=np.asarray(amount, dtype=float),
         pct_chg=pct,
         code=code,
     )

@@ -83,22 +83,24 @@ def test_rps_percentile_ranks_three_stocks():
         "c": _pct_bars(series(10.0)),
     }
     all_dates = sorted({day for item in bars.values() for day in item.dates})
-    tables = bt._rps_context(bars, {50}, all_dates)
+    ctx = bt._rps_context(bars, {50}, all_dates)
     day = bars["a"].dates[-1]
-    assert tables[50][day]["a"] == 16.7
-    assert tables[50][day]["b"] == 50.0
-    assert tables[50][day]["c"] == 83.3
+    assert bt._rps_lookup(ctx, 50, "a", day) == 16.7
+    assert bt._rps_lookup(ctx, 50, "b", day) == 50.0
+    assert bt._rps_lookup(ctx, 50, "c", day) == 83.3
 
 
 def test_rps_percentile_skips_short_history():
-    """K 线不足窗口覆盖（50 日 → 45 行）的不参与排名；够 50 行就参与。"""
+    """K 线不足窗口覆盖（50 日 → 40 行）的不参与排名；够 50 行就参与。"""
     bars = {"a": _pct_bars([1.0] * 40)}
     all_dates = sorted(bars["a"].dates)
-    assert bt._rps_context(bars, {50}, all_dates)[50] == {}
+    ctx = bt._rps_context(bars, {50}, all_dates)
+    assert bt._rps_lookup(ctx, 50, "a", all_dates[-1]) is None
 
     bars = {"a": _pct_bars([1.0] * 50)}
     all_dates = sorted(bars["a"].dates)
-    assert bt._rps_context(bars, {50}, all_dates)[50] != {}
+    ctx = bt._rps_context(bars, {50}, all_dates)
+    assert bt._rps_lookup(ctx, 50, "a", all_dates[-1]) is not None
 
 
 def test_rps50_filter_uses_ctx_table():

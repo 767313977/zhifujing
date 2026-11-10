@@ -183,6 +183,7 @@ from app.services.patterns import (  # noqa: E402
     WUDAO_MIN_BARS,
     Bars,
     build_bars,
+    build_bars_from_arrays,
     is_st,
     limit_threshold,
     pattern_min_bars,
@@ -223,7 +224,7 @@ def _warmup(key: str) -> int:
 
 
 def _select_bars(
-    grouped: dict[str, list[dict]], targets: dict[str, dict]
+    bars_all: dict[str, Bars], targets: dict[str, dict]
 ) -> dict[str, Bars]:
     """按**目标形态里最短的门槛**筛序列。
 
@@ -231,17 +232,13 @@ def _select_bars(
     必须留在池子里，否则样本与基准都系统性偏向「上市很久的票」。
     """
     need = min((_warmup(key) for key in targets), default=MIN_BARS)
-    return {
-        code: build_bars(records, code)
-        for code, records in grouped.items()
-        if len(records) >= need
-    }
+    return {code: bars for code, bars in bars_all.items() if len(bars) >= need}
 
 
-def _benchmark_pool(grouped: dict[str, list[dict]]) -> dict[str, Bars]:
+def _benchmark_pool(bars_all: dict[str, Bars]) -> dict[str, Bars]:
     """基准票池：**只按生产公共门槛 22 根筛，与本次跑哪些形态无关**。
 
-    为什么不能直接用 `_select_bars(grouped, targets)` 的结果当分母（2026-11-01 审计 P2）：
+    为什么不能直接用 `_select_bars(bars_all, targets)` 的结果当分母（2026-11-01 审计 P2）：
     那个池子的门槛是「目标形态里最短的那个」—— 单跑 `v_bottom` 时是 40 根，而
     「v_bottom + 放量上涨」时是 22 根。于是**同一个形态**单独跑与组合跑，基准不是
     同一批票，超额（策略 − 基准）对不上，跨报告比较没有意义。
@@ -251,9 +248,7 @@ def _benchmark_pool(grouped: dict[str, list[dict]]) -> dict[str, Bars]:
     形态无关，所以单跑与组合跑的基准逐日逐票完全一致。
     """
     return {
-        code: build_bars(records, code)
-        for code, records in grouped.items()
-        if len(records) >= WUDAO_MIN_BARS
+        code: bars for code, bars in bars_all.items() if len(bars) >= WUDAO_MIN_BARS
     }
 
 
@@ -761,45 +756,71 @@ def _rps_context(
 
     性能：每只票先算一条 `log1p` 前缀和，窗口涨幅 = `exp(差值) − 1`。直接按窗口重乘
     的话，全池 × 5 年 × 3 窗口约 1800 万次乘 250 项，跑不完。
+
+    内存（B3，2026-11-10）：旧实现返回 `{window: {day: {code: pct}}}`，5 年 × 3 窗口
+    × 5000 只约 1900 万个字典条目（≈3.8 GB），是全量回测 6.5 GB 峰值的主因。
+    现在改为**每票一条 float64 数组**（`{window: {code: ndarray}}` + `date_pos`），
+    3 × 5108 × 1230 × 8B ≈ 150 MB，查询仍是 O(1)。用 float64 而不是 float32：
+    中位秩是一位小数，float32 在 16.7 这类值上会得到 16.7000008，阈值边界比较
+    虽然不受影响，但没必要为一个可忽略的省内存引入精度争议。
     """
+    n_days = len(all_dates)
     positions = {day: index for index, day in enumerate(all_dates)}
-    raw: dict[int, dict[date, dict[str, float]]] = {
-        window: defaultdict(dict) for window in windows
-    }
+
+    # 第一遍：每票每窗口的区间涨幅（NaN = 该日不可算）
+    rets: dict[int, dict[str, np.ndarray]] = {window: {} for window in windows}
     for code, bars in bars_by_code.items():
         gs = [positions[day] for day in bars.dates]
         logs = [0.0]
         for pct in bars.pct_chg.tolist():
             logs.append(logs[-1] + math.log1p(pct / 100.0))
-        for i, g in enumerate(gs):
-            for window in windows:
+        for window in windows:
+            arr = np.full(n_days, np.nan, dtype=np.float64)
+            min_rows = int(window * rps_rules.MIN_COVERAGE)
+            for i, g in enumerate(gs):
                 start_g = g - window + 1
                 if start_g < 0:
                     continue
                 lo = bisect_left(gs, start_g)
-                if i - lo + 1 < int(window * rps_rules.MIN_COVERAGE):
+                if i - lo + 1 < min_rows:
                     continue
-                value = round((math.exp(logs[i + 1] - logs[lo]) - 1) * 100, 2)
-                raw[window][bars.dates[i]][code] = value
+                arr[g] = round((math.exp(logs[i + 1] - logs[lo]) - 1) * 100, 2)
+            rets[window][code] = arr
 
-    tables: dict[int, dict[date, dict[str, float]]] = {}
-    for window, days in raw.items():
-        table: dict[date, dict[str, float]] = {}
-        for day, values in days.items():
-            ordered = sorted(values.values())
-            table[day] = {
-                code: rps_rules.mid_rank(ordered, value)
-                for code, value in values.items()
-            }
-        tables[window] = table
-    return tables
+    # 第二遍：按日做横截面中位秩，逐窗口释放涨幅表
+    tables: dict[int, dict[str, np.ndarray]] = {}
+    for window in sorted(windows):
+        per_code = rets[window]
+        by_day: dict[int, list[tuple[str, float]]] = {}
+        for code, arr in per_code.items():
+            for pos in np.nonzero(~np.isnan(arr))[0]:
+                by_day.setdefault(int(pos), []).append((code, float(arr[pos])))
+        out = {code: np.full(n_days, np.nan, dtype=np.float64) for code in per_code}
+        for pos, items in by_day.items():
+            ordered = sorted(value for _code, value in items)
+            for code, value in items:
+                out[code][pos] = rps_rules.mid_rank(ordered, value)
+        tables[window] = out
+        del rets[window]
+    return {"date_pos": positions, "rps": tables}
 
 
 def _rps_lookup(ctx: dict, window: int, code: str, day: date) -> float | None:
     table = ctx.get("rps", {}).get(window)
     if not table:
         return None
-    return table.get(day, {}).get(code)
+    positions = ctx.get("date_pos")
+    if positions is None:
+        # 兼容手工构造的旧格式 `{day: {code: value}}`（测试与外部脚本直接喂 ctx）
+        return table.get(day, {}).get(code)
+    arr = table.get(code)
+    if arr is None:
+        return None
+    pos = positions.get(day)
+    if pos is None:
+        return None
+    value = float(arr[pos])
+    return None if math.isnan(value) else value
 
 
 def _filter_rps50_90(code: str, bars: Bars, i: int, ctx: dict) -> bool:
@@ -888,7 +909,9 @@ def _filter_context(
             len(source),
             "（全池）" if rps_bars else "（研究样本，分母随抽样变化）",
         )
-        ctx["rps"] = _rps_context(source, windows, all_dates)
+        # `_rps_context` 返回 `{"date_pos": ..., "rps": {window: {code: ndarray}}}`，
+        # 直接并进 ctx，供 `_rps_lookup(ctx, ...)` 使用
+        ctx.update(_rps_context(source, windows, all_dates))
     return ctx
 
 
@@ -1089,6 +1112,8 @@ def _load_rps_series(
                 StockDaily.pct_chg.is_not(None),
             )
             .order_by(StockDaily.code, StockDaily.trade_date)
+            # 同上：622 万行必须流式，不能一次性缓冲
+            .execution_options(yield_per=50000)
         )
 
         pool: dict[date, date] = {}
@@ -1107,6 +1132,192 @@ def _load_rps_series(
     return {
         code: _RpsSeries(days, values) for code, (days, values) in grouped.items()
     }
+
+
+@dataclass
+class HistoryData:
+    """流式装载的结果：列式 `Bars` + 每票逐日名称（名称只用于 ST 判定与明细展示）。
+
+    不再保留 `dict[str, list[dict]]` —— 全市场 5 年约 622 万条，字典对象本身要
+    2.5 GB；列式数组只要 300–400 MB，这是 B3 内存整改的核心。
+    """
+
+    latest: date
+    bars: dict[str, Bars]
+    names: dict[str, list[str]]
+
+
+def _load_history_compact(
+    engine,
+    codes: list[str],
+    bars: int,
+    *,
+    overlay_names_db: Path | None = None,
+) -> HistoryData:
+    """流式装载 `history.db`：读一只票 → 立刻转列式 `Bars` → 丢弃中间列。
+
+    与 `_load_history()`（保留作一致性对账）逐字段等价：
+    同一窗口、同一 `usable_bar` 过滤、同一 `build_bars` 复权逻辑。
+    """
+    with Session(engine) as session:
+        dates = list(
+            session.scalars(
+                select(StockDaily.trade_date)
+                .group_by(StockDaily.trade_date)
+                .order_by(StockDaily.trade_date.desc())
+                .limit(bars)
+            )
+        )
+        if not dates:
+            raise SystemExit(f"{HISTORY_DB} 里没有数据，先跑 scripts/backfill_history.py")
+        start = min(dates)
+        latest = max(dates)
+        rows = session.execute(
+            select(
+                StockDaily.code,
+                StockDaily.trade_date,
+                StockDaily.name,
+                StockDaily.open,
+                StockDaily.high,
+                StockDaily.low,
+                StockDaily.close,
+                StockDaily.volume,
+                StockDaily.amount,
+                StockDaily.pct_chg,
+            )
+            .where(
+                StockDaily.trade_date >= start,
+                StockDaily.trade_date <= latest,
+                StockDaily.code.in_(codes),
+            )
+            .order_by(StockDaily.code, StockDaily.trade_date)
+            # 流式游标：622 万行若一次性缓冲，单是结果元组就要 3–4 GB
+            .execution_options(yield_per=50000)
+        )
+
+        date_pool: dict[date, date] = {}
+        out_bars: dict[str, Bars] = {}
+        out_names: dict[str, list[str]] = {}
+
+        current: str | None = None
+        cols: dict[str, list] | None = None
+
+        def flush() -> None:
+            nonlocal current, cols
+            if current is not None and cols is not None and cols["dates"]:
+                try:
+                    out_bars[current] = build_bars_from_arrays(
+                        dates=cols["dates"],
+                        open_=cols["open"],
+                        high=cols["high"],
+                        low=cols["low"],
+                        close=cols["close"],
+                        volume=cols["volume"],
+                        amount=cols["amount"],
+                        pct_chg=cols["pct"],
+                        code=current,
+                    )
+                    out_names[current] = cols["names"]
+                except ValueError:
+                    pass
+            current = None
+            cols = None
+
+        for code, day, name, open_, high, low, close, volume, amount, pct in rows:
+            if code != current:
+                flush()
+                current = code
+                cols = {
+                    "dates": [], "open": [], "high": [], "low": [], "close": [],
+                    "volume": [], "amount": [], "pct": [], "names": [],
+                }
+            # 与 `usable_bar` 同一判据（BAR_REQUIRED_FIELDS 五项非空）
+            if open_ is None or high is None or low is None or close is None or pct is None:
+                continue
+            canonical = date_pool.get(day)
+            if canonical is None:
+                date_pool[day] = day
+                canonical = day
+            cols["dates"].append(canonical)
+            cols["open"].append(float(open_))
+            cols["high"].append(float(high))
+            cols["low"].append(float(low))
+            cols["close"].append(float(close))
+            cols["volume"].append(float(volume or 0.0))
+            cols["amount"].append(float(amount or 0.0))
+            cols["pct"].append(float(pct))
+            cols["names"].append(str(name or ""))
+        flush()
+
+    if overlay_names_db is not None:
+        overridden = _overlay_names_into(
+            out_names, out_bars, start, latest, db_path=overlay_names_db
+        )
+        logger.info(
+            "名称覆盖：%s（只读）覆盖 %d 个(票,日) —— 这些行按当日名称判 ST",
+            overlay_names_db, overridden,
+        )
+    else:
+        logger.info(
+            "名称覆盖未启用：ST 判定只用 history.db 自带名称（回补库可能整段写当前名称，"
+            "历史 ST 状态因此可能不准确）"
+        )
+    return HistoryData(latest=latest, bars=out_bars, names=out_names)
+
+
+def _overlay_names_into(
+    names_map: dict[str, list[str]],
+    bars_map: dict[str, Bars],
+    start: date,
+    end: date,
+    *,
+    db_path: Path,
+) -> int:
+    """用显式指定的只读库覆盖 `names_map` 的逐日名称，返回改写的 (票,日) 数。
+
+    与 `_overlay_names_from_main()` 的规则相同，只是作用在列式结构上：
+    两边的日期都升序，按 `(代码, 日期)` 同步前进，不建额外索引。
+    """
+    if not db_path.is_file():
+        raise SystemExit(
+            f"名称覆盖库不存在：{db_path}。本脚本不会自动创建数据库；"
+            "如不需要逐日名称，请不要传 --overlay-names-db。"
+        )
+    changed = 0
+    engine = _readonly_engine(db_path)
+    try:
+        with Session(engine) as session:
+            result = session.execute(
+                select(StockDaily.code, StockDaily.trade_date, StockDaily.name)
+                .where(
+                    StockDaily.trade_date >= start,
+                    StockDaily.trade_date <= end,
+                    StockDaily.name.is_not(None),
+                )
+                .order_by(StockDaily.code, StockDaily.trade_date)
+                .execution_options(yield_per=20000)
+            )
+            current: str | None = None
+            dates: list[date] | None = None
+            names: list[str] | None = None
+            position = 0
+            for code, day, name in result:
+                if code != current:
+                    current = code
+                    bars = bars_map.get(code)
+                    dates = bars.dates if bars is not None else None
+                    names = names_map.get(code)
+                    position = 0
+                if not dates or names is None or not name:
+                    continue
+                while position < len(dates) and dates[position] < day:
+                    position += 1
+                if position < len(dates) and dates[position] == day:
+                    names[position] = str(name)
+                    changed += 1
+    finally:
+        engine.dispose()
+    return changed
 
 
 def _apply_names(grouped: dict[str, list[dict]], rows) -> int:
@@ -1314,6 +1525,32 @@ def _st_rows(grouped: dict[str, list[dict]]) -> tuple[dict[str, set[date]], dict
     }
 
 
+def _st_rows_from_names(
+    names_map: dict[str, list[str]], bars_map: dict[str, Bars]
+) -> tuple[dict[str, set[date]], dict]:
+    """列式结构的 ST 判定（与 `_st_rows` 同一口径，逐日按名称）。
+
+    名称与 `bars_map[code].dates` 一一对应（流式加载时按同一顺序累积）。
+    """
+    st_days: dict[str, set[date]] = {}
+    no_name = 0
+    constant_st = 0
+    for code, bars in bars_map.items():
+        raw = [str(name or "").strip() for name in names_map.get(code, [])]
+        no_name += sum(1 for name in raw if not name)
+        days = {bars.dates[i] for i, name in enumerate(raw) if is_st(name)}
+        if days:
+            st_days[code] = days
+            if len(set(raw)) == 1:
+                constant_st += 1
+    return st_days, {
+        "codes": len(st_days),
+        "rows": sum(len(days) for days in st_days.values()),
+        "no_name": no_name,
+        "constant_st": constant_st,
+    }
+
+
 def _candidate_sets(bars_by_code: dict[str, Bars]) -> dict[date, set[str]]:
     """复现生产 `scan_patterns._candidate_codes`：创业板 + 科创板里「今天出过线」的票。
 
@@ -1346,7 +1583,7 @@ def _candidate_sets(bars_by_code: dict[str, Bars]) -> dict[date, set[str]]:
 
 def _benchmark(
     bars_by_code: dict[str, Bars],
-    grouped: dict[str, list[dict]],
+    names_by_code: dict[str, list[str]],
     all_dates: list[date],
     global_pos: dict[date, int],
     mode: str,
@@ -1375,6 +1612,7 @@ def _benchmark(
     for code, bars in bars_by_code.items():
         date_index = {day: i for i, day in enumerate(bars.dates)}
         code_st = st_days.get(code, set())
+        code_names = names_by_code.get(code) or [""] * len(bars)
         wudao = is_wudao_board(code)
         for i, day in enumerate(bars.dates):
             # 统计窗口（`--since/--until`）：基准只算窗口内的入场日，与样本同窗
@@ -1392,7 +1630,10 @@ def _benchmark(
                 stats["st"] += 1
                 continue
             if skip_unbuyable and _unbuyable(
-                bars, i, mode, limit_rules.limit_pct(code, grouped[code][i].get("name"))
+                bars,
+                i,
+                mode,
+                limit_rules.limit_pct(code, code_names[i]),
             ):
                 stats["unbuyable"] += 1
                 continue
@@ -1682,9 +1923,13 @@ def main(argv: list[str] | None = None) -> int:
         # 只读连接：研究库不允许被本脚本写入，也不允许因路径不存在而新建空库
         engine = _readonly_engine(HISTORY_DB)
         overlay_db = Path(args.overlay_names_db) if args.overlay_names_db else None
-        latest, grouped = _load_history(
+        # 流式装载：读一只票就转列式 Bars，不保留 622 万条字典（B3 内存整改）
+        data = _load_history_compact(
             engine, research_codes, args.bars, overlay_names_db=overlay_db
         )
+        latest = data.latest
+        bars_all = data.bars
+        names_all = data.names
         logger.info("数据源 history.db（只读，窗口 %d 根），截至 %s", args.bars, latest)
     else:
         if args.overlay_names_db:
@@ -1699,10 +1944,18 @@ def main(argv: list[str] | None = None) -> int:
             latest = session.scalar(select(func.max(StockDaily.trade_date)))
         if latest is None:
             raise SystemExit("stock_daily 是空的，先跑 collect_kline")
-        grouped = _load_bars(latest, research_codes)
+        records_all = _load_bars(latest, research_codes)
+        bars_all = {
+            code: build_bars(records, code) for code, records in records_all.items()
+        }
+        names_all = {
+            code: [str(record.get("name") or "") for record in records]
+            for code, records in records_all.items()
+        }
+        del records_all
 
     # 数据缺口要单独说：没有日线的票**不是**「没有信号」，而是这批票根本没进回测。
-    missing = set(research_codes) - set(grouped)
+    missing = set(research_codes) - set(bars_all)
     if missing:
         logger.warning(
             "%d 只票在库/窗口里没有任何可用日线（数据缺口，不是「没有信号」）：%s%s",
@@ -1713,7 +1966,7 @@ def main(argv: list[str] | None = None) -> int:
     # 形态目标要在筛序列**之前**解析：门槛按目标形态定（见 `patterns.PATTERN_MIN_BARS`）
     targets = _resolve_targets(args.pattern)
     need = min((_warmup(key) for key in targets), default=MIN_BARS)
-    short = sum(1 for records in grouped.values() if len(records) < need)
+    short = sum(1 for bars in bars_all.values() if len(bars) < need)
     if short:
         logger.warning(
             "%d 只票的历史不足 %d 根（本次目标形态里最短的预热门槛），不参与判定",
@@ -1726,7 +1979,7 @@ def main(argv: list[str] | None = None) -> int:
     # 重新进来。样本与基准共用这一份 `st_days`，两组仍是对照关系。
     # ⚠️ 历史名称可能整段都是当前名称（`history.db` 是回补的），那种情况无法还原，
     # 只能统计并在日志/报告里披露 —— 不伪造逐日状态。
-    st_days, st_stats = _st_rows(grouped)
+    st_days, st_stats = _st_rows_from_names(names_all, bars_all)
     logger.info(
         "ST 按交易日剔除：%d 只票 / %d 个(票,日)（名称缺失 %d 行；"
         "%d 只票全历史名称恒为当前名、无法区分历史 ST 状态）",
@@ -1736,12 +1989,12 @@ def main(argv: list[str] | None = None) -> int:
         st_stats["constant_st"],
     )
 
-    bars_by_code = _select_bars(grouped, targets)
+    bars_by_code = _select_bars(bars_all, targets)
     if not bars_by_code:
         raise SystemExit("没有可用的日线序列")
     # 基准票池**与本次跑哪些形态无关**（2026-11-01 审计 P2，见 `_benchmark_pool`）：
     # 单跑 / 组合跑的同一形态必须比同一批票，否则超额不可比。
-    bench_bars = _benchmark_pool(grouped)
+    bench_bars = _benchmark_pool(bars_all)
     lengths = sorted(len(bars) for bars in bars_by_code.values())
     logger.info(
         "载入 %d 只票，每票 K 线 中位 %d 根（最长 %d），截至 %s；基准池 %d 只（≥%d 根）",
@@ -1853,7 +2106,7 @@ def main(argv: list[str] | None = None) -> int:
     # 的基准票池不同 —— 2026-11-01 审计 P2 修的就是这一条。
     bench_all, bench_wudao, bench_stats = _benchmark(
         bench_bars,
-        grouped,
+        names_all,
         all_dates,
         global_pos,
         args.entry,
@@ -1936,7 +2189,7 @@ def main(argv: list[str] | None = None) -> int:
                             bars,
                             t,
                             args.entry,
-                            limit_rules.limit_pct(code, grouped[code][t].get("name")),
+                            limit_rules.limit_pct(code, names_all[code][t]),
                         )
                     ):
                         last_rps[code] = t
@@ -2005,7 +2258,7 @@ def main(argv: list[str] | None = None) -> int:
                     bars,
                     t,
                     args.entry,
-                    limit_rules.limit_pct(code, grouped[code][t].get("name")),
+                    limit_rules.limit_pct(code, names_all[code][t]),
                 ):
                     unbuyable[key] += 1
                     continue
@@ -2050,7 +2303,7 @@ def main(argv: list[str] | None = None) -> int:
                     {
                         "code": code,
                         # 用**当天**的名字（不是最后一根），与 ST 判定同源
-                        "name": grouped[code][t].get("name") or "",
+                        "name": names_all[code][t],
                         "date": day,
                         "entry_date": entry.date,
                         "delayed": delayed,
@@ -2167,7 +2420,7 @@ def main(argv: list[str] | None = None) -> int:
         _report_rps_standalone(rps_extra)
     if split_rows is not None:
         _report_order_split(split_rows, bars_by_code)
-    _report_data_limits(args, grouped, st_stats)
+    _report_data_limits(args, set(bars_all), len(bench_bars), st_stats)
     return 0
 
 
@@ -2655,17 +2908,19 @@ def _report_order_split(
     )
 
 
-def _over_cap_now(grouped: dict[str, list[dict]]) -> set[str]:
+def _over_cap_now(codes: set[str] | dict) -> set[str]:
     """当前总市值超过生产上限的代码（与本次样本池求交）。拿不到时返回空集。"""
     try:
         from app.jobs.scan_patterns import PATTERN_MAX_TOTAL_MV, _over_cap_codes
 
-        return set(grouped) & _over_cap_codes(PATTERN_MAX_TOTAL_MV)
+        return set(codes) & _over_cap_codes(PATTERN_MAX_TOTAL_MV)
     except Exception:  # noqa: BLE001  披露用，查不到就不披露这一条
         return set()
 
 
-def _report_data_limits(args, grouped: dict[str, list[dict]], st_stats: dict) -> None:
+def _report_data_limits(
+    args, codes: set[str] | dict, bench_size: int, st_stats: dict
+) -> None:
     """把**用现有数据修不掉**的偏差逐条列出来（任务书要求：有偏差必须披露）。
 
     这些不是 bug，是数据限制：列出来是为了避免把「回测跑出来的数字」当成
@@ -2694,7 +2949,6 @@ def _report_data_limits(args, grouped: dict[str, list[dict]], st_stats: dict) ->
                 "   ⚠️ 历史 ST 状态：ST_STATUS_PARTIAL —— 回补库可能把当前名称写满整段历史，"
                 "无法逐日还原；本报告不据此声称严格无偏差。"
             )
-    bench_size = sum(1 for records in grouped.values() if len(records) >= WUDAO_MIN_BARS)
     print(
         f"   预热门槛：按形态取 max({WUDAO_MIN_BARS}, 形态自身守卫)（`patterns.PATTERN_MIN_BARS`）；"
         f"基准池 = 库里有 ≥{WUDAO_MIN_BARS} 根的 {bench_size} 只票，"
@@ -2710,7 +2964,7 @@ def _report_data_limits(args, grouped: dict[str, list[dict]], st_stats: dict) ->
     print("   退市 / 未回补的票仍整段缺席，样本与基准同向偏乐观；未按历史交易日还原真实上市状态。")
     print("2) 总市值 2000 亿过滤**未复现**：库里没有历史市值（stock_daily 无 total_mv，")
     print("   stock_universe 只有当前快照）。不用今天的市值代替历史市值，也不伪造。")
-    over = _over_cap_now(grouped)
+    over = _over_cap_now(codes)
     if over:
         print(
             f"   当前超线、且在本次样本池里的票 {len(over)} 只 —— 生产会把它们整段剔除，"

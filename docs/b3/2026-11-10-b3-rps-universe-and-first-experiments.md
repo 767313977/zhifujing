@@ -174,7 +174,12 @@ python scripts/factor_ic.py --db history --bars 1300 --horizon 5
 要点：
 
 - `rev20` / `illiq20` 的 IC 方向为正且 t 值显著（>12），与「反转 + 低流动性溢价」一致。
-- **`amp20` 的 IC 为负**（−0.0794）。生产 `factor_score` 若把它当正向因子加权，方向与历史统计相反 —— 本轮**不改权重**，仅记录。
+- **`amp20` 的 IC 为负**（−0.0794）。⚠️ **2026-11-10 更正**：生产 `factor_score.score_series()`
+  已对 amp20 取负号（`signal = -raw[...] if key == "amp20"`），`WEIGHTS["amp20"]=0.40`
+  赋给的是**方向调整后的分位**。因此「IC 为负」正是「振幅越低越该加分」的预期结果，
+  **不是方向错误**。原句「若按正向加权方向相反」属表述误导，已作废。
+  详见 `2026-11-10-b3-memory-and-robustness.md` 第 1 节与
+  `tests/test_factor_score_amp_direction.py`。
 - 多空差全部 < 1%，且**未扣费用** → `GROSS_ONLY`；不能当作可实现组合收益。
 - IC 与组合收益是两件事：即使 IC 显著，扣费后能否覆盖换手成本仍未验证。
 
