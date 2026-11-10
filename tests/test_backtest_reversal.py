@@ -1,4 +1,4 @@
-"""低吸反转研究脚本的自身逻辑测试（因子方向、时点、分层、确定性、只读）。
+﻿"""低吸反转研究脚本的自身逻辑测试（因子方向、时点、分层、确定性、只读）。
 
 成交语义（一字板、停牌、跌停、pending、成本）已由 `test_research_backtest.py` 覆盖，
 这里只测本脚本新增的部分，避免重复。
@@ -148,8 +148,8 @@ def test_strategy_d_only_keeps_high_liquidity():
     """D 组候选必须全部落在当日成交额最高的那一档（25%）。"""
     matrix = _matrix()
     signals = br.build_signals(matrix, top_n=3)
-    first_day = signals["D25"][0].signal_date
-    picked = {s.code for s in signals["D25"] if s.signal_date == first_day}
+    first_day = signals["L2_25"][0].signal_date
+    picked = {s.code for s in signals["L2_25"] if s.signal_date == first_day}
 
     pos = matrix.date_pos[first_day]
     cols = br._code_columns(matrix)
@@ -169,7 +169,7 @@ def test_strategies_are_not_identical():
     matrix = _matrix()
     signals = br.build_signals(matrix, top_n=3)
     a = {(s.signal_date, s.code) for s in signals["A"]}
-    c = {(s.signal_date, s.code) for s in signals["C"]}
+    c = {(s.signal_date, s.code) for s in signals["C0"]}
     assert a != c, "A（单因子）与 C（三因子）不应给出完全相同名单"
 
 
@@ -196,3 +196,93 @@ def test_module_does_not_import_main_session():
     """脚本不得持有主库连接入口（只能通过显式传入的只读 engine）。"""
     assert not hasattr(br, "session_scope")
     assert not hasattr(br, "main_engine")
+
+
+# ---- 6. 消融与流动性控制实验 ------------------------------------------------
+
+def test_c1_drops_illiq_and_renormalizes():
+    """C1 的评分公式必须与 C0 不同：同一票在两种权重下得分不等。"""
+    matrix = _matrix()
+    pos = len(matrix.calendar) - 1
+    series = {code: _series_at(matrix, code, pos) for code in matrix.codes}
+    scores = factor_score.score_series(series)
+    percent = br._factor_percentiles(scores)
+
+    code = "000000"
+    p = percent[code]
+    c0 = 0.30 * p["rev20"] + 0.30 * p["illiq20"] + 0.40 * p["amp20"]
+    c1 = (0.30 / 0.70) * p["rev20"] + (0.40 / 0.70) * p["amp20"]
+    assert c0 != c1
+    # 归一化后权重和为 1
+    assert (0.30 / 0.70) + (0.40 / 0.70) == pytest.approx(1.0)
+
+
+def test_c2_shuffle_preserves_distribution():
+    """C2 的 illiq 分位置换只破坏对应关系，分布（多重集合）保持不变。"""
+    matrix = _matrix()
+    pos = len(matrix.calendar) - 1
+    series = {code: _series_at(matrix, code, pos) for code in matrix.codes}
+    scores = factor_score.score_series(series)
+    percent = br._factor_percentiles(scores)
+    day = matrix.calendar[pos]
+
+    shuffled = br._shuffled_illiq(percent, day)
+    assert sorted(shuffled.values()) == sorted(percent[c]["illiq20"] for c in percent)
+    # 同一天重复调用必须一致（固定种子）
+    again = br._shuffled_illiq(percent, day)
+    assert shuffled == again
+    # 且与原始对应关系不同
+    assert any(shuffled[c] != percent[c]["illiq20"] for c in percent)
+
+
+def test_l2_rescoring_uses_subset_percentiles():
+    """L2 在过滤后的子集内重算分位：子集分位必须与全池分位不同。"""
+    matrix = _matrix()
+    pos = len(matrix.calendar) - 1
+    series = {code: _series_at(matrix, code, pos) for code in matrix.codes}
+    scores = factor_score.score_series(series)
+    full = br._factor_percentiles(scores)
+
+    subset = {code: scores[code] for code in list(scores)[:10]}
+    sub = br._factor_percentiles(subset)
+
+    diffs = [code for code in subset if sub[code]["rev20"] != full[code]["rev20"]]
+    assert diffs, "子集内重算分位没有产生差异，L2 与 L1 就没有区别"
+
+
+# ---- 7. 收益口径 ------------------------------------------------------------
+
+def test_net_formula_matches_engine():
+    """`_net` 必须与引擎公式一致：cost 是一次往返，扣一次。"""
+    # 0 收益也要承担成本 → -0.3%
+    assert br._net(0.0, 30.0) == pytest.approx(-0.3, abs=1e-9)
+    assert br._net(5.0, 0.0) == pytest.approx(5.0, abs=1e-12)
+    expected = ((1 + 0.05) * (1 - 0.003) - 1) * 100
+    assert br._net(5.0, 30.0) == pytest.approx(expected, abs=1e-12)
+    # 成本越高净收益越低
+    assert br._net(5.0, 10.0) > br._net(5.0, 50.0) > br._net(5.0, 200.0)
+
+
+def test_paired_stats_use_common_days_only():
+    """配对统计只取两边都有的日期；缺失日期不填 0。"""
+    a = {date(2024, 1, 2): 1.0, date(2024, 1, 3): 3.0, date(2024, 1, 4): 5.0}
+    b = {date(2024, 1, 2): 0.0, date(2024, 1, 4): 1.0}
+    stat = br._paired(a, b)
+    assert stat["days"] == 2
+    assert stat["mean"] == pytest.approx(2.5)
+
+
+def test_paired_ci_brackets_mean():
+    a = {date(2024, 1, 2) + timedelta(days=i): 1.0 + 0.1 * i for i in range(20)}
+    b = {date(2024, 1, 2) + timedelta(days=i): 0.0 for i in range(20)}
+    stat = br._paired(a, b)
+    assert stat["days"] == 20
+    assert stat["low"] <= stat["mean"] <= stat["high"]
+
+
+def test_oos_horizon_labels_present():
+    """三个持有期都要出现；未完成退出不计入 ok 样本（由内核保证）。"""
+    matrix = _matrix()
+    signals = br.build_signals(matrix, top_n=2)
+    assert br.HORIZONS == (1, 5, 10)
+    assert signals["C0"]

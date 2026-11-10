@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import random
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -66,23 +67,27 @@ WINDOW = 20
 LIQUIDITY_WINDOW = 20
 TOP_N = 20
 HORIZONS = (1, 5, 10)
-COSTS = (10.0, 30.0, 50.0)
+COSTS = (10.0, 30.0, 50.0, 100.0, 200.0)
 
 
 @dataclass(frozen=True)
 class Strategy:
     key: str
     label: str
-    factors: tuple[str, ...]
-    liquidity: str  # "all" / "top50" / "top25"
+    mode: str  # raw_rev / rev_amp / trio / trio_no_illiq / trio_shuffled / trio_then_filter
+    liquidity: str = "all"  # all / top50 / top25
 
 
 STRATEGIES: tuple[Strategy, ...] = (
-    Strategy("A", "A rev20 单因子", ("rev20",), "all"),
-    Strategy("B", "B rev20+低振幅", ("rev20", "amp20"), "all"),
-    Strategy("C", "C 生产三因子", ("rev20", "illiq20", "amp20"), "all"),
-    Strategy("D50", "D 三因子+高流动前50%", ("rev20", "illiq20", "amp20"), "top50"),
-    Strategy("D25", "D 三因子+高流动前25%", ("rev20", "illiq20", "amp20"), "top25"),
+    Strategy("A", "A rev20 单因子", "raw_rev"),
+    Strategy("B", "B rev20+低振幅", "rev_amp"),
+    Strategy("C0", "C0 三因子（生产）", "trio"),
+    Strategy("C1", "C1 去 illiq（归一化）", "trio_no_illiq"),
+    Strategy("C2", "C2 illiq 打乱（诊断）", "trio_shuffled"),
+    Strategy("L1_50", "L1 全池评分→前50%过滤", "trio", "top50"),
+    Strategy("L1_25", "L1 全池评分→前25%过滤", "trio", "top25"),
+    Strategy("L2_50", "L2 前50%过滤→重算分位", "trio_then_filter", "top50"),
+    Strategy("L2_25", "L2 前25%过滤→重算分位", "trio_then_filter", "top25"),
 )
 
 
@@ -159,6 +164,18 @@ def _factor_percentiles(scores: dict) -> dict[str, dict[str, float]]:
     return out
 
 
+def _shuffled_illiq(percent: dict[str, dict[str, float]], day: date) -> dict[str, float]:
+    """同一天内对 illiq 分位做确定性置换（C2 诊断用）。
+
+    分布完全不变，只破坏「分位 — 个股」的对应关系。种子取日期序数，保证可复现。
+    """
+    codes = list(percent)
+    values = [percent[code]["illiq20"] for code in codes]
+    order = list(range(len(codes)))
+    random.Random(day.toordinal()).shuffle(order)
+    return {codes[i]: values[order[i]] for i in range(len(codes))}
+
+
 def _rank_top(scored: list[tuple[str, float]], top_n: int) -> list[str]:
     """确定性排序：分数降序，同分按代码升序。"""
     scored.sort(key=lambda item: (-item[1], item[0]))
@@ -206,96 +223,235 @@ def build_signals(
         scores = factor_score.score_series(series)
         percent = _factor_percentiles(scores)
         days_used += 1
+        codes_today = list(scores)
+        shuffled = _shuffled_illiq(percent, day)
 
-        # ---- A：rev20 原始值降序 ----
-        ranked_a = [
-            (code, scores[code].rev20)
-            for code in scores
-            if scores[code].rev20 is not None
-        ]
-        for code in _rank_top(ranked_a, top_n):
-            signals["A"].append(Signal(code=code, signal_date=day, meta={"score": scores[code].rev20}))
-
-        # ---- B：rev20 分位 + (−amp20) 分位，固定 50/50 ----
-        ranked_b = [
-            (code, 0.5 * percent[code]["rev20"] + 0.5 * percent[code]["amp20"])
-            for code in scores
-        ]
-        for code in _rank_top(ranked_b, top_n):
-            signals["B"].append(Signal(code=code, signal_date=day, meta={}))
-
-        # ---- C：生产三因子分 ----
-        ranked_c = [(code, scores[code].score) for code in scores]
-        top_c = _rank_top(ranked_c, top_n)
-        for code in top_c:
-            signals["C"].append(Signal(code=code, signal_date=day, meta={"score": scores[code].score}))
-
-        # ---- D：同 C 评分，先按历史成交额分层 ----
         liq_ranked = sorted(liquidity.items(), key=lambda item: (-item[1], item[0]))
-        for key, ratio in (("D50", 0.50), ("D25", 0.25)):
-            keep = {code for code, _v in liq_ranked[: max(top_n, int(len(liq_ranked) * ratio))]}
-            ranked_d = [(code, score) for code, score in ranked_c if code in keep]
-            for code in _rank_top(ranked_d, top_n):
-                signals[key].append(Signal(code=code, signal_date=day, meta={}))
+
+        def liq_keep(ratio: float) -> set[str]:
+            size = max(top_n, int(len(liq_ranked) * ratio))
+            return {code for code, _value in liq_ranked[:size]}
+
+        for strategy in STRATEGIES:
+            mode = strategy.mode
+            if mode == "raw_rev":
+                ranked = [
+                    (code, scores[code].rev20)
+                    for code in codes_today
+                    if scores[code].rev20 is not None
+                ]
+            elif mode == "rev_amp":
+                ranked = [
+                    (code, 0.5 * percent[code]["rev20"] + 0.5 * percent[code]["amp20"])
+                    for code in codes_today
+                ]
+            elif mode == "trio":
+                ranked = [(code, scores[code].score) for code in codes_today]
+            elif mode == "trio_no_illiq":
+                ranked = [
+                    (
+                        code,
+                        (0.30 / 0.70) * percent[code]["rev20"]
+                        + (0.40 / 0.70) * percent[code]["amp20"],
+                    )
+                    for code in codes_today
+                ]
+            elif mode == "trio_shuffled":
+                ranked = [
+                    (
+                        code,
+                        0.30 * percent[code]["rev20"]
+                        + 0.30 * shuffled[code]
+                        + 0.40 * percent[code]["amp20"],
+                    )
+                    for code in codes_today
+                ]
+            elif mode == "trio_then_filter":
+                keep = liq_keep(0.50 if strategy.liquidity == "top50" else 0.25)
+                subset = {code: scores[code] for code in codes_today if code in keep}
+                if len(subset) < top_n:
+                    continue
+                sub_percent = _factor_percentiles(subset)
+                ranked = [
+                    (
+                        code,
+                        0.30 * sub_percent[code]["rev20"]
+                        + 0.30 * sub_percent[code]["illiq20"]
+                        + 0.40 * sub_percent[code]["amp20"],
+                    )
+                    for code in subset
+                ]
+            else:  # pragma: no cover - 配置错误直接暴露
+                raise ValueError(f"未知策略模式：{mode}")
+
+            # L1：先在全池算分，再按流动性保留（不重新算分位）
+            if strategy.liquidity != "all" and mode != "trio_then_filter":
+                keep = liq_keep(0.50 if strategy.liquidity == "top50" else 0.25)
+                ranked = [(code, score) for code, score in ranked if code in keep]
+
+            for code in _rank_top(ranked, top_n):
+                signals[strategy.key].append(
+                    Signal(code=code, signal_date=day, meta={})
+                )
 
     logger.info("生成信号：%d 个有效信号日", days_used)
     return signals
 
 
-def _aggregate_year(result) -> dict[int, dict[int, dict]]:
-    """按信号年份聚合（只用于历史时间分段，不称样本外验证）。"""
-    by_year: dict[int, dict[int, list]] = defaultdict(lambda: defaultdict(list))
-    for sample in result.samples:
-        if sample.status != "ok" or sample.gross is None:
-            continue
-        bucket = by_year[sample.signal_date.year][sample.horizon]
-        bucket.append((sample.gross, sample.net, sample.excess))
-    out: dict[int, dict[int, dict]] = {}
-    for year, horizons in by_year.items():
-        out[year] = {}
-        for horizon, rows in horizons.items():
-            gross = np.array([row[0] for row in rows], dtype=float)
-            net = np.array([row[1] for row in rows if row[1] is not None], dtype=float)
-            excess = np.array(
-                [row[2] for row in rows if row[2] is not None], dtype=float
-            )
-            out[year][horizon] = {
-                "n": len(rows),
-                "gross": float(gross.mean()),
-                "net": float(net.mean()) if net.size else float("nan"),
-                "excess": float(excess.mean()) if excess.size else float("nan"),
-                "win": float((gross > 0).mean()),
-            }
-    return out
+def _net(gross: float, cost: float) -> float:
+    """与 `research_backtest` 完全相同的净收益公式（cost 为一次往返总成本）。"""
+    return ((1 + gross / 100) * (1 - cost / 10000) - 1) * 100
 
 
-def _report(result, cost: float) -> None:
-    stat = result.horizons.get(5)
+def _ok_samples(result, horizon: int) -> list:
+    return [
+        sample
+        for sample in result.samples
+        if sample.horizon == horizon and sample.status == "ok" and sample.gross is not None
+    ]
+
+
+def _net_excess(samples, cost: float) -> float | None:
+    values = [
+        _net(sample.gross, cost) - _net(sample.benchmark, cost)
+        for sample in samples
+        if sample.benchmark is not None
+    ]
+    if not values:
+        return None
+    return float(np.mean(values))
+
+
+def _daily_mean(result, horizon: int = 5) -> dict[date, float]:
+    acc: dict[date, list[float]] = defaultdict(list)
+    for sample in _ok_samples(result, horizon):
+        acc[sample.signal_date].append(sample.gross)
+    return {day: float(np.mean(values)) for day, values in acc.items()}
+
+
+def _nw_t(values: list[float], lag: int) -> float:
+    arr = np.asarray(values, dtype=float)
+    n = arr.size
+    if n < 3:
+        return float("nan")
+    mean = float(arr.mean())
+    dev = arr - mean
+    var = float(dev @ dev) / n
+    for offset in range(1, min(lag, n - 1) + 1):
+        var += 2.0 * (1.0 - offset / (lag + 1.0)) * float(dev[offset:] @ dev[:-offset]) / n
+    if var <= 0:
+        return float("nan")
+    return mean / (var / n) ** 0.5
+
+
+def _paired(a: dict[date, float], b: dict[date, float]) -> dict:
+    days = sorted(set(a) & set(b))
+    diffs = [a[day] - b[day] for day in days]
+    if not diffs:
+        return {"days": 0}
+    t_stat = _nw_t(diffs, 4)
+    mean = float(np.mean(diffs))
+    se = abs(mean / t_stat) if t_stat and np.isfinite(t_stat) and t_stat != 0 else float("nan")
+    return {
+        "days": len(days),
+        "mean": mean,
+        "t": t_stat,
+        "low": mean - 1.96 * se if np.isfinite(se) else float("nan"),
+        "high": mean + 1.96 * se if np.isfinite(se) else float("nan"),
+    }
+
+
+def _print_summary(results: dict, costs: list[float]) -> None:
+    header = f"{'策略':<24}{'可成交':>8}{'5日毛':>9}" + "".join(f"{int(c):>8}" for c in costs)
+    header += f"{'毛超额':>9}{'净超额30':>10}{'中位':>9}{'胜率':>8}{'MAE':>9}"
     print()
-    print(f"== {result.strategy}  (cost={cost:.0f}bps, entry={result.entry_mode}) ==")
-    counts = stat.counts if stat else {}
+    print("五组策略 · 5 日持有 · D+1 开盘入场 · 成本列为净收益(%)")
+    print("-" * len(header))
+    print(header)
+    print("-" * len(header))
+    for key, result in results.items():
+        stat = result.horizons.get(5)
+        if stat is None:
+            continue
+        samples = _ok_samples(result, 5)
+        cells = []
+        for cost in costs:
+            values = [_net(sample.gross, cost) for sample in samples]
+            cells.append(float(np.mean(values)) if values else float("nan"))
+        net_ex = _net_excess(samples, 30.0)
+        print(
+            f"{result.strategy:<24}{stat.execution_samples:>8}{stat.mean:>8.2f}%"
+            + "".join(f"{value:>7.2f}%" for value in cells)
+            + f"{stat.excess_mean:>8.2f}%"
+            + (f"{net_ex:>9.2f}%" if net_ex is not None else f"{'N/A':>10}")
+            + f"{stat.median:>8.2f}%{stat.pos_pct:>7.1f}%{stat.mae_mean:>8.2f}%"
+        )
+    print("-" * len(header))
+
+
+def _print_status(results: dict) -> None:
+    print()
+    print("样本状态对账（5 日）")
+    print("-" * 96)
     print(
-        f"   观察样本 {stat.observation_samples if stat else 0}"
-        f" / 可成交 {stat.execution_samples if stat else 0}"
-        f" / 买不到 {counts.get('entry_limit_up', 0)}"
-        f" / 跌停退出 {counts.get('exit_limit_down', 0)}"
-        f" / pending {counts.get('pending', 0)}"
-        f" / 无行情 {counts.get('no_quote', 0)}"
+        f"{'策略':<24}{'observed':>9}{'entry_filled':>13}{'entry_blocked':>14}"
+        f"{'exit_completed':>15}{'exit_delayed':>13}{'pending':>9}{'no_quote':>9}"
     )
-    if stat is None:
-        return
-    print(
-        f"   5日 毛均值 {stat.mean:+.2f}%  净均值 {stat.net_mean:+.2f}%  "
-        f"中位 {stat.median:+.2f}%  胜率 {stat.pos_pct:.1f}%  "
-        f"超额 {stat.excess_mean:+.2f}%  MAE {stat.mae_mean:+.2f}%"
-    )
-    for horizon in HORIZONS:
-        item = result.horizons.get(horizon)
-        if item is None:
+    for result in results.values():
+        stat = result.horizons.get(5)
+        if stat is None:
+            continue
+        counts = stat.counts
+        observed = sum(counts.values())
+        blocked = counts.get("entry_limit_up", 0)
+        print(
+            f"{result.strategy:<24}{observed:>9}{stat.execution_samples:>13}{blocked:>14}"
+            f"{counts.get('ok', 0):>15}{counts.get('exit_limit_down', 0):>13}"
+            f"{counts.get('pending', 0):>9}{counts.get('no_quote', 0):>9}"
+        )
+    print("不变式：observed = ok + exit_limit_down + pending + no_quote + entry_limit_up；"
+          "execution_samples = ok（= exit_completed）")
+
+
+def _print_years(results: dict) -> None:
+    print()
+    print("历史时间分段（5 日毛超额，%）：2021 年自 9 月起，不是完整自然年")
+    print("-" * 96)
+    years = sorted({s.signal_date.year for r in results.values() for s in r.samples})
+    header = f"{'策略':<24}" + "".join(f"{year:>12}" for year in years) + f"{'有效日':>9}"
+    print(header)
+    for result in results.values():
+        cells = []
+        dayset: dict[int, set] = defaultdict(set)
+        for sample in _ok_samples(result, 5):
+            dayset[sample.signal_date.year].add(sample.signal_date)
+        for year in years:
+            rows = [
+                sample
+                for sample in _ok_samples(result, 5)
+                if sample.signal_date.year == year and sample.excess is not None
+            ]
+            cells.append(f"{np.mean([r.excess for r in rows]):>11.2f}" if rows else f"{'—':>12}")
+        total_days = sum(len(v) for v in dayset.values())
+        print(f"{result.strategy:<24}" + "".join(cells) + f"{total_days:>9}")
+
+
+def _print_pairs(results: dict) -> None:
+    pairs = [("C0", "C1"), ("C0", "C2"), ("L1_50", "L2_50"), ("L1_25", "L2_25")]
+    print()
+    print("同信号日配对差（5 日毛收益，A − B；HAC lag=4）")
+    print("-" * 96)
+    print(f"{'比较':<16}{'有效日':>8}{'均值差':>10}{'t':>8}{'95%CI低':>10}{'95%CI高':>10}")
+    for left, right in pairs:
+        if left not in results or right not in results:
+            continue
+        stat = _paired(_daily_mean(results[left]), _daily_mean(results[right]))
+        if not stat["days"]:
+            print(f"{left + ' - ' + right:<16}{0:>8}")
             continue
         print(
-            f"   {horizon:>2}日: 毛 {item.mean:+.2f}% 净 {item.net_mean:+.2f}% "
-            f"超额 {item.excess_mean:+.2f}% 胜率 {item.pos_pct:.1f}% n={item.execution_samples}"
+            f"{left + ' - ' + right:<16}{stat['days']:>8}{stat['mean']:>9.3f}"
+            f"{stat['t']:>8.2f}{stat['low']:>10.3f}{stat['high']:>10.3f}"
         )
 
 
@@ -337,42 +493,38 @@ def main(argv: list[str] | None = None) -> int:
         benchmark = Benchmark(session, matrix, "market")
         costs = [float(item) for item in args.costs.split(",") if item.strip()]
 
+        # 只跑 cost=0：毛收益与 net 无关，净收益用与引擎**完全相同**的公式逐样本重算，
+        # 避免为 5 个成本档重复遍历 2 万余条信号（结果等价，见 `_net`）。
+        results = {}
         for strategy in STRATEGIES:
             batch = signals[strategy.key]
             if not batch:
                 print(f"\n== {strategy.label} == 无信号")
                 continue
-            for cost in costs:
-                result = run_signals(
-                    session,
-                    batch,
-                    strategy=strategy.label,
-                    params={
-                        "top": args.top,
-                        "factors": list(strategy.factors),
-                        "liquidity": strategy.liquidity,
-                    },
-                    horizons=HORIZONS,
-                    entry_mode="next_open",
-                    cost_bps=cost,
-                    matrix=matrix,
-                    benchmark=benchmark,
-                )
-                _report(result, cost)
-                if args.detail and cost == costs[0]:
-                    years = _aggregate_year(result)
-                    for year in sorted(years):
-                        row = years[year].get(5)
-                        if not row:
-                            continue
-                        print(
-                            f"   [{year}] n={row['n']:>6} 毛 {row['gross']:+.2f}% "
-                            f"净 {row['net']:+.2f}% 超额 {row['excess']:+.2f}% 胜率 {row['win'] * 100:.1f}%"
-                        )
+            results[strategy.key] = run_signals(
+                session,
+                batch,
+                strategy=strategy.label,
+                params={"top": args.top, "mode": strategy.mode, "liquidity": strategy.liquidity},
+                horizons=HORIZONS,
+                entry_mode="next_open",
+                cost_bps=0.0,
+                matrix=matrix,
+                benchmark=benchmark,
+            )
     engine.dispose()
+
+    print()
+    print(f"研究区间 {start} ~ {end}；每日 Top {args.top}；持有 {list(HORIZONS)} 日")
+    _print_summary(results, costs)
+    _print_status(results)
+    if args.detail:
+        _print_years(results)
+        _print_pairs(results)
     print()
     print("口径提示：信号层研究（SIGNAL_LEVEL_ONLY），不是组合净值；")
-    print("         GROSS_ONLY 之外的成本档来自往返综合假设，非真实费率断言；")
+    print("         gross 不含费用；excess = gross − 基准毛收益（基准不扣费）；")
+    print("         net 与 net_excess 用同一 cost 逐样本计算；cost 是往返综合假设，非真实费率；")
     print("         研究库缺退市股 → SURVIVORSHIP_BIAS；历史 ST 名称可能整段为当前名 → ST_STATUS_PARTIAL。")
     return 0
 
