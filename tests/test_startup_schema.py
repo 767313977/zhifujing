@@ -159,6 +159,137 @@ def test_init_db_migrates_when_explicitly_allowed(tmp_path, monkeypatch):
     db.init_db(allow_migrate=True)  # 幂等
 
 
+# ---- P1.3-R：生产两处结构漂移的回归测试 ----
+#
+# 生产库上这两列与候选模型声明不一致，但启动门禁是「按名字判断存在性」，
+# 有意不比较 type / nullable / default（见 schema_report 文档）。下面把
+# 「容忍」这件事固化成测试，避免以后有人误以为门禁会拦住它们，也避免
+# 有人反过来去放宽门禁。
+
+PROD_SECTOR_DAILY_DDL = """
+CREATE TABLE sector_daily (
+    trade_date DATE NOT NULL,
+    sector_code VARCHAR(32) NOT NULL,
+    name VARCHAR(64),
+    taxonomy VARCHAR(16),
+    pct_chg FLOAT,
+    amount FLOAT,
+    volume FLOAT,
+    net_inflow FLOAT,
+    up_count INTEGER,
+    down_count INTEGER,
+    member_count INTEGER,
+    leader_name VARCHAR(32),
+    leader_pct_chg FLOAT,
+    source VARCHAR(16),
+    strength FLOAT,
+    PRIMARY KEY (trade_date, sector_code)
+)
+"""
+
+PROD_TRADE_PLAN_DDL = """
+CREATE TABLE trade_plan (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    code VARCHAR(16) NOT NULL,
+    name VARCHAR(32),
+    plan_date DATE NOT NULL,
+    buy_price FLOAT NOT NULL,
+    stop_price FLOAT NOT NULL,
+    note TEXT,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    source VARCHAR(32),
+    source_name VARCHAR(64),
+    signal_date DATE,
+    ref_price FLOAT,
+    buy_high FLOAT,
+    target_price FLOAT,
+    position_note TEXT,
+    observe_only BOOLEAN DEFAULT 0,
+    status VARCHAR(16),
+    status_source VARCHAR(8),
+    actual_price FLOAT,
+    followed_plan BOOLEAN,
+    deviation VARCHAR(32)
+)
+"""
+
+
+def test_declared_drift_is_tolerated_by_name_only_gate(tmp_path):
+    """两处漂移不会导致启动拒绝，也不会被静默「修正」成模型声明。"""
+    path = tmp_path / "prod_like.db"
+    con = sqlite3.connect(str(path))
+    con.execute(PROD_SECTOR_DAILY_DDL)
+    con.execute(PROD_TRADE_PLAN_DDL)
+    con.commit()
+    con.close()
+
+    engine = _engine(path)
+    db.migrate_schema(engine)
+    report = db.schema_report(engine)
+    assert report["ok"] is True
+    assert report["missing_columns"] == []
+
+    con = sqlite3.connect(str(path))
+    sector_cols = {row[1]: row for row in con.execute("PRAGMA table_info(sector_daily)")}
+    plan_cols = {row[1]: row for row in con.execute("PRAGMA table_info(trade_plan)")}
+    con.close()
+    # 迁移只加列 / 建索引，不会重建表：生产 DDL 原样保留
+    assert sector_cols["leader_name"][2] == "VARCHAR(32)"
+    assert plan_cols["observe_only"][3] == 0 and plan_cols["observe_only"][4] == "0"
+
+    # 模型声明的另一侧（用于固定「漂移」这个事实本身）
+    from app.models import SectorDaily, TradePlan
+
+    assert SectorDaily.__table__.c.leader_name.type.length == 128
+    assert TradePlan.__table__.c.observe_only.nullable is False
+
+
+def test_observe_only_null_reads_as_false_and_new_rows_write_zero(tmp_path):
+    """NULL 与 0 语义等价：读取归一、新写入不再产生 NULL。"""
+    from datetime import date
+
+    from sqlalchemy.orm import Session
+
+    from app.models import TradePlan
+    from app.services.trade_plan import _auto_status
+
+    path = tmp_path / "plan.db"
+    con = sqlite3.connect(str(path))
+    con.execute(PROD_TRADE_PLAN_DDL)
+    con.execute(
+        "INSERT INTO trade_plan(user_id, code, plan_date, buy_price, stop_price,"
+        " created_at, updated_at, observe_only) VALUES"
+        " (1, '600000', '2026-09-01', 10.0, 9.0, '2026-08-31 20:00:00',"
+        " '2026-08-31 20:00:00', NULL)"
+    )
+    con.commit()
+    con.close()
+
+    engine = _engine(path)
+    db.migrate_schema(engine)
+    with Session(engine) as session:
+        plan = session.get(TradePlan, 1)
+        assert plan.observe_only is None  # 库里确实是 NULL
+        assert bool(plan.observe_only) is False  # 读取路径归一
+        assert _auto_status(plan, date(2026, 8, 31)) == "observe"  # 不抛异常
+
+        new_plan = TradePlan(
+            user_id=1, code="600001", plan_date=date(2026, 9, 2),
+            buy_price=10.0, stop_price=9.0,
+        )
+        session.add(new_plan)
+        session.commit()
+        assert new_plan.observe_only is False
+    engine.dispose()
+
+    con = sqlite3.connect(str(path))
+    stored = con.execute("SELECT observe_only, typeof(observe_only) FROM trade_plan WHERE code='600001'").fetchone()
+    con.close()
+    assert stored == (0, "integer")
+
+
 def test_scheduler_not_started_when_schema_invalid(monkeypatch):
     """Schema 不兼容时，启动流程必须停在 ensure_schema，不能拉起采集调度器。"""
     import asyncio
