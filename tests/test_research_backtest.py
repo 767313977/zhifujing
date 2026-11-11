@@ -104,6 +104,8 @@ def test_pending_when_future_data_missing(session):
     stat = result.horizons[5]
     assert stat.counts["pending"] == 1
     assert stat.execution_samples == 0
+    assert stat.observation_samples == 0
+    assert stat.mean is None
 
 
 def test_exit_limit_down_is_observation_not_execution(session):
@@ -117,6 +119,7 @@ def test_exit_limit_down_is_observation_not_execution(session):
     assert stat.counts["exit_limit_down"] == 1
     assert stat.observation_samples == 1
     assert stat.execution_samples == 0
+    assert stat.mean is None  # 理论收益只作观察，不计入“正常完成”统计
     assert result.samples[0].gross is not None
 
 
@@ -210,3 +213,116 @@ def test_st_flag_uses_entry_day_name(session):
     session.commit()
     result = _run(session, [rb.Signal("000001", D0)], horizons=(1,))
     assert "st" in result.samples[0].flags
+
+
+# ---------------------------------------------------------------------------
+# 延迟窗口边界：入场最多 5 个交易日、退出最多 10 个（含 offset=0）
+# ---------------------------------------------------------------------------
+
+
+def _add_days(db: Session, count: int) -> list[date]:
+    """从 D0 起补足 count 个连续自然日到交易日历（测试用，不代表真实日历）。"""
+    days = [D0 + timedelta(days=index) for index in range(count)]
+    existing = {row[0] for row in db.query(TradeCalendar.trade_date).all()}
+    for day in days:
+        if day not in existing:
+            db.add(TradeCalendar(trade_date=day))
+    db.commit()
+    return days
+
+
+def test_entry_delay_cap_is_five_trading_days(session):
+    days = _add_days(session, 8)  # D0..D7
+    _bar(session, days[0], "000001", open_=10.0, high=10.1, low=9.9, close=10.0, pct=0.0)
+    _bar(session, days[5], "000001", open_=10.2, high=10.3, low=10.1, close=10.3, pct=3.0)
+    session.commit()
+
+    result = _run(session, [rb.Signal("000001", days[0])], horizons=(1,), max_entry_delay=5)
+    sample = result.samples[0]
+    assert sample.status == "ok"
+    assert sample.entry_date == days[5]
+    assert sample.entry_delay == 5
+
+
+def test_entry_after_five_delays_is_suspended_not_delayed(session):
+    days = _add_days(session, 8)  # D0..D7
+    _bar(session, days[0], "000001", open_=10.0, high=10.1, low=9.9, close=10.0, pct=0.0)
+    # 第 6 次机会（offset=6）不在允许窗口内 → 必须是 suspended，不能顺延到 D6
+    _bar(session, days[6], "000001", open_=10.2, high=10.3, low=10.1, close=10.3, pct=3.0)
+    session.commit()
+
+    result = _run(session, [rb.Signal("000001", days[0])], horizons=(1,), max_entry_delay=5)
+    sample = result.samples[0]
+    assert sample.status == "suspended"
+    assert sample.entry_date is None
+    assert result.horizons[1].execution_samples == 0
+
+
+def test_exit_delay_includes_offset_zero_and_caps_at_ten(session):
+    days = _add_days(session, 14)  # D0..D13
+    _bar(session, days[0], "000001", open_=10.0, high=10.1, low=9.9, close=10.0, pct=0.0)
+    _bar(session, days[1], "000001", open_=10.1, high=10.2, low=10.0, close=10.2, pct=2.0)
+    # horizon=2 → 目标退出日是 D2；offset=10 对应 D12
+    _bar(session, days[12], "000001", open_=10.3, high=10.4, low=10.2, close=10.4, pct=2.0)
+    session.commit()
+
+    result = _run(session, [rb.Signal("000001", days[0])], horizons=(2,), max_exit_delay=10)
+    sample = result.samples[0]
+    assert sample.status == "ok"
+    assert sample.entry_date == days[1]
+    assert sample.exit_date == days[12]
+    assert sample.exit_delay == 10
+
+
+def test_exit_after_ten_delays_is_no_exit(session):
+    days = _add_days(session, 15)  # D0..D14
+    _bar(session, days[0], "000001", open_=10.0, high=10.1, low=9.9, close=10.0, pct=0.0)
+    _bar(session, days[1], "000001", open_=10.1, high=10.2, low=10.0, close=10.2, pct=2.0)
+    # 目标 D2；offset 0..10 覆盖 D2..D12；D13 是第 12 次尝试，不应被接受
+    _bar(session, days[13], "000001", open_=10.3, high=10.4, low=10.2, close=10.4, pct=2.0)
+    session.commit()
+
+    result = _run(session, [rb.Signal("000001", days[0])], horizons=(2,), max_exit_delay=10)
+    sample = result.samples[0]
+    assert sample.status == "no_exit"
+    assert sample.exit_date is None
+    assert result.horizons[2].execution_samples == 0
+
+
+def test_unbuyable_is_not_retried_on_next_day(session):
+    _bar(session, D0, "000001", open_=10.0, high=10.1, low=9.9, close=10.0, pct=0.0)
+    _bar(session, D1, "000001", open_=11.0, high=11.0, low=11.0, close=11.0, pct=10.0)
+    _bar(session, D2, "000001", open_=11.0, high=11.3, low=10.9, close=11.2, pct=1.8)
+    session.commit()
+
+    result = _run(session, [rb.Signal("000001", D0)], horizons=(1,), max_entry_delay=5)
+    sample = result.samples[0]
+    assert sample.status == "unbuyable"
+    assert sample.entry_date == D1
+    assert sample.entry_delay == 1
+    assert "entry_limit_up" in sample.flags
+
+
+def test_different_entry_days_shift_planned_exit(session):
+    days = _add_days(session, 6)  # D0..D5
+    # A：D1 正常入场，horizon=2 → D2 退出
+    _bar(session, days[0], "000001", open_=10.0, high=10.1, low=9.9, close=10.0, pct=0.0)
+    _bar(session, days[1], "000001", open_=10.1, high=10.2, low=10.0, close=10.2, pct=2.0)
+    _bar(session, days[2], "000001", open_=10.2, high=10.3, low=10.1, close=10.3, pct=1.0)
+    # B：D1 停牌，D2 入场 → D3 退出
+    _bar(session, days[0], "000002", open_=10.0, high=10.1, low=9.9, close=10.0, pct=0.0)
+    _bar(session, days[2], "000002", open_=10.1, high=10.2, low=10.0, close=10.2, pct=2.0)
+    _bar(session, days[3], "000002", open_=10.2, high=10.3, low=10.1, close=10.3, pct=1.0)
+    session.commit()
+
+    result = _run(
+        session,
+        [rb.Signal("000001", days[0]), rb.Signal("000002", days[0])],
+        horizons=(2,),
+        max_entry_delay=5,
+    )
+    by_code = {sample.code: sample for sample in result.samples}
+    assert (by_code["000001"].entry_date, by_code["000001"].exit_date) == (days[1], days[2])
+    assert (by_code["000002"].entry_date, by_code["000002"].exit_date) == (days[2], days[3])
+    assert by_code["000002"].entry_delay == 2
+

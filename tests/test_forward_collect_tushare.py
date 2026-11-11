@@ -1024,8 +1024,56 @@ def test_evaluate_accepts_verified_tushare_snapshot(tmp_path, capsys):
     root, db, dates = _forward_db(tmp_path)
     signal_day = dates[30]
     codes = [f"600{index:03d}" for index in range(5)]
-    _write_snapshot(root / "forward_c0", signal_day, 1, codes)
-    assert _evaluate(db, root / "forward_c0", signal_day) == 0
+    out = root / "forward_c0"
+    _write_snapshot(out, signal_day, 1, codes)
+    jsonl = out / f"signals_{signal_day}.jsonl"
+    before = hashlib.sha256(jsonl.read_bytes()).hexdigest()
+    assert _evaluate(db, out, signal_day) == 0
+    assert hashlib.sha256(jsonl.read_bytes()).hexdigest() == before
+    meta = json.loads((out / f"signals_{signal_day}.meta.json").read_text(encoding="utf-8"))
+    current = {
+        "kind": "data_revision",
+        "value": {"stock_daily": 40, f"stock_daily:{signal_day}": 1},
+    }
+    assert ft.revision_mismatch(meta, current, signal_day) is None
+    capsys.readouterr()
+
+
+def test_protocol_legacy_text_does_not_block_forward_audit(tmp_path, capsys, monkeypatch):
+    root, db, dates = _forward_db(tmp_path)
+    signal_day = dates[30]
+    out = root / "forward_c0"
+    _write_snapshot(out, signal_day, 1, [f"600{index:03d}" for index in range(5)])
+    # 旧说明文本写的是 history.db；评价不应读取这段描述
+    monkeypatch.setitem(ft.PROTOCOL, "data_source", "backend/data/history.db（SQLite mode=ro）")
+    assert _evaluate(db, out, signal_day) == 0
+    capsys.readouterr()
+
+
+def test_snapshot_files_untouched_when_later_days_are_appended(tmp_path, capsys):
+    root, db, dates = _forward_db(tmp_path)
+    signal_day = dates[30]
+    codes = set()
+    for prefix, size in (("600", 40), ("000", 40), ("300", 10), ("688", 5), ("920", 5)):
+        codes.update(f"{prefix}{index:03d}" for index in range(size))
+    manifest = _manifest(codes)
+    out = root / "forward_c0"
+    _write_snapshot(out, signal_day, 1, [f"600{index:03d}" for index in range(5)])
+    jsonl = out / f"signals_{signal_day}.jsonl"
+    before = hashlib.sha256(jsonl.read_bytes()).hexdigest()
+
+    next_day = dates[-1] + timedelta(days=3)
+    all_days = dates + [next_day]
+    collect_now = datetime.combine(next_day + timedelta(days=1), datetime.min.time(), CST).replace(hour=16)
+    result, _ = _run(
+        db, root, manifest, _quotes(codes), day=next_day, now=collect_now,
+        purpose="backfill", calendar=all_days,
+    )
+    assert result["status"] == "confirmed"
+    assert hashlib.sha256(jsonl.read_bytes()).hexdigest() == before
+    state = ft.inspect_snapshot(out, signal_day, ft.MODE_FORWARD)
+    assert state.state == ft.STATE_COMPLETE
+    assert _evaluate(db, out, signal_day) == 0
     capsys.readouterr()
 
 
