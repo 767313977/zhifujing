@@ -60,9 +60,20 @@
 
 ### 1.3 证据文件
 
-`backend/data/bse_identity_2026-11-11.json`（本地产物，记录 code/name/listing_date/
+`docs/b3/bse_identity_2026-11-11.json`（随仓库保存，记录 code/name/listing_date/
 switched/old_code/source）。清单生成器会校验：证据里的代码必须存在于历史库、
 简称必须与历史库一致，否则直接报错。
+
+重建清单的命令（只读 `history.db`）：
+
+```powershell
+.venv\Scripts\python.exe scripts\forward_universe.py `
+  --version b1v-2026-11-11 `
+  --bse-evidence docs\b3\bse_identity_2026-11-11.json `
+  --out backend\data\c0_universe_b1_verified.json
+```
+
+重建后两个哈希与本文一致（`3e200c38…` / `89434178…`），说明清单可复现。
 
 ---
 

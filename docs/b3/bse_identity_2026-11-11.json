@@ -1,0 +1,295 @@
+{
+  "version": "bse-identity-2026-11-11",
+  "checked_at": "2026-11-11",
+  "roster_records": 355,
+  "securities": [
+    {
+      "code": "920047",
+      "name": "诺思兰德",
+      "listing_date": "2020-11-24",
+      "switched": true,
+      "old_code": "430047",
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/service/code_mapping.html"
+    },
+    {
+      "code": "920223",
+      "name": "荣亿精密",
+      "listing_date": "2022-06-09",
+      "switched": true,
+      "old_code": "873223",
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/service/code_mapping.html"
+    },
+    {
+      "code": "920493",
+      "name": "并行科技",
+      "listing_date": "2023-11-01",
+      "switched": true,
+      "old_code": "839493",
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/service/code_mapping.html"
+    },
+    {
+      "code": "920873",
+      "name": "中设咨询",
+      "listing_date": "2021-11-15",
+      "switched": true,
+      "old_code": "833873",
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/service/code_mapping.html"
+    },
+    {
+      "code": "920025",
+      "name": "凯达重工",
+      "listing_date": "2026-09-23",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920028",
+      "name": "新恒泰",
+      "listing_date": "2026-03-20",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920059",
+      "name": "双英集团",
+      "listing_date": "2026-08-19",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920071",
+      "name": "金钛股份",
+      "listing_date": "2026-09-03",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920079",
+      "name": "乔路铭",
+      "listing_date": "2026-07-22",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920083",
+      "name": "金戈新材",
+      "listing_date": "2026-06-11",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920093",
+      "name": "信胜科技",
+      "listing_date": "2026-08-21",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920107",
+      "name": "恒兴股份",
+      "listing_date": "2026-08-17",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920117",
+      "name": "龙鑫智能",
+      "listing_date": "2026-07-16",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920126",
+      "name": "永大股份",
+      "listing_date": "2026-06-15",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920136",
+      "name": "永励精密",
+      "listing_date": "2026-07-09",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920138",
+      "name": "杰理科技",
+      "listing_date": "2026-08-12",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920156",
+      "name": "海昌智能",
+      "listing_date": "2026-04-27",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920161",
+      "name": "龙辰科技",
+      "listing_date": "2026-05-27",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920181",
+      "name": "赛英电子",
+      "listing_date": "2026-04-10",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920193",
+      "name": "吉和昌",
+      "listing_date": "2026-07-02",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920200",
+      "name": "振宏股份",
+      "listing_date": "2026-05-07",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920201",
+      "name": "百瑞吉",
+      "listing_date": "2026-09-24",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920202",
+      "name": "安达股份",
+      "listing_date": "2026-09-29",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920220",
+      "name": "朗信电气",
+      "listing_date": "2026-05-22",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920229",
+      "name": "世纪数码",
+      "listing_date": "2026-09-22",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920238",
+      "name": "长鹰硬科",
+      "listing_date": "2026-07-24",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920258",
+      "name": "聚仁新材",
+      "listing_date": "2026-08-03",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920268",
+      "name": "百迈科",
+      "listing_date": "2026-09-09",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920269",
+      "name": "杰锋动力",
+      "listing_date": "2026-09-07",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920288",
+      "name": "华大海天",
+      "listing_date": "2026-08-28",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920289",
+      "name": "华汇智能",
+      "listing_date": "2026-09-04",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    },
+    {
+      "code": "920298",
+      "name": "腾信精密",
+      "listing_date": "2026-09-16",
+      "switched": false,
+      "old_code": null,
+      "listed_before_history_cutoff": true,
+      "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do（北交所上市公司名录，字段 fxssrq=上市日期）"
+    }
+  ]
+}
