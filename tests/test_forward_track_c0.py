@@ -38,11 +38,15 @@ def _build_db(
     calendar: bool = True,
     future_days: int = 5,
     thin_last_day: int | None = None,
+    prefixes: tuple[str, ...] = ("00",),
+    drop_prefix_last_day: str | None = None,
 ) -> date:
     """单调漂移的合成行情，返回最新交易日。
 
     `future_days` 让日历比行情多铺几天，模拟「次日仍是交易日」；
-    `thin_last_day` 让最后一晚只剩 N 只票，模拟采集未完成。
+    `thin_last_day` 让最后一晚只剩 N 只票，模拟采集未完成；
+    `prefixes` 按顺序轮流分配代码段（默认全深主板），用于验证分市场覆盖；
+    `drop_prefix_last_day` 让最后一晚整段缺失某市场。
     """
     with sqlite3.connect(path) as conn:
         conn.execute(
@@ -59,13 +63,21 @@ def _build_db(
             conn.execute("CREATE TABLE trade_calendar (trade_date TEXT PRIMARY KEY)")
         rows = []
         for c in range(codes):
-            code = f"{c:06d}"
+            prefix = prefixes[c % len(prefixes)]
+            bucket = c // len(prefixes)
+            code = f"{prefix}{bucket:04d}"
             close = 10.0 + c
             for d in range(days):
                 day = (START + timedelta(days=d)).isoformat()
                 drift = -0.004 + 0.0003 * c
                 close *= 1 + drift
                 if thin_last_day is not None and d == days - 1 and c >= thin_last_day:
+                    continue
+                if (
+                    drop_prefix_last_day is not None
+                    and d == days - 1
+                    and code.startswith(drop_prefix_last_day)
+                ):
                     continue
                 rows.append(
                     (day, code, "测试", close, close * 1.01, close * 0.99,
@@ -211,6 +223,56 @@ def test_forward_writes_nothing_on_reject(env, capsys):
     _run(db, out, "snapshot", "--mode", "forward", "--now", _now(latest, 10, 0))
     assert not out.exists() or not any(out.iterdir())
     capsys.readouterr()
+
+
+def test_forward_accepts_late_data_same_evening(env, capsys):
+    """D 日 22:00 数据才落完 —— 仍在「15:30 ~ 次日 09:15」窗口内，允许冻结。"""
+    db, out, latest = env
+    assert _run(db, out, "snapshot", "--mode", "forward",
+                "--now", _now(latest, 22, 0)) == 0
+    capsys.readouterr()
+
+
+def test_forward_accepts_late_data_before_next_open(env, capsys):
+    """跨夜：次日 08:00 仍早于 09:15，合法窗口未结束，允许冻结。"""
+    db, out, latest = env
+    code = _run(
+        db, out, "snapshot", "--mode", "forward",
+        "--date", latest.isoformat(),
+        "--now", _now(latest + timedelta(days=1), 8, 0),
+    )
+    assert code == 0
+    capsys.readouterr()
+
+
+def test_board_classification():
+    cases = {
+        "600000": "沪主板",
+        "688001": "科创板",
+        "000001": "深主板",
+        "300001": "创业板",
+        "830001": "北交所",
+        "430001": "北交所",
+        "920001": "北交所",
+        "900001": "其他",
+    }
+    for code, board in cases.items():
+        assert ft._board_of(code) == board, code
+
+
+def test_forward_rejects_board_dropped_silently(tmp_path, capsys):
+    """总行数下降不足以证明范围完整：北交所整段消失必须单独拦下。"""
+    db = tmp_path / "history.db"
+    latest = _build_db(
+        db, codes=90, prefixes=("60", "00", "83"), drop_prefix_last_day="83"
+    )
+    out = tmp_path / "forward"
+    code = _run(db, out, "snapshot", "--mode", "forward", "--now", _now(latest, 15, 45))
+    assert code == 3
+    err = capsys.readouterr().err
+    assert "北交所" in err
+    assert "静默丢弃" in err
+    assert not list(out.glob("signals_*.jsonl"))
 
 
 # ---- 并发与原子性 -----------------------------------------------------------

@@ -15,13 +15,16 @@ CLI 只用 `--mode replay` / `--mode forward` 两个取值，不再出现 `live`
 ## `forward` 的启动闸门（全部通过才落盘）
 
 1. D 在交易日历里（`trade_calendar` 表，缺失即拒绝，不猜）；
-2. 当前时间 ≥ D 日 15:30（收盘 + 日线落库等待）；
-3. 当前时间 < 下一交易日 09:15（次日集合竞价前）；
+2. 当前时间 ≥ D 日 15:30（**最早可冻结时点**；数据实际完成可以更晚，
+   只要还在下一条窗口内）；
+3. 当前时间 < 下一交易日 09:15（集合竞价前）——2、3 合起来就是合法冻结窗口；
 4. 时区固定 `Asia/Shanghai`；
 5. 库里最新交易日 == D（没有当日数据就拒绝，不自动下载）；
 6. D 日行数 ≥ 近 5 个交易日行数中位数 × 95%；
 7. D 日 OHLC/pct_chg 缺失率 ≤ 0.5%，amount 缺失率 ≤ 0.5%；
-8. 候选池三因子缺失率 ≤ 2%。
+8. 候选池三因子缺失率 ≤ 2%；
+9. 分市场覆盖：沪主板 / 科创板 / 深主板 / 创业板 / 北交所各自的当日行数
+   ≥ 各自近 5 日中位数 × 95%（总行数接近 ≠ 证券范围完整，防止某市场被静默丢弃）。
 
 任何一条不满足 → 打印原因并退出码 3，**不生成任何文件**。当前 `history.db`
 最新只到 2026-10-19，所以正式前瞻运行必然被拒绝 —— 这是预期行为。
@@ -119,6 +122,10 @@ NEXT_OPEN_AT = time(9, 15)
 MIN_COVERAGE_RATIO = 0.95
 MAX_NULL_RATIO = 0.005
 MAX_FACTOR_MISSING_RATIO = 0.02
+#: 分市场覆盖检查：近 5 日中位数有这么多只才比较（太小的板块不因停牌抖动误报）
+MIN_BOARD_ROWS = 20
+
+BOARD_NAMES = ("沪主板", "科创板", "深主板", "创业板", "北交所", "其他")
 
 MODE_FORWARD = "forward"
 MODE_REPLAY = "replay"
@@ -445,6 +452,31 @@ def _factor_missing_ratio(candidates: dict) -> float:
 # ---------------------------------------------------------------------------
 
 
+def _board_of(code: str) -> str:
+    """按代码段判市场。北交所包含老段 43/83/87/88 与 2024 年起的 920 段。"""
+    if code.startswith("60"):
+        return "沪主板"
+    if code.startswith("68"):
+        return "科创板"
+    if code.startswith("00"):
+        return "深主板"
+    if code.startswith("30"):
+        return "创业板"
+    if code[:2] in ("43", "83", "87", "88", "92"):
+        return "北交所"
+    return "其他"
+
+
+def _board_counts(session: Session, day: date) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for code in session.scalars(
+        select(StockDaily.code).where(StockDaily.trade_date == day)
+    ):
+        board = _board_of(code)
+        counts[board] = counts.get(board, 0) + 1
+    return counts
+
+
 def _completeness(session: Session, day: date) -> dict:
     rows = int(
         session.scalar(
@@ -496,11 +528,26 @@ def _completeness(session: Session, day: date) -> dict:
         for item in previous
     )
     median_rows = counts[len(counts) // 2] if counts else 0
+
+    # 分市场覆盖：只看总行数无法发现「北交所整段消失、同时沪深多出几只」这种等量替换
+    board_today = _board_counts(session, day)
+    history_boards = [_board_counts(session, item) for item in previous]
+    boards: dict[str, dict] = {}
+    for board in BOARD_NAMES:
+        today_rows = board_today.get(board, 0)
+        series = sorted(item.get(board, 0) for item in history_boards)
+        board_median = series[len(series) // 2] if series else 0
+        boards[board] = {
+            "rows": today_rows,
+            "median_5d": board_median,
+            "ratio": (today_rows / board_median) if board_median else 0.0,
+        }
     return {
         "trade_date": day.isoformat(),
         "rows": rows,
         "previous_days": [item.isoformat() for item in previous],
         "median_rows_5d": median_rows,
+        "boards": boards,
         "coverage_ratio": (rows / median_rows) if median_rows else 0.0,
         "null_ohlc_rows": null_ohlc,
         "null_amount_rows": null_amount,
@@ -578,6 +625,16 @@ def forward_problems(session: Session, day: date, now: datetime) -> list[str]:
                 f"{day} 成交额缺失 {info['null_amount_rows']} 行"
                 f"（{info['null_amount_ratio']:.2%} > {MAX_NULL_RATIO:.1%}）"
             )
+        # 分市场覆盖：总行数接近不代表证券范围完整（北交所整段消失 + 沪深多几只，
+        # 总数可以几乎不变）。任何近期稳定的市场当天掉超过 5% 都拒绝。
+        for board, item in info["boards"].items():
+            if item["median_5d"] < MIN_BOARD_ROWS:
+                continue
+            if item["ratio"] < MIN_COVERAGE_RATIO:
+                problems.append(
+                    f"{board} 覆盖 {item['rows']} 行，近 5 日中位数 {item['median_5d']}，"
+                    f"仅 {item['ratio']:.1%}（< {MIN_COVERAGE_RATIO:.0%}）：疑似该市场被静默丢弃"
+                )
     return problems
 
 
