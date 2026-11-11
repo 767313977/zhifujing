@@ -143,10 +143,10 @@ def test_replay_does_not_create_forward_file(env, capsys):
     capsys.readouterr()
 
 
-# ---- live 闸门 --------------------------------------------------------------
+# ---- forward 闸门 ---------------------------------------------------------
 
 
-def test_live_snapshot_passes_all_gates(env, capsys):
+def test_forward_snapshot_passes_all_gates(env, capsys):
     db, out, latest = env
     code = _run(db, out, "snapshot", "--mode", "forward", "--now", _now(latest, 15, 45))
     assert code == 0
@@ -160,14 +160,14 @@ def test_live_snapshot_passes_all_gates(env, capsys):
     capsys.readouterr()
 
 
-def test_live_rejects_before_close(env, capsys):
+def test_forward_rejects_before_close(env, capsys):
     db, out, latest = env
     assert _run(db, out, "snapshot", "--mode", "forward", "--now", _now(latest, 14, 0)) == 3
     assert not list(out.glob("signals_*.jsonl"))
     assert "早于 D 日 15:30" in capsys.readouterr().err
 
 
-def test_live_rejects_stale_data(env, capsys):
+def test_forward_rejects_stale_data(env, capsys):
     db, out, latest = env
     # 今天已经是 10 天后，库里最新还是老日期
     assert _run(db, out, "snapshot", "--mode", "forward",
@@ -176,7 +176,7 @@ def test_live_rejects_stale_data(env, capsys):
     assert "拒绝正式前瞻冻结" in capsys.readouterr().err
 
 
-def test_live_rejects_after_next_open(env, capsys):
+def test_forward_rejects_after_next_open(env, capsys):
     db, out, latest = env
     # D 日收盘后但已跨过次一交易日 09:15：不再是「开盘前」
     assert _run(db, out, "snapshot", "--mode", "forward",
@@ -185,7 +185,7 @@ def test_live_rejects_after_next_open(env, capsys):
     assert "开盘前" in capsys.readouterr().err
 
 
-def test_live_rejects_incomplete_day(tmp_path, capsys):
+def test_forward_rejects_incomplete_day(tmp_path, capsys):
     db = tmp_path / "history.db"
     latest = _build_db(db, thin_last_day=5)  # 最后一天只有 5 只
     out = tmp_path / "forward"
@@ -195,7 +195,7 @@ def test_live_rejects_incomplete_day(tmp_path, capsys):
     assert "覆盖" in capsys.readouterr().err
 
 
-def test_live_rejects_without_trade_calendar(tmp_path, capsys):
+def test_forward_rejects_without_trade_calendar(tmp_path, capsys):
     """没有获准的交易日历 = 无法确认 D 是交易日 → 拒绝启动。"""
     db = tmp_path / "history.db"
     latest = _build_db(db, calendar=False)
@@ -206,7 +206,7 @@ def test_live_rejects_without_trade_calendar(tmp_path, capsys):
     assert "交易日历" in capsys.readouterr().err
 
 
-def test_live_writes_nothing_on_reject(env, capsys):
+def test_forward_writes_nothing_on_reject(env, capsys):
     db, out, latest = env
     _run(db, out, "snapshot", "--mode", "forward", "--now", _now(latest, 10, 0))
     assert not out.exists() or not any(out.iterdir())
@@ -244,6 +244,220 @@ def test_partial_write_leaves_no_valid_snapshot(tmp_path, monkeypatch):
     assert not jsonl.exists()
     assert not meta.exists()
     assert not list(tmp_path.glob(".*tmp*"))
+
+
+# ---- 场景 1~4：崩溃点 -------------------------------------------------------
+
+
+def test_crash_before_tmp_written(tmp_path, monkeypatch):
+    """场景 1：连临时文件都没写出来就崩溃 → 目录里什么都没有。"""
+    jsonl = tmp_path / "signals_2024-03-30.jsonl"
+    meta = tmp_path / "signals_2024-03-30.meta.json"
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("进程在写临时文件前被杀")
+
+    monkeypatch.setattr(ft, "_write_tmp", boom)
+    with pytest.raises(RuntimeError):
+        ft._publish_pair(b"a\n", b"{}", jsonl, meta)
+    assert not jsonl.exists() and not meta.exists()
+    assert not list(tmp_path.iterdir())
+
+
+def test_crash_after_tmp_before_publish(tmp_path, monkeypatch):
+    """场景 2：临时文件写完、发布前崩溃 → 只剩临时文件，且不会被当成快照。"""
+    jsonl = tmp_path / "signals_2024-03-30.jsonl"
+    meta = tmp_path / "signals_2024-03-30.meta.json"
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("进程在发布前被杀")
+
+    monkeypatch.setattr(ft, "_publish", boom)
+    with pytest.raises(RuntimeError):
+        ft._publish_pair(b"a\n", b"{}", jsonl, meta)
+    assert not jsonl.exists() and not meta.exists()
+    assert not list(tmp_path.glob(".*tmp*"))
+    assert ft.inspect_snapshot(tmp_path, date(2024, 3, 30), "forward").state == ft.STATE_NONE
+
+
+def test_crash_after_jsonl_publish_before_meta(tmp_path):
+    """场景 3：JSONL 已独占发布、meta 未发布（真实崩溃，无回滚）→ INCOMPLETE。"""
+    day = date(2024, 3, 30)
+    jsonl, meta = ft._paths(tmp_path, day, "forward")
+    tmp = ft._write_tmp(jsonl, b'{"a":1}\n')
+    assert ft._publish(tmp, jsonl) is True
+    tmp.unlink(missing_ok=True)
+
+    state = ft.inspect_snapshot(tmp_path, day, "forward")
+    assert state.state == ft.STATE_INCOMPLETE
+    assert "meta 缺失" in state.detail
+
+
+def test_crash_during_meta_write(tmp_path, monkeypatch):
+    """场景 4：meta 临时文件写到一半崩溃 → 已有 JSONL 也不留下。"""
+    jsonl = tmp_path / "signals_2024-03-30.jsonl"
+    meta = tmp_path / "signals_2024-03-30.meta.json"
+    calls = {"n": 0}
+    real = ft._write_tmp
+
+    def flaky(final: Path, payload: bytes) -> Path:
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise OSError("meta 落盘失败")
+        return real(final, payload)
+
+    monkeypatch.setattr(ft, "_write_tmp", flaky)
+    with pytest.raises(OSError):
+        ft._publish_pair(b"a\n", b"{}", jsonl, meta)
+    assert not jsonl.exists() and not meta.exists()
+    assert not list(tmp_path.glob(".*tmp*"))
+
+
+# ---- 场景 3/5/6：状态机与拒绝覆盖 -------------------------------------------
+
+
+def test_state_none_then_complete(tmp_path, capsys):
+    day = date(2024, 3, 30)
+    assert ft.inspect_snapshot(tmp_path, day, "forward").state == ft.STATE_NONE
+    jsonl, meta = ft._paths(tmp_path, day, "forward")
+    payload = b'{"mode":"FORWARD_FROZEN","signal_date":"2024-03-30"}\n'
+    info = {
+        "mode": "FORWARD_FROZEN",
+        "signal_date": day.isoformat(),
+        "row_count": 1,
+        "content_sha256": hashlib.sha256(payload).hexdigest(),
+    }
+    assert ft._publish_pair(
+        payload,
+        json.dumps(info, ensure_ascii=False).encode("utf-8"),
+        jsonl,
+        meta,
+    )
+    assert ft.inspect_snapshot(tmp_path, day, "forward").state == ft.STATE_COMPLETE
+    capsys.readouterr()
+
+
+def test_snapshot_refuses_incomplete_state(tmp_path, capsys):
+    """只剩 JSONL（孤儿）时，snapshot 不得补写 meta 也不得覆盖。"""
+    db = tmp_path / "history.db"
+    latest = _build_db(db)
+    out = tmp_path / "forward"
+    out.mkdir()
+    day = latest
+    jsonl, _meta = ft._paths(out, day, "replay")
+    jsonl.write_bytes(b'{"a":1}\n')
+
+    code = _run(db, out, "snapshot", "--mode", "replay")
+    assert code == 4
+    text = capsys.readouterr().err
+    assert "INCOMPLETE_PUBLISH" in text
+    assert "不会自动删除" in text
+    assert "不要手工补写 meta" in text
+    assert jsonl.read_bytes() == b'{"a":1}\n'  # 原样保留
+    assert not _meta.exists()
+
+
+def test_evaluate_refuses_incomplete_state(tmp_path, capsys):
+    db = tmp_path / "history.db"
+    latest = _build_db(db)
+    out = tmp_path / "forward"
+    out.mkdir()
+    jsonl, _meta = ft._paths(out, latest, "forward")
+    jsonl.write_bytes(b'{"a":1}\n')
+    with pytest.raises(SystemExit) as error:
+        _run(db, out, "evaluate", "--date", latest.isoformat(), "--mode", "forward")
+    assert "INCOMPLETE_PUBLISH" in str(error.value)
+    capsys.readouterr()
+
+
+def test_snapshot_refuses_corrupted_state(tmp_path, capsys):
+    db = tmp_path / "history.db"
+    latest = _build_db(db)
+    out = tmp_path / "forward"
+    assert _run(db, out, "snapshot", "--mode", "forward",
+                "--now", _now(latest, 15, 45)) == 0
+    path = out / f"signals_{latest.isoformat()}.jsonl"
+    path.write_bytes(path.read_bytes() + b'{"tampered":1}\n')
+    capsys.readouterr()
+
+    code = _run(db, out, "snapshot", "--mode", "forward",
+                "--now", _now(latest, 15, 45))
+    assert code == 5
+    text = capsys.readouterr().err
+    assert "CORRUPTED_SNAPSHOT" in text
+    assert path.read_bytes().endswith(b'{"tampered":1}\n')  # 未被覆盖
+
+
+def test_evaluate_refuses_corrupted_state(tmp_path, capsys):
+    db = tmp_path / "history.db"
+    latest = _build_db(db)
+    out = tmp_path / "forward"
+    assert _run(db, out, "snapshot", "--mode", "forward",
+                "--now", _now(latest, 15, 45)) == 0
+    path = out / f"signals_{latest.isoformat()}.jsonl"
+    path.write_bytes(path.read_bytes() + b'{"tampered":1}\n')
+    with pytest.raises(SystemExit) as error:
+        _run(db, out, "evaluate", "--date", latest.isoformat())
+    assert "CORRUPTED_SNAPSHOT" in str(error.value)
+    capsys.readouterr()
+
+
+def test_row_level_mismatch_is_corrupted(tmp_path, capsys):
+    """同时改写 JSONL 与 meta 使哈希自洽，但行内 signal_date 与文件不符 → 仍判损坏。"""
+    db = tmp_path / "history.db"
+    latest = _build_db(db)
+    out = tmp_path / "forward"
+    assert _run(db, out, "snapshot", "--mode", "forward",
+                "--now", _now(latest, 15, 45)) == 0
+    jsonl, meta_path = ft._paths(out, latest, "forward")
+    rows = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines()]
+    rows[0]["signal_date"] = "2020-01-01"
+    payload = "\n".join(json.dumps(r, ensure_ascii=False, sort_keys=True) for r in rows) + "\n"
+    jsonl.write_bytes(payload.encode("utf-8"))
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta["content_sha256"] = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(SystemExit) as error:
+        _run(db, out, "evaluate", "--date", latest.isoformat())
+    assert "CORRUPTED_SNAPSHOT" in str(error.value)
+    capsys.readouterr()
+
+
+def test_forged_pair_passes_local_check(tmp_path, capsys):
+    """场景 8：能力边界 —— JSONL 与 meta 同时被替换时，本地哈希无法发现。"""
+    db = tmp_path / "history.db"
+    latest = _build_db(db)
+    out = tmp_path / "forward"
+    assert _run(db, out, "snapshot", "--mode", "forward",
+                "--now", _now(latest, 15, 45)) == 0
+    jsonl, meta_path = ft._paths(out, latest, "forward")
+
+    rows = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines()]
+    rows.reverse()  # 伪造一份「顺序不同」的候选，内容仍然合法
+    for index, row in enumerate(rows, start=1):
+        row["rank"] = index
+    payload = "\n".join(json.dumps(r, ensure_ascii=False, sort_keys=True) for r in rows) + "\n"
+    jsonl.write_bytes(payload.encode("utf-8"))
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta["content_sha256"] = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+
+    # 哈希自洽 ⇒ 本地检查判定为 COMPLETE。这正是它不能证明「未被篡改」的地方。
+    assert ft.inspect_snapshot(out, latest, "forward").state == ft.STATE_COMPLETE
+    capsys.readouterr()
+
+
+def test_list_marks_incomplete_entries(tmp_path, capsys):
+    db = tmp_path / "history.db"
+    latest = _build_db(db)
+    out = tmp_path / "forward"
+    out.mkdir()
+    jsonl, _meta = ft._paths(out, latest, "forward")
+    jsonl.write_bytes(b'{"a":1}\n')
+    assert _run(db, out, "list") == 0
+    text = capsys.readouterr().out
+    assert "INCOMPLETE_PUBLISH" in text
 
 
 # ---- 一致性与协议 -----------------------------------------------------------

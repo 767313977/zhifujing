@@ -5,12 +5,14 @@
 | 模式 | 用途 | 文件名 | meta 标记 | 计入前瞻绩效 |
 | --- | --- | --- | --- | --- |
 | `replay` | 代码测试、与历史回测的一致性验证 | `replay_signals_YYYY-MM-DD.*` | `REPLAY_ONLY` | **否** |
-| `live` | 真实前瞻冻结 | `signals_YYYY-MM-DD.*` | `FORWARD_FROZEN` | 是 |
+| `forward` | 真实前瞻冻结 | `signals_YYYY-MM-DD.*` | `FORWARD_FROZEN` | 是 |
 
-`live` 会拒绝历史日期：用今天的库算 2026-10-19 的分明是复盘重放，不是前瞻观察。
+`forward` 会拒绝历史日期：用今天的库算 2026-10-19 的分明是复盘重放，不是前瞻观察。
 把两者写进同一个文件名，才会出现「事后补一份 10 月 19 日的记录，冒充当时就发过信号」。
 
-## `live` 的启动闸门（全部通过才落盘）
+CLI 只用 `--mode replay` / `--mode forward` 两个取值，不再出现 `live` 这个别名。
+
+## `forward` 的启动闸门（全部通过才落盘）
 
 1. D 在交易日历里（`trade_calendar` 表，缺失即拒绝，不猜）；
 2. 当前时间 ≥ D 日 15:30（收盘 + 日线落库等待）；
@@ -23,6 +25,18 @@
 
 任何一条不满足 → 打印原因并退出码 3，**不生成任何文件**。当前 `history.db`
 最新只到 2026-10-19，所以正式前瞻运行必然被拒绝 —— 这是预期行为。
+
+## 快照的五种状态
+
+一次冻结要落两个文件，中间崩溃就会留下「半套」。工具显式区分：
+
+| JSONL | meta | 状态 | 处理 |
+| --- | --- | --- | --- |
+| 不存在 | 不存在 | `NONE` | 允许创建 |
+| 存在 | 存在 | `COMPLETE` | 校验哈希/模式/版本；拒绝覆盖 |
+| 存在 | 不存在 | `INCOMPLETE_PUBLISH` | 拒绝当作有效快照；不自动删除 |
+| 不存在 | 存在 | `INCOMPLETE_PUBLISH` | 同上 |
+| 任一校验失败 | 任意 | `CORRUPTED_SNAPSHOT` | 拒绝评价 |
 
 ## 这个工具不做什么
 
@@ -39,6 +53,8 @@
 
 并发与崩溃保护只做两件事：`os.link` 独占发布（已存在就失败，绝不覆盖）、
 先写临时文件再发布（崩溃只会留下 `.tmp-*`，不会被当成有效快照）。
+`os.link` 在个别文件系统上不可用时退化为 `O_EXCL` 独占创建 + 复制，
+仍是「先到者胜」，只是不再原子。
 """
 
 from __future__ import annotations
@@ -51,6 +67,7 @@ import os
 import subprocess
 import sys
 import uuid
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -96,7 +113,7 @@ COSTS = (30.0, 50.0, 100.0)
 
 #: 与 `backtest_reversal.build_signals` 的「当日有效池 < 30 跳过」共用同一阈值（见导入）
 
-#: live 闸门参数
+#: forward 闸门参数
 DATA_READY_AT = time(15, 30)
 NEXT_OPEN_AT = time(9, 15)
 MIN_COVERAGE_RATIO = 0.95
@@ -183,12 +200,19 @@ def _paths(out_dir: Path, day: date, mode: str) -> tuple[Path, Path]:
 
 
 def _write_tmp(final: Path, payload: bytes) -> Path:
-    """把内容完整写入同目录临时文件并 fsync；崩溃只会留下 .tmp-*。"""
+    """把内容完整写入同目录临时文件并 fsync；崩溃只会留下 .tmp-*。
+
+    写失败（磁盘满、权限、被中断）时自己清掉半截临时文件，不让它留在目录里。
+    """
     tmp = final.with_name(f".{final.name}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}")
-    with open(tmp, "wb") as handle:
-        handle.write(payload)
-        handle.flush()
-        os.fsync(handle.fileno())
+    try:
+        with open(tmp, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     return tmp
 
 
@@ -214,10 +238,122 @@ def _publish(tmp: Path, final: Path) -> bool:
         except FileExistsError:
             return False
         with os.fdopen(fd, "wb") as handle:
-            handle.write(tmp.read_bytes())
-            handle.flush()
-            os.fsync(handle.fileno())
+            try:
+                handle.write(tmp.read_bytes())
+                handle.flush()
+                os.fsync(handle.fileno())
+            except BaseException:
+                # 复制中断时别留下半截目标文件（它会被误认为已发布）
+                handle.close()
+                final.unlink(missing_ok=True)
+                raise
         return True
+
+
+# ---------------------------------------------------------------------------
+# 快照状态机：一次冻结要落两个文件，中间崩溃会留下「半套」
+# ---------------------------------------------------------------------------
+
+STATE_NONE = "NONE"
+STATE_COMPLETE = "COMPLETE"
+STATE_INCOMPLETE = "INCOMPLETE_PUBLISH"
+STATE_CORRUPTED = "CORRUPTED_SNAPSHOT"
+
+
+class SnapshotError(Exception):
+    """带机器可读代码的快照错误（INCOMPLETE_PUBLISH / CORRUPTED_SNAPSHOT）。"""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(f"{code}: {message}")
+        self.code = code
+        self.message = message
+
+
+@dataclass(frozen=True)
+class SnapshotState:
+    state: str
+    detail: str
+    meta: dict | None = None
+
+
+def _inspect_guide(out_dir: Path, day: date, mode: str) -> str:
+    jsonl, meta_path = _paths(out_dir, day, mode)
+    return (
+        "人工检查与安全处置（本工具不会自动删除、也不会自动重建任何正式文件）：\n"
+        f"  1) 目录：{out_dir}\n"
+        f"  2) 只有 JSONL、没有 meta：发布在 meta 之前中断，这份 JSONL 从未成为有效快照。\n"
+        f"     确认该日没有其他有效记录后，人工删除：Remove-Item \"{jsonl}\"\n"
+        f"  3) 只有 meta、没有 JSONL：信号内容已丢失，无法恢复；确认后人工删除：\n"
+        f"     Remove-Item \"{meta_path}\"\n"
+        "  4) 处理完再重新运行 snapshot。\n"
+        "  ⚠️ 不要手工补写 meta —— 那等于把事后重建的记录伪装成当日前瞻信号。"
+    )
+
+
+def inspect_snapshot(out_dir: Path, day: date, mode: str) -> SnapshotState:
+    """判定某日某模式的快照状态；不做任何写操作。"""
+    jsonl, meta_path = _paths(out_dir, day, mode)
+    has_jsonl = jsonl.is_file()
+    has_meta = meta_path.is_file()
+    if not has_jsonl and not has_meta:
+        return SnapshotState(STATE_NONE, "没有同名快照")
+    if has_jsonl != has_meta:
+        return SnapshotState(
+            STATE_INCOMPLETE,
+            "JSONL 已发布但 meta 缺失" if has_jsonl else "meta 已存在但 JSONL 缺失",
+        )
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception as error:  # noqa: BLE001
+        return SnapshotState(STATE_CORRUPTED, f"meta 无法解析：{error}")
+    if not isinstance(meta, dict):
+        return SnapshotState(STATE_CORRUPTED, "meta 不是 JSON 对象")
+    if meta.get("mode") != MODE_LABELS[mode]:
+        return SnapshotState(
+            STATE_CORRUPTED,
+            f"meta 模式标记为 {meta.get('mode')}，期望 {MODE_LABELS[mode]}",
+            meta,
+        )
+    digest = hashlib.sha256(jsonl.read_bytes()).hexdigest()
+    if meta.get("content_sha256") != digest:
+        return SnapshotState(STATE_CORRUPTED, "JSONL 内容哈希与 meta 不一致", meta)
+    return SnapshotState(STATE_COMPLETE, "哈希自洽", meta)
+
+
+def load_snapshot_rows(
+    out_dir: Path, day: date, mode: str, meta: dict
+) -> list[dict]:
+    """读取并做行级一致性校验；任何不一致都按 CORRUPTED_SNAPSHOT 处理。"""
+    jsonl, _meta_path = _paths(out_dir, day, mode)
+    try:
+        lines = jsonl.read_bytes().decode("utf-8").splitlines()
+        rows = [json.loads(line) for line in lines if line.strip()]
+    except Exception as error:  # noqa: BLE001
+        raise SnapshotError(STATE_CORRUPTED, f"JSONL 无法解析：{error}") from error
+    if not rows:
+        raise SnapshotError(STATE_CORRUPTED, "JSONL 没有任何记录")
+    if meta.get("row_count") != len(rows):
+        raise SnapshotError(
+            STATE_CORRUPTED,
+            f"meta 记录 {meta.get('row_count')} 行，实际 {len(rows)} 行",
+        )
+    for row in rows:
+        if row.get("signal_date") != day.isoformat():
+            raise SnapshotError(
+                STATE_CORRUPTED,
+                f"记录里的 signal_date={row.get('signal_date')}，与文件名 {day} 不符",
+            )
+        if row.get("mode") != MODE_LABELS[mode]:
+            raise SnapshotError(
+                STATE_CORRUPTED,
+                f"记录里的 mode={row.get('mode')}，与快照模式 {MODE_LABELS[mode]} 不符",
+            )
+        if row.get("strategy_version") != meta.get("strategy_version"):
+            raise SnapshotError(
+                STATE_CORRUPTED,
+                "记录里的 strategy_version 与 meta 不一致",
+            )
+    return rows
 
 
 def _publish_pair(jsonl_payload: bytes, meta_payload: bytes, jsonl: Path, meta: Path) -> bool:
@@ -227,10 +363,12 @@ def _publish_pair(jsonl_payload: bytes, meta_payload: bytes, jsonl: Path, meta: 
     若 meta 已存在但 JSONL 不存在（历史上写入中断），本次会撤掉刚发布的 JSONL，
     使状态回到「没有有效快照」，而不是留下半套。
     """
-    jsonl_tmp = _write_tmp(jsonl, jsonl_payload)
-    meta_tmp = _write_tmp(meta, meta_payload)
+    jsonl_tmp: Path | None = None
+    meta_tmp: Path | None = None
     published_jsonl = False
     try:
+        jsonl_tmp = _write_tmp(jsonl, jsonl_payload)
+        meta_tmp = _write_tmp(meta, meta_payload)
         if not _publish(jsonl_tmp, jsonl):
             return False
         published_jsonl = True
@@ -246,8 +384,10 @@ def _publish_pair(jsonl_payload: bytes, meta_payload: bytes, jsonl: Path, meta: 
             jsonl.unlink(missing_ok=True)
         raise
     finally:
-        jsonl_tmp.unlink(missing_ok=True)
-        meta_tmp.unlink(missing_ok=True)
+        if jsonl_tmp is not None:
+            jsonl_tmp.unlink(missing_ok=True)
+        if meta_tmp is not None:
+            meta_tmp.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +441,7 @@ def _factor_missing_ratio(candidates: dict) -> float:
 
 
 # ---------------------------------------------------------------------------
-# live 闸门
+# forward 闸门
 # ---------------------------------------------------------------------------
 
 
@@ -369,8 +509,8 @@ def _completeness(session: Session, day: date) -> dict:
     }
 
 
-def live_problems(session: Session, day: date, now: datetime) -> list[str]:
-    """返回 live 模式不满足的条件（空列表 = 可以冻结）。"""
+def forward_problems(session: Session, day: date, now: datetime) -> list[str]:
+    """返回 forward 模式不满足的条件（空列表 = 可以冻结）。"""
     problems: list[str] = []
     if now.tzinfo is None:
         raise ValueError("now 必须带时区")
@@ -478,9 +618,30 @@ def cmd_snapshot(args) -> int:
                 completeness = None
             else:
                 day = date.fromisoformat(args.date) if args.date else now.date()
-                problems = live_problems(session, day, now)
+                completeness = None
+
+            # 先判状态再做重活：已有完整/半套快照时不该白算几分钟
+            state = inspect_snapshot(out_dir, day, mode)
+            if state.state == STATE_COMPLETE:
+                logger.warning("%s 的 %s 快照已存在（COMPLETE），拒绝覆盖", day, mode)
+                print(
+                    f"拒绝覆盖：{day} 的 {mode} 快照已完整存在。"
+                    "如需重做，请先人工移走旧文件（工具不会自动删除正式记录）。"
+                )
+                return 2
+            if state.state == STATE_INCOMPLETE:
+                print(f"{STATE_INCOMPLETE}：{state.detail}", file=sys.stderr)
+                print(_inspect_guide(out_dir, day, mode), file=sys.stderr)
+                return 4
+            if state.state == STATE_CORRUPTED:
+                print(f"{STATE_CORRUPTED}：{state.detail}", file=sys.stderr)
+                print(_inspect_guide(out_dir, day, mode), file=sys.stderr)
+                return 5
+
+            if mode == MODE_FORWARD:
+                problems = forward_problems(session, day, now)
                 if problems:
-                    print(f"拒绝正式前瞻冻结 {day}（live）：", file=sys.stderr)
+                    print(f"拒绝正式前瞻冻结 {day}（forward）：", file=sys.stderr)
                     for item in problems:
                         print(f"  - {item}", file=sys.stderr)
                     print(
@@ -490,11 +651,6 @@ def cmd_snapshot(args) -> int:
                     )
                     return 3
                 completeness = _completeness(session, day)
-
-            jsonl_path, meta_path = _paths(out_dir, day, mode)
-            if jsonl_path.exists() or meta_path.exists():
-                logger.warning("已存在 %s 的 %s 快照，拒绝覆盖", day, mode)
-                return 2
 
             matrix = load_matrix(session, day - timedelta(days=90), day)
             candidates = build_candidates(matrix, day, args.top)
@@ -566,6 +722,7 @@ def cmd_snapshot(args) -> int:
     if mode == MODE_REPLAY:
         meta["replay_note"] = "历史重放：仅用于代码测试与策略一致性验证，不计入前瞻绩效"
 
+    jsonl_path, meta_path = _paths(out_dir, day, mode)
     published = _publish_pair(
         payload.encode("utf-8"),
         json.dumps(meta, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8"),
@@ -574,6 +731,15 @@ def cmd_snapshot(args) -> int:
     )
     if not published:
         logger.warning("并发或重复运行：%s 的 %s 快照已存在，本次未写入", day, mode)
+        state = inspect_snapshot(out_dir, day, mode)
+        if state.state == STATE_INCOMPLETE:
+            print(f"{STATE_INCOMPLETE}：{state.detail}", file=sys.stderr)
+            print(_inspect_guide(out_dir, day, mode), file=sys.stderr)
+            return 4
+        if state.state == STATE_CORRUPTED:
+            print(f"{STATE_CORRUPTED}：{state.detail}", file=sys.stderr)
+            print(_inspect_guide(out_dir, day, mode), file=sys.stderr)
+            return 5
         return 2
 
     banner = "REPLAY_ONLY（不计入前瞻绩效）" if mode == MODE_REPLAY else "FORWARD_FROZEN"
@@ -595,18 +761,22 @@ def cmd_evaluate(args) -> int:
     day = date.fromisoformat(args.date)
     mode = args.mode
     jsonl_path, meta_path = _paths(out_dir, day, mode)
-    if not jsonl_path.is_file() or not meta_path.is_file():
-        raise SystemExit(f"没有 {day} 的 {mode} 快照：{jsonl_path}")
 
-    raw = jsonl_path.read_bytes()
-    digest = hashlib.sha256(raw).hexdigest()
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    if meta.get("content_sha256") != digest:
-        raise SystemExit("快照内容哈希与 meta 不一致：文件被改动过，拒绝评价")
-    if meta.get("mode") != MODE_LABELS[mode]:
+    state = inspect_snapshot(out_dir, day, mode)
+    if state.state == STATE_NONE:
+        raise SystemExit(f"没有 {day} 的 {mode} 快照：{jsonl_path}")
+    if state.state == STATE_INCOMPLETE:
         raise SystemExit(
-            f"快照标记是 {meta.get('mode')}，与本次评价模式 {MODE_LABELS[mode]} 不符，拒绝评价"
+            f"{STATE_INCOMPLETE}: {state.detail}。这不是有效快照，不进入前瞻绩效。\n"
+            + _inspect_guide(out_dir, day, mode)
         )
+    if state.state == STATE_CORRUPTED:
+        raise SystemExit(
+            f"{STATE_CORRUPTED}: {state.detail}。拒绝评价。\n"
+            + _inspect_guide(out_dir, day, mode)
+        )
+
+    meta = state.meta or {}
     if meta.get("strategy_version") != STRATEGY_VERSION:
         raise SystemExit(
             f"快照策略版本 {meta.get('strategy_version')} ≠ 当前 {STRATEGY_VERSION}："
@@ -615,10 +785,14 @@ def cmd_evaluate(args) -> int:
     if mode == MODE_FORWARD and not meta.get("completeness"):
         raise SystemExit("正式快照缺少数据完整性记录，拒绝评价")
 
-    lines = raw.decode("utf-8").splitlines()
+    try:
+        rows = load_snapshot_rows(out_dir, day, mode, meta)
+    except SnapshotError as error:
+        raise SystemExit(f"{error}\n{_inspect_guide(out_dir, day, mode)}") from error
+
     signals = [
         Signal(code=row["stock_code"], signal_date=day, meta={"rank": row["rank"]})
-        for row in map(json.loads, lines)
+        for row in rows
     ]
 
     engine = _readonly_engine(db_path)
@@ -687,20 +861,36 @@ def cmd_list(args) -> int:
     if not out_dir.is_dir():
         print("还没有任何快照")
         return 0
-    found = False
-    for path in sorted(out_dir.glob("*signals_*.jsonl")):
+
+    # 同时扫 .jsonl 与 .meta.json：只有一半的孤儿文件也必须列出来，
+    # 否则「某天其实没冻结成功」会被悄悄忽略。
+    entries: dict[tuple[date, str], None] = {}
+    for path in out_dir.iterdir():
         if path.name.startswith("."):
             continue
-        found = True
-        meta_path = path.with_suffix(".meta.json")
-        meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.is_file() else {}
-        print(
-            f"{meta.get('mode', '?'):<15}{meta.get('signal_date', path.stem):<12} "
-            f"rows={meta.get('row_count', '?'):<4} pool={meta.get('universe_count', '?'):<5} "
-            f"sha={str(meta.get('content_sha256', ''))[:12]}…  {path.name}"
-        )
-    if not found:
+        if path.suffix not in (".jsonl", ".json"):
+            continue
+        stem = path.name[: -len(".meta.json")] if path.name.endswith(".meta.json") else path.stem
+        mode = MODE_REPLAY if stem.startswith("replay_signals_") else MODE_FORWARD
+        raw = stem[len("replay_signals_") :] if mode == MODE_REPLAY else stem[len("signals_") :]
+        try:
+            entries[(date.fromisoformat(raw), mode)] = None
+        except ValueError:
+            continue
+
+    if not entries:
         print("还没有任何快照")
+        return 0
+    for day, mode in sorted(entries):
+        state = inspect_snapshot(out_dir, day, mode)
+        meta = state.meta or {}
+        print(
+            f"{MODE_LABELS[mode]:<15}{day.isoformat():<12}{state.state:<18} "
+            f"rows={meta.get('row_count', '-'):<4} pool={meta.get('universe_count', '-'):<5} "
+            f"sha={str(meta.get('content_sha256', ''))[:12]}…"
+        )
+        if state.state != STATE_COMPLETE:
+            print(f"  ↳ {state.detail}（不进入前瞻绩效，见 snapshot/evaluate 的处置提示）")
     return 0
 
 
