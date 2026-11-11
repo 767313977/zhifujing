@@ -99,6 +99,8 @@ from sqlalchemy.orm import Session  # noqa: E402
 from app.models import StockDaily, TradeCalendar  # noqa: E402
 from app.services import trading_days  # noqa: E402
 from app.services.research_backtest import (  # noqa: E402
+    DEFAULT_ENTRY_DELAY,
+    DEFAULT_EXIT_DELAY,
     Benchmark,
     Signal,
     load_matrix,
@@ -113,6 +115,9 @@ from scripts.backtest_reversal import (  # noqa: E402
 )
 from scripts.forward_store import DATA_PROTOCOL_VERSION  # noqa: E402
 
+#: 评价器版本：只影响评价展示/审计严格度，不改变信号与成交规则。
+EVALUATOR_VERSION = "forward-evaluator-v1"
+
 logger = logging.getLogger("forward_c0")
 
 HISTORY_DB = BACKEND / "data" / "history.db"
@@ -124,6 +129,10 @@ STRATEGY_VERSION = "c0-2026-11-11-b1v"
 TOP_N = 20
 HORIZON = 5
 COSTS = (30.0, 50.0, 100.0)
+
+#: 正式评价需要审计的后续交易日数：入场延迟 + 持有期 + 退出延迟。
+#: 5 + (5 - 1) + 10 = 19，与交易引擎默认常量同源，避免两处硬编码漂移。
+AUDIT_TRADING_DAYS = DEFAULT_ENTRY_DELAY + (HORIZON - 1) + DEFAULT_EXIT_DELAY
 
 #: B1v 证券清单：历史池全部证券（北交所 32 只已按官方名录核验）
 UNIVERSE_FILE = BACKEND / "data" / "c0_universe_b1_verified.json"
@@ -375,23 +384,17 @@ def _forward_audit_problems(session: Session, day: date, meta: dict) -> list[str
             for row in session.execute(
                 text(
                     "SELECT trade_date FROM trade_calendar WHERE trade_date > :day "
-                    "ORDER BY trade_date LIMIT 10"
+                    "ORDER BY trade_date LIMIT :limit"
                 ),
-                {"day": day.isoformat()},
+                {"day": day.isoformat(), "limit": AUDIT_TRADING_DAYS},
             )
         ]
-    except Exception:  # noqa: BLE001 - 没有日历则用行情日期
+    except Exception as error:  # noqa: BLE001 - 正式前瞻必须有日历
         session.rollback()
-        later = [
-            date.fromisoformat(row[0])
-            for row in session.execute(
-                text(
-                    "SELECT DISTINCT trade_date FROM stock_daily WHERE trade_date > :day "
-                    "ORDER BY trade_date LIMIT 10"
-                ),
-                {"day": day.isoformat()},
-            )
-        ]
+        problems.append(f"无法读取交易日历（{error}）：不能核对 D+1~D+{AUDIT_TRADING_DAYS} 依赖")
+        return problems
+
+    latest = session.scalar(select(func.max(StockDaily.trade_date)))
     for item in later:
         marker = session.execute(
             text("SELECT 1 FROM data_revision WHERE domain=:domain LIMIT 1"),
@@ -406,7 +409,12 @@ def _forward_audit_problems(session: Session, day: date, meta: dict) -> list[str
                 problems.append(
                     f"{item} 已有完成标记却没有任何行情行：数据不自洽，拒绝正式评价"
                 )
-            continue  # 未成熟/未采集：保持 pending，不伪造收益
+            elif latest is not None and item <= latest:
+                problems.append(
+                    f"{item} 已越过库内最新日 {latest}，却没有任何采集记录："
+                    "依赖窗口存在缺口，拒绝将收益视为完整"
+                )
+            continue  # 尚未到达/尚未采集：保持 pending，不伪造收益
         problem = day_audit_problem(session, item, strict=True)
         if problem:
             problems.append(problem)
@@ -1119,6 +1127,107 @@ def cmd_snapshot(args) -> int:
 # ---------------------------------------------------------------------------
 
 
+def evaluation_summary(samples, *, horizon: int = HORIZON) -> dict:
+    """把样本拆成「执行统计」与「理论观察统计」，两者绝不混用同一均值。"""
+    rows = [sample for sample in samples if sample.horizon == horizon]
+    counts: dict[str, int] = {}
+    for sample in rows:
+        counts[sample.status] = counts.get(sample.status, 0) + 1
+    ok = [s for s in rows if s.status == "ok" and s.gross is not None]
+    observation = [
+        s for s in rows if s.status in ("ok", "exit_limit_down") and s.gross is not None
+    ]
+    limited = [s for s in observation if s.status == "exit_limit_down"]
+    pending = [s for s in rows if s.status == "pending"]
+    total = len(rows)
+    matured = total - len(pending)
+
+    def mean(values):
+        values = [value for value in values if value is not None]
+        return (sum(values) / len(values)) if values else None
+
+    return {
+        "total": total,
+        "counts": counts,
+        "ok_count": len(ok),
+        "observation_count": len(observation),
+        "limited_count": len(limited),
+        "pending_count": len(pending),
+        "matured_count": matured,
+        "pending_ratio": (len(pending) / total) if total else 0.0,
+        "matured_ratio": (matured / total) if total else 0.0,
+        "ok_gross": mean([s.gross for s in ok]),
+        "ok_net": {cost: mean([_net(s.gross, cost) for s in ok]) for cost in COSTS},
+        "ok_benchmark": mean([s.benchmark for s in ok]),
+        "ok_excess": mean([s.excess for s in ok]),
+        "observation_gross": mean([s.gross for s in observation]),
+        "limited_gross": mean([s.gross for s in limited]),
+    }
+
+
+def _fmt(value, suffix: str = "%") -> str:
+    return "N/A" if value is None else f"{value:+.2f}{suffix}"
+
+
+def _print_evaluation(day: date, mode: str, summary: dict) -> None:
+    """正式/重放评价展示：执行收益与跌停理论观察分段输出。"""
+    flag = "" if mode == MODE_FORWARD else "  [REPLAY_ONLY · 不计入前瞻绩效]"
+    print(f"快照 {day}（{summary['total']} 笔信号，哈希校验通过）{flag}")
+    print(f"评价器：{EVALUATOR_VERSION}（git {_git_commit()[:8]}）")
+    order = ("pending", "unbuyable", "suspended", "no_exit", "ok",
+             "exit_limit_down", "no_quote", "price_invalid", "new_listing")
+    counts = summary["counts"]
+    print("状态：" + "，".join(f"{key}={counts[key]}" for key in order if counts.get(key)))
+    print(
+        f"成熟度：成熟 {summary['matured_count']}/{summary['total']}"
+        f"（{summary['matured_ratio']:.1%}），"
+        f"未成熟 pending {summary['pending_count']}/{summary['total']}"
+        f"（{summary['pending_ratio']:.1%}）"
+    )
+
+    if summary["total"] == 0:
+        print("没有可评价的样本。")
+        return
+    if summary["pending_count"] == summary["total"]:
+        print(
+            "全部 pending：不输出持有期收益，也不计算没有分母的收益率；"
+            "pending 不计入任何收益。"
+        )
+        return
+
+    if summary["ok_count"]:
+        print(f"\n正常完成（ok，可执行）：{summary['ok_count']} 笔")
+        print(f"  毛均值 {_fmt(summary['ok_gross'])}")
+        for cost in COSTS:
+            print(f"  {int(cost):>3}bps 净均值 {_fmt(summary['ok_net'][cost])}")
+        if summary["ok_benchmark"] is not None:
+            print(f"  基准毛均值 {_fmt(summary['ok_benchmark'])}")
+        if summary["ok_excess"] is not None:
+            print(f"  毛超额 {_fmt(summary['ok_excess'])}")
+    else:
+        print("\n正常完成（ok，可执行）：0 笔；毛/净收益 N/A（没有可执行样本）")
+
+    if summary["observation_count"]:
+        print(
+            f"\n已入场且有退出价（理论观察，含 exit_limit_down）："
+            f"{summary['observation_count']} 笔，理论毛均值 "
+            f"{_fmt(summary['observation_gross'])}"
+        )
+        if summary["limited_count"]:
+            print(
+                f"  其中 exit_limit_down {summary['limited_count']} 笔，"
+                f"理论毛均值 {_fmt(summary['limited_gross'])}"
+                "（跌停退出可能卖不出，不代表真实成交）"
+            )
+    if summary["pending_count"]:
+        print(f"\n未成熟（pending）{summary['pending_count']} 笔：不计入任何收益")
+
+    print()
+    print("口径：信号层（SIGNAL_LEVEL_ONLY）；")
+    print("      正常完成均值只含 ok；exit_limit_down 只作理论观察，不并入执行收益；")
+    print("      未完成退出不计收益；基准为同日等权毛收益，未扣费。")
+
+
 def cmd_evaluate(args) -> int:
     db_path = Path(args.db)
     out_dir = Path(args.out)
@@ -1186,39 +1295,10 @@ def cmd_evaluate(args) -> int:
     finally:
         engine.dispose()
 
-    stat = result.horizons.get(HORIZON)
-    if stat is None:
+    summary = evaluation_summary(result.samples)
+    if summary["total"] == 0:
         raise SystemExit("没有可评价的样本")
-    groups = dict(stat.counts)
-    ok = [s for s in result.samples if s.horizon == HORIZON and s.status == "ok"]
-    entry = [
-        s
-        for s in result.samples
-        if s.horizon == HORIZON and s.status in ("ok", "exit_limit_down")
-    ]
-
-    flag = "" if mode == MODE_FORWARD else "  [REPLAY_ONLY · 不计入前瞻绩效]"
-    print(f"快照 {day}（{len(signals)} 只，哈希校验通过）{flag}")
-    print("状态：" + "，".join(f"{k}={v}" for k, v in sorted(groups.items()) if v))
-    if entry:
-        gross = sum(s.gross for s in entry) / len(entry)
-        print(f"已入场且有退出价 {len(entry)} 笔：毛均值 {gross:+.2f}%")
-        for cost in COSTS:
-            print(
-                f"  {int(cost):>3}bps 净均值 "
-                f"{sum(_net(s.gross, cost) for s in entry) / len(entry):+.2f}%"
-            )
-        bench = [s.benchmark for s in entry if s.benchmark is not None]
-        if bench:
-            print(f"  基准毛均值 {sum(bench) / len(bench):+.2f}%")
-    if ok and len(ok) != len(entry):
-        print(f"  其中正常完成 {len(ok)} 笔，延迟退出 {len(entry) - len(ok)} 笔")
-    pending = groups.get("pending", 0)
-    if pending:
-        print(f"  未成熟（pending）{pending} 笔：不计入任何收益")
-    print()
-    print("口径：信号层（SIGNAL_LEVEL_ONLY）；毛/净均为已入场且退出可确定的样本；")
-    print("      未完成退出不计收益；基准为同日等权毛收益，未扣费。")
+    _print_evaluation(day, mode, summary)
     return 0
 
 

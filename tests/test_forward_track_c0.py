@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from app.services.research_backtest import load_matrix  # noqa: E402
+from app.services.research_backtest import Sample, load_matrix  # noqa: E402
 from scripts import backtest_reversal as bt  # noqa: E402
 from scripts import forward_track_c0 as ft  # noqa: E402
 
@@ -795,6 +795,87 @@ def test_evaluate_counts_matured_samples(tmp_path, capsys):
     assert "已入场且有退出价" in text
     assert "30bps" in text and "100bps" in text
     assert "基准毛均值" in text
+
+
+# ---- 执行统计与理论观察分离 ------------------------------------------------
+
+
+def _sample(status: str, *, gross=None, benchmark=None, excess=None, code: str = "000001") -> Sample:
+    return Sample(
+        code=code,
+        signal_date=date(2026, 11, 11),
+        horizon=ft.HORIZON,
+        status=status,
+        gross=gross,
+        benchmark=benchmark,
+        excess=excess,
+    )
+
+
+def test_evaluation_summary_separates_execution_and_observation():
+    samples = [
+        _sample("ok", gross=2.0, benchmark=1.0, excess=1.0, code="000001"),
+        _sample("ok", gross=4.0, benchmark=1.0, excess=3.0, code="000002"),
+        _sample("exit_limit_down", gross=-6.0, benchmark=1.0, excess=-7.0, code="000003"),
+        _sample("pending", code="000004"),
+        _sample("unbuyable", code="000005"),
+        _sample("suspended", code="000006"),
+        _sample("no_exit", code="000007"),
+    ]
+    summary = ft.evaluation_summary(samples)
+    assert summary["total"] == 7
+    assert summary["counts"]["ok"] == 2
+    assert summary["counts"]["exit_limit_down"] == 1
+    assert summary["counts"]["pending"] == 1
+    assert summary["ok_count"] == 2
+    assert summary["observation_count"] == 3
+    assert summary["limited_count"] == 1
+    assert summary["pending_count"] == 1
+    assert summary["matured_count"] == 6
+    assert summary["ok_gross"] == pytest.approx(3.0)
+    assert summary["observation_gross"] == pytest.approx(0.0)
+    assert summary["limited_gross"] == pytest.approx(-6.0)
+    assert summary["ok_benchmark"] == pytest.approx(1.0)
+    assert summary["ok_excess"] == pytest.approx(2.0)
+    expected_net = ((1 + 3.0 / 100) * (1 - 30 / 10000) - 1) * 100
+    assert summary["ok_net"][30] == pytest.approx(expected_net)
+
+
+def test_print_evaluation_all_exit_limit_down_is_not_execution(capsys):
+    summary = ft.evaluation_summary(
+        [_sample("exit_limit_down", gross=-5.0), _sample("exit_limit_down", gross=-7.0)]
+    )
+    ft._print_evaluation(date(2026, 11, 11), ft.MODE_FORWARD, summary)
+    text = capsys.readouterr().out
+    assert "正常完成（ok，可执行）：0 笔" in text
+    assert "N/A" in text
+    assert "理论观察" in text
+    assert "不代表真实成交" in text
+    assert "30bps 净均值" not in text
+
+
+def test_print_evaluation_all_pending_has_no_returns(capsys):
+    summary = ft.evaluation_summary([_sample("pending"), _sample("pending")])
+    ft._print_evaluation(date(2026, 11, 11), ft.MODE_FORWARD, summary)
+    text = capsys.readouterr().out
+    assert "全部 pending" in text
+    assert "毛均值" not in text
+    assert "30bps" not in text
+
+
+def test_print_evaluation_all_ok_keeps_execution_fields(capsys):
+    summary = ft.evaluation_summary(
+        [_sample("ok", gross=1.0, benchmark=0.5, excess=0.5),
+         _sample("ok", gross=3.0, benchmark=0.5, excess=2.5)]
+    )
+    ft._print_evaluation(date(2026, 11, 11), ft.MODE_FORWARD, summary)
+    text = capsys.readouterr().out
+    assert "正常完成（ok，可执行）：2 笔" in text
+    assert "毛均值 +2.00%" in text
+    assert "30bps 净均值" in text and "100bps 净均值" in text
+    assert "基准毛均值 +0.50%" in text
+    assert "毛超额 +1.50%" in text
+    assert "评价器：forward-evaluator-v1" in text
 
 
 # ---- 只读与无副作用 ---------------------------------------------------------

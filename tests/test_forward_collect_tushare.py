@@ -1050,6 +1050,105 @@ def test_protocol_legacy_text_does_not_block_forward_audit(tmp_path, capsys, mon
     capsys.readouterr()
 
 
+def test_audit_covers_d_plus_19(tmp_path, capsys):
+    root, db, dates = _forward_db(tmp_path)
+    signal_day = dates[20]
+    out = root / "forward_c0"
+    _write_snapshot(out, signal_day, 1, [f"600{index:03d}" for index in range(5)])
+    assert ft.AUDIT_TRADING_DAYS == 19
+    assert _evaluate(db, out, signal_day) == 0
+    capsys.readouterr()
+
+
+@pytest.mark.parametrize("offset", [11, 19])
+def test_audit_rejects_tampered_d_plus_11_or_19(tmp_path, capsys, offset):
+    root, db, dates = _forward_db(tmp_path)
+    signal_day = dates[20]
+    out = root / "forward_c0"
+    _write_snapshot(out, signal_day, 1, [f"600{index:03d}" for index in range(5)])
+    target_day = dates[20 + offset]
+    con = sqlite3.connect(db)
+    try:
+        con.execute(
+            "UPDATE stock_daily SET close=close+1 WHERE trade_date=? AND code='600000'",
+            (target_day.isoformat(),),
+        )
+        con.commit()
+    finally:
+        con.close()
+    with pytest.raises(SystemExit) as error:
+        _evaluate(db, out, signal_day)
+    assert target_day.isoformat() in str(error.value)
+    capsys.readouterr()
+
+
+def test_audit_rejects_d_plus_19_marker_without_rows(tmp_path, capsys):
+    root, db, dates = _forward_db(tmp_path)
+    signal_day, target_day = dates[20], dates[39]
+    out = root / "forward_c0"
+    _write_snapshot(out, signal_day, 1, [f"600{index:03d}" for index in range(5)])
+    con = sqlite3.connect(db)
+    try:
+        con.execute("DELETE FROM stock_daily WHERE trade_date=?", (target_day.isoformat(),))
+        con.commit()
+    finally:
+        con.close()
+    with pytest.raises(SystemExit) as error:
+        _evaluate(db, out, signal_day)
+    assert "完成标记" in str(error.value)
+    capsys.readouterr()
+
+
+def test_audit_rejects_d_plus_19_rows_without_success_log(tmp_path, capsys):
+    root, db, dates = _forward_db(tmp_path)
+    signal_day, target_day = dates[20], dates[39]
+    out = root / "forward_c0"
+    _write_snapshot(out, signal_day, 1, [f"600{index:03d}" for index in range(5)])
+    con = sqlite3.connect(db)
+    try:
+        con.execute(
+            "DELETE FROM ingest_log WHERE trade_date=? AND status='ok'", (target_day.isoformat(),)
+        )
+        con.commit()
+    finally:
+        con.close()
+    with pytest.raises(SystemExit) as error:
+        _evaluate(db, out, signal_day)
+    assert "成功采集日志" in str(error.value)
+    capsys.readouterr()
+
+
+def test_audit_rejects_gap_inside_dependency_window(tmp_path, capsys):
+    root, db, dates = _forward_db(tmp_path)
+    signal_day, gap_day = dates[20], dates[25]
+    out = root / "forward_c0"
+    _write_snapshot(out, signal_day, 1, [f"600{index:03d}" for index in range(5)])
+    con = sqlite3.connect(db)
+    try:
+        con.execute("DELETE FROM stock_daily WHERE trade_date=?", (gap_day.isoformat(),))
+        con.execute("DELETE FROM universe_status WHERE trade_date=?", (gap_day.isoformat(),))
+        con.execute("DELETE FROM ingest_log WHERE trade_date=?", (gap_day.isoformat(),))
+        con.execute("DELETE FROM data_revision WHERE domain=?", (f"stock_daily:{gap_day}",))
+        con.commit()
+    finally:
+        con.close()
+    with pytest.raises(SystemExit) as error:
+        _evaluate(db, out, signal_day)
+    assert "缺口" in str(error.value)
+    capsys.readouterr()
+
+
+def test_future_days_remain_pending_without_fake_returns(tmp_path, capsys):
+    root, db, dates = _forward_db(tmp_path)
+    signal_day = dates[-1]
+    out = root / "forward_c0"
+    _write_snapshot(out, signal_day, 1, [f"600{index:03d}" for index in range(5)])
+    assert _evaluate(db, out, signal_day) == 0
+    text = capsys.readouterr().out
+    assert "pending" in text
+    assert "不计入任何收益" in text
+
+
 def test_snapshot_files_untouched_when_later_days_are_appended(tmp_path, capsys):
     root, db, dates = _forward_db(tmp_path)
     signal_day = dates[30]
