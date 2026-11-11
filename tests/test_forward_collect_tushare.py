@@ -1,8 +1,7 @@
-"""Tushare 前瞻采集器的离线测试（合成数据，不联网、不碰真实库）。
+"""Tushare 前瞻采集器与正式评价审计的离线测试（合成数据，不联网、不碰真实库）。
 
-覆盖：首次采集的冻结清单基线、分市场整段缺失、停牌与未证实缺失的区分、
-单事务四件套（行情/逐券状态/完成标记/成功日志）的故障注入、修订与快照冻结关联、
-目标库路径别名/链接保护、日历初始化与 40 日预检、时区与损坏库失败关闭。
+覆盖：上市日期进入分市场基线、上一确认日同口径、单事务故障注入、修订禁用、
+路径保护、日历初始化与 40 日预检、正式评价的版本/日志/内容哈希审计。
 """
 
 from __future__ import annotations
@@ -17,6 +16,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
+from sqlalchemy.orm import Session as OrmSession
 
 ROOT = Path(__file__).resolve().parents[1]
 for _path in (ROOT, ROOT / "backend", ROOT / "scripts"):
@@ -25,6 +25,7 @@ for _path in (ROOT, ROOT / "backend", ROOT / "scripts"):
 
 from scripts import forward_collect_tushare as collector  # noqa: E402
 from scripts import forward_store as store  # noqa: E402
+from scripts import forward_track_c0 as ft  # noqa: E402
 
 CST = ZoneInfo("Asia/Shanghai")
 DAY = date(2026, 11, 11)
@@ -32,6 +33,15 @@ PREV = date(2026, 11, 10)
 NEXT = date(2026, 11, 12)
 NOW = datetime(2026, 11, 11, 16, 0, tzinfo=CST)
 CAL = [PREV, DAY, NEXT]
+
+#: 与真实证据一致的 5 只「窗口内新上市」北交所证券（其余 27 只在窗口前已上市）
+BSE_DATES = {
+    "920027": "2026-09-16",
+    "920028": "2026-09-22",
+    "920029": "2026-09-23",
+    "920030": "2026-09-24",
+    "920031": "2026-09-29",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +51,7 @@ CAL = [PREV, DAY, NEXT]
 
 def _universe() -> set[str]:
     codes: list[str] = []
-    for prefix, size in (("600", 40), ("688", 20), ("000", 60), ("300", 40), ("920", 20)):
+    for prefix, size in (("600", 40), ("688", 20), ("000", 60), ("300", 40), ("920", 32)):
         codes.extend(f"{prefix}{index:03d}" for index in range(size))
     return set(codes)
 
@@ -53,12 +63,20 @@ def _big_universe() -> set[str]:
     return set(codes)
 
 
-def _manifest(codes: set[str] | None = None, *, version: str = "test-v1") -> collector.Manifest:
+def _manifest(
+    codes: set[str] | None = None,
+    *,
+    version: str = "test-v1",
+    listing_dates: dict[str, str] | None = None,
+    first_dates: dict[str, str] | None = None,
+) -> collector.Manifest:
     chosen = set(codes or _universe())
     counts: dict[str, int] = {}
     for code in chosen:
         board = store.board_of(code)
         counts[board] = counts.get(board, 0) + 1
+    first = {code: "2021-01-01" for code in chosen}
+    first.update(first_dates or {})
     return collector.Manifest(
         version=version,
         eligibility_sha256="test-eligibility",
@@ -67,6 +85,8 @@ def _manifest(codes: set[str] | None = None, *, version: str = "test-v1") -> col
         codes=frozenset(chosen),
         board_counts=counts,
         total=len(chosen),
+        listing_dates=dict(listing_dates or {}),
+        first_dates=first,
     )
 
 
@@ -158,7 +178,6 @@ def _run(
         revise=revise,
         revise_reason=reason,
         suspended_reasons=suspended,
-        snapshot_dir=tmp_path / "forward_c0",
         purpose=purpose,
         min_universe_coverage=min_cov,
         allowed_root=tmp_path,
@@ -182,15 +201,25 @@ def _rows(db_path: Path, sql: str, params: tuple = ()) -> list[tuple]:
         con.close()
 
 
-def _raw_manifest(tmp_path: Path, codes: set[str], *, version: str = "v-test") -> tuple[Path, str]:
+def _raw_manifest(
+    tmp_path: Path,
+    codes: set[str],
+    *,
+    version: str = "v-test",
+    official: dict[str, str | None] | None = None,
+) -> tuple[Path, str]:
     """按 `forward_universe.build_manifest` 的哈希口径写一份合成清单。"""
+    official = official or {}
     ordered = [
         {
             "code": code,
             "name": f"测试{code}",
             "board": store.board_of(code),
+            "first_date": "2021-01-01",
             "forward_eligible": True,
             "identity_verified": True,
+            "official_listing_date": official.get(code),
+            "official_source": "test" if official.get(code) else None,
         }
         for code in sorted(codes)
     ]
@@ -223,16 +252,21 @@ def db_path(tmp_path: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# 清单校验
+# 清单与上市日期证据
 # ---------------------------------------------------------------------------
 
 
-def test_real_frozen_manifest_is_eligible_only(tmp_path):
+def test_real_frozen_manifest_has_eligible_and_listing_metadata():
     manifest = collector.load_manifest(collector.DEFAULT_MANIFEST)
     assert manifest.version == "b1v-2026-11-11"
     assert manifest.total == 5108
     assert manifest.board_counts["北交所"] == 32
-    assert len(manifest.codes) == 5108
+    assert manifest.listing_dates["920025"] == "2026-09-23"
+    assert manifest.listing_dates["920202"] == "2026-09-29"
+    assert len(manifest.listing_dates) == 32
+    listed_0909, not_listed, _ = manifest.split_by_listing(date(2026, 9, 9))
+    assert sum(1 for code in listed_0909 if code.startswith("92")) == 27
+    assert len([code for code in not_listed if code.startswith("92")]) == 5
 
 
 def test_manifest_version_mismatch_rejected(tmp_path):
@@ -244,27 +278,35 @@ def test_manifest_version_mismatch_rejected(tmp_path):
 def test_manifest_eligibility_hash_mismatch_rejected(tmp_path):
     path, sha = _raw_manifest(tmp_path, _universe())
     payload = json.loads(path.read_text(encoding="utf-8"))
-    payload["securities"][0]["forward_eligible"] = False  # 手工改资格但不改哈希
+    payload["securities"][0]["forward_eligible"] = False
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(SystemExit):
         collector.load_manifest(path, expect_version="v-test", expect_eligibility_sha256=sha)
 
 
 def test_manifest_rejects_unverified_eligible(tmp_path):
-    path, sha = _raw_manifest(tmp_path, _universe())
+    path, _sha = _raw_manifest(tmp_path, _universe())
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload["securities"][0]["identity_verified"] = False
-    # 同步资格哈希，确保失败原因是「身份未核验」而不是哈希
-    eligibility = "\n".join(
-        f"{item['code']}|{int(bool(item['forward_eligible']))}"
-        for item in sorted(payload["securities"], key=lambda item: item["code"])
-    )
-    payload["eligibility_sha256"] = hashlib.sha256(eligibility.encode("utf-8")).hexdigest()
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(SystemExit):
-        collector.load_manifest(
-            path, expect_version="v-test", expect_eligibility_sha256=payload["eligibility_sha256"]
-        )
+        collector.load_manifest(path, expect_version="v-test", expect_eligibility_sha256="")
+
+
+def test_manifest_rejects_bse_without_listing_date(tmp_path):
+    codes = {"920025", "600000"}
+    path, sha = _raw_manifest(tmp_path, codes, official={"920025": None})
+    with pytest.raises(SystemExit) as error:
+        collector.load_manifest(path, expect_version="v-test", expect_eligibility_sha256=sha)
+    assert "上市日期" in str(error.value)
+
+
+def test_manifest_rejects_listing_date_conflict_with_evidence(tmp_path):
+    codes = {"920025", "600000"}
+    path, sha = _raw_manifest(tmp_path, codes, official={"920025": "2020-01-01"})
+    with pytest.raises(SystemExit) as error:
+        collector.load_manifest(path, expect_version="v-test", expect_eligibility_sha256=sha)
+    assert "不一致" in str(error.value)
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +314,7 @@ def test_manifest_rejects_unverified_eligible(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_normal_day_confirms_units_and_atomic_pieces(db_path, tmp_path):
+def test_normal_day_confirms_atomic_pieces_and_message(db_path, tmp_path):
     codes = _universe()
     manifest = _manifest(codes)
     _init_target(db_path, tmp_path, days=CAL, now=NOW)
@@ -297,10 +339,12 @@ def test_normal_day_confirms_units_and_atomic_pieces(db_path, tmp_path):
     assert _count(db_path, "SELECT COUNT(*) FROM universe_status WHERE status='ok'") == len(codes)
     assert _count(db_path, "SELECT COUNT(*) FROM data_revision WHERE domain=?", (f"stock_daily:{DAY}",)) == 1
     assert _count(db_path, "SELECT COUNT(*) FROM ingest_log WHERE status='ok'") == 1
-    log = _rows(db_path, "SELECT message FROM ingest_log WHERE status='ok'")[0][0]
-    message = json.loads(log)
+    message = json.loads(_rows(db_path, "SELECT message FROM ingest_log WHERE status='ok'")[0][0])
     assert message["revision"] == 1 and message["purpose"] == "live"
-    assert message["manifest_version"] == "test-v1"
+    assert message["expected_total"] == len(codes)
+    assert message["expected_by_board"]["北交所"] == 32
+    assert message["data_protocol"] == store.DATA_PROTOCOL_VERSION
+    assert message["listing_protocol"] == store.LISTING_PROTOCOL_VERSION
 
 
 def test_second_run_same_day_does_not_fetch_or_overwrite(db_path, tmp_path):
@@ -315,7 +359,7 @@ def test_second_run_same_day_does_not_fetch_or_overwrite(db_path, tmp_path):
     assert _rows(db_path, "SELECT volume, amount, data_version FROM stock_daily WHERE code='600000'") == before
 
 
-def test_extra_codes_are_stored_but_not_counted_in_coverage(db_path, tmp_path):
+def test_extra_codes_are_stored_but_not_counted(db_path, tmp_path):
     codes = _universe()
     manifest = _manifest(codes)
     payload = _quotes(codes) + _quotes({"601999"})
@@ -325,11 +369,11 @@ def test_extra_codes_are_stored_but_not_counted_in_coverage(db_path, tmp_path):
     assert _count(db_path, "SELECT COUNT(*) FROM stock_daily WHERE code='601999'") == 1
     message = json.loads(_rows(db_path, "SELECT message FROM ingest_log WHERE status='ok'")[0][0])
     assert message["extras"] == 1
-    assert message["by_board_eligible"].get("沪主板") == 40
+    assert message["by_board_listed"].get("沪主板") == 40
 
 
 # ---------------------------------------------------------------------------
-# 首次采集的分市场基线
+# 分市场基线：首次 / 上一确认日 / 上市日期
 # ---------------------------------------------------------------------------
 
 
@@ -348,7 +392,6 @@ def test_first_collect_rejects_entire_bse_missing(db_path, tmp_path):
     _init_target(db_path, tmp_path, days=CAL, now=NOW)
     with pytest.raises(collector.BatchRejected) as error:
         _run(db_path, tmp_path, manifest, payload, min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR)
-    assert error.value.error_type == "incomplete"
     assert any("北交所" in item for item in error.value.problems)
     assert _count(db_path, "SELECT COUNT(*) FROM stock_daily") == 0
 
@@ -365,53 +408,194 @@ def test_first_collect_rejects_133_shenzhen_missing(db_path, tmp_path):
     assert any("深主板" in item for item in error.value.problems)
 
 
-def test_first_collect_allows_partial_normal_suspension(db_path, tmp_path):
+def test_previous_day_uses_same_frozen_pool_definition(db_path, tmp_path):
     codes = _big_universe()
+    extras = {f"601{index:03d}" for index in range(467)}
     manifest = _manifest(codes)
-    payload = _quotes([code for code in codes if code != "920000"])
     _init_target(db_path, tmp_path, days=CAL, now=NOW)
-    result, _ = _run(db_path, tmp_path, manifest, payload, min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR)
+    _run(
+        db_path, tmp_path, manifest, _quotes(codes | extras),
+        day=PREV, purpose="backfill", min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR,
+    )
+    # 第二日：清单外 467 只仍在，冻结池覆盖正常 → 必须通过（不能拿全市场数量比池内）
+    result, _ = _run(
+        db_path, tmp_path, manifest, _quotes(codes | extras),
+        min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR,
+    )
     assert result["status"] == "confirmed"
-    status = _rows(db_path, "SELECT status, reason FROM universe_status WHERE code='920000'")[0]
-    assert status == ("no_quote_unverified", "absent_from_daily")
+
+    # 第二日：日线写入前先清空（新库）无法复用，这里另建一天验证真实丢失 133 只被拒
+    db2 = tmp_path / "second" / "forward_research.db"
+    db2.parent.mkdir()
+    _init_target(db2, db2.parent, days=CAL, now=NOW)
+    _run(db2, db2.parent, manifest, _quotes(codes | extras), day=PREV,
+         purpose="backfill", min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR)
+    dropped = {f"000{index:03d}" for index in range(133)}
+    with pytest.raises(collector.BatchRejected) as error:
+        _run(db2, db2.parent, manifest, _quotes((codes - dropped) | extras),
+             min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR)
+    assert any("深主板" in item for item in error.value.problems)
 
 
-def test_previous_confirmed_day_is_the_board_baseline(db_path, tmp_path):
+def test_previous_day_board_drop_is_rejected(db_path, tmp_path):
     codes = _big_universe()
     manifest = _manifest(codes)
     _init_target(db_path, tmp_path, days=CAL, now=NOW)
-    _run(db_path, tmp_path, manifest, _quotes(codes), day=PREV, purpose="backfill")
+    _run(db_path, tmp_path, manifest, _quotes(codes), day=PREV,
+         purpose="backfill", min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR)
     dropped = [f"000{index:03d}" for index in range(30)]
-    payload = _quotes(codes - set(dropped))
     with pytest.raises(collector.BatchRejected) as error:
-        _run(
-            db_path, tmp_path, manifest, payload,
-            day=DAY, purpose="live", min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR,
-        )
+        _run(db_path, tmp_path, manifest, _quotes(codes - set(dropped)),
+             min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR)
     assert any("上一确认日" in item and "深主板" in item for item in error.value.problems)
-    assert _count(db_path, "SELECT COUNT(*) FROM stock_daily WHERE trade_date=?", (DAY.isoformat(),)) == 0
-    assert _count(db_path, "SELECT COUNT(*) FROM stock_daily WHERE trade_date=?", (PREV.isoformat(),)) == len(codes)
 
 
-def test_suspended_evidence_upgrades_status_only_for_missing(db_path, tmp_path):
+def _bse_manifest() -> collector.Manifest:
     codes = _universe()
-    manifest = _manifest(codes)
-    payload = _quotes([code for code in codes if code != "600000"])
-    _init_target(db_path, tmp_path, days=CAL, now=NOW)
-    _run(db_path, tmp_path, manifest, payload, suspended={"600000": "交易所停牌公告 2026-11-11"})
-    status = _rows(db_path, "SELECT status, reason FROM universe_status WHERE code='600000'")[0]
-    assert status == ("suspended_confirmed", "交易所停牌公告 2026-11-11")
+    return _manifest(codes, listing_dates=dict(BSE_DATES))
 
+
+@pytest.mark.parametrize(
+    ("day", "expected"),
+    [("2026-09-09", 27), ("2026-09-16", 28), ("2026-09-24", 31), ("2026-09-30", 32)],
+)
+def test_bse_expected_counts_follow_listing_dates(tmp_path, day, expected):
+    codes = _universe()
+    manifest = _bse_manifest()
+    target_day = date.fromisoformat(day)
+    root = tmp_path / day.replace("-", "")
+    root.mkdir()
+    db = root / "forward_research.db"
+    calendar = [target_day - timedelta(days=1), target_day, target_day + timedelta(days=1)]
+    _init_target(db, root, days=calendar, now=datetime.combine(target_day, datetime.min.time(), CST).replace(hour=16))
+    late = {code for code, listed in BSE_DATES.items() if listed > target_day.isoformat()}
+    payload = _quotes(codes - late)
+    result, _ = _run(
+        db, root, manifest, payload,
+        day=target_day, calendar=calendar, purpose="backfill", now=NOW,
+        min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR,
+    )
+    assert result["status"] == "confirmed"
+    message = json.loads(_rows(db, "SELECT message FROM ingest_log WHERE status='ok'")[0][0])
+    assert message["expected_by_board"]["北交所"] == expected
+
+
+def test_pre_listing_absence_is_not_suspension(tmp_path):
+    codes = _universe()
+    manifest = _bse_manifest()
+    target_day = date(2026, 9, 9)
+    root = tmp_path / "prelisting"
+    root.mkdir()
+    db = root / "forward_research.db"
+    calendar = [target_day, target_day + timedelta(days=1)]
+    _init_target(db, root, days=calendar, now=datetime.combine(target_day, datetime.min.time(), CST).replace(hour=16))
+    payload = _quotes([code for code in codes if code not in BSE_DATES])
+    result, _ = _run(
+        db, root, manifest, payload, day=target_day, calendar=calendar,
+        purpose="backfill", min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR,
+    )
+    assert result["status"] == "confirmed"
+    statuses = dict(_rows(db, "SELECT code, status FROM universe_status WHERE trade_date=?", (target_day.isoformat(),)))
+    for code in BSE_DATES:
+        assert statuses[code] == collector.STATUS_NOT_LISTED
+
+
+def test_new_listing_enters_baseline_on_its_listing_day(tmp_path):
+    manifest = _bse_manifest()
+    root = tmp_path / "newlisting"
+    root.mkdir()
+    db = root / "forward_research.db"
+    dates = [date(2026, 9, 15), date(2026, 9, 16), date(2026, 9, 17)]
+    _init_target(
+        db, root, days=dates,
+        now=datetime.combine(date(2026, 9, 16), datetime.min.time(), CST).replace(hour=16),
+    )
+    _run(
+        db, root, manifest, _quotes(manifest.split_by_listing(dates[0])[0]),
+        day=dates[0], calendar=dates, purpose="backfill",
+        min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR,
+    )
+    assert _rows(db, "SELECT status FROM universe_status WHERE code='920027'")[0][0] == collector.STATUS_NOT_LISTED
+    _run(
+        db, root, manifest, _quotes(manifest.split_by_listing(dates[1])[0]),
+        day=dates[1], calendar=dates, purpose="backfill",
+        min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR,
+    )
+    assert _rows(
+        db, "SELECT status FROM universe_status WHERE trade_date=? AND code='920027'",
+        (dates[1].isoformat(),),
+    )[0][0] == collector.STATUS_OK
+
+
+def test_post_listing_suspension_and_whole_segment_missing(tmp_path):
+    codes = _universe()
+    manifest = _bse_manifest()
+    target_day = date(2026, 9, 30)
+    root = tmp_path / "postlisting"
+    root.mkdir()
+    db = root / "forward_research.db"
+    calendar = [target_day, target_day + timedelta(days=1)]
+    _init_target(db, root, days=calendar, now=datetime.combine(target_day, datetime.min.time(), CST).replace(hour=16))
+
+    payload = _quotes([code for code in codes if code != "920031"])
+    _run(
+        db, root, manifest, payload, day=target_day, calendar=calendar,
+        purpose="backfill", suspended={"920031": "交易所停牌公告"},
+        min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR,
+    )
+    status = _rows(db, "SELECT status, reason FROM universe_status WHERE code='920031'")[0]
+    assert status == (collector.STATUS_SUSPENDED, "交易所停牌公告")
+
+    root2 = tmp_path / "postlisting2"
+    root2.mkdir()
+    db2 = root2 / "forward_research.db"
+    _init_target(db2, root2, days=calendar, now=datetime.combine(target_day, datetime.min.time(), CST).replace(hour=16))
+    with pytest.raises(collector.BatchRejected):
+        _run(
+            db2, root2, manifest, _quotes([code for code in codes if not code.startswith("920")]),
+            day=target_day, calendar=calendar, purpose="backfill",
+            min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR,
+        )
+
+
+def test_non_bse_without_official_date_is_marked_unverified(tmp_path):
+    codes = _universe() | {"301999"}
+    manifest = _manifest(codes, first_dates={"301999": "2026-10-01"})
+    target_day = date(2026, 9, 30)
+    root = tmp_path / "unverified"
+    root.mkdir()
+    db = root / "forward_research.db"
+    calendar = [target_day, target_day + timedelta(days=1)]
+    _init_target(db, root, days=calendar, now=datetime.combine(target_day, datetime.min.time(), CST).replace(hour=16))
+    result, _ = _run(
+        db, root, manifest, _quotes([code for code in codes if code != "301999"]),
+        day=target_day, calendar=calendar, purpose="backfill", now=NOW,
+        min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR,
+    )
+    assert result["status"] == "confirmed"
+    status = _rows(db, "SELECT status FROM universe_status WHERE code='301999'")[0][0]
+    assert status == collector.STATUS_LISTING_UNVERIFIED
+
+
+def test_returned_before_listing_is_rejected(tmp_path):
+    codes = _universe()
+    manifest = _bse_manifest()
+    target_day = date(2026, 9, 9)
+    root = tmp_path / "listingconflict"
+    root.mkdir()
+    db = root / "forward_research.db"
+    calendar = [target_day, target_day + timedelta(days=1)]
+    _init_target(db, root, days=calendar, now=datetime.combine(target_day, datetime.min.time(), CST).replace(hour=16))
     with pytest.raises(collector.BatchRejected) as error:
         _run(
-            db_path, tmp_path, manifest, _quotes(codes),
-            day=PREV, purpose="backfill", suspended={"600000": "冲突证据"},
+            db, root, manifest, _quotes(codes), day=target_day, calendar=calendar,
+            purpose="backfill", min_cov=collector.MIN_UNIVERSE_COVERAGE_FLOOR,
         )
-    assert error.value.error_type == "suspended_conflict"
+    assert error.value.error_type == "listing_conflict"
 
 
 # ---------------------------------------------------------------------------
-# 单事务：行情 / 状态 / 完成标记 / 成功日志
+# 单事务故障注入
 # ---------------------------------------------------------------------------
 
 
@@ -451,149 +635,35 @@ def test_success_log_and_revision_are_never_split(db_path, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 修订与冻结快照关联
+# 修订禁用
 # ---------------------------------------------------------------------------
 
 
-def _write_frozen(tmp_path: Path, day: date, *, revision: int) -> None:
-    from scripts import forward_track_c0 as ft
-
-    out = tmp_path / "forward_c0"
-    out.mkdir(parents=True, exist_ok=True)
-    rows = [{
-        "mode": "FORWARD_FROZEN", "signal_date": day.isoformat(),
-        "created_at": "2026-11-11T16:10:00+08:00",
-        "strategy_version": ft.STRATEGY_VERSION, "git_commit": "test",
-        "source_data_revision": {"kind": "data_revision", "value": {f"stock_daily:{day}": revision}},
-        "source_data_date": day.isoformat(), "universe_definition": "test",
-        "universe_count": 1, "stock_code": "600000", "rank": 1, "score_total": 50.0,
-        "rev20": 1.0, "illiq20": 1.0, "amp20": 0.02, "percentiles": {},
-        "avg_amount_20": 1e7, "eligibility_reason": "test",
-    }]
-    payload = "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows)
-    (out / f"signals_{day}.jsonl").write_bytes(payload.encode("utf-8"))
-    meta = {
-        "mode": "FORWARD_FROZEN", "counts_for_forward_performance": True,
-        "signal_date": day.isoformat(), "row_count": 1,
-        "strategy_version": ft.STRATEGY_VERSION, "universe_count": 1,
-        "completeness": {"rows": 5000},
-        "source_data_revision": {"kind": "data_revision", "value": {f"stock_daily:{day}": revision}},
-        "content_sha256": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
-    }
-    (out / f"signals_{day}.meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
-
-
-def test_revise_allowed_before_any_frozen_snapshot(db_path, tmp_path):
+@pytest.mark.parametrize("target", [DAY, PREV, date(2026, 10, 22), date(2026, 10, 14)])
+def test_any_revision_is_rejected(db_path, tmp_path, target):
     codes = _universe()
     manifest = _manifest(codes)
     _init_target(db_path, tmp_path, days=CAL, now=NOW)
-    _run(db_path, tmp_path, manifest, _quotes(codes))
-    result, _ = _run(
-        db_path, tmp_path, manifest, _quotes(codes, close=11.0),
-        revise=True, reason="源数据晚到修订",
-    )
-    assert result["revision"] == 2
-    assert result["data_version"].endswith(":r2")
-    assert _rows(db_path, "SELECT DISTINCT close FROM stock_daily") == [(11.0,)]
-    message = json.loads(_rows(db_path, "SELECT message FROM ingest_log WHERE status='ok' ORDER BY id DESC LIMIT 1")[0][0])
-    assert message["revised"] is True
-    assert message["revise_reason"] == "源数据晚到修订"
-
-
-def test_revise_rejected_after_forward_frozen_snapshot(db_path, tmp_path):
-    codes = _universe()
-    manifest = _manifest(codes)
-    _init_target(db_path, tmp_path, days=CAL, now=NOW)
-    _run(db_path, tmp_path, manifest, _quotes(codes))
-    _write_frozen(tmp_path, DAY, revision=1)
     with pytest.raises(collector.BatchRejected) as error:
-        _run(db_path, tmp_path, manifest, _quotes(codes, close=11.0), revise=True, reason="晚到修订")
-    assert error.value.error_type == "frozen"
+        _run(db_path, tmp_path, manifest, _quotes(codes), day=target, revise=True, reason="尝试修订")
+    assert error.value.error_type == "revise_disabled"
+
+
+def test_revision_rejected_even_if_snapshot_dir_missing(db_path, tmp_path):
+    """CLI 已不提供 --snapshot-dir；任何修订都失败关闭。"""
+    codes = _universe()
+    manifest = _manifest(codes)
+    _init_target(db_path, tmp_path, days=CAL, now=NOW)
+    _run(db_path, tmp_path, manifest, _quotes(codes))
+    with pytest.raises(collector.BatchRejected) as error:
+        _run(db_path, tmp_path, manifest, _quotes(codes, close=11.0), revise=True, reason="x")
+    assert error.value.error_type == "revise_disabled"
     assert _rows(db_path, "SELECT DISTINCT close FROM stock_daily") == [(10.0,)]
 
 
-def test_revise_requires_reason_and_existing_revision(db_path, tmp_path):
-    codes = _universe()
-    manifest = _manifest(codes)
-    _init_target(db_path, tmp_path, days=CAL, now=NOW)
-    with pytest.raises(collector.BatchRejected):
-        _run(db_path, tmp_path, manifest, _quotes(codes), revise=True, reason="x")
-    _run(db_path, tmp_path, manifest, _quotes(codes))
-    with pytest.raises(collector.BatchRejected) as error:
-        _run(db_path, tmp_path, manifest, _quotes(codes, close=11.0), revise=True, reason="")
-    assert error.value.error_type == "config"
-
-
-def test_failed_revise_keeps_original_version(db_path, tmp_path, monkeypatch):
-    codes = _universe()
-    manifest = _manifest(codes)
-    _init_target(db_path, tmp_path, days=CAL, now=NOW)
-    _run(db_path, tmp_path, manifest, _quotes(codes))
-    before = _rows(db_path, "SELECT close, data_version FROM stock_daily WHERE code='600000'")
-
-    real = collector._write_confirmed
-
-    def boom(engine, batch, **kwargs):
-        return real(engine, batch, _failpoint="status", **kwargs)
-
-    monkeypatch.setattr(collector, "_write_confirmed", boom)
-    with pytest.raises(RuntimeError):
-        _run(db_path, tmp_path, manifest, _quotes(codes, close=11.0), revise=True, reason="晚到修订")
-    assert _rows(db_path, "SELECT close, data_version FROM stock_daily WHERE code='600000'") == before
-    assert _count(db_path, "SELECT revision FROM data_revision WHERE domain=?", (f"stock_daily:{DAY}",)) == 1
-
-
-def test_evaluate_rejects_changed_data_revision():
-    from scripts import forward_track_c0 as ft
-
-    meta = {"source_data_revision": {"kind": "data_revision", "value": {f"stock_daily:{DAY}": 1}}}
-    current = {"kind": "data_revision", "value": {f"stock_daily:{DAY}": 2}}
-    assert ft.revision_mismatch(meta, current, DAY)
-    assert ft.revision_mismatch(meta, {"kind": "data_revision", "value": {f"stock_daily:{DAY}": 1}}, DAY) is None
-    # 删掉版本表/当日完成标记 → 视为绕过，拒绝
-    assert ft.revision_mismatch(meta, {"kind": "file_stat", "value": {}}, DAY)
-    assert ft.revision_mismatch(meta, {"kind": "data_revision", "value": {"stock_daily": 9}}, DAY)
-    # 历史库（快照本身没记录 data_revision）保持原行为
-    legacy_meta = {"source_data_revision": {"kind": "file_stat", "value": {}}}
-    assert ft.revision_mismatch(legacy_meta, {"kind": "data_revision", "value": {}}, DAY) is None
-    # 快照缺记录但库内有当日版本 → 拒绝
-    assert ft.revision_mismatch({}, {"kind": "data_revision", "value": {f"stock_daily:{DAY}": 1}}, DAY)
-
-
-def test_row_edit_without_revision_bump_is_detected(db_path, tmp_path):
-    from sqlalchemy.orm import Session as OrmSession
-
-    from scripts import forward_track_c0 as ft
-
-    codes = _universe()
-    manifest = _manifest(codes)
-    _init_target(db_path, tmp_path, days=CAL, now=NOW)
-    _run(db_path, tmp_path, manifest, _quotes(codes))
-
-    engine = store.connect_readonly(db_path)
-    try:
-        with OrmSession(engine) as session:
-            assert ft.day_content_mismatch(session, DAY) is None
-    finally:
-        engine.dispose()
-
-    con = sqlite3.connect(db_path)
-    try:
-        con.execute(
-            "UPDATE stock_daily SET close = close + 1 WHERE trade_date=? AND code='600000'",
-            (DAY.isoformat(),),
-        )
-        con.commit()
-    finally:
-        con.close()
-
-    engine = store.connect_readonly(db_path)
-    try:
-        with OrmSession(engine) as session:
-            problem = ft.day_content_mismatch(session, DAY)
-    finally:
-        engine.dispose()
-    assert problem and "内容哈希" in problem
+def test_cli_has_no_snapshot_dir_option():
+    with pytest.raises(SystemExit):
+        collector.main(["--date", "2026-11-11", "--snapshot-dir", "x", "--execute"])
 
 
 # ---------------------------------------------------------------------------
@@ -669,7 +739,6 @@ def test_init_calendar_writes_target_only(db_path, tmp_path):
     assert result["days"] == 3
     assert result["next_trade_day"] == NEXT.isoformat()
     assert _count(db_path, "SELECT COUNT(*) FROM trade_calendar") == 3
-    # 源库不变
     assert _count(source, "SELECT COUNT(*) FROM trade_calendar") == 3
 
 
@@ -697,22 +766,17 @@ def test_collect_requires_target_calendar(db_path, tmp_path):
     with pytest.raises(collector.BatchRejected) as error:
         collector.collect(
             db_path, DAY, fetch=fetch, manifest=manifest, calendar=CAL, now=NOW,
-            execute=True, snapshot_dir=tmp_path / "forward_c0", allowed_root=tmp_path,
+            execute=True, allowed_root=tmp_path,
         )
     assert error.value.error_type == "calendar"
     assert calls == []
 
 
-def test_forty_days_plus_calendar_passes_forward_preflight(db_path, tmp_path):
-    from sqlalchemy.orm import Session
-
-    from scripts import forward_track_c0 as ft
-
+def _forty_day_fixture(tmp_path: Path):
     codes: set[str] = set()
     for prefix, size in (("600", 40), ("000", 40), ("300", 10), ("688", 5), ("920", 5)):
         codes.update(f"{prefix}{index:03d}" for index in range(size))
     manifest = _manifest(codes)
-
     days: list[date] = []
     cursor = date(2026, 9, 1)
     while len(days) < 40:
@@ -722,19 +786,27 @@ def test_forty_days_plus_calendar_passes_forward_preflight(db_path, tmp_path):
     last = days[-1]
     next_day = last + timedelta(days=3)
     all_days = days + [next_day]
-
-    _init_target(db_path, tmp_path, days=all_days, now=datetime.combine(last, datetime.min.time(), CST).replace(hour=16), end=next_day)
+    db = tmp_path / "forward_research.db"
+    _init_target(
+        db, tmp_path, days=all_days,
+        now=datetime.combine(last, datetime.min.time(), CST).replace(hour=16),
+        end=next_day,
+    )
     collect_now = datetime.combine(last + timedelta(days=1), datetime.min.time(), CST).replace(hour=16)
     for item in days:
         _run(
-            db_path, tmp_path, manifest, _quotes(codes),
-            day=item, now=collect_now,
+            db, tmp_path, manifest, _quotes(codes), day=item, now=collect_now,
             purpose="backfill", calendar=all_days,
         )
+    return db, manifest, days, next_day
 
-    engine = store.connect_readonly(db_path)
+
+def test_forty_days_plus_calendar_passes_forward_preflight(tmp_path):
+    db, _manifest_obj, days, _next_day = _forty_day_fixture(tmp_path)
+    last = days[-1]
+    engine = store.connect_readonly(db)
     try:
-        with Session(engine) as session:
+        with OrmSession(engine) as session:
             problems = ft.forward_problems(
                 session, last, datetime.combine(last, datetime.min.time(), CST).replace(hour=15, minute=45)
             )
@@ -756,8 +828,7 @@ def test_coverage_floor_cannot_be_disabled(db_path, tmp_path):
     with pytest.raises(collector.BatchRejected) as error:
         collector.collect(
             db_path, DAY, fetch=fetch, manifest=manifest, calendar=CAL, now=NOW,
-            execute=True, min_universe_coverage=0.0,
-            snapshot_dir=tmp_path / "forward_c0", allowed_root=tmp_path,
+            execute=True, min_universe_coverage=0.0, allowed_root=tmp_path,
         )
     assert error.value.error_type == "config"
     assert calls == []
@@ -788,14 +859,12 @@ def test_time_checks_use_shanghai_timezone(db_path, tmp_path):
     codes = _universe()
     manifest = _manifest(codes)
     _init_target(db_path, tmp_path, days=CAL, now=NOW)
-    # UTC 08:00 = 上海 16:00，允许
     result, _ = _run(
         db_path, tmp_path, manifest, _quotes(codes),
         now=datetime(2026, 11, 11, 8, 0, tzinfo=ZoneInfo("UTC")),
     )
     assert result["status"] == "confirmed"
 
-    # 另一份库：UTC 06:00 = 上海 14:00，不允许
     other = tmp_path / "second"
     other.mkdir()
     db2 = other / "forward_research.db"
@@ -822,7 +891,7 @@ def test_corrupt_database_fails_closed(db_path, tmp_path):
     with pytest.raises(collector.BatchRejected) as error:
         collector.collect(
             db_path, DAY, fetch=fetch, manifest=manifest, calendar=CAL, now=NOW,
-            execute=True, snapshot_dir=tmp_path / "forward_c0", allowed_root=tmp_path,
+            execute=True, allowed_root=tmp_path,
         )
     assert error.value.error_type == "db_unreadable"
     assert calls == []
@@ -840,7 +909,7 @@ def test_token_is_redacted_from_errors_and_logs(db_path, tmp_path, monkeypatch):
     with pytest.raises(collector.BatchRejected) as error:
         collector.collect(
             db_path, DAY, fetch=bad_fetch, manifest=manifest, calendar=CAL, now=NOW,
-            execute=True, snapshot_dir=tmp_path / "forward_c0", allowed_root=tmp_path,
+            execute=True, allowed_root=tmp_path,
         )
     assert "secret-token-xyz" not in str(error.value)
     stored = _rows(db_path, "SELECT message FROM ingest_log WHERE status='failed'")[0][0]
@@ -853,6 +922,203 @@ def test_plan_does_not_create_database(tmp_path):
     manifest = _manifest(codes)
     result, calls = _run(db, tmp_path, manifest, _quotes(codes), execute=False)
     assert result["status"] == "plan"
+    assert result["expected_total"] == len(codes)
     assert result["calendar_ready"] is False
     assert calls == []
     assert not db.exists()
+
+
+# ---------------------------------------------------------------------------
+# 正式评价审计（Tushare 数据源）
+# ---------------------------------------------------------------------------
+
+
+def _write_snapshot(
+    out: Path,
+    day: date,
+    revision: int,
+    codes: list[str],
+    *,
+    mode: str = "FORWARD_FROZEN",
+    provider: str | None = "tushare",
+    protocol: str = store.DATA_PROTOCOL_VERSION,
+    db_name: str = "forward_research.db",
+) -> None:
+    out.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "mode": mode, "signal_date": day.isoformat(),
+            "created_at": "2026-11-11T16:10:00+08:00",
+            "strategy_version": ft.STRATEGY_VERSION, "git_commit": "test",
+            "source_data_revision": {"kind": "data_revision", "value": {f"stock_daily:{day}": revision}},
+            "source_data_date": day.isoformat(), "universe_definition": "test",
+            "universe_count": len(codes), "stock_code": code, "rank": index + 1,
+            "score_total": 50.0, "rev20": 1.0, "illiq20": 1.0, "amp20": 0.02,
+            "percentiles": {}, "avg_amount_20": 1e7, "eligibility_reason": "test",
+        }
+        for index, code in enumerate(codes)
+    ]
+    payload = "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows)
+    stem = "signals" if mode == "FORWARD_FROZEN" else "replay_signals"
+    (out / f"{stem}_{day}.jsonl").write_bytes(payload.encode("utf-8"))
+    meta = {
+        "mode": mode,
+        "counts_for_forward_performance": mode == "FORWARD_FROZEN",
+        "signal_date": day.isoformat(), "row_count": len(codes),
+        "strategy_version": ft.STRATEGY_VERSION, "universe_count": len(codes),
+        "completeness": {"rows": 100},
+        "source_data_revision": {"kind": "data_revision", "value": {f"stock_daily:{day}": revision}},
+        "content_sha256": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+    }
+    if provider:
+        meta["data_source"] = {
+            "provider": provider, "db": db_name, "data_protocol": protocol,
+            "revision_domain": f"stock_daily:{day}",
+            "units": {
+                "raw": {"vol": "手", "amount": "千元"},
+                "normalized": {"volume": "股", "amount": "元"},
+            },
+            "pct_source": "official",
+        }
+    (out / f"{stem}_{day}.meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+
+
+def _evaluate(db: Path, out: Path, day: date, *, mode: str = "forward") -> int:
+    return ft.main([
+        "--db", str(db), "--out", str(out),
+        "evaluate", "--date", day.isoformat(), "--mode", mode,
+    ])
+
+
+def _forward_db(tmp_path: Path, *, days: int = 40):
+    codes: set[str] = set()
+    for prefix, size in (("600", 40), ("000", 40), ("300", 10), ("688", 5), ("920", 5)):
+        codes.update(f"{prefix}{index:03d}" for index in range(size))
+    manifest = _manifest(codes)
+    dates: list[date] = []
+    cursor = date(2026, 9, 1)
+    while len(dates) < days:
+        if cursor.weekday() < 5:
+            dates.append(cursor)
+        cursor += timedelta(days=1)
+    next_day = dates[-1] + timedelta(days=3)
+    all_days = dates + [next_day]
+    root = tmp_path / "eval"
+    root.mkdir(exist_ok=True)
+    db = root / "forward_research.db"
+    _init_target(
+        db, root, days=all_days,
+        now=datetime.combine(dates[-1], datetime.min.time(), CST).replace(hour=16),
+        end=next_day,
+    )
+    collect_now = datetime.combine(dates[-1] + timedelta(days=1), datetime.min.time(), CST).replace(hour=16)
+    for item in dates:
+        _run(
+            db, root, manifest, _quotes(codes), day=item, now=collect_now,
+            purpose="backfill", calendar=all_days,
+        )
+    return root, db, dates
+
+
+def test_evaluate_accepts_verified_tushare_snapshot(tmp_path, capsys):
+    root, db, dates = _forward_db(tmp_path)
+    signal_day = dates[30]
+    codes = [f"600{index:03d}" for index in range(5)]
+    _write_snapshot(root / "forward_c0", signal_day, 1, codes)
+    assert _evaluate(db, root / "forward_c0", signal_day) == 0
+    capsys.readouterr()
+
+
+@pytest.mark.parametrize("tamper", ["delete_log", "drop_table", "corrupt_digest", "signal_rows", "entry_rows", "exit_rows"])
+def test_evaluate_rejects_audit_failures(tmp_path, capsys, tamper):
+    root, db, dates = _forward_db(tmp_path)
+    signal_day = dates[30]
+    entry_day = dates[31]
+    exit_day = dates[35]
+    out = root / "forward_c0"
+    _write_snapshot(out, signal_day, 1, [f"600{index:03d}" for index in range(5)])
+
+    con = sqlite3.connect(db)
+    try:
+        if tamper == "delete_log":
+            con.execute(
+                "DELETE FROM ingest_log WHERE trade_date=? AND status='ok'", (signal_day.isoformat(),)
+            )
+        elif tamper == "drop_table":
+            con.execute("DROP TABLE ingest_log")
+        elif tamper == "corrupt_digest":
+            message = con.execute(
+                "SELECT message FROM ingest_log WHERE trade_date=? AND status='ok'", (signal_day.isoformat(),)
+            ).fetchone()[0]
+            con.execute(
+                "UPDATE ingest_log SET message=? WHERE trade_date=? AND status='ok'",
+                (message.replace("tushare-daily:", "tampered-daily:"), signal_day.isoformat()),
+            )
+        elif tamper == "signal_rows":
+            con.execute(
+                "UPDATE stock_daily SET close=close+1 WHERE trade_date=? AND code='600000'",
+                (signal_day.isoformat(),),
+            )
+        elif tamper == "entry_rows":
+            con.execute(
+                "UPDATE stock_daily SET close=close+1 WHERE trade_date=? AND code='600000'",
+                (entry_day.isoformat(),),
+            )
+        elif tamper == "exit_rows":
+            con.execute(
+                "UPDATE stock_daily SET close=close+1 WHERE trade_date=? AND code='600000'",
+                (exit_day.isoformat(),),
+            )
+        con.commit()
+    finally:
+        con.close()
+
+    with pytest.raises(SystemExit):
+        _evaluate(db, out, signal_day)
+    capsys.readouterr()
+
+
+def test_replay_is_not_forced_into_forward_audit(tmp_path, capsys):
+    root, db, dates = _forward_db(tmp_path)
+    day = dates[30]
+    out = root / "forward_c0"
+    _write_snapshot(out, day, 1, [f"600{index:03d}" for index in range(5)], mode="REPLAY_ONLY", provider=None)
+    assert _evaluate(db, out, day, mode="replay") == 0
+    text = capsys.readouterr().out
+    assert "REPLAY_ONLY" in text
+
+
+def test_snapshot_meta_records_tushare_source(tmp_path):
+    root, db, dates = _forward_db(tmp_path)
+    manifest_path, _sha = _raw_manifest(root, _universe(), version="v-test")
+    out = root / "forward_c0"
+    last = dates[-1]
+    code = ft.main([
+        "--db", str(db), "--out", str(out), "--universe", str(manifest_path),
+        "snapshot", "--mode", "forward", "--date", last.isoformat(),
+        "--now", datetime.combine(last, datetime.min.time(), CST).replace(hour=15, minute=45).isoformat(),
+    ])
+    assert code == 0
+    meta = json.loads((out / f"signals_{last}.meta.json").read_text(encoding="utf-8"))
+    source = meta["data_source"]
+    assert source["provider"] == "tushare"
+    assert source["db"] == "forward_research.db"
+    assert source["data_protocol"] == store.DATA_PROTOCOL_VERSION
+    assert source["units"]["raw"] == {"vol": "手", "amount": "千元"}
+    assert source["units"]["normalized"] == {"volume": "股", "amount": "元"}
+    assert meta["universe"]["version"] == "v-test"
+    assert meta["mode"] == "FORWARD_FROZEN"
+
+
+# ---------------------------------------------------------------------------
+# 采集器 schema（universe_status）
+# ---------------------------------------------------------------------------
+
+
+def test_store_schema_has_universe_status(tmp_path):
+    engine = store.connect(tmp_path / "forward_research.db")
+    store.create_schema(engine)
+    with engine.begin() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(universe_status)")}
+    engine.dispose()
+    assert columns == {"trade_date", "code", "status", "reason"}

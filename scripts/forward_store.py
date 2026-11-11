@@ -95,6 +95,12 @@ CREATE TABLE IF NOT EXISTS universe_status (
 CODE_RE = re.compile(r"^\d{6}$")
 SUFFIXES = (".SH", ".SZ", ".BJ", ".SS")
 
+#: 前瞻日线数据协议：字段语义、单位换算与缺失状态定义。任何变更都必须换版本号。
+DATA_PROTOCOL_VERSION = "forward-daily-v1"
+
+#: 上市日期证据协议：BSE 用官方上市日期；无官方日期的证券不得推断上市日。
+LISTING_PROTOCOL_VERSION = "bse-official-listing-v1"
+
 #: 必填字段（缺失即该行不合格）
 REQUIRED = ("trade_date", "code", "open", "high", "low", "close", "pct_chg", "amount")
 

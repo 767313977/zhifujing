@@ -111,6 +111,7 @@ from scripts.backtest_reversal import (  # noqa: E402
     _net,
     _rank_top,
 )
+from scripts.forward_store import DATA_PROTOCOL_VERSION  # noqa: E402
 
 logger = logging.getLogger("forward_c0")
 
@@ -243,38 +244,65 @@ def revision_mismatch(meta: dict, current: dict, day: date) -> str | None:
     return None
 
 
-def day_content_mismatch(session: Session, day: date) -> str | None:
-    """用 `ingest_log` 记录的批次哈希复核当日行情是否被静默改动。
+def day_audit_problem(session: Session, day: date, *, strict: bool = False) -> str | None:
+    """审计某日是否具备可核验的采集证据（版本、成功日志、内容哈希）。
 
-    只对采集器写入的库生效（`data_version` 以 `tushare-daily:` 开头）；历史库没有
-    该类日志时返回 None。行情被改动但 `data_revision` 未变时，这里必须拒绝评价。
+    `strict=True` 用于正式前瞻：**缺表、缺日志、版本不符都算失败**，不允许把
+    采集器写入的库误判成历史库。`strict=False` 保持历史库兼容（返回 None）。
     """
     from sqlalchemy import text
 
+    domain = f"stock_daily:{day.isoformat()}"
     try:
-        row = session.execute(
+        revision_row = session.execute(
+            text("SELECT revision FROM data_revision WHERE domain=:domain"), {"domain": domain}
+        ).first()
+    except Exception as error:  # noqa: BLE001 - 没有版本表
+        session.rollback()
+        if strict:
+            return f"库内缺失 data_revision 表（{error}）：拒绝正式评价"
+        return None
+    if revision_row is None:
+        if strict:
+            return f"{day} 缺少当日完成标记 {domain}：拒绝正式评价"
+        return None
+
+    try:
+        log_row = session.execute(
             text(
                 "SELECT message FROM ingest_log WHERE trade_date=:day AND status='ok' "
                 "ORDER BY id DESC LIMIT 1"
             ),
             {"day": day.isoformat()},
         ).first()
-    except Exception:  # noqa: BLE001 - 没有 ingest_log 表 = 非采集器库
+    except Exception as error:  # noqa: BLE001 - 没有 ingest_log 表
         session.rollback()
+        if strict:
+            return f"库内缺失 ingest_log 表（{error}）：拒绝正式评价"
         return None
-    if not row:
+    if not log_row:
+        if strict:
+            return f"{day} 缺少成功采集日志：拒绝正式评价"
         return None
     try:
-        message = json.loads(row[0])
+        message = json.loads(log_row[0])
     except Exception as error:  # noqa: BLE001
-        return f"当日成功日志无法解析：拒绝评价（{error}）"
+        return f"{day} 成功日志无法解析：拒绝评价（{error}）"
     version = str(message.get("data_version") or "")
     if not version.startswith("tushare-daily:"):
+        if strict:
+            return f"{day} 成功日志不是 Tushare 数据版本：拒绝正式评价"
         return None
     parts = version.split(":")
     if len(parts) < 4 or len(parts[2]) < 12:
-        return f"data_version 格式非法（{version}）：拒绝评价"
+        return f"{day} data_version 格式非法（{version}）：拒绝评价"
     expected = parts[2][:12]
+    recorded_revision = message.get("revision")
+    if strict and recorded_revision is not None and int(recorded_revision) != int(revision_row[0]):
+        return (
+            f"{day} 日志修订号 {recorded_revision} ≠ 当日完成标记 {revision_row[0]}："
+            "拒绝正式评价"
+        )
 
     from scripts.forward_collect_tushare import batch_digest
 
@@ -303,17 +331,116 @@ def day_content_mismatch(session: Session, day: date) -> str | None:
         )
     ]
     if not rows:
-        return "当日行情为空：拒绝评价"
+        return f"{day} 行情为空：拒绝评价"
     try:
         actual = batch_digest(rows)[:12]
     except Exception as error:  # noqa: BLE001 - 字段被改成空值等
-        return f"当日行情无法计算内容哈希：拒绝评价（{error}）"
+        return f"{day} 行情无法计算内容哈希：拒绝评价（{error}）"
     if actual != expected:
-        return (
-            f"当日行情内容哈希 {actual} ≠ 采集记录 {expected}："
-            "库内行情被改动，拒绝评价"
-        )
+        return f"{day} 行情内容哈希 {actual} ≠ 采集记录 {expected}：库内行情被改动，拒绝评价"
     return None
+
+
+def day_content_mismatch(session: Session, day: date) -> str | None:
+    """历史库兼容入口：没有成功日志/版本表时返回 None（严格版见 `day_audit_problem`）。"""
+    return day_audit_problem(session, day, strict=False)
+
+
+def _forward_audit_problems(session: Session, day: date, meta: dict) -> list[str]:
+    """正式前瞻（Tushare 源）评价前的完整审计：信号日 + 已存在的后续入场/退出日。"""
+    source = meta.get("data_source") or {}
+    if source.get("provider") != "tushare":
+        return []
+    problems: list[str] = []
+    if source.get("data_protocol") != DATA_PROTOCOL_VERSION:
+        problems.append(
+            f"快照数据协议 {source.get('data_protocol')!r} ≠ 当前 {DATA_PROTOCOL_VERSION}"
+        )
+    if source.get("db") != "forward_research.db":
+        problems.append(f"快照数据源 {source.get('db')!r} 不是独立前瞻库 forward_research.db")
+
+    signal_problem = day_audit_problem(session, day, strict=True)
+    if signal_problem:
+        problems.append(signal_problem)
+
+    from sqlalchemy import text
+
+    try:
+        later = [
+            date.fromisoformat(row[0])
+            for row in session.execute(
+                text(
+                    "SELECT trade_date FROM trade_calendar WHERE trade_date > :day "
+                    "ORDER BY trade_date LIMIT 10"
+                ),
+                {"day": day.isoformat()},
+            )
+        ]
+    except Exception:  # noqa: BLE001 - 没有日历则用行情日期
+        session.rollback()
+        later = [
+            date.fromisoformat(row[0])
+            for row in session.execute(
+                text(
+                    "SELECT DISTINCT trade_date FROM stock_daily WHERE trade_date > :day "
+                    "ORDER BY trade_date LIMIT 10"
+                ),
+                {"day": day.isoformat()},
+            )
+        ]
+    for item in later:
+        exists = session.execute(
+            text("SELECT 1 FROM stock_daily WHERE trade_date=:day LIMIT 1"),
+            {"day": item.isoformat()},
+        ).first()
+        if not exists:
+            continue  # 未成熟/未采集：保持 pending，不伪造收益
+        problem = day_audit_problem(session, item, strict=True)
+        if problem:
+            problems.append(problem)
+    return problems
+
+
+def detect_data_source(session: Session, db_path: Path, day: date, revision: dict) -> dict:
+    """识别数据来源与协议（写进快照 meta，评价时据此选择审计强度）。"""
+    provider = "history"
+    domain = f"stock_daily:{day.isoformat()}"
+    values = revision.get("value") or {}
+    if revision.get("kind") == "data_revision" and domain in values:
+        try:
+            from sqlalchemy import text
+
+            sample = session.execute(
+                text("SELECT data_version FROM stock_daily WHERE trade_date=:day LIMIT 1"),
+                {"day": day.isoformat()},
+            ).scalar()
+        except Exception:  # noqa: BLE001
+            session.rollback()
+            sample = None
+        if sample and str(sample).startswith("tushare-daily:"):
+            provider = "tushare"
+    if provider == "tushare":
+        return {
+            "provider": "tushare",
+            "db": db_path.name,
+            "data_protocol": DATA_PROTOCOL_VERSION,
+            "revision_domain": domain,
+            "units": {
+                "raw": {"vol": "手", "amount": "千元"},
+                "normalized": {"volume": "股", "amount": "元"},
+            },
+            "pct_source": "official",
+        }
+    return {
+        "provider": "history",
+        "db": db_path.name,
+        "data_protocol": "history-derived-v1",
+        "units": {
+            "raw": {"volume": "股", "amount": "元"},
+            "normalized": {"volume": "股", "amount": "元"},
+        },
+        "pct_source": "derived",
+    }
 
 
 def load_universe(path: Path) -> dict:
@@ -886,6 +1013,7 @@ def cmd_snapshot(args) -> int:
                 return 3
 
             revision = _data_revision(session, db_path)
+            data_source = detect_data_source(session, db_path, day, revision)
             if mode == MODE_FORWARD:
                 completeness["factor_missing_ratio"] = round(missing, 6)
                 completeness["verified_at"] = now.isoformat(timespec="seconds")
@@ -931,6 +1059,7 @@ def cmd_snapshot(args) -> int:
         "git_commit": rows[0]["git_commit"],
         "source_data_date": latest.isoformat(),
         "source_data_revision": revision,
+        "data_source": data_source,
         "protocol": PROTOCOL,
         "row_count": len(rows),
         "universe_count": len(candidates["pool"]),
@@ -1025,9 +1154,9 @@ def cmd_evaluate(args) -> int:
             mismatch = revision_mismatch(meta, current_revision, day)
             if mismatch:
                 raise SystemExit(mismatch)
-            content_problem = day_content_mismatch(session, day)
-            if content_problem:
-                raise SystemExit(content_problem)
+            if mode == MODE_FORWARD:
+                for problem in _forward_audit_problems(session, day, meta):
+                    raise SystemExit(problem)
             latest = session.scalar(select(func.max(StockDaily.trade_date)))
             matrix = load_matrix(session, day, min(latest, day + timedelta(days=60)))
             benchmark = Benchmark(session, matrix, "market")

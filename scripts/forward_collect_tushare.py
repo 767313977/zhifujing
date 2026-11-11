@@ -92,8 +92,8 @@ MARKET_TZ = ZoneInfo("Asia/Shanghai")
 DEFAULT_DB = BACKEND / "data" / "forward_research.db"
 DEFAULT_MANIFEST = BACKEND / "data" / "c0_universe_b1_verified.json"
 DEFAULT_CALENDAR_DB = BACKEND / "data" / "fupan.db"
-DEFAULT_SNAPSHOT_DIR = BACKEND / "data" / "forward_c0"
 DEFAULT_ALLOWED_ROOT = BACKEND / "data"
+DEFAULT_BSE_EVIDENCE = ROOT / "docs" / "b3" / "bse_identity_2026-11-11.json"
 
 #: 冻结清单版本与资格哈希（换清单必须同时改这两个常量并说明原因）
 MANIFEST_VERSION = "b1v-2026-11-11"
@@ -124,6 +124,8 @@ REQUIRED_COLUMNS = ("ts_code", "open", "high", "low", "close", "pct_chg", "vol",
 STATUS_OK = "ok"
 STATUS_NO_QUOTE = "no_quote_unverified"
 STATUS_SUSPENDED = "suspended_confirmed"
+STATUS_NOT_LISTED = "not_listed_yet"
+STATUS_LISTING_UNVERIFIED = "listing_date_unverified"
 STATUS_BATCH_FAILED = "batch_failed"
 
 ALLOWED_TABLES = {
@@ -144,7 +146,11 @@ EXIT_DB_ERROR = 4
 
 @dataclass(frozen=True)
 class Manifest:
-    """冻结研究范围（只用可前瞻且身份已核验的证券）。"""
+    """冻结研究范围（只用可前瞻且身份已核验的证券）。
+
+    `listing_dates` 只放**官方上市日期**证据；`first_dates` 是历史库首次出现日，
+    仅用于「该证券在 D 日必然已上市」的保守判断（有过行情 ≠ 推断上市日）。
+    """
 
     version: str
     eligibility_sha256: str
@@ -153,6 +159,35 @@ class Manifest:
     codes: frozenset[str]
     board_counts: dict[str, int]
     total: int
+    listing_dates: dict[str, str] = field(default_factory=dict)
+    first_dates: dict[str, str] = field(default_factory=dict)
+    listing_protocol: str = store.LISTING_PROTOCOL_VERSION
+
+    def split_by_listing(self, day: date) -> tuple[set[str], set[str], set[str]]:
+        """返回 `(已上市, 明确未上市, 上市日期未证实)` 三个集合。"""
+        listed: set[str] = set()
+        not_listed: set[str] = set()
+        unverified: set[str] = set()
+        target = day.isoformat()
+        for code in self.codes:
+            official = self.listing_dates.get(code)
+            if official:
+                (listed if official <= target else not_listed).add(code)
+                continue
+            first = self.first_dates.get(code)
+            if first and first <= target:
+                listed.add(code)  # 当日或之前有过行情，必然是已上市证券
+            else:
+                unverified.add(code)
+        return listed, not_listed, unverified
+
+    def expected_board_counts(self, day: date) -> dict[str, int]:
+        listed, _not_listed, _unverified = self.split_by_listing(day)
+        counts: dict[str, int] = {}
+        for code in listed:
+            board = store.board_of(code)
+            counts[board] = counts.get(board, 0) + 1
+        return counts
 
 
 @dataclass
@@ -163,9 +198,12 @@ class Batch:
     rows: list[dict] = field(default_factory=list)
     statuses: list[tuple[str, str, str]] = field(default_factory=list)
     by_board: dict[str, int] = field(default_factory=dict)
-    by_board_eligible: dict[str, int] = field(default_factory=dict)
+    by_board_listed: dict[str, int] = field(default_factory=dict)
     missing: list[str] = field(default_factory=list)
     extras: list[str] = field(default_factory=list)
+    not_listed_count: int = 0
+    unverified_count: int = 0
+    listed_count: int = 0
     data_version: str = ""
     digest: str = ""
 
@@ -232,8 +270,9 @@ def load_manifest(
     *,
     expect_version: str = MANIFEST_VERSION,
     expect_eligibility_sha256: str = MANIFEST_ELIGIBILITY_SHA256,
+    evidence_path: Path = DEFAULT_BSE_EVIDENCE,
 ) -> Manifest:
-    """读取并校验冻结清单：版本、资格哈希、全量哈希、资格标记都必须自洽。"""
+    """读取并校验冻结清单：版本、资格哈希、全量哈希、资格标记与 BSE 上市日期。"""
     if not path.is_file():
         raise SystemExit(f"没有冻结清单 {path}")
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -278,6 +317,43 @@ def load_manifest(
     for item in eligible:
         board_counts[item["board"]] = board_counts.get(item["board"], 0) + 1
 
+    # ---- 上市日期证据 -----------------------------------------------------
+    evidence: dict[str, dict] = {}
+    if evidence_path and Path(evidence_path).is_file():
+        payload_evidence = json.loads(Path(evidence_path).read_text(encoding="utf-8"))
+        evidence = {item["code"]: item for item in payload_evidence.get("securities", [])}
+
+    listing_dates: dict[str, str] = {}
+    first_dates: dict[str, str] = {}
+    for item in eligible:
+        code = item["code"]
+        official = item.get("official_listing_date")
+        if official:
+            listing_dates[code] = str(official)
+        elif item["board"] == "北交所":
+            raise SystemExit(
+                f"北交所证券 {code} 缺少官方上市日期证据：拒绝推断，先补证据再采集"
+            )
+        first = item.get("first_date")
+        if not first:
+            raise SystemExit(f"证券 {code} 缺少 first_date：无法判断上市前缺席")
+        first_dates[code] = str(first)
+
+    mismatched = sorted(
+        code
+        for code, record in evidence.items()
+        if code in listing_dates
+        and str(record.get("listing_date") or "") != listing_dates[code]
+    )
+    if mismatched:
+        raise SystemExit(f"清单与 BSE 证据的上市日期不一致：{mismatched[:10]}")
+    missing_evidence = sorted(
+        code for code in listing_dates
+        if code.startswith("92") and code not in evidence
+    )
+    if missing_evidence:
+        raise SystemExit(f"北交所证券缺少官方身份证据：{missing_evidence[:10]}")
+
     return Manifest(
         version=version,
         eligibility_sha256=eligibility_sha,
@@ -286,6 +362,8 @@ def load_manifest(
         codes=frozenset(item["code"] for item in eligible),
         board_counts=board_counts,
         total=len(eligible),
+        listing_dates=listing_dates,
+        first_dates=first_dates,
     )
 
 
@@ -410,6 +488,7 @@ def normalize_frame(
     evidence = dict(suspended_reasons or {})
     codes = {row["code"] for row in rows}
     missing = sorted(manifest.codes - codes)
+    listed, not_listed, unverified = manifest.split_by_listing(day)
     returned_evidenced = sorted(set(evidence) & codes)
     if returned_evidenced:
         raise BatchRejected(
@@ -419,23 +498,38 @@ def normalize_frame(
     unknown = sorted(set(evidence) - manifest.codes)
     if unknown:
         raise BatchRejected(f"停牌证据含清单外代码：{unknown[:10]}", error_type="suspended_conflict")
+    evidence_unlisted = sorted(set(evidence) & not_listed)
+    if evidence_unlisted:
+        raise BatchRejected(
+            f"停牌证据指向尚未上市证券：{evidence_unlisted[:10]}", error_type="suspended_conflict"
+        )
+    returned_not_listed = sorted(codes & not_listed)
+    if returned_not_listed:
+        raise BatchRejected(
+            f"返回了官方上市日期晚于当日的证券：{returned_not_listed[:10]}（来源异常）",
+            error_type="listing_conflict",
+        )
 
     missing_set = set(missing)
     statuses = []
     for code in sorted(manifest.codes):
         if code not in missing_set:
             statuses.append((code, STATUS_OK, ""))
+        elif code in not_listed:
+            statuses.append((code, STATUS_NOT_LISTED, "official_listing_after_day"))
+        elif code in unverified:
+            statuses.append((code, STATUS_LISTING_UNVERIFIED, "no_official_listing_date"))
         elif code in evidence:
             statuses.append((code, STATUS_SUSPENDED, evidence[code]))
         else:
             statuses.append((code, STATUS_NO_QUOTE, "absent_from_daily"))
 
     by_board: dict[str, int] = {}
-    by_board_eligible: dict[str, int] = {}
+    by_board_listed: dict[str, int] = {}
     for row in rows:
         by_board[row["board"]] = by_board.get(row["board"], 0) + 1
-        if row["code"] in manifest.codes:
-            by_board_eligible[row["board"]] = by_board_eligible.get(row["board"], 0) + 1
+        if row["code"] in listed:
+            by_board_listed[row["board"]] = by_board_listed.get(row["board"], 0) + 1
     extras = sorted(codes - manifest.codes)
     digest = batch_digest(rows)
     return Batch(
@@ -443,9 +537,12 @@ def normalize_frame(
         rows=rows,
         statuses=statuses,
         by_board=by_board,
-        by_board_eligible=by_board_eligible,
+        by_board_listed=by_board_listed,
         missing=missing,
         extras=extras,
+        not_listed_count=len(not_listed),
+        unverified_count=len(unverified),
+        listed_count=len(listed),
         data_version=data_version,
         digest=digest,
     )
@@ -455,10 +552,17 @@ def validate_batch(
     batch: Batch,
     *,
     manifest: Manifest,
+    expected_board: dict[str, int],
     previous_board: dict[str, int] | None = None,
     min_universe_coverage: float = MIN_UNIVERSE_COVERAGE,
 ) -> list[str]:
-    """整批完整性校验；返回问题列表（空 = 可提交）。"""
+    """整批完整性校验；返回问题列表（空 = 可提交）。
+
+    口径统一为「冻结研究池内、且当日已上市」的证券：
+    - 分母 = 冻结清单在该日已上市的证券数（官方上市日期优先，其次首次出现日）；
+    - 分子 = 这些证券中当日实际返回行情的数量；
+    - 上市前证券、无上市日期且从未出现过的证券都不进分母（状态另行标记）。
+    """
     if min_universe_coverage < MIN_UNIVERSE_COVERAGE_FLOOR:
         raise BatchRejected(
             f"覆盖率阈值 {min_universe_coverage:.1%} 低于硬下限 "
@@ -475,28 +579,40 @@ def validate_batch(
     if len(unique) != rows:
         problems.append(f"唯一代码 {len(unique)} != 行数 {rows}：存在重复行")
 
-    matched = len(unique & manifest.codes)
-    coverage = matched / manifest.total if manifest.total else 0.0
-    if coverage < min_universe_coverage:
+    expected_total = sum(expected_board.values())
+    matched = sum(batch.by_board_listed.values())
+    coverage = matched / expected_total if expected_total else 0.0
+    if expected_total == 0:
+        problems.append("当日没有任何「已上市」研究证券：拒绝仅凭总行数放行")
+    elif coverage < min_universe_coverage:
         problems.append(
-            f"研究清单覆盖 {matched}/{manifest.total} = {coverage:.2%}"
+            f"研究清单覆盖 {matched}/{expected_total} = {coverage:.2%}"
             f"（< {min_universe_coverage:.1%}）：疑似整段证券缺失"
         )
 
-    baseline = previous_board if previous_board else manifest.board_counts
-    label = "上一确认日" if previous_board else "冻结清单"
-    if not baseline:
-        problems.append("没有分市场基线：拒绝仅凭总覆盖率放行")
-    for board, expected in baseline.items():
+    for board, expected in expected_board.items():
         if expected < MIN_BOARD_ROWS:
             continue
-        today_rows = batch.by_board_eligible.get(board, 0)
+        today_rows = batch.by_board_listed.get(board, 0)
         ratio = today_rows / expected
         if ratio < MIN_BOARD_COVERAGE:
             problems.append(
-                f"{board} 覆盖 {today_rows} 行，{label} {expected} 行，仅 {ratio:.1%}"
+                f"{board} 覆盖 {today_rows}/{expected} 行，仅 {ratio:.1%}"
                 f"（< {MIN_BOARD_COVERAGE:.0%}）：疑似该市场被静默丢弃"
             )
+
+    if previous_board:
+        for board, previous in previous_board.items():
+            expected = expected_board.get(board, 0)
+            if expected < MIN_BOARD_ROWS:
+                continue
+            today_rows = batch.by_board_listed.get(board, 0)
+            ratio = today_rows / previous if previous else 0.0
+            if ratio < MIN_BOARD_COVERAGE:
+                problems.append(
+                    f"{board} 覆盖 {today_rows} 行，上一确认日（同一已上市集合）{previous} 行，"
+                    f"仅 {ratio:.1%}（< {MIN_BOARD_COVERAGE:.0%}）：疑似该市场被静默丢弃"
+                )
     return problems
 
 
@@ -630,8 +746,8 @@ def _calendar_ready(db_path: Path, day: date) -> tuple[bool, str]:
         engine.dispose()
 
 
-def _previous_board_counts(conn, day: date) -> dict[str, int] | None:
-    """上一确认日（有 `stock_daily:D` 完成标记）的分板块行数。"""
+def _previous_board_counts(conn, day: date, codes: set[str]) -> dict[str, int] | None:
+    """上一确认日的分板块行数，**只统计传入的证券集合**（与当日分母同口径）。"""
     row = conn.exec_driver_sql(
         "SELECT domain FROM data_revision WHERE domain LIKE 'stock_daily:%' "
         "AND domain < ? ORDER BY domain DESC LIMIT 1",
@@ -644,6 +760,8 @@ def _previous_board_counts(conn, day: date) -> dict[str, int] | None:
     for (code,) in conn.exec_driver_sql(
         "SELECT code FROM stock_daily WHERE trade_date=?", (previous,)
     ):
+        if code not in codes:
+            continue
         board = store.board_of(str(code))
         counts[board] = counts.get(board, 0) + 1
     return counts
@@ -731,51 +849,6 @@ def _write_confirmed(
 
 
 # ---------------------------------------------------------------------------
-# 冻结快照关联（修订保护）
-# ---------------------------------------------------------------------------
-
-
-def _current_revision(db_path: Path, day: date) -> int | None:
-    return day_revision_readonly(db_path, day)
-
-
-def _frozen_snapshot_problem(
-    snapshot_dir: Path, day: date, db_revision: int | None
-) -> str | None:
-    """有正式冻结快照时返回原因；没有则返回 None。损坏一律返回原因（失败关闭）。"""
-    try:
-        from scripts.forward_track_c0 import (
-            MODE_FORWARD,
-            STATE_COMPLETE,
-            STATE_CORRUPTED,
-            STATE_INCOMPLETE,
-            STATE_NONE,
-            inspect_snapshot,
-        )
-    except Exception as error:  # noqa: BLE001
-        return f"无法加载快照校验器（{error}）：按已冻结处理"
-    state = inspect_snapshot(Path(snapshot_dir), day, MODE_FORWARD)
-    if state.state == STATE_NONE:
-        return None
-    if state.state in (STATE_INCOMPLETE, STATE_CORRUPTED):
-        return f"同日冻结快照状态异常（{state.state}：{state.detail}），拒绝修订"
-    if state.state != STATE_COMPLETE:
-        return f"同日冻结快照状态未知（{state.state}），拒绝修订"
-    meta = state.meta or {}
-    if meta.get("signal_date") != day.isoformat():
-        return "冻结快照的 signal_date 与目标日期不一致"
-    revision = meta.get("source_data_revision") or {}
-    value = revision.get("value") if isinstance(revision, dict) else None
-    recorded = value.get(f"stock_daily:{day.isoformat()}") if isinstance(value, dict) else None
-    if recorded is None or db_revision is None or int(recorded) != int(db_revision):
-        return (
-            f"冻结快照记录的数据版本（{recorded}）与库内当日版本（{db_revision}）不一致"
-            "或缺失：拒绝修订"
-        )
-    return "同日已生成 FORWARD_FROZEN 快照：原始输入不得覆盖"
-
-
-# ---------------------------------------------------------------------------
 # 编排
 # ---------------------------------------------------------------------------
 
@@ -829,13 +902,22 @@ def collect(
     revise: bool = False,
     revise_reason: str = "",
     suspended_reasons: dict[str, str] | None = None,
-    snapshot_dir: Path = DEFAULT_SNAPSHOT_DIR,
     purpose: str = "live",
     min_universe_coverage: float = MIN_UNIVERSE_COVERAGE,
     allowed_root: Path = DEFAULT_ALLOWED_ROOT,
 ) -> dict:
-    """执行/预演一天。`fetch(day) -> list[dict]` 由调用方注入。"""
+    """执行/预演一天。`fetch(day) -> list[dict]` 由调用方注入。
+
+    首版前瞻**禁用已确认日期修订**：任何 `revise=True` 都在发请求前拒绝，
+    避免通过参数或替换快照目录绕过冻结约束。
+    """
     db_path = _check_target(db_path, allowed_root=allowed_root)
+    if revise:
+        raise BatchRejected(
+            "首版前瞻系统禁用已确认日期修订（无法可靠证明该日未被任何正式快照使用）；"
+            "如需修订，请单独设计可审计的修订协议",
+            error_type="revise_disabled",
+        )
     if purpose not in ("live", "backfill"):
         raise BatchRejected(f"未知 purpose={purpose}", error_type="config")
     if min_universe_coverage < MIN_UNIVERSE_COVERAGE_FLOOR:
@@ -868,19 +950,14 @@ def collect(
             error_type="not_ready",
         )
 
-    revision = _current_revision(db_path, day)
-    if revision is not None and not revise:
+    revision = day_revision_readonly(db_path, day)
+    if revision is not None:
         return {"status": "already_confirmed", "exit_code": EXIT_ALREADY, "day": day.isoformat()}
-    if revise:
-        if not revise_reason.strip():
-            raise BatchRejected("--revise 必须同时给出 --revise-reason", error_type="config")
-        if revision is None:
-            raise BatchRejected(f"{day} 还没有确认记录，没有可修订的对象", error_type="revise")
-        problem = _frozen_snapshot_problem(Path(snapshot_dir), day, revision)
-        if problem:
-            raise BatchRejected(problem, error_type="frozen")
-    expected_revision = (revision or 0) + 1
+    expected_revision = 1
 
+    expected_board = manifest.expected_board_counts(day)
+    expected_total = sum(expected_board.values())
+    listed, _not_listed, _unverified = manifest.split_by_listing(day)
     ready, detail = _calendar_ready(db_path, day)
 
     if not execute:
@@ -891,11 +968,13 @@ def collect(
             "purpose": purpose,
             "manifest_version": manifest.version,
             "manifest": manifest.total,
+            "expected_total": expected_total,
+            "expected_by_board": expected_board,
             "next_revision": expected_revision,
             "db_exists": db_path.is_file(),
             "calendar_ready": ready,
             "calendar_detail": detail,
-            "frozen": bool(_frozen_snapshot_problem(Path(snapshot_dir), day, revision)) if revision else False,
+            "revise_disabled": True,
         }
     if not ready:
         raise BatchRejected(detail, error_type="calendar")
@@ -928,10 +1007,11 @@ def collect(
         engine = connect_target(db_path, create=True)
         try:
             with engine.connect() as conn:
-                previous_board = _previous_board_counts(conn, day)
+                previous_board = _previous_board_counts(conn, day, listed)
             problems = validate_batch(
                 batch,
                 manifest=manifest,
+                expected_board=expected_board,
                 previous_board=previous_board,
                 min_universe_coverage=min_universe_coverage,
             )
@@ -941,7 +1021,13 @@ def collect(
                 "rows": len(batch.rows),
                 "unique": len({row['code'] for row in batch.rows}),
                 "by_board": batch.by_board,
-                "by_board_eligible": batch.by_board_eligible,
+                "by_board_listed": batch.by_board_listed,
+                "expected_by_board": expected_board,
+                "expected_total": expected_total,
+                "listed_count": batch.listed_count,
+                "not_listed_count": batch.not_listed_count,
+                "listing_unverified_count": batch.unverified_count,
+                "previous_by_board": previous_board,
                 "missing": len(batch.missing),
                 "missing_sample": batch.missing[:20],
                 "extras": len(batch.extras),
@@ -949,12 +1035,14 @@ def collect(
                 "elapsed_ms": elapsed_ms,
                 "request_date": day.isoformat(),
                 "source": "tushare",
+                "data_protocol": store.DATA_PROTOCOL_VERSION,
+                "listing_protocol": manifest.listing_protocol,
                 "data_version": batch.data_version,
                 "manifest_version": manifest.version,
                 "manifest_eligibility_sha256": manifest.eligibility_sha256,
                 "purpose": purpose,
-                "revised": bool(revise),
-                "revise_reason": revise_reason if revise else "",
+                "revised": False,
+                "revise_reason": "",
                 "revision": expected_revision,
             }
             _write_confirmed(
@@ -1100,10 +1188,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", default=str(DEFAULT_DB))
     parser.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
     parser.add_argument("--calendar-db", default=str(DEFAULT_CALENDAR_DB))
-    parser.add_argument("--snapshot-dir", default=str(DEFAULT_SNAPSHOT_DIR))
     parser.add_argument("--execute", action="store_true", help="真正发送一次请求并写库")
     parser.add_argument("--purpose", choices=("live", "backfill"), default="live")
-    parser.add_argument("--revise", action="store_true", help="仅修订未冻结日期；必须给原因")
+    parser.add_argument(
+        "--revise", action="store_true",
+        help="首版前瞻禁用历史日期修订；该开关只会返回明确拒绝",
+    )
     parser.add_argument("--revise-reason", default="")
     parser.add_argument("--suspended-file", default="", help="可信停牌证据 JSON")
     parser.add_argument("--min-universe-coverage", type=float, default=MIN_UNIVERSE_COVERAGE)
@@ -1163,7 +1253,6 @@ def main(argv: list[str] | None = None) -> int:
             revise=args.revise,
             revise_reason=args.revise_reason,
             suspended_reasons=suspended,
-            snapshot_dir=Path(args.snapshot_dir),
             purpose=args.purpose,
             min_universe_coverage=args.min_universe_coverage,
         )
