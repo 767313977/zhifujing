@@ -215,6 +215,34 @@ def _data_revision(session: Session, db_path: Path) -> dict:
     }
 
 
+def revision_mismatch(meta: dict, current: dict, day: date) -> str | None:
+    """校验快照记录的数据版本与库内当日版本一致（防止改写输入后仍被评价）。
+
+    只有库内确有 `stock_daily:D` 版本时才强制比较；历史库（无 data_revision 表）
+    保持原行为。快照缺记录或版本不同 → 返回原因，调用方必须拒绝评价。
+    """
+    domain = f"stock_daily:{day.isoformat()}"
+    recorded_block = meta.get("source_data_revision") or {}
+    recorded_value = recorded_block.get("value") if isinstance(recorded_block, dict) else None
+    recorded = recorded_value.get(domain) if isinstance(recorded_value, dict) else None
+    current_value = current.get("value") or {}
+    if current.get("kind") != "data_revision":
+        if recorded is not None:
+            return "快照记录了 data_revision，但库内版本表缺失/不可读：拒绝评价（疑似绕过）"
+        return None
+    if recorded is None:
+        if domain in current_value:
+            return f"快照未记录 {domain} 的数据版本：无法证明输入未被改写，拒绝评价"
+        return None
+    if domain not in current_value:
+        return f"库内缺少 {domain} 的完成标记：拒绝评价（疑似绕过）"
+    if int(recorded) != int(current_value[domain]):
+        return (
+            f"{domain} 数据版本已变化（快照 {recorded}，当前 {current_value[domain]}）：拒绝评价"
+        )
+    return None
+
+
 def load_universe(path: Path) -> dict:
     """读取 B1 证券清单；缺失或不合法直接拒绝（不生成正式前瞻信号）。"""
     if not path.is_file():
@@ -920,6 +948,10 @@ def cmd_evaluate(args) -> int:
     engine = _readonly_engine(db_path)
     try:
         with Session(engine) as session:
+            current_revision = _data_revision(session, db_path)
+            mismatch = revision_mismatch(meta, current_revision, day)
+            if mismatch:
+                raise SystemExit(mismatch)
             latest = session.scalar(select(func.max(StockDaily.trade_date)))
             matrix = load_matrix(session, day, min(latest, day + timedelta(days=60)))
             benchmark = Benchmark(session, matrix, "market")
