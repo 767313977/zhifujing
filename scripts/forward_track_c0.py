@@ -1,21 +1,44 @@
 """C0 策略的前瞻纸面跟踪（本地、手动、只读）。
 
-## 这个工具做什么
+## 两种模式，语义完全不同
 
-1. `snapshot`：为**库内最新交易日**生成一份冻结候选快照（Top20），写 JSONL + meta + 内容哈希。
-2. `evaluate`：对已冻结的快照按 D+1 开盘入场、5 日收盘退出做评价，输出状态计数与收益。
-3. `list`：列出已有快照。
+| 模式 | 用途 | 文件名 | meta 标记 | 计入前瞻绩效 |
+| --- | --- | --- | --- | --- |
+| `replay` | 代码测试、与历史回测的一致性验证 | `replay_signals_YYYY-MM-DD.*` | `REPLAY_ONLY` | **否** |
+| `live` | 真实前瞻冻结 | `signals_YYYY-MM-DD.*` | `FORWARD_FROZEN` | 是 |
+
+`live` 会拒绝历史日期：用今天的库算 2026-10-19 的分明是复盘重放，不是前瞻观察。
+把两者写进同一个文件名，才会出现「事后补一份 10 月 19 日的记录，冒充当时就发过信号」。
+
+## `live` 的启动闸门（全部通过才落盘）
+
+1. D 在交易日历里（`trade_calendar` 表，缺失即拒绝，不猜）；
+2. 当前时间 ≥ D 日 15:30（收盘 + 日线落库等待）；
+3. 当前时间 < 下一交易日 09:15（次日集合竞价前）；
+4. 时区固定 `Asia/Shanghai`；
+5. 库里最新交易日 == D（没有当日数据就拒绝，不自动下载）；
+6. D 日行数 ≥ 近 5 个交易日行数中位数 × 95%；
+7. D 日 OHLC/pct_chg 缺失率 ≤ 0.5%，amount 缺失率 ≤ 0.5%；
+8. 候选池三因子缺失率 ≤ 2%。
+
+任何一条不满足 → 打印原因并退出码 3，**不生成任何文件**。当前 `history.db`
+最新只到 2026-10-19，所以正式前瞻运行必然被拒绝 —— 这是预期行为。
 
 ## 这个工具不做什么
 
-- 不建定时任务、不连网络、不连交易账户、不写业务库。
-- 不为历史日期补生成快照（`day < 最新交易日` 直接拒绝）—— 避免事后用未来行情伪装成当日记录。
+- 不建定时任务、不连网络、不连交易账户、不写业务库、不下单。
+- 不自动下载行情、不连生产库。
 - 不修改生产权重，不改生产选股逻辑。
 
-## 冻结协议
+## 完整性说明（不要夸大）
 
-见 `PROTOCOL`。权重与候选池定义一起冻结；生产 `factor_score` 是**池内**评分，
-本工具的候选池与网站某个既有选股池**不是同一个池**，不能把「公式相同」当成「策略相同」。
+`content_sha256` 只能校验「JSONL 内容」与「meta 里记录的哈希」是否自洽 ——
+用来发现**单文件**被改、或写入中断。它**不能**证明创建时间，也**不能**防篡改：
+同时替换 JSONL 和 meta 就能伪造一份自洽的记录。真正的「从未被改过」需要独立
+时间戳或外部只追加留痕（RFC 3161、对象存储 WORM 等），本轮不引入外部服务。
+
+并发与崩溃保护只做两件事：`os.link` 独占发布（已存在就失败，绝不覆盖）、
+先写临时文件再发布（崩溃只会留下 `.tmp-*`，不会被当成有效快照）。
 """
 
 from __future__ import annotations
@@ -24,21 +47,27 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import subprocess
 import sys
-from dataclasses import asdict
-from datetime import date, datetime, timedelta
+import uuid
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-BACKEND = Path(__file__).resolve().parent.parent / "backend"
-if str(BACKEND) not in sys.path:
-    sys.path.insert(0, str(BACKEND))
+ROOT = Path(__file__).resolve().parent.parent
+BACKEND = ROOT / "backend"
+# 直接 `python scripts/forward_track_c0.py` 时 sys.path[0] 是 scripts/，
+# 不补 ROOT 就 import 不到 `scripts.*`（用 -m 跑才碰巧能找到）。
+for _path in (ROOT, BACKEND):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
-from sqlalchemy import create_engine, func, select  # noqa: E402
+from sqlalchemy import create_engine, func, or_, select  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
-from app.models import StockDaily  # noqa: E402
-from app.services import factor_score  # noqa: E402
+from app.models import StockDaily, TradeCalendar  # noqa: E402
+from app.services import trading_days  # noqa: E402
 from app.services.research_backtest import (  # noqa: E402
     Benchmark,
     Signal,
@@ -46,11 +75,11 @@ from app.services.research_backtest import (  # noqa: E402
     run_signals,
 )
 from scripts.backtest_reversal import (  # noqa: E402
-    _build_series,
+    MIN_POOL,
     _code_columns,
-    _factor_percentiles,
-    _liquidity,
+    _day_candidates,
     _net,
+    _rank_top,
 )
 
 logger = logging.getLogger("forward_c0")
@@ -58,10 +87,25 @@ logger = logging.getLogger("forward_c0")
 HISTORY_DB = BACKEND / "data" / "history.db"
 OUT_DIR = BACKEND / "data" / "forward_c0"
 
+MARKET_TZ = ZoneInfo("Asia/Shanghai")
+
 STRATEGY_VERSION = "c0-2026-11-10"
 TOP_N = 20
 HORIZON = 5
 COSTS = (30.0, 50.0, 100.0)
+
+#: 与 `backtest_reversal.build_signals` 的「当日有效池 < 30 跳过」共用同一阈值（见导入）
+
+#: live 闸门参数
+DATA_READY_AT = time(15, 30)
+NEXT_OPEN_AT = time(9, 15)
+MIN_COVERAGE_RATIO = 0.95
+MAX_NULL_RATIO = 0.005
+MAX_FACTOR_MISSING_RATIO = 0.02
+
+MODE_FORWARD = "forward"
+MODE_REPLAY = "replay"
+MODE_LABELS = {MODE_FORWARD: "FORWARD_FROZEN", MODE_REPLAY: "REPLAY_ONLY"}
 
 #: 冻结协议 —— 任何一项变动都必须换 `STRATEGY_VERSION`，不能就地改
 PROTOCOL: dict = {
@@ -74,16 +118,24 @@ PROTOCOL: dict = {
         "含主板/创业板/科创板/北交所，含 ST（ST 不剔除）；"
         "不套用生产 stock_universe 的流动性门槛，不套用市值上限"
     ),
+    "suspension_filter": "D 日无行情记录的代码不进入候选（不做长期停牌单独判定）",
     "liquidity_window": 20,
     "percentile_scope": "当日全体候选池内",
     "tie_break": "分数降序，同分按代码升序",
+    "missing_factor": "单因子缺失按 0 分位（排最后），不剔除整只票",
     "top_n": TOP_N,
     "signal_time": "D 日收盘后",
     "entry": "D+1 开盘",
     "exit": "第 5 个交易日收盘（引擎交易日定义，跌停顺延）",
     "costs_bps": list(COSTS),
     "data_source": "backend/data/history.db（SQLite mode=ro）",
+    "integrity": "content_sha256 只做本地自洽检查，不提供独立时间戳",
 }
+
+
+# ---------------------------------------------------------------------------
+# 基础设施
+# ---------------------------------------------------------------------------
 
 
 def _readonly_engine(path: Path):
@@ -121,82 +173,354 @@ def _data_revision(session: Session, db_path: Path) -> dict:
     }
 
 
-def _paths(out_dir: Path, day: date) -> tuple[Path, Path]:
-    return (
-        out_dir / f"signals_{day.isoformat()}.jsonl",
-        out_dir / f"signals_{day.isoformat()}.meta.json",
+def _paths(out_dir: Path, day: date, mode: str) -> tuple[Path, Path]:
+    stem = (
+        f"signals_{day.isoformat()}"
+        if mode == MODE_FORWARD
+        else f"replay_signals_{day.isoformat()}"
     )
+    return out_dir / f"{stem}.jsonl", out_dir / f"{stem}.meta.json"
+
+
+def _write_tmp(final: Path, payload: bytes) -> Path:
+    """把内容完整写入同目录临时文件并 fsync；崩溃只会留下 .tmp-*。"""
+    tmp = final.with_name(f".{final.name}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}")
+    with open(tmp, "wb") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    return tmp
+
+
+def _publish(tmp: Path, final: Path) -> bool:
+    """原子发布：已存在则返回 False 且**不覆盖**。
+
+    用 `os.link` 而不是 `os.replace`：`replace` 会无条件覆盖，正好是并发/重复运行
+    时最危险的行为。`link` 在目标存在时抛 `FileExistsError`，天然是「只有第一个
+    成功」的独占创建。
+    """
+    try:
+        os.link(tmp, final)
+        return True
+    except FileExistsError:
+        return False
+    except OSError:
+        # 少数文件系统不支持硬链接：退化为独占创建 + 复制
+        try:
+            fd = os.open(
+                final,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0),
+            )
+        except FileExistsError:
+            return False
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(tmp.read_bytes())
+            handle.flush()
+            os.fsync(handle.fileno())
+        return True
+
+
+def _publish_pair(jsonl_payload: bytes, meta_payload: bytes, jsonl: Path, meta: Path) -> bool:
+    """先发布 JSONL，再发布 meta（meta 是「有效快照」的提交标记）。
+
+    返回 False 表示已存在同名快照，调用方必须放弃且不得修改旧文件。
+    若 meta 已存在但 JSONL 不存在（历史上写入中断），本次会撤掉刚发布的 JSONL，
+    使状态回到「没有有效快照」，而不是留下半套。
+    """
+    jsonl_tmp = _write_tmp(jsonl, jsonl_payload)
+    meta_tmp = _write_tmp(meta, meta_payload)
+    published_jsonl = False
+    try:
+        if not _publish(jsonl_tmp, jsonl):
+            return False
+        published_jsonl = True
+        if not _publish(meta_tmp, meta):
+            logger.error("meta 已存在但 JSONL 缺失：已回滚本次 JSONL，请人工检查 %s", meta)
+            jsonl.unlink(missing_ok=True)
+            published_jsonl = False
+            return False
+        published_jsonl = False  # 成功：保留 JSONL
+        return True
+    except BaseException:
+        if published_jsonl:
+            jsonl.unlink(missing_ok=True)
+        raise
+    finally:
+        jsonl_tmp.unlink(missing_ok=True)
+        meta_tmp.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# 候选生成（与历史回测的 C0 完全同一条代码路径）
+# ---------------------------------------------------------------------------
+
+
+def build_candidates(matrix, day: date, top_n: int = TOP_N) -> dict:
+    """生成 D 日的 C0 候选。
+
+    **直接调用 `backtest_reversal._day_candidates` + `_rank_top`** —— 与历史回测
+    的 C0 是同一段代码，不是"两份长得像的实现"。任何一方改公式，另一方立刻跟着变，
+    不会出现"前瞻协议悄悄漂移、历史结论不再适用"。
+    """
+    if day not in matrix.date_pos:
+        raise SystemExit(f"{day} 不在行情矩阵里（非交易日或无数据）")
+    pos = matrix.date_pos[day]
+    cols = _code_columns(matrix)
+    j_of = {code: j for j, code in enumerate(matrix.codes)}
+
+    pool = _day_candidates(matrix, pos, cols, j_of)
+    if pool is None:
+        raise SystemExit(f"{day} 当日有效候选不足 {MIN_POOL} 只，拒绝生成")
+    series, liquidity, scores, percent = pool
+
+    scored = [(code, item.score) for code, item in scores.items()]
+    codes = _rank_top(scored, top_n)
+    total_of = dict(scored)
+
+    return {
+        "day": day,
+        "pos": pos,
+        "pool": sorted(series),
+        "scores": scores,
+        "percentiles": percent,
+        "liquidity": liquidity,
+        "ranked": [(code, total_of[code]) for code in codes],
+    }
+
+
+def _factor_missing_ratio(candidates: dict) -> float:
+    scores = candidates["scores"]
+    if not scores:
+        return 1.0
+    missing = sum(
+        1
+        for item in scores.values()
+        if item.rev20 is None or item.illiq20 is None or item.amp20 is None
+    )
+    return missing / len(scores)
+
+
+# ---------------------------------------------------------------------------
+# live 闸门
+# ---------------------------------------------------------------------------
+
+
+def _completeness(session: Session, day: date) -> dict:
+    rows = int(
+        session.scalar(
+            select(func.count()).select_from(StockDaily).where(StockDaily.trade_date == day)
+        )
+        or 0
+    )
+    null_ohlc = int(
+        session.scalar(
+            select(func.count())
+            .select_from(StockDaily)
+            .where(
+                StockDaily.trade_date == day,
+                or_(
+                    StockDaily.open.is_(None),
+                    StockDaily.high.is_(None),
+                    StockDaily.low.is_(None),
+                    StockDaily.close.is_(None),
+                    StockDaily.pct_chg.is_(None),
+                ),
+            )
+        )
+        or 0
+    )
+    null_amount = int(
+        session.scalar(
+            select(func.count())
+            .select_from(StockDaily)
+            .where(StockDaily.trade_date == day, StockDaily.amount.is_(None))
+        )
+        or 0
+    )
+    previous = list(
+        session.scalars(
+            select(StockDaily.trade_date)
+            .where(StockDaily.trade_date < day)
+            .distinct()
+            .order_by(StockDaily.trade_date.desc())
+            .limit(5)
+        )
+    )
+    counts = sorted(
+        int(
+            session.scalar(
+                select(func.count()).select_from(StockDaily).where(StockDaily.trade_date == item)
+            )
+            or 0
+        )
+        for item in previous
+    )
+    median_rows = counts[len(counts) // 2] if counts else 0
+    return {
+        "trade_date": day.isoformat(),
+        "rows": rows,
+        "previous_days": [item.isoformat() for item in previous],
+        "median_rows_5d": median_rows,
+        "coverage_ratio": (rows / median_rows) if median_rows else 0.0,
+        "null_ohlc_rows": null_ohlc,
+        "null_amount_rows": null_amount,
+        "null_ohlc_ratio": (null_ohlc / rows) if rows else 1.0,
+        "null_amount_ratio": (null_amount / rows) if rows else 1.0,
+    }
+
+
+def live_problems(session: Session, day: date, now: datetime) -> list[str]:
+    """返回 live 模式不满足的条件（空列表 = 可以冻结）。"""
+    problems: list[str] = []
+    if now.tzinfo is None:
+        raise ValueError("now 必须带时区")
+    now = now.astimezone(MARKET_TZ)
+
+    try:
+        has_calendar = (
+            session.scalar(select(func.count()).select_from(TradeCalendar)) or 0
+        ) > 0
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        has_calendar = False
+    if not has_calendar:
+        # 没有交易日历就无法证明「D 是交易日」「D 的次日开盘在什么时候」，
+        # 这两条是前瞻时间约束的地基 —— 缺了就拒绝，不拿自然日凑。
+        problems.append(
+            "该库没有交易日历（trade_calendar 表不存在或为空）："
+            "无法证明 D 是交易日与次日开盘时点"
+        )
+        return problems
+
+    if not trading_days.is_trade_day(day, session):
+        problems.append(f"{day} 不在交易日历里，不是有效交易日")
+
+    ready_at = datetime.combine(day, DATA_READY_AT, tzinfo=MARKET_TZ)
+    if now < ready_at:
+        problems.append(f"当前 {now:%Y-%m-%d %H:%M} 早于 D 日 {DATA_READY_AT:%H:%M}（收盘+落库等待）")
+
+    next_day = trading_days.next_trade_day(day, session)
+    if next_day is None:
+        problems.append("交易日历里找不到 D 的下一交易日：无法确认「下一交易日开盘前」")
+    else:
+        next_open = datetime.combine(next_day, NEXT_OPEN_AT, tzinfo=MARKET_TZ)
+        if now >= next_open:
+            problems.append(
+                f"当前 {now:%Y-%m-%d %H:%M} 已过下一交易日 {next_day} {NEXT_OPEN_AT:%H:%M}，"
+                "此时冻结不是「开盘前」"
+            )
+
+    latest = session.scalar(select(func.max(StockDaily.trade_date)))
+    if latest is None:
+        problems.append("研究库是空的")
+        return problems
+    if latest != day:
+        problems.append(
+            f"库里最新交易日是 {latest}，不是 {day}：没有当日行情，拒绝用旧数据冒充"
+        )
+
+    info = _completeness(session, day)
+    if info["rows"] == 0:
+        problems.append(f"{day} 没有任何行情记录")
+    else:
+        if info["coverage_ratio"] < MIN_COVERAGE_RATIO:
+            problems.append(
+                f"{day} 覆盖 {info['rows']} 行，仅为近 5 日中位数 "
+                f"{info['median_rows_5d']} 的 {info['coverage_ratio']:.1%}（< {MIN_COVERAGE_RATIO:.0%}）"
+            )
+        if info["null_ohlc_ratio"] > MAX_NULL_RATIO:
+            problems.append(
+                f"{day} OHLC/pct_chg 缺失 {info['null_ohlc_rows']} 行"
+                f"（{info['null_ohlc_ratio']:.2%} > {MAX_NULL_RATIO:.1%}）"
+            )
+        if info["null_amount_ratio"] > MAX_NULL_RATIO:
+            problems.append(
+                f"{day} 成交额缺失 {info['null_amount_rows']} 行"
+                f"（{info['null_amount_ratio']:.2%} > {MAX_NULL_RATIO:.1%}）"
+            )
+    return problems
+
+
+def _parse_now(text: str) -> datetime:
+    if not text:
+        return datetime.now(MARKET_TZ)
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=MARKET_TZ)
+    return parsed.astimezone(MARKET_TZ)
+
+
+# ---------------------------------------------------------------------------
+# snapshot
+# ---------------------------------------------------------------------------
 
 
 def cmd_snapshot(args) -> int:
     db_path = Path(args.db)
     out_dir = Path(args.out)
+    mode = args.mode
     if not db_path.is_file():
         raise SystemExit(f"没有 {db_path}")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     engine = _readonly_engine(db_path)
-    with Session(engine) as session:
-        latest = session.scalar(select(func.max(StockDaily.trade_date)))
-        if latest is None:
-            raise SystemExit("研究库是空的")
-        day = date.fromisoformat(args.date) if args.date else latest
-        if day > latest:
-            raise SystemExit(f"{day} 的数据尚未采集完成（库内最新 {latest}），拒绝冻结")
-        if day < latest:
-            raise SystemExit(
-                f"{day} 早于库内最新交易日 {latest}：拒绝为历史日期补生成快照，"
-                "避免事后用未来行情伪装成当日记录"
-            )
+    now = _parse_now(getattr(args, "now", ""))
+    try:
+        with Session(engine) as session:
+            latest = session.scalar(select(func.max(StockDaily.trade_date)))
+            if latest is None:
+                raise SystemExit("研究库是空的")
 
-        jsonl_path, meta_path = _paths(out_dir, day)
-        if jsonl_path.exists():
-            logger.warning("已存在 %s 的冻结快照，拒绝覆盖", day)
-            return 2
+            if mode == MODE_REPLAY:
+                day = date.fromisoformat(args.date) if args.date else latest
+                if day > latest:
+                    raise SystemExit(f"{day} 超出库内最新交易日 {latest}，无法重放")
+                completeness = None
+            else:
+                day = date.fromisoformat(args.date) if args.date else now.date()
+                problems = live_problems(session, day, now)
+                if problems:
+                    print(f"拒绝正式前瞻冻结 {day}（live）：", file=sys.stderr)
+                    for item in problems:
+                        print(f"  - {item}", file=sys.stderr)
+                    print(
+                        "\n没有及时、合规的当日数据源时，保持 FORWARD_TRACKING_NOT_STARTED；"
+                        "需要验证代码或策略一致性请用 --mode replay（输出标记 REPLAY_ONLY）。",
+                        file=sys.stderr,
+                    )
+                    return 3
+                completeness = _completeness(session, day)
 
-        start = day - timedelta(days=90)
-        matrix = load_matrix(session, start, day)
-        if day not in matrix.date_pos:
-            raise SystemExit(f"{day} 不在行情矩阵里（非交易日或无数据）")
-        pos = matrix.date_pos[day]
-        cols = _code_columns(matrix)
-        j_of = {code: j for j, code in enumerate(matrix.codes)}
+            jsonl_path, meta_path = _paths(out_dir, day, mode)
+            if jsonl_path.exists() or meta_path.exists():
+                logger.warning("已存在 %s 的 %s 快照，拒绝覆盖", day, mode)
+                return 2
 
-        series: dict[str, list[tuple]] = {}
-        liquidity: dict[str, float] = {}
-        for code in matrix.codes:
-            if not matrix.present[pos, j_of[code]]:
-                continue
-            window = _build_series(matrix, cols, pos, code, j_of[code])
-            if window is None:
-                continue
-            series[code] = window
-            value = _liquidity(matrix, cols[code], pos, j_of[code])
-            if value is not None:
-                liquidity[code] = value
-        if not series:
-            raise SystemExit("当日没有可计算因子的候选")
+            matrix = load_matrix(session, day - timedelta(days=90), day)
+            candidates = build_candidates(matrix, day, args.top)
+            missing = _factor_missing_ratio(candidates)
+            if mode == MODE_FORWARD and missing > MAX_FACTOR_MISSING_RATIO:
+                print(
+                    f"拒绝正式前瞻冻结 {day}：三因子缺失率 {missing:.2%} > "
+                    f"{MAX_FACTOR_MISSING_RATIO:.0%}，数据不可用于正式记录",
+                    file=sys.stderr,
+                )
+                return 3
 
-        scores = factor_score.score_series(series)
-        percent = _factor_percentiles(scores)
-        ranked = sorted(
-            ((code, item.score) for code, item in scores.items()),
-            key=lambda pair: (-pair[1], pair[0]),
-        )[: TOP_N]
+            revision = _data_revision(session, db_path)
+            if mode == MODE_FORWARD:
+                completeness["factor_missing_ratio"] = round(missing, 6)
+                completeness["verified_at"] = now.isoformat(timespec="seconds")
+    finally:
+        engine.dispose()
 
-        revision = _data_revision(session, db_path)
-        db_stat = db_path.stat()
-        created = datetime.now()
-
-    created_at = created.astimezone().isoformat(timespec="seconds")
-    if datetime.fromtimestamp(db_stat.st_mtime).isoformat(timespec="seconds") > created_at:
-        raise SystemExit("数据库修改时间晚于当前时间，数据状态不可信，拒绝冻结")
-
+    created_at = now.isoformat(timespec="seconds")
     rows = []
-    for rank, (code, total) in enumerate(ranked, start=1):
-        item = scores[code]
+    for rank, (code, total) in enumerate(candidates["ranked"], start=1):
+        item = candidates["scores"][code]
         rows.append(
             {
+                "mode": MODE_LABELS[mode],
                 "signal_date": day.isoformat(),
                 "created_at": created_at,
                 "strategy_version": STRATEGY_VERSION,
@@ -204,59 +528,92 @@ def cmd_snapshot(args) -> int:
                 "source_data_date": latest.isoformat(),
                 "source_data_revision": revision,
                 "universe_definition": PROTOCOL["universe_definition"],
-                "universe_count": len(series),
+                "universe_count": len(candidates["pool"]),
                 "stock_code": code,
                 "rank": rank,
-                "score_total": round(total, 1),
+                "score_total": total,
                 "rev20": item.rev20,
                 "illiq20": item.illiq20,
                 "amp20": item.amp20,
-                "percentiles": percent[code],
-                "avg_amount_20": round(liquidity.get(code, 0.0), 2),
+                "percentiles": candidates["percentiles"][code],
+                "avg_amount_20": round(candidates["liquidity"].get(code, 0.0), 2),
                 "eligibility_reason": "20日窗口>=18行 + D日有行情",
             }
         )
 
     payload = "\n".join(json.dumps(row, ensure_ascii=False, sort_keys=True) for row in rows) + "\n"
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
-    # 二进制写入：避免 Windows 换行转换改变字节，导致内容哈希与文件不一致
-    jsonl_path.write_bytes(payload.encode("utf-8"))
     meta = {
+        "mode": MODE_LABELS[mode],
+        "counts_for_forward_performance": mode == MODE_FORWARD,
         "signal_date": day.isoformat(),
         "created_at": created_at,
+        "created_at_tz": "Asia/Shanghai",
         "strategy_version": STRATEGY_VERSION,
         "git_commit": rows[0]["git_commit"],
         "source_data_date": latest.isoformat(),
         "source_data_revision": revision,
         "protocol": PROTOCOL,
         "row_count": len(rows),
-        "universe_count": len(series),
+        "universe_count": len(candidates["pool"]),
+        "completeness": completeness,
         "content_sha256": digest,
+        "integrity_note": (
+            "content_sha256 仅校验 JSONL 与 meta 是否自洽，可发现单文件改动或写入中断；"
+            "不能证明创建时间，也不能防止两者被同时替换。无独立时间戳。"
+        ),
     }
-    meta_path.write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
-    )
-    engine.dispose()
+    if mode == MODE_REPLAY:
+        meta["replay_note"] = "历史重放：仅用于代码测试与策略一致性验证，不计入前瞻绩效"
 
-    print(f"已冻结 {day}：{len(rows)} 只候选，池 {len(series)} 只，sha256={digest[:16]}…")
+    published = _publish_pair(
+        payload.encode("utf-8"),
+        json.dumps(meta, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8"),
+        jsonl_path,
+        meta_path,
+    )
+    if not published:
+        logger.warning("并发或重复运行：%s 的 %s 快照已存在，本次未写入", day, mode)
+        return 2
+
+    banner = "REPLAY_ONLY（不计入前瞻绩效）" if mode == MODE_REPLAY else "FORWARD_FROZEN"
+    print(f"[{banner}] {day}：{len(rows)} 只候选，池 {len(candidates['pool'])} 只")
+    print(f"  生成时间 {created_at}（Asia/Shanghai），sha256={digest[:16]}…")
     print(f"  {jsonl_path}")
     print(f"  {meta_path}")
     return 0
+
+
+# ---------------------------------------------------------------------------
+# evaluate
+# ---------------------------------------------------------------------------
 
 
 def cmd_evaluate(args) -> int:
     db_path = Path(args.db)
     out_dir = Path(args.out)
     day = date.fromisoformat(args.date)
-    jsonl_path, meta_path = _paths(out_dir, day)
-    if not jsonl_path.is_file():
-        raise SystemExit(f"没有 {day} 的冻结快照：{jsonl_path}")
+    mode = args.mode
+    jsonl_path, meta_path = _paths(out_dir, day, mode)
+    if not jsonl_path.is_file() or not meta_path.is_file():
+        raise SystemExit(f"没有 {day} 的 {mode} 快照：{jsonl_path}")
 
     raw = jsonl_path.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     if meta.get("content_sha256") != digest:
         raise SystemExit("快照内容哈希与 meta 不一致：文件被改动过，拒绝评价")
+    if meta.get("mode") != MODE_LABELS[mode]:
+        raise SystemExit(
+            f"快照标记是 {meta.get('mode')}，与本次评价模式 {MODE_LABELS[mode]} 不符，拒绝评价"
+        )
+    if meta.get("strategy_version") != STRATEGY_VERSION:
+        raise SystemExit(
+            f"快照策略版本 {meta.get('strategy_version')} ≠ 当前 {STRATEGY_VERSION}："
+            "协议已变更，不能用旧快照冒充新协议"
+        )
+    if mode == MODE_FORWARD and not meta.get("completeness"):
+        raise SystemExit("正式快照缺少数据完整性记录，拒绝评价")
 
     lines = raw.decode("utf-8").splitlines()
     signals = [
@@ -265,22 +622,24 @@ def cmd_evaluate(args) -> int:
     ]
 
     engine = _readonly_engine(db_path)
-    with Session(engine) as session:
-        latest = session.scalar(select(func.max(StockDaily.trade_date)))
-        matrix = load_matrix(session, day, min(latest, day + timedelta(days=60)))
-        benchmark = Benchmark(session, matrix, "market")
-        result = run_signals(
-            session,
-            signals,
-            strategy=f"C0 forward {day}",
-            params={"top": TOP_N, "version": STRATEGY_VERSION},
-            horizons=(HORIZON,),
-            entry_mode="next_open",
-            cost_bps=0.0,
-            matrix=matrix,
-            benchmark=benchmark,
-        )
-    engine.dispose()
+    try:
+        with Session(engine) as session:
+            latest = session.scalar(select(func.max(StockDaily.trade_date)))
+            matrix = load_matrix(session, day, min(latest, day + timedelta(days=60)))
+            benchmark = Benchmark(session, matrix, "market")
+            result = run_signals(
+                session,
+                signals,
+                strategy=f"C0 {mode} {day}",
+                params={"top": TOP_N, "version": STRATEGY_VERSION},
+                horizons=(HORIZON,),
+                entry_mode="next_open",
+                cost_bps=0.0,
+                matrix=matrix,
+                benchmark=benchmark,
+            )
+    finally:
+        engine.dispose()
 
     stat = result.horizons.get(HORIZON)
     if stat is None:
@@ -293,13 +652,17 @@ def cmd_evaluate(args) -> int:
         if s.horizon == HORIZON and s.status in ("ok", "exit_limit_down")
     ]
 
-    print(f"快照 {day}（{len(signals)} 只，哈希校验通过）")
+    flag = "" if mode == MODE_FORWARD else "  [REPLAY_ONLY · 不计入前瞻绩效]"
+    print(f"快照 {day}（{len(signals)} 只，哈希校验通过）{flag}")
     print("状态：" + "，".join(f"{k}={v}" for k, v in sorted(groups.items()) if v))
     if entry:
         gross = sum(s.gross for s in entry) / len(entry)
         print(f"已入场且有退出价 {len(entry)} 笔：毛均值 {gross:+.2f}%")
         for cost in COSTS:
-            print(f"  {int(cost):>3}bps 净均值 {sum(_net(s.gross, cost) for s in entry) / len(entry):+.2f}%")
+            print(
+                f"  {int(cost):>3}bps 净均值 "
+                f"{sum(_net(s.gross, cost) for s in entry) / len(entry):+.2f}%"
+            )
         bench = [s.benchmark for s in entry if s.benchmark is not None]
         if bench:
             print(f"  基准毛均值 {sum(bench) / len(bench):+.2f}%")
@@ -314,18 +677,30 @@ def cmd_evaluate(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# list
+# ---------------------------------------------------------------------------
+
+
 def cmd_list(args) -> int:
     out_dir = Path(args.out)
     if not out_dir.is_dir():
-        print("还没有任何冻结快照")
+        print("还没有任何快照")
         return 0
-    for path in sorted(out_dir.glob("signals_*.jsonl")):
+    found = False
+    for path in sorted(out_dir.glob("*signals_*.jsonl")):
+        if path.name.startswith("."):
+            continue
+        found = True
         meta_path = path.with_suffix(".meta.json")
         meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.is_file() else {}
         print(
-            f"{meta.get('signal_date', path.stem)}  rows={meta.get('row_count', '?')}  "
-            f"pool={meta.get('universe_count', '?')}  sha={str(meta.get('content_sha256', ''))[:12]}…"
+            f"{meta.get('mode', '?'):<15}{meta.get('signal_date', path.stem):<12} "
+            f"rows={meta.get('row_count', '?'):<4} pool={meta.get('universe_count', '?'):<5} "
+            f"sha={str(meta.get('content_sha256', ''))[:12]}…  {path.name}"
         )
+    if not found:
+        print("还没有任何快照")
     return 0
 
 
@@ -335,15 +710,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default=str(OUT_DIR))
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    snap = sub.add_parser("snapshot", help="为最新交易日生成冻结快照")
-    snap.add_argument("--date", default="", help="默认取库内最新交易日；早于最新日会被拒绝")
+    snap = sub.add_parser("snapshot", help="生成候选快照")
+    snap.add_argument(
+        "--mode",
+        required=True,
+        choices=(MODE_FORWARD, MODE_REPLAY),
+        help="forward=真实前瞻冻结（默认拒绝历史/过期数据）；replay=历史重放（标记 REPLAY_ONLY）",
+    )
+    snap.add_argument("--date", default="", help="D 日；forward 默认今天，replay 默认库内最新日")
+    snap.add_argument("--top", type=int, default=TOP_N, help="每日取前 N 只")
+    snap.add_argument("--now", default="", help="测试注入当前时间（ISO8601，默认取系统时间）")
     snap.set_defaults(func=cmd_snapshot)
 
     ev = sub.add_parser("evaluate", help="评价已冻结快照")
     ev.add_argument("--date", required=True)
+    ev.add_argument(
+        "--mode", default=MODE_FORWARD, choices=(MODE_FORWARD, MODE_REPLAY)
+    )
     ev.set_defaults(func=cmd_evaluate)
 
-    ls = sub.add_parser("list", help="列出已冻结快照")
+    ls = sub.add_parser("list", help="列出已有快照")
     ls.set_defaults(func=cmd_list)
 
     args = parser.parse_args(argv)

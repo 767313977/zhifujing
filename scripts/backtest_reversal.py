@@ -66,6 +66,8 @@ HISTORY_DB = BACKEND / "data" / "history.db"
 WINDOW = 20
 LIQUIDITY_WINDOW = 20
 TOP_N = 20
+#: 当日有效票 / 可算因子票少于这个数就跳过该日（前瞻工具用同一阈值）
+MIN_POOL = 30
 HORIZONS = (1, 5, 10)
 COSTS = (10.0, 30.0, 50.0, 100.0, 200.0)
 
@@ -182,14 +184,51 @@ def _rank_top(scored: list[tuple[str, float]], top_n: int) -> list[str]:
     return [code for code, _score in scored[:top_n]]
 
 
+def _day_candidates(
+    matrix, pos: int, cols: dict, j_of: dict
+) -> tuple[dict, dict, dict, dict] | None:
+    """D 日的候选池与三因子分（历史回测与前瞻工具**共用这一段**）。
+
+    返回 `(series, liquidity, scores, percentiles)`；当日有效票或可算因子的票少于
+    `MIN_POOL` 时返回 None。把这段抽出来，是为了让「前瞻 C0」和「历史 C0」
+    不是两份长得像的实现，而是同一份 —— 否则任何一次改动都会悄悄分叉。
+    """
+    today = [code for code in matrix.codes if matrix.present[pos, j_of[code]]]
+    if len(today) < MIN_POOL:
+        return None
+
+    series: dict[str, list[tuple]] = {}
+    liquidity: dict[str, float] = {}
+    for code in today:
+        j = j_of[code]
+        window = _build_series(matrix, cols, pos, code, j)
+        if window is None:
+            continue
+        series[code] = window
+        value = _liquidity(matrix, cols[code], pos, j)
+        if value is not None:
+            liquidity[code] = value
+    if len(series) < MIN_POOL:
+        return None
+
+    scores = factor_score.score_series(series)
+    percent = _factor_percentiles(scores)
+    return series, liquidity, scores, percent
+
+
 def build_signals(
     matrix,
     *,
     start: date | None = None,
     end: date | None = None,
     top_n: int = TOP_N,
+    details: dict | None = None,
 ) -> dict[str, list[Signal]]:
-    """逐交易日生成四组策略的信号（全部只用 D 日及之前的数据）。"""
+    """逐交易日生成四组策略的信号（全部只用 D 日及之前的数据）。
+
+    `details` 非空时，把每天的 scores / percentiles / 各策略 Top N 写进去，
+    供「前瞻工具与历史回测是否同一策略」的对照测试使用（默认不收集，零额外开销）。
+    """
     cols = _code_columns(matrix)
     codes = matrix.codes
     j_of = {code: j for j, code in enumerate(codes)}
@@ -202,29 +241,21 @@ def build_signals(
         if end is not None and day > end:
             continue
         # 当天有行情的票才可能是候选（停牌票当天没有可用信号）
-        today = [code for code in codes if matrix.present[pos, j_of[code]]]
-        if len(today) < 30:
+        pool = _day_candidates(matrix, pos, cols, j_of)
+        if pool is None:
             continue
-
-        series: dict[str, list[tuple]] = {}
-        liquidity: dict[str, float] = {}
-        for code in today:
-            j = j_of[code]
-            window = _build_series(matrix, cols, pos, code, j)
-            if window is None:
-                continue
-            series[code] = window
-            value = _liquidity(matrix, cols[code], pos, j)
-            if value is not None:
-                liquidity[code] = value
-        if len(series) < 30:
-            continue
-
-        scores = factor_score.score_series(series)
-        percent = _factor_percentiles(scores)
+        _series, liquidity, scores, percent = pool
         days_used += 1
         codes_today = list(scores)
         shuffled = _shuffled_illiq(percent, day)
+        ranked_by_strategy: dict[str, list[str]] = {}
+        if details is not None:
+            details[day] = {
+                "scores": scores,
+                "percentiles": percent,
+                "liquidity": liquidity,
+                "ranked": ranked_by_strategy,
+            }
 
         liq_ranked = sorted(liquidity.items(), key=lambda item: (-item[1], item[0]))
 
@@ -293,6 +324,8 @@ def build_signals(
                 signals[strategy.key].append(
                     Signal(code=code, signal_date=day, meta={})
                 )
+                if details is not None:
+                    ranked_by_strategy.setdefault(strategy.key, []).append(code)
 
     logger.info("生成信号：%d 个有效信号日", days_used)
     return signals
@@ -486,30 +519,6 @@ def _print_exit_sensitivity(results: dict) -> None:
     print("压力两列**不是历史成交结果**，只是「若未解决样本亏 10% / 20%」的敏感性。")
 
 
-def _print_pairs(results: dict) -> None:
-    pairs = [("C0", "C1"), ("C0", "C2"), ("L1_50", "L2_50"), ("L1_25", "L2_25")]
-    print()
-    print("同信号日配对差（5 日毛收益；人群 = 已入场且有退出价；HAC lag=4）")
-    print("-" * 108)
-    print(
-        f"{'比较':<16}{'共同日':>8}{'A样本':>8}{'B样本':>8}"
-        f"{'均值差':>10}{'t':>8}{'95%CI低':>10}{'95%CI高':>10}"
-    )
-    for left, right in pairs:
-        if left not in results or right not in results:
-            continue
-        a, b = results[left], results[right]
-        stat = _paired(_daily_entry_mean(a), _daily_entry_mean(b))
-        if not stat["days"]:
-            print(f"{left + ' - ' + right:<16}{0:>8}")
-            continue
-        print(
-            f"{left + ' - ' + right:<16}{stat['days']:>8}"
-            f"{len(_entry_samples(a, 5)):>8}{len(_entry_samples(b, 5)):>8}"
-            f"{stat['mean']:>9.3f}{stat['t']:>8.2f}{stat['low']:>10.3f}{stat['high']:>10.3f}"
-        )
-
-
 def _daily_entry_mean(result, horizon: int = 5) -> dict[date, float]:
     acc: dict[date, list[float]] = defaultdict(list)
     for sample in _entry_samples(result, horizon):
@@ -543,20 +552,144 @@ def _print_years(results: dict) -> None:
 def _print_pairs(results: dict) -> None:
     pairs = [("C0", "C1"), ("C0", "C2"), ("L1_50", "L2_50"), ("L1_25", "L2_25")]
     print()
-    print("同信号日配对差（5 日毛收益，A − B；HAC lag=4）")
-    print("-" * 96)
-    print(f"{'比较':<16}{'有效日':>8}{'均值差':>10}{'t':>8}{'95%CI低':>10}{'95%CI高':>10}")
+    print("同信号日配对差（5 日毛收益，A − B；HAC lag=4；两种口径并列）")
+    print("  cond = 只含 ok（预定退出日成交）；all = ok + exit_limit_down（延迟退出真实价）")
+    print("-" * 112)
+    print(
+        f"{'比较':<16}{'口径':<6}{'共同日':>8}{'A笔':>8}{'B笔':>8}"
+        f"{'均值差':>11}{'t':>8}{'95%CI低':>11}{'95%CI高':>11}"
+    )
     for left, right in pairs:
         if left not in results or right not in results:
             continue
-        stat = _paired(_daily_mean(results[left]), _daily_mean(results[right]))
-        if not stat["days"]:
-            print(f"{left + ' - ' + right:<16}{0:>8}")
+        a, b = results[left], results[right]
+        for label, picker in (("cond", _daily_mean), ("all", _daily_entry_mean)):
+            stat = _paired(picker(a), picker(b))
+            if not stat["days"]:
+                print(f"{left + ' - ' + right:<16}{label:<6}{0:>8}")
+                continue
+            n_a = len(_ok_samples(a, 5) if label == "cond" else _entry_samples(a, 5))
+            n_b = len(_ok_samples(b, 5) if label == "cond" else _entry_samples(b, 5))
+            print(
+                f"{left + ' - ' + right:<16}{label:<6}{stat['days']:>8}{n_a:>8}{n_b:>8}"
+                f"{stat['mean']:>10.4f}{stat['t']:>8.2f}"
+                f"{stat['low']:>10.4f}{stat['high']:>10.4f}"
+            )
+
+
+def _delay_audit(result, horizon: int = 5) -> dict:
+    """逐日核对「把 exit_limit_down 并入当日均值」到底改变了什么。
+
+    同时保留两种视角：
+    - 池化（按笔加权）：全部 ok 均值 vs 全部有退出价样本均值；
+    - 逐日（按日等权）：先按日算均值，再比较同一天 all − cond。
+    """
+    cond = _daily_mean(result, horizon)
+    allm = _daily_entry_mean(result, horizon)
+    n_by_day: dict[date, int] = defaultdict(int)
+    delayed_by_day: dict[date, int] = defaultdict(int)
+    for sample in _entry_samples(result, horizon):
+        n_by_day[sample.signal_date] += 1
+        if sample.status == "exit_limit_down":
+            delayed_by_day[sample.signal_date] += 1
+
+    changed = []
+    for day in sorted(allm):
+        after = allm[day]
+        before = cond.get(day)
+        nd = delayed_by_day.get(day, 0)
+        if before is None:
+            # 当天没有任何 ok 样本：cond 口径下这一天不存在
+            changed.append((day, float("nan"), after, float("nan"), nd, n_by_day[day]))
             continue
+        delta = after - before
+        if delta != 0.0:
+            changed.append((day, before, after, delta, nd, n_by_day[day]))
+
+    ok = _ok_samples(result, horizon)
+    entry = _entry_samples(result, horizon)
+    delayed = [s for s in entry if s.status == "exit_limit_down"]
+    pooled_cond = float(np.mean([s.gross for s in ok])) if ok else float("nan")
+    pooled_all = float(np.mean([s.gross for s in entry])) if entry else float("nan")
+    common = sorted(set(cond) & set(allm))
+    per_day = [allm[day] - cond[day] for day in common]
+    return {
+        "cond": cond,
+        "all": allm,
+        "changed": changed,
+        "n_ok": len(ok),
+        "n_delayed": len(delayed),
+        "delayed_mean": float(np.mean([s.gross for s in delayed])) if delayed else float("nan"),
+        "pooled_cond": pooled_cond,
+        "pooled_all": pooled_all,
+        "common_days": len(common),
+        "daily_shift": float(np.mean(per_day)) if per_day else float("nan"),
+    }
+
+
+def _print_delay_audit(results: dict) -> None:
+    print()
+    print("延迟退出逐日核对（5 日毛收益）")
+    print("-" * 112)
+    print(
+        f"{'策略':<8}{'ok笔':>8}{'延迟笔':>8}{'cond池化':>11}{'all池化':>11}"
+        f"{'池化差':>10}{'日均变化':>12}{'变动日':>8}{'共同日':>8}"
+    )
+    audits: dict[str, dict] = {}
+    for key in ("C0", "C1", "C2"):
+        result = results.get(key)
+        if result is None:
+            continue
+        info = _delay_audit(result)
+        audits[key] = info
         print(
-            f"{left + ' - ' + right:<16}{stat['days']:>8}{stat['mean']:>9.3f}"
-            f"{stat['t']:>8.2f}{stat['low']:>10.3f}{stat['high']:>10.3f}"
+            f"{key:<8}{info['n_ok']:>8}{info['n_delayed']:>8}"
+            f"{info['pooled_cond']:>10.4f}%{info['pooled_all']:>10.4f}%"
+            f"{info['pooled_all'] - info['pooled_cond']:>9.4f}%"
+            f"{info['daily_shift']:>11.6f}%{len(info['changed']):>8}{info['common_days']:>8}"
         )
+    print("  池化差 = 全部样本等权（按笔加权）；日均变化 = 逐日 all−cond 的共同日简单平均。")
+    print("  一笔深亏的延迟退出在「笔数多的日子」里对日均影响小，但对池化均值影响大；两者不可混用。")
+    for key, info in audits.items():
+        print(
+            f"  {key} 延迟退出样本自身毛均值 {info['delayed_mean']:>+8.2f}%"
+            f"（{info['n_delayed']} 笔，占有退出价样本 "
+            f"{info['n_delayed'] / (info['n_ok'] + info['n_delayed']) * 100:.2f}%）"
+        )
+
+    for key, info in audits.items():
+        rows = sorted(
+            info["changed"],
+            key=lambda row: -(abs(row[3]) if np.isfinite(row[3]) else float("inf")),
+        )[:10]
+        print()
+        print(f"{key}：绝对变化最大的 10 个交易日（all − cond）")
+        print(f"{'日期':<12}{'cond日均':>11}{'all日均':>11}{'Δ':>11}{'延迟笔':>8}{'当日样本':>9}")
+        for day, before, after, delta, n_delay, n_day in rows:
+            before_text = f"{before:.4f}%" if np.isfinite(before) else "—"
+            delta_text = f"{delta:+.4f}%" if np.isfinite(delta) else "新增"
+            print(
+                f"{day.isoformat():<12}{before_text:>11}{after:>10.4f}%"
+                f"{delta_text:>11}{n_delay:>8}{n_day:>9}"
+            )
+
+    print()
+    print("配对差的变化（all − cond，共同交易日；用于区分「日均收益变化」与「配对差变化」）")
+    print("-" * 64)
+    print(f"{'比较':<14}{'cond均值差':>12}{'all均值差':>12}{'变化':>10}")
+    for left, right in (("C0", "C1"), ("C0", "C2")):
+        if left not in audits or right not in audits:
+            continue
+        a, b = audits[left], audits[right]
+        days = sorted(set(a["all"]) & set(b["all"]) & set(a["cond"]) & set(b["cond"]))
+        d_cond = [a["cond"][d] - b["cond"][d] for d in days]
+        d_all = [a["all"][d] - b["all"][d] for d in days]
+        shift = float(np.mean(d_all)) - float(np.mean(d_cond)) if days else float("nan")
+        print(
+            f"{left + ' - ' + right:<14}{float(np.mean(d_cond)):>12.4f}"
+            f"{float(np.mean(d_all)):>12.4f}{shift:>+10.4f}"
+        )
+    print("  「变化」= A 的日均变化 − B 的日均变化；不是「日均收益变化」本身。")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -626,6 +759,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.detail:
         _print_years(results)
         _print_pairs(results)
+        _print_delay_audit(results)
     print()
     print("口径提示：信号层研究（SIGNAL_LEVEL_ONLY），不是组合净值；")
     print("         gross 不含费用；excess = gross − 基准毛收益（基准不扣费）；")

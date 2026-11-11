@@ -10,7 +10,6 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -395,3 +394,107 @@ def test_oos_horizon_labels_present():
     signals = br.build_signals(matrix, top_n=2)
     assert br.HORIZONS == (1, 5, 10)
     assert signals["C0"]
+
+
+# ---- 7. 延迟退出对配对统计的影响（P0-1 验收） -------------------------------
+
+def test_print_pairs_is_defined_once():
+    """回归：曾有两个 `_print_pairs`，后者静默覆盖前者，配对统计实际走了 ok 口径。"""
+    source = Path(br.__file__).read_text(encoding="utf-8")
+    assert source.count("def _print_pairs(") == 1
+
+
+def test_delay_audit_reports_only_affected_days():
+    """逐日核对：只有含延迟退出的那一天发生变化，且 Δ 等于精确差值。"""
+    from types import SimpleNamespace
+
+    from app.services.research_backtest import Sample
+
+    day1, day2, day3 = date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)
+    samples = [
+        # day1：2 笔 ok，无延迟 → 不变
+        Sample(code="1", signal_date=day1, horizon=5, status="ok", gross=1.0),
+        Sample(code="2", signal_date=day1, horizon=5, status="ok", gross=2.0),
+        # day2：19 笔 ok + 1 笔深亏延迟退出（−12%）
+        *[
+            Sample(code=f"d2{i}", signal_date=day2, horizon=5, status="ok", gross=1.0)
+            for i in range(19)
+        ],
+        Sample(
+            code="d2x", signal_date=day2, horizon=5, status="exit_limit_down",
+            gross=-12.0, exit_delay=2,
+        ),
+        # day3：1 笔 ok
+        Sample(code="3", signal_date=day3, horizon=5, status="ok", gross=3.0),
+    ]
+    result = SimpleNamespace(samples=samples, strategy="T")
+    info = br._delay_audit(result)
+
+    changed = {row[0]: row for row in info["changed"]}
+    assert set(changed) == {day2}
+    expected_cond = 1.0
+    expected_all = (19 * 1.0 - 12.0) / 20
+    assert changed[day2][1] == pytest.approx(expected_cond)
+    assert changed[day2][2] == pytest.approx(expected_all)
+    assert changed[day2][3] == pytest.approx(expected_all - expected_cond)
+    assert changed[day2][4] == 1  # 延迟笔数
+    assert changed[day2][5] == 20  # 当日样本数
+
+    # 池化差（按笔加权）与日均变化（按日等权）不是同一个数
+    assert info["pooled_all"] - info["pooled_cond"] == pytest.approx(
+        ((19 + 1 + 2 + 3) - 12.0) / 23 - (19 + 1 + 2 + 3) / 22, abs=1e-12
+    )
+    assert info["daily_shift"] == pytest.approx((expected_all - expected_cond) / 3, abs=1e-12)
+
+
+def test_paired_diff_changes_when_caliber_changes():
+    """同一对策略，cond 与 all 的配对差不同：延迟退出只落在其中一边时必然改变结论。"""
+    from types import SimpleNamespace
+
+    from app.services.research_backtest import Sample
+
+    days = [date(2024, 1, 2) + timedelta(days=i) for i in range(10)]
+    a_samples, b_samples = [], []
+    for index, day in enumerate(days):
+        a_samples.append(Sample(code=f"a{index}", signal_date=day, horizon=5,
+                                status="ok", gross=1.0))
+        b_samples.append(Sample(code=f"b{index}", signal_date=day, horizon=5,
+                                status="ok", gross=0.5))
+    # A 在最后一天多一笔深亏的延迟退出；B 没有
+    a_samples.append(
+        Sample(code="ax", signal_date=days[-1], horizon=5, status="exit_limit_down",
+               gross=-15.0, exit_delay=1)
+    )
+    a = SimpleNamespace(samples=a_samples, strategy="A")
+    b = SimpleNamespace(samples=b_samples, strategy="B")
+
+    cond = br._paired(br._daily_mean(a), br._daily_mean(b))
+    allm = br._paired(br._daily_entry_mean(a), br._daily_entry_mean(b))
+    assert cond["mean"] == pytest.approx(0.5)
+    assert allm["mean"] < cond["mean"]  # 并入延迟退出后 A 被拉低
+    expected_shift = ((1.0 - 15.0) / 2 - 1.0) / 10  # 最后一天的日均变化摊到 10 天
+    assert allm["mean"] - cond["mean"] == pytest.approx(expected_shift, rel=1e-9)
+
+
+def test_print_pairs_emits_both_calibers(capsys):
+    """输出必须同时给出 cond 与 all 两种口径，不能只给一种。"""
+    from types import SimpleNamespace
+
+    from app.services.research_backtest import HorizonStat, Sample
+
+    day = date(2024, 1, 2)
+    samples = [
+        Sample(code="1", signal_date=day, horizon=5, status="ok", gross=1.0),
+        Sample(code="2", signal_date=day, horizon=5, status="exit_limit_down",
+               gross=-3.0, exit_delay=1),
+    ]
+    fake = SimpleNamespace(
+        samples=samples, strategy="C0",
+        horizons={5: HorizonStat(horizon=5, counts={"ok": 1, "exit_limit_down": 1})},
+    )
+    results = {"C0": fake, "C1": fake, "C2": fake}
+    br._print_pairs(results)
+    text = capsys.readouterr().out
+    assert "cond" in text and "all" in text
+    assert "C0 - C1" in text and "C0 - C2" in text
+
