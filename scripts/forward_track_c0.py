@@ -12,6 +12,13 @@
 
 CLI 只用 `--mode replay` / `--mode forward` 两个取值，不再出现 `live` 这个别名。
 
+## B1：前瞻池比历史池少 32 只
+
+北交所 2025-10-09 完成存量代码向 920 段切换，离线无法确认新旧代码映射，因此
+`forward` 只使用 B1 清单（`backend/data/c0_universe_b1.json`）里
+`forward_eligible=true` 的证券；`replay` 不受清单影响，保持与历史 C0 可比。
+缺清单时 `forward` 直接拒绝，不按代码段临时拼池。
+
 ## `forward` 的启动闸门（全部通过才落盘）
 
 1. D 在交易日历里（`trade_calendar` 表，缺失即拒绝，不猜）；
@@ -109,10 +116,13 @@ OUT_DIR = BACKEND / "data" / "forward_c0"
 
 MARKET_TZ = ZoneInfo("Asia/Shanghai")
 
-STRATEGY_VERSION = "c0-2026-11-10"
+STRATEGY_VERSION = "c0-2026-11-11-b1"
 TOP_N = 20
 HORIZON = 5
 COSTS = (30.0, 50.0, 100.0)
+
+#: B1 证券清单：前瞻池 = 历史池 ∩ 身份可确认证券
+UNIVERSE_FILE = BACKEND / "data" / "c0_universe_b1.json"
 
 #: 与 `backtest_reversal.build_signals` 的「当日有效池 < 30 跳过」共用同一阈值（见导入）
 
@@ -138,9 +148,10 @@ PROTOCOL: dict = {
     "window": 20,
     "min_coverage": 0.9,
     "universe_definition": (
-        "history.db 内 D 日有行情、且 20 日窗口内有效行 >= 18 的全部代码；"
-        "含主板/创业板/科创板/北交所，含 ST（ST 不剔除）；"
-        "不套用生产 stock_universe 的流动性门槛，不套用市值上限"
+        "B1：历史研究库内出现过的全部证券 ∩ 身份可确认证券。"
+        "含主板/创业板/科创板；北交所仅保留历史实际存在的 920 段证券，"
+        "且在新旧代码映射经官方确认前不生成正式前瞻信号；含 ST（ST 不剔除）；"
+        "不自动纳入历史集合以外的新证券；不套用生产流动性门槛与市值上限"
     ),
     "suspension_filter": "D 日无行情记录的代码不进入候选（不做长期停牌单独判定）",
     "liquidity_window": 20,
@@ -154,6 +165,11 @@ PROTOCOL: dict = {
     "costs_bps": list(COSTS),
     "data_source": "backend/data/history.db（SQLite mode=ro）",
     "integrity": "content_sha256 只做本地自洽检查，不提供独立时间戳",
+    "risk_flags": (
+        "SURVIVORSHIP_BIAS",
+        "ST_STATUS_PARTIAL",
+        "UNIVERSE_TRUNCATED_BSE",
+    ),
 }
 
 
@@ -194,6 +210,34 @@ def _data_revision(session: Session, db_path: Path) -> dict:
     return {
         "kind": "file_stat",
         "value": {"mtime_ns": stat.st_mtime_ns, "size": stat.st_size},
+    }
+
+
+def load_universe(path: Path) -> dict:
+    """读取 B1 证券清单；缺失或不合法直接拒绝（不生成正式前瞻信号）。"""
+    if not path.is_file():
+        raise SystemExit(
+            f"缺少 B1 证券清单 {path}：先运行 scripts/forward_universe.py 生成。"
+            "没有清单不得生成正式前瞻信号。"
+        )
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        securities = manifest["securities"]
+        codes = [item["code"] for item in securities if item.get("forward_eligible")]
+    except Exception as error:  # noqa: BLE001
+        raise SystemExit(f"B1 证券清单无法解析：{error}") from error
+    if not codes:
+        raise SystemExit("B1 证券清单里没有可前瞻证券")
+    expected = manifest.get("counts", {}).get("forward_eligible")
+    if expected is not None and int(expected) != len(codes):
+        raise SystemExit("B1 证券清单的 counts.forward_eligible 与实际条目数不一致")
+    return {
+        "version": manifest.get("version", "unknown"),
+        "sha256": manifest.get("universe_sha256", ""),
+        "data_cutoff": manifest.get("data_cutoff"),
+        "codes": codes,
+        "eligible": len(codes),
+        "excluded_unverified": len(securities) - len(codes),
     }
 
 
@@ -402,12 +446,16 @@ def _publish_pair(jsonl_payload: bytes, meta_payload: bytes, jsonl: Path, meta: 
 # ---------------------------------------------------------------------------
 
 
-def build_candidates(matrix, day: date, top_n: int = TOP_N) -> dict:
+def build_candidates(
+    matrix, day: date, top_n: int = TOP_N, universe: list[str] | None = None
+) -> dict:
     """生成 D 日的 C0 候选。
 
     **直接调用 `backtest_reversal._day_candidates` + `_rank_top`** —— 与历史回测
     的 C0 是同一段代码，不是"两份长得像的实现"。任何一方改公式，另一方立刻跟着变，
     不会出现"前瞻协议悄悄漂移、历史结论不再适用"。
+
+    `universe` 非空时只在清单内取候选（B1 前瞻池）；为 None 时与历史回测完全一致。
     """
     if day not in matrix.date_pos:
         raise SystemExit(f"{day} 不在行情矩阵里（非交易日或无数据）")
@@ -415,7 +463,7 @@ def build_candidates(matrix, day: date, top_n: int = TOP_N) -> dict:
     cols = _code_columns(matrix)
     j_of = {code: j for j, code in enumerate(matrix.codes)}
 
-    pool = _day_candidates(matrix, pos, cols, j_of)
+    pool = _day_candidates(matrix, pos, cols, j_of, universe)
     if pool is None:
         raise SystemExit(f"{day} 当日有效候选不足 {MIN_POOL} 只，拒绝生成")
     series, liquidity, scores, percent = pool
@@ -695,7 +743,19 @@ def cmd_snapshot(args) -> int:
                 print(_inspect_guide(out_dir, day, mode), file=sys.stderr)
                 return 5
 
+            universe_block = None
+            universe_codes = None
             if mode == MODE_FORWARD:
+                manifest = load_universe(Path(args.universe))
+                universe_codes = manifest["codes"]
+                universe_block = {
+                    "version": manifest["version"],
+                    "sha256": manifest["sha256"],
+                    "data_cutoff": manifest["data_cutoff"],
+                    "eligible": manifest["eligible"],
+                    "excluded_unverified": manifest["excluded_unverified"],
+                    "applied": True,
+                }
                 problems = forward_problems(session, day, now)
                 if problems:
                     print(f"拒绝正式前瞻冻结 {day}（forward）：", file=sys.stderr)
@@ -710,7 +770,7 @@ def cmd_snapshot(args) -> int:
                 completeness = _completeness(session, day)
 
             matrix = load_matrix(session, day - timedelta(days=90), day)
-            candidates = build_candidates(matrix, day, args.top)
+            candidates = build_candidates(matrix, day, args.top, universe_codes)
             missing = _factor_missing_ratio(candidates)
             if mode == MODE_FORWARD and missing > MAX_FACTOR_MISSING_RATIO:
                 print(
@@ -770,6 +830,7 @@ def cmd_snapshot(args) -> int:
         "row_count": len(rows),
         "universe_count": len(candidates["pool"]),
         "completeness": completeness,
+        "universe": universe_block,
         "content_sha256": digest,
         "integrity_note": (
             "content_sha256 仅校验 JSONL 与 meta 是否自洽，可发现单文件改动或写入中断；"
@@ -955,6 +1016,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="C0 前瞻纸面跟踪（本地手动）")
     parser.add_argument("--db", default=str(HISTORY_DB))
     parser.add_argument("--out", default=str(OUT_DIR))
+    parser.add_argument(
+        "--universe",
+        default=str(UNIVERSE_FILE),
+        help="B1 证券清单 JSON（仅 forward 使用；缺失则拒绝正式冻结）",
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     snap = sub.add_parser("snapshot", help="生成候选快照")

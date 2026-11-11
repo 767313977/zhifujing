@@ -185,15 +185,22 @@ def _rank_top(scored: list[tuple[str, float]], top_n: int) -> list[str]:
 
 
 def _day_candidates(
-    matrix, pos: int, cols: dict, j_of: dict
+    matrix, pos: int, cols: dict, j_of: dict, codes: list[str] | None = None
 ) -> tuple[dict, dict, dict, dict] | None:
     """D 日的候选池与三因子分（历史回测与前瞻工具**共用这一段**）。
 
     返回 `(series, liquidity, scores, percentiles)`；当日有效票或可算因子的票少于
     `MIN_POOL` 时返回 None。把这段抽出来，是为了让「前瞻 C0」和「历史 C0」
     不是两份长得像的实现，而是同一份 —— 否则任何一次改动都会悄悄分叉。
+
+    `codes` 非空时只在这些代码里取候选（前瞻的 B1 证券清单用）；
+    为 None 时与历史回测完全一致（全 `matrix.codes`）。
     """
-    today = [code for code in matrix.codes if matrix.present[pos, j_of[code]]]
+    universe = matrix.codes if codes is None else codes
+    # 清单里的代码可能不在本次矩阵区间（长期停牌/已退市）→ 跳过，不是错误
+    today = [
+        code for code in universe if code in j_of and matrix.present[pos, j_of[code]]
+    ]
     if len(today) < MIN_POOL:
         return None
 

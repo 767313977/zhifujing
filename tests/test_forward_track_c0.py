@@ -98,16 +98,56 @@ def _build_db(
     return START + timedelta(days=days - 1)
 
 
+def _db_codes(db: Path) -> list[str]:
+    with sqlite3.connect(db) as conn:
+        return [row[0] for row in conn.execute("select distinct code from stock_daily order by code")]
+
+
+def _write_universe(db: Path, eligible: list[str], *, version: str = "b1-test") -> Path:
+    """在库旁边写一份 B1 清单（测试用）。"""
+    codes = _db_codes(db)
+    payload = "\n".join(f"{code}|测试|{ft._board_of(code)}" for code in codes)
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    manifest = {
+        "version": version,
+        "data_cutoff": "2099-12-31",
+        "universe_sha256": digest,
+        "counts": {
+            "total": len(codes),
+            "forward_eligible": len(eligible),
+            "excluded_unverified": len(codes) - len(eligible),
+        },
+        "securities": [
+            {
+                "code": code,
+                "name": "测试",
+                "board": ft._board_of(code),
+                "forward_eligible": code in set(eligible),
+            }
+            for code in codes
+        ],
+    }
+    path = db.with_name("universe.json")
+    path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
 @pytest.fixture()
 def env(tmp_path):
     db = tmp_path / "history.db"
     latest = _build_db(db)
+    _write_universe(db, _db_codes(db))
     out = tmp_path / "forward"
     return db, out, latest
 
 
 def _run(db: Path, out: Path, *argv) -> int:
-    return ft.main(["--db", str(db), "--out", str(out), *argv])
+    universe = db.with_name("universe.json")
+    if not universe.is_file():
+        _write_universe(db, _db_codes(db))
+    return ft.main(
+        ["--db", str(db), "--out", str(out), "--universe", str(universe), *argv]
+    )
 
 
 def _now(day: date, hour: int, minute: int) -> str:
@@ -273,6 +313,58 @@ def test_forward_rejects_board_dropped_silently(tmp_path, capsys):
     assert "北交所" in err
     assert "静默丢弃" in err
     assert not list(out.glob("signals_*.jsonl"))
+
+
+def test_forward_universe_excludes_unverified(tmp_path, capsys):
+    """B1：身份未确认的证券不进入前瞻候选，即使它当天有行情。"""
+    db = tmp_path / "history.db"
+    latest = _build_db(db, codes=100, prefixes=("60", "00", "83"))
+    all_codes = _db_codes(db)
+    eligible = [code for code in all_codes if not code.startswith("83")]
+    _write_universe(db, eligible)
+    out = tmp_path / "forward"
+
+    assert _run(db, out, "snapshot", "--mode", "forward",
+                "--now", _now(latest, 15, 45)) == 0
+    jsonl, meta_path = ft._paths(out, latest, "forward")
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert meta["universe"]["applied"] is True
+    assert meta["universe"]["eligible"] == len(eligible)
+    assert meta["universe"]["excluded_unverified"] == len(all_codes) - len(eligible)
+    rows = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines()]
+    assert rows and all(not row["stock_code"].startswith("83") for row in rows)
+    capsys.readouterr()
+
+
+def test_replay_ignores_universe(tmp_path, capsys):
+    """重放复现历史口径：不受 B1 清单影响，否则与历史 C0 不再可比。"""
+    db = tmp_path / "history.db"
+    latest = _build_db(db, codes=100, prefixes=("60", "00", "83"))
+    _write_universe(db, [code for code in _db_codes(db) if not code.startswith("83")])
+    out = tmp_path / "forward"
+
+    assert _run(db, out, "snapshot", "--mode", "replay") == 0
+    _jsonl, meta_path = ft._paths(out, latest, "replay")
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert meta["universe"] is None
+    assert meta["universe_count"] == 100
+    capsys.readouterr()
+
+
+def test_forward_refuses_without_universe(tmp_path, capsys):
+    """没有清单不得凭空造一个池（尤其不能靠 startswith('920') 放行）。"""
+    db = tmp_path / "history.db"
+    latest = _build_db(db)
+    out = tmp_path / "forward"
+    missing = tmp_path / "missing_universe.json"
+    with pytest.raises(SystemExit) as error:
+        ft.main([
+            "--db", str(db), "--out", str(out), "--universe", str(missing),
+            "snapshot", "--mode", "forward", "--now", _now(latest, 15, 45),
+        ])
+    assert "B1 证券清单" in str(error.value)
+    assert not out.exists() or not list(out.glob("signals_*.jsonl"))
+    capsys.readouterr()
 
 
 # ---- 并发与原子性 -----------------------------------------------------------
@@ -732,3 +824,10 @@ def test_protocol_weights_are_frozen():
     assert ft.PROTOCOL["percentile_scope"] == "当日全体候选池内"
     assert "ST" in ft.PROTOCOL["universe_definition"]
     assert "北交所" in ft.PROTOCOL["universe_definition"]
+
+
+def test_protocol_records_universe_truncation_risk():
+    """B1 缩小了池子，风险标记必须跟着记录，不能只写在文档里。"""
+    assert "UNIVERSE_TRUNCATED_BSE" in ft.PROTOCOL["risk_flags"]
+    assert "SURVIVORSHIP_BIAS" in ft.PROTOCOL["risk_flags"]
+    assert ft.STRATEGY_VERSION.startswith("c0-2026-11-11")
