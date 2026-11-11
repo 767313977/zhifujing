@@ -2,7 +2,7 @@
 
 ## 这个模块只做两件事
 
-1. **建表**：`create_schema()` 在独立文件上建四张表，供独立采集程序写入。
+1. **建表**：`create_schema()` 在独立文件上建五张表，供独立采集程序写入。
 2. **映射与校验**：把供应商原始行转成研究字段，并给出可解释的校验问题。
 
 它**不采集、不联网、不打开生产库**。测试全部用临时文件。
@@ -79,6 +79,16 @@ CREATE TABLE IF NOT EXISTS ingest_log (
     rows       INTEGER,
     message    TEXT,
     created_at TEXT NOT NULL
+);
+
+-- 逐日逐券状态：区分「有行情」「成功返回但当日无成交（停牌）」
+-- 这里不做归因，只记录来源事实；接口失败整批进 ingest_log.failed，不写本表。
+CREATE TABLE IF NOT EXISTS universe_status (
+    trade_date TEXT NOT NULL,
+    code       TEXT NOT NULL,
+    status     TEXT NOT NULL,
+    reason     TEXT,
+    PRIMARY KEY (trade_date, code)
 );
 """
 
