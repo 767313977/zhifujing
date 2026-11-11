@@ -2,7 +2,7 @@
 
 - 日期：2026-11-11
 - 状态：`B3_HISTORICAL_RESEARCH_CLOSED`、`HISTORICAL_DATA_GAP_UNDER_REVIEW`、
-  `INCOMPLETE_DAYS_EXCLUSION_SENSITIVITY`
+  `INCOMPLETE_DAYS_EXCLUSION_SENSITIVITY`、`READY_FOR_AUTHORIZED_BACKFILL`（仅采集器）
 - 保留：`FORWARD_PAPER_TRACKING_CANDIDATE`、`FORWARD_TRACKING_NOT_STARTED`、
   `PRODUCTION_DEPLOYMENT_NOT_AUTHORIZED`、`P13_RELEASE_NO_GO`
 - 本报告只做记录、固定敏感性复核与采集准备；**不修复历史库、不重算旧报告、不调权重**。
@@ -178,7 +178,8 @@
 - 新增 `scripts/forward_collect_tushare.py`：单日一次 `daily(trade_date=D)` → 独立库
   `backend/data/forward_research.db`（本轮**未创建**）。
 - 复用 `scripts/forward_store.py` 的建表 / 代码映射 / 行校验；新增 `universe_status`
-  （逐日逐券 `ok` / `suspended_no_quote`），把"当日无成交"与"接口失败"分开。
+  （逐日逐券 `ok` / `no_quote_unverified` / `suspended_confirmed`），把"当日无成交"
+  "未证实缺失"与"整批接口失败"分开（`batch_failed` 只进 `ingest_log`）。
 - 不变量与本轮实现的对应：
 
 | 要求 | 实现 |
@@ -194,8 +195,11 @@
 | 空结果不等于全部停牌 | 空结果 → `error_type=empty` 整批失败 |
 | 不靠累计行数判断末尾 | 只校验当日批次与上一确认日分板块计数 |
 
-- 离线测试：`tests/test_forward_collect_tushare.py` 新增 18 项；
-  与 `test_forward_store.py`、`test_forward_universe.py` 合跑 **48 passed**。
+- 离线测试：`tests/test_forward_collect_tushare.py` 新增 40 项（合成数据，覆盖首次采集
+  分市场基线、133 只/北交所整段缺失、停牌与未证实缺失、单事务故障注入、修订与快照冻结、
+  路径别名/链接、日历初始化与 40 日预检、时区与损坏库）。
+- 采集器状态：`READY_FOR_AUTHORIZED_BACKFILL`（仅指具备受控回补条件；正式 40 日预热
+  仍未执行，`FORWARD_TRACKING_NOT_STARTED` 不变）。
 - 预演：`python scripts/forward_collect_tushare.py --date 2026-11-12` → 只打印计划，
   不发请求、不建库（已实测）。
 
