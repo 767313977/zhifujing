@@ -4,6 +4,7 @@
 起始提交：`53867ecd72d7288d5d151313f095afa1dc57dec5`
 代码提交：`ae18dcc`（fix：配对口径 + 前瞻工具双模式 + 独占发布）
 文档提交：`4932a55`
+收尾提交：`2f702d3`（fix：快照状态机 + 统一 replay/forward）
 
 ```
 B3_HISTORICAL_RESEARCH_CLOSED
