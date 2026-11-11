@@ -4,6 +4,7 @@ import type {
   LimitPool,
   LimitThemes,
   PromotionFunnel as PromotionFunnelData,
+  PromotionFunnelDateItem,
   PromotionSeries,
 } from '../api/types'
 import Alert from '../components/Alert'
@@ -42,6 +43,14 @@ const TIME_BUCKETS: { label: string; from: number; to: number }[] = [
 /** 晋级率只展示样本量足够的档位；4进5 及以上每日基数常只有 1-3 只，会 0/100 反复跳。 */
 const CHART_LEVELS = [1, 2, 3]
 
+/** 日期摘要是**池数据**可信度，逐券是否可验证由打开后的漏斗计算给出。 */
+const FUNNEL_QUALITY_LABEL: Record<string, string> = {
+  VERIFIED: '池数据可信',
+  PARTIAL: '池数据部分可信',
+  UNVERIFIED: '池数据不可信',
+  NOT_COLLECTED: '未采集',
+}
+
 export default function LimitReview() {
   const [date, setDate] = useState<string | null>(null)
   const [dates, setDates] = useState<string[]>([])
@@ -57,6 +66,9 @@ export default function LimitReview() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState<'review' | 'funnel'>('review')
+  const [funnelDate, setFunnelDate] = useState<string | null>(null)
+  const [funnelDates, setFunnelDates] = useState<PromotionFunnelDateItem[]>([])
+  const [funnelDatesError, setFunnelDatesError] = useState<string | null>(null)
   const [funnel, setFunnel] = useState<PromotionFunnelData | null>(null)
   const [funnelError, setFunnelError] = useState<string | null>(null)
   const [funnelLoading, setFunnelLoading] = useState(false)
@@ -134,7 +146,7 @@ export default function LimitReview() {
     setFunnelError(null)
     setFunnelLoading(true)
     api
-      .promotionFunnel(date)
+      .promotionFunnel(funnelDate)
       .then((data) => {
         if (seq === funnelSeq.current) setFunnel(data)
       })
@@ -149,7 +161,24 @@ export default function LimitReview() {
     return () => {
       funnelSeq.current += 1
     }
-  }, [date, view])
+  }, [funnelDate, view])
+
+  /** 漏斗日期列表按需加载，不复用旧 Tab 的 `api.dates()`（那个只覆盖有数据的日期）。 */
+  useEffect(() => {
+    if (view !== 'funnel' || funnelDates.length > 0) return
+    let stale = false
+    api
+      .promotionFunnelDates(255)
+      .then((data) => {
+        if (!stale) setFunnelDates(data.dates)
+      })
+      .catch((err: Error) => {
+        if (!stale) setFunnelDatesError(err.message)
+      })
+    return () => {
+      stale = true
+    }
+  }, [view, funnelDates.length])
 
   const stocks = useMemo(() => pool?.stocks ?? [], [pool])
 
@@ -392,7 +421,9 @@ export default function LimitReview() {
             : funnelError
               ? '—'
               : funnel
-                ? `${funnel.levels.reduce((sum, item) => sum + item.base, 0)} 只基数`
+                ? funnel.levels.length > 0
+                  ? `${funnel.levels.reduce((sum, item) => sum + item.base, 0)} 只基数`
+                  : '暂无可信基数'
                 : '—'
           : loading
             ? '加载中…'
@@ -400,19 +431,34 @@ export default function LimitReview() {
               ? '—'
               : `${stocks.length} 只涨停`}
       </span>
-      <select
-        value={date ?? ''}
-        onChange={(event) => setDate(event.target.value || null)}
-        className="num border border-line bg-ink-900 px-2 py-[3px] text-[13px] text-fg outline-none focus:border-fg-dim"
-      >
-        <option value="">最新</option>
-        {/* 倒序渲染：最近的排最上面。原先是升序，展开后要一路滚到底才够得着昨天 */}
-        {[...dates].reverse().map((item) => (
-          <option key={item} value={item}>
-            {item}
-          </option>
-        ))}
-      </select>
+      {view === 'funnel' ? (
+        <select
+          value={funnelDate ?? ''}
+          onChange={(event) => setFunnelDate(event.target.value || null)}
+          className="num border border-line bg-ink-900 px-2 py-[3px] text-[13px] text-fg outline-none focus:border-fg-dim"
+        >
+          <option value="">最新</option>
+          {[...funnelDates].reverse().map((item) => (
+            <option key={item.trade_date} value={item.trade_date}>
+              {item.trade_date} · {FUNNEL_QUALITY_LABEL[item.quality_status] ?? item.quality_status}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <select
+          value={date ?? ''}
+          onChange={(event) => setDate(event.target.value || null)}
+          className="num border border-line bg-ink-900 px-2 py-[3px] text-[13px] text-fg outline-none focus:border-fg-dim"
+        >
+          <option value="">最新</option>
+          {/* 倒序渲染：最近的排最上面。原先是升序，展开后要一路滚到底才够得着昨天 */}
+          {[...dates].reverse().map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </select>
+      )}
     </>
   )
 
@@ -469,6 +515,11 @@ export default function LimitReview() {
           }
           delay={40}
         >
+          {funnelDatesError && (
+            <div className="border-b border-line-soft px-3 py-2 text-[12px] text-danger">
+              漏斗日期加载失败：{funnelDatesError}
+            </div>
+          )}
           <PromotionFunnel data={funnel} loading={funnelLoading} error={funnelError} />
         </Panel>
       ) : (

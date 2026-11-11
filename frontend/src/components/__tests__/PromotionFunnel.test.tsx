@@ -118,8 +118,10 @@ test('renders summary, quality and level cards', () => {
   expect(screen.getAllByText('1进2').length).toBeGreaterThan(0)
   expect(screen.getAllByText('2进3').length).toBeGreaterThan(0)
   expect(screen.getByText('昨日基数')).toBeTruthy()
-  expect(screen.getByText('原口径晋级率')).toBeTruthy()
-  expect(screen.getByText('可验证口径')).toBeTruthy()
+  expect(
+    screen.getByText('所选档位合计晋级率（1进2–4进5，原口径）'),
+  ).toBeTruthy()
+  expect(screen.getByText('所选档位合计（1进2–4进5，可验证）')).toBeTruthy()
 })
 
 test('default selects first level and shows its stocks', () => {
@@ -230,4 +232,60 @@ test('no levels shows explicit message', () => {
   })
   expect(screen.getByText('未采集')).toBeTruthy()
   expect(screen.getByText(/没有可用的昨日涨停池/)).toBeTruthy()
+  // 未采集不等于「昨日基数 0 只」，不能把 0 当成可信事实
+  expect(screen.queryByText('昨日基数')).toBeNull()
+  expect(screen.queryByText(/0 只/)).toBeNull()
+})
+
+test('untrusted pools show dash instead of a fake 0% overall rate', () => {
+  renderFunnel({
+    quality: {
+      status: 'UNVERIFIED',
+      reasons: ['TODAY_UP_POOL_UNVERIFIED'],
+      prev_up: 'ok',
+      today_up: 'failed',
+      today_broken: 'ok',
+      today_daily: 'ok',
+    },
+  })
+  const legacyLabel = screen.getByText('所选档位合计晋级率（1进2–4进5，原口径）')
+  const legacyValue = legacyLabel.parentElement?.textContent ?? ''
+  expect(legacyValue).toContain('—')
+  expect(legacyValue).not.toContain('0.0%')
+  expect(legacyValue).not.toContain('0%')
+})
+
+test('all unverifiable does not render 0% even when pools are trusted', () => {
+  renderFunnel({
+    quality: {
+      status: 'PARTIAL',
+      reasons: ['DAILY_QUOTE_MISSING'],
+      prev_up: 'ok',
+      today_up: 'ok',
+      today_broken: 'ok',
+      today_daily: 'ok',
+    },
+    levels: [
+      {
+        level: 1,
+        label: '1进2',
+        base: 2,
+        promoted: 0,
+        broken: 0,
+        failed: 0,
+        unverifiable: 2,
+        valid_base: 0,
+        legacy_rate: null,
+        verified_rate: null,
+        stocks: [
+          stock('600010', 'UNVERIFIABLE', { previous_level: 1 }),
+          stock('600011', 'UNVERIFIABLE', { previous_level: 1 }),
+        ],
+      },
+    ],
+  })
+  const legacyLabel = screen.getByText('所选档位合计晋级率（1进2，原口径）')
+  expect(legacyLabel.parentElement?.textContent).toContain('—')
+  const verifiedLabel = screen.getByText('所选档位合计（1进2，可验证）')
+  expect(verifiedLabel.parentElement?.textContent).toContain('—')
 })

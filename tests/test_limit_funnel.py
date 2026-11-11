@@ -26,6 +26,7 @@ from app.services.limit_funnel import (
     SOURCE_NOT_COLLECTED,
     SOURCE_OK,
     SOURCE_UNKNOWN,
+    SOURCE_EMPTY,
     UNVERIFIED,
     VERIFIED,
     FunnelInputs,
@@ -242,8 +243,28 @@ def test_all_unverifiable_has_null_verified_rate():
     )
     row = level_of(levels, 1)
     assert row["unverifiable"] == 2 and row["valid_base"] == 0
-    assert row["verified_rate"] is None
+    assert row["legacy_rate"] is None and row["verified_rate"] is None
     assert quality.status == UNVERIFIED
+
+
+def test_all_unverifiable_with_trusted_pools_has_null_legacy_rate():
+    """源都可信、但全部缺日线：也不能把「未观察到」写成 0%。"""
+    levels, quality = build_promotion_funnel(
+        inputs(
+            prev={"A": {"consecutive": 1}},
+            up={"B": {"consecutive": 1}},
+            broken={},
+            daily={},
+            prev_q=q(rows=1),
+            up_q=q(rows=1),
+            broken_q=q(rows=0),
+        ),
+        [1],
+    )
+    row = level_of(levels, 1)
+    assert row["unverifiable"] == 1 and row["valid_base"] == 0
+    assert row["legacy_rate"] is None and row["verified_rate"] is None
+    assert quality.status == PARTIAL
 
 
 def test_only_promoted():
@@ -339,7 +360,9 @@ def test_null_close_is_not_a_valid_quote(db):
     db.add_all(
         [
             LimitPool(trade_date=PREV, code="A", pool_type="up", consecutive=1),
+            LimitPool(trade_date=DAY, code="B", pool_type="up", consecutive=1),
             StockDaily(trade_date=DAY, code="A", close=None),
+            StockDaily(trade_date=DAY, code="B", close=10.0),
             CollectLog(trade_date=PREV, task="pool_up", status="ok", rows=1),
             CollectLog(trade_date=DAY, task="pool_up", status="ok", rows=1),
             CollectLog(trade_date=DAY, task="pool_broken", status="ok", rows=0),
@@ -465,6 +488,256 @@ def test_legacy_api_unchanged_and_reconciles(db):
     # 整体旧口径 = 各档之和
     assert legacy.overall_counts[index] == sum(item.base for item in funnel.levels)
     assert legacy.overall_promoted[index] == sum(item.promoted for item in funnel.levels)
+
+
+def test_up_trust_failure_makes_both_rates_null():
+    levels, _ = build_promotion_funnel(
+        inputs(
+            prev={"A": {"consecutive": 1}},
+            up={"A": {"consecutive": 2}},
+            daily={"A": {}},
+            up_q=q(SOURCE_FAILED),
+        ),
+        [1],
+    )
+    row = level_of(levels, 1)
+    assert row["promoted"] == 0 and row["unverifiable"] == 1
+    assert row["legacy_rate"] is None and row["verified_rate"] is None
+
+
+def test_previous_trust_failure_makes_both_rates_null():
+    levels, _ = build_promotion_funnel(
+        inputs(
+            prev={"A": {"consecutive": 1}},
+            up={"A": {"consecutive": 2}},
+            daily={"A": {}},
+            prev_q=q(SOURCE_UNKNOWN, 1),
+        ),
+        [1],
+    )
+    row = level_of(levels, 1)
+    assert row["base"] == 1 and row["unverifiable"] == 1
+    assert row["legacy_rate"] is None and row["verified_rate"] is None
+
+
+def test_broken_failure_keeps_confirmed_promotions():
+    levels, quality = build_promotion_funnel(
+        inputs(
+            prev={"A": {"consecutive": 1}, "B": {"consecutive": 1}},
+            up={"A": {"consecutive": 2}},
+            daily={"A": {}, "B": {}},
+            broken_q=q(SOURCE_FAILED),
+        ),
+        [1],
+    )
+    row = level_of(levels, 1)
+    assert row["promoted"] == 1 and row["unverifiable"] == 1
+    assert row["legacy_rate"] == 50.0
+    assert row["verified_rate"] == 100.0
+    assert quality.status == PARTIAL
+
+
+def test_up_ok_zero_rows_is_not_trusted():
+    data = inputs(
+        prev={"A": {"consecutive": 1}},
+        up_q=q(SOURCE_OK, 0),
+    )
+    data.today_up_quality = q(SOURCE_EMPTY, 0)
+    levels, quality = build_promotion_funnel(data, [1])
+    assert quality.status == UNVERIFIED
+    assert "UP_POOL_EMPTY_WITH_OK_LOG" in quality.reasons
+    assert level_of(levels, 1)["legacy_rate"] is None
+    assert level_of(levels, 1)["verified_rate"] is None
+
+
+def test_broken_ok_zero_rows_is_trusted():
+    data = inputs(
+        prev={"A": {"consecutive": 1}},
+        daily={"A": {}},
+        broken_q=SourceQuality(SOURCE_OK, 0, "ok"),
+    )
+    _, quality = build_promotion_funnel(data, [1])
+    assert quality.today_broken == "ok"
+    assert quality.status == VERIFIED
+
+
+def test_up_log_rows_mismatch_is_not_forced_equal(db):
+    # 只要求 up 的 ok+0 不可信；日志 rows 与实际行数不强制相等（upsert 口径未变）
+    db.add_all(
+        [
+            LimitPool(trade_date=PREV, code="A", pool_type="up", consecutive=1),
+            LimitPool(trade_date=DAY, code="B", pool_type="up", consecutive=1),
+            StockDaily(trade_date=DAY, code="B", close=10.0),
+            CollectLog(trade_date=PREV, task="pool_up", status="ok", rows=1),
+            CollectLog(trade_date=DAY, task="pool_up", status="ok", rows=99),
+            CollectLog(trade_date=DAY, task="pool_broken", status="ok", rows=0),
+        ]
+    )
+    db.commit()
+    data = load_funnel_inputs(db, PREV, DAY)
+    assert data.today_up_quality.trusted is True
+
+
+def test_list_dates_keeps_missing_middle_day(db):
+    d1, d2, d3, d4 = (
+        date(2026, 10, 28),
+        date(2026, 10, 29),
+        date(2026, 10, 30),
+        date(2026, 11, 2),
+    )
+    db.add_all([TradeCalendar(trade_date=day) for day in (d1, d2, d3, d4)])
+    db.add_all(
+        [
+            LimitPool(trade_date=d1, code="A", pool_type="up", consecutive=1),
+            LimitPool(trade_date=d3, code="A", pool_type="up", consecutive=1),
+            CollectLog(trade_date=d1, task="pool_up", status="ok", rows=1),
+            CollectLog(trade_date=d3, task="pool_up", status="ok", rows=1),
+            CollectLog(trade_date=d3, task="pool_broken", status="ok", rows=0),
+        ]
+    )
+    db.commit()
+    items = list_funnel_dates(db, 255)
+    by_day = {item["trade_date"]: item for item in items}
+    assert d2 in by_day and d4 in by_day
+    assert by_day[d2]["has_today_pool"] is False
+    assert by_day[d2]["quality_status"] != VERIFIED
+    assert by_day[d4]["quality_status"] != VERIFIED
+    assert by_day[d2]["can_calculate_verified_rate"] is False
+
+
+def test_list_dates_marks_failed_up_day(db):
+    d1, d2 = date(2026, 10, 28), date(2026, 10, 29)
+    db.add_all([TradeCalendar(trade_date=d1), TradeCalendar(trade_date=d2)])
+    db.add_all(
+        [
+            LimitPool(trade_date=d1, code="A", pool_type="up", consecutive=1),
+            CollectLog(trade_date=d1, task="pool_up", status="ok", rows=1),
+            CollectLog(trade_date=d2, task="pool_up", status="failed", rows=0),
+            CollectLog(trade_date=d2, task="pool_broken", status="ok", rows=0),
+        ]
+    )
+    db.commit()
+    item = next(
+        row for row in list_funnel_dates(db, 255) if row["trade_date"] == d2
+    )
+    assert item["quality_status"] == UNVERIFIED
+    assert item["can_calculate_verified_rate"] is False
+
+
+def test_list_dates_can_flag_requires_both_pools(db):
+    d1, d2 = date(2026, 10, 28), date(2026, 10, 29)
+    db.add_all([TradeCalendar(trade_date=d1), TradeCalendar(trade_date=d2)])
+    db.add_all(
+        [
+            LimitPool(trade_date=d1, code="A", pool_type="up", consecutive=1),
+            LimitPool(trade_date=d2, code="A", pool_type="up", consecutive=2),
+            CollectLog(trade_date=d1, task="pool_up", status="ok", rows=1),
+            CollectLog(trade_date=d2, task="pool_up", status="ok", rows=1),
+            CollectLog(trade_date=d2, task="pool_broken", status="failed", rows=0),
+        ]
+    )
+    db.commit()
+    item = next(
+        row for row in list_funnel_dates(db, 255) if row["trade_date"] == d2
+    )
+    assert item["quality_status"] == PARTIAL
+    assert item["can_calculate_verified_rate"] is False
+
+
+def test_list_dates_can_flag_true_with_promotion(db):
+    d1, d2 = date(2026, 10, 28), date(2026, 10, 29)
+    db.add_all([TradeCalendar(trade_date=d1), TradeCalendar(trade_date=d2)])
+    db.add_all(
+        [
+            LimitPool(trade_date=d1, code="A", pool_type="up", consecutive=1),
+            LimitPool(trade_date=d2, code="A", pool_type="up", consecutive=2),
+            StockDaily(trade_date=d2, code="A", close=10.0),
+            CollectLog(trade_date=d1, task="pool_up", status="ok", rows=1),
+            CollectLog(trade_date=d2, task="pool_up", status="ok", rows=1),
+            CollectLog(trade_date=d2, task="pool_broken", status="ok", rows=0),
+        ]
+    )
+    db.commit()
+    item = next(
+        row for row in list_funnel_dates(db, 255) if row["trade_date"] == d2
+    )
+    assert item["quality_status"] == VERIFIED
+    assert item["can_calculate_verified_rate"] is True
+
+
+def test_list_dates_can_flag_false_without_valid_sample(db):
+    """两池均可信，但昨日基数股既未进池、也没有日线 → 有效样本为零。"""
+    d1, d2 = date(2026, 10, 28), date(2026, 10, 29)
+    db.add_all([TradeCalendar(trade_date=d1), TradeCalendar(trade_date=d2)])
+    db.add_all(
+        [
+            LimitPool(trade_date=d1, code="A", pool_type="up", consecutive=1),
+            LimitPool(trade_date=d2, code="B", pool_type="up", consecutive=1),
+            CollectLog(trade_date=d1, task="pool_up", status="ok", rows=1),
+            CollectLog(trade_date=d2, task="pool_up", status="ok", rows=1),
+            CollectLog(trade_date=d2, task="pool_broken", status="ok", rows=0),
+        ]
+    )
+    db.commit()
+    item = next(
+        row for row in list_funnel_dates(db, 255) if row["trade_date"] == d2
+    )
+    assert item["quality_status"] == VERIFIED
+    assert item["can_calculate_verified_rate"] is False
+
+    levels, quality = build_promotion_funnel(
+        load_funnel_inputs(db, d1, d2), [1]
+    )
+    assert quality.status == PARTIAL
+    assert levels[0]["unverifiable"] == 1
+    assert levels[0]["valid_base"] == 0
+    assert levels[0]["legacy_rate"] is None
+    assert levels[0]["verified_rate"] is None
+
+
+def test_list_dates_can_flag_true_when_daily_confirms_failure(db):
+    """两池均可信、无晋级无炸板，但日线可判失败 → 有效样本不为零。"""
+    d1, d2 = date(2026, 10, 28), date(2026, 10, 29)
+    db.add_all([TradeCalendar(trade_date=d1), TradeCalendar(trade_date=d2)])
+    db.add_all(
+        [
+            LimitPool(trade_date=d1, code="A", pool_type="up", consecutive=1),
+            LimitPool(trade_date=d2, code="B", pool_type="up", consecutive=1),
+            StockDaily(trade_date=d2, code="A", close=10.0),
+            CollectLog(trade_date=d1, task="pool_up", status="ok", rows=1),
+            CollectLog(trade_date=d2, task="pool_up", status="ok", rows=1),
+            CollectLog(trade_date=d2, task="pool_broken", status="ok", rows=0),
+        ]
+    )
+    db.commit()
+    item = next(
+        row for row in list_funnel_dates(db, 255) if row["trade_date"] == d2
+    )
+    assert item["quality_status"] == VERIFIED
+    assert item["can_calculate_verified_rate"] is True
+
+    levels, quality = build_promotion_funnel(
+        load_funnel_inputs(db, d1, d2), [1]
+    )
+    assert quality.status == VERIFIED
+    assert levels[0]["failed"] == 1
+    assert levels[0]["valid_base"] == 1
+    assert levels[0]["verified_rate"] == 0.0
+
+
+def test_list_dates_does_not_fill_weekend(db):
+    d1, d2 = date(2026, 10, 30), date(2026, 11, 2)  # 周五 / 下周一
+    db.add_all([TradeCalendar(trade_date=d1), TradeCalendar(trade_date=d2)])
+    db.add_all(
+        [
+            LimitPool(trade_date=d1, code="A", pool_type="up", consecutive=1),
+            CollectLog(trade_date=d1, task="pool_up", status="ok", rows=1),
+        ]
+    )
+    db.commit()
+    days = [row["trade_date"] for row in list_funnel_dates(db, 255)]
+    assert days == [d1, d2]
+    assert date(2026, 10, 31) not in days and date(2026, 11, 1) not in days
 
 
 def test_funnel_does_not_write(db):

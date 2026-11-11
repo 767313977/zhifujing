@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -28,6 +28,7 @@ from app.models import (
     StockDaily,
     TradeCalendar,
 )
+from app.timeutil import today_cn
 
 PROMOTED = "PROMOTED"
 BROKEN = "BROKEN"
@@ -61,6 +62,7 @@ REASON_TEXT = {
     "COLLECTION_FAILED": "采集失败",
     "COLLECTION_SKIPPED": "采集被跳过",
     "SOURCE_STATUS_UNKNOWN": "缺少采集状态证据",
+    "UP_POOL_EMPTY_WITH_OK_LOG": "涨停池日志成功但实际 0 行（疑似来源空表）",
     "NO_PREVIOUS_TRADE_DAY": "没有上一交易日",
 }
 
@@ -118,12 +120,17 @@ class FunnelQuality:
         }
 
 
-def _source_quality(log: CollectLog | None, rows: int) -> SourceQuality:
+def _source_quality(
+    log: CollectLog | None, rows: int, *, allow_empty_ok: bool = False
+) -> SourceQuality:
     if log is None:
         # 有行但没日志：历史数据可能来自早期版本，不能算「已验证」
         return SourceQuality(SOURCE_UNKNOWN if rows else SOURCE_NOT_COLLECTED, rows)
     status = (log.status or SOURCE_UNKNOWN).lower()
     if status == SOURCE_OK:
+        if rows == 0 and not allow_empty_ok:
+            # 涨停池 ok+0 不符合采集器约定（空表应记 failed）；炸板池 ok+0 合法
+            return SourceQuality(SOURCE_EMPTY, 0, status)
         return SourceQuality(SOURCE_OK, rows, status)
     if status in (SOURCE_PARTIAL, SOURCE_FAILED, SOURCE_SKIPPED, SOURCE_EMPTY):
         return SourceQuality(status, rows, status)
@@ -137,6 +144,8 @@ def _source_reason(prefix: str, quality: SourceQuality) -> str:
         return "COLLECTION_FAILED"
     if quality.status == SOURCE_SKIPPED:
         return "COLLECTION_SKIPPED"
+    if quality.status == SOURCE_EMPTY and prefix in ("TODAY_UP_POOL", "PREVIOUS_UP_POOL"):
+        return "UP_POOL_EMPTY_WITH_OK_LOG"
     if quality.status in (SOURCE_UNKNOWN, SOURCE_PARTIAL, SOURCE_EMPTY):
         return "SOURCE_STATUS_UNKNOWN"
     return f"{prefix}_MISSING"
@@ -159,7 +168,11 @@ def assess_funnel_quality(inputs: FunnelInputs) -> FunnelQuality:
             reasons.append("PREVIOUS_UP_POOL_MISSING")
         else:
             status = UNVERIFIED
-            reasons.append("PREVIOUS_UP_POOL_UNVERIFIED")
+            reasons.append(
+                "UP_POOL_EMPTY_WITH_OK_LOG"
+                if inputs.prev_up_quality.status == SOURCE_EMPTY
+                else "PREVIOUS_UP_POOL_UNVERIFIED"
+            )
     else:
         if not inputs.today_up_quality.trusted:
             status = UNVERIFIED
@@ -343,6 +356,13 @@ def build_promotion_funnel(
         per_stock_reasons.extend(
             item["reason_code"] for item in stocks if item.get("reason_code")
         )
+        legacy_rate, verified_rate = compute_rates(
+            promoted=promoted,
+            base=base,
+            valid_base=valid_base,
+            previous_up_trusted=inputs.prev_up_quality.trusted,
+            today_up_trusted=inputs.today_up_quality.trusted,
+        )
         output.append(
             {
                 "level": level,
@@ -353,8 +373,8 @@ def build_promotion_funnel(
                 "failed": failed,
                 "unverifiable": unverifiable,
                 "valid_base": valid_base,
-                "legacy_rate": _rate(promoted, base),
-                "verified_rate": _rate(promoted, valid_base),
+                "legacy_rate": legacy_rate,
+                "verified_rate": verified_rate,
                 "stocks": stocks,
             }
         )
@@ -367,6 +387,33 @@ def build_promotion_funnel(
     quality.reasons = _dedupe(quality.reasons + per_stock_reasons)
     validate_funnel_invariants(output)
     return output, quality
+
+
+def compute_rates(
+    *,
+    promoted: int,
+    base: int,
+    valid_base: int,
+    previous_up_trusted: bool,
+    today_up_trusted: bool,
+) -> tuple[float | None, float | None]:
+    """旧口径 / 可验证口径。
+
+    旧口径只有在「昨日池可信 + 今日涨停池可信」时才有意义：今日池不可信时
+    `promoted=0` 只代表「没观察到」，不能写成 0%。可验证口径只看有效分母。
+    全部样本都不可验证（`valid_base=0`）时两种比率都只能是 null —— 没有可信
+    结果，不等于「确认无人晋级」。
+    """
+    legacy_rate = (
+        _rate(promoted, base)
+        if base > 0
+        and valid_base > 0
+        and previous_up_trusted
+        and today_up_trusted
+        else None
+    )
+    verified_rate = _rate(promoted, valid_base) if valid_base > 0 else None
+    return legacy_rate, verified_rate
 
 
 def _rate(promoted: int, total: int) -> float | None:
@@ -392,7 +439,9 @@ def validate_funnel_invariants(levels: list[dict]) -> None:
         if level["base"] == 0:
             assert level["legacy_rate"] is None and level["verified_rate"] is None
         if level["valid_base"] == 0:
-            assert level["verified_rate"] is None
+            assert (
+                level["legacy_rate"] is None and level["verified_rate"] is None
+            ), "全部不可验证时两种成功率都必须为 null"
 
 
 def _latest_logs(
@@ -519,7 +568,9 @@ def load_funnel_inputs(
     )
     up_quality = _source_quality(logs.get((trade_date, "pool_up")), len(today_up_rows))
     broken_quality = _source_quality(
-        logs.get((trade_date, "pool_broken")), len(today_broken_rows)
+        logs.get((trade_date, "pool_broken")),
+        len(today_broken_rows),
+        allow_empty_ok=True,
     )
 
     return FunnelInputs(
@@ -555,72 +606,154 @@ def _day_status(
     return VERIFIED
 
 
-def list_funnel_dates(session: Session, days: int = 255) -> list[dict]:
-    """日期可用性摘要：只查池家数与采集状态，不携带逐券行。
+def _has_valid_sample(
+    day: date,
+    prev_pool: dict[str, int],
+    today_up: dict[str, int],
+    today_broken: set[str],
+    session: Session,
+) -> bool:
+    """轻量判断该日是否**至少有一只**可验证样本（与逐券分类同口径）。
 
-    ⚠️ `quality_status` 是**池数据**的可信度（Up/Broken 采集日志），不是整日
-    逐券分类的最终质量；逐券是否还有缺日线/冲突，由 `/promotion-funnel` 那天
-    实际计算后给出。两者可能不同，日期列表不冒充完整结论。
+    先看昨日基数股里有没有晋级/炸板；两者都没有时，只需一次 `EXISTS` 确认
+    是否有日线能判失败。没有 N+1 逐券循环，也不会把「全部缺日线」误标成
+    「可计算」。
     """
-    anchor = session.scalar(
-        select(func.max(LimitPool.trade_date)).where(LimitPool.pool_type == "up")
+    unresolved: list[str] = []
+    for code, level in prev_pool.items():
+        in_up = code in today_up
+        in_broken = code in today_broken
+        if in_up and in_broken:
+            continue  # 双池冲突 → 不可验证
+        if in_up:
+            if int(today_up[code]) == int(level) + 1:
+                return True
+            continue  # 连板不衔接 → 不可验证
+        if in_broken:
+            return True
+        unresolved.append(code)
+    if not unresolved:
+        return False
+    return bool(
+        session.scalar(
+            select(
+                exists().where(
+                    StockDaily.trade_date == day,
+                    StockDaily.code.in_(unresolved),
+                    StockDaily.close.is_not(None),
+                )
+            )
+        )
     )
-    if anchor is None:
+
+
+def list_funnel_dates(session: Session, days: int = 255) -> list[dict]:
+    """最近 N 个**交易日**的可用性摘要（不是最近 N 个有数据的日期）。
+
+    - 交易日序列来自 `trade_calendar`，缺失池的日期也保留，方便用户点进去看
+      「未采集 / 失败 / 质量未知」的明确原因；
+    - 起点取已有涨停池或涨停池采集日志的最早日期，不向更早的历史凭空扩；
+    - 终点取 `today_cn()`，最新交易日尚未采集时也会出现在列表里；
+    - `quality_status` 是**池数据**可信度，不代表逐券全部可验证；逐券是否还有
+      缺日线/冲突，由单日漏斗接口实际计算后给出。
+    - `can_calculate_verified_rate` 只有在昨日池与今日 up/broken 池都可信、
+      昨日有基数，且至少存在一只可验证样本时才为 true。这样 up 失败、
+      broken 成功，或全部缺日线时，都不会被误标为「可计算」。
+    """
+    first_pool = session.scalar(
+        select(func.min(LimitPool.trade_date)).where(
+            LimitPool.pool_type.in_(("up", "broken"))
+        )
+    )
+    first_log = session.scalar(
+        select(func.min(CollectLog.trade_date)).where(
+            CollectLog.task.in_(("pool_up", "pool_broken"))
+        )
+    )
+    starts = [day for day in (first_pool, first_log) if day is not None]
+    if not starts:
         return []
+    start = min(starts)
+    end = today_cn()
+    if start > end:
+        return []
+
     calendar = list(
         session.scalars(
             select(TradeCalendar.trade_date)
-            .where(TradeCalendar.trade_date <= anchor)
+            .where(TradeCalendar.trade_date >= start, TradeCalendar.trade_date <= end)
             .order_by(TradeCalendar.trade_date)
         )
     )
+    if not calendar:
+        return []
+    target_dates = calendar[-days:]
     calendar_index = {day: index for index, day in enumerate(calendar)}
-    counts_by_type = {
-        (day, pool_type): count
-        for day, pool_type, count in session.execute(
-            select(LimitPool.trade_date, LimitPool.pool_type, func.count())
-            .where(LimitPool.pool_type.in_(("up", "broken")))
-            .group_by(LimitPool.trade_date, LimitPool.pool_type)
-        ).all()
-    }
-    counts = {
-        day: count
-        for (day, pool_type), count in counts_by_type.items()
-        if pool_type == "up"
-    }
-    target_dates = sorted(counts)[-days:]
-    log_days = set(target_dates)
-    log_days.update(
+
+    prev_days = {
         calendar[calendar_index[day] - 1]
         for day in target_dates
         if day in calendar_index and calendar_index[day] > 0
-    )
-    logs = _latest_logs(session, sorted(log_days))
+    }
+    pool_days = set(target_dates) | prev_days
+
+    # 一次批量取代码：用于判断「至少一只可验证样本」，不返回逐券明细。
+    up_codes: dict[date, dict[str, int]] = {}
+    broken_codes: dict[date, set[str]] = {}
+    for day, pool_type, code, consecutive in session.execute(
+        select(
+            LimitPool.trade_date,
+            LimitPool.pool_type,
+            LimitPool.code,
+            LimitPool.consecutive,
+        ).where(
+            LimitPool.trade_date.in_(pool_days),
+            LimitPool.pool_type.in_(("up", "broken")),
+        )
+    ).all():
+        if pool_type == "up":
+            up_codes.setdefault(day, {})[code] = consecutive or 1
+        else:
+            broken_codes.setdefault(day, set()).add(code)
+
+    logs = _latest_logs(session, sorted(set(target_dates) | prev_days))
 
     output: list[dict] = []
     for day in target_dates:
         index = calendar_index.get(day)
         prev_day = calendar[index - 1] if index is not None and index > 0 else None
-        prev_count = counts.get(prev_day, 0)
+        prev_pool = up_codes.get(prev_day, {}) if prev_day else {}
+        today_up = up_codes.get(day, {})
+        today_broken = broken_codes.get(day, set())
+        prev_count = len(prev_pool)
         prev_quality = _source_quality(
             logs.get((prev_day, "pool_up")) if prev_day else None, prev_count
         )
-        up_quality = _source_quality(logs.get((day, "pool_up")), counts.get(day, 0))
+        up_quality = _source_quality(logs.get((day, "pool_up")), len(today_up))
         broken_quality = _source_quality(
-            logs.get((day, "pool_broken")), counts_by_type.get((day, "broken"), 0)
+            logs.get((day, "pool_broken")),
+            len(today_broken),
+            allow_empty_ok=True,
         )
         status = _day_status(prev_quality, up_quality, broken_quality, prev_count)
+        source_ready = (
+            prev_quality.trusted
+            and prev_count > 0
+            and up_quality.trusted
+            and broken_quality.trusted
+        )
         output.append(
             {
                 "trade_date": day,
                 "prev_date": prev_day,
                 "has_previous_pool": prev_count > 0,
-                "has_today_pool": counts.get(day, 0) > 0,
+                "has_today_pool": bool(today_up),
                 "quality_status": status,
                 "can_calculate_verified_rate": (
-                    prev_quality.trusted
-                    and prev_count > 0
-                    and (up_quality.trusted or broken_quality.trusted)
+                    source_ready
+                    and _has_valid_sample(
+                        day, prev_pool, today_up, today_broken, session
+                    )
                 ),
             }
         )

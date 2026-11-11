@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   limitPool: vi.fn(),
   limitThemes: vi.fn(),
   promotionFunnel: vi.fn(),
+  promotionFunnelDates: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
@@ -17,6 +18,7 @@ vi.mock('../../api/client', () => ({
     limitPool: mocks.limitPool,
     limitThemes: mocks.limitThemes,
     promotionFunnel: mocks.promotionFunnel,
+    promotionFunnelDates: mocks.promotionFunnelDates,
   },
   isNoDataError: (err: { status?: number }) => err?.status === 404,
 }))
@@ -81,6 +83,18 @@ beforeEach(() => {
   mocks.promotion.mockResolvedValue(null)
   mocks.limitPool.mockResolvedValue(pool)
   mocks.limitThemes.mockResolvedValue(null)
+  mocks.promotionFunnelDates.mockResolvedValue({
+    dates: [
+      {
+        trade_date: '2026-09-24',
+        prev_date: '2026-09-23',
+        has_previous_pool: true,
+        has_today_pool: true,
+        quality_status: 'VERIFIED',
+        can_calculate_verified_rate: true,
+      },
+    ],
+  })
 })
 
 test('switching to funnel tab fetches and renders the funnel', async () => {
@@ -106,6 +120,9 @@ test('stale response cannot overwrite a newer date', async () => {
   render(<LimitReview />)
   fireEvent.click(screen.getByRole('button', { name: '晋级漏斗' }))
   await waitFor(() => expect(mocks.promotionFunnel).toHaveBeenCalledTimes(1))
+  await waitFor(() =>
+    expect(screen.getByRole('option', { name: /2026-09-24/ })).toBeTruthy(),
+  )
 
   fireEvent.change(screen.getByRole('combobox'), { target: { value: '2026-09-24' } })
   await waitFor(() => expect(mocks.promotionFunnel).toHaveBeenCalledTimes(2))

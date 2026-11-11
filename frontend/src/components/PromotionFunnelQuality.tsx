@@ -27,6 +27,7 @@ const REASON_LABEL: Record<string, string> = {
   COLLECTION_FAILED: '采集失败',
   COLLECTION_SKIPPED: '采集被跳过',
   SOURCE_STATUS_UNKNOWN: '缺少采集状态证据',
+  UP_POOL_EMPTY_WITH_OK_LOG: '涨停池日志成功但实际 0 行（疑似来源空表）',
   NO_PREVIOUS_TRADE_DAY: '没有上一交易日',
 }
 

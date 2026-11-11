@@ -59,9 +59,20 @@ export default function PromotionFunnel({
   }
 
   const current = data.levels.find((item) => item.level === selectedLevel) ?? null
-  const overallLegacy = totals.base > 0 ? (totals.promoted / totals.base) * 100 : null
+  const canLegacy = data.quality.prev_up === 'ok' && data.quality.today_up === 'ok'
+  // 全部样本不可验证时没有可信结果，0% 只能写成「—」
+  const overallLegacy =
+    canLegacy && totals.base > 0 && totals.validBase > 0
+      ? (totals.promoted / totals.base) * 100
+      : null
   const overallVerified =
     totals.validBase > 0 ? (totals.promoted / totals.validBase) * 100 : null
+  const levelRange =
+    data.levels.length > 1
+      ? `${data.levels[0].label}–${data.levels[data.levels.length - 1].label}`
+      : data.levels.length === 1
+        ? data.levels[0].label
+        : ''
 
   return (
     <div>
@@ -71,29 +82,38 @@ export default function PromotionFunnel({
         prevDate={data.prev_date}
       />
 
-      <div className="flex flex-wrap items-stretch gap-px border-b border-line-soft bg-line-soft">
-        <Stat label="昨日基数" value={fmtInt(totals.base)} unit="只" />
-        <Stat label="今日晋级" value={fmtInt(totals.promoted)} unit="只" tone="text-up" />
-        <Stat label="今日炸板" value={fmtInt(totals.broken)} unit="只" tone="text-warn" />
-        <Stat label="今日失败" value={fmtInt(totals.failed)} unit="只" />
-        <Stat
-          label="不可验证"
-          value={fmtInt(totals.unverifiable)}
-          unit="只"
-          tone={totals.unverifiable > 0 ? 'text-danger' : 'text-fg'}
-        />
-        <Stat label="原口径晋级率" value={rateText(overallLegacy)} />
-        <Stat label="可验证口径" value={rateText(overallVerified)} />
-      </div>
-
       {data.levels.length === 0 ? (
         <div className="px-4 py-10 text-center text-[14px] text-fg-dim">
-          {data.quality.status === 'NOT_COLLECTED'
-            ? '该交易日没有可用的昨日涨停池，无法建立晋级基数。'
-            : '该交易日缺少可信的昨日涨停池，未生成漏斗。'}
+          <div className="text-fg-muted">暂无可信基数</div>
+          <div className="mt-1 text-[12px]">
+            {data.quality.status === 'NOT_COLLECTED'
+              ? '该交易日没有可用的昨日涨停池，无法建立晋级基数。'
+              : '该交易日缺少可信的昨日涨停池，未生成漏斗；不以 0 只或 0% 代替。'}
+          </div>
         </div>
       ) : (
         <>
+          <div className="flex flex-wrap items-stretch gap-px border-b border-line-soft bg-line-soft">
+            <Stat label="昨日基数" value={fmtInt(totals.base)} unit="只" />
+            <Stat label="今日晋级" value={fmtInt(totals.promoted)} unit="只" tone="text-up" />
+            <Stat label="今日炸板" value={fmtInt(totals.broken)} unit="只" tone="text-warn" />
+            <Stat label="今日失败" value={fmtInt(totals.failed)} unit="只" />
+            <Stat
+              label="不可验证"
+              value={fmtInt(totals.unverifiable)}
+              unit="只"
+              tone={totals.unverifiable > 0 ? 'text-danger' : 'text-fg'}
+            />
+            <Stat
+              label={`所选档位合计晋级率（${levelRange}，原口径）`}
+              value={rateText(overallLegacy)}
+            />
+            <Stat
+              label={`所选档位合计（${levelRange}，可验证）`}
+              value={rateText(overallVerified)}
+            />
+          </div>
+
           <div className="grid grid-cols-1 gap-2 border-b border-line-soft p-3 sm:grid-cols-2 xl:grid-cols-4">
             {data.levels.map((item) => (
               <button
