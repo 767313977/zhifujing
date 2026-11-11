@@ -766,6 +766,79 @@ class PromotionSeries(BaseModel):
     overall_rates: list[float | None]
 
 
+# --------------------------------------------------------------- 晋级漏斗（P0-B）
+
+
+class PromotionFunnelStock(ApiModel):
+    """漏斗里的一只票。不可验证时除代码/原因外允许为 null。"""
+
+    code: str
+    name: str | None = None
+    previous_level: int
+    today_consecutive: int | None = None
+    #: PROMOTED / BROKEN / FAILED / UNVERIFIABLE
+    status: str
+    reason_code: str | None = None
+    reason_text: str | None = None
+    #: up / broken / up+broken / null
+    today_pool_type: str | None = None
+    pct_chg: float | None = None
+    close: float | None = None
+    #: 开盘啦精选板块；炸板股没有该来源，留空，不拿行业替代
+    board: str | None = None
+    industry: str | None = None
+    first_seal_time: str | None = None
+    open_times: int | None = None
+    seal_amount: float | None = None
+    quote_date: date | None = None
+    data_quality: str
+
+
+class PromotionFunnelLevel(BaseModel):
+    level: int
+    label: str
+    base: int
+    promoted: int
+    broken: int
+    failed: int
+    unverifiable: int
+    valid_base: int
+    #: 旧口径：promoted / base；base=0 时为 null
+    legacy_rate: float | None = None
+    #: 可验证口径：promoted / valid_base；valid_base=0 时为 null
+    verified_rate: float | None = None
+    stocks: list[PromotionFunnelStock] = []
+
+
+class PromotionFunnelQuality(BaseModel):
+    status: str
+    reasons: list[str] = []
+    prev_up: str
+    today_up: str
+    today_broken: str
+    today_daily: str
+
+
+class PromotionFunnelOut(BaseModel):
+    trade_date: date
+    prev_date: date | None = None
+    quality: PromotionFunnelQuality
+    levels: list[PromotionFunnelLevel] = []
+
+
+class PromotionFunnelDateItem(BaseModel):
+    trade_date: date
+    prev_date: date | None = None
+    has_previous_pool: bool
+    has_today_pool: bool
+    quality_status: str
+    can_calculate_verified_rate: bool
+
+
+class PromotionFunnelDatesOut(BaseModel):
+    dates: list[PromotionFunnelDateItem] = []
+
+
 # ------------------------------------------------------------------ 龙虎榜
 
 

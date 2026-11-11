@@ -31,8 +31,15 @@ from app.schemas import (
     LimitThemes,
     PromotionLevel,
     PromotionSeries,
+    PromotionFunnelDatesOut,
+    PromotionFunnelOut,
 )
 from app.services.themes import limit_up_themes
+from app.services.limit_funnel import (
+    build_promotion_funnel,
+    list_funnel_dates,
+    load_funnel_inputs,
+)
 from app.services.trading_days import previous_trade_day
 
 router = APIRouter(prefix="/api", tags=["复盘"])
@@ -589,4 +596,68 @@ def promotion(
         overall_counts=overall_counts,
         overall_promoted=overall_promoted,
         overall_rates=overall_rates,
+    )
+
+
+def _parse_funnel_levels(raw: str) -> list[int]:
+    """只允许 1–10 的正整数，去重并升序；非法值直接 422。"""
+    try:
+        values = [int(part.strip()) for part in raw.split(",") if part.strip()]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="levels 必须是逗号分隔的正整数") from exc
+    if not values:
+        raise HTTPException(status_code=422, detail="levels 不能为空")
+    if any(value < 1 or value > 10 for value in values):
+        raise HTTPException(status_code=422, detail="levels 只允许 1–10")
+    return sorted(set(values))
+
+
+@router.get("/limit/promotion-funnel/dates", response_model=PromotionFunnelDatesOut)
+def promotion_funnel_dates(
+    days: int = Query(255, ge=1, le=300, description="返回最近 N 个有涨停池的交易日"),
+    session: Session = Depends(get_db),
+) -> PromotionFunnelDatesOut:
+    """漏斗可用日期：只返回家数与采集状态摘要，不携带逐券行。"""
+    return PromotionFunnelDatesOut(dates=list_funnel_dates(session, days))
+
+
+@router.get("/limit/promotion-funnel", response_model=PromotionFunnelOut)
+def promotion_funnel(
+    trade_date: date = Depends(resolve_trade_date),
+    levels: str = Query("1,2,3,4", description="连板档位，逗号分隔，如 1,2,3,4"),
+    include_stocks: bool = Query(True, description="是否返回逐券明细"),
+    session: Session = Depends(get_db),
+) -> PromotionFunnelOut:
+    """按昨日连板档拆出「晋级 / 炸板 / 失败 / 不可验证」。
+
+    与 `/limit/promotion` 的区别：旧接口只给 `promoted / base`；这里把
+    「今日池是否可信」「今日有无日线」单独拆出来，任何不确定都进
+    `UNVERIFIABLE`，并把 `legacy_rate` 与 `verified_rate` 分开返回。
+    """
+    wanted = _parse_funnel_levels(levels)
+    prev_date = previous_trade_day(trade_date, session)
+    if prev_date is None:
+        return PromotionFunnelOut(
+            trade_date=trade_date,
+            prev_date=None,
+            quality={
+                "status": "UNVERIFIED",
+                "reasons": ["NO_PREVIOUS_TRADE_DAY"],
+                "prev_up": "not_collected",
+                "today_up": "not_collected",
+                "today_broken": "not_collected",
+                "today_daily": "not_collected",
+            },
+            levels=[],
+        )
+
+    inputs = load_funnel_inputs(session, prev_date, trade_date)
+    level_rows, quality = build_promotion_funnel(inputs, wanted)
+    if not include_stocks:
+        level_rows = [{**row, "stocks": []} for row in level_rows]
+    return PromotionFunnelOut(
+        trade_date=trade_date,
+        prev_date=prev_date,
+        quality=quality.as_dict(),
+        levels=level_rows,
     )
