@@ -105,7 +105,41 @@ def _to_code(ts_code: str) -> str:
     return ts_code.split(".")[0]
 
 
-def analyse(df, manifest: dict, bse_codes: list[str]) -> dict:
+def load_history_codes(path: Path, day: str) -> set[str]:
+    """`history.db` 在 D 日实际有行情的代码（只读，不写）。"""
+    if not path.is_file():
+        return set()
+    import sqlite3
+    from datetime import date
+
+    value = f"{day[:4]}-{day[4:6]}-{day[6:]}"
+    date.fromisoformat(value)  # 仅校验格式
+    con = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+    try:
+        return {row[0] for row in con.execute("select code from stock_daily where trade_date=?", (value,))}
+    finally:
+        con.close()
+
+
+def verdict(result: dict) -> str:
+    if result.get("permission_denied"):
+        return "TUSHARE_DAILY_PERMISSION_DENIED"
+    ok = (
+        not result["missing_fields"]
+        and result["rows"] > 0
+        and not result["truncation_suspected"]
+        and result["bse_returned"] == result["bse_total"]
+        and result["matched"] / result["expected_total"] >= 0.95
+    )
+    return "TUSHARE_DAILY_SINGLE_CALL_VERIFIED" if ok else "TUSHARE_DAILY_COVERAGE_UNVERIFIED"
+
+
+def analyse(
+    df,
+    manifest: dict,
+    bse_codes: list[str],
+    history_codes: set[str] | None = None,
+) -> dict:
     """把返回值折算成研究字段并做覆盖率核对（纯内存）。"""
     expected = {item["code"]: item["board"] for item in manifest["securities"]}
 
@@ -129,6 +163,19 @@ def analyse(df, manifest: dict, bse_codes: list[str]) -> dict:
             "returned": len(got),
             "missing": len(wanted - got),
             "coverage": len(got) / len(wanted) if wanted else 0.0,
+        }
+
+    # 与 history.db 同一交易日的实际有行情集合对比（缺失先列明细，不归因为停牌）
+    history = history_codes or set()
+    vs_history = None
+    if history:
+        vs_history = {
+            "history_rows": len(history),
+            "matched": len(history & unique),
+            "missing_count": len(history - unique),
+            "missing_examples": sorted(history - unique)[:50],
+            "extra_count": len(unique - history),
+            "extra_examples": sorted(unique - history)[:50],
         }
 
     bse_detail = []
@@ -172,6 +219,7 @@ def analyse(df, manifest: dict, bse_codes: list[str]) -> dict:
         "extra_count": len(extra),
         "extra_examples": extra[:20],
         "per_board": per_board,
+        "vs_history": vs_history,
         "bse_total": len(bse_codes),
         "bse_returned": sum(1 for item in bse_detail if item["returned"]),
         "bse_detail": bse_detail,
@@ -211,33 +259,48 @@ def print_report(result: dict, day: str) -> None:
             print(f"  {item['ts_code']}  股 {item['volume_shares']:.0f}  "
                   f"额 {item['amount_yuan']:.0f}  pct {item['pct_chg']:.2f}%")
 
+    if result.get("vs_history"):
+        item = result["vs_history"]
+        print(f"\n与 history.db 同日实际有行情集合（{item['history_rows']} 只）对比：")
+        print(f"  匹配 {item['matched']}，Tushare 缺 {item['missing_count']}，"
+              f"Tushare 多 {item['extra_count']}")
+        if item["missing_examples"]:
+            print(f"  Tushare 缺（前 50）：{item['missing_examples']}")
+        if item["extra_examples"]:
+            print(f"  Tushare 多（前 50）：{item['extra_examples']}")
+
     if result["truncation_suspected"]:
         print("\n⚠️ 行数达到 6000，疑似触顶；需分段取。")
     if result["missing_examples"]:
         print(f"\n缺失代码（前 50）：{result['missing_examples']}")
     if result["extra_examples"]:
         print(f"\n清单外代码（前 20）：{result['extra_examples']}")
+    print(f"\n判定：{verdict(result)}")
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Tushare daily 单日只读验证")
     parser.add_argument("--date", default=DEFAULT_DATE, help="交易日 YYYYMMDD")
     parser.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
+    parser.add_argument("--history-db", default=str(BACKEND / "data" / "history.db"))
     parser.add_argument("--execute", action="store_true", help="真正发送唯一一次请求")
     parser.add_argument("--report", default="", help="可选：把结果写成 JSON（不写数据库）")
     args = parser.parse_args(argv)
 
     manifest = load_manifest(Path(args.manifest))
     bse_codes = load_bse_codes(BSE_EVIDENCE)
+    history_codes = load_history_codes(Path(args.history_db), args.date)
     token = load_token()
 
     print("计划：调用 1 次 daily(trade_date=%s)" % args.date)
     print(f"清单：{len(manifest['securities'])} 只（{manifest.get('version')}），"
-          f"北交所 {len(bse_codes)} 只")
+          f"北交所 {len(bse_codes)} 只；history.db 当日 {len(history_codes)} 只")
 
     if not args.execute:
         print("\n[dry-run] 未发送任何请求。")
-        print("已就绪项：清单可读；Token " + ("已配置（不显示）" if token else "未配置"))
+        print("已就绪项：清单可读；history.db "
+              + ("可读（只读）" if history_codes else "当日无数据或不可读")
+              + "；Token " + ("已配置（不显示）" if token else "未配置"))
         try:
             import importlib.util
 
@@ -259,9 +322,15 @@ def main(argv: list[str] | None = None) -> int:
         df = pro.daily(trade_date=args.date)
     except Exception as error:  # noqa: BLE001
         message = redact(str(error), token)
-        raise SystemExit(f"接口调用失败（未重试）：{message}") from error
+        denied = any(
+            mark in message
+            for mark in ("权限", "积分", "permission", "没有访问", "每分钟", "token", "TOKEN")
+        )
+        print(f"接口调用失败（未重试、未重发）：{message}")
+        print(f"\n判定：{'TUSHARE_DAILY_PERMISSION_DENIED' if denied else 'TUSHARE_DAILY_COVERAGE_UNVERIFIED'}")
+        raise SystemExit(2) from error
 
-    result = analyse(df, manifest, bse_codes)
+    result = analyse(df, manifest, bse_codes, history_codes)
     print_report(result, args.date)
 
     if args.report:
