@@ -124,3 +124,73 @@ def test_manifest_does_not_touch_readonly_source(manifest, tmp_path):
     finally:
         engine.dispose()
     assert db.stat().st_size == before
+
+
+# ---- 官方证据解锁北交所 -----------------------------------------------------
+
+
+def _evidence(code: str, name: str, listed: str = "2026-05-07") -> dict:
+    return {
+        "code": code,
+        "name": name,
+        "listing_date": listed,
+        "switched": False,
+        "old_code": None,
+        "source": "https://www.bse.cn/nqxxController/nqxxCnzq.do",
+    }
+
+
+def test_evidence_unlocks_bse(manifest, tmp_path):
+    db = tmp_path / "f.db"
+    engine = store.connect_readonly(db)
+    try:
+        with Session(engine) as session:
+            verified = universe.build_manifest(
+                session,
+                source_db=str(db),
+                generated_at=INGESTED,
+                version="b1v-test",
+                bse_evidence={"920001": _evidence("920001", "测试920001")},
+            )
+    finally:
+        engine.dispose()
+    by_code = {item["code"]: item for item in verified["securities"]}
+    assert by_code["920001"]["forward_eligible"] is True
+    assert by_code["920001"]["official_listing_date"] == "2026-05-07"
+    assert by_code["830001"]["forward_eligible"] is False  # 没有证据的仍排除
+    assert verified["counts"]["bse_verified_by_evidence"] == 1
+    # 证券集合没变，但可前瞻集合变了 → 两个哈希必须有一个不同
+    assert verified["universe_sha256"] == manifest["universe_sha256"]
+    assert verified["eligibility_sha256"] != manifest["eligibility_sha256"]
+
+
+def test_evidence_name_mismatch_rejected(manifest, tmp_path):
+    db = tmp_path / "f.db"
+    engine = store.connect_readonly(db)
+    try:
+        with Session(engine) as session:
+            with pytest.raises(ValueError):
+                universe.build_manifest(
+                    session,
+                    source_db=str(db),
+                    generated_at=INGESTED,
+                    bse_evidence={"920001": _evidence("920001", "错误简称")},
+                )
+    finally:
+        engine.dispose()
+
+
+def test_evidence_unknown_code_rejected(manifest, tmp_path):
+    db = tmp_path / "f.db"
+    engine = store.connect_readonly(db)
+    try:
+        with Session(engine) as session:
+            with pytest.raises(ValueError):
+                universe.build_manifest(
+                    session,
+                    source_db=str(db),
+                    generated_at=INGESTED,
+                    bse_evidence={"999999": _evidence("999999", "不存在")},
+                )
+    finally:
+        engine.dispose()

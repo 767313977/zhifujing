@@ -826,8 +826,10 @@ def test_protocol_weights_are_frozen():
     assert "北交所" in ft.PROTOCOL["universe_definition"]
 
 
-def test_protocol_records_universe_truncation_risk():
-    """B1 缩小了池子，风险标记必须跟着记录，不能只写在文档里。"""
-    assert "UNIVERSE_TRUNCATED_BSE" in ft.PROTOCOL["risk_flags"]
+def test_protocol_records_universe_risk_flags():
+    """B1v 已恢复历史全部证券，不能再标「北交所被截断」。"""
     assert "SURVIVORSHIP_BIAS" in ft.PROTOCOL["risk_flags"]
+    assert "ST_STATUS_PARTIAL" in ft.PROTOCOL["risk_flags"]
+    assert "UNIVERSE_TRUNCATED_BSE" not in ft.PROTOCOL["risk_flags"]
     assert ft.STRATEGY_VERSION.startswith("c0-2026-11-11")
+    assert "B1v" in ft.PROTOCOL["universe_definition"]

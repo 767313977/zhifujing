@@ -56,7 +56,14 @@ def _readonly_engine(path: Path):
     return create_engine(f"sqlite:///file:{path.as_posix()}?mode=ro&uri=true")
 
 
-def build_manifest(session: Session, *, source_db: str, generated_at: str) -> dict:
+def build_manifest(
+    session: Session,
+    *,
+    source_db: str,
+    generated_at: str,
+    version: str = UNIVERSE_VERSION,
+    bse_evidence: dict[str, dict] | None = None,
+) -> dict:
     cutoff: date = session.scalar(select(func.max(StockDaily.trade_date)))
     rows = session.execute(
         select(
@@ -68,10 +75,32 @@ def build_manifest(session: Session, *, source_db: str, generated_at: str) -> di
         ).group_by(StockDaily.code)
     ).all()
 
+    evidence = bse_evidence or {}
+    known = {row[0]: row[1] for row in rows}
+    unknown = sorted(set(evidence) - set(known))
+    if unknown:
+        raise ValueError(f"证据里有历史库不存在的证券：{unknown}")
+    mismatched = sorted(
+        code for code, item in evidence.items() if item.get("name") and item["name"] != known[code]
+    )
+    if mismatched:
+        raise ValueError(f"证据里的简称与历史库不一致：{mismatched}")
+
     securities = []
     for code, name, first_date, last_date, count in rows:
         board = board_of(code)
-        verified = board not in UNVERIFIED_BOARDS
+        record = evidence.get(code)
+        if board in UNVERIFIED_BOARDS:
+            verified = record is not None
+            note = (
+                f"官方名录：上市 {record['listing_date']}，"
+                f"代码切换={'是→' + str(record.get('old_code')) if record.get('switched') else '否'}"
+                if record
+                else "920 段为 2025-10-09 切换后的新代码；旧代码映射需交易所/供应商确认"
+            )
+        else:
+            verified = True
+            note = "沪深代码未发生段位迁移"
         securities.append(
             {
                 "code": code,
@@ -82,11 +111,9 @@ def build_manifest(session: Session, *, source_db: str, generated_at: str) -> di
                 "rows": int(count),
                 "identity_verified": verified,
                 "forward_eligible": verified,
-                "identity_note": (
-                    "920 段为 2025-10-09 切换后的新代码；旧代码映射需交易所/供应商确认"
-                    if board == "北交所"
-                    else "沪深代码未发生段位迁移"
-                ),
+                "identity_note": note,
+                "official_listing_date": record["listing_date"] if record else None,
+                "official_source": record["source"] if record else None,
             }
         )
     securities.sort(key=lambda item: item["code"])
@@ -95,6 +122,12 @@ def build_manifest(session: Session, *, source_db: str, generated_at: str) -> di
         f"{item['code']}|{item['name']}|{item['board']}" for item in securities
     )
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    # 证券集合相同、只是"谁可前瞻"不同时，上面的哈希不会变。
+    # 另给一个只覆盖可前瞻标记的哈希，用来区分 B1 与 B1v 这类政策版本。
+    eligibility = "\n".join(
+        f"{item['code']}|{int(item['forward_eligible'])}" for item in securities
+    )
+    eligibility_digest = hashlib.sha256(eligibility.encode("utf-8")).hexdigest()
 
     by_board: dict[str, int] = {}
     for item in securities:
@@ -102,20 +135,25 @@ def build_manifest(session: Session, *, source_db: str, generated_at: str) -> di
     eligible = sum(1 for item in securities if item["forward_eligible"])
 
     return {
-        "version": UNIVERSE_VERSION,
+        "version": version,
         "source_db": source_db,
         "data_cutoff": cutoff.isoformat() if cutoff else None,
         "generated_at": generated_at,
         "universe_sha256": digest,
+        "eligibility_sha256": eligibility_digest,
         "counts": {
             "total": len(securities),
             "forward_eligible": eligible,
             "excluded_unverified": len(securities) - eligible,
             "by_board": by_board,
+            "bse_verified_by_evidence": sum(
+                1 for item in securities if item["board"] in UNVERIFIED_BOARDS
+                and item["identity_verified"]
+            ),
         },
         "policy": (
-            "前瞻池 = 历史池 ∩ 身份可确认证券；北交所 920 段在官方新旧代码映射确认前"
-            "不生成正式前瞻信号；不自动纳入历史集合以外的新证券。"
+            "前瞻池 = 历史池 ∩ 身份可确认证券；北交所证券只有在取得官方上市记录"
+            "（代码、简称、上市日期、是否切换）后才放行；不自动纳入历史集合以外的新证券。"
         ),
         "securities": securities,
     }
@@ -130,6 +168,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", default=str(BACKEND / "data" / "history.db"))
     parser.add_argument("--out", default="", help="输出 JSON 路径；留空只打印摘要")
     parser.add_argument("--verify", default="", help="校验已有清单的 universe_sha256")
+    parser.add_argument("--version", default=UNIVERSE_VERSION, help="清单版本号")
+    parser.add_argument(
+        "--bse-evidence",
+        default="",
+        help="北交所官方身份证据 JSON；提供的证券才标记为可前瞻",
+    )
     args = parser.parse_args(argv)
 
     if args.verify:
@@ -147,6 +191,14 @@ def main(argv: list[str] | None = None) -> int:
     if not db_path.is_file():
         raise SystemExit(f"没有 {db_path}")
 
+    evidence: dict[str, dict] = {}
+    if args.bse_evidence:
+        evidence_path = Path(args.bse_evidence)
+        if not evidence_path.is_file():
+            raise SystemExit(f"没有 {evidence_path}")
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        evidence = {item["code"]: item for item in payload["securities"]}
+
     engine = _readonly_engine(db_path)
     try:
         with Session(engine) as session:
@@ -154,6 +206,8 @@ def main(argv: list[str] | None = None) -> int:
                 session,
                 source_db=str(db_path),
                 generated_at=datetime.now().astimezone().isoformat(timespec="seconds"),
+                version=args.version,
+                bse_evidence=evidence,
             )
     finally:
         engine.dispose()
@@ -167,6 +221,7 @@ def main(argv: list[str] | None = None) -> int:
     for board, number in sorted(counts["by_board"].items()):
         print(f"    {board}: {number}")
     print(f"  sha256 {manifest['universe_sha256']}")
+    print(f"  eligibility_sha256 {manifest['eligibility_sha256']}")
 
     if args.out:
         out = Path(args.out)

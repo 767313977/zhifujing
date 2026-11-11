@@ -12,12 +12,15 @@
 
 CLI 只用 `--mode replay` / `--mode forward` 两个取值，不再出现 `live` 这个别名。
 
-## B1：前瞻池比历史池少 32 只
+## B1v：前瞻池恢复为历史全部 5,108 只
 
-北交所 2025-10-09 完成存量代码向 920 段切换，离线无法确认新旧代码映射，因此
-`forward` 只使用 B1 清单（`backend/data/c0_universe_b1.json`）里
-`forward_eligible=true` 的证券；`replay` 不受清单影响，保持与历史 C0 可比。
-缺清单时 `forward` 直接拒绝，不按代码段临时拼池。
+北交所 32 只已按北交所官方上市公司名录（上市日期）与《新旧代码对照表》逐只核验：
+4 只为存量切换、28 只为 2024-04-22 之后以 920 直接上市，身份均可确认。
+因此 `forward` 使用 B1v 清单（`backend/data/c0_universe_b1_verified.json`），
+与历史 C0 的证券集合完全一致；旧版 B1 清单与哈希保留不覆盖，仅作历史证据。
+
+`forward` 仍只使用清单内 `forward_eligible=true` 的证券，缺失清单时直接拒绝，
+不按代码段临时拼池；`replay` 不受清单影响。
 
 ## `forward` 的启动闸门（全部通过才落盘）
 
@@ -116,13 +119,13 @@ OUT_DIR = BACKEND / "data" / "forward_c0"
 
 MARKET_TZ = ZoneInfo("Asia/Shanghai")
 
-STRATEGY_VERSION = "c0-2026-11-11-b1"
+STRATEGY_VERSION = "c0-2026-11-11-b1v"
 TOP_N = 20
 HORIZON = 5
 COSTS = (30.0, 50.0, 100.0)
 
-#: B1 证券清单：前瞻池 = 历史池 ∩ 身份可确认证券
-UNIVERSE_FILE = BACKEND / "data" / "c0_universe_b1.json"
+#: B1v 证券清单：历史池全部证券（北交所 32 只已按官方名录核验）
+UNIVERSE_FILE = BACKEND / "data" / "c0_universe_b1_verified.json"
 
 #: 与 `backtest_reversal.build_signals` 的「当日有效池 < 30 跳过」共用同一阈值（见导入）
 
@@ -148,9 +151,9 @@ PROTOCOL: dict = {
     "window": 20,
     "min_coverage": 0.9,
     "universe_definition": (
-        "B1：历史研究库内出现过的全部证券 ∩ 身份可确认证券。"
-        "含主板/创业板/科创板；北交所仅保留历史实际存在的 920 段证券，"
-        "且在新旧代码映射经官方确认前不生成正式前瞻信号；含 ST（ST 不剔除）；"
+        "B1v：历史研究库内出现过的全部证券（含主板/创业板/科创板/北交所）。"
+        "北交所 32 只已按北交所官方上市公司名录与新旧代码对照表核验身份"
+        "（4 只存量切换 + 28 只 920 直接上市）；含 ST（ST 不剔除）；"
         "不自动纳入历史集合以外的新证券；不套用生产流动性门槛与市值上限"
     ),
     "suspension_filter": "D 日无行情记录的代码不进入候选（不做长期停牌单独判定）",
@@ -168,7 +171,6 @@ PROTOCOL: dict = {
     "risk_flags": (
         "SURVIVORSHIP_BIAS",
         "ST_STATUS_PARTIAL",
-        "UNIVERSE_TRUNCATED_BSE",
     ),
 }
 
@@ -234,6 +236,7 @@ def load_universe(path: Path) -> dict:
     return {
         "version": manifest.get("version", "unknown"),
         "sha256": manifest.get("universe_sha256", ""),
+        "eligibility_sha256": manifest.get("eligibility_sha256", ""),
         "data_cutoff": manifest.get("data_cutoff"),
         "codes": codes,
         "eligible": len(codes),
@@ -751,6 +754,7 @@ def cmd_snapshot(args) -> int:
                 universe_block = {
                     "version": manifest["version"],
                     "sha256": manifest["sha256"],
+                    "eligibility_sha256": manifest["eligibility_sha256"],
                     "data_cutoff": manifest["data_cutoff"],
                     "eligible": manifest["eligible"],
                     "excluded_unverified": manifest["excluded_unverified"],
