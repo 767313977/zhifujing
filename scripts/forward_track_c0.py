@@ -243,6 +243,79 @@ def revision_mismatch(meta: dict, current: dict, day: date) -> str | None:
     return None
 
 
+def day_content_mismatch(session: Session, day: date) -> str | None:
+    """用 `ingest_log` 记录的批次哈希复核当日行情是否被静默改动。
+
+    只对采集器写入的库生效（`data_version` 以 `tushare-daily:` 开头）；历史库没有
+    该类日志时返回 None。行情被改动但 `data_revision` 未变时，这里必须拒绝评价。
+    """
+    from sqlalchemy import text
+
+    try:
+        row = session.execute(
+            text(
+                "SELECT message FROM ingest_log WHERE trade_date=:day AND status='ok' "
+                "ORDER BY id DESC LIMIT 1"
+            ),
+            {"day": day.isoformat()},
+        ).first()
+    except Exception:  # noqa: BLE001 - 没有 ingest_log 表 = 非采集器库
+        session.rollback()
+        return None
+    if not row:
+        return None
+    try:
+        message = json.loads(row[0])
+    except Exception as error:  # noqa: BLE001
+        return f"当日成功日志无法解析：拒绝评价（{error}）"
+    version = str(message.get("data_version") or "")
+    if not version.startswith("tushare-daily:"):
+        return None
+    parts = version.split(":")
+    if len(parts) < 4 or len(parts[2]) < 12:
+        return f"data_version 格式非法（{version}）：拒绝评价"
+    expected = parts[2][:12]
+
+    from scripts.forward_collect_tushare import batch_digest
+
+    rows = [
+        {
+            "code": item.code,
+            "open": item.open,
+            "high": item.high,
+            "low": item.low,
+            "close": item.close,
+            "pct_chg": item.pct_chg,
+            "volume": item.volume,
+            "amount": item.amount,
+        }
+        for item in session.execute(
+            select(
+                StockDaily.code,
+                StockDaily.open,
+                StockDaily.high,
+                StockDaily.low,
+                StockDaily.close,
+                StockDaily.pct_chg,
+                StockDaily.volume,
+                StockDaily.amount,
+            ).where(StockDaily.trade_date == day)
+        )
+    ]
+    if not rows:
+        return "当日行情为空：拒绝评价"
+    try:
+        actual = batch_digest(rows)[:12]
+    except Exception as error:  # noqa: BLE001 - 字段被改成空值等
+        return f"当日行情无法计算内容哈希：拒绝评价（{error}）"
+    if actual != expected:
+        return (
+            f"当日行情内容哈希 {actual} ≠ 采集记录 {expected}："
+            "库内行情被改动，拒绝评价"
+        )
+    return None
+
+
 def load_universe(path: Path) -> dict:
     """读取 B1 证券清单；缺失或不合法直接拒绝（不生成正式前瞻信号）。"""
     if not path.is_file():
@@ -952,6 +1025,9 @@ def cmd_evaluate(args) -> int:
             mismatch = revision_mismatch(meta, current_revision, day)
             if mismatch:
                 raise SystemExit(mismatch)
+            content_problem = day_content_mismatch(session, day)
+            if content_problem:
+                raise SystemExit(content_problem)
             latest = session.scalar(select(func.max(StockDaily.trade_date)))
             matrix = load_matrix(session, day, min(latest, day + timedelta(days=60)))
             benchmark = Benchmark(session, matrix, "market")

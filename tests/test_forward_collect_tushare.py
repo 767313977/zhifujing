@@ -560,6 +560,42 @@ def test_evaluate_rejects_changed_data_revision():
     assert ft.revision_mismatch({}, {"kind": "data_revision", "value": {f"stock_daily:{DAY}": 1}}, DAY)
 
 
+def test_row_edit_without_revision_bump_is_detected(db_path, tmp_path):
+    from sqlalchemy.orm import Session as OrmSession
+
+    from scripts import forward_track_c0 as ft
+
+    codes = _universe()
+    manifest = _manifest(codes)
+    _init_target(db_path, tmp_path, days=CAL, now=NOW)
+    _run(db_path, tmp_path, manifest, _quotes(codes))
+
+    engine = store.connect_readonly(db_path)
+    try:
+        with OrmSession(engine) as session:
+            assert ft.day_content_mismatch(session, DAY) is None
+    finally:
+        engine.dispose()
+
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute(
+            "UPDATE stock_daily SET close = close + 1 WHERE trade_date=? AND code='600000'",
+            (DAY.isoformat(),),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+    engine = store.connect_readonly(db_path)
+    try:
+        with OrmSession(engine) as session:
+            problem = ft.day_content_mismatch(session, DAY)
+    finally:
+        engine.dispose()
+    assert problem and "内容哈希" in problem
+
+
 # ---------------------------------------------------------------------------
 # 路径保护
 # ---------------------------------------------------------------------------
