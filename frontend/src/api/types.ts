@@ -804,6 +804,84 @@ export interface PromotionSeries {
   overall_rates: (number | null)[]
 }
 
+// ---------------------------------------------------------------- 涨停晋级漏斗
+
+export type PromotionFunnelStatus = 'PROMOTED' | 'BROKEN' | 'FAILED' | 'UNVERIFIABLE'
+
+export type PromotionFunnelQualityStatus =
+  | 'VERIFIED'
+  | 'PARTIAL'
+  | 'UNVERIFIED'
+  | 'NOT_COLLECTED'
+
+/** 漏斗逐券。不可验证时除 code / 原因外允许为 null，展示为「—」。 */
+export interface PromotionFunnelStock {
+  code: string
+  name: string | null
+  previous_level: number
+  today_consecutive: number | null
+  status: PromotionFunnelStatus
+  reason_code: string | null
+  reason_text: string | null
+  /** up / broken / up+broken / null */
+  today_pool_type: string | null
+  pct_chg: number | null
+  close: number | null
+  /** 开盘啦精选板块；炸板股没有该来源，null 表示确实没有，不拿行业顶上 */
+  board: string | null
+  industry: string | null
+  first_seal_time: string | null
+  open_times: number | null
+  seal_amount: number | null
+  quote_date: string | null
+  data_quality: string
+}
+
+export interface PromotionFunnelLevel {
+  level: number
+  label: string
+  base: number
+  promoted: number
+  broken: number
+  failed: number
+  unverifiable: number
+  valid_base: number
+  /** 旧口径 promoted / base；base=0 时为 null */
+  legacy_rate: number | null
+  /** 可验证口径 promoted / valid_base；valid_base=0 时为 null */
+  verified_rate: number | null
+  stocks: PromotionFunnelStock[]
+}
+
+export interface PromotionFunnelQuality {
+  status: PromotionFunnelQualityStatus
+  reasons: string[]
+  prev_up: string
+  today_up: string
+  today_broken: string
+  today_daily: string
+}
+
+export interface PromotionFunnel {
+  trade_date: string
+  prev_date: string | null
+  quality: PromotionFunnelQuality
+  levels: PromotionFunnelLevel[]
+}
+
+export interface PromotionFunnelDateItem {
+  trade_date: string
+  prev_date: string | null
+  has_previous_pool: boolean
+  has_today_pool: boolean
+  quality_status: PromotionFunnelQualityStatus
+  can_calculate_verified_rate: boolean
+}
+
+export interface PromotionFunnelDates {
+  dates: PromotionFunnelDateItem[]
+}
+
 /**
  * 个股异动图谱里的一行（对应后端 `AnomalyRowOut`）。
  *

@@ -72,6 +72,8 @@ import type {
   PositionOut,
   PositionRow,
   PremarketSummary,
+  PromotionFunnel,
+  PromotionFunnelDates,
   PromotionSeries,
   RelayTemp,
   ReviewNote,
@@ -532,6 +534,29 @@ export const api = {
 
   promotion: (days = 15) =>
     request<PromotionSeries>(`/limit/promotion?days=${days}`),
+
+  /**
+   * 晋级漏斗：昨日各连板档 → 今日「晋级 / 炸板 / 失败 / 不可验证」。
+   *
+   * 与 `promotion` 的区别：旧接口只给 promoted/base；这里把质量证据单独拆开，
+   * `legacy_rate` 与 `verified_rate` 是两个字段，不能混用。
+   */
+  promotionFunnel: (
+    date?: string | null,
+    levels = '1,2,3,4',
+    includeStocks = true,
+  ) =>
+    request<PromotionFunnel>(
+      withDate(
+        `/limit/promotion-funnel?levels=${encodeURIComponent(levels)}` +
+          `&include_stocks=${includeStocks ? 'true' : 'false'}`,
+        date,
+      ),
+    ),
+
+  /** 漏斗可用日期摘要（不携带逐券行）。 */
+  promotionFunnelDates: (days = 255) =>
+    request<PromotionFunnelDates>(`/limit/promotion-funnel/dates?days=${days}`),
 
   /**
    * 涨停股票池：按**昨日**连板档分组，看每一档今天晋级 / 失败的情况。

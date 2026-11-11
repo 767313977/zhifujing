@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, isNoDataError } from '../api/client'
-import type { LimitPool, LimitThemes, PromotionSeries } from '../api/types'
+import type {
+  LimitPool,
+  LimitThemes,
+  PromotionFunnel as PromotionFunnelData,
+  PromotionSeries,
+} from '../api/types'
 import Alert from '../components/Alert'
 import EChart from '../components/EChart'
 import type { ChartOption } from '../components/EChart'
@@ -10,6 +15,7 @@ import LimitConclusion from '../components/LimitConclusion'
 import LoadState from '../components/LoadState'
 import LimitTable from '../components/LimitTable'
 import Panel from '../components/Panel'
+import PromotionFunnel from '../components/PromotionFunnel'
 import {
   AXIS_LABEL,
   AXIS_LINE,
@@ -50,6 +56,11 @@ export default function LimitReview() {
   const [industryFilter, setIndustryFilter] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [view, setView] = useState<'review' | 'funnel'>('review')
+  const [funnel, setFunnel] = useState<PromotionFunnelData | null>(null)
+  const [funnelError, setFunnelError] = useState<string | null>(null)
+  const [funnelLoading, setFunnelLoading] = useState(false)
+  const funnelSeq = useRef(0)
 
   useEffect(() => {
     api.dates().then(setDates).catch(() => setDates([]))
@@ -111,6 +122,34 @@ export default function LimitReview() {
       stale = true
     }
   }, [date, load])
+
+  /**
+   * 漏斗只在切到该 Tab 时取；日期一变先清空，再用 seq 丢弃旧日期的晚到响应，
+   * 避免「页面显示新日期、内容却是旧日期」。
+   */
+  useEffect(() => {
+    if (view !== 'funnel') return
+    const seq = ++funnelSeq.current
+    setFunnel(null)
+    setFunnelError(null)
+    setFunnelLoading(true)
+    api
+      .promotionFunnel(date)
+      .then((data) => {
+        if (seq === funnelSeq.current) setFunnel(data)
+      })
+      .catch((err: Error) => {
+        if (seq !== funnelSeq.current) return
+        setFunnel(null)
+        setFunnelError(isNoDataError(err) ? null : err.message)
+      })
+      .finally(() => {
+        if (seq === funnelSeq.current) setFunnelLoading(false)
+      })
+    return () => {
+      funnelSeq.current += 1
+    }
+  }, [date, view])
 
   const stocks = useMemo(() => pool?.stocks ?? [], [pool])
 
@@ -323,8 +362,43 @@ export default function LimitReview() {
 
   const toolbar = (
     <>
+      <div className="flex items-center gap-1">
+        {(
+          [
+            ['review', '涨停复盘'],
+            ['funnel', '晋级漏斗'],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={view === key}
+            onClick={() => setView(key)}
+            className={[
+              'border px-2 py-[3px] text-[13px] transition-colors',
+              view === key
+                ? 'border-accent/50 text-accent'
+                : 'border-line text-fg-muted hover:text-fg',
+            ].join(' ')}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <span className="num hidden text-[13px] text-fg-dim lg:inline">
-        {loading ? '加载中…' : error ? '—' : `${stocks.length} 只涨停`}
+        {view === 'funnel'
+          ? funnelLoading
+            ? '加载中…'
+            : funnelError
+              ? '—'
+              : funnel
+                ? `${funnel.levels.reduce((sum, item) => sum + item.base, 0)} 只基数`
+                : '—'
+          : loading
+            ? '加载中…'
+            : error
+              ? '—'
+              : `${stocks.length} 只涨停`}
       </span>
       <select
         value={date ?? ''}
@@ -385,6 +459,19 @@ export default function LimitReview() {
         <Alert onClose={() => setError(null)}>{error}</Alert>
       )}
 
+      {view === 'funnel' ? (
+        <Panel
+          title="涨停晋级漏斗"
+          meta={
+            <span className="num">
+              按昨日连板档 · 昨日池不可信时只展示基数，不计算成功率
+            </span>
+          }
+          delay={40}
+        >
+          <PromotionFunnel data={funnel} loading={funnelLoading} error={funnelError} />
+        </Panel>
+      ) : (
       <div className="space-y-4">
         {/* 结论条（规范 v1 §5 Phase 5）：涨停家数 / 最高板 / 炸板 / 主线，
             全部取自本页已加载的数据。晋级率只在下面「连板晋级率」面板出现一次，
@@ -599,6 +686,7 @@ export default function LimitReview() {
           delay={280}
         />
       </div>
+      )}
     </Layout>
   )
 }
