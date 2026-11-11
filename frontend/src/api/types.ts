@@ -742,6 +742,118 @@ export interface AuctionBoards {
   items: AuctionBoardItem[]
 }
 
+/** 竞价异动的分类。 */
+export type AuctionAnomalyGroupKey =
+  | 'all'
+  | 'prev_limit'
+  | 'prev_broken'
+  | 'prev_failed_relay'
+
+export type AuctionAnomalySort =
+  | 'auction_amount'
+  | 'auction_pct'
+  | 'post_open_change'
+
+/**
+ * 竞价异动的一只票（`/api/auction/anomaly`）。金额单位一律**元**。
+ *
+ * `pct_change_after_auction` 是**百分点**：`post_open_pct - auction_pct`，
+ * 不是成交额变化，也不是价格变化率。
+ */
+export interface AuctionAnomalyRow {
+  trade_date: string
+  prev_trade_date: string | null
+  code: string
+  name: string | null
+  industry: string | null
+  concept: string | null
+  concept_source: string | null
+  /** limit_up / broken / failed_relay / null */
+  prev_limit_status: string | null
+  prev_board_height: number | null
+  /** 0926 竞价终值 */
+  auction_price: number | null
+  auction_pct: number | null
+  /** 0926 帧的累计成交额（元） */
+  auction_amount: number | null
+  /** 昨日全天成交额（元） */
+  yesterday_amount: number | null
+  /** 竞价金额 ÷ 昨日全天成交额（%） */
+  auction_amount_ratio: number | null
+  post_open_price: number | null
+  post_open_pct: number | null
+  /** 9:25→9:31 涨幅变化（百分点） */
+  pct_change_after_auction: number | null
+  auction_frame: string | null
+  post_open_frame: string | null
+  /** VALID / NO_QUOTE / FRAME_MISSING / STALE_QUOTE / SOURCE_TIME_UNKNOWN / INCOMPLETE */
+  data_quality_status: string
+  quality_reasons: string[]
+}
+
+export interface AuctionAnomalyGroup {
+  group: AuctionAnomalyGroupKey
+  label: string
+  total: number
+  valid: number
+  quality_status: string
+  quality_reasons: string[]
+}
+
+export interface AuctionAnomalyFrame {
+  scheduled_frame: string | null
+  frame_kind: string | null
+  late: boolean
+  actual_started_at: string | null
+  source_quote_time: string | null
+  requested_codes: number
+  returned_codes: number
+  valid_codes: number
+  dropped_old_quote: number
+  dropped_stale_quote: number
+  dropped_newer_quote: number
+  dropped_unknown_quote: number
+  source_time_unknown: number
+  failed_batches: number
+  total_batches: number
+  written_codes: number
+  status: string | null
+  reason: string | null
+  elapsed_ms: number
+}
+
+export interface AuctionAnomalyQuality {
+  /** NOT_COLLECTED / SOURCE_UNAVAILABLE / INCOMPLETE / VALID */
+  status: string
+  reasons: string[]
+  frames: AuctionAnomalyFrame[]
+  auction_count: number
+  result_count: number
+  post_open_count: number
+}
+
+export interface AuctionAnomaly {
+  trade_date: string
+  prev_trade_date: string | null
+  group: AuctionAnomalyGroupKey
+  sort: AuctionAnomalySort
+  order: 'asc' | 'desc'
+  limit: number
+  total: number
+  shown: number
+  rows: AuctionAnomalyRow[]
+  groups: AuctionAnomalyGroup[]
+  quality: AuctionAnomalyQuality
+}
+
+export interface AuctionAnomalyQuery {
+  date?: string | null
+  group?: AuctionAnomalyGroupKey
+  sort?: AuctionAnomalySort
+  order?: 'asc' | 'desc'
+  limit?: number
+}
+
 export type AuctionSort =
   | 'amount'
   | 'pct'

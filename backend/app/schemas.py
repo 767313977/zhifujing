@@ -2799,6 +2799,111 @@ class AuctionBoardsOut(BaseModel):
     items: list[AuctionBoardItem]
 
 
+class AuctionAnomalyRow(ApiModel):
+    """竞价异动的一只票（P0-A）。
+
+    金额单位一律**元**；`pct_change_after_auction` 的单位是**百分点**，
+    计算式为 `post_open_pct - auction_pct`，不是成交额变化。
+    """
+
+    trade_date: date
+    prev_trade_date: date | None
+    code: str
+    name: str | None
+    industry: str | None
+    concept: str | None
+    #: 题材来源（目前只有开盘啦精选板块时为 "开盘啦"）
+    concept_source: str | None
+    #: 昨日状态：limit_up / broken / failed_relay / None
+    prev_limit_status: str | None
+    #: 昨日连板高度（断板股为断板前的高度）
+    prev_board_height: int | None
+    #: 0926 竞价终值
+    auction_price: float | None
+    auction_pct: float | None
+    #: 0926 帧的累计成交额（元）
+    auction_amount: float | None
+    #: 昨日全天成交额（元，来自上一交易日日线）
+    yesterday_amount: float | None
+    #: 竞价金额 ÷ 昨日全天成交额（%）
+    auction_amount_ratio: float | None
+    #: 0931 开盘后价格
+    post_open_price: float | None
+    post_open_pct: float | None
+    #: 9:25→9:31 涨幅变化（百分点）= post_open_pct - auction_pct
+    pct_change_after_auction: float | None
+    #: 实际采用的帧（0926 / 0931），缺帧为 None
+    auction_frame: str | None
+    post_open_frame: str | None
+    #: VALID / NO_QUOTE / FRAME_MISSING / STALE_QUOTE /
+    #: SOURCE_TIME_UNKNOWN / INCOMPLETE
+    data_quality_status: str
+    quality_reasons: list[str] = []
+
+
+class AuctionAnomalyGroup(BaseModel):
+    """一个分类的样本数与有效数据数（轻量摘要）。"""
+
+    group: str
+    label: str
+    total: int
+    valid: int
+    quality_status: str
+    quality_reasons: list[str] = []
+
+
+class AuctionAnomalyFrame(BaseModel):
+    """一条 `auction_frame` 采集证据。"""
+
+    scheduled_frame: str | None = None
+    frame_kind: str | None = None
+    late: bool = False
+    actual_started_at: str | None = None
+    source_quote_time: str | None = None
+    requested_codes: int = 0
+    returned_codes: int = 0
+    valid_codes: int = 0
+    dropped_old_quote: int = 0
+    dropped_stale_quote: int = 0
+    dropped_newer_quote: int = 0
+    dropped_unknown_quote: int = 0
+    source_time_unknown: int = 0
+    failed_batches: int = 0
+    total_batches: int = 0
+    written_codes: int = 0
+    status: str | None = None
+    reason: str | None = None
+    elapsed_ms: int = 0
+
+
+class AuctionAnomalyQuality(BaseModel):
+    """日期级竞价数据质量。"""
+
+    #: NOT_COLLECTED / SOURCE_UNAVAILABLE / INCOMPLETE / VALID
+    status: str
+    reasons: list[str] = []
+    frames: list[AuctionAnomalyFrame] = []
+    auction_count: int = 0
+    #: 有 0926 竞价终值的只数
+    result_count: int = 0
+    #: 有 0931 开盘后价格的只数
+    post_open_count: int = 0
+
+
+class AuctionAnomalyOut(BaseModel):
+    trade_date: date
+    prev_trade_date: date | None
+    group: str
+    sort: str
+    order: str
+    limit: int
+    total: int
+    shown: int
+    rows: list[AuctionAnomalyRow]
+    groups: list[AuctionAnomalyGroup]
+    quality: AuctionAnomalyQuality
+
+
 class IndexValuationItem(BaseModel):
     """一个核心指数的当前估值与近 10 年分位。
 

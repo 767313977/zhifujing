@@ -9,6 +9,7 @@ import type {
   AuctionSort,
 } from '../api/types'
 import Layout from '../components/Layout'
+import AuctionAnomaly from '../components/AuctionAnomaly'
 import LoadState from '../components/LoadState'
 import Panel from '../components/Panel'
 import SortTh from '../components/SortTh'
@@ -372,6 +373,7 @@ function Chip({
 }
 
 export default function AuctionPage() {
+  const [view, setView] = useState<'intensity' | 'anomaly'>('intensity')
   const [date, setDate] = useState<string | null>(null)
   const [dates, setDates] = useState<string[]>([])
   const [data, setData] = useState<AuctionList | null>(null)
@@ -494,14 +496,39 @@ export default function AuctionPage() {
 
   const toolbar = (
     <>
+      <div className="flex items-center gap-1">
+        {(
+          [
+            ['intensity', '竞价强度'],
+            ['anomaly', '竞价异动'],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={view === key}
+            onClick={() => setView(key)}
+            className={[
+              'border px-2 py-[3px] text-[13px] transition-colors',
+              view === key
+                ? 'border-accent/50 text-accent'
+                : 'border-line text-fg-muted hover:text-fg',
+            ].join(' ')}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <span className="num hidden text-[13px] text-fg-dim lg:inline">
         {/* 带上**实际数据日**（2026-10-28 体检）：「最新」时下拉只写「最新」，
             而库里的最新一天不一定是今天 —— 不写出来就会把昨天 9:25 的竞价当成今天的 */}
-        {loading
-          ? '加载中…'
-          : data
-            ? `${data.trade_date} · ${data.total} 只有竞价数据`
-            : '—'}
+        {view === 'anomaly'
+          ? '0926 竞价终值 / 0931 开盘承接'
+          : loading
+            ? '加载中…'
+            : data
+              ? `${data.trade_date} · ${data.total} 只有竞价数据`
+              : '—'}
       </span>
       <select
         value={date ?? ''}
@@ -520,6 +547,9 @@ export default function AuctionPage() {
 
   return (
     <Layout toolbar={toolbar}>
+      {view === 'anomaly' ? (
+        <AuctionAnomaly date={date} />
+      ) : (
       <div className="space-y-4">
         {/* 市场级情绪带：盘前先回答「今天该不该出手」，再逐个看票。
             口径是**全市场**，不受下方筛选影响。
@@ -818,6 +848,7 @@ export default function AuctionPage() {
           承接强度属外部工具专有指标，取不到就不编。
         </p>
       </div>
+      )}
     </Layout>
   )
 }

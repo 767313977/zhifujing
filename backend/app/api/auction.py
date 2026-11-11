@@ -26,12 +26,14 @@ from app.models import (
     StockDaily,
 )
 from app.schemas import (
+    AuctionAnomalyOut,
     AuctionBoardItem,
     AuctionBoardsOut,
     AuctionListOut,
     AuctionRow,
     AuctionSummary,
 )
+from app.services import auction_anomaly
 from app.services.trading_days import previous_trade_day, recent_trade_days
 from app.timeutil import today_cn
 
@@ -624,6 +626,42 @@ def auction_list(
         # 市场级情绪带：全市场口径，与上面的筛选 / 截断无关
         summary=_summary(session, trade_date, prev),
     )
+
+
+@router.get("/auction/anomaly", response_model=AuctionAnomalyOut)
+def auction_anomaly_view(
+    trade_date: date | None = Query(None, alias="date", description="缺省 = 最新有竞价数据的交易日"),
+    group: str = Query(
+        "all",
+        description="all / prev_limit / prev_broken / prev_failed_relay",
+    ),
+    sort: str = Query(
+        "auction_amount",
+        description="auction_amount / auction_pct / post_open_change",
+    ),
+    order: str = Query("desc", description="desc/asc"),
+    limit: int = Query(300, ge=1, le=1000),
+    session: Session = Depends(get_db),
+) -> AuctionAnomalyOut:
+    """竞价异动：昨日涨停 / 炸板 / 断板与全部竞价记录的 9:25→9:31 表现。
+
+    只读本地 `auction_snapshot` 与 `collect_log(auction_frame)`，不联网、不补数。
+    0926 竞价终值缺失时 `auction_pct/auction_amount` 为 null；0931 缺失时开盘承接
+    为 null —— 不用 0 或 -100% 代替。
+    """
+    if group not in auction_anomaly.GROUPS:
+        raise HTTPException(status_code=400, detail=f"不支持的分类：{group}")
+    if sort not in auction_anomaly.SORTS:
+        raise HTTPException(status_code=400, detail=f"不支持的排序字段：{sort}")
+    if order not in ("asc", "desc"):
+        raise HTTPException(status_code=400, detail="order 只能是 asc 或 desc")
+    if trade_date is not None and trade_date > today_cn():
+        raise HTTPException(status_code=404, detail=f"{trade_date} 还没到")
+
+    data = auction_anomaly.build_anomaly(
+        session, trade_date, group, sort, order, limit
+    )
+    return AuctionAnomalyOut(**data)
 
 
 @router.get("/auction/boards", response_model=AuctionBoardsOut)

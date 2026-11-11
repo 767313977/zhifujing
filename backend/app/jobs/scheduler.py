@@ -440,7 +440,9 @@ class DailyScheduler:
             id=AUCTION_JOB_ID,
             name="集合竞价采样",
             replace_existing=True,
-            # 晚到超过 90 秒就跳过这一分钟（下一分钟马上又来），别积压
+            # 晚到超过 90 秒就跳过这一分钟（下一分钟马上又来），别积压。
+            # ⚠️ 90 秒内迟到并不等于可以直接写上一帧：采集器还必须用
+            # `source_quote_time` 证明源报价仍在计划分钟，否则整帧跳过（P0-A-01）。
             misfire_grace_time=90,
             coalesce=True,
         )

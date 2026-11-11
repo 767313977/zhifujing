@@ -2,6 +2,8 @@ import type {
   AdminStatus,
   AdvanceDecline,
   AnomalyMap,
+  AuctionAnomaly,
+  AuctionAnomalyQuery,
   AuctionBoards,
   AuctionList,
   AuctionQuery,
@@ -598,6 +600,20 @@ export const api = {
    */
   auctionBoards: (date?: string | null, limit = 20) =>
     request<AuctionBoards>(withDate(`/auction/boards?limit=${limit}`, date)),
+
+  /**
+   * 竞价异动：昨日涨停 / 炸板 / 断板与全部竞价记录的 9:25→9:31 表现。
+   * 只读本地库；缺 0926 或 0931 时对应字段为 null，不用 0 代替。
+   */
+  auctionAnomaly: (options: AuctionAnomalyQuery = {}) => {
+    const q = new URLSearchParams()
+    if (options.date) q.set('date', options.date)
+    if (options.group) q.set('group', options.group)
+    if (options.sort) q.set('sort', options.sort)
+    if (options.order) q.set('order', options.order)
+    if (options.limit != null) q.set('limit', String(options.limit))
+    return request<AuctionAnomaly>(`/auction/anomaly?${q.toString()}`)
+  },
 
   /**
    * 个股异动图谱：最近 `days` 个交易日里的涨停 / 涨停炸板 / 中大阳线异动，
