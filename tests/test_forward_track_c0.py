@@ -775,9 +775,9 @@ def _write_snapshot(out: Path, day: date, codes: list[str], *, mode: str = "FORW
 
 def test_evaluate_reports_pending_when_not_matured(env, capsys):
     db, out, latest = env
-    assert _run(db, out, "snapshot", "--mode", "forward",
+    assert _run(db, out, "snapshot", "--mode", "replay",
                 "--now", _now(latest, 15, 45)) == 0
-    assert _run(db, out, "evaluate", "--date", latest.isoformat()) == 0
+    assert _run(db, out, "evaluate", "--date", latest.isoformat(), "--mode", "replay") == 0
     text = capsys.readouterr().out
     assert "pending" in text
     assert "不计入任何收益" in text
@@ -788,9 +788,9 @@ def test_evaluate_counts_matured_samples(tmp_path, capsys):
     latest = _build_db(db, days=90)
     out = tmp_path / "forward"
     signal_day = latest - timedelta(days=20)
-    _write_snapshot(out, signal_day, [f"{c:06d}" for c in range(5)])
+    _write_snapshot(out, signal_day, [f"{c:06d}" for c in range(5)], mode="REPLAY_ONLY")
 
-    assert _run(db, out, "evaluate", "--date", signal_day.isoformat()) == 0
+    assert _run(db, out, "evaluate", "--date", signal_day.isoformat(), "--mode", "replay") == 0
     text = capsys.readouterr().out
     assert "已入场且有退出价" in text
     assert "30bps" in text and "100bps" in text

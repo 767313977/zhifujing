@@ -1078,6 +1078,39 @@ def test_evaluate_rejects_audit_failures(tmp_path, capsys, tamper):
     capsys.readouterr()
 
 
+def test_evaluate_fails_closed_when_marker_has_no_rows(tmp_path, capsys):
+    root, db, dates = _forward_db(tmp_path)
+    signal_day, entry_day = dates[30], dates[31]
+    out = root / "forward_c0"
+    _write_snapshot(out, signal_day, 1, [f"600{index:03d}" for index in range(5)])
+
+    con = sqlite3.connect(db)
+    try:
+        con.execute("DELETE FROM stock_daily WHERE trade_date=?", (entry_day.isoformat(),))
+        con.commit()
+    finally:
+        con.close()
+
+    with pytest.raises(SystemExit) as error:
+        _evaluate(db, out, signal_day)
+    assert "完成标记" in str(error.value)
+    capsys.readouterr()
+
+
+@pytest.mark.parametrize("provider", ["history", "unknown", None])
+def test_evaluate_rejects_non_tushare_forward_source(tmp_path, capsys, provider):
+    root, db, dates = _forward_db(tmp_path)
+    signal_day = dates[30]
+    out = root / "forward_c0"
+    _write_snapshot(
+        out, signal_day, 1, [f"600{index:03d}" for index in range(5)], provider=provider
+    )
+    with pytest.raises(SystemExit) as error:
+        _evaluate(db, out, signal_day)
+    assert "不是 Tushare 前瞻协议" in str(error.value)
+    capsys.readouterr()
+
+
 def test_replay_is_not_forced_into_forward_audit(tmp_path, capsys):
     root, db, dates = _forward_db(tmp_path)
     day = dates[30]

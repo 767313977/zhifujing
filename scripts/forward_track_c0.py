@@ -349,8 +349,12 @@ def day_content_mismatch(session: Session, day: date) -> str | None:
 def _forward_audit_problems(session: Session, day: date, meta: dict) -> list[str]:
     """正式前瞻（Tushare 源）评价前的完整审计：信号日 + 已存在的后续入场/退出日。"""
     source = meta.get("data_source") or {}
-    if source.get("provider") != "tushare":
-        return []
+    provider = source.get("provider")
+    if provider != "tushare":
+        return [
+            f"正式前瞻快照数据源 {provider!r} 不是 Tushare 前瞻协议"
+            "（历史库/未知来源不得冒充正式前瞻）"
+        ]
     problems: list[str] = []
     if source.get("data_protocol") != DATA_PROTOCOL_VERSION:
         problems.append(
@@ -389,11 +393,19 @@ def _forward_audit_problems(session: Session, day: date, meta: dict) -> list[str
             )
         ]
     for item in later:
+        marker = session.execute(
+            text("SELECT 1 FROM data_revision WHERE domain=:domain LIMIT 1"),
+            {"domain": f"stock_daily:{item.isoformat()}"},
+        ).first()
         exists = session.execute(
             text("SELECT 1 FROM stock_daily WHERE trade_date=:day LIMIT 1"),
             {"day": item.isoformat()},
         ).first()
         if not exists:
+            if marker:
+                problems.append(
+                    f"{item} 已有完成标记却没有任何行情行：数据不自洽，拒绝正式评价"
+                )
             continue  # 未成熟/未采集：保持 pending，不伪造收益
         problem = day_audit_problem(session, item, strict=True)
         if problem:
