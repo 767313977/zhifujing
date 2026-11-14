@@ -1,0 +1,10 @@
+﻿INFO:     Started server process [15156]
+INFO:     Waiting for application startup.
+2026-11-14 19:29:57,186 INFO app.db: Schema 检查通过（FUPAN_SCHEMA_MODE=verify，未执行任何 DDL）
+2026-11-14 19:29:57,187 INFO app.main: 数据库就绪: C:\Users\76731\AppData\Local\Temp\s4_e2e\s4.db（schema=verify）
+2026-11-14 19:29:57,187 INFO app.main: iFinD 配额配置：token 已配置=是，月度上限=5452，周期起点日=17，本周期=2026-10-17 ~ 2026-11-16
+2026-11-14 19:29:57,187 WARNING app.external_guard: 已安装离线网络闸门（EXTERNAL_DATA_FETCH_ENABLED=false）：requests 调用将在发网前失败
+2026-11-14 19:29:57,187 WARNING app.main: 外部数据现取已被禁用（EXTERNAL_DATA_FETCH_ENABLED=false）
+2026-11-14 19:29:57,189 INFO app.jobs.scheduler: 定时采集已关闭（scheduler_enabled=false）
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8013 (Press CTRL+C to quit)
