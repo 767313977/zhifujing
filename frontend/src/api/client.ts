@@ -115,6 +115,7 @@ import type {
   StockNotices,
   StockProfile,
   StockReports,
+  StockResearchContext,
   StockThemes,
   StockUnlocks,
   TradeJournalIn,
@@ -734,6 +735,15 @@ export const api = {
 
   stockThemes: (code: string) =>
     request<StockThemes>(`/stock/${encodeURIComponent(code)}/themes`),
+
+  /**
+   * S3-C：个股在观察日的「已知 / 未知 / D+1 后验」依据（只读本地库）。
+   * `asOf` 缺省时后端用最近交易日；非交易日会 400。
+   */
+  stockResearchContext: (code: string, asOf?: string | null) =>
+    request<StockResearchContext>(
+      withDate(`/stock/${encodeURIComponent(code)}/research-context`, asOf),
+    ),
 
   /**
    * 个股的 **DDE 与主力净流入**（iFinD 口径，日频，单位元）。

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api, isNoDataError } from '../api/client'
 import type {
   SentimentNextDay as SentimentNextDayData,
@@ -351,6 +352,7 @@ export default function SentimentNextDay() {
                   <th>中位涨跌</th>
                   <th>上涨比例</th>
                   <th>再涨停</th>
+                  <th title="打开当日涨停池，从个股行进入「依据」侧栏">依据</th>
                   <th>说明</th>
                 </tr>
               </thead>
@@ -379,6 +381,14 @@ export default function SentimentNextDay() {
                         row.limit_up_again_ratio,
                         fmtNum(row.limit_up_again_ratio, 1, '%'),
                       )}
+                    </td>
+                    <td>
+                      <Link
+                        to={`/limit-up?date=${row.sample_date}`}
+                        className="text-[12px] text-accent hover:underline"
+                      >
+                        当日池
+                      </Link>
                     </td>
                     <td className="text-fg-muted">
                       {row.data_quality_reasons.length

@@ -126,6 +126,7 @@ function buildColumns(
             {s.name ?? '—'}
           </Link>
           <QuickResearch code={s.code} asOfDate={asOfDate} />
+          <QuickResearch code={s.code} asOfDate={asOfDate} tab="evidence" label="据" />
         </span>
       ),
       sortValue: (s) => s.name,

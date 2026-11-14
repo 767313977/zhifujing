@@ -41,9 +41,18 @@ function Probe() {
       <span data-testid="code">{ctx.code ?? 'none'}</span>
       <span data-testid="open">{String(ctx.open)}</span>
       <span data-testid="tab">{ctx.activeTab}</span>
+      <span data-testid="asof">{ctx.selectedAsOfDate ?? 'none'}</span>
       <span data-testid="search">{location.pathname + location.search}</span>
       <button type="button" onClick={() => ctx.openStockResearch('600000')}>
         open
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          ctx.openStockResearch('600000', { asOfDate: '2026-09-24', tab: 'evidence' })
+        }
+      >
+        open-asof
       </button>
       <button type="button" onClick={() => ctx.openStockResearch('abc')}>
         open-bad
@@ -118,6 +127,21 @@ test('closing removes only the stock param', async () => {
 test('restores from ?stock= on first render', async () => {
   renderProbe('/limit-up?date=2026-11-11&stock=600000')
   await waitFor(() => expect(screen.getByTestId('code').textContent).toBe('600000'))
+  expect(screen.getByTestId('open').textContent).toBe('true')
+})
+
+test('as_of is persisted in the URL and restored after refresh', async () => {
+  const view = renderProbe()
+  fireEvent.click(screen.getByText('open-asof'))
+  await waitFor(() => expect(screen.getByTestId('asof').textContent).toBe('2026-09-24'))
+  expect(screen.getByTestId('tab').textContent).toBe('evidence')
+  const search = screen.getByTestId('search').textContent ?? ''
+  expect(search).toContain('stock=600000')
+  expect(search).toContain('as_of=2026-09-24')
+
+  view.unmount()
+  renderProbe('/limit-up?stock=600000&as_of=2026-09-24')
+  await waitFor(() => expect(screen.getByTestId('asof').textContent).toBe('2026-09-24'))
   expect(screen.getByTestId('open').textContent).toBe('true')
 })
 

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, expect, test, vi } from 'vitest'
 import type { SentimentNextDay as SentimentNextDayData } from '../../api/types'
 
@@ -143,8 +144,16 @@ beforeEach(() => {
   mocks.sentimentNextDay.mockResolvedValue(payload())
 })
 
+function renderPanel() {
+  return render(
+    <MemoryRouter>
+      <SentimentNextDay />
+    </MemoryRouter>,
+  )
+}
+
 test('renders summary and verified row', async () => {
-  render(<SentimentNextDay />)
+  renderPanel()
   await waitFor(() => expect(mocks.sentimentNextDay).toHaveBeenCalled())
   expect(screen.getByText('情绪环境 × 次日表现')).toBeTruthy()
   expect(screen.getAllByText('+2.50%').length).toBeGreaterThan(0)
@@ -153,7 +162,7 @@ test('renders summary and verified row', async () => {
 })
 
 test('pending row shows PENDING instead of a fake 0%', async () => {
-  render(<SentimentNextDay />)
+  renderPanel()
   await waitFor(() => expect(screen.getByText('待观察')).toBeTruthy())
   const row = screen.getByText('2026-11-09').closest('tr')
   expect(row).toBeTruthy()
@@ -162,7 +171,7 @@ test('pending row shows PENDING instead of a fake 0%', async () => {
 })
 
 test('unverified row shows UNVERIFIABLE', async () => {
-  render(<SentimentNextDay />)
+  renderPanel()
   await waitFor(() => expect(screen.getByText('不可验证')).toBeTruthy())
   const row = screen.getByText('2026-11-06').closest('tr')
   expect(row!.textContent).toContain('UNVERIFIABLE')
@@ -170,7 +179,7 @@ test('unverified row shows UNVERIFIABLE', async () => {
 })
 
 test('switching group refetches with the new group', async () => {
-  render(<SentimentNextDay />)
+  renderPanel()
   await waitFor(() => expect(mocks.sentimentNextDay).toHaveBeenCalledTimes(1))
   fireEvent.click(screen.getByRole('radio', { name: '二板' }))
   await waitFor(() =>
@@ -181,7 +190,7 @@ test('switching group refetches with the new group', async () => {
 })
 
 test('switching range refetches with the new days', async () => {
-  render(<SentimentNextDay />)
+  renderPanel()
   await waitFor(() => expect(mocks.sentimentNextDay).toHaveBeenCalledTimes(1))
   fireEvent.click(screen.getByRole('radio', { name: '120 日' }))
   await waitFor(() =>
@@ -200,7 +209,7 @@ test('a slow earlier response cannot override the newest selection', async () =>
     payload({ group: 'third_plus', group_label: 'D 日三板及以上' }),
   )
 
-  render(<SentimentNextDay />)
+  renderPanel()
   fireEvent.click(screen.getByRole('radio', { name: '三板+' }))
   await waitFor(() => expect(screen.getByText(/D 日三板及以上/)).toBeTruthy())
 
@@ -211,12 +220,12 @@ test('a slow earlier response cannot override the newest selection', async () =>
 })
 
 test('renders the caveats from backend', async () => {
-  render(<SentimentNextDay />)
+  renderPanel()
   await waitFor(() => expect(screen.getByText(/不构成收益预测/)).toBeTruthy())
 })
 
 test('shows pooled and day-equal averages as separate figures', async () => {
-  render(<SentimentNextDay />)
+  renderPanel()
   await waitFor(() => expect(screen.getByText('情绪环境 × 次日表现')).toBeTruthy())
   // 逐券 pooled 均值 2.50% 与日等权 0.50% 同时出现，不做二选一
   expect(screen.getAllByText('+2.50%').length).toBeGreaterThan(0)
@@ -237,7 +246,7 @@ test('metric-missing days are called out and small samples are flagged', async (
       },
     }),
   )
-  render(<SentimentNextDay />)
+  renderPanel()
   await waitFor(() => expect(screen.getByText(/个交易日的 D 日情绪指标缺失/)).toBeTruthy())
   expect(screen.getByText(/小样本/)).toBeTruthy()
 })

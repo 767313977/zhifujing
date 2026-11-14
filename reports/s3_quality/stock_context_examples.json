@@ -1,0 +1,899 @@
+{
+  "generated_at": "2026-11-14T18:24:33",
+  "source": "backend/data/b1_research.db read-only",
+  "note": "真实代码/公开行情；不含账户、Token 或私人交易信息。",
+  "cases": [
+    {
+      "case": "limit_up_with_theme",
+      "code": "002119",
+      "resolved_trade_date": "2026-09-24",
+      "data_as_of": "2026-10-09",
+      "quality": {
+        "status": "PARTIAL",
+        "reasons": [
+          "THEME_PIT_UNKNOWN",
+          "CONCEPT_POST_CLOSE_UNKNOWN",
+          "OUTCOME_LIMIT_POOL_UNVERIFIED"
+        ]
+      },
+      "historical_signal_eligible": false,
+      "as_known_on_day": {
+        "previous_close_date": "2026-09-23",
+        "limit_status": "UP",
+        "board_height": 2,
+        "observed_pool_membership": [
+          "up"
+        ],
+        "daily": {
+          "trade_date": "2026-09-24",
+          "close": 29.61,
+          "pct_chg": 9.99257058,
+          "known_by": "CLOSE"
+        },
+        "themes": [
+          {
+            "name": "业绩增长",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:00.161851",
+            "known_by": "LATER"
+          },
+          {
+            "name": "中报增长",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:04.479876",
+            "known_by": "LATER"
+          },
+          {
+            "name": "小金属概念",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:14:37.897562",
+            "known_by": "LATER"
+          },
+          {
+            "name": "并购重组",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 08:20:42.611383",
+            "known_by": "LATER"
+          },
+          {
+            "name": "数字经济",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:13.893577",
+            "known_by": "LATER"
+          },
+          {
+            "name": "核电",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:19.310540",
+            "known_by": "LATER"
+          },
+          {
+            "name": "浙江",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:36.063522",
+            "known_by": "LATER"
+          },
+          {
+            "name": "芯片",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-08 21:09:01.531201",
+            "known_by": "LATER"
+          }
+        ],
+        "concepts": [
+          "芯片"
+        ]
+      },
+      "later_outcome": {
+        "outcome_date": "2026-09-28",
+        "status": "PARTIAL",
+        "pct_chg": 0.33772374197906596,
+        "close": 29.71,
+        "limit_up_again": null,
+        "reason_code": "OUTCOME_LIMIT_POOL_UNVERIFIED",
+        "known_by": "FORWARD"
+      },
+      "evidence": [
+        {
+          "claim": "观察日池记录",
+          "source_table": "limit_pool",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": "2026-09-24 17:10:03.957389",
+          "known_by": "CLOSE",
+          "quality": "VERIFIED",
+          "reason_code": null,
+          "is_forward_known": false
+        },
+        {
+          "claim": "观察日日线",
+          "source_table": "stock_daily",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": null,
+          "known_by": "CLOSE",
+          "quality": "VERIFIED",
+          "reason_code": null,
+          "is_forward_known": false
+        },
+        {
+          "claim": "观察日市场情绪",
+          "source_table": "market_sentiment",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": null,
+          "known_by": "CLOSE",
+          "quality": "VERIFIED",
+          "reason_code": null,
+          "is_forward_known": false
+        },
+        {
+          "claim": "题材归属快照",
+          "source_table": "sector_member",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": "2026-11-09 09:15:19.310540",
+          "known_by": "LATER",
+          "quality": "PARTIAL",
+          "reason_code": "THEME_PIT_UNKNOWN",
+          "is_forward_known": false
+        },
+        {
+          "claim": "涨停天梯题材",
+          "source_table": "stock_concept",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": null,
+          "known_by": "POST_CLOSE_UNKNOWN",
+          "quality": "PARTIAL",
+          "reason_code": "CONCEPT_POST_CLOSE_UNKNOWN",
+          "is_forward_known": false
+        },
+        {
+          "claim": "D+1 后验结果",
+          "source_table": "stock_daily",
+          "source_trade_date": "2026-09-28",
+          "fetched_at": null,
+          "known_by": "FORWARD",
+          "quality": "PARTIAL",
+          "reason_code": "OUTCOME_LIMIT_POOL_UNVERIFIED",
+          "is_forward_known": true
+        }
+      ]
+    },
+    {
+      "case": "limit_up_no_theme",
+      "code": "002413",
+      "resolved_trade_date": "2026-09-24",
+      "data_as_of": "2026-10-09",
+      "quality": {
+        "status": "PARTIAL",
+        "reasons": [
+          "THEME_PIT_UNKNOWN",
+          "CONCEPT_POST_CLOSE_UNKNOWN",
+          "OUTCOME_LIMIT_POOL_UNVERIFIED"
+        ]
+      },
+      "historical_signal_eligible": false,
+      "as_known_on_day": {
+        "previous_close_date": "2026-09-23",
+        "limit_status": "UP",
+        "board_height": 1,
+        "observed_pool_membership": [
+          "up"
+        ],
+        "daily": {
+          "trade_date": "2026-09-24",
+          "close": 8.97,
+          "pct_chg": 10.06134969,
+          "known_by": "CLOSE"
+        },
+        "themes": [
+          {
+            "name": "人工智能",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:26.810922",
+            "known_by": "LATER"
+          },
+          {
+            "name": "仪器仪表",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-09-25 22:06:19.698732",
+            "known_by": "LATER"
+          },
+          {
+            "name": "低价股",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:08.154936",
+            "known_by": "LATER"
+          },
+          {
+            "name": "低空经济",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:14:48.846764",
+            "known_by": "LATER"
+          },
+          {
+            "name": "养老概念",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-09-25 22:07:38.945947",
+            "known_by": "LATER"
+          },
+          {
+            "name": "军工",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 08:20:47.810615",
+            "known_by": "LATER"
+          },
+          {
+            "name": "华为概念",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:14:47.840027",
+            "known_by": "LATER"
+          },
+          {
+            "name": "卫星导航",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:49.291439",
+            "known_by": "LATER"
+          },
+          {
+            "name": "商业航天",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 08:20:44.735496",
+            "known_by": "LATER"
+          },
+          {
+            "name": "大飞机",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:28.298099",
+            "known_by": "LATER"
+          },
+          {
+            "name": "数字经济",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:13.893579",
+            "known_by": "LATER"
+          },
+          {
+            "name": "无人机",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:51.367172",
+            "known_by": "LATER"
+          },
+          {
+            "name": "智能驾驶",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:14:56.035488",
+            "known_by": "LATER"
+          },
+          {
+            "name": "江苏省",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:14:43.070403",
+            "known_by": "LATER"
+          },
+          {
+            "name": "汽车类",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:23.010521",
+            "known_by": "LATER"
+          },
+          {
+            "name": "汽车零部件",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 08:20:54.775949",
+            "known_by": "LATER"
+          },
+          {
+            "name": "百度概念",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:14:29.187524",
+            "known_by": "LATER"
+          },
+          {
+            "name": "股权转让",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 08:20:41.818659",
+            "known_by": "LATER"
+          },
+          {
+            "name": "芯片",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-08 21:09:01.531209",
+            "known_by": "LATER"
+          },
+          {
+            "name": "超跌",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:14.463187",
+            "known_by": "LATER"
+          },
+          {
+            "name": "通信",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:33.200665",
+            "known_by": "LATER"
+          }
+        ],
+        "concepts": [
+          "仪器仪表"
+        ]
+      },
+      "later_outcome": {
+        "outcome_date": "2026-09-28",
+        "status": "PARTIAL",
+        "pct_chg": 2.341137123745809,
+        "close": 9.18,
+        "limit_up_again": null,
+        "reason_code": "OUTCOME_LIMIT_POOL_UNVERIFIED",
+        "known_by": "FORWARD"
+      },
+      "evidence": [
+        {
+          "claim": "观察日池记录",
+          "source_table": "limit_pool",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": "2026-09-24 17:10:03.957389",
+          "known_by": "CLOSE",
+          "quality": "VERIFIED",
+          "reason_code": null,
+          "is_forward_known": false
+        },
+        {
+          "claim": "观察日日线",
+          "source_table": "stock_daily",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": null,
+          "known_by": "CLOSE",
+          "quality": "VERIFIED",
+          "reason_code": null,
+          "is_forward_known": false
+        },
+        {
+          "claim": "观察日市场情绪",
+          "source_table": "market_sentiment",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": null,
+          "known_by": "CLOSE",
+          "quality": "VERIFIED",
+          "reason_code": null,
+          "is_forward_known": false
+        },
+        {
+          "claim": "题材归属快照",
+          "source_table": "sector_member",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": "2026-11-09 09:15:33.200665",
+          "known_by": "LATER",
+          "quality": "PARTIAL",
+          "reason_code": "THEME_PIT_UNKNOWN",
+          "is_forward_known": false
+        },
+        {
+          "claim": "涨停天梯题材",
+          "source_table": "stock_concept",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": null,
+          "known_by": "POST_CLOSE_UNKNOWN",
+          "quality": "PARTIAL",
+          "reason_code": "CONCEPT_POST_CLOSE_UNKNOWN",
+          "is_forward_known": false
+        },
+        {
+          "claim": "D+1 后验结果",
+          "source_table": "stock_daily",
+          "source_trade_date": "2026-09-28",
+          "fetched_at": null,
+          "known_by": "FORWARD",
+          "quality": "PARTIAL",
+          "reason_code": "OUTCOME_LIMIT_POOL_UNVERIFIED",
+          "is_forward_known": true
+        }
+      ]
+    },
+    {
+      "case": "broken",
+      "code": "000910",
+      "resolved_trade_date": "2026-09-24",
+      "data_as_of": "2026-10-09",
+      "quality": {
+        "status": "PARTIAL",
+        "reasons": [
+          "THEME_PIT_UNKNOWN",
+          "OUTCOME_LIMIT_POOL_UNVERIFIED"
+        ]
+      },
+      "historical_signal_eligible": false,
+      "as_known_on_day": {
+        "previous_close_date": "2026-09-23",
+        "limit_status": "BROKEN",
+        "board_height": null,
+        "observed_pool_membership": [
+          "broken"
+        ],
+        "daily": {
+          "trade_date": "2026-09-24",
+          "close": 7.6,
+          "pct_chg": 0.26385224,
+          "known_by": "CLOSE"
+        },
+        "themes": [
+          {
+            "name": "低价股",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:08.155049",
+            "known_by": "LATER"
+          },
+          {
+            "name": "地产链",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:32.261072",
+            "known_by": "LATER"
+          },
+          {
+            "name": "平台经济",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 08:20:50.320739",
+            "known_by": "LATER"
+          },
+          {
+            "name": "机器人概念",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-09-25 22:06:09.424646",
+            "known_by": "LATER"
+          },
+          {
+            "name": "江苏省",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:14:43.070434",
+            "known_by": "LATER"
+          },
+          {
+            "name": "破净股概念",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:12:59.522956",
+            "known_by": "LATER"
+          },
+          {
+            "name": "碳中和",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:56.457292",
+            "known_by": "LATER"
+          },
+          {
+            "name": "超跌",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:14.463218",
+            "known_by": "LATER"
+          },
+          {
+            "name": "通信",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:33.200695",
+            "known_by": "LATER"
+          },
+          {
+            "name": "锂电池",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-08 21:09:02.856766",
+            "known_by": "LATER"
+          }
+        ],
+        "concepts": []
+      },
+      "later_outcome": {
+        "outcome_date": "2026-09-28",
+        "status": "PARTIAL",
+        "pct_chg": -9.999999999999996,
+        "close": 6.84,
+        "limit_up_again": null,
+        "reason_code": "OUTCOME_LIMIT_POOL_UNVERIFIED",
+        "known_by": "FORWARD"
+      },
+      "evidence": [
+        {
+          "claim": "观察日池记录",
+          "source_table": "limit_pool",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": "2026-09-24 17:10:03.957389",
+          "known_by": "CLOSE",
+          "quality": "VERIFIED",
+          "reason_code": null,
+          "is_forward_known": false
+        },
+        {
+          "claim": "观察日日线",
+          "source_table": "stock_daily",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": null,
+          "known_by": "CLOSE",
+          "quality": "VERIFIED",
+          "reason_code": null,
+          "is_forward_known": false
+        },
+        {
+          "claim": "观察日市场情绪",
+          "source_table": "market_sentiment",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": null,
+          "known_by": "CLOSE",
+          "quality": "VERIFIED",
+          "reason_code": null,
+          "is_forward_known": false
+        },
+        {
+          "claim": "题材归属快照",
+          "source_table": "sector_member",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": "2026-11-09 09:15:33.200695",
+          "known_by": "LATER",
+          "quality": "PARTIAL",
+          "reason_code": "THEME_PIT_UNKNOWN",
+          "is_forward_known": false
+        },
+        {
+          "claim": "D+1 后验结果",
+          "source_table": "stock_daily",
+          "source_trade_date": "2026-09-28",
+          "fetched_at": null,
+          "known_by": "FORWARD",
+          "quality": "PARTIAL",
+          "reason_code": "OUTCOME_LIMIT_POOL_UNVERIFIED",
+          "is_forward_known": true
+        }
+      ]
+    },
+    {
+      "case": "suspended_no_daily",
+      "code": "600136",
+      "resolved_trade_date": "2026-09-24",
+      "data_as_of": "2026-10-09",
+      "quality": {
+        "status": "PARTIAL",
+        "reasons": [
+          "THEME_PIT_UNKNOWN",
+          "DAILY_MISSING"
+        ]
+      },
+      "historical_signal_eligible": false,
+      "as_known_on_day": {
+        "previous_close_date": "2026-09-23",
+        "limit_status": "NOT_IN_POOL",
+        "board_height": null,
+        "observed_pool_membership": [],
+        "daily": null,
+        "themes": [
+          {
+            "name": "ST板块",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:14:52.148842",
+            "known_by": "LATER"
+          },
+          {
+            "name": "世界杯概念",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-09-25 22:07:32.707142",
+            "known_by": "LATER"
+          },
+          {
+            "name": "体育产业",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:16.618830",
+            "known_by": "LATER"
+          },
+          {
+            "name": "再融资",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:39.277886",
+            "known_by": "LATER"
+          },
+          {
+            "name": "地产链",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:32.261101",
+            "known_by": "LATER"
+          },
+          {
+            "name": "文化传媒",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 08:20:39.567846",
+            "known_by": "LATER"
+          },
+          {
+            "name": "武汉",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:50.519003",
+            "known_by": "LATER"
+          },
+          {
+            "name": "湖北省",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:43.177809",
+            "known_by": "LATER"
+          },
+          {
+            "name": "股权转让",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 08:20:41.849411",
+            "known_by": "LATER"
+          },
+          {
+            "name": "金融概念",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:10.887948",
+            "known_by": "LATER"
+          }
+        ],
+        "concepts": []
+      },
+      "later_outcome": {
+        "outcome_date": "2026-09-28",
+        "status": "UNVERIFIABLE",
+        "pct_chg": null,
+        "close": null,
+        "limit_up_again": null,
+        "reason_code": "DAILY_MISSING",
+        "known_by": "FORWARD"
+      },
+      "evidence": [
+        {
+          "claim": "观察日池记录",
+          "source_table": "limit_pool",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": "2026-09-24 17:10:03.957389",
+          "known_by": "CLOSE",
+          "quality": "VERIFIED",
+          "reason_code": null,
+          "is_forward_known": false
+        },
+        {
+          "claim": "观察日日线",
+          "source_table": "stock_daily",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": null,
+          "known_by": "CLOSE",
+          "quality": "NOT_COLLECTED",
+          "reason_code": "DAILY_MISSING",
+          "is_forward_known": false
+        },
+        {
+          "claim": "观察日市场情绪",
+          "source_table": "market_sentiment",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": null,
+          "known_by": "CLOSE",
+          "quality": "VERIFIED",
+          "reason_code": null,
+          "is_forward_known": false
+        },
+        {
+          "claim": "题材归属快照",
+          "source_table": "sector_member",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": "2026-11-09 09:15:32.261101",
+          "known_by": "LATER",
+          "quality": "PARTIAL",
+          "reason_code": "THEME_PIT_UNKNOWN",
+          "is_forward_known": false
+        },
+        {
+          "claim": "D+1 后验结果",
+          "source_table": "stock_daily",
+          "source_trade_date": "2026-09-28",
+          "fetched_at": null,
+          "known_by": "FORWARD",
+          "quality": "UNVERIFIABLE",
+          "reason_code": "DAILY_MISSING",
+          "is_forward_known": true
+        }
+      ]
+    },
+    {
+      "case": "no_pool_record",
+      "code": "600889",
+      "resolved_trade_date": "2026-09-24",
+      "data_as_of": "2026-10-09",
+      "quality": {
+        "status": "PARTIAL",
+        "reasons": [
+          "THEME_PIT_UNKNOWN",
+          "DAILY_MISSING"
+        ]
+      },
+      "historical_signal_eligible": false,
+      "as_known_on_day": {
+        "previous_close_date": "2026-09-23",
+        "limit_status": "NOT_IN_POOL",
+        "board_height": null,
+        "observed_pool_membership": [],
+        "daily": null,
+        "themes": [
+          {
+            "name": "ST板块",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:14:52.148849",
+            "known_by": "LATER"
+          },
+          {
+            "name": "业绩增长",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:00.313072",
+            "known_by": "LATER"
+          },
+          {
+            "name": "中报增长",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:04.628251",
+            "known_by": "LATER"
+          },
+          {
+            "name": "储能",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:55.087348",
+            "known_by": "LATER"
+          },
+          {
+            "name": "光热发电",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:23.812395",
+            "known_by": "LATER"
+          },
+          {
+            "name": "化工",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:24.822658",
+            "known_by": "LATER"
+          },
+          {
+            "name": "商业航天",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 08:20:44.735574",
+            "known_by": "LATER"
+          },
+          {
+            "name": "国有企业",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:35.013682",
+            "known_by": "LATER"
+          },
+          {
+            "name": "并购重组",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 08:20:42.630841",
+            "known_by": "LATER"
+          },
+          {
+            "name": "新型工业化",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:14:54.139240",
+            "known_by": "LATER"
+          },
+          {
+            "name": "机器人概念",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-09-25 22:06:09.484836",
+            "known_by": "LATER"
+          },
+          {
+            "name": "江苏省",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:14:43.070511",
+            "known_by": "LATER"
+          },
+          {
+            "name": "芯片",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-08 21:09:01.568143",
+            "known_by": "LATER"
+          },
+          {
+            "name": "超跌",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:13:14.463294",
+            "known_by": "LATER"
+          },
+          {
+            "name": "金融概念",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 09:15:10.887982",
+            "known_by": "LATER"
+          },
+          {
+            "name": "风电",
+            "taxonomy": "kph_selected",
+            "fetched_at": "2026-11-09 08:20:43.405564",
+            "known_by": "LATER"
+          }
+        ],
+        "concepts": []
+      },
+      "later_outcome": {
+        "outcome_date": "2026-09-28",
+        "status": "UNVERIFIABLE",
+        "pct_chg": null,
+        "close": null,
+        "limit_up_again": null,
+        "reason_code": "DAILY_MISSING",
+        "known_by": "FORWARD"
+      },
+      "evidence": [
+        {
+          "claim": "观察日池记录",
+          "source_table": "limit_pool",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": "2026-09-24 17:10:03.957389",
+          "known_by": "CLOSE",
+          "quality": "VERIFIED",
+          "reason_code": null,
+          "is_forward_known": false
+        },
+        {
+          "claim": "观察日日线",
+          "source_table": "stock_daily",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": null,
+          "known_by": "CLOSE",
+          "quality": "NOT_COLLECTED",
+          "reason_code": "DAILY_MISSING",
+          "is_forward_known": false
+        },
+        {
+          "claim": "观察日市场情绪",
+          "source_table": "market_sentiment",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": null,
+          "known_by": "CLOSE",
+          "quality": "VERIFIED",
+          "reason_code": null,
+          "is_forward_known": false
+        },
+        {
+          "claim": "题材归属快照",
+          "source_table": "sector_member",
+          "source_trade_date": "2026-09-24",
+          "fetched_at": "2026-11-09 09:15:24.822658",
+          "known_by": "LATER",
+          "quality": "PARTIAL",
+          "reason_code": "THEME_PIT_UNKNOWN",
+          "is_forward_known": false
+        },
+        {
+          "claim": "D+1 后验结果",
+          "source_table": "stock_daily",
+          "source_trade_date": "2026-09-28",
+          "fetched_at": null,
+          "known_by": "FORWARD",
+          "quality": "UNVERIFIABLE",
+          "reason_code": "DAILY_MISSING",
+          "is_forward_known": true
+        }
+      ]
+    },
+    {
+      "case": "pit_theme_fetched_after_observation",
+      "theme_known_by": [
+        "LATER",
+        "LATER",
+        "LATER",
+        "LATER",
+        "LATER",
+        "LATER",
+        "LATER",
+        "LATER"
+      ],
+      "quality_reasons": [
+        "THEME_PIT_UNKNOWN",
+        "CONCEPT_POST_CLOSE_UNKNOWN",
+        "OUTCOME_LIMIT_POOL_UNVERIFIED"
+      ],
+      "historical_signal_eligible": false
+    },
+    {
+      "case": "observation_day_not_collected",
+      "resolved_trade_date": "2026-07-03",
+      "limit_status": "NOT_IN_POOL",
+      "quality": {
+        "status": "PARTIAL",
+        "reasons": [
+          "THEME_PIT_UNKNOWN"
+        ]
+      }
+    }
+  ]
+}

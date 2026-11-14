@@ -18,6 +18,8 @@ import type {
   StockDde,
   StockLimitRecord,
   StockProfile,
+  StockResearchContext,
+  StockResearchTheme,
   StockThemes,
 } from '../api/types'
 import EChart from './EChart'
@@ -375,6 +377,179 @@ function LhbTab({ code, cacheBase }: { code: string; cacheBase: string }) {
   )
 }
 
+const KNOWN_BY_LABEL: Record<string, string> = {
+  CLOSE: '收盘可知',
+  PRIOR_DAY: '前一日已取到',
+  SAME_DAY_UNKNOWN: '同日取到，无法证明盘前',
+  LATER: '观察日之后才取到',
+  POST_CLOSE_UNKNOWN: '盘后来源，无法证明当时已知',
+  FORWARD: 'D+1 后验',
+  UNKNOWN: '来源时间未知',
+}
+
+const CONTEXT_STATUS_LABEL: Record<string, string> = {
+  VERIFIED: '可验证',
+  PARTIAL: '部分可信',
+  PENDING: '待观察',
+  UNVERIFIABLE: '不可验证',
+  NOT_COLLECTED: '未采集',
+}
+
+function knownTone(knownBy: string): string {
+  if (knownBy === 'PRIOR_DAY' || knownBy === 'CLOSE') return 'text-up'
+  if (knownBy === 'FORWARD') return 'text-fg-muted'
+  return 'text-warn'
+}
+
+function ThemeList({ items }: { items: StockResearchTheme[] }) {
+  if (items.length === 0) return <div className="text-[13px] text-fg-muted">—</div>
+  return (
+    <ul className="space-y-1 text-[13px]">
+      {items.map((item, index) => (
+        <li key={`${item.name}-${item.sector_code ?? index}`} className="flex items-baseline justify-between gap-2">
+          <span className="text-fg">
+            {item.name}
+            {item.taxonomy ? <span className="ml-1 text-[11px] text-fg-dim">{item.taxonomy}</span> : null}
+          </span>
+          <span className={`text-[11px] ${knownTone(item.known_by)}`}>
+            {KNOWN_BY_LABEL[item.known_by] ?? item.known_by}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function EvidenceTab({
+  code,
+  cacheBase,
+  selectedAsOfDate,
+}: {
+  code: string
+  cacheBase: string
+  selectedAsOfDate: string | null
+}) {
+  const { data, loading, error } = useCached<StockResearchContext>(
+    `${cacheBase}|evidence`,
+    () => api.stockResearchContext(code, selectedAsOfDate),
+  )
+  if (loading) return <LoadState loading className="px-4 py-10" />
+  if (error) return <LoadState error={error} className="px-4 py-10" />
+  if (!data) return <LoadState emptyText="暂无观察日研究依据" className="px-4 py-10" />
+
+  const known = data.as_known_on_day
+  const outcome = data.later_outcome
+  const forward = data.evidence.filter((item) => item.is_forward_known)
+  const backward = data.evidence.filter((item) => !item.is_forward_known)
+  const unknownThemes = known.themes.filter((item) => item.known_by !== 'PRIOR_DAY')
+
+  return (
+    <div className="pb-4">
+      <div className="border-b border-line-soft px-4 py-2 text-[12px] leading-relaxed">
+        <div className="num text-fg-dim">
+          观察日 {data.resolved_trade_date}
+          {data.requested_as_of ? `（请求 ${data.requested_as_of}）` : '（最新交易日）'}
+          {' · '}数据截至 {data.data_as_of ?? '—'}
+        </div>
+        <div className="mt-0.5">
+          <span className={data.quality.status === 'PARTIAL' ? 'text-warn' : 'text-fg'}>
+            {CONTEXT_STATUS_LABEL[data.quality.status] ?? data.quality.status}
+          </span>
+          <span className="ml-2 text-fg-muted">
+            历史信号资格：{data.historical_signal_eligible ? '是' : '否（只读展示）'}
+          </span>
+        </div>
+        {data.quality.reasons.length ? (
+          <div className="mt-0.5 text-[11px] text-warn">{data.quality.reasons.join(' · ')}</div>
+        ) : null}
+      </div>
+
+      <Section title="观察日已知（截至收盘）">
+        <Row label="上一交易日" value={known.previous_close_date ?? '—'} />
+        <Row
+          label="涨跌状态"
+          value={
+            known.limit_status === 'UP'
+              ? `涨停${known.board_height ? ` · ${known.board_height} 板` : ''}`
+              : known.limit_status
+          }
+        />
+        <Row label="观察到的池" value={known.observed_pool_membership.join('、') || '—'} />
+        <Row label="当日日线" value={known.daily ? `${known.daily.close} / ${fmtPct(known.daily.pct_chg)}` : '—'} />
+        <div className="mt-2 text-[12px] text-fg-dim">题材（来源时点）</div>
+        <ThemeList items={known.themes} />
+        <div className="mt-2 text-[12px] text-fg-dim">涨停天梯题材</div>
+        <ThemeList items={known.concepts} />
+      </Section>
+
+      <Section title="盘后才知道 / 来源时间未知">
+        {unknownThemes.length === 0 && known.concepts.length === 0 ? (
+          <div className="text-[13px] text-fg-muted">没有盘后来源记录</div>
+        ) : (
+          <>
+            <div className="mb-1 text-[12px] leading-relaxed text-warn">
+              以下资料不能证明在观察日盘前已知，不可作为当时交易信号。
+            </div>
+            <ThemeList items={unknownThemes} />
+            <ThemeList items={known.concepts} />
+          </>
+        )}
+      </Section>
+
+      <Section title="D+1 后验（只供复盘）">
+        <Row label="结果日" value={outcome.outcome_date ?? '—'} />
+        <Row label="状态" value={CONTEXT_STATUS_LABEL[outcome.status] ?? outcome.status} />
+        <Row label="涨跌幅" value={fmtPct(outcome.pct_chg)} />
+        <Row label="收盘" value={fmtNum(outcome.close)} />
+        <Row
+          label="是否再涨停"
+          value={outcome.limit_up_again == null ? '不可验证' : outcome.limit_up_again ? '是' : '否'}
+        />
+      </Section>
+
+      <Section title="证据链">
+        <div className="overflow-auto">
+          <table className="grid-table min-w-full text-[12px]">
+            <thead>
+              <tr>
+                <th>断言</th>
+                <th>来源</th>
+                <th>日期</th>
+                <th>时点</th>
+                <th>质量</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...backward, ...forward].map((item) => (
+                <tr key={`${item.claim}-${item.source_table}-${item.source_trade_date}`}>
+                  <td className="!text-left">
+                    <div>{item.claim}</div>
+                    <div className="text-[11px] text-fg-muted">{item.summary ?? '—'}</div>
+                  </td>
+                  <td>{item.source_table}</td>
+                  <td className="num">{item.source_trade_date ?? '—'}</td>
+                  <td className={`text-[11px] ${knownTone(item.known_by)}`}>
+                    {KNOWN_BY_LABEL[item.known_by] ?? item.known_by}
+                  </td>
+                  <td className="text-[11px]">
+                    {CONTEXT_STATUS_LABEL[item.quality] ?? item.quality}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      <div className="px-4 text-[12px] leading-relaxed text-fg-dim">
+        {data.notes.map((note) => (
+          <div key={note}>· {note}</div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function StockResearchDrawer() {
   const {
     code,
@@ -517,6 +692,12 @@ export default function StockResearchDrawer() {
             <KLineTab code={code} cacheBase={cacheBase} selectedAsOfDate={selectedAsOfDate} />
           ) : activeTab === 'themes' ? (
             <ThemesTab code={code} cacheBase={cacheBase} selectedAsOfDate={selectedAsOfDate} />
+          ) : activeTab === 'evidence' ? (
+            <EvidenceTab
+              code={code}
+              cacheBase={cacheBase}
+              selectedAsOfDate={selectedAsOfDate}
+            />
           ) : activeTab === 'limit' ? (
             <LimitTab code={code} cacheBase={cacheBase} />
           ) : activeTab === 'funds' ? (

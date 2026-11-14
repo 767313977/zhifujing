@@ -1892,6 +1892,71 @@ export interface StockThemes {
   suppressed: string[]
 }
 
+/** S3-C：观察日研究依据（只读） */
+export interface StockResearchTheme {
+  name: string
+  sector_code: string | null
+  taxonomy: string | null
+  fetched_at: string | null
+  /** CLOSE / PRIOR_DAY / SAME_DAY_UNKNOWN / LATER / POST_CLOSE_UNKNOWN / UNKNOWN */
+  known_by: string
+}
+
+export interface StockResearchDaily {
+  trade_date: string
+  close: number | null
+  pct_chg: number | null
+  known_by: string
+}
+
+export interface StockResearchAsKnown {
+  previous_close_date: string | null
+  limit_status: string
+  board_height: number | null
+  observed_pool_membership: string[]
+  pool_quality: Record<string, string>
+  daily: StockResearchDaily | null
+  themes: StockResearchTheme[]
+  concepts: StockResearchTheme[]
+  sentiment: Record<string, number | null> | null
+}
+
+export interface StockResearchOutcome {
+  outcome_date: string | null
+  status: string
+  pct_chg: number | null
+  close: number | null
+  limit_up_again: boolean | null
+  reason_code: string | null
+  known_by: string
+}
+
+export interface StockResearchEvidence {
+  claim: string
+  source_table: string
+  source_trade_date: string | null
+  fetched_at: string | null
+  known_by: string
+  quality: string
+  reason_code: string | null
+  is_forward_known: boolean
+  summary: string | null
+}
+
+export interface StockResearchContext {
+  code: string
+  name: string | null
+  requested_as_of: string | null
+  resolved_trade_date: string
+  data_as_of: string | null
+  historical_signal_eligible: boolean
+  quality: { status: string; reasons: string[] }
+  as_known_on_day: StockResearchAsKnown
+  later_outcome: StockResearchOutcome
+  evidence: StockResearchEvidence[]
+  notes: string[]
+}
+
 /**
  * 悟道「阶段判定」——一只票当天处于哪一档（移植自 yangban-desk 的 8 个标签）。
  *

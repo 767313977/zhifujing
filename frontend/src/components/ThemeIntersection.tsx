@@ -346,6 +346,12 @@ export default function ThemeIntersection({
                         </td>
                         <td>
                           <QuickResearch code={row.code} asOfDate={data.resolved_as_of} />
+                          <QuickResearch
+                            code={row.code}
+                            asOfDate={data.resolved_as_of}
+                            tab="evidence"
+                            label="据"
+                          />
                         </td>
                       </tr>
                     ))}

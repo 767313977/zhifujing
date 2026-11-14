@@ -10,7 +10,15 @@
 
 import { createContext, useContext } from 'react'
 
-export const RESEARCH_TABS = ['overview', 'kline', 'themes', 'limit', 'funds', 'lhb'] as const
+export const RESEARCH_TABS = [
+  'overview',
+  'kline',
+  'themes',
+  'limit',
+  'funds',
+  'lhb',
+  'evidence',
+] as const
 
 export type ResearchTab = (typeof RESEARCH_TABS)[number]
 
@@ -21,6 +29,7 @@ export const RESEARCH_TAB_LABELS: Record<ResearchTab, string> = {
   limit: '涨停',
   funds: '资金',
   lhb: '龙虎榜',
+  evidence: '依据',
 }
 
 export interface ResearchSelection {

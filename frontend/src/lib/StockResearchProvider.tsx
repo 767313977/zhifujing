@@ -34,6 +34,7 @@ import type {
 const CHANNEL_NAME = 'zhifujing:stock-research'
 const SYNC_KEY = 'stock-research:multi-window'
 const STOCK_PARAM = 'stock'
+const AS_OF_PARAM = 'as_of'
 
 const EMPTY: ResearchSelection = {
   code: null,
@@ -96,18 +97,24 @@ export function StockResearchProvider({ children }: { children: ReactNode }) {
     setSearchParamsRef.current = setSearchParams
   }, [setSearchParams])
 
-  /** 只改 `stock` 参数，保留页面自己的筛选条件；值没变就不动历史 */
-  const writeUrl = useCallback((code: string | null) => {
+  /** 只改 `stock` / `as_of` 参数，保留页面自己的筛选条件；值没变就不动历史 */
+  const writeUrl = useCallback((code: string | null, asOf: string | null = null) => {
     setSearchParamsRef.current((prev) => {
       const next = new URLSearchParams(prev)
       if (code) next.set(STOCK_PARAM, code)
       else next.delete(STOCK_PARAM)
+      if (code && asOf) next.set(AS_OF_PARAM, asOf)
+      else next.delete(AS_OF_PARAM)
       return next.toString() === prev.toString() ? prev : next
     })
   }, [])
 
   const broadcast = useCallback(
-    (payload: { type: 'open'; code: string; tab: ResearchTab } | { type: 'close' }) => {
+    (
+      payload:
+        | { type: 'open'; code: string; tab: ResearchTab; asOf?: string | null }
+        | { type: 'close' },
+    ) => {
       if (!multiWindowSync) return
       if (!scope) return
       const channel = channelRef.current
@@ -130,15 +137,19 @@ export function StockResearchProvider({ children }: { children: ReactNode }) {
         open: true,
         activeTab: tab,
       })
-      writeUrl(code)
-      broadcast({ type: 'open', code, tab })
+      writeUrl(code, context.asOfDate ?? null)
+      broadcast(
+        context.asOfDate
+          ? { type: 'open', code, tab, asOf: context.asOfDate }
+          : { type: 'open', code, tab },
+      )
     },
     [me, location.pathname, writeUrl, broadcast],
   )
 
   const closeStockResearch = useCallback(() => {
     setSelection((prev) => ({ ...prev, open: false, code: null }))
-    writeUrl(null)
+    writeUrl(null, null)
     broadcast({ type: 'close' })
   }, [writeUrl, broadcast])
 
@@ -146,10 +157,19 @@ export function StockResearchProvider({ children }: { children: ReactNode }) {
     (tab: ResearchTab) => {
       setSelection((prev) => (prev.open ? { ...prev, activeTab: tab } : prev))
       if (selection.code && selection.open) {
-        broadcast({ type: 'open', code: selection.code, tab })
+        broadcast(
+          selection.selectedAsOfDate
+            ? {
+                type: 'open',
+                code: selection.code,
+                tab,
+                asOf: selection.selectedAsOfDate,
+              }
+            : { type: 'open', code: selection.code, tab },
+        )
       }
     },
-    [selection.code, selection.open, broadcast],
+    [selection.code, selection.open, selection.selectedAsOfDate, broadcast],
   )
 
   const setMultiWindowSync = useCallback((enabled: boolean) => {
@@ -165,20 +185,21 @@ export function StockResearchProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (checking) return
     const code = normalizeStockCode(searchParams.get(STOCK_PARAM))
+    const asOf = searchParams.get(AS_OF_PARAM)
     if (!me) {
       // 未登录时 `?stock=` 不构成可恢复的研究状态：清掉 URL，别把别人的分享链接
       // 变成「登录后自动打开」的隐式行为
-      if (code) writeUrl(null)
+      if (code) writeUrl(null, null)
       setSelection((prev) => (prev.open || prev.code ? { ...EMPTY } : prev))
       return
     }
     setSelection((prev) => {
       if (!code) {
         if (!prev.open) return prev
-        return { ...prev, open: false, code: null }
+        return { ...EMPTY }
       }
-      if (prev.open && prev.code === code) return prev
-      return { ...prev, code, open: true }
+      if (prev.open && prev.code === code && prev.selectedAsOfDate === asOf) return prev
+      return { ...prev, code, selectedAsOfDate: asOf, open: true }
     })
   }, [searchParams, me, checking, writeUrl])
 
@@ -204,7 +225,7 @@ export function StockResearchProvider({ children }: { children: ReactNode }) {
     channelRef.current = channel
     channel.onmessage = (event: MessageEvent) => {
       const message = event.data as
-        | { type?: string; code?: string; tab?: string; scope?: string }
+        | { type?: string; code?: string; tab?: string; asOf?: string; scope?: string }
         | null
       // 作用域不同 = 另一个账户的窗口，忽略（不回广播，避免循环）
       if (!message || message.scope !== scope) return
@@ -212,16 +233,18 @@ export function StockResearchProvider({ children }: { children: ReactNode }) {
         const code = normalizeStockCode(message.code)
         if (!code) return
         const tab = isResearchTab(message.tab) ? message.tab : 'overview'
+        const asOf = typeof message.asOf === 'string' ? message.asOf : null
         setSelection((prev) => ({
           ...prev,
           code,
+          selectedAsOfDate: asOf,
           open: true,
           activeTab: tab,
         }))
-        writeUrl(code)
+        writeUrl(code, asOf)
       } else if (message.type === 'close') {
         setSelection((prev) => ({ ...prev, open: false, code: null }))
-        writeUrl(null)
+        writeUrl(null, null)
       }
     }
     return () => {

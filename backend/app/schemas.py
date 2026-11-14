@@ -2403,6 +2403,83 @@ class StockThemes(BaseModel):
     suppressed: list[str] = Field(default_factory=list)
 
 
+# ---------------------------------------------------------------- 个股研究依据
+
+
+class StockResearchTheme(BaseModel):
+    name: str
+    sector_code: str | None
+    taxonomy: str | None
+    fetched_at: datetime | None
+    #: CLOSE / PRIOR_DAY / SAME_DAY_UNKNOWN / LATER / POST_CLOSE_UNKNOWN / UNKNOWN
+    known_by: str
+
+
+class StockResearchDaily(BaseModel):
+    trade_date: date
+    close: float | None
+    pct_chg: float | None
+    known_by: str = "CLOSE"
+
+
+class StockResearchAsKnown(BaseModel):
+    """严格截至观察日**收盘**已知的信息。"""
+
+    previous_close_date: date | None
+    limit_status: str
+    board_height: int | None
+    observed_pool_membership: list[str]
+    pool_quality: dict[str, str]
+    daily: StockResearchDaily | None
+    themes: list[StockResearchTheme]
+    concepts: list[StockResearchTheme]
+    sentiment: dict[str, int | float | None] | None
+
+
+class StockResearchOutcome(BaseModel):
+    """D+1 后验；只供复盘，不反写 D 日依据。"""
+
+    outcome_date: date | None
+    status: str
+    pct_chg: float | None
+    close: float | None
+    limit_up_again: bool | None
+    reason_code: str | None
+    known_by: str = "FORWARD"
+
+
+class StockResearchEvidence(BaseModel):
+    claim: str
+    source_table: str
+    source_trade_date: date | None
+    fetched_at: datetime | None
+    known_by: str
+    quality: str
+    reason_code: str | None
+    is_forward_known: bool
+    summary: str | None = None
+
+
+class StockResearchContextQuality(BaseModel):
+    status: str
+    reasons: list[str] = []
+
+
+class StockResearchContextOut(BaseModel):
+    code: str
+    name: str | None
+    requested_as_of: date | None
+    resolved_trade_date: date
+    data_as_of: date | None
+    #: 本轮只读展示，不进入任何策略/信号
+    historical_signal_eligible: bool
+    quality: StockResearchContextQuality
+    as_known_on_day: StockResearchAsKnown
+    later_outcome: StockResearchOutcome
+    evidence: list[StockResearchEvidence]
+    notes: list[str] = []
+
+
 # ------------------------------------------------------------------ 复盘笔记
 
 

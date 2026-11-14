@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db, session_scope
+from app.services import stock_research_context
 from app.jobs.collect_daily import (
     STOCK_FULL_DAYS,
     CollectionBusy,
@@ -56,6 +57,7 @@ from app.schemas import (
     StockReportsOut,
     StockRiskBadgesOut,
     StockRiskBadgesRowOut,
+    StockResearchContextOut,
     StockThemeItem,
     StockThemes,
     StockUnlockRow,
@@ -1288,6 +1290,27 @@ def stock_lhb(
         )
     )
     return [LhbOut.model_validate(row) for row in rows]
+
+
+@router.get("/{code}/research-context", response_model=StockResearchContextOut)
+def stock_research_context_view(
+    code: str,
+    as_of: date | None = Query(None, description="观察日；不传则用最近交易日"),
+    session: Session = Depends(get_db),
+    _user: AppUser = Depends(current_user),
+) -> StockResearchContextOut:
+    """个股在观察日的「已知 / 未知 / D+1 后验」三段式依据（**只读本地库**）。
+
+    - 不调用 `syncStock`、不抓外部行情/公告/题材，不写库；
+    - 观察日必须是交易日；非交易日/未知代码返回 400；
+    - 题材快照只能证明「我们何时取到」，不能证明当时盘前已知；
+    - D+1 结果只供复盘，`is_forward_known=true`，不反写 D 日依据。
+    """
+    try:
+        data = stock_research_context.build(session, code=_code(code), as_of=as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return StockResearchContextOut(**data)
 
 
 def _guard_quota() -> None:
