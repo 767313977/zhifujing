@@ -231,6 +231,64 @@ def test_conflict_requires_both_sources_trusted(session):
     assert paged["state_counts"] == data["state_counts"]
 
 
+def test_single_up_member_with_untrusted_broken_is_unknown(session):
+    """R2-P2-01：broken 不可信时，不得把单边 up 成员标成 FIRST/SECOND。"""
+    session.query(LimitPool).filter(
+        LimitPool.trade_date == D2, LimitPool.pool_type == "broken"
+    ).delete()
+    session.add(
+        CollectLog(
+            trade_date=D2,
+            task="pool_broken",
+            status="failed",
+            rows=0,
+            created_at=datetime(2026, 11, 4, 20, 0),
+        )
+    )
+    session.commit()
+    data = build(session, mode="OR")
+    row = next(item for item in data["rows"] if item["code"] == "600000")
+    assert row["state"] == sr.STATE_UNKNOWN
+    assert data["state_counts"][sr.STATE_FIRST] == 0
+    assert data["state_counts"][sr.STATE_SECOND] == 0
+    assert "POOL_BROKEN_UNVERIFIED" in data["warnings"]
+    # 分页不改变桶计数
+    paged = build(session, mode="OR", limit=2, offset=0)
+    assert paged["state_counts"] == data["state_counts"]
+
+
+def test_single_broken_member_with_untrusted_up_is_unknown(session):
+    """up 不可信时，不得把单边 broken 成员标成 BROKEN。"""
+    session.query(LimitPool).filter(
+        LimitPool.trade_date == D2, LimitPool.pool_type == "up"
+    ).delete()
+    session.add(
+        CollectLog(
+            trade_date=D2,
+            task="pool_up",
+            status="failed",
+            rows=0,
+            created_at=datetime(2026, 11, 4, 20, 0),
+        )
+    )
+    session.commit()
+    data = build(session, mode="OR")
+    row = next(item for item in data["rows"] if item["code"] == "600003")
+    assert row["state"] == sr.STATE_UNKNOWN
+    assert data["state_counts"][sr.STATE_BROKEN] == 0
+    assert "POOL_UP_UNVERIFIED" in data["warnings"]
+
+
+def test_both_sources_trusted_classifies_single_side_members(session):
+    data = build(session, mode="OR")
+    by_code = {row["code"]: row["state"] for row in data["rows"]}
+    assert by_code["600000"] == sr.STATE_FIRST
+    assert by_code["600001"] == sr.STATE_SECOND
+    assert by_code["600002"] == sr.STATE_THIRD_PLUS
+    assert by_code["600003"] == sr.STATE_BROKEN
+    assert by_code["600004"] == sr.STATE_CONFLICT
+
+
 def test_snapshot_never_rolls_forward(session):
     # 给 D3 加一份完全不同的成员快照；as_of=D2 时必须用 D2 的快照
     session.add_all(

@@ -409,15 +409,17 @@ def build(
 
     def state_of(code: str) -> str:
         pools = pool_membership.get(code, set())
+        # R2-P2-01：FIRST/SECOND/THIRD_PLUS/BROKEN/CONFLICT 都是**互斥分类**，
+        # 必须由 up 与 broken 两个来源同时可信支撑；任一来源失败/缺日志时，
+        # 不能把「另一池未知」当成「另一池确定不存在」。
+        if not (up_trusted and broken_trusted):
+            return STATE_UNKNOWN
         if "up" in pools and "broken" in pools:
-            # 冲突必须由 up 与 broken **两个可信来源**支持；旧行仍在但来源失败 →
-            # 只能输出 UNKNOWN，不能凭数据库残留行推断当前冲突（P2-04）
-            return STATE_CONFLICT if (up_trusted and broken_trusted) else STATE_UNKNOWN
+            # 双源可信下的冲突：单独列出，不按 if/elif 优先级择一
+            return STATE_CONFLICT
         if "broken" in pools:
-            return STATE_BROKEN if broken_trusted else STATE_UNKNOWN
+            return STATE_BROKEN
         if "up" in pools:
-            if not up_trusted:
-                return STATE_UNKNOWN
             height = height_by_code.get(code)
             if height == 1:
                 return STATE_FIRST
@@ -426,8 +428,8 @@ def build(
             if height is not None and height >= 3:
                 return STATE_THIRD_PLUS
             return STATE_UNKNOWN
-        # 不在任何池里：只有两个池都可信时才是「确定没涨停/没炸板」
-        return STATE_UNKNOWN if not (up_trusted and broken_trusted) else "none"
+        # 不在任何池里：双源都可信时才是「确定没涨停/没炸板」
+        return "none"
 
     state_counts = {key: 0 for key in STATE_LABELS}
     state_by_code: dict[str, str] = {}
