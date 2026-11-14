@@ -216,3 +216,115 @@ def test_explained_requires_reason_code():
     explained = audit._check("x", False, detail="d", reason_code="WHY")
     assert explained["explained"] is True
     assert explained["reason_code"] == "WHY"
+
+
+def _patch_sentiment(monkeypatch, daily_status, sentiment_status, *, missing, valid=10, sample=10):
+    """把 D+1 日线状态与情绪次日状态固定为指定组合（不改真实库）。"""
+    monkeypatch.setattr(audit, "_daily_status", lambda *_args, **_kwargs: daily_status)
+    monkeypatch.setattr(
+        audit.snd,
+        "build_next_day",
+        lambda *_args, **_kwargs: {
+            "series": [
+                {
+                    "outcome_date": D2.isoformat(),
+                    "data_quality_status": sentiment_status,
+                    "missing_count": missing,
+                    "valid_count": valid,
+                    "sample_count": sample,
+                }
+            ]
+        },
+    )
+
+
+def _run_cli(monkeypatch, db_path, out_dir, sample=1):
+    out = out_dir / "matrix.json"
+    md = out_dir / "report.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "check_s5_quality_consistency.py",
+            "--db",
+            str(db_path),
+            "--start",
+            D1.isoformat(),
+            "--end",
+            D1.isoformat(),
+            "--out",
+            str(out),
+            "--md",
+            str(md),
+            "--sample",
+            str(sample),
+        ],
+    )
+    try:
+        audit.main()
+        code = 0
+    except SystemExit as exc:  # CLI 用非零退出码标记未解释差异
+        code = exc.code
+    return code, json.loads(out.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(
+    ("daily_status", "sentiment_status", "missing"),
+    [
+        (audit.dq.STATUS_VERIFIED, "PARTIAL", 0),
+        (audit.dq.STATUS_PARTIAL, "UNVERIFIED", 0),
+        (audit.dq.STATUS_SOURCE_ERROR, "VERIFIED", 0),
+        (audit.dq.STATUS_NOT_COLLECTED, "VERIFIED", 0),
+        (audit.dq.STATUS_PARTIAL, "VERIFIED", 5),
+    ],
+)
+def test_sentiment_daily_mismatch_is_unexpected_and_exits_nonzero(
+    audit_db, tmp_path, monkeypatch, capsys, daily_status, sentiment_status, missing
+):
+    """跨服务矛盾：左侧 D+1 日线状态与右侧情绪状态非法组合 → unexpected + 退出码 2。"""
+    _patch_sentiment(
+        monkeypatch, daily_status, sentiment_status, missing=missing, valid=10 if missing == 0 else 5
+    )
+    code, result = _run_cli(monkeypatch, audit_db, tmp_path)
+    capsys.readouterr()
+    assert code == 2
+    assert result["summary"]["unexpected_disagreements"] >= 1
+    names = [item["name"] for item in result["unexpected"]]
+    assert "overview.stock_daily vs sentiment-next-day" in names
+    item = next(i for i in result["unexpected"] if i["name"].startswith("overview.stock_daily"))
+    assert item["reason_code"] is None
+    assert f"daily={daily_status}" in item["detail"]
+    assert f"sentiment={sentiment_status}" in item["detail"]
+
+
+def test_sentiment_subset_complete_is_explained_with_reason_code(
+    audit_db, tmp_path, monkeypatch, capsys
+):
+    """唯一允许的已解释差异：全市场日线 PARTIAL，但抽样样本无缺失且有效。"""
+    _patch_sentiment(monkeypatch, audit.dq.STATUS_PARTIAL, "VERIFIED", missing=0, valid=10, sample=10)
+    code, result = _run_cli(monkeypatch, audit_db, tmp_path)
+    capsys.readouterr()
+    assert code == 0
+    assert result["summary"]["unexpected_disagreements"] == 0
+    assert result["summary"]["explained_disagreements"] == 1
+    item = result["explained"][0]
+    assert item["reason_code"] == "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL"
+
+
+def test_theme_source_error_is_not_na(audit_db, tmp_path, monkeypatch, capsys):
+    """sector_member 来源报错且当日无成员时，不得因缺 sector_code 直接判 N/A。"""
+    real_sector_items = audit.dq._sector_member_items
+
+    def _broken(*_args, **_kwargs):
+        items = real_sector_items(*_args, **_kwargs)
+        for item in items.values():
+            item["status"] = audit.dq.STATUS_SOURCE_ERROR
+        return items
+
+    monkeypatch.setattr(audit.dq, "_sector_member_items", _broken)
+    code, result = _run_cli(monkeypatch, audit_db, tmp_path)
+    capsys.readouterr()
+    assert code == 2
+    names = [item["name"] for item in result["unexpected"]]
+    assert "overview.sector_member vs theme-search" in names
+

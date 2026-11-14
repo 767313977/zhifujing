@@ -110,11 +110,16 @@ STATE_MATRIX: dict[str, dict[str, set[str]]] = {
         dq.STATUS_SOURCE_ERROR: set(),
     },
     "sentiment": {
-        # 情绪次日用的是自己的状态词表（VERIFIED / PARTIAL / UNVERIFIED / PENDING）
-        "VERIFIED": {"VERIFIED"},
-        "PARTIAL": {"PARTIAL"},
-        "UNVERIFIED": {"UNVERIFIED"},
-        "PENDING": {"PENDING"},
+        # 左侧是 D+1 `stock_daily` overview 状态，右侧是 sentiment_next_day 的
+        # `data_quality_status` 词表（VERIFIED / PARTIAL / UNVERIFIED / PENDING）。
+        # 唯一允许的「子集差异」不在此表：daily PARTIAL + sentiment VERIFIED 且
+        # 抽样内 missing==0 / 有有效样本时，由 `SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL`
+        # 明确解释；其余组合一律 unexpected。
+        dq.STATUS_VERIFIED: {"VERIFIED", "EMPTY"},
+        dq.STATUS_PARTIAL: {"PARTIAL"},
+        dq.STATUS_UNVERIFIABLE: {"UNVERIFIED"},
+        dq.STATUS_NOT_COLLECTED: {"PENDING"},
+        dq.STATUS_SOURCE_ERROR: set(),
     },
 }
 
@@ -163,12 +168,29 @@ def _pool_checks(session: Session, day: date, item: dict) -> list[dict]:
 
 
 def _theme_checks(session: Session, day: date, item: dict) -> list[dict]:
+    status = item["status"]
     sector_code = session.execute(
         text("SELECT sector_code FROM sector_member WHERE trade_date = :day LIMIT 1"),
         {"day": day},
     ).scalar()
     if not sector_code:
-        return [_check("overview.sector_member vs theme-search", True, detail="N/A 无成员快照")]
+        # N/A 只有在「来源查询成功且目标日确实没有成员快照」时才成立；
+        # 来源自身报错（SOURCE_ERROR）时不得用 N/A 掩盖。
+        if status in (dq.STATUS_NOT_COLLECTED, dq.STATUS_NOT_TRADE_DAY):
+            return [
+                _check(
+                    "overview.sector_member vs theme-search",
+                    True,
+                    detail=f"N/A：来源状态={status} 且当日无成员快照",
+                )
+            ]
+        return [
+            _check(
+                "overview.sector_member vs theme-search",
+                False,
+                detail=f"来源状态={status} 但当日无成员快照；N/A 不成立",
+            )
+        ]
     themes = ti.search(
         session, sector_codes=[sector_code], mode="AND", market="all", as_of=day, limit=1, offset=0
     )
@@ -190,24 +212,38 @@ def _sentiment_checks(session: Session, day: date, items: dict) -> list[dict]:
     if not row:
         return [_check("overview.stock_daily vs sentiment-next-day", True, detail="N/A 无样本")]
     d1 = row.get("outcome_date")
-    daily_status = _daily_status(session, d1) if d1 else None
+    if not d1:
+        # 区间末尾没有 D+1 交易日：没有可对照的日线日期，属于不可比而非矛盾。
+        return [
+            _check(
+                "overview.stock_daily vs sentiment-next-day",
+                True,
+                detail="N/A 无 D+1 交易日，无法对照日线状态",
+            )
+        ]
+    daily_status = _daily_status(session, d1)
     sentiment_status = row.get("data_quality_status")
     missing = int(row.get("missing_count") or 0)
-    # 严格口径：情绪 VERIFIED 要求抽样内无缺失，且全市场日线也为 VERIFIED；
-    # 只有「抽样内完整、全市场个别行缺字段」允许作为已解释差异（带明确原因码）。
+    valid = int(row.get("valid_count") or 0)
+    sample = int(row.get("sample_count") or 0)
+    # 左侧是 D+1 全市场日线状态，右侧是情绪服务的抽样状态；两端不再是同一变量。
+    # 「样本子集完整」是唯一允许的跨服务差异，且必须同时满足：
+    # - 全市场日线 PARTIAL（个别股票缺字段）；
+    # - 情绪侧抽查样本无缺失、有有效样本；
+    # 任何一项不满足都必须进 unexpected。
     reason = None
-    if sentiment_status == "VERIFIED" and d1:
-        ok = missing == 0 and daily_status == dq.STATUS_VERIFIED
-        if not ok and missing == 0 and daily_status == dq.STATUS_PARTIAL:
+    if daily_status == dq.STATUS_PARTIAL and sentiment_status == "VERIFIED":
+        ok = False
+        if missing == 0 and valid > 0 and sample > 0:
             reason = "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL"
     else:
-        ok = _matrix_match("sentiment", sentiment_status or "", sentiment_status)
+        ok = _matrix_match("sentiment", daily_status, sentiment_status)
     return [
         _check(
             "overview.stock_daily vs sentiment-next-day",
             ok,
             detail=f"next_day={d1}; daily={daily_status}; sentiment={sentiment_status}; "
-            f"missing={missing}",
+            f"sample={sample}; valid={valid}; missing={missing}",
             reason_code=reason,
         )
     ]
