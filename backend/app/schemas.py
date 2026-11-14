@@ -2497,6 +2497,31 @@ class StockResearchEvidence(BaseModel):
     summary: str | None = None
 
 
+class SectorResonanceOut(BaseModel):
+    """S4-C：板块 × 连板梯队 × D+1 的只读研究结果（附带逐券行）。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    as_of: date
+    member_snapshot_date: date | None
+    outcome_date: date | None
+    mode: str
+    market: str
+    total: int
+    shown: int
+    has_more: bool
+    quality: dict
+    coverage: dict
+    pit: dict
+    state_counts: dict[str, int]
+    outcome: dict
+    outcome_status: str
+    by_state: dict
+    rows: list[dict]
+    warnings: list[str]
+    notes: list[str]
+
+
 class QualitySourceItem(BaseModel):
     """S4-B：单个数据源在某交易日的可信度快照（只读诊断）。"""
 

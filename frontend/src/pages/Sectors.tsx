@@ -29,6 +29,7 @@ import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
 import QuickResearch from '../components/QuickResearch'
 import ThemeBoardPanel from '../components/ThemeBoardPanel'
+import SectorResonance from '../components/SectorResonance'
 import ThemeIntersection from '../components/ThemeIntersection'
 import {
   AXIS_LABEL,
@@ -1071,6 +1072,12 @@ export default function Sectors() {
         {/* 题材交叉：整行宽。只读本地 sector_member 快照，不发外部请求。
             页面当前板块清单直接复用排行结果，避免再打一次接口。 */}
         <ThemeIntersection
+          boards={ranking?.boards ?? []}
+          pageDate={date ?? ranking?.trade_date ?? null}
+        />
+
+        {/* 板块主线共振（S4-C）：同样只读本地快照 + 涨停池 + D+1 日线 */}
+        <SectorResonance
           boards={ranking?.boards ?? []}
           pageDate={date ?? ranking?.trade_date ?? null}
         />

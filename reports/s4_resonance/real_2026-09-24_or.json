@@ -1,0 +1,1828 @@
+{
+  "as_of": "2026-09-24",
+  "member_snapshot_date": "2026-09-24",
+  "outcome_date": "2026-09-28",
+  "requested_sector_codes": [
+    "801287",
+    "801330",
+    "801319"
+  ],
+  "mode": "OR",
+  "market": "all",
+  "quality_version": "sector-resonance-v1",
+  "aggregation_version": "next-day-aggregation-v2",
+  "taxonomy": "kph_selected",
+  "selected_sectors": [
+    {
+      "code": "801287",
+      "name": "养老概念",
+      "taxonomy": "kph_selected",
+      "member_count": 150,
+      "has_data": true
+    },
+    {
+      "code": "801330",
+      "name": "旅游",
+      "taxonomy": "kph_selected",
+      "member_count": 123,
+      "has_data": true
+    },
+    {
+      "code": "801319",
+      "name": "福建",
+      "taxonomy": "kph_selected",
+      "member_count": 112,
+      "has_data": true
+    }
+  ],
+  "coverage": {
+    "member_observed_rows": 385,
+    "member_unique_count": 366,
+    "member_completion_proof": false,
+    "observed_sectors": 3,
+    "expected_sectors": 3,
+    "observed_limit_up_count": 13,
+    "observed_limit_up_ratio": 3.55,
+    "ratio_scope": "OBSERVED_SAMPLE_ONLY",
+    "note": "成员快照没有完成证明，比率仅限已观测样本"
+  },
+  "pit": {
+    "historical_signal_eligible": false,
+    "member_snapshot_known_by": "LATER",
+    "known_by_observation_time": false,
+    "later_snapshot_for_review": true
+  },
+  "market_sentiment": {
+    "limit_up_count": 52,
+    "broken_rate": 16.13,
+    "max_consecutive": 5
+  },
+  "state_counts": {
+    "first_board": 10,
+    "second_board": 1,
+    "third_plus": 2,
+    "broken": 2,
+    "conflict": 0,
+    "unknown": 0
+  },
+  "outcome": {
+    "sample_count": 366,
+    "valid_count": 356,
+    "missing_count": 10,
+    "avg_pct": -1.94,
+    "median_pct": -1.43,
+    "outcome_up_count": 73,
+    "outcome_down_count": 271,
+    "outcome_flat_count": 12,
+    "up_ratio": 20.51,
+    "limit_up_again_count": null,
+    "limit_up_again_ratio": null,
+    "not_limit_up_count": null,
+    "unverifiable_count": 356,
+    "avg_open_pct": null,
+    "avg_close_vs_open": -1.59
+  },
+  "outcome_status": "PARTIAL",
+  "outcome_reason_codes": [
+    "OUTCOME_LIMIT_POOL_UNVERIFIED",
+    "OUTCOME_PARTIAL"
+  ],
+  "by_state": {
+    "first_board": {
+      "sample_count": 10,
+      "valid_count": 10,
+      "missing_count": 0,
+      "avg_pct": -2.15,
+      "median_pct": -0.82,
+      "outcome_up_count": 5,
+      "outcome_down_count": 5,
+      "outcome_flat_count": 0,
+      "up_ratio": 50.0,
+      "limit_up_again_count": null,
+      "limit_up_again_ratio": null,
+      "not_limit_up_count": null,
+      "unverifiable_count": 10,
+      "avg_open_pct": null,
+      "avg_close_vs_open": 0.4,
+      "label": "首板"
+    },
+    "second_board": {
+      "sample_count": 1,
+      "valid_count": 1,
+      "missing_count": 0,
+      "avg_pct": 9.97,
+      "median_pct": 9.97,
+      "outcome_up_count": 1,
+      "outcome_down_count": 0,
+      "outcome_flat_count": 0,
+      "up_ratio": 100.0,
+      "limit_up_again_count": null,
+      "limit_up_again_ratio": null,
+      "not_limit_up_count": null,
+      "unverifiable_count": 1,
+      "avg_open_pct": null,
+      "avg_close_vs_open": 9.31,
+      "label": "二板"
+    },
+    "third_plus": {
+      "sample_count": 2,
+      "valid_count": 2,
+      "missing_count": 0,
+      "avg_pct": -3.96,
+      "median_pct": -3.96,
+      "outcome_up_count": 1,
+      "outcome_down_count": 1,
+      "outcome_flat_count": 0,
+      "up_ratio": 50.0,
+      "limit_up_again_count": null,
+      "limit_up_again_ratio": null,
+      "not_limit_up_count": null,
+      "unverifiable_count": 2,
+      "avg_open_pct": null,
+      "avg_close_vs_open": -4.48,
+      "label": "三板及以上"
+    },
+    "broken": {
+      "sample_count": 2,
+      "valid_count": 2,
+      "missing_count": 0,
+      "avg_pct": -9.61,
+      "median_pct": -9.61,
+      "outcome_up_count": 0,
+      "outcome_down_count": 2,
+      "outcome_flat_count": 0,
+      "up_ratio": 0.0,
+      "limit_up_again_count": null,
+      "limit_up_again_ratio": null,
+      "not_limit_up_count": null,
+      "unverifiable_count": 2,
+      "avg_open_pct": null,
+      "avg_close_vs_open": -7.06,
+      "label": "炸板"
+    },
+    "conflict": {
+      "sample_count": 0,
+      "valid_count": 0,
+      "missing_count": 0,
+      "avg_pct": null,
+      "median_pct": null,
+      "outcome_up_count": 0,
+      "outcome_down_count": 0,
+      "outcome_flat_count": 0,
+      "up_ratio": null,
+      "limit_up_again_count": null,
+      "limit_up_again_ratio": null,
+      "not_limit_up_count": null,
+      "unverifiable_count": 0,
+      "avg_open_pct": null,
+      "avg_close_vs_open": null,
+      "label": "涨停/炸板冲突"
+    },
+    "unknown": {
+      "sample_count": 0,
+      "valid_count": 0,
+      "missing_count": 0,
+      "avg_pct": null,
+      "median_pct": null,
+      "outcome_up_count": 0,
+      "outcome_down_count": 0,
+      "outcome_flat_count": 0,
+      "up_ratio": null,
+      "limit_up_again_count": null,
+      "limit_up_again_ratio": null,
+      "not_limit_up_count": null,
+      "unverifiable_count": 0,
+      "avg_open_pct": null,
+      "avg_close_vs_open": null,
+      "label": "连板高度未知"
+    }
+  },
+  "total": 366,
+  "shown": 100,
+  "has_more": true,
+  "offset": 0,
+  "limit": 100,
+  "quality": {
+    "status": "PARTIAL",
+    "reasons": [
+      "NO_MEMBERS_COMPLETION_LOG",
+      "OBSERVED_ONLY"
+    ]
+  },
+  "warnings": [
+    "NO_MEMBERS_COMPLETION_LOG",
+    "OBSERVED_ONLY"
+  ],
+  "notes": [
+    "成员数来自 sector_member 快照，没有完成证明；所有比率都是「已观测样本内」口径。",
+    "D+1 表现是事后描述统计，不是可交易收益，也不进入 C0 或任何正式信号。",
+    "快照若在观察日之后才取到，仍可用于复盘展示，但不能当作当时已知。"
+  ],
+  "rows": [
+    {
+      "code": "000002",
+      "name": "万科Ａ",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.3297872340425485,
+      "outcome_close": 3.71,
+      "limit_up_again": null
+    },
+    {
+      "code": "000031",
+      "name": "大悦城",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -0.4385964912280609,
+      "outcome_close": 2.27,
+      "limit_up_again": null
+    },
+    {
+      "code": "000058",
+      "name": "深赛格",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 1.1363636363636374,
+      "outcome_close": 7.12,
+      "limit_up_again": null
+    },
+    {
+      "code": "000069",
+      "name": "华侨城Ａ",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 1.0869565217391313,
+      "outcome_close": 1.86,
+      "limit_up_again": null
+    },
+    {
+      "code": "000099",
+      "name": "中信海直",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.163692785104735,
+      "outcome_close": 12.74,
+      "limit_up_again": null
+    },
+    {
+      "code": "000156",
+      "name": "华数传媒",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.99430199430199,
+      "outcome_close": 6.88,
+      "limit_up_again": null
+    },
+    {
+      "code": "000417",
+      "name": "合百集团",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.564102564102555,
+      "outcome_close": 5.7,
+      "limit_up_again": null
+    },
+    {
+      "code": "000419",
+      "name": "通程控股",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.4008016032064043,
+      "outcome_close": 5.01,
+      "limit_up_again": null
+    },
+    {
+      "code": "000423",
+      "name": "东阿阿胶",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.28792912513843316,
+      "outcome_close": 45.28,
+      "limit_up_again": null
+    },
+    {
+      "code": "000428",
+      "name": "华天酒店",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -3.731343283582077,
+      "outcome_close": 3.87,
+      "limit_up_again": null
+    },
+    {
+      "code": "000430",
+      "name": "张家界",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.7543859649122824,
+      "outcome_close": 6.72,
+      "limit_up_again": null
+    },
+    {
+      "code": "000501",
+      "name": "武商集团",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.6925246826516236,
+      "outcome_close": 6.97,
+      "limit_up_again": null
+    },
+    {
+      "code": "000516",
+      "name": "国际医学",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -0.9302325581395358,
+      "outcome_close": 4.26,
+      "limit_up_again": null
+    },
+    {
+      "code": "000524",
+      "name": "岭南控股",
+      "sector_codes": [
+        "801287",
+        "801330"
+      ],
+      "sector_count": 2,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.9036954087346016,
+      "outcome_close": 8.76,
+      "limit_up_again": null
+    },
+    {
+      "code": "000536",
+      "name": "华映科技",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.865329512893985,
+      "outcome_close": 3.39,
+      "limit_up_again": null
+    },
+    {
+      "code": "000541",
+      "name": "佛山照明",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.0204081632653206,
+      "outcome_close": 4.85,
+      "limit_up_again": null
+    },
+    {
+      "code": "000547",
+      "name": "航天发展",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -3.434065934065934,
+      "outcome_close": 14.06,
+      "limit_up_again": null
+    },
+    {
+      "code": "000558",
+      "name": "天府文旅",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.4005602240896309,
+      "outcome_close": 3.52,
+      "limit_up_again": null
+    },
+    {
+      "code": "000590",
+      "name": "古汉医药",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -0.5574136008918696,
+      "outcome_close": 8.92,
+      "limit_up_again": null
+    },
+    {
+      "code": "000592",
+      "name": "平潭发展",
+      "sector_codes": [
+        "801319",
+        "801330"
+      ],
+      "sector_count": 2,
+      "state": "first_board",
+      "state_label": "首板",
+      "consecutive": 1,
+      "first_seal_time": "142342",
+      "pct_chg": 10.025062561035156,
+      "outcome_pct_chg": 3.530751708428252,
+      "outcome_close": 9.09,
+      "limit_up_again": null
+    },
+    {
+      "code": "000605",
+      "name": "渤海股份",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.1680672268907527,
+      "outcome_close": 5.96,
+      "limit_up_again": null
+    },
+    {
+      "code": "000610",
+      "name": "*ST西旅",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.702702702702705,
+      "outcome_close": 7.2,
+      "limit_up_again": null
+    },
+    {
+      "code": "000615",
+      "name": "*ST美谷",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": null,
+      "outcome_close": null,
+      "limit_up_again": null
+    },
+    {
+      "code": "000620",
+      "name": "盈新发展",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.87539936102236,
+      "outcome_close": 3.04,
+      "limit_up_again": null
+    },
+    {
+      "code": "000632",
+      "name": "ST三木",
+      "sector_codes": [
+        "801319",
+        "801330"
+      ],
+      "sector_count": 2,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -3.4666666666666637,
+      "outcome_close": 3.62,
+      "limit_up_again": null
+    },
+    {
+      "code": "000637",
+      "name": "茂化实华",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -0.47393364928908943,
+      "outcome_close": 4.2,
+      "limit_up_again": null
+    },
+    {
+      "code": "000650",
+      "name": "仁和药业",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.19493177387913815,
+      "outcome_close": 5.14,
+      "limit_up_again": null
+    },
+    {
+      "code": "000663",
+      "name": "永安林业",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.0,
+      "outcome_close": 6.08,
+      "limit_up_again": null
+    },
+    {
+      "code": "000681",
+      "name": "视觉中国",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.2556390977443685,
+      "outcome_close": 15.6,
+      "limit_up_again": null
+    },
+    {
+      "code": "000701",
+      "name": "厦门信达",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -5.311355311355312,
+      "outcome_close": 5.17,
+      "limit_up_again": null
+    },
+    {
+      "code": "000721",
+      "name": "西安饮食",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.1419249592169705,
+      "outcome_close": 6.06,
+      "limit_up_again": null
+    },
+    {
+      "code": "000739",
+      "name": "普洛药业",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 5.968379446640308,
+      "outcome_close": 26.81,
+      "limit_up_again": null
+    },
+    {
+      "code": "000753",
+      "name": "漳州发展",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "first_board",
+      "state_label": "首板",
+      "consecutive": 1,
+      "first_seal_time": "143948",
+      "pct_chg": 10.082304000854492,
+      "outcome_pct_chg": 3.177570093457943,
+      "outcome_close": 5.52,
+      "limit_up_again": null
+    },
+    {
+      "code": "000755",
+      "name": "山西高速",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.42918454935621403,
+      "outcome_close": 4.68,
+      "limit_up_again": null
+    },
+    {
+      "code": "000792",
+      "name": "盐湖股份",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.4050632911392418,
+      "outcome_close": 23.13,
+      "limit_up_again": null
+    },
+    {
+      "code": "000796",
+      "name": "凯撒旅业",
+      "sector_codes": [
+        "801287",
+        "801330"
+      ],
+      "sector_count": 2,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.506963788300832,
+      "outcome_close": 3.5,
+      "limit_up_again": null
+    },
+    {
+      "code": "000797",
+      "name": "中国武夷",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -6.115107913669062,
+      "outcome_close": 2.61,
+      "limit_up_again": null
+    },
+    {
+      "code": "000813",
+      "name": "德展健康",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.0,
+      "outcome_close": 3.2,
+      "limit_up_again": null
+    },
+    {
+      "code": "000863",
+      "name": "三湘印象",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.8761061946902635,
+      "outcome_close": 4.39,
+      "limit_up_again": null
+    },
+    {
+      "code": "000869",
+      "name": "张裕Ａ",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.6493506493506459,
+      "outcome_close": 17.05,
+      "limit_up_again": null
+    },
+    {
+      "code": "000886",
+      "name": "海南高速",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.0845986984815772,
+      "outcome_close": 4.56,
+      "limit_up_again": null
+    },
+    {
+      "code": "000888",
+      "name": "峨眉山Ａ",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -0.8676789587852501,
+      "outcome_close": 9.14,
+      "limit_up_again": null
+    },
+    {
+      "code": "000905",
+      "name": "厦门港务",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "first_board",
+      "state_label": "首板",
+      "consecutive": 1,
+      "first_seal_time": "143900",
+      "pct_chg": 9.977578163146973,
+      "outcome_pct_chg": -3.9755351681957243,
+      "outcome_close": 9.42,
+      "limit_up_again": null
+    },
+    {
+      "code": "000917",
+      "name": "电广传媒",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.631578947368417,
+      "outcome_close": 6.66,
+      "limit_up_again": null
+    },
+    {
+      "code": "000919",
+      "name": "金陵药业",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.6230529595015581,
+      "outcome_close": 6.46,
+      "limit_up_again": null
+    },
+    {
+      "code": "000950",
+      "name": "重药控股",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.3853564547206083,
+      "outcome_close": 5.21,
+      "limit_up_again": null
+    },
+    {
+      "code": "000965",
+      "name": "天保基建",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -0.3021148036253846,
+      "outcome_close": 3.3,
+      "limit_up_again": null
+    },
+    {
+      "code": "000978",
+      "name": "桂林旅游",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -9.987357774968395,
+      "outcome_close": 7.12,
+      "limit_up_again": null
+    },
+    {
+      "code": "000993",
+      "name": "闽东电力",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -9.989648033126292,
+      "outcome_close": 17.39,
+      "limit_up_again": null
+    },
+    {
+      "code": "001322",
+      "name": "箭牌家居",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.4577572964669763,
+      "outcome_close": 6.35,
+      "limit_up_again": null
+    },
+    {
+      "code": "001368",
+      "name": "通达创智",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 9.999999999999993,
+      "outcome_close": 41.8,
+      "limit_up_again": null
+    },
+    {
+      "code": "002004",
+      "name": "华邦健康",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.0,
+      "outcome_close": 4.3,
+      "limit_up_again": null
+    },
+    {
+      "code": "002029",
+      "name": "七匹狼",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "first_board",
+      "state_label": "首板",
+      "consecutive": 1,
+      "first_seal_time": "093730",
+      "pct_chg": 9.97624683380127,
+      "outcome_pct_chg": -4.319654427645792,
+      "outcome_close": 8.86,
+      "limit_up_again": null
+    },
+    {
+      "code": "002033",
+      "name": "丽江股份",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.0869565217391288,
+      "outcome_close": 8.19,
+      "limit_up_again": null
+    },
+    {
+      "code": "002044",
+      "name": "美年健康",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.5625000000000062,
+      "outcome_close": 4.41,
+      "limit_up_again": null
+    },
+    {
+      "code": "002059",
+      "name": "云南旅游",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -4.100227790432796,
+      "outcome_close": 4.21,
+      "limit_up_again": null
+    },
+    {
+      "code": "002065",
+      "name": "东华软件",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.5243902439024337,
+      "outcome_close": 6.46,
+      "limit_up_again": null
+    },
+    {
+      "code": "002093",
+      "name": "国脉科技",
+      "sector_codes": [
+        "801287",
+        "801319"
+      ],
+      "sector_count": 2,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 5.019305019305027,
+      "outcome_close": 8.16,
+      "limit_up_again": null
+    },
+    {
+      "code": "002098",
+      "name": "浔兴股份",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.0701545778834705,
+      "outcome_close": 8.32,
+      "limit_up_again": null
+    },
+    {
+      "code": "002105",
+      "name": "信隆健康",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.3201320132013068,
+      "outcome_close": 5.98,
+      "limit_up_again": null
+    },
+    {
+      "code": "002107",
+      "name": "沃华医药",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -0.8368200836820029,
+      "outcome_close": 7.11,
+      "limit_up_again": null
+    },
+    {
+      "code": "002123",
+      "name": "梦网科技",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.713178294573643,
+      "outcome_close": 7.53,
+      "limit_up_again": null
+    },
+    {
+      "code": "002133",
+      "name": "广宇集团",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.0,
+      "outcome_close": 2.83,
+      "limit_up_again": null
+    },
+    {
+      "code": "002135",
+      "name": "东南网架",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.1666666666666647,
+      "outcome_close": 5.87,
+      "limit_up_again": null
+    },
+    {
+      "code": "002146",
+      "name": "荣盛发展",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.8333333333333341,
+      "outcome_close": 1.21,
+      "limit_up_again": null
+    },
+    {
+      "code": "002153",
+      "name": "石基信息",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.2788203753351195,
+      "outcome_close": 7.29,
+      "limit_up_again": null
+    },
+    {
+      "code": "002159",
+      "name": "三特索道",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.560178306092131,
+      "outcome_close": 13.25,
+      "limit_up_again": null
+    },
+    {
+      "code": "002162",
+      "name": "悦心健康",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.48661800486616963,
+      "outcome_close": 4.13,
+      "limit_up_again": null
+    },
+    {
+      "code": "002172",
+      "name": "澳洋健康",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -6.45756457564575,
+      "outcome_close": 5.07,
+      "limit_up_again": null
+    },
+    {
+      "code": "002173",
+      "name": "创新医疗",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.8312570781426953,
+      "outcome_close": 17.16,
+      "limit_up_again": null
+    },
+    {
+      "code": "002178",
+      "name": "延华智能",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -3.353057199211044,
+      "outcome_close": 4.9,
+      "limit_up_again": null
+    },
+    {
+      "code": "002181",
+      "name": "粤传媒",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "broken",
+      "state_label": "炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -9.290187891440507,
+      "outcome_close": 8.69,
+      "limit_up_again": null
+    },
+    {
+      "code": "002186",
+      "name": "全聚德",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -0.7454739084132085,
+      "outcome_close": 9.32,
+      "limit_up_again": null
+    },
+    {
+      "code": "002188",
+      "name": "中天服务",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -0.35778175313058275,
+      "outcome_close": 5.57,
+      "limit_up_again": null
+    },
+    {
+      "code": "002198",
+      "name": "ST嘉应",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.1080332409972309,
+      "outcome_close": 3.57,
+      "limit_up_again": null
+    },
+    {
+      "code": "002208",
+      "name": "合肥城建",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -3.869047619047625,
+      "outcome_close": 9.69,
+      "limit_up_again": null
+    },
+    {
+      "code": "002217",
+      "name": "ST合力泰",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -3.205128205128208,
+      "outcome_close": 1.51,
+      "limit_up_again": null
+    },
+    {
+      "code": "002219",
+      "name": "新里程",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.4854368932038731,
+      "outcome_close": 2.07,
+      "limit_up_again": null
+    },
+    {
+      "code": "002228",
+      "name": "合兴包装",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.2232415902140683,
+      "outcome_close": 3.23,
+      "limit_up_again": null
+    },
+    {
+      "code": "002229",
+      "name": "鸿博股份",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.4714828897338386,
+      "outcome_close": 10.26,
+      "limit_up_again": null
+    },
+    {
+      "code": "002235",
+      "name": "安妮股份",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.2870012870012826,
+      "outcome_close": 7.67,
+      "limit_up_again": null
+    },
+    {
+      "code": "002238",
+      "name": "天威视讯",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "third_plus",
+      "state_label": "三板及以上",
+      "consecutive": 3,
+      "first_seal_time": "093036",
+      "pct_chg": 10.05221939086914,
+      "outcome_pct_chg": -9.964412811387902,
+      "outcome_close": 7.59,
+      "limit_up_again": null
+    },
+    {
+      "code": "002251",
+      "name": "步步高",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.6162790697674376,
+      "outcome_close": 3.35,
+      "limit_up_again": null
+    },
+    {
+      "code": "002264",
+      "name": "新华都",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "first_board",
+      "state_label": "首板",
+      "consecutive": 1,
+      "first_seal_time": "145024",
+      "pct_chg": 10.013531684875488,
+      "outcome_pct_chg": -6.027060270602719,
+      "outcome_close": 7.64,
+      "limit_up_again": null
+    },
+    {
+      "code": "002300",
+      "name": "太阳电缆",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -4.395604395604389,
+      "outcome_close": 7.83,
+      "limit_up_again": null
+    },
+    {
+      "code": "002303",
+      "name": "美盈森",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -4.094488188976375,
+      "outcome_close": 6.09,
+      "limit_up_again": null
+    },
+    {
+      "code": "002343",
+      "name": "慈文传媒",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -2.272727272727271,
+      "outcome_close": 5.59,
+      "limit_up_again": null
+    },
+    {
+      "code": "002381",
+      "name": "双箭股份",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.18018018018017634,
+      "outcome_close": 5.56,
+      "limit_up_again": null
+    },
+    {
+      "code": "002388",
+      "name": "新亚制程",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.25773195876289257,
+      "outcome_close": 7.78,
+      "limit_up_again": null
+    },
+    {
+      "code": "002398",
+      "name": "垒知集团",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -0.23419203747072104,
+      "outcome_close": 4.26,
+      "limit_up_again": null
+    },
+    {
+      "code": "002413",
+      "name": "雷科防务",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "first_board",
+      "state_label": "首板",
+      "consecutive": 1,
+      "first_seal_time": "093157",
+      "pct_chg": 10.061349868774414,
+      "outcome_pct_chg": 2.341137123745809,
+      "outcome_close": 9.18,
+      "limit_up_again": null
+    },
+    {
+      "code": "002415",
+      "name": "海康威视",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.4403922770456816,
+      "outcome_close": 32.16,
+      "limit_up_again": null
+    },
+    {
+      "code": "002421",
+      "name": "达实智能",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.6430868167202578,
+      "outcome_close": 3.13,
+      "limit_up_again": null
+    },
+    {
+      "code": "002423",
+      "name": "中粮资本",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.0,
+      "outcome_close": 9.05,
+      "limit_up_again": null
+    },
+    {
+      "code": "002431",
+      "name": "ST棕榈",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -1.5267175572519096,
+      "outcome_close": 1.29,
+      "limit_up_again": null
+    },
+    {
+      "code": "002432",
+      "name": "九安医疗",
+      "sector_codes": [
+        "801287"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -4.053177691309987,
+      "outcome_close": 59.18,
+      "limit_up_again": null
+    },
+    {
+      "code": "002474",
+      "name": "榕基软件",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": 0.4716981132075371,
+      "outcome_close": 6.39,
+      "limit_up_again": null
+    },
+    {
+      "code": "002485",
+      "name": "ST雪发",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": null,
+      "outcome_close": null,
+      "limit_up_again": null
+    },
+    {
+      "code": "002489",
+      "name": "浙江永强",
+      "sector_codes": [
+        "801330"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -3.947368421052635,
+      "outcome_close": 2.92,
+      "limit_up_again": null
+    },
+    {
+      "code": "002512",
+      "name": "ST达华",
+      "sector_codes": [
+        "801319"
+      ],
+      "sector_count": 1,
+      "state": "none",
+      "state_label": "未涨停/未炸板",
+      "consecutive": null,
+      "first_seal_time": null,
+      "pct_chg": null,
+      "outcome_pct_chg": -4.639175257731951,
+      "outcome_close": 3.7,
+      "limit_up_again": null
+    }
+  ]
+}

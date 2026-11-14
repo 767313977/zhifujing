@@ -59,11 +59,12 @@ from app.schemas import (
     SectorMembers,
     SectorQuote,
     SectorRanking,
+    SectorResonanceOut,
     SectorRotation,
     SectorSeries,
     ThemeSearchOut,
 )
-from app.services import theme_intersection
+from app.services import sector_resonance, theme_intersection
 from app.sources.kaipanhong import TAXONOMY_INDUSTRY, TAXONOMY_SELECTED
 from app.timeutil import today_cn
 
@@ -1303,6 +1304,40 @@ def theme_search(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return ThemeSearchOut(**data)
+
+
+@router.get("/resonance", response_model=SectorResonanceOut)
+def resonance(
+    sector_codes: str = Query(..., description="逗号分隔的 1~10 个板块代码"),
+    mode: str = Query("AND", description="AND / OR"),
+    market: str = Query("all", description="all / sh / sz / bj"),
+    date: date | None = Query(None, description="观察交易日；不传用最近交易日"),
+    limit: int = Query(100, ge=1, le=theme_intersection.MAX_LIMIT),
+    offset: int = Query(0, ge=0, le=1_000_000),
+    session: Session = Depends(get_db),
+    _user: AppUser = Depends(current_user),
+) -> SectorResonanceOut:
+    """板块主线共振（**只读本地库**）：成员 × 涨停梯队 × D+1 描述统计。
+
+    - 成员快照没有完成证明，所有比率只是「已观测样本内」比率；
+    - AND 缺板块 → `UNVERIFIABLE`；同一股票同时在涨停/炸板池 → `POOL_CONFLICT`；
+    - D+1 行情未到齐 → `PENDING`，统计字段为 null，不写 0%；
+    - 不发外部请求、不补采、不写库，也不产生任何选股信号。
+    """
+    raw = [item for item in sector_codes.split(",")]
+    try:
+        data = sector_resonance.build(
+            session,
+            as_of=date,
+            sector_codes=raw,
+            mode=mode,
+            market=market,
+            limit=limit,
+            offset=offset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return SectorResonanceOut(**data)
 
 
 def _read_members(session: Session, code: str, trade_date: date) -> list[SectorMember]:

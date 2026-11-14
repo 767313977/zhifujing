@@ -58,6 +58,7 @@ import type {
   PoolType,
   QualityOverview,
   QualityTimeline,
+  SectorResonance,
   PatternCount,
   PatternHitsPage,
   PatternMeta,
@@ -393,6 +394,28 @@ export const api = {
     }
     if (options.date) q.set('date', options.date)
     return request<SentimentNextDay>(`/sentiment/next-day?${q.toString()}`)
+  },
+
+  /**
+   * S4-C：板块主线共振（只读本地库，会员成员 × 连板梯队 × D+1 描述统计）。
+   * AND 缺板块 → UNVERIFIABLE；D+1 未到齐 → PENDING（不写 0%）。
+   */
+  sectorResonance: (params: {
+    sectorCodes: string[]
+    mode?: 'AND' | 'OR'
+    market?: 'all' | 'sh' | 'sz' | 'bj'
+    date?: string | null
+    limit?: number
+    offset?: number
+  }) => {
+    const q = new URLSearchParams()
+    q.set('sector_codes', params.sectorCodes.join(','))
+    q.set('mode', params.mode ?? 'AND')
+    q.set('market', params.market ?? 'all')
+    q.set('limit', String(params.limit ?? 100))
+    q.set('offset', String(params.offset ?? 0))
+    if (params.date) q.set('date', params.date)
+    return request<SectorResonance>(`/sectors/resonance?${q.toString()}`)
   },
 
   /**

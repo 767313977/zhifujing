@@ -1997,6 +1997,91 @@ export interface StockResearchContext {
   notes: string[]
 }
 
+/** S4-C：板块主线共振的 D+1 描述统计 */
+export interface ResonanceStats {
+  sample_count: number
+  valid_count: number
+  missing_count: number
+  avg_pct: number | null
+  median_pct: number | null
+  outcome_up_count: number
+  outcome_down_count: number
+  outcome_flat_count: number
+  up_ratio: number | null
+  limit_up_again_count: number | null
+  limit_up_again_ratio: number | null
+  not_limit_up_count: number | null
+  unverifiable_count: number
+  label?: string
+}
+
+export interface ResonanceRow {
+  code: string
+  name: string | null
+  sector_codes: string[]
+  sector_count: number
+  state: string
+  state_label: string
+  consecutive: number | null
+  first_seal_time: string | null
+  pct_chg: number | null
+  outcome_pct_chg: number | null
+  outcome_close: number | null
+  limit_up_again: boolean | null
+}
+
+export interface SectorResonance {
+  as_of: string
+  member_snapshot_date: string | null
+  outcome_date: string | null
+  mode: string
+  market: string
+  taxonomy: string
+  selected_sectors: {
+    code: string
+    name: string
+    taxonomy: string
+    member_count: number
+    has_data: boolean
+  }[]
+  coverage: {
+    member_observed_rows: number
+    member_unique_count: number
+    member_completion_proof: boolean
+    observed_sectors: number
+    expected_sectors: number
+    observed_limit_up_count: number | null
+    observed_limit_up_ratio: number | null
+    ratio_scope: string
+    note: string
+  }
+  pit: {
+    historical_signal_eligible: boolean
+    member_snapshot_known_by: string | null
+    known_by_observation_time: boolean | null
+    later_snapshot_for_review: boolean | null
+  }
+  market_sentiment: {
+    limit_up_count: number | null
+    broken_rate: number | null
+    max_consecutive: number | null
+  } | null
+  state_counts: Record<string, number>
+  outcome: ResonanceStats
+  outcome_status: string
+  outcome_reason_codes: string[]
+  by_state: Record<string, ResonanceStats>
+  total: number
+  shown: number
+  has_more: boolean
+  offset: number
+  limit: number
+  quality: { status: string; reasons: string[] }
+  warnings: string[]
+  notes: string[]
+  rows: ResonanceRow[]
+}
+
 /** S4-B：单个数据源在某交易日的可信度快照 */
 export interface QualitySourceItem {
   source: string
