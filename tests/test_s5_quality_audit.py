@@ -136,7 +136,7 @@ def audit_db(tmp_path):
 
 def test_baseline_audit_has_no_unexpected(audit_db):
     result = audit.run(audit_db, D1, D1, 1)
-    assert result["matrix_version"] == "quality-consistency-matrix-v3"
+    assert result["matrix_version"] == "quality-consistency-matrix-v4"
     assert result["summary"]["unexpected_disagreements"] == 0
     assert result["summary"]["not_comparable"] == 0
     assert result["summary"]["total_checks"] >= 4
@@ -538,6 +538,32 @@ def test_unverified_daily_unavailable_never_passes(audit_db, monkeypatch, daily_
     checks = _sentiment_checks(audit_db, monkeypatch, _items(), row, daily_status=daily_status)
     coverage = _by_prefix(checks, "sentiment.d1_coverage")[0]
     assert coverage["result"] == "NOT_COMPARABLE"
+
+
+@pytest.mark.parametrize("series", [[], [None]])
+def test_missing_sentiment_series_row_is_not_comparable(
+    audit_db, tmp_path, monkeypatch, capsys, series
+):
+    """R4-P2-02：日历有该日但 build_next_day 没返回 row → NOT_COMPARABLE，不得 PASS。"""
+    monkeypatch.setattr(
+        audit.snd, "build_next_day", lambda *_args, **_kwargs: {"series": series}
+    )
+    code, result = _run_cli(monkeypatch, audit_db, tmp_path)
+    capsys.readouterr()
+    assert code == 2
+    item = next(
+        i for i in result["not_comparable"] if i["name"].startswith("sentiment.series_row")
+    )
+    assert item["result"] == "NOT_COMPARABLE"
+    assert item["reason_code"] == "SENTIMENT_SERIES_ROW_MISSING"
+    assert item["diagnostics"]["series_rows"] == len(series)
+    # 该项不得计入 PASS，也不得计入 explained
+    assert result["summary"]["passed"] == 3
+    assert result["summary"]["not_comparable"] == 1
+    assert result["summary"]["explained_disagreements"] == 0
+    md = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert "SENTIMENT_SERIES_ROW_MISSING" in md
+    assert "sentiment.series_row vs trade_calendar" in md
 
 
 def test_theme_source_error_is_not_na(audit_db, tmp_path, monkeypatch, capsys):

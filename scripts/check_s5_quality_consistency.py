@@ -448,11 +448,19 @@ def _sentiment_checks(session: Session, day: date, items: dict) -> list[dict]:
     )
     row = (series.get("series") or [None])[0]
     if not row:
+        # 日历里有该交易日，但服务没有返回 series row：这是服务/数据契约缺失，
+        # 不是质量通过；必须 NOT_COMPARABLE，并保持 CLI 非零。
         return [
             _check(
-                "sentiment.sample_pool(D) vs overview.limit_pool(D)",
-                True,
-                detail="N/A 无样本行",
+                "sentiment.series_row vs trade_calendar",
+                False,
+                comparable=False,
+                reason_code="SENTIMENT_SERIES_ROW_MISSING",
+                detail=f"trade_date={day}; build_next_day 未返回该交易日 series row",
+                diagnostics={
+                    "sample_date": day.isoformat(),
+                    "series_rows": len(series.get("series") or []),
+                },
             )
         ]
 
@@ -595,7 +603,7 @@ def run(db_path: Path, start: date, end: date, sample: int) -> dict:
     ]
     return {
         "quality_version": dq.QUALITY_VERSION,
-        "matrix_version": "quality-consistency-matrix-v3",
+        "matrix_version": "quality-consistency-matrix-v4",
         "matrix": {
             kind: {status: sorted(allowed) for status, allowed in mapping.items()}
             for kind, mapping in STATE_MATRIX.items()
