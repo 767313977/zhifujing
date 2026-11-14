@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import subprocess
 import sys
 import time
@@ -49,16 +50,43 @@ def _readonly_uri(path: Path) -> str:
     return f"sqlite:///file:{resolved.as_posix()}?mode=ro&immutable=1&uri=true"
 
 
-def _git_sha() -> str | None:
+def _git_state() -> dict:
+    """记录运行时的完整 HEAD、分支与工作区是否干净（便于证据回溯）。"""
+    state: dict = {"sha": None, "branch": None, "dirty": None}
     try:
-        out = subprocess.run(
+        state["sha"] = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=ROOT,
             capture_output=True,
             text=True,
             check=True,
+        ).stdout.strip()
+        state["branch"] = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        state["dirty"] = bool(
+            subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
         )
-        return out.stdout.strip()
+    except Exception:  # noqa: BLE001 - 只用于报告
+        pass
+    return state
+
+
+def _node_version() -> str | None:
+    try:
+        return subprocess.run(
+            ["node", "--version"], capture_output=True, text=True, check=True
+        ).stdout.strip()
     except Exception:  # noqa: BLE001 - 只用于报告
         return None
 
@@ -329,7 +357,14 @@ def run(db_path: Path, start: date, end: date, sample: int) -> dict:
             for kind, mapping in STATE_MATRIX.items()
         },
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "git_sha": _git_sha(),
+        "git": _git_state(),
+        "command": " ".join(sys.argv),
+        "environment": {
+            "python": sys.version.split()[0],
+            "node": _node_version(),
+            "sqlite": sqlite3.sqlite_version,
+        },
+        "exit_code": 2 if unexpected else 0,
         "database": db_path.name,
         "mode": "ro&immutable=1",
         "range": {"start": start.isoformat(), "end": end.isoformat()},
@@ -368,7 +403,14 @@ def _render_markdown(result: dict) -> str:
         "# S5 数据质量对账（只读、抽样）",
         "",
         f"- 生成时间：{result['generated_at']}",
-        f"- Git：`{result.get('git_sha') or 'unknown'}`",
+        f"- Git：`{(result.get('git') or {}).get('sha') or 'unknown'}`"
+        f"（分支 `{(result.get('git') or {}).get('branch')}`，"
+        f"工作区 dirty={(result.get('git') or {}).get('dirty')}）",
+        f"- 命令：`{result.get('command')}`",
+        f"- 环境：Python {result['environment']['python']} / "
+        f"Node {result['environment']['node'] or 'N/A'} / "
+        f"SQLite {result['environment']['sqlite']}",
+        f"- 退出码：{result.get('exit_code')}",
         f"- 数据库：`{result['database']}`（{result['mode']}）",
         f"- 区间：{result['range']['start']} ~ {result['range']['end']}",
         f"- 矩阵版本：`{result.get('matrix_version')}`",
@@ -378,6 +420,7 @@ def _render_markdown(result: dict) -> str:
         f"- 策略：{sampling.get('strategy')}",
         f"- 请求样本：{sampling.get('requested_sample')}；区间交易日："
         f"{sampling.get('available_trade_days')}；实际抽样：{result['sampled_days']}",
+        f"- 已抽日期：{'、'.join(sampling.get('sampled_days') or []) or '无'}",
         f"- 覆盖率：{sampling.get('coverage_ratio')}；是否全历史：{sampling.get('is_full_history')}",
         f"- 说明：{sampling.get('disclaimer')}",
         "",
@@ -436,7 +479,7 @@ def main() -> None:
         f"sql={result['sql_statements']} elapsed_ms={result['elapsed_ms']}"
     )
     if result["summary"]["unexpected_disagreements"]:
-        raise SystemExit(2)
+        raise SystemExit(result["exit_code"])
 
 
 if __name__ == "__main__":
