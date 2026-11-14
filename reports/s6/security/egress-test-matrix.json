@@ -1,0 +1,55 @@
+{
+  "commit_sha": "104dfdf489150d97446be3af0fa4a4de14382bbd",
+  "branch": "release/s6-canary-hardening",
+  "generated_at": "2026-11-15T00:35:00+08:00",
+  "environment": "Windows 11 开发机 + 临时测试库；无隔离 OS/网络命名空间",
+  "command": ".venv/Scripts/python.exe -m pytest tests/test_s6_egress_boundary.py -q",
+  "exit_code": 0,
+  "tool_version": "pytest 9.1.1 / Python 3.13.13",
+  "result": {
+    "total": 28,
+    "pass_app_layer": 22,
+    "not_verified": 6,
+    "fail": 0,
+    "cases": [
+      {"id": "E01", "scenario": "requests 访问未授权域名", "expected": "阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E01_requests_unauthorized_domain_denied"},
+      {"id": "E02", "scenario": "urllib 访问未授权域名", "expected": "阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E02_urllib_unauthorized_domain_denied"},
+      {"id": "E03", "scenario": "httpx 访问未授权域名", "expected": "阻断", "layer": "dependency", "verdict": "PASS", "evidence": "test_E03_httpx_dependency_absent_or_socket_backed（httpx 未安装；安装后经 socket 覆盖）"},
+      {"id": "E04", "scenario": "已连接 socket 的 send", "expected": "未授权目标阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E04_E05_E07_stream_writes_denied_for_unregistered_peer"},
+      {"id": "E05", "scenario": "已连接 socket 的 sendall", "expected": "未授权目标阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E04_E05_E07_stream_writes_denied_for_unregistered_peer"},
+      {"id": "E06", "scenario": "sendmsg", "expected": "未授权目标阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E06_sendmsg_denied_for_unregistered_peer"},
+      {"id": "E07", "scenario": "socket.sendfile", "expected": "未授权目标阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E04_E05_E07_stream_writes_denied_for_unregistered_peer"},
+      {"id": "E08", "scenario": "TLS SSLSocket.send", "expected": "未授权目标阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E08_E09_E10_tls_writes_denied_for_unregistered_peer"},
+      {"id": "E09", "scenario": "TLS SSLSocket.sendall", "expected": "未授权目标阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E08_E09_E10_tls_writes_denied_for_unregistered_peer"},
+      {"id": "E10", "scenario": "TLS SSLSocket.sendfile", "expected": "未授权目标阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E08_E09_E10_tls_writes_denied_for_unregistered_peer"},
+      {"id": "E11", "scenario": "IPv4 TCP 直连", "expected": "阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E11_ipv4_literal_denied"},
+      {"id": "E12", "scenario": "IPv6 TCP 直连", "expected": "阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E12_ipv6_literal_denied"},
+      {"id": "E13", "scenario": "UDP 直连", "expected": "阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E13_udp_sendto_denied"},
+      {"id": "E14", "scenario": "外部 DNS UDP", "expected": "阻断或仅允许指定 resolver", "layer": "unit", "verdict": "PASS", "evidence": "test_E14_E15_external_dns_denied（应用层 getaddrinfo 入口）"},
+      {"id": "E15", "scenario": "外部 DNS TCP", "expected": "阻断或仅允许指定 resolver", "layer": "unit", "verdict": "PASS", "evidence": "test_E14_E15_external_dns_denied（应用层 getaddrinfo 入口）"},
+      {"id": "E16", "scenario": "子进程 Python 网络请求", "expected": "阻断", "layer": "os", "verdict": "NOT_VERIFIED", "evidence": "test_E16_subprocess_is_not_protected_by_app_wrapper 证明应用层管不到子进程"},
+      {"id": "E17", "scenario": "curl/wget 网络请求", "expected": "阻断", "layer": "os", "verdict": "NOT_VERIFIED", "evidence": "test_E17_E18_curl_and_native_binaries_not_covered 仅检查存在性，未发请求"},
+      {"id": "E18", "scenario": "原生 socket 测试程序", "expected": "阻断", "layer": "os", "verdict": "NOT_VERIFIED", "evidence": "无隔离 OS 环境执行"},
+      {"id": "E19", "scenario": "IP literal 绕过域名规则", "expected": "阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E19_ip_literal_cannot_bypass_domain_rule"},
+      {"id": "E20", "scenario": "HTTP redirect 到未授权域名", "expected": "阻断", "layer": "integration", "verdict": "PASS", "evidence": "test_E20_redirect_to_unauthorized_domain_denied（真实本地 302 服务 + 策略拦截）"},
+      {"id": "E21", "scenario": "非标准端口", "expected": "阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E21_non_standard_port_denied"},
+      {"id": "E22", "scenario": "代理绕过 / NO_PROXY", "expected": "阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E22_proxy_env_does_not_bypass + test_system_proxy_is_filtered_out（应用层；OS 级代理绕过 NOT_VERIFIED）"},
+      {"id": "E23", "scenario": "未知目标", "expected": "阻断", "layer": "unit", "verdict": "PASS", "evidence": "test_E23_unknown_destination_denied"},
+      {"id": "E24", "scenario": "策略文件损坏", "expected": "服务 fail closed", "layer": "unit", "verdict": "PASS", "evidence": "test_E24_policy_missing_fails_closed / version_mismatch / ip_entries"},
+      {"id": "E25", "scenario": "OS 防火墙规则缺失", "expected": "灰度 readiness 失败", "layer": "unit", "verdict": "PASS", "evidence": "test_E25_os_firewall_missing_blocks_readiness（ready=false，OS=NOT_VERIFIED）"},
+      {"id": "E26", "scenario": "服务重启后规则状态", "expected": "仍然受限", "layer": "os", "verdict": "NOT_VERIFIED", "evidence": "应用层 wrapper 每次 lifespan 重新安装（test_startup_order_and_readiness_endpoint）；OS 规则重启后行为未验证"},
+      {"id": "E27", "scenario": "loopback 合法访问", "expected": "按明确规则允许", "layer": "integration", "verdict": "PASS", "evidence": "test_E27_loopback_legit_access_allowed（真实本地 HTTP 服务）"},
+      {"id": "E28", "scenario": "允许名单目标", "expected": "仅按授权协议/端口允许", "layer": "unit", "verdict": "PASS", "evidence": "test_E28_allowlisted_only_by_host_and_port"}
+    ]
+  },
+  "evidence_files": [
+    "tests/test_s6_egress_boundary.py",
+    "tests/test_s5_offline_gates.py",
+    "reports/s6/security/egress-test-report.md"
+  ],
+  "limitations": [
+    "E04–E10 的「公网对端」由测试桩注入（无公网连接时无法构造真实公网 peer），属应用层单元测试。",
+    "E16–E18、E26 需要隔离 OS / 网络命名空间，本轮未执行。",
+    "E22 只证明应用层不使用系统代理；OS 级代理进程是否仍有出口，需 OS 策略验证。"
+  ]
+}

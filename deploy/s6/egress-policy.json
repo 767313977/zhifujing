@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "updated_at": "2026-11-15",
+  "description": "致富经统一出站允许名单（S6-A1）。DEFAULT=DENY：未列出的目标、端口、协议一律拒绝。域名按后缀匹配（xx.eastmoney.com 命中 eastmoney.com），IP literal 除严格回环外一律拒绝。",
+  "default": "deny",
+  "ip_literals": "deny_except_loopback",
+  "proxies": [],
+  "loopback": {
+    "allow": true,
+    "allow_any_port": true,
+    "ports": [],
+    "note": "回环用于同机后端(8000)/Vite(5173)/本机 KPH 代理(5000)与本地测试服务器；端口为动态分配，故允许任意端口。OS 层仍需阻止本机代理成为公网出口，见 os-policy-verification.md。"
+  },
+  "entries": [
+    {
+      "id": "E-IFIND-01",
+      "purpose": "iFinD MCP 行情/财务/EDB 与 CSV 下载（生产采集信用）",
+      "host_suffix": "51ifind.com",
+      "ports": [8643],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-EASTMONEY-01",
+      "purpose": "东财直连日线、涨停三池、龙虎榜、公告/研报、ETF 与新闻（含 akshare push2ex/datacenter）",
+      "host_suffix": "eastmoney.com",
+      "ports": [80, 443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-TENCENT-01",
+      "purpose": "腾讯实时快照与日线（qt.gtimg.cn，经 akshare stock_zh_a_hist_tx）",
+      "host_suffix": "gtimg.cn",
+      "ports": [80, 443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-THS-01",
+      "purpose": "同花顺涨停原因、资金流与财务摘要（含 akshare 10jqka 接口）",
+      "host_suffix": "10jqka.com.cn",
+      "ports": [80, 443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-SINA-01",
+      "purpose": "新浪交易日历与行情（akshare tool_trade_date_hist_sina、hq.sinajs.cn）",
+      "host_suffix": "sina.com.cn",
+      "ports": [80, 443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-SINA-02",
+      "purpose": "新浪行情域名 hq.sinajs.cn",
+      "host_suffix": "sinajs.cn",
+      "ports": [80, 443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-DANJUAN-01",
+      "purpose": "蛋卷指数估值（danjuanfunds.com djapi/index_eva）",
+      "host_suffix": "danjuanfunds.com",
+      "ports": [443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-SSE-01",
+      "purpose": "上交所 ETF 份额快照、QVIX 期权数据（query.sse.com.cn / www.sse.com.cn）",
+      "host_suffix": "sse.com.cn",
+      "ports": [443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-SZSE-01",
+      "purpose": "深交所 ETF 份额快照（fund.szse.cn / www.szse.cn）",
+      "host_suffix": "szse.cn",
+      "ports": [443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-KPH-01",
+      "purpose": "开盘红板块实时/历史快照（apphwshhq / apphis.kaipanhong.com）",
+      "host_suffix": "kaipanhong.com",
+      "ports": [443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-TDX-01",
+      "purpose": "通达信日线数据包（www.tdx.com.cn g4day zip）",
+      "host_suffix": "tdx.com.cn",
+      "ports": [443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-TUSHARE-01",
+      "purpose": "Tushare daily（前瞻研究库单日采集，api.tushare.pro）",
+      "host_suffix": "tushare.pro",
+      "ports": [443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-JISILU-01",
+      "purpose": "集思录可转债强赎条款（akshare bond_cb_redeem_jsl）",
+      "host_suffix": "jisilu.cn",
+      "ports": [443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-LEGU-01",
+      "purpose": "乐咕市场活跃度（akshare stock_market_activity_legu）",
+      "host_suffix": "legulegu.com",
+      "ports": [443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-CFFEX-01",
+      "purpose": "中金所持仓排名（akshare get_cffex_rank_table，www.cffex.com.cn）",
+      "host_suffix": "cffex.com.cn",
+      "ports": [443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-FEISHU-01",
+      "purpose": "飞书群机器人 webhook（FEISHU_WEBHOOK_URL）",
+      "host_suffix": "feishu.cn",
+      "ports": [443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    },
+    {
+      "id": "E-FEISHU-02",
+      "purpose": "飞书国际版 webhook（larksuite.com）",
+      "host_suffix": "larksuite.com",
+      "ports": [443],
+      "protocols": ["tcp", "tls"],
+      "environments": ["development", "staging", "production"],
+      "enabled": true
+    }
+  ]
+}

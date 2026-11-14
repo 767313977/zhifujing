@@ -280,13 +280,21 @@ def test_unix_domain_socket_is_not_blocked(monkeypatch, tmp_path):
         server.close()
 
 
-def test_dns_is_not_intercepted_but_connect_is(monkeypatch):
-    """DNS 边界显式化：getaddrinfo 不拦（无法可靠在进程内约束），建连才拦。"""
+def test_dns_is_intercepted_at_app_layer(monkeypatch):
+    """S6-A3：DNS 入口（getaddrinfo）现在也在进程内拦截。
+
+    历史：S5 的结论是 `dns_guard=NOT_INTERCEPTED`。S6 把 `getaddrinfo` /
+    `gethostbyname[_ex]` 纳入闸门后，离线时**非回环解析在解析前就失败**，
+    回环（localhost / 127.0.0.1）仍然放行。
+    """
     _offline(monkeypatch)
     eg.install_network_deny()
     resolved = socket.getaddrinfo("localhost", 80, proto=socket.IPPROTO_TCP)
     assert resolved
-    assert eg.stats()["dns_guard"] == "NOT_INTERCEPTED"
+    assert eg.stats()["dns_guard"] == "APP_LAYER_INTERCEPTED"
+    with pytest.raises(eg.ExternalFetchBlocked):
+        socket.getaddrinfo("example.com", 443, proto=socket.IPPROTO_TCP)
+    assert eg.stats()["dns_blocked"] == 1
     with pytest.raises(eg.ExternalFetchBlocked):
         socket.create_connection(("93.184.216.34", 80), timeout=1)
 

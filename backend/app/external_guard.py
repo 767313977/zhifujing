@@ -1,18 +1,22 @@
-"""外部数据现取的**离线闸门**（S4-D → S5-D）。
+"""外部数据现取的**离线闸门 + 统一出站策略**（S4-D → S5-D → S6-A）。
 
 `SCHEDULER_ENABLED=false` 只能关掉定时任务，**关不掉按需路由**（例如
 `/api/sectors/members` 的缓存未命中、`/api/stock/{code}/dde` 的现取、个股新闻/
 公告/研报、手动同步）。S3 浏览器验收就曾在临时库上触发开盘红现取。
 
-本模块提供三层防护：
+本模块提供四层防护：
 
 1. `ensure_external_fetch(context)`：在每个外部来源**发网之前**调用。开关关闭时
    直接抛 `ExternalFetchBlocked`，并累计 `attempts / blocked`；
 2. `install_network_deny()`：在 `requests.Session.request`、socket 建连/发送、
-   `ssl.SSLSocket.send / sendall / sendfile` 与 `socket.socket.sendfile` 上兜底。
-   任何漏网的 HTTP 客户端（urllib / httpx / aiohttp 同步路径等）最终都要建 socket 或写
-   stream，因此在建连/发送前失败；**允许回环**，浏览器验收仍能访问 `127.0.0.1` 的后端；
-3. **进程启动锁定**：一旦首次读到 `EXTERNAL_DATA_FETCH_ENABLED=false`，本进程
+   `ssl.SSLSocket.send / sendall / sendfile / write`、`socket.socket.sendfile`、
+   DNS 入口（`getaddrinfo` / `gethostbyname[_ex]`）与代理探测
+   （`urllib.request.getproxies`）上兜底。**允许回环**，浏览器验收仍能访问
+   `127.0.0.1` 的后端；
+3. **在线允许名单**（S6-A1）：`EXTERNAL_DATA_FETCH_ENABLED=true` 时也不再无条件
+   放行 —— 只能访问 `deploy/s6/egress-policy.json` 显式列出的域名 + 端口，
+   IP literal 除严格回环外一律拒绝（见 `app/egress_policy.py`）；
+4. **进程启动锁定**：一旦首次读到 `EXTERNAL_DATA_FETCH_ENABLED=false`，本进程
    生命周期内不可再切回 true（`locked_offline=true`），防止运行时改环境变量绕过。
 
 开关：环境变量 `EXTERNAL_DATA_FETCH_ENABLED`（默认 true）。不要复用
@@ -34,6 +38,7 @@ import threading
 from typing import Any
 from urllib.parse import urlsplit
 
+from app import egress_policy
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -112,8 +117,16 @@ _stats: dict[str, Any] = {
     "stream_blocked": 0,
     "sendfile_attempts": 0,
     "sendfile_blocked": 0,
+    "dns_attempts": 0,
+    "dns_blocked": 0,
+    "policy_attempts": 0,
+    "policy_allowed": 0,
+    "policy_denied": 0,
+    "policy_errors": 0,
+    "ip_literal_denied": 0,
     "installed": False,
     "socket_guarded": False,
+    "dns_guarded": False,
 }
 #: 实际安装成功的写路径能力集合（stats 原样暴露，不能只报一个总布尔值）
 _guard_capabilities: dict[str, bool] = {}
@@ -130,6 +143,14 @@ _original_ssl_send = None
 _original_ssl_sendall = None
 _original_ssl_sendfile = None
 _original_ssl_write = None
+_original_getaddrinfo = None
+_original_gethostbyname = None
+_original_gethostbyname_ex = None
+_original_getproxies = None
+#: 由**受控解析**记录下来的公网 IP（域名 → 地址）。直接连 IP literal 时只有命中
+#: 这个集合才放行，避免「解析被允许的域名后改连任意 IP」或干脆绕过域名规则。
+_authorized_ips: dict[str, bool] = {}
+_AUTHORIZED_IP_CAP = 2048
 #: TLS `sendall` / `sendfile` 内部会回调 `self.send()`；用**按 socket 的嵌套栈**记录
 #: 当前线程正在执行外层写操作的 socket，避免线程级深度让另一个 socket 共享豁免。
 _tls_call_state = threading.local()
@@ -281,21 +302,209 @@ def _host_for_label(address: Any) -> Any:
 
 
 def _guard_outbound(method: str, address: Any) -> Any:
-    """离线时统一判定并返回**可交给原函数**的地址。
+    """统一判定并返回**可交给原函数**的地址。
 
     - `localhost` 固定映射到 127.0.0.1（IPv6 名映射到 ::1）；
     - 严格 IP 回环放行；
-    - 其它（含空 host / None / localhost.localdomain / 公网 IP / 主机名）一律拦截。
+    - 在线模式：按 `egress_policy` 允许名单判定（域名 + 端口），
+      IP literal 只接受由受控解析登记过的地址；
+    - 离线模式：其它（含空 host / None / localhost.localdomain / 公网 IP / 主机名）
+      一律拦截。
     """
-    if enabled():
-        return address
     host = _address_host(address)
     if _strict_loopback_ip(host):
         return address
     mapped = _mapped_localhost(host)
     if mapped is not None:
         return _rewrite_localhost(address, mapped)
+    if enabled():
+        port = _port_of(address)
+        if _is_ip_text(host):
+            if _ip_authorized(host):
+                with _lock:
+                    _stats["policy_allowed"] += 1
+                return address
+            with _lock:
+                _stats["ip_literal_denied"] += 1
+            _block_policy(method, host, port, "IP_LITERAL_DENIED")
+        _policy_allows(host, port, method)
+        return address
     _block_socket(method, address)
+
+
+def _policy_environment() -> str:
+    return (os.environ.get("FUPAN_ENV") or "development").strip().lower() or "development"
+
+
+def _port_of(address: Any) -> int | None:
+    if isinstance(address, (tuple, list)) and len(address) >= 2:
+        return _as_port(address[1])
+    return None
+
+
+def _as_port(value: Any) -> int | None:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def _is_ip_text(value: Any) -> bool:
+    try:
+        ipaddress.ip_address(str(value))
+        return True
+    except ValueError:
+        return False
+
+
+def _record_authorized_ip(sockaddr: Any) -> None:
+    host = _address_host(sockaddr)
+    if not _is_ip_text(host):
+        return
+    try:
+        if ipaddress.ip_address(str(host)).is_loopback:
+            return
+    except ValueError:
+        return
+    with _lock:
+        if len(_authorized_ips) >= _AUTHORIZED_IP_CAP:
+            _authorized_ips.clear()
+        _authorized_ips[str(host)] = True
+
+
+def _ip_authorized(host: Any) -> bool:
+    with _lock:
+        return str(host) in _authorized_ips
+
+
+def _block_policy(action: str, host: Any, port: int | None, reason: str) -> None:
+    with _lock:
+        _stats["policy_denied"] += 1
+        if reason.startswith("POLICY_"):
+            _stats["policy_errors"] += 1
+    # 只记录动作 + hostname + 端口；URL / query / userinfo 绝不进日志
+    logger.warning("出站策略拒绝 %s → %s:%s（%s）", action, _safe_host(host), port, reason)
+    if reason.startswith("POLICY_"):
+        code = "EGRESS_POLICY_ERROR"
+    elif reason == "PROXY_NOT_ALLOWED":
+        code = "EGRESS_PROXY_DENIED"
+    else:
+        code = "EGRESS_DESTINATION_DENIED"
+    raise ExternalFetchBlocked(code, source=_safe_host(host))
+
+
+def _guarded_getproxies():  # noqa: ANN001
+    """代理出口：策略没有显式授权代理时，把系统代理 / 环境变量代理全部过滤掉。
+
+    ⚠️ 这条很关键：开发机与不少服务器配了系统级代理（Windows 注册表 / 环境变量），
+    请求会先连到 `127.0.0.1:7890` 这类**回环代理**。回环本身是放行的，于是应用层
+    看起来「只连了本机」，真正的公网访问却由代理进程完成 —— 完全绕过本闸门。
+    因此这里默认返回空表；只有策略文件 `proxies` 段显式列出代理时才恢复原行为。
+    """
+    if egress_policy.proxies_allowed():
+        return _original_getproxies()
+    return {}
+
+
+def _configured_proxy(session: Any, url: str) -> str | None:
+    """返回本次请求实际会用到的代理地址；没有则 None。异常按「有代理」处理。"""
+    try:
+        explicit = getattr(session, "proxies", None) or {}
+        for key in ("http", "https", "all"):
+            value = explicit.get(key)
+            if value:
+                return str(value)
+        if getattr(session, "trust_env", False):
+            import urllib.request as urllib_request
+
+            env = urllib_request.getproxies() or {}
+            for key in ("http", "https", "all"):
+                value = env.get(key)
+                if value:
+                    return str(value)
+    except Exception:  # noqa: BLE001 - 判定不了就按有代理（fail closed）
+        return "unknown"
+    return None
+
+
+def _policy_allows(host: Any, port: int | None, action: str) -> bool:
+    with _lock:
+        _stats["policy_attempts"] += 1
+    if egress_policy.host_allowed(host, port, environment=_policy_environment()):
+        with _lock:
+            _stats["policy_allowed"] += 1
+        return True
+    _block_policy(action, host, port, egress_policy.describe_denial(host, port))
+
+
+def _guarded_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):  # noqa: ANN001
+    """DNS 入口闸门：先按策略判定主机（+端口），再做真实解析。
+
+    为什么必须在解析前判：DNS 本身也是一次出网/信息泄露；而且「解析成功」
+    不能等同于「目标已获授权」。解析结果里的公网 IP 会被登记，供随后
+    `socket.connect(ip)` 的白名单校验使用。
+    """
+    with _lock:
+        _stats["dns_attempts"] += 1
+    if host is None or host == "":
+        # 本机绑定（getaddrinfo(None, port, AI_PASSIVE)）不出网，放行
+        return _original_getaddrinfo(host, port, family, type, proto, flags)
+    mapped = _mapped_localhost(host)
+    if mapped is not None:
+        host = mapped
+    if _strict_loopback_ip(host):
+        return _original_getaddrinfo(host, port, family, type, proto, flags)
+    if not enabled():
+        with _lock:
+            _stats["dns_blocked"] += 1
+        logger.warning("离线验收：拦截 DNS 解析 → %s", _safe_host(host))
+        raise ExternalFetchBlocked("NETWORK_DNS_BLOCKED", source=_safe_host(host))
+    _policy_allows(host, _as_port(port), "dns.getaddrinfo")
+    result = _original_getaddrinfo(host, port, family, type, proto, flags)
+    for item in result:
+        try:
+            _record_authorized_ip(item[4])
+        except (IndexError, TypeError):
+            continue
+    return result
+
+
+def _guarded_gethostbyname(host):  # noqa: ANN001
+    with _lock:
+        _stats["dns_attempts"] += 1
+    mapped = _mapped_localhost(host)
+    if mapped is not None:
+        host = mapped
+    if _strict_loopback_ip(host):
+        return _original_gethostbyname(host)
+    if not enabled():
+        with _lock:
+            _stats["dns_blocked"] += 1
+        raise ExternalFetchBlocked("NETWORK_DNS_BLOCKED", source=_safe_host(host))
+    _policy_allows(host, None, "dns.gethostbyname")
+    address = _original_gethostbyname(host)
+    _record_authorized_ip((address, 0))
+    return address
+
+
+def _guarded_gethostbyname_ex(host):  # noqa: ANN001
+    with _lock:
+        _stats["dns_attempts"] += 1
+    mapped = _mapped_localhost(host)
+    if mapped is not None:
+        host = mapped
+    if _strict_loopback_ip(host):
+        return _original_gethostbyname_ex(host)
+    if not enabled():
+        with _lock:
+            _stats["dns_blocked"] += 1
+        raise ExternalFetchBlocked("NETWORK_DNS_BLOCKED", source=_safe_host(host))
+    _policy_allows(host, None, "dns.gethostbyname_ex")
+    _name, aliases, addresses = _original_gethostbyname_ex(host)
+    for address in addresses:
+        _record_authorized_ip((address, 0))
+    return _name, aliases, addresses
 
 
 def _peer_host(sock: Any) -> str | None:
@@ -317,6 +526,30 @@ def _guarded_request(self, method, url, *args, **kwargs):  # noqa: ANN001 - 透�
         raise ExternalFetchBlocked("NETWORK_REQUEST_BLOCKED", source=_safe_host(url))
     with _lock:
         _stats["network_attempts"] += 1
+    # 在线也要按允许名单判：这是最早的入口，能给出明确拒绝原因；
+    # 重定向后的最终目标会在 DNS / connect 层再判一次（E20）。
+    try:
+        parts = urlsplit(str(url))
+    except ValueError:
+        parts = None
+    host = parts.hostname if parts else None
+    if host:
+        try:
+            port = parts.port or (443 if parts.scheme == "https" else 80)
+        except ValueError:
+            port = None
+        if _strict_loopback_ip(host) or _mapped_localhost(host) is not None:
+            # 回环请求**强制直连**：不允许被系统代理劫持到本机代理再出公网
+            kwargs["proxies"] = {"http": None, "https": None, "all": None}
+        elif _is_ip_text(host):
+            if not _ip_authorized(host):
+                with _lock:
+                    _stats["ip_literal_denied"] += 1
+                _block_policy("requests", host, port, "IP_LITERAL_DENIED")
+        else:
+            _policy_allows(host, port, "requests")
+            if _configured_proxy(self, str(url)) is not None:
+                _block_policy("requests", host, port, "PROXY_NOT_ALLOWED")
     return _original_request(self, method, url, *args, **kwargs)
 
 
@@ -351,7 +584,14 @@ def _guarded_sendto(self, data, *args):  # noqa: ANN001
     if _is_unix_socket(self):
         return _original_socket_sendto(self, data, *args)
     address = args[-1] if args else None
-    if not enabled() and not _strict_loopback_ip(_address_host(address)):
+    if enabled():
+        host = _address_host(address)
+        if _strict_loopback_ip(host) or _mapped_localhost(host) is not None:
+            with _lock:
+                _stats["policy_allowed"] += 1
+            return _original_socket_sendto(self, data, *args)
+        _block_udp("socket.sendto", address)
+    if not _strict_loopback_ip(_address_host(address)):
         _block_udp("socket.sendto", address)
     return _original_socket_sendto(self, data, *args)
 
@@ -368,6 +608,39 @@ def _guarded_sendmsg(self, buffers, *args):  # noqa: ANN001
     if _is_unix_socket(self):
         return _original_socket_sendmsg(self, buffers, *args)
     if enabled():
+        if is_dgram:
+            # 在线同样不允许任意 UDP：只放行回环（本机服务发现等）。
+            target = _sendmsg_address(args)
+            if target is None:
+                target = _peer_host(self)
+            host = _address_host(target) if target is not None else None
+            if host is not None and (
+                _strict_loopback_ip(host) or _mapped_localhost(host) is not None
+            ):
+                with _lock:
+                    _stats["policy_allowed"] += 1
+                return _original_socket_sendmsg(self, buffers, *args)
+            with _lock:
+                _stats["udp_blocked"] += 1
+                _stats["policy_denied"] += 1
+            logger.warning("出站策略拒绝 UDP sendmsg → %s", _safe_host(host))
+            raise ExternalFetchBlocked(
+                "NETWORK_DATAGRAM_BLOCKED", source=_safe_host(host)
+            )
+        # 流式 sendmsg：显式地址或已连接对端必须是回环或受控解析登记过的地址
+        target = _sendmsg_address(args) or _peer_host(self)
+        if target is not None:
+            host = _address_host(target)
+            if not (_strict_loopback_ip(host) or _ip_authorized(host)):
+                with _lock:
+                    _stats["stream_blocked"] += 1
+                    _stats["policy_denied"] += 1
+                logger.warning("出站策略拒绝 stream sendmsg → %s", _safe_host(host))
+                raise ExternalFetchBlocked(
+                    "NETWORK_STREAM_SEND_BLOCKED", source=_safe_host(host)
+                )
+        with _lock:
+            _stats["policy_allowed"] += 1
         return _original_socket_sendmsg(self, buffers, *args)
     # 显式 address 或已连接对端都可以作为目标；两者都拿不到时**不得放行**
     target = _sendmsg_address(args)
@@ -395,15 +668,29 @@ def _assert_stream_peer_allowed(
     """所有「已连接 socket 写」共用的 fail-closed 判定入口。
 
     - Unix domain socket 放行（本机 IPC，不出网）；
-    - 在线模式透明放行；
+    - 在线时只放行回环或**受控解析登记过的**公网 IP（未登记的已连接 socket 一律拒绝）；
     - 离线时按 `getpeername()` 判定：拿不到对端 → fail closed；非严格回环 → 阻断；
     - 已连接 socket 在切换 offline 后每次发送都会重新判定，不依赖建连时的状态。
     """
     if _is_unix_socket(sock):
         return
-    if enabled():
-        return
     target = _peer_host(sock)
+    if enabled():
+        # 在线也校验「已连接 socket 的对端」：防止建连时通过、发送时改到未授权目标。
+        # 拿不到对端时不在这里阻断（未连接 socket 的 send 本身会抛 OSError），
+        # 建连层的策略判定已经生效。
+        if target is None or _strict_loopback_ip(target):
+            return
+        if _ip_authorized(target):
+            return
+        with _lock:
+            _stats[f"{counter}_blocked"] += 1
+            _stats["policy_denied"] += 1
+        logger.warning("出站策略拒绝已连接 socket %s → %s", method, _safe_host(target))
+        raise ExternalFetchBlocked(
+            "NETWORK_SENDFILE_BLOCKED" if counter == "sendfile" else "NETWORK_STREAM_SEND_BLOCKED",
+            source=target,
+        )
     if target is None:
         with _lock:
             _stats[f"{counter}_blocked"] += 1
@@ -496,11 +783,15 @@ def _install_wrappers() -> bool:
     global _original_socket_send, _original_socket_sendall, _original_socket_sendfile
     global _original_ssl_send, _original_ssl_sendall, _original_ssl_sendfile
     global _original_ssl_write
+    global _original_getaddrinfo, _original_gethostbyname, _original_gethostbyname_ex
+    global _original_getproxies
     with _install_lock:
         if _stats["installed"]:
             return True
         import ssl as ssl_module
+        import urllib.request as urllib_request
         import requests.sessions as sessions
+        import requests.utils as requests_utils
 
         _original_request = sessions.Session.request
         _original_create_connection = socket.create_connection
@@ -515,6 +806,10 @@ def _install_wrappers() -> bool:
         _original_ssl_sendall = getattr(ssl_module.SSLSocket, "sendall", None)
         _original_ssl_sendfile = getattr(ssl_module.SSLSocket, "sendfile", None)
         _original_ssl_write = getattr(ssl_module.SSLSocket, "write", None)
+        _original_getaddrinfo = socket.getaddrinfo
+        _original_gethostbyname = socket.gethostbyname
+        _original_gethostbyname_ex = socket.gethostbyname_ex
+        _original_getproxies = urllib_request.getproxies
 
         sessions.Session.request = _guarded_request
         socket.create_connection = _guarded_create_connection
@@ -527,6 +822,13 @@ def _install_wrappers() -> bool:
             socket.socket.sendmsg = _guarded_sendmsg
         socket.socket.send = _guarded_send
         socket.socket.sendall = _guarded_sendall
+        # DNS 入口：解析前判策略，解析后登记授权 IP
+        socket.getaddrinfo = _guarded_getaddrinfo
+        socket.gethostbyname = _guarded_gethostbyname
+        socket.gethostbyname_ex = _guarded_gethostbyname_ex
+        # 代理出口：默认过滤掉系统 / 环境变量代理（见 _guarded_getproxies）
+        urllib_request.getproxies = _guarded_getproxies
+        requests_utils.getproxies = _guarded_getproxies
         # 普通 socket 的 sendfile：POSIX 走 os.sendfile，Windows 走 send() fallback；
         # 两种情况都必须在进入原实现前完成 peer 判定。
         if _original_socket_sendfile is not None:
@@ -553,13 +855,16 @@ def _install_wrappers() -> bool:
                 and _original_ssl_sendall is not None,
                 "ssl_sendfile": _original_ssl_sendfile is not None,
                 "ssl_write": _original_ssl_write is not None,
+                "dns": True,
             }
         )
         with _lock:
             _stats["installed"] = True
             _stats["socket_guarded"] = True
+            _stats["dns_guarded"] = True
     logger.warning(
-        "已安装离线网络闸门 wrapper（%s）：在线透明放行，离线仅严格回环放行（含 TLS/sendfile）",
+        "已安装离线网络闸门 wrapper（%s）：在线按允许名单放行，离线仅严格回环放行"
+        "（含 DNS / TLS / sendfile）",
         ENV,
     )
     return True
@@ -582,8 +887,26 @@ def uninstall_network_deny() -> None:
     global _original_socket_send, _original_socket_sendall, _original_socket_sendfile
     global _original_ssl_send, _original_ssl_sendall, _original_ssl_sendfile
     global _original_ssl_write
+    global _original_getaddrinfo, _original_gethostbyname, _original_gethostbyname_ex
+    global _original_getproxies
     import ssl as ssl_module
+    import urllib.request as urllib_request
     import requests.sessions as sessions
+    import requests.utils as requests_utils
+
+    if _original_getproxies is not None:
+        urllib_request.getproxies = _original_getproxies
+        requests_utils.getproxies = _original_getproxies
+        _original_getproxies = None
+    if _original_getaddrinfo is not None:
+        socket.getaddrinfo = _original_getaddrinfo
+        _original_getaddrinfo = None
+    if _original_gethostbyname is not None:
+        socket.gethostbyname = _original_gethostbyname
+        _original_gethostbyname = None
+    if _original_gethostbyname_ex is not None:
+        socket.gethostbyname_ex = _original_gethostbyname_ex
+        _original_gethostbyname_ex = None
 
     if _original_request is not None:
         sessions.Session.request = _original_request
@@ -626,8 +949,10 @@ def uninstall_network_deny() -> None:
         _original_ssl_write = None
     _guard_capabilities.clear()
     with _lock:
+        _authorized_ips.clear()
         _stats["installed"] = False
         _stats["socket_guarded"] = False
+        _stats["dns_guarded"] = False
 
 
 def reset_stats() -> None:
@@ -645,6 +970,13 @@ def reset_stats() -> None:
             "stream_blocked",
             "sendfile_attempts",
             "sendfile_blocked",
+            "dns_attempts",
+            "dns_blocked",
+            "policy_attempts",
+            "policy_allowed",
+            "policy_denied",
+            "policy_errors",
+            "ip_literal_denied",
         ):
             _stats[key] = 0
 
@@ -654,14 +986,16 @@ def reset_guard_state() -> None:
     global _locked_offline
     uninstall_network_deny()
     reset_stats()
+    egress_policy.reset_policy_cache()
     with _lock:
         _locked_offline = False
+        _authorized_ips.clear()
 
 
 def stats() -> dict[str, Any]:
     """只返回计数与布尔开关，**不包含域名、URL、token 或数据库路径**。
 
-    语义：
+    语义（每个计数只回答一件事，不能互相冒充）：
     - `enabled` 是**有效状态**：`locked_offline=true` 时即使环境变量改回 true 也是 false；
     - `attempts` / `blocked`：来源入口（`ensure_external_fetch`）；
     - `network_attempts` / `network_blocked`：只统计 `requests` 层；
@@ -672,14 +1006,17 @@ def stats() -> dict[str, Any]:
       （含 TLS `send` / `sendall` / `write`，以及 TCP `sendmsg`）；
     - `sendfile_attempts` / `sendfile_blocked`：`socket.socket.sendfile` 与
       `ssl.SSLSocket.sendfile`（TLS 内部回调 `send()` 不重复计数）；
-    - `installed` / `socket_guarded`：wrapper 是否真实安装（在线也应为 true）；
-    - `guards`：实际安装成功的写路径能力集合（requests / socket / TLS / sendfile）；
-    - `dns_guard=NOT_INTERCEPTED`：DNS 查询未在进程内拦截；
+    - `dns_attempts` / `dns_blocked`：`getaddrinfo` / `gethostbyname[_ex]`；
+    - `policy_attempts` / `policy_allowed` / `policy_denied` / `policy_errors`：
+      允许名单判定；`policy_errors` 只统计策略文件本身不可用（缺文件/坏 JSON/版本不符）；
+    - `ip_literal_denied`：直接连未授权 IP literal 的次数；
+    - `installed` / `socket_guarded` / `dns_guarded`：wrapper 是否真实安装（在线也应为 true）；
+    - `guards`：实际安装成功的路径能力集合（requests / socket / TLS / sendfile / dns）；
     - 这些都不是「全宿主网络调用总数」，OS 级隔离是否生效需另测。
     """
     effective = enabled()
     with _lock:
-        return {
+        snapshot = {
             "enabled": effective,
             "locked_offline": _locked_offline,
             "mode": "offline_locked" if _locked_offline else "online",
@@ -687,8 +1024,79 @@ def stats() -> dict[str, Any]:
                 "online→offline 立即生效并锁定（wrapper 启动即安装）；"
                 "offline→online 不支持（需重启进程）"
             ),
-            "dns_guard": "NOT_INTERCEPTED",
+            "dns_guard": "APP_LAYER_INTERCEPTED" if _stats["dns_guarded"] else "NOT_INTERCEPTED",
             "guards": dict(_guard_capabilities),
+            "authorized_ips": len(_authorized_ips),
             **_stats,
         }
+    snapshot["policy"] = egress_policy.policy_status()
+    snapshot["os_egress"] = "NOT_VERIFIED"
+    return snapshot
+
+
+def metrics() -> dict[str, Any]:
+    """S6-A6：统一指标名与口径。
+
+    规则：
+    - 观测点未安装时返回 `"UNKNOWN"`，**不能返回 0**（0 表示「观测过、确实没有」）；
+    - 应用层拦截 ≠ 网络包未发出；OS 防火墙拦截也不代表应用层 wrapper 捕获过；
+    - `subprocess_network_attempts_total` 与 `os_firewall_denied_total` 本轮没有
+      可验证的观测点，固定为 `UNKNOWN`。
+    """
+    snapshot = stats()
+    installed = bool(snapshot.get("installed"))
+    dns_guarded = bool(snapshot.get("dns_guarded"))
+
+    def total(*keys: str) -> int | str:
+        if not installed:
+            return "UNKNOWN"
+        return sum(int(snapshot.get(key, 0)) for key in keys)
+
+    return {
+        "egress_attempts_total": {
+            "value": int(snapshot.get("attempts", 0)),
+            "definition": "业务来源入口（ensure_external_fetch）调用次数",
+        },
+        "egress_allowed_total": {
+            "value": int(snapshot.get("attempts", 0)) - int(snapshot.get("blocked", 0)),
+            "definition": "来源入口放行次数（不代表网络包已发出）",
+        },
+        "egress_denied_total": {
+            "value": total(
+                "blocked",
+                "network_blocked",
+                "os_network_blocked",
+                "udp_blocked",
+                "stream_blocked",
+                "sendfile_blocked",
+                "dns_blocked",
+            ),
+            "definition": "应用层各观测点拦截次数之和（可能存在同一次调用的多层计数）",
+        },
+        "egress_policy_errors_total": {
+            "value": "UNKNOWN" if not installed else int(snapshot.get("policy_errors", 0)),
+            "definition": "策略文件缺失/解析失败/版本不匹配次数",
+        },
+        "dns_attempts_total": {
+            "value": "UNKNOWN" if not dns_guarded else int(snapshot.get("dns_attempts", 0)),
+            "definition": "进程内 DNS 入口调用次数",
+        },
+        "dns_denied_total": {
+            "value": "UNKNOWN" if not dns_guarded else int(snapshot.get("dns_blocked", 0)),
+            "definition": "进程内 DNS 入口拒绝次数",
+        },
+        "subprocess_network_attempts_total": {
+            "value": "UNKNOWN",
+            "definition": "子进程出站无法在应用层观测；需 OS 层审计",
+        },
+        "os_firewall_denied_total": {
+            "value": "UNKNOWN",
+            "definition": "本轮无 OS 防火墙审计日志接入",
+        },
+        "windows": {
+            "since_process_start": True,
+            "multi_worker_aggregation": "不适用（本服务强制单 worker）",
+            "reset_rule": "计数随进程重启归零；不持久化",
+        },
+    }
 

@@ -1,0 +1,59 @@
+{
+  "commit_sha": "104dfdf489150d97446be3af0fa4a4de14382bbd",
+  "branch": "release/s6-canary-hardening",
+  "generated_at": "2026-11-15T00:40:00+08:00",
+  "environment": "Windows 11 开发机；无隔离 OS/网络环境",
+  "command": "pytest tests/test_s6_egress_boundary.py tests/test_external_guard.py tests/test_s5_offline_gates.py -q",
+  "exit_code": 0,
+  "tool_version": "pytest 9.1.1 / Python 3.13.13",
+  "result": {
+    "verdict": "S6_IMPLEMENTATION_PARTIAL",
+    "gates": {
+      "G1_EGRESS_INVENTORY": "PASS",
+      "G2_APP_LAYER_FAIL_CLOSED": "PASS",
+      "G3_OS_EGRESS_DENY": "NOT_VERIFIED",
+      "G4_DNS_IPV4_IPV6_TCP_UDP_SUBPROCESS": "NOT_VERIFIED",
+      "G5_SECRET_REDACTION": "PASS"
+    },
+    "tests": {
+      "s6_boundary": {"passed": 35, "failed": 0, "skipped": 0},
+      "existing_guard_suites": {"passed": 91, "failed": 0, "skipped": 1}
+    },
+    "policy": {
+      "file": "deploy/s6/egress-policy.json",
+      "version": 1,
+      "default": "deny",
+      "entries": 17,
+      "proxies_authorized": 0,
+      "loopback_allow_any_port": true
+    },
+    "controls": [
+      "requests.Session.request",
+      "socket.create_connection/connect/connect_ex",
+      "socket.send/sendall/sendmsg/sendfile",
+      "ssl.SSLSocket.send/sendall/sendfile/write",
+      "socket.getaddrinfo/gethostbyname/gethostbyname_ex",
+      "urllib.request.getproxies + requests.utils.getproxies"
+    ],
+    "blocking": [
+      "OS_EGRESS_DENY_NOT_VERIFIED",
+      "DNS_OS_LAYER_NOT_VERIFIED",
+      "SUBPROCESS_EGRESS_NOT_VERIFIED",
+      "NATIVE_LIB_EGRESS_NOT_VERIFIED"
+    ]
+  },
+  "evidence_files": [
+    "reports/s6/security/egress-inventory.md",
+    "reports/s6/security/egress-callgraph.json",
+    "reports/s6/security/egress-test-matrix.json",
+    "reports/s6/security/egress-test-report.md",
+    "reports/s6/security/network-inventory.md",
+    "reports/s6/security/os-policy-verification.md",
+    "reports/s6/security/secret-redaction-report.md"
+  ],
+  "limitations": [
+    "OS 防火墙、网络命名空间、子进程与原生库均未在隔离环境实测。",
+    "asyncio（aiohttp/websockets）的 loop resolver 路径未单独验证。",
+    "系统代理过滤是应用层行为；操作系统是否仍有代理出口需 OS 策略验证。"
+  ]
+}

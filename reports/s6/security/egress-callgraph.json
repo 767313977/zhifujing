@@ -1,0 +1,49 @@
+{
+  "commit_sha": "104dfdf489150d97446be3af0fa4a4de14382bbd",
+  "branch": "release/s6-canary-hardening",
+  "generated_at": "2026-11-15T00:30:00+08:00",
+  "environment": "开发机静态盘点（生产主机不可访问）",
+  "command": "grep/静态检索 + importlib/pip 依赖核对",
+  "exit_code": 0,
+  "tool_version": "manual-static-scan/1.0",
+  "result": {
+    "nodes": [
+      {"id": "EG-01", "file": "backend/app/sources/ifind.py", "lines": [306, 676], "protocol": "tcp/tls", "library": "requests", "target": "api-mcp.51ifind.com:8643", "purpose": "iFinD MCP/CSV", "guard": ["ensure_external_fetch", "requests", "socket", "dns", "tls"], "subprocess_bypass": false, "decision": "allow_via_policy"},
+      {"id": "EG-02", "file": "backend/app/sources/eastmoney.py", "lines": [124, 142], "protocol": "tcp/tls", "library": "requests", "target": "push2his.eastmoney.com:443", "purpose": "东财日线", "guard": ["ensure_external_fetch", "requests", "socket", "dns", "tls"], "subprocess_bypass": false, "decision": "allow_via_policy"},
+      {"id": "EG-03", "file": "backend/app/sources/tencent.py", "lines": [292, 301], "protocol": "tcp", "library": "requests", "target": "qt.gtimg.cn:80", "purpose": "腾讯快照", "guard": ["ensure_external_fetch", "requests", "socket", "dns"], "subprocess_bypass": false, "decision": "allow_via_policy"},
+      {"id": "EG-04", "file": "backend/app/sources/ths_limit_up.py", "lines": [72, 85], "protocol": "tcp/tls", "library": "requests", "target": "data.10jqka.com.cn:443", "purpose": "涨停原因", "guard": ["ensure_external_fetch", "requests", "socket", "dns", "tls"], "subprocess_bypass": false, "decision": "allow_via_policy"},
+      {"id": "EG-05", "file": "backend/app/sources/danjuan.py", "lines": [64, 66], "protocol": "tcp/tls", "library": "requests", "target": "danjuanfunds.com:443", "purpose": "指数估值", "guard": ["ensure_external_fetch", "requests", "socket", "dns", "tls"], "subprocess_bypass": false, "decision": "allow_via_policy"},
+      {"id": "EG-06", "file": "backend/app/sources/etf_exchange.py", "lines": [56, 58], "protocol": "tcp/tls", "library": "requests", "target": "query.sse.com.cn:443 / fund.szse.cn:443", "purpose": "ETF 份额", "guard": ["ensure_external_fetch", "requests", "socket", "dns", "tls"], "subprocess_bypass": false, "decision": "allow_via_policy"},
+      {"id": "EG-07", "file": "backend/app/sources/kaipanhong.py", "lines": [188, 194], "protocol": "tcp/tls", "library": "requests", "target": "apphwshhq.kaipanhong.com:443 / apphis.kaipanhong.com:443", "purpose": "板块快照", "guard": ["ensure_external_fetch", "requests", "socket", "dns", "tls"], "subprocess_bypass": false, "decision": "allow_via_policy"},
+      {"id": "EG-08", "file": "backend/app/sources/kph_local.py", "lines": [57, 61], "protocol": "tcp", "library": "requests", "target": "127.0.0.1:5000", "purpose": "本机 KPH 代理", "guard": ["ensure_external_fetch", "loopback_policy"], "subprocess_bypass": false, "decision": "loopback_only"},
+      {"id": "EG-09", "file": "backend/app/sources/tdx.py", "lines": [141, 144], "protocol": "tcp/tls", "library": "requests", "target": "www.tdx.com.cn:443", "purpose": "通达信盘后包", "guard": ["ensure_external_fetch", "requests", "socket", "dns", "tls"], "subprocess_bypass": false, "decision": "allow_via_policy"},
+      {"id": "EG-10", "file": "backend/app/sources/akshare_source.py", "lines": [123, 227], "protocol": "tcp/tls", "library": "akshare", "target": "多域名（eastmoney/10jqka/sina/cffex/jisilu/legulegu）", "purpose": "三池/龙虎榜/财务/可转债", "guard": ["ensure_external_fetch", "socket", "dns", "tls", "proxy_filter"], "subprocess_bypass": false, "decision": "allow_via_policy"},
+      {"id": "EG-11", "file": "backend/app/sources/em_news.py", "lines": [100], "protocol": "tcp/tls", "library": "akshare", "target": "eastmoney.com", "purpose": "个股新闻", "guard": ["ensure_external_fetch", "socket", "dns", "tls"], "subprocess_bypass": false, "decision": "allow_via_policy"},
+      {"id": "EG-12", "file": "backend/app/sources/em_events.py", "lines": [120, 154, 207], "protocol": "tcp/tls", "library": "akshare", "target": "eastmoney.com", "purpose": "公告/研报/解禁", "guard": ["ensure_external_fetch", "socket", "dns", "tls"], "subprocess_bypass": false, "decision": "allow_via_policy"},
+      {"id": "EG-13", "file": "backend/app/jobs/push_brief.py", "lines": [583], "protocol": "tcp/tls", "library": "requests", "target": "FEISHU_WEBHOOK_URL", "purpose": "飞书推送", "guard": ["requests", "socket", "dns", "tls"], "subprocess_bypass": false, "decision": "allow_via_policy"},
+      {"id": "EG-14", "file": "backend/app/jobs/push_brief.py", "lines": [621], "protocol": "subprocess", "library": "subprocess/lark-cli", "target": "由外部二进制决定", "purpose": "飞书推送（备用）", "guard": [], "subprocess_bypass": true, "decision": "disable_in_canary"},
+      {"id": "EG-15", "file": "scripts/forward_collect_tushare.py", "lines": [1172], "protocol": "tcp/tls", "library": "tushare", "target": "api.tushare.pro:443", "purpose": "前瞻研究库", "guard": ["socket", "dns", "tls"], "subprocess_bypass": false, "decision": "allow_via_policy"},
+      {"id": "EG-16", "file": "backend/app/main.py", "lines": [517], "protocol": "udp", "library": "socket", "target": "本机地址", "purpose": "探测出口 IP", "guard": ["loopback_policy"], "subprocess_bypass": false, "decision": "loopback_only"}
+    ],
+    "edges": [
+      {"from": "business", "to": "ensure_external_fetch", "note": "来源入口统一闸门"},
+      {"from": "ensure_external_fetch", "to": "egress_policy", "note": "离线直接拒绝；在线按允许名单"},
+      {"from": "requests/urllib3", "to": "socket.getaddrinfo", "note": "DNS 前判策略"},
+      {"from": "socket", "to": "socket.connect/connect_ex/send/sendall/sendmsg/sendfile", "note": "建连与写路径兜底"},
+      {"from": "ssl.SSLSocket", "to": "send/sendall/sendfile/write", "note": "TLS 写路径单独 patch"},
+      {"from": "urllib.request.getproxies", "to": "egress_policy.proxies", "note": "未授权代理时过滤为空表"},
+      {"from": "subprocess", "to": "OS network", "note": "应用层不可覆盖 → NOT_VERIFIED"}
+    ]
+  },
+  "evidence_files": [
+    "reports/s6/security/egress-inventory.md",
+    "deploy/s6/egress-policy.json",
+    "backend/app/egress_policy.py",
+    "backend/app/external_guard.py"
+  ],
+  "limitations": [
+    "静态检索不能证明不存在网络出口；依赖库内部的域名集合以其源码为准。",
+    "asyncio（aiohttp/websockets）的 loop 解析器路径未单独实测。",
+    "子进程、原生二进制与 OS 防火墙不在本文件覆盖范围。"
+  ]
+}
