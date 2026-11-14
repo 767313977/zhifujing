@@ -153,20 +153,7 @@ def _log_status(payload: dict) -> str:
     return str(payload.get("status") or "").lower()
 
 
-def _frame_logs(session: Session, day: date) -> dict[str, dict]:
-    """`{scheduled_frame: payload}`。
-
-    同一帧重复执行时，质量结论以**最后一次真正持久化过行情**的日志为准
-    （S1-A1：`ok` / `partial`，或纯重复请求 `noop`）。失败 / skipped 的尝试
-    可能出现在成功之后，它们不会改动库里的行情，因此不得把已经存在的合法行情
-    判成无效 —— 但必须保留在诊断字段里（`last_attempt_*`），供页面区分
-    「上一次有效报价」与「最近一次尝试失败」。
-    """
-    rows = session.scalars(
-        select(CollectLog)
-        .where(CollectLog.trade_date == day, CollectLog.task == FRAME_TASK)
-        .order_by(CollectLog.id.desc())
-    ).all()
+def _merge_frame_logs(rows: list[CollectLog]) -> dict[str, dict]:
     latest_any: dict[str, dict] = {}
     latest_effective: dict[str, dict] = {}
     latest_noop: dict[str, dict] = {}
@@ -204,6 +191,47 @@ def _frame_logs(session: Session, day: date) -> dict[str, dict]:
         chosen["last_effective_status"] = (durable or {}).get("status")
         merged[frame] = chosen
     return merged
+
+
+def frame_logs_by_day(session: Session, days: list[date]) -> dict[date, dict[str, dict]]:
+    """批量读取多日的帧日志，合并规则与 `_frame_logs` 完全一致（一次 SQL）。
+
+    供数据质量台逐日诊断复用，避免按日 N+1。
+    """
+    if not days:
+        return {}
+    rows = session.scalars(
+        select(CollectLog)
+        .where(CollectLog.trade_date.in_(days), CollectLog.task == FRAME_TASK)
+        .order_by(CollectLog.id.desc())
+    ).all()
+    grouped: dict[date, list[CollectLog]] = {}
+    for row in rows:
+        if row.trade_date is not None:
+            grouped.setdefault(row.trade_date, []).append(row)
+    return {day: _merge_frame_logs(items) for day, items in grouped.items()}
+
+
+def frame_issue_reasons(logs: dict[str, dict], frame: str, label: str) -> list[str]:
+    """公开的帧质量规则（与竞价异动同一份），供质量台复用。"""
+    return _frame_issue_reasons(logs.get(frame), label)
+
+
+def _frame_logs(session: Session, day: date) -> dict[str, dict]:
+    """`{scheduled_frame: payload}`。
+
+    同一帧重复执行时，质量结论以**最后一次真正持久化过行情**的日志为准
+    （S1-A1：`ok` / `partial`，或纯重复请求 `noop`）。失败 / skipped 的尝试
+    可能出现在成功之后，它们不会改动库里的行情，因此不得把已经存在的合法行情
+    判成无效 —— 但必须保留在诊断字段里（`last_attempt_*`），供页面区分
+    「上一次有效报价」与「最近一次尝试失败」。
+    """
+    rows = session.scalars(
+        select(CollectLog)
+        .where(CollectLog.trade_date == day, CollectLog.task == FRAME_TASK)
+        .order_by(CollectLog.id.desc())
+    ).all()
+    return _merge_frame_logs(list(rows))
 
 
 def _last_attempt_warnings(logs: dict[str, dict]) -> list[str]:

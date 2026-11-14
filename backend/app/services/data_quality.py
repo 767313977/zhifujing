@@ -14,12 +14,11 @@
 
 from __future__ import annotations
 
-import json
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any
 
-from sqlalchemy import func, select
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import String, case, cast, func, select
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -32,7 +31,10 @@ from app.models import (
     StockDaily,
     TradeCalendar,
 )
-from app.timeutil import today_cn
+from app.services import auction_anomaly as auction_quality
+from app.timeutil import now_cn, today_cn
+
+QUALITY_VERSION = "data-quality-v2"
 
 STATUS_VERIFIED = "VERIFIED_SOURCE"
 STATUS_PARTIAL = "PARTIAL"
@@ -40,6 +42,25 @@ STATUS_UNVERIFIABLE = "UNVERIFIABLE"
 STATUS_NOT_COLLECTED = "NOT_COLLECTED"
 STATUS_PENDING = "PENDING"
 STATUS_NOT_TRADE_DAY = "NOT_TRADE_DAY"
+#: 查询/表结构异常：**不能**伪装成「未采集」
+STATUS_SOURCE_ERROR = "SOURCE_ERROR"
+
+#: v2 状态名 → 既有字段值（严格映射，不改变旧前端读取的 `status` 语义）
+STATUS_V2_MAP = {
+    "SOURCE_VERIFIED": STATUS_VERIFIED,
+    "SOURCE_PARTIAL": STATUS_PARTIAL,
+    "SOURCE_UNVERIFIABLE": STATUS_UNVERIFIABLE,
+    "SOURCE_NOT_COLLECTED": STATUS_NOT_COLLECTED,
+    "SOURCE_ERROR": STATUS_SOURCE_ERROR,
+    "SOURCE_PENDING": STATUS_PENDING,
+}
+
+AUCTION_VALID = "VALID"
+AUCTION_INCOMPLETE = "INCOMPLETE"
+AUCTION_MISSING = "MISSING"
+AUCTION_PENDING = "PENDING"
+AUCTION_NOT_COLLECTED = "NOT_COLLECTED"
+AUCTION_UNVERIFIABLE = "UNVERIFIABLE"
 
 SOURCES = (
     "stock_daily",
@@ -111,6 +132,10 @@ def _item(
         "source": source,
         "trade_date": trade_date,
         "status": status,
+        # S5-B：v2 明确把「单来源状态」与「组合视图状态」分开；非组合来源二者相同
+        "quality_version": QUALITY_VERSION,
+        "source_status": status,
+        "combined_view_status": status,
         "reason_codes": reasons or [],
         "observed_rows": observed_rows,
         "expected_rows": expected_rows,
@@ -183,6 +208,65 @@ def _stock_daily_items(session: Session, days: list[date]) -> dict[date, dict[st
     return items
 
 
+def _pool_source_status(
+    rows: int,
+    latest_any: CollectLog | None,
+    latest_ok: CollectLog | None,
+    *,
+    allow_empty: bool,
+    label: str,
+) -> tuple[str, list[str], bool]:
+    """单个池来源（up / broken / down）的状态。返回 (status, reasons, trusted)。
+
+    - `ok` + 有行 → VERIFIED；
+    - broken/down 的 `ok` + 0 行是合法空集；up 的 `ok` + 0 行是异常；
+    - 最近一次失败但历史有 ok → PARTIAL（旧快照保留），不抹掉已持久化行；
+    - 无日志/从未 ok → UNVERIFIABLE 或 NOT_COLLECTED，绝不当成「空池=可信」。
+    """
+    # 保留旧 API 的 UP 原因码；BROKEN/DOWN 用前缀区分，避免「up 成功」掩盖它们
+    prefix = "" if label == "UP" else f"{label}_"
+
+    def code(text: str) -> str:
+        return f"{prefix}{text}"
+
+    if rows == 0:
+        if latest_any is None:
+            return STATUS_NOT_COLLECTED, [code("POOL_NOT_COLLECTED")], False
+        if latest_ok is not None:
+            if allow_empty:
+                return STATUS_VERIFIED, [], True
+            return STATUS_UNVERIFIABLE, [f"{label}_POOL_EMPTY_WITH_OK_LOG"], False
+        return (
+            STATUS_UNVERIFIABLE,
+            [code(f"POOL_STATUS_{(latest_any.status or 'UNKNOWN').upper()}")],
+            False,
+        )
+    if latest_any is None:
+        return STATUS_UNVERIFIABLE, [code("POOL_LOG_MISSING_WITH_ROWS")], False
+    if (latest_any.status or "").lower() == "ok":
+        return STATUS_VERIFIED, [], True
+    if latest_ok is not None:
+        return STATUS_PARTIAL, [code("LATEST_ATTEMPT_FAILED_SNAPSHOT_RETAINED")], True
+    return (
+        STATUS_UNVERIFIABLE,
+        [code(f"POOL_STATUS_{(latest_any.status or 'UNKNOWN').upper()}")],
+        False,
+    )
+
+
+def _combined_pool_status(statuses: list[str]) -> str:
+    """「涨停+炸板+跌停」组合视图：任一子来源有缺口都不得 VERIFIED。"""
+    if all(status == STATUS_VERIFIED for status in statuses):
+        return STATUS_VERIFIED
+    if all(status == STATUS_NOT_COLLECTED for status in statuses):
+        return STATUS_NOT_COLLECTED
+    if any(status == STATUS_UNVERIFIABLE for status in statuses):
+        return STATUS_UNVERIFIABLE
+    if any(status == STATUS_PARTIAL for status in statuses):
+        return STATUS_PARTIAL
+    return STATUS_UNVERIFIABLE
+
+
 def _limit_pool_items(session: Session, days: list[date]) -> dict[date, dict[str, Any]]:
     latest = session.scalar(select(func.max(LimitPool.trade_date)))
     rows = session.execute(
@@ -209,7 +293,11 @@ def _limit_pool_items(session: Session, days: list[date]) -> dict[date, dict[str
         if (log.status or "").lower() == "ok":
             latest_ok.setdefault(key, log)
 
-    valid_days = [day for day in days if counts.get(day, {}).get("up", 0) > 0 and (day, "pool_up") in latest_ok]
+    valid_days = [
+        day
+        for day in days
+        if counts.get(day, {}).get("up", 0) > 0 and (day, "pool_up") in latest_ok
+    ]
     items: dict[date, dict[str, Any]] = {}
     for day in days:
         day_counts = counts.get(day, {})
@@ -217,60 +305,67 @@ def _limit_pool_items(session: Session, days: list[date]) -> dict[date, dict[str
         broken_rows = day_counts.get("broken", 0)
         down_rows = day_counts.get("down", 0)
         observed = up_rows + broken_rows + down_rows
-        up_log = latest_any.get((day, "pool_up"))
-        up_ok = latest_ok.get((day, "pool_up"))
+        dimensions: dict[str, dict[str, Any]] = {}
+        statuses: list[str] = []
         reasons: list[str] = []
-        status = STATUS_VERIFIED
-        note = None
+        for label, pool_type, pool_rows, allow_empty in (
+            ("UP", "up", up_rows, False),
+            ("BROKEN", "broken", broken_rows, True),
+            ("DOWN", "down", down_rows, True),
+        ):
+            status, pool_reasons, trusted = _pool_source_status(
+                pool_rows,
+                latest_any.get((day, f"pool_{pool_type}")),
+                latest_ok.get((day, f"pool_{pool_type}")),
+                allow_empty=allow_empty,
+                label=label,
+            )
+            statuses.append(status)
+            reasons.extend(pool_reasons)
+            dimensions[pool_type] = {
+                "status": status,
+                "rows": pool_rows,
+                "completion_proof": status == STATUS_VERIFIED,
+                "reason_codes": pool_reasons,
+                "latest_attempt": _log_brief(latest_any.get((day, f"pool_{pool_type}"))),
+                "latest_valid_snapshot": (
+                    max(item for item in valid_days if item <= day)
+                    if any(item <= day for item in valid_days)
+                    else None
+                ),
+                "trusted": trusted,
+            }
 
-        if observed == 0 and up_log is None:
-            status = STATUS_NOT_COLLECTED
-            reasons.append("POOL_NOT_COLLECTED")
-        elif up_rows == 0:
-            status = STATUS_UNVERIFIABLE
-            if up_ok is not None:
-                reasons.append("UP_POOL_EMPTY_WITH_OK_LOG")
-            elif up_log is None:
-                reasons.append("POOL_LOG_MISSING_WITH_ROWS")
-            else:
-                reasons.append(f"POOL_STATUS_{(up_log.status or 'UNKNOWN').upper()}")
-        elif up_log is None:
-            status = STATUS_UNVERIFIABLE
-            reasons.append("POOL_LOG_MISSING_WITH_ROWS")
-        elif (up_log.status or "").lower() != "ok":
-            if up_ok is not None:
-                # 最新一次尝试失败，但旧快照仍在 → 不能抹掉已持久化的有效行
-                status = STATUS_PARTIAL
-                reasons.append("LATEST_ATTEMPT_FAILED_SNAPSHOT_RETAINED")
-            else:
-                status = STATUS_UNVERIFIABLE
-                reasons.append(f"POOL_STATUS_{(up_log.status or 'UNKNOWN').upper()}")
-        for task, label in (("pool_broken", "BROKEN"), ("pool_down", "DOWN")):
-            log = latest_any.get((day, task))
-            if log is None:
-                reasons.append(f"{label}_POOL_LOG_MISSING")
-            elif (log.status or "").lower() != "ok":
-                reasons.append(f"{label}_POOL_STATUS_{(log.status or 'UNKNOWN').upper()}")
-
+        up_status = dimensions["up"]["status"]
+        combined = _combined_pool_status(statuses)
+        up_log = latest_any.get((day, "pool_up"))
         items[day] = _item(
             "limit_pool",
             day,
-            status,
+            up_status,
             reasons=reasons,
             observed_rows=observed,
-            completion_proof=status == STATUS_VERIFIED,
+            # 组合视图完全可信才叫「完成证明」；单个 up 池成功不等于三池齐全
+            completion_proof=combined == STATUS_VERIFIED,
             latest_observation_date=latest,
-            latest_valid_snapshot=(
-                max(item for item in valid_days if item <= day)
-                if any(item <= day for item in valid_days)
-                else None
-            ),
+            latest_valid_snapshot=dimensions["up"]["latest_valid_snapshot"],
             latest_attempt=_log_brief(up_log),
-            note=note,
+            note="UP/BROKEN/DOWN 分来源判定；组合视图需三池同时可信",
             extra={
                 "up_rows": up_rows,
                 "broken_rows": broken_rows,
                 "down_rows": down_rows,
+                "pool_up": dimensions["up"],
+                "pool_broken": dimensions["broken"],
+                "pool_down": dimensions["down"],
+                "up_completion_proof": dimensions["up"]["completion_proof"],
+                "broken_completion_proof": dimensions["broken"]["completion_proof"],
+                "down_completion_proof": dimensions["down"]["completion_proof"],
+                "combined_view_status": combined,
+                "previous_snapshot_available": bool(dimensions["up"]["latest_valid_snapshot"]),
+                "current_attempt_failed": bool(
+                    up_log is not None and (up_log.status or "").lower() != "ok"
+                ),
             },
         )
     return items
@@ -379,71 +474,134 @@ def _market_sentiment_items(session: Session, days: list[date]) -> dict[date, di
 
 
 def _auction_items(session: Session, days: list[date]) -> dict[date, dict[str, Any]]:
+    """竞价质量拆成「0926 终值」与「0931 承接」两个维度。
+
+    复用 `auction_anomaly` 的帧质量规则（`frame_issue_reasons` / `frame_logs_by_day`），
+    不再因为日志里出现 `0926` 字样就判定 `VERIFIED_SOURCE`：
+
+    - 0926 有效 + 0931 缺失 → `auction_result_status=VALID`、`post_open_status=MISSING`，
+      整体 `PARTIAL`，`completion_proof=false`；
+    - 0926 partial → result `INCOMPLETE`，整体不 VERIFIED；
+    - 9:31 尚未到达 → post `PENDING`；
+    - 有行但没有关键帧日志 → `INCOMPLETE` / `UNVERIFIABLE`，不是验证通过。
+    """
     latest = session.scalar(select(func.max(AuctionSnapshot.trade_date)))
-    rows = dict(
-        session.execute(
-            select(AuctionSnapshot.trade_date, func.count())
-            .where(AuctionSnapshot.trade_date.in_(days))
-            .group_by(AuctionSnapshot.trade_date)
-        ).all()
-    )
-    logs = session.scalars(
-        select(CollectLog)
-        .where(CollectLog.trade_date.in_(days), CollectLog.task == FRAME_TASK)
-        .order_by(CollectLog.id.desc())
+    samples_text = cast(AuctionSnapshot.samples, String)
+    rows = session.execute(
+        select(
+            AuctionSnapshot.trade_date,
+            func.count(),
+            func.count(AuctionSnapshot.post_open_price),
+            func.sum(case((samples_text.like('%"0926"%'), 1), else_=0)),
+        )
+        .where(AuctionSnapshot.trade_date.in_(days))
+        .group_by(AuctionSnapshot.trade_date)
     ).all()
-    latest_attempt: dict[date, dict[str, Any]] = {}
-    effective_frames: dict[date, set[str]] = {}
-    for log in logs:
-        if log.trade_date is None:
-            continue
-        try:
-            payload = json.loads(log.message or "{}")
-        except (TypeError, ValueError):
-            payload = {}
-        frame = str(payload.get("scheduled_frame") or "")
-        if log.trade_date not in latest_attempt:
-            latest_attempt[log.trade_date] = {
-                "status": log.status,
-                "frame": frame or None,
-                "created_at": log.created_at,
-            }
-        if frame and (log.status or "").lower() in ("ok", "partial"):
-            effective_frames.setdefault(log.trade_date, set()).add(frame)
+    counts = {
+        day: (observed or 0, post_count or 0, result_count or 0)
+        for day, observed, post_count, result_count in rows
+    }
+    logs_by_day = auction_quality.frame_logs_by_day(session, days)
+
+    today = today_cn()
+    now = now_cn()
+    trade_days = set(
+        session.scalars(select(TradeCalendar.trade_date).where(TradeCalendar.trade_date.in_(days)))
+    )
+    post_open_pending = today in trade_days and now.time() < time(9, 31)
 
     items: dict[date, dict[str, Any]] = {}
     for day in days:
-        observed = rows.get(day, 0)
-        frames = effective_frames.get(day, set())
-        has_result = RESULT_FRAME in frames
-        has_open = "0931" in frames
+        observed, post_count, result_count = counts.get(day, (0, 0, 0))
+        logs = logs_by_day.get(day, {})
         reasons: list[str] = []
-        if observed == 0:
-            status = STATUS_UNVERIFIABLE if (day in latest_attempt) else STATUS_NOT_COLLECTED
+        statuses = {str(payload.get("status") or "").lower() for payload in logs.values()}
+        all_failed = bool(statuses) and statuses <= {"failed", "skipped"}
+
+        if observed == 0 and not logs:
+            result_status = AUCTION_NOT_COLLECTED
+            post_status = AUCTION_NOT_COLLECTED
+            status = STATUS_NOT_COLLECTED
             reasons.append("AUCTION_NOT_COLLECTED")
-        elif not has_result:
-            status = STATUS_PARTIAL
-            reasons.append("AUCTION_0926_MISSING")
         else:
-            status = STATUS_VERIFIED
+            result_issues = (
+                auction_quality.frame_issue_reasons(logs, auction_quality.RESULT_FRAME, "0926")
+                if result_count > 0
+                else []
+            )
+            if result_count > 0:
+                result_status = AUCTION_INCOMPLETE if result_issues else AUCTION_VALID
+                reasons.extend(result_issues)
+            elif all_failed:
+                result_status = AUCTION_UNVERIFIABLE
+                reasons.append("AUCTION_SOURCE_UNAVAILABLE")
+            else:
+                result_status = AUCTION_MISSING
+                reasons.append("AUCTION_0926_MISSING")
+                reasons.extend(
+                    auction_quality.frame_issue_reasons(logs, auction_quality.RESULT_FRAME, "0926")
+                )
+
+            if post_count > 0:
+                post_issues = auction_quality.frame_issue_reasons(
+                    logs, auction_quality.POST_OPEN_FRAME, "0931"
+                )
+                post_status = AUCTION_INCOMPLETE if post_issues else AUCTION_VALID
+                reasons.extend(post_issues)
+            elif post_open_pending and logs.get(auction_quality.POST_OPEN_FRAME) is None:
+                post_status = AUCTION_PENDING
+                reasons.append("AUCTION_0931_PENDING")
+            elif all_failed:
+                post_status = AUCTION_UNVERIFIABLE
+            else:
+                post_status = AUCTION_MISSING
+                reasons.append("AUCTION_0931_MISSING")
+
+            if result_status == AUCTION_UNVERIFIABLE and post_status in (
+                AUCTION_UNVERIFIABLE,
+                AUCTION_MISSING,
+                AUCTION_NOT_COLLECTED,
+            ):
+                status = STATUS_UNVERIFIABLE
+            elif result_status == AUCTION_VALID and post_status == AUCTION_VALID:
+                status = STATUS_VERIFIED
+            else:
+                status = STATUS_PARTIAL
+
+        if observed > 0:
+            # 质量维度再完整，也不等于「真实交易日竞价实盘验收」已完成
             reasons.append("REAL_AUCTION_DATA_NOT_YET_VERIFIED")
-        if not has_open:
-            reasons.append("AUCTION_0931_MISSING")
-        attempt = latest_attempt.get(day)
-        if attempt and str(attempt.get("status") or "").lower() == "failed" and observed > 0:
-            reasons.append("LATEST_ATTEMPT_FAILED_SNAPSHOT_RETAINED")
+
         items[day] = _item(
             "auction_snapshot",
             day,
             status,
             reasons=reasons,
             observed_rows=observed,
-            completion_proof=bool(observed and has_result),
+            completion_proof=status == STATUS_VERIFIED,
             latest_observation_date=latest,
-            latest_valid_snapshot=day if observed and has_result else None,
-            latest_attempt=attempt,
+            latest_valid_snapshot=day if status == STATUS_VERIFIED else None,
+            latest_attempt=(
+                {
+                    "status": (logs.get(auction_quality.RESULT_FRAME) or {}).get(
+                        "last_attempt_status"
+                    ),
+                    "frame": auction_quality.RESULT_FRAME,
+                    "created_at": None,
+                }
+                if logs.get(auction_quality.RESULT_FRAME)
+                else None
+            ),
             note=NOTE_AUCTION,
-            extra={"frames": sorted(frames), "has_0926": has_result, "has_0931": has_open},
+            extra={
+                "frames": sorted(logs),
+                "auction_result_status": result_status,
+                "post_open_status": post_status,
+                "has_0926": result_count > 0,
+                "has_0931": post_count > 0,
+                "result_count": result_count,
+                "post_open_count": post_count,
+            },
         )
     return items
 
@@ -484,17 +642,29 @@ def _calendar_item(session: Session, target: date) -> dict[str, Any]:
     )
 
 
-def _safe_source(fn, session: Session, days: list[date]) -> dict[date, dict[str, Any]]:
-    """单表缺失/损坏只影响这个来源，不拖垮整页；**不建表、不修库**。"""
+def _safe_source(
+    source: str, fn, session: Session, days: list[date]
+) -> dict[date, dict[str, Any]]:
+    """单表缺失/损坏只影响这个来源，不拖垮整页；**不建表、不修库**。
+
+    `OperationalError` 等查询异常 → `SOURCE_ERROR`，并给出 `DB_SCHEMA_UNAVAILABLE`
+    / `DB_QUERY_FAILED` 安全原因码；**不能**伪装成 `NOT_COLLECTED`，也不向前端
+    暴露 SQL、磁盘路径或连接串。
+    """
     try:
         return fn(session, days)
-    except OperationalError:
+    except (OperationalError, SQLAlchemyError) as exc:
+        message = str(getattr(exc, "orig", exc)).lower()
+        schema_missing = "no such table" in message or "no such column" in message
         return {
             day: _item(
-                "unknown",
+                source,
                 day,
-                STATUS_NOT_COLLECTED,
-                reasons=["DB_TABLE_MISSING"],
+                STATUS_SOURCE_ERROR,
+                reasons=[
+                    "DB_SCHEMA_UNAVAILABLE" if schema_missing else "DB_QUERY_FAILED"
+                ],
+                note="数据源查询异常，无法断言未采集",
             )
             for day in days
         }
@@ -513,7 +683,7 @@ def _source_items(
     }
     selected = sources or list(builders)
     return {
-        name: _safe_source(builders[name], session, days)
+        name: _safe_source(name, builders[name], session, days)
         for name in selected
         if name in builders
     }
@@ -558,6 +728,7 @@ def overview(
 
     return {
         "database": _database_name(session),
+        "quality_version": QUALITY_VERSION,
         "as_of": resolved,
         "days": days,
         "window_start": window[0] if window else None,
@@ -585,6 +756,7 @@ def timeline(session: Session, *, source: str, days: int = 120) -> dict[str, Any
         point["source"] = source
     return {
         "database": _database_name(session),
+        "quality_version": QUALITY_VERSION,
         "source": source,
         "days": days,
         "window_start": window[0] if window else None,

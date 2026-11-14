@@ -26,6 +26,7 @@ const STATUS_LABEL: Record<string, string> = {
   PARTIAL: '部分可信',
   UNVERIFIABLE: '不可验证',
   NOT_COLLECTED: '未采集',
+  SOURCE_ERROR: '查询异常',
   PENDING: '待观察',
   NOT_TRADE_DAY: '非交易日',
 }
@@ -35,6 +36,7 @@ const STATUS_TONE: Record<string, string> = {
   PARTIAL: 'border-warn/50 text-warn',
   UNVERIFIABLE: 'border-danger/50 text-danger',
   NOT_COLLECTED: 'border-line text-fg-dim',
+  SOURCE_ERROR: 'border-danger/60 text-danger',
   PENDING: 'border-line text-fg-dim',
   NOT_TRADE_DAY: 'border-line text-fg-dim',
 }
@@ -44,6 +46,7 @@ const TIMELINE_TONE: Record<string, string> = {
   PARTIAL: 'bg-warn/25 border-warn/50',
   UNVERIFIABLE: 'bg-danger/25 border-danger/50',
   NOT_COLLECTED: 'bg-ink-800 border-line',
+  SOURCE_ERROR: 'bg-danger/50 border-danger',
   PENDING: 'bg-ink-800 border-line',
   NOT_TRADE_DAY: 'bg-ink-900 border-line',
 }
@@ -71,7 +74,7 @@ function matches(item: QualitySourceItem, filter: FilterKey): boolean {
   if (filter === 'all') return true
   if (filter === 'trusted') return item.status === 'VERIFIED_SOURCE'
   if (filter === 'partial') return item.status === 'PARTIAL'
-  return ['NOT_COLLECTED', 'UNVERIFIABLE', 'NOT_TRADE_DAY', 'PENDING'].includes(item.status)
+  return ['NOT_COLLECTED', 'UNVERIFIABLE', 'NOT_TRADE_DAY', 'PENDING', 'SOURCE_ERROR'].includes(item.status)
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -87,6 +90,19 @@ function Detail({ item }: { item: QualitySourceItem }) {
   const taxonomies = Array.isArray(extra.taxonomies) ? extra.taxonomies : []
   const frames = Array.isArray(extra.frames) ? extra.frames : []
   const missing = Array.isArray(extra.missing_fields) ? extra.missing_fields : []
+  const poolDims = ['up', 'broken', 'down']
+    .map((key) => {
+      const row = extra[`pool_${key}`]
+      if (!row || typeof row !== 'object') return null
+      const record = row as Record<string, unknown>
+      return `${key.toUpperCase()} ${String(record.status ?? '—')}（${String(
+        record.rows ?? 0,
+      )} 行）`
+    })
+    .filter(Boolean)
+  const auctionResult = extra.auction_result_status ? String(extra.auction_result_status) : null
+  const postOpen = extra.post_open_status ? String(extra.post_open_status) : null
+  const combined = extra.combined_view_status ? String(extra.combined_view_status) : null
   return (
     <div className="grid gap-2 bg-ink-850 px-4 py-3 text-[12px] lg:grid-cols-2">
       <div>
@@ -102,6 +118,9 @@ function Detail({ item }: { item: QualitySourceItem }) {
         <div className="num text-fg-muted">{item.latest_valid_snapshot ?? '—'}</div>
         <div className="mt-2 text-fg-dim">来源最新观测日</div>
         <div className="num text-fg-muted">{item.latest_observation_date ?? '—'}</div>
+        {item.status === 'SOURCE_ERROR' ? (
+          <div className="mt-2 text-danger">数据源查询异常，无法断言未采集</div>
+        ) : null}
         {item.note ? <div className="mt-2 text-fg-dim">{item.note}</div> : null}
       </div>
       <div>
@@ -117,6 +136,19 @@ function Detail({ item }: { item: QualitySourceItem }) {
             <span className="text-fg-muted">—</span>
           )}
         </div>
+        {combined ? (
+          <div className="mt-2 text-fg-muted">
+            组合视图：{STATUS_LABEL[combined] ?? combined}
+            {extra.previous_snapshot_available ? ' · 有历史快照' : ''}
+            {extra.current_attempt_failed ? ' · 最近尝试失败' : ''}
+          </div>
+        ) : null}
+        {poolDims.length ? <div className="mt-2 num text-fg-muted">三池：{poolDims.join(' · ')}</div> : null}
+        {auctionResult || postOpen ? (
+          <div className="mt-2 num text-fg-muted">
+            竞价终值：{auctionResult ?? '—'} · 开盘承接：{postOpen ?? '—'}
+          </div>
+        ) : null}
         {taxonomies.length ? (
           <div className="mt-2 text-fg-muted">
             分类覆盖：
@@ -204,7 +236,7 @@ export default function DataQuality() {
     <div className="mx-auto grid max-w-[1400px] gap-4 px-4 py-4">
       <Panel
         title="盘后数据质量"
-        meta={data ? `数据库 ${data.database ?? '—'} · 观察日 ${data.as_of}` : undefined}
+        meta={data ? `数据库 ${data.database ?? '—'} · 观察日 ${data.as_of} · ${data.quality_version ?? 'data-quality-v2'}` : undefined}
       >
         <div className="flex flex-wrap items-end gap-3 border-b border-line-soft px-4 py-3 text-[13px]">
           <label className="grid gap-1">

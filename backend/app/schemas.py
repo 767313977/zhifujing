@@ -2562,6 +2562,7 @@ class QualitySourceItem(BaseModel):
 
 class QualityOverviewOut(BaseModel):
     database: str | None
+    quality_version: str = "data-quality-v2"
     as_of: date
     days: int
     window_start: date | None
@@ -2572,6 +2573,7 @@ class QualityOverviewOut(BaseModel):
 
 class QualityTimelineOut(BaseModel):
     database: str | None
+    quality_version: str = "data-quality-v2"
     source: str
     days: int
     window_start: date | None

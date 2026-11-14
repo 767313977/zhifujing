@@ -2108,8 +2108,13 @@ export interface SectorResonance {
 export interface QualitySourceItem {
   source: string
   trade_date: string | null
-  /** VERIFIED_SOURCE / PARTIAL / UNVERIFIABLE / NOT_COLLECTED / PENDING / NOT_TRADE_DAY */
+  /** VERIFIED_SOURCE / PARTIAL / UNVERIFIABLE / NOT_COLLECTED / SOURCE_ERROR / PENDING / NOT_TRADE_DAY */
   status: string
+  /** data-quality-v2 的单来源状态（与 status 同值，单独命名以便组合视图区分） */
+  source_status?: string
+  /** 组合视图状态；单来源时与 status 相同（limit_pool 需要三池同时可信） */
+  combined_view_status?: string
+  quality_version?: string
   reason_codes: string[]
   observed_rows: number
   expected_rows: number | null
@@ -2126,6 +2131,7 @@ export interface QualitySourceItem {
 
 export interface QualityOverview {
   database: string | null
+  quality_version?: string
   as_of: string
   days: number
   window_start: string | null
