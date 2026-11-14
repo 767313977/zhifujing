@@ -916,6 +916,21 @@ def timeline(session: Session, *, source: str, days: int = 120) -> dict[str, Any
         raise ValueError(f"未知来源：{source}")
     end = today_cn()
     window = _trade_days(session, end, days)
+    # 空库 / 交易日历尚未采集：返回**结构完整的空时间线**（200），
+    # 不能继续往下走 —— 下面的池时间线会对 days 取 min()，空列表会抛
+    # `min() iterable argument is empty`，前端只能显示「加载失败」，
+    # 把「未采集」误报成接口错误（S6 浏览器验收发现）。
+    if not window:
+        return {
+            "database": _database_name(session),
+            "quality_version": QUALITY_VERSION,
+            "source": source,
+            "days": days,
+            "window_start": None,
+            "window_end": None,
+            "generated_at": datetime.now(),
+            "points": [],
+        }
     if source == "trade_calendar":
         points = [_calendar_item(session, day) for day in window]
     else:
