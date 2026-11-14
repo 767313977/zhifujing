@@ -2600,6 +2600,8 @@ class QualityOverviewOut(BaseModel):
     window_end: date | None
     sources: list[str]
     items: list[QualitySourceItem]
+    #: 结构性依赖不可用（例如交易日历缺失）时的安全原因码
+    structural_error: str | None = None
 
 
 class QualityTimelineOut(BaseModel):

@@ -204,6 +204,75 @@ def test_auction_without_rows_or_logs_is_not_collected(session):
     assert item["completion_proof"] is False
 
 
+def test_auction_pending_is_scoped_to_today_only(session, monkeypatch):
+    """P2-03：只有「今天 + 交易日 + 09:31 前」才 PENDING，历史日期一律 MISSING。"""
+    session.add(_auction_row(D1))
+    session.add(_frame_log(D1, "0926", datetime(2026, 11, 3, 9, 27), message=_valid_frame_payload("0926")))
+    session.add(_auction_row(D2))
+    session.add(_frame_log(D2, "0926", datetime(2026, 11, 4, 9, 27), message=_valid_frame_payload("0926")))
+    session.commit()
+
+    monkeypatch.setattr(dq, "today_cn", lambda: D2)
+    monkeypatch.setattr(dq, "now_cn", lambda: datetime(2026, 11, 4, 9, 0))
+    points = {
+        point["trade_date"]: point
+        for point in dq.timeline(session, source="auction_snapshot", days=2)["points"]
+    }
+    assert points[D1]["post_open_status"] == dq.AUCTION_MISSING
+    assert "AUCTION_0931_MISSING" in points[D1]["reason_codes"]
+    assert points[D2]["post_open_status"] == dq.AUCTION_PENDING
+    assert "AUCTION_0931_PENDING" in points[D2]["reason_codes"]
+
+    # 09:32 之后今天也不再 PENDING
+    monkeypatch.setattr(dq, "now_cn", lambda: datetime(2026, 11, 4, 9, 32))
+    points = {
+        point["trade_date"]: point
+        for point in dq.timeline(session, source="auction_snapshot", days=2)["points"]
+    }
+    assert points[D2]["post_open_status"] == dq.AUCTION_MISSING
+    assert "AUCTION_0931_MISSING" in points[D2]["reason_codes"]
+
+
+def test_auction_legacy_log_without_coverage_fields_is_not_verified(session):
+    """缺少覆盖字段的旧日志不得自动视为完成证明（B3）。"""
+    session.add(_auction_row(D1, post_open=10.2))
+    session.add(_frame_log(D1, "0926", datetime(2026, 11, 3, 9, 27)))
+    session.add(_frame_log(D1, "0931", datetime(2026, 11, 3, 9, 32)))
+    session.commit()
+
+    item = _item(dq.overview(session, target_date=D1, days=10), "auction_snapshot")
+    assert item["auction_result_status"] == dq.AUCTION_INCOMPLETE
+    assert item["status"] == dq.STATUS_PARTIAL
+    assert item["completion_proof"] is False
+    assert "FRAME_0926_COVERAGE_FIELDS_MISSING" in item["reason_codes"]
+    assert "FRAME_0931_COVERAGE_FIELDS_MISSING" in item["reason_codes"]
+
+
+def test_auction_result_and_post_open_have_separate_attempt_and_snapshot(session, monkeypatch):
+    monkeypatch.setattr(dq, "today_cn", lambda: D2)
+    session.add(_auction_row(D1, post_open=10.2))
+    session.add(_frame_log(D1, "0926", datetime(2026, 11, 3, 9, 27), message=_valid_frame_payload("0926")))
+    session.add(_frame_log(D1, "0931", datetime(2026, 11, 3, 9, 32), message=_valid_frame_payload("0931")))
+    session.add(_auction_row(D2))
+    session.add(_frame_log(D2, "0926", datetime(2026, 11, 4, 9, 27), message=_valid_frame_payload("0926")))
+    session.add(_frame_log(D2, "0931", datetime(2026, 11, 4, 9, 32), status="failed"))
+    session.commit()
+
+    item = {
+        point["trade_date"]: point
+        for point in dq.timeline(session, source="auction_snapshot", days=2)["points"]
+    }[D2]
+    assert item["auction_result_status"] == dq.AUCTION_VALID
+    assert item["post_open_status"] == dq.AUCTION_UNVERIFIABLE
+    assert item["auction_result_latest_valid_snapshot"] == D2
+    assert item["post_open_latest_valid_snapshot"] == D1
+    assert item["auction_result_latest_attempt"]["last_attempt_status"] == "ok"
+    assert item["post_open_latest_attempt"]["last_attempt_status"] == "failed"
+    assert item["post_open_latest_attempt"]["last_attempt_failed"] is True
+    # 帧质量不等于全市场覆盖完整
+    assert item["market_coverage_proof"] is False
+
+
 # ---------------------------------------------------------------- 三池拆分
 
 
@@ -284,6 +353,80 @@ def test_pool_latest_failure_keeps_previous_snapshot_flags(session):
     assert item["completion_proof"] is False
 
 
+def test_broken_empty_snapshot_then_latest_failed_is_partial(session):
+    """P2-01：合法空集合成功过、最新尝试失败 → PARTIAL，不得 VERIFIED。"""
+    _add_pools(session, D2, up=1, broken=0, down=0)
+    session.add(
+        CollectLog(
+            trade_date=D2,
+            task="pool_broken",
+            status="failed",
+            rows=0,
+            created_at=datetime(2026, 11, 4, 20, 0),
+        )
+    )
+    session.commit()
+
+    item = _item(dq.overview(session, target_date=D2, days=10), "limit_pool")
+    broken = item["pool_broken"]
+    assert broken["status"] == dq.STATUS_PARTIAL
+    assert broken["completion_proof"] is False
+    assert broken["trusted"] is True
+    assert "BROKEN_LATEST_ATTEMPT_FAILED_SNAPSHOT_RETAINED" in broken["reason_codes"]
+    # 合法空集合的旧快照仍指向当日
+    assert broken["latest_valid_snapshot"] == D2
+    assert item["combined_view_status"] != dq.STATUS_VERIFIED
+    assert item["completion_proof"] is False
+
+
+def test_broken_without_any_ok_is_unverifiable_not_empty_trusted(session):
+    _add_pools(session, D2, up=1, broken=0, down=0, broken_status="failed")
+    session.commit()
+
+    item = _item(dq.overview(session, target_date=D2, days=10), "limit_pool")
+    assert item["pool_broken"]["status"] == dq.STATUS_UNVERIFIABLE
+    assert item["pool_broken"]["trusted"] is False
+    # D2 本身没有成功采集，但 D1 的历史快照仍可用（只作参考，不代表 D2 可信）
+    assert item["pool_broken"]["latest_valid_snapshot"] == D1
+
+
+def test_pool_latest_valid_snapshots_are_per_source(session):
+    """P2-02：三池各自的有效快照日期不得互相继承。"""
+    # 夹具里 D1 三池都成功；D2 只有 up/broken 成功；D3 只有 down 成功
+    _add_pools(session, D2, up=1, broken=0, down=0)
+    session.query(CollectLog).filter(
+        CollectLog.trade_date == D2, CollectLog.task.in_(("pool_broken", "pool_down"))
+    ).delete(synchronize_session=False)
+    session.add(
+        CollectLog(
+            trade_date=D2,
+            task="pool_broken",
+            status="ok",
+            rows=0,
+            created_at=datetime(2026, 11, 4, 16, 0),
+        )
+    )
+    _add_pools(session, D3, up=0, broken=0, down=0)
+    session.query(CollectLog).filter(
+        CollectLog.trade_date == D3, CollectLog.task.in_(("pool_up", "pool_broken"))
+    ).delete(synchronize_session=False)
+    session.commit()
+
+    points = {
+        point["trade_date"]: point
+        for point in dq.timeline(session, source="limit_pool", days=3)["points"]
+    }
+    item = points[D3]
+    assert item["pool_up"]["latest_valid_snapshot"] == D2
+    assert item["pool_broken"]["latest_valid_snapshot"] == D2
+    assert item["pool_down"]["latest_valid_snapshot"] == D3
+    # 组合视图要求三池同日有效 → 只能回到 D1，不能拿任一单池日期代表
+    assert item["latest_valid_snapshot"] == D1
+    assert item["latest_valid_snapshot_up"] == D2
+    assert item["latest_valid_snapshot_broken"] == D2
+    assert item["latest_valid_snapshot_down"] == D3
+
+
 # ---------------------------------------------------------------- SOURCE_ERROR
 
 
@@ -324,6 +467,44 @@ def test_one_source_error_does_not_break_others(session, monkeypatch):
     assert by_source["auction_snapshot"]["status"] == dq.STATUS_SOURCE_ERROR
     assert by_source["stock_daily"]["status"] == dq.STATUS_VERIFIED
     assert by_source["trade_calendar"]["status"] == dq.STATUS_VERIFIED
+
+
+def test_failed_transaction_is_rolled_back_before_next_source(session, monkeypatch):
+    """查询异常后必须 rollback，后续来源不能被失败事务拖垮（B4）。"""
+    from sqlalchemy import text
+
+    original = dq._stock_daily_items
+    calls = {"count": 0}
+
+    def boom(db, days):
+        calls["count"] += 1
+        db.execute(text("SELECT * FROM table_that_does_not_exist"))
+        return original(db, days)
+
+    monkeypatch.setattr(dq, "_stock_daily_items", boom)
+    result = dq.overview(session, target_date=D1, days=10)
+    by_source = {item["source"]: item for item in result["items"]}
+    assert calls["count"] == 1
+    assert by_source["stock_daily"]["status"] == dq.STATUS_SOURCE_ERROR
+    assert by_source["market_sentiment"]["status"] == dq.STATUS_VERIFIED
+    assert by_source["limit_pool"]["status"] == dq.STATUS_VERIFIED
+
+
+def test_missing_calendar_is_structural_error_not_six_not_collected(session):
+    from sqlalchemy import text
+
+    session.execute(text("DROP TABLE trade_calendar"))
+    session.commit()
+
+    result = dq.overview(session, target_date=D1, days=10)
+    assert result["structural_error"] == "CALENDAR_DEPENDENCY_UNAVAILABLE"
+    assert result["window_start"] is None
+    by_source = {item["source"]: item for item in result["items"]}
+    assert by_source["trade_calendar"]["status"] == dq.STATUS_SOURCE_ERROR
+    assert by_source["trade_calendar"]["reason_codes"] == ["DB_SCHEMA_UNAVAILABLE"]
+    assert by_source["stock_daily"]["status"] == dq.STATUS_SOURCE_ERROR
+    assert by_source["stock_daily"]["reason_codes"] == ["CALENDAR_DEPENDENCY_UNAVAILABLE"]
+    assert all(item["status"] != dq.STATUS_NOT_COLLECTED for item in result["items"])
 
 
 def test_timeline_keeps_source_error_bucket(session, monkeypatch):

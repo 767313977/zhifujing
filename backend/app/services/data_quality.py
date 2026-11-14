@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import String, case, cast, func, select
@@ -163,6 +163,20 @@ def _log_brief(log: CollectLog | None) -> dict[str, Any] | None:
     }
 
 
+def _frame_attempt(logs: dict[str, dict], frame: str) -> dict[str, Any] | None:
+    """单帧的「最近一次尝试」摘要（与「最近有效快照」分开）。"""
+    payload = logs.get(frame)
+    if not payload:
+        return None
+    return {
+        "frame": frame,
+        "status": payload.get("status"),
+        "last_attempt_status": payload.get("last_attempt_status"),
+        "last_attempt_failed": bool(payload.get("last_attempt_failed")),
+        "last_effective_status": payload.get("last_effective_status"),
+    }
+
+
 # ------------------------------------------------------------------ 各来源
 
 
@@ -218,10 +232,16 @@ def _pool_source_status(
 ) -> tuple[str, list[str], bool]:
     """单个池来源（up / broken / down）的状态。返回 (status, reasons, trusted)。
 
-    - `ok` + 有行 → VERIFIED；
-    - broken/down 的 `ok` + 0 行是合法空集；up 的 `ok` + 0 行是异常；
-    - 最近一次失败但历史有 ok → PARTIAL（旧快照保留），不抹掉已持久化行；
-    - 无日志/从未 ok → UNVERIFIABLE 或 NOT_COLLECTED，绝不当成「空池=可信」。
+    严格按 S5 审查整改 P2-01 的矩阵：
+
+    | 当前快照 | 最新尝试 | 历史有效快照 | 结果 |
+    |---|---|---|---|
+    | 非空 / 合法空集合（broken/down） | ok | 当前 | VERIFIED |
+    | 非空 / 合法空集合 | failed / skipped / partial | 有 | PARTIAL |
+    | 无有效快照 | failed / skipped / partial | 无 | UNVERIFIABLE |
+    | 无日志 | — | 无 | NOT_COLLECTED |
+
+    `up` 的 `ok + 0 行` 仍是异常（空涨停池不可能），不能因为「空集合」而 VERIFIED。
     """
     # 保留旧 API 的 UP 原因码；BROKEN/DOWN 用前缀区分，避免「up 成功」掩盖它们
     prefix = "" if label == "UP" else f"{label}_"
@@ -229,28 +249,64 @@ def _pool_source_status(
     def code(text: str) -> str:
         return f"{prefix}{text}"
 
+    latest_status = (latest_any.status or "").lower() if latest_any is not None else None
+
     if rows == 0:
         if latest_any is None:
             return STATUS_NOT_COLLECTED, [code("POOL_NOT_COLLECTED")], False
-        if latest_ok is not None:
+        if latest_status == "ok":
             if allow_empty:
                 return STATUS_VERIFIED, [], True
             return STATUS_UNVERIFIABLE, [f"{label}_POOL_EMPTY_WITH_OK_LOG"], False
+        # 合法空集合成功过、但最新一次失败：旧快照仍可用 → PARTIAL，不能 VERIFIED
+        if latest_ok is not None:
+            return (
+                STATUS_PARTIAL,
+                [code("LATEST_ATTEMPT_FAILED_SNAPSHOT_RETAINED")],
+                True,
+            )
         return (
             STATUS_UNVERIFIABLE,
-            [code(f"POOL_STATUS_{(latest_any.status or 'UNKNOWN').upper()}")],
+            [code(f"POOL_STATUS_{(latest_status or 'unknown').upper()}")],
             False,
         )
     if latest_any is None:
         return STATUS_UNVERIFIABLE, [code("POOL_LOG_MISSING_WITH_ROWS")], False
-    if (latest_any.status or "").lower() == "ok":
+    if latest_status == "ok":
         return STATUS_VERIFIED, [], True
     if latest_ok is not None:
         return STATUS_PARTIAL, [code("LATEST_ATTEMPT_FAILED_SNAPSHOT_RETAINED")], True
     return (
         STATUS_UNVERIFIABLE,
-        [code(f"POOL_STATUS_{(latest_any.status or 'UNKNOWN').upper()}")],
+        [code(f"POOL_STATUS_{(latest_status or 'unknown').upper()}")],
         False,
+    )
+
+
+def _latest_ok_day(session: Session, pool_type: str, before: date) -> date | None:
+    """窗口之前最近一次成功采集的日期（最多 1 条 SQL）。
+
+    窗口内没有有效快照时，`latest_valid_snapshot` 仍应指向历史可用数据，
+    而不是凭空变成 None。
+    """
+    query = select(CollectLog.trade_date).where(
+        CollectLog.task == f"pool_{pool_type}",
+        CollectLog.trade_date.is_not(None),
+        CollectLog.trade_date <= before,
+        func.lower(CollectLog.status) == "ok",
+    )
+    if pool_type == "up":
+        # up 池 ok+0 行是异常，不能算有效快照
+        query = query.where(
+            select(LimitPool.code)
+            .where(
+                LimitPool.trade_date == CollectLog.trade_date,
+                LimitPool.pool_type == "up",
+            )
+            .exists()
+        )
+    return session.scalar(
+        query.order_by(CollectLog.trade_date.desc(), CollectLog.id.desc()).limit(1)
     )
 
 
@@ -293,11 +349,45 @@ def _limit_pool_items(session: Session, days: list[date]) -> dict[date, dict[str
         if (log.status or "").lower() == "ok":
             latest_ok.setdefault(key, log)
 
-    valid_days = [
-        day
-        for day in days
-        if counts.get(day, {}).get("up", 0) > 0 and (day, "pool_up") in latest_ok
-    ]
+    # 三个池来源各自维护有效快照日期（P2-02）：broken/down 的合法空集合也算有效，
+    # 但**绝不**继承其他来源的日期。
+    pool_specs = (("up", False), ("broken", True), ("down", True))
+    valid_days_by_pool: dict[str, list[date]] = {}
+    for pool_type, allow_empty in pool_specs:
+        task = f"pool_{pool_type}"
+        valid: list[date] = []
+        for day in days:
+            # 「最新有效快照」看的是库里仍可用的数据：当天有过成功采集即可，
+            # 即使之后又追加了失败尝试（状态另算 PARTIAL）
+            log = latest_ok.get((day, task))
+            if log is None:
+                continue
+            if counts.get(day, {}).get(pool_type, 0) > 0 or allow_empty:
+                valid.append(day)
+        valid_days_by_pool[pool_type] = valid
+
+    # 窗口之外的历史可用快照（每个来源最多 1 条 SQL，不随 days 增长）
+    baseline = {
+        pool_type: _latest_ok_day(session, pool_type, min(days) - timedelta(days=1))
+        for pool_type, _allow_empty in pool_specs
+    }
+
+    def latest_valid_with_baseline(pool_type: str, day: date) -> date | None:
+        candidates = [item for item in valid_days_by_pool[pool_type] if item <= day]
+        fallback = baseline.get(pool_type)
+        if fallback is not None and fallback <= day:
+            candidates.append(fallback)
+        return max(candidates) if candidates else None
+
+    # 组合视图的有效快照日 = 三池同日都有效，不能拿 up 的日期代表组合
+    combined_valid_days = sorted(
+        set(valid_days_by_pool["up"])
+        & set(valid_days_by_pool["broken"])
+        & set(valid_days_by_pool["down"])
+    )
+    baseline_values = set(baseline.values())
+    if len(baseline_values) == 1 and None not in baseline_values:
+        combined_valid_days = sorted({*combined_valid_days, *baseline_values})
     items: dict[date, dict[str, Any]] = {}
     for day in days:
         day_counts = counts.get(day, {})
@@ -328,17 +418,19 @@ def _limit_pool_items(session: Session, days: list[date]) -> dict[date, dict[str
                 "completion_proof": status == STATUS_VERIFIED,
                 "reason_codes": pool_reasons,
                 "latest_attempt": _log_brief(latest_any.get((day, f"pool_{pool_type}"))),
-                "latest_valid_snapshot": (
-                    max(item for item in valid_days if item <= day)
-                    if any(item <= day for item in valid_days)
-                    else None
-                ),
+                # 每个来源自己的有效快照日，不跨来源复用
+                "latest_valid_snapshot": latest_valid_with_baseline(pool_type, day),
                 "trusted": trusted,
             }
 
         up_status = dimensions["up"]["status"]
         combined = _combined_pool_status(statuses)
         up_log = latest_any.get((day, "pool_up"))
+        combined_snapshot = (
+            max(item for item in combined_valid_days if item <= day)
+            if any(item <= day for item in combined_valid_days)
+            else None
+        )
         items[day] = _item(
             "limit_pool",
             day,
@@ -348,9 +440,9 @@ def _limit_pool_items(session: Session, days: list[date]) -> dict[date, dict[str
             # 组合视图完全可信才叫「完成证明」；单个 up 池成功不等于三池齐全
             completion_proof=combined == STATUS_VERIFIED,
             latest_observation_date=latest,
-            latest_valid_snapshot=dimensions["up"]["latest_valid_snapshot"],
+            latest_valid_snapshot=combined_snapshot,
             latest_attempt=_log_brief(up_log),
-            note="UP/BROKEN/DOWN 分来源判定；组合视图需三池同时可信",
+            note="UP/BROKEN/DOWN 分来源判定；组合视图需三池同时可信、同日有效",
             extra={
                 "up_rows": up_rows,
                 "broken_rows": broken_rows,
@@ -358,6 +450,9 @@ def _limit_pool_items(session: Session, days: list[date]) -> dict[date, dict[str
                 "pool_up": dimensions["up"],
                 "pool_broken": dimensions["broken"],
                 "pool_down": dimensions["down"],
+                "latest_valid_snapshot_up": dimensions["up"]["latest_valid_snapshot"],
+                "latest_valid_snapshot_broken": dimensions["broken"]["latest_valid_snapshot"],
+                "latest_valid_snapshot_down": dimensions["down"]["latest_valid_snapshot"],
                 "up_completion_proof": dimensions["up"]["completion_proof"],
                 "broken_completion_proof": dimensions["broken"]["completion_proof"],
                 "down_completion_proof": dimensions["down"]["completion_proof"],
@@ -508,7 +603,9 @@ def _auction_items(session: Session, days: list[date]) -> dict[date, dict[str, A
     trade_days = set(
         session.scalars(select(TradeCalendar.trade_date).where(TradeCalendar.trade_date.in_(days)))
     )
-    post_open_pending = today in trade_days and now.time() < time(9, 31)
+    # 只在「目标日 == 今天」且今天是交易日、当前北京时间早于 09:31 时允许 PENDING；
+    # 历史交易日缺 0931 一律 MISSING（P2-03），不能因为「今天还没到点」被误标。
+    before_post_open = today in trade_days and now.time() < time(9, 31)
 
     items: dict[date, dict[str, Any]] = {}
     for day in days:
@@ -535,6 +632,10 @@ def _auction_items(session: Session, days: list[date]) -> dict[date, dict[str, A
             elif all_failed:
                 result_status = AUCTION_UNVERIFIABLE
                 reasons.append("AUCTION_SOURCE_UNAVAILABLE")
+            elif (logs.get(auction_quality.RESULT_FRAME) or {}).get("last_attempt_failed"):
+                # 0926 最近一次尝试失败且库里没有可用行 → 来源不可用，不是「没采」
+                result_status = AUCTION_UNVERIFIABLE
+                reasons.append("AUCTION_0926_SOURCE_UNAVAILABLE")
             else:
                 result_status = AUCTION_MISSING
                 reasons.append("AUCTION_0926_MISSING")
@@ -548,11 +649,15 @@ def _auction_items(session: Session, days: list[date]) -> dict[date, dict[str, A
                 )
                 post_status = AUCTION_INCOMPLETE if post_issues else AUCTION_VALID
                 reasons.extend(post_issues)
-            elif post_open_pending and logs.get(auction_quality.POST_OPEN_FRAME) is None:
+            elif day == today and before_post_open and logs.get(auction_quality.POST_OPEN_FRAME) is None:
                 post_status = AUCTION_PENDING
                 reasons.append("AUCTION_0931_PENDING")
             elif all_failed:
                 post_status = AUCTION_UNVERIFIABLE
+            elif (logs.get(auction_quality.POST_OPEN_FRAME) or {}).get("last_attempt_failed"):
+                # 0931 最近一次尝试失败且没有可用承接价 → 来源不可用，不是 MISSING
+                post_status = AUCTION_UNVERIFIABLE
+                reasons.append("AUCTION_0931_SOURCE_UNAVAILABLE")
             else:
                 post_status = AUCTION_MISSING
                 reasons.append("AUCTION_0931_MISSING")
@@ -601,7 +706,30 @@ def _auction_items(session: Session, days: list[date]) -> dict[date, dict[str, A
                 "has_0931": post_count > 0,
                 "result_count": result_count,
                 "post_open_count": post_count,
+                # 两个维度各自的「最近一次尝试」与「最近有效快照」分开，不互相代表
+                "auction_result_latest_attempt": _frame_attempt(
+                    logs, auction_quality.RESULT_FRAME
+                ),
+                "post_open_latest_attempt": _frame_attempt(
+                    logs, auction_quality.POST_OPEN_FRAME
+                ),
+                # 帧质量 ≠ 全市场覆盖完整：单条有效行不能推断全市场
+                "market_coverage_proof": False,
             },
+        )
+    # 0926 / 0931 各自回看历史，找最近一个该维度有效的日期
+    result_valid_days = sorted(
+        day for day, item in items.items() if item.get("auction_result_status") == AUCTION_VALID
+    )
+    post_valid_days = sorted(
+        day for day, item in items.items() if item.get("post_open_status") == AUCTION_VALID
+    )
+    for day, item in items.items():
+        item["auction_result_latest_valid_snapshot"] = max(
+            (candidate for candidate in result_valid_days if candidate <= day), default=None
+        )
+        item["post_open_latest_valid_snapshot"] = max(
+            (candidate for candidate in post_valid_days if candidate <= day), default=None
         )
     return items
 
@@ -656,6 +784,12 @@ def _safe_source(
     except (OperationalError, SQLAlchemyError) as exc:
         message = str(getattr(exc, "orig", exc)).lower()
         schema_missing = "no such table" in message or "no such column" in message
+        # 查询异常可能让 Session 进入失败事务状态：必须回滚，否则后续来源全部报
+        # PendingRollbackError，等于用一个来源的异常拖垮整页（B4）。
+        try:
+            session.rollback()
+        except SQLAlchemyError:
+            pass
         return {
             day: _item(
                 source,
@@ -695,7 +829,43 @@ def overview(
     """某个交易日的全来源快照（只读）。"""
     days = _validate_days(days)
     resolved = target_date or today_cn()
-    window = _trade_days(session, resolved, days)
+    try:
+        window = _trade_days(session, resolved, days)
+    except (OperationalError, SQLAlchemyError):
+        # 交易日历是 overview 的结构性依赖：拿不到窗口就无法判断交易日/非交易日，
+        # 只能整体报 SOURCE_ERROR，不能把六个来源都写成「未采集」（B4）。
+        try:
+            session.rollback()
+        except SQLAlchemyError:
+            pass
+        return {
+            "database": _database_name(session),
+            "quality_version": QUALITY_VERSION,
+            "as_of": resolved,
+            "days": days,
+            "window_start": None,
+            "window_end": None,
+            "sources": list(SOURCES),
+            "structural_error": "CALENDAR_DEPENDENCY_UNAVAILABLE",
+            "items": [
+                _item(
+                    source,
+                    resolved,
+                    STATUS_SOURCE_ERROR,
+                    reasons=[
+                        "DB_SCHEMA_UNAVAILABLE"
+                        if source == "trade_calendar"
+                        else "CALENDAR_DEPENDENCY_UNAVAILABLE"
+                    ],
+                    note=(
+                        "交易日历查询异常"
+                        if source == "trade_calendar"
+                        else "交易日历不可用：无法确定交易日与窗口，不能断言该来源未采集"
+                    ),
+                )
+                for source in SOURCES
+            ],
+        }
 
     if resolved > today_cn():
         items = [

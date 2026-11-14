@@ -108,6 +108,8 @@ REASON_TEXT = {
     "FRAME_0931_FILTERED": "0931 帧存在被时间过滤的报价",
     "FRAME_0926_WRITE_GAP": "0926 帧有效报价未全部写入",
     "FRAME_0931_WRITE_GAP": "0931 帧有效报价未全部写入",
+    "FRAME_0926_COVERAGE_FIELDS_MISSING": "0926 帧日志缺少覆盖字段，无法证明采集完整",
+    "FRAME_0931_COVERAGE_FIELDS_MISSING": "0931 帧日志缺少覆盖字段，无法证明采集完整",
     "POST_OPEN_MISSING": "缺少 0931 开盘后价格",
     "POST_OPEN_PENDING": "9:31 尚未到达，开盘承接待观察",
     "NO_POST_OPEN_QUOTE": "该股没有 0931 开盘后报价",
@@ -256,6 +258,10 @@ def _frame_issue_reasons(log: dict | None, label: str) -> list[str]:
         reasons.append(f"FRAME_{label}_NOT_OK")
     if int(log.get("failed_batches") or 0) > 0:
         reasons.append("BATCH_FAILED")
+    # 旧日志可能没有覆盖字段：缺失时**不得**当成「覆盖完整」，只能算未证明
+    required_coverage = ("requested_codes", "returned_codes", "valid_codes", "written_codes")
+    if any(log.get(name) is None for name in required_coverage):
+        reasons.append(f"FRAME_{label}_COVERAGE_FIELDS_MISSING")
     if any(
         int(log.get(f"dropped_{kind}_quote") or 0) > 0
         for kind in ("old", "stale", "newer", "unknown")
