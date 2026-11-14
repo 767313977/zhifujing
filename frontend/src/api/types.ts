@@ -850,12 +850,21 @@ export interface AuctionAnomalyFrame {
   status: string | null
   reason: string | null
   elapsed_ms: number
+  /** 最近一次尝试（可能是失败/跳过）的诊断信息，与有效数据来源分开 */
+  last_attempt_status?: string | null
+  last_attempt_reason?: string | null
+  last_attempt_started_at?: string | null
+  last_attempt_failed?: boolean
+  /** 本次质量结论采用的有效数据日志状态（ok / partial / null） */
+  last_effective_status?: string | null
 }
 
 export interface AuctionAnomalyQuality {
   /** NOT_COLLECTED / SOURCE_UNAVAILABLE / INCOMPLETE / VALID */
   status: string
   reasons: string[]
+  /** 诊断提示：不降级日期质量 */
+  warnings?: string[]
   frames: AuctionAnomalyFrame[]
   auction_count: number
   result_count: number
@@ -3658,4 +3667,135 @@ export interface ResearchSectorOut {
   rows: ResearchSectorRow[]
   coverage: ResearchCoverage
   strategy: ResearchStrategy
+}
+
+
+// ------------------------------------------------- 情绪 × 次日表现（S1-B）
+
+export type SentimentNextDayGroup =
+  | 'all_limit_up'
+  | 'first_board'
+  | 'second_board'
+  | 'third_plus'
+  | 'broken'
+  | 'failed_promotion'
+
+export type SentimentNextDayMetric =
+  | 'limit_up_count'
+  | 'broken_rate'
+  | 'max_consecutive'
+  | 'advance_ratio'
+
+export type SentimentNextDayStatus =
+  | 'VERIFIED'
+  | 'PARTIAL'
+  | 'PENDING'
+  | 'UNVERIFIED'
+  | 'EMPTY'
+
+export interface SentimentNextDayPoint {
+  sample_date: string
+  outcome_date: string | null
+  group: SentimentNextDayGroup
+  sentiment_value: number | null
+  limit_up_count: number | null
+  broken_rate: number | null
+  max_consecutive: number | null
+  up_count: number | null
+  down_count: number | null
+  advance_ratio: number | null
+  sample_count: number
+  valid_count: number
+  missing_count: number
+  avg_pct: number | null
+  median_pct: number | null
+  outcome_up_count: number
+  outcome_down_count: number
+  outcome_flat_count: number
+  up_ratio: number | null
+  limit_up_again_count: number | null
+  limit_up_again_ratio: number | null
+  not_limit_up_count: number | null
+  unverifiable_count: number
+  avg_open_pct: number | null
+  avg_close_vs_open: number | null
+  data_quality_status: SentimentNextDayStatus
+  data_quality_reasons: string[]
+  data_as_of: string | null
+}
+
+export interface SentimentNextDayBand {
+  label: string
+  lower: number | null
+  upper: number | null
+  day_count: number
+  stat_day_count: number
+  sample_count: number
+  valid_count: number
+  avg_pct: number | null
+  median_pct: number | null
+  up_ratio: number | null
+  limit_up_again_ratio: number | null
+}
+
+export interface SentimentNextDaySummary {
+  day_count: number
+  stat_day_count: number
+  sample_count: number
+  valid_count: number
+  missing_count: number
+  avg_pct: number | null
+  median_pct: number | null
+  up_count: number
+  down_count: number
+  flat_count: number
+  up_ratio: number | null
+  limit_up_again_count: number | null
+  limit_up_again_ratio: number | null
+  not_limit_up_count: number | null
+  unverifiable_count: number
+  avg_open_pct: number | null
+  avg_close_vs_open: number | null
+}
+
+export interface SentimentNextDay {
+  group: SentimentNextDayGroup
+  group_label: string
+  metric: SentimentNextDayMetric
+  metric_label: string
+  days: number
+  threshold_version: string
+  thresholds: { label: string; lower: number | null; upper: number | null }[]
+  data_as_of: string | null
+  dates: string[]
+  series: SentimentNextDayPoint[]
+  summary: SentimentNextDaySummary
+  bands: SentimentNextDayBand[]
+  quality: {
+    status_counts: Record<string, number>
+    pending_days: string[]
+    unverified_days: string[]
+    group_note: string
+  }
+  notes: string[]
+}
+
+export interface SentimentNextDayQuery {
+  days?: number
+  group?: SentimentNextDayGroup
+  metric?: SentimentNextDayMetric
+  includePending?: boolean
+  date?: string | null
+}
+
+export interface StockLimitRecord {
+  trade_date: string
+  pool_type: 'up' | 'broken' | string
+  name: string | null
+  pct_chg: number | null
+  price: number | null
+  consecutive: number | null
+  seal_amount: number | null
+  first_seal_time: string | null
+  open_times: number | null
 }

@@ -102,6 +102,8 @@ REASON_TEXT = {
     "FRAME_0931_NOT_OK": "0931 帧采集状态异常",
     "FRAME_0926_PARTIAL": "0926 帧部分可信（存在已知质量损失）",
     "FRAME_0931_PARTIAL": "0931 帧部分可信（存在已知质量损失）",
+    "FRAME_0926_LAST_ATTEMPT_FAILED": "0926 最近一次尝试失败（此前有效报价仍在）",
+    "FRAME_0931_LAST_ATTEMPT_FAILED": "0931 最近一次尝试失败（此前有效报价仍在）",
     "FRAME_0926_FILTERED": "0926 帧存在被时间过滤的报价",
     "FRAME_0931_FILTERED": "0931 帧存在被时间过滤的报价",
     "FRAME_0926_WRITE_GAP": "0926 帧有效报价未全部写入",
@@ -154,10 +156,11 @@ def _log_status(payload: dict) -> str:
 def _frame_logs(session: Session, day: date) -> dict[str, dict]:
     """`{scheduled_frame: payload}`。
 
-    同一帧重复执行时：
-    - 优先取最新一条**非 noop** 日志（真正的行情帧）；
-    - 如果只有 noop 重复请求，才退回最新 noop。
-    这样「重复请求没有更新」不会把此前成功帧的质量结论覆盖掉（P1-04）。
+    同一帧重复执行时，质量结论以**最后一次真正持久化过行情**的日志为准
+    （S1-A1：`ok` / `partial`，或纯重复请求 `noop`）。失败 / skipped 的尝试
+    可能出现在成功之后，它们不会改动库里的行情，因此不得把已经存在的合法行情
+    判成无效 —— 但必须保留在诊断字段里（`last_attempt_*`），供页面区分
+    「上一次有效报价」与「最近一次尝试失败」。
     """
     rows = session.scalars(
         select(CollectLog)
@@ -166,6 +169,7 @@ def _frame_logs(session: Session, day: date) -> dict[str, dict]:
     ).all()
     latest_any: dict[str, dict] = {}
     latest_effective: dict[str, dict] = {}
+    latest_noop: dict[str, dict] = {}
     for row in rows:
         try:
             payload = json.loads(row.message or "{}")
@@ -175,14 +179,41 @@ def _frame_logs(session: Session, day: date) -> dict[str, dict]:
         if not frame:
             continue
         payload["status"] = row.status
+        payload["log_id"] = row.id
         frame = str(frame)
         if frame not in latest_any:
             latest_any[frame] = payload
-        if not payload.get("noop") and frame not in latest_effective:
-            latest_effective[frame] = payload
-    merged = dict(latest_any)
-    merged.update(latest_effective)
+        status = str(row.status or "").lower()
+        if status in ("ok", "partial"):
+            if frame not in latest_effective:
+                latest_effective[frame] = payload
+        elif payload.get("noop") and frame not in latest_noop:
+            latest_noop[frame] = payload
+    merged: dict[str, dict] = {}
+    for frame, latest in latest_any.items():
+        durable = latest_effective.get(frame) or latest_noop.get(frame)
+        chosen = dict(durable) if durable is not None else dict(latest)
+        chosen["last_attempt_status"] = latest.get("status")
+        chosen["last_attempt_reason"] = latest.get("reason")
+        chosen["last_attempt_started_at"] = latest.get("actual_started_at")
+        chosen["last_attempt_log_id"] = latest.get("log_id")
+        chosen["last_attempt_failed"] = (
+            str(latest.get("status") or "").lower() in ("failed", "skipped")
+            and not latest.get("noop")
+        )
+        chosen["last_effective_status"] = (durable or {}).get("status")
+        merged[frame] = chosen
     return merged
+
+
+def _last_attempt_warnings(logs: dict[str, dict]) -> list[str]:
+    """最近一次尝试失败、但此前有效数据仍在：只是诊断提示，不降级日期质量。"""
+    warnings: list[str] = []
+    for frame, label in ((RESULT_FRAME, "0926"), (POST_OPEN_FRAME, "0931")):
+        log = logs.get(frame)
+        if log and log.get("last_attempt_failed") and log.get("last_effective_status"):
+            warnings.append(f"FRAME_{label}_LAST_ATTEMPT_FAILED")
+    return warnings
 
 
 def _frame_issue_reasons(log: dict | None, label: str) -> list[str]:
@@ -242,6 +273,7 @@ def assess_day_quality(
         return {
             "status": NOT_COLLECTED,
             "reasons": ["NO_AUCTION_SNAPSHOT"],
+            "warnings": [],
             "frames": [],
             "auction_count": 0,
             "result_count": 0,
@@ -270,6 +302,7 @@ def assess_day_quality(
         return {
             "status": status,
             "reasons": _dedupe(reasons),
+            "warnings": _last_attempt_warnings(logs),
             "frames": _frame_details(logs),
             "auction_count": 0,
             "result_count": 0,
@@ -303,6 +336,7 @@ def assess_day_quality(
     return {
         "status": status,
         "reasons": _dedupe(reasons),
+        "warnings": _last_attempt_warnings(logs),
         "frames": _frame_details(logs),
         "auction_count": len(rows),
         "result_count": sum(

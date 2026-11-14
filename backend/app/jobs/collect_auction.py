@@ -43,7 +43,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.db import session_scope, upsert_many
 from app.models import AuctionSnapshot, CollectLog, StockBasic
@@ -202,6 +202,17 @@ def _is_today_quote(item: dict, day: date) -> bool:
 def _positive(value: float | None) -> float | None:
     """价格类的清洗：**≤0 一律当缺值**。"""
     if value is None or value <= 0:
+        return None
+    return value
+
+
+def _non_negative(value: float | None) -> float | None:
+    """金额 / 量 / 换手 / 量比：负数是无意义值（2026-11-14 加）。
+
+    0 保留 —— 腾讯在 9:25 结算前确实会给 0（竞价额、量比都是），那是「还没有」，
+    与负数（脏数据）不是一回事。
+    """
+    if value is None or value < 0:
         return None
     return value
 
@@ -439,7 +450,16 @@ def _finish(
 def _previous_frame_quote_times(
     session, day: date, frame: str
 ) -> dict[str, str]:
-    """同一 `trade_date + scheduled_frame` 上一次已接受的逐券源时间。
+    """同一 `trade_date + scheduled_frame` **已接受并持久化**的逐券源时间。
+
+    P0-A/S1-A1：不能再取「最新一条日志」的 `quote_times` —— 最新那条可能是一次
+    失败/跳过的尝试（`quote_times` 为空），会把此前成功帧的时间证据擦掉，导致
+    后续合法升级被误判为「不更新」。这里改为：
+
+    - 只采信**真正产生过持久化行情**的日志（`ok` / `partial`，以及纯重复请求的
+      `noop` 证据）；
+    - 同一证券取所有证据里的**最大**源时间（单调不下降）；
+    - 失败 / skipped / 未持久化的时间一律不参与。
 
     必须在**写事务内部**读取（P1-04）：不能拿事务外的旧快照判断新旧。
     """
@@ -448,18 +468,48 @@ def _previous_frame_quote_times(
         .where(CollectLog.trade_date == day, CollectLog.task == FRAME_TASK)
         .order_by(CollectLog.id.desc())
     ).all()
+    merged: dict[str, str] = {}
     for row in rows:
         try:
             payload = json.loads(row.message or "{}")
         except (TypeError, ValueError):
             continue
-        if payload.get("scheduled_frame") == frame:
-            return {
-                str(code): str(value)
-                for code, value in (payload.get("quote_times") or {}).items()
-                if value
-            }
-    return {}
+        if payload.get("scheduled_frame") != frame:
+            continue
+        if not _is_durable_evidence(str(row.status or ""), payload):
+            continue
+        for code, value in (payload.get("quote_times") or {}).items():
+            if not value:
+                continue
+            code = str(code)
+            value = str(value)
+            if value > merged.get(code, ""):
+                merged[code] = value
+    return merged
+
+
+def _is_durable_evidence(status: str, payload: dict) -> bool:
+    """这条日志能否作为「库里确实有这份行情」的时间证据。"""
+    if payload.get("noop"):
+        # 纯重复请求：没有任何行情更新，但它携带的 quote_times 是当时的累积状态
+        return True
+    return status.lower() in ("ok", "partial")
+
+
+def _acquire_write_lock(session) -> None:
+    """SQLite：先拿写锁，再读旧时间。
+
+    P0-A/S1-A1：SQLite 的默认事务是 **deferred** —— `SELECT` 并不开启数据库事务，
+    真正的快照要等到第一条写语句。也就是说「事务内 SELECT 旧时间」在跨进程场景下
+    仍可能基于过期快照判断新旧，两个并发采样会互相覆盖。这里用 `BEGIN IMMEDIATE`
+    提前取写锁：拿不到锁就等（`timeout=15`），拿到之后读到的时间才是可写的当前值。
+
+    非 SQLite 方言不做处理（当前生产/测试都只有 SQLite）。
+    """
+    bind = session.get_bind()
+    if bind is None or bind.dialect.name != "sqlite":
+        return
+    session.execute(text("BEGIN IMMEDIATE"))
 
 
 def _is_newer_quote(prev: str | None, new: str | None, has_existing: bool) -> bool:
@@ -612,6 +662,9 @@ def collect_auction(now: datetime | None = None) -> int:
     noop = False
     try:
         with session_scope() as session:
+            # P1-04 / S1-A1：先拿写锁再读旧时间，避免两个采样进程按同一份旧快照
+            # 互相覆盖（SQLite deferred 事务下 SELECT 不构成真正的跨进程快照）
+            _acquire_write_lock(session)
             # P1-04：逐券时间比较必须在**写事务内部**读取，不能用事务外快照
             previous_times = (
                 _previous_frame_quote_times(session, day, plan.frame)
@@ -695,7 +748,7 @@ def collect_auction(now: datetime | None = None) -> int:
                         [
                             plan.frame,
                             price,
-                            item["amount"],
+                            _non_negative(item["amount"]),
                             item["committee_diff"],
                             item["bid1_price"],
                             item["bid1_volume"],
@@ -716,9 +769,9 @@ def collect_auction(now: datetime | None = None) -> int:
                                 else None
                             ),
                             "open": _positive(item["open"]),
-                            "amount": item["amount"],
-                            "volume": item["volume"],
-                            "turnover": item["turnover"],
+                            "amount": _non_negative(item["amount"]),
+                            "volume": _non_negative(item["volume"]),
+                            "turnover": _non_negative(item["turnover"]),
                             "volume_ratio": None,
                             "float_mv": item["float_mv"],
                             "total_mv": item["total_mv"],

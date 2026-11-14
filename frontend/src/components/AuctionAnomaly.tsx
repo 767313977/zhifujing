@@ -7,6 +7,7 @@ import type {
 } from '../api/types'
 import LoadState from './LoadState'
 import Panel from './Panel'
+import QuickResearch from './QuickResearch'
 import SortTh from './SortTh'
 import StockLink from './StockLink'
 import { fmtAmount, fmtInt, fmtNum, fmtPct, toneOf } from '../lib/format'
@@ -50,6 +51,8 @@ const REASON_LABEL: Record<string, string> = {
   FRAME_0931_NOT_OK: '0931 帧采集状态异常',
   FRAME_0926_PARTIAL: '0926 帧部分可信',
   FRAME_0931_PARTIAL: '0931 帧部分可信',
+  FRAME_0926_LAST_ATTEMPT_FAILED: '0926 最近一次尝试失败（此前有效数据仍在）',
+  FRAME_0931_LAST_ATTEMPT_FAILED: '0931 最近一次尝试失败（此前有效数据仍在）',
   FRAME_0926_FILTERED: '0926 帧有被过滤报价',
   FRAME_0931_FILTERED: '0931 帧有被过滤报价',
   FRAME_0926_WRITE_GAP: '0926 帧有效报价未全部写入',
@@ -221,6 +224,11 @@ export default function AuctionAnomaly({ date }: { date: string | null }) {
                   {data.quality.reasons.map(reasonText).join(' · ')}
                 </span>
               )}
+              {(data.quality.warnings?.length ?? 0) > 0 && (
+                <span className="text-fg-muted" title="仅诊断提示，不降级日期质量">
+                  {(data.quality.warnings ?? []).map(reasonText).join(' · ')}
+                </span>
+              )}
             </div>
             {data.quality.frames.length > 0 && (
               <details className="mt-2 text-[12px] text-fg-dim">
@@ -309,6 +317,11 @@ export default function AuctionAnomaly({ date }: { date: string | null }) {
                               : frame.reason
                                 ? reasonText(frame.reason)
                                 : '—'}
+                            {frame.last_attempt_failed && frame.last_effective_status ? (
+                              <span className="ml-1 text-warn">
+                                · 最近一次尝试失败（{frame.last_attempt_status}）
+                              </span>
+                            ) : null}
                           </td>
                         </tr>
                       ))}
@@ -420,6 +433,7 @@ export default function AuctionAnomaly({ date }: { date: string | null }) {
                       </td>
                       <td className="!text-left">
                         <StockLink code={row.code}>{row.name ?? row.code}</StockLink>
+                        <QuickResearch code={row.code} asOfDate={data.trade_date} />
                       </td>
                       <td className="!text-left max-xl:hidden">
                         {prevStatusText(row.prev_limit_status, row.prev_board_height)}

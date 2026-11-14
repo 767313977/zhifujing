@@ -55,6 +55,119 @@ class SentimentOut(ApiModel):
     yesterday_limit_today_avg: float | None
 
 
+class SentimentNextDayPoint(BaseModel):
+    """D 日情绪 + D 日样本集合 + D+1 表现（S1-B）。
+
+    `data_quality_status`：VERIFIED / PARTIAL / PENDING / UNVERIFIED / EMPTY。
+    PENDING（D+1 行情未到齐）时 `avg_pct` / `up_ratio` / `limit_up_again_ratio`
+    一律为 null —— 不按 0% 计入。
+    """
+
+    sample_date: date
+    outcome_date: date | None
+    group: str
+    sentiment_value: float | None
+    #: D 日情绪原始值（便于前端在 tooltip 里写清口径）
+    limit_up_count: int | None
+    broken_rate: float | None
+    max_consecutive: int | None
+    up_count: int | None
+    down_count: int | None
+    advance_ratio: float | None
+    sample_count: int
+    valid_count: int
+    missing_count: int
+    avg_pct: float | None
+    median_pct: float | None
+    outcome_up_count: int
+    outcome_down_count: int
+    outcome_flat_count: int
+    up_ratio: float | None
+    #: D+1 再次涨停数（D+1 涨停池不可信时为 null）
+    limit_up_again_count: int | None
+    limit_up_again_ratio: float | None
+    not_limit_up_count: int | None
+    #: D+1 涨停池不可信、无法判断是否再次涨停的样本数
+    unverifiable_count: int
+    avg_open_pct: float | None
+    avg_close_vs_open: float | None
+    data_quality_status: str
+    data_quality_reasons: list[str] = []
+    data_as_of: date | None
+
+
+class SentimentNextDayBand(BaseModel):
+    """一个情绪档位下的 D+1 汇总（固定、版本化阈值，不按结果反向优化）。"""
+
+    label: str
+    lower: float | None
+    upper: float | None
+    day_count: int
+    stat_day_count: int
+    sample_count: int
+    valid_count: int
+    avg_pct: float | None
+    median_pct: float | None
+    up_ratio: float | None
+    limit_up_again_ratio: float | None
+
+
+class SentimentNextDaySummary(BaseModel):
+    """总体统计（只聚合有有效行情的日期；PENDING 日不计入样本）。"""
+
+    day_count: int
+    stat_day_count: int
+    sample_count: int
+    valid_count: int
+    missing_count: int
+    avg_pct: float | None
+    median_pct: float | None
+    up_count: int
+    down_count: int
+    flat_count: int
+    up_ratio: float | None
+    limit_up_again_count: int | None
+    limit_up_again_ratio: float | None
+    not_limit_up_count: int | None
+    unverifiable_count: int
+    avg_open_pct: float | None
+    avg_close_vs_open: float | None
+
+
+class SentimentNextDayQuality(BaseModel):
+    status_counts: dict[str, int]
+    pending_days: list[str]
+    unverified_days: list[str]
+    group_note: str
+
+
+class SentimentNextDayThreshold(BaseModel):
+    label: str
+    lower: float | None
+    upper: float | None
+
+
+class SentimentNextDayOut(BaseModel):
+    """情绪环境 × 次日表现。"""
+
+    group: str
+    group_label: str
+    metric: str
+    metric_label: str
+    days: int
+    #: 情绪分档的固定版本（改动档位必须升版本）
+    threshold_version: str
+    thresholds: list[SentimentNextDayThreshold]
+    #: 本地日线的最后日期：晚于它的 D+1 一律 PENDING
+    data_as_of: date | None
+    dates: list[date]
+    series: list[SentimentNextDayPoint]
+    summary: SentimentNextDaySummary
+    bands: list[SentimentNextDayBand]
+    quality: SentimentNextDayQuality
+    notes: list[str]
+
+
 class DivergenceOut(BaseModel):
     """指数与个股广度是否背离（当日）。
 
@@ -2153,6 +2266,20 @@ class StockThemeItem(BaseModel):
     pct_chg: float | None
 
 
+class StockLimitRecord(ApiModel):
+    """个股的一条涨停 / 炸板记录（全局研究侧栏的「涨停」Tab）。"""
+
+    trade_date: date
+    pool_type: str
+    name: str | None
+    pct_chg: float | None
+    price: float | None
+    consecutive: int | None
+    seal_amount: float | None
+    first_seal_time: str | None
+    open_times: int | None
+
+
 class StockThemes(BaseModel):
     code: str
     name: str | None
@@ -2909,6 +3036,13 @@ class AuctionAnomalyFrame(BaseModel):
     status: str | None = None
     reason: str | None = None
     elapsed_ms: int = 0
+    #: 最近一次尝试（可能是失败/跳过）的诊断信息，与 `status`（有效数据来源）分开
+    last_attempt_status: str | None = None
+    last_attempt_reason: str | None = None
+    last_attempt_started_at: str | None = None
+    last_attempt_failed: bool = False
+    #: 本次质量结论采用的**有效数据**日志状态（ok / partial / None）
+    last_effective_status: str | None = None
 
 
 class AuctionAnomalyQuality(BaseModel):
@@ -2917,6 +3051,8 @@ class AuctionAnomalyQuality(BaseModel):
     #: NOT_COLLECTED / SOURCE_UNAVAILABLE / INCOMPLETE / VALID
     status: str
     reasons: list[str] = []
+    #: 诊断提示：不降级日期质量（如「最近一次尝试失败，但有效数据仍在」）
+    warnings: list[str] = []
     frames: list[AuctionAnomalyFrame] = []
     auction_count: int = 0
     #: 有 0926 竞价终值的只数
