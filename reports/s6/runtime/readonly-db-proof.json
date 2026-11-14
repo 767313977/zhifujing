@@ -1,0 +1,109 @@
+{
+  "commit_sha": "104dfdf489150d97446be3af0fa4a4de14382bbd",
+  "branch": "release/s6-canary-hardening",
+  "generated_at": "2026-11-15T00:21:45+08:00",
+  "environment": "Windows 11 开发机；临时目录副本",
+  "command": "python scripts/s6_readonly_db_proof.py",
+  "exit_code": 0,
+  "tool_version": "s6_readonly_db_proof/1.0",
+  "result": {
+    "source": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\forward_research.db",
+    "copy_used": "临时目录（脚本结束即删除）",
+    "writable_control": {
+      "all_succeeded": true,
+      "attempts": [
+        {
+          "statement": "CREATE TABLE __s6_write_control (id INTEGER PRIMARY KEY, v TEXT)",
+          "blocked": false,
+          "error": null
+        },
+        {
+          "statement": "INSERT INTO __s6_write_control (v) VALUES ('x')",
+          "blocked": false,
+          "error": null
+        },
+        {
+          "statement": "UPDATE __s6_write_control SET v='y' WHERE v='x'",
+          "blocked": false,
+          "error": null
+        },
+        {
+          "statement": "DELETE FROM __s6_write_control WHERE v='y'",
+          "blocked": false,
+          "error": null
+        }
+      ]
+    },
+    "readonly_attempts": {
+      "all_blocked": true,
+      "attempts": [
+        {
+          "statement": "INSERT INTO __s6_probe (v) VALUES ('new')",
+          "blocked": true,
+          "error": "attempt to write a readonly database"
+        },
+        {
+          "statement": "UPDATE __s6_probe SET v='changed' WHERE id=1",
+          "blocked": true,
+          "error": "attempt to write a readonly database"
+        },
+        {
+          "statement": "DELETE FROM __s6_probe WHERE id=1",
+          "blocked": true,
+          "error": "attempt to write a readonly database"
+        },
+        {
+          "statement": "CREATE TABLE __s6_ddl (id INTEGER)",
+          "blocked": true,
+          "error": "attempt to write a readonly database"
+        },
+        {
+          "statement": "DROP TABLE __s6_probe",
+          "blocked": true,
+          "error": "attempt to write a readonly database"
+        },
+        {
+          "statement": "PRAGMA user_version = 7",
+          "blocked": true,
+          "error": "attempt to write a readonly database"
+        },
+        {
+          "statement": "VACUUM",
+          "blocked": true,
+          "error": "attempt to write a readonly database"
+        }
+      ]
+    },
+    "readonly_integrity_check": "ok",
+    "readonly_row_count": 1,
+    "wal": {
+      "exists": false
+    },
+    "shm": {
+      "exists": false
+    },
+    "source_unchanged": true,
+    "source_before": {
+      "stat": {
+        "size": 67055616,
+        "mtime": "2026-11-11T17:17:58+08:00"
+      },
+      "sha256": "c464b3bc751fc05361293a1e3537bcdba2ec5ffbe5a26105b737ea24f6ec536b"
+    },
+    "source_after": {
+      "stat": {
+        "size": 67055616,
+        "mtime": "2026-11-11T17:17:58+08:00"
+      },
+      "sha256": "c464b3bc751fc05361293a1e3537bcdba2ec5ffbe5a26105b737ea24f6ec536b"
+    },
+    "verdict": "PASS"
+  },
+  "evidence_files": [
+    "reports\\s6\\runtime\\readonly-db-proof.json"
+  ],
+  "limitations": [
+    "写测试在临时副本上执行；源库仅以 mode=ro 打开并被 backup 读取。",
+    "只读模式证明的是 SQLite 的 mode=ro 语义，不代表应用引擎已经使用只读连接。"
+  ]
+}

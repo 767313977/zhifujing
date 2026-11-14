@@ -353,7 +353,14 @@ def require_login(request: Request) -> None:
 #   - logout 要能"登出已过期的会话"（2026-11-04 加）：会话过期时整页会跳登录页，
 #     前端登出按钮再打一下这里，拿到 401 反而把"清 cookie"这件事做了半截
 PUBLIC_PATHS = frozenset(
-    {"/api/auth/login", "/api/auth/register", "/api/auth/logout", "/api/health"}
+    {
+        "/api/auth/login",
+        "/api/auth/register",
+        "/api/auth/logout",
+        "/api/health",
+        # S6-B2：readiness 给部署/监控用，只含门禁名与状态，不含业务数据与路径
+        "/api/ready",
+    }
 )
 
 

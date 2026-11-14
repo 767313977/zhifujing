@@ -39,6 +39,7 @@ from app.api import (
     valuation,
     watchlist,
 )
+from app import readiness
 from app.config import ROOT, get_settings
 from app.db import ensure_schema
 from app.external_guard import (
@@ -46,6 +47,7 @@ from app.external_guard import (
     enabled,
     install_network_deny,
     lock_offline_mode,
+    stats as guard_stats,
 )
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 from app.services.auth import client_ip as auth_client_ip
@@ -194,6 +196,8 @@ async def lifespan(_app: FastAPI):
     # - 开发机（`python -m app.main` 在 __main__ 里显式设 migrate）→ 保持原来的便利。
     schema_result = ensure_schema()
     logger.info("数据库就绪: %s（schema=%s）", settings.db_path, schema_result["mode"])
+    # S6-B2：记录启动时**真实生效**的配置，供 /api/ready 使用（不写库、不伪造）
+    readiness.record_startup(schema_result)
     if not settings.ifind_auth_token:
         logger.warning("未配置 IFIND_AUTH_TOKEN，iFinD 相关采集将失败")
     # 配额关键配置（2026-10-31 加）：分母（月度上限）和周期起点日一旦填错，配额
@@ -220,7 +224,17 @@ async def lifespan(_app: FastAPI):
     if install_network_deny():
         logger.warning("外部数据现取已被禁用（EXTERNAL_DATA_FETCH_ENABLED=false）")
     else:
-        logger.info("网络闸门 wrapper 已安装（在线模式透明放行）")
+        logger.info("网络闸门 wrapper 已安装（在线模式：按出站允许名单放行）")
+    # S6-A1：把策略版本 / 条数 / loopback 语义打进启动日志，便于事后审计
+    _policy = guard_stats().get("policy") or {}
+    logger.info(
+        "出站策略：loaded=%s version=%s entries=%s loopback_any_port=%s error=%s",
+        _policy.get("loaded"),
+        _policy.get("version"),
+        _policy.get("entries"),
+        _policy.get("loopback_allow_any_port"),
+        _policy.get("error"),
+    )
 
     # 定时采集随服务一起启停。注意本服务必须单 worker 运行，
     # 多 worker 会各自拉起一个调度器、同一时刻重复采集。
@@ -408,6 +422,22 @@ def health_head() -> Response:
     拆开之后 OpenAPI 里 `GET /api/health` 只有一个 operationId。
     """
     return Response(status_code=200)
+
+
+@app.get("/api/ready", include_in_schema=False)
+def ready() -> JSONResponse:
+    """灰度 readiness（S6-B2）：**只有全部必要门禁 PASS 才返回 200**。
+
+    与 `/api/health` 的区别：
+    - health 只表示进程存活（端口起来了就 200）；
+    - ready 会逐项检查启动配置、应用层出站策略、数据库只读、调度器与外部取数开关；
+      另外 `EGRESS_OS_POLICY_VERIFIED` 在没有真实 OS/网络隔离证据时固定为
+      `NOT_VERIFIED`，因此本轮一定 503 —— 这是刻意保留的阻塞项，不允许用环境变量伪造。
+
+    响应只含门禁名、状态与稳定原因码：不含路径、token、主机名或业务数据。
+    """
+    snapshot = readiness.readiness_snapshot()
+    return JSONResponse(status_code=200 if snapshot["ready"] else 503, content=snapshot)
 
 
 #: SPA 兜底要**直接 404**（而不是回落 `index.html`）的路径特征。
