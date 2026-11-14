@@ -1,57 +1,47 @@
 #!/usr/sbin/nft -f
-# S6 出站默认拒绝（Linux / nftables）—— **仅部署脚本，本轮未在任何主机执行**
+# S6.1 出站默认拒绝（Linux / nftables）—— **仅专用隔离 VM/namespace**
 #
-# 目标：应用进程（uid = fupan）**不能直接访问公网**，只能访问本机受控 egress proxy
-# 的回环端口；DNS 只允许发往指定 resolver（由 proxy 或主机统一解析）。
+# 目标：应用 uid（默认 fupan）不能直接访问公网，只能：
+#   - 访问本机受控 egress proxy（127.0.0.1:3128）；
+#   - 访问本机后端端口（127.0.0.1:8000，同机健康检查/内部调用）；
+#   - 向指定 resolver（127.0.0.53:53，systemd-resolved）发 DNS。
+# 其余一律 drop 并计数。
 #
-# 使用前提（缺一不可）：
-#   1. 在**隔离的 Staging** 或经审批的生产变更窗口执行，不得在开发机执行；
-#   2. 主机已安装 nftables，且应用以独立 uid 运行（systemd User=fupan）；
-#   3. 已存在受控 egress proxy（默认监听 127.0.0.1:3128），其自身允许名单由
-#      deploy/s6/egress-policy.json 生成；
-#   4. 已备份原规则：`nft list ruleset > /var/backups/nft-ruleset.before`。
+# ⚠️ 不要把整段 loopback 放行：那会让应用连到任意本机代理端口（如 7890）
+#    再由代理进程出网，形成绕过。这里 loopback 只精确放行端口。
 #
-# 生效方式：
-#   nft -f deploy/s6/egress-deny.nft
-# 回滚：
-#   nft flush table inet s6_egress
-#   nft delete table inet s6_egress
-#
-# ⚠️ 这是一个**独立表**（table inet s6_egress），不修改主机既有规则；删除本表即回滚。
-# ⚠️ uid 以 `fupan` 为例，部署时按实际 APP_USER 替换（见 deploy/install.sh）。
-
+# 不修改主机既有规则：本文件只创建独立表 inet s6_egress，删除该表即回滚。
 table inet s6_egress {
-    # 应用专属出站链：只处理本机进程发起的连接
     chain output {
         type filter hook output priority 0; policy accept;
 
-        # 1) 其它 uid / 非应用流量不受本表影响（保持主机既有策略）
+        # 1) 只处理应用 uid；其它进程不受本表影响
         meta skuid != "fupan" return
 
-        # 2) 回环：允许访问本机代理与本地服务
-        oifname "lo" accept
+        # 2) loopback：只放行受控端口（proxy / 本机后端）
+        ip daddr 127.0.0.1 tcp dport { 3128, 8000 } accept
+        ip6 daddr ::1 tcp dport { 3128, 8000 } accept
 
-        # 3) 受控 egress proxy（仅回环端口；proxy 自身再做域名+端口 allowlist）
-        ip daddr 127.0.0.1 tcp dport 3128 accept
-        ip6 daddr ::1 tcp dport 3128 accept
-
-        # 4) 指定 resolver（如 127.0.0.53 systemd-resolved 或内网 DNS）
+        # 3) 指定 resolver（systemd-resolved stub）；其它 DNS 目标一律拒绝
         ip daddr 127.0.0.53 udp dport 53 accept
         ip daddr 127.0.0.53 tcp dport 53 accept
+        ip6 daddr ::1 udp dport 53 accept
+        ip6 daddr ::1 tcp dport 53 accept
 
-        # 5) 其余一律拒绝并计数（可接入 nft 日志 / 审计）
+        # 4) 其余（IPv4/IPv6、TCP/UDP、任意端口）默认拒绝并计数
         counter drop
     }
 
-    # 显式阻断（防御性重复）：即使 output 链被其它表放行，也在这里再拦一次
+    # 防御性重复：即使其它表在更高优先级放行，这里再拦一次
     chain output_deny {
         type filter hook output priority 10; policy accept;
         meta skuid != "fupan" return
-        oifname "lo" accept
-        ip daddr 127.0.0.1 tcp dport 3128 accept
-        ip6 daddr ::1 tcp dport 3128 accept
+        ip daddr 127.0.0.1 tcp dport { 3128, 8000 } accept
+        ip6 daddr ::1 tcp dport { 3128, 8000 } accept
         ip daddr 127.0.0.53 udp dport 53 accept
         ip daddr 127.0.0.53 tcp dport 53 accept
+        ip6 daddr ::1 udp dport 53 accept
+        ip6 daddr ::1 tcp dport 53 accept
         counter drop
     }
 }

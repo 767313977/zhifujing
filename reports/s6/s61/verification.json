@@ -1,0 +1,69 @@
+{
+  "commit_sha": "c6db475b9848fc37e703be0bd3f186c9d20d053e",
+  "branch": "release/s6-canary-hardening-v2",
+  "generated_at": "2026-11-15T01:20:00+08:00",
+  "environment": "Windows 11 开发机；WSL2 Ubuntu-24.04 存在但任务书禁止使用；无专用 Linux VM/容器",
+  "command": "S6_ISOLATED_VM=1 APP_USER=fupan bash deploy/s6/apply-egress-deny.sh && bash deploy/s6/verify-egress.sh",
+  "exit_code": 127,
+  "tool_version": "s6-egress-scripts/2.0",
+  "result": {
+    "status": "BLOCKED",
+    "gate": "G3/G4",
+    "reason": "NO_DEDICATED_ISOLATED_LINUX_VM",
+    "rules_applied": false,
+    "host_network_modified": false,
+    "wsl_used": false,
+    "environment_probe": {
+      "host_os": "Windows 11 10.0.26340",
+      "wsl_distro": "Ubuntu-24.04",
+      "wsl_version": 2,
+      "wsl_state": "Stopped",
+      "wsl_allowed_by_taskbook": false,
+      "docker": "NOT_INSTALLED",
+      "dedicated_linux_vm": false,
+      "host_firewall_profiles": "Domain=ON, Private=ON, Public=ON（仅读取，未修改）"
+    },
+    "static_verification": {
+      "tests": "tests/test_s6_egress_scripts.py",
+      "passed": 10,
+      "failed": 0,
+      "checks": [
+        "apply 脚本要求 S6_ISOLATED_VM 且拒绝 WSL/宿主盘",
+        "loopback 只放行 3128/8000/127.0.0.53:53",
+        "IPv4/IPv6、TCP/UDP 覆盖，默认 drop + counter",
+        "回滚只删除 inet s6_egress，不 flush 全量",
+        "验证脚本读取 nft 计数器，连接失败不等于通过",
+        "IPv6 无默认路由时标记 NOT_VERIFIED",
+        "shell 语法 bash -n 通过"
+      ]
+    },
+    "matrix": [
+      {"case": "dns_udp", "expected": "block", "status": "NOT_RUN", "reason": "无隔离 Linux VM"},
+      {"case": "dns_tcp", "expected": "block", "status": "NOT_RUN", "reason": "无隔离 Linux VM"},
+      {"case": "ipv4_tcp", "expected": "block", "status": "NOT_RUN", "reason": "无隔离 Linux VM"},
+      {"case": "ipv6_tcp", "expected": "block", "status": "NOT_RUN", "reason": "无隔离 Linux VM"},
+      {"case": "udp", "expected": "block", "status": "NOT_RUN", "reason": "无隔离 Linux VM"},
+      {"case": "http_proxy", "expected": "block", "status": "NOT_RUN", "reason": "无隔离 Linux VM"},
+      {"case": "system_proxy", "expected": "block", "status": "NOT_RUN", "reason": "无隔离 Linux VM"},
+      {"case": "local_proxy_uncontrolled_port", "expected": "block", "status": "NOT_RUN", "reason": "无隔离 Linux VM"},
+      {"case": "direct_socket", "expected": "block", "status": "NOT_RUN", "reason": "无隔离 Linux VM"},
+      {"case": "tls", "expected": "block", "status": "NOT_RUN", "reason": "无隔离 Linux VM"},
+      {"case": "sendfile", "expected": "block", "status": "NOT_RUN", "reason": "无隔离 Linux VM"},
+      {"case": "child_process", "expected": "block", "status": "NOT_RUN", "reason": "无隔离 Linux VM"},
+      {"case": "native_tool", "expected": "block", "status": "NOT_RUN", "reason": "无隔离 Linux VM"},
+      {"case": "allowlist_via_proxy", "expected": "allow", "status": "NOT_RUN", "reason": "无受控 proxy 与隔离 VM"},
+      {"case": "corrupted_policy", "expected": "fail_closed", "status": "NOT_RUN", "reason": "应用层已测；OS 层未验证"}
+    ]
+  },
+  "evidence_files": [
+    "reports/s6/s61/environment.md",
+    "reports/s6/s61/policy-audit.md",
+    "reports/s6/s61/verification.md",
+    "reports/s6/s61/host-firewall.before.txt"
+  ],
+  "limitations": [
+    "未在宿主或 WSL 应用任何防火墙规则。",
+    "应用层 wrapper 证据不能替代 OS 层验证。",
+    "缺少专用隔离 Linux VM；补齐后按 verification.md 的步骤执行。"
+  ]
+}

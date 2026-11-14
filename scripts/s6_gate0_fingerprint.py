@@ -186,7 +186,7 @@ def collect() -> tuple[dict, list[str]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stage", choices=("before", "after"), required=True)
+    parser.add_argument("--stage", default="before", help="证据文件名后缀（before/after/gate0/final）")
     parser.add_argument("--out-dir", default=str(ROOT / "reports" / "s6" / "gate0"))
     args = parser.parse_args()
 

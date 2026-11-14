@@ -1,0 +1,31 @@
+{
+    "generated_at":  "2026-11-15T01:11:21.2420518+08:00",
+    "toplevel":  "C:/Users/76731/Documents/trae_projects/fupan",
+    "branch":  "release/s6-canary-hardening-v2",
+    "head":  "c6db475b9848fc37e703be0bd3f186c9d20d053e",
+    "status":  [
+                   " M scripts/s6_gate0_fingerprint.py",
+                   "?? reports/s6/gate0/database-integrity-gate0.txt",
+                   "?? reports/s6/gate0/git-baseline.json",
+                   "?? reports/s6/gate0/protected-assets-gate0.json",
+                   "?? reports/s6/gate0/protected-assets-gate0.sha256"
+               ],
+    "log":  [
+                "c6db475 (HEAD -\u003e release/s6-canary-hardening-v2, origin/release/s6-canary-hardening, release/s6-canary-hardening) docs(s6): record acceptance report with blocking gates",
+                "0f4a050 docs(release): add canary approval package with blocking gates",
+                "b044851 test(staging): deploy isolated staging, restart and rollback drill",
+                "f7a2151 test(perf): profile sql waterfall and re-run 60/60 concurrency regression",
+                "e7e710a fix(quality): return empty timeline when trade calendar is empty",
+                "b8f9905 feat(runtime): add fail-closed readiness and verify sqlite read-only semantics",
+                "6fc4611 feat(security): enforce default-deny egress allowlist with DNS and proxy guards",
+                "c9000da chore(s6): record gate0 baseline and protected asset fingerprints"
+            ],
+    "remotes":  [
+                    "origin\tgit@github.com:767313977/zhifujing.git (fetch)",
+                    "origin\tgit@github.com:767313977/zhifujing.git (push)",
+                    "zhaohuibin7\thttps://github.com/zhaohuibin7/zhifujing.git (fetch)",
+                    "zhaohuibin7\thttps://github.com/zhaohuibin7/zhifujing.git (push)"
+                ],
+    "upstream":  null,
+    "ahead_behind":  null
+}
