@@ -30,8 +30,9 @@ const QUALITY_LABEL: Record<string, string> = {
   INCOMPLETE: '部分可信',
   SOURCE_UNAVAILABLE: '源不可用',
   NOT_COLLECTED: '未采集',
+  PENDING: '待观察',
   NO_QUOTE: '无报价',
-  FRAME_MISSING: '缺 0926',
+  FRAME_MISSING: '缺帧',
   STALE_QUOTE: '旧报价',
   SOURCE_TIME_UNKNOWN: '来源时间未知',
 }
@@ -47,8 +48,18 @@ const REASON_LABEL: Record<string, string> = {
   FRAME_LOG_MISSING_0931: '缺少 0931 帧采集证据',
   FRAME_0926_NOT_OK: '0926 帧采集状态异常',
   FRAME_0931_NOT_OK: '0931 帧采集状态异常',
+  FRAME_0926_PARTIAL: '0926 帧部分可信',
+  FRAME_0931_PARTIAL: '0931 帧部分可信',
+  FRAME_0926_FILTERED: '0926 帧有被过滤报价',
+  FRAME_0931_FILTERED: '0931 帧有被过滤报价',
+  FRAME_0926_WRITE_GAP: '0926 帧有效报价未全部写入',
+  FRAME_0931_WRITE_GAP: '0931 帧有效报价未全部写入',
   POST_OPEN_MISSING: '缺少 0931 开盘后价格',
+  POST_OPEN_PENDING: '9:31 尚未到达，待观察',
+  NO_POST_OPEN_QUOTE: '没有 0931 开盘后报价',
+  COVERAGE_GAP: '存在未解释的覆盖缺口',
   STALE_SOURCE_QUOTE: '源报价时间不在计划区间',
+  SOURCE_QUOTE_OUT_OF_WINDOW: '源报价时间晚于计划帧',
   SOURCE_TIME_UNKNOWN: '源报价时间缺失',
   BATCH_FAILED: '数据源存在失败批次',
   STALE_QUOTE: '存在被丢弃的旧报价',
@@ -70,6 +81,7 @@ const REASON_LABEL: Record<string, string> = {
   NO_VALID_QUOTE: '没有可用报价',
   WRITE_EXCEPTION: '写库失败',
   NO_EXISTING_AUCTION_ROWS: '没有可更新的竞价行',
+  NO_NEWER_QUOTE: '没有比已接受结果更新的报价',
 }
 
 function reasonText(code: string): string {
@@ -78,7 +90,7 @@ function reasonText(code: string): string {
 
 function qualityTone(status: string): string {
   if (status === 'VALID') return 'text-up'
-  if (status === 'INCOMPLETE') return 'text-warn'
+  if (status === 'INCOMPLETE' || status === 'PENDING') return 'text-warn'
   if (status === 'NOT_COLLECTED') return 'text-fg-muted'
   return 'text-danger'
 }
@@ -87,6 +99,12 @@ function frameTone(status: string | null): string {
   if (status === 'ok') return 'text-up'
   if (status === 'partial' || status === 'skipped') return 'text-warn'
   return 'text-danger'
+}
+
+/** 覆盖率：null 一律「—」，不能把未知覆盖写成 0%。 */
+function coverageText(ratio: number | null, status: string | null): string {
+  if (ratio == null) return '—'
+  return `${fmtNum(ratio * 100, 1, '%')}${status ? `（${status}）` : ''}`
 }
 
 /** 百分点：null 一律「—」，不写 0。 */
@@ -185,6 +203,19 @@ export default function AuctionAnomaly({ date }: { date: string | null }) {
                 快照 {data.quality.auction_count} · 0926 终值 {data.quality.result_count} · 0931 承接{' '}
                 {data.quality.post_open_count}
               </span>
+              <span className="num text-fg-dim">
+                0926 覆盖{' '}
+                {coverageText(
+                  data.quality.auction_coverage_ratio,
+                  data.quality.auction_coverage_status,
+                )}
+                {' · '}
+                0931 覆盖{' '}
+                {coverageText(
+                  data.quality.post_open_coverage_ratio,
+                  data.quality.post_open_coverage_status,
+                )}
+              </span>
               {data.quality.reasons.length > 0 && (
                 <span className="text-warn">
                   {data.quality.reasons.map(reasonText).join(' · ')}
@@ -208,6 +239,8 @@ export default function AuctionAnomaly({ date }: { date: string | null }) {
                         <th>返回</th>
                         <th>有效</th>
                         <th>写入</th>
+                        <th title="written + already_covered / eligible">覆盖</th>
+                        <th title="逐券源时间证据数量">逐券时间</th>
                         <th>丢批</th>
                         <th>旧/越界</th>
                         <th>耗时</th>
@@ -222,11 +255,44 @@ export default function AuctionAnomaly({ date }: { date: string | null }) {
                             {frame.status ?? '—'}
                           </td>
                           <td className="num">{frame.late ? '是' : '否'}</td>
-                          <td className="num">{frame.source_quote_time ?? '—'}</td>
+                          <td
+                            className="num"
+                            title={
+                              frame.raw_source_quote_time_max
+                                ? `已接受 ${frame.source_quote_time ?? '—'} / 原始 ${frame.raw_source_quote_time_min ?? '—'}~${frame.raw_source_quote_time_max}`
+                                : undefined
+                            }
+                          >
+                            {frame.source_quote_time ?? '—'}
+                          </td>
                           <td className="num">{fmtInt(frame.requested_codes)}</td>
                           <td className="num">{fmtInt(frame.returned_codes)}</td>
                           <td className="num">{fmtInt(frame.valid_codes)}</td>
                           <td className="num">{fmtInt(frame.written_codes)}</td>
+                          <td className="num">
+                            {coverageText(frame.coverage_ratio, frame.coverage_status)}
+                          </td>
+                          <td
+                            className="num"
+                            title={
+                              frame.source_time_unknown_codes_truncated ||
+                              frame.dropped_old_codes_truncated ||
+                              frame.dropped_stale_codes_truncated ||
+                              frame.dropped_newer_codes_truncated ||
+                              frame.dropped_unknown_codes_truncated
+                                ? '代码列表已截断，完整计数见日志'
+                                : undefined
+                            }
+                          >
+                            {fmtInt(frame.quote_times_count)}
+                            {frame.source_time_unknown_codes_truncated ||
+                            frame.dropped_old_codes_truncated ||
+                            frame.dropped_stale_codes_truncated ||
+                            frame.dropped_newer_codes_truncated ||
+                            frame.dropped_unknown_codes_truncated
+                              ? '*'
+                              : ''}
+                          </td>
                           <td className="num">{fmtInt(frame.failed_batches)}</td>
                           <td className="num">
                             {fmtInt(
@@ -238,7 +304,11 @@ export default function AuctionAnomaly({ date }: { date: string | null }) {
                           </td>
                           <td className="num">{fmtInt(frame.elapsed_ms)}ms</td>
                           <td className="text-fg-muted">
-                            {frame.reason ? reasonText(frame.reason) : '—'}
+                            {frame.noop
+                              ? '重复请求（无更新）'
+                              : frame.reason
+                                ? reasonText(frame.reason)
+                                : '—'}
                           </td>
                         </tr>
                       ))}
@@ -273,7 +343,9 @@ export default function AuctionAnomaly({ date }: { date: string | null }) {
                 >
                   {GROUP_LABEL[key]}
                   <span className="num ml-1.5 text-fg-dim">
-                    {summary ? `${summary.total} 只 / 有效 ${summary.valid}` : '—'}
+                    {summary
+                      ? `总 ${summary.total} · 竞价 ${summary.auction_valid_count} · 承接 ${summary.post_open_valid_count} · 全 ${summary.fully_valid_count}`
+                      : '—'}
                   </span>
                 </button>
               )
@@ -335,7 +407,7 @@ export default function AuctionAnomaly({ date }: { date: string | null }) {
                       9:25→9:31 涨幅变化（百分点）
                     </SortTh>
                     <th>开盘后涨幅</th>
-                    <th className="!text-left">质量</th>
+                    <th className="!text-left">质量（竞价 / 承接）</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -355,7 +427,10 @@ export default function AuctionAnomaly({ date }: { date: string | null }) {
                       <td className="!text-left max-xl:hidden" title={row.industry ?? undefined}>
                         {row.concept ?? '—'}
                         {row.concept_source && (
-                          <span className="ml-1 text-[11px] text-fg-dim">{row.concept_source}</span>
+                          <span className="ml-1 text-[11px] text-fg-dim">
+                            {row.concept_source}
+                            {row.concept_as_of ? ` · ${row.concept_as_of}` : ''}
+                          </span>
                         )}
                       </td>
                       <td className={`num ${toneOf(row.auction_pct)}`}>{fmtPct(row.auction_pct)}</td>
@@ -369,19 +444,24 @@ export default function AuctionAnomaly({ date }: { date: string | null }) {
                         {fmtPct(row.post_open_pct)}
                       </td>
                       <td className="!text-left">
-                        <span
-                          className={qualityTone(row.data_quality_status)}
+                        <div
+                          className="flex flex-col gap-0.5"
                           title={
                             row.quality_reasons.length
                               ? row.quality_reasons.map(reasonText).join('；')
                               : undefined
                           }
                         >
-                          {QUALITY_LABEL[row.data_quality_status] ?? row.data_quality_status}
-                        </span>
+                          <span className={qualityTone(row.auction_quality_status)}>
+                            竞价 {QUALITY_LABEL[row.auction_quality_status] ?? row.auction_quality_status}
+                          </span>
+                          <span className={qualityTone(row.post_open_quality_status)}>
+                            承接 {QUALITY_LABEL[row.post_open_quality_status] ?? row.post_open_quality_status}
+                          </span>
+                        </div>
                         {row.quality_reasons.length > 0 && (
-                          <span className="ml-1 text-[11px] text-fg-dim">
-                            {row.quality_reasons.slice(0, 2).map(reasonText).join(' · ')}
+                          <span className="mt-0.5 block text-[11px] text-fg-dim">
+                            {row.quality_reasons.slice(0, 3).map(reasonText).join(' · ')}
                           </span>
                         )}
                       </td>
@@ -394,9 +474,11 @@ export default function AuctionAnomaly({ date }: { date: string | null }) {
 
           <p className="border-t border-line-soft px-3 py-2 text-[12px] leading-relaxed text-fg-dim">
             竞价金额取 0926 帧的累计成交额，昨日金额取上一交易日日线；两者都可信才计算占比。
+            「竞价质量」与「承接质量」独立：0926 可信但 0931 缺失时，竞价涨幅/金额仍展示，
+            开盘承接与「9:25→9:31 涨幅变化」为「—」；9:31 尚未到达时承接显示「待观察」。
             「9:25→9:31 涨幅变化」是<span className="text-fg">百分点</span>（
             <span className="num">post_open_pct − auction_pct</span>），不是成交量或成交额变化。
-            缺 0926 时竞价字段为「—」，缺 0931 时开盘承接为「—」，不用 0% 或 -100% 代替。
+            缺 0926 时竞价字段为「—」，不用 0% 或 -100% 代替；覆盖率未知时也显示「—」。
           </p>
         </>
       )}

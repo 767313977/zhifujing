@@ -2814,6 +2814,8 @@ class AuctionAnomalyRow(ApiModel):
     concept: str | None
     #: 题材来源（目前只有开盘啦精选板块时为 "开盘啦"）
     concept_source: str | None
+    #: 题材快照日期（只使用观察日**之前**的快照，P2-01）
+    concept_as_of: str | None
     #: 昨日状态：limit_up / broken / failed_relay / None
     prev_limit_status: str | None
     #: 昨日连板高度（断板股为断板前的高度）
@@ -2835,19 +2837,32 @@ class AuctionAnomalyRow(ApiModel):
     #: 实际采用的帧（0926 / 0931），缺帧为 None
     auction_frame: str | None
     post_open_frame: str | None
-    #: VALID / NO_QUOTE / FRAME_MISSING / STALE_QUOTE /
-    #: SOURCE_TIME_UNKNOWN / INCOMPLETE
+    #: 竞价终值质量（VALID / NO_QUOTE / FRAME_MISSING / STALE_QUOTE /
+    #: SOURCE_TIME_UNKNOWN / INCOMPLETE）
+    auction_quality_status: str
+    #: 开盘承接质量（VALID / PENDING / NO_QUOTE / FRAME_MISSING /
+    #: SOURCE_TIME_UNKNOWN / INCOMPLETE）
+    post_open_quality_status: str
+    #: 完整观测质量：只有竞价与承接都 VALID 才是 VALID；承接未到为 PENDING
     data_quality_status: str
     quality_reasons: list[str] = []
 
 
 class AuctionAnomalyGroup(BaseModel):
-    """一个分类的样本数与有效数据数（轻量摘要）。"""
+    """一个分类的样本数与有效数据数（轻量摘要）。
+
+    `total` 是**分类候选数**，不等于当日已有竞价记录数；
+    竞价有效数 / 承接有效数 / 全完整数分别统计，不能互相冒充。
+    """
 
     group: str
     label: str
     total: int
+    #: 兼容旧字段：等于 fully_valid_count
     valid: int
+    auction_valid_count: int = 0
+    post_open_valid_count: int = 0
+    fully_valid_count: int = 0
     quality_status: str
     quality_reasons: list[str] = []
 
@@ -2860,6 +2875,9 @@ class AuctionAnomalyFrame(BaseModel):
     late: bool = False
     actual_started_at: str | None = None
     source_quote_time: str | None = None
+    source_quote_time_min: str | None = None
+    raw_source_quote_time_min: str | None = None
+    raw_source_quote_time_max: str | None = None
     requested_codes: int = 0
     returned_codes: int = 0
     valid_codes: int = 0
@@ -2868,9 +2886,26 @@ class AuctionAnomalyFrame(BaseModel):
     dropped_newer_quote: int = 0
     dropped_unknown_quote: int = 0
     source_time_unknown: int = 0
+    source_time_unknown_count: int = 0
+    source_time_unknown_codes_truncated: bool = False
+    dropped_old_codes_truncated: bool = False
+    dropped_stale_codes_truncated: bool = False
+    dropped_newer_codes_truncated: bool = False
+    dropped_unknown_codes_truncated: bool = False
     failed_batches: int = 0
     total_batches: int = 0
     written_codes: int = 0
+    already_covered_codes: int = 0
+    ignored_not_newer_codes: int = 0
+    fetch_requested_codes: int = 0
+    eligible_existing_codes: int = 0
+    raw_returned_codes: int = 0
+    missing_quote_codes: int = 0
+    filtered_out_codes: int = 0
+    coverage_ratio: float | None = None
+    coverage_status: str | None = None
+    quote_times_count: int = 0
+    noop: bool = False
     status: str | None = None
     reason: str | None = None
     elapsed_ms: int = 0
@@ -2888,6 +2923,10 @@ class AuctionAnomalyQuality(BaseModel):
     result_count: int = 0
     #: 有 0931 开盘后价格的只数
     post_open_count: int = 0
+    auction_coverage_ratio: float | None = None
+    auction_coverage_status: str | None = None
+    post_open_coverage_ratio: float | None = None
+    post_open_coverage_status: str | None = None
 
 
 class AuctionAnomalyOut(BaseModel):

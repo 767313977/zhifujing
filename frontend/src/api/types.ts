@@ -768,6 +768,8 @@ export interface AuctionAnomalyRow {
   industry: string | null
   concept: string | null
   concept_source: string | null
+  /** 题材快照日期（只使用观察日之前的快照） */
+  concept_as_of: string | null
   /** limit_up / broken / failed_relay / null */
   prev_limit_status: string | null
   prev_board_height: number | null
@@ -786,7 +788,11 @@ export interface AuctionAnomalyRow {
   pct_change_after_auction: number | null
   auction_frame: string | null
   post_open_frame: string | null
-  /** VALID / NO_QUOTE / FRAME_MISSING / STALE_QUOTE / SOURCE_TIME_UNKNOWN / INCOMPLETE */
+  /** 竞价终值质量：VALID / NO_QUOTE / FRAME_MISSING / STALE_QUOTE / SOURCE_TIME_UNKNOWN / INCOMPLETE */
+  auction_quality_status: string
+  /** 开盘承接质量：VALID / PENDING / NO_QUOTE / FRAME_MISSING / SOURCE_TIME_UNKNOWN / INCOMPLETE */
+  post_open_quality_status: string
+  /** 完整观测质量：只有竞价与承接都 VALID 才是 VALID；承接未到为 PENDING */
   data_quality_status: string
   quality_reasons: string[]
 }
@@ -795,7 +801,11 @@ export interface AuctionAnomalyGroup {
   group: AuctionAnomalyGroupKey
   label: string
   total: number
+  /** 兼容旧字段：等于 fully_valid_count */
   valid: number
+  auction_valid_count: number
+  post_open_valid_count: number
+  fully_valid_count: number
   quality_status: string
   quality_reasons: string[]
 }
@@ -806,6 +816,9 @@ export interface AuctionAnomalyFrame {
   late: boolean
   actual_started_at: string | null
   source_quote_time: string | null
+  source_quote_time_min: string | null
+  raw_source_quote_time_min: string | null
+  raw_source_quote_time_max: string | null
   requested_codes: number
   returned_codes: number
   valid_codes: number
@@ -814,9 +827,26 @@ export interface AuctionAnomalyFrame {
   dropped_newer_quote: number
   dropped_unknown_quote: number
   source_time_unknown: number
+  source_time_unknown_count: number
+  source_time_unknown_codes_truncated: boolean
+  dropped_old_codes_truncated: boolean
+  dropped_stale_codes_truncated: boolean
+  dropped_newer_codes_truncated: boolean
+  dropped_unknown_codes_truncated: boolean
   failed_batches: number
   total_batches: number
   written_codes: number
+  already_covered_codes: number
+  ignored_not_newer_codes: number
+  fetch_requested_codes: number
+  eligible_existing_codes: number
+  raw_returned_codes: number
+  missing_quote_codes: number
+  filtered_out_codes: number
+  coverage_ratio: number | null
+  coverage_status: string | null
+  quote_times_count: number
+  noop: boolean
   status: string | null
   reason: string | null
   elapsed_ms: number
@@ -830,6 +860,10 @@ export interface AuctionAnomalyQuality {
   auction_count: number
   result_count: number
   post_open_count: number
+  auction_coverage_ratio: number | null
+  auction_coverage_status: string | null
+  post_open_coverage_ratio: number | null
+  post_open_coverage_status: string | null
 }
 
 export interface AuctionAnomaly {

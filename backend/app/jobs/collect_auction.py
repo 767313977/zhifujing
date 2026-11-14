@@ -59,6 +59,10 @@ RESULT_LAST = "0926"
 
 # 只补量比的那一帧（见模块说明）。腾讯开盘前不填量比，9:26 前取到恒为 0。
 RATIO_SAMPLE = "0931"
+#: 竞价终值帧。关键帧必须能证明逐券源报价时间，否则不写（P1-03）。
+RESULT_FRAME = RESULT_LAST
+#: 用于正式质量结论的关键帧。
+KEY_FRAMES = (RESULT_FRAME, RATIO_SAMPLE)
 
 #: 采样窗口内**计划**采的那几刻（HHMM，升序）。见 `_frame_plan`。
 PLANNED_MINUTES = [f"09{minute:02d}" for minute in range(15, 27)] + [RATIO_SAMPLE]
@@ -94,7 +98,12 @@ class QuoteFilterResult:
     dropped_newer: int = 0
     dropped_unknown: int = 0
     source_time_unknown: int = 0
-    source_times: list[str] = field(default_factory=list)
+    #: **原始全部报价**的源时间（含被丢弃的），只用于诊断，不代表成功采集
+    raw_source_times: list[str] = field(default_factory=list)
+    #: **已接受报价**的源时间，日志里的 `source_quote_time*` 只取这一份
+    accepted_source_times: list[str] = field(default_factory=list)
+    #: 逐券源时间（HHMMSS），关键帧写入日志供下一趟做单调比较
+    accepted_quote_times: dict[str, str] = field(default_factory=dict)
     dropped_old_codes: list[str] = field(default_factory=list)
     dropped_stale_codes: list[str] = field(default_factory=list)
     dropped_newer_codes: list[str] = field(default_factory=list)
@@ -172,6 +181,18 @@ def _quote_time_parts(raw: object) -> tuple[date | None, int | None]:
     return None, None
 
 
+def _quote_time_key(raw: object) -> str | None:
+    """源报价的 HHMMSS（同日比较用）；无法解析到分钟时返回 None。"""
+    if not raw:
+        return None
+    digits = "".join(ch for ch in str(raw) if ch.isdigit())
+    if len(digits) >= 14:
+        return digits[8:14]
+    if len(digits) == 12:
+        return digits[8:12] + "00"
+    return None
+
+
 def _is_today_quote(item: dict, day: date) -> bool:
     """这一行的**行情日期**是不是 `day`（时间未知时放行，由帧级规则再判）。"""
     quote_day, _ = _quote_time_parts(item.get("quote_time"))
@@ -203,15 +224,19 @@ def _filter_quotes(
 
     结果帧允许源报价比计划帧早 1 分钟（09:26 那帧经常拿到 09:25:59 的竞价终值），
     但不允许**晚于**计划帧 —— 那正是 09:27 污染 0926 的路径。
+
+    **关键帧（0926 / 0931）缺源报价时间的证券一律丢弃**：帧级汇总时间不能证明
+    某一只票的时间，fail-closed。过程帧（0915–0925）仍可保留，但记录未知时间。
     """
     result = QuoteFilterResult()
     target = _frame_minutes(plan.frame)
+    is_key_frame = plan.frame in KEY_FRAMES
     for item in quotes:
         code = item.get("code") or ""
         quote_day, quote_minutes = _quote_time_parts(item.get("quote_time"))
         raw_time = str(item.get("quote_time") or "").strip()
         if raw_time:
-            result.source_times.append(raw_time)
+            result.raw_source_times.append(raw_time)
 
         if quote_day is not None and quote_day != day:
             result.dropped_old += 1
@@ -219,8 +244,8 @@ def _filter_quotes(
             continue
 
         if quote_minutes is None:
-            if plan.late:
-                # 迟到帧必须能证明源报价仍处于正确分钟；缺时间就整帧不写
+            # 关键帧 / 迟到帧：不能证明时间就丢弃；过程帧：保留但计数
+            if is_key_frame or plan.late:
                 result.dropped_unknown += 1
                 result.dropped_unknown_codes.append(code)
             else:
@@ -249,6 +274,11 @@ def _filter_quotes(
                 continue
 
         result.quotes.append(item)
+        if raw_time:
+            result.accepted_source_times.append(raw_time)
+        key = _quote_time_key(item.get("quote_time"))
+        if key:
+            result.accepted_quote_times[code] = key
     return result
 
 
@@ -262,8 +292,8 @@ def _late_frame_proven(result: QuoteFilterResult) -> bool:
     )
 
 
-def _limited(codes: list[str]) -> list[str]:
-    return codes[:_DROPPED_CODE_LIMIT]
+def _limited_with_flag(codes: list[str]) -> tuple[list[str], bool]:
+    return codes[:_DROPPED_CODE_LIMIT], len(codes) > _DROPPED_CODE_LIMIT
 
 
 def _log_payload(
@@ -283,7 +313,22 @@ def _log_payload(
     extra: dict | None = None,
 ) -> dict:
     filtered = filtered or QuoteFilterResult()
-    times = sorted(filtered.source_times)
+    # 只拿**已接受**报价的源时间作为成功证据；原始时间另存，避免旧/越界报价
+    # 把 source_quote_time 撑成一个看起来更新、实际已被丢弃的时间。
+    times = sorted(filtered.accepted_source_times)
+    raw_times = sorted(filtered.raw_source_times)
+    old_codes, old_truncated = _limited_with_flag(filtered.dropped_old_codes)
+    stale_codes, stale_truncated = _limited_with_flag(filtered.dropped_stale_codes)
+    newer_codes, newer_truncated = _limited_with_flag(filtered.dropped_newer_codes)
+    unknown_codes, unknown_truncated = _limited_with_flag(filtered.dropped_unknown_codes)
+    source_unknown_codes, source_unknown_truncated = _limited_with_flag(
+        filtered.source_time_unknown_codes
+    )
+    quote_times = (
+        dict(sorted(filtered.accepted_quote_times.items()))
+        if plan and plan.frame in KEY_FRAMES
+        else {}
+    )
     payload = {
         "trade_date": day.isoformat(),
         "scheduled_frame": plan.frame if plan else None,
@@ -292,6 +337,8 @@ def _log_payload(
         "actual_started_at": started_at.isoformat(),
         "source_quote_time": times[-1] if times else None,
         "source_quote_time_min": times[0] if times else None,
+        "raw_source_quote_time_min": raw_times[0] if raw_times else None,
+        "raw_source_quote_time_max": raw_times[-1] if raw_times else None,
         "requested_codes": requested,
         "returned_codes": returned,
         "valid_codes": valid,
@@ -300,17 +347,25 @@ def _log_payload(
         "dropped_newer_quote": filtered.dropped_newer,
         "dropped_unknown_quote": filtered.dropped_unknown,
         "source_time_unknown": filtered.source_time_unknown,
+        "source_time_unknown_count": filtered.source_time_unknown,
+        "source_time_unknown_codes_truncated": source_unknown_truncated,
+        "dropped_old_codes_truncated": old_truncated,
+        "dropped_stale_codes_truncated": stale_truncated,
+        "dropped_newer_codes_truncated": newer_truncated,
+        "dropped_unknown_codes_truncated": unknown_truncated,
         "failed_batches": int(stats.get("failed", 0)),
         "total_batches": int(stats.get("requests", 0)),
         "written_codes": written,
+        "quote_times": quote_times,
+        "quote_times_count": len(quote_times),
         "status": status,
         "reason": reason,
         "elapsed_ms": elapsed_ms,
-        "dropped_old_codes": _limited(filtered.dropped_old_codes),
-        "dropped_stale_codes": _limited(filtered.dropped_stale_codes),
-        "dropped_newer_codes": _limited(filtered.dropped_newer_codes),
-        "dropped_unknown_codes": _limited(filtered.dropped_unknown_codes),
-        "source_time_unknown_codes": _limited(filtered.source_time_unknown_codes),
+        "dropped_old_codes": old_codes,
+        "dropped_stale_codes": stale_codes,
+        "dropped_newer_codes": newer_codes,
+        "dropped_unknown_codes": unknown_codes,
+        "source_time_unknown_codes": source_unknown_codes,
     }
     if extra:
         payload.update(extra)
@@ -379,6 +434,44 @@ def _finish(
     )
     _safe_log(day=day, status=status, written=written, elapsed_ms=elapsed_ms, payload=payload)
     return written if status in ("ok", "partial") else 0
+
+
+def _previous_frame_quote_times(
+    session, day: date, frame: str
+) -> dict[str, str]:
+    """同一 `trade_date + scheduled_frame` 上一次已接受的逐券源时间。
+
+    必须在**写事务内部**读取（P1-04）：不能拿事务外的旧快照判断新旧。
+    """
+    rows = session.scalars(
+        select(CollectLog)
+        .where(CollectLog.trade_date == day, CollectLog.task == FRAME_TASK)
+        .order_by(CollectLog.id.desc())
+    ).all()
+    for row in rows:
+        try:
+            payload = json.loads(row.message or "{}")
+        except (TypeError, ValueError):
+            continue
+        if payload.get("scheduled_frame") == frame:
+            return {
+                str(code): str(value)
+                for code, value in (payload.get("quote_times") or {}).items()
+                if value
+            }
+    return {}
+
+
+def _is_newer_quote(prev: str | None, new: str | None, has_existing: bool) -> bool:
+    """逐券时间单调规则（P1-04）。
+
+    - 有上一次时间：新时间必须严格更晚；
+    - 没有上一次时间：已有该帧数据时拒绝覆盖（legacy 数据没有时间证据）；
+    - 没有已有数据：允许创建。
+    """
+    if prev is not None:
+        return new is not None and new > prev
+    return not has_existing
 
 
 def collect_auction(now: datetime | None = None) -> int:
@@ -480,11 +573,12 @@ def collect_auction(now: datetime | None = None) -> int:
         )
 
     if not filtered.quotes:
-        reason = (
-            "STALE_OR_OLD_QUOTE"
-            if (filtered.dropped_old or filtered.dropped_stale or filtered.dropped_newer)
-            else "NO_VALID_QUOTE"
-        )
+        if filtered.dropped_old or filtered.dropped_stale or filtered.dropped_newer:
+            reason = "STALE_OR_OLD_QUOTE"
+        elif filtered.dropped_unknown:
+            reason = "SOURCE_TIME_UNKNOWN"
+        else:
+            reason = "NO_VALID_QUOTE"
         logger.warning(
             "竞价采样：%s %s 没有可用报价（旧 %d / 早 %d / 晚 %d / 缺时间 %d）",
             day,
@@ -510,21 +604,50 @@ def collect_auction(now: datetime | None = None) -> int:
         )
 
     rows: list[dict] = []
+    written = 0
+    ignored = 0
+    eligible = len(codes)
+    returned_eligible = len(quotes)
     applicable = len(filtered.quotes)
+    noop = False
     try:
         with session_scope() as session:
+            # P1-04：逐券时间比较必须在**写事务内部**读取，不能用事务外快照
+            previous_times = (
+                _previous_frame_quote_times(session, day, plan.frame)
+                if plan.frame in KEY_FRAMES
+                else {}
+            )
+            merged_times = dict(previous_times)
+
             if plan.kind == FRAME_KIND_POST_OPEN:
                 # 9:31 只刷「已存在的行」的量比与开盘后现价；不插只有两列的脏行
-                known = set(
-                    session.scalars(
-                        select(AuctionSnapshot.code).where(
-                            AuctionSnapshot.trade_date == day
-                        )
-                    )
+                known = {
+                    code: post_open_price
+                    for code, post_open_price in session.execute(
+                        select(
+                            AuctionSnapshot.code,
+                            AuctionSnapshot.post_open_price,
+                        ).where(AuctionSnapshot.trade_date == day)
+                    ).all()
+                }
+                eligible = len(known)
+                eligible_quotes = [
+                    item for item in filtered.quotes if item["code"] in known
+                ]
+                returned_eligible = sum(
+                    1 for item in quotes if item.get("code") in known
                 )
-                applicable = sum(1 for item in filtered.quotes if item["code"] in known)
-                for item in filtered.quotes:
-                    if item["code"] not in known:
+                applicable = len(eligible_quotes)
+                for item in eligible_quotes:
+                    code = item["code"]
+                    new_key = filtered.accepted_quote_times.get(code)
+                    if plan.frame in KEY_FRAMES and not _is_newer_quote(
+                        previous_times.get(code),
+                        new_key,
+                        known.get(code) is not None,
+                    ):
+                        ignored += 1
                         continue
                     volume_ratio = item["volume_ratio"]
                     if volume_ratio is not None and volume_ratio <= 0:
@@ -535,11 +658,13 @@ def collect_auction(now: datetime | None = None) -> int:
                     rows.append(
                         {
                             "trade_date": day,
-                            "code": item["code"],
+                            "code": code,
                             "volume_ratio": volume_ratio,
                             "post_open_price": post_open_price,
                         }
                     )
+                    if new_key:
+                        merged_times[code] = new_key
             else:
                 existing = {
                     code: samples
@@ -551,9 +676,20 @@ def collect_auction(now: datetime | None = None) -> int:
                 }
                 for item in filtered.quotes:
                     code = item["code"]
+                    samples = list(existing.get(code) or [])
+                    has_existing_frame = any(
+                        frame[0] == plan.frame for frame in samples
+                    )
+                    new_key = filtered.accepted_quote_times.get(code)
+                    if plan.frame in KEY_FRAMES and not _is_newer_quote(
+                        previous_times.get(code),
+                        new_key,
+                        has_existing_frame,
+                    ):
+                        ignored += 1
+                        continue
                     price = _positive(item["price"])
                     pre_close = item["pre_close"]
-                    samples = list(existing.get(code) or [])
                     samples = [frame for frame in samples if frame[0] != plan.frame]
                     samples.append(
                         [
@@ -591,59 +727,138 @@ def collect_auction(now: datetime | None = None) -> int:
                             "samples": samples,
                         }
                     )
+                    if new_key:
+                        merged_times[code] = new_key
 
-            if not rows:
-                # 事务里没写任何行情：不要顺带提交一条成功日志
-                raise _EmptyFrame("NO_EXISTING_AUCTION_ROWS")
-
-            partial = bool(
-                stats.get("failed")
-                or filtered.dropped_old
-                or filtered.dropped_stale
-                or filtered.dropped_newer
-                or filtered.dropped_unknown
-                or filtered.source_time_unknown
-                or len(rows) != applicable
+            written = len(rows)
+            covered = written + ignored
+            missing_quote_codes = max(0, eligible - returned_eligible)
+            filtered_out_codes = max(0, returned_eligible - applicable)
+            coverage_ratio = (
+                round(min(1.0, covered / eligible), 4) if eligible > 0 else None
             )
-            status = "partial" if partial else "ok"
-            reason = None
-            if stats.get("failed"):
-                reason = "BATCH_FAILED"
-            elif filtered.dropped_old or filtered.dropped_stale or filtered.dropped_newer:
-                reason = "STALE_OR_OLD_QUOTE"
-            elif filtered.dropped_unknown:
-                reason = "LATE_FRAME_UNPROVEN"
-            elif filtered.source_time_unknown:
-                reason = "SOURCE_TIME_UNKNOWN"
-            elif len(rows) != applicable:
-                reason = "PARTIAL_SOURCE"
-
-            elapsed_ms = int((time.monotonic() - started_monotonic) * 1000)
-            payload = _log_payload(
-                day=day,
-                plan=plan,
-                status=status,
-                reason=reason,
-                started_at=started_at,
-                elapsed_ms=elapsed_ms,
-                requested=len(known) if plan.kind == FRAME_KIND_POST_OPEN else len(codes),
-                returned=len(quotes),
-                valid=applicable,
-                written=len(rows),
-                stats=stats,
-                filtered=filtered,
+            coverage_status = (
+                "FULL"
+                if eligible > 0
+                and missing_quote_codes == 0
+                and filtered_out_codes == 0
+                and covered == eligible
+                else "GAP"
             )
-            upsert_many(session, AuctionSnapshot, rows)
-            # 与行情同一个事务：日志写不进去就整体回滚，避免「行情成功、质量证据缺失」
-            session.add(
-                _log_row(
+            coverage_extra = {
+                "fetch_requested_codes": len(codes),
+                "eligible_existing_codes": eligible,
+                "raw_returned_codes": len(quotes),
+                "already_covered_codes": ignored,
+                "ignored_not_newer_codes": ignored,
+                "missing_quote_codes": missing_quote_codes,
+                "filtered_out_codes": filtered_out_codes,
+                "coverage_ratio": coverage_ratio,
+                "coverage_status": coverage_status,
+                "noop": False,
+                "quote_times": dict(sorted(merged_times.items())),
+                "quote_times_count": len(merged_times),
+            }
+
+            if written == 0 and ignored > 0 and covered == applicable:
+                # 纯重复请求：所有候选都已被更晚/相等的报价覆盖。写一条 noop 证据，
+                # 但质量协议会忽略它，避免把此前的成功帧降级（P1-04）。
+                noop = True
+                elapsed_ms = int((time.monotonic() - started_monotonic) * 1000)
+                payload = _log_payload(
                     day=day,
-                    status=status,
-                    written=len(rows),
+                    plan=plan,
+                    status="skipped",
+                    reason="NO_NEWER_QUOTE",
+                    started_at=started_at,
                     elapsed_ms=elapsed_ms,
-                    payload=payload,
+                    requested=eligible,
+                    returned=returned_eligible,
+                    valid=applicable,
+                    written=0,
+                    stats=stats,
+                    filtered=filtered,
+                    extra={**coverage_extra, "noop": True},
                 )
-            )
+                session.add(
+                    _log_row(
+                        day=day,
+                        status="skipped",
+                        written=0,
+                        elapsed_ms=elapsed_ms,
+                        payload=payload,
+                    )
+                )
+            else:
+                if written == 0:
+                    # 事务里没写任何行情：不要顺带提交一条成功日志
+                    raise _EmptyFrame(
+                        "NO_EXISTING_AUCTION_ROWS"
+                        if plan.kind == FRAME_KIND_POST_OPEN
+                        else "NO_VALID_QUOTE"
+                    )
+
+                partial = bool(
+                    stats.get("failed")
+                    or filtered.dropped_old
+                    or filtered.dropped_stale
+                    or filtered.dropped_newer
+                    or filtered.dropped_unknown
+                    or filtered.source_time_unknown
+                    or covered < applicable
+                    or missing_quote_codes
+                    or filtered_out_codes
+                )
+                status = "partial" if partial else "ok"
+                reason = None
+                if stats.get("failed"):
+                    reason = "BATCH_FAILED"
+                elif (
+                    filtered.dropped_old
+                    or filtered.dropped_stale
+                    or filtered.dropped_newer
+                ):
+                    reason = "STALE_OR_OLD_QUOTE"
+                elif filtered.dropped_unknown:
+                    reason = (
+                        "LATE_FRAME_UNPROVEN"
+                        if plan.late
+                        else "SOURCE_TIME_UNKNOWN"
+                    )
+                elif filtered.source_time_unknown:
+                    reason = "SOURCE_TIME_UNKNOWN"
+                elif missing_quote_codes or filtered_out_codes:
+                    reason = "COVERAGE_GAP"
+                elif covered < applicable:
+                    reason = "PARTIAL_SOURCE"
+
+                elapsed_ms = int((time.monotonic() - started_monotonic) * 1000)
+                payload = _log_payload(
+                    day=day,
+                    plan=plan,
+                    status=status,
+                    reason=reason,
+                    started_at=started_at,
+                    elapsed_ms=elapsed_ms,
+                    requested=eligible,
+                    returned=returned_eligible,
+                    valid=applicable,
+                    written=written,
+                    stats=stats,
+                    filtered=filtered,
+                    extra=coverage_extra,
+                )
+                upsert_many(session, AuctionSnapshot, rows)
+                # 与行情同一个事务：日志写不进去就整体回滚，避免「行情成功、质量证据缺失」
+                session.add(
+                    _log_row(
+                        day=day,
+                        status=status,
+                        written=written,
+                        elapsed_ms=elapsed_ms,
+                        payload=payload,
+                    )
+                )
     except _EmptyFrame as exc:
         return _finish(
             day=day,
@@ -676,6 +891,10 @@ def collect_auction(now: datetime | None = None) -> int:
             filtered=filtered,
             extra={"error": f"{type(exc).__name__}: {exc}"[:300]},
         )
+
+    if noop:
+        # 纯重复请求：没有任何行情更新，也没有失败；不能覆盖此前成功帧的质量结论
+        return 0
 
     elapsed = time.monotonic() - started_monotonic
     logger.info(

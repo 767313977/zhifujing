@@ -29,7 +29,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, time
 from typing import Any
 
 from sqlalchemy import select
@@ -53,8 +53,8 @@ from app.services.limit_funnel import (
     build_promotion_funnel,
     load_funnel_inputs,
 )
-from app.services.trading_days import previous_trade_day
-from app.timeutil import today_cn
+from app.services.trading_days import is_trade_day, previous_trade_day
+from app.timeutil import now_cn, today_cn
 
 FRAME_TASK = "auction_frame"
 RESULT_FRAME = "0926"
@@ -72,17 +72,7 @@ FRAME_MISSING = "FRAME_MISSING"
 STALE_QUOTE = "STALE_QUOTE"
 SOURCE_TIME_UNKNOWN = "SOURCE_TIME_UNKNOWN"
 INCOMPLETE_STOCK = "INCOMPLETE"
-
-#: 这些原因会直接让「9:25→9:31 涨幅变化」不可计算：价格本身来源不明 / 越界 / 缺失。
-PRICE_BLOCKING_REASONS = {
-    "NO_AUCTION_ROW",
-    "NO_AUCTION_QUOTE",
-    "NO_0926_QUOTE",
-    "STALE_SOURCE_QUOTE",
-    "SOURCE_TIME_UNKNOWN",
-    "FRAME_LOG_MISSING_0926",
-    "FRAME_LOG_MISSING_0931",
-}
+POST_OPEN_PENDING = "PENDING"
 
 GROUP_ALL = "all"
 GROUP_PREV_LIMIT = "prev_limit"
@@ -110,9 +100,19 @@ REASON_TEXT = {
     "FRAME_LOG_MISSING_0931": "缺少 0931 帧采集证据",
     "FRAME_0926_NOT_OK": "0926 帧采集状态异常",
     "FRAME_0931_NOT_OK": "0931 帧采集状态异常",
+    "FRAME_0926_PARTIAL": "0926 帧部分可信（存在已知质量损失）",
+    "FRAME_0931_PARTIAL": "0931 帧部分可信（存在已知质量损失）",
+    "FRAME_0926_FILTERED": "0926 帧存在被时间过滤的报价",
+    "FRAME_0931_FILTERED": "0931 帧存在被时间过滤的报价",
+    "FRAME_0926_WRITE_GAP": "0926 帧有效报价未全部写入",
+    "FRAME_0931_WRITE_GAP": "0931 帧有效报价未全部写入",
     "POST_OPEN_MISSING": "缺少 0931 开盘后价格",
-    "STALE_SOURCE_QUOTE": "源报价时间不在计划区间",
+    "POST_OPEN_PENDING": "9:31 尚未到达，开盘承接待观察",
+    "NO_POST_OPEN_QUOTE": "该股没有 0931 开盘后报价",
+    "COVERAGE_GAP": "存在未解释的覆盖缺口",
     "SOURCE_TIME_UNKNOWN": "源报价时间缺失，无法确认来源时间",
+    "STALE_SOURCE_QUOTE": "源报价时间不在计划区间",
+    "SOURCE_QUOTE_OUT_OF_WINDOW": "源报价时间晚于计划帧，已丢弃",
     "BATCH_FAILED": "数据源存在失败批次",
     "STALE_QUOTE": "存在被丢弃的旧报价/越界报价",
     "AUCTION_AMOUNT_MISSING": "缺少竞价成交金额",
@@ -152,28 +152,82 @@ def _log_status(payload: dict) -> str:
 
 
 def _frame_logs(session: Session, day: date) -> dict[str, dict]:
-    """`{scheduled_frame: payload}`；同一帧重复执行时取 **id 最大** 的那条。"""
+    """`{scheduled_frame: payload}`。
+
+    同一帧重复执行时：
+    - 优先取最新一条**非 noop** 日志（真正的行情帧）；
+    - 如果只有 noop 重复请求，才退回最新 noop。
+    这样「重复请求没有更新」不会把此前成功帧的质量结论覆盖掉（P1-04）。
+    """
     rows = session.scalars(
         select(CollectLog)
         .where(CollectLog.trade_date == day, CollectLog.task == FRAME_TASK)
         .order_by(CollectLog.id.desc())
     ).all()
-    latest: dict[str, dict] = {}
+    latest_any: dict[str, dict] = {}
+    latest_effective: dict[str, dict] = {}
     for row in rows:
         try:
             payload = json.loads(row.message or "{}")
         except (TypeError, ValueError):
             payload = {}
         frame = payload.get("scheduled_frame")
-        if not frame or frame in latest:
+        if not frame:
             continue
         payload["status"] = row.status
-        latest[str(frame)] = payload
-    return latest
+        frame = str(frame)
+        if frame not in latest_any:
+            latest_any[frame] = payload
+        if not payload.get("noop") and frame not in latest_effective:
+            latest_effective[frame] = payload
+    merged = dict(latest_any)
+    merged.update(latest_effective)
+    return merged
+
+
+def _frame_issue_reasons(log: dict | None, label: str) -> list[str]:
+    """一帧的已知质量损失。`ok` 才可能没有原因；`partial` 永远有原因。"""
+    if log is None:
+        return [f"FRAME_LOG_MISSING_{label}"]
+    reasons: list[str] = []
+    status = _log_status(log)
+    if status == "partial":
+        reasons.append(f"FRAME_{label}_PARTIAL")
+    elif status != "ok":
+        reasons.append(f"FRAME_{label}_NOT_OK")
+    if int(log.get("failed_batches") or 0) > 0:
+        reasons.append("BATCH_FAILED")
+    if any(
+        int(log.get(f"dropped_{kind}_quote") or 0) > 0
+        for kind in ("old", "stale", "newer", "unknown")
+    ):
+        reasons.append("STALE_QUOTE")
+    unknown_count = int(
+        log.get("source_time_unknown_count", log.get("source_time_unknown") or 0)
+    )
+    if unknown_count > 0:
+        reasons.append("SOURCE_TIME_UNKNOWN")
+    requested = int(log.get("requested_codes") or 0)
+    returned = int(log.get("returned_codes") or 0)
+    valid = int(log.get("valid_codes") or 0)
+    written = int(log.get("written_codes") or 0)
+    already = int(log.get("already_covered_codes") or 0)
+    if requested > returned:
+        reasons.append("COVERAGE_GAP")
+    if returned > valid:
+        reasons.append(f"FRAME_{label}_FILTERED")
+    if written + already < valid:
+        reasons.append(f"FRAME_{label}_WRITE_GAP")
+    if written > int(log.get("quote_times_count") or 0):
+        reasons.append("SOURCE_TIME_UNKNOWN")
+    return reasons
 
 
 def assess_day_quality(
-    rows: list[AuctionSnapshot], logs: dict[str, dict]
+    rows: list[AuctionSnapshot],
+    logs: dict[str, dict],
+    *,
+    post_open_pending: bool = False,
 ) -> dict[str, Any]:
     """日期级质量。只看**池数据/帧证据**，不逐券展开。"""
     reasons: list[str] = []
@@ -192,6 +246,10 @@ def assess_day_quality(
             "auction_count": 0,
             "result_count": 0,
             "post_open_count": 0,
+            "auction_coverage_ratio": None,
+            "auction_coverage_status": None,
+            "post_open_coverage_ratio": None,
+            "post_open_coverage_status": None,
         }
 
     if not has_rows:
@@ -207,6 +265,8 @@ def assess_day_quality(
         else:
             status = INCOMPLETE
             reasons.append("NO_AUCTION_SNAPSHOT")
+            for frame, label in ((RESULT_FRAME, "0926"), (POST_OPEN_FRAME, "0931")):
+                reasons.extend(_frame_issue_reasons(logs.get(frame), label))
         return {
             "status": status,
             "reasons": _dedupe(reasons),
@@ -214,6 +274,10 @@ def assess_day_quality(
             "auction_count": 0,
             "result_count": 0,
             "post_open_count": 0,
+            "auction_coverage_ratio": (logs.get(RESULT_FRAME) or {}).get("coverage_ratio"),
+            "auction_coverage_status": (logs.get(RESULT_FRAME) or {}).get("coverage_status"),
+            "post_open_coverage_ratio": (logs.get(POST_OPEN_FRAME) or {}).get("coverage_ratio"),
+            "post_open_coverage_status": (logs.get(POST_OPEN_FRAME) or {}).get("coverage_status"),
         }
 
     if not has_0926:
@@ -223,41 +287,18 @@ def assess_day_quality(
         else:
             status = INCOMPLETE
         reasons.append("FRAME_MISSING_0926")
+        reasons.extend(_frame_issue_reasons(logs.get(RESULT_FRAME), "0926"))
     else:
-        status = VALID
-        log926 = logs.get(RESULT_FRAME)
-        if log926 is None:
-            reasons.append("FRAME_LOG_MISSING_0926")
-        else:
-            if _log_status(log926) not in ("ok", "partial"):
-                reasons.append("FRAME_0926_NOT_OK")
-            if not log926.get("source_quote_time"):
-                reasons.append("SOURCE_TIME_UNKNOWN")
-            if (
-                log926.get("dropped_old_quote")
-                or log926.get("dropped_stale_quote")
-                or log926.get("dropped_newer_quote")
-                or log926.get("dropped_unknown_quote")
-            ):
-                reasons.append("STALE_QUOTE")
-
+        reasons.extend(_frame_issue_reasons(logs.get(RESULT_FRAME), "0926"))
         if not has_0931:
-            reasons.append("POST_OPEN_MISSING")
-            if logs.get(POST_OPEN_FRAME) is None:
-                reasons.append("FRAME_LOG_MISSING_0931")
+            if post_open_pending and logs.get(POST_OPEN_FRAME) is None:
+                reasons.append("POST_OPEN_PENDING")
+            else:
+                reasons.append("POST_OPEN_MISSING")
+                reasons.extend(_frame_issue_reasons(logs.get(POST_OPEN_FRAME), "0931"))
         else:
-            log931 = logs.get(POST_OPEN_FRAME)
-            if log931 is None:
-                reasons.append("FRAME_LOG_MISSING_0931")
-            elif _log_status(log931) not in ("ok", "partial"):
-                reasons.append("FRAME_0931_NOT_OK")
-
-        if any(int(payload.get("failed_batches") or 0) > 0 for payload in logs.values()):
-            reasons.append("BATCH_FAILED")
-        if any(int(payload.get("source_time_unknown") or 0) > 0 for payload in logs.values()):
-            reasons.append("SOURCE_TIME_UNKNOWN")
-        if reasons:
-            status = INCOMPLETE
+            reasons.extend(_frame_issue_reasons(logs.get(POST_OPEN_FRAME), "0931"))
+        status = INCOMPLETE if reasons else VALID
 
     return {
         "status": status,
@@ -270,6 +311,10 @@ def assess_day_quality(
             if _frame_value(row.samples, RESULT_FRAME, SAMPLE_PRICE) is not None
         ),
         "post_open_count": sum(1 for row in rows if row.post_open_price is not None),
+        "auction_coverage_ratio": (logs.get(RESULT_FRAME) or {}).get("coverage_ratio"),
+        "auction_coverage_status": (logs.get(RESULT_FRAME) or {}).get("coverage_status"),
+        "post_open_coverage_ratio": (logs.get(POST_OPEN_FRAME) or {}).get("coverage_ratio"),
+        "post_open_coverage_status": (logs.get(POST_OPEN_FRAME) or {}).get("coverage_status"),
     }
 
 
@@ -277,66 +322,109 @@ def _frame_details(logs: dict[str, dict]) -> list[dict]:
     return [logs[frame] for frame in sorted(logs)]
 
 
-def assess_stock_quality(
-    row: AuctionSnapshot | None, logs: dict[str, dict], code: str
-) -> tuple[str, list[str]]:
-    """逐券质量。先判「有没有 0926」，再判来源时间与金额完整性。"""
-    log926 = logs.get(RESULT_FRAME)
-    raw926 = log926 or {}
-    stale_codes = set(raw926.get("dropped_stale_codes") or []) | set(
-        raw926.get("dropped_newer_codes") or []
-    )
-    unknown_codes = set(raw926.get("source_time_unknown_codes") or [])
+def _code_source_known(log: dict | None, code: str) -> bool:
+    """该证券是否有**逐券**源时间证据；帧级汇总时间不算。"""
+    if not log:
+        return False
+    return code in (log.get("quote_times") or {})
 
+
+def assess_stock_quality(
+    row: AuctionSnapshot | None,
+    logs: dict[str, dict],
+    code: str,
+    *,
+    post_open_pending: bool = False,
+) -> tuple[str, str, str, list[str]]:
+    """逐券质量：竞价终值与开盘承接各自独立，再合成整体状态。"""
+    log926 = logs.get(RESULT_FRAME)
+    log931 = logs.get(POST_OPEN_FRAME)
+    stale_codes = set((log926 or {}).get("dropped_stale_codes") or [])
+    newer_codes = set((log926 or {}).get("dropped_newer_codes") or [])
+
+    # ---------- A. 竞价终值 ----------
     if row is None:
         if code in stale_codes:
-            return STALE_QUOTE, ["STALE_SOURCE_QUOTE"]
-        return NO_QUOTE, ["NO_AUCTION_ROW"]
-
-    price = _frame_value(row.samples, RESULT_FRAME, SAMPLE_PRICE)
-    if price is None:
-        if any(
-            _frame_value(row.samples, frame, SAMPLE_PRICE) is not None
-            for frame in RESULT_FRAMES
-        ):
-            return FRAME_MISSING, ["NO_0926_QUOTE"]
-        return NO_QUOTE, ["NO_AUCTION_QUOTE"]
-
-    reasons: list[str] = []
-    status = STOCK_VALID
-    if code in stale_codes:
-        status = STALE_QUOTE
-        reasons.append("STALE_SOURCE_QUOTE")
-    if log926 is None:
-        status = INCOMPLETE_STOCK if status == STOCK_VALID else status
-        reasons.append("FRAME_LOG_MISSING_0926")
-    else:
-        if _log_status(log926) not in ("ok", "partial"):
-            status = INCOMPLETE_STOCK if status == STOCK_VALID else status
-            reasons.append("FRAME_0926_NOT_OK")
-        if code in unknown_codes or not log926.get("source_quote_time"):
-            status = SOURCE_TIME_UNKNOWN if status == STOCK_VALID else status
-            reasons.append("SOURCE_TIME_UNKNOWN")
-
-    if _frame_value(row.samples, RESULT_FRAME, SAMPLE_AMOUNT) is None:
-        status = INCOMPLETE_STOCK if status == STOCK_VALID else status
-        reasons.append("AUCTION_AMOUNT_MISSING")
-
-    if row.post_open_price is None:
-        reasons.append("POST_OPEN_MISSING")
-    else:
-        log931 = logs.get(POST_OPEN_FRAME)
-        if log931 is None:
-            status = INCOMPLETE_STOCK if status == STOCK_VALID else status
-            reasons.append("FRAME_LOG_MISSING_0931")
+            auction_status, auction_reasons = STALE_QUOTE, ["STALE_SOURCE_QUOTE"]
+        elif code in newer_codes:
+            auction_status, auction_reasons = STALE_QUOTE, ["SOURCE_QUOTE_OUT_OF_WINDOW"]
         else:
-            if _log_status(log931) not in ("ok", "partial"):
-                status = INCOMPLETE_STOCK if status == STOCK_VALID else status
-                reasons.append("FRAME_0931_NOT_OK")
-            if not log931.get("source_quote_time"):
-                status = SOURCE_TIME_UNKNOWN if status == STOCK_VALID else status
-                reasons.append("SOURCE_TIME_UNKNOWN")
-    return status, _dedupe(reasons)
+            auction_status, auction_reasons = NO_QUOTE, ["NO_AUCTION_ROW"]
+    else:
+        price = _frame_value(row.samples, RESULT_FRAME, SAMPLE_PRICE)
+        if price is None:
+            if any(
+                _frame_value(row.samples, frame, SAMPLE_PRICE) is not None
+                for frame in RESULT_FRAMES
+            ):
+                auction_status, auction_reasons = FRAME_MISSING, ["NO_0926_QUOTE"]
+            else:
+                auction_status, auction_reasons = NO_QUOTE, ["NO_AUCTION_QUOTE"]
+        elif code in stale_codes:
+            auction_status, auction_reasons = STALE_QUOTE, ["STALE_SOURCE_QUOTE"]
+        elif code in newer_codes:
+            auction_status, auction_reasons = STALE_QUOTE, ["SOURCE_QUOTE_OUT_OF_WINDOW"]
+        elif log926 is None:
+            auction_status, auction_reasons = (
+                SOURCE_TIME_UNKNOWN,
+                ["FRAME_LOG_MISSING_0926", "SOURCE_TIME_UNKNOWN"],
+            )
+        elif _log_status(log926) == "partial":
+            auction_status, auction_reasons = (
+                INCOMPLETE_STOCK,
+                ["FRAME_0926_PARTIAL"],
+            )
+        elif _log_status(log926) != "ok":
+            auction_status, auction_reasons = (
+                INCOMPLETE_STOCK,
+                ["FRAME_0926_NOT_OK"],
+            )
+        elif not _code_source_known(log926, code):
+            auction_status, auction_reasons = (
+                SOURCE_TIME_UNKNOWN,
+                ["SOURCE_TIME_UNKNOWN"],
+            )
+        elif _frame_value(row.samples, RESULT_FRAME, SAMPLE_AMOUNT) is None:
+            auction_status, auction_reasons = (
+                INCOMPLETE_STOCK,
+                ["AUCTION_AMOUNT_MISSING"],
+            )
+        else:
+            auction_status, auction_reasons = STOCK_VALID, []
+
+    # ---------- B. 开盘承接 ----------
+    post_price = row.post_open_price if row is not None else None
+    if post_price is None:
+        if log931 is None and post_open_pending:
+            post_status, post_reasons = POST_OPEN_PENDING, ["POST_OPEN_PENDING"]
+        elif log931 is None:
+            post_status, post_reasons = FRAME_MISSING, ["FRAME_LOG_MISSING_0931"]
+        else:
+            post_status, post_reasons = NO_QUOTE, ["NO_POST_OPEN_QUOTE"]
+    elif log931 is None:
+        post_status, post_reasons = (
+            SOURCE_TIME_UNKNOWN,
+            ["FRAME_LOG_MISSING_0931", "SOURCE_TIME_UNKNOWN"],
+        )
+    elif _log_status(log931) == "partial":
+        post_status, post_reasons = INCOMPLETE_STOCK, ["FRAME_0931_PARTIAL"]
+    elif _log_status(log931) != "ok":
+        post_status, post_reasons = INCOMPLETE_STOCK, ["FRAME_0931_NOT_OK"]
+    elif not _code_source_known(log931, code):
+        post_status, post_reasons = SOURCE_TIME_UNKNOWN, ["SOURCE_TIME_UNKNOWN"]
+    else:
+        post_status, post_reasons = STOCK_VALID, []
+
+    # ---------- C. 合成整体状态 ----------
+    if auction_status != STOCK_VALID:
+        overall = auction_status
+    elif post_status == STOCK_VALID:
+        overall = STOCK_VALID
+    elif post_status == POST_OPEN_PENDING:
+        overall = POST_OPEN_PENDING
+    else:
+        overall = INCOMPLETE_STOCK
+    return auction_status, post_status, overall, _dedupe(auction_reasons + post_reasons)
 
 
 def _pool_reason(prefix: str, quality) -> str | None:
@@ -424,24 +512,26 @@ def _stock_meta(session: Session, codes: list[str]) -> dict[str, tuple[str | Non
 
 
 def _concept_map(
-    session: Session, codes: list[str], prev: date | None, day: date
+    session: Session, codes: list[str], prev: date | None
 ) -> dict[str, str]:
-    if not codes:
+    """只取**上一交易日及更早**的题材快照。
+
+    P2-01：观察日当天的 `stock_concept` 可能是盘后生成的，不能当成 09:25 前已知。
+    因此这里只用 `prev`，缺失就返回空，不用当天标签或行业替代。
+    """
+    if not codes or prev is None:
         return {}
-    result: dict[str, str] = {}
-    for target in (prev, day):
-        if target is None:
-            continue
+    return {
+        code: concept
         for code, concept in session.execute(
             select(StockConcept.code, StockConcept.concept)
             .where(
-                StockConcept.trade_date == target,
+                StockConcept.trade_date == prev,
                 StockConcept.code.in_(codes),
             )
             .order_by(StockConcept.code, StockConcept.concept)
-        ).all():
-            result.setdefault(code, concept)
-    return result
+        ).all()
+    }
 
 
 def _prev_amounts(
@@ -471,6 +561,9 @@ def _post_open_pct(price: float | None, pre_close: float | None) -> float | None
     return _auction_pct(price, pre_close)
 
 
+AUCTION_HIDDEN_STATUSES = {NO_QUOTE, FRAME_MISSING, STALE_QUOTE, SOURCE_TIME_UNKNOWN}
+
+
 def _row_payload(
     *,
     trade_date: date,
@@ -481,11 +574,15 @@ def _row_payload(
     name: str | None,
     industry: str | None,
     concept: str | None,
+    concept_as_of: str | None,
     prev_status: str | None,
     prev_board: int | None,
     previous_amount: float | None,
+    post_open_pending: bool = False,
 ) -> dict[str, Any]:
-    quality_status, reasons = assess_stock_quality(snapshot, logs, code)
+    auction_status, post_status, overall_status, reasons = assess_stock_quality(
+        snapshot, logs, code, post_open_pending=post_open_pending
+    )
     price = (
         _frame_value(snapshot.samples, RESULT_FRAME, SAMPLE_PRICE)
         if snapshot is not None
@@ -497,25 +594,43 @@ def _row_payload(
         else None
     )
     pre_close = snapshot.pre_close if snapshot is not None else None
-    auction_pct = _auction_pct(price, pre_close)
-    if price is not None and auction_pct is None:
+
+    # 竞价终值可信才展示；INCOMPLETE（金额缺失 / 帧 partial）仍保留价格，但带质量提示
+    auction_price = None if auction_status in AUCTION_HIDDEN_STATUSES else price
+    auction_amount = (
+        None if auction_status in AUCTION_HIDDEN_STATUSES else amount
+    )
+    auction_pct = _auction_pct(auction_price, pre_close)
+    if auction_price is not None and auction_pct is None:
         reasons = _dedupe(reasons + ["PRE_CLOSE_MISSING"])
+
     post_open_price = snapshot.post_open_price if snapshot is not None else None
-    post_open_pct = _post_open_pct(post_open_price, pre_close)
+    # 只有承接质量 VALID 才给「开盘后涨幅」；SOURCE_TIME_UNKNOWN / PENDING / 缺失都为 null
+    post_open_pct = (
+        _post_open_pct(post_open_price, pre_close)
+        if post_status == STOCK_VALID
+        else None
+    )
     if previous_amount is None or previous_amount <= 0:
-        if amount is not None:
+        if auction_amount is not None:
             reasons = _dedupe(reasons + ["YESTERDAY_AMOUNT_MISSING"])
         amount_ratio = None
     else:
         amount_ratio = (
-            round(amount / previous_amount * 100, 2) if amount is not None else None
+            round(auction_amount / previous_amount * 100, 2)
+            if auction_amount is not None
+            else None
         )
 
-    # 只有两个时点的价格都来源可信，才给「9:25→9:31 涨幅变化」；否则 null
-    price_blocked = any(reason in PRICE_BLOCKING_REASONS for reason in reasons)
+    # 两个时点的价格都必须各自 VALID，才给「9:25→9:31 涨幅变化」
     pct_change_after_auction = (
         round(post_open_pct - auction_pct, 2)
-        if post_open_pct is not None and auction_pct is not None and not price_blocked
+        if (
+            auction_status == STOCK_VALID
+            and post_status == STOCK_VALID
+            and post_open_pct is not None
+            and auction_pct is not None
+        )
         else None
     )
 
@@ -528,19 +643,22 @@ def _row_payload(
         "industry": industry,
         "concept": concept,
         "concept_source": "开盘啦" if concept else None,
+        "concept_as_of": concept_as_of,
         "prev_limit_status": prev_status,
         "prev_board_height": prev_board,
-        "auction_price": price,
+        "auction_price": auction_price,
         "auction_pct": auction_pct,
-        "auction_amount": amount,
+        "auction_amount": auction_amount,
         "yesterday_amount": previous_amount,
         "auction_amount_ratio": amount_ratio,
         "post_open_price": post_open_price,
         "post_open_pct": post_open_pct,
         "pct_change_after_auction": pct_change_after_auction,
-        "auction_frame": RESULT_FRAME if price is not None else None,
+        "auction_frame": RESULT_FRAME if auction_price is not None else None,
         "post_open_frame": POST_OPEN_FRAME if post_open_price is not None else None,
-        "data_quality_status": quality_status,
+        "auction_quality_status": auction_status,
+        "post_open_quality_status": post_status,
+        "data_quality_status": overall_status,
         "quality_reasons": _dedupe(reasons),
     }
 
@@ -557,11 +675,12 @@ def _group_rows(
     failed: dict[str, int],
     snapshots: dict[str, AuctionSnapshot],
     logs: dict[str, dict],
+    post_open_pending: bool = False,
 ) -> list[dict[str, Any]]:
     if codes is None:
         codes = sorted(snapshots)
     meta = _stock_meta(session, codes)
-    concepts = _concept_map(session, codes, prev, trade_date)
+    concepts = _concept_map(session, codes, prev)
     amounts = _prev_amounts(session, prev, codes)
 
     rows: list[dict[str, Any]] = []
@@ -582,6 +701,7 @@ def _group_rows(
             else:
                 prev_status, prev_board = None, None
         name, industry = meta.get(code, (None, None))
+        concept = concepts.get(code)
         rows.append(
             _row_payload(
                 trade_date=trade_date,
@@ -591,10 +711,12 @@ def _group_rows(
                 logs=logs,
                 name=name,
                 industry=industry,
-                concept=concepts.get(code),
+                concept=concept,
+                concept_as_of=prev.isoformat() if concept and prev else None,
                 prev_status=prev_status,
                 prev_board=prev_board,
                 previous_amount=amounts.get(code),
+                post_open_pending=post_open_pending,
             )
         )
     return rows
@@ -626,10 +748,18 @@ def build_anomaly(
     ).limit(1))
     day = trade_date or latest or today_cn()
     prev = previous_trade_day(day, session) if day <= today_cn() else None
+    now = now_cn()
+    post_open_pending = (
+        day == now.date()
+        and now.time() < time(9, 31)
+        and is_trade_day(day, session)
+    )
 
     all_snapshots = _snapshot_map(session, day, None)
     logs = _frame_logs(session, day)
-    day_quality = assess_day_quality(list(all_snapshots.values()), logs)
+    day_quality = assess_day_quality(
+        list(all_snapshots.values()), logs, post_open_pending=post_open_pending
+    )
 
     up, broken, failed, _, prev_reasons = _prev_sets(session, prev)
     codes_by_group = {
@@ -653,9 +783,18 @@ def build_anomaly(
             failed=failed,
             snapshots=all_snapshots,
             logs=logs,
+            post_open_pending=post_open_pending,
         )
         rows_by_group[name] = rows
-        valid = sum(1 for row in rows if row["data_quality_status"] == STOCK_VALID)
+        auction_valid = sum(
+            1 for row in rows if row["auction_quality_status"] == STOCK_VALID
+        )
+        post_valid = sum(
+            1 for row in rows if row["post_open_quality_status"] == STOCK_VALID
+        )
+        fully_valid = sum(
+            1 for row in rows if row["data_quality_status"] == STOCK_VALID
+        )
         reasons: list[str] = []
         if name != GROUP_ALL:
             reasons.extend(prev_reasons)
@@ -672,7 +811,10 @@ def build_anomaly(
                 "group": name,
                 "label": GROUP_LABELS[name],
                 "total": len(rows),
-                "valid": valid,
+                "valid": fully_valid,
+                "auction_valid_count": auction_valid,
+                "post_open_valid_count": post_valid,
+                "fully_valid_count": fully_valid,
                 "quality_status": (
                     INCOMPLETE
                     if reasons and day_quality["status"] == VALID

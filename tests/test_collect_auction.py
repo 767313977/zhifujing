@@ -179,6 +179,7 @@ def test_0927_late_unproven_skips_whole_frame(store, monkeypatch):
 
 
 def test_0927_late_proven_by_0926_quote_time_is_written(store, monkeypatch):
+    monkeypatch.setattr(ca, "_universe", lambda: ["600000"])
     monkeypatch.setattr(
         ca,
         "fetch_spot",

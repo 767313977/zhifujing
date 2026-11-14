@@ -67,8 +67,14 @@ def frame_log(
     *,
     status: str = "ok",
     source_quote_time: str | None = "20260925092605",
+    codes: list[str] | None = None,
+    quote_times: dict[str, str] | None = None,
     **extra,
 ) -> CollectLog:
+    if codes is None:
+        codes = ["A", "B", "D"] if scheduled == "0931" else ["A", "B", "C", "D"]
+    if quote_times is None:
+        quote_times = {code: f"20260925{scheduled}05" for code in codes}
     payload = {
         "trade_date": trade_date.isoformat(),
         "scheduled_frame": scheduled,
@@ -76,17 +82,23 @@ def frame_log(
         "late": False,
         "actual_started_at": f"{trade_date.isoformat()}T09:26:05+08:00",
         "source_quote_time": source_quote_time,
-        "requested_codes": 4,
-        "returned_codes": 4,
-        "valid_codes": 4,
+        "requested_codes": len(codes),
+        "returned_codes": len(codes),
+        "valid_codes": len(codes),
         "dropped_old_quote": 0,
         "dropped_stale_quote": 0,
         "dropped_newer_quote": 0,
         "dropped_unknown_quote": 0,
         "source_time_unknown": 0,
+        "source_time_unknown_count": 0,
         "failed_batches": 0,
         "total_batches": 1,
-        "written_codes": 4,
+        "written_codes": len(codes),
+        "already_covered_codes": 0,
+        "coverage_ratio": 1.0,
+        "coverage_status": "FULL",
+        "quote_times": quote_times,
+        "quote_times_count": len(quote_times),
         "status": status,
         "reason": None,
         "elapsed_ms": 120,
@@ -205,7 +217,8 @@ def test_prev_failed_relay_group_uses_credible_failed_rows(session):
     assert row["post_open_price"] is None
     assert row["post_open_pct"] is None
     assert row["pct_change_after_auction"] is None
-    assert "POST_OPEN_MISSING" in row["quality_reasons"]
+    assert row["post_open_quality_status"] == aa.NO_QUOTE
+    assert "NO_POST_OPEN_QUOTE" in row["quality_reasons"]
 
 
 def test_missing_0926_is_null_not_negative_100(session):
@@ -283,7 +296,7 @@ def test_day_quality_incomplete_when_source_time_unknown(session):
     )
     session.add_all(
         [
-            frame_log(DAY, "0926", source_quote_time=None),
+            frame_log(DAY, "0926", source_quote_time=None, quote_times={}),
             frame_log(DAY, "0931"),
         ]
     )
@@ -362,7 +375,10 @@ def test_group_summaries_expose_total_and_valid(session):
     data = build(session)
     by_group = {item["group"]: item for item in data["groups"]}
     assert by_group["all"]["total"] == 4
-    assert by_group["all"]["valid"] == 4
+    assert by_group["all"]["auction_valid_count"] == 4
+    assert by_group["all"]["post_open_valid_count"] == 3
+    assert by_group["all"]["fully_valid_count"] == 3
+    assert by_group["all"]["valid"] == 3
     assert by_group["prev_limit"]["total"] == 1
     assert by_group["prev_broken"]["total"] == 1
     assert by_group["prev_failed_relay"]["total"] == 1
@@ -372,6 +388,7 @@ def test_sorting_nulls_last_and_limit(session):
     data = build(session, group=aa.GROUP_ALL, sort="post_open_change", order="asc", limit=2)
     assert data["shown"] == 2
     values = [row["pct_change_after_auction"] for row in data["rows"]]
+    assert None not in values
     assert values == sorted(values)
 
 
@@ -427,3 +444,207 @@ def test_api_read_only(session):
     )
     assert before == after
     assert out.total == 4
+
+
+# ---------------------------------------------------------------- R1 复审用例
+
+
+def test_partial_0926_frame_makes_day_incomplete(session):
+    session.execute(
+        CollectLog.__table__.delete().where(CollectLog.task == aa.FRAME_TASK)
+    )
+    session.add_all(
+        [
+            frame_log(DAY, "0926", status="partial", reason="COVERAGE_GAP"),
+            frame_log(DAY, "0931"),
+        ]
+    )
+    session.commit()
+    data = build(session, group=aa.GROUP_PREV_LIMIT)
+    assert data["quality"]["status"] == aa.INCOMPLETE
+    assert "FRAME_0926_PARTIAL" in data["quality"]["reasons"]
+    row = data["rows"][0]
+    assert row["auction_quality_status"] == aa.INCOMPLETE
+    assert "FRAME_0926_PARTIAL" in row["quality_reasons"]
+
+
+def test_partial_0931_frame_makes_day_incomplete(session):
+    session.execute(
+        CollectLog.__table__.delete().where(CollectLog.task == aa.FRAME_TASK)
+    )
+    session.add_all(
+        [
+            frame_log(DAY, "0926"),
+            frame_log(DAY, "0931", status="partial", reason="COVERAGE_GAP"),
+        ]
+    )
+    session.commit()
+    data = build(session, group=aa.GROUP_PREV_LIMIT)
+    assert data["quality"]["status"] == aa.INCOMPLETE
+    assert "FRAME_0931_PARTIAL" in data["quality"]["reasons"]
+    row = data["rows"][0]
+    assert row["post_open_quality_status"] == aa.INCOMPLETE
+    assert "FRAME_0931_PARTIAL" in row["quality_reasons"]
+    assert row["post_open_pct"] is None
+    assert row["pct_change_after_auction"] is None
+
+
+def test_independent_auction_and_post_open_quality(session):
+    data = build(session, group=aa.GROUP_ALL)
+    rows = {row["code"]: row for row in data["rows"]}
+    assert rows["A"]["auction_quality_status"] == aa.STOCK_VALID
+    assert rows["A"]["post_open_quality_status"] == aa.STOCK_VALID
+    assert rows["A"]["data_quality_status"] == aa.STOCK_VALID
+    assert rows["C"]["auction_quality_status"] == aa.STOCK_VALID
+    assert rows["C"]["auction_quality_status"] == aa.NO_QUOTE or rows["C"][
+        "post_open_quality_status"
+    ] == aa.NO_QUOTE
+    assert rows["C"]["data_quality_status"] == aa.INCOMPLETE_STOCK
+
+
+def test_post_open_pending_is_not_a_failure(session):
+    snapshot_e = snapshot("E", price=10.5, post_open_price=None)
+    logs = aa._frame_logs(session, DAY)
+    logs[aa.RESULT_FRAME]["quote_times"]["E"] = "092605"
+    logs.pop(aa.POST_OPEN_FRAME, None)
+    auction_status, post_status, overall, reasons = aa.assess_stock_quality(
+        snapshot_e, logs, "E", post_open_pending=True
+    )
+    assert auction_status == aa.STOCK_VALID
+    assert post_status == aa.POST_OPEN_PENDING
+    assert overall == aa.POST_OPEN_PENDING
+    assert "POST_OPEN_PENDING" in reasons
+    quality = aa.assess_day_quality(
+        [snapshot_e], logs, post_open_pending=True
+    )
+    assert quality["status"] == aa.INCOMPLETE
+    assert "POST_OPEN_PENDING" in quality["reasons"]
+    assert "FRAME_LOG_MISSING_0931" not in quality["reasons"]
+
+
+def test_source_time_unknown_code_blocks_auction_value(session):
+    session.execute(
+        CollectLog.__table__.delete().where(CollectLog.task == aa.FRAME_TASK)
+    )
+    session.add_all(
+        [
+            frame_log(
+                DAY,
+                "0926",
+                codes=["A", "B", "C"],
+                quote_times={
+                    "A": "20260925092605",
+                    "B": "20260925092605",
+                    "C": "20260925092605",
+                },
+            ),
+            frame_log(DAY, "0931"),
+        ]
+    )
+    session.commit()
+    data = build(session, group=aa.GROUP_ALL)
+    rows = {row["code"]: row for row in data["rows"]}
+    row = rows["D"]  # D 有 0926 价，但不在逐券 quote_times 里
+    assert row["auction_quality_status"] == aa.SOURCE_TIME_UNKNOWN
+    assert row["auction_price"] is None
+    assert row["auction_pct"] is None
+    assert "SOURCE_TIME_UNKNOWN" in row["quality_reasons"]
+
+
+def test_source_time_unknown_code_blocks_post_open(session):
+    session.execute(
+        CollectLog.__table__.delete().where(CollectLog.task == aa.FRAME_TASK)
+    )
+    session.add_all(
+        [
+            frame_log(DAY, "0926"),
+            frame_log(
+                DAY,
+                "0931",
+                codes=["A", "B"],
+                quote_times={
+                    "A": "20260925093105",
+                    "B": "20260925093105",
+                },
+            ),
+        ]
+    )
+    session.commit()
+    data = build(session, group=aa.GROUP_PREV_LIMIT)
+    row = data["rows"][0]  # A 在 0931 的 quote_times 里，仍然有效
+    assert row["post_open_quality_status"] == aa.STOCK_VALID
+    all_rows = {item["code"]: item for item in build(session, group=aa.GROUP_ALL)["rows"]}
+    assert all_rows["D"]["post_open_quality_status"] == aa.SOURCE_TIME_UNKNOWN
+    assert all_rows["D"]["post_open_pct"] is None
+    assert all_rows["D"]["pct_change_after_auction"] is None
+
+
+def test_coverage_gap_without_batch_failure_marks_incomplete(session):
+    session.execute(
+        CollectLog.__table__.delete().where(CollectLog.task == aa.FRAME_TASK)
+    )
+    session.add_all(
+        [
+            frame_log(
+                DAY,
+                "0926",
+                requested_codes=10,
+                returned_codes=8,
+                valid_codes=8,
+                written_codes=8,
+                coverage_ratio=0.8,
+                coverage_status="GAP",
+            ),
+            frame_log(DAY, "0931"),
+        ]
+    )
+    session.commit()
+    data = build(session)
+    assert data["quality"]["status"] == aa.INCOMPLETE
+    assert "COVERAGE_GAP" in data["quality"]["reasons"]
+
+
+def test_noop_log_does_not_override_effective_frame(session):
+    session.execute(
+        CollectLog.__table__.delete().where(CollectLog.task == aa.FRAME_TASK)
+    )
+    session.add_all(
+        [
+            frame_log(DAY, "0926"),
+            frame_log(DAY, "0931"),
+            frame_log(
+                DAY,
+                "0926",
+                status="skipped",
+                reason="NO_NEWER_QUOTE",
+                noop=True,
+                requested_codes=4,
+                returned_codes=0,
+                valid_codes=0,
+                written_codes=0,
+            ),
+        ]
+    )
+    session.commit()
+    logs = aa._frame_logs(session, DAY)
+    assert logs[aa.RESULT_FRAME]["status"] == "ok"
+    assert not logs[aa.RESULT_FRAME].get("noop")
+    data = build(session)
+    assert data["quality"]["status"] == aa.VALID
+
+
+def test_concept_as_of_uses_previous_day_only(session):
+    # 观察日盘后新增/变化的题材不能回填到盘前竞价
+    session.add_all(
+        [
+            StockConcept(trade_date=DAY, code="A", concept="当日新题材"),
+            StockConcept(trade_date=DAY, code="D", concept="D 当日新题材"),
+        ]
+    )
+    session.commit()
+    data = build(session, group=aa.GROUP_ALL)
+    rows = {row["code"]: row for row in data["rows"]}
+    assert rows["A"]["concept"] == "芯片"
+    assert rows["A"]["concept_as_of"] == PREV.isoformat()
+    assert rows["D"]["concept"] is None
+    assert rows["D"]["concept_as_of"] is None
