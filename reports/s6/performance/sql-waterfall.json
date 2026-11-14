@@ -1,0 +1,695 @@
+{
+  "commit_sha": "104dfdf489150d97446be3af0fa4a4de14382bbd",
+  "branch": "release/s6-canary-hardening",
+  "generated_at": "2026-11-15T00:23:33+0800",
+  "environment": "Windows 11, Python 3.13.13, SQLite ro&immutable=1, 本地库",
+  "command": "python scripts/s6_sql_waterfall.py --db backend/data/b1_research.db --date 2026-09-24 --sectors 801001,801004,801012,801016,801019,801020,801027,801031,801033,801035 --out reports/s6/performance/sql-waterfall.json",
+  "exit_code": 0,
+  "tool_version": "s6_sql_waterfall/1.0",
+  "result": {
+    "case": "post_market_workbench.build",
+    "as_of": "2026-09-24",
+    "sectors": [
+      "801001",
+      "801004",
+      "801012",
+      "801016",
+      "801019",
+      "801020",
+      "801027",
+      "801031",
+      "801033",
+      "801035"
+    ],
+    "limit": 50,
+    "total_sql": 53,
+    "sql_budget": 25,
+    "budget_met": false,
+    "sum_sql_ms": 38.817,
+    "wall_ms": 162.54,
+    "result_json_bytes": 20738,
+    "executions": [
+      {
+        "index": 1,
+        "duration_ms": 0.566,
+        "sql": "SELECT trade_calendar.trade_date FROM trade_calendar ORDER BY trade_calendar.trade_date",
+        "params": 0
+      },
+      {
+        "index": 2,
+        "duration_ms": 0.14,
+        "sql": "SELECT max(stock_daily.trade_date) AS max_1 FROM stock_daily",
+        "params": 0
+      },
+      {
+        "index": 3,
+        "duration_ms": 0.009,
+        "sql": "SELECT trade_calendar.trade_date FROM trade_calendar ORDER BY trade_calendar.trade_date",
+        "params": 0
+      },
+      {
+        "index": 4,
+        "duration_ms": 0.033,
+        "sql": "SELECT max(stock_daily.trade_date) AS max_1 FROM stock_daily",
+        "params": 0
+      },
+      {
+        "index": 5,
+        "duration_ms": 0.203,
+        "sql": "SELECT limit_pool.trade_date, limit_pool.code, limit_pool.pool_type, limit_pool.consecutive FROM limit_pool WHERE limit_pool.trade_date IN (?, ?, ?)",
+        "params": 3
+      },
+      {
+        "index": 6,
+        "duration_ms": 0.101,
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date IN (?, ?, ?) AND collect_log.task IN (?, ?) ORDER BY collect_log.id DESC",
+        "params": 5
+      },
+      {
+        "index": 7,
+        "duration_ms": 0.078,
+        "sql": "SELECT market_sentiment.trade_date, market_sentiment.limit_up_count, market_sentiment.limit_down_count, market_sentiment.broken_count, market_sentiment.seal_rate, market_sentiment.broken_rate, market_sentiment.max_consecutive, market_sentiment.up_count, market_sentiment.down_count, market_sentiment.",
+        "params": 1
+      },
+      {
+        "index": 8,
+        "duration_ms": 0.143,
+        "sql": "SELECT stock_daily.code, stock_daily.trade_date, stock_daily.open, stock_daily.close, stock_daily.pct_chg FROM stock_daily WHERE stock_daily.trade_date IN (?, ?) AND stock_daily.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,",
+        "params": 41
+      },
+      {
+        "index": 9,
+        "duration_ms": 0.08,
+        "sql": "SELECT trade_calendar.trade_date FROM trade_calendar WHERE trade_calendar.trade_date < ? ORDER BY trade_calendar.trade_date DESC LIMIT ? OFFSET ?",
+        "params": 3
+      },
+      {
+        "index": 10,
+        "duration_ms": 0.103,
+        "sql": "SELECT limit_pool.trade_date, limit_pool.code, limit_pool.pool_type, limit_pool.name, limit_pool.pct_chg, limit_pool.price, limit_pool.amount, limit_pool.float_mv, limit_pool.total_mv, limit_pool.turnover, limit_pool.seal_amount, limit_pool.first_seal_time, limit_pool.last_seal_time, limit_pool.open",
+        "params": 2
+      },
+      {
+        "index": 11,
+        "duration_ms": 0.014,
+        "sql": "SELECT limit_pool.trade_date, limit_pool.code, limit_pool.pool_type, limit_pool.name, limit_pool.pct_chg, limit_pool.price, limit_pool.amount, limit_pool.float_mv, limit_pool.total_mv, limit_pool.turnover, limit_pool.seal_amount, limit_pool.first_seal_time, limit_pool.last_seal_time, limit_pool.open",
+        "params": 2
+      },
+      {
+        "index": 12,
+        "duration_ms": 0.036,
+        "sql": "SELECT limit_pool.trade_date, limit_pool.code, limit_pool.pool_type, limit_pool.name, limit_pool.pct_chg, limit_pool.price, limit_pool.amount, limit_pool.float_mv, limit_pool.total_mv, limit_pool.turnover, limit_pool.seal_amount, limit_pool.first_seal_time, limit_pool.last_seal_time, limit_pool.open",
+        "params": 2
+      },
+      {
+        "index": 13,
+        "duration_ms": 0.118,
+        "sql": "SELECT stock_daily.code, stock_daily.close, stock_daily.pct_chg FROM stock_daily WHERE stock_daily.trade_date = ? AND stock_daily.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,",
+        "params": 99
+      },
+      {
+        "index": 14,
+        "duration_ms": 0.148,
+        "sql": "SELECT stock_basic.code, stock_basic.name, stock_basic.industry FROM stock_basic WHERE stock_basic.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ",
+        "params": 98
+      },
+      {
+        "index": 15,
+        "duration_ms": 0.177,
+        "sql": "SELECT stock_concept.code, stock_concept.concept FROM stock_concept WHERE stock_concept.trade_date = ? AND stock_concept.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ORDER BY stock",
+        "params": 53
+      },
+      {
+        "index": 16,
+        "duration_ms": 0.082,
+        "sql": "SELECT limit_reason.code, limit_reason.reason FROM limit_reason WHERE limit_reason.trade_date = ? AND limit_reason.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "params": 53
+      },
+      {
+        "index": 17,
+        "duration_ms": 0.046,
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date IN (?, ?) AND collect_log.task IN (?, ?) ORDER BY collect_log.id DESC",
+        "params": 4
+      },
+      {
+        "index": 18,
+        "duration_ms": 0.062,
+        "sql": "SELECT sector_basic.code, sector_basic.name, sector_basic.taxonomy, sector_basic.updated_at FROM sector_basic WHERE sector_basic.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "params": 10
+      },
+      {
+        "index": 19,
+        "duration_ms": 0.009,
+        "sql": "SELECT trade_calendar.trade_date FROM trade_calendar ORDER BY trade_calendar.trade_date",
+        "params": 0
+      },
+      {
+        "index": 20,
+        "duration_ms": 0.276,
+        "sql": "SELECT max(sector_member.trade_date) AS max_1 FROM sector_member WHERE sector_member.sector_code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND sector_member.trade_date <= ?",
+        "params": 11
+      },
+      {
+        "index": 21,
+        "duration_ms": 0.084,
+        "sql": "SELECT sector_member.code, sector_member.name, sector_member.sector_code, sector_member.fetched_at FROM sector_member WHERE sector_member.trade_date = ? AND sector_member.sector_code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "params": 11
+      },
+      {
+        "index": 22,
+        "duration_ms": 0.109,
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date = ? AND collect_log.task = ? ORDER BY collect_log.id DESC LIMIT ? OFFSET ?",
+        "params": 4
+      },
+      {
+        "index": 23,
+        "duration_ms": 0.071,
+        "sql": "SELECT count(*) AS count_1 FROM limit_pool WHERE limit_pool.trade_date = ? AND limit_pool.pool_type = ?",
+        "params": 2
+      },
+      {
+        "index": 24,
+        "duration_ms": 0.04,
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date = ? AND collect_log.task = ? ORDER BY collect_log.id DESC LIMIT ? OFFSET ?",
+        "params": 4
+      },
+      {
+        "index": 25,
+        "duration_ms": 0.017,
+        "sql": "SELECT count(*) AS count_1 FROM limit_pool WHERE limit_pool.trade_date = ? AND limit_pool.pool_type = ?",
+        "params": 2
+      },
+      {
+        "index": 26,
+        "duration_ms": 0.113,
+        "sql": "SELECT limit_pool.trade_date, limit_pool.code, limit_pool.pool_type, limit_pool.name, limit_pool.pct_chg, limit_pool.price, limit_pool.amount, limit_pool.float_mv, limit_pool.total_mv, limit_pool.turnover, limit_pool.seal_amount, limit_pool.first_seal_time, limit_pool.last_seal_time, limit_pool.open",
+        "params": 51
+      },
+      {
+        "index": 27,
+        "duration_ms": 1.525,
+        "sql": "SELECT limit_pool.trade_date, limit_pool.code, limit_pool.pool_type, limit_pool.name, limit_pool.pct_chg, limit_pool.price, limit_pool.amount, limit_pool.float_mv, limit_pool.total_mv, limit_pool.turnover, limit_pool.seal_amount, limit_pool.first_seal_time, limit_pool.last_seal_time, limit_pool.open",
+        "params": 3165
+      },
+      {
+        "index": 28,
+        "duration_ms": 1.565,
+        "sql": "SELECT stock_daily.code, stock_daily.pct_chg, stock_daily.open, stock_daily.close FROM stock_daily WHERE stock_daily.trade_date = ? AND stock_daily.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,",
+        "params": 3165
+      },
+      {
+        "index": 29,
+        "duration_ms": 0.065,
+        "sql": "SELECT max(stock_daily.trade_date) AS max_1 FROM stock_daily",
+        "params": 0
+      },
+      {
+        "index": 30,
+        "duration_ms": 0.467,
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date = ? AND collect_log.task = ? ORDER BY collect_log.id DESC LIMIT ? OFFSET ?",
+        "params": 4
+      },
+      {
+        "index": 31,
+        "duration_ms": 0.013,
+        "sql": "SELECT count(*) AS count_1 FROM limit_pool WHERE limit_pool.trade_date = ? AND limit_pool.pool_type = ?",
+        "params": 2
+      },
+      {
+        "index": 32,
+        "duration_ms": 0.144,
+        "sql": "SELECT market_sentiment.trade_date AS market_sentiment_trade_date, market_sentiment.limit_up_count AS market_sentiment_limit_up_count, market_sentiment.limit_down_count AS market_sentiment_limit_down_count, market_sentiment.broken_count AS market_sentiment_broken_count, market_sentiment.seal_rate AS",
+        "params": 1
+      },
+      {
+        "index": 33,
+        "duration_ms": 0.109,
+        "sql": "SELECT trade_calendar.trade_date FROM trade_calendar WHERE trade_calendar.trade_date <= ? ORDER BY trade_calendar.trade_date DESC LIMIT ? OFFSET ?",
+        "params": 3
+      },
+      {
+        "index": 34,
+        "duration_ms": 0.015,
+        "sql": "SELECT max(stock_daily.trade_date) AS max_1 FROM stock_daily",
+        "params": 0
+      },
+      {
+        "index": 35,
+        "duration_ms": 2.175,
+        "sql": "SELECT stock_daily.trade_date, count(*) AS count_1, count(stock_daily.close) AS count_2, count(stock_daily.pct_chg) AS count_3 FROM stock_daily WHERE stock_daily.trade_date IN (?) GROUP BY stock_daily.trade_date",
+        "params": 1
+      },
+      {
+        "index": 36,
+        "duration_ms": 0.059,
+        "sql": "SELECT max(limit_pool.trade_date) AS max_1 FROM limit_pool",
+        "params": 0
+      },
+      {
+        "index": 37,
+        "duration_ms": 0.065,
+        "sql": "SELECT limit_pool.trade_date, limit_pool.pool_type, count(*) AS count_1 FROM limit_pool WHERE limit_pool.trade_date IN (?) GROUP BY limit_pool.trade_date, limit_pool.pool_type",
+        "params": 1
+      },
+      {
+        "index": 38,
+        "duration_ms": 0.065,
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date IN (?) AND collect_log.task IN (?, ?, ?) ORDER BY collect_log.id DESC",
+        "params": 4
+      },
+      {
+        "index": 39,
+        "duration_ms": 1.455,
+        "sql": "SELECT collect_log.trade_date FROM collect_log WHERE collect_log.task = ? AND collect_log.trade_date IS NOT NULL AND collect_log.trade_date <= ? AND lower(collect_log.status) = ? AND (EXISTS (SELECT limit_pool.code FROM limit_pool WHERE limit_pool.trade_date = collect_log.trade_date AND limit_pool.p",
+        "params": 6
+      },
+      {
+        "index": 40,
+        "duration_ms": 0.366,
+        "sql": "SELECT collect_log.trade_date FROM collect_log WHERE collect_log.task = ? AND collect_log.trade_date IS NOT NULL AND collect_log.trade_date <= ? AND lower(collect_log.status) = ? ORDER BY collect_log.trade_date DESC, collect_log.id DESC LIMIT ? OFFSET ?",
+        "params": 5
+      },
+      {
+        "index": 41,
+        "duration_ms": 0.373,
+        "sql": "SELECT collect_log.trade_date FROM collect_log WHERE collect_log.task = ? AND collect_log.trade_date IS NOT NULL AND collect_log.trade_date <= ? AND lower(collect_log.status) = ? ORDER BY collect_log.trade_date DESC, collect_log.id DESC LIMIT ? OFFSET ?",
+        "params": 5
+      },
+      {
+        "index": 42,
+        "duration_ms": 0.131,
+        "sql": "SELECT max(sector_member.trade_date) AS max_1 FROM sector_member",
+        "params": 0
+      },
+      {
+        "index": 43,
+        "duration_ms": 0.13,
+        "sql": "SELECT sector_basic.taxonomy, count(*) AS count_1 FROM sector_basic GROUP BY sector_basic.taxonomy",
+        "params": 0
+      },
+      {
+        "index": 44,
+        "duration_ms": 26.286,
+        "sql": "SELECT sector_member.trade_date, sector_basic.taxonomy, count(*) AS count_1, count(distinct(sector_member.sector_code)) AS count_2 FROM sector_member JOIN sector_basic ON sector_basic.code = sector_member.sector_code WHERE sector_member.trade_date IN (?) GROUP BY sector_member.trade_date, sector_bas",
+        "params": 1
+      },
+      {
+        "index": 45,
+        "duration_ms": 0.121,
+        "sql": "SELECT max(market_sentiment.trade_date) AS max_1 FROM market_sentiment",
+        "params": 0
+      },
+      {
+        "index": 46,
+        "duration_ms": 0.03,
+        "sql": "SELECT market_sentiment.trade_date, market_sentiment.limit_up_count, market_sentiment.limit_down_count, market_sentiment.broken_count, market_sentiment.seal_rate, market_sentiment.broken_rate, market_sentiment.max_consecutive, market_sentiment.up_count, market_sentiment.down_count, market_sentiment.",
+        "params": 1
+      },
+      {
+        "index": 47,
+        "duration_ms": 0.084,
+        "sql": "SELECT max(auction_snapshot.trade_date) AS max_1 FROM auction_snapshot",
+        "params": 0
+      },
+      {
+        "index": 48,
+        "duration_ms": 0.091,
+        "sql": "SELECT auction_snapshot.trade_date, count(*) AS count_1, count(auction_snapshot.post_open_price) AS count_2, sum(CASE WHEN (CAST(auction_snapshot.samples AS VARCHAR) LIKE ?) THEN ? ELSE ? END) AS sum_1 FROM auction_snapshot WHERE auction_snapshot.trade_date IN (?) GROUP BY auction_snapshot.trade_dat",
+        "params": 4
+      },
+      {
+        "index": 49,
+        "duration_ms": 0.382,
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date IN (?) AND collect_log.task = ? ORDER BY collect_log.id DESC",
+        "params": 2
+      },
+      {
+        "index": 50,
+        "duration_ms": 0.027,
+        "sql": "SELECT trade_calendar.trade_date FROM trade_calendar WHERE trade_calendar.trade_date IN (?)",
+        "params": 1
+      },
+      {
+        "index": 51,
+        "duration_ms": 0.02,
+        "sql": "SELECT max(trade_calendar.trade_date) AS max_1 FROM trade_calendar",
+        "params": 0
+      },
+      {
+        "index": 52,
+        "duration_ms": 0.17,
+        "sql": "SELECT count(*) AS count_1 FROM trade_calendar",
+        "params": 0
+      },
+      {
+        "index": 53,
+        "duration_ms": 0.026,
+        "sql": "SELECT trade_calendar.trade_date AS trade_calendar_trade_date FROM trade_calendar WHERE trade_calendar.trade_date = ?",
+        "params": 1
+      }
+    ],
+    "aggregated": [
+      {
+        "sql": "SELECT sector_member.trade_date, sector_basic.taxonomy, count(*) AS count_1, count(distinct(sector_member.sector_code)) AS count_2 FROM sector_member JOIN sector_basic ON sector_basic.code = sector_member.sector_code WHERE sector_member.trade_date IN (?) GROUP BY sector_member.trade_date, sector_bas",
+        "count": 1,
+        "total_ms": 26.286,
+        "max_ms": 26.286
+      },
+      {
+        "sql": "SELECT stock_daily.trade_date, count(*) AS count_1, count(stock_daily.close) AS count_2, count(stock_daily.pct_chg) AS count_3 FROM stock_daily WHERE stock_daily.trade_date IN (?) GROUP BY stock_daily.trade_date",
+        "count": 1,
+        "total_ms": 2.175,
+        "max_ms": 2.175
+      },
+      {
+        "sql": "SELECT limit_pool.trade_date, limit_pool.code, limit_pool.pool_type, limit_pool.name, limit_pool.pct_chg, limit_pool.price, limit_pool.amount, limit_pool.float_mv, limit_pool.total_mv, limit_pool.turnover, limit_pool.seal_amount, limit_pool.first_seal_time, limit_pool.last_seal_time, limit_pool.open",
+        "count": 5,
+        "total_ms": 1.791,
+        "max_ms": 1.525
+      },
+      {
+        "sql": "SELECT stock_daily.code, stock_daily.pct_chg, stock_daily.open, stock_daily.close FROM stock_daily WHERE stock_daily.trade_date = ? AND stock_daily.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,",
+        "count": 1,
+        "total_ms": 1.565,
+        "max_ms": 1.565
+      },
+      {
+        "sql": "SELECT collect_log.trade_date FROM collect_log WHERE collect_log.task = ? AND collect_log.trade_date IS NOT NULL AND collect_log.trade_date <= ? AND lower(collect_log.status) = ? AND (EXISTS (SELECT limit_pool.code FROM limit_pool WHERE limit_pool.trade_date = collect_log.trade_date AND limit_pool.p",
+        "count": 1,
+        "total_ms": 1.455,
+        "max_ms": 1.455
+      },
+      {
+        "sql": "SELECT collect_log.trade_date FROM collect_log WHERE collect_log.task = ? AND collect_log.trade_date IS NOT NULL AND collect_log.trade_date <= ? AND lower(collect_log.status) = ? ORDER BY collect_log.trade_date DESC, collect_log.id DESC LIMIT ? OFFSET ?",
+        "count": 2,
+        "total_ms": 0.739,
+        "max_ms": 0.373
+      },
+      {
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date = ? AND collect_log.task = ? ORDER BY collect_log.id DESC LIMIT ? OFFSET ?",
+        "count": 3,
+        "total_ms": 0.616,
+        "max_ms": 0.467
+      },
+      {
+        "sql": "SELECT trade_calendar.trade_date FROM trade_calendar ORDER BY trade_calendar.trade_date",
+        "count": 3,
+        "total_ms": 0.584,
+        "max_ms": 0.566
+      },
+      {
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date IN (?) AND collect_log.task = ? ORDER BY collect_log.id DESC",
+        "count": 1,
+        "total_ms": 0.382,
+        "max_ms": 0.382
+      },
+      {
+        "sql": "SELECT max(sector_member.trade_date) AS max_1 FROM sector_member WHERE sector_member.sector_code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND sector_member.trade_date <= ?",
+        "count": 1,
+        "total_ms": 0.276,
+        "max_ms": 0.276
+      },
+      {
+        "sql": "SELECT max(stock_daily.trade_date) AS max_1 FROM stock_daily",
+        "count": 4,
+        "total_ms": 0.253,
+        "max_ms": 0.14
+      },
+      {
+        "sql": "SELECT limit_pool.trade_date, limit_pool.code, limit_pool.pool_type, limit_pool.consecutive FROM limit_pool WHERE limit_pool.trade_date IN (?, ?, ?)",
+        "count": 1,
+        "total_ms": 0.203,
+        "max_ms": 0.203
+      },
+      {
+        "sql": "SELECT stock_concept.code, stock_concept.concept FROM stock_concept WHERE stock_concept.trade_date = ? AND stock_concept.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ORDER BY stock",
+        "count": 1,
+        "total_ms": 0.177,
+        "max_ms": 0.177
+      },
+      {
+        "sql": "SELECT count(*) AS count_1 FROM trade_calendar",
+        "count": 1,
+        "total_ms": 0.17,
+        "max_ms": 0.17
+      },
+      {
+        "sql": "SELECT stock_basic.code, stock_basic.name, stock_basic.industry FROM stock_basic WHERE stock_basic.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ",
+        "count": 1,
+        "total_ms": 0.148,
+        "max_ms": 0.148
+      },
+      {
+        "sql": "SELECT market_sentiment.trade_date AS market_sentiment_trade_date, market_sentiment.limit_up_count AS market_sentiment_limit_up_count, market_sentiment.limit_down_count AS market_sentiment_limit_down_count, market_sentiment.broken_count AS market_sentiment_broken_count, market_sentiment.seal_rate AS",
+        "count": 1,
+        "total_ms": 0.144,
+        "max_ms": 0.144
+      },
+      {
+        "sql": "SELECT stock_daily.code, stock_daily.trade_date, stock_daily.open, stock_daily.close, stock_daily.pct_chg FROM stock_daily WHERE stock_daily.trade_date IN (?, ?) AND stock_daily.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,",
+        "count": 1,
+        "total_ms": 0.143,
+        "max_ms": 0.143
+      },
+      {
+        "sql": "SELECT max(sector_member.trade_date) AS max_1 FROM sector_member",
+        "count": 1,
+        "total_ms": 0.131,
+        "max_ms": 0.131
+      },
+      {
+        "sql": "SELECT sector_basic.taxonomy, count(*) AS count_1 FROM sector_basic GROUP BY sector_basic.taxonomy",
+        "count": 1,
+        "total_ms": 0.13,
+        "max_ms": 0.13
+      },
+      {
+        "sql": "SELECT max(market_sentiment.trade_date) AS max_1 FROM market_sentiment",
+        "count": 1,
+        "total_ms": 0.121,
+        "max_ms": 0.121
+      },
+      {
+        "sql": "SELECT stock_daily.code, stock_daily.close, stock_daily.pct_chg FROM stock_daily WHERE stock_daily.trade_date = ? AND stock_daily.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,",
+        "count": 1,
+        "total_ms": 0.118,
+        "max_ms": 0.118
+      },
+      {
+        "sql": "SELECT trade_calendar.trade_date FROM trade_calendar WHERE trade_calendar.trade_date <= ? ORDER BY trade_calendar.trade_date DESC LIMIT ? OFFSET ?",
+        "count": 1,
+        "total_ms": 0.109,
+        "max_ms": 0.109
+      },
+      {
+        "sql": "SELECT market_sentiment.trade_date, market_sentiment.limit_up_count, market_sentiment.limit_down_count, market_sentiment.broken_count, market_sentiment.seal_rate, market_sentiment.broken_rate, market_sentiment.max_consecutive, market_sentiment.up_count, market_sentiment.down_count, market_sentiment.",
+        "count": 2,
+        "total_ms": 0.108,
+        "max_ms": 0.078
+      },
+      {
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date IN (?, ?, ?) AND collect_log.task IN (?, ?) ORDER BY collect_log.id DESC",
+        "count": 1,
+        "total_ms": 0.101,
+        "max_ms": 0.101
+      },
+      {
+        "sql": "SELECT count(*) AS count_1 FROM limit_pool WHERE limit_pool.trade_date = ? AND limit_pool.pool_type = ?",
+        "count": 3,
+        "total_ms": 0.101,
+        "max_ms": 0.071
+      },
+      {
+        "sql": "SELECT auction_snapshot.trade_date, count(*) AS count_1, count(auction_snapshot.post_open_price) AS count_2, sum(CASE WHEN (CAST(auction_snapshot.samples AS VARCHAR) LIKE ?) THEN ? ELSE ? END) AS sum_1 FROM auction_snapshot WHERE auction_snapshot.trade_date IN (?) GROUP BY auction_snapshot.trade_dat",
+        "count": 1,
+        "total_ms": 0.091,
+        "max_ms": 0.091
+      },
+      {
+        "sql": "SELECT sector_member.code, sector_member.name, sector_member.sector_code, sector_member.fetched_at FROM sector_member WHERE sector_member.trade_date = ? AND sector_member.sector_code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "count": 1,
+        "total_ms": 0.084,
+        "max_ms": 0.084
+      },
+      {
+        "sql": "SELECT max(auction_snapshot.trade_date) AS max_1 FROM auction_snapshot",
+        "count": 1,
+        "total_ms": 0.084,
+        "max_ms": 0.084
+      },
+      {
+        "sql": "SELECT limit_reason.code, limit_reason.reason FROM limit_reason WHERE limit_reason.trade_date = ? AND limit_reason.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "count": 1,
+        "total_ms": 0.082,
+        "max_ms": 0.082
+      },
+      {
+        "sql": "SELECT trade_calendar.trade_date FROM trade_calendar WHERE trade_calendar.trade_date < ? ORDER BY trade_calendar.trade_date DESC LIMIT ? OFFSET ?",
+        "count": 1,
+        "total_ms": 0.08,
+        "max_ms": 0.08
+      },
+      {
+        "sql": "SELECT limit_pool.trade_date, limit_pool.pool_type, count(*) AS count_1 FROM limit_pool WHERE limit_pool.trade_date IN (?) GROUP BY limit_pool.trade_date, limit_pool.pool_type",
+        "count": 1,
+        "total_ms": 0.065,
+        "max_ms": 0.065
+      },
+      {
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date IN (?) AND collect_log.task IN (?, ?, ?) ORDER BY collect_log.id DESC",
+        "count": 1,
+        "total_ms": 0.065,
+        "max_ms": 0.065
+      },
+      {
+        "sql": "SELECT sector_basic.code, sector_basic.name, sector_basic.taxonomy, sector_basic.updated_at FROM sector_basic WHERE sector_basic.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "count": 1,
+        "total_ms": 0.062,
+        "max_ms": 0.062
+      },
+      {
+        "sql": "SELECT max(limit_pool.trade_date) AS max_1 FROM limit_pool",
+        "count": 1,
+        "total_ms": 0.059,
+        "max_ms": 0.059
+      },
+      {
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date IN (?, ?) AND collect_log.task IN (?, ?) ORDER BY collect_log.id DESC",
+        "count": 1,
+        "total_ms": 0.046,
+        "max_ms": 0.046
+      },
+      {
+        "sql": "SELECT trade_calendar.trade_date FROM trade_calendar WHERE trade_calendar.trade_date IN (?)",
+        "count": 1,
+        "total_ms": 0.027,
+        "max_ms": 0.027
+      },
+      {
+        "sql": "SELECT trade_calendar.trade_date AS trade_calendar_trade_date FROM trade_calendar WHERE trade_calendar.trade_date = ?",
+        "count": 1,
+        "total_ms": 0.026,
+        "max_ms": 0.026
+      },
+      {
+        "sql": "SELECT max(trade_calendar.trade_date) AS max_1 FROM trade_calendar",
+        "count": 1,
+        "total_ms": 0.02,
+        "max_ms": 0.02
+      }
+    ],
+    "duplicates": [
+      {
+        "sql": "SELECT limit_pool.trade_date, limit_pool.code, limit_pool.pool_type, limit_pool.name, limit_pool.pct_chg, limit_pool.price, limit_pool.amount, limit_pool.float_mv, limit_pool.total_mv, limit_pool.turnover, limit_pool.seal_amount, limit_pool.first_seal_time, limit_pool.last_seal_time, limit_pool.open",
+        "count": 5,
+        "total_ms": 1.791,
+        "max_ms": 1.525
+      },
+      {
+        "sql": "SELECT collect_log.trade_date FROM collect_log WHERE collect_log.task = ? AND collect_log.trade_date IS NOT NULL AND collect_log.trade_date <= ? AND lower(collect_log.status) = ? ORDER BY collect_log.trade_date DESC, collect_log.id DESC LIMIT ? OFFSET ?",
+        "count": 2,
+        "total_ms": 0.739,
+        "max_ms": 0.373
+      },
+      {
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date = ? AND collect_log.task = ? ORDER BY collect_log.id DESC LIMIT ? OFFSET ?",
+        "count": 3,
+        "total_ms": 0.616,
+        "max_ms": 0.467
+      },
+      {
+        "sql": "SELECT trade_calendar.trade_date FROM trade_calendar ORDER BY trade_calendar.trade_date",
+        "count": 3,
+        "total_ms": 0.584,
+        "max_ms": 0.566
+      },
+      {
+        "sql": "SELECT max(stock_daily.trade_date) AS max_1 FROM stock_daily",
+        "count": 4,
+        "total_ms": 0.253,
+        "max_ms": 0.14
+      },
+      {
+        "sql": "SELECT market_sentiment.trade_date, market_sentiment.limit_up_count, market_sentiment.limit_down_count, market_sentiment.broken_count, market_sentiment.seal_rate, market_sentiment.broken_rate, market_sentiment.max_consecutive, market_sentiment.up_count, market_sentiment.down_count, market_sentiment.",
+        "count": 2,
+        "total_ms": 0.108,
+        "max_ms": 0.078
+      },
+      {
+        "sql": "SELECT count(*) AS count_1 FROM limit_pool WHERE limit_pool.trade_date = ? AND limit_pool.pool_type = ?",
+        "count": 3,
+        "total_ms": 0.101,
+        "max_ms": 0.071
+      }
+    ],
+    "slowest": [
+      {
+        "index": 44,
+        "duration_ms": 26.286,
+        "sql": "SELECT sector_member.trade_date, sector_basic.taxonomy, count(*) AS count_1, count(distinct(sector_member.sector_code)) AS count_2 FROM sector_member JOIN sector_basic ON sector_basic.code = sector_member.sector_code WHERE sector_member.trade_date IN (?) GROUP BY sector_member.trade_date, sector_bas",
+        "params": 1
+      },
+      {
+        "index": 35,
+        "duration_ms": 2.175,
+        "sql": "SELECT stock_daily.trade_date, count(*) AS count_1, count(stock_daily.close) AS count_2, count(stock_daily.pct_chg) AS count_3 FROM stock_daily WHERE stock_daily.trade_date IN (?) GROUP BY stock_daily.trade_date",
+        "params": 1
+      },
+      {
+        "index": 28,
+        "duration_ms": 1.565,
+        "sql": "SELECT stock_daily.code, stock_daily.pct_chg, stock_daily.open, stock_daily.close FROM stock_daily WHERE stock_daily.trade_date = ? AND stock_daily.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,",
+        "params": 3165
+      },
+      {
+        "index": 27,
+        "duration_ms": 1.525,
+        "sql": "SELECT limit_pool.trade_date, limit_pool.code, limit_pool.pool_type, limit_pool.name, limit_pool.pct_chg, limit_pool.price, limit_pool.amount, limit_pool.float_mv, limit_pool.total_mv, limit_pool.turnover, limit_pool.seal_amount, limit_pool.first_seal_time, limit_pool.last_seal_time, limit_pool.open",
+        "params": 3165
+      },
+      {
+        "index": 39,
+        "duration_ms": 1.455,
+        "sql": "SELECT collect_log.trade_date FROM collect_log WHERE collect_log.task = ? AND collect_log.trade_date IS NOT NULL AND collect_log.trade_date <= ? AND lower(collect_log.status) = ? AND (EXISTS (SELECT limit_pool.code FROM limit_pool WHERE limit_pool.trade_date = collect_log.trade_date AND limit_pool.p",
+        "params": 6
+      },
+      {
+        "index": 1,
+        "duration_ms": 0.566,
+        "sql": "SELECT trade_calendar.trade_date FROM trade_calendar ORDER BY trade_calendar.trade_date",
+        "params": 0
+      },
+      {
+        "index": 30,
+        "duration_ms": 0.467,
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date = ? AND collect_log.task = ? ORDER BY collect_log.id DESC LIMIT ? OFFSET ?",
+        "params": 4
+      },
+      {
+        "index": 49,
+        "duration_ms": 0.382,
+        "sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date IN (?) AND collect_log.task = ? ORDER BY collect_log.id DESC",
+        "params": 2
+      },
+      {
+        "index": 41,
+        "duration_ms": 0.373,
+        "sql": "SELECT collect_log.trade_date FROM collect_log WHERE collect_log.task = ? AND collect_log.trade_date IS NOT NULL AND collect_log.trade_date <= ? AND lower(collect_log.status) = ? ORDER BY collect_log.trade_date DESC, collect_log.id DESC LIMIT ? OFFSET ?",
+        "params": 5
+      },
+      {
+        "index": 40,
+        "duration_ms": 0.366,
+        "sql": "SELECT collect_log.trade_date FROM collect_log WHERE collect_log.task = ? AND collect_log.trade_date IS NOT NULL AND collect_log.trade_date <= ? AND lower(collect_log.status) = ? ORDER BY collect_log.trade_date DESC, collect_log.id DESC LIMIT ? OFFSET ?",
+        "params": 5
+      }
+    ]
+  },
+  "evidence_files": [
+    "reports/s6/performance/sql-waterfall.json"
+  ],
+  "limitations": [
+    "耗时来自单次执行，未做统计重复；P50/P95 见 benchmark-before.json。",
+    "SQLite page cache 在首次执行后已热，冷启动会更慢。"
+  ]
+}

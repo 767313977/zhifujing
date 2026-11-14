@@ -1,0 +1,43 @@
+{
+  "commit_sha": "104dfdf489150d97446be3af0fa4a4de14382bbd",
+  "branch": "release/s6-canary-hardening",
+  "generated_at": "2026-11-15T00:26:55+08:00",
+  "environment": "Windows 11, Python 3.13.13, 8 线程负载",
+  "command": "python scripts/s6_concurrency_regression.py",
+  "exit_code": 0,
+  "tool_version": "s6_concurrency_regression/1.0",
+  "result": {
+    "case": "tests/test_p0_cache_concurrency.py::test_leader_exception_all_waiters_wake",
+    "assertion_policy": "不修改断言、不新增 skip；build_count<=2 等阈值由测试文件提供",
+    "phases": [
+      {
+        "name": "clean",
+        "runs": 30,
+        "passed": 30,
+        "failed": 0,
+        "load_threads": 0,
+        "max_elapsed_ms": 1946.2,
+        "failures": []
+      },
+      {
+        "name": "cpu_load",
+        "runs": 30,
+        "passed": 30,
+        "failed": 0,
+        "load_threads": 8,
+        "max_elapsed_ms": 5120.2,
+        "failures": []
+      }
+    ],
+    "total_runs": 60,
+    "total_passed": 60,
+    "verdict": "60/60"
+  },
+  "evidence_files": [
+    "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\reports\\s6\\performance\\concurrency-regression.json"
+  ],
+  "limitations": [
+    "这是重复压力测试，不是形式化并发正确性证明。",
+    "CPU 负载线程只制造调度竞争，不模拟数据库锁争用。"
+  ]
+}

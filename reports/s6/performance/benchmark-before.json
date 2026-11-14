@@ -1,0 +1,163 @@
+{
+  "generated_at": "2026-11-15T00:23:20",
+  "git_sha": "104dfdf489150d97446be3af0fa4a4de14382bbd",
+  "database": "b1_research.db",
+  "mode": "ro&immutable=1",
+  "as_of": "2026-09-24",
+  "environment": "Windows 10/11 local, Python venv, SQLite page cache warm after first run",
+  "results": [
+    {
+      "case": "workbench_1_sectors",
+      "params": {
+        "sectors": [
+          "801001"
+        ],
+        "mode": "OR",
+        "limit": 50
+      },
+      "runs": 3,
+      "sql_statements": 53,
+      "elapsed_ms_median": 128.81,
+      "elapsed_ms_runs": [
+        291.17,
+        128.81,
+        108.27
+      ],
+      "peak_memory_kb": 2384.1,
+      "json_bytes": 20502
+    },
+    {
+      "case": "workbench_2_sectors",
+      "params": {
+        "sectors": [
+          "801001",
+          "801004"
+        ],
+        "mode": "OR",
+        "limit": 50
+      },
+      "runs": 3,
+      "sql_statements": 53,
+      "elapsed_ms_median": 113.98,
+      "elapsed_ms_runs": [
+        152.19,
+        113.04,
+        113.98
+      ],
+      "peak_memory_kb": 3292.5,
+      "json_bytes": 20547
+    },
+    {
+      "case": "workbench_3_sectors",
+      "params": {
+        "sectors": [
+          "801001",
+          "801004",
+          "801012"
+        ],
+        "mode": "OR",
+        "limit": 50
+      },
+      "runs": 3,
+      "sql_statements": 53,
+      "elapsed_ms_median": 113.97,
+      "elapsed_ms_runs": [
+        148.68,
+        104.28,
+        113.97
+      ],
+      "peak_memory_kb": 3668.2,
+      "json_bytes": 20557
+    },
+    {
+      "case": "workbench_10_sectors",
+      "params": {
+        "sectors": [
+          "801001",
+          "801004",
+          "801012",
+          "801016",
+          "801019",
+          "801020",
+          "801027",
+          "801031",
+          "801033",
+          "801035"
+        ],
+        "mode": "OR",
+        "limit": 50
+      },
+      "runs": 3,
+      "sql_statements": 53,
+      "elapsed_ms_median": 165.28,
+      "elapsed_ms_runs": [
+        139.38,
+        165.28,
+        210.92
+      ],
+      "peak_memory_kb": 5642.2,
+      "json_bytes": 20738
+    },
+    {
+      "case": "quality_overview_1day",
+      "params": {
+        "days": 30
+      },
+      "runs": 3,
+      "sql_statements": 21,
+      "elapsed_ms_median": 47.18,
+      "elapsed_ms_runs": [
+        47.63,
+        46.8,
+        47.18
+      ],
+      "peak_memory_kb": 57.4,
+      "json_bytes": 5173
+    },
+    {
+      "case": "quality_timeline_limit_pool_250",
+      "params": {
+        "days": 250
+      },
+      "runs": 1,
+      "sql_statements": 7,
+      "elapsed_ms_median": 29.42,
+      "elapsed_ms_runs": [
+        29.42
+      ],
+      "peak_memory_kb": 3873.1,
+      "json_bytes": 436389
+    },
+    {
+      "case": "sentiment_next_day_250",
+      "params": {
+        "days": 250
+      },
+      "runs": 1,
+      "sql_statements": 255,
+      "elapsed_ms_median": 1881.35,
+      "elapsed_ms_runs": [
+        1881.35
+      ],
+      "peak_memory_kb": 13477.8,
+      "json_bytes": 177073
+    },
+    {
+      "case": "research_context_single_stock",
+      "params": {
+        "code": "000001",
+        "as_of": "2026-09-24"
+      },
+      "runs": 3,
+      "sql_statements": 14,
+      "elapsed_ms_median": 12.96,
+      "elapsed_ms_runs": [
+        24.47,
+        12.96,
+        12.58
+      ],
+      "peak_memory_kb": 2158.0,
+      "json_bytes": 10012
+    }
+  ]
+}
