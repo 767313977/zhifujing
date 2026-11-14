@@ -4,7 +4,7 @@
 - 仓库：`c:\Users\76731\Documents\trae_projects\fupan`
 - 分支：`feature/stock-screening-v2`
 - S4 基线：`7eaf798`（S4 代码）、`395ae3a`（S4 报告提交）
-- S5 代码终稿：`428c26e`（D 包）；报告提交见 `git log` 最新 `docs(s5)`
+- S5 代码终稿：`c471fb5`（D 包）；本报告初版：`33db19c`（后续勘误提交见 `git log` 最新）
 - 工作区：提交后 clean，已推送 `origin/feature/stock-screening-v2`
 - 裁定：`S5_INTEGRATED_CODE_READY_FOR_INDEPENDENT_REVIEW`
 
@@ -19,10 +19,10 @@
 | `0d77b69` | `fix(quality): unify source-status and completeness contracts`（B） |
 | `3a5f2e6` | `feat(research): add post-market research workbench`（C） |
 | `8f7acc6` | `fix(ui): mount workbench inside app shell`（C 修正） |
-| `428c26e` | `test(s5): harden offline egress and integrated release gates`（D） |
-| `docs(s5)` | 本报告与 `reports/s5_*` 证据 |
+| `c471fb5` | `test(s5): harden offline egress and integrated release gates`（D） |
+| `33db19c` | `docs(s5): record acceptance and evidence`（报告初版） |
 
-- `git diff --name-status 395ae3a..428c26e` 未包含：生产 DB、`forward_c0/*`、C0 五脚本、`deploy/*`、调度配置；
+- `git diff --name-status 395ae3a..c471fb5` 未包含：生产 DB、`forward_c0/*`、C0 五脚本、`deploy/*`、调度配置；
 - 只改 `backend/app/{services,api,schemas,external_guard,main}`、`sources/eastmoney.py`（仅加闸门）、`frontend/src/**`、`tests/**`、`scripts/**`、`reports/s5_*`、`S5-*.md`。
 
 ---
@@ -87,7 +87,7 @@
 
 ---
 
-## 5. D — 离线闸门与工程门禁（`428c26e`）
+## 5. D — 离线闸门与工程门禁（`c471fb5`）
 
 ### 5.1 网络栈清单
 
