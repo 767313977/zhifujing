@@ -1979,6 +1979,9 @@ export interface StockResearchOutcome {
   pct_chg: number | null
   close: number | null
   limit_up_again: boolean | null
+  /** 关键字段是否齐全（行存在 ≠ 字段有效） */
+  sample_valid?: boolean
+  missing_fields?: string[]
   reason_code: string | null
   known_by: string
 }
@@ -2056,6 +2059,8 @@ export interface StockResearchContext {
 /** S5-C：盘后主线研究工作台的聚合响应 */
 export interface WorkbenchQualitySource {
   source: string
+  /** 单来源状态（与组合视图分开） */
+  source_status?: string
   status: string
   combined_view_status: string
   completion_proof: boolean
@@ -2123,6 +2128,8 @@ export interface Workbench {
     version: string
     sources: WorkbenchQualitySource[]
     warnings: string[]
+    /** data_as_of 只表示日线最大日期，不代表所有来源都覆盖到该日 */
+    data_as_of_note?: string
   }
   pagination: { total: number; shown: number; has_more: boolean }
   rows: ResonanceRow[]

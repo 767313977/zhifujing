@@ -2495,6 +2495,9 @@ class StockResearchOutcome(BaseModel):
     pct_chg: float | None
     close: float | None
     limit_up_again: bool | None
+    #: 关键字段是否齐全（行存在 ≠ 字段有效）
+    sample_valid: bool = False
+    missing_fields: list[str] = []
     reason_code: str | None
     known_by: str = "FORWARD"
 

@@ -208,6 +208,29 @@ def test_untrusted_pool_does_not_claim_states(session):
     assert "POOL_UP_UNVERIFIED" in data["warnings"]
 
 
+def test_conflict_requires_both_sources_trusted(session):
+    """P2-04：up 来源最新失败、旧行仍在 → 不得判 conflict。"""
+    session.add(
+        CollectLog(
+            trade_date=D2,
+            task="pool_up",
+            status="failed",
+            rows=0,
+            created_at=datetime(2026, 11, 4, 20, 0),
+        )
+    )
+    session.commit()
+    data = build(session, mode="OR")
+    row = next(item for item in data["rows"] if item["code"] == "600004")
+    assert row["state"] == sr.STATE_UNKNOWN
+    assert data["state_counts"][sr.STATE_CONFLICT] == 0
+    assert "POOL_CONFLICT" not in data["warnings"]
+    assert "POOL_UP_UNVERIFIED" in data["warnings"]
+    # 分页不改变总统计
+    paged = build(session, mode="OR", limit=2, offset=0)
+    assert paged["state_counts"] == data["state_counts"]
+
+
 def test_snapshot_never_rolls_forward(session):
     # 给 D3 加一份完全不同的成员快照；as_of=D2 时必须用 D2 的快照
     session.add_all(

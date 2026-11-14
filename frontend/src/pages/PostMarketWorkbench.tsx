@@ -449,6 +449,11 @@ export default function PostMarketWorkbench() {
 
       {data && show('quality') ? (
         <Panel title="数据源可用性" meta={data.quality.version}>
+          {data.quality.data_as_of_note ? (
+            <div className="px-1 pb-2 text-[11px] text-fg-dim">
+              {data.quality.data_as_of_note}
+            </div>
+          ) : null}
           <div className="overflow-auto">
             <table className="grid-table min-w-full text-[12px]">
               <thead>
@@ -466,7 +471,7 @@ export default function PostMarketWorkbench() {
                   <tr key={item.source}>
                     <td className="!text-left">{SOURCE_LABEL[item.source] ?? item.source}</td>
                     <td>
-                      <Status value={item.status} />
+                      <Status value={item.source_status ?? item.status} />
                     </td>
                     <td>
                       <Status value={item.combined_view_status} />

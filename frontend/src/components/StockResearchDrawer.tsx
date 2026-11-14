@@ -586,6 +586,11 @@ function EvidenceTab({
           label="是否再涨停"
           value={outcome.limit_up_again == null ? '不可验证' : outcome.limit_up_again ? '是' : '否'}
         />
+        {outcome.missing_fields?.length ? (
+          <div className="mt-1 text-[11px] leading-relaxed text-warn">
+            D+1 关键字段缺失：{outcome.missing_fields.join('、')}；不判为已验证，也不按 0 处理。
+          </div>
+        ) : null}
       </Section>
 
       <Section title="证据链">

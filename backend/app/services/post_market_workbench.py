@@ -138,22 +138,38 @@ def _quality_block(session: Session, day: date) -> dict[str, Any]:
     overview = dq.overview(session, target_date=day, days=30)
     sources = []
     warnings: list[str] = []
+    verified_like = (dq.STATUS_VERIFIED, dq.STATUS_NOT_TRADE_DAY)
     for item in overview["items"]:
-        status = item["status"]
+        source_status = item["status"]
+        combined = item.get("combined_view_status", source_status)
         sources.append(
             {
                 "source": item["source"],
-                "status": status,
-                "combined_view_status": item.get("combined_view_status", status),
+                # 单来源状态与组合视图状态同时给出，避免把 up 池 VERIFIED
+                # 误读成「三池组合 VERIFIED」（C3）
+                "source_status": source_status,
+                "status": source_status,
+                "combined_view_status": combined,
                 "completion_proof": item["completion_proof"],
                 "reason_codes": list(item["reason_codes"]),
             }
         )
-        if status not in (dq.STATUS_VERIFIED, dq.STATUS_NOT_TRADE_DAY):
+        if source_status not in verified_like:
             warnings.extend(f"{item['source']}:{code}" for code in item["reason_codes"])
+        if combined not in verified_like:
+            # 组合视图不可信但单来源可信时，顶层 warnings 也必须给出原因
+            if combined != source_status:
+                warnings.append(f"{item['source']}:COMBINED_VIEW_{combined}")
+            elif not item["reason_codes"]:
+                warnings.append(f"{item['source']}:COMBINED_VIEW_{combined}")
     return {
         "version": dq.QUALITY_VERSION,
         "sources": sources,
+        # data_as_of 只表示 stock_daily 最大日期，不代表所有来源覆盖到该日
+        "data_as_of_note": (
+            "data_as_of 只表示本地 stock_daily 的最大日期，不代表六来源都覆盖到该日；"
+            "各来源以 source_status / combined_view_status 为准。"
+        ),
         "warnings": list(dict.fromkeys(warnings)),
     }
 
@@ -271,6 +287,8 @@ def build(
         warnings.append("OUTCOME_PENDING")
     if promotion["status"] != "VERIFIED":
         warnings.extend(f"promotion:{code}" for code in promotion["reasons"])
+    # 组合视图/单来源不可信的原因也要出现在顶层 warnings，不只藏在 quality 里
+    warnings.extend(quality.get("warnings") or [])
 
     return {
         "as_of": day,

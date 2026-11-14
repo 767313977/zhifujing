@@ -333,6 +333,33 @@ def test_quality_block_lists_all_sources(session):
     assert sources["auction_snapshot"]["status"] == "NOT_COLLECTED"
     assert data["quality"]["version"] == "data-quality-v2"
     assert data["quality"]["warnings"]
+    # 每个来源同时给单来源状态与组合视图状态
+    for item in data["quality"]["sources"]:
+        assert item["source_status"] == item["status"]
+        assert "combined_view_status" in item
+    assert "data_as_of" in data["quality"]["data_as_of_note"]
+
+
+def test_combined_view_warning_reaches_top_level(session):
+    """C3：单来源 VERIFIED 但组合视图 PARTIAL 时，顶层 warnings 必须带原因。"""
+    session.add(
+        CollectLog(
+            trade_date=D2,
+            task="pool_broken",
+            status="failed",
+            rows=0,
+            created_at=datetime(2026, 11, 4, 20, 0),
+        )
+    )
+    session.commit()
+    data = build(session)
+    limit = next(
+        item for item in data["quality"]["sources"] if item["source"] == "limit_pool"
+    )
+    assert limit["source_status"] == "VERIFIED_SOURCE"
+    assert limit["combined_view_status"] == "PARTIAL"
+    assert "limit_pool:COMBINED_VIEW_PARTIAL" in data["quality"]["warnings"]
+    assert "limit_pool:COMBINED_VIEW_PARTIAL" in data["warnings"]
 
 
 def test_promotion_levels_cover_requested_bands(session):

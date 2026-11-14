@@ -313,6 +313,43 @@ def test_d1_quote_with_untrusted_pool_is_partial(session):
     assert outcome["reason_code"] == "OUTCOME_LIMIT_POOL_UNVERIFIED"
 
 
+def test_d1_null_pct_chg_is_partial_not_verified(session):
+    """P2-05：行存在但 pct_chg=NULL → PARTIAL，NULL 不映射 0。"""
+    session.query(StockDaily).filter(
+        StockDaily.trade_date == D3, StockDaily.code == "600000"
+    ).update({"pct_chg": None})
+    session.commit()
+    outcome = build(session)["later_outcome"]
+    assert outcome["status"] == ctx.STATUS_PARTIAL
+    assert outcome["reason_code"] == "OUTCOME_FIELDS_NULL"
+    assert outcome["pct_chg"] is None
+    assert outcome["missing_fields"] == ["pct_chg"]
+    assert outcome["sample_valid"] is False
+    # 再涨停判断需要样本有效，不能只凭「在 up 池」给布尔值
+    assert outcome["limit_up_again"] is None
+
+
+def test_d1_null_close_is_partial_and_keeps_pct(session):
+    session.query(StockDaily).filter(
+        StockDaily.trade_date == D3, StockDaily.code == "600000"
+    ).update({"close": None})
+    session.commit()
+    outcome = build(session)["later_outcome"]
+    assert outcome["status"] == ctx.STATUS_PARTIAL
+    assert outcome["missing_fields"] == ["close"]
+    assert outcome["close"] is None
+    assert outcome["pct_chg"] == -5.0
+    assert outcome["limit_up_again"] is None
+
+
+def test_d1_valid_fields_and_trusted_pool_is_verified(session):
+    outcome = build(session)["later_outcome"]
+    assert outcome["status"] == ctx.STATUS_VERIFIED
+    assert outcome["sample_valid"] is True
+    assert outcome["missing_fields"] == []
+    assert outcome["limit_up_again"] is False
+
+
 def test_default_as_of_uses_latest_trade_day(session, monkeypatch):
     monkeypatch.setattr(ctx, "today_cn", lambda: D3)
     data = build(session, as_of=None)

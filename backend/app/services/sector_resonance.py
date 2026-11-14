@@ -410,8 +410,9 @@ def build(
     def state_of(code: str) -> str:
         pools = pool_membership.get(code, set())
         if "up" in pools and "broken" in pools:
-            # 来源冲突单独列出，不按 if/elif 优先级择一
-            return STATE_CONFLICT
+            # 冲突必须由 up 与 broken **两个可信来源**支持；旧行仍在但来源失败 →
+            # 只能输出 UNKNOWN，不能凭数据库残留行推断当前冲突（P2-04）
+            return STATE_CONFLICT if (up_trusted and broken_trusted) else STATE_UNKNOWN
         if "broken" in pools:
             return STATE_BROKEN if broken_trusted else STATE_UNKNOWN
         if "up" in pools:

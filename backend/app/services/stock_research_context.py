@@ -717,6 +717,10 @@ def build(
 
     # ---------------- D+1 后验（只读，不反写）
     data_as_of = session.scalar(select(func_max_stock_daily()))
+    outcome_pct = None
+    outcome_close = None
+    again = None
+    outcome_missing: list[str] = []
     if following is None:
         outcome_status = STATUS_PENDING
         outcome_reason = "NO_NEXT_TRADE_DAY"
@@ -735,20 +739,35 @@ def build(
             outcome_pct = None
             outcome_close = None
             again = None
+            outcome_missing = ["pct_chg", "close"]
         else:
             outcome_pct = outcome_daily.pct_chg
             outcome_close = outcome_daily.close
-            outcome_status = STATUS_VERIFIED if next_up_trusted else STATUS_PARTIAL
-            outcome_reason = None if next_up_trusted else "OUTCOME_LIMIT_POOL_UNVERIFIED"
+            # 行存在 ≠ 字段有效：NULL 不得映射 0，也不得因此 VERIFIED（P2-05）
+            outcome_missing = [
+                name
+                for name, value in (("pct_chg", outcome_pct), ("close", outcome_close))
+                if value is None
+            ]
             again = None
-            if next_up_trusted:
+            if outcome_missing:
+                outcome_status = STATUS_PARTIAL
+                outcome_reason = "OUTCOME_FIELDS_NULL"
+            elif next_up_trusted:
+                outcome_status = STATUS_VERIFIED
+                outcome_reason = None
                 again = session.get(LimitPool, (following, code, "up")) is not None
+            else:
+                outcome_status = STATUS_PARTIAL
+                outcome_reason = "OUTCOME_LIMIT_POOL_UNVERIFIED"
     later_outcome = {
         "outcome_date": following,
         "status": outcome_status,
         "pct_chg": outcome_pct if following is not None else None,
         "close": outcome_close if following is not None else None,
         "limit_up_again": again if following is not None else None,
+        "sample_valid": following is not None and not outcome_missing,
+        "missing_fields": outcome_missing if following is not None else [],
         "reason_code": outcome_reason,
         "known_by": KNOWN_FORWARD,
     }
