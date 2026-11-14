@@ -1,0 +1,58 @@
+{
+  "commit_sha": "c6db475b9848fc37e703be0bd3f186c9d20d053e",
+  "branch": "release/s6-canary-hardening-v2",
+  "generated_at": "2026-11-15T01:40:00+08:00",
+  "environment": "Windows 11 开发机；无隔离 Linux VM",
+  "command": "pytest tests/test_s6_egress_boundary.py tests/test_s6_egress_scripts.py tests/test_s6_db_split.py",
+  "exit_code": 0,
+  "tool_version": "pytest 9.1.1",
+  "result": {
+    "app_layer": {
+      "status": "PASS",
+      "tests": 50,
+      "note": "35 条出站矩阵 + 10 条脚本静态 + 5 条分库基础"
+    },
+    "os_layer": {
+      "status": "BLOCKED",
+      "reason": "NO_DEDICATED_ISOLATED_LINUX_VM",
+      "matrix": [
+        {"case": "dns_udp", "status": "NOT_RUN"},
+        {"case": "dns_tcp", "status": "NOT_RUN"},
+        {"case": "ipv4_tcp", "status": "NOT_RUN"},
+        {"case": "ipv6_tcp", "status": "NOT_RUN"},
+        {"case": "udp", "status": "NOT_RUN"},
+        {"case": "http_proxy", "status": "NOT_RUN"},
+        {"case": "system_proxy", "status": "NOT_RUN"},
+        {"case": "local_proxy", "status": "NOT_RUN"},
+        {"case": "direct_socket", "status": "NOT_RUN"},
+        {"case": "tls", "status": "NOT_RUN"},
+        {"case": "sendfile", "status": "NOT_RUN"},
+        {"case": "child_process", "status": "NOT_RUN"},
+        {"case": "native_tool", "status": "NOT_RUN"},
+        {"case": "allowlist", "status": "NOT_RUN"},
+        {"case": "corrupted_policy", "status": "NOT_RUN"}
+      ]
+    },
+    "startup_locking": {
+      "status": "PASS",
+      "evidence": "tests/test_s6_egress_boundary.py::test_startup_order_and_readiness_endpoint"
+    },
+    "readiness": {
+      "status": "PASS",
+      "detail": "health 200；ready 503；DATABASE_READ_ONLY_VERIFIED 因拆分未启用为 FAIL"
+    },
+    "external_fetch_and_scheduler": {
+      "status": "PASS",
+      "detail": "EXTERNAL_DATA_FETCH_ENABLED=false、SCHEDULER_ENABLED=false"
+    }
+  },
+  "evidence_files": [
+    "reports/s6/s61/verification.json",
+    "reports/s6/s62/db-access-inventory.md",
+    "reports/s6/s64/soak-metrics.json"
+  ],
+  "limitations": [
+    "OS 层全部 NOT_RUN；不得用应用层计数冒充 OS 隔离。",
+    "DB 拆分仅完成基础层，G7 未关闭。"
+  ]
+}

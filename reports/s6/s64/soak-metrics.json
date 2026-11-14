@@ -1,0 +1,93 @@
+{
+  "commit_sha": "c6db475b9848fc37e703be0bd3f186c9d20d053e",
+  "branch": "release/s6-canary-hardening-v2",
+  "generated_at": "2026-11-15T01:27:24+08:00",
+  "environment": "本地隔离 Staging http://127.0.0.1:8010",
+  "command": "python scripts/s6_soak.py --base http://127.0.0.1:8010 --minutes 2 --interval 0.5 --out reports/s6/s64/soak-metrics.json",
+  "exit_code": 0,
+  "tool_version": "s6_soak/1.0",
+  "result": {
+    "started_at": "2026-11-15T01:25:24+08:00",
+    "duration_minutes": 2.0,
+    "requested_24h": false,
+    "status": "SOAK_NOT_24H",
+    "total_requests": 1560,
+    "ready_503_expected": 195,
+    "errors_5xx": 0,
+    "errors_5xx_rate": 0.0,
+    "transport_errors": 0,
+    "latency_ms": {
+      "p50": 15.39,
+      "p95": 27.5,
+      "p99": 29.0,
+      "max": 34.41
+    },
+    "by_path": {
+      "/api/health": {
+        "count": 195,
+        "statuses": {
+          "200": 195
+        },
+        "p95_ms": 27.42
+      },
+      "/api/ready": {
+        "count": 195,
+        "statuses": {
+          "503": 195
+        },
+        "p95_ms": 22.75
+      },
+      "/api/quality/overview?days=30": {
+        "count": 195,
+        "statuses": {
+          "200": 195
+        },
+        "p95_ms": 26.3
+      },
+      "/api/quality/timeline?source=limit_pool&days=30": {
+        "count": 195,
+        "statuses": {
+          "200": 195
+        },
+        "p95_ms": 28.25
+      },
+      "/api/research/workbench?mode=AND&market=all&view=overview&limit=50&offset=0": {
+        "count": 195,
+        "statuses": {
+          "400": 195
+        },
+        "p95_ms": 23.57
+      },
+      "/api/auction?sort=amount&order=desc&limit=50": {
+        "count": 195,
+        "statuses": {
+          "200": 195
+        },
+        "p95_ms": 26.91
+      },
+      "/api/sentiment/next-day?days=60&group=first_board&metric=limit_up_count&include_pending=true": {
+        "count": 195,
+        "statuses": {
+          "200": 195
+        },
+        "p95_ms": 27.07
+      },
+      "/api/limit/promotion?days=15": {
+        "count": 195,
+        "statuses": {
+          "200": 195
+        },
+        "p95_ms": 27.04
+      }
+    },
+    "note": "短时观测不能替代 24h soak；S6_STAGING_SOAK_PASSED 仍为 NOT_RUN。"
+  },
+  "evidence_files": [
+    "reports/s6/s64/soak-metrics.json"
+  ],
+  "limitations": [
+    "不是 24 小时 soak；进程在该窗口外是否稳定未知。",
+    "未采集 CPU/内存/文件描述符（本机未安装 psutil）。",
+    "空库下部分接口返回 400，属预期数据缺失，不计入 5xx。"
+  ]
+}
