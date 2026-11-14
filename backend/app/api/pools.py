@@ -26,7 +26,7 @@
 
 import logging
 import threading
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -78,11 +78,16 @@ _RETRY_AFTER_SECONDS = 2
 
 _track_cache: dict[tuple, tuple[datetime, object]] = {}
 _track_lock = threading.Lock()
-#: single-flight：同一键并发请求的 Event（key → Event）。首个计算完 set，等待者醒。
-_inflight: dict[tuple, threading.Event] = {}
+#: single-flight：同一键并发请求的 flight（key → _Flight）。首个计算完 set，等待者醒。
+@dataclass
+class _Flight:
+    event: threading.Event
+    generation: int
+    retry_claimed: bool = False
+
+
+_inflight: dict[tuple, _Flight] = {}
 _inflight_lock = threading.Lock()
-#: 每个键最多允许一次 leader 异常后的补算（防止被唤醒的 follower 反复重建 leader）
-_retry_attempted: dict[tuple, bool] = {}
 
 #: 缓存未命中的哨兵（缓存值本身可能是 None，不能用 None 表示 miss）
 _MISS = object()
@@ -122,30 +127,36 @@ def _store_cache(final_key: tuple, value) -> None:
             _track_cache.pop(oldest, None)
 
 
-def _register_or_join(
-    final_key: tuple, *, retry: bool = False
-) -> tuple[threading.Event | None, bool]:
-    """抢占同键 leader；已有 leader 则返回它的 Event。
-
-    返回 `(event, is_leader)`。`is_leader=True` 时调用方负责计算与清理。
-
-    R3-P2-03：leader 异常退出后的「补算」每键最多一次。否则多个被唤醒的
-    follower 可能在不同时点分别成为新 leader，把一次失败放大成多次重复计算。
-    """
+def _register_or_join(final_key: tuple) -> tuple[_Flight | None, bool]:
+    """抢占同键 leader；已有 leader 则返回它的 flight。"""
     with _inflight_lock:
         existing = _inflight.get(final_key)
         if existing is not None:
             return existing, False
-        if retry:
-            if _retry_attempted.get(final_key):
-                return None, False
-            _retry_attempted[final_key] = True
-        else:
-            # 新的一轮请求重置补算预算
-            _retry_attempted.pop(final_key, None)
-        event = threading.Event()
-        _inflight[final_key] = event
-        return event, True
+        flight = _Flight(event=threading.Event(), generation=0, retry_claimed=False)
+        _inflight[final_key] = flight
+        return flight, True
+
+
+def _claim_retry(final_key: tuple, flight: _Flight) -> tuple[_Flight | None, bool]:
+    """leader 异常退出后的补算预算：同一 flight generation 只允许一次。
+
+    - 只有等待过该 flight 的 waiter 才拿得到 `flight` 引用；
+    - retry flight 的 `retry_claimed=True`，其 waiter 不能再补算；
+    - 新的独立请求会注册全新 flight（generation=0），不受历史失败影响；
+    - 没有全局 key map，flight 结束且 waiter 释放后即可被 GC。
+    """
+    with _inflight_lock:
+        if _inflight.get(final_key) is not None:
+            return None, False
+        if flight.retry_claimed:
+            return None, False
+        flight.retry_claimed = True
+        retry = _Flight(
+            event=threading.Event(), generation=flight.generation + 1, retry_claimed=True
+        )
+        _inflight[final_key] = retry
+        return retry, True
 
 
 def _busy() -> HTTPException:
@@ -157,11 +168,12 @@ def _busy() -> HTTPException:
     )
 
 
-def _run_leader(final_key: tuple, event: threading.Event, build):
+def _run_leader(final_key: tuple, flight: _Flight, build):
     """执行一次昂贵计算，并保证 inflight 清理与等待者唤醒。
 
     成功 → 先写缓存再清 inflight，保证醒来的 follower 一定命中缓存；
     失败 → 不写缓存，异常原样上抛（不吞），但 inflight 仍会被清、event 仍会 set。
+    清理只移除**当前 flight**，不会误删新 generation 的 flight。
     """
     try:
         value = build()
@@ -170,14 +182,12 @@ def _run_leader(final_key: tuple, event: threading.Event, build):
         raise
     else:
         _store_cache(final_key, value)
-        with _inflight_lock:
-            # 成功后缓存已就绪，补算预算不再需要
-            _retry_attempted.pop(final_key, None)
         return value
     finally:
         with _inflight_lock:
-            _inflight.pop(final_key, None)
-        event.set()
+            if _inflight.get(final_key) is flight:
+                _inflight.pop(final_key, None)
+        flight.event.set()
 
 
 def _cached(raw_key: tuple, build, session: Session):
@@ -201,17 +211,15 @@ def _cached(raw_key: tuple, build, session: Session):
     # ---- 先查缓存 ----
     hit = _read_cache(final_key)
     if hit is not _MISS:
-        with _inflight_lock:
-            _retry_attempted.pop(final_key, None)
         return hit
 
     # ---- single-flight：同键去重 ----
-    event, is_leader = _register_or_join(final_key)
+    flight, is_leader = _register_or_join(final_key)
     if is_leader:
-        return _run_leader(final_key, event, build)
+        return _run_leader(final_key, flight, build)
 
     # ---- follower：只等待，不计算 ----
-    event.wait(_SINGLE_FLIGHT_TIMEOUT)
+    flight.event.wait(_SINGLE_FLIGHT_TIMEOUT)
 
     # leader 成功时缓存必已就绪
     hit = _read_cache(final_key)
@@ -229,11 +237,11 @@ def _cached(raw_key: tuple, build, session: Session):
         )
         raise _busy()
 
-    # leader 异常退出：允许一个 follower 补算，其余继续 503，避免风暴
+    # leader 异常退出：只允许该 flight 的一个 waiter 补算，其余继续 503
     logger.info("leader 已退出但缓存为空，尝试补算，key=%s", final_key[:4])
-    retry_event, retry_is_leader = _register_or_join(final_key, retry=True)
+    retry_flight, retry_is_leader = _claim_retry(final_key, flight)
     if retry_is_leader:
-        return _run_leader(final_key, retry_event, build)
+        return _run_leader(final_key, retry_flight, build)
     raise _busy()
 
 

@@ -27,7 +27,6 @@ def reset_cache_globals(monkeypatch):
     # 清空模块级全局缓存
     pools_api._track_cache.clear()
     pools_api._inflight.clear()
-    pools_api._retry_attempted.clear()
     # 默认让 data_revision.status() 返回 ready
     ready_state = dr.CacheState(
         state="ready",
@@ -97,18 +96,83 @@ def test_concurrent_same_key_single_build(session, fake_board):
 
 # ---- 3.2 Leader 抛异常 --------------------------------------------------------
 
-def test_retry_budget_allows_at_most_one_rebuild():
-    """R3-P2-03：leader 失败后的补算预算每键只有一次，迟到的 waiter 不得再建 leader。"""
+def test_retry_budget_is_bound_to_flight_generation():
+    """R4-P2-03：补算预算绑定 flight generation，迟到 waiter 不能再次补算。"""
     key = ("retry-budget",)
-    event, leader = pools_api._register_or_join(key, retry=True)
-    assert leader is True and event is not None
+    flight, leader = pools_api._register_or_join(key)
+    assert leader is True and flight.generation == 0 and flight.retry_claimed is False
+    pools_api._inflight.pop(key, None)  # 模拟 leader 失败退出
+    retry_flight, claimed = pools_api._claim_retry(key, flight)
+    assert claimed is True
+    assert retry_flight is not None and retry_flight.generation == 1
+    assert retry_flight.retry_claimed is True
+    pools_api._inflight.pop(key, None)  # 模拟 retry leader 再次失败退出
+    late_flight, late_claimed = pools_api._claim_retry(key, flight)
+    assert late_claimed is False and late_flight is None
+    # 新的独立请求可以开启新的 generation，不受历史失败影响
+    fresh, fresh_leader = pools_api._register_or_join(key)
+    assert fresh_leader is True and fresh.generation == 0
     pools_api._inflight.pop(key, None)
-    event2, leader2 = pools_api._register_or_join(key, retry=True)
-    assert leader2 is False and event2 is None
-    # 新的一轮请求（非 retry）重置预算
-    event3, leader3 = pools_api._register_or_join(key)
-    assert leader3 is True and event3 is not None
+
+
+def test_retry_state_container_is_bounded_after_many_failures():
+    """1000 个不同 key 连续双重失败后，不得留下无界的 retry 状态。"""
+    for index in range(1000):
+        key = ("bounded", index)
+        flight, leader = pools_api._register_or_join(key)
+        assert leader is True
+        pools_api._inflight.pop(key, None)
+        retry_flight, claimed = pools_api._claim_retry(key, flight)
+        assert claimed is True and retry_flight is not None
+        pools_api._inflight.pop(key, None)
+        again, claimed_again = pools_api._claim_retry(key, flight)
+        assert claimed_again is False and again is None
+    assert pools_api._inflight == {}
+    assert not hasattr(pools_api, "_retry_attempted")
+
+
+def test_two_keys_retry_budgets_are_independent():
+    flight_a, _ = pools_api._register_or_join(("a",))
+    flight_b, _ = pools_api._register_or_join(("b",))
+    pools_api._inflight.pop(("a",), None)
+    retry_a, claimed_a = pools_api._claim_retry(("a",), flight_a)
+    assert claimed_a is True and retry_a is not None
+    # B 的失败预算不受 A 影响
+    pools_api._inflight.pop(("b",), None)
+    retry_b, claimed_b = pools_api._claim_retry(("b",), flight_b)
+    assert claimed_b is True and retry_b is not None
+    pools_api._inflight.pop(("a",), None)
+    pools_api._inflight.pop(("b",), None)
+
+
+def test_retry_success_writes_cache_and_clears_flight(session, monkeypatch):
+    """retry leader 成功后缓存命中，flight 清理；下一次请求不再 build。"""
+    ready_state = dr.CacheState(
+        state="ready",
+        reason="test",
+        identity=("db", ("/fake/path",), "test-uuid-1111"),
+        version=(("RPS", 1),),
+    )
+    monkeypatch.setattr(pools_api.data_revision, "status", lambda s: ready_state)
+    key = pools_api._effective_key(("retry-success",), session)
+    assert key is not None
+    flight, leader = pools_api._register_or_join(key)
+    assert leader is True
+    # 模拟原 leader 失败
     pools_api._inflight.pop(key, None)
+    retry_flight, claimed = pools_api._claim_retry(key, flight)
+    assert claimed is True and retry_flight is not None
+    assert pools_api._run_leader(key, retry_flight, lambda: "OK") == "OK"
+    assert pools_api._inflight == {}
+    assert pools_api._read_cache(key) == "OK"
+    calls = {"n": 0}
+
+    def build():
+        calls["n"] += 1
+        return "SHOULD_NOT_RUN"
+
+    assert pools_api._cached(("retry-success",), build, session=session) == "OK"
+    assert calls["n"] == 0
 
 
 def test_leader_exception_all_waiters_wake(session, fake_board):
