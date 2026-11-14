@@ -1,0 +1,45 @@
+{
+  "generated_at": "2026-11-14T23:49:11",
+  "case": "real local TLS loopback roundtrip under offline guard",
+  "platform": "Windows-11-10.0.26340-SP0",
+  "python": "3.13.13",
+  "openssl": "OpenSSL 3.0.19 27 Jan 2026",
+  "tls_fixture": {
+    "cert": "tests/fixtures/tls/localhost.crt",
+    "key": "tests/fixtures/tls/localhost.key",
+    "cert_der_sha256": "9ea2b1c805dfee270401ecfa2597fc118957fcc3bf8989d23b23832a8225398c",
+    "san": "DNS:localhost,IP:127.0.0.1",
+    "note": "test-only self-signed certificate; no production cert/key"
+  },
+  "expected_bytes": {
+    "send": 3,
+    "sendall": 3,
+    "write": 3,
+    "sendfile": 6
+  },
+  "actual_bytes": {
+    "received_total": 15,
+    "received_hex": "414141424242434343323334353637"
+  },
+  "file_pointer_after_sendfile": 8,
+  "counters": {
+    "stream_attempts": 3,
+    "stream_blocked": 0,
+    "sendfile_attempts": 1,
+    "sendfile_blocked": 0
+  },
+  "original_method_calls": {
+    "send": 3,
+    "write": 1,
+    "sendall": 1,
+    "sendfile": 1
+  },
+  "server_error": [
+    "ConnectionResetError(10054, '远程主机强迫关闭了一个现有的连接。', None, 10054, None)"
+  ],
+  "expected_payload": "AAABBBCCC234567",
+  "teardown_error": [
+    "ConnectionResetError(10054, '远程主机强迫关闭了一个现有的连接。', None, 10054, None)"
+  ],
+  "ok": true
+}
