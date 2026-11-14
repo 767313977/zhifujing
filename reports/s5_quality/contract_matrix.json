@@ -1,7 +1,61 @@
 {
   "quality_version": "data-quality-v2",
-  "generated_at": "2026-11-14T20:39:00",
-  "git_sha": "c471fb54922a51c3f529759e27178cbc8e298cc1",
+  "matrix_version": "quality-consistency-matrix-v2",
+  "matrix": {
+    "auction": {
+      "VERIFIED_SOURCE": [
+        "VALID"
+      ],
+      "PARTIAL": [
+        "INCOMPLETE"
+      ],
+      "UNVERIFIABLE": [
+        "SOURCE_UNAVAILABLE"
+      ],
+      "NOT_COLLECTED": [
+        "NOT_COLLECTED"
+      ],
+      "SOURCE_ERROR": []
+    },
+    "pool": {
+      "VERIFIED_SOURCE": [
+        "ok"
+      ],
+      "PARTIAL": [
+        "empty",
+        "failed",
+        "partial",
+        "skipped"
+      ],
+      "UNVERIFIABLE": [
+        "empty",
+        "failed",
+        "not_collected",
+        "skipped",
+        "unknown"
+      ],
+      "NOT_COLLECTED": [
+        "not_collected"
+      ],
+      "SOURCE_ERROR": []
+    },
+    "sentiment": {
+      "VERIFIED": [
+        "VERIFIED"
+      ],
+      "PARTIAL": [
+        "PARTIAL"
+      ],
+      "UNVERIFIED": [
+        "UNVERIFIED"
+      ],
+      "PENDING": [
+        "PENDING"
+      ]
+    }
+  },
+  "generated_at": "2026-11-14T21:28:21",
+  "git_sha": "bb0a3c956a1da715448887bac058591c8def6203",
   "database": "b1_research.db",
   "mode": "ro&immutable=1",
   "range": {
@@ -9,12 +63,45 @@
     "end": "2026-09-30"
   },
   "sampled_days": 15,
-  "sql_statements": 1216,
-  "elapsed_ms": 4687.38,
+  "sampling": {
+    "strategy": "等间隔抽样：step = floor(区间交易日数 / --sample)，从区间首个交易日起每隔 step 天取一个，最多 --sample 个",
+    "requested_sample": 15,
+    "available_trade_days": 21,
+    "sampled_days": [
+      "2026-09-01",
+      "2026-09-02",
+      "2026-09-03",
+      "2026-09-04",
+      "2026-09-07",
+      "2026-09-08",
+      "2026-09-09",
+      "2026-09-10",
+      "2026-09-11",
+      "2026-09-14",
+      "2026-09-15",
+      "2026-09-16",
+      "2026-09-17",
+      "2026-09-18",
+      "2026-09-21"
+    ],
+    "uncovered_days": [
+      "2026-09-22",
+      "2026-09-23",
+      "2026-09-24",
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30"
+    ],
+    "coverage_ratio": 0.7143,
+    "is_full_history": false,
+    "disclaimer": "抽样对账不等于全历史完整验收；未覆盖日期见 uncovered_days"
+  },
+  "sql_statements": 1306,
+  "elapsed_ms": 2498.68,
   "summary": {
     "total_checks": 60,
-    "passed": 60,
-    "explained_disagreements": 0,
+    "passed": 54,
+    "explained_disagreements": 6,
     "unexpected_disagreements": 0
   },
   "days": [
@@ -25,24 +112,28 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
-          "ok": true,
-          "explained": false,
+          "ok": false,
+          "explained": true,
+          "reason_code": "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL",
           "detail": "next_day=2026-09-02; daily=PARTIAL; sentiment=VERIFIED; missing=0"
         }
       ]
@@ -54,24 +145,28 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
-          "ok": true,
-          "explained": false,
+          "ok": false,
+          "explained": true,
+          "reason_code": "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL",
           "detail": "next_day=2026-09-03; daily=PARTIAL; sentiment=VERIFIED; missing=0"
         }
       ]
@@ -83,24 +178,28 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
-          "ok": true,
-          "explained": false,
+          "ok": false,
+          "explained": true,
+          "reason_code": "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL",
           "detail": "next_day=2026-09-04; daily=PARTIAL; sentiment=VERIFIED; missing=0"
         }
       ]
@@ -112,24 +211,28 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
-          "ok": true,
-          "explained": false,
+          "ok": false,
+          "explained": true,
+          "reason_code": "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL",
           "detail": "next_day=2026-09-07; daily=PARTIAL; sentiment=VERIFIED; missing=0"
         }
       ]
@@ -141,24 +244,28 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
-          "ok": true,
-          "explained": false,
+          "ok": false,
+          "explained": true,
+          "reason_code": "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL",
           "detail": "next_day=2026-09-08; daily=PARTIAL; sentiment=VERIFIED; missing=0"
         }
       ]
@@ -170,24 +277,28 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
-          "ok": true,
-          "explained": false,
+          "ok": false,
+          "explained": true,
+          "reason_code": "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL",
           "detail": "next_day=2026-09-09; daily=PARTIAL; sentiment=VERIFIED; missing=0"
         }
       ]
@@ -199,24 +310,28 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "next_day=2026-09-10; daily=VERIFIED_SOURCE; sentiment=VERIFIED; missing=0"
         }
       ]
@@ -228,24 +343,28 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "next_day=2026-09-11; daily=VERIFIED_SOURCE; sentiment=VERIFIED; missing=0"
         }
       ]
@@ -257,24 +376,28 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "next_day=2026-09-14; daily=VERIFIED_SOURCE; sentiment=VERIFIED; missing=0"
         }
       ]
@@ -286,24 +409,28 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "next_day=2026-09-15; daily=VERIFIED_SOURCE; sentiment=PARTIAL; missing=1"
         }
       ]
@@ -315,24 +442,28 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "next_day=2026-09-16; daily=VERIFIED_SOURCE; sentiment=VERIFIED; missing=0"
         }
       ]
@@ -344,24 +475,28 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "next_day=2026-09-17; daily=VERIFIED_SOURCE; sentiment=VERIFIED; missing=0"
         }
       ]
@@ -373,24 +508,28 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "next_day=2026-09-18; daily=VERIFIED_SOURCE; sentiment=VERIFIED; missing=0"
         }
       ]
@@ -402,24 +541,28 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "next_day=2026-09-21; daily=VERIFIED_SOURCE; sentiment=VERIFIED; missing=0"
         }
       ]
@@ -431,29 +574,82 @@
           "name": "overview.auction vs anomaly.quality",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
         },
         {
           "name": "overview.limit_pool.up vs funnel.today_up",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "overview=VERIFIED_SOURCE; funnel=ok"
         },
         {
           "name": "overview.sector_member vs theme-search",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
         },
         {
           "name": "overview.stock_daily vs sentiment-next-day",
           "ok": true,
           "explained": false,
+          "reason_code": null,
           "detail": "next_day=2026-09-22; daily=VERIFIED_SOURCE; sentiment=PARTIAL; missing=1"
         }
       ]
     }
   ],
-  "explained": [],
+  "explained": [
+    {
+      "trade_date": "2026-09-01",
+      "name": "overview.stock_daily vs sentiment-next-day",
+      "ok": false,
+      "explained": true,
+      "reason_code": "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL",
+      "detail": "next_day=2026-09-02; daily=PARTIAL; sentiment=VERIFIED; missing=0"
+    },
+    {
+      "trade_date": "2026-09-02",
+      "name": "overview.stock_daily vs sentiment-next-day",
+      "ok": false,
+      "explained": true,
+      "reason_code": "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL",
+      "detail": "next_day=2026-09-03; daily=PARTIAL; sentiment=VERIFIED; missing=0"
+    },
+    {
+      "trade_date": "2026-09-03",
+      "name": "overview.stock_daily vs sentiment-next-day",
+      "ok": false,
+      "explained": true,
+      "reason_code": "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL",
+      "detail": "next_day=2026-09-04; daily=PARTIAL; sentiment=VERIFIED; missing=0"
+    },
+    {
+      "trade_date": "2026-09-04",
+      "name": "overview.stock_daily vs sentiment-next-day",
+      "ok": false,
+      "explained": true,
+      "reason_code": "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL",
+      "detail": "next_day=2026-09-07; daily=PARTIAL; sentiment=VERIFIED; missing=0"
+    },
+    {
+      "trade_date": "2026-09-07",
+      "name": "overview.stock_daily vs sentiment-next-day",
+      "ok": false,
+      "explained": true,
+      "reason_code": "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL",
+      "detail": "next_day=2026-09-08; daily=PARTIAL; sentiment=VERIFIED; missing=0"
+    },
+    {
+      "trade_date": "2026-09-08",
+      "name": "overview.stock_daily vs sentiment-next-day",
+      "ok": false,
+      "explained": true,
+      "reason_code": "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL",
+      "detail": "next_day=2026-09-09; daily=PARTIAL; sentiment=VERIFIED; missing=0"
+    }
+  ],
   "unexpected": []
 }

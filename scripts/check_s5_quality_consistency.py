@@ -63,38 +63,82 @@ def _git_sha() -> str | None:
         return None
 
 
-def _check(name: str, ok: bool, *, detail: str | None = None, explained: bool = False) -> dict:
+def _check(
+    name: str, ok: bool, *, detail: str | None = None, reason_code: str | None = None
+) -> dict:
+    """一条对账结果。
+
+    严格口径：不匹配要归为 `explained`，**必须**给出具体 reason code；
+    没有原因码的一律进 `unexpected`（不能靠宽松条件静默通过）。
+    """
     return {
         "name": name,
         "ok": bool(ok),
-        "explained": explained,
+        "explained": bool(not ok and reason_code),
+        "reason_code": None if ok else reason_code,
         "detail": detail,
     }
+
+
+#: 严格状态映射矩阵：overview 状态 → 其他服务允许的状态集合。
+#: 不在此表里的组合一律 unexpected；`SOURCE_ERROR` 只能由 overview 自己声明，
+#: 下游服务没有等价状态，因此必须用 `OVERVIEW_SOURCE_ERROR_DECLARED` 解释。
+STATE_MATRIX: dict[str, dict[str, set[str]]] = {
+    "auction": {
+        dq.STATUS_VERIFIED: {"VALID"},
+        dq.STATUS_PARTIAL: {"INCOMPLETE"},
+        dq.STATUS_UNVERIFIABLE: {"SOURCE_UNAVAILABLE"},
+        dq.STATUS_NOT_COLLECTED: {"NOT_COLLECTED"},
+        dq.STATUS_SOURCE_ERROR: set(),
+    },
+    "pool": {
+        dq.STATUS_VERIFIED: {limit_funnel.SOURCE_OK},
+        dq.STATUS_PARTIAL: {
+            limit_funnel.SOURCE_PARTIAL,
+            limit_funnel.SOURCE_FAILED,
+            limit_funnel.SOURCE_SKIPPED,
+            limit_funnel.SOURCE_EMPTY,
+        },
+        dq.STATUS_UNVERIFIABLE: {
+            limit_funnel.SOURCE_FAILED,
+            limit_funnel.SOURCE_SKIPPED,
+            limit_funnel.SOURCE_EMPTY,
+            limit_funnel.SOURCE_UNKNOWN,
+            limit_funnel.SOURCE_NOT_COLLECTED,
+        },
+        dq.STATUS_NOT_COLLECTED: {limit_funnel.SOURCE_NOT_COLLECTED},
+        dq.STATUS_SOURCE_ERROR: set(),
+    },
+    "sentiment": {
+        # 情绪次日用的是自己的状态词表（VERIFIED / PARTIAL / UNVERIFIED / PENDING）
+        "VERIFIED": {"VERIFIED"},
+        "PARTIAL": {"PARTIAL"},
+        "UNVERIFIED": {"UNVERIFIED"},
+        "PENDING": {"PENDING"},
+    },
+}
+
+
+def _matrix_match(kind: str, overview_status: str, peer_status: str | None) -> bool:
+    allowed = STATE_MATRIX[kind].get(overview_status)
+    return peer_status is not None and allowed is not None and peer_status in allowed
 
 
 def _auction_checks(session: Session, day: date, item: dict) -> list[dict]:
     anomaly = auction_anomaly.build_anomaly(session, day, "all", "auction_amount", "desc", 1)
     anomaly_status = anomaly["quality"]["status"]
     status = item["status"]
-    if status == dq.STATUS_VERIFIED:
-        ok = anomaly_status == "VALID"
-    elif status == dq.STATUS_NOT_COLLECTED:
-        ok = anomaly_status == "NOT_COLLECTED"
-    elif status == dq.STATUS_UNVERIFIABLE:
-        ok = anomaly_status == "SOURCE_UNAVAILABLE"
-    else:
-        ok = anomaly_status in ("INCOMPLETE", "VALID")
+    ok = _matrix_match("auction", status, anomaly_status)
+    reason = None
+    if not ok and status == dq.STATUS_SOURCE_ERROR:
+        reason = "OVERVIEW_SOURCE_ERROR_DECLARED"
     return [
         _check(
             "overview.auction vs anomaly.quality",
             ok,
             detail=f"overview={status}/{item.get('auction_result_status')}+"
             f"{item.get('post_open_status')}; anomaly={anomaly_status}",
-            explained=(
-                not ok
-                and status == dq.STATUS_PARTIAL
-                and anomaly_status == "INCOMPLETE"
-            ),
+            reason_code=reason,
         )
     ]
 
@@ -104,21 +148,16 @@ def _pool_checks(session: Session, day: date, item: dict) -> list[dict]:
     inputs = limit_funnel.load_funnel_inputs(session, prev, day)
     funnel_status = inputs.today_up_quality.status
     status = item["status"]
-    if status == dq.STATUS_VERIFIED:
-        ok = funnel_status == limit_funnel.SOURCE_OK
-    elif status == dq.STATUS_NOT_COLLECTED:
-        ok = funnel_status == limit_funnel.SOURCE_NOT_COLLECTED
-    elif status == dq.STATUS_PARTIAL:
-        # 质量台保留「最近尝试失败前的有效快照」，漏斗按最新日志严格判定 → 允许不同
-        ok = funnel_status != limit_funnel.SOURCE_OK
-    else:
-        ok = funnel_status != limit_funnel.SOURCE_OK
+    ok = _matrix_match("pool", status, funnel_status)
+    reason = None
+    if not ok and status == dq.STATUS_SOURCE_ERROR:
+        reason = "OVERVIEW_SOURCE_ERROR_DECLARED"
     return [
         _check(
             "overview.limit_pool.up vs funnel.today_up",
             ok,
             detail=f"overview={status}; funnel={funnel_status}",
-            explained=(not ok and status == dq.STATUS_PARTIAL),
+            reason_code=reason,
         )
     ]
 
@@ -154,23 +193,22 @@ def _sentiment_checks(session: Session, day: date, items: dict) -> list[dict]:
     daily_status = _daily_status(session, d1) if d1 else None
     sentiment_status = row.get("data_quality_status")
     missing = int(row.get("missing_count") or 0)
-    # 情绪次日只抽样其分组股票；全市场日线 PARTIAL（个别行缺字段）不构成矛盾，
-    # 但「D+1 日线整体未采集」或「自称 VERIFIED 却有缺失样本」必须判矛盾。
+    # 严格口径：情绪 VERIFIED 要求抽样内无缺失，且全市场日线也为 VERIFIED；
+    # 只有「抽样内完整、全市场个别行缺字段」允许作为已解释差异（带明确原因码）。
+    reason = None
     if sentiment_status == "VERIFIED" and d1:
-        sample_ok = missing == 0
-        daily_ok = daily_status in (dq.STATUS_VERIFIED, dq.STATUS_PARTIAL)
-        ok = sample_ok and daily_ok
-        # 仅当「抽样内无缺失、只是全市场个别行缺字段」时算已解释差异
-        explained = (not ok) and sample_ok and daily_status == dq.STATUS_PARTIAL
+        ok = missing == 0 and daily_status == dq.STATUS_VERIFIED
+        if not ok and missing == 0 and daily_status == dq.STATUS_PARTIAL:
+            reason = "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL"
     else:
-        ok, explained = True, False
+        ok = _matrix_match("sentiment", sentiment_status or "", sentiment_status)
     return [
         _check(
             "overview.stock_daily vs sentiment-next-day",
             ok,
             detail=f"next_day={d1}; daily={daily_status}; sentiment={sentiment_status}; "
             f"missing={missing}",
-            explained=(not ok and explained),
+            reason_code=reason,
         )
     ]
 
@@ -206,6 +244,9 @@ def run(db_path: Path, start: date, end: date, sample: int) -> dict:
             raise SystemExit("区间内没有交易日")
         step = max(1, len(days) // max(1, sample))
         selected = days[::step][:sample]
+        sampled_iso = [item.isoformat() for item in selected]
+        sampled_set = set(sampled_iso)
+        uncovered_iso = [item.isoformat() for item in days if item.isoformat() not in sampled_set]
         for day in selected:
             overview = dq.overview(session, target_date=day, days=30)
             items = {item["source"]: item for item in overview["items"]}
@@ -231,12 +272,30 @@ def run(db_path: Path, start: date, end: date, sample: int) -> dict:
     ]
     return {
         "quality_version": dq.QUALITY_VERSION,
+        "matrix_version": "quality-consistency-matrix-v2",
+        "matrix": {
+            kind: {status: sorted(allowed) for status, allowed in mapping.items()}
+            for kind, mapping in STATE_MATRIX.items()
+        },
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "git_sha": _git_sha(),
         "database": db_path.name,
         "mode": "ro&immutable=1",
         "range": {"start": start.isoformat(), "end": end.isoformat()},
         "sampled_days": len(checks),
+        "sampling": {
+            "strategy": (
+                "等间隔抽样：step = floor(区间交易日数 / --sample)，从区间首个交易日起每隔 "
+                "step 天取一个，最多 --sample 个"
+            ),
+            "requested_sample": sample,
+            "available_trade_days": len(days),
+            "sampled_days": sampled_iso,
+            "uncovered_days": uncovered_iso,
+            "coverage_ratio": round(len(checks) / len(days), 4),
+            "is_full_history": len(checks) == len(days),
+            "disclaimer": "抽样对账不等于全历史完整验收；未覆盖日期见 uncovered_days",
+        },
         "sql_statements": len(statements),
         "elapsed_ms": elapsed_ms,
         "summary": {
@@ -251,12 +310,58 @@ def run(db_path: Path, start: date, end: date, sample: int) -> dict:
     }
 
 
+def _render_markdown(result: dict) -> str:
+    summary = result["summary"]
+    sampling = result.get("sampling") or {}
+    lines = [
+        "# S5 数据质量对账（只读、抽样）",
+        "",
+        f"- 生成时间：{result['generated_at']}",
+        f"- Git：`{result.get('git_sha') or 'unknown'}`",
+        f"- 数据库：`{result['database']}`（{result['mode']}）",
+        f"- 区间：{result['range']['start']} ~ {result['range']['end']}",
+        f"- 矩阵版本：`{result.get('matrix_version')}`",
+        "",
+        "## 抽样口径",
+        "",
+        f"- 策略：{sampling.get('strategy')}",
+        f"- 请求样本：{sampling.get('requested_sample')}；区间交易日："
+        f"{sampling.get('available_trade_days')}；实际抽样：{result['sampled_days']}",
+        f"- 覆盖率：{sampling.get('coverage_ratio')}；是否全历史：{sampling.get('is_full_history')}",
+        f"- 说明：{sampling.get('disclaimer')}",
+        "",
+        "## 结果",
+        "",
+        f"- 检查总数：{summary['total_checks']}",
+        f"- 通过：{summary['passed']}",
+        f"- 已解释差异：{summary['explained_disagreements']}",
+        f"- 未解释差异：{summary['unexpected_disagreements']}",
+        f"- SQL：{result['sql_statements']}；耗时：{result['elapsed_ms']} ms",
+        "",
+        "## 未解释差异",
+        "",
+    ]
+    if result["unexpected"]:
+        for item in result["unexpected"]:
+            lines.append(
+                f"- {item['trade_date']} · {item['name']} · {item['detail']}"
+            )
+    else:
+        lines.append("- 无（仅限本次抽样覆盖的日期）")
+    lines.extend(["", "## 未覆盖日期（未参与本次对账）", ""])
+    uncovered = sampling.get("uncovered_days") or []
+    lines.append("- " + ("、".join(uncovered) if uncovered else "无（本次覆盖了区间内全部交易日）"))
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="S5 数据质量只读对账（不写库）")
     parser.add_argument("--db", required=True, help="只读数据库文件路径")
     parser.add_argument("--start", required=True, type=date.fromisoformat)
     parser.add_argument("--end", required=True, type=date.fromisoformat)
     parser.add_argument("--out", required=True, help="输出 JSON 路径")
+    parser.add_argument("--md", help="可选：同时输出 Markdown 摘要")
     parser.add_argument("--sample", type=int, default=15, help="抽样交易日数（默认 15）")
     args = parser.parse_args()
 
@@ -270,6 +375,10 @@ def main() -> None:
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    if args.md:
+        md_path = Path(args.md)
+        md_path.parent.mkdir(parents=True, exist_ok=True)
+        md_path.write_text(_render_markdown(result), encoding="utf-8")
     print(
         f"days={result['sampled_days']} checks={result['summary']['total_checks']} "
         f"unexpected={result['summary']['unexpected_disagreements']} "

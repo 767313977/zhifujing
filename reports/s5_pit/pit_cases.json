@@ -91,5 +91,58 @@
       "v2": {"known_by": "PRIOR_DAY", "time_bucket": "AT_CUTOFF_KNOWN"},
       "v3": {"known_by": "PRIOR_DAY", "time_bucket": "AT_CUTOFF_KNOWN", "reason_code": null}
     }
-  ]
+  ],
+  "pool_conflict_cases": [
+    {
+      "id": "post_cutoff_conflict",
+      "up_observed_at": "2026-11-11T22:00:00",
+      "broken_observed_at": "2026-11-11T22:00:00",
+      "at_cutoff_known": {
+        "pool_status": "UNKNOWN",
+        "observed_pool_membership": [],
+        "pool_scope_complete": false
+      },
+      "unknown_or_later_pool": {
+        "status": "POOL_CONFLICT",
+        "observed_pool_membership": ["broken", "up"],
+        "reason_code": "POOL_CONFLICT_POST_CUTOFF",
+        "known_by": "POST_CLOSE_UNKNOWN"
+      }
+    },
+    {
+      "id": "partially_known_conflict",
+      "up_observed_at": "2026-11-11T14:00:00",
+      "broken_observed_at": "2026-11-11T22:00:00",
+      "at_cutoff_known": {
+        "pool_status": "UP",
+        "observed_pool_membership": ["up"],
+        "pool_scope_complete": false,
+        "unconfirmed_pool_sources": ["broken"]
+      },
+      "unknown_or_later_pool": {
+        "status": "POOL_CONFLICT",
+        "reason_code": "POOL_CONFLICT_POST_CUTOFF"
+      },
+      "quality_reason": "POOL_OTHER_SOURCES_UNKNOWN"
+    },
+    {
+      "id": "conflict_proven_before_cutoff",
+      "up_observed_at": "2026-11-11T14:00:00",
+      "broken_observed_at": "2026-11-11T14:30:00",
+      "at_cutoff_known": {
+        "pool_status": "POOL_CONFLICT",
+        "observed_pool_membership": ["broken", "up"],
+        "pool_scope_complete": true
+      },
+      "unknown_or_later_pool": null,
+      "evidence_known_at": "2026-11-11T14:30:00+08:00"
+    }
+  ],
+  "naive_policy": {
+    "service_default": "UNTRUSTED",
+    "config": "research_naive_timestamps_trusted=false（环境变量 RESEARCH_NAIVE_TIMESTAMPS_TRUSTED）",
+    "write_path": "app.models._now() = timeutil.now_cn() 去 tzinfo（确定性 CST naive）",
+    "known_at": "规范化为带 +08:00 的 aware datetime，ISO 字符串以 +08:00 结尾",
+    "rule": "历史 naive 行无法证明时区时降级 UNKNOWN，不默认按 +08:00 解释"
+  }
 }
