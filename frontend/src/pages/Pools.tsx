@@ -25,6 +25,7 @@ import Panel from '../components/Panel'
 import Segmented from '../components/Segmented'
 import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
+import QuickResearch from '../components/QuickResearch'
 import { fmtAmount, fmtNum, fmtPct, fmtSealTime, toneOf } from '../lib/format'
 import { useSort } from '../lib/sort'
 import type { SortSpecs } from '../lib/sort'
@@ -769,6 +770,7 @@ export default function Pools() {
                         <StockLink code={row.code} className="text-fg">
                           {row.name ?? row.code}
                         </StockLink>
+                        <QuickResearch code={row.code} />
                         {row.board_shape && (
                           <span
                             className="ml-1 rounded border border-line-soft px-1 text-[11px] text-fg-dim"
@@ -1025,6 +1027,7 @@ export default function Pools() {
                         <StockLink code={row.code} className="text-fg">
                           {row.name ?? row.code}
                         </StockLink>
+                        <QuickResearch code={row.code} />
                         <span className="num ml-2 text-[12px] text-fg-dim">{row.code}</span>
                       </td>
                       <td className="num">{fmtNum(row.close, 2)}</td>
@@ -1461,6 +1464,7 @@ export default function Pools() {
                           <StockLink code={row.code} className="text-fg">
                             {row.name ?? row.code}
                           </StockLink>
+                          <QuickResearch code={row.code} />
                         </td>
                         <td className={`num ${toneOf(row.pct_chg)}`}>{fmtPct(row.pct_chg)}</td>
                         <td className={`num ${toneOf(row.sector_pct_chg)}`}>

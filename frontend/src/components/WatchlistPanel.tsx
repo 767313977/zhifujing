@@ -7,6 +7,7 @@ import type { SortSpecs } from '../lib/sort'
 import { rememberStockList } from '../lib/stockNav'
 import Panel from './Panel'
 import SortTh from './SortTh'
+import QuickResearch from './QuickResearch'
 import StockLink from './StockLink'
 
 interface WatchlistPanelProps {
@@ -110,7 +111,10 @@ export default function WatchlistPanel({ rows, delay = 0, loading = false }: Wat
                         <span className="ml-1.5 text-[11px] text-accent">ETF</span>
                       </span>
                     ) : (
-                      <StockLink code={row.code}>{row.name ?? row.code}</StockLink>
+                      <>
+                        <StockLink code={row.code}>{row.name ?? row.code}</StockLink>
+                        <QuickResearch code={row.code} />
+                      </>
                     )}
                   </td>
                   <td>

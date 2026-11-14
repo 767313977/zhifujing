@@ -27,6 +27,7 @@ import SectorRotationPanel from '../components/SectorRotationPanel'
 import { FLOW_SPANS, ROTATION_SPANS } from '../lib/sectorSpans'
 import SortTh from '../components/SortTh'
 import StockLink from '../components/StockLink'
+import QuickResearch from '../components/QuickResearch'
 import ThemeBoardPanel from '../components/ThemeBoardPanel'
 import {
   AXIS_LABEL,
@@ -1251,6 +1252,7 @@ function MemberTable({ members }: { members: SectorMembers['members'] }) {
               </td>
               <td className="!text-left">
                 <StockLink code={stock.code}>{stock.name ?? stock.code}</StockLink>
+                <QuickResearch code={stock.code} />
               </td>
               <td>
                 <span className={`num ${toneOf(stock.pct_chg)}`}>

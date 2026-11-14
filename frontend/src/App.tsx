@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider, RequireAdmin, RequireAuth } from './lib/auth'
+import { StockResearchProvider } from './lib/StockResearchProvider'
 import { WatchlistProvider } from './lib/watchlist'
 
 /**
@@ -66,8 +67,9 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <WatchlistProvider>
-          <Suspense fallback={<PageFallback />}>
-            <Routes>
+          <StockResearchProvider>
+            <Suspense fallback={<PageFallback />}>
+              <Routes>
               <Route path="/login" element={<Login />} />
               <Route
                 path="/"
@@ -289,7 +291,8 @@ export default function App() {
                 }
               />
             </Routes>
-          </Suspense>
+            </Suspense>
+          </StockResearchProvider>
         </WatchlistProvider>
       </AuthProvider>
     </BrowserRouter>

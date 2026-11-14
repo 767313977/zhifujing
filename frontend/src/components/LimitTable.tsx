@@ -6,6 +6,7 @@ import { useSort } from '../lib/sort'
 import type { SortSpecs, SortValue } from '../lib/sort'
 import { rememberStockList } from '../lib/stockNav'
 import Panel from './Panel'
+import QuickResearch from './QuickResearch'
 import SortTh from './SortTh'
 
 interface LimitTableProps {
@@ -24,6 +25,8 @@ interface LimitTableProps {
   emptyText?: string
   /** 是否播浮现动画（默认开）。Tab 内复用的表传 false，避免每次切换重播（复查 P2-7） */
   animate?: boolean
+  /** 当前数据日：传给「快速研究」侧栏做缓存键 */
+  asOfDate?: string | null
 }
 
 interface Column {
@@ -79,7 +82,15 @@ const TITLES: Record<PoolType, string> = {
  */
 function buildColumns(
   type: PoolType,
-  { hasBoard = false, hasReason = false }: { hasBoard?: boolean; hasReason?: boolean } = {},
+  {
+    hasBoard = false,
+    hasReason = false,
+    asOfDate = null,
+  }: {
+    hasBoard?: boolean
+    hasReason?: boolean
+    asOfDate?: string | null
+  } = {},
 ): Column[] {
   const columns: Column[] = [
     {
@@ -107,12 +118,15 @@ function buildColumns(
       // `stock_concept` 里每只票恰好一个板块，标签和那一列是同一个词，
       // 摆两遍只是重复（撤掉时的实测见设计文档 8.36.1）。
       render: (s) => (
-        <Link
-          to={`/stock/${encodeURIComponent(s.code)}`}
-          className="text-fg transition-colors hover:text-accent"
-        >
-          {s.name ?? '—'}
-        </Link>
+        <span className="inline-flex items-baseline">
+          <Link
+            to={`/stock/${encodeURIComponent(s.code)}`}
+            className="text-fg transition-colors hover:text-accent"
+          >
+            {s.name ?? '—'}
+          </Link>
+          <QuickResearch code={s.code} asOfDate={asOfDate} />
+        </span>
       ),
       sortValue: (s) => s.name,
     },
@@ -330,10 +344,12 @@ export default function LimitTable({
   header,
   emptyText = '当日无数据',
   animate = true,
+  asOfDate = null,
 }: LimitTableProps) {
   const columns = buildColumns(type, {
     hasBoard: stocks.some((stock) => stock.board),
     hasReason: stocks.some((stock) => stock.reason),
+    asOfDate,
   })
   // 首屏不排（key 为 null），保持后端顺序：涨停池的默认顺序本身有意义
   const [sort, shown] = useSort(stocks, buildSpecs(columns), { key: null })

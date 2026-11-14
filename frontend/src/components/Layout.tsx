@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/authContext'
 import Footer from './Footer'
+import StockResearchHost from './StockResearchHost'
 import UserMenu from './UserMenu'
 
 interface NavItem {
@@ -469,6 +470,10 @@ export default function Layout({ children, toolbar }: LayoutProps) {
 
       {/* 页脚抽成了组件：登录页也要渲染备案号（见 Footer 的说明） */}
       <Footer />
+
+      {/* 全局股票研究侧栏（S1-C）：固定覆盖式，不挤压主内容；由 Provider 控制开关。
+          走 Host 按需加载 —— 抽屉里的 ECharts 不该进公共 Layout 块 */}
+      <StockResearchHost />
     </div>
   )
 }

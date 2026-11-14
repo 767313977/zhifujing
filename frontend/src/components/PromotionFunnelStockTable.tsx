@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { PromotionFunnelStatus, PromotionFunnelStock } from '../api/types'
 import { fmtInt, fmtNum, fmtPct, fmtSealTime, toneOf } from '../lib/format'
+import QuickResearch from './QuickResearch'
 import StockLink from './StockLink'
 
 const STATUS_LABEL: Record<PromotionFunnelStatus, string> = {
@@ -134,6 +135,7 @@ export default function PromotionFunnelStockTable({
                 </td>
                 <td className="text-left">
                   <StockLink code={stock.code}>{stock.name ?? stock.code}</StockLink>
+                  <QuickResearch code={stock.code} />
                   <span className="num ml-1.5 text-[12px] text-fg-dim">{stock.code}</span>
                   {stock.industry && (
                     <span className="ml-1.5 text-[12px] text-fg-dim">{stock.industry}</span>

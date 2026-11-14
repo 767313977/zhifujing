@@ -41,10 +41,12 @@ from app.models import (
 from app.schemas import (
     ChipDistributionOut,
     ChipPoint,
+    LhbOut,
     RiskBadgeOut,
     StockDailyRow,
     StockDdeOut,
     StockDdeRow,
+    StockLimitRecord,
     StockNewsOut,
     StockNewsRow,
     StockNoticeRow,
@@ -859,6 +861,10 @@ def dde(
     days: int = Query(
         DDE_DAYS, ge=5, le=DDE_MAX_DAYS, description="返回最近 N 个交易日，按日期升序"
     ),
+    live: bool = Query(
+        True,
+        description="False = 只读本地库，不触发按需现取（全局研究侧栏用；默认行为不变）",
+    ),
     session: Session = Depends(get_db),
     user: AppUser = Depends(current_user),
 ) -> StockDdeOut:
@@ -886,7 +892,11 @@ def dde(
         raise HTTPException(
             status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
         )
-    rows, note = _stock_dde(code, days, user.id)
+    rows, note = (
+        _stock_dde(code, days, user.id)
+        if live
+        else (_read_dde(session, code, days), "只读本地库：未触发现取")
+    )
     return StockDdeOut(
         code=code,
         name=_resolve_name(session, code),
@@ -1237,6 +1247,47 @@ def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
         themes=items,
         suppressed=suppressed,
     )
+
+
+@router.get("/{code}/limit-history", response_model=list[StockLimitRecord])
+def limit_history(
+    code: str,
+    limit: int = Query(60, ge=1, le=250, description="最多返回多少条涨停/炸板记录"),
+    session: Session = Depends(get_db),
+) -> list[StockLimitRecord]:
+    """个股最近的涨停 / 炸板记录（只读本地 `limit_pool`，不补数）。"""
+    code = _code(code)
+    rows = list(
+        session.scalars(
+            select(LimitPool)
+            .where(
+                LimitPool.code == code,
+                LimitPool.pool_type.in_(("up", "broken")),
+            )
+            .order_by(LimitPool.trade_date.desc())
+            .limit(limit)
+        )
+    )
+    return [StockLimitRecord.model_validate(row) for row in rows]
+
+
+@router.get("/{code}/lhb", response_model=list[LhbOut])
+def stock_lhb(
+    code: str,
+    limit: int = Query(60, ge=1, le=250, description="最多返回多少条龙虎榜记录"),
+    session: Session = Depends(get_db),
+) -> list[LhbOut]:
+    """个股最近的龙虎榜记录（只读本地 `lhb`，按日期倒序）。"""
+    code = _code(code)
+    rows = list(
+        session.scalars(
+            select(Lhb)
+            .where(Lhb.code == code)
+            .order_by(Lhb.trade_date.desc(), Lhb.reason)
+            .limit(limit)
+        )
+    )
+    return [LhbOut.model_validate(row) for row in rows]
 
 
 def _guard_quota() -> None:

@@ -721,6 +721,7 @@ export default function LimitReview() {
           stocks={visibleStocks}
           loading={loading}
           delay={240}
+          asOfDate={date}
           // 只有当日真有涨停时才给筛选条：没有票时它给不出任何选项
           header={stocks.length > 0 ? industryBar : undefined}
           // 被筛空不是「当日无数据」，别让这两件事混成一句话
@@ -735,6 +736,7 @@ export default function LimitReview() {
           stocks={broken?.stocks ?? []}
           loading={loading}
           delay={280}
+          asOfDate={date}
         />
       </div>
       )}

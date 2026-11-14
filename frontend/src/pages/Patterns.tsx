@@ -11,6 +11,7 @@ import type {
 } from '../api/types'
 import Alert from '../components/Alert'
 import RiskMark from '../components/RiskBadges'
+import QuickResearch from '../components/QuickResearch'
 import { useRiskBadges } from '../lib/riskBadges'
 import KLineChart from '../components/KLineChart'
 import type { KeyLevel } from '../components/KLineChart'
@@ -1695,6 +1696,7 @@ export default function Patterns() {
                           <span className="num text-fg-dim">{stock.code}</span>
                           <span className="ml-2 text-fg">{stock.name ?? '—'}</span>
                         </Link>
+                        <QuickResearch code={stock.code} />
                         <RiskMark badges={riskMap.get(stock.code)} />
                       </td>
                       {days > 1 && (
