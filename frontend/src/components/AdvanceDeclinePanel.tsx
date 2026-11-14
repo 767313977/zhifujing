@@ -20,6 +20,9 @@ import { fmtNum, toneOf } from '../lib/format'
 export default function AdvanceDeclinePanel({ delay = 0 }: { delay?: number }) {
   const [data, setData] = useState<AdvanceDecline | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // 404 空态时 error 被置为 null、data 仍为 null：只看 error 会让 loading 永远为真，
+  // 「暂无数据」永远不出现（S6.5 浏览器验收在空库上发现）。这里显式记录「请求已结束」。
+  const [settled, setSettled] = useState(false)
 
   useEffect(() => {
     let stale = false
@@ -34,6 +37,9 @@ export default function AdvanceDeclinePanel({ delay = 0 }: { delay?: number }) {
         // 面板会同时显示「加载失败：库里还没有个股日线」和「这是接口出错，不是没有数据」，
         // 自相矛盾、还误导成接口挂了。全站约定见 client.ts 的 isNoDataError。
         if (!stale) setError(isNoDataError(err) ? null : err.message)
+      })
+      .finally(() => {
+        if (!stale) setSettled(true)
       })
     return () => {
       stale = true
@@ -105,7 +111,7 @@ export default function AdvanceDeclinePanel({ delay = 0 }: { delay?: number }) {
   if (!data) {
     return (
       <Panel title="全 A 涨跌分布" meta={<span>各涨跌幅区间家数</span>} delay={delay}>
-        <LoadState loading={error === null} error={error} emptyText="暂无数据" />
+        <LoadState loading={!settled} error={error} emptyText="暂无数据" />
       </Panel>
     )
   }
