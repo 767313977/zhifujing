@@ -1,0 +1,62 @@
+{
+  "stage": "gate0",
+  "generated_at": "2026-11-15T02:04:24+08:00",
+  "toplevel": "C:/Users/76731/Documents/trae_projects/fupan",
+  "base_branch": "release/s6-canary-hardening-v2",
+  "base_head": "5db5246010c884a8a980e8279e4b49cb164a3603",
+  "work_branch": "release/s6-canary-hardening-v3",
+  "worktree_clean_at_start": true,
+  "worktree_clean_note": "开始前仅有本工作包自身产物：scripts/s6_gate0_fingerprint.py 的 --out-dir 解析修复（M）与 reports/s6-followup/（??）；未清理任何未知文件。",
+  "head_matches_previous_report": true,
+  "remotes": [
+    "origin\tgit@github.com:767313977/zhifujing.git (fetch)",
+    "origin\tgit@github.com:767313977/zhifujing.git (push)",
+    "zhaohuibin7\thttps://github.com/zhaohuibin7/zhifujing.git (fetch)",
+    "zhaohuibin7\thttps://github.com/zhaohuibin7/zhifujing.git (push)"
+  ],
+  "fetch": {
+    "command": "git fetch --all --prune",
+    "exit_code": 1,
+    "origin": "OK",
+    "zhaohuibin7": "fatal: unable to access 'https://github.com/zhaohuibin7/zhifujing.git/': Recv failure: Connection was reset",
+    "impact": "只影响备用镜像远程；origin 为发布远程且 fetch 成功，不阻断 Gate 0。"
+  },
+  "diff_check": {
+    "exit_code": 0,
+    "warnings": [
+      "warning: in the working copy of 'scripts/s6_gate0_fingerprint.py', LF will be replaced by CRLF the next time Git touches it"
+    ]
+  },
+  "log": [
+    "5db5246 (HEAD -> release/s6-canary-hardening-v3, origin/release/s6-canary-hardening-v2, release/s6-canary-hardening-v2) docs(s6.5): record full regression, browser, performance and final gate matrix",
+    "ef318cd test(s6.3): record security regression, dependency scan and short soak",
+    "b88d34a fix(ui): end loading state when advance-decline is an empty 404",
+    "863149f feat(s6.2): add research/user db split foundation and idempotent migration",
+    "bdd80d6 feat(s6.1): harden isolated egress scripts and record gate0 isolation evidence",
+    "c6db475 (origin/release/s6-canary-hardening, release/s6-canary-hardening) docs(s6): record acceptance report with blocking gates",
+    "0f4a050 docs(release): add canary approval package with blocking gates",
+    "b044851 test(staging): deploy isolated staging, restart and rollback drill",
+    "f7a2151 test(perf): profile sql waterfall and re-run 60/60 concurrency regression",
+    "e7e710a fix(quality): return empty timeline when trade calendar is empty",
+    "b8f9905 feat(runtime): add fail-closed readiness and verify sqlite read-only semantics",
+    "6fc4611 feat(security): enforce default-deny egress allowlist with DNS and proxy guards"
+  ],
+  "branch_policy": {
+    "no_reset": true,
+    "no_rebase": true,
+    "no_force_push": true,
+    "preserved_branches": [
+      "release/s6-canary-hardening-v2",
+      "release/s6-canary-hardening"
+    ]
+  },
+  "gate0_status": "PASS",
+  "gate0_evidence": [
+    "reports/s6-followup/gate0/git-baseline.md",
+    "reports/s6-followup/gate0/git-baseline.json",
+    "reports/s6-followup/gate0/protected-assets-before.md",
+    "reports/s6-followup/gate0/protected-assets-before.json",
+    "reports/s6-followup/gate0/protected-assets-before.sha256",
+    "reports/s6-followup/gate0/database-integrity-before.txt"
+  ]
+}

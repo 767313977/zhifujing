@@ -190,7 +190,7 @@ def main() -> int:
     parser.add_argument("--out-dir", default=str(ROOT / "reports" / "s6" / "gate0"))
     args = parser.parse_args()
 
-    out_dir = Path(args.out_dir)
+    out_dir = Path(args.out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     prefix = f"protected-assets-{args.stage}"
     json_path = out_dir / f"{prefix}.json"
