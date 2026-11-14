@@ -354,28 +354,43 @@ def _resolve_pool_evidence(
             for pool_type in pending_sources
         )
         suffix = "POST_CUTOFF" if timing_related else "NOT_PROVABLE"
-        if len(observed_member_types) > 1:
+        unconfirmed_membership = [
+            pool_type
+            for pool_type in observed_member_types
+            if pool_type not in known_sources
+        ]
+        # 已知区与未知区必须表达不同事实：
+        # - 已证明 >=2 个成员：冲突本身已成立，unknown 只表示 scope 仍不完整；
+        # - 已证明 1 个成员 + 另一池有未证明成员：只能标记「潜在冲突未证明」；
+        # - 已证明 1 个成员、没有未证明成员：保持正向观察，只标记 scope incomplete；
+        # - 没有任何已证明成员：才允许说成员关系本身未证明。
+        if len(known_membership) >= 2:
+            unknown_status = POOL_STATUS_CONFLICT
+            unknown_reason = f"POOL_SCOPE_INCOMPLETE_{suffix}"
+        elif len(known_membership) == 1 and unconfirmed_membership:
             unknown_status = POOL_STATUS_CONFLICT
             unknown_reason = f"POOL_CONFLICT_{suffix}"
-        elif len(observed_member_types) == 1:
+        elif len(known_membership) == 1:
+            unknown_status = status
+            unknown_reason = f"POOL_SCOPE_INCOMPLETE_{suffix}"
+        elif len(unconfirmed_membership) > 1:
+            unknown_status = POOL_STATUS_CONFLICT
+            unknown_reason = f"POOL_CONFLICT_{suffix}"
+        elif len(unconfirmed_membership) == 1:
             unknown_status = {
                 "up": POOL_STATUS_UP,
                 "broken": POOL_STATUS_BROKEN,
                 "down": POOL_STATUS_DOWN,
-            }[observed_member_types[0]]
+            }[unconfirmed_membership[0]]
             unknown_reason = f"POOL_MEMBERSHIP_{suffix}"
         else:
             unknown_status = POOL_STATUS_UNKNOWN
-            unknown_reason = "POOL_MEMBERSHIP_NOT_PROVABLE"
+            unknown_reason = f"POOL_SCOPE_INCOMPLETE_{suffix}"
         unknown = {
             "status": unknown_status,
             # 原始观察（含已证明成员）用于审计；UI 展示用下面的 unconfirmed_membership
             "observed_pool_membership": sorted(observed_member_types),
-            "unconfirmed_membership": [
-                pool_type
-                for pool_type in observed_member_types
-                if pool_type not in known_sources
-            ],
+            "unconfirmed_membership": unconfirmed_membership,
             "pending_sources": pending_sources,
             "reason_code": unknown_reason,
             "known_by": unknown_known_by,
@@ -883,14 +898,28 @@ def build(
 
     if pool_state["unknown"] is not None:
         unknown_pool = pool_state["unknown"]
-        unknown_labels = "、".join(unknown_pool["observed_pool_membership"])
-        if unknown_pool["status"] == POOL_STATUS_CONFLICT:
+        known_labels_now = "、".join(pool_state["known_membership"])
+        unconfirmed_labels = "、".join(unknown_pool["unconfirmed_membership"])
+        pending_labels = "、".join(unknown_pool["pending_sources"])
+        if len(pool_state["known_membership"]) >= 2:
+            # 冲突已经由已知成员证明，unknown 只表达来源完整性仍未闭环
             unknown_summary = (
-                f"同一股票出现在 {unknown_labels} 池，但该冲突未能在截止前全部证明"
+                f"已知冲突（{known_labels_now}）已在截止前证明；"
+                f"以下来源仍未证明完整：{pending_labels}"
             )
-        elif unknown_labels:
+        elif unknown_pool["status"] == POOL_STATUS_CONFLICT:
             unknown_summary = (
-                f"观察到 {unknown_labels}，但该成员关系未能在 15:00 前证明"
+                f"已证明 {known_labels_now or '无'}；观察到 {unconfirmed_labels}，"
+                "但该潜在冲突未能在截止前全部证明"
+            )
+        elif unconfirmed_labels:
+            unknown_summary = (
+                f"观察到 {unconfirmed_labels}，但该成员关系未能在 15:00 前证明"
+            )
+        elif known_labels_now:
+            unknown_summary = (
+                f"已知 {known_labels_now} 可证明；其余来源 {pending_labels} "
+                "未能在 15:00 前证明，不能据此断言该股不在其余池"
             )
         else:
             unknown_summary = "三个池来源未能全部证明，无法断言该股不在池"

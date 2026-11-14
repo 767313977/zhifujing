@@ -274,6 +274,69 @@ test('post-close pool evidence is labelled as after-cutoff, not known', async ()
   expect(screen.getByText('UNKNOWN')).toBeTruthy()
 })
 
+test('proven conflict with pending source is not repeated as unprovable conflict', async () => {
+  const payload = contextPayload()
+  payload.at_cutoff_known = {
+    ...payload.at_cutoff_known!,
+    pool_status: 'POOL_CONFLICT',
+    observed_pool_membership: ['broken', 'up'],
+    pool_scope_complete: false,
+    unconfirmed_pool_sources: ['down'],
+  }
+  payload.unknown_or_later = {
+    themes: [],
+    concepts: [],
+    reasons: [],
+    pool: {
+      status: 'POOL_CONFLICT',
+      observed_pool_membership: ['broken', 'up'],
+      unconfirmed_membership: [],
+      pending_sources: ['down'],
+      reason_code: 'POOL_SCOPE_INCOMPLETE_NOT_PROVABLE',
+      known_by: 'UNKNOWN',
+      known_at: null,
+    },
+  }
+  mocks.stockResearchContext.mockResolvedValue(payload)
+  renderDrawer()
+  await waitFor(() =>
+    expect(screen.getByText(/已知成员均已证明，仅来源完整性未闭环/)).toBeTruthy(),
+  )
+  // 未知区不得把已证明冲突重复成「冲突不可证明」
+  expect(screen.queryByText(/未证明成员/)).toBeNull()
+  expect(screen.queryByText(/POOL_CONFLICT_NOT_PROVABLE/)).toBeNull()
+  expect(screen.getByText(/未证明来源 down/)).toBeTruthy()
+})
+
+test('unconfirmed conflicting member is shown as potential conflict', async () => {
+  const payload = contextPayload()
+  payload.at_cutoff_known = {
+    ...payload.at_cutoff_known!,
+    pool_status: 'UP',
+    observed_pool_membership: ['up'],
+    pool_scope_complete: false,
+    unconfirmed_pool_sources: ['broken'],
+  }
+  payload.unknown_or_later = {
+    themes: [],
+    concepts: [],
+    reasons: [],
+    pool: {
+      status: 'POOL_CONFLICT',
+      observed_pool_membership: ['broken', 'up'],
+      unconfirmed_membership: ['broken'],
+      pending_sources: ['broken'],
+      reason_code: 'POOL_CONFLICT_NOT_PROVABLE',
+      known_by: 'UNKNOWN',
+      known_at: null,
+    },
+  }
+  mocks.stockResearchContext.mockResolvedValue(payload)
+  renderDrawer()
+  await waitFor(() => expect(screen.getByText(/未证明成员 broken/)).toBeTruthy())
+  expect(screen.getByText(/POOL_CONFLICT_NOT_PROVABLE/)).toBeTruthy()
+})
+
 test('prior-day theme is labelled as known', async () => {
   const payload = contextPayload()
   const theme = {

@@ -370,6 +370,7 @@ def test_missing_broken_log_keeps_uncertainty():
         unknown = data["unknown_or_later"]["pool"]
         assert unknown["status"] == ctx.POOL_STATUS_CONFLICT
         assert unknown["reason_code"] == "POOL_CONFLICT_NOT_PROVABLE"
+        assert unknown["unconfirmed_membership"] == ["broken"]
     finally:
         db.close()
 
@@ -389,6 +390,7 @@ def test_conflict_with_all_sources_known_before_cutoff_is_visible():
         assert known["observed_pool_membership"] == ["broken", "up"]
         assert known["pool_scope_complete"] is True
         assert "POOL_CONFLICT" in data["quality"]["reasons"]
+        assert data["unknown_or_later"]["pool"] is None
         row = [
             item for item in data["evidence"] if item["claim"] == "观察日池记录"
         ][0]
@@ -417,7 +419,7 @@ def test_single_up_member_still_requires_peer_sources():
         # 已证明的 up 成员不能被说成「未证明成员」
         assert unknown["unconfirmed_membership"] == []
         assert unknown["status"] == ctx.POOL_STATUS_UP
-        assert unknown["reason_code"] == "POOL_MEMBERSHIP_NOT_PROVABLE"
+        assert unknown["reason_code"] == "POOL_SCOPE_INCOMPLETE_NOT_PROVABLE"
         assert "POOL_OTHER_SOURCES_UNKNOWN" in data["quality"]["reasons"]
         # 兼容字段与已知区完整性语义一致
         assert data["as_known_on_day"]["pool_scope_complete"] is False
@@ -439,8 +441,11 @@ def test_post_cutoff_peer_without_rows_is_not_proved_empty():
         assert known["pool_scope_complete"] is False
         assert known["unconfirmed_pool_sources"] == ["broken", "down"]
         unknown = data["unknown_or_later"]["pool"]
-        assert unknown["reason_code"] == "POOL_MEMBERSHIP_POST_CUTOFF"
+        assert unknown["reason_code"] == "POOL_SCOPE_INCOMPLETE_POST_CUTOFF"
         assert unknown["pending_sources"] == ["broken", "down"]
+        # 已证明的 up 仍保持正向观察，不因 peer 盘后采集而降级
+        assert unknown["status"] == ctx.POOL_STATUS_UP
+        assert unknown["unconfirmed_membership"] == []
     finally:
         db.close()
 
@@ -477,6 +482,66 @@ def test_all_three_sources_known_without_members_is_not_in_pool():
         assert known["observed_pool_membership"] == []
         assert known["pool_scope_complete"] is True
         assert data["unknown_or_later"]["pool"] is None
+    finally:
+        db.close()
+
+
+def test_proven_conflict_with_pending_source_is_scope_incomplete_only():
+    """up+broken 已证明冲突、down 缺日志：unknown 只能表达 scope 未闭环。"""
+    db = _session()
+    try:
+        _add_conflict_rows(db)
+        db.add(_log(D2, "pool_up", 2, datetime(2026, 11, 11, 14, 0)))
+        db.add(_log(D2, "pool_broken", 1, datetime(2026, 11, 11, 14, 0)))
+        db.commit()
+        data = _build(db)
+        known = data["at_cutoff_known"]
+        assert known["pool_status"] == ctx.POOL_STATUS_CONFLICT
+        assert known["observed_pool_membership"] == ["broken", "up"]
+        assert known["pool_scope_complete"] is False
+        assert known["unconfirmed_pool_sources"] == ["down"]
+        unknown = data["unknown_or_later"]["pool"]
+        assert unknown["unconfirmed_membership"] == []
+        assert unknown["pending_sources"] == ["down"]
+        assert unknown["reason_code"] == "POOL_SCOPE_INCOMPLETE_NOT_PROVABLE"
+        # 已证明的冲突不得在未知区被重新描述成「冲突不可证明」
+        assert "POOL_CONFLICT_NOT_PROVABLE" not in str(unknown)
+        unknown_row = [
+            item
+            for item in data["evidence"]
+            if item["claim"] == "观察日池记录（截止前未证明）"
+        ][0]
+        assert "已知冲突" in unknown_row["summary"]
+        assert "未能在截止前全部证明" not in unknown_row["summary"]
+        # 兼容字段只承载已知子集，且完整性语义与 at_cutoff_known 一致
+        legacy = data["as_known_on_day"]
+        assert legacy["observed_pool_membership"] == ["broken", "up"]
+        assert legacy["pool_scope_complete"] is False
+        assert legacy["unconfirmed_pool_sources"] == ["down"]
+    finally:
+        db.close()
+
+
+def test_known_positive_with_no_unconfirmed_member_keeps_status():
+    """只有已知 up、没有未证明成员：unknown 不得把 UP 说成未知成员关系。"""
+    db = _session()
+    try:
+        db.add(_log(D2, "pool_up", 2, datetime(2026, 11, 11, 14, 0)))
+        db.commit()
+        data = _build(db)
+        known = data["at_cutoff_known"]
+        assert known["pool_status"] == ctx.POOL_STATUS_UP
+        unknown = data["unknown_or_later"]["pool"]
+        assert unknown["status"] == ctx.POOL_STATUS_UP
+        assert unknown["unconfirmed_membership"] == []
+        assert unknown["pending_sources"] == ["broken", "down"]
+        row = [
+            item
+            for item in data["evidence"]
+            if item["claim"] == "观察日池记录（截止前未证明）"
+        ][0]
+        assert "已知 up 可证明" in row["summary"]
+        assert "观察到 up" not in row["summary"]
     finally:
         db.close()
 

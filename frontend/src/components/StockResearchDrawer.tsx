@@ -21,6 +21,7 @@ import type {
   StockResearchContext,
   StockResearchEndOfDayFact,
   StockResearchTheme,
+  StockResearchUnknownOrLater,
   StockThemes,
 } from '../api/types'
 import EChart from './EChart'
@@ -487,11 +488,14 @@ function EvidenceTab({
     sentiment: legacy.sentiment,
   }
   const incompletePoolSources = known.unconfirmed_pool_sources ?? []
-  const unknown = data.unknown_or_later ?? {
+  const unknown: StockResearchUnknownOrLater = data.unknown_or_later ?? {
     themes: legacy.themes.filter((item) => item.known_by !== 'PRIOR_DAY'),
     concepts: legacy.concepts,
     reasons: [],
   }
+  // 未知区只展示「未证明」的成员；已知冲突不得在未知区重复成「冲突不可证明」
+  const unknownPoolUnconfirmed =
+    unknown.pool?.unconfirmed_membership ?? unknown.pool?.observed_pool_membership ?? []
   const outcome = data.later_outcome
   const forward = data.evidence.filter((item) =>
     item.time_bucket ? item.time_bucket === 'FORWARD_OUTCOME' : item.is_forward_known,
@@ -557,14 +561,15 @@ function EvidenceTab({
         {unknown.pool ? (
           <div className="mb-2 text-[12px] leading-relaxed text-warn">
             池状态未能完整证明：
-            {(
-              unknown.pool.unconfirmed_membership ??
-              unknown.pool.observed_pool_membership
-            ).join('、') || '（未证明成员记录）'}
+            {unknownPoolUnconfirmed.length
+              ? `未证明成员 ${unknownPoolUnconfirmed.join('、')}`
+              : '已知成员均已证明，仅来源完整性未闭环'}
             {unknown.pool.pending_sources?.length
               ? `；未证明来源 ${unknown.pool.pending_sources.join('、')}`
               : ''}
-            {` · ${unknown.pool.status} · ${unknown.pool.reason_code}`}
+            {unknownPoolUnconfirmed.length
+              ? ` · ${unknown.pool.status} · ${unknown.pool.reason_code}`
+              : ` · ${unknown.pool.reason_code}`}
           </div>
         ) : null}
         {unknown.themes.length === 0 && unknown.concepts.length === 0 ? (
