@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-14T20:26:07",
-  "git_sha": "3a5f2e6f8eef328516c39a17d467d9bde2aded10",
+  "generated_at": "2026-11-14T21:44:23",
+  "git_sha": "e988eb6ceeccaaf9685950ddb7525e19a4f3a9e2",
   "database": "b1_research.db",
   "mode": "ro&immutable=1",
   "as_of": "2026-09-24",
@@ -16,15 +16,15 @@
         "limit": 50
       },
       "runs": 3,
-      "sql_statements": 50,
-      "elapsed_ms_median": 227.21,
+      "sql_statements": 53,
+      "elapsed_ms_median": 124.55,
       "elapsed_ms_runs": [
-        236.2,
-        227.21,
-        123.98
+        139.7,
+        124.55,
+        100.39
       ],
       "peak_memory_kb": 3918.8,
-      "json_bytes": 20054
+      "json_bytes": 20461
     },
     {
       "case": "workbench_2_sectors",
@@ -37,15 +37,15 @@
         "limit": 50
       },
       "runs": 3,
-      "sql_statements": 50,
-      "elapsed_ms_median": 172.53,
+      "sql_statements": 53,
+      "elapsed_ms_median": 122.46,
       "elapsed_ms_runs": [
-        245.57,
-        140.5,
-        172.53
+        142.09,
+        110.4,
+        122.46
       ],
-      "peak_memory_kb": 4852.1,
-      "json_bytes": 20564
+      "peak_memory_kb": 4850.2,
+      "json_bytes": 20971
     },
     {
       "case": "workbench_3_sectors",
@@ -59,15 +59,15 @@
         "limit": 50
       },
       "runs": 3,
-      "sql_statements": 50,
-      "elapsed_ms_median": 156.5,
+      "sql_statements": 53,
+      "elapsed_ms_median": 142.66,
       "elapsed_ms_runs": [
-        151.11,
-        184.65,
-        156.5
+        142.66,
+        164.99,
+        118.37
       ],
-      "peak_memory_kb": 6813.6,
-      "json_bytes": 20556
+      "peak_memory_kb": 6810.7,
+      "json_bytes": 20963
     },
     {
       "case": "workbench_10_sectors",
@@ -88,15 +88,15 @@
         "limit": 50
       },
       "runs": 3,
-      "sql_statements": 50,
-      "elapsed_ms_median": 352.06,
+      "sql_statements": 53,
+      "elapsed_ms_median": 190.2,
       "elapsed_ms_runs": [
-        213.22,
-        358.06,
-        352.06
+        190.2,
+        221.15,
+        173.89
       ],
-      "peak_memory_kb": 11302.3,
-      "json_bytes": 21442
+      "peak_memory_kb": 11300.3,
+      "json_bytes": 21849
     },
     {
       "case": "quality_overview_1day",
@@ -104,15 +104,15 @@
         "days": 30
       },
       "runs": 3,
-      "sql_statements": 18,
-      "elapsed_ms_median": 51.56,
+      "sql_statements": 21,
+      "elapsed_ms_median": 45.22,
       "elapsed_ms_runs": [
-        55.33,
-        47.8,
-        51.56
+        45.22,
+        44.25,
+        45.63
       ],
-      "peak_memory_kb": 53.4,
-      "json_bytes": 4844
+      "peak_memory_kb": 57.4,
+      "json_bytes": 5173
     },
     {
       "case": "quality_timeline_limit_pool_250",
@@ -120,13 +120,13 @@
         "days": 250
       },
       "runs": 1,
-      "sql_statements": 4,
-      "elapsed_ms_median": 38.26,
+      "sql_statements": 7,
+      "elapsed_ms_median": 29.61,
       "elapsed_ms_runs": [
-        38.26
+        29.61
       ],
-      "peak_memory_kb": 3507.0,
-      "json_bytes": 402139
+      "peak_memory_kb": 3512.6,
+      "json_bytes": 436389
     },
     {
       "case": "sentiment_next_day_250",
@@ -135,11 +135,11 @@
       },
       "runs": 1,
       "sql_statements": 255,
-      "elapsed_ms_median": 949.01,
+      "elapsed_ms_median": 366.9,
       "elapsed_ms_runs": [
-        949.01
+        366.9
       ],
-      "peak_memory_kb": 13027.8,
+      "peak_memory_kb": 13163.2,
       "json_bytes": 177073
     },
     {
@@ -150,14 +150,14 @@
       },
       "runs": 3,
       "sql_statements": 14,
-      "elapsed_ms_median": 26.33,
+      "elapsed_ms_median": 21.24,
       "elapsed_ms_runs": [
-        36.03,
-        26.33,
-        23.3
+        31.08,
+        21.24,
+        19.45
       ],
       "peak_memory_kb": 2158.0,
-      "json_bytes": 9121
+      "json_bytes": 9919
     }
   ]
 }

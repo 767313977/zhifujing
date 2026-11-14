@@ -3,7 +3,7 @@
 - 环境：临时 SQLite `%TEMP%\s5_e2e\s5.db`，临时账号 `s5a` / `s5b`；
 - 后端：`127.0.0.1:8014`，`SCHEDULER_ENABLED=false`、`EXTERNAL_DATA_FETCH_ENABLED=false`、`WARMUP_PATTERN_CACHE=false`、`FUPAN_SCHEMA_MODE=verify`；
 - 浏览器：Chrome headless（CDP），视口 390x844 / 768x1024 / 1280x800 / 1920x1080 / 3840x2160；
-- 总计：39 项，通过 39 项。
+- 总计：43 项，通过 43 项。
 
 ## 用例结果
 
@@ -21,7 +21,7 @@
 | PASS | quality_uncollected_day | 09-22 显示未采集 |
 | PASS | quality_viewports | 1920/3840/390 screenshots captured |
 | PASS | research_three_buckets | 三区标题存在 |
-| PASS | research_later_not_in_known | known_has_theme=False unknown_has_theme=True |
+| PASS | research_later_not_in_known | known_has_theme=False unknown_has_theme=True later_label=False unknown_label=True |
 | PASS | research_forward_outcome | D+1 -5.00% 不在已知区 |
 | PASS | research_end_of_day_fact | 日终事实与 15:00 截止时刻可见 |
 | PASS | drawer_escape | Escape closes |
@@ -47,6 +47,10 @@
 | PASS | offline_gate_no_network | before_sent=0 after_sent=0 |
 | PASS | offline_probe_note | status=200 note_offline=True |
 | PASS | offline_sync_blocked_before_network | status=503 blocked=2 sent=0 |
+| PASS | research_pool_pit_no_leak | 盘后池成员只进未知区，不进已知区 |
+| PASS | research_time_policy_visible | naive 时间策略在页面显式可见 |
+| PASS | workbench_quality_two_layers | source / combined 两层状态 + data_as_of 语义 |
+| PASS | egress_effective_state | enabled=False locked=True dns=NOT_INTERCEPTED udp_blocked=0 |
 | PASS | console_errors | 0 errors |
 
 ## 截图 SHA256
@@ -58,17 +62,17 @@
 | resonance_1920x1080.png | `a101f760a1c5ba5a84e3e3dda490dc69c54f3b78e5703672d7c61d4a1ba1f0f4` | 167638 |
 | resonance_3840x2160.png | `ee77db35d548fa046af04dd8965ece7eabc934c43ba0661786a460c3eb0fa5e4` | 339429 |
 | resonance_390x844.png | `3caf90eab96031ffe48b330458bcd55799e27fdc21d25bd5e06d6468d44f8393` | 59259 |
-| quality_1280x800.png | `f19a91f1db1c558b6478012a1b6f7d4b78f4467292c1e2349902f419f0586b07` | 107263 |
-| quality_1920x1080.png | `4beb0271be0dd156917862c97dc2108e911955e7f3148ab75a58dfe3e8e2ec6d` | 102933 |
-| quality_3840x2160.png | `5a5508ba5d7071ad50f5e93e0994d4ea7b17ec57469093c49108887d88aa9dca` | 127121 |
+| quality_1280x800.png | `b058d59bf8e5a283e74d712c8c74f5d3354a076f866630ceaddf60afae4254c0` | 102234 |
+| quality_1920x1080.png | `52799a8a05be8a26a52488f0ee34826aae766ccfeeea39e59f2889653ebe6d3c` | 103068 |
+| quality_3840x2160.png | `145e0e4fcb35dd63368fd14c8f07cf218ab1bfadbeb41bb72e144e7de4f71b60` | 127221 |
 | quality_390x844.png | `46f297dff192c8ba89c81a9dc935bf4155e87452650cd41a4edeac1755c8e3e1` | 57734 |
-| research_three_buckets_1280x800.png | `4d4f4446aa2e890024cd4337354510bdbca91132594f278013dc0a6d2bcebd35` | 164088 |
-| workbench_1280x800.png | `e5f53eabae4945a7bffe24e9d4fce503af8bc7f9889ae4a1bf29ef0fc3e13780` | 107010 |
-| workbench_pending_1280x800.png | `34ac7610eb47c8743c582c68d2aba2ef49ed4758007196bd227da7eda1537a23` | 105008 |
-| workbench_390x844.png | `2b1cd5eccad211887a8b36bf938963b3de169851262e3d76f15f9b1b984c0971` | 58128 |
-| workbench_768x1024.png | `cdf2e10845766c5d30affe6fc9104df2e3248fab86b0683ca0db87e20f514fa2` | 97327 |
-| workbench_1920x1080.png | `37647e27ef242e265ee576616b7ed75d2e443d65e5d11f0e445810ea3a1269d4` | 142232 |
-| workbench_3840x2160.png | `cd1fcf18b4d93249e471694e195810918097cbc700a7af03caee4c35fa83b348` | 251831 |
+| research_three_buckets_1280x800.png | `8376f4873a000222875adfdee74d4d373456f1d061f5d073e66e31d650ccc4af` | 162860 |
+| workbench_1280x800.png | `439fca812ee34e53acfc79d329e7a003cf1ba1a06ed3bc1887d01c005e0685db` | 114694 |
+| workbench_pending_1280x800.png | `1ac16f4e6b11da01dee6c43fc4744be02abc9f8c49d78ec2b876fdcbbc561552` | 108367 |
+| workbench_390x844.png | `bd27f59c7013e3f9c95d84d1ac967271fff0511f631f082584c41854d5b7a5d3` | 58385 |
+| workbench_768x1024.png | `7841f82592f06c70d49b099d99d5350ae588723e9c21ec5fb890a9efbfb3bd05` | 95750 |
+| workbench_1920x1080.png | `307bd6e142939689c95e46bf6d99b638187170b77897750c2eb514fbac653765` | 148494 |
+| workbench_3840x2160.png | `00aef8800e91e7c99dfb8d8b72c67a45079e8821807ddef55d26b3b80626c010` | 268972 |
 
 ## 复现命令
 
