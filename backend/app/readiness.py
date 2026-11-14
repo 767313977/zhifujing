@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import stat
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -129,29 +130,151 @@ def _egress_app_gate() -> tuple[str, str | None]:
     return PASS, None
 
 
-def _database_gate() -> tuple[str, str | None]:
-    """灰度要求应用使用的是**只读** Research DB + 独立 User DB。
+def _file_is_readonly(path) -> bool | None:
+    """文件权限是否只读。无法 stat 时返回 None（调用方按 FAIL 处理）。
 
-    仅「文件能被只读打开」不等于应用不会写；必须同时满足：
-    1. `FUPAN_DB_SPLIT_ENABLED=true`（连接层拆分已启用）；
-    2. `FUPAN_RESEARCH_DB_READONLY=true`（运维显式确认研究库只读形态）；
-    3. Research 引擎 URL 含 `mode=ro`；
-    4. 只读探针通过。
+    POSIX 看 mode 的写位；Windows 看只读属性（`os.chmod(S_IWRITE)` 位）。
+    这是**文件系统层**的证据，与 SQLite 的 `mode=ro` 是两道独立防线。
     """
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    if os.name == "nt":
+        return not bool(st.st_mode & stat.S_IWRITE)
+    return not bool(st.st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
+
+
+def _same_file(first, second) -> bool:
+    """两个路径是否指向同一个文件（路径相同或同 inode）。"""
+    try:
+        if first.resolve() == second.resolve():
+            return True
+        a, b = first.stat(), second.stat()
+    except OSError:
+        return False
+    inode_a = getattr(a, "st_ino", 0)
+    inode_b = getattr(b, "st_ino", 0)
+    if inode_a and inode_b:
+        return inode_a == inode_b and getattr(a, "st_dev", 0) == getattr(b, "st_dev", 0)
+    return False
+
+
+def _user_db_writable(path) -> tuple[bool, str | None]:
+    """User DB 独立连接**可写**（`BEGIN IMMEDIATE` + DDL 探针，整体回滚）。
+
+    `BEGIN IMMEDIATE` 会立刻申请写锁：只读文件/只读权限在这里就报错。
+    探针建的表在 `ROLLBACK` 后不会留在库里（SQLite 的 DDL 是事务性的），
+    所以这个检查对 User DB **无副作用**。
+    """
+    if not path.exists():
+        return False, "USER_DB_MISSING"
+    try:
+        connection = sqlite3.connect(f"file:{path.as_posix()}?mode=rw", uri=True)
+    except sqlite3.Error as exc:
+        return False, f"USER_DB_OPEN_FAILED:{type(exc).__name__}"
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("CREATE TABLE __s6_write_probe (x INTEGER)")
+        connection.execute("ROLLBACK")
+        return True, None
+    except sqlite3.Error as exc:
+        return False, f"USER_DB_NOT_WRITABLE:{type(exc).__name__}"
+    finally:
+        connection.close()
+
+
+def _query_only_enabled() -> tuple[bool, str | None]:
+    """在新连接上确认 `PRAGMA query_only` 真的返回 1（不是只配了 URI）。"""
+    try:
+        from app.db import ResearchSessionLocal
+
+        with ResearchSessionLocal() as session:
+            value = session.connection().exec_driver_sql("PRAGMA query_only").scalar()
+    except Exception as exc:  # noqa: BLE001
+        return False, f"QUERY_ONLY_PROBE_FAILED:{type(exc).__name__}"
+    return (True, None) if int(value or 0) == 1 else (False, "QUERY_ONLY_DISABLED")
+
+
+def database_checks() -> dict[str, bool]:
+    """灰度数据库门禁的**逐项真实检查**（每次调用都执行，不缓存 PASS）。"""
     settings = get_settings()
-    if not settings.db_split_enabled or not settings.research_db_readonly:
-        return FAIL, "DB_SPLIT_NOT_ACTIVE"
+    research_path = settings.db_path
+    user_path = settings.user_db_path
+    checks: dict[str, bool] = {
+        "SPLIT_ENABLED": bool(settings.db_split_enabled),
+        "RESEARCH_DB_EXISTS": research_path.exists(),
+        "RESEARCH_ENGINE_READONLY_URI": False,
+        "QUERY_ONLY_ENABLED": False,
+        "READONLY_WRITE_PROBE_BLOCKED": False,
+        "RESEARCH_FILE_PERMISSION_READONLY": False,
+        "USER_DB_EXISTS": user_path.exists(),
+        "USER_DB_WRITABLE": False,
+        "PATHS_DISTINCT": False,
+    }
+    if not settings.db_split_enabled:
+        return checks
+
     try:
         from app.db import engine
 
-        url = str(engine.url)
-    except Exception as exc:  # noqa: BLE001
-        return FAIL, f"ENGINE_UNAVAILABLE:{type(exc).__name__}"
-    probe, reason = probe_readonly_sqlite(settings.db_path)
-    if probe != PASS:
-        return FAIL, f"READONLY_PROBE_{reason}"
-    if "mode=ro" not in url:
+        checks["RESEARCH_ENGINE_READONLY_URI"] = "mode=ro" in str(engine.url)
+    except Exception:  # noqa: BLE001
+        checks["RESEARCH_ENGINE_READONLY_URI"] = False
+
+    ok, _reason = _query_only_enabled()
+    checks["QUERY_ONLY_ENABLED"] = ok
+
+    probe, _probe_reason = probe_readonly_sqlite(research_path)
+    checks["READONLY_WRITE_PROBE_BLOCKED"] = probe == PASS
+
+    checks["RESEARCH_FILE_PERMISSION_READONLY"] = (
+        _file_is_readonly(research_path) is True
+    )
+
+    writable, _write_reason = _user_db_writable(user_path)
+    checks["USER_DB_WRITABLE"] = writable
+
+    checks["PATHS_DISTINCT"] = not _same_file(research_path, user_path)
+    return checks
+
+
+def _database_gate(checks: dict[str, bool] | None = None) -> tuple[str, str | None]:
+    """灰度要求应用使用的是**只读** Research DB + 独立可写 User DB。
+
+    仅「文件能被只读打开」不等于应用不会写；这里逐项做**真实运行时检查**
+    （不硬编码 PASS，也不缓存结果）：
+
+    1. 连接层拆分已启用；
+    2. Research DB 文件存在；
+    3. Research 与 User 路径不同、且不是同一 inode；
+    4. Research 引擎 URL 含 `mode=ro`；
+    5. 新连接 `PRAGMA query_only` 返回 1；
+    6. 只读探针（DDL / DML / 写型 PRAGMA）全部被拒绝；
+    7. 文件权限本身只读；
+    8. User DB 存在且独立连接**可写**（BEGIN IMMEDIATE + DDL 探针后回滚）。
+
+    任何一项不满足都 fail closed —— 缺库、权限异常、路径相同都不会被放行。
+    """
+    checks = checks if checks is not None else database_checks()
+    if not checks["SPLIT_ENABLED"]:
+        return FAIL, "DB_SPLIT_NOT_ACTIVE"
+    if not checks["RESEARCH_DB_EXISTS"]:
+        return FAIL, "RESEARCH_DB_MISSING"
+    if not checks["PATHS_DISTINCT"]:
+        return FAIL, "DB_PATHS_NOT_DISTINCT"
+    if not checks["RESEARCH_ENGINE_READONLY_URI"]:
         return FAIL, "DB_ENGINE_READ_WRITE"
+    if not checks["QUERY_ONLY_ENABLED"]:
+        return FAIL, "QUERY_ONLY_DISABLED"
+    if not checks["READONLY_WRITE_PROBE_BLOCKED"]:
+        return FAIL, "READONLY_PROBE_WRITE_SUCCEEDED"
+    if not checks["RESEARCH_FILE_PERMISSION_READONLY"]:
+        return FAIL, "RESEARCH_FILE_PERMISSION_WRITABLE"
+    if not checks["USER_DB_EXISTS"]:
+        return FAIL, "USER_DB_MISSING"
+    if not checks["USER_DB_WRITABLE"]:
+        return FAIL, "USER_DB_NOT_WRITABLE"
     return PASS, None
 
 
@@ -187,10 +310,13 @@ def readiness_snapshot() -> dict[str, Any]:
     gates: dict[str, str] = {}
     reasons: dict[str, str] = {}
 
+    # 数据库检查只跑一次（含 User DB 的 BEGIN IMMEDIATE 探针），门禁与明细共用
+    db_checks = database_checks()
+
     for name, probe in (
         ("STARTUP_CONFIG_VALID", _startup_gate),
         ("EGRESS_APP_POLICY_LOCKED", _egress_app_gate),
-        ("DATABASE_READ_ONLY_VERIFIED", _database_gate),
+        ("DATABASE_READ_ONLY_VERIFIED", lambda: _database_gate(db_checks)),
         ("SCHEDULER_DISABLED", _scheduler_gate),
         ("EXTERNAL_FETCH_DISABLED", _external_fetch_gate),
     ):
@@ -219,6 +345,9 @@ def readiness_snapshot() -> dict[str, Any]:
             "error": policy.get("error"),
             "entries": policy.get("entries", 0),
         },
+        # 逐项布尔检查（**不含路径**）：便于运维定位是哪一道没通过，
+        # 同时不泄露服务器文件系统结构。
+        "database_checks": db_checks,
         "notes": [
             "health 只表示进程存活；ready 表示灰度必要门禁全部 PASS",
             "EGRESS_OS_POLICY_VERIFIED 需要独立网络命名空间/防火墙实测，本轮未执行",

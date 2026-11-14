@@ -156,15 +156,17 @@ class Settings(BaseSettings):
 
     # --- 存储 ---
     db_path: Path = DATA_DIR / "fupan.db"
-    # S6.2：Research DB / User DB 拆分（阶段 1：连接层与迁移工具；默认关闭）
+    # S6.2：Research DB / User DB 拆分
     #
     # `db_split_enabled=false` 时行为与旧版完全一致（单库、单 engine）；
     # 打开后：`db_path` 作为 Research DB（只读 URI + query_only），
-    # `user_db_path` 作为 User DB（可写）。⚠️ 路由层的完整切换尚未完成，
-    # 当前只用于隔离环境验证连接层与迁移工具，不得在生产直接打开。
+    # `user_db_path` 作为 User DB（可写）。路由层已按 Research/User 两个
+    # 连接域显式注入（S6 后续攻坚 G7）。
     db_split_enabled: bool = False
     user_db_path: Path = DATA_DIR / "user.db"
-    # 标记当前进程是否处于「灰度只读研究库」形态（readiness 使用）
+    # ⚠️ **仅供运维标记/日志，不参与任何 PASS 判定**：readiness 的数据库门禁全部
+    # 来自真实运行时检查（引擎 URI、PRAGMA query_only、只读探针、文件权限、
+    # User DB 可写探针、路径/inode 差异），不允许用环境变量伪造通过。
     research_db_readonly: bool = False
     log_level: str = "INFO"
 
