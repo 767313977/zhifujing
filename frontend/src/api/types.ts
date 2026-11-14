@@ -1200,6 +1200,61 @@ export interface SectorMembers {
 }
 
 /**
+ * 题材交叉检索（S2-C）。成员来自 `sector_member` 快照，**不是**实时全市场。
+ */
+export interface ThemeSearchSector {
+  code: string
+  name: string
+  taxonomy: string
+  member_count: number
+  has_data: boolean
+}
+
+export interface ThemeSearchHit {
+  code: string
+  name: string
+}
+
+export interface ThemeSearchStock {
+  code: string
+  name: string | null
+  match_count: number
+  sectors: ThemeSearchHit[]
+  trade_date: string
+  limit_up_consecutive: number | null
+}
+
+export interface ThemeSearchCoverage {
+  sample_rows: number
+  distinct_stocks: number
+  sector_count: number
+  expected_sectors: number
+  has_completeness_evidence: boolean
+  note: string | null
+}
+
+export interface ThemeSearch {
+  requested_as_of: string | null
+  resolved_as_of: string | null
+  source_snapshot_date: string | null
+  fetched_at: string | null
+  is_exact_date: boolean
+  taxonomy: string
+  selected_sectors: ThemeSearchSector[]
+  mode: 'AND' | 'OR'
+  market: string
+  total: number
+  shown: number
+  has_more: boolean
+  offset: number
+  limit: number
+  coverage: ThemeSearchCoverage
+  quality: { status: string; reasons: string[] }
+  warnings: string[]
+  items: ThemeSearchStock[]
+}
+
+/**
  * 资金流里的一行。金额单位是**亿元**（后端注释里也写死了这件事）。
  *
  * `in_amount` / `out_amount` 恒为 null：开盘啦口径下净流入是「成分股主力净流入之和」，

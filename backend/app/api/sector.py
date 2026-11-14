@@ -61,7 +61,9 @@ from app.schemas import (
     SectorRanking,
     SectorRotation,
     SectorSeries,
+    ThemeSearchOut,
 )
+from app.services import theme_intersection
 from app.sources.kaipanhong import TAXONOMY_INDUSTRY, TAXONOMY_SELECTED
 from app.timeutil import today_cn
 
@@ -1266,6 +1268,41 @@ def members(
         note=note,
         members=items,
     )
+
+
+@router.get("/theme-search", response_model=ThemeSearchOut)
+def theme_search(
+    sector_codes: str = Query(..., description="逗号分隔的 1~10 个板块代码"),
+    mode: str = Query("AND", description="AND / OR"),
+    market: str = Query("all", description="all / sh / sz / bj"),
+    as_of: date | None = Query(None, description="快照日；只向过去解析，不用未来快照"),
+    limit: int = Query(100, ge=1, le=theme_intersection.MAX_LIMIT),
+    offset: int = Query(0, ge=0, le=1_000_000),
+    session: Session = Depends(get_db),
+    _user: AppUser = Depends(current_user),
+) -> ThemeSearchOut:
+    """题材 AND / OR 交叉检索（**只读本地 `sector_member` 快照**）。
+
+    - `AND` 要求所选板块在同一快照日都有成员数据；有一个板块没覆盖就返回
+      `UNVERIFIABLE`，**不把「未知」当成「确定没有交集」**；
+    - `OR` 合并同一天的可用板块，缺覆盖时标 `PARTIAL`；
+    - `stock_concept` 只覆盖涨停股，不参与全市场成员交集；
+    - 不发外部请求、不补采、不写库。
+    """
+    raw = [item for item in sector_codes.split(",")]
+    try:
+        data = theme_intersection.search(
+            session,
+            sector_codes=raw,
+            mode=mode,
+            market=market,
+            as_of=as_of,
+            limit=limit,
+            offset=offset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ThemeSearchOut(**data)
 
 
 def _read_members(session: Session, code: str, trade_date: date) -> list[SectorMember]:

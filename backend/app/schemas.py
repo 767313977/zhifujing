@@ -1078,6 +1078,78 @@ class SectorMembers(BaseModel):
     members: list[SectorMemberItem]
 
 
+class ThemeSearchSector(BaseModel):
+    """参与交叉检索的一个板块（含当天覆盖）。"""
+
+    code: str
+    name: str
+    taxonomy: str
+    #: 当天该板块在 `sector_member` 里的成员行数
+    member_count: int
+    has_data: bool
+
+
+class ThemeSearchHit(BaseModel):
+    """命中的一个板块（每只股票保留全部命中来源，不做静默合并）。"""
+
+    code: str
+    name: str
+
+
+class ThemeSearchStock(BaseModel):
+    """交叉检索结果里的一只证券。"""
+
+    code: str
+    name: str | None
+    #: 命中的所选板块数（AND = 全部；OR = 至少 1 个）
+    match_count: int
+    sectors: list[ThemeSearchHit]
+    #: 这条记录来自哪个成员快照日
+    trade_date: date
+    #: 当日涨停连板数；没涨停 / 不在涨停池时为 null（0 会被误读成首板）
+    limit_up_consecutive: int | None
+
+
+class ThemeSearchCoverage(BaseModel):
+    """当日快照覆盖。`sector_count/expected_sectors` 是全市场口径，不是所选板块。"""
+
+    sample_rows: int
+    distinct_stocks: int
+    sector_count: int
+    expected_sectors: int
+    #: 是否存在「成员级采集完成」证据；当前数据源没有，恒为 false
+    has_completeness_evidence: bool
+    note: str | None = None
+
+
+class ThemeSearchQuality(BaseModel):
+    status: str
+    reasons: list[str] = []
+
+
+class ThemeSearchOut(BaseModel):
+    """题材 AND / OR 交叉检索（只读本地 `sector_member` 快照）。"""
+
+    requested_as_of: date | None
+    resolved_as_of: date | None
+    source_snapshot_date: date | None
+    fetched_at: datetime | None
+    is_exact_date: bool
+    taxonomy: str
+    selected_sectors: list[ThemeSearchSector]
+    mode: str
+    market: str
+    total: int
+    shown: int
+    has_more: bool
+    offset: int
+    limit: int
+    coverage: ThemeSearchCoverage
+    quality: ThemeSearchQuality
+    warnings: list[str] = []
+    items: list[ThemeSearchStock] = []
+
+
 class FundFlowItem(BaseModel):
     """板块资金流里的一行（**开盘啦板块口径**）。
 

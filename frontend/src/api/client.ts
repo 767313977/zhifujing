@@ -101,6 +101,7 @@ import type {
   SectorRotation,
   SectorSeries,
   SectorTaxonomy,
+  ThemeSearch,
   Sentiment,
   SentimentNextDay,
   SentimentNextDayQuery,
@@ -465,6 +466,30 @@ export const api = {
     request<SectorMembers>(
       withDate(`/sectors/members?code=${encodeURIComponent(code)}`, date),
     ),
+
+  /**
+   * 题材 AND / OR 交叉检索（只读本地成员快照）。
+   *
+   * `asOf` 缺省表示用最近一个快照日；显式传日期时后端只向过去解析，
+   * 不会拿未来快照顶替，`is_exact_date` 会说明是否精确命中。
+   */
+  themeSearch: (params: {
+    sectorCodes: string[]
+    mode: 'AND' | 'OR'
+    market: 'all' | 'sh' | 'sz' | 'bj'
+    asOf?: string | null
+    limit?: number
+    offset?: number
+  }) => {
+    const query = new URLSearchParams()
+    query.set('sector_codes', params.sectorCodes.join(','))
+    query.set('mode', params.mode)
+    query.set('market', params.market)
+    if (params.asOf) query.set('as_of', params.asOf)
+    query.set('limit', String(params.limit ?? 100))
+    query.set('offset', String(params.offset ?? 0))
+    return request<ThemeSearch>(`/sectors/theme-search?${query.toString()}`)
+  },
 
   sectorHeat: (date?: string | null) => request<SectorHeat>(withDate('/sectors/heat', date)),
 
