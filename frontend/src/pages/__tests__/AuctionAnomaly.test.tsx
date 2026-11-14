@@ -365,6 +365,19 @@ test('partial 0926 frame never gets the fully trusted label', async () => {
   expect(screen.queryByText('完整可信')).toBeNull()
 })
 
+test('date VALID is labelled as frame-level and truncation shows total/shown', async () => {
+  mocks.auctionAnomaly.mockResolvedValue(
+    payload({ total: 5000, shown: 1000, limit: 1000 }),
+  )
+  renderPage()
+  fireEvent.click(screen.getByRole('button', { name: '竞价异动' }))
+  await waitFor(() => expect(screen.getAllByText('帧级完整').length).toBeGreaterThan(0))
+  // 日期级 VALID 不代表逐券字段全部有效，标签必须写清口径
+  expect(screen.queryByText('完整可信')).toBeNull()
+  // 5000→1000 是接口上限，不是「总量 1000」
+  expect(screen.getByText('显示 1000 / 共 5000 条（上限 1000）')).toBeTruthy()
+})
+
 test('stock links point at the stock detail page', async () => {
   renderPage()
   fireEvent.click(screen.getByRole('button', { name: '竞价异动' }))

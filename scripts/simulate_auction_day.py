@@ -379,6 +379,9 @@ def finish(
         ),
         "legacy_rows": legacy["total"],
         "anomaly_rows": evidence["anomaly"]["shown"],
+        "anomaly_total": evidence["anomaly"]["total"],
+        "anomaly_limit": evidence["anomaly"]["limit"],
+        "anomaly_truncated": evidence["anomaly"]["total"] > evidence["anomaly"]["shown"],
         "board_items": len(evidence["boards"]["items"]),
     }
     return summary
@@ -945,12 +948,19 @@ SCENARIOS = {
 
 def render_markdown(report: dict) -> str:
     lines = [
-        "# 竞价离线仿真报告（S1-A2）",
+        "# 竞价离线仿真报告（S1-A2 / S2-D 复跑）",
         "",
         f"- 生成时间：{report['generated_at']}",
         f"- 模拟交易日：{report['trade_date']}",
         f"- 场景总数：{report['total']}，通过：{report['passed']}",
         "- 说明：**合成数据**，仅验证代码路径；真实竞价仍需线上验收。",
+        "",
+        "## 口径说明",
+        "",
+        "- 日期质量 `VALID` 只表示**帧与覆盖证据成功**，不代表每一只证券的业务字段都有效；"
+        "逐券有效性见「竞价有效 / 承接有效」。",
+        "- 异动接口返回受 `limit` 上限约束：`normal_day_5000` 的 5000→1000 是**展示上限**，"
+        "不是数据丢失（`total` 仍为 5000，响应带 `total/shown/limit`）。",
         "",
         "| 场景 | 说明 | 结果 | 失败项 |",
         "| --- | --- | --- | --- |",
@@ -973,7 +983,10 @@ def render_markdown(report: dict) -> str:
             f"- 诊断提示：{', '.join(summary.get('warnings') or []) or '无'}",
             f"- 帧状态：{summary.get('frame_statuses')}",
             f"- 竞价有效 / 承接有效：{summary.get('auction_valid')} / {summary.get('post_open_valid')}",
-            f"- 旧接口行数：{summary.get('legacy_rows')}；异动接口行数：{summary.get('anomaly_rows')}",
+            f"- 旧接口行数：{summary.get('legacy_rows')}；异动接口行数："
+            f"{summary.get('anomaly_rows')} / {summary.get('anomaly_total')}"
+            f"（limit={summary.get('anomaly_limit')}，truncated="
+            f"{'是' if summary.get('anomaly_truncated') else '否'}）",
             "",
         ]
         if item["failures"]:

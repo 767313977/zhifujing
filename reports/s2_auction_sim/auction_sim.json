@@ -1,0 +1,2807 @@
+{
+  "generated_at": "2026-11-14T17:50:32",
+  "trade_date": "2026-11-11",
+  "synthetic": true,
+  "total": 21,
+  "passed": 21,
+  "scenarios": [
+    {
+      "name": "normal_day_100",
+      "description": "完整 13 帧 / 100 只",
+      "passed": true,
+      "checks": [
+        {
+          "name": "writes_every_frame",
+          "ok": true,
+          "detail": [
+            100,
+            100,
+            100,
+            100,
+            100,
+            100,
+            100,
+            100,
+            100,
+            100,
+            100,
+            100,
+            100
+          ]
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "VALID",
+            "reasons": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "frame_status:0915",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0916",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0917",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0918",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0919",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0920",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0921",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0922",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0923",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0924",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0925",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0926",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0931",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "legacy_api_rows",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 100,
+            "shown": 100
+          }
+        },
+        {
+          "name": "samples_have_12_result_frames",
+          "ok": true,
+          "detail": 12
+        },
+        {
+          "name": "post_open_present",
+          "ok": true,
+          "detail": 100
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 100,
+        "day_quality": "VALID",
+        "day_reasons": [],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "ok",
+          "0916": "ok",
+          "0917": "ok",
+          "0918": "ok",
+          "0919": "ok",
+          "0920": "ok",
+          "0921": "ok",
+          "0922": "ok",
+          "0923": "ok",
+          "0924": "ok",
+          "0925": "ok",
+          "0926": "ok",
+          "0931": "ok"
+        },
+        "auction_valid": 100,
+        "post_open_valid": 100,
+        "legacy_rows": 100,
+        "anomaly_rows": 100,
+        "anomaly_total": 100,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "normal_day_1000",
+      "description": "完整 13 帧 / 1000 只",
+      "passed": true,
+      "checks": [
+        {
+          "name": "writes_every_frame",
+          "ok": true,
+          "detail": [
+            1000,
+            1000,
+            1000,
+            1000,
+            1000,
+            1000,
+            1000,
+            1000,
+            1000,
+            1000,
+            1000,
+            1000,
+            1000
+          ]
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 1000
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "VALID",
+            "reasons": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "frame_status:0915",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0916",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0917",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0918",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0919",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0920",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0921",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0922",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0923",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0924",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0925",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0926",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0931",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 1000
+        },
+        {
+          "name": "legacy_api_rows",
+          "ok": true,
+          "detail": 1000
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 1000,
+            "shown": 1000
+          }
+        },
+        {
+          "name": "samples_have_12_result_frames",
+          "ok": true,
+          "detail": 12
+        },
+        {
+          "name": "post_open_present",
+          "ok": true,
+          "detail": 1000
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 1000,
+        "day_quality": "VALID",
+        "day_reasons": [],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "ok",
+          "0916": "ok",
+          "0917": "ok",
+          "0918": "ok",
+          "0919": "ok",
+          "0920": "ok",
+          "0921": "ok",
+          "0922": "ok",
+          "0923": "ok",
+          "0924": "ok",
+          "0925": "ok",
+          "0926": "ok",
+          "0931": "ok"
+        },
+        "auction_valid": 1000,
+        "post_open_valid": 1000,
+        "legacy_rows": 1000,
+        "anomaly_rows": 1000,
+        "anomaly_total": 1000,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "normal_day_5000",
+      "description": "完整 13 帧 / 5000 只",
+      "passed": true,
+      "checks": [
+        {
+          "name": "writes_every_frame",
+          "ok": true,
+          "detail": [
+            5000,
+            5000,
+            5000,
+            5000,
+            5000,
+            5000,
+            5000,
+            5000,
+            5000,
+            5000,
+            5000,
+            5000,
+            5000
+          ]
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 5000
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "VALID",
+            "reasons": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "frame_status:0915",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0916",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0917",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0918",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0919",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0920",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0921",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0922",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0923",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0924",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0925",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0926",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "frame_status:0931",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 5000
+        },
+        {
+          "name": "legacy_api_rows",
+          "ok": true,
+          "detail": 5000
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 5000,
+            "shown": 1000
+          }
+        },
+        {
+          "name": "samples_have_12_result_frames",
+          "ok": true,
+          "detail": 12
+        },
+        {
+          "name": "post_open_present",
+          "ok": true,
+          "detail": 5000
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 5000,
+        "day_quality": "VALID",
+        "day_reasons": [],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "ok",
+          "0916": "ok",
+          "0917": "ok",
+          "0918": "ok",
+          "0919": "ok",
+          "0920": "ok",
+          "0921": "ok",
+          "0922": "ok",
+          "0923": "ok",
+          "0924": "ok",
+          "0925": "ok",
+          "0926": "ok",
+          "0931": "ok"
+        },
+        "auction_valid": 5000,
+        "post_open_valid": 5000,
+        "legacy_rows": 5000,
+        "anomaly_rows": 1000,
+        "anomaly_total": 5000,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": true,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "partial_batches",
+      "description": "部分批次失败（failed=2）",
+      "passed": true,
+      "checks": [
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "INCOMPLETE",
+            "reasons": [
+              "FRAME_0926_PARTIAL",
+              "BATCH_FAILED",
+              "FRAME_0931_PARTIAL"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "reason:BATCH_FAILED",
+          "ok": true,
+          "detail": [
+            "FRAME_0926_PARTIAL",
+            "BATCH_FAILED",
+            "FRAME_0931_PARTIAL"
+          ]
+        },
+        {
+          "name": "frame_status:0926",
+          "ok": true,
+          "detail": "partial"
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 100,
+            "shown": 100
+          }
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 100,
+        "day_quality": "INCOMPLETE",
+        "day_reasons": [
+          "FRAME_0926_PARTIAL",
+          "BATCH_FAILED",
+          "FRAME_0931_PARTIAL"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "partial",
+          "0916": "partial",
+          "0917": "partial",
+          "0918": "partial",
+          "0919": "partial",
+          "0920": "partial",
+          "0921": "partial",
+          "0922": "partial",
+          "0923": "partial",
+          "0924": "partial",
+          "0925": "partial",
+          "0926": "partial",
+          "0931": "partial"
+        },
+        "auction_valid": 0,
+        "post_open_valid": 0,
+        "legacy_rows": 100,
+        "anomaly_rows": 100,
+        "anomaly_total": 100,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "late_proven",
+      "description": "计划帧迟到但源报价可证明",
+      "passed": true,
+      "checks": [
+        {
+          "name": "late_frame_written",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "late_flag",
+          "ok": true,
+          "detail": {
+            "actual_started_at": "2026-11-11T09:27:10+08:00",
+            "already_covered_codes": 0,
+            "coverage_ratio": 1.0,
+            "coverage_status": "FULL",
+            "dropped_newer_codes": [],
+            "dropped_newer_codes_truncated": false,
+            "dropped_newer_quote": 0,
+            "dropped_old_codes": [],
+            "dropped_old_codes_truncated": false,
+            "dropped_old_quote": 0,
+            "dropped_stale_codes": [],
+            "dropped_stale_codes_truncated": false,
+            "dropped_stale_quote": 0,
+            "dropped_unknown_codes": [],
+            "dropped_unknown_codes_truncated": false,
+            "dropped_unknown_quote": 0,
+            "elapsed_ms": 4,
+            "eligible_existing_codes": 100,
+            "failed_batches": 0,
+            "fetch_requested_codes": 100,
+            "filtered_out_codes": 0,
+            "frame_kind": "result",
+            "ignored_not_newer_codes": 0,
+            "late": true,
+            "missing_quote_codes": 0,
+            "noop": false,
+            "quote_times": {
+              "600000": "092550",
+              "600001": "092551",
+              "600002": "092552",
+              "600003": "092553",
+              "600004": "092554",
+              "600005": "092555",
+              "600006": "092556",
+              "600007": "092557",
+              "600008": "092558",
+              "600009": "092550",
+              "600010": "092551",
+              "600011": "092552",
+              "600012": "092553",
+              "600013": "092554",
+              "600014": "092555",
+              "600015": "092556",
+              "600016": "092557",
+              "600017": "092558",
+              "600018": "092550",
+              "600019": "092551",
+              "600020": "092552",
+              "600021": "092553",
+              "600022": "092554",
+              "600023": "092555",
+              "600024": "092556",
+              "600025": "092557",
+              "600026": "092558",
+              "600027": "092550",
+              "600028": "092551",
+              "600029": "092552",
+              "600030": "092553",
+              "600031": "092554",
+              "600032": "092555",
+              "600033": "092556",
+              "600034": "092557",
+              "600035": "092558",
+              "600036": "092550",
+              "600037": "092551",
+              "600038": "092552",
+              "600039": "092553",
+              "600040": "092554",
+              "600041": "092555",
+              "600042": "092556",
+              "600043": "092557",
+              "600044": "092558",
+              "600045": "092550",
+              "600046": "092551",
+              "600047": "092552",
+              "600048": "092553",
+              "600049": "092554",
+              "600050": "092555",
+              "600051": "092556",
+              "600052": "092557",
+              "600053": "092558",
+              "600054": "092550",
+              "600055": "092551",
+              "600056": "092552",
+              "600057": "092553",
+              "600058": "092554",
+              "600059": "092555",
+              "600060": "092556",
+              "600061": "092557",
+              "600062": "092558",
+              "600063": "092550",
+              "600064": "092551",
+              "600065": "092552",
+              "600066": "092553",
+              "600067": "092554",
+              "600068": "092555",
+              "600069": "092556",
+              "600070": "092557",
+              "600071": "092558",
+              "600072": "092550",
+              "600073": "092551",
+              "600074": "092552",
+              "600075": "092553",
+              "600076": "092554",
+              "600077": "092555",
+              "600078": "092556",
+              "600079": "092557",
+              "600080": "092558",
+              "600081": "092550",
+              "600082": "092551",
+              "600083": "092552",
+              "600084": "092553",
+              "600085": "092554",
+              "600086": "092555",
+              "600087": "092556",
+              "600088": "092557",
+              "600089": "092558",
+              "600090": "092550",
+              "600091": "092551",
+              "600092": "092552",
+              "600093": "092553",
+              "600094": "092554",
+              "600095": "092555",
+              "600096": "092556",
+              "600097": "092557",
+              "600098": "092558",
+              "600099": "092550"
+            },
+            "quote_times_count": 100,
+            "raw_returned_codes": 100,
+            "raw_source_quote_time_max": "20261111092558",
+            "raw_source_quote_time_min": "20261111092550",
+            "reason": null,
+            "requested_codes": 100,
+            "returned_codes": 100,
+            "scheduled_frame": "0926",
+            "source_quote_time": "20261111092558",
+            "source_quote_time_min": "20261111092550",
+            "source_time_unknown": 0,
+            "source_time_unknown_codes": [],
+            "source_time_unknown_codes_truncated": false,
+            "source_time_unknown_count": 0,
+            "status": "ok",
+            "total_batches": 1,
+            "trade_date": "2026-11-11",
+            "valid_codes": 100,
+            "written_codes": 100
+          }
+        },
+        {
+          "name": "late_source_time",
+          "ok": true,
+          "detail": "20261111092558"
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "INCOMPLETE",
+            "reasons": [
+              "POST_OPEN_MISSING",
+              "FRAME_LOG_MISSING_0931"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "reason:POST_OPEN_MISSING",
+          "ok": true,
+          "detail": [
+            "POST_OPEN_MISSING",
+            "FRAME_LOG_MISSING_0931"
+          ]
+        },
+        {
+          "name": "frame_status:0926",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 100,
+            "shown": 100
+          }
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 100,
+        "day_quality": "INCOMPLETE",
+        "day_reasons": [
+          "POST_OPEN_MISSING",
+          "FRAME_LOG_MISSING_0931"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "ok",
+          "0916": "ok",
+          "0917": "ok",
+          "0918": "ok",
+          "0919": "ok",
+          "0920": "ok",
+          "0921": "ok",
+          "0922": "ok",
+          "0923": "ok",
+          "0924": "ok",
+          "0925": "ok",
+          "0926": "ok"
+        },
+        "auction_valid": 100,
+        "post_open_valid": 0,
+        "legacy_rows": 100,
+        "anomaly_rows": 100,
+        "anomaly_total": 100,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "late_unproven",
+      "description": "计划帧迟到且源报价越界 → 整帧跳过",
+      "passed": true,
+      "checks": [
+        {
+          "name": "no_write",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "frame_skipped",
+          "ok": true,
+          "detail": {
+            "0926": "skipped"
+          }
+        },
+        {
+          "name": "reason_late_unproven",
+          "ok": true,
+          "detail": [
+            "LATE_FRAME_UNPROVEN"
+          ]
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "INCOMPLETE",
+            "reasons": [
+              "NO_AUCTION_SNAPSHOT",
+              "FRAME_0926_NOT_OK",
+              "STALE_QUOTE",
+              "FRAME_0926_FILTERED",
+              "FRAME_LOG_MISSING_0931"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 0,
+            "shown": 0
+          }
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 0,
+        "day_quality": "INCOMPLETE",
+        "day_reasons": [
+          "NO_AUCTION_SNAPSHOT",
+          "FRAME_0926_NOT_OK",
+          "STALE_QUOTE",
+          "FRAME_0926_FILTERED",
+          "FRAME_LOG_MISSING_0931"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0926": "skipped"
+        },
+        "auction_valid": 0,
+        "post_open_valid": 0,
+        "legacy_rows": 0,
+        "anomaly_rows": 0,
+        "anomaly_total": 0,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 0
+      },
+      "failures": []
+    },
+    {
+      "name": "slow_fetch",
+      "description": "慢请求（耗时被记录，帧仍可写）",
+      "passed": true,
+      "checks": [
+        {
+          "name": "elapsed_recorded",
+          "ok": true,
+          "detail": 54
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "INCOMPLETE",
+            "reasons": [
+              "POST_OPEN_MISSING",
+              "FRAME_LOG_MISSING_0931"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "reason:POST_OPEN_MISSING",
+          "ok": true,
+          "detail": [
+            "POST_OPEN_MISSING",
+            "FRAME_LOG_MISSING_0931"
+          ]
+        },
+        {
+          "name": "frame_status:0926",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 100,
+            "shown": 100
+          }
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 100,
+        "day_quality": "INCOMPLETE",
+        "day_reasons": [
+          "POST_OPEN_MISSING",
+          "FRAME_LOG_MISSING_0931"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "ok",
+          "0916": "ok",
+          "0917": "ok",
+          "0918": "ok",
+          "0919": "ok",
+          "0920": "ok",
+          "0921": "ok",
+          "0922": "ok",
+          "0923": "ok",
+          "0924": "ok",
+          "0925": "ok",
+          "0926": "ok"
+        },
+        "auction_valid": 100,
+        "post_open_valid": 0,
+        "legacy_rows": 100,
+        "anomaly_rows": 100,
+        "anomaly_total": 100,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "old_date",
+      "description": "旧日期报价全部被丢弃",
+      "passed": true,
+      "checks": [
+        {
+          "name": "no_write",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "dropped_old",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "reason_stale",
+          "ok": true,
+          "detail": "STALE_OR_OLD_QUOTE"
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "SOURCE_UNAVAILABLE",
+            "reasons": [
+              "NO_AUCTION_QUOTE"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "reason:NO_AUCTION_QUOTE",
+          "ok": true,
+          "detail": [
+            "NO_AUCTION_QUOTE"
+          ]
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 0,
+            "shown": 0
+          }
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 0,
+        "day_quality": "SOURCE_UNAVAILABLE",
+        "day_reasons": [
+          "NO_AUCTION_QUOTE"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0926": "failed"
+        },
+        "auction_valid": 0,
+        "post_open_valid": 0,
+        "legacy_rows": 0,
+        "anomaly_rows": 0,
+        "anomaly_total": 0,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 0
+      },
+      "failures": []
+    },
+    {
+      "name": "missing_source_time",
+      "description": "5/100 缺源报价时间（关键帧丢弃）",
+      "passed": true,
+      "checks": [
+        {
+          "name": "partial_write",
+          "ok": true,
+          "detail": 95
+        },
+        {
+          "name": "dropped_unknown",
+          "ok": true,
+          "detail": 5
+        },
+        {
+          "name": "quote_times_count",
+          "ok": true,
+          "detail": 95
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "INCOMPLETE",
+            "reasons": [
+              "FRAME_0926_PARTIAL",
+              "STALE_QUOTE",
+              "FRAME_0926_FILTERED",
+              "POST_OPEN_MISSING",
+              "FRAME_LOG_MISSING_0931"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "reason:STALE_QUOTE",
+          "ok": true,
+          "detail": [
+            "FRAME_0926_PARTIAL",
+            "STALE_QUOTE",
+            "FRAME_0926_FILTERED",
+            "POST_OPEN_MISSING",
+            "FRAME_LOG_MISSING_0931"
+          ]
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 100,
+            "shown": 100
+          }
+        },
+        {
+          "name": "result_count_95",
+          "ok": true,
+          "detail": 95
+        },
+        {
+          "name": "post_open_count_0",
+          "ok": true,
+          "detail": 0
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 100,
+        "day_quality": "INCOMPLETE",
+        "day_reasons": [
+          "FRAME_0926_PARTIAL",
+          "STALE_QUOTE",
+          "FRAME_0926_FILTERED",
+          "POST_OPEN_MISSING",
+          "FRAME_LOG_MISSING_0931"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "ok",
+          "0916": "ok",
+          "0917": "ok",
+          "0918": "ok",
+          "0919": "ok",
+          "0920": "ok",
+          "0921": "ok",
+          "0922": "ok",
+          "0923": "ok",
+          "0924": "ok",
+          "0925": "ok",
+          "0926": "partial"
+        },
+        "auction_valid": 0,
+        "post_open_valid": 0,
+        "legacy_rows": 100,
+        "anomaly_rows": 100,
+        "anomaly_total": 100,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "missing_0926",
+      "description": "过程帧完整但缺 0926 终值",
+      "passed": true,
+      "checks": [
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "INCOMPLETE",
+            "reasons": [
+              "FRAME_MISSING_0926",
+              "FRAME_LOG_MISSING_0926"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "reason:FRAME_MISSING_0926",
+          "ok": true,
+          "detail": [
+            "FRAME_MISSING_0926",
+            "FRAME_LOG_MISSING_0926"
+          ]
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 100,
+            "shown": 100
+          }
+        },
+        {
+          "name": "stocks_frame_missing",
+          "ok": true,
+          "detail": [
+            "FRAME_MISSING"
+          ]
+        },
+        {
+          "name": "no_auction_price",
+          "ok": true,
+          "detail": null
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 100,
+        "day_quality": "INCOMPLETE",
+        "day_reasons": [
+          "FRAME_MISSING_0926",
+          "FRAME_LOG_MISSING_0926"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "ok",
+          "0916": "ok",
+          "0917": "ok",
+          "0918": "ok",
+          "0919": "ok",
+          "0920": "ok",
+          "0921": "ok",
+          "0922": "ok",
+          "0923": "ok",
+          "0924": "ok",
+          "0925": "ok",
+          "0931": "ok"
+        },
+        "auction_valid": 0,
+        "post_open_valid": 100,
+        "legacy_rows": 100,
+        "anomaly_rows": 100,
+        "anomaly_total": 100,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "missing_0931",
+      "description": "缺 0931（开盘承接为 null，不写 0）",
+      "passed": true,
+      "checks": [
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "INCOMPLETE",
+            "reasons": [
+              "POST_OPEN_MISSING",
+              "FRAME_LOG_MISSING_0931"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "reason:POST_OPEN_MISSING",
+          "ok": true,
+          "detail": [
+            "POST_OPEN_MISSING",
+            "FRAME_LOG_MISSING_0931"
+          ]
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 100,
+            "shown": 100
+          }
+        },
+        {
+          "name": "auction_values_kept",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "post_open_change_null",
+          "ok": true,
+          "detail": null
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 100,
+        "day_quality": "INCOMPLETE",
+        "day_reasons": [
+          "POST_OPEN_MISSING",
+          "FRAME_LOG_MISSING_0931"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "ok",
+          "0916": "ok",
+          "0917": "ok",
+          "0918": "ok",
+          "0919": "ok",
+          "0920": "ok",
+          "0921": "ok",
+          "0922": "ok",
+          "0923": "ok",
+          "0924": "ok",
+          "0925": "ok",
+          "0926": "ok"
+        },
+        "auction_valid": 100,
+        "post_open_valid": 0,
+        "legacy_rows": 100,
+        "anomaly_rows": 100,
+        "anomaly_total": 100,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "pending_before_0931",
+      "description": "9:31 前 → 待观察（不当作失败）",
+      "passed": true,
+      "checks": [
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "INCOMPLETE",
+            "reasons": [
+              "POST_OPEN_PENDING"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "reason:POST_OPEN_PENDING",
+          "ok": true,
+          "detail": [
+            "POST_OPEN_PENDING"
+          ]
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 100,
+            "shown": 100
+          }
+        },
+        {
+          "name": "stocks_post_open_pending",
+          "ok": true,
+          "detail": [
+            "PENDING"
+          ]
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 100,
+        "day_quality": "INCOMPLETE",
+        "day_reasons": [
+          "POST_OPEN_PENDING"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "ok",
+          "0916": "ok",
+          "0917": "ok",
+          "0918": "ok",
+          "0919": "ok",
+          "0920": "ok",
+          "0921": "ok",
+          "0922": "ok",
+          "0923": "ok",
+          "0924": "ok",
+          "0925": "ok",
+          "0926": "ok"
+        },
+        "auction_valid": 100,
+        "post_open_valid": 0,
+        "legacy_rows": 100,
+        "anomaly_rows": 100,
+        "anomaly_total": 100,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "write_rollback",
+      "description": "0926 写库抛错 → 整体回滚且保留过程帧",
+      "passed": true,
+      "checks": [
+        {
+          "name": "no_write_on_failure",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "frame_failed",
+          "ok": true,
+          "detail": {
+            "0915": "ok",
+            "0916": "ok",
+            "0917": "ok",
+            "0918": "ok",
+            "0919": "ok",
+            "0920": "ok",
+            "0921": "ok",
+            "0922": "ok",
+            "0923": "ok",
+            "0924": "ok",
+            "0925": "ok",
+            "0926": "failed"
+          }
+        },
+        {
+          "name": "rows_untouched",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "no_0926_sample",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "INCOMPLETE",
+            "reasons": [
+              "FRAME_MISSING_0926",
+              "FRAME_0926_NOT_OK",
+              "FRAME_0926_WRITE_GAP"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "reason:FRAME_MISSING_0926",
+          "ok": true,
+          "detail": [
+            "FRAME_MISSING_0926",
+            "FRAME_0926_NOT_OK",
+            "FRAME_0926_WRITE_GAP"
+          ]
+        },
+        {
+          "name": "reason:FRAME_0926_NOT_OK",
+          "ok": true,
+          "detail": [
+            "FRAME_MISSING_0926",
+            "FRAME_0926_NOT_OK",
+            "FRAME_0926_WRITE_GAP"
+          ]
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 100,
+            "shown": 100
+          }
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 100,
+        "day_quality": "INCOMPLETE",
+        "day_reasons": [
+          "FRAME_MISSING_0926",
+          "FRAME_0926_NOT_OK",
+          "FRAME_0926_WRITE_GAP"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "ok",
+          "0916": "ok",
+          "0917": "ok",
+          "0918": "ok",
+          "0919": "ok",
+          "0920": "ok",
+          "0921": "ok",
+          "0922": "ok",
+          "0923": "ok",
+          "0924": "ok",
+          "0925": "ok",
+          "0926": "failed"
+        },
+        "auction_valid": 0,
+        "post_open_valid": 0,
+        "legacy_rows": 100,
+        "anomaly_rows": 100,
+        "anomaly_total": 100,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "duplicate_requests",
+      "description": "重复请求不产生重复样本、不降级质量",
+      "passed": true,
+      "checks": [
+        {
+          "name": "duplicate_noop",
+          "ok": true,
+          "detail": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "noop_logged",
+          "ok": true,
+          "detail": 2
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "VALID",
+            "reasons": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 100,
+            "shown": 100
+          }
+        },
+        {
+          "name": "effective_status_ok",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "last_attempt_noop",
+          "ok": true,
+          "detail": "skipped"
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 100,
+        "day_quality": "VALID",
+        "day_reasons": [],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "ok",
+          "0916": "ok",
+          "0917": "ok",
+          "0918": "ok",
+          "0919": "ok",
+          "0920": "ok",
+          "0921": "ok",
+          "0922": "ok",
+          "0923": "ok",
+          "0924": "ok",
+          "0925": "ok",
+          "0926": "skipped",
+          "0931": "ok"
+        },
+        "auction_valid": 100,
+        "post_open_valid": 100,
+        "legacy_rows": 100,
+        "anomaly_rows": 100,
+        "anomaly_total": 100,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "concurrent",
+      "description": "两线程同帧竞争：较旧报价不得覆盖较新报价",
+      "passed": true,
+      "checks": [
+        {
+          "name": "newer_quote_wins",
+          "ok": true,
+          "detail": 10.8
+        },
+        {
+          "name": "single_sample",
+          "ok": true,
+          "detail": 1
+        },
+        {
+          "name": "frame_committed",
+          "ok": true,
+          "detail": {
+            "0926": "ok"
+          }
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 1
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "INCOMPLETE",
+            "reasons": [
+              "POST_OPEN_MISSING",
+              "FRAME_LOG_MISSING_0931"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 1
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 1,
+            "shown": 1
+          }
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 1,
+        "day_quality": "INCOMPLETE",
+        "day_reasons": [
+          "POST_OPEN_MISSING",
+          "FRAME_LOG_MISSING_0931"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0926": "ok"
+        },
+        "auction_valid": 1,
+        "post_open_valid": 0,
+        "legacy_rows": 1,
+        "anomaly_rows": 1,
+        "anomaly_total": 1,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 1,
+        "thread_results": {
+          "new": 1
+        }
+      },
+      "failures": []
+    },
+    {
+      "name": "interrupt_rerun",
+      "description": "进程中断后重跑：可恢复且不重复",
+      "passed": true,
+      "checks": [
+        {
+          "name": "rerun_writes",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "price_updated",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "single_frame",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "INCOMPLETE",
+            "reasons": [
+              "POST_OPEN_MISSING",
+              "FRAME_LOG_MISSING_0931"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 100,
+            "shown": 100
+          }
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 100,
+        "day_quality": "INCOMPLETE",
+        "day_reasons": [
+          "POST_OPEN_MISSING",
+          "FRAME_LOG_MISSING_0931"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0926": "ok"
+        },
+        "auction_valid": 100,
+        "post_open_valid": 0,
+        "legacy_rows": 100,
+        "anomaly_rows": 100,
+        "anomaly_total": 100,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "low_coverage",
+      "description": "请求 100 只仅返回 30 只（无批次失败）",
+      "passed": true,
+      "checks": [
+        {
+          "name": "coverage_ratio",
+          "ok": true,
+          "detail": 0.3
+        },
+        {
+          "name": "coverage_gap",
+          "ok": true,
+          "detail": "GAP"
+        },
+        {
+          "name": "missing_codes",
+          "ok": true,
+          "detail": 70
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 30
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "INCOMPLETE",
+            "reasons": [
+              "FRAME_0926_PARTIAL",
+              "COVERAGE_GAP",
+              "POST_OPEN_MISSING",
+              "FRAME_LOG_MISSING_0931"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "reason:COVERAGE_GAP",
+          "ok": true,
+          "detail": [
+            "FRAME_0926_PARTIAL",
+            "COVERAGE_GAP",
+            "POST_OPEN_MISSING",
+            "FRAME_LOG_MISSING_0931"
+          ]
+        },
+        {
+          "name": "frame_status:0926",
+          "ok": true,
+          "detail": "partial"
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 30
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 30,
+            "shown": 30
+          }
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 30,
+        "day_quality": "INCOMPLETE",
+        "day_reasons": [
+          "FRAME_0926_PARTIAL",
+          "COVERAGE_GAP",
+          "POST_OPEN_MISSING",
+          "FRAME_LOG_MISSING_0931"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "partial",
+          "0916": "partial",
+          "0917": "partial",
+          "0918": "partial",
+          "0919": "partial",
+          "0920": "partial",
+          "0921": "partial",
+          "0922": "partial",
+          "0923": "partial",
+          "0924": "partial",
+          "0925": "partial",
+          "0926": "partial"
+        },
+        "auction_valid": 0,
+        "post_open_valid": 0,
+        "legacy_rows": 30,
+        "anomaly_rows": 30,
+        "anomaly_total": 30,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "illegal_values",
+      "description": "非法价格/成交额/量比清洗",
+      "passed": true,
+      "checks": [
+        {
+          "name": "zero_price_cleaned",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "negative_price_cleaned",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "negative_amount_cleaned",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "zero_ratio_cleaned",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "negative_ratio_cleaned",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "VALID",
+            "reasons": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 100,
+            "shown": 100
+          }
+        },
+        {
+          "name": "illegal_price_not_trusted",
+          "ok": true,
+          "detail": null
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 100,
+        "day_quality": "VALID",
+        "day_reasons": [],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "ok",
+          "0916": "ok",
+          "0917": "ok",
+          "0918": "ok",
+          "0919": "ok",
+          "0920": "ok",
+          "0921": "ok",
+          "0922": "ok",
+          "0923": "ok",
+          "0924": "ok",
+          "0925": "ok",
+          "0926": "ok",
+          "0931": "ok"
+        },
+        "auction_valid": 97,
+        "post_open_valid": 100,
+        "legacy_rows": 100,
+        "anomaly_rows": 100,
+        "anomaly_total": 100,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    },
+    {
+      "name": "non_trade_day",
+      "description": "非交易日不采样",
+      "passed": true,
+      "checks": [
+        {
+          "name": "no_write",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "frame_skipped",
+          "ok": true,
+          "detail": {
+            "0926": "skipped"
+          }
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "NOT_COLLECTED",
+            "reasons": [
+              "NO_AUCTION_SNAPSHOT"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 0,
+            "shown": 0
+          }
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 0,
+        "day_quality": "NOT_COLLECTED",
+        "day_reasons": [
+          "NO_AUCTION_SNAPSHOT"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0926": "skipped"
+        },
+        "auction_valid": 0,
+        "post_open_valid": 0,
+        "legacy_rows": 0,
+        "anomaly_rows": 0,
+        "anomaly_total": 0,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 0
+      },
+      "failures": []
+    },
+    {
+      "name": "no_data",
+      "description": "库里没有任何竞价快照",
+      "passed": true,
+      "checks": [
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "NOT_COLLECTED",
+            "reasons": [
+              "NO_AUCTION_SNAPSHOT"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 0,
+            "shown": 0
+          }
+        },
+        {
+          "name": "reason_no_snapshot",
+          "ok": true,
+          "detail": [
+            "NO_AUCTION_SNAPSHOT"
+          ]
+        },
+        {
+          "name": "legacy_empty",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "boards_empty",
+          "ok": true,
+          "detail": []
+        },
+        {
+          "name": "anomaly_empty",
+          "ok": true,
+          "detail": 0
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 0,
+        "day_quality": "NOT_COLLECTED",
+        "day_reasons": [
+          "NO_AUCTION_SNAPSHOT"
+        ],
+        "warnings": [],
+        "frame_statuses": {},
+        "auction_valid": 0,
+        "post_open_valid": 0,
+        "legacy_rows": 0,
+        "anomaly_rows": 0,
+        "anomaly_total": 0,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 0
+      },
+      "failures": []
+    },
+    {
+      "name": "success_failed_success",
+      "description": "成功→失败→成功：失败不擦除时间证据",
+      "passed": true,
+      "checks": [
+        {
+          "name": "upgrade_after_failure",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "samples_single_0926",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "snapshot_rows",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "no_duplicate_frames",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "samples_sorted",
+          "ok": true,
+          "detail": 0
+        },
+        {
+          "name": "day_quality",
+          "ok": true,
+          "detail": {
+            "status": "INCOMPLETE",
+            "reasons": [
+              "POST_OPEN_MISSING",
+              "FRAME_LOG_MISSING_0931"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "reason:POST_OPEN_MISSING",
+          "ok": true,
+          "detail": [
+            "POST_OPEN_MISSING",
+            "FRAME_LOG_MISSING_0931"
+          ]
+        },
+        {
+          "name": "frame_status:0926",
+          "ok": true,
+          "detail": "ok"
+        },
+        {
+          "name": "legacy_api_rows_non_negative",
+          "ok": true,
+          "detail": 100
+        },
+        {
+          "name": "legacy_api_fields",
+          "ok": true,
+          "detail": [
+            "rows",
+            "shown",
+            "summary",
+            "total",
+            "trade_date"
+          ]
+        },
+        {
+          "name": "boards_api_ok",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "anomaly_api_rows_match_total",
+          "ok": true,
+          "detail": {
+            "total": 100,
+            "shown": 100
+          }
+        },
+        {
+          "name": "failed_attempt_retained",
+          "ok": true,
+          "detail": [
+            [
+              "ok",
+              null
+            ],
+            [
+              "failed",
+              "FETCH_EXCEPTION"
+            ],
+            [
+              "ok",
+              null
+            ]
+          ]
+        },
+        {
+          "name": "final_quote_time",
+          "ok": true,
+          "detail": "20261111092650"
+        }
+      ],
+      "summary": {
+        "snapshot_rows": 100,
+        "day_quality": "INCOMPLETE",
+        "day_reasons": [
+          "POST_OPEN_MISSING",
+          "FRAME_LOG_MISSING_0931"
+        ],
+        "warnings": [],
+        "frame_statuses": {
+          "0915": "ok",
+          "0916": "ok",
+          "0917": "ok",
+          "0918": "ok",
+          "0919": "ok",
+          "0920": "ok",
+          "0921": "ok",
+          "0922": "ok",
+          "0923": "ok",
+          "0924": "ok",
+          "0925": "ok",
+          "0926": "ok"
+        },
+        "auction_valid": 100,
+        "post_open_valid": 0,
+        "legacy_rows": 100,
+        "anomaly_rows": 100,
+        "anomaly_total": 100,
+        "anomaly_limit": 1000,
+        "anomaly_truncated": false,
+        "board_items": 5
+      },
+      "failures": []
+    }
+  ]
+}

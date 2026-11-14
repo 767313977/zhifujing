@@ -27,7 +27,7 @@ const GROUP_LABEL: Record<AuctionAnomalyGroupKey, string> = {
 }
 
 const QUALITY_LABEL: Record<string, string> = {
-  VALID: '完整可信',
+  VALID: '帧级完整',
   INCOMPLETE: '部分可信',
   SOURCE_UNAVAILABLE: '源不可用',
   NOT_COLLECTED: '未采集',
@@ -199,8 +199,19 @@ export default function AuctionAnomaly({ date }: { date: string | null }) {
           <div className="border-b border-line-soft px-3 py-2.5">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px]">
               <span className="text-fg-dim">日期质量</span>
-              <span className={`num font-semibold ${qualityTone(data.quality.status)}`}>
+              <span
+                className={`num font-semibold ${qualityTone(data.quality.status)}`}
+                title="日期级质量只看帧与覆盖证据；不代表每一只证券的业务字段都有效，逐券质量见表格最右列。"
+              >
                 {QUALITY_LABEL[data.quality.status] ?? data.quality.status}
+              </span>
+              <span
+                className={`num ${data.total > data.shown ? 'text-warn' : 'text-fg-dim'}`}
+                title={`接口最多返回 ${data.limit} 行；这里显示 ${data.shown} 行，当日该分组共 ${data.total} 只。`}
+              >
+                {data.total > data.shown
+                  ? `显示 ${data.shown} / 共 ${data.total} 条（上限 ${data.limit}）`
+                  : `共 ${data.total} 条`}
               </span>
               <span className="num text-fg-dim">
                 快照 {data.quality.auction_count} · 0926 终值 {data.quality.result_count} · 0931 承接{' '}
