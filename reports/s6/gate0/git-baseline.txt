@@ -1,0 +1,130 @@
+﻿S6 Gate 0 git baseline
+generated_at: 2026-11-15T00:03:45.8758558+08:00 (UTC+08:00)
+host: HAN-LAPTOP
+
+===== git status --short =====
+?? reports/s6/
+?? scripts/s6_gate0_fingerprint.py
+
+===== git branch --show-current =====
+fix/s5-fourth-review
+
+===== git rev-parse HEAD =====
+104dfdf489150d97446be3af0fa4a4de14382bbd
+
+===== git log -12 --oneline --decorate =====
+104dfdf (HEAD -> fix/s5-fourth-review, origin/fix/s5-fourth-review) docs(review): reconcile S5 fourth review evidence
+a338f7b fix(concurrency): bound retry budget to single-flight generation
+7e6e9b5 fix(quality): fail closed when sentiment series row is missing
+a5d6f25 test(security): add real local TLS integration coverage
+01c8ecf fix(security): guard SSLSocket.write and scope nested TLS checks per socket
+3060e82 (origin/fix/s5-third-review, fix/s5-third-review) docs(review): record s5 third review evidence
+c82fece fix(concurrency): bound single-flight retry after leader failure
+a3f97f5 fix(quality): reconcile sentiment dependencies by source dimension
+a725ac1 fix(pit): distinguish proven conflicts from incomplete pool scope
+0c597a5 fix(security): guard tls socket writes and sendfile after offline switch
+ac64fa5 (origin/fix/s5-second-review, fix/s5-second-review) docs(review): record s5 second remediation evidence
+0c182d2 fix(quality): record environment and exit code in audit evidence
+
+===== git remote -v =====
+origin	git@github.com:767313977/zhifujing.git (fetch)
+origin	git@github.com:767313977/zhifujing.git (push)
+zhaohuibin7	https://github.com/zhaohuibin7/zhifujing.git (fetch)
+zhaohuibin7	https://github.com/zhaohuibin7/zhifujing.git (push)
+===== git fetch --all --prune =====
+Fetching origin
+Fetching zhaohuibin7
+fatal: unable to access 'https://github.com/zhaohuibin7/zhifujing.git/': Recv failure: Connection was reset
+error: could not fetch zhaohuibin7
+exit=1
+
+===== git branch -avv =====
+  feat/b0-research-foundation               dfc7abf feat(research): establish B0 historical data and backtest foundation
+  feat/b1-research-validation               1689eb7 feat(research): add B2 validation and track reconciliation
+  feat/b2.1-full-backfill                   0c6ff0d chore(research): add fixed-window B2.1 backfill batch runner
+  feat/p0.2-research-ui                     3eeb064 docs(p1.3): revise ops evidence handoff per final review
+  feature/stock-screening-v2                692a692 [origin/feature/stock-screening-v2] docs(s5): correct final commit references
+* fix/s5-fourth-review                      104dfdf [origin/fix/s5-fourth-review] docs(review): reconcile S5 fourth review evidence
+  fix/s5-independent-review                 10c8e19 [origin/fix/s5-independent-review] docs(review): record s5 independent remediation evidence
+  fix/s5-second-review                      ac64fa5 [origin/fix/s5-second-review] docs(review): record s5 second remediation evidence
+  fix/s5-third-review                       3060e82 [origin/fix/s5-third-review] docs(review): record s5 third review evidence
+  gh-pages                                  a52e704 站点：新增 GitHub Pages 项目介绍页
+  master                                    44f0912 [origin/master] fix(audit-20261108-r4): 待注销三态、跨标签页多任务锁与过期 authMe 失效
+  remotes/origin/HEAD                       -> origin/master
+  remotes/origin/feature/stock-screening-v2 692a692 docs(s5): correct final commit references
+  remotes/origin/fix/s5-fourth-review       104dfdf docs(review): reconcile S5 fourth review evidence
+  remotes/origin/fix/s5-independent-review  10c8e19 docs(review): record s5 independent remediation evidence
+  remotes/origin/fix/s5-second-review       ac64fa5 docs(review): record s5 second remediation evidence
+  remotes/origin/fix/s5-third-review        3060e82 docs(review): record s5 third review evidence
+  remotes/origin/gh-pages                   3332522 chore(pages): add Bing site verification file
+  remotes/origin/master                     44f0912 fix(audit-20261108-r4): 待注销三态、跨标签页多任务锁与过期 authMe 失效
+  remotes/zhaohuibin7/HEAD                  -> zhaohuibin7/master
+  remotes/zhaohuibin7/master                869d047 feat: 形态选股加入「致富」样板/启动，并与悟道名单对齐
+
+===== git show --no-patch --format=fuller 3060e82 =====
+commit 3060e82c77b91d45704ab8aa217c6f10e7bbbf86
+Author:     dsh <dsh@local>
+AuthorDate: Sat Nov 14 23:26:40 2026 +0800
+Commit:     dsh <dsh@local>
+CommitDate: Sat Nov 14 23:26:40 2026 +0800
+
+    docs(review): record s5 third review evidence
+
+===== git merge-base --is-ancestor 3060e82 HEAD =====
+exit=0 (0=是祖先)
+
+===== git diff --name-status 3060e82..HEAD =====
+A	S5-fourth-review-remediation-report.md
+M	S5-third-review-remediation-report.md
+M	backend/app/api/pools.py
+M	backend/app/external_guard.py
+M	reports/s5_browser/browser_results.json
+M	reports/s5_browser/browser_run.md
+A	reports/s5_concurrency/stress_results_r4.json
+M	reports/s5_performance/benchmark.json
+M	reports/s5_quality/contract_matrix.json
+A	reports/s5_quality/contract_matrix_v3.json
+M	reports/s5_quality/disagreement_report.md
+A	reports/s5_quality/disagreement_report_v3.md
+M	reports/s5_security/egress_report.json
+M	reports/s5_security/network_inventory.md
+M	reports/s5_security/release_gate.md
+A	reports/s5_security/tls_integration_evidence.json
+M	scripts/check_s5_quality_consistency.py
+A	tests/fixtures/tls/localhost.crt
+A	tests/fixtures/tls/localhost.key
+M	tests/test_p0_cache_concurrency.py
+M	tests/test_s5_offline_gates.py
+M	tests/test_s5_quality_audit.py
+
+===== git diff --stat 3060e82..HEAD =====
+ S5-fourth-review-remediation-report.md            |  267 ++
+ S5-third-review-remediation-report.md             |   11 +-
+ backend/app/api/pools.py                          |   86 +-
+ backend/app/external_guard.py                     |   68 +-
+ reports/s5_browser/browser_results.json           |    2 +-
+ reports/s5_browser/browser_run.md                 |    2 +-
+ reports/s5_concurrency/stress_results_r4.json     |  687 ++++
+ reports/s5_performance/benchmark.json             |   60 +-
+ reports/s5_quality/contract_matrix.json           |   10 +-
+ reports/s5_quality/contract_matrix_v3.json        | 3533 +++++++++++++++++++++
+ reports/s5_quality/disagreement_report.md         |    8 +-
+ reports/s5_quality/disagreement_report_v3.md      |   52 +
+ reports/s5_security/egress_report.json            |    3 +-
+ reports/s5_security/network_inventory.md          |    7 +-
+ reports/s5_security/release_gate.md               |   16 +-
+ reports/s5_security/tls_integration_evidence.json |   45 +
+ scripts/check_s5_quality_consistency.py           |   16 +-
+ tests/fixtures/tls/localhost.crt                  |   19 +
+ tests/fixtures/tls/localhost.key                  |   28 +
+ tests/test_p0_cache_concurrency.py                |   84 +-
+ tests/test_s5_offline_gates.py                    |  260 ++
+ tests/test_s5_quality_audit.py                    |   28 +-
+ 22 files changed, 5176 insertions(+), 116 deletions(-)
+
+===== git log --oneline 3060e82..HEAD =====
+104dfdf docs(review): reconcile S5 fourth review evidence
+a338f7b fix(concurrency): bound retry budget to single-flight generation
+7e6e9b5 fix(quality): fail closed when sentiment series row is missing
+a5d6f25 test(security): add real local TLS integration coverage
+01c8ecf fix(security): guard SSLSocket.write and scope nested TLS checks per socket
