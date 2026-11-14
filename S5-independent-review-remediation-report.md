@@ -132,9 +132,16 @@ dns_guard=NOT_INTERCEPTED
   --md reports/s5_quality/disagreement_report.md
 ```
 
-结果：15 个抽样交易日、60 项检查、**0 unexpected / 0 explained**、1306 SQL、2.50 s，退出码 0。
-输出含严格矩阵、抽样策略、已抽日期、未覆盖日期（本次区间内无未覆盖）、`is_full_history=false`
-的说明。**15 日抽样不等于全历史完整验收**。
+结果（`fix/s5-independent-review` 时期，矩阵 v2 的旧运行）：15 个抽样交易日、60 项检查、
+**通过 54 / 已解释 6 / 未解释 0**、1306 SQL、2.50 s，退出码 0。
+输出含严格矩阵、抽样策略、已抽日期、未覆盖日期、`is_full_history=false` 的说明。
+**15 日抽样不等于全历史完整验收**。
+
+> 2026-11-14 二次审查整改后，该脚本的抽样策略与 sentiment 跨服务矩阵已收紧；最新一次
+> clean HEAD 只读运行结果为 **通过 51 / 已解释 4 / 未解释 5、退出码 2**（60 项检查），
+> 5 条未解释差异已逐条列在 `reports/s5_quality/disagreement_report.md`，完整 HEAD、命令与环境
+> 见 `reports/s5_quality/contract_matrix.json` 与 `S5-second-review-remediation-report.md`。
+> 本次未为「全绿」删除或放宽任何差异。
 
 ### 3.5 性能（`reports/s5_performance/*`）
 
