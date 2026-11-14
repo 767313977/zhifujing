@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-11-15T02:45:00+08:00",
+  "host": {
+    "windows_product_name": "Windows 10 Pro",
+    "windows_version": "2009",
+    "os_architecture": "64-bit",
+    "manufacturer": "XIAOMI",
+    "model": "REDMI Book Pro 14 2025",
+    "hypervisor_present": true,
+    "hypervisor_present_note": "由 VirtualMachinePlatform/WSL2 提供，不代表可用的 Hyper-V 管理面"
+  },
+  "features": {
+    "Microsoft-Hyper-V-All": "Disabled",
+    "Microsoft-Hyper-V": "Disabled",
+    "Microsoft-Hyper-V-Hypervisor": "Disabled",
+    "Microsoft-Hyper-V-Services": "Disabled",
+    "Microsoft-Hyper-V-Tools-All": "Disabled",
+    "Microsoft-Hyper-V-Management-PowerShell": "Disabled",
+    "Microsoft-Hyper-V-Management-Clients": "Disabled",
+    "VirtualMachinePlatform": "Enabled",
+    "HypervisorPlatform": "Enabled"
+  },
+  "hypervisor_cli": {
+    "VBoxManage": "not_installed",
+    "vmrun": "not_installed",
+    "qemu-system-x86_64": "not_installed"
+  },
+  "wsl": {
+    "distributions": ["Ubuntu-24.04"],
+    "version": 2,
+    "usable_for_os_firewall_acceptance": false,
+    "reason": "共享宿主机内核与网络命名空间，无法证明独立网卡/独立快照/规则仅作用于该环境"
+  },
+  "status": "S61_VM_UNAVAILABLE",
+  "gates": {
+    "S61_OS_EGRESS_VERIFIED": "NOT_VERIFIED",
+    "G3": "NOT_VERIFIED",
+    "G4": "NOT_VERIFIED"
+  },
+  "prepared_artifacts": [
+    "deploy/s6/vm/prepare-hyperv-vm.ps1",
+    "deploy/s6/vm/README.md"
+  ],
+  "blocking_requirements": [
+    "管理员权限 + 一次宿主机重启以启用 Microsoft-Hyper-V-All",
+    "Ubuntu LTS cloud image（脚本不自动下载）",
+    "VM 不得挂载 Windows 用户目录/生产密钥/生产数据库，且不得访问生产网段"
+  ]
+}
