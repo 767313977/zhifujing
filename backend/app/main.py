@@ -41,7 +41,12 @@ from app.api import (
 )
 from app.config import ROOT, get_settings
 from app.db import ensure_schema
-from app.external_guard import ExternalFetchBlocked, install_network_deny
+from app.external_guard import (
+    ExternalFetchBlocked,
+    enabled,
+    install_network_deny,
+    lock_offline_mode,
+)
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 from app.services.auth import client_ip as auth_client_ip
 from app.services.auth import require_login
@@ -199,8 +204,19 @@ async def lifespan(_app: FastAPI):
     if not FRONTEND_DIST.exists():
         logger.warning("未找到前端构建产物 %s，开发期请另起 Vite", FRONTEND_DIST)
 
-    # S4-D 离线闸门：只在显式关闭外部取数时安装（默认 true，生产行为不变）。
+    # S4-D/S5-D 离线闸门：只在显式关闭外部取数时安装（默认 true，生产行为不变）。
     # 它挡的是**按需路由**——`SCHEDULER_ENABLED=false` 管不到这些路径。
+    # 首次读到 false 即锁定到进程结束，运行中改环境变量也无法放行。
+    offline_locked = lock_offline_mode()
+    logger.info(
+        "启动门禁：EXTERNAL_DATA_FETCH_ENABLED=%s（offline_locked=%s）· "
+        "SCHEDULER_ENABLED=%s · WARMUP_PATTERN_CACHE=%s · FUPAN_SCHEMA_MODE=%s",
+        enabled(),
+        offline_locked,
+        settings.scheduler_enabled,
+        settings.warmup_pattern_cache,
+        settings.schema_mode,
+    )
     if install_network_deny():
         logger.warning("外部数据现取已被禁用（EXTERNAL_DATA_FETCH_ENABLED=false）")
 

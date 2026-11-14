@@ -21,12 +21,11 @@ from app.timeutil import today_cn
 
 @pytest.fixture(autouse=True)
 def _restore_guard(monkeypatch):
-    eg.uninstall_network_deny()
-    eg.reset_stats()
+    eg.reset_guard_state()
     monkeypatch.delenv(eg.ENV, raising=False)
     yield
-    eg.uninstall_network_deny()
-    eg.reset_stats()
+    eg.reset_guard_state()
+    monkeypatch.delenv(eg.ENV, raising=False)
 
 
 def _offline(monkeypatch):

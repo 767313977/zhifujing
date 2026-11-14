@@ -43,6 +43,7 @@ import os
 import time
 from datetime import date, timedelta
 
+from app.external_guard import ensure_external_fetch
 from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,7 @@ def fetch_daily(code: str, *, days: int) -> list[dict]:
     if not push2his_enabled():
         logger.debug("push2his 未启用（ENABLE_PUSH2HIS），%s 跳过东财这一级", code)
         return []
+    ensure_external_fetch(f"东财 push2his 日线 {code}")
     import requests
 
     end = today_cn()
