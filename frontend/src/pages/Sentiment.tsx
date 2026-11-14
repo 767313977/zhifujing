@@ -20,6 +20,7 @@ import ObvPanel from '../components/ObvPanel'
 import Panel from '../components/Panel'
 import RelayTempPanel from '../components/RelayTempPanel'
 import SentimentConclusion from '../components/SentimentConclusion'
+import SentimentNextDay from '../components/SentimentNextDay'
 import VolatilityPanel from '../components/VolatilityPanel'
 import {
   AXIS_LABEL,
@@ -554,6 +555,10 @@ export default function SentimentPage() {
             </div>
           )}
         </Panel>
+
+        {/* 情绪读数的用途检验：D 日这种情绪下，各类涨停股第二天实际怎么走。
+            只做历史描述性统计，D+1 未到齐时标 PENDING，不画 0% 曲线 */}
+        <SentimentNextDay />
 
         {/* 补一段文字口径说明，避免只看图产生误读 */}
         <div className="panel rise px-4 py-3 text-[13px] leading-relaxed text-fg-dim" style={{ animationDelay: '260ms' }}>

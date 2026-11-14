@@ -102,11 +102,14 @@ import type {
   SectorSeries,
   SectorTaxonomy,
   Sentiment,
+  SentimentNextDay,
+  SentimentNextDayQuery,
   JournalReasonSuggestion,
   AnalysisSnapshot,
   StockAnalysis,
   StockDailyRow,
   StockDde,
+  StockLimitRecord,
   StockNews,
   StockNotices,
   StockProfile,
@@ -371,6 +374,22 @@ export const api = {
 
   sentimentSeries: (days = 60) =>
     request<Sentiment[]>(`/market/sentiment?days=${days}`),
+
+  /**
+   * 情绪环境 × 次日表现（S1-B）：D 日分组 → D+1 实际日线。
+   * 只读本地库；D+1 未到齐的日期由后端标 PENDING，`avg_pct` 为 null（不是 0）。
+   */
+  sentimentNextDay: (options: SentimentNextDayQuery = {}) => {
+    const q = new URLSearchParams()
+    q.set('days', String(options.days ?? 60))
+    if (options.group) q.set('group', options.group)
+    if (options.metric) q.set('metric', options.metric)
+    if (options.includePending != null) {
+      q.set('include_pending', options.includePending ? 'true' : 'false')
+    }
+    if (options.date) q.set('date', options.date)
+    return request<SentimentNextDay>(`/sentiment/next-day?${q.toString()}`)
+  },
 
   // 上限 250（后端 le=250）。不传就只有 60 天，日期下拉能往回翻多远全看这个值
   dates: (days = 250) => request<string[]>(`/market/dates?days=${days}`),
@@ -697,8 +716,20 @@ export const api = {
    * `days` 是「最近 N 个交易日」（后端 5~100，默认 60）。这两个指标只有 iFinD 有；
    * 库里没有最近交易日的数据时后端会**现取一次**（花 1 次配额），之后读库。
    */
-  stockDde: (code: string, days = 60) =>
-    request<StockDde>(`/stock/${encodeURIComponent(code)}/dde?days=${days}`),
+  stockDde: (code: string, days = 60, live = true) =>
+    request<StockDde>(
+      `/stock/${encodeURIComponent(code)}/dde?days=${days}${live ? '' : '&live=0'}`,
+    ),
+
+  /** 个股最近的涨停 / 炸板记录（只读本地 limit_pool，不补数）。 */
+  stockLimitHistory: (code: string, limit = 60) =>
+    request<StockLimitRecord[]>(
+      `/stock/${encodeURIComponent(code)}/limit-history?limit=${limit}`,
+    ),
+
+  /** 个股最近的龙虎榜记录（只读本地 lhb）。 */
+  stockLhb: (code: string, limit = 60) =>
+    request<LhbItem[]>(`/stock/${encodeURIComponent(code)}/lhb?limit=${limit}`),
 
   /**
    * 个股筹码分布（CYQ）：获利比例 / 平均成本 / 70% 与 90% 成本区间 / 筹码峰。

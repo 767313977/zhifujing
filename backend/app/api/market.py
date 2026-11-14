@@ -60,6 +60,7 @@ from app.schemas import (
     RelayTempBand,
     RelayTempLatest,
     RelayTempOut,
+    SentimentNextDayOut,
     SentimentOut,
     TurnoverSeries,
     VolatilityLatest,
@@ -75,6 +76,7 @@ from app.services import (
     northbound,
     obv,
     relay_temp,
+    sentiment_next_day,
 )
 from app.services.fear_greed import (
     WINDOW,
@@ -90,10 +92,15 @@ from app.services.index_tech import (
     divergence,
     index_tech,
 )
+from app.timeutil import today_cn
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/market", tags=["复盘"])
+
+#: 情绪 × 次日表现单独一个前缀（`/api/sentiment/next-day`）：
+#: 它不是「大盘」数据，而是把情绪与个股日线对齐的横切分析。
+sentiment_router = APIRouter(prefix="/api/sentiment", tags=["复盘"])
 
 # 图表展示顺序：大盘指数在前，小盘/北证在后。
 # 末位 `880003`（平均股价 · 等权）是**自算**序列（见 `jobs/collect_avg_price.py`），
@@ -402,6 +409,49 @@ def sentiment_series(
         )
     )
     return [SentimentOut.model_validate(row) for row in reversed(rows)]
+
+
+@sentiment_router.get("/next-day", response_model=SentimentNextDayOut)
+def sentiment_next_day_view(
+    days: int = Query(20, ge=1, le=250, description="回看最近 N 个交易日"),
+    group: str = Query(
+        sentiment_next_day.GROUP_FIRST,
+        description="all_limit_up / first_board / second_board / third_plus / broken / failed_promotion",
+    ),
+    metric: str = Query(
+        "limit_up_count",
+        description="limit_up_count / broken_rate / max_consecutive / advance_ratio",
+    ),
+    include_pending: bool = Query(True, description="是否返回 D+1 尚未到齐的日期（标 PENDING）"),
+    trade_date: date | None = Query(None, alias="date", description="窗口结束日（含）"),
+    session: Session = Depends(get_db),
+) -> SentimentNextDayOut:
+    """情绪环境 × 次日表现：D 日分组 → D+1 实际日线表现。
+
+    **只读本地表**（market_sentiment / limit_pool / stock_daily / trade_calendar /
+    collect_log），不发外部请求、不补数、不回写任何因子。
+
+    - D 日样本只能是**收盘时已经确定**的股票集合，绝不从 D+1 反向筛选；
+    - D+1 由交易日历确定；行情没到齐的日期标 `PENDING`，`avg_pct` 等为 null；
+    - 涨停池/炸板池不可信的日期标 `UNVERIFIED`，不会给出「0% 收益」；
+    - 断板集合复用 P0-B 的逐券 `FAILED` 分类。
+
+    结果属于**历史描述性统计**，不代表真实可交易收益（涨停买不到、停牌等未扣除）。
+    """
+    if trade_date is not None and trade_date > today_cn():
+        raise HTTPException(status_code=404, detail=f"{trade_date} 还没到")
+    try:
+        data = sentiment_next_day.build_next_day(
+            session,
+            days=days,
+            group=group,
+            metric=metric,
+            include_pending=include_pending,
+            end_date=trade_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return SentimentNextDayOut(**data)
 
 
 @router.get("/fear-greed", response_model=FearGreedOut)
