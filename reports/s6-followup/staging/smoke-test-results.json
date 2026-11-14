@@ -1,0 +1,722 @@
+{
+  "commit_sha": "53b4b05ae2c3091eaaefe570fed7c7763025a206",
+  "branch": "release/s6-canary-hardening-v3",
+  "generated_at": "2026-11-15T03:22:50+08:00",
+  "environment": "本地隔离 Staging（127.0.0.1，独立目录/端口/临时库；非生产基础设施）",
+  "command": "python scripts/s6_staging_drill.py --snapshot 53b4b05ae2c3091eaaefe570fed7c7763025a206 --out-dir reports/s6-followup/staging",
+  "exit_code": 0,
+  "tool_version": "s6_staging_drill/1.0",
+  "result": {
+    "artifacts": {
+      "new_snapshot": "53b4b05ae2c3091eaaefe570fed7c7763025a206",
+      "head": "53b4b05ae2c3091eaaefe570fed7c7763025a206",
+      "branch": "release/s6-canary-hardening-v3",
+      "new_tar_sha256": "6c9565365a1e14466148f05f0dde852d4632af8af354f221a425cc95799978b7",
+      "old_tar_sha256": "6c9565365a1e14466148f05f0dde852d4632af8af354f221a425cc95799978b7",
+      "requirements_sha256": "8ae8f9066862ae2091aff6b9672050bd455a2d0d2b110f6e65a43c68dba6c4e3",
+      "package_lock_sha256": "14fad37682d6d7bf1ede83166885f7a7c826beaab7034a8ccafb8ef6dea5c206",
+      "frontend_dist_sha256": "35c7a78bcbf8834566c5100ccc23ed728e8b4d327c5b19cced36a98c70751894",
+      "db_path": "C:\\Users\\76731\\AppData\\Local\\Temp\\s6_staging_5g3m8vrh\\data\\staging.db",
+      "db_before": {
+        "sha256": "ce82ce22f15ff09463d557ce393a3c92e5549b6cce55674f00c5cfdbd942c1e5",
+        "size": 475136
+      },
+      "python": "3.13.13"
+    },
+    "config": {
+      "EXTERNAL_DATA_FETCH_ENABLED": "false",
+      "SCHEDULER_ENABLED": "false",
+      "WARMUP_PATTERN_CACHE": "false",
+      "FUPAN_SCHEMA_MODE": "verify",
+      "FUPAN_ENV": "staging",
+      "ENABLE_DEV_CORS": "false"
+    },
+    "smoke": {
+      "new": {
+        "health": [
+          200,
+          {
+            "status": "ok"
+          }
+        ],
+        "ready": [
+          503,
+          {
+            "generated_at": "2026-11-15T03:22:43+08:00",
+            "ready": false,
+            "status": "not_ready",
+            "gates": {
+              "STARTUP_CONFIG_VALID": "PASS",
+              "EGRESS_APP_POLICY_LOCKED": "PASS",
+              "DATABASE_READ_ONLY_VERIFIED": "FAIL",
+              "SCHEDULER_DISABLED": "PASS",
+              "EXTERNAL_FETCH_DISABLED": "PASS",
+              "EGRESS_OS_POLICY_VERIFIED": "NOT_VERIFIED",
+              "CANARY_READINESS": "FAIL"
+            },
+            "blocking": [
+              "DATABASE_READ_ONLY_VERIFIED",
+              "EGRESS_OS_POLICY_VERIFIED"
+            ],
+            "reasons": {
+              "DATABASE_READ_ONLY_VERIFIED": "DB_SPLIT_NOT_ACTIVE",
+              "EGRESS_OS_POLICY_VERIFIED": "NO_ISOLATED_OS_NETWORK_ACCESS"
+            },
+            "policy": {
+              "loaded": true,
+              "error": null,
+              "entries": 17
+            },
+            "database_checks": {
+              "SPLIT_ENABLED": false,
+              "RESEARCH_DB_EXISTS": true,
+              "RESEARCH_ENGINE_READONLY_URI": false,
+              "QUERY_ONLY_ENABLED": false,
+              "READONLY_WRITE_PROBE_BLOCKED": false,
+              "RESEARCH_FILE_PERMISSION_READONLY": false,
+              "USER_DB_EXISTS": false,
+              "USER_DB_WRITABLE": false,
+              "PATHS_DISTINCT": false
+            },
+            "notes": [
+              "health 只表示进程存活；ready 表示灰度必要门禁全部 PASS",
+              "EGRESS_OS_POLICY_VERIFIED 需要独立网络命名空间/防火墙实测，本轮未执行"
+            ]
+          }
+        ],
+        "unauth_quality": [
+          401,
+          {
+            "detail": "请先登录"
+          }
+        ],
+        "register": [
+          200,
+          {
+            "id": 1,
+            "username": "s6staging1794684160",
+            "is_admin": false
+          }
+        ],
+        "login": [
+          200,
+          {
+            "id": 1,
+            "username": "s6staging1794684160",
+            "is_admin": false
+          }
+        ],
+        "quality_authed": [
+          200,
+          {
+            "database": "staging.db",
+            "quality_version": "data-quality-v2",
+            "as_of": "2026-11-15",
+            "days": 30,
+            "window_start": null,
+            "window_end": null,
+            "sources": [
+              "stock_daily",
+              "limit_pool",
+              "sector_member",
+              "market_sentiment",
+              "auction_snapshot",
+              "trade_calendar"
+            ],
+            "items": [
+              {
+                "source": "stock_daily",
+                "trade_date": "2026-11-15",
+                "status": "NOT_COLLECTED",
+                "reason_codes": [
+                  "DAILY_NOT_COLLECTED"
+                ],
+                "observed_rows": 0,
+                "expected_rows": null,
+                "observed_sectors": null,
+                "expected_sectors": null,
+                "completion_proof": false,
+                "latest_observation_date": null,
+                "latest_valid_snapshot": null,
+                "latest_attempt": null,
+                "note": "行数来自本地 stock_daily；不把当前股票数量当历史应有数",
+                "quality_version": "data-quality-v2",
+                "source_status": "NOT_COLLECTED",
+                "combined_view_status": "NOT_COLLECTED"
+              },
+              {
+                "source": "limit_pool",
+                "trade_date": "2026-11-15",
+                "status": "NOT_COLLECTED",
+                "reason_codes": [
+                  "POOL_NOT_COLLECTED",
+                  "BROKEN_POOL_NOT_COLLECTED",
+                  "DOWN_POOL_NOT_COLLECTED"
+                ],
+                "observed_rows": 0,
+                "expected_rows": null,
+                "observed_sectors": null,
+                "expected_sectors": null,
+                "completion_proof": false,
+                "latest_observation_date": null,
+                "latest_valid_snapshot": null,
+                "latest_attempt": null,
+                "note": "UP/BROKEN/DOWN 分来源判定；组合视图需三池同时可信、同日有效",
+                "quality_version": "data-quality-v2",
+                "source_status": "NOT_COLLECTED",
+                "combined_view_status": "NOT_COLLECTED",
+                "up_rows": 0,
+                "broken_rows": 0,
+                "down_rows": 0,
+                "pool_up": {
+                  "status": "NOT_COLLECTED",
+                  "rows": 0,
+                  "completion_proof": false,
+                  "reason_codes": [
+                    "POOL_NOT_COLLECTED"
+                  ],
+                  "latest_attempt": null,
+                  "latest_valid_snapshot": null,
+                  "trusted": false
+                },
+                "pool_broken": {
+                  "status": "NOT_COLLECTED",
+                  "rows": 0,
+                  "completion_proof": false,
+                  "reason_codes": [
+                    "BROKEN_POOL_NOT_COLLECTED"
+                  ],
+                  "latest_attempt": null,
+                  "latest_valid_snapshot": null,
+                  "trusted": false
+                },
+                "pool_down": {
+                  "status": "NOT_COLLECTED",
+                  "rows": 0,
+                  "completion_proof": false,
+                  "reason_codes": [
+                    "DOWN_POOL_NOT_COLLECTED"
+                  ],
+                  "latest_attempt": null,
+                  "latest_valid_snapshot": null,
+                  "trusted": false
+                },
+                "latest_valid_snapshot_up": null,
+                "latest_valid_snapshot_broken": null,
+                "latest_valid_snapshot_down": null,
+                "up_completion_proof": false,
+                "broken_completion_proof": false,
+                "down_completion_proof": false,
+                "previous_snapshot_available": false,
+                "current_attempt_failed": false
+              },
+              {
+                "source": "sector_member",
+                "trade_date": "2026-11-15",
+                "status": "NOT_COLLECTED",
+                "reason_codes": [
+                  "NO_MEMBERS_SNAPSHOT"
+                ],
+                "observed_rows": 0,
+                "expected_rows": null,
+                "observed_sectors": null,
+                "expected_sectors": null,
+                "completion_proof": false,
+                "latest_observation_date": null,
+                "latest_valid_snapshot": null,
+                "latest_attempt": null,
+                "note": "仅说明已观察到的板块，不代表成员全量",
+                "quality_version": "data-quality-v2",
+                "source_status": "NOT_COLLECTED",
+                "combined_view_status": "NOT_COLLECTED"
+              },
+              {
+                "source": "market_sentiment",
+                "trade_date": "2026-11-15",
+                "status": "NOT_COLLECTED",
+                "reason_codes": [
+                  "SENTIMENT_NOT_COLLECTED"
+                ],
+                "observed_rows": 0,
+                "expected_rows": null,
+                "observed_sectors": null,
+                "expected_sectors": null,
+                "completion_proof": false,
+                "latest_observation_date": null,
+                "latest_valid_snapshot": null,
+                "latest_attempt": null,
+                "note": null,
+                "quality_version": "data-quality-v2",
+                "source_status": "NOT_COLLECTED",
+                "combined_view_status": "NOT_COLLECTED"
+              },
+              {
+                "source": "auction_snapshot",
+                "trade_date": "2026-11-15",
+                "status": "NOT_COLLECTED",
+                "reason_codes": [
+                  "AUCTION_NOT_COLLECTED"
+                ],
+                "observed_rows": 0,
+                "expected_rows": null,
+                "observed_sectors": null,
+                "expected_sectors": null,
+                "completion_proof": false,
+                "latest_observation_date": null,
+                "latest_valid_snapshot": null,
+                "latest_attempt": null,
+                "note": "竞价来源为腾讯批量行情；真实交易日验收仍未完成",
+                "quality_version": "data-quality-v2",
+                "source_status": "NOT_COLLECTED",
+                "combined_view_status": "NOT_COLLECTED",
+                "frames": [],
+                "auction_result_status": "NOT_COLLECTED",
+                "post_open_status": "NOT_COLLECTED",
+                "has_0926": false,
+                "has_0931": false,
+                "result_count": 0,
+                "post_open_count": 0,
+                "auction_result_latest_attempt": null,
+                "post_open_latest_attempt": null,
+                "market_coverage_proof": false,
+                "auction_result_latest_valid_snapshot": null,
+                "post_open_latest_valid_snapshot": null
+              },
+              {
+                "source": "trade_calendar",
+                "trade_date": "2026-11-15",
+                "status": "NOT_COLLECTED",
+                "reason_codes": [
+                  "CALENDAR_EMPTY"
+                ],
+                "observed_rows": 0,
+                "expected_rows": null,
+                "observed_sectors": null,
+                "expected_sectors": null,
+                "completion_proof": false,
+                "latest_observation_date": null,
+                "latest_valid_snapshot": null,
+                "latest_attempt": null,
+                "note": null,
+                "quality_version": "data-quality-v2",
+                "source_status": "NOT_COLLECTED",
+                "combined_view_status": "NOT_COLLECTED"
+              }
+            ],
+            "structural_error": null
+          }
+        ],
+        "timeline_authed": [
+          200,
+          {
+            "database": "staging.db",
+            "quality_version": "data-quality-v2",
+            "source": "limit_pool",
+            "days": 30,
+            "window_start": null,
+            "window_end": null,
+            "generated_at": "2026-11-15T03:22:43.424330",
+            "points": []
+          }
+        ],
+        "health_detail": [
+          200,
+          {
+            "status": "ok",
+            "ifind_configured": false,
+            "frontend_built": true,
+            "db_exists": true
+          }
+        ]
+      },
+      "restart": {
+        "health": [
+          200,
+          {
+            "status": "ok"
+          }
+        ],
+        "ready": [
+          503,
+          {
+            "generated_at": "2026-11-15T03:22:45+08:00",
+            "ready": false,
+            "status": "not_ready",
+            "gates": {
+              "STARTUP_CONFIG_VALID": "PASS",
+              "EGRESS_APP_POLICY_LOCKED": "PASS",
+              "DATABASE_READ_ONLY_VERIFIED": "FAIL",
+              "SCHEDULER_DISABLED": "PASS",
+              "EXTERNAL_FETCH_DISABLED": "PASS",
+              "EGRESS_OS_POLICY_VERIFIED": "NOT_VERIFIED",
+              "CANARY_READINESS": "FAIL"
+            },
+            "blocking": [
+              "DATABASE_READ_ONLY_VERIFIED",
+              "EGRESS_OS_POLICY_VERIFIED"
+            ],
+            "reasons": {
+              "DATABASE_READ_ONLY_VERIFIED": "DB_SPLIT_NOT_ACTIVE",
+              "EGRESS_OS_POLICY_VERIFIED": "NO_ISOLATED_OS_NETWORK_ACCESS"
+            },
+            "policy": {
+              "loaded": true,
+              "error": null,
+              "entries": 17
+            },
+            "database_checks": {
+              "SPLIT_ENABLED": false,
+              "RESEARCH_DB_EXISTS": true,
+              "RESEARCH_ENGINE_READONLY_URI": false,
+              "QUERY_ONLY_ENABLED": false,
+              "READONLY_WRITE_PROBE_BLOCKED": false,
+              "RESEARCH_FILE_PERMISSION_READONLY": false,
+              "USER_DB_EXISTS": false,
+              "USER_DB_WRITABLE": false,
+              "PATHS_DISTINCT": false
+            },
+            "notes": [
+              "health 只表示进程存活；ready 表示灰度必要门禁全部 PASS",
+              "EGRESS_OS_POLICY_VERIFIED 需要独立网络命名空间/防火墙实测，本轮未执行"
+            ]
+          }
+        ]
+      },
+      "rollback": {
+        "health": [
+          200,
+          {
+            "status": "ok"
+          }
+        ],
+        "ready": [
+          503,
+          {
+            "generated_at": "2026-11-15T03:22:48+08:00",
+            "ready": false,
+            "status": "not_ready",
+            "gates": {
+              "STARTUP_CONFIG_VALID": "PASS",
+              "EGRESS_APP_POLICY_LOCKED": "PASS",
+              "DATABASE_READ_ONLY_VERIFIED": "FAIL",
+              "SCHEDULER_DISABLED": "PASS",
+              "EXTERNAL_FETCH_DISABLED": "PASS",
+              "EGRESS_OS_POLICY_VERIFIED": "NOT_VERIFIED",
+              "CANARY_READINESS": "FAIL"
+            },
+            "blocking": [
+              "DATABASE_READ_ONLY_VERIFIED",
+              "EGRESS_OS_POLICY_VERIFIED"
+            ],
+            "reasons": {
+              "DATABASE_READ_ONLY_VERIFIED": "DB_SPLIT_NOT_ACTIVE",
+              "EGRESS_OS_POLICY_VERIFIED": "NO_ISOLATED_OS_NETWORK_ACCESS"
+            },
+            "policy": {
+              "loaded": true,
+              "error": null,
+              "entries": 17
+            },
+            "database_checks": {
+              "SPLIT_ENABLED": false,
+              "RESEARCH_DB_EXISTS": true,
+              "RESEARCH_ENGINE_READONLY_URI": false,
+              "QUERY_ONLY_ENABLED": false,
+              "READONLY_WRITE_PROBE_BLOCKED": false,
+              "RESEARCH_FILE_PERMISSION_READONLY": false,
+              "USER_DB_EXISTS": false,
+              "USER_DB_WRITABLE": false,
+              "PATHS_DISTINCT": false
+            },
+            "notes": [
+              "health 只表示进程存活；ready 表示灰度必要门禁全部 PASS",
+              "EGRESS_OS_POLICY_VERIFIED 需要独立网络命名空间/防火墙实测，本轮未执行"
+            ]
+          }
+        ],
+        "quality_status": [
+          200,
+          {
+            "database": "staging.db",
+            "quality_version": "data-quality-v2",
+            "as_of": "2026-11-15",
+            "days": 30,
+            "window_start": null,
+            "window_end": null,
+            "sources": [
+              "stock_daily",
+              "limit_pool",
+              "sector_member",
+              "market_sentiment",
+              "auction_snapshot",
+              "trade_calendar"
+            ],
+            "items": [
+              {
+                "source": "stock_daily",
+                "trade_date": "2026-11-15",
+                "status": "NOT_COLLECTED",
+                "reason_codes": [
+                  "DAILY_NOT_COLLECTED"
+                ],
+                "observed_rows": 0,
+                "expected_rows": null,
+                "observed_sectors": null,
+                "expected_sectors": null,
+                "completion_proof": false,
+                "latest_observation_date": null,
+                "latest_valid_snapshot": null,
+                "latest_attempt": null,
+                "note": "行数来自本地 stock_daily；不把当前股票数量当历史应有数",
+                "quality_version": "data-quality-v2",
+                "source_status": "NOT_COLLECTED",
+                "combined_view_status": "NOT_COLLECTED"
+              },
+              {
+                "source": "limit_pool",
+                "trade_date": "2026-11-15",
+                "status": "NOT_COLLECTED",
+                "reason_codes": [
+                  "POOL_NOT_COLLECTED",
+                  "BROKEN_POOL_NOT_COLLECTED",
+                  "DOWN_POOL_NOT_COLLECTED"
+                ],
+                "observed_rows": 0,
+                "expected_rows": null,
+                "observed_sectors": null,
+                "expected_sectors": null,
+                "completion_proof": false,
+                "latest_observation_date": null,
+                "latest_valid_snapshot": null,
+                "latest_attempt": null,
+                "note": "UP/BROKEN/DOWN 分来源判定；组合视图需三池同时可信、同日有效",
+                "quality_version": "data-quality-v2",
+                "source_status": "NOT_COLLECTED",
+                "combined_view_status": "NOT_COLLECTED",
+                "up_rows": 0,
+                "broken_rows": 0,
+                "down_rows": 0,
+                "pool_up": {
+                  "status": "NOT_COLLECTED",
+                  "rows": 0,
+                  "completion_proof": false,
+                  "reason_codes": [
+                    "POOL_NOT_COLLECTED"
+                  ],
+                  "latest_attempt": null,
+                  "latest_valid_snapshot": null,
+                  "trusted": false
+                },
+                "pool_broken": {
+                  "status": "NOT_COLLECTED",
+                  "rows": 0,
+                  "completion_proof": false,
+                  "reason_codes": [
+                    "BROKEN_POOL_NOT_COLLECTED"
+                  ],
+                  "latest_attempt": null,
+                  "latest_valid_snapshot": null,
+                  "trusted": false
+                },
+                "pool_down": {
+                  "status": "NOT_COLLECTED",
+                  "rows": 0,
+                  "completion_proof": false,
+                  "reason_codes": [
+                    "DOWN_POOL_NOT_COLLECTED"
+                  ],
+                  "latest_attempt": null,
+                  "latest_valid_snapshot": null,
+                  "trusted": false
+                },
+                "latest_valid_snapshot_up": null,
+                "latest_valid_snapshot_broken": null,
+                "latest_valid_snapshot_down": null,
+                "up_completion_proof": false,
+                "broken_completion_proof": false,
+                "down_completion_proof": false,
+                "previous_snapshot_available": false,
+                "current_attempt_failed": false
+              },
+              {
+                "source": "sector_member",
+                "trade_date": "2026-11-15",
+                "status": "NOT_COLLECTED",
+                "reason_codes": [
+                  "NO_MEMBERS_SNAPSHOT"
+                ],
+                "observed_rows": 0,
+                "expected_rows": null,
+                "observed_sectors": null,
+                "expected_sectors": null,
+                "completion_proof": false,
+                "latest_observation_date": null,
+                "latest_valid_snapshot": null,
+                "latest_attempt": null,
+                "note": "仅说明已观察到的板块，不代表成员全量",
+                "quality_version": "data-quality-v2",
+                "source_status": "NOT_COLLECTED",
+                "combined_view_status": "NOT_COLLECTED"
+              },
+              {
+                "source": "market_sentiment",
+                "trade_date": "2026-11-15",
+                "status": "NOT_COLLECTED",
+                "reason_codes": [
+                  "SENTIMENT_NOT_COLLECTED"
+                ],
+                "observed_rows": 0,
+                "expected_rows": null,
+                "observed_sectors": null,
+                "expected_sectors": null,
+                "completion_proof": false,
+                "latest_observation_date": null,
+                "latest_valid_snapshot": null,
+                "latest_attempt": null,
+                "note": null,
+                "quality_version": "data-quality-v2",
+                "source_status": "NOT_COLLECTED",
+                "combined_view_status": "NOT_COLLECTED"
+              },
+              {
+                "source": "auction_snapshot",
+                "trade_date": "2026-11-15",
+                "status": "NOT_COLLECTED",
+                "reason_codes": [
+                  "AUCTION_NOT_COLLECTED"
+                ],
+                "observed_rows": 0,
+                "expected_rows": null,
+                "observed_sectors": null,
+                "expected_sectors": null,
+                "completion_proof": false,
+                "latest_observation_date": null,
+                "latest_valid_snapshot": null,
+                "latest_attempt": null,
+                "note": "竞价来源为腾讯批量行情；真实交易日验收仍未完成",
+                "quality_version": "data-quality-v2",
+                "source_status": "NOT_COLLECTED",
+                "combined_view_status": "NOT_COLLECTED",
+                "frames": [],
+                "auction_result_status": "NOT_COLLECTED",
+                "post_open_status": "NOT_COLLECTED",
+                "has_0926": false,
+                "has_0931": false,
+                "result_count": 0,
+                "post_open_count": 0,
+                "auction_result_latest_attempt": null,
+                "post_open_latest_attempt": null,
+                "market_coverage_proof": false,
+                "auction_result_latest_valid_snapshot": null,
+                "post_open_latest_valid_snapshot": null
+              },
+              {
+                "source": "trade_calendar",
+                "trade_date": "2026-11-15",
+                "status": "NOT_COLLECTED",
+                "reason_codes": [
+                  "CALENDAR_EMPTY"
+                ],
+                "observed_rows": 0,
+                "expected_rows": null,
+                "observed_sectors": null,
+                "expected_sectors": null,
+                "completion_proof": false,
+                "latest_observation_date": null,
+                "latest_valid_snapshot": null,
+                "latest_attempt": null,
+                "note": null,
+                "quality_version": "data-quality-v2",
+                "source_status": "NOT_COLLECTED",
+                "combined_view_status": "NOT_COLLECTED"
+              }
+            ],
+            "structural_error": null
+          }
+        ]
+      },
+      "redeploy": {
+        "health": [
+          200,
+          {
+            "status": "ok"
+          }
+        ],
+        "ready": [
+          503,
+          {
+            "generated_at": "2026-11-15T03:22:50+08:00",
+            "ready": false,
+            "status": "not_ready",
+            "gates": {
+              "STARTUP_CONFIG_VALID": "PASS",
+              "EGRESS_APP_POLICY_LOCKED": "PASS",
+              "DATABASE_READ_ONLY_VERIFIED": "FAIL",
+              "SCHEDULER_DISABLED": "PASS",
+              "EXTERNAL_FETCH_DISABLED": "PASS",
+              "EGRESS_OS_POLICY_VERIFIED": "NOT_VERIFIED",
+              "CANARY_READINESS": "FAIL"
+            },
+            "blocking": [
+              "DATABASE_READ_ONLY_VERIFIED",
+              "EGRESS_OS_POLICY_VERIFIED"
+            ],
+            "reasons": {
+              "DATABASE_READ_ONLY_VERIFIED": "DB_SPLIT_NOT_ACTIVE",
+              "EGRESS_OS_POLICY_VERIFIED": "NO_ISOLATED_OS_NETWORK_ACCESS"
+            },
+            "policy": {
+              "loaded": true,
+              "error": null,
+              "entries": 17
+            },
+            "database_checks": {
+              "SPLIT_ENABLED": false,
+              "RESEARCH_DB_EXISTS": true,
+              "RESEARCH_ENGINE_READONLY_URI": false,
+              "QUERY_ONLY_ENABLED": false,
+              "READONLY_WRITE_PROBE_BLOCKED": false,
+              "RESEARCH_FILE_PERMISSION_READONLY": false,
+              "USER_DB_EXISTS": false,
+              "USER_DB_WRITABLE": false,
+              "PATHS_DISTINCT": false
+            },
+            "notes": [
+              "health 只表示进程存活；ready 表示灰度必要门禁全部 PASS",
+              "EGRESS_OS_POLICY_VERIFIED 需要独立网络命名空间/防火墙实测，本轮未执行"
+            ]
+          }
+        ]
+      }
+    },
+    "verdict": {
+      "new_health": true,
+      "new_ready_503": true,
+      "unauth_401": true,
+      "register_ok": true,
+      "login_ok": true,
+      "quality_ok": true,
+      "restart_ok": true,
+      "rollback_health": true,
+      "rollback_ready_consistent": true,
+      "redeploy_ok": true,
+      "redeploy_ready_503": true
+    },
+    "db_after": {
+      "sha256": "ce82ce22f15ff09463d557ce393a3c92e5549b6cce55674f00c5cfdbd942c1e5",
+      "size": 475136
+    },
+    "db_written_by_login": false
+  },
+  "evidence_files": [
+    "reports\\s6-followup\\staging\\smoke-test-results.json",
+    "reports\\s6-followup\\staging\\deployment-record.md",
+    "reports\\s6-followup\\staging\\rollback-drill.md"
+  ],
+  "limitations": [
+    "不是生产 Staging：无独立服务管理器/网络命名空间/容器。",
+    "回滚是代码快照 + 配置 + 数据库副本的回滚，不是发布系统级回滚。",
+    "Windows 上 terminate 是强制结束，不等价于 systemd SIGTERM 优雅停机。",
+    "OS egress 策略仍未验证。"
+  ]
+}

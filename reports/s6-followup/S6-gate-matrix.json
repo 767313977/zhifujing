@@ -1,0 +1,153 @@
+{
+  "generated_at": "2026-11-15T03:40:00+08:00",
+  "branch": "release/s6-canary-hardening-v3",
+  "base_head": "5db5246010c884a8a980e8279e4b49cb164a3603",
+  "head_before_final_commit": "53b4b05ae2c3091eaaefe570fed7c7763025a206",
+  "gates": [
+    {
+      "gate": "G0",
+      "requirement": "clean Git、资产基线清楚",
+      "status": "PASS",
+      "blocking": true,
+      "evidence": [
+        "reports/s6-followup/gate0/git-baseline.json",
+        "reports/s6-followup/gate0/protected-assets-before.json",
+        "reports/s6-followup/gate0/protected-assets-final.json",
+        "reports/s6-followup/gate0/database-integrity-before.txt",
+        "reports/s6-followup/gate0/database-integrity-final.txt"
+      ],
+      "detail": "基线 5db5246 clean；C0 五脚本 blob、冻结信号 SHA256、四库 size/mtime/integrity before/final 逐项一致（diffs=0）"
+    },
+    {
+      "gate": "G3",
+      "requirement": "OS 级默认拒绝",
+      "status": "NOT_VERIFIED",
+      "blocking": true,
+      "reason": "S61_VM_UNAVAILABLE：本机无 Hyper-V/KVM/VMware 独立 Linux VM；按任务书禁止用 WSL 冒充隔离环境",
+      "evidence": [
+        "reports/s6-followup/s61/verification.json",
+        "reports/s6-followup/s61/vm-inventory.json",
+        "reports/s6-followup/s61/verification.md"
+      ]
+    },
+    {
+      "gate": "G4",
+      "requirement": "DNS、IPv4/IPv6、TCP/UDP、代理、TLS、子进程、原生路径",
+      "status": "NOT_VERIFIED",
+      "blocking": true,
+      "reason": "无独立 VM；N01–N24 全部 NOT_RUN，未在宿主/WSL 应用任何防火墙规则",
+      "evidence": [
+        "reports/s6-followup/s61/verification.json",
+        "reports/s6-followup/s61/policy-audit.md"
+      ]
+    },
+    {
+      "gate": "G7",
+      "requirement": "Research DB 全路径只读、User DB 独立可写",
+      "status": "PASS",
+      "blocking": true,
+      "evidence": [
+        "reports/s6-followup/g7/G7-db-routing-verification.md",
+        "reports/s6-followup/g7/route-db-ownership.csv",
+        "reports/s6-followup/g7/table-ownership-final.csv",
+        "reports/s6-followup/g7/write-path-inventory.json",
+        "reports/s6-followup/g7/readiness-proof.json",
+        "reports/s6-followup/g7/migration-revalidation.json"
+      ],
+      "detail": "185 条路由×连接域矩阵；API 层 AST 禁止 SessionLocal/session_scope/get_db；隔离环境 9 项 readiness 检查全 true；513MB 副本迁移幂等+中断恢复 PASS、源 SHA256 不变；研究写全 503"
+    },
+    {
+      "gate": "G8",
+      "requirement": "后端/前端/浏览器/readiness 全量回归",
+      "status": "FAIL",
+      "blocking": true,
+      "reason": "LOGIN_SPA_TRANSITION_BLANK：登录成功后 URL 停留 /login、#root 被清空，必须手动刷新才能进入（3 次独立复现）",
+      "evidence": [
+        "reports/s6-followup/s65/regression.md",
+        "reports/s6-followup/s65/browser.md",
+        "reports/s6-followup/s65/pytest-full.log",
+        "reports/s6-followup/s65/frontend-test.log",
+        "reports/s6-followup/s65/frontend-lint.log",
+        "reports/s6-followup/s65/frontend-build.log"
+      ],
+      "detail": "后端 1735 passed / 4 skipped（363.49s）、ruff/compileall 通过；前端 154 passed / 16 files、oxlint 0/0、build 成功；浏览器回归因登录白屏判 FAIL"
+    },
+    {
+      "gate": "G9",
+      "requirement": "Staging 部署、备份、回滚实测",
+      "status": "PASS",
+      "blocking": true,
+      "evidence": [
+        "reports/s6-followup/staging/smoke-test-results.json",
+        "reports/s6-followup/staging/deployment-record.md",
+        "reports/s6-followup/staging/rollback-drill.md"
+      ],
+      "detail": "本地隔离 Staging：部署/重启/回滚/再部署 4 轮 smoke 全 PASS；回滚为代码快照+配置+DB 副本级回滚，非发布系统级；生产备份恢复 NOT_RUN"
+    },
+    {
+      "gate": "G10",
+      "requirement": "无阻断级漏洞、无数据损坏",
+      "status": "PASS",
+      "blocking": true,
+      "evidence": [
+        "reports/s6-followup/s64/vulnerability-scan.md",
+        "reports/s6-followup/s64/pip-audit.json",
+        "reports/s6-followup/s64/npm-audit.json",
+        "reports/s6-followup/gate0/protected-assets-final.json"
+      ],
+      "detail": "pip-audit No known vulnerabilities（6→0）；npm audit 0/0/0/0/0（2 high→0）；四库 integrity_check=ok；C0/冻结信号/库指纹无非预期变化；崩溃恢复仍 NOT_RUN"
+    },
+    {
+      "gate": "SOAK",
+      "requirement": "连续 24h Staging soak",
+      "status": "NOT_RUN",
+      "blocking": true,
+      "reason": "本机无法保持 24h 连续环境；仅执行 3 分钟拆分 soak（5632 请求、0 个非预期 5xx、P95 29.35ms）与 5 项故障注入，不冒充 24h",
+      "evidence": [
+        "reports/s6-followup/s64/soak-report.md",
+        "reports/s6-followup/s64/soak-metrics.json",
+        "reports/s6-followup/s64/fault-injection.json"
+      ]
+    },
+    {
+      "gate": "PERF",
+      "requirement": "SQL 性能预算",
+      "status": "FAIL",
+      "blocking": false,
+      "reason": "PERF_SQL_BUDGET_NOT_MET：workbench 53 SQL > 25 预算；不调预算、不宣称通过",
+      "evidence": [
+        "reports/s6-followup/s65/performance.md",
+        "reports/s6-followup/s65/benchmark.json"
+      ]
+    },
+    {
+      "gate": "DATA",
+      "requirement": "历史/题材/竞价缺口",
+      "status": "NOT_COMPARABLE",
+      "blocking": false,
+      "reason": "7 条 NOT_COMPARABLE 原口径保留；THEME_REAL_DATA_ACCEPTANCE_PENDING / REAL_AUCTION_DATA_NOT_VERIFIED / HISTORICAL_DATA_GAP_UNDER_REVIEW 未关闭",
+      "evidence": [
+        "reports/s6/data-quality/"
+      ]
+    }
+  ],
+  "stage_status": {
+    "S61_OS_EGRESS_VERIFIED": "NOT_VERIFIED",
+    "G7_RESEARCH_DB_READONLY_VERIFIED": "PASS",
+    "S6_SECURITY_REGRESSION_PASSED": "NOT_VERIFIED",
+    "S6_STAGING_SOAK_PASSED": "NOT_RUN",
+    "S6_FULL_REGRESSION_PASSED": "FAIL",
+    "S6_STAGING_ROLLBACK_PASSED": "PASS",
+    "S6_VULNERABILITY_SCAN_PASSED": "PASS",
+    "S6_CANARY_READY": "BLOCKED"
+  },
+  "blocking_gaps": [
+    "G3/G4：无独立 Linux VM，OS egress 未验证",
+    "G8：登录后 SPA 白屏（阻断级 UI 缺陷）",
+    "SOAK：24h soak 未执行",
+    "S6_SECURITY_REGRESSION_PASSED：OS 层未验证（应用层已通过）"
+  ],
+  "final_state": "S6_CANARY_BLOCKED",
+  "merge": "NOT_PERFORMED",
+  "production_deployment": "NOT_AUTHORIZED_AND_NOT_PERFORMED"
+}

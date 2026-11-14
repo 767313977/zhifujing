@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -179,12 +180,11 @@ def main() -> int:
     parser.add_argument("--keep-running", action="store_true")
     args = parser.parse_args()
 
-    out_dir = Path(args.out_dir)
+    out_dir = Path(args.out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    stage = Path(os.environ.get("TEMP", "/tmp")) / "s6_staging"
-    if stage.exists():
-        shutil.rmtree(stage, ignore_errors=True)
-    stage.mkdir(parents=True)
+    stage = Path(
+        tempfile.mkdtemp(prefix="s6_staging_", dir=os.environ.get("TEMP", "/tmp"))
+    )
 
     old_dir = stage / "app_old"
     new_dir = stage / "app_new"
@@ -213,6 +213,10 @@ def main() -> int:
         "python": sys.version.split()[0],
     }
 
+    # 每次运行用唯一用户名：staging 库可能复用（上一轮遗留的 invite 已被消费），
+    # 固定用户名会让「注册」在第二次运行必然 400（用户名已占用 / 邀请码已用过），
+    # 那会把「注册接口坏了」与「测试数据脏了」混在一起。
+    staging_user = f"s6staging{int(time.time())}"
     smoke = {"new": {}, "restart": {}, "rollback": {}, "redeploy": {}}
     process = None
     keep = False
@@ -234,13 +238,13 @@ def main() -> int:
             "POST",
             {
                 "invite_code": "S6-STAGING-1",
-                "username": "s6staging",
+                "username": staging_user,
                 "password": "staging-password-123",
             },
         )
         smoke["new"]["login"] = _http(
             auth, f"{base}/api/auth/login", "POST",
-            {"username": "s6staging", "password": "staging-password-123"},
+            {"username": staging_user, "password": "staging-password-123"},
         )
         smoke["new"]["quality_authed"] = _http(auth, f"{base}/api/quality/overview?days=30")
         smoke["new"]["timeline_authed"] = _http(
