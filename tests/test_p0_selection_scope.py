@@ -6,7 +6,7 @@
 from datetime import date
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.models import Base, RpsDaily, StockBasic, StockDaily

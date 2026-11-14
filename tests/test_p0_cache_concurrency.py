@@ -369,9 +369,6 @@ def test_revision_read_exception_skips_cache(monkeypatch, session):
 
     monkeypatch.setattr(pools_api.data_revision, "status", boom_status)
 
-    def build():
-        return "OK_DB_DOWN"
-
     # _effective_key 会 boom → 这里会先捕获再让 _effective_key 返回 None？
     # 实际上 _effective_key 直接调 status()，不 catch → 让它 propagate
     # 但 _cached() 没 catch → 异常向上 → 但我们要的是"直查不缓存"
