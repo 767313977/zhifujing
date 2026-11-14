@@ -400,6 +400,87 @@ def test_conflict_with_all_sources_known_before_cutoff_is_visible():
         db.close()
 
 
+def test_single_up_member_still_requires_peer_sources():
+    """R2-P1-01：只出现在 up 时，broken/down 的未知也必须进入 pending。"""
+    db = _session()
+    try:
+        db.add(_log(D2, "pool_up", 2, datetime(2026, 11, 11, 14, 0)))
+        db.commit()
+        data = _build(db)
+        known = data["at_cutoff_known"]
+        assert known["pool_status"] == ctx.POOL_STATUS_UP
+        assert known["observed_pool_membership"] == ["up"]
+        assert known["pool_scope_complete"] is False
+        assert known["unconfirmed_pool_sources"] == ["broken", "down"]
+        unknown = data["unknown_or_later"]["pool"]
+        assert unknown["pending_sources"] == ["broken", "down"]
+        # 已证明的 up 成员不能被说成「未证明成员」
+        assert unknown["unconfirmed_membership"] == []
+        assert unknown["status"] == ctx.POOL_STATUS_UP
+        assert unknown["reason_code"] == "POOL_MEMBERSHIP_NOT_PROVABLE"
+        assert "POOL_OTHER_SOURCES_UNKNOWN" in data["quality"]["reasons"]
+        # 兼容字段与已知区完整性语义一致
+        assert data["as_known_on_day"]["pool_scope_complete"] is False
+        assert data["as_known_on_day"]["unconfirmed_pool_sources"] == ["broken", "down"]
+    finally:
+        db.close()
+
+
+def test_post_cutoff_peer_without_rows_is_not_proved_empty():
+    """broken 22:00 才采集且没有成员行：不得认为 broken 已证明为空。"""
+    db = _session()
+    try:
+        db.add(_log(D2, "pool_up", 2, datetime(2026, 11, 11, 14, 0)))
+        db.add(_log(D2, "pool_broken", 0, datetime(2026, 11, 11, 22, 0)))
+        db.commit()
+        data = _build(db)
+        known = data["at_cutoff_known"]
+        assert known["pool_status"] == ctx.POOL_STATUS_UP
+        assert known["pool_scope_complete"] is False
+        assert known["unconfirmed_pool_sources"] == ["broken", "down"]
+        unknown = data["unknown_or_later"]["pool"]
+        assert unknown["reason_code"] == "POOL_MEMBERSHIP_POST_CUTOFF"
+        assert unknown["pending_sources"] == ["broken", "down"]
+    finally:
+        db.close()
+
+
+def test_all_three_sources_known_with_only_up_member_is_scope_complete():
+    db = _session()
+    try:
+        db.add(_log(D2, "pool_up", 2, datetime(2026, 11, 11, 14, 0)))
+        db.add(_log(D2, "pool_broken", 0, datetime(2026, 11, 11, 14, 0)))
+        db.add(_log(D2, "pool_down", 0, datetime(2026, 11, 11, 14, 0)))
+        db.commit()
+        data = _build(db)
+        known = data["at_cutoff_known"]
+        assert known["pool_status"] == ctx.POOL_STATUS_UP
+        assert known["observed_pool_membership"] == ["up"]
+        assert known["pool_scope_complete"] is True
+        assert known["unconfirmed_pool_sources"] == []
+        assert data["unknown_or_later"]["pool"] is None
+        # 不因为 broken/down 可信且无行而误报冲突
+        assert ctx.POOL_STATUS_CONFLICT != known["pool_status"]
+    finally:
+        db.close()
+
+
+def test_all_three_sources_known_without_members_is_not_in_pool():
+    db = _session()
+    try:
+        for task in ("pool_up", "pool_broken", "pool_down"):
+            db.add(_log(D2, task, 2 if task == "pool_up" else 0, datetime(2026, 11, 11, 14, 0)))
+        db.commit()
+        data = _build(db, code="600009")
+        known = data["at_cutoff_known"]
+        assert known["pool_status"] == ctx.POOL_STATUS_NOT_IN_POOL
+        assert known["observed_pool_membership"] == []
+        assert known["pool_scope_complete"] is True
+        assert data["unknown_or_later"]["pool"] is None
+    finally:
+        db.close()
+
+
 def test_end_of_day_facts_never_enter_known_bucket():
     db = _session()
     try:

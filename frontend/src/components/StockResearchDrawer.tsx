@@ -556,8 +556,14 @@ function EvidenceTab({
       <Section title="不知道 / 观察日之后才取到">
         {unknown.pool ? (
           <div className="mb-2 text-[12px] leading-relaxed text-warn">
-            池成员/冲突未能在 15:00 前证明：
-            {unknown.pool.observed_pool_membership.join('、') || '（无成员记录）'}
+            池状态未能完整证明：
+            {(
+              unknown.pool.unconfirmed_membership ??
+              unknown.pool.observed_pool_membership
+            ).join('、') || '（未证明成员记录）'}
+            {unknown.pool.pending_sources?.length
+              ? `；未证明来源 ${unknown.pool.pending_sources.join('、')}`
+              : ''}
             {` · ${unknown.pool.status} · ${unknown.pool.reason_code}`}
           </div>
         ) : null}

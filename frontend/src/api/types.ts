@@ -1948,7 +1948,12 @@ export interface StockResearchUnknownOrLater {
   /** 截止前未能证明的池成员/冲突（后得或不可证明） */
   pool?: {
     status: string
+    /** 原始观察（含已证明成员），仅用于审计 */
     observed_pool_membership: string[]
+    /** 未能证明的成员（展示用，不含已证明成员） */
+    unconfirmed_membership?: string[]
+    /** 未能在 cutoff 前证明的来源（固定三池口径） */
+    pending_sources?: string[]
     reason_code: string
     known_by: string
     known_at: string | null

@@ -290,85 +290,93 @@ def _resolve_pool_evidence(
     trusted: dict[str, bool],
     pits: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    """解析「这只票在哪些池」这一断言在截止时点的状态（S5 审查整改 P1-01）。
+    """解析「这只票在哪些池」这一断言在截止时点的状态（R2-P1-01）。
 
-    判定顺序固定为「先质量、后时间」，两个条件都成立才算截止前已知：
+    判定顺序固定为「先质量、后时间」，且**完整性必须检查全部三池**：
 
-    - 已知区只放 `trusted=True` 且 `time_bucket=AT_CUTOFF_KNOWN` 的成员来源；
-    - `POOL_CONFLICT` 只有在**构成冲突的全部来源**都可信且在截止前已知时才成立；
-    - 一侧已知、一侧未知时，只输出已证明的正向观察（`UP`/`BROKEN`/`DOWN`），
-      同时标记 `scope_complete=false`，不推断「不在另一个池」、也不断言无冲突；
-    - `NOT_IN_POOL` 需要三个来源都可证明；
-    - 未能证明的成员关系单独放进 `unknown`，由调用方写入「后得/未知」桶。
+    - `observed_member_types`：数据库里确实有该股记录的池；
+    - `required_sources`：协议要求用于证明池状态完整性的全部来源（固定三池），
+      **不得**由成员行反推，否则「只出现在 up」会把 broken/down 的未知当成已知为空；
+    - `known_sources`：来源可信且 `known_at <= cutoff`；
+    - `pending_sources`：未能在 cutoff 前证明的 required sources；
+    - 已知区只放 `known_membership = observed_member_types ∩ known_sources`；
+    - `POOL_CONFLICT` 只在**构成冲突的全部来源**都已证明时成立；
+    - `NOT_IN_POOL` 只在三个来源全部证明且无成员时成立；
+    - 单边正向成员（如已证明 up）可以显示 `UP`，但同时标记 `pool_scope_complete=false`，
+      不推断其余池为空；
+    - 未证明的来源/成员/潜在冲突只进 `unknown`，但已证明的成员不得被描述成未证明。
     """
-    member_types = [pool_type for pool_type in POOL_TYPES if pool_type in membership]
-    needed = member_types or list(POOL_TYPES)
+    observed_member_types = sorted(
+        pool_type for pool_type in POOL_TYPES if pool_type in membership
+    )
+    required_sources = list(POOL_TYPES)
     known_sources = sorted(
         pool_type
-        for pool_type in needed
+        for pool_type in required_sources
         if trusted[pool_type] and pits[pool_type]["time_bucket"] == BUCKET_KNOWN
     )
-    # 只有「确实在池里」的来源才构成冲突；证明「不在池」的来源不算成员
-    known = [pool_type for pool_type in known_sources if pool_type in membership]
-    pending = [pool_type for pool_type in needed if pool_type not in known_sources]
-    scope_complete = not pending
+    pending_sources = [
+        pool_type for pool_type in required_sources if pool_type not in known_sources
+    ]
+    known_membership = [
+        pool_type for pool_type in observed_member_types if pool_type in known_sources
+    ]
+    scope_complete = not pending_sources
 
-    if len(known) > 1:
+    if len(known_membership) > 1:
         status = POOL_STATUS_CONFLICT
-    elif len(known) == 1:
+    elif len(known_membership) == 1:
         status = {
             "up": POOL_STATUS_UP,
             "broken": POOL_STATUS_BROKEN,
             "down": POOL_STATUS_DOWN,
-        }[known[0]]
+        }[known_membership[0]]
     elif scope_complete:
         status = POOL_STATUS_NOT_IN_POOL
     else:
         status = POOL_STATUS_UNKNOWN
 
-    if pending:
-        first = pending[0]
-        unknown_known_by = pits[first]["known_by"]
-        unknown_reason = pits[first].get("reason_code") or "POOL_NOT_KNOWN_AT_CUTOFF"
-        unknown_known_at = pits[first].get("known_at")
-        # 已知部分只取「已证明来源」的最晚时刻；未证明来源的时间不能进已知行
-        known_by = KNOWN_CLOSE
-        reason_code = None
-        known_moments = [pits[pool_type].get("known_at") for pool_type in known_sources]
-        known_at = max(
-            (moment for moment in known_moments if moment is not None), default=None
-        )
-    else:
-        known_by = KNOWN_CLOSE
-        reason_code = None
-        unknown_known_by = None
-        unknown_known_at = None
-        moments = [pits[pool_type].get("known_at") for pool_type in needed]
-        known_at = max((moment for moment in moments if moment is not None), default=None)
+    # 已知行的时刻只取已证明来源；没有已证明来源时不产出已知行
+    known_moments = [pits[pool_type].get("known_at") for pool_type in known_sources]
+    known_at = max(
+        (moment for moment in known_moments if moment is not None), default=None
+    )
+    known_by = KNOWN_CLOSE
+    reason_code = None
 
     unknown = None
-    if pending:
+    if pending_sources:
+        first = pending_sources[0]
+        unknown_known_by = pits[first]["known_by"]
+        unknown_known_at = pits[first].get("known_at")
         timing_related = any(
             pits[pool_type]["known_by"] in (KNOWN_POST_CLOSE, KNOWN_LATER)
-            for pool_type in pending
+            for pool_type in pending_sources
         )
         suffix = "POST_CUTOFF" if timing_related else "NOT_PROVABLE"
-        if len(member_types) > 1:
+        if len(observed_member_types) > 1:
             unknown_status = POOL_STATUS_CONFLICT
             unknown_reason = f"POOL_CONFLICT_{suffix}"
-        elif len(member_types) == 1:
+        elif len(observed_member_types) == 1:
             unknown_status = {
                 "up": POOL_STATUS_UP,
                 "broken": POOL_STATUS_BROKEN,
                 "down": POOL_STATUS_DOWN,
-            }[member_types[0]]
+            }[observed_member_types[0]]
             unknown_reason = f"POOL_MEMBERSHIP_{suffix}"
         else:
             unknown_status = POOL_STATUS_UNKNOWN
             unknown_reason = "POOL_MEMBERSHIP_NOT_PROVABLE"
         unknown = {
             "status": unknown_status,
-            "observed_pool_membership": sorted(member_types),
+            # 原始观察（含已证明成员）用于审计；UI 展示用下面的 unconfirmed_membership
+            "observed_pool_membership": sorted(observed_member_types),
+            "unconfirmed_membership": [
+                pool_type
+                for pool_type in observed_member_types
+                if pool_type not in known_sources
+            ],
+            "pending_sources": pending_sources,
             "reason_code": unknown_reason,
             "known_by": unknown_known_by,
             "known_at": unknown_known_at,
@@ -376,16 +384,17 @@ def _resolve_pool_evidence(
 
     return {
         "status": status,
-        "known_membership": known,
+        "known_membership": known_membership,
         "scope_complete": scope_complete,
-        "pending_sources": pending,
+        "pending_sources": pending_sources,
+        "known_sources": known_sources,
         "known_by": known_by,
         "known_at": known_at,
         "reason_code": reason_code,
         "unknown": unknown,
         "board_height": (
             membership["up"].consecutive
-            if status == POOL_STATUS_UP and "up" in known
+            if status == POOL_STATUS_UP and "up" in known_membership
             else None
         ),
         "quality": {pool_type: quality[pool_type] for pool_type in POOL_TYPES},
