@@ -12,7 +12,7 @@
 import importlib.util
 import json
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -118,7 +118,7 @@ def test_baseline_audit_has_no_unexpected(audit_db):
     assert result["summary"]["unexpected_disagreements"] == 0
     assert result["summary"]["total_checks"] >= 4
     sampling = result["sampling"]
-    assert sampling["strategy"].startswith("等间隔抽样")
+    assert sampling["strategy"].startswith("等距抽样")
     assert sampling["sampled_days"] == [D1.isoformat()]
     assert sampling["uncovered_days"] == []
     assert sampling["is_full_history"] is True
@@ -327,4 +327,63 @@ def test_theme_source_error_is_not_na(audit_db, tmp_path, monkeypatch, capsys):
     assert code == 2
     names = [item["name"] for item in result["unexpected"]]
     assert "overview.sector_member vs theme-search" in names
+
+
+@pytest.mark.parametrize(
+    ("total", "sample"),
+    [(21, 15), (29, 15), (21, 10), (15, 15), (15, 20), (1, 1)],
+)
+def test_sampling_covers_full_interval(total, sample):
+    """等距抽样必须唯一、递增、数量正确，并在 sample>=2 时覆盖首尾。"""
+    days = [date(2026, 1, 1) + timedelta(days=i) for i in range(total)]
+    picked = audit._sample_days(days, sample)
+    assert len(picked) == min(sample, total)
+    assert picked == sorted(set(picked))
+    if sample >= total:
+        assert picked == days
+    elif sample >= 2:
+        assert picked[0] == days[0]
+        assert picked[-1] == days[-1]
+
+
+def test_sampling_selection_and_uncovered_are_disjoint_and_complete(audit_db, tmp_path):
+    """selected ∪ uncovered = 全部交易日，且二者交集为空。"""
+    days = [date(2026, 1, 1) + timedelta(days=i) for i in range(21)]
+    path = tmp_path / "audit21.db"
+    _build_db(path, days=tuple(days))
+    result = audit.run(path, days[0], days[-1], 15)
+    sampling = result["sampling"]
+    sampled = sampling["sampled_days"]
+    uncovered = sampling["uncovered_days"]
+    assert len(sampled) == 15
+    assert set(sampled) & set(uncovered) == set()
+    assert set(sampled) | set(uncovered) == {day.isoformat() for day in days}
+    assert sampled[0] == days[0].isoformat()
+    assert sampled[-1] == days[-1].isoformat()
+    assert sampling["is_full_history"] is False
+
+
+@pytest.mark.parametrize("sample", ["0", "256"])
+def test_invalid_sample_is_rejected(audit_db, tmp_path, monkeypatch, capsys, sample):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "check_s5_quality_consistency.py",
+            "--db",
+            str(audit_db),
+            "--start",
+            D1.isoformat(),
+            "--end",
+            D1.isoformat(),
+            "--out",
+            str(tmp_path / "nope.json"),
+            "--sample",
+            sample,
+        ],
+    )
+    with pytest.raises(SystemExit) as excinfo:
+        audit.main()
+    assert "--sample 必须在 1~255" in str(excinfo.value)
+    capsys.readouterr()
 

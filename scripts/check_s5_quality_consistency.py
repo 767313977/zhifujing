@@ -254,6 +254,22 @@ def _daily_status(session: Session, day: date) -> str:
     return {item["source"]: item for item in items}["stock_daily"]["status"]
 
 
+def _sample_days(days: list[date], sample: int) -> list[date]:
+    """覆盖整个区间的等距抽样。
+
+    - `sample >= len(days)`：直接全量；
+    - `sample == 1`：取区间首个交易日；
+    - 其余：按 `(n-1)/(sample-1)` 均匀取索引，保证唯一、递增且覆盖首尾。
+    """
+    if sample >= len(days):
+        return list(days)
+    if sample == 1:
+        return [days[0]]
+    span = len(days) - 1
+    indexes = [round(i * span / (sample - 1)) for i in range(sample)]
+    return [days[index] for index in indexes]
+
+
 def run(db_path: Path, start: date, end: date, sample: int) -> dict:
     uri = _readonly_uri(db_path)
     engine = create_engine(uri, future=True)
@@ -278,8 +294,7 @@ def run(db_path: Path, start: date, end: date, sample: int) -> dict:
         ]
         if not days:
             raise SystemExit("区间内没有交易日")
-        step = max(1, len(days) // max(1, sample))
-        selected = days[::step][:sample]
+        selected = _sample_days(days, sample)
         sampled_iso = [item.isoformat() for item in selected]
         sampled_set = set(sampled_iso)
         uncovered_iso = [item.isoformat() for item in days if item.isoformat() not in sampled_set]
@@ -321,8 +336,8 @@ def run(db_path: Path, start: date, end: date, sample: int) -> dict:
         "sampled_days": len(checks),
         "sampling": {
             "strategy": (
-                "等间隔抽样：step = floor(区间交易日数 / --sample)，从区间首个交易日起每隔 "
-                "step 天取一个，最多 --sample 个"
+                "等距抽样：--sample >= 区间交易日数时全量；否则按 (n-1)/(sample-1) "
+                "均匀取索引，样本唯一递增并覆盖区间首尾"
             ),
             "requested_sample": sample,
             "available_trade_days": len(days),
