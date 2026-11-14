@@ -1,0 +1,281 @@
+{
+  "results": [
+    {
+      "name": "theme_panel_ok",
+      "ok": true,
+      "detail": "题材交叉仍可用"
+    },
+    {
+      "name": "resonance_buckets",
+      "ok": true,
+      "detail": "buckets=True up=True down=True again50=True"
+    },
+    {
+      "name": "resonance_and_or_dedupe",
+      "ok": true,
+      "detail": "and2=True or5=True"
+    },
+    {
+      "name": "resonance_and_unverifiable",
+      "ok": true,
+      "detail": "A01+A02+A04 -> UNVERIFIABLE"
+    },
+    {
+      "name": "resonance_zero_sample",
+      "ok": true,
+      "detail": "09-21 无成员快照 -> 未采集，不伪造 0 只"
+    },
+    {
+      "name": "resonance_viewports",
+      "ok": true,
+      "detail": "1920/3840/390 screenshots captured"
+    },
+    {
+      "name": "quality_overview",
+      "ok": true,
+      "detail": "table=True reason=True"
+    },
+    {
+      "name": "quality_detail_expand",
+      "ok": true,
+      "detail": "展开行显示原因码/最近尝试"
+    },
+    {
+      "name": "quality_filter",
+      "ok": true,
+      "detail": "筛选后隐藏可信来源"
+    },
+    {
+      "name": "quality_uncollected_day",
+      "ok": true,
+      "detail": "09-22 显示未采集"
+    },
+    {
+      "name": "quality_viewports",
+      "ok": true,
+      "detail": "1920/3840/390 screenshots captured"
+    },
+    {
+      "name": "research_three_buckets",
+      "ok": true,
+      "detail": "三区标题存在"
+    },
+    {
+      "name": "research_later_not_in_known",
+      "ok": true,
+      "detail": "known_has_theme=False unknown_has_theme=True"
+    },
+    {
+      "name": "research_forward_outcome",
+      "ok": true,
+      "detail": "D+1 -5.00% 不在已知区"
+    },
+    {
+      "name": "research_end_of_day_fact",
+      "ok": true,
+      "detail": "日终事实与 15:00 截止时刻可见"
+    },
+    {
+      "name": "drawer_escape",
+      "ok": true,
+      "detail": "Escape closes"
+    },
+    {
+      "name": "drawer_refresh_asof",
+      "ok": true,
+      "detail": "刷新保留 stock/as_of"
+    },
+    {
+      "name": "drawer_history",
+      "ok": true,
+      "detail": "back_closed=True forward_open=True"
+    },
+    {
+      "name": "limit_page",
+      "ok": true,
+      "detail": "/limit-up 仍有个股链接"
+    },
+    {
+      "name": "auction_page",
+      "ok": true,
+      "detail": "/auction"
+    },
+    {
+      "name": "sentiment_page",
+      "ok": true,
+      "detail": "/sentiment"
+    },
+    {
+      "name": "workbench_page",
+      "ok": true,
+      "detail": "工作台页面加载"
+    },
+    {
+      "name": "workbench_sections",
+      "ok": true,
+      "detail": "情绪/漏斗/共振/次日/质量五区可见"
+    },
+    {
+      "name": "workbench_and_total",
+      "ok": true,
+      "detail": "AND A01+A02 = 2 只"
+    },
+    {
+      "name": "workbench_boundary",
+      "ok": true,
+      "detail": "已观测边界与只读声明可见"
+    },
+    {
+      "name": "workbench_url_sync",
+      "ok": true,
+      "detail": "输入回填=A01,A02"
+    },
+    {
+      "name": "workbench_or_dedupe",
+      "ok": true,
+      "detail": "OR A01+A02 = 5 只（去重）"
+    },
+    {
+      "name": "workbench_and_unverifiable",
+      "ok": true,
+      "detail": "A04 无快照 -> UNVERIFIABLE"
+    },
+    {
+      "name": "workbench_d1_pending",
+      "ok": true,
+      "detail": "无下一交易日 -> 待观察，不写 0%"
+    },
+    {
+      "name": "workbench_quality_view",
+      "ok": true,
+      "detail": "质量视图隐藏梯队/次日面板"
+    },
+    {
+      "name": "workbench_empty_sectors",
+      "ok": true,
+      "detail": "未选板块仍显示情绪/漏斗/质量"
+    },
+    {
+      "name": "workbench_stock_link",
+      "ok": true,
+      "detail": "逐券行保留个股链接"
+    },
+    {
+      "name": "workbench_quick_research_evidence",
+      "ok": true,
+      "detail": "「据」直达 evidence Tab"
+    },
+    {
+      "name": "workbench_viewports",
+      "ok": true,
+      "detail": "390/768/1920/3840 screenshots captured"
+    },
+    {
+      "name": "account_switch_clears_drawer",
+      "ok": true,
+      "detail": "user_b=True no_drawer=True"
+    },
+    {
+      "name": "offline_gate_no_network",
+      "ok": true,
+      "detail": "before_sent=0 after_sent=0"
+    },
+    {
+      "name": "offline_probe_note",
+      "ok": true,
+      "detail": "status=200 note_offline=True"
+    },
+    {
+      "name": "offline_sync_blocked_before_network",
+      "ok": true,
+      "detail": "status=503 blocked=2 sent=0"
+    },
+    {
+      "name": "console_errors",
+      "ok": true,
+      "detail": "0 errors"
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "resonance_1280x800.png",
+      "sha256": "6a214dfd57eb823db2276fd9c2988f406fccf90b822f10c3b0247752e18b26ee",
+      "bytes": 146916
+    },
+    {
+      "file": "resonance_unverifiable_1280x800.png",
+      "sha256": "0ef6541c9f9849dfb78db40403a141fd6de9e893d1a9d85c0bd8bd4253db9f8d",
+      "bytes": 151857
+    },
+    {
+      "file": "resonance_1920x1080.png",
+      "sha256": "a101f760a1c5ba5a84e3e3dda490dc69c54f3b78e5703672d7c61d4a1ba1f0f4",
+      "bytes": 167638
+    },
+    {
+      "file": "resonance_3840x2160.png",
+      "sha256": "ee77db35d548fa046af04dd8965ece7eabc934c43ba0661786a460c3eb0fa5e4",
+      "bytes": 339429
+    },
+    {
+      "file": "resonance_390x844.png",
+      "sha256": "3caf90eab96031ffe48b330458bcd55799e27fdc21d25bd5e06d6468d44f8393",
+      "bytes": 59259
+    },
+    {
+      "file": "quality_1280x800.png",
+      "sha256": "f19a91f1db1c558b6478012a1b6f7d4b78f4467292c1e2349902f419f0586b07",
+      "bytes": 107263
+    },
+    {
+      "file": "quality_1920x1080.png",
+      "sha256": "4beb0271be0dd156917862c97dc2108e911955e7f3148ab75a58dfe3e8e2ec6d",
+      "bytes": 102933
+    },
+    {
+      "file": "quality_3840x2160.png",
+      "sha256": "5a5508ba5d7071ad50f5e93e0994d4ea7b17ec57469093c49108887d88aa9dca",
+      "bytes": 127121
+    },
+    {
+      "file": "quality_390x844.png",
+      "sha256": "46f297dff192c8ba89c81a9dc935bf4155e87452650cd41a4edeac1755c8e3e1",
+      "bytes": 57734
+    },
+    {
+      "file": "research_three_buckets_1280x800.png",
+      "sha256": "4d4f4446aa2e890024cd4337354510bdbca91132594f278013dc0a6d2bcebd35",
+      "bytes": 164088
+    },
+    {
+      "file": "workbench_1280x800.png",
+      "sha256": "e5f53eabae4945a7bffe24e9d4fce503af8bc7f9889ae4a1bf29ef0fc3e13780",
+      "bytes": 107010
+    },
+    {
+      "file": "workbench_pending_1280x800.png",
+      "sha256": "34ac7610eb47c8743c582c68d2aba2ef49ed4758007196bd227da7eda1537a23",
+      "bytes": 105008
+    },
+    {
+      "file": "workbench_390x844.png",
+      "sha256": "2b1cd5eccad211887a8b36bf938963b3de169851262e3d76f15f9b1b984c0971",
+      "bytes": 58128
+    },
+    {
+      "file": "workbench_768x1024.png",
+      "sha256": "cdf2e10845766c5d30affe6fc9104df2e3248fab86b0683ca0db87e20f514fa2",
+      "bytes": 97327
+    },
+    {
+      "file": "workbench_1920x1080.png",
+      "sha256": "37647e27ef242e265ee576616b7ed75d2e443d65e5d11f0e445810ea3a1269d4",
+      "bytes": 142232
+    },
+    {
+      "file": "workbench_3840x2160.png",
+      "sha256": "cd1fcf18b4d93249e471694e195810918097cbc700a7af03caee4c35fa83b348",
+      "bytes": 251831
+    }
+  ]
+}

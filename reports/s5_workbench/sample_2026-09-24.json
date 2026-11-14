@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-14T20:15:09",
-  "git_sha": "0d77b69b0b96af35cc19ec9c0c13bae1d196c57a",
+  "generated_at": "2026-11-14T20:39:02",
+  "git_sha": "c471fb54922a51c3f529759e27178cbc8e298cc1",
   "database": "b1_research.db",
   "mode": "ro&immutable=1",
   "as_of": "2026-09-24",
@@ -12,8 +12,8 @@
   "market": "all",
   "combine": "OR",
   "sql_statements": 50,
-  "elapsed_ms": 725.53,
-  "peak_memory_kb": 9115.0,
+  "elapsed_ms": 887.73,
+  "peak_memory_kb": 9118.1,
   "payload": {
     "as_of": "2026-09-24",
     "data_as_of": "2026-10-09",

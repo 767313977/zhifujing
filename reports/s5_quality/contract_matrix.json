@@ -1,0 +1,459 @@
+{
+  "quality_version": "data-quality-v2",
+  "generated_at": "2026-11-14T20:39:00",
+  "git_sha": "c471fb54922a51c3f529759e27178cbc8e298cc1",
+  "database": "b1_research.db",
+  "mode": "ro&immutable=1",
+  "range": {
+    "start": "2026-09-01",
+    "end": "2026-09-30"
+  },
+  "sampled_days": 15,
+  "sql_statements": 1216,
+  "elapsed_ms": 4687.38,
+  "summary": {
+    "total_checks": 60,
+    "passed": 60,
+    "explained_disagreements": 0,
+    "unexpected_disagreements": 0
+  },
+  "days": [
+    {
+      "trade_date": "2026-09-01",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-02; daily=PARTIAL; sentiment=VERIFIED; missing=0"
+        }
+      ]
+    },
+    {
+      "trade_date": "2026-09-02",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-03; daily=PARTIAL; sentiment=VERIFIED; missing=0"
+        }
+      ]
+    },
+    {
+      "trade_date": "2026-09-03",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-04; daily=PARTIAL; sentiment=VERIFIED; missing=0"
+        }
+      ]
+    },
+    {
+      "trade_date": "2026-09-04",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-07; daily=PARTIAL; sentiment=VERIFIED; missing=0"
+        }
+      ]
+    },
+    {
+      "trade_date": "2026-09-07",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-08; daily=PARTIAL; sentiment=VERIFIED; missing=0"
+        }
+      ]
+    },
+    {
+      "trade_date": "2026-09-08",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-09; daily=PARTIAL; sentiment=VERIFIED; missing=0"
+        }
+      ]
+    },
+    {
+      "trade_date": "2026-09-09",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-10; daily=VERIFIED_SOURCE; sentiment=VERIFIED; missing=0"
+        }
+      ]
+    },
+    {
+      "trade_date": "2026-09-10",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-11; daily=VERIFIED_SOURCE; sentiment=VERIFIED; missing=0"
+        }
+      ]
+    },
+    {
+      "trade_date": "2026-09-11",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-14; daily=VERIFIED_SOURCE; sentiment=VERIFIED; missing=0"
+        }
+      ]
+    },
+    {
+      "trade_date": "2026-09-14",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-15; daily=VERIFIED_SOURCE; sentiment=PARTIAL; missing=1"
+        }
+      ]
+    },
+    {
+      "trade_date": "2026-09-15",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-16; daily=VERIFIED_SOURCE; sentiment=VERIFIED; missing=0"
+        }
+      ]
+    },
+    {
+      "trade_date": "2026-09-16",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-17; daily=VERIFIED_SOURCE; sentiment=VERIFIED; missing=0"
+        }
+      ]
+    },
+    {
+      "trade_date": "2026-09-17",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-18; daily=VERIFIED_SOURCE; sentiment=VERIFIED; missing=0"
+        }
+      ]
+    },
+    {
+      "trade_date": "2026-09-18",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-21; daily=VERIFIED_SOURCE; sentiment=VERIFIED; missing=0"
+        }
+      ]
+    },
+    {
+      "trade_date": "2026-09-21",
+      "checks": [
+        {
+          "name": "overview.auction vs anomaly.quality",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=NOT_COLLECTED/NOT_COLLECTED+NOT_COLLECTED; anomaly=NOT_COLLECTED"
+        },
+        {
+          "name": "overview.limit_pool.up vs funnel.today_up",
+          "ok": true,
+          "explained": false,
+          "detail": "overview=VERIFIED_SOURCE; funnel=ok"
+        },
+        {
+          "name": "overview.sector_member vs theme-search",
+          "ok": true,
+          "explained": false,
+          "detail": "quality.completion_proof=False; theme.has_completion_proof=False"
+        },
+        {
+          "name": "overview.stock_daily vs sentiment-next-day",
+          "ok": true,
+          "explained": false,
+          "detail": "next_day=2026-09-22; daily=VERIFIED_SOURCE; sentiment=PARTIAL; missing=1"
+        }
+      ]
+    }
+  ],
+  "explained": [],
+  "unexpected": []
+}

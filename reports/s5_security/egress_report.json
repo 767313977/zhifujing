@@ -1,0 +1,29 @@
+{
+  "captured_at": "2026-11-14T20:25:00+08:00",
+  "backend": "127.0.0.1:8014",
+  "database": "s5_e2e/s5.db (temporary synthetic)",
+  "settings": {
+    "EXTERNAL_DATA_FETCH_ENABLED": "false",
+    "SCHEDULER_ENABLED": "false",
+    "WARMUP_PATTERN_CACHE": "false",
+    "FUPAN_SCHEMA_MODE": "verify"
+  },
+  "stats": {
+    "enabled": false,
+    "locked_offline": true,
+    "mode": "offline_locked",
+    "attempts": 2,
+    "blocked": 2,
+    "network_attempts": 0,
+    "network_blocked": 0,
+    "os_network_attempts": 0,
+    "os_network_blocked": 0,
+    "installed": true,
+    "socket_guarded": true
+  },
+  "notes": [
+    "network_attempts/network_blocked = requests 层",
+    "os_network_attempts/os_network_blocked = socket 建连层（含回环尝试）",
+    "OS 级隔离未实测：OS_EGRESS_DENY_NOT_VERIFIED"
+  ]
+}
