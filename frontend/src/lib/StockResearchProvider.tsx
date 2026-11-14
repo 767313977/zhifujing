@@ -38,12 +38,18 @@ const STOCK_PARAM = 'stock'
 const EMPTY: ResearchSelection = {
   code: null,
   sourcePage: null,
-  asOfDate: null,
+  selectedAsOfDate: null,
   open: false,
   activeTab: 'overview',
 }
 
-/** 不可逆的账户作用域：只用于「同账户窗口之间」比对，不携带可读账号信息 */
+/**
+ * 不可逆的账户作用域：只用于「同账户窗口之间」比对，不携带可读账号信息。
+ *
+ * ⚠️ 这是 **djb2 非加密散列**，只够做「两个窗口是不是同一个登录身份」的比对，
+ * 不具备密码学隔离强度。真正的访问控制依赖后端登录鉴权；即使哈希被碰撞，
+ * 也只是多打开一个侧栏，拿不到别人账户的数据（请求仍带各自的 Cookie）。
+ */
 function accountScope(id: number | null, username: string | null): string {
   const raw = `${id ?? ''}:${username ?? ''}`
   let hash = 5381
@@ -120,7 +126,7 @@ export function StockResearchProvider({ children }: { children: ReactNode }) {
       setSelection({
         code,
         sourcePage: context.sourcePage ?? location.pathname,
-        asOfDate: context.asOfDate ?? null,
+        selectedAsOfDate: context.asOfDate ?? null,
         open: true,
         activeTab: tab,
       })
@@ -157,7 +163,15 @@ export function StockResearchProvider({ children }: { children: ReactNode }) {
 
   // URL → 状态（刷新恢复、浏览器前进后退、外部链接）
   useEffect(() => {
+    if (checking) return
     const code = normalizeStockCode(searchParams.get(STOCK_PARAM))
+    if (!me) {
+      // 未登录时 `?stock=` 不构成可恢复的研究状态：清掉 URL，别把别人的分享链接
+      // 变成「登录后自动打开」的隐式行为
+      if (code) writeUrl(null)
+      setSelection((prev) => (prev.open || prev.code ? { ...EMPTY } : prev))
+      return
+    }
     setSelection((prev) => {
       if (!code) {
         if (!prev.open) return prev
@@ -166,7 +180,7 @@ export function StockResearchProvider({ children }: { children: ReactNode }) {
       if (prev.open && prev.code === code) return prev
       return { ...prev, code, open: true }
     })
-  }, [searchParams])
+  }, [searchParams, me, checking, writeUrl])
 
   // 登录态变化：登出 / 换账户时清空侧栏与缓存
   useEffect(() => {

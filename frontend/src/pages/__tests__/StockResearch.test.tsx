@@ -13,7 +13,13 @@ vi.mock('../../lib/authContext', () => ({
   useAuth: () => auth,
 }))
 
-import { clearResearchCache, loadCached, researchCacheSize } from '../../lib/stockResearchCache'
+import {
+  clearResearchCache,
+  loadCached,
+  researchCacheEpoch,
+  researchCacheSize,
+  researchInflightSize,
+} from '../../lib/stockResearchCache'
 import { StockResearchProvider } from '../../lib/StockResearchProvider'
 import { useStockResearch } from '../../lib/stockResearchContext'
 import QuickResearch from '../../components/QuickResearch'
@@ -179,6 +185,50 @@ test('logged-out users cannot open the drawer', async () => {
   renderProbe()
   fireEvent.click(screen.getByText('open'))
   expect(screen.getByTestId('open').textContent).toBe('false')
+})
+
+test('logged-out users do not inherit ?stock= from the URL', async () => {
+  auth.me = null
+  renderProbe('/limit-up?date=2026-11-11&stock=600000')
+  await waitFor(() => expect(screen.getByTestId('search').textContent).not.toContain('stock='))
+  expect(screen.getByTestId('open').textContent).toBe('false')
+  expect(screen.getByTestId('search').textContent).toContain('date=2026-11-11')
+})
+
+test('a late response after logout never repopulates the cache', async () => {
+  const key = '1|600000|latest|overview-late'
+  const epochBefore = researchCacheEpoch()
+  let resolveSlow: (value: unknown) => void = () => {}
+  const pending = loadCached(key, () => new Promise((resolve) => (resolveSlow = resolve)))
+
+  // 登出：Provider 调 clearResearchCache → epoch 递增
+  clearResearchCache()
+  expect(researchCacheEpoch()).toBe(epochBefore + 1)
+
+  resolveSlow({ ok: true })
+  await expect(pending).resolves.toEqual({ ok: true })
+  expect(researchCacheSize()).toBe(0)
+})
+
+test('an old finally cannot remove the new epoch inflight request', async () => {
+  const key = '1|600000|latest|overview-epoch'
+  let resolveOld: (value: unknown) => void = () => {}
+  let resolveNew: (value: unknown) => void = () => {}
+
+  const oldTask = loadCached(key, () => new Promise((resolve) => (resolveOld = resolve)))
+  clearResearchCache()
+  const newTask = loadCached(key, () => new Promise((resolve) => (resolveNew = resolve)))
+
+  expect(researchInflightSize()).toBe(1)
+  resolveOld(1)
+  await expect(oldTask).resolves.toBe(1)
+  // 旧请求的 finally 不能删掉新代次的在途条目
+  expect(researchInflightSize()).toBe(1)
+
+  resolveNew(2)
+  await expect(newTask).resolves.toBe(2)
+  expect(researchInflightSize()).toBe(0)
+  expect(researchCacheSize()).toBe(1)
 })
 
 test('cache ignores failures and does not cache 401', async () => {

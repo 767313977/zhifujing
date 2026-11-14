@@ -26,13 +26,19 @@ export const RESEARCH_TAB_LABELS: Record<ResearchTab, string> = {
 export interface ResearchSelection {
   code: string | null
   sourcePage: string | null
-  asOfDate: string | null
+  /**
+   * **来源页面所选的观察日**（例如涨停复盘翻到 2026-09-24），不是 API 返回的
+   * 数据日。侧栏里的多数只读接口只提供「最新本地资料」，所以绝不能用它冒充
+   * 数据日；真正数据日由各自 Tab 从响应里读（见 `dataAsOfDate`）。
+   */
+  selectedAsOfDate: string | null
   open: boolean
   activeTab: ResearchTab
 }
 
 export interface OpenResearchContext {
   sourcePage?: string
+  /** 页面当前观察日；仅用于提示「这是历史观察日」，不代表接口返回历史快照 */
   asOfDate?: string | null
   tab?: ResearchTab
 }
@@ -49,7 +55,7 @@ export interface StockResearchValue extends ResearchSelection {
 const NOOP: StockResearchValue = {
   code: null,
   sourcePage: null,
-  asOfDate: null,
+  selectedAsOfDate: null,
   open: false,
   activeTab: 'overview',
   openStockResearch: () => {},

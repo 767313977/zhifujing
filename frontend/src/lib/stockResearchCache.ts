@@ -1,16 +1,20 @@
 /**
- * 侧栏数据的短期缓存（S1-C6）。
+ * 侧栏数据的短期缓存（S1-C6 / S2-B2）。
  *
  * 规则（全部写死在代码里，页面不需要再想一遍）：
  *
- * - 键 = `用户 ID | 股票代码 | 数据日期 | 资源名`，所以**不同账户、不同股票、
- *   不同数据日期不会共用一份缓存**；
+ * - 键 = `用户 ID | 股票代码 | 观察日 | 资源名`，所以**不同账户、不同股票、
+ *   不同观察日不会共用一份缓存**；
  * - TTL = 3 分钟：财报 / 日线都是日频，3 分钟内重复打开同一只票不该再发请求；
- *   跨过数据日（`asOfDate` 变了）键就变了，自然不会命中旧日期；
+ *   跨过数据日（`selectedAsOfDate` 变了）键就变了，自然不会命中旧日期；
  * - **401 / 403 不缓存**，其它失败也不缓存 —— 失败响应长期驻留会让「重试」按钮
  *   永远拿到旧错误；
  * - 缓存只存在于当前标签页内存里，刷新即清空；登出 / 换账户时由 Provider 调
- *   `clearResearchCache()` 主动清掉。
+ *   `clearResearchCache()` 主动清掉；
+ * - **epoch（登录代次）**：`loadCached` 发起时记下当前 epoch，请求成功回来时
+ *   再比一次 —— 登出 / 换账户让 epoch 递增后，旧请求的结果**不会**写回缓存，
+ *   也不会被新的同 key 请求复用。`inflight` 记录同样带 epoch，旧请求的
+ *   `finally` 只删自己那条，不会误删新代次的在途请求。
  */
 
 import { ApiError } from '../api/client'
@@ -26,13 +30,28 @@ interface Entry {
   value: unknown
 }
 
+interface Inflight {
+  epoch: number
+  promise: Promise<unknown>
+}
+
 const cache = new Map<string, Entry>()
 
 /**
  * 同一 key 的在途请求。侧栏标题与「概览」Tab 会同时请求同一份 profile ——
- * 没有这张表就会并发打两次。命中在途 Promise 时直接复用它。
+ * 没有这张表就会并发打两次。命中同 epoch 的在途 Promise 时直接复用它。
  */
-const inflight = new Map<string, Promise<unknown>>()
+const inflight = new Map<string, Inflight>()
+
+/**
+ * 登录代次。登出、切换账户、清空缓存都会 `+1`。
+ * 旧代次里发出去的请求即使晚到，也不允许把数据写进新代次的缓存。
+ */
+let epoch = 0
+
+export function researchCacheEpoch(): number {
+  return epoch
+}
 
 export function readResearchCache<T>(key: string, ttl = RESEARCH_CACHE_TTL): T | undefined {
   const entry = cache.get(key)
@@ -57,8 +76,12 @@ export function invalidateResearchCache(key: string): void {
   cache.delete(key)
 }
 
-/** 登出 / 换账户时调用：不允许上一个账户的数据留在内存里。 */
+/**
+ * 登出 / 换账户时调用：不允许上一个账户的数据留在内存里。
+ * 同时推进 epoch，让所有在途请求的结果作废。
+ */
 export function clearResearchCache(): void {
+  epoch += 1
   cache.clear()
   inflight.clear()
 }
@@ -68,9 +91,19 @@ export function researchCacheSize(): number {
   return cache.size
 }
 
+/** 测试用：读当前在途请求条数，不参与业务逻辑 */
+export function researchInflightSize(): number {
+  return inflight.size
+}
+
 /**
  * 命中则直接返回；未命中才请求。**失败一律不写缓存**；401/403 额外清掉旧值，
  * 避免权限变化后还拿到上一份成功结果。
+ *
+ * epoch 语义：
+ * - 同 key 的在途请求只在**同一代次**内复用；
+ * - 结果写缓存前比对 epoch，过期代次直接丢弃；
+ * - `finally` 只在当前条目仍属于自己时删除，避免旧请求删掉新请求。
  */
 export async function loadCached<T>(
   key: string,
@@ -79,23 +112,27 @@ export async function loadCached<T>(
 ): Promise<T> {
   const hit = readResearchCache<T>(key, ttl)
   if (hit !== undefined) return hit
+
   const running = inflight.get(key)
-  if (running) return running as Promise<T>
+  if (running && running.epoch === epoch) return running.promise as Promise<T>
+
+  const requestEpoch = epoch
+  let self: Inflight | null = null
   const task = (async () => {
     try {
       const value = await loader()
-      writeResearchCache(key, value)
+      if (requestEpoch === epoch) writeResearchCache(key, value)
       return value
     } catch (err) {
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+      if (requestEpoch === epoch && err instanceof ApiError && (err.status === 401 || err.status === 403)) {
         invalidateResearchCache(key)
       }
       throw err
     } finally {
-      // 无论成败都移除在途标记：失败要允许下一次重试
-      inflight.delete(key)
+      if (self && inflight.get(key) === self) inflight.delete(key)
     }
   })()
-  inflight.set(key, task)
+  self = { epoch: requestEpoch, promise: task }
+  inflight.set(key, self)
   return task
 }

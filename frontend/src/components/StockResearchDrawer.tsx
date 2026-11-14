@@ -37,8 +37,6 @@ import {
 } from '../lib/stockResearchContext'
 import type { ResearchTab } from '../lib/stockResearchContext'
 
-const TTL = 3 * 60 * 1000
-
 /** 通用的「按 key 缓存 + 切股票时丢弃旧响应」读法。 */
 function useCached<T>(key: string | null, loader: () => Promise<T>) {
   const [data, setData] = useState<T | null>(null)
@@ -62,7 +60,7 @@ function useCached<T>(key: string | null, loader: () => Promise<T>) {
     const current = ++seq.current
     setLoading(true)
     setError(null)
-    loadCached(key, () => loaderRef.current(), TTL)
+    loadCached(key, () => loaderRef.current())
       .then((value) => {
         if (current === seq.current) setData(value)
       })
@@ -100,7 +98,38 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-function OverviewTab({ code, cacheBase }: { code: string; cacheBase: string }) {
+/**
+ * 「来源观察日」与「实际数据日」不是一回事：
+ * 侧栏的大多数接口只给**最新本地资料**，没有历史 as_of 快照。这里必须把两件事
+ * 分开写，不能把页面翻到的那天印成「数据日」。
+ */
+function AsOfNotice({
+  selected,
+  actual,
+  historicalMissing,
+}: {
+  selected: string | null
+  actual: string | null
+  historicalMissing?: string
+}) {
+  if (!selected) return null
+  const prefix = historicalMissing ? `${historicalMissing}：` : ''
+  const text =
+    actual && actual !== selected
+      ? `${prefix}所选观察日 ${selected}；本页显示最新本地资料（截至 ${actual}），不代表该历史日当时已知。`
+      : `${prefix}所选观察日 ${selected}；本页无历史快照，显示最新本地资料。`
+  return <div className="px-4 pb-2 text-[12px] leading-relaxed text-warn">{text}</div>
+}
+
+function OverviewTab({
+  code,
+  cacheBase,
+  selectedAsOfDate,
+}: {
+  code: string
+  cacheBase: string
+  selectedAsOfDate: string | null
+}) {
   const { data, loading, error } = useCached<StockProfile>(`${cacheBase}|overview`, () =>
     api.stockProfile(code),
   )
@@ -111,6 +140,10 @@ function OverviewTab({ code, cacheBase }: { code: string; cacheBase: string }) {
   const latest = data.latest
   return (
     <div>
+      <AsOfNotice
+        selected={selectedAsOfDate}
+        actual={latest?.trade_date ?? data.last_date ?? null}
+      />
       <Section title="行情">
         <Row label="最新本地日线" value={latest?.trade_date ?? '—'} />
         <Row label="收盘 / 涨跌" value={`${fmtNum(latest?.close)} / ${fmtPct(latest?.pct_chg)}`} />
@@ -137,7 +170,15 @@ function OverviewTab({ code, cacheBase }: { code: string; cacheBase: string }) {
   )
 }
 
-function KLineTab({ code, cacheBase }: { code: string; cacheBase: string }) {
+function KLineTab({
+  code,
+  cacheBase,
+  selectedAsOfDate,
+}: {
+  code: string
+  cacheBase: string
+  selectedAsOfDate: string | null
+}) {
   const { data, loading, error } = useCached(
     `${cacheBase}|kline`,
     () => api.stockDaily(code, { days: 120, fq: 'qfq', volAdjust: true, period: 'day' }),
@@ -146,8 +187,10 @@ function KLineTab({ code, cacheBase }: { code: string; cacheBase: string }) {
   if (error) return <LoadState error={error} className="px-4 py-10" />
   if (!data || data.length === 0)
     return <LoadState emptyText="本地暂无 K 线，打开完整个股详情查看" className="px-4 py-10" />
+  const lastDate = data[data.length - 1]?.trade_date ?? null
   return (
     <div className="px-1 pt-2">
+      <AsOfNotice selected={selectedAsOfDate} actual={lastDate} />
       <KLineChart bars={dailyBars(data)} height={240} />
       <div className="px-3 pb-3 text-[12px] text-fg-dim">
         前复权日 K · 最近 {data.length} 根 · 不自动补历史
@@ -156,7 +199,15 @@ function KLineTab({ code, cacheBase }: { code: string; cacheBase: string }) {
   )
 }
 
-function ThemesTab({ code, cacheBase }: { code: string; cacheBase: string }) {
+function ThemesTab({
+  code,
+  cacheBase,
+  selectedAsOfDate,
+}: {
+  code: string
+  cacheBase: string
+  selectedAsOfDate: string | null
+}) {
   const { data, loading, error } = useCached<StockThemes>(`${cacheBase}|themes`, () =>
     api.stockThemes(code),
   )
@@ -166,6 +217,11 @@ function ThemesTab({ code, cacheBase }: { code: string; cacheBase: string }) {
     return <LoadState emptyText="暂无题材归属" className="px-4 py-10" />
   return (
     <div className="px-4 py-3 text-[13px]">
+      <AsOfNotice
+        selected={selectedAsOfDate}
+        actual={data.board_date}
+        historicalMissing="历史题材缺失"
+      />
       <div className="mb-2 text-[12px] text-fg-dim">
         板块表现日期：{data.board_date ?? '—'}
       </div>
@@ -324,7 +380,7 @@ export default function StockResearchDrawer() {
     code,
     open,
     activeTab,
-    asOfDate,
+    selectedAsOfDate,
     closeStockResearch,
     selectResearchTab,
     multiWindowSync,
@@ -332,39 +388,74 @@ export default function StockResearchDrawer() {
   } = useStockResearch()
   const { me } = useAuth()
   const [name, setName] = useState<string | null>(null)
+  const [dataAsOf, setDataAsOf] = useState<string | null>(null)
+  const panelRef = useRef<HTMLElement | null>(null)
+  const closeRef = useRef<HTMLButtonElement | null>(null)
 
-  // 关闭时用 Esc：与站内导航抽屉一致
+  // 打开时把焦点移进侧栏，关闭时还给触发它的「研」按钮；Tab 在侧栏内循环
   useEffect(() => {
     if (!open) return
+    const previous = document.activeElement as HTMLElement | null
+    const timer = window.setTimeout(() => closeRef.current?.focus(), 0)
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeStockResearch()
+      if (event.key === 'Escape') {
+        closeStockResearch()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const nodes = panelRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      if (!nodes || nodes.length === 0) return
+      const first = nodes[0]
+      const last = nodes[nodes.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('keydown', onKeyDown)
+      previous?.focus?.()
+    }
   }, [open, closeStockResearch])
 
   // 名称与「概览」共用同一份 profile 缓存键：并发时由 cache 的在途去重合并成一次请求
   useEffect(() => {
     setName(null)
+    setDataAsOf(null)
     if (!open || !code || !me) return
     let active = true
-    loadCached(`${me.id}|${code}|${asOfDate ?? 'latest'}|overview`, () => api.stockProfile(code), TTL)
+    loadCached(`${me.id}|${code}|${selectedAsOfDate ?? 'latest'}|overview`, () =>
+      api.stockProfile(code),
+    )
       .then((profile) => {
-        if (active) setName(profile.name)
+        if (!active) return
+        setName(profile.name)
+        setDataAsOf(profile.latest?.trade_date ?? profile.last_date ?? null)
       })
       .catch(() => {})
     return () => {
       active = false
     }
-  }, [open, code, me, asOfDate])
+  }, [open, code, me, selectedAsOfDate])
 
   if (!open || !code) return null
-  const cacheBase = me ? `${me.id}|${code}|${asOfDate ?? 'latest'}` : ''
+  const cacheBase = me ? `${me.id}|${code}|${selectedAsOfDate ?? 'latest'}` : ''
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="股票研究">
       <div className="absolute inset-0 bg-ink-950/40" onClick={closeStockResearch} aria-hidden />
-      <aside className="relative flex h-full w-full max-w-[440px] flex-col border-l border-line bg-ink-900 shadow-[-12px_0_32px_rgba(15,23,42,0.18)]">
+      <aside
+        ref={panelRef}
+        tabIndex={-1}
+        className="relative flex h-full w-full max-w-[440px] flex-col border-l border-line bg-ink-900 shadow-[-12px_0_32px_rgba(15,23,42,0.18)]"
+      >
         <div className="flex items-start justify-between border-b border-line px-4 py-3">
           <div>
             <div className="flex items-baseline gap-2">
@@ -372,10 +463,19 @@ export default function StockResearchDrawer() {
               <span className="num text-[13px] text-fg-dim">{code}</span>
             </div>
             <div className="mt-0.5 text-[12px] text-fg-dim">
-              只读本地数据 · {asOfDate ? `数据日 ${asOfDate}` : '最新本地数据'}
+              只读本地数据 ·{' '}
+              {selectedAsOfDate ? `来源观察日 ${selectedAsOfDate}` : '最新本地资料'}
             </div>
+            {selectedAsOfDate ? (
+              <div className="mt-0.5 text-[12px] leading-relaxed text-warn">
+                此页展示最新本地资料（截至 {dataAsOf ?? '—'}），不代表所选历史日当时已知
+              </div>
+            ) : dataAsOf ? (
+              <div className="mt-0.5 text-[12px] text-fg-dim">本地数据截至 {dataAsOf}</div>
+            ) : null}
           </div>
           <button
+            ref={closeRef}
             type="button"
             aria-label="关闭研究侧栏"
             onClick={closeStockResearch}
@@ -408,11 +508,15 @@ export default function StockResearchDrawer() {
           {!me ? (
             <LoadState emptyText="登录后才能查看个股研究" className="px-4 py-10" />
           ) : activeTab === 'overview' ? (
-            <OverviewTab code={code} cacheBase={cacheBase} />
+            <OverviewTab
+              code={code}
+              cacheBase={cacheBase}
+              selectedAsOfDate={selectedAsOfDate}
+            />
           ) : activeTab === 'kline' ? (
-            <KLineTab code={code} cacheBase={cacheBase} />
+            <KLineTab code={code} cacheBase={cacheBase} selectedAsOfDate={selectedAsOfDate} />
           ) : activeTab === 'themes' ? (
-            <ThemesTab code={code} cacheBase={cacheBase} />
+            <ThemesTab code={code} cacheBase={cacheBase} selectedAsOfDate={selectedAsOfDate} />
           ) : activeTab === 'limit' ? (
             <LimitTab code={code} cacheBase={cacheBase} />
           ) : activeTab === 'funds' ? (

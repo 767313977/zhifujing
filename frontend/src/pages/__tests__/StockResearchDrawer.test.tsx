@@ -83,7 +83,7 @@ function value(overrides: Partial<StockResearchValue> = {}): StockResearchValue 
   return {
     code: '600000',
     sourcePage: '/limit-up',
-    asOfDate: '2026-11-11',
+    selectedAsOfDate: '2026-11-11',
     open: true,
     activeTab: 'overview',
     openStockResearch: vi.fn(),
@@ -299,7 +299,7 @@ test('changing the data date refetches instead of reusing the cache', async () =
   view.rerender(
     <MemoryRouter initialEntries={['/limit-up']}>
       <WatchlistContext.Provider value={watchValue}>
-        <StockResearchContext.Provider value={value({ asOfDate: '2026-11-10' })}>
+        <StockResearchContext.Provider value={value({ selectedAsOfDate: '2026-11-10' })}>
           <StockResearchDrawer />
         </StockResearchContext.Provider>
       </WatchlistContext.Provider>
@@ -322,4 +322,52 @@ test('multi-window toggle calls the provider setter', async () => {
   await waitFor(() => expect(mocks.stockProfile).toHaveBeenCalled())
   fireEvent.click(screen.getByRole('checkbox'))
   expect(setSync).toHaveBeenCalledWith(false)
+})
+
+test('historical observation date is not printed as the data date', async () => {
+  renderDrawer({ selectedAsOfDate: '2026-09-24' })
+  await waitFor(() => expect(screen.getAllByText('浦发银行').length).toBeGreaterThan(0))
+  expect(screen.getByText(/来源观察日 2026-09-24/)).toBeTruthy()
+  expect(screen.getByText(/不代表所选历史日当时已知/)).toBeTruthy()
+  // 侧栏只有最新本地资料：绝不能出现「数据日 2026-09-24」这种伪历史标注
+  expect(screen.queryByText(/数据日 2026-09-24/)).toBeNull()
+  // 实际数据日单独标注
+  expect(screen.getAllByText(/截至 2026-11-11/).length).toBeGreaterThan(0)
+})
+
+test('themes tab says historical snapshot is missing instead of faking it', async () => {
+  renderDrawer({ activeTab: 'themes', selectedAsOfDate: '2026-09-24' })
+  await waitFor(() => expect(screen.getByText('银行')).toBeTruthy())
+  expect(screen.getByText(/历史题材缺失/)).toBeTruthy()
+  expect(screen.getAllByText(/2026-11-11/).length).toBeGreaterThan(0)
+})
+
+test('focus moves into the drawer and Escape restores it to the trigger', async () => {
+  const trigger = document.createElement('button')
+  trigger.textContent = '研'
+  document.body.appendChild(trigger)
+  trigger.focus()
+
+  const close = vi.fn()
+  const view = renderDrawer({ closeStockResearch: close })
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: '关闭研究侧栏' }),
+    ),
+  )
+
+  fireEvent.keyDown(document, { key: 'Escape' })
+  expect(close).toHaveBeenCalledTimes(1)
+
+  view.rerender(
+    <MemoryRouter initialEntries={['/limit-up']}>
+      <WatchlistContext.Provider value={watchValue}>
+        <StockResearchContext.Provider value={value({ open: false, code: null })}>
+          <StockResearchDrawer />
+        </StockResearchContext.Provider>
+      </WatchlistContext.Provider>
+    </MemoryRouter>,
+  )
+  await waitFor(() => expect(document.activeElement).toBe(trigger))
+  trigger.remove()
 })
