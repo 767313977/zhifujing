@@ -1,24 +1,24 @@
 {
-  "commit_sha": "104dfdf489150d97446be3af0fa4a4de14382bbd",
-  "branch": "release/s6-canary-hardening",
-  "generated_at": "2026-11-15T00:35:55+08:00",
+  "commit_sha": "c6db475b9848fc37e703be0bd3f186c9d20d053e",
+  "branch": "release/s6-canary-hardening-v2",
+  "generated_at": "2026-11-15T01:20:06+08:00",
   "environment": "本地隔离 Staging（127.0.0.1，独立目录/端口/临时库；非生产基础设施）",
-  "command": "python scripts/s6_staging_drill.py --snapshot a81b6be51c9d042f9f4ec22d2cde74769b25af08 --keep-running",
+  "command": "python scripts/s6_staging_drill.py --snapshot 0ae7bc6fe253be8d806c4070ad594cc75103ebae",
   "exit_code": 0,
   "tool_version": "s6_staging_drill/1.0",
   "result": {
     "artifacts": {
-      "new_snapshot": "a81b6be51c9d042f9f4ec22d2cde74769b25af08",
-      "head": "104dfdf489150d97446be3af0fa4a4de14382bbd",
-      "branch": "release/s6-canary-hardening",
-      "new_tar_sha256": "719b188d6a9107fd1d426a5c7c56e61450a6673659c04c15c828c1606a35c7a1",
-      "old_tar_sha256": "5e9902fa85633e444bf7015ce8bbc3e3d33638e6e7fddfe10d71c8efde360590",
+      "new_snapshot": "0ae7bc6fe253be8d806c4070ad594cc75103ebae",
+      "head": "c6db475b9848fc37e703be0bd3f186c9d20d053e",
+      "branch": "release/s6-canary-hardening-v2",
+      "new_tar_sha256": "56ac8277d9ffbb64f30af8f5abf970c89cc08962f2b126fb640dc630f1e3f3b8",
+      "old_tar_sha256": "e0094033bf3408a7213b2e8e3c5d8ff82ea2ce98ab1cf1a0014ed53705b124e6",
       "requirements_sha256": "6725ed3ce6cb45d0470c6cba707946eba3b93d4bf5c871df22d83928738efe80",
       "package_lock_sha256": "549a9d35c2e3dedfec9642d90a92251baba28bb27818e51abc13f1a878ab3402",
       "frontend_dist_sha256": "c58a5266d4fac803ae78f2ccc45b9670a959e1ec643bf95442de05c602cb050e",
       "db_path": "C:\\Users\\76731\\AppData\\Local\\Temp\\s6_staging\\data\\staging.db",
       "db_before": {
-        "sha256": "f659bbbc9288e1bea573316ff04471749be5efcba3724a588ec52962763f0b68",
+        "sha256": "b0f98e65634944d9408198cf62c4707e04f562d7fa2a0cdcc7af49cbb968e993",
         "size": 475136
       },
       "python": "3.13.13"
@@ -42,7 +42,7 @@
         "ready": [
           503,
           {
-            "generated_at": "2026-11-15T00:35:49+08:00",
+            "generated_at": "2026-11-15T01:19:59+08:00",
             "ready": false,
             "status": "not_ready",
             "gates": {
@@ -59,7 +59,7 @@
               "EGRESS_OS_POLICY_VERIFIED"
             ],
             "reasons": {
-              "DATABASE_READ_ONLY_VERIFIED": "DB_ENGINE_READ_WRITE",
+              "DATABASE_READ_ONLY_VERIFIED": "DB_SPLIT_NOT_ACTIVE",
               "EGRESS_OS_POLICY_VERIFIED": "NO_ISOLATED_OS_NETWORK_ACCESS"
             },
             "policy": {
@@ -304,7 +304,7 @@
             "days": 30,
             "window_start": null,
             "window_end": null,
-            "generated_at": "2026-11-15T00:35:49.493443",
+            "generated_at": "2026-11-15T01:19:59.950072",
             "points": []
           }
         ],
@@ -328,7 +328,49 @@
         "ready": [
           503,
           {
-            "generated_at": "2026-11-15T00:35:51+08:00",
+            "generated_at": "2026-11-15T01:20:02+08:00",
+            "ready": false,
+            "status": "not_ready",
+            "gates": {
+              "STARTUP_CONFIG_VALID": "PASS",
+              "EGRESS_APP_POLICY_LOCKED": "PASS",
+              "DATABASE_READ_ONLY_VERIFIED": "FAIL",
+              "SCHEDULER_DISABLED": "PASS",
+              "EXTERNAL_FETCH_DISABLED": "PASS",
+              "EGRESS_OS_POLICY_VERIFIED": "NOT_VERIFIED",
+              "CANARY_READINESS": "FAIL"
+            },
+            "blocking": [
+              "DATABASE_READ_ONLY_VERIFIED",
+              "EGRESS_OS_POLICY_VERIFIED"
+            ],
+            "reasons": {
+              "DATABASE_READ_ONLY_VERIFIED": "DB_SPLIT_NOT_ACTIVE",
+              "EGRESS_OS_POLICY_VERIFIED": "NO_ISOLATED_OS_NETWORK_ACCESS"
+            },
+            "policy": {
+              "loaded": true,
+              "error": null,
+              "entries": 17
+            },
+            "notes": [
+              "health 只表示进程存活；ready 表示灰度必要门禁全部 PASS",
+              "EGRESS_OS_POLICY_VERIFIED 需要独立网络命名空间/防火墙实测，本轮未执行"
+            ]
+          }
+        ]
+      },
+      "rollback": {
+        "health": [
+          200,
+          {
+            "status": "ok"
+          }
+        ],
+        "ready": [
+          503,
+          {
+            "generated_at": "2026-11-15T01:20:04+08:00",
             "ready": false,
             "status": "not_ready",
             "gates": {
@@ -357,20 +399,6 @@
               "health 只表示进程存活；ready 表示灰度必要门禁全部 PASS",
               "EGRESS_OS_POLICY_VERIFIED 需要独立网络命名空间/防火墙实测，本轮未执行"
             ]
-          }
-        ]
-      },
-      "rollback": {
-        "health": [
-          200,
-          {
-            "status": "ok"
-          }
-        ],
-        "ready": [
-          404,
-          {
-            "detail": "接口不存在"
           }
         ],
         "quality_status": [
@@ -584,7 +612,7 @@
         "ready": [
           503,
           {
-            "generated_at": "2026-11-15T00:35:55+08:00",
+            "generated_at": "2026-11-15T01:20:06+08:00",
             "ready": false,
             "status": "not_ready",
             "gates": {
@@ -601,7 +629,7 @@
               "EGRESS_OS_POLICY_VERIFIED"
             ],
             "reasons": {
-              "DATABASE_READ_ONLY_VERIFIED": "DB_ENGINE_READ_WRITE",
+              "DATABASE_READ_ONLY_VERIFIED": "DB_SPLIT_NOT_ACTIVE",
               "EGRESS_OS_POLICY_VERIFIED": "NO_ISOLATED_OS_NETWORK_ACCESS"
             },
             "policy": {
@@ -626,12 +654,12 @@
       "quality_ok": true,
       "restart_ok": true,
       "rollback_health": true,
-      "rollback_ready_absent": true,
+      "rollback_ready_consistent": true,
       "redeploy_ok": true,
       "redeploy_ready_503": true
     },
     "db_after": {
-      "sha256": "f659bbbc9288e1bea573316ff04471749be5efcba3724a588ec52962763f0b68",
+      "sha256": "b0f98e65634944d9408198cf62c4707e04f562d7fa2a0cdcc7af49cbb968e993",
       "size": 475136
     },
     "db_written_by_login": false

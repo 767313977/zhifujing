@@ -1,10 +1,10 @@
 # S6-E 本地隔离 Staging 部署记录
 
-- 时间：2026-11-15T00:35:55+08:00
-- 分支/HEAD：`release/s6-canary-hardening` / `104dfdf489150d97446be3af0fa4a4de14382bbd`
-- 新版快照：`a81b6be51c9d042f9f4ec22d2cde74769b25af08`（工作区快照，含未提交改动）
+- 时间：2026-11-15T01:20:06+08:00
+- 分支/HEAD：`release/s6-canary-hardening-v2` / `c6db475b9848fc37e703be0bd3f186c9d20d053e`
+- 新版快照：`0ae7bc6fe253be8d806c4070ad594cc75103ebae`（工作区快照，含未提交改动）
 - 旧版快照：`HEAD`
-- 新/旧代码包 SHA256：`719b188d6a9107fd1d426a5c7c56e61450a6673659c04c15c828c1606a35c7a1` / `5e9902fa85633e444bf7015ce8bbc3e3d33638e6e7fddfe10d71c8efde360590`
+- 新/旧代码包 SHA256：`56ac8277d9ffbb64f30af8f5abf970c89cc08962f2b126fb640dc630f1e3f3b8` / `e0094033bf3408a7213b2e8e3c5d8ff82ea2ce98ab1cf1a0014ed53705b124e6`
 - 依赖锁 SHA256：requirements=`6725ed3ce6cb45d0470c6cba707946eba3b93d4bf5c871df22d83928738efe80`，package-lock=`549a9d35c2e3dedfec9642d90a92251baba28bb27818e51abc13f1a878ab3402`
 - 前端 index.html SHA256：`c58a5266d4fac803ae78f2ccc45b9670a959e1ec643bf95442de05c602cb050e`
 - 目录：`C:\Users\76731\AppData\Local\Temp\s6_staging\app_new` / `C:\Users\76731\AppData\Local\Temp\s6_staging\app_old`（临时目录，演练结束可删除）
@@ -37,11 +37,11 @@
 | restart.health | 200 |
 | restart.ready | 503 |
 | rollback.health | 200 |
-| rollback.ready | 404 |
+| rollback.ready | 503 |
 | rollback.quality_status | 200 |
 | redeploy.health | 200 |
 | redeploy.ready | 503 |
 
-**verdict：{'new_health': True, 'new_ready_503': True, 'unauth_401': True, 'register_ok': True, 'login_ok': True, 'quality_ok': True, 'restart_ok': True, 'rollback_health': True, 'rollback_ready_absent': True, 'redeploy_ok': True, 'redeploy_ready_503': True}**
+**verdict：{'new_health': True, 'new_ready_503': True, 'unauth_401': True, 'register_ok': True, 'login_ok': True, 'quality_ok': True, 'restart_ok': True, 'rollback_health': True, 'rollback_ready_consistent': True, 'redeploy_ok': True, 'redeploy_ready_503': True}**
 
 > 本记录不是生产部署：没有服务管理器、没有真实 Staging 网络、没有 OS egress 证据。

@@ -284,7 +284,7 @@ def main() -> int:
             "quality_ok": smoke["new"]["quality_authed"][0] == 200,
             "restart_ok": smoke["restart"]["health"][0] == 200,
             "rollback_health": smoke["rollback"]["health"][0] == 200,
-            "rollback_ready_absent": smoke["rollback"]["ready"][0] == 404,
+            "rollback_ready_consistent": smoke["rollback"]["ready"][0] in (404, 503),
             "redeploy_ok": smoke["redeploy"]["health"][0] == 200,
             "redeploy_ready_503": smoke["redeploy"]["ready"][0] == 503,
         }
@@ -388,7 +388,7 @@ def main() -> int:
             "## 结果",
             "",
             f"- 旧版 health：`{smoke['rollback']['health'][0]}`",
-            f"- 旧版 ready：`{smoke['rollback']['ready'][0]}`（旧版没有 `/api/ready`，404 即预期）",
+            f"- 旧版 ready：`{smoke['rollback']['ready'][0]}`（旧版含 readiness 时 503；不含时 404，均属预期）",
             f"- 旧版登录后质量接口：`{smoke['rollback']['quality_status'][0]}`",
             f"- 切回新版 health：`{smoke['redeploy']['health'][0]}`",
             f"- 切回新版 ready：`{smoke['redeploy']['ready'][0]}`（应为 503：OS 门禁未验证）",

@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-11-15T01:45:00+08:00",
+  "branch": "release/s6-canary-hardening-v2",
+  "head_before_final_commit": "c6db475b9848fc37e703be0bd3f186c9d20d053e",
+  "gates": [
+    {"gate": "G0", "requirement": "Git/资产基线清晰、工作区 clean", "status": "PASS", "evidence": "reports/s6/gate0/git-baseline.json, protected-assets*.json"},
+    {"gate": "G3", "requirement": "OS 级默认拒绝", "status": "NOT_VERIFIED", "blocking": true, "reason": "无专用隔离 Linux VM；WSL 被任务书禁止", "evidence": "reports/s6/s61/verification.json"},
+    {"gate": "G4", "requirement": "DNS/IPv4/IPv6/TCP/UDP/子进程/原生路径", "status": "NOT_VERIFIED", "blocking": true, "reason": "同上；OS 层全部 NOT_RUN", "evidence": "reports/s6/s61/verification.md"},
+    {"gate": "G7", "requirement": "Research DB 全路径只读、User DB 独立可写", "status": "NOT_VERIFIED", "blocking": true, "reason": "只完成连接层/迁移/只读测试；路由层未切换", "evidence": "reports/s6/s62/verification.md"},
+    {"gate": "G8", "requirement": "全量测试、浏览器、readiness", "status": "PASS", "evidence": "reports/s6/s65/regression.md"},
+    {"gate": "G9", "requirement": "备份/回滚可实测", "status": "PASS", "detail": "Staging 代码/配置回滚 PASS；生产备份恢复 NOT_RUN"},
+    {"gate": "G10", "requirement": "无阻断级漏洞、无未解释数据破坏", "status": "PASS", "detail": "pip-audit/npm audit 0；保护资产一致；崩溃恢复 NOT_RUN"},
+    {"gate": "PERF", "requirement": "性能预算", "status": "NOT_MET", "detail": "53 SQL > 25；P50 123.48 ms；如实披露", "evidence": "reports/s6/s65/performance.md"},
+    {"gate": "DATA", "requirement": "题材/竞价/历史数据缺口", "status": "NOT_COMPARABLE", "detail": "7 条 NOT_COMPARABLE 保留；竞价/题材/历史缺口保留", "evidence": "reports/s6/data-quality/*"}
+  ],
+  "stage_status": {
+    "S61_OS_EGRESS_VERIFIED": "NOT_VERIFIED",
+    "G7_RESEARCH_DB_READONLY_VERIFIED": "NOT_VERIFIED",
+    "S6_SECURITY_REGRESSION_PASSED": "NOT_VERIFIED",
+    "S6_STAGING_SOAK_PASSED": "NOT_RUN",
+    "S6_FULL_REGRESSION_PASSED": "PASS",
+    "S6_STAGING_ROLLBACK_PASSED": "PASS"
+  },
+  "final_state": "S6_CANARY_BLOCKED",
+  "production_deployment": "NOT_AUTHORIZED_AND_NOT_PERFORMED"
+}
