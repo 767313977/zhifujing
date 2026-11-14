@@ -441,6 +441,12 @@ def build(
 
     # ---------------- D+1 描述统计
     quotes = _quotes(session, following, matched_codes) if following else {}
+    # 有效样本掩码：行情行存在 ≠ 涨跌幅可用；列表、汇总、分桶共用这一份
+    valid_quote_codes = {
+        code
+        for code in matched_codes
+        if snd._finite((quotes.get(code) or {}).get("pct_chg")) is not None
+    }
     data_as_of = session.scalar(select(func.max(StockDaily.trade_date)))
     next_up_codes: set[str] | None = None
     if following is None:
@@ -469,7 +475,7 @@ def build(
         elif not quotes:
             outcome_status = STATUS_UNVERIFIABLE
             outcome_reasons = [*outcome_reasons, "OUTCOME_PARTIAL"]
-        elif len(quotes) < total:
+        elif len(valid_quote_codes) < total:
             outcome_status = STATUS_PARTIAL
             outcome_reasons = [*outcome_reasons, "OUTCOME_PARTIAL"]
         else:
@@ -498,9 +504,10 @@ def build(
         entry = by_code.get(code, {"name": None, "sector_codes": set()})
         quote = quotes.get(code) if following else None
         state = state_by_code.get(code, STATE_UNKNOWN)
+        # 与统计分母同一掩码：涨跌幅缺失时不输出「是否再涨停」布尔值
         again = (
             (code in next_up_codes)
-            if next_up_codes is not None and quote is not None
+            if next_up_codes is not None and code in valid_quote_codes
             else None
         )
         rows.append(

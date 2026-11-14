@@ -2019,7 +2019,84 @@ export interface StockResearchContext {
   notes: string[]
 }
 
-/** S4-C：板块主线共振的 D+1 描述统计 */
+/** S5-C：盘后主线研究工作台的聚合响应 */
+export interface WorkbenchQualitySource {
+  source: string
+  status: string
+  combined_view_status: string
+  completion_proof: boolean
+  reason_codes: string[]
+}
+
+export interface WorkbenchLevel {
+  level: number
+  label: string
+  base: number
+  promoted: number
+  broken: number
+  failed: number
+  unverifiable: number
+  valid_base: number
+  legacy_rate: number | null
+  verified_rate: number | null
+}
+
+export interface Workbench {
+  as_of: string
+  data_as_of: string | null
+  quality_version: string
+  scope: { sector_codes: string[]; mode: string; market: string; view: string }
+  sentiment: {
+    status: string
+    as_of: string
+    summary: Record<string, number | null> | null
+    outcome_date?: string | null
+    outcome?: Record<string, number | string | null> | null
+    reasons: string[]
+  }
+  promotion: {
+    status: string
+    prev_date: string | null
+    levels: WorkbenchLevel[]
+    reasons: string[]
+  }
+  resonance: {
+    status: string
+    coverage: {
+      member_observed_rows: number
+      member_unique_count: number
+      member_completion_proof: boolean
+      observed_sectors: number
+      expected_sectors: number
+      observed_limit_up_count: number | null
+      observed_limit_up_ratio: number | null
+      ratio_scope: string
+    } | null
+    state_counts: Record<string, number>
+    member_snapshot_date: string | null
+    pit: Record<string, unknown> | null
+    reasons: string[]
+    warnings: string[]
+  }
+  outcome: {
+    status: string
+    outcome_date: string | null
+    stats: ResonanceStats | null
+    by_state: Record<string, ResonanceStats>
+    reasons: string[]
+  }
+  quality: {
+    version: string
+    sources: WorkbenchQualitySource[]
+    warnings: string[]
+  }
+  pagination: { total: number; shown: number; has_more: boolean }
+  rows: ResonanceRow[]
+  stock_research?: StockResearchContext | null
+  warnings: string[]
+  notes: string[]
+}
+
 export interface ResonanceStats {
   sample_count: number
   valid_count: number

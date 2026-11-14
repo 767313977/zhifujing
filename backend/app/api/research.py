@@ -12,10 +12,49 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import AppUser
-from app.services import data_revision, research_screen
+from app.schemas import WorkbenchOut
+from app.services import data_revision, post_market_workbench, research_screen
 from app.services.auth import current_user
 
 router = APIRouter(prefix="/api/research", tags=["研究"])
+
+
+@router.get("/workbench", response_model=WorkbenchOut)
+def workbench(
+    date: date | None = Query(None, alias="date", description="观察日；不传用最近交易日"),
+    sector_codes: str = Query("", description="逗号分隔的板块代码，最多 10 个"),
+    mode: str = Query("AND", pattern="^(AND|OR|and|or)$"),
+    market: str = Query("all", pattern="^(all|sh|sz|bj)$"),
+    view: str = Query("overview", pattern="^(overview|ladder|outcome|quality)$"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0, le=1_000_000),
+    stock: str | None = Query(None, description="可选：只加载这一只票的时点研究依据"),
+    session: Session = Depends(get_db),
+    _user: AppUser = Depends(current_user),
+) -> WorkbenchOut:
+    """盘后主线研究工作台：情绪 + 晋级漏斗 + 题材共振 + 数据质量（**只读**）。
+
+    - 不触发采集、不写库、不调用 `syncStock`；
+    - 观察日必须是交易日，非交易日返回 400；
+    - 板块为空时仍返回情绪/漏斗/质量，共振状态为 `NOT_SELECTED`；
+    - `stock` 只在显式传入时构建，避免逐券 N+1。
+    """
+    codes = [item.strip() for item in (sector_codes or "").split(",") if item.strip()]
+    try:
+        data = post_market_workbench.build(
+            session,
+            as_of=date,
+            sector_codes=codes,
+            mode=mode,
+            market=market,
+            view=view,
+            limit=limit,
+            offset=offset,
+            stock=stock,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return WorkbenchOut(**data)
 
 
 @router.get("/meta")

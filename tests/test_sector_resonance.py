@@ -165,6 +165,22 @@ def test_pending_outcome_does_not_write_zero(session):
     assert data["outcome"]["up_ratio"] is None
 
 
+def test_invalid_pct_chg_is_not_a_valid_outcome_sample(session):
+    # P1-04：行情行存在 ≠ 有效样本；列表/汇总/分桶必须用同一掩码
+    session.query(StockDaily).filter(
+        StockDaily.trade_date == D3, StockDaily.code == "600000"
+    ).update({"pct_chg": None})
+    session.commit()
+    data = build(session, sector_codes=["A01"], mode="AND")
+    assert data["outcome_status"] == sr.STATUS_PARTIAL
+    assert data["outcome"]["valid_count"] == 4
+    assert data["outcome"]["missing_count"] == 1
+    row = next(item for item in data["rows"] if item["code"] == "600000")
+    assert row["outcome_pct_chg"] is None
+    # 该票在 D+1 涨停池里，但涨跌幅不可用 → 不给「是否再涨停」布尔值
+    assert row["limit_up_again"] is None
+
+
 def test_missing_sector_makes_and_unverifiable(session):
     session.add(SectorBasic(code="A03", name="题材三", taxonomy="tax_a"))
     session.commit()

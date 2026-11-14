@@ -2515,6 +2515,27 @@ class StockResearchEvidence(BaseModel):
     summary: str | None = None
 
 
+class WorkbenchOut(BaseModel):
+    """S5-C：盘后主线研究工作台的聚合响应（只读研究，不生成交易信号）。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    as_of: date
+    data_as_of: date | None
+    quality_version: str = "workbench-quality-v1"
+    scope: dict
+    sentiment: dict
+    promotion: dict
+    resonance: dict
+    outcome: dict
+    quality: dict
+    pagination: dict
+    rows: list[dict]
+    stock_research: dict | None = None
+    warnings: list[str] = []
+    notes: list[str] = []
+
+
 class SectorResonanceOut(BaseModel):
     """S4-C：板块 × 连板梯队 × D+1 的只读研究结果（附带逐券行）。"""
 

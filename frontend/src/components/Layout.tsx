@@ -59,7 +59,8 @@ const GROUPS: { key: string; label: string; items: NavItem[] }[] = [
     label: '选股',
     items: [
       { to: '/pools', label: '选股池' },
-      { to: '/research', label: '研究' },
+      { to: '/research/workbench', label: '研究工作台' },
+      { to: '/research', label: '研究', end: true },
       { to: '/patterns/track', label: '胜率跟踪' },
       { to: '/cb', label: '可转债' },
       { to: '/etf', label: 'ETF' },

@@ -59,6 +59,7 @@ import type {
   QualityOverview,
   QualityTimeline,
   SectorResonance,
+  Workbench,
   PatternCount,
   PatternHitsPage,
   PatternMeta,
@@ -433,6 +434,29 @@ export const api = {
     request<QualityTimeline>(
       `/quality/timeline?source=${encodeURIComponent(source)}&days=${days}`,
     ),
+
+  // 盘后主线研究工作台（S5-C）：只读聚合，不触发采集
+  workbench: (params: {
+    date?: string | null
+    sectorCodes?: string | null
+    mode?: string
+    market?: string
+    view?: string
+    limit?: number
+    offset?: number
+    stock?: string | null
+  }) => {
+    const q = new URLSearchParams()
+    if (params.date) q.set('date', params.date)
+    if (params.sectorCodes) q.set('sector_codes', params.sectorCodes)
+    q.set('mode', params.mode ?? 'AND')
+    q.set('market', params.market ?? 'all')
+    q.set('view', params.view ?? 'overview')
+    q.set('limit', String(params.limit ?? 50))
+    q.set('offset', String(params.offset ?? 0))
+    if (params.stock) q.set('stock', params.stock)
+    return request<Workbench>(`/research/workbench?${q.toString()}`)
+  },
 
   // 上限 250（后端 le=250）。不传就只有 60 天，日期下拉能往回翻多远全看这个值
   dates: (days = 250) => request<string[]>(`/market/dates?days=${days}`),

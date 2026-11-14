@@ -33,6 +33,7 @@ const PlansPage = lazy(() => import('./pages/Plans'))
 const PositionsPage = lazy(() => import('./pages/Positions'))
 const PremarketPage = lazy(() => import('./pages/Premarket'))
 const PoolsPage = lazy(() => import('./pages/Pools'))
+const PostMarketWorkbench = lazy(() => import('./pages/PostMarketWorkbench'))
 const ResearchPage = lazy(() => import('./pages/Research'))
 const Sectors = lazy(() => import('./pages/Sectors'))
 const SentimentPage = lazy(() => import('./pages/Sentiment'))
@@ -158,6 +159,15 @@ export default function App() {
                 element={
                   <RequireAuth>
                     <PoolsPage />
+                  </RequireAuth>
+                }
+              />
+              {/* 盘后主线研究工作台（S5-C）：只读聚合，不生成交易信号 */}
+              <Route
+                path="/research/workbench"
+                element={
+                  <RequireAuth>
+                    <PostMarketWorkbench />
                   </RequireAuth>
                 }
               />
