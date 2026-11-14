@@ -1,0 +1,197 @@
+{
+  "generated_at": "2026-11-14T18:16:55",
+  "source": "backend/data/b1_research.db read-only",
+  "aggregation_version": "next-day-aggregation-v2",
+  "six_days": [
+    {
+      "sample_date": "2026-09-17",
+      "outcome_date": "2026-09-18",
+      "status": "VERIFIED",
+      "sample_count": 38,
+      "valid_count": 38,
+      "missing_count": 0,
+      "limit_up_again_count": 8,
+      "avg_pct": 2.52,
+      "median_pct": 1.29,
+      "security_weighted_avg_pct": 2.52,
+      "day_equal_weight_avg_pct": 2.52,
+      "aggregation_version": "next-day-aggregation-v2",
+      "reasons": []
+    },
+    {
+      "sample_date": "2026-09-18",
+      "outcome_date": "2026-09-21",
+      "status": "VERIFIED",
+      "sample_count": 66,
+      "valid_count": 66,
+      "missing_count": 0,
+      "limit_up_again_count": 13,
+      "avg_pct": 2.73,
+      "median_pct": 1.41,
+      "security_weighted_avg_pct": 2.73,
+      "day_equal_weight_avg_pct": 2.73,
+      "aggregation_version": "next-day-aggregation-v2",
+      "reasons": []
+    },
+    {
+      "sample_date": "2026-09-21",
+      "outcome_date": "2026-09-22",
+      "status": "PARTIAL",
+      "sample_count": 82,
+      "valid_count": 81,
+      "missing_count": 1,
+      "limit_up_again_count": 17,
+      "avg_pct": 2.68,
+      "median_pct": 1.37,
+      "security_weighted_avg_pct": 2.68,
+      "day_equal_weight_avg_pct": 2.68,
+      "aggregation_version": "next-day-aggregation-v2",
+      "reasons": [
+        "OUTCOME_PARTIAL"
+      ]
+    },
+    {
+      "sample_date": "2026-09-22",
+      "outcome_date": "2026-09-23",
+      "status": "VERIFIED",
+      "sample_count": 39,
+      "valid_count": 39,
+      "missing_count": 0,
+      "limit_up_again_count": 3,
+      "avg_pct": -1.47,
+      "median_pct": -2.68,
+      "security_weighted_avg_pct": -1.47,
+      "day_equal_weight_avg_pct": -1.47,
+      "aggregation_version": "next-day-aggregation-v2",
+      "reasons": []
+    },
+    {
+      "sample_date": "2026-09-23",
+      "outcome_date": "2026-09-24",
+      "status": "VERIFIED",
+      "sample_count": 39,
+      "valid_count": 39,
+      "missing_count": 0,
+      "limit_up_again_count": 8,
+      "avg_pct": 0.29,
+      "median_pct": -0.06,
+      "security_weighted_avg_pct": 0.29,
+      "day_equal_weight_avg_pct": 0.29,
+      "aggregation_version": "next-day-aggregation-v2",
+      "reasons": []
+    },
+    {
+      "sample_date": "2026-09-24",
+      "outcome_date": "2026-09-28",
+      "status": "PARTIAL",
+      "sample_count": 39,
+      "valid_count": 39,
+      "missing_count": 0,
+      "limit_up_again_count": null,
+      "avg_pct": -2.37,
+      "median_pct": -3.98,
+      "security_weighted_avg_pct": -2.37,
+      "day_equal_weight_avg_pct": -2.37,
+      "aggregation_version": "next-day-aggregation-v2",
+      "reasons": [
+        "OUTCOME_LIMIT_POOL_UNVERIFIED"
+      ]
+    }
+  ],
+  "six_day_query": {
+    "ms": 30.4,
+    "sql": 11
+  },
+  "batch_equivalence": [
+    {
+      "date": "2026-09-17",
+      "failed_count": 74,
+      "equal": true
+    },
+    {
+      "date": "2026-09-18",
+      "failed_count": 33,
+      "equal": true
+    },
+    {
+      "date": "2026-09-21",
+      "failed_count": 55,
+      "equal": true
+    },
+    {
+      "date": "2026-09-22",
+      "failed_count": 76,
+      "equal": true
+    },
+    {
+      "date": "2026-09-23",
+      "failed_count": 46,
+      "equal": true
+    },
+    {
+      "date": "2026-09-24",
+      "failed_count": 36,
+      "equal": true
+    }
+  ],
+  "performance_failed_group": [
+    {
+      "days": 20,
+      "group": "failed_promotion",
+      "ms": 186.5,
+      "sql": 33,
+      "rows": 20,
+      "valid": 901
+    },
+    {
+      "days": 60,
+      "group": "failed_promotion",
+      "ms": 521.1,
+      "sql": 82,
+      "rows": 60,
+      "valid": 3143
+    },
+    {
+      "days": 120,
+      "group": "failed_promotion",
+      "ms": 1154.9,
+      "sql": 153,
+      "rows": 120,
+      "valid": 6983
+    },
+    {
+      "days": 250,
+      "group": "failed_promotion",
+      "ms": 2500.9,
+      "sql": 300,
+      "rows": 250,
+      "valid": 12874
+    }
+  ],
+  "synthetic_invariants": [
+    {
+      "case": "limit_up_again_denominator",
+      "sample_count": 3,
+      "valid_count": 2,
+      "missing_count": 1,
+      "limit_up_again_count": 1,
+      "not_limit_up_count": 1,
+      "limit_up_again_ratio": 50.0,
+      "source": "test_limit_up_again_uses_valid_sample_denominator"
+    },
+    {
+      "case": "pooled_vs_day_equal",
+      "valid_count": 10,
+      "security_weighted_avg_pct": -8.0,
+      "day_equal_weight_avg_pct": 0.0,
+      "median_pct": -10.0,
+      "source": "test_summary_uses_pooled_security_observations_not_day_averages"
+    },
+    {
+      "case": "metric_missing",
+      "flagged": true,
+      "bucketed_as_zero": false,
+      "source": "test_metric_missing_is_flagged_and_not_bucketed"
+    }
+  ]
+}

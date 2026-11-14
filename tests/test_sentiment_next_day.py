@@ -19,6 +19,7 @@ from app.models import (
     TradeCalendar,
 )
 from app.services import sentiment_next_day as snd
+from app.services.limit_funnel import load_funnel_inputs, load_funnel_window_inputs
 
 D1 = date(2026, 11, 2)
 D2 = date(2026, 11, 3)
@@ -489,3 +490,79 @@ def test_non_finite_pct_is_missing_not_zero():
         assert row["missing_count"] == 1
         assert row["outcome_flat_count"] == 0
         assert row["avg_pct"] == 5.0
+
+
+# ---------------------------------------------------------------- S3-B：批量断板
+
+
+def test_window_loader_matches_per_day_loader(session):
+    """批量窗口输入必须与逐日输入完全等价（池 / 日线 / 质量 / 题材）。"""
+    calendar = [D1, D2, D3, D4]
+    window = load_funnel_window_inputs(session, [D2, D3, D4], calendar)
+    position = {day: index for index, day in enumerate(calendar)}
+    for day in (D2, D3, D4):
+        prev = calendar[position[day] - 1]
+        direct = load_funnel_inputs(session, prev, day)
+        assert window[day] == direct
+
+
+def test_window_loader_query_budget_for_250_days():
+    engine = _make_engine()
+    with Session(engine) as db:
+        start = date(2025, 1, 1)
+        days = [date.fromordinal(start.toordinal() + index) for index in range(250)]
+        db.add_all([TradeCalendar(trade_date=day) for day in days])
+        for day in days:
+            _add_day(db, day, up={"600000": 2, "600001": 1}, broken=["600002"])
+            _daily(db, day, "600000", 1.0)
+            _daily(db, day, "600001", -1.0)
+            _daily(db, day, "600002", 3.0)
+        db.commit()
+
+        from sqlalchemy import event
+
+        counter = {"n": 0}
+
+        def before(conn, cursor, statement, parameters, context, executemany):  # noqa: ARG001
+            counter["n"] += 1
+
+        event.listen(db.get_bind(), "before_cursor_execute", before)
+        try:
+            window = load_funnel_window_inputs(db, days, days)
+        finally:
+            event.remove(db.get_bind(), "before_cursor_execute", before)
+
+        assert len(window) == 250
+        # 池 + 采集日志 + 日线（按 10 日分块）+ 基础资料 + 题材/原因 ≈ 30 条
+        assert counter["n"] <= 40
+
+        # 整条断板链路（含 build_next_day 的其他查询）也必须远低于旧 2255
+        counter["n"] = 0
+        event.listen(db.get_bind(), "before_cursor_execute", before)
+        try:
+            data = snd.build_next_day(
+                db,
+                days=250,
+                group=snd.GROUP_FAILED,
+                metric="limit_up_count",
+                include_pending=True,
+                end_date=days[-1],
+            )
+        finally:
+            event.remove(db.get_bind(), "before_cursor_execute", before)
+        assert len(data["series"]) == 250
+        assert counter["n"] <= 300
+
+
+def test_metric_missing_is_flagged_and_not_bucketed(session):
+    session.query(MarketSentiment).filter(MarketSentiment.trade_date == D1).delete()
+    session.commit()
+    data = build(session)
+    d1 = by_date(data)[D1]
+    assert "METRIC_MISSING" in d1["data_quality_reasons"]
+    assert d1["sentiment_value"] is None
+    assert D1.isoformat() in data["quality"]["metric_missing_days"]
+    # 没有任何档位把指标缺失日当成 0 档
+    assert sum(band["day_count"] for band in data["bands"]) == sum(
+        1 for row in data["series"] if row["sentiment_value"] is not None
+    )

@@ -130,6 +130,7 @@ function payload(overrides: Partial<SentimentNextDayData> = {}): SentimentNextDa
       status_counts: { VERIFIED: 1, PENDING: 1, UNVERIFIED: 1 },
       pending_days: ['2026-11-09'],
       unverified_days: ['2026-11-06'],
+      metric_missing_days: [],
       group_note: '分组为分别统计',
     },
     notes: ['统计为历史描述性关联，不构成收益预测。'],
@@ -222,4 +223,21 @@ test('shows pooled and day-equal averages as separate figures', async () => {
   expect(screen.getAllByText('+0.50%').length).toBeGreaterThan(0)
   expect(screen.getByText('日等权均值')).toBeTruthy()
   expect(screen.getByText('next-day-aggregation-v2')).toBeTruthy()
+})
+
+test('metric-missing days are called out and small samples are flagged', async () => {
+  mocks.sentimentNextDay.mockResolvedValue(
+    payload({
+      quality: {
+        status_counts: { VERIFIED: 1, PENDING: 1, UNVERIFIED: 1 },
+        pending_days: ['2026-11-09'],
+        unverified_days: ['2026-11-06'],
+        metric_missing_days: ['2026-11-06'],
+        group_note: '分组为分别统计',
+      },
+    }),
+  )
+  render(<SentimentNextDay />)
+  await waitFor(() => expect(screen.getByText(/个交易日的 D 日情绪指标缺失/)).toBeTruthy())
+  expect(screen.getByText(/小样本/)).toBeTruthy()
 })

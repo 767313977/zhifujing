@@ -589,6 +589,205 @@ def load_funnel_inputs(
     )
 
 
+def load_funnel_window_inputs(
+    session: Session,
+    days: list[date],
+    calendar: list[date] | None = None,
+) -> dict[date, FunnelInputs]:
+    """S3-B：一次批量读取多日漏斗输入，避免逐日 N+1。
+
+    与 `load_funnel_inputs` 的逐日结果必须**完全等价**（同样的键、同样的值、
+    同样的 SourceQuality）。区别只在查询次数：池 / 日线 / 基础资料 / 题材 /
+    涨停原因 / 采集日志各按窗口批量取，`days=250` 也从 ~2255 条 SQL 降到几十条。
+
+    `calendar` 传入完整交易日序列时不再查 `trade_calendar`；不传则只查
+    `<= max(days)` 的日期，足够找到每天的上一交易日。
+    """
+    wanted = sorted(set(days))
+    if not wanted:
+        return {}
+    if calendar is None:
+        calendar = list(
+            session.scalars(
+                select(TradeCalendar.trade_date)
+                .where(TradeCalendar.trade_date <= wanted[-1])
+                .order_by(TradeCalendar.trade_date)
+            )
+        )
+    position = {day: index for index, day in enumerate(calendar)}
+    prev_by_day = {
+        day: (calendar[position[day] - 1] if day in position and position[day] > 0 else None)
+        for day in wanted
+    }
+    needed_days = set(wanted)
+    needed_days.update(day for day in prev_by_day.values() if day is not None)
+
+    up_by_day: dict[date, dict[str, dict]] = {}
+    broken_by_day: dict[date, dict[str, dict]] = {}
+    for row in session.execute(
+        select(
+            LimitPool.trade_date,
+            LimitPool.code,
+            LimitPool.pool_type,
+            LimitPool.consecutive,
+            LimitPool.name,
+            LimitPool.pct_chg,
+            LimitPool.price,
+            LimitPool.first_seal_time,
+            LimitPool.open_times,
+            LimitPool.seal_amount,
+        ).where(
+            LimitPool.trade_date.in_(needed_days),
+            LimitPool.pool_type.in_(("up", "broken")),
+        )
+    ).all():
+        (
+            trade_day,
+            code,
+            pool_type,
+            consecutive,
+            name,
+            pct_chg,
+            price,
+            first_seal_time,
+            open_times,
+            seal_amount,
+        ) = row
+        payload = {
+            "consecutive": consecutive,
+            "name": name,
+            "pct_chg": pct_chg,
+            "price": price,
+            "first_seal_time": first_seal_time,
+            "open_times": open_times,
+            "seal_amount": seal_amount,
+        }
+        if pool_type == "up":
+            up_by_day.setdefault(trade_day, {})[code] = payload
+        else:
+            broken_by_day.setdefault(trade_day, {})[code] = payload
+
+    codes_all = sorted(
+        {code for rows in up_by_day.values() for code in rows}
+        | {code for rows in broken_by_day.values() for code in rows}
+    )
+
+    def chunks(values: list[str] | list[date], size: int = 800) -> list[list]:
+        return [values[index : index + size] for index in range(0, len(values), size)]
+
+    # 每天真正需要日线的股票 = 昨日涨停 ∪ 今日涨停 ∪ 今日炸板。
+    # 不能按「全窗口所有代码 × 全窗口所有日期」取，那会扫出近百万行（实测 4.6s）。
+    relevant_by_day = {
+        day: set(up_by_day.get(prev_by_day[day], {}) if prev_by_day[day] else {})
+        | set(up_by_day.get(day, {}))
+        | set(broken_by_day.get(day, {}))
+        for day in wanted
+    }
+
+    daily_by_day: dict[date, dict[str, dict]] = {}
+    basics: dict[str, dict] = {}
+    for day_chunk in chunks(wanted, 10):
+        code_union = sorted(set().union(*(relevant_by_day[day] for day in day_chunk)))
+        for code_chunk in chunks(code_union):
+            for trade_day, code, close, pct_chg in session.execute(
+                select(
+                    StockDaily.trade_date,
+                    StockDaily.code,
+                    StockDaily.close,
+                    StockDaily.pct_chg,
+                ).where(
+                    StockDaily.trade_date.in_(day_chunk),
+                    StockDaily.code.in_(code_chunk),
+                    StockDaily.close.is_not(None),
+                )
+            ).all():
+                if code not in relevant_by_day.get(trade_day, ()):
+                    continue
+                daily_by_day.setdefault(trade_day, {})[code] = {
+                    "close": close,
+                    "pct_chg": pct_chg,
+                }
+    for code_chunk in chunks(codes_all):
+        for code, name, industry in session.execute(
+            select(StockBasic.code, StockBasic.name, StockBasic.industry).where(
+                StockBasic.code.in_(code_chunk)
+            )
+        ).all():
+            basics[code] = {"name": name, "industry": industry}
+
+    up_codes = sorted({code for rows in up_by_day.values() for code in rows})
+    boards_by_day: dict[date, dict[str, str]] = {}
+    reasons_by_day: dict[date, dict[str, str]] = {}
+    for chunk in chunks(up_codes):
+        for trade_day, code, concept in session.execute(
+            select(StockConcept.trade_date, StockConcept.code, StockConcept.concept)
+            .where(
+                StockConcept.trade_date.in_(wanted),
+                StockConcept.code.in_(chunk),
+            )
+            .order_by(StockConcept.code, StockConcept.concept)
+        ).all():
+            # 与原逐日实现一致：同一代码多个 concept 时，最后一条生效
+            boards_by_day.setdefault(trade_day, {})[code] = concept
+        for trade_day, code, reason in session.execute(
+            select(LimitReason.trade_date, LimitReason.code, LimitReason.reason).where(
+                LimitReason.trade_date.in_(wanted),
+                LimitReason.code.in_(chunk),
+            )
+        ).all():
+            reasons_by_day.setdefault(trade_day, {})[code] = reason
+
+    logs = _latest_logs(session, sorted(needed_days))
+    output: dict[date, FunnelInputs] = {}
+    for day in wanted:
+        prev = prev_by_day[day]
+        prev_up_rows = up_by_day.get(prev, {}) if prev else {}
+        today_up = up_by_day.get(day, {})
+        today_broken = broken_by_day.get(day, {})
+        relevant = set(prev_up_rows) | set(today_up) | set(today_broken)
+        today_daily = {
+            code: value
+            for code, value in daily_by_day.get(day, {}).items()
+            if code in relevant
+        }
+        # 原实现的 prev_up 只带 4 个字段，这里保持完全一致
+        prev_up = {
+            code: {
+                "consecutive": row["consecutive"],
+                "name": row["name"],
+                "pct_chg": row["pct_chg"],
+                "price": row["price"],
+            }
+            for code, row in prev_up_rows.items()
+        }
+        prev_quality = _source_quality(
+            logs.get((prev, "pool_up")) if prev else None, len(prev_up_rows)
+        )
+        up_quality = _source_quality(logs.get((day, "pool_up")), len(today_up))
+        broken_quality = _source_quality(
+            logs.get((day, "pool_broken")),
+            len(today_broken),
+            allow_empty_ok=True,
+        )
+        output[day] = FunnelInputs(
+            trade_date=day,
+            prev_date=prev,
+            prev_up=prev_up,
+            today_up=today_up,
+            today_broken=today_broken,
+            today_daily=today_daily,
+            stock_basic={
+                code: basics[code] for code in relevant if code in basics
+            },
+            boards=boards_by_day.get(day, {}),
+            reasons=reasons_by_day.get(day, {}),
+            prev_up_quality=prev_quality,
+            today_up_quality=up_quality,
+            today_broken_quality=broken_quality,
+        )
+    return output
+
+
 def _day_status(
     prev_quality: SourceQuality,
     up_quality: SourceQuality,

@@ -3855,6 +3855,8 @@ export interface SentimentNextDay {
     status_counts: Record<string, number>
     pending_days: string[]
     unverified_days: string[]
+    /** D 日情绪指标缺失：保留逐券统计，但不进任何档位 */
+    metric_missing_days?: string[]
     group_note: string
   }
   notes: string[]

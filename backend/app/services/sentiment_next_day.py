@@ -51,8 +51,10 @@ from app.services.limit_funnel import (
     FAILED,
     PARTIAL as FUNNEL_PARTIAL,
     VERIFIED as FUNNEL_VERIFIED,
+    FunnelInputs,
     build_promotion_funnel,
     load_funnel_inputs,
+    load_funnel_window_inputs,
 )
 from app.timeutil import today_cn
 
@@ -109,6 +111,7 @@ QUALITY_REASON_TEXT = {
     "OUTCOME_PENDING": "D+1 行情尚未到齐，待观察",
     "OUTCOME_PARTIAL": "D+1 有部分样本缺少行情",
     "OUTCOME_LIMIT_POOL_UNVERIFIED": "D+1 涨停池不可信，无法判断是否再次涨停",
+    "METRIC_MISSING": "D 日情绪指标缺失，无法分档（不等于 0）",
 }
 
 # ------------------------------------------------------------------ 情绪分档
@@ -334,6 +337,7 @@ def _day_samples(
     up_by_day: dict[date, dict[str, int | None]],
     broken_by_day: dict[date, set[str]],
     pool_ok: dict[tuple[date, str], tuple[bool, str | None]],
+    funnel_inputs: FunnelInputs | None = None,
 ) -> tuple[list[str], list[str]]:
     """D 日收盘时已经确定的样本代码 + 质量原因。"""
     reasons: list[str] = []
@@ -370,7 +374,11 @@ def _day_samples(
     # group == GROUP_FAILED：复用 P0-B 的逐券 FAILED 分类
     if prev is None:
         return [], ["PREV_UP_POOL_MISSING"]
-    inputs = load_funnel_inputs(session, prev, day)
+    inputs = (
+        funnel_inputs
+        if funnel_inputs is not None
+        else load_funnel_inputs(session, prev, day)
+    )
     if not inputs.prev_up_quality.trusted:
         reasons.append(
             "PREV_UP_POOL_MISSING"
@@ -477,6 +485,13 @@ def build_next_day(
     values_by_day: dict[date, dict[str, list[float]]] = {}
     pending_days: list[str] = []
     unverified_days: list[str] = []
+    metric_missing_days: list[str] = []
+    # 断板分组：一次批量加载整个窗口，避免每天再打 8 条 SQL（S3-B）
+    funnel_window = (
+        load_funnel_window_inputs(session, list(window), calendar)
+        if group == GROUP_FAILED
+        else {}
+    )
     for day in window:
         following = next_day(day)
         prev_index = position.get(day, 0) - 1
@@ -489,9 +504,14 @@ def build_next_day(
             up_by_day=up_by_day,
             broken_by_day=broken_by_day,
             pool_ok=pool_ok,
+            funnel_inputs=funnel_window.get(day),
         )
         sentiment = sentiments.get(day)
         metric_value = _metric_value(sentiment, metric)
+        if metric_value is None:
+            # 指标缺失不等于 0 档：保留逐券统计，但明确标出不可分档
+            reasons.append("METRIC_MISSING")
+            metric_missing_days.append(day.isoformat())
 
         quotes: dict[str, dict] = {}
         outcome_limit_up: set[str] | None = None
@@ -620,6 +640,7 @@ def build_next_day(
             "status_counts": status_counts,
             "pending_days": pending_days,
             "unverified_days": unverified_days,
+            "metric_missing_days": metric_missing_days,
             "group_note": GROUP_NOTE,
         },
         "notes": NOTES,
@@ -777,6 +798,7 @@ def _empty(group: str, metric: str, days: int, data_as_of: date | None) -> dict[
             "status_counts": {},
             "pending_days": [],
             "unverified_days": [],
+            "metric_missing_days": [],
             "group_note": GROUP_NOTE,
         },
         "notes": NOTES,

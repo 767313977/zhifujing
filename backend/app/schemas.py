@@ -149,6 +149,8 @@ class SentimentNextDayQuality(BaseModel):
     status_counts: dict[str, int]
     pending_days: list[str]
     unverified_days: list[str]
+    #: D 日所选情绪指标缺失的日期：保留逐券统计，但不放进任何情绪档位
+    metric_missing_days: list[str] = []
     group_note: str
 
 

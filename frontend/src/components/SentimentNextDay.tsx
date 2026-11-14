@@ -68,6 +68,7 @@ const REASON_LABEL: Record<string, string> = {
   OUTCOME_PENDING: 'D+1 行情未到齐',
   OUTCOME_PARTIAL: 'D+1 部分样本缺行情',
   OUTCOME_LIMIT_POOL_UNVERIFIED: 'D+1 涨停池不可信',
+  METRIC_MISSING: 'D 日情绪指标缺失（不可分档）',
 }
 
 function reasonText(code: string): string {
@@ -226,6 +227,9 @@ export default function SentimentNextDay() {
           />
           显示待观察日
         </label>
+        {group === 'failed_promotion' && days >= 120 ? (
+          <span className="text-fg-muted">断板窗口较长，计算可能较慢</span>
+        ) : null}
       </div>
 
       {loading ? (
@@ -273,6 +277,13 @@ export default function SentimentNextDay() {
             ) : null}
           </div>
 
+          {(data.quality.metric_missing_days?.length ?? 0) > 0 ? (
+            <div className="border-b border-line-soft px-3 py-1.5 text-[12px] leading-relaxed text-warn">
+              {data.quality.metric_missing_days!.length} 个交易日的 D 日情绪指标缺失，
+              这些日期保留逐券统计，但不放入任何情绪档位：{data.quality.metric_missing_days!.join('、')}
+            </div>
+          ) : null}
+
           <div className="px-2 pt-2">
             <EChart option={option} height={300} />
           </div>
@@ -302,7 +313,14 @@ export default function SentimentNextDay() {
               <tbody>
                 {data.bands.map((band) => (
                   <tr key={band.label}>
-                    <td>{band.label}</td>
+                    <td>
+                      {band.label}
+                      {band.stat_day_count < 5 || band.valid_count < 30 ? (
+                        <span className="ml-1 text-[11px] text-warn" title="样本较少，不构成结论">
+                          小样本
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="num">{fmtInt(band.day_count)}</td>
                     <td className="num">{fmtInt(band.stat_day_count)}</td>
                     <td className="num">{fmtInt(band.sample_count)}</td>

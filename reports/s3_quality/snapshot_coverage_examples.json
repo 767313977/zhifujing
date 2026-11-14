@@ -1,0 +1,101 @@
+{
+  "generated_at": "2026-11-14T18:16:51",
+  "source": "backend/data/b1_research.db read-only",
+  "note": "命中数只代表可观测快照交集，不代表市场全量；无成员级完成证明。",
+  "real_cases": [
+    {
+      "case": "and_2",
+      "mode": "AND",
+      "sector_codes": [
+        "801001",
+        "801807"
+      ],
+      "resolved_as_of": "2026-09-24",
+      "total_observed": 362,
+      "quality_status": "PARTIAL",
+      "quality_version": "theme-quality-v2",
+      "observed_sector_count": 259,
+      "expected_sector_count": 270,
+      "selected_sector_observed": 2,
+      "selected_sector_count": 2,
+      "has_completion_proof": false,
+      "coverage_status": "PARTIAL_OBSERVED_COUNT",
+      "known_by_observation_time": false,
+      "historical_signal_eligible": false,
+      "ms": 165.0,
+      "sql": 7
+    },
+    {
+      "case": "and_3",
+      "mode": "AND",
+      "sector_codes": [
+        "801001",
+        "801807",
+        "801085"
+      ],
+      "resolved_as_of": "2026-09-24",
+      "total_observed": 221,
+      "quality_status": "PARTIAL",
+      "quality_version": "theme-quality-v2",
+      "observed_sector_count": 259,
+      "expected_sector_count": 270,
+      "selected_sector_observed": 3,
+      "selected_sector_count": 3,
+      "has_completion_proof": false,
+      "coverage_status": "PARTIAL_OBSERVED_COUNT",
+      "known_by_observation_time": false,
+      "historical_signal_eligible": false,
+      "ms": 72.5,
+      "sql": 7
+    },
+    {
+      "case": "or_10",
+      "mode": "OR",
+      "sector_codes": [
+        "801001",
+        "801807",
+        "801085",
+        "801159",
+        "801584",
+        "801199",
+        "801519",
+        "801273",
+        "801033",
+        "801366"
+      ],
+      "resolved_as_of": "2026-09-24",
+      "total_observed": 4811,
+      "quality_status": "PARTIAL",
+      "quality_version": "theme-quality-v2",
+      "observed_sector_count": 259,
+      "expected_sector_count": 270,
+      "selected_sector_observed": 10,
+      "selected_sector_count": 10,
+      "has_completion_proof": false,
+      "coverage_status": "PARTIAL_OBSERVED_COUNT",
+      "known_by_observation_time": false,
+      "historical_signal_eligible": false,
+      "ms": 118.0,
+      "sql": 7
+    }
+  ],
+  "synthetic_counterexamples": [
+    {
+      "case": "taxonomy_a_1_of_10_with_taxonomy_b_20",
+      "observed_sector_count": 1,
+      "expected_sector_count": 10,
+      "has_completion_proof": false,
+      "quality_status": "PARTIAL",
+      "source": "tests/test_theme_intersection.py::test_other_taxonomy_cannot_mask_partial_coverage"
+    },
+    {
+      "case": "10_of_10_boards_each_one_row",
+      "observed_sector_count": 10,
+      "expected_sector_count": 10,
+      "coverage_status": "COMPLETE_OBSERVED_COUNT",
+      "has_completion_proof": false,
+      "quality_status": "PARTIAL",
+      "source": "tests/test_theme_intersection.py::test_all_boards_one_each_is_not_completion_proof"
+    }
+  ]
+}
