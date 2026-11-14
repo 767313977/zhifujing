@@ -49,7 +49,12 @@
 | 幂等 / 卸载 | `_install_wrappers()` 幂等且线程安全；`uninstall_network_deny()` / `reset_guard_state()` 恢复全部原始引用并清空 `guards` |
 | 安装失败 | 异常向上抛出，启动 fail closed；不会出现 `enabled=false` 但 `socket_guarded=true` 的虚假状态 |
 
-新增测试（`tests/test_s5_offline_gates.py`，9 条；文件 44 passed / 1 既有 httpx skip）：
+新增测试（`tests/test_s5_offline_gates.py`，**10 个 test function**）：
+
+> 口径修正（R4-P3-01）：上一版误写「9 条」。以 `git diff ac64fa5..0c597a5` 为准，该文件从
+> 32 个 test function 增至 42 个，新增 **10 个 test function**；其中一个用例带 4 组参数，
+> 因此 `pytest --collect-only` 收集 **45 个 case**，实跑 **44 passed / 1 既有 httpx skip**。
+> test function 数、参数化展开 case 数、实际 passed 数不是同一个数字，不应混用。
 
 - `test_wrappers_are_really_installed_on_ssl_and_sendfile`（真实类方法分发，不只调 helper）
 - `test_ssl_send_and_sendall_blocked_after_offline_switch`
@@ -61,6 +66,10 @@
 - `test_unix_socket_sendall_and_sendfile_are_not_blocked`
 - `test_uninstall_restores_ssl_and_sendfile_methods`
 - `test_concurrent_offline_switch_blocks_all_tls_writes`
+
+> 能力口径修正（R4-P3-01）：第三轮的 `ssl_stream=true` 只代表 `SSLSocket.send` / `sendall`
+> 已受保护，**不包含 `SSLSocket.write()`**；R4 已补 `ssl_write` wrapper 并在 `guards` 中单独报告。
+> wrapper 已安装不等于 OS 级出网隔离已验证，`OS_EGRESS_DENY_NOT_VERIFIED` 继续保留。
 
 证据：`reports/s5_security/network_inventory.md`、`reports/s5_security/release_gate.md`、
 `reports/s5_security/egress_report.json`。

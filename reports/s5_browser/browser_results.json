@@ -213,7 +213,7 @@
     {
       "name": "egress_tls_sendfile_guards",
       "ok": true,
-      "detail": "guards={'requests': True, 'socket_connect': True, 'socket_stream': True, 'socket_sendmsg': False, 'socket_sendfile': True, 'ssl_stream': True, 'ssl_sendfile': True} stream=1297 sendfile=0"
+      "detail": "guards={'requests': True, 'socket_connect': True, 'socket_stream': True, 'socket_sendmsg': False, 'socket_sendfile': True, 'ssl_stream': True, 'ssl_sendfile': True, 'ssl_write': True} stream=1297 sendfile=0"
     },
     {
       "name": "egress_effective_state",

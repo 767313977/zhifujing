@@ -1,13 +1,13 @@
 # S5 数据质量对账（只读、抽样）
 
-- 生成时间：2026-11-14T23:20:35
-- Git：`c82fecef071df5915bc6129f23aaaf70ba7c9ba7`（分支 `fix/s5-third-review`，工作区 dirty=False）
+- 生成时间：2026-11-14T23:59:59
+- Git：`a338f7b1169b3d8ea21739310f670de402f3c72b`（分支 `fix/s5-fourth-review`，工作区 dirty=False）
 - 命令：`scripts/check_s5_quality_consistency.py --db backend/data/b1_research.db --start 2026-09-01 --end 2026-09-30 --sample 15 --out reports/s5_quality/contract_matrix.json --md reports/s5_quality/disagreement_report.md`
 - 环境：Python 3.13.13 / Node v24.19.0 / SQLite 3.50.4
 - 退出码：2
 - 数据库：`b1_research.db`（ro&immutable=1）
 - 区间：2026-09-01 ~ 2026-09-30
-- 矩阵版本：`quality-consistency-matrix-v3`
+- 矩阵版本：`quality-consistency-matrix-v4`
 
 ## 抽样口径
 
@@ -24,7 +24,7 @@
 - 已解释差异：4
 - 不可比 / 依赖未解决：7
 - 未解释差异：0
-- SQL：1239；耗时：2689.98 ms
+- SQL：1239；耗时：1984.89 ms
 
 ## 不可比 / 依赖未解决（不计 PASS）
 

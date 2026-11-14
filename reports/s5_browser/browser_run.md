@@ -51,7 +51,7 @@
 | PASS | research_time_policy_visible | naive 时间策略在页面显式可见 |
 | PASS | research_pool_unconfirmed_membership | 未知区只展示未证明成员；未证明成员与已证明成员分开 |
 | PASS | workbench_quality_two_layers | source / combined 两层状态 + data_as_of 语义 |
-| PASS | egress_tls_sendfile_guards | guards={'requests': True, 'socket_connect': True, 'socket_stream': True, 'socket_sendmsg': False, 'socket_sendfile': True, 'ssl_stream': True, 'ssl_sendfile': True} stream=1297 sendfile=0 |
+| PASS | egress_tls_sendfile_guards | guards={'requests': True, 'socket_connect': True, 'socket_stream': True, 'socket_sendmsg': False, 'socket_sendfile': True, 'ssl_stream': True, 'ssl_sendfile': True, 'ssl_write': True} stream=1297 sendfile=0 |
 | PASS | egress_effective_state | enabled=False locked=True dns=NOT_INTERCEPTED udp_blocked=0 |
 | PASS | console_errors | 0 errors |
 

@@ -11,7 +11,8 @@
     "socket_sendmsg": false,
     "socket_sendfile": true,
     "ssl_stream": true,
-    "ssl_sendfile": true
+    "ssl_sendfile": true,
+    "ssl_write": true
   },
   "attempts": 1,
   "blocked": 1,

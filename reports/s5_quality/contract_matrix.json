@@ -1,6 +1,6 @@
 {
   "quality_version": "data-quality-v2",
-  "matrix_version": "quality-consistency-matrix-v3",
+  "matrix_version": "quality-consistency-matrix-v4",
   "matrix": {
     "auction": {
       "VERIFIED_SOURCE": [
@@ -56,10 +56,10 @@
       "SOURCE_ERROR": []
     }
   },
-  "generated_at": "2026-11-14T23:20:35",
+  "generated_at": "2026-11-14T23:59:59",
   "git": {
-    "sha": "c82fecef071df5915bc6129f23aaaf70ba7c9ba7",
-    "branch": "fix/s5-third-review",
+    "sha": "a338f7b1169b3d8ea21739310f670de402f3c72b",
+    "branch": "fix/s5-fourth-review",
     "dirty": false
   },
   "command": "scripts/check_s5_quality_consistency.py --db backend/data/b1_research.db --start 2026-09-01 --end 2026-09-30 --sample 15 --out reports/s5_quality/contract_matrix.json --md reports/s5_quality/disagreement_report.md",
@@ -110,7 +110,7 @@
     "disclaimer": "抽样对账不等于全历史完整验收；未覆盖日期见 uncovered_days"
   },
   "sql_statements": 1239,
-  "elapsed_ms": 2689.98,
+  "elapsed_ms": 1984.89,
   "summary": {
     "total_checks": 76,
     "passed": 65,
