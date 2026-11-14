@@ -100,7 +100,8 @@ def test_full_dataset_works_across_modules():
         assert themes["quality"]["status"] == ti.STATUS_PARTIAL
         assert themes["coverage"]["has_completion_proof"] is False
 
-        context = ctx.build(db, code="600000", as_of=D2)
+        # 合成库的时间戳都是显式 CST 墙上时间：显式声明信任，不使用服务默认（UNTRUSTED）
+        context = ctx.build(db, code="600000", as_of=D2, naive_timezone_trusted=True)
         assert context["as_known_on_day"]["limit_status"] == "UP"
         assert context["later_outcome"]["outcome_date"] == D3
     finally:
@@ -163,7 +164,8 @@ def test_partial_outcome_dataset_keeps_pending_and_partial():
         assert row["avg_pct"] is None
         assert row["data_quality_status"] == snd.STATUS_PARTIAL
 
-        context = ctx.build(db, code="600000", as_of=D2)
+        # 合成库的时间戳都是显式 CST 墙上时间：显式声明信任，不使用服务默认（UNTRUSTED）
+        context = ctx.build(db, code="600000", as_of=D2, naive_timezone_trusted=True)
         assert context["as_known_on_day"]["daily"] is None
         assert context["later_outcome"]["outcome_date"] == D3
     finally:
@@ -205,7 +207,8 @@ def test_pit_leakage_dataset_marks_theme_as_unknown_or_later():
         assert "THEME_PIT_UNKNOWN" in themes["warnings"]
         assert themes["historical_signal_eligible"] is False
 
-        context = ctx.build(db, code="600000", as_of=D2)
+        # 合成库的时间戳都是显式 CST 墙上时间：显式声明信任，不使用服务默认（UNTRUSTED）
+        context = ctx.build(db, code="600000", as_of=D2, naive_timezone_trusted=True)
         # S4-A：LATER 题材不得再出现在已知集合里
         known = {
             item["name"]: item["known_by"]
