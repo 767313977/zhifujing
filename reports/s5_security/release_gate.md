@@ -105,9 +105,12 @@ git revert --no-commit <D 提交>   # 离线闸门
 
 ## 8. S5 第三轮审查整改补充（2026-11-14，未部署）
 
-- **TLS 写路径（R3-P1-01）**：新增 `ssl.SSLSocket.send` / `sendall` / `sendfile` 的独立 wrapper。
-  CPython 的 `SSLSocket` 自己实现这些方法，只 patch `socket.socket.send/sendall` 拦不住；
-  现在在线建立的 TLS 连接切换到 offline 后，每次发送都会重新按 peer 判定，非回环一律阻断。
+- **TLS 写路径（R3-P1-01 / R4-P1-01）**：`ssl.SSLSocket.send` / `sendall` / `sendfile` **与
+  `write`** 均有独立 wrapper。`write()` 在 CPython 直接走 `_sslobj.write()`，不经过 `send()`，
+  因此必须单独 patch；在线建立的 TLS 连接切换到 offline 后，下一次任一写 API 都会重新按 peer 判定。
+- **nested 语义（R4-P1-01）**：`sendall` / `sendfile` 内部回调 `self.send()` 时，只有**同一个
+  socket** 的嵌套调用跳过重复计数；peer/offline 判定仍逐块执行，发送中途切离线会阻断后续块。
+  另一个 socket 不继承豁免，必须完整计数与判定。
 - **sendfile（R3-P1-01）**：新增 `socket.socket.sendfile` wrapper，POSIX `os.sendfile` 与
   Windows send fallback 都在进入原实现前判定；`ssl.SSLSocket.sendfile` 单独 patch，
   不假定继承基类。
@@ -118,7 +121,12 @@ git revert --no-commit <D 提交>   # 离线闸门
   覆盖普通与 TLS `send` / `sendall`；TLS `sendall` / `sendfile` 内部回调 `send()` 不重复计数。
 - **能力集合**：`stats().guards` 逐项列出实际安装的方法
   （`requests` / `socket_connect` / `socket_stream` / `socket_sendmsg` / `socket_sendfile` /
-  `ssl_stream` / `ssl_sendfile`），不再只报一个总布尔值；`uninstall_network_deny()` 恢复全部原始引用。
+  `ssl_stream` / `ssl_sendfile` / `ssl_write`），不再只报一个总布尔值；
+  `uninstall_network_deny()` 恢复全部原始引用。
+- **真实 TLS 集成证据（R4-P2-01）**：`reports/s5_security/tls_integration_evidence.json`
+  记录本地 loopback TLS 握手下 `send` / `sendall` / `write` / `sendfile` 的实际字节数、
+  文件指针、计数器与原方法调用次数；证书为 test-only 自签名 fixture
+  （`tests/fixtures/tls/`），不连接公网。
 - **仍然保留**：`OS_EGRESS_DENY_NOT_VERIFIED`、`dns_guard=NOT_INTERCEPTED`、
   子进程 / 原生库 / Windows 防火墙 / 容器 / 网络命名空间未验证。
   本包通过**不能**宣称 OS 级零出网。

@@ -10,9 +10,11 @@
 """
 
 import asyncio
+import io
 import json
 import logging
 import socket
+import ssl
 import threading
 import urllib.request
 from pathlib import Path
@@ -607,10 +609,12 @@ def test_wrappers_are_really_installed_on_ssl_and_sendfile(monkeypatch):
     assert ssl.SSLSocket.send is eg._guarded_ssl_send
     assert ssl.SSLSocket.sendall is eg._guarded_ssl_sendall
     assert ssl.SSLSocket.sendfile is eg._guarded_ssl_sendfile
+    assert ssl.SSLSocket.write is eg._guarded_ssl_write
     assert socket.socket.sendfile is eg._guarded_sendfile
     guards = eg.stats()["guards"]
     assert guards["ssl_stream"] is True
     assert guards["ssl_sendfile"] is True
+    assert guards["ssl_write"] is True
     assert guards["socket_sendfile"] is True
 
 
@@ -753,6 +757,7 @@ def test_uninstall_restores_ssl_and_sendfile_methods(monkeypatch):
         "ssl_send": ssl.SSLSocket.send,
         "ssl_sendall": ssl.SSLSocket.sendall,
         "ssl_sendfile": ssl.SSLSocket.sendfile,
+        "ssl_write": ssl.SSLSocket.write,
         "socket_sendfile": socket.socket.sendfile,
     }
     _offline(monkeypatch)
@@ -762,6 +767,7 @@ def test_uninstall_restores_ssl_and_sendfile_methods(monkeypatch):
     assert ssl.SSLSocket.send is originals["ssl_send"]
     assert ssl.SSLSocket.sendall is originals["ssl_sendall"]
     assert ssl.SSLSocket.sendfile is originals["ssl_sendfile"]
+    assert ssl.SSLSocket.write is originals["ssl_write"]
     assert socket.socket.sendfile is originals["socket_sendfile"]
     assert eg.stats()["guards"] == {}
     assert eg.stats()["installed"] is False
@@ -794,4 +800,258 @@ def test_concurrent_offline_switch_blocks_all_tls_writes(monkeypatch):
         thread.join(timeout=5)
     assert blocked == ["blocked"] * 8
     assert eg.stats()["stream_blocked"] == 8
+
+
+# ------------------------------------------------- R4-P1-01 真实 TLS 集成测试
+#
+# fixture：tests/fixtures/tls/localhost.{crt,key}，仅本地测试用自签名证书，
+# SAN=DNS:localhost,IP:127.0.0.1；不连接公网，不含生产证书或密钥。
+
+TLS_DIR = Path(__file__).resolve().parent / "fixtures" / "tls"
+
+
+class _TlsServer:
+    """本地 TLS echo/collect server（只监听 127.0.0.1，测试线程内运行）。"""
+
+    def __init__(self):
+        self.received = bytearray()
+        self.error: BaseException | None = None
+        self._ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        self._ctx.load_cert_chain(TLS_DIR / "localhost.crt", TLS_DIR / "localhost.key")
+        self._listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._listener.bind(("127.0.0.1", 0))
+        self._listener.listen(1)
+        self.port = self._listener.getsockname()[1]
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+
+    def _serve(self):
+        try:
+            raw, _ = self._listener.accept()
+            with self._ctx.wrap_socket(raw, server_side=True) as tls:
+                while True:
+                    chunk = tls.recv(65536)
+                    if not chunk:
+                        break
+                    self.received.extend(chunk)
+        except BaseException as exc:  # noqa: BLE001 - 测试需要保留线程异常
+            self.error = exc
+
+    def close(self):
+        try:
+            self._listener.close()
+        except OSError:
+            pass
+        self._thread.join(timeout=5)
+
+
+def _tls_client(port: int) -> ssl.SSLSocket:
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    raw = socket.create_connection(("127.0.0.1", port), timeout=5)
+    return ctx.wrap_socket(raw, server_hostname="localhost")
+
+
+def _start_online_tls(monkeypatch) -> tuple[_TlsServer, ssl.SSLSocket]:
+    """在线启动、安装 wrapper、完成真实 TLS 握手，再返回连接。"""
+    monkeypatch.delenv(eg.ENV, raising=False)
+    eg.install_network_deny()
+    server = _TlsServer()
+    client = _tls_client(server.port)
+    return server, client
+
+
+def _shutdown(server: _TlsServer, client: ssl.SSLSocket | None) -> None:
+    if client is not None:
+        try:
+            client.close()
+        except BaseException:  # noqa: BLE001 - 关闭阶段异常不影响断言
+            pass
+    server.close()
+
+
+def test_real_tls_write_blocked_after_switch(monkeypatch):
+    """真实 SSLSocket.write：切换离线后非回环 peer 必须在原 write 前阻断。"""
+    server, client = _start_online_tls(monkeypatch)
+    real_peer_host = eg._peer_host
+    calls: list[bytes] = []
+    monkeypatch.setattr(eg, "_original_ssl_write", lambda sock, data: calls.append(data) or len(data))
+    monkeypatch.setattr(eg, "_peer_host", lambda sock: "203.0.113.10")
+    monkeypatch.setenv(eg.ENV, "false")
+    assert eg.enabled() is False
+    try:
+        with pytest.raises(eg.ExternalFetchBlocked) as excinfo:
+            client.write(b"blocked-payload")
+        assert excinfo.value.reason_code == "NETWORK_STREAM_SEND_BLOCKED"
+        assert calls == []
+        stats = eg.stats()
+        assert stats["stream_attempts"] == 1
+        assert stats["stream_blocked"] == 1
+    finally:
+        monkeypatch.setattr(eg, "_peer_host", real_peer_host)
+        _shutdown(server, client)
+
+
+def test_real_loopback_tls_send_sendall_write_sendfile(monkeypatch, tmp_path):
+    """真实 loopback TLS：send / sendall / write / sendfile 全部正常传输。"""
+    server, client = _start_online_tls(monkeypatch)
+    monkeypatch.setenv(eg.ENV, "false")
+    assert eg.enabled() is False
+    payload = b"0123456789abcdef"
+    path = tmp_path / "payload.bin"
+    path.write_bytes(payload)
+    try:
+        assert client.send(b"AAA") == 3
+        client.sendall(b"BBB")
+        assert client.write(b"CCC") == 3
+        with path.open("rb") as handle:
+            sent = client.sendfile(handle, offset=2, count=6)
+            assert sent == 6
+            # offset/count 与文件指针语义保持原实现
+            assert handle.tell() == 8
+    finally:
+        _shutdown(server, client)
+    assert bytes(server.received) == b"AAABBBCCC234567"
+    stats = eg.stats()
+    assert stats["stream_attempts"] == 3
+    assert stats["sendfile_attempts"] == 1
+    assert stats["stream_blocked"] == 0
+    assert stats["sendfile_blocked"] == 0
+
+
+def test_tls_nested_state_does_not_leak_across_sockets(monkeypatch):
+    """A 的 sendfile 内部回调触发 B.send：B 不得继承 A 的 nested 豁免。"""
+    server_a, client_a = _start_online_tls(monkeypatch)
+    server_b, client_b = _start_online_tls(monkeypatch)
+    monkeypatch.setenv(eg.ENV, "false")
+    assert eg.enabled() is False
+    monkeypatch.setattr(
+        eg,
+        "_peer_host",
+        lambda sock: "203.0.113.11" if sock is client_b else "127.0.0.1",
+    )
+    blocked: list[str] = []
+
+    class _CallbackFile:
+        def __init__(self, data: bytes):
+            self._io = io.BytesIO(data)
+            self._fired = False
+
+        def read(self, size=-1):
+            chunk = self._io.read(size)
+            if not self._fired:
+                self._fired = True
+                try:
+                    client_b.send(b"B")
+                except eg.ExternalFetchBlocked as exc:
+                    blocked.append(exc.reason_code)
+            return chunk
+
+        def seek(self, position):
+            return self._io.seek(position)
+
+    try:
+        # B 的阻断由回调内部捕获；A 的 sendfile 本身仍可完成（loopback）
+        client_a.sendfile(_CallbackFile(b"x" * 32), 0)
+        assert blocked == ["NETWORK_STREAM_SEND_BLOCKED"]
+        assert eg.stats()["stream_blocked"] == 1
+        # 完成后必须把 A 的 nested 栈清空
+        assert eg._tls_nested_sockets() == []
+    finally:
+        _shutdown(server_a, client_a)
+        _shutdown(server_b, client_b)
+
+
+def test_tls_sendall_rechecks_each_block_after_offline_switch(monkeypatch):
+    """sendall 第一块后切离线：后续内部 self.send() 必须被重新判定并阻断。"""
+    server, client = _start_online_tls(monkeypatch)
+    calls = {"n": 0}
+
+    def _send_then_switch(sock, data, flags=0):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            monkeypatch.setenv(eg.ENV, "false")
+            assert eg.enabled() is False
+            eg._peer_host = lambda target: "203.0.113.12"
+        return 1
+
+    real_peer_host = eg._peer_host
+    monkeypatch.setattr(eg, "_original_ssl_send", _send_then_switch)
+    try:
+        with pytest.raises(eg.ExternalFetchBlocked):
+            client.sendall(b"abcdef")
+        assert calls["n"] == 1
+        stats = eg.stats()
+        assert stats["stream_attempts"] == 1
+        assert stats["stream_blocked"] == 1
+    finally:
+        eg._peer_host = real_peer_host
+        _shutdown(server, client)
+
+
+def test_tls_sendfile_rechecks_each_chunk_after_offline_switch(monkeypatch, tmp_path):
+    """sendfile 第一块后切离线：后续 chunk 的内部 self.send() 必须被阻断。"""
+    server, client = _start_online_tls(monkeypatch)
+    path = tmp_path / "chunks.bin"
+    path.write_bytes(b"y" * 20000)
+    calls = {"n": 0}
+
+    def _send_then_switch(sock, data, flags=0):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            monkeypatch.setenv(eg.ENV, "false")
+            assert eg.enabled() is False
+            eg._peer_host = lambda target: "203.0.113.13"
+        return len(data)
+
+    real_peer_host = eg._peer_host
+    monkeypatch.setattr(eg, "_original_ssl_send", _send_then_switch)
+    try:
+        with path.open("rb") as handle:
+            with pytest.raises(eg.ExternalFetchBlocked):
+                client.sendfile(handle, 0)
+        assert calls["n"] == 1
+        stats = eg.stats()
+        assert stats["sendfile_attempts"] == 1
+        # 阻断发生在 sendfile 内部的 self.send 写块上，按 stream 计；sendfile 本身未被前置拦截
+        assert stats["stream_blocked"] == 1
+        assert stats["sendfile_blocked"] == 0
+    finally:
+        eg._peer_host = real_peer_host
+        _shutdown(server, client)
+
+
+def test_tls_nested_state_is_thread_local(monkeypatch):
+    """两个线程分别发送不同 SSLSocket：不得互相污染 nested 状态。"""
+    server_a, client_a = _start_online_tls(monkeypatch)
+    server_b, client_b = _start_online_tls(monkeypatch)
+    monkeypatch.setenv(eg.ENV, "false")
+    assert eg.enabled() is False
+    errors: list[BaseException] = []
+
+    def send(client, payload):
+        try:
+            client.sendall(payload)
+        except BaseException as exc:  # noqa: BLE001 - 线程异常必须暴露
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=send, args=(client_a, b"a" * 1000)),
+        threading.Thread(target=send, args=(client_b, b"b" * 1000)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    try:
+        assert errors == []
+        assert eg.stats()["stream_blocked"] == 0
+        assert eg.stats()["stream_attempts"] == 2
+    finally:
+        _shutdown(server_a, client_a)
+        _shutdown(server_b, client_b)
+    assert len(server_a.received) == 1000
+    assert len(server_b.received) == 1000
 

@@ -129,9 +129,35 @@ _original_socket_sendfile = None
 _original_ssl_send = None
 _original_ssl_sendall = None
 _original_ssl_sendfile = None
-#: TLS `sendall` / `sendfile` 内部会回调 `self.send()`；用线程局部深度避免重复计数与重复判定
+_original_ssl_write = None
+#: TLS `sendall` / `sendfile` 内部会回调 `self.send()`；用**按 socket 的嵌套栈**记录
+#: 当前线程正在执行外层写操作的 socket，避免线程级深度让另一个 socket 共享豁免。
 _tls_call_state = threading.local()
 _install_lock = threading.Lock()
+
+
+def _tls_nested_sockets() -> list[int]:
+    stack = getattr(_tls_call_state, "active_sockets", None)
+    if stack is None:
+        stack = []
+        _tls_call_state.active_sockets = stack
+    return stack
+
+
+def _enter_tls_nested(sock: Any) -> None:
+    _tls_nested_sockets().append(id(sock))
+
+
+def _leave_tls_nested(sock: Any) -> None:
+    stack = _tls_nested_sockets()
+    if stack and stack[-1] == id(sock):
+        stack.pop()
+    elif id(sock) in stack:  # 异常路径兜底，保证不残留
+        stack.remove(id(sock))
+
+
+def _is_tls_nested(sock: Any) -> bool:
+    return id(sock) in _tls_nested_sockets()
 
 
 def _raw_enabled() -> bool:
@@ -415,12 +441,13 @@ def _guarded_sendfile(self, file, offset=0, count=None):  # noqa: ANN001
 
 
 def _guarded_ssl_send(self, data, flags=0):  # noqa: ANN001
-    # `SSLSocket.sendall()` / `sendfile()` 内部会回调本方法：外层已完成计数与判定，
-    # 嵌套调用直接交给原实现，避免重复计数造成统计失真。
-    if getattr(_tls_call_state, "nested", 0):
-        return _original_ssl_send(self, data, flags)
-    with _lock:
-        _stats["stream_attempts"] += 1
+    # `SSLSocket.sendall()` / `sendfile()` 内部会回调本方法：
+    # - 同一个 socket 的嵌套调用不重复增加公开 API 计数；
+    # - 但**仍必须重新执行 peer/offline 判定**，否则发送中途切离线会被绕过；
+    # - 另一个 socket 不共享嵌套豁免，必须完整计数与判定。
+    if not _is_tls_nested(self):
+        with _lock:
+            _stats["stream_attempts"] += 1
     _assert_stream_peer_allowed(self, "ssl.send")
     return _original_ssl_send(self, data, flags)
 
@@ -429,22 +456,30 @@ def _guarded_ssl_sendall(self, data, flags=0):  # noqa: ANN001
     with _lock:
         _stats["stream_attempts"] += 1
     _assert_stream_peer_allowed(self, "ssl.sendall")
-    _tls_call_state.nested = getattr(_tls_call_state, "nested", 0) + 1
+    _enter_tls_nested(self)
     try:
         return _original_ssl_sendall(self, data, flags)
     finally:
-        _tls_call_state.nested -= 1
+        _leave_tls_nested(self)
 
 
 def _guarded_ssl_sendfile(self, file, offset=0, count=None):  # noqa: ANN001
     with _lock:
         _stats["sendfile_attempts"] += 1
     _assert_stream_peer_allowed(self, "ssl.sendfile", counter="sendfile")
-    _tls_call_state.nested = getattr(_tls_call_state, "nested", 0) + 1
+    _enter_tls_nested(self)
     try:
         return _original_ssl_sendfile(self, file, offset, count)
     finally:
-        _tls_call_state.nested -= 1
+        _leave_tls_nested(self)
+
+
+def _guarded_ssl_write(self, data):  # noqa: ANN001
+    """`SSLSocket.write()` 直接走 `_sslobj.write()`，不经过 `send()`，必须单独保护。"""
+    with _lock:
+        _stats["stream_attempts"] += 1
+    _assert_stream_peer_allowed(self, "ssl.write")
+    return _original_ssl_write(self, data)
 
 
 def _install_wrappers() -> bool:
@@ -460,6 +495,7 @@ def _install_wrappers() -> bool:
     global _original_socket_connect_ex, _original_socket_sendto, _original_socket_sendmsg
     global _original_socket_send, _original_socket_sendall, _original_socket_sendfile
     global _original_ssl_send, _original_ssl_sendall, _original_ssl_sendfile
+    global _original_ssl_write
     with _install_lock:
         if _stats["installed"]:
             return True
@@ -478,6 +514,7 @@ def _install_wrappers() -> bool:
         _original_ssl_send = getattr(ssl_module.SSLSocket, "send", None)
         _original_ssl_sendall = getattr(ssl_module.SSLSocket, "sendall", None)
         _original_ssl_sendfile = getattr(ssl_module.SSLSocket, "sendfile", None)
+        _original_ssl_write = getattr(ssl_module.SSLSocket, "write", None)
 
         sessions.Session.request = _guarded_request
         socket.create_connection = _guarded_create_connection
@@ -501,6 +538,8 @@ def _install_wrappers() -> bool:
             ssl_module.SSLSocket.sendall = _guarded_ssl_sendall
         if _original_ssl_sendfile is not None:
             ssl_module.SSLSocket.sendfile = _guarded_ssl_sendfile
+        if _original_ssl_write is not None:
+            ssl_module.SSLSocket.write = _guarded_ssl_write
 
         _guard_capabilities.clear()
         _guard_capabilities.update(
@@ -513,6 +552,7 @@ def _install_wrappers() -> bool:
                 "ssl_stream": _original_ssl_send is not None
                 and _original_ssl_sendall is not None,
                 "ssl_sendfile": _original_ssl_sendfile is not None,
+                "ssl_write": _original_ssl_write is not None,
             }
         )
         with _lock:
@@ -541,6 +581,7 @@ def uninstall_network_deny() -> None:
     global _original_socket_connect_ex, _original_socket_sendto, _original_socket_sendmsg
     global _original_socket_send, _original_socket_sendall, _original_socket_sendfile
     global _original_ssl_send, _original_ssl_sendall, _original_ssl_sendfile
+    global _original_ssl_write
     import ssl as ssl_module
     import requests.sessions as sessions
 
@@ -580,6 +621,9 @@ def uninstall_network_deny() -> None:
     if _original_ssl_sendfile is not None:
         ssl_module.SSLSocket.sendfile = _original_ssl_sendfile
         _original_ssl_sendfile = None
+    if _original_ssl_write is not None:
+        ssl_module.SSLSocket.write = _original_ssl_write
+        _original_ssl_write = None
     _guard_capabilities.clear()
     with _lock:
         _stats["installed"] = False
@@ -625,7 +669,7 @@ def stats() -> dict[str, Any]:
       （`create_connection` / `connect` / `connect_ex`，回环也算尝试）；
     - `udp_attempts` / `udp_blocked`：UDP `sendto` / `sendmsg`；
     - `stream_attempts` / `stream_blocked`：已连接 socket 的 `send` / `sendall`
-      （含 `ssl.SSLSocket.send` / `sendall`，以及 TCP `sendmsg`）；
+      （含 TLS `send` / `sendall` / `write`，以及 TCP `sendmsg`）；
     - `sendfile_attempts` / `sendfile_blocked`：`socket.socket.sendfile` 与
       `ssl.SSLSocket.sendfile`（TLS 内部回调 `send()` 不重复计数）；
     - `installed` / `socket_guarded`：wrapper 是否真实安装（在线也应为 true）；

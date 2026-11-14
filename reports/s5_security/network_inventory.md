@@ -51,8 +51,9 @@
    - `socket.socket.sendmsg`（显式 address 或已连接 peer；两者都没有时**阻断**）
    - 已连接 socket 的 `socket.socket.send` / `sendall`
    - `socket.socket.sendfile`（POSIX `os.sendfile` 与 Windows send fallback 都在原实现前判定）
-   - `ssl.SSLSocket.send` / `sendall` / `sendfile`（TLS 子类单独 patch；`sendall` / `sendfile`
-     内部回调 `send()` 时用线程局部深度避免重复计数）
+   - `ssl.SSLSocket.send` / `sendall` / `sendfile` / **`write`**（TLS 子类单独 patch；
+     `sendall` / `sendfile` 内部回调 `send()` 时用**按 socket 的嵌套栈**只抑制计数，
+     peer/offline 判定仍逐块执行；另一个 socket 不共享嵌套豁免）
    回环只允许**严格 loopback IP**（`127.0.0.0/8`、`::1` 等）；`localhost` 固定映射到
    `127.0.0.1`（`ip6-localhost` → `::1`），**不交给 OS hosts/DNS 解析**；
    `localhost.localdomain`、空 host、`None`、普通主机名一律拦截。
@@ -79,7 +80,7 @@
 - `installed` / `socket_guarded`：wrapper 是否真实安装（在线也应为 true）；
 - `guards`：实际安装成功的写路径能力集合
   （`requests` / `socket_connect` / `socket_stream` / `socket_sendmsg` /
-  `socket_sendfile` / `ssl_stream` / `ssl_sendfile`），不只报一个总布尔值；
+  `socket_sendfile` / `ssl_stream` / `ssl_sendfile` / `ssl_write`），不只报一个总布尔值；
 - `dns_guard=NOT_INTERCEPTED`：DNS 查询未在进程内拦截；
 - 上述都**不是**全宿主网络调用总数。来源入口被提前拦截时，不会计入 socket 层拦截。
 
