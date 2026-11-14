@@ -187,6 +187,10 @@ class Settings(BaseSettings):
     #
     # 两融/北向不受影响：那两项每次都回看 30 天，漏一天下次自然补上。
     scheduler_enabled: bool = True
+    #: S4-D 离线闸门：false 时**所有按需外部取数在发网前失败**。
+    #: 与 `scheduler_enabled` 是两件事：后者只关定时任务，关不掉按需路由。
+    #: 仅在隔离验收环境显式设为 false；生产默认 true，行为不变。
+    external_data_fetch_enabled: bool = True
     collect_hour: int = 15
     collect_minute: int = 5
     # 「收盘后才有数据」的那一趟（2026-09-30 新增）：龙虎榜 / 机构席位 / 两融 / 北向成交。

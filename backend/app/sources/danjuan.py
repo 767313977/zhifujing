@@ -26,6 +26,8 @@ from datetime import date, datetime, timedelta, timezone
 
 import requests
 
+from app.external_guard import ensure_external_fetch
+
 logger = logging.getLogger(__name__)
 
 BASE = "https://danjuanfunds.com/djapi/index_eva"
@@ -58,6 +60,7 @@ class HistoryPoint:
 
 
 def _get(url: str) -> dict:
+    ensure_external_fetch(f"蛋卷 {url}")
     try:
         response = requests.get(url, headers=_HEADERS, timeout=TIMEOUT)
         response.raise_for_status()

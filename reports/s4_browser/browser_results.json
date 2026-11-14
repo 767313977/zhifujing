@@ -1,0 +1,181 @@
+{
+  "results": [
+    {
+      "name": "theme_panel_ok",
+      "ok": true,
+      "detail": "题材交叉仍可用"
+    },
+    {
+      "name": "resonance_buckets",
+      "ok": true,
+      "detail": "buckets=True up=True down=True again50=True"
+    },
+    {
+      "name": "resonance_and_or_dedupe",
+      "ok": true,
+      "detail": "and2=True or5=True"
+    },
+    {
+      "name": "resonance_and_unverifiable",
+      "ok": true,
+      "detail": "A01+A02+A04 -> UNVERIFIABLE"
+    },
+    {
+      "name": "resonance_zero_sample",
+      "ok": true,
+      "detail": "09-21 无成员快照 -> 未采集，不伪造 0 只"
+    },
+    {
+      "name": "resonance_viewports",
+      "ok": true,
+      "detail": "1920/3840/390 screenshots captured"
+    },
+    {
+      "name": "quality_overview",
+      "ok": true,
+      "detail": "table=True reason=True"
+    },
+    {
+      "name": "quality_detail_expand",
+      "ok": true,
+      "detail": "展开行显示原因码/最近尝试"
+    },
+    {
+      "name": "quality_filter",
+      "ok": true,
+      "detail": "筛选后隐藏可信来源"
+    },
+    {
+      "name": "quality_uncollected_day",
+      "ok": true,
+      "detail": "09-22 显示未采集"
+    },
+    {
+      "name": "quality_viewports",
+      "ok": true,
+      "detail": "1920/3840/390 screenshots captured"
+    },
+    {
+      "name": "research_three_buckets",
+      "ok": true,
+      "detail": "三区标题存在"
+    },
+    {
+      "name": "research_later_not_in_known",
+      "ok": true,
+      "detail": "known_has_theme=False unknown_has_theme=True"
+    },
+    {
+      "name": "research_forward_outcome",
+      "ok": true,
+      "detail": "D+1 -5.00% 不在已知区"
+    },
+    {
+      "name": "drawer_escape",
+      "ok": true,
+      "detail": "Escape closes"
+    },
+    {
+      "name": "drawer_refresh_asof",
+      "ok": true,
+      "detail": "刷新保留 stock/as_of"
+    },
+    {
+      "name": "drawer_history",
+      "ok": true,
+      "detail": "back_closed=True forward_open=True"
+    },
+    {
+      "name": "limit_page",
+      "ok": true,
+      "detail": "/limit-up 仍有个股链接"
+    },
+    {
+      "name": "auction_page",
+      "ok": true,
+      "detail": "/auction"
+    },
+    {
+      "name": "sentiment_page",
+      "ok": true,
+      "detail": "/sentiment"
+    },
+    {
+      "name": "account_switch_clears_drawer",
+      "ok": true,
+      "detail": "user_b=True no_drawer=True"
+    },
+    {
+      "name": "offline_gate_no_network",
+      "ok": true,
+      "detail": "before_sent=0 after_sent=0"
+    },
+    {
+      "name": "offline_probe_note",
+      "ok": true,
+      "detail": "status=200 note_offline=True"
+    },
+    {
+      "name": "offline_sync_blocked_before_network",
+      "ok": true,
+      "detail": "status=503 blocked=1 sent=0"
+    },
+    {
+      "name": "console_errors",
+      "ok": true,
+      "detail": "0 errors"
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "resonance_1280x800.png",
+      "sha256": "c713c46565f65591f6d5faadce79bd7cd045f04ae1c4acb86da1693275da1609",
+      "bytes": 146939
+    },
+    {
+      "file": "resonance_unverifiable_1280x800.png",
+      "sha256": "ca2a84d02012f4c0992ed8ce31e7e6247b4dfdb3085a3204ff9b60745939c386",
+      "bytes": 151879
+    },
+    {
+      "file": "resonance_1920x1080.png",
+      "sha256": "e9300740328228e23a13533b541de3df2a2b0c12d77e4834e83f70c93887876f",
+      "bytes": 167657
+    },
+    {
+      "file": "resonance_3840x2160.png",
+      "sha256": "3670cc6768d22a1f90efbe5929e10bdbc4e6e22ed45cfb45338659ce19840ce0",
+      "bytes": 339444
+    },
+    {
+      "file": "resonance_390x844.png",
+      "sha256": "a5818d5bff2de3f86ef518981c7fa7b50e9aac50dac5daa60708e440eb8f186e",
+      "bytes": 59280
+    },
+    {
+      "file": "quality_1280x800.png",
+      "sha256": "1995beaaa7195402afcad52a9ae271e75dc1c65217246bcc5e14fcbf25f90a72",
+      "bytes": 104219
+    },
+    {
+      "file": "quality_1920x1080.png",
+      "sha256": "9061ed767648eeaa012aa23eda3c1cd11dd7118ce090e3330336f672d2dfe8e9",
+      "bytes": 100378
+    },
+    {
+      "file": "quality_3840x2160.png",
+      "sha256": "6ee5592d7774bf0336433e1955008c93aa54b28d78e4a167b4d670622423eea6",
+      "bytes": 124666
+    },
+    {
+      "file": "quality_390x844.png",
+      "sha256": "e3dab734fee0ec7d9f4fdff1240c6aadd140abb5ea6b94ade43ac688b9f96672",
+      "bytes": 57191
+    },
+    {
+      "file": "research_three_buckets_1280x800.png",
+      "sha256": "a2ed6e359dc4e299133a3d1d49062d46cee9a5ce946570b3d064fe3d231d2cd1",
+      "bytes": 152990
+    }
+  ]
+}

@@ -28,6 +28,7 @@ from datetime import date
 import requests
 
 from app.config import Settings, get_settings
+from app.external_guard import ensure_external_fetch
 from app.sources.base import UA, TokenBucket, is_deterministic_http_error, retry_call
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ class ThsLimitUpSource:
         self._bucket = TokenBucket(self.settings.ths_rate_limit)
 
     def _get(self, trade_date: date, page: int) -> dict:
+        ensure_external_fetch(f"同花顺涨停原因 {trade_date}")
         params = {
             "page": page,
             "limit": PAGE_SIZE,

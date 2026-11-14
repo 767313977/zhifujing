@@ -24,6 +24,7 @@ import requests
 import urllib3
 
 from app.config import Settings, get_settings
+from app.external_guard import ensure_external_fetch
 from app.services.usage import record_call
 from app.sources.base import TokenBucket, chunked, retry_call
 from app.sources.markdown_table import parse_tables, to_int
@@ -302,6 +303,7 @@ class IfindClient:
         return headers
 
     def _post(self, server: str, payload: dict) -> tuple[requests.Response, Any]:
+        ensure_external_fetch(f"iFinD {server}")
         self._bucket.acquire()
         url = f"{self.settings.ifind_base_url}/{SERVERS[server]}"
         response = self._http.post(
@@ -671,6 +673,7 @@ class IfindClient:
         不占用 tools/call 配额（走 o.thsi.cn 这个静态资源域名），
         所以它既不受 5 req/s 限速，也**不计入调用次数**。
         """
+        ensure_external_fetch("iFinD CSV 下载")
         try:
             response = requests.get(
                 url,

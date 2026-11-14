@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.db import session_scope
+from app.external_guard import enabled as external_fetch_enabled
 from app.models import StockEventCache
 from app.sources import em_events
 
@@ -89,6 +90,24 @@ def load(code: str, kind: str) -> dict:
             "fetched_at": fetched_at.isoformat(timespec="seconds"),
             "stale": False,
             "note": None,
+        }
+
+    if not external_fetch_enabled():
+        # 离线验收：**根本不去请求上游**，只给已有缓存（或明确说没有）
+        if rows is not None:
+            return {
+                "rows": rows,
+                "fetched_at": (
+                    fetched_at.isoformat(timespec="seconds") if fetched_at else None
+                ),
+                "stale": True,
+                "note": "离线验收模式：未请求上游，显示的是上次缓存",
+            }
+        return {
+            "rows": [],
+            "fetched_at": None,
+            "stale": False,
+            "note": "离线验收模式：未请求上游，本地暂无缓存",
         }
 
     try:

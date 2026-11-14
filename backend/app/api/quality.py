@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.external_guard import stats as egress_stats
 from app.models import AppUser
 from app.schemas import QualityOverviewOut, QualityTimelineOut
 from app.services import data_quality
@@ -34,6 +35,16 @@ def overview(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return QualityOverviewOut(**data)
+
+
+@router.get("/egress")
+def egress(_user: AppUser = Depends(current_user)) -> dict:
+    """离线闸门计数（隔离验收用）：尝试 / 被阻断 / 真正发网 / 被网络层拦截。
+
+    `network_attempts` 是**真正发出去**的请求数（开关打开时才可能非零）；
+    开关关闭时它必须恒为 0。
+    """
+    return egress_stats()
 
 
 @router.get("/timeline", response_model=QualityTimelineOut)

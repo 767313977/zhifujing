@@ -500,13 +500,22 @@ def _safe_source(fn, session: Session, days: list[date]) -> dict[date, dict[str,
         }
 
 
-def _source_items(session: Session, days: list[date]) -> dict[str, dict[date, dict[str, Any]]]:
+def _source_items(
+    session: Session, days: list[date], sources: list[str] | None = None
+) -> dict[str, dict[date, dict[str, Any]]]:
+    """只计算需要的来源：timeline 查单个来源时不该把五张表全平扫一遍。"""
+    builders = {
+        "stock_daily": _stock_daily_items,
+        "limit_pool": _limit_pool_items,
+        "sector_member": _sector_member_items,
+        "market_sentiment": _market_sentiment_items,
+        "auction_snapshot": _auction_items,
+    }
+    selected = sources or list(builders)
     return {
-        "stock_daily": _safe_source(_stock_daily_items, session, days),
-        "limit_pool": _safe_source(_limit_pool_items, session, days),
-        "sector_member": _safe_source(_sector_member_items, session, days),
-        "market_sentiment": _safe_source(_market_sentiment_items, session, days),
-        "auction_snapshot": _safe_source(_auction_items, session, days),
+        name: _safe_source(builders[name], session, days)
+        for name in selected
+        if name in builders
     }
 
 
@@ -532,7 +541,8 @@ def overview(
         items[-1] = _calendar_item(session, resolved)
     else:
         items = []
-        for source, by_day in _source_items(session, window or [resolved]).items():
+        # overview 只看目标日：窗口只用于确定「非交易日 / 未来日」，不需要逐日扫描
+        for source, by_day in _source_items(session, [resolved]).items():
             item = by_day.get(resolved)
             if item is None:
                 item = _item(
@@ -568,7 +578,8 @@ def timeline(session: Session, *, source: str, days: int = 120) -> dict[str, Any
     if source == "trade_calendar":
         points = [_calendar_item(session, day) for day in window]
     else:
-        by_day = _source_items(session, window).get(source, {})
+        # 只算被选中的来源，避免 timeline 顺手把全市场日线也 group by 一遍
+        by_day = _source_items(session, window, sources=[source]).get(source, {})
         points = [by_day.get(day) or _item(source, day, STATUS_NOT_COLLECTED) for day in window]
     for point in points:
         point["source"] = source

@@ -9,7 +9,7 @@ from logging.handlers import RotatingFileHandler
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import (
@@ -41,6 +41,7 @@ from app.api import (
 )
 from app.config import ROOT, get_settings
 from app.db import ensure_schema
+from app.external_guard import ExternalFetchBlocked, install_network_deny
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 from app.services.auth import client_ip as auth_client_ip
 from app.services.auth import require_login
@@ -198,6 +199,11 @@ async def lifespan(_app: FastAPI):
     if not FRONTEND_DIST.exists():
         logger.warning("未找到前端构建产物 %s，开发期请另起 Vite", FRONTEND_DIST)
 
+    # S4-D 离线闸门：只在显式关闭外部取数时安装（默认 true，生产行为不变）。
+    # 它挡的是**按需路由**——`SCHEDULER_ENABLED=false` 管不到这些路径。
+    if install_network_deny():
+        logger.warning("外部数据现取已被禁用（EXTERNAL_DATA_FETCH_ENABLED=false）")
+
     # 定时采集随服务一起启停。注意本服务必须单 worker 运行，
     # 多 worker 会各自拉起一个调度器、同一时刻重复采集。
     start_scheduler()
@@ -257,6 +263,21 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
+
+
+@app.exception_handler(ExternalFetchBlocked)
+async def external_fetch_blocked_handler(
+    _request: Request, exc: ExternalFetchBlocked
+) -> JSONResponse:
+    """离线验收模式：外部现取被拒绝时给**明确的状态**，不伪装成网络异常。"""
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": str(exc),
+            "offline": True,
+            "reason": "EXTERNAL_DATA_FETCH_DISABLED",
+        },
+    )
 
 
 @app.middleware("http")

@@ -27,6 +27,8 @@ from datetime import date
 
 import requests
 
+from app.external_guard import ensure_external_fetch
+
 logger = logging.getLogger(__name__)
 
 SSE_URL = "https://query.sse.com.cn/commonQuery.do"
@@ -50,6 +52,7 @@ class EtfNotReady(EtfSourceError):
 
 
 def _get(url: str, *, params: dict, referer: str) -> requests.Response:
+    ensure_external_fetch(f"ETF 份额 {url}")
     try:
         response = requests.get(
             url,

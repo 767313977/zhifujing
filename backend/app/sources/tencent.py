@@ -41,6 +41,7 @@ from datetime import date
 
 import requests
 
+from app.external_guard import ensure_external_fetch
 from app.sources.base import chunked
 
 logger = logging.getLogger(__name__)
@@ -288,6 +289,7 @@ def fetch_spot(
     `stats` 传入一个 dict 时会被填上 `{"requests": 总批数, "failed": 失败批数}`，
     供调用方在日志里写清「这一帧丢了几批」（竞价丢批不会回补，事后对账要看这里）。
     """
+    ensure_external_fetch("腾讯实时快照")
     wanted = [str(code).zfill(6) for code in codes]
     rows: list[dict] = []
     failed = 0

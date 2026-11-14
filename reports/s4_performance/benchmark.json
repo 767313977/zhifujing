@@ -1,0 +1,198 @@
+{
+  "database": "fupan.db",
+  "as_of": "2026-12-31",
+  "readonly": true,
+  "results": [
+    {
+      "case": "quality_overview",
+      "days": 30,
+      "sql": 4,
+      "elapsed_ms": 66.0,
+      "peak_kb": 1713.3,
+      "items_count": 6
+    },
+    {
+      "case": "quality_overview",
+      "days": 60,
+      "sql": 4,
+      "elapsed_ms": 2.8,
+      "peak_kb": 32.7,
+      "items_count": 6
+    },
+    {
+      "case": "quality_overview",
+      "days": 120,
+      "sql": 4,
+      "elapsed_ms": 2.5,
+      "peak_kb": 39.4,
+      "items_count": 6
+    },
+    {
+      "case": "quality_overview",
+      "days": 250,
+      "sql": 4,
+      "elapsed_ms": 3.1,
+      "peak_kb": 66.8,
+      "items_count": 6
+    },
+    {
+      "case": "quality_timeline_limit_pool",
+      "days": 30,
+      "sql": 4,
+      "elapsed_ms": 10.1,
+      "peak_kb": 130.7,
+      "points_count": 30
+    },
+    {
+      "case": "quality_timeline_limit_pool",
+      "days": 60,
+      "sql": 4,
+      "elapsed_ms": 12.9,
+      "peak_kb": 443.7,
+      "points_count": 60
+    },
+    {
+      "case": "quality_timeline_limit_pool",
+      "days": 120,
+      "sql": 4,
+      "elapsed_ms": 39.5,
+      "peak_kb": 1572.3,
+      "points_count": 120
+    },
+    {
+      "case": "quality_timeline_limit_pool",
+      "days": 250,
+      "sql": 4,
+      "elapsed_ms": 63.2,
+      "peak_kb": 3325.2,
+      "points_count": 250
+    },
+    {
+      "case": "sentiment_next_day_first_board",
+      "days": 20,
+      "sql": 5,
+      "elapsed_ms": 59.4,
+      "peak_kb": 2166.5,
+      "series_count": 20
+    },
+    {
+      "case": "sentiment_next_day_first_board",
+      "days": 60,
+      "sql": 5,
+      "elapsed_ms": 57.0,
+      "peak_kb": 2158.0,
+      "series_count": 60
+    },
+    {
+      "case": "sentiment_next_day_first_board",
+      "days": 120,
+      "sql": 61,
+      "elapsed_ms": 306.1,
+      "peak_kb": 4141.3,
+      "series_count": 120
+    },
+    {
+      "case": "sentiment_next_day_first_board",
+      "days": 250,
+      "sql": 191,
+      "elapsed_ms": 1015.7,
+      "peak_kb": 10663.1,
+      "series_count": 250
+    },
+    {
+      "case": "sector_resonance",
+      "sectors": 1,
+      "mode": "AND",
+      "as_of": "2026-09-24",
+      "sql": 15,
+      "elapsed_ms": 167.6,
+      "peak_kb": 2974.8,
+      "total_count": 1270,
+      "shown_count": 500
+    },
+    {
+      "case": "sector_resonance",
+      "sectors": 1,
+      "mode": "OR",
+      "as_of": "2026-09-24",
+      "sql": 15,
+      "elapsed_ms": 123.8,
+      "peak_kb": 2661.5,
+      "total_count": 1270,
+      "shown_count": 500
+    },
+    {
+      "case": "sector_resonance",
+      "sectors": 2,
+      "mode": "AND",
+      "as_of": "2026-09-24",
+      "sql": 15,
+      "elapsed_ms": 110.7,
+      "peak_kb": 2510.0,
+      "total_count": 64,
+      "shown_count": 64
+    },
+    {
+      "case": "sector_resonance",
+      "sectors": 2,
+      "mode": "OR",
+      "as_of": "2026-09-24",
+      "sql": 15,
+      "elapsed_ms": 151.4,
+      "peak_kb": 3442.3,
+      "total_count": 1898,
+      "shown_count": 500
+    },
+    {
+      "case": "sector_resonance",
+      "sectors": 3,
+      "mode": "AND",
+      "as_of": "2026-09-24",
+      "sql": 15,
+      "elapsed_ms": 138.9,
+      "peak_kb": 2746.2,
+      "total_count": 1,
+      "shown_count": 1
+    },
+    {
+      "case": "sector_resonance",
+      "sectors": 3,
+      "mode": "OR",
+      "as_of": "2026-09-24",
+      "sql": 15,
+      "elapsed_ms": 171.2,
+      "peak_kb": 4035.3,
+      "total_count": 2280,
+      "shown_count": 500
+    },
+    {
+      "case": "sector_resonance",
+      "sectors": 10,
+      "mode": "AND",
+      "as_of": "2026-09-24",
+      "sql": 12,
+      "elapsed_ms": 139.1,
+      "peak_kb": 3372.2,
+      "total_count": 0,
+      "shown_count": 0
+    },
+    {
+      "case": "sector_resonance",
+      "sectors": 10,
+      "mode": "OR",
+      "as_of": "2026-09-24",
+      "sql": 15,
+      "elapsed_ms": 190.7,
+      "peak_kb": 4759.1,
+      "total_count": 2690,
+      "shown_count": 500
+    },
+    {
+      "case": "research_context",
+      "code": "000001",
+      "sql": 12,
+      "elapsed_ms": 77.5,
+      "peak_kb": 2221.7
+    }
+  ]
+}

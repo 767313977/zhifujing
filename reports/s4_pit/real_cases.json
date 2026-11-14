@@ -1,0 +1,369 @@
+{
+  "database": "fupan.db",
+  "readonly": true,
+  "pit_cases": [
+    {
+      "code": "000498",
+      "name": "山东路桥",
+      "as_of": "2026-09-24",
+      "cutoff": "CLOSE",
+      "evidence_version": "research-evidence-v2",
+      "evidence_counts": {
+        "AT_CUTOFF_KNOWN": 3,
+        "UNKNOWN_OR_LATER": 2,
+        "FORWARD_OUTCOME": 1
+      },
+      "known": {
+        "pool_status": "UP",
+        "board_height": 1,
+        "daily_pct": 9.92217899,
+        "known_themes": [],
+        "known_concepts": []
+      },
+      "unknown": {
+        "themes": [
+          {
+            "name": "基础建设",
+            "known_by": "LATER"
+          }
+        ],
+        "concepts": [
+          {
+            "name": "基础建设",
+            "known_by": "POST_CLOSE_UNKNOWN"
+          }
+        ],
+        "reasons": [
+          "THEME_PIT_UNKNOWN",
+          "CONCEPT_POST_CLOSE_UNKNOWN"
+        ]
+      },
+      "later_outcome": {
+        "outcome_date": "2026-09-28",
+        "status": "PARTIAL",
+        "pct_chg": 1.9469026548672466,
+        "close": 5.76,
+        "limit_up_again": null,
+        "reason_code": "OUTCOME_LIMIT_POOL_UNVERIFIED",
+        "known_by": "FORWARD"
+      },
+      "historical_signal_eligible": false,
+      "quality": {
+        "status": "PARTIAL",
+        "reasons": [
+          "THEME_PIT_UNKNOWN",
+          "CONCEPT_POST_CLOSE_UNKNOWN",
+          "OUTCOME_LIMIT_POOL_UNVERIFIED"
+        ]
+      }
+    },
+    {
+      "code": "000592",
+      "name": "平潭发展",
+      "as_of": "2026-09-24",
+      "cutoff": "CLOSE",
+      "evidence_version": "research-evidence-v2",
+      "evidence_counts": {
+        "AT_CUTOFF_KNOWN": 3,
+        "UNKNOWN_OR_LATER": 7,
+        "FORWARD_OUTCOME": 1
+      },
+      "known": {
+        "pool_status": "UP",
+        "board_height": 1,
+        "daily_pct": 10.02506266,
+        "known_themes": [],
+        "known_concepts": []
+      },
+      "unknown": {
+        "themes": [
+          {
+            "name": "医美",
+            "known_by": "LATER"
+          },
+          {
+            "name": "医药",
+            "known_by": "LATER"
+          },
+          {
+            "name": "土地流转",
+            "known_by": "LATER"
+          },
+          {
+            "name": "旅游",
+            "known_by": "LATER"
+          },
+          {
+            "name": "海峡两岸",
+            "known_by": "LATER"
+          },
+          {
+            "name": "福建",
+            "known_by": "LATER"
+          }
+        ],
+        "concepts": [
+          {
+            "name": "海峡两岸",
+            "known_by": "POST_CLOSE_UNKNOWN"
+          }
+        ],
+        "reasons": [
+          "THEME_PIT_UNKNOWN",
+          "CONCEPT_POST_CLOSE_UNKNOWN"
+        ]
+      },
+      "later_outcome": {
+        "outcome_date": "2026-09-28",
+        "status": "PARTIAL",
+        "pct_chg": 3.530751708428252,
+        "close": 9.09,
+        "limit_up_again": null,
+        "reason_code": "OUTCOME_LIMIT_POOL_UNVERIFIED",
+        "known_by": "FORWARD"
+      },
+      "historical_signal_eligible": false,
+      "quality": {
+        "status": "PARTIAL",
+        "reasons": [
+          "THEME_PIT_UNKNOWN",
+          "CONCEPT_POST_CLOSE_UNKNOWN",
+          "OUTCOME_LIMIT_POOL_UNVERIFIED"
+        ]
+      }
+    },
+    {
+      "code": "000678",
+      "name": "襄阳轴承",
+      "as_of": "2026-09-24",
+      "cutoff": "CLOSE",
+      "evidence_version": "research-evidence-v2",
+      "evidence_counts": {
+        "AT_CUTOFF_KNOWN": 3,
+        "UNKNOWN_OR_LATER": 2,
+        "FORWARD_OUTCOME": 1
+      },
+      "known": {
+        "pool_status": "UP",
+        "board_height": 1,
+        "daily_pct": 10.0,
+        "known_themes": [],
+        "known_concepts": []
+      },
+      "unknown": {
+        "themes": [
+          {
+            "name": "机器人概念",
+            "known_by": "LATER"
+          }
+        ],
+        "concepts": [
+          {
+            "name": "机器人概念",
+            "known_by": "POST_CLOSE_UNKNOWN"
+          }
+        ],
+        "reasons": [
+          "THEME_PIT_UNKNOWN",
+          "CONCEPT_POST_CLOSE_UNKNOWN"
+        ]
+      },
+      "later_outcome": {
+        "outcome_date": "2026-09-28",
+        "status": "PARTIAL",
+        "pct_chg": 10.020661157024799,
+        "close": 10.65,
+        "limit_up_again": null,
+        "reason_code": "OUTCOME_LIMIT_POOL_UNVERIFIED",
+        "known_by": "FORWARD"
+      },
+      "historical_signal_eligible": false,
+      "quality": {
+        "status": "PARTIAL",
+        "reasons": [
+          "THEME_PIT_UNKNOWN",
+          "CONCEPT_POST_CLOSE_UNKNOWN",
+          "OUTCOME_LIMIT_POOL_UNVERIFIED"
+        ]
+      }
+    }
+  ],
+  "quality_snapshots": [
+    {
+      "as_of": "2026-09-24",
+      "database": "fupan.db",
+      "items": [
+        {
+          "source": "stock_daily",
+          "status": "VERIFIED_SOURCE",
+          "reason_codes": [],
+          "observed_rows": 5282,
+          "observed_sectors": null,
+          "expected_sectors": null,
+          "completion_proof": false,
+          "latest_observation_date": "2026-10-09",
+          "latest_valid_snapshot": "2026-09-24",
+          "latest_attempt": null
+        },
+        {
+          "source": "limit_pool",
+          "status": "VERIFIED_SOURCE",
+          "reason_codes": [],
+          "observed_rows": 75,
+          "observed_sectors": null,
+          "expected_sectors": null,
+          "completion_proof": true,
+          "latest_observation_date": "2026-09-24",
+          "latest_valid_snapshot": "2026-09-24",
+          "latest_attempt": {
+            "status": "ok",
+            "rows": 52,
+            "created_at": "2026-09-24 17:10:03.957389",
+            "message": ""
+          }
+        },
+        {
+          "source": "sector_member",
+          "status": "PARTIAL",
+          "reason_codes": [
+            "NO_MEMBERS_COMPLETION_LOG"
+          ],
+          "observed_rows": 3757,
+          "observed_sectors": 19,
+          "expected_sectors": 374,
+          "completion_proof": false,
+          "latest_observation_date": "2026-09-24",
+          "latest_valid_snapshot": "2026-09-24",
+          "latest_attempt": null
+        },
+        {
+          "source": "market_sentiment",
+          "status": "VERIFIED_SOURCE",
+          "reason_codes": [],
+          "observed_rows": 1,
+          "observed_sectors": null,
+          "expected_sectors": null,
+          "completion_proof": false,
+          "latest_observation_date": "2026-09-24",
+          "latest_valid_snapshot": "2026-09-24",
+          "latest_attempt": null
+        },
+        {
+          "source": "auction_snapshot",
+          "status": "NOT_COLLECTED",
+          "reason_codes": [
+            "AUCTION_NOT_COLLECTED",
+            "AUCTION_0931_MISSING"
+          ],
+          "observed_rows": 0,
+          "observed_sectors": null,
+          "expected_sectors": null,
+          "completion_proof": false,
+          "latest_observation_date": null,
+          "latest_valid_snapshot": null,
+          "latest_attempt": null
+        },
+        {
+          "source": "trade_calendar",
+          "status": "VERIFIED_SOURCE",
+          "reason_codes": [],
+          "observed_rows": 1,
+          "observed_sectors": null,
+          "expected_sectors": null,
+          "completion_proof": false,
+          "latest_observation_date": "2026-12-31",
+          "latest_valid_snapshot": "2026-09-24",
+          "latest_attempt": null
+        }
+      ]
+    },
+    {
+      "as_of": "2026-09-23",
+      "database": "fupan.db",
+      "items": [
+        {
+          "source": "stock_daily",
+          "status": "VERIFIED_SOURCE",
+          "reason_codes": [],
+          "observed_rows": 5281,
+          "observed_sectors": null,
+          "expected_sectors": null,
+          "completion_proof": false,
+          "latest_observation_date": "2026-10-09",
+          "latest_valid_snapshot": "2026-09-23",
+          "latest_attempt": null
+        },
+        {
+          "source": "limit_pool",
+          "status": "VERIFIED_SOURCE",
+          "reason_codes": [],
+          "observed_rows": 90,
+          "observed_sectors": null,
+          "expected_sectors": null,
+          "completion_proof": true,
+          "latest_observation_date": "2026-09-24",
+          "latest_valid_snapshot": "2026-09-23",
+          "latest_attempt": {
+            "status": "ok",
+            "rows": 51,
+            "created_at": "2026-09-23 17:30:04.053834",
+            "message": ""
+          }
+        },
+        {
+          "source": "sector_member",
+          "status": "PARTIAL",
+          "reason_codes": [
+            "NO_MEMBERS_COMPLETION_LOG"
+          ],
+          "observed_rows": 1216,
+          "observed_sectors": 3,
+          "expected_sectors": 270,
+          "completion_proof": false,
+          "latest_observation_date": "2026-09-24",
+          "latest_valid_snapshot": "2026-09-23",
+          "latest_attempt": null
+        },
+        {
+          "source": "market_sentiment",
+          "status": "VERIFIED_SOURCE",
+          "reason_codes": [],
+          "observed_rows": 1,
+          "observed_sectors": null,
+          "expected_sectors": null,
+          "completion_proof": false,
+          "latest_observation_date": "2026-09-24",
+          "latest_valid_snapshot": "2026-09-23",
+          "latest_attempt": null
+        },
+        {
+          "source": "auction_snapshot",
+          "status": "NOT_COLLECTED",
+          "reason_codes": [
+            "AUCTION_NOT_COLLECTED",
+            "AUCTION_0931_MISSING"
+          ],
+          "observed_rows": 0,
+          "observed_sectors": null,
+          "expected_sectors": null,
+          "completion_proof": false,
+          "latest_observation_date": null,
+          "latest_valid_snapshot": null,
+          "latest_attempt": null
+        },
+        {
+          "source": "trade_calendar",
+          "status": "VERIFIED_SOURCE",
+          "reason_codes": [],
+          "observed_rows": 1,
+          "observed_sectors": null,
+          "expected_sectors": null,
+          "completion_proof": false,
+          "latest_observation_date": "2026-12-31",
+          "latest_valid_snapshot": "2026-09-23",
+          "latest_attempt": null
+        }
+      ]
+    }
+  ]
+}

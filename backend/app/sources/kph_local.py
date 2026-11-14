@@ -29,6 +29,7 @@ import logging
 import requests
 
 from app.config import Settings, get_settings
+from app.external_guard import ensure_external_fetch
 from app.sources.base import TokenBucket, is_deterministic_http_error, retry_call
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ class KphLocalSource:
         self, path: str, params: dict | None = None, *, description: str, timeout: float | None = None
     ) -> dict:
         """发一次 GET 并返回原始 JSON（不做外层解包）。"""
+        ensure_external_fetch(f"开盘红本地服务 {description}")
 
         def _do() -> dict:
             self._bucket.acquire()

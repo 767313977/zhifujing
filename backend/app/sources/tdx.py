@@ -31,6 +31,8 @@ from datetime import date
 
 import requests
 
+from app.external_guard import ensure_external_fetch
+
 logger = logging.getLogger(__name__)
 
 PACKAGE_URL = "https://www.tdx.com.cn/products/data/data/g4day/{ymd}.zip"
@@ -136,6 +138,7 @@ def daily_package(day: date) -> list[dict]:
     非交易日、或当天包还没发布时抛 `TdxUnavailable`（不返回空表）；
     包损坏 / 格式变了抛 `TdxError`。
     """
+    ensure_external_fetch(f"通达信盘后包 {day}")
     ymd = day.strftime("%Y%m%d")
     try:
         response = requests.get(

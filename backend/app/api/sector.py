@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import resolve_trade_date
 from app.config import get_settings
 from app.db import get_db, session_scope
+from app.external_guard import enabled as external_fetch_enabled
 from app.jobs.collect_sectors import SectorCollector
 from app.models import (
     AppUser,
@@ -1393,6 +1394,9 @@ def _board_members(
     if _recently_empty(key):
         # 刚取过、没结果：短时内直接走回落，别再打一次外部源
         return _fallback_members(code, trade_date, None)
+    if not external_fetch_enabled():
+        # 离线验收模式：不发外呼、不占限流额度，明确回落到本地名单
+        return _fallback_members(code, trade_date, None, offline=True)
 
     # 真要发外部请求了，先过按用户限流（只此路径计数）。记一笔放在**取数之前**：
     # 无论取成功还是源端报错，这次外部请求都已经发出去了 —— 与 DDE 现取同口径。
@@ -1433,7 +1437,11 @@ def _board_members(
 
 
 def _fallback_members(
-    code: str, trade_date: date, failed: Exception | None
+    code: str,
+    trade_date: date,
+    failed: Exception | None,
+    *,
+    offline: bool = False,
 ) -> tuple[list[SectorMember], str | None]:
     """当天名单还没发布时的回落：**名单取最近可用的一天，行情用本地日线当日**。
 
@@ -1459,11 +1467,12 @@ def _fallback_members(
         rows = _read_members(session, code, fallback_day) if fallback_day else []
         if not rows:
             # 不把 failed 详情回给前端（可能带上游主机名 / 响应片段）—— 它已在调用方进了日志
-            reason = (
-                "开盘红成分股接口暂时不可用"
-                if failed is not None
-                else "开盘红的成分股当日要等盘后更新，这次没取到"
-            )
+            if offline:
+                reason = "离线验收模式：禁止外部现取，本地没有该板块的成员快照"
+            elif failed is not None:
+                reason = "开盘红成分股接口暂时不可用"
+            else:
+                reason = "开盘红的成分股当日要等盘后更新，这次没取到"
             return [], f"{reason}（历史日期不受影响）"
         quotes = {
             row_code: (close, pct_chg, amount)

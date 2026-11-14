@@ -11,6 +11,8 @@ from typing import TypeVar
 
 import requests
 
+from app.external_guard import ExternalFetchBlocked
+
 logger = logging.getLogger(__name__)
 
 UA = (
@@ -103,6 +105,9 @@ def retry_call(
         raise ValueError(f"retries 必须 ≥ 1，收到 {retries}")
 
     def _retryable(exc: Exception) -> bool:
+        # 离线闸门是「确定性拒绝」，重试只会白等退避，必须立刻上抛
+        if isinstance(exc, ExternalFetchBlocked):
+            return False
         if retry_on is None:
             return True
         if isinstance(retry_on, type) or isinstance(retry_on, tuple):

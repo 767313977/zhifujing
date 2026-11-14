@@ -72,6 +72,7 @@ from app.services.stock_phase import load_phase
 from app.services.themes import Attribution, attribute
 from app.services.usage import QuotaLevel, level_label, quota_level
 from app.sources.em_news import fetch_stock_news
+from app.external_guard import enabled as external_fetch_enabled
 from app.sources.ifind import IfindError, normalize_code
 from app.timeutil import today_cn
 from app.sources.kaipanhong import TAXONOMY_SELECTED
@@ -813,6 +814,10 @@ def _stock_dde(code: str, days: int, user_id: int) -> tuple[list[StockDde], str 
     if cached and latest and cached[-1].trade_date >= latest:
         return cached, None
 
+    # 离线验收：外呼被禁用时**不请求、不花配额**，只回本地缓存
+    if not external_fetch_enabled():
+        return cached, "离线验收模式：未请求 iFinD 现取，仅显示本地缓存"
+
     # 要真花钱了，先过**配额闸**（档位到 `PAUSE_KLINE` 就 429，文案与手动同步一致）。
     # ⚠️ 放在「缓存命中」判断**之后**：配额闸挡的是「现取」，不是「看盘」—— 库里已有
     # 最近交易日数据的票必须照常返回，否则配额一紧张，用户连翻自己盯的票看 K 都被拒。
@@ -1007,7 +1012,8 @@ def trap_check(
                 headers={"Retry-After": str(int(wait) + 1)},
             )
         _trap_fetch_limiter.fail(user_key)
-        base = trap.base_check(code)
+        # 离线验收：fast 模式只读本地/已有缓存，不会去请求新闻、互动易、人气榜
+        base = trap.base_check(code, fast=not external_fetch_enabled())
         if base is None:
             raise HTTPException(
                 status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
@@ -1061,6 +1067,13 @@ def news(
     cached = _news_cache.get(key)
     if cached is not None and datetime.now() - cached[0] < timedelta(seconds=NEWS_TTL_SEC):
         return cached[1]
+    if not external_fetch_enabled():
+        return StockNewsOut(
+            code=code,
+            name=_resolve_name(session, code),
+            rows=[],
+            note="离线验收模式：未请求新闻源，本地没有可展示的缓存",
+        )
 
     # 缓存没命中、要真去打外部源了 → 先过按用户限流（命中缓存不计数）
     user_key = f"news:{user.id}"

@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from app.config import Settings, get_settings
+from app.external_guard import ensure_external_fetch
 from app.sources.base import TokenBucket, retry_call
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,7 @@ def _call_bounded(fn: Callable[[], pd.DataFrame], description: str, timeout: flo
     直接抛 `TimeoutError`（上层照旧记 failed 并让出采集锁）。等挂住的调用自己结束、
     计数回落，闸门自动恢复 —— 不需要人工干预，也不会无限开线程把进程拖死。
     """
+    ensure_external_fetch(f"akshare {description}")
     global _inflight
     with _ABANDONED_LOCK:
         if _inflight >= _MAX_INFLIGHT:

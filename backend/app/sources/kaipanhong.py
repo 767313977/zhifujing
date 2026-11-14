@@ -25,6 +25,7 @@ from datetime import date
 import requests
 
 from app.config import Settings, get_settings
+from app.external_guard import ensure_external_fetch
 from app.sources.base import TokenBucket, is_deterministic_http_error, retry_call
 from app.timeutil import today_cn
 
@@ -184,6 +185,7 @@ class KaipanhongSource:
         判成「昨天」→ 采当天走**历史域名**（天梯 Date 对不上、板块排行可能是空/旧的）。
         全项目口径见 `app/timeutil.py`。
         """
+        ensure_external_fetch(f"开盘红 {description}")
         host = HOST_REALTIME if trade_date == today_cn() else HOST_HISTORY
         body = {**_BASE_PARAMS, "Date": trade_date.isoformat(), **params}
 
