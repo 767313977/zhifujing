@@ -188,7 +188,7 @@
     {
       "name": "offline_sync_blocked_before_network",
       "ok": true,
-      "detail": "status=503 blocked=2 sent=0"
+      "detail": "status=503 blocked=1 sent=0"
     },
     {
       "name": "research_pool_pit_no_leak",
@@ -201,9 +201,19 @@
       "detail": "naive 时间策略在页面显式可见"
     },
     {
+      "name": "research_pool_unconfirmed_membership",
+      "ok": true,
+      "detail": "未知区只展示未证明成员；未证明成员与已证明成员分开"
+    },
+    {
       "name": "workbench_quality_two_layers",
       "ok": true,
       "detail": "source / combined 两层状态 + data_as_of 语义"
+    },
+    {
+      "name": "egress_tls_sendfile_guards",
+      "ok": true,
+      "detail": "guards={'requests': True, 'socket_connect': True, 'socket_stream': True, 'socket_sendmsg': False, 'socket_sendfile': True, 'ssl_stream': True, 'ssl_sendfile': True} stream=1297 sendfile=0"
     },
     {
       "name": "egress_effective_state",
@@ -249,13 +259,13 @@
     },
     {
       "file": "quality_1920x1080.png",
-      "sha256": "52799a8a05be8a26a52488f0ee34826aae766ccfeeea39e59f2889653ebe6d3c",
-      "bytes": 103068
+      "sha256": "4beb0271be0dd156917862c97dc2108e911955e7f3148ab75a58dfe3e8e2ec6d",
+      "bytes": 102933
     },
     {
       "file": "quality_3840x2160.png",
-      "sha256": "145e0e4fcb35dd63368fd14c8f07cf218ab1bfadbeb41bb72e144e7de4f71b60",
-      "bytes": 127221
+      "sha256": "5a5508ba5d7071ad50f5e93e0994d4ea7b17ec57469093c49108887d88aa9dca",
+      "bytes": 127121
     },
     {
       "file": "quality_390x844.png",
@@ -264,8 +274,8 @@
     },
     {
       "file": "research_three_buckets_1280x800.png",
-      "sha256": "86189677c22c2b1970d0d092902d75b7296d2c6140cdf05efc406b83bb76112e",
-      "bytes": 164375
+      "sha256": "96aebf7d31172cab9abf5b88fc446c0f4d3dca38f828e2aad57de183356b422d",
+      "bytes": 164369
     },
     {
       "file": "workbench_1280x800.png",

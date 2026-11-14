@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-14T22:22:05",
-  "git_sha": "0c182d263274697f4d6acf2d02d9825b55703b55",
+  "generated_at": "2026-11-14T23:23:46",
+  "git_sha": "c82fecef071df5915bc6129f23aaaf70ba7c9ba7",
   "database": "b1_research.db",
   "mode": "ro&immutable=1",
   "as_of": "2026-09-24",
@@ -17,13 +17,13 @@
       },
       "runs": 3,
       "sql_statements": 53,
-      "elapsed_ms_median": 135.65,
+      "elapsed_ms_median": 136.01,
       "elapsed_ms_runs": [
-        143.64,
-        135.65,
-        101.25
+        158.23,
+        136.01,
+        111.81
       ],
-      "peak_memory_kb": 3918.8,
+      "peak_memory_kb": 3997.7,
       "json_bytes": 20461
     },
     {
@@ -38,13 +38,13 @@
       },
       "runs": 3,
       "sql_statements": 53,
-      "elapsed_ms_median": 129.17,
+      "elapsed_ms_median": 138.79,
       "elapsed_ms_runs": [
-        129.17,
-        107.84,
-        145.61
+        145.58,
+        120.29,
+        138.79
       ],
-      "peak_memory_kb": 4850.2,
+      "peak_memory_kb": 4929.3,
       "json_bytes": 20971
     },
     {
@@ -60,11 +60,11 @@
       },
       "runs": 3,
       "sql_statements": 53,
-      "elapsed_ms_median": 112.69,
+      "elapsed_ms_median": 143.6,
       "elapsed_ms_runs": [
-        112.69,
-        146.96,
-        111.65
+        143.6,
+        154.55,
+        132.34
       ],
       "peak_memory_kb": 6810.7,
       "json_bytes": 20963
@@ -89,13 +89,13 @@
       },
       "runs": 3,
       "sql_statements": 53,
-      "elapsed_ms_median": 155.27,
+      "elapsed_ms_median": 185.6,
       "elapsed_ms_runs": [
-        134.78,
-        155.27,
-        157.88
+        183.42,
+        185.6,
+        199.58
       ],
-      "peak_memory_kb": 11300.3,
+      "peak_memory_kb": 11300.2,
       "json_bytes": 21849
     },
     {
@@ -105,11 +105,11 @@
       },
       "runs": 3,
       "sql_statements": 21,
-      "elapsed_ms_median": 37.56,
+      "elapsed_ms_median": 47.59,
       "elapsed_ms_runs": [
-        37.56,
-        36.95,
-        41.2
+        48.99,
+        47.59,
+        47.08
       ],
       "peak_memory_kb": 57.4,
       "json_bytes": 5173
@@ -121,9 +121,9 @@
       },
       "runs": 1,
       "sql_statements": 7,
-      "elapsed_ms_median": 24.08,
+      "elapsed_ms_median": 31.5,
       "elapsed_ms_runs": [
-        24.08
+        31.5
       ],
       "peak_memory_kb": 3512.6,
       "json_bytes": 436389
@@ -135,11 +135,11 @@
       },
       "runs": 1,
       "sql_statements": 255,
-      "elapsed_ms_median": 334.32,
+      "elapsed_ms_median": 1947.03,
       "elapsed_ms_runs": [
-        334.32
+        1947.03
       ],
-      "peak_memory_kb": 13163.2,
+      "peak_memory_kb": 13318.5,
       "json_bytes": 177073
     },
     {
@@ -150,14 +150,14 @@
       },
       "runs": 3,
       "sql_statements": 14,
-      "elapsed_ms_median": 11.93,
+      "elapsed_ms_median": 15.32,
       "elapsed_ms_runs": [
-        18.85,
-        11.93,
-        11.37
+        25.17,
+        15.32,
+        13.7
       ],
       "peak_memory_kb": 2158.0,
-      "json_bytes": 9994
+      "json_bytes": 10012
     }
   ]
 }
