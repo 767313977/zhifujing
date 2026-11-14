@@ -197,7 +197,7 @@ def record_call(server: str, tool: str, day: date | None = None) -> None:
 
 
 def calls_on(day: date) -> int:
-    with session_scope() as session:
+    with research_session_scope() as session:
         return int(
             session.scalar(
                 select(func.coalesce(func.sum(IfindUsage.calls), 0)).where(
@@ -209,7 +209,7 @@ def calls_on(day: date) -> int:
 
 
 def calls_between(start: date, end: date) -> int:
-    with session_scope() as session:
+    with research_session_scope() as session:
         return int(
             session.scalar(
                 select(func.coalesce(func.sum(IfindUsage.calls), 0)).where(
@@ -222,7 +222,7 @@ def calls_between(start: date, end: date) -> int:
 
 def breakdown_between(start: date, end: date) -> list[dict]:
     """按 (server, tool) 拆开的花费明细，花得多的在前。"""
-    with session_scope() as session:
+    with research_session_scope() as session:
         rows = session.execute(
             select(IfindUsage.server, IfindUsage.tool, func.sum(IfindUsage.calls))
             .where(IfindUsage.usage_date >= start, IfindUsage.usage_date <= end)
@@ -233,7 +233,7 @@ def breakdown_between(start: date, end: date) -> list[dict]:
 
 
 def trade_days_between(start: date, end: date) -> int:
-    with session_scope() as session:
+    with research_session_scope() as session:
         return int(
             session.scalar(
                 select(func.count())
@@ -251,7 +251,7 @@ def first_record_day(start: date, end: date) -> date | None:
     「本月已过多少交易日」算，否则会出现「14 个交易日只花了 1 次」这种
     自相矛盾的输入，再外推出一个毫无意义的预计值。
     """
-    with session_scope() as session:
+    with research_session_scope() as session:
         return session.scalar(
             select(func.min(IfindUsage.usage_date)).where(
                 IfindUsage.usage_date >= start, IfindUsage.usage_date <= end
@@ -270,7 +270,7 @@ def cycle_trade_days(day: date, start: date, end: date) -> tuple[int, int]:
 
 
 def _calendar_last_day() -> date | None:
-    with session_scope() as session:
+    with research_session_scope() as session:
         return session.scalar(select(func.max(TradeCalendar.trade_date)))
 
 
