@@ -219,6 +219,8 @@ async def lifespan(_app: FastAPI):
     )
     if install_network_deny():
         logger.warning("外部数据现取已被禁用（EXTERNAL_DATA_FETCH_ENABLED=false）")
+    else:
+        logger.info("网络闸门 wrapper 已安装（在线模式透明放行）")
 
     # 定时采集随服务一起启停。注意本服务必须单 worker 运行，
     # 多 worker 会各自拉起一个调度器、同一时刻重复采集。

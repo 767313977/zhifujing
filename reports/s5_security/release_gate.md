@@ -91,8 +91,13 @@ git revert --no-commit <D 提交>   # 离线闸门
 - **socket 覆盖**：新增 `connect_ex`、UDP `sendto`、平台支持时的 `sendmsg`；
   回环白名单只接受严格 loopback IP，`localhost` 固定映射到 `127.0.0.1`，
   `localhost.localdomain` / 空 host / `None` 不再豁免；Unix domain socket 保持可用。
+- **运行时切换（R2-P1-02）**：wrapper 启动时**总是安装**（在线透明放行），
+  因此 online→offline 不需要再 patch；已连接 socket 的 `send` / `sendall` /
+  `sendmsg` 会按 peer 地址阻断非回环发送；`sendmsg` 无显式地址且无 peer 时 fail closed；
+  安装失败向上抛出，启动流程拒绝继续。
 - **统计语义**：`stats().enabled` 返回有效状态（锁定后即使 env 改回 true 也是 false）；
-  新增 `udp_attempts` / `udp_blocked`、`dns_guard=NOT_INTERCEPTED`、`switch_policy`。
+  新增 `udp_attempts` / `udp_blocked`、`stream_attempts` / `stream_blocked`、
+  `dns_guard=NOT_INTERCEPTED`、`switch_policy`。
 - **未改变**：未合 master、未部署、未重启、未改调度与 `deploy/*`；
   `OS_EGRESS_DENY_NOT_VERIFIED`、`PRODUCTION_DEPLOYMENT_NOT_AUTHORIZED`、`P13_RELEASE_NO_GO`
   继续保留。

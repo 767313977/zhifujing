@@ -429,3 +429,164 @@ def test_retry_does_not_retry_blocked_fetch(monkeypatch):
     with pytest.raises(eg.ExternalFetchBlocked):
         retry_call(lambda: eg.ensure_external_fetch("测试"), retries=3)
     assert eg.stats()["attempts"] == 1
+
+
+# ---------------------------------------------------------------- R2-P1-02 运行时切换
+
+
+class _FakeSock:
+    """最小 socket 替身：只提供 family/type/getpeername，用于已连接发送路径。"""
+
+    def __init__(self, peer=None, *, family=socket.AF_INET, sock_type=socket.SOCK_STREAM):
+        self._peer = peer
+        self.family = family
+        self.type = sock_type
+
+    def getpeername(self):
+        if self._peer is None:
+            raise OSError("not connected")
+        return self._peer
+
+
+def _allow_original_sends(monkeypatch):
+    monkeypatch.setattr(eg, "_original_socket_send", lambda sock, data, flags=0: len(data))
+    monkeypatch.setattr(eg, "_original_socket_sendall", lambda sock, data, flags=0: None)
+    monkeypatch.setattr(eg, "_original_socket_sendmsg", lambda sock, buffers, *args: 1)
+
+
+def test_online_start_installs_wrapper_and_runtime_switch_enforces(monkeypatch):
+    """R2-P1-02：在线启动也安装 wrapper；运行中切离线立即生效。"""
+    monkeypatch.delenv(eg.ENV, raising=False)
+    assert eg.install_network_deny() is False  # 在线：已安装但不处于离线
+    online = eg.stats()
+    assert online["enabled"] is True
+    assert online["installed"] is True
+    assert online["socket_guarded"] is True
+
+    monkeypatch.setenv(eg.ENV, "false")
+    assert eg.enabled() is False
+    offline = eg.stats()
+    assert offline["enabled"] is False
+    assert offline["locked_offline"] is True
+    assert offline["installed"] is True
+    assert offline["socket_guarded"] is True
+
+    with pytest.raises(eg.ExternalFetchBlocked):
+        socket.create_connection(("93.184.216.34", 80), timeout=1)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        with pytest.raises(eg.ExternalFetchBlocked):
+            sock.connect(("93.184.216.34", 80))
+        with pytest.raises(eg.ExternalFetchBlocked):
+            sock.connect_ex(("93.184.216.34", 80))
+    finally:
+        sock.close()
+
+
+def test_connected_send_and_sendall_blocked_after_switch(monkeypatch):
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    fake = _FakeSock(("93.184.216.34", 443))
+    with pytest.raises(eg.ExternalFetchBlocked):
+        eg._guarded_send(fake, b"payload")
+    with pytest.raises(eg.ExternalFetchBlocked):
+        eg._guarded_sendall(fake, b"payload")
+    stats = eg.stats()
+    assert stats["stream_blocked"] == 2
+    # 已连接发送不能算成 TCP 建连拦截
+    assert stats["os_network_blocked"] == 0
+
+
+def test_sendmsg_with_no_address_on_connected_socket_is_blocked(monkeypatch):
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    fake = _FakeSock(("93.184.216.34", 443))
+    with pytest.raises(eg.ExternalFetchBlocked):
+        eg._guarded_sendmsg(fake, [b"payload"], [], 0)
+    assert eg.stats()["stream_blocked"] == 1
+
+
+def test_connected_udp_sendmsg_without_destination_is_blocked(monkeypatch):
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    connected = _FakeSock(("93.184.216.34", 53), sock_type=socket.SOCK_DGRAM)
+    with pytest.raises(eg.ExternalFetchBlocked):
+        eg._guarded_sendmsg(connected, [b"payload"], [], 0)
+    unknown = _FakeSock(None, sock_type=socket.SOCK_DGRAM)
+    with pytest.raises(eg.ExternalFetchBlocked) as excinfo:
+        eg._guarded_sendmsg(unknown, [b"payload"], [], 0)
+    assert excinfo.value.reason_code == "NETWORK_SEND_TARGET_UNKNOWN"
+    assert eg.stats()["udp_blocked"] == 2
+
+
+def test_loopback_stream_send_sendall_sendmsg_allowed(monkeypatch):
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    _allow_original_sends(monkeypatch)
+    fake = _FakeSock(("127.0.0.1", 8014))
+    assert eg._guarded_send(fake, b"x") == 1
+    assert eg._guarded_sendall(fake, b"x") is None
+    assert eg._guarded_sendmsg(fake, [b"x"], [], 0) == 1
+    assert eg.stats()["stream_blocked"] == 0
+    assert eg.stats()["udp_blocked"] == 0
+
+
+def test_unix_socket_stream_send_is_not_blocked(monkeypatch):
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    _allow_original_sends(monkeypatch)
+    if not hasattr(socket, "AF_UNIX"):
+        # 平台无 AF_UNIX：确认回环发送仍不受影响，Unix 路径按能力缺失明示
+        fake = _FakeSock(("127.0.0.1", 1))
+        assert eg._guarded_send(fake, b"x") == 1
+        assert eg.stats()["stream_blocked"] == 0
+        return
+    fake = _FakeSock("/tmp/guard.sock", family=socket.AF_UNIX)
+    assert eg._guarded_send(fake, b"x") == 1
+    assert eg.stats()["stream_blocked"] == 0
+
+
+def test_offline_to_online_still_requires_restart(monkeypatch):
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    monkeypatch.setenv(eg.ENV, "true")
+    assert eg.enabled() is False
+    with pytest.raises(eg.ExternalFetchBlocked):
+        eg.ensure_external_fetch("重启前不得恢复")
+
+
+def test_install_failure_is_fail_closed(monkeypatch):
+    """安装失败必须向上抛出，启动流程 fail closed，不能静默继续。"""
+
+    def boom():
+        raise RuntimeError("patch failed")
+
+    monkeypatch.setattr(eg, "_install_wrappers", boom)
+    with pytest.raises(RuntimeError):
+        eg.install_network_deny()
+
+
+def test_concurrent_switch_has_no_allow_window(monkeypatch):
+    monkeypatch.delenv(eg.ENV, raising=False)
+    eg.install_network_deny()
+    monkeypatch.setenv(eg.ENV, "false")
+    results: list[bool] = []
+    lock = threading.Lock()
+
+    def worker():
+        value = eg.enabled()
+        with lock:
+            results.append(value)
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+    assert results and all(value is False for value in results)
+    stats = eg.stats()
+    assert stats["installed"] is True
+    assert stats["socket_guarded"] is True
+    with pytest.raises(eg.ExternalFetchBlocked):
+        socket.create_connection(("93.184.216.34", 80), timeout=1)
+

@@ -108,6 +108,8 @@ _stats: dict[str, Any] = {
     "os_network_blocked": 0,
     "udp_attempts": 0,
     "udp_blocked": 0,
+    "stream_attempts": 0,
+    "stream_blocked": 0,
     "installed": False,
     "socket_guarded": False,
 }
@@ -117,6 +119,9 @@ _original_socket_connect = None
 _original_socket_connect_ex = None
 _original_socket_sendto = None
 _original_socket_sendmsg = None
+_original_socket_send = None
+_original_socket_sendall = None
+_install_lock = threading.Lock()
 
 
 def _raw_enabled() -> bool:
@@ -127,15 +132,23 @@ def _raw_enabled() -> bool:
 
 
 def enabled() -> bool:
-    """每次现取都读一次；一旦读到 false 就**永久锁定**到进程结束。"""
+    """每次现取都读一次；一旦读到 false 就**永久锁定**到进程结束。
+
+    R2-P1-02：首次 online → offline 时**同时**确保网络 wrapper 已安装。
+    启动阶段 `main.lifespan()` 也会无条件调用 `install_network_deny()`，
+    因此运行时切换不会出现「已离线但裸 socket 仍可出网」的窗口。
+    """
     global _locked_offline
     with _lock:
         if _locked_offline:
             return False
         value = _raw_enabled()
-        if not value:
-            _locked_offline = True
-        return value
+        if value:
+            return True
+        _locked_offline = True
+    # 锁外安装：`_install_wrappers()` 幂等且不回调 enabled()，避免死锁
+    _install_wrappers()
+    return False
 
 
 def lock_offline_mode() -> bool:
@@ -249,119 +262,185 @@ def _guard_outbound(method: str, address: Any) -> Any:
     _block_socket(method, address)
 
 
-def install_network_deny() -> bool:
-    """安装 requests + socket 两层 egress deny（仅开关关闭时生效）。"""
+def _peer_host(sock: Any) -> str | None:
+    """已连接 socket 的对端 host；拿不到返回 None（调用方按 fail closed 处理）。"""
+    try:
+        peer = sock.getpeername()
+    except OSError:
+        return None
+    host = _address_host(peer)
+    return host if isinstance(host, str) else None
+
+
+def _guarded_request(self, method, url, *args, **kwargs):  # noqa: ANN001 - 透明包装
+    if not enabled():
+        with _lock:
+            _stats["network_blocked"] += 1
+        # 只记录 method + hostname：path / query / userinfo 绝不进日志与异常
+        logger.warning("离线验收：拦截真实网络请求 %s → %s", method, _safe_host(url))
+        raise ExternalFetchBlocked("NETWORK_REQUEST_BLOCKED", source=_safe_host(url))
+    with _lock:
+        _stats["network_attempts"] += 1
+    return _original_request(self, method, url, *args, **kwargs)
+
+
+def _guarded_create_connection(address, *args, **kwargs):  # noqa: ANN001
+    with _lock:
+        _stats["os_network_attempts"] += 1
+    address = _guard_outbound("create_connection", address)
+    return _original_create_connection(address, *args, **kwargs)
+
+
+def _guarded_connect(self, address):  # noqa: ANN001
+    if _is_unix_socket(self):
+        return _original_socket_connect(self, address)
+    with _lock:
+        _stats["os_network_attempts"] += 1
+    address = _guard_outbound("socket.connect", address)
+    return _original_socket_connect(self, address)
+
+
+def _guarded_connect_ex(self, address):  # noqa: ANN001
+    if _is_unix_socket(self):
+        return _original_socket_connect_ex(self, address)
+    with _lock:
+        _stats["os_network_attempts"] += 1
+    address = _guard_outbound("socket.connect_ex", address)
+    return _original_socket_connect_ex(self, address)
+
+
+def _guarded_sendto(self, data, *args):  # noqa: ANN001
+    with _lock:
+        _stats["udp_attempts"] += 1
+    if _is_unix_socket(self):
+        return _original_socket_sendto(self, data, *args)
+    address = args[-1] if args else None
+    if not enabled() and not _strict_loopback_ip(_address_host(address)):
+        _block_udp("socket.sendto", address)
+    return _original_socket_sendto(self, data, *args)
+
+
+def _sendmsg_address(args: tuple) -> Any:
+    # sendmsg(buf, ancdata, flags, address)
+    return args[2] if len(args) >= 3 else None
+
+
+def _guarded_sendmsg(self, buffers, *args):  # noqa: ANN001
+    is_dgram = bool(getattr(self, "type", 0) & socket.SOCK_DGRAM)
+    with _lock:
+        _stats["udp_attempts" if is_dgram else "stream_attempts"] += 1
+    if _is_unix_socket(self):
+        return _original_socket_sendmsg(self, buffers, *args)
+    if enabled():
+        return _original_socket_sendmsg(self, buffers, *args)
+    # 显式 address 或已连接对端都可以作为目标；两者都拿不到时**不得放行**
+    target = _sendmsg_address(args)
+    if target is None:
+        target = _peer_host(self)
+    if target is None:
+        with _lock:
+            _stats["udp_blocked" if is_dgram else "stream_blocked"] += 1
+        logger.warning("离线验收：拦截无目标地址的 socket.sendmsg")
+        raise ExternalFetchBlocked("NETWORK_SEND_TARGET_UNKNOWN")
+    if not _strict_loopback_ip(_address_host(target)):
+        with _lock:
+            _stats["udp_blocked" if is_dgram else "stream_blocked"] += 1
+        logger.warning("离线验收：拦截 socket.sendmsg → %s", _safe_host(target))
+        raise ExternalFetchBlocked(
+            "NETWORK_DATAGRAM_BLOCKED" if is_dgram else "NETWORK_STREAM_SEND_BLOCKED",
+            source=_address_host(target),
+        )
+    return _original_socket_sendmsg(self, buffers, *args)
+
+
+def _guard_stream_send(sock: Any, method: str) -> None:
+    """离线时校验已连接 socket 的对端是否严格回环；不是则阻断。"""
+    if enabled() or _is_unix_socket(sock):
+        return
+    target = _peer_host(sock)
+    if target is None or not _strict_loopback_ip(target):
+        with _lock:
+            _stats["stream_blocked"] += 1
+        logger.warning("离线验收：拦截已连接 socket 发送 %s → %s", method, _safe_host(target))
+        raise ExternalFetchBlocked("NETWORK_STREAM_SEND_BLOCKED", source=target)
+
+
+def _guarded_send(self, data, flags=0):  # noqa: ANN001
+    with _lock:
+        _stats["stream_attempts"] += 1
+    _guard_stream_send(self, "send")
+    return _original_socket_send(self, data, flags)
+
+
+def _guarded_sendall(self, data, flags=0):  # noqa: ANN001
+    with _lock:
+        _stats["stream_attempts"] += 1
+    _guard_stream_send(self, "sendall")
+    return _original_socket_sendall(self, data, flags)
+
+
+def _install_wrappers() -> bool:
+    """安装 requests + socket 轻量 wrapper（**总是安装**，幂等）。
+
+    wrapper 每次调用时再读 `enabled()`：在线透明放行，离线阻断非回环。
+    这样：
+    - 启动在线时也已安装，运行中 online → offline 没有「未安装拦截器」窗口；
+    - 安装失败直接抛出，由启动流程 fail closed，不会静默留下
+      `enabled=false` 但 `socket_guarded=false` 的状态。
+    """
     global _original_request, _original_create_connection, _original_socket_connect
     global _original_socket_connect_ex, _original_socket_sendto, _original_socket_sendmsg
-    if enabled():
-        return False
-    with _lock:
+    global _original_socket_send, _original_socket_sendall
+    with _install_lock:
         if _stats["installed"]:
             return True
+        import requests.sessions as sessions
 
-    import requests.sessions as sessions
+        _original_request = sessions.Session.request
+        _original_create_connection = socket.create_connection
+        _original_socket_connect = socket.socket.connect
+        _original_socket_connect_ex = getattr(socket.socket, "connect_ex", None)
+        _original_socket_sendto = getattr(socket.socket, "sendto", None)
+        _original_socket_sendmsg = getattr(socket.socket, "sendmsg", None)
+        _original_socket_send = socket.socket.send
+        _original_socket_sendall = socket.socket.sendall
 
-    _original_request = sessions.Session.request
-
-    def guarded(self, method, url, *args, **kwargs):  # noqa: ANN001 - 透明包装
-        if not enabled():
-            with _lock:
-                _stats["network_blocked"] += 1
-            # 只记录 method + hostname：path / query / userinfo 绝不进日志与异常
-            logger.warning("离线验收：拦截真实网络请求 %s → %s", method, _safe_host(url))
-            raise ExternalFetchBlocked("NETWORK_REQUEST_BLOCKED", source=_safe_host(url))
+        sessions.Session.request = _guarded_request
+        socket.create_connection = _guarded_create_connection
+        socket.socket.connect = _guarded_connect
+        if _original_socket_connect_ex is not None:
+            socket.socket.connect_ex = _guarded_connect_ex
+        if _original_socket_sendto is not None:
+            socket.socket.sendto = _guarded_sendto
+        if _original_socket_sendmsg is not None:
+            socket.socket.sendmsg = _guarded_sendmsg
+        socket.socket.send = _guarded_send
+        socket.socket.sendall = _guarded_sendall
         with _lock:
-            _stats["network_attempts"] += 1
-        return _original_request(self, method, url, *args, **kwargs)
-
-    sessions.Session.request = guarded
-
-    _original_create_connection = socket.create_connection
-
-    def guarded_create_connection(address, *args, **kwargs):  # noqa: ANN001
-        with _lock:
-            _stats["os_network_attempts"] += 1
-        address = _guard_outbound("create_connection", address)
-        return _original_create_connection(address, *args, **kwargs)
-
-    socket.create_connection = guarded_create_connection
-
-    _original_socket_connect = socket.socket.connect
-
-    def guarded_connect(self, address):  # noqa: ANN001
-        if _is_unix_socket(self):
-            return _original_socket_connect(self, address)
-        with _lock:
-            _stats["os_network_attempts"] += 1
-        address = _guard_outbound("socket.connect", address)
-        return _original_socket_connect(self, address)
-
-    socket.socket.connect = guarded_connect
-
-    if hasattr(socket.socket, "connect_ex"):
-        _original_socket_connect_ex = socket.socket.connect_ex
-
-        def guarded_connect_ex(self, address):  # noqa: ANN001
-            if _is_unix_socket(self):
-                return _original_socket_connect_ex(self, address)
-            with _lock:
-                _stats["os_network_attempts"] += 1
-            address = _guard_outbound("socket.connect_ex", address)
-            return _original_socket_connect_ex(self, address)
-
-        socket.socket.connect_ex = guarded_connect_ex
-
-    if hasattr(socket.socket, "sendto"):
-        _original_socket_sendto = socket.socket.sendto
-
-        def guarded_sendto(self, data, *args):  # noqa: ANN001
-            if _is_unix_socket(self):
-                return _original_socket_sendto(self, data, *args)
-            address = args[-1] if args else None
-            host = _address_host(address)
-            if enabled() or _strict_loopback_ip(host):
-                with _lock:
-                    _stats["udp_attempts"] += 1
-                return _original_socket_sendto(self, data, *args)
-            with _lock:
-                _stats["udp_attempts"] += 1
-            _block_udp("socket.sendto", address)
-
-        socket.socket.sendto = guarded_sendto
-
-    if hasattr(socket.socket, "sendmsg"):
-        _original_socket_sendmsg = socket.socket.sendmsg
-
-        def guarded_sendmsg(self, buffers, *args):  # noqa: ANN001
-            if _is_unix_socket(self):
-                return _original_socket_sendmsg(self, buffers, *args)
-            # sendmsg(buf, ancdata, flags, address)
-            address = args[2] if len(args) >= 3 else None
-            host = _address_host(address)
-            if address is None or enabled() or _strict_loopback_ip(host):
-                with _lock:
-                    _stats["udp_attempts"] += 1
-                return _original_socket_sendmsg(self, buffers, *args)
-            with _lock:
-                _stats["udp_attempts"] += 1
-            _block_udp("socket.sendmsg", address)
-
-        socket.socket.sendmsg = guarded_sendmsg
-
-    with _lock:
-        _stats["installed"] = True
-        _stats["socket_guarded"] = True
+            _stats["installed"] = True
+            _stats["socket_guarded"] = True
     logger.warning(
-        "已安装离线网络闸门（%s=false）：requests 与 socket 出网将在发网前失败（仅严格回环放行）",
+        "已安装离线网络闸门 wrapper（%s）：在线透明放行，离线仅严格回环放行",
         ENV,
     )
     return True
+
+
+def install_network_deny() -> bool:
+    """安装轻量 wrapper 并返回当前是否处于离线锁定。
+
+    与旧行为不同：**在线时也安装**（透明放行），避免运行时切换出现无拦截窗口。
+    安装失败向上抛出，启动流程按 fail closed 处理。
+    """
+    _install_wrappers()
+    return not enabled()
 
 
 def uninstall_network_deny() -> None:
     """测试用：恢复 `requests` 与 socket 原始方法（不清除 locked_offline）。"""
     global _original_request, _original_create_connection, _original_socket_connect
     global _original_socket_connect_ex, _original_socket_sendto, _original_socket_sendmsg
+    global _original_socket_send, _original_socket_sendall
     import requests.sessions as sessions
 
     if _original_request is not None:
@@ -382,6 +461,12 @@ def uninstall_network_deny() -> None:
     if _original_socket_sendmsg is not None:
         socket.socket.sendmsg = _original_socket_sendmsg
         _original_socket_sendmsg = None
+    if _original_socket_send is not None:
+        socket.socket.send = _original_socket_send
+        _original_socket_send = None
+    if _original_socket_sendall is not None:
+        socket.socket.sendall = _original_socket_sendall
+        _original_socket_sendall = None
     with _lock:
         _stats["installed"] = False
         _stats["socket_guarded"] = False
@@ -398,6 +483,8 @@ def reset_stats() -> None:
             "os_network_blocked",
             "udp_attempts",
             "udp_blocked",
+            "stream_attempts",
+            "stream_blocked",
         ):
             _stats[key] = 0
 
@@ -421,6 +508,9 @@ def stats() -> dict[str, Any]:
     - `os_network_attempts` / `os_network_blocked`：TCP 建连层
       （`create_connection` / `connect` / `connect_ex`，回环也算尝试）；
     - `udp_attempts` / `udp_blocked`：UDP `sendto` / `sendmsg`；
+    - `stream_attempts` / `stream_blocked`：已连接 socket 的 `send` / `sendall`
+      （以及 TCP `sendmsg`）；
+    - `installed` / `socket_guarded`：wrapper 是否真实安装（在线也应为 true）；
     - `dns_guard=NOT_INTERCEPTED`：DNS 查询未在进程内拦截；
     - 这些都不是「全宿主网络调用总数」，OS 级隔离是否生效需另测。
     """
@@ -431,7 +521,8 @@ def stats() -> dict[str, Any]:
             "locked_offline": _locked_offline,
             "mode": "offline_locked" if _locked_offline else "online",
             "switch_policy": (
-                "online→offline 立即生效并锁定；offline→online 不支持（需重启进程）"
+                "online→offline 立即生效并锁定（wrapper 启动即安装）；"
+                "offline→online 不支持（需重启进程）"
             ),
             "dns_guard": "NOT_INTERCEPTED",
             **_stats,

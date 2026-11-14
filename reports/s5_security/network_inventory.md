@@ -41,17 +41,21 @@
 
 1. **来源入口**：`ensure_external_fetch(context)` → `ExternalFetchBlocked`；不重试（`retry_call` 只尝试一次）。
    `context` 只作**安全标签**：URL / path / query / userinfo 会被剔除后记录，最多 48 字符。
-2. **进程内网络层**：`install_network_deny()` 同时 patch：
+2. **进程内网络层**：`install_network_deny()` **启动时总是安装轻量 wrapper**
+   （在线透明放行，离线按有效开关阻断），运行中 online→offline 不需要再安装：
    - `requests.Session.request`
    - `socket.create_connection`
-   - `socket.socket.connect`
-   - `socket.socket.connect_ex`
+   - `socket.socket.connect` / `connect_ex`
    - UDP `socket.socket.sendto`
-   - 平台存在时 `socket.socket.sendmsg`
+   - `socket.socket.sendmsg`（显式 address 或已连接 peer；两者都没有时**阻断**）
+   - 已连接 socket 的 `socket.socket.send` / `sendall`
    回环只允许**严格 loopback IP**（`127.0.0.0/8`、`::1` 等）；`localhost` 固定映射到
    `127.0.0.1`（`ip6-localhost` → `::1`），**不交给 OS hosts/DNS 解析**；
    `localhost.localdomain`、空 host、`None`、普通主机名一律拦截。
+   已连接但 peer 不是回环的 socket：不关闭连接，但 `send` / `sendall` / `sendmsg`
+   在发送前阻断（`NETWORK_STREAM_SEND_BLOCKED`）。
    Unix domain socket（`AF_UNIX`）不经过网络判定，保持可用。
+   安装失败直接抛出，启动流程 fail closed，不会出现 `enabled=false` 却未安装拦截器的状态。
 3. **进程启动锁定**：首次读到 `EXTERNAL_DATA_FETCH_ENABLED=false` 即 `locked_offline=true`，
    运行中改回 true 也不会放行（`stats().enabled` 返回**有效状态** false）。
 
@@ -62,6 +66,9 @@
 - `os_network_attempts` / `os_network_blocked`：TCP 建连层
   （`create_connection` / `connect` / `connect_ex`，回环也计尝试）；
 - `udp_attempts` / `udp_blocked`：UDP `sendto` / `sendmsg`；
+- `stream_attempts` / `stream_blocked`：已连接 socket 的 `send` / `sendall`
+  （以及 TCP `sendmsg`）；
+- `installed` / `socket_guarded`：wrapper 是否真实安装（在线也应为 true）；
 - `dns_guard=NOT_INTERCEPTED`：DNS 查询未在进程内拦截；
 - 上述都**不是**全宿主网络调用总数。来源入口被提前拦截时，不会计入 socket 层拦截。
 
