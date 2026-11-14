@@ -320,10 +320,14 @@ def _stats(
             round(sum(close_vs_open) / len(close_vs_open), 2) if close_vs_open else None
         ),
     }
+    valid_set = set(valid_codes)
     values = {
         "pct": pcts,
         "open_pct": opens,
         "close_vs_open": close_vs_open,
+        # 审计诊断：只在需要时由调用方暴露，不改变任何统计口径
+        "valid_codes": valid_codes,
+        "missing_codes": [code for code in samples if code not in valid_set],
     }
     return stats, values
 
@@ -413,6 +417,7 @@ def build_next_day(
     metric: str = "limit_up_count",
     include_pending: bool = True,
     end_date: date | None = None,
+    include_code_details: bool = False,
 ) -> dict[str, Any]:
     """构建情绪 × 次日表现的结果（只读本地库）。"""
     if group not in GROUPS:
@@ -605,6 +610,16 @@ def build_next_day(
                 "data_quality_status": status,
                 "data_quality_reasons": _dedupe(reasons),
                 "data_as_of": data_as_of,
+                **(
+                    {
+                        # 审计诊断字段（R3-P2-02）：定位缺失股票代码，不参与业务统计
+                        "sample_codes": list(codes),
+                        "valid_codes": values.get("valid_codes") or [],
+                        "missing_codes": values.get("missing_codes") or [],
+                    }
+                    if include_code_details
+                    else {}
+                ),
             }
         )
 

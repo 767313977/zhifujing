@@ -24,6 +24,7 @@ from app.models import (
     Base,
     CollectLog,
     LimitPool,
+    MarketSentiment,
     TradeCalendar,
 )
 
@@ -101,6 +102,27 @@ def _build_db(path: Path, days=(D1,)) -> None:
                 consecutive=1,
             )
         )
+        # D 日样本池可信：三池都有成功日志；情绪样本才能拿到 600000
+        db.add_all(
+            [
+                CollectLog(trade_date=D1, task=task, status="ok", rows=rows)
+                for task, rows in (
+                    ("pool_up", 1),
+                    ("pool_broken", 0),
+                    ("pool_down", 0),
+                )
+            ]
+        )
+        db.add(
+            MarketSentiment(
+                trade_date=D1,
+                limit_up_count=1,
+                broken_rate=0.0,
+                max_consecutive=1,
+                up_count=1,
+                down_count=0,
+            )
+        )
         db.commit()
     engine.dispose()
 
@@ -114,8 +136,9 @@ def audit_db(tmp_path):
 
 def test_baseline_audit_has_no_unexpected(audit_db):
     result = audit.run(audit_db, D1, D1, 1)
-    assert result["matrix_version"] == "quality-consistency-matrix-v2"
+    assert result["matrix_version"] == "quality-consistency-matrix-v3"
     assert result["summary"]["unexpected_disagreements"] == 0
+    assert result["summary"]["not_comparable"] == 0
     assert result["summary"]["total_checks"] >= 4
     sampling = result["sampling"]
     assert sampling["strategy"].startswith("等距抽样")
@@ -218,24 +241,261 @@ def test_explained_requires_reason_code():
     assert explained["reason_code"] == "WHY"
 
 
-def _patch_sentiment(monkeypatch, daily_status, sentiment_status, *, missing, valid=10, sample=10):
-    """把 D+1 日线状态与情绪次日状态固定为指定组合（不改真实库）。"""
-    monkeypatch.setattr(audit, "_daily_status", lambda *_args, **_kwargs: daily_status)
-    monkeypatch.setattr(
-        audit.snd,
-        "build_next_day",
-        lambda *_args, **_kwargs: {
-            "series": [
-                {
-                    "outcome_date": D2.isoformat(),
-                    "data_quality_status": sentiment_status,
-                    "missing_count": missing,
-                    "valid_count": valid,
-                    "sample_count": sample,
-                }
-            ]
+def _codes(count: int) -> list[str]:
+    return [f"{600000 + index:06d}" for index in range(count)]
+
+
+def _row(
+    *,
+    status="VERIFIED",
+    sample=10,
+    valid=10,
+    missing=0,
+    unverifiable=0,
+    reasons=None,
+    missing_codes=None,
+    outcome=D2.isoformat(),
+):
+    sample_codes = _codes(sample)
+    missing_codes = list(missing_codes or [])
+    return {
+        "outcome_date": outcome,
+        "data_quality_status": status,
+        "sample_count": sample,
+        "valid_count": valid,
+        "missing_count": missing,
+        "unverifiable_count": unverifiable,
+        "limit_up_again_count": 0 if unverifiable == 0 else None,
+        "limit_up_again_ratio": 0.0 if unverifiable == 0 else None,
+        "sample_codes": sample_codes,
+        "valid_codes": [code for code in sample_codes if code not in missing_codes],
+        "missing_codes": missing_codes,
+        "data_quality_reasons": list(reasons or []),
+    }
+
+
+def _items(
+    *,
+    up_status=audit.dq.STATUS_VERIFIED,
+    up_trusted=True,
+    broken_status=audit.dq.STATUS_VERIFIED,
+    broken_trusted=True,
+    metric_status=audit.dq.STATUS_VERIFIED,
+):
+    return {
+        "limit_pool": {
+            "source": "limit_pool",
+            "status": up_status,
+            "pool_up": {"status": up_status, "trusted": up_trusted},
+            "pool_broken": {"status": broken_status, "trusted": broken_trusted},
         },
+        "market_sentiment": {"source": "market_sentiment", "status": metric_status},
+    }
+
+
+def _sentiment_checks(
+    path: Path, monkeypatch, items, row, *, daily_status=None, d1_items=None
+):
+    monkeypatch.setattr(
+        audit.snd, "build_next_day", lambda *_args, **_kwargs: {"series": [row]}
     )
+    if daily_status is not None:
+        monkeypatch.setattr(audit, "_daily_status", lambda *_args, **_kwargs: daily_status)
+    if d1_items is not None:
+        monkeypatch.setattr(audit, "_overview_items", lambda *_args, **_kwargs: d1_items)
+    engine = create_engine(f"sqlite:///{path.as_posix()}", future=True)
+    try:
+        with Session(engine) as session:
+            return audit._sentiment_checks(session, D1, items)
+    finally:
+        engine.dispose()
+
+
+def _by_prefix(checks, prefix):
+    return [check for check in checks if check["name"].startswith(prefix)]
+
+
+def test_sample_pool_missing_is_not_attributed_to_d1_daily(audit_db, monkeypatch):
+    """D 日样本池缺失导致 sample=0 时，只报上游依赖不可用，不比对 D+1 日线。"""
+    row = _row(
+        status="UNVERIFIED",
+        sample=0,
+        valid=0,
+        reasons=["UP_POOL_MISSING", "METRIC_MISSING"],
+    )
+    items = _items(
+        up_status=audit.dq.STATUS_NOT_COLLECTED,
+        up_trusted=False,
+        metric_status=audit.dq.STATUS_NOT_COLLECTED,
+    )
+    checks = _sentiment_checks(audit_db, monkeypatch, items, row, daily_status="VERIFIED_SOURCE")
+    sample_check = _by_prefix(checks, "sentiment.sample_pool(D up)")[0]
+    assert sample_check["result"] == "NOT_COMPARABLE"
+    assert sample_check["reason_code"] == "SENTIMENT_SAMPLE_POOL_DEPENDENCY_UNRESOLVED"
+    metric_check = _by_prefix(checks, "sentiment.metric")[0]
+    assert metric_check["result"] == "NOT_COMPARABLE"
+    assert metric_check["reason_code"] == "SENTIMENT_METRIC_DEPENDENCY_UNRESOLVED"
+    # 没有样本就不能拿 D+1 日线来比较
+    assert not _by_prefix(checks, "sentiment.d1_coverage")
+
+
+def test_sample_pool_and_d1_daily_are_reported_separately(audit_db, monkeypatch):
+    row = _row(status="PARTIAL", sample=10, valid=10, missing=0, reasons=["UP_POOL_UNVERIFIED"])
+    items = _items(up_status=audit.dq.STATUS_UNVERIFIABLE, up_trusted=False)
+    checks = _sentiment_checks(
+        audit_db, monkeypatch, items, row, daily_status=audit.dq.STATUS_PARTIAL
+    )
+    sample_check = _by_prefix(checks, "sentiment.sample_pool(D up)")[0]
+    assert sample_check["result"] == "NOT_COMPARABLE"
+    coverage = _by_prefix(checks, "sentiment.d1_coverage")[0]
+    assert coverage["result"] == "EXPLAINED"
+    assert coverage["reason_code"] == "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL"
+
+
+def test_d1_limit_pool_unverifiable_keeps_daily_coverage_pass(audit_db, monkeypatch):
+    """D+1 涨停池不可信：日线覆盖 PASS，再次涨停指标单独 NOT_COMPARABLE。"""
+    row = _row(
+        status="PARTIAL",
+        sample=10,
+        valid=10,
+        missing=0,
+        unverifiable=10,
+        reasons=["OUTCOME_LIMIT_POOL_UNVERIFIED"],
+    )
+    d1_items = _items(up_status=audit.dq.STATUS_UNVERIFIABLE, up_trusted=False)
+    checks = _sentiment_checks(
+        audit_db,
+        monkeypatch,
+        _items(),
+        row,
+        daily_status=audit.dq.STATUS_VERIFIED,
+        d1_items=d1_items,
+    )
+    coverage = _by_prefix(checks, "sentiment.d1_coverage")[0]
+    assert coverage["result"] == "PASS"
+    limit_check = _by_prefix(checks, "sentiment.limit_up_again")[0]
+    assert limit_check["result"] == "NOT_COMPARABLE"
+    assert limit_check["reason_code"] == "OUTCOME_LIMIT_POOL_DEPENDENCY_UNRESOLVED"
+    assert limit_check["diagnostics"]["unverifiable_count"] == 10
+
+
+def test_missing_sample_row_is_not_comparable_and_lists_codes(audit_db, monkeypatch):
+    """无 D+1 日线行且无停牌/交易资格证据：NOT_COMPARABLE，但必须定位到代码。"""
+    row = _row(status="PARTIAL", sample=10, valid=9, missing=1, missing_codes=["600003"])
+    checks = _sentiment_checks(
+        audit_db, monkeypatch, _items(), row, daily_status=audit.dq.STATUS_VERIFIED
+    )
+    coverage = _by_prefix(checks, "sentiment.d1_coverage")[0]
+    assert coverage["result"] == "NOT_COMPARABLE"
+    assert coverage["reason_code"] == "D1_DAILY_ROW_MISSING_WITHOUT_TRADABILITY_EVIDENCE"
+    assert coverage["diagnostics"]["missing_codes"] == ["600003"]
+    assert coverage["diagnostics"]["missing_row_codes"] == ["600003"]
+    assert coverage["diagnostics"]["missing_pct_codes"] == []
+
+
+def test_missing_quote_without_tradability_evidence_is_not_comparable(audit_db, monkeypatch):
+    row = _row(status="PARTIAL", sample=10, valid=9, missing=1, missing_codes=["600003"])
+    checks = _sentiment_checks(
+        audit_db, monkeypatch, _items(), row, daily_status=audit.dq.STATUS_PARTIAL
+    )
+    coverage = _by_prefix(checks, "sentiment.d1_coverage")[0]
+    assert coverage["result"] == "NOT_COMPARABLE"
+    assert coverage["reason_code"] == "D1_DAILY_ROW_MISSING_WITHOUT_TRADABILITY_EVIDENCE"
+    # 不得擅自解释为停牌
+    assert coverage["diagnostics"]["tradability_evidence"] is None
+
+
+def test_null_pct_chg_is_reported_as_missing_pct_codes(audit_db, monkeypatch):
+    engine = create_engine(f"sqlite:///{audit_db.as_posix()}", future=True)
+    with Session(engine) as session:
+        from app.models import StockDaily
+
+        session.add(StockDaily(trade_date=D2, code="600003", open=10.0, close=10.0, pct_chg=None))
+        session.commit()
+    engine.dispose()
+    row = _row(status="PARTIAL", sample=10, valid=9, missing=1, missing_codes=["600003"])
+    checks = _sentiment_checks(
+        audit_db, monkeypatch, _items(), row, daily_status=audit.dq.STATUS_PARTIAL
+    )
+    coverage = _by_prefix(checks, "sentiment.d1_coverage")[0]
+    assert coverage["diagnostics"]["missing_row_codes"] == []
+    assert coverage["diagnostics"]["missing_pct_codes"] == ["600003"]
+    assert coverage["result"] == "NOT_COMPARABLE"
+    assert coverage["reason_code"] == "D1_PCT_CHG_NULL_WITHOUT_TRADABILITY_EVIDENCE"
+
+
+def test_null_pct_with_verified_daily_is_unexpected(audit_db, monkeypatch):
+    """行存在、收盘价存在但 pct_chg 为空，与「全市场日线已验证」矛盾 → UNEXPECTED。"""
+    engine = create_engine(f"sqlite:///{audit_db.as_posix()}", future=True)
+    with Session(engine) as session:
+        from app.models import StockDaily
+
+        session.add(StockDaily(trade_date=D2, code="600003", open=10.0, close=10.0, pct_chg=None))
+        session.commit()
+    engine.dispose()
+    row = _row(status="PARTIAL", sample=10, valid=9, missing=1, missing_codes=["600003"])
+    checks = _sentiment_checks(
+        audit_db, monkeypatch, _items(), row, daily_status=audit.dq.STATUS_VERIFIED
+    )
+    coverage = _by_prefix(checks, "sentiment.d1_coverage")[0]
+    assert coverage["result"] == "UNEXPECTED"
+    assert coverage["diagnostics"]["missing_pct_codes"] == ["600003"]
+
+
+def test_daily_source_unavailable_is_not_comparable(audit_db, monkeypatch):
+    row = _row(status="VERIFIED", sample=10, valid=10)
+    for daily_status in (
+        audit.dq.STATUS_SOURCE_ERROR,
+        audit.dq.STATUS_NOT_COLLECTED,
+        audit.dq.STATUS_UNVERIFIABLE,
+    ):
+        checks = _sentiment_checks(audit_db, monkeypatch, _items(), row, daily_status=daily_status)
+        coverage = _by_prefix(checks, "sentiment.d1_coverage")[0]
+        assert coverage["result"] == "NOT_COMPARABLE"
+        assert coverage["reason_code"] == "D1_DAILY_SOURCE_UNAVAILABLE"
+
+
+@pytest.mark.parametrize(
+    ("metric_status", "expected"),
+    [
+        (audit.dq.STATUS_VERIFIED, "UNEXPECTED"),
+        (audit.dq.STATUS_NOT_COLLECTED, "NOT_COMPARABLE"),
+    ],
+)
+def test_metric_missing_is_checked_against_d_market_sentiment(
+    audit_db, monkeypatch, metric_status, expected
+):
+    row = _row(status="PARTIAL", sample=10, valid=10, reasons=["METRIC_MISSING"])
+    checks = _sentiment_checks(
+        audit_db,
+        monkeypatch,
+        _items(metric_status=metric_status),
+        row,
+        daily_status=audit.dq.STATUS_VERIFIED,
+    )
+    metric_check = _by_prefix(checks, "sentiment.metric")[0]
+    assert metric_check["result"] == expected
+
+
+def test_not_comparable_keeps_cli_fail_closed(audit_db, tmp_path, monkeypatch, capsys):
+    """NOT_COMPARABLE 不得计入 PASS，CLI 必须保持非零退出码。"""
+    row = _row(status="PARTIAL", sample=10, valid=9, missing=1, missing_codes=["600003"])
+    monkeypatch.setattr(
+        audit.snd, "build_next_day", lambda *_args, **_kwargs: {"series": [row]}
+    )
+    monkeypatch.setattr(
+        audit, "_daily_status", lambda *_args, **_kwargs: audit.dq.STATUS_PARTIAL
+    )
+    code, result = _run_cli(monkeypatch, audit_db, tmp_path)
+    capsys.readouterr()
+    assert code == 2
+    assert result["summary"]["not_comparable"] >= 1
+    item = next(i for i in result["not_comparable"] if i["name"].startswith("sentiment.d1_coverage"))
+    assert item["diagnostics"]["missing_codes"] == ["600003"]
+    assert "missing_row_codes" in item["detail"]
+    md = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert "不可比 / 依赖未解决" in md
+    assert "missing_row_codes" in md
 
 
 def _run_cli(monkeypatch, db_path, out_dir, sample=1):
@@ -269,46 +529,15 @@ def _run_cli(monkeypatch, db_path, out_dir, sample=1):
 
 
 @pytest.mark.parametrize(
-    ("daily_status", "sentiment_status", "missing"),
-    [
-        (audit.dq.STATUS_VERIFIED, "PARTIAL", 0),
-        (audit.dq.STATUS_PARTIAL, "UNVERIFIED", 0),
-        (audit.dq.STATUS_SOURCE_ERROR, "VERIFIED", 0),
-        (audit.dq.STATUS_NOT_COLLECTED, "VERIFIED", 0),
-        (audit.dq.STATUS_PARTIAL, "VERIFIED", 5),
-    ],
+    "daily_status",
+    [audit.dq.STATUS_SOURCE_ERROR, audit.dq.STATUS_NOT_COLLECTED],
 )
-def test_sentiment_daily_mismatch_is_unexpected_and_exits_nonzero(
-    audit_db, tmp_path, monkeypatch, capsys, daily_status, sentiment_status, missing
-):
-    """跨服务矛盾：左侧 D+1 日线状态与右侧情绪状态非法组合 → unexpected + 退出码 2。"""
-    _patch_sentiment(
-        monkeypatch, daily_status, sentiment_status, missing=missing, valid=10 if missing == 0 else 5
-    )
-    code, result = _run_cli(monkeypatch, audit_db, tmp_path)
-    capsys.readouterr()
-    assert code == 2
-    assert result["summary"]["unexpected_disagreements"] >= 1
-    names = [item["name"] for item in result["unexpected"]]
-    assert "overview.stock_daily vs sentiment-next-day" in names
-    item = next(i for i in result["unexpected"] if i["name"].startswith("overview.stock_daily"))
-    assert item["reason_code"] is None
-    assert f"daily={daily_status}" in item["detail"]
-    assert f"sentiment={sentiment_status}" in item["detail"]
-
-
-def test_sentiment_subset_complete_is_explained_with_reason_code(
-    audit_db, tmp_path, monkeypatch, capsys
-):
-    """唯一允许的已解释差异：全市场日线 PARTIAL，但抽样样本无缺失且有效。"""
-    _patch_sentiment(monkeypatch, audit.dq.STATUS_PARTIAL, "VERIFIED", missing=0, valid=10, sample=10)
-    code, result = _run_cli(monkeypatch, audit_db, tmp_path)
-    capsys.readouterr()
-    assert code == 0
-    assert result["summary"]["unexpected_disagreements"] == 0
-    assert result["summary"]["explained_disagreements"] == 1
-    item = result["explained"][0]
-    assert item["reason_code"] == "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL"
+def test_unverified_daily_unavailable_never_passes(audit_db, monkeypatch, daily_status):
+    """SOURCE_ERROR / NOT_COLLECTED 时，即使 sentiment=VERIFIED 也不能通过。"""
+    row = _row(status="VERIFIED", sample=10, valid=10)
+    checks = _sentiment_checks(audit_db, monkeypatch, _items(), row, daily_status=daily_status)
+    coverage = _by_prefix(checks, "sentiment.d1_coverage")[0]
+    assert coverage["result"] == "NOT_COMPARABLE"
 
 
 def test_theme_source_error_is_not_na(audit_db, tmp_path, monkeypatch, capsys):

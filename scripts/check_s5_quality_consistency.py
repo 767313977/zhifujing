@@ -29,12 +29,13 @@ import time
 from datetime import date, datetime
 from pathlib import Path
 
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, event, select, text
 from sqlalchemy.orm import Session
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from app.models import StockDaily  # noqa: E402
 from app.services import auction_anomaly  # noqa: E402
 from app.services import data_quality as dq  # noqa: E402
 from app.services import limit_funnel  # noqa: E402
@@ -92,19 +93,42 @@ def _node_version() -> str | None:
 
 
 def _check(
-    name: str, ok: bool, *, detail: str | None = None, reason_code: str | None = None
+    name: str,
+    ok: bool,
+    *,
+    detail: str | None = None,
+    reason_code: str | None = None,
+    comparable: bool = True,
+    diagnostics: dict | None = None,
 ) -> dict:
     """一条对账结果。
 
-    严格口径：不匹配要归为 `explained`，**必须**给出具体 reason code；
-    没有原因码的一律进 `unexpected`（不能靠宽松条件静默通过）。
+    `result` 四分类（R3-P2-02）：
+    - `PASS`：按协议一致；
+    - `EXPLAINED`：不一致但有**具体、已批准**的 reason code；
+    - `NOT_COMPARABLE`：缺少判断所需的依赖 / 历史资格证据，不计 PASS，也不自动解释；
+    - `UNEXPECTED`：其余不一致。
+
+    `NOT_COMPARABLE` 优先于 reason code：它表示「这条检查根本无法完成」，
+    不能拿一个原因码把它洗成 EXPLAINED。
     """
+    if ok:
+        result = "PASS"
+    elif not comparable:
+        result = "NOT_COMPARABLE"
+    elif reason_code:
+        result = "EXPLAINED"
+    else:
+        result = "UNEXPECTED"
     return {
         "name": name,
         "ok": bool(ok),
-        "explained": bool(not ok and reason_code),
+        "explained": result == "EXPLAINED",
+        "comparable": bool(comparable),
+        "result": result,
         "reason_code": None if ok else reason_code,
         "detail": detail,
+        "diagnostics": diagnostics,
     }
 
 
@@ -138,11 +162,10 @@ STATE_MATRIX: dict[str, dict[str, set[str]]] = {
         dq.STATUS_SOURCE_ERROR: set(),
     },
     "sentiment": {
-        # 左侧是 D+1 `stock_daily` overview 状态，右侧是 sentiment_next_day 的
-        # `data_quality_status` 词表（VERIFIED / PARTIAL / UNVERIFIED / PENDING）。
-        # 唯一允许的「子集差异」不在此表：daily PARTIAL + sentiment VERIFIED 且
-        # 抽样内 missing==0 / 有有效样本时，由 `SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL`
-        # 明确解释；其余组合一律 unexpected。
+        # v3 起不再用综合 `data_quality_status` 与 D+1 日线直接比较：
+        # 情绪状态混合了 D 日样本池、D+1 日线、D+1 涨停池与 D 日情绪指标四个依赖，
+        # 分别由 `sentiment.sample_pool` / `d1_coverage` / `limit_up_again` / `metric` 检查。
+        # 此表仅保留历史 v2 对照，不再参与判定。
         dq.STATUS_VERIFIED: {"VERIFIED", "EMPTY"},
         dq.STATUS_PARTIAL: {"PARTIAL"},
         dq.STATUS_UNVERIFIABLE: {"UNVERIFIED"},
@@ -234,52 +257,267 @@ def _theme_checks(session: Session, day: date, item: dict) -> list[dict]:
     ]
 
 
+def _overview_items(session: Session, day: date) -> dict[str, dict]:
+    return {
+        item["source"]: item for item in dq.overview(session, target_date=day, days=30)["items"]
+    }
+
+
+def _dimension(item: dict | None, name: str) -> dict:
+    return (item or {}).get(name) or {}
+
+
+def _sample_pool_checks(
+    session: Session, day: date, items: dict, reasons: list[str], sample: int
+) -> list[dict]:
+    """C2.1：D 日样本池依赖，单独于 D+1 日线判定。"""
+    checks: list[dict] = []
+    for prefix, dimension, label in (
+        ("UP_POOL", "pool_up", "up"),
+        ("BROKEN_POOL", "pool_broken", "broken"),
+    ):
+        matched = [reason for reason in reasons if reason.startswith(prefix)]
+        if not matched:
+            continue
+        dim = _dimension(items.get("limit_pool"), dimension)
+        trusted = bool(dim.get("trusted"))
+        checks.append(
+            _check(
+                f"sentiment.sample_pool(D {label}) vs overview.limit_pool(D)",
+                False,
+                comparable=trusted,
+                reason_code=None if trusted else "SENTIMENT_SAMPLE_POOL_DEPENDENCY_UNRESOLVED",
+                detail=f"reasons={matched}; sample={sample}; "
+                f"overview.{dimension}={dim.get('status')} trusted={trusted}",
+                diagnostics={
+                    "reasons": matched,
+                    "sample_count": sample,
+                    "overview_status": dim.get("status"),
+                    "overview_trusted": trusted,
+                },
+            )
+        )
+    prev_matched = [
+        reason for reason in reasons if reason.startswith(("PREV_UP_POOL", "RELAY"))
+    ]
+    if prev_matched:
+        prev = previous_trade_day(day, session)
+        prev_items = _overview_items(session, prev) if prev else {}
+        dim = _dimension(prev_items.get("limit_pool"), "pool_up")
+        trusted = bool(dim.get("trusted"))
+        checks.append(
+            _check(
+                "sentiment.sample_pool(D-1 up) vs overview.limit_pool(D-1)",
+                False,
+                comparable=trusted,
+                reason_code=None if trusted else "SENTIMENT_SAMPLE_POOL_DEPENDENCY_UNRESOLVED",
+                detail=f"reasons={prev_matched}; sample={sample}; "
+                f"overview.pool_up={dim.get('status')} trusted={trusted}",
+                diagnostics={
+                    "reasons": prev_matched,
+                    "sample_count": sample,
+                    "overview_status": dim.get("status"),
+                    "overview_trusted": trusted,
+                    "dependency_date": prev.isoformat() if prev else None,
+                },
+            )
+        )
+    if not checks:
+        dim = _dimension(items.get("limit_pool"), "pool_up")
+        checks.append(
+            _check(
+                "sentiment.sample_pool(D) vs overview.limit_pool(D)",
+                True,
+                detail=f"sample={sample}; overview.pool_up={dim.get('status')} "
+                f"trusted={dim.get('trusted')}",
+                diagnostics={
+                    "sample_count": sample,
+                    "overview_status": dim.get("status"),
+                    "overview_trusted": bool(dim.get("trusted")),
+                },
+            )
+        )
+    return checks
+
+
+def _d1_coverage_check(session: Session, day: date, d1: date, row: dict) -> dict:
+    """C2.2：D+1 日线覆盖率，必须输出缺失股票代码级别的诊断。"""
+    name = "sentiment.d1_coverage vs overview.stock_daily(D+1)"
+    daily_status = _daily_status(session, d1)
+    sample = int(row.get("sample_count") or 0)
+    valid = int(row.get("valid_count") or 0)
+    missing = int(row.get("missing_count") or 0)
+    sample_codes = list(row.get("sample_codes") or [])
+    missing_codes = sorted(row.get("missing_codes") or [])
+    row_codes: set[str] = set()
+    pct_by_code: dict[str, float | None] = {}
+    if missing_codes:
+        rows = session.execute(
+            select(StockDaily.code, StockDaily.pct_chg).where(
+                StockDaily.trade_date == d1, StockDaily.code.in_(missing_codes)
+            )
+        ).all()
+        row_codes = {code for code, _ in rows}
+        pct_by_code = {code: pct for code, pct in rows}
+    missing_row_codes = [code for code in missing_codes if code not in row_codes]
+    missing_pct_codes = [
+        code for code in missing_codes if code in row_codes and pct_by_code.get(code) is None
+    ]
+    diagnostics = {
+        "sample_date": day.isoformat(),
+        "outcome_date": d1.isoformat(),
+        "sample_count": sample,
+        "valid_count": valid,
+        "missing_count": missing,
+        "sample_codes": sample_codes,
+        "valid_codes": list(row.get("valid_codes") or []),
+        "missing_codes": missing_codes,
+        "missing_row_codes": missing_row_codes,
+        "missing_pct_codes": missing_pct_codes,
+        "sentiment_status": row.get("data_quality_status"),
+        "daily_status": daily_status,
+        "data_quality_reasons": list(row.get("data_quality_reasons") or []),
+        # 本地没有历史停牌 / 可交易资格数据：不得擅自解释为停牌
+        "tradability_evidence": None,
+    }
+    detail = (
+        f"D+1={d1}; daily={daily_status}; sentiment={row.get('data_quality_status')}; "
+        f"sample={sample}; valid={valid}; missing={missing}; "
+        f"missing_row_codes={missing_row_codes}; missing_pct_codes={missing_pct_codes}"
+    )
+    if daily_status in (
+        dq.STATUS_SOURCE_ERROR,
+        dq.STATUS_UNVERIFIABLE,
+        dq.STATUS_NOT_COLLECTED,
+    ):
+        return _check(
+            name,
+            False,
+            comparable=False,
+            reason_code="D1_DAILY_SOURCE_UNAVAILABLE",
+            detail=detail,
+            diagnostics=diagnostics,
+        )
+    if missing == 0 and valid == sample:
+        if daily_status == dq.STATUS_PARTIAL:
+            return _check(
+                name,
+                False,
+                reason_code="SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL",
+                detail=detail,
+                diagnostics=diagnostics,
+            )
+        return _check(name, True, detail=detail, diagnostics=diagnostics)
+    # 完全没有 D+1 日线行：本地没有历史停牌 / 可交易资格数据，无法判断是
+    # 「当日不应交易」还是「采集缺失」——不得擅自解释为停牌，也不得直接判采集错误。
+    if missing_row_codes:
+        return _check(
+            name,
+            False,
+            comparable=False,
+            reason_code="D1_DAILY_ROW_MISSING_WITHOUT_TRADABILITY_EVIDENCE",
+            detail=detail,
+            diagnostics=diagnostics,
+        )
+    if missing_pct_codes:
+        if daily_status == dq.STATUS_VERIFIED:
+            # 行存在、收盘价也在，但 pct_chg 为空；全市场日线却声称已验证 → 矛盾
+            return _check(name, False, detail=detail, diagnostics=diagnostics)
+        return _check(
+            name,
+            False,
+            comparable=False,
+            reason_code="D1_PCT_CHG_NULL_WITHOUT_TRADABILITY_EVIDENCE",
+            detail=detail,
+            diagnostics=diagnostics,
+        )
+    return _check(
+        name,
+        False,
+        comparable=False,
+        reason_code="SENTIMENT_SAMPLE_QUOTES_UNVERIFIABLE",
+        detail=detail,
+        diagnostics=diagnostics,
+    )
+
+
 def _sentiment_checks(session: Session, day: date, items: dict) -> list[dict]:
-    series = snd.build_next_day(session, days=1, end_date=day)
+    """R3-P2-02：按依赖维度拆开情绪质量，不再用一个综合状态对照 D+1 日线。"""
+    series = snd.build_next_day(
+        session, days=1, end_date=day, include_code_details=True
+    )
     row = (series.get("series") or [None])[0]
     if not row:
-        return [_check("overview.stock_daily vs sentiment-next-day", True, detail="N/A 无样本")]
-    d1 = row.get("outcome_date")
-    if not d1:
-        # 区间末尾没有 D+1 交易日：没有可对照的日线日期，属于不可比而非矛盾。
         return [
             _check(
-                "overview.stock_daily vs sentiment-next-day",
+                "sentiment.sample_pool(D) vs overview.limit_pool(D)",
                 True,
-                detail="N/A 无 D+1 交易日，无法对照日线状态",
+                detail="N/A 无样本行",
             )
         ]
-    daily_status = _daily_status(session, d1)
-    sentiment_status = row.get("data_quality_status")
-    missing = int(row.get("missing_count") or 0)
-    valid = int(row.get("valid_count") or 0)
+
+    reasons = list(row.get("data_quality_reasons") or [])
     sample = int(row.get("sample_count") or 0)
-    # 左侧是 D+1 全市场日线状态，右侧是情绪服务的抽样状态；两端不再是同一变量。
-    # 「样本子集完整」是唯一允许的跨服务差异，且必须同时满足：
-    # - 全市场日线 PARTIAL（个别股票缺字段）；
-    # - 情绪侧抽查样本无缺失、有有效样本；
-    # 任何一项不满足都必须进 unexpected。
-    reason = None
-    if daily_status == dq.STATUS_PARTIAL and sentiment_status == "VERIFIED":
-        ok = False
-        if missing == 0 and valid > 0 and sample > 0:
-            reason = "SENTIMENT_SAMPLE_SUBSET_DAILY_PARTIAL"
-    else:
-        ok = _matrix_match("sentiment", daily_status, sentiment_status)
-    return [
-        _check(
-            "overview.stock_daily vs sentiment-next-day",
-            ok,
-            detail=f"next_day={d1}; daily={daily_status}; sentiment={sentiment_status}; "
-            f"sample={sample}; valid={valid}; missing={missing}",
-            reason_code=reason,
+    unverifiable = int(row.get("unverifiable_count") or 0)
+    d1 = row.get("outcome_date")
+    if isinstance(d1, str):
+        d1 = date.fromisoformat(d1)
+
+    checks = _sample_pool_checks(session, day, items, reasons, sample)
+
+    # C2.4：D 日情绪指标缺失要对 D 日 market_sentiment 负责，而不是 D+1 日线
+    if "METRIC_MISSING" in reasons:
+        metric_status = (items.get("market_sentiment") or {}).get("status")
+        trusted = metric_status == dq.STATUS_VERIFIED
+        checks.append(
+            _check(
+                "sentiment.metric(D) vs overview.market_sentiment(D)",
+                False,
+                comparable=trusted,
+                reason_code=None if trusted else "SENTIMENT_METRIC_DEPENDENCY_UNRESOLVED",
+                detail=f"METRIC_MISSING; overview.market_sentiment={metric_status}",
+                diagnostics={
+                    "reasons": reasons,
+                    "overview_status": metric_status,
+                    "overview_trusted": trusted,
+                },
+            )
         )
-    ]
+
+    # C2.2：D+1 日线覆盖（sample=0 时无法评估，交由样本池检查）
+    if sample > 0 and d1:
+        checks.append(_d1_coverage_check(session, day, d1, row))
+
+    # C2.3：D+1 涨停池只影响「是否再次涨停」，不影响日线覆盖
+    if "OUTCOME_LIMIT_POOL_UNVERIFIED" in reasons or unverifiable > 0:
+        up = _dimension(
+            _overview_items(session, d1).get("limit_pool") if d1 else None, "pool_up"
+        )
+        trusted = bool(up.get("trusted"))
+        checks.append(
+            _check(
+                "sentiment.limit_up_again vs overview.limit_pool(D+1)",
+                False,
+                comparable=trusted,
+                reason_code=None if trusted else "OUTCOME_LIMIT_POOL_DEPENDENCY_UNRESOLVED",
+                detail=f"unverifiable={unverifiable}; D+1 up={up.get('status')} "
+                f"trusted={trusted}; limit_up_again="
+                f"{row.get('limit_up_again_count')}",
+                diagnostics={
+                    "unverifiable_count": unverifiable,
+                    "limit_up_again_count": row.get("limit_up_again_count"),
+                    "limit_up_again_ratio": row.get("limit_up_again_ratio"),
+                    "reasons": reasons,
+                    "overview_status": up.get("status"),
+                    "overview_trusted": trusted,
+                },
+            )
+        )
+    return checks
 
 
 def _daily_status(session: Session, day: date) -> str:
-    items = dq.overview(session, target_date=day, days=30)["items"]
-    return {item["source"]: item for item in items}["stock_daily"]["status"]
+    return _overview_items(session, day)["stock_daily"]["status"]
 
 
 def _sample_days(days: list[date], sample: int) -> list[date]:
@@ -341,17 +579,23 @@ def run(db_path: Path, start: date, end: date, sample: int) -> dict:
         {"trade_date": day["trade_date"], **check}
         for day in checks
         for check in day["checks"]
-        if not check["ok"] and not check["explained"]
+        if check["result"] == "UNEXPECTED"
     ]
     explained = [
         {"trade_date": day["trade_date"], **check}
         for day in checks
         for check in day["checks"]
-        if not check["ok"] and check["explained"]
+        if check["result"] == "EXPLAINED"
+    ]
+    not_comparable = [
+        {"trade_date": day["trade_date"], **check}
+        for day in checks
+        for check in day["checks"]
+        if check["result"] == "NOT_COMPARABLE"
     ]
     return {
         "quality_version": dq.QUALITY_VERSION,
-        "matrix_version": "quality-consistency-matrix-v2",
+        "matrix_version": "quality-consistency-matrix-v3",
         "matrix": {
             kind: {status: sorted(allowed) for status, allowed in mapping.items()}
             for kind, mapping in STATE_MATRIX.items()
@@ -364,7 +608,8 @@ def run(db_path: Path, start: date, end: date, sample: int) -> dict:
             "node": _node_version(),
             "sqlite": sqlite3.sqlite_version,
         },
-        "exit_code": 2 if unexpected else 0,
+        # NOT_COMPARABLE / 未解决上游依赖同样 fail closed
+        "exit_code": 2 if (unexpected or not_comparable) else 0,
         "database": db_path.name,
         "mode": "ro&immutable=1",
         "range": {"start": start.isoformat(), "end": end.isoformat()},
@@ -386,14 +631,40 @@ def run(db_path: Path, start: date, end: date, sample: int) -> dict:
         "elapsed_ms": elapsed_ms,
         "summary": {
             "total_checks": sum(len(day["checks"]) for day in checks),
-            "passed": sum(1 for day in checks for check in day["checks"] if check["ok"]),
+            "passed": sum(
+                1 for day in checks for check in day["checks"] if check["result"] == "PASS"
+            ),
             "explained_disagreements": len(explained),
+            "not_comparable": len(not_comparable),
             "unexpected_disagreements": len(unexpected),
         },
         "days": checks,
         "explained": explained,
+        "not_comparable": not_comparable,
         "unexpected": unexpected,
     }
+
+
+def _render_diagnostics(item: dict) -> str:
+    """把关键诊断字段压成一行，确保 Markdown 也能定位代码与原因。"""
+    diag = item.get("diagnostics") or {}
+    keys = (
+        "sample_count",
+        "valid_count",
+        "missing_count",
+        "missing_codes",
+        "missing_row_codes",
+        "missing_pct_codes",
+        "unverifiable_count",
+        "data_quality_reasons",
+        "daily_status",
+        "overview_status",
+        "overview_trusted",
+    )
+    compact = {key: diag[key] for key in keys if diag.get(key) is not None}
+    if not compact:
+        return ""
+    return " · `" + json.dumps(compact, ensure_ascii=False) + "`"
 
 
 def _render_markdown(result: dict) -> str:
@@ -429,16 +700,38 @@ def _render_markdown(result: dict) -> str:
         f"- 检查总数：{summary['total_checks']}",
         f"- 通过：{summary['passed']}",
         f"- 已解释差异：{summary['explained_disagreements']}",
+        f"- 不可比 / 依赖未解决：{summary['not_comparable']}",
         f"- 未解释差异：{summary['unexpected_disagreements']}",
         f"- SQL：{result['sql_statements']}；耗时：{result['elapsed_ms']} ms",
         "",
-        "## 未解释差异",
+        "## 不可比 / 依赖未解决（不计 PASS）",
         "",
     ]
+    if result["not_comparable"]:
+        for item in result["not_comparable"]:
+            lines.append(
+                f"- {item['trade_date']} · {item['name']} · "
+                f"{item['reason_code']} · {item['detail']}"
+                f"{_render_diagnostics(item)}"
+            )
+    else:
+        lines.append("- 无")
+    lines.extend(["", "## 已解释差异", ""])
+    if result["explained"]:
+        for item in result["explained"]:
+            lines.append(
+                f"- {item['trade_date']} · {item['name']} · "
+                f"{item['reason_code']} · {item['detail']}"
+                f"{_render_diagnostics(item)}"
+            )
+    else:
+        lines.append("- 无")
+    lines.extend(["", "## 未解释差异", ""])
     if result["unexpected"]:
         for item in result["unexpected"]:
             lines.append(
                 f"- {item['trade_date']} · {item['name']} · {item['detail']}"
+                f"{_render_diagnostics(item)}"
             )
     else:
         lines.append("- 无（仅限本次抽样覆盖的日期）")
@@ -478,7 +771,7 @@ def main() -> None:
         f"unexpected={result['summary']['unexpected_disagreements']} "
         f"sql={result['sql_statements']} elapsed_ms={result['elapsed_ms']}"
     )
-    if result["summary"]["unexpected_disagreements"]:
+    if result["summary"]["unexpected_disagreements"] or result["summary"]["not_comparable"]:
         raise SystemExit(result["exit_code"])
 
 

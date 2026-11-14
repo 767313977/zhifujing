@@ -118,6 +118,19 @@ def by_date(data):
     return {row["sample_date"]: row for row in data["series"]}
 
 
+def test_code_details_are_opt_in_audit_fields(session):
+    """R3-P2-02：代码级诊断只在审计模式暴露，默认 API 响应不变。"""
+    default = build(session)
+    assert all("sample_codes" not in row for row in default["series"])
+    detailed = build(session, include_code_details=True)
+    rows = [row for row in detailed["series"] if row["sample_count"] > 0]
+    assert rows
+    for row in rows:
+        assert len(row["sample_codes"]) == row["sample_count"]
+        assert set(row["valid_codes"]) | set(row["missing_codes"]) == set(row["sample_codes"])
+        assert set(row["valid_codes"]) & set(row["missing_codes"]) == set()
+
+
 def test_first_board_group_and_next_day_stats(session):
     data = build(session)
     rows = by_date(data)
