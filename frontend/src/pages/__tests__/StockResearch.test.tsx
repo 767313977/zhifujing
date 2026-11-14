@@ -219,6 +219,23 @@ test('cache expires after the TTL', async () => {
   }
 })
 
+test('concurrent identical loads share one request', async () => {
+  const key = '1|600000|latest|overview-dedup'
+  let calls = 0
+  const loader = async () => {
+    calls += 1
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    return calls
+  }
+  const [first, second] = await Promise.all([
+    loadCached(key, loader),
+    loadCached(key, loader),
+  ])
+  expect(first).toBe(1)
+  expect(second).toBe(1)
+  expect(calls).toBe(1)
+})
+
 test('multi-window sync broadcasts only minimal payloads and never loops', async () => {
   class FakeChannel {
     static instances: FakeChannel[] = []

@@ -28,6 +28,12 @@ interface Entry {
 
 const cache = new Map<string, Entry>()
 
+/**
+ * 同一 key 的在途请求。侧栏标题与「概览」Tab 会同时请求同一份 profile ——
+ * 没有这张表就会并发打两次。命中在途 Promise 时直接复用它。
+ */
+const inflight = new Map<string, Promise<unknown>>()
+
 export function readResearchCache<T>(key: string, ttl = RESEARCH_CACHE_TTL): T | undefined {
   const entry = cache.get(key)
   if (!entry) return undefined
@@ -54,6 +60,7 @@ export function invalidateResearchCache(key: string): void {
 /** 登出 / 换账户时调用：不允许上一个账户的数据留在内存里。 */
 export function clearResearchCache(): void {
   cache.clear()
+  inflight.clear()
 }
 
 /** 测试用：读当前缓存条数，不参与业务逻辑 */
@@ -72,14 +79,23 @@ export async function loadCached<T>(
 ): Promise<T> {
   const hit = readResearchCache<T>(key, ttl)
   if (hit !== undefined) return hit
-  try {
-    const value = await loader()
-    writeResearchCache(key, value)
-    return value
-  } catch (err) {
-    if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-      invalidateResearchCache(key)
+  const running = inflight.get(key)
+  if (running) return running as Promise<T>
+  const task = (async () => {
+    try {
+      const value = await loader()
+      writeResearchCache(key, value)
+      return value
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        invalidateResearchCache(key)
+      }
+      throw err
+    } finally {
+      // 无论成败都移除在途标记：失败要允许下一次重试
+      inflight.delete(key)
     }
-    throw err
-  }
+  })()
+  inflight.set(key, task)
+  return task
 }

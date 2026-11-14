@@ -343,12 +343,12 @@ export default function StockResearchDrawer() {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [open, closeStockResearch])
 
-  // 名称从概览的缓存里取不到时，用 profile 请求顺带补一次（仍走缓存）
+  // 名称与「概览」共用同一份 profile 缓存键：并发时由 cache 的在途去重合并成一次请求
   useEffect(() => {
     setName(null)
     if (!open || !code || !me) return
     let active = true
-    loadCached(`research:${me.id}|${code}|name`, () => api.stockProfile(code), TTL)
+    loadCached(`${me.id}|${code}|${asOfDate ?? 'latest'}|overview`, () => api.stockProfile(code), TTL)
       .then((profile) => {
         if (active) setName(profile.name)
       })
@@ -356,7 +356,7 @@ export default function StockResearchDrawer() {
     return () => {
       active = false
     }
-  }, [open, code, me])
+  }, [open, code, me, asOfDate])
 
   if (!open || !code) return null
   const cacheBase = me ? `${me.id}|${code}|${asOfDate ?? 'latest'}` : ''

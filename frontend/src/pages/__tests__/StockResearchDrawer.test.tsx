@@ -235,7 +235,7 @@ test('close button calls closeStockResearch', async () => {
 
 test('reopening the same stock reuses the short-term cache', async () => {
   const view = renderDrawer()
-  await waitFor(() => expect(mocks.stockProfile).toHaveBeenCalledTimes(2)) // 标题 + 概览
+  await waitFor(() => expect(mocks.stockProfile).toHaveBeenCalledTimes(1)) // 标题与概览合并成一次
   const callsAfterFirst = mocks.stockProfile.mock.calls.length
   view.rerender(
     <MemoryRouter initialEntries={['/limit-up']}>
@@ -294,7 +294,7 @@ test('API failures surface an error and still allow closing', async () => {
 
 test('changing the data date refetches instead of reusing the cache', async () => {
   const view = renderDrawer()
-  await waitFor(() => expect(mocks.stockProfile).toHaveBeenCalledTimes(2))
+  await waitFor(() => expect(mocks.stockProfile).toHaveBeenCalledTimes(1))
   const calls = mocks.stockProfile.mock.calls.length
   view.rerender(
     <MemoryRouter initialEntries={['/limit-up']}>
