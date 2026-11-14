@@ -11,6 +11,7 @@
 
 import asyncio
 import json
+import logging
 import socket
 import threading
 import urllib.request
@@ -42,7 +43,11 @@ def test_offline_mode_locks_for_process_lifetime(monkeypatch):
     # 运行中改回 true 也不得放行
     monkeypatch.setenv(eg.ENV, "true")
     assert eg.enabled() is False
-    assert eg.stats()["locked_offline"] is True
+    stats = eg.stats()
+    assert stats["locked_offline"] is True
+    # enabled 必须是**有效状态**，不能因为环境变量改回 true 就显示 true
+    assert stats["enabled"] is False
+    assert "offline→online" in stats["switch_policy"]
     with pytest.raises(eg.ExternalFetchBlocked):
         eg.ensure_external_fetch("锁定后测试")
 
@@ -99,6 +104,191 @@ def test_raw_socket_connect_is_blocked(monkeypatch):
     assert eg.stats()["os_network_blocked"] == 1
 
 
+def test_direct_socket_connect_public_ipv4_is_blocked(monkeypatch):
+    """直接测 `socket.socket.connect()`，不能只靠 create_connection 间接覆盖。"""
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        with pytest.raises(eg.ExternalFetchBlocked):
+            sock.connect(("93.184.216.34", 80))
+    finally:
+        sock.close()
+    assert eg.stats()["os_network_blocked"] == 1
+
+
+def test_connect_ex_public_ipv4_is_blocked(monkeypatch):
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        with pytest.raises(eg.ExternalFetchBlocked):
+            sock.connect_ex(("93.184.216.34", 80))
+    finally:
+        sock.close()
+    assert eg.stats()["os_network_blocked"] == 1
+
+
+def test_public_ipv6_connect_is_blocked(monkeypatch):
+    if not socket.has_ipv6:
+        pytest.skip("当前环境不支持 IPv6")
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    try:
+        with pytest.raises(eg.ExternalFetchBlocked):
+            sock.connect(("2606:4700:4700::1111", 443, 0, 0))
+    finally:
+        sock.close()
+    assert eg.stats()["os_network_blocked"] == 1
+
+
+def test_udp_sendto_public_address_is_blocked(monkeypatch):
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        with pytest.raises(eg.ExternalFetchBlocked):
+            sock.sendto(b"ping", ("93.184.216.34", 53))
+    finally:
+        sock.close()
+    stats = eg.stats()
+    assert stats["udp_blocked"] == 1
+    # UDP 拦截不能算成 TCP 建连拦截
+    assert stats["os_network_blocked"] == 0
+
+
+def test_udp_sendmsg_public_address_is_blocked(monkeypatch):
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    if not hasattr(socket.socket, "sendmsg"):
+        # 平台没有 sendmsg：闸门按能力安装，不假装已覆盖该路径（报告里明示）
+        assert eg.stats()["socket_guarded"] is True
+        assert eg.stats()["udp_blocked"] == 0
+        return
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        with pytest.raises(eg.ExternalFetchBlocked):
+            sock.sendmsg([b"ping"], [], 0, ("93.184.216.34", 53))
+    finally:
+        sock.close()
+    assert eg.stats()["udp_blocked"] == 1
+
+
+@pytest.mark.parametrize("host", ["localhost.localdomain", "", None, "example.com"])
+def test_hostname_and_empty_host_do_not_bypass(monkeypatch, host):
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    with pytest.raises(eg.ExternalFetchBlocked):
+        socket.create_connection((host, 80), timeout=1)
+    assert eg.stats()["os_network_blocked"] == 1
+
+
+def test_localhost_is_mapped_to_loopback_not_dns(monkeypatch):
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    port = server.getsockname()[1]
+
+    def accept_once():
+        try:
+            server.accept()[0].close()
+        except OSError:
+            pass
+
+    thread = threading.Thread(target=accept_once, daemon=True)
+    thread.start()
+    try:
+        conn = socket.create_connection(("localhost", port), timeout=1)
+        conn.close()
+        thread.join(timeout=1)
+        assert eg.stats()["os_network_blocked"] == 0
+    finally:
+        server.close()
+
+
+def test_ipv6_loopback_still_allowed(monkeypatch):
+    if not socket.has_ipv6:
+        pytest.skip("当前环境不支持 IPv6")
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    try:
+        server = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        server.bind(("::1", 0))
+    except OSError:
+        pytest.skip("当前环境不能绑定 ::1")
+    server.listen(1)
+    port = server.getsockname()[1]
+
+    def accept_once():
+        try:
+            server.accept()[0].close()
+        except OSError:
+            pass
+
+    thread = threading.Thread(target=accept_once, daemon=True)
+    thread.start()
+    try:
+        conn = socket.create_connection(("::1", port), timeout=1)
+        conn.close()
+        thread.join(timeout=1)
+        assert eg.stats()["os_network_blocked"] == 0
+    finally:
+        server.close()
+
+
+def test_unix_domain_socket_is_not_blocked(monkeypatch, tmp_path):
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    if not hasattr(socket, "AF_UNIX"):
+        # 平台无 AF_UNIX：确认闸门仍正常安装且不误伤其它路径（报告里明示）
+        assert eg.stats()["socket_guarded"] is True
+        with pytest.raises(eg.ExternalFetchBlocked):
+            socket.create_connection(("93.184.216.34", 80), timeout=1)
+        return
+    path = tmp_path / "guard.sock"
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        server.bind(str(path))
+    except OSError:
+        # 平台声明支持但不能创建：明确记录，不静默当成「通过」
+        assert eg.stats()["socket_guarded"] is True
+        server.close()
+        return
+    server.listen(1)
+
+    def accept_once():
+        try:
+            server.accept()[0].close()
+        except OSError:
+            pass
+
+    thread = threading.Thread(target=accept_once, daemon=True)
+    thread.start()
+    try:
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.connect(str(path))
+        client.close()
+        thread.join(timeout=1)
+        assert eg.stats()["os_network_blocked"] == 0
+    finally:
+        server.close()
+
+
+def test_dns_is_not_intercepted_but_connect_is(monkeypatch):
+    """DNS 边界显式化：getaddrinfo 不拦（无法可靠在进程内约束），建连才拦。"""
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    resolved = socket.getaddrinfo("localhost", 80, proto=socket.IPPROTO_TCP)
+    assert resolved
+    assert eg.stats()["dns_guard"] == "NOT_INTERCEPTED"
+    with pytest.raises(eg.ExternalFetchBlocked):
+        socket.create_connection(("93.184.216.34", 80), timeout=1)
+
+
 def test_loopback_is_still_allowed(monkeypatch):
     _offline(monkeypatch)
     eg.install_network_deny()
@@ -143,6 +333,51 @@ def test_stats_never_exposes_urls_or_tokens(monkeypatch):
     assert payload.count("example.com") == 0
 
 
+SENSITIVE_URL = "https://user:p4ssw0rd@secret-host.example.com/private/path?token=tok3nZ&sign=s1gnZ"
+SENSITIVE_BITS = ("p4ssw0rd", "user:", "private/path", "tok3nZ", "s1gnZ")
+
+
+def test_requests_blocked_url_secrets_are_redacted_everywhere(monkeypatch, caplog):
+    """P1-04：日志 / 异常 / HTTP body 都不得包含 userinfo、path、query。"""
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    import requests
+    from app.main import external_fetch_blocked_handler
+
+    with caplog.at_level(logging.WARNING, logger="app.external_guard"):
+        with pytest.raises(eg.ExternalFetchBlocked) as excinfo:
+            requests.get(SENSITIVE_URL, timeout=1)
+    response = asyncio.run(
+        external_fetch_blocked_handler(None, excinfo.value)  # type: ignore[arg-type]
+    )
+    body = response.body.decode("utf-8")
+    haystacks = {
+        "log": caplog.text,
+        "exception": str(excinfo.value),
+        "http_body": body,
+        "stats": json.dumps(eg.stats(), ensure_ascii=False),
+    }
+    for name, text in haystacks.items():
+        for bit in SENSITIVE_BITS:
+            assert bit not in text, f"{name} 泄露敏感字段 {bit!r}"
+        assert "?" not in text, f"{name} 泄露 query 分隔符"
+    payload = json.loads(body)
+    assert payload["reason_code"] == "NETWORK_REQUEST_BLOCKED"
+    assert payload["source"] == "secret-host.example.com"
+
+
+def test_ensure_external_fetch_context_url_is_redacted(monkeypatch, caplog):
+    _offline(monkeypatch)
+    with caplog.at_level(logging.WARNING, logger="app.external_guard"):
+        with pytest.raises(eg.ExternalFetchBlocked) as excinfo:
+            eg.ensure_external_fetch(f"测试来源 {SENSITIVE_URL}")
+    for text in (caplog.text, str(excinfo.value)):
+        for bit in SENSITIVE_BITS:
+            assert bit not in text
+        assert "?" not in text
+    assert "测试来源" in str(excinfo.value)
+
+
 def test_source_entries_are_guarded_or_delegated():
     root = Path(__file__).resolve().parents[1] / "backend" / "app" / "sources"
     direct = [
@@ -170,13 +405,21 @@ def test_source_entries_are_guarded_or_delegated():
 def test_blocked_response_is_503_and_marked_offline():
     from app.main import external_fetch_blocked_handler
 
+    exc = eg.ExternalFetchBlocked("NETWORK_REQUEST_BLOCKED", source=SENSITIVE_URL)
     response = asyncio.run(
-        external_fetch_blocked_handler(None, eg.ExternalFetchBlocked("测试拦截"))  # type: ignore[arg-type]
+        external_fetch_blocked_handler(None, exc)  # type: ignore[arg-type]
     )
     assert response.status_code == 503
     body = json.loads(response.body)
     assert body["offline"] is True
     assert body["reason"] == "EXTERNAL_DATA_FETCH_DISABLED"
+    assert body["reason_code"] == "NETWORK_REQUEST_BLOCKED"
+    # 固定文案 + 安全 host，不得回显原始 URL
+    assert body["detail"] == "离线验收模式：外部数据现取已被禁用，页面仅显示本地已有数据。"
+    assert body["source"] == "secret-host.example.com"
+    text = json.dumps(body, ensure_ascii=False)
+    for bit in SENSITIVE_BITS:
+        assert bit not in text
 
 
 def test_retry_does_not_retry_blocked_fetch(monkeypatch):

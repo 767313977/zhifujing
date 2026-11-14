@@ -285,13 +285,18 @@ app.add_middleware(
 async def external_fetch_blocked_handler(
     _request: Request, exc: ExternalFetchBlocked
 ) -> JSONResponse:
-    """离线验收模式：外部现取被拒绝时给**明确的状态**，不伪装成网络异常。"""
+    """离线验收模式：外部现取被拒绝时给**明确的状态**，不伪装成网络异常。
+
+    响应只含固定文案与 reason code：不回显原始 URL / path / query / userinfo。
+    """
     return JSONResponse(
         status_code=503,
         content={
-            "detail": str(exc),
+            "detail": "离线验收模式：外部数据现取已被禁用，页面仅显示本地已有数据。",
             "offline": True,
             "reason": "EXTERNAL_DATA_FETCH_DISABLED",
+            "reason_code": getattr(exc, "reason_code", "EXTERNAL_DATA_FETCH_DISABLED"),
+            "source": getattr(exc, "source", None),
         },
     )
 

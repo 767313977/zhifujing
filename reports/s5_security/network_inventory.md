@@ -37,22 +37,43 @@
 | `sources/ths_limit_up.py` | 同花顺涨停原因 | 发请求前 |
 | `jobs/push_brief.py` | 飞书 webhook | **仅 requests 层**；无来源入口闸门（非行情数据，且离线时不启动） |
 
-## 3. 三层防护语义
+## 3. 三层防护语义（S5 审查整改后）
 
 1. **来源入口**：`ensure_external_fetch(context)` → `ExternalFetchBlocked`；不重试（`retry_call` 只尝试一次）。
-2. **进程内网络层**：`install_network_deny()` 同时 patch `requests.Session.request`、`socket.create_connection`、`socket.socket.connect`；允许 `127.0.0.1` / `::1` / `localhost`。
-3. **进程启动锁定**：首次读到 `EXTERNAL_DATA_FETCH_ENABLED=false` 即 `locked_offline=true`，运行中改回 true 也不会放行。
+   `context` 只作**安全标签**：URL / path / query / userinfo 会被剔除后记录，最多 48 字符。
+2. **进程内网络层**：`install_network_deny()` 同时 patch：
+   - `requests.Session.request`
+   - `socket.create_connection`
+   - `socket.socket.connect`
+   - `socket.socket.connect_ex`
+   - UDP `socket.socket.sendto`
+   - 平台存在时 `socket.socket.sendmsg`
+   回环只允许**严格 loopback IP**（`127.0.0.0/8`、`::1` 等）；`localhost` 固定映射到
+   `127.0.0.1`（`ip6-localhost` → `::1`），**不交给 OS hosts/DNS 解析**；
+   `localhost.localdomain`、空 host、`None`、普通主机名一律拦截。
+   Unix domain socket（`AF_UNIX`）不经过网络判定，保持可用。
+3. **进程启动锁定**：首次读到 `EXTERNAL_DATA_FETCH_ENABLED=false` 即 `locked_offline=true`，
+   运行中改回 true 也不会放行（`stats().enabled` 返回**有效状态** false）。
 
-计数语义：
+计数语义（互不混用）：
 
+- `attempts` / `blocked`：来源入口（`ensure_external_fetch`）；
 - `network_attempts` / `network_blocked`：只统计 `requests` 层；
-- `os_network_attempts` / `os_network_blocked`：socket 建连层（回环也计尝试）；
-- 二者都**不是**全宿主网络调用总数。
+- `os_network_attempts` / `os_network_blocked`：TCP 建连层
+  （`create_connection` / `connect` / `connect_ex`，回环也计尝试）；
+- `udp_attempts` / `udp_blocked`：UDP `sendto` / `sendmsg`；
+- `dns_guard=NOT_INTERCEPTED`：DNS 查询未在进程内拦截；
+- 上述都**不是**全宿主网络调用总数。来源入口被提前拦截时，不会计入 socket 层拦截。
 
 ## 4. 未验证 / 明确保留的边界
 
 - **OS 级出网禁止**：未使用容器 / Windows 防火墙 / 网络命名空间做实测 → `OS_EGRESS_DENY_NOT_VERIFIED`；
-- **子进程**：`lark-cli` 可自行出网，进程内 socket patch 管不到；
+- **子进程**：`lark-cli` 可自行出网，进程内 socket patch 管不到；离线模式仍启动 scheduler 时，
+  外部通知子进程不受本闸门保护（本轮未改调度配置）；
 - **原生库**：未发现，但未做穷尽证明；
 - **DNS**：`socket.getaddrinfo` 未拦截（只拦截实际建连），DNS 查询本身可能出网；
-- 因此本报告**不宣称**「全面防出网已验证」，只宣称「本进程 Python 网络栈 + 来源入口在离线模式下被拦截，且有实测证据」。
+  若要求 DNS 零出网，必须配合 OS 防火墙 / 隔离网络，并另做实测；
+- **平台差异**：当前 Windows 环境没有 `socket.sendmsg` 与 `AF_UNIX`；闸门按能力安装，
+  测试显式断言「能力缺失时不假装覆盖」，Unix socket 只有在平台支持时才实测；
+- 因此本报告**不宣称**「全面防出网已验证」，只宣称「本进程 Python 网络栈（requests +
+  TCP/UDP socket 路径）+ 来源入口在离线模式下被拦截，且有实测证据」。

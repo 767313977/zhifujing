@@ -60,7 +60,8 @@ class HistoryPoint:
 
 
 def _get(url: str) -> dict:
-    ensure_external_fetch(f"蛋卷 {url}")
+    # 只传安全标签：完整 URL 不进日志/异常/503 响应（S5 审查整改 P1-04）
+    ensure_external_fetch("蛋卷指数估值")
     try:
         response = requests.get(url, headers=_HEADERS, timeout=TIMEOUT)
         response.raise_for_status()

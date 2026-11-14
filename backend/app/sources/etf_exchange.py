@@ -52,7 +52,8 @@ class EtfNotReady(EtfSourceError):
 
 
 def _get(url: str, *, params: dict, referer: str) -> requests.Response:
-    ensure_external_fetch(f"ETF 份额 {url}")
+    # 只传安全标签：完整 URL 不进日志/异常/503 响应（S5 审查整改 P1-04）
+    ensure_external_fetch("ETF 份额快照")
     try:
         response = requests.get(
             url,

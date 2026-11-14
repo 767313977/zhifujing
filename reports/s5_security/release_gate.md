@@ -82,3 +82,17 @@ git revert --no-commit <D 提交>   # 离线闸门
 - 进程内：`requests` + `socket` 双层闸门、来源入口闸门、启动锁定，均已实测（`reports/s5_security/*`）；
 - 宿主 / 容器 / 防火墙：**未实测** → 保留 `OS_EGRESS_DENY_NOT_VERIFIED`；
 - `network_attempts` 仅代表 requests 层，不代表全宿主网络调用总数。
+
+## 7. S5 独立审查整改后的补充（2026-11-14，未部署）
+
+- **敏感信息**：`requests` 拦截日志只记录 method + hostname；`ExternalFetchBlocked` 只带
+  reason code 与安全来源标签；HTTP 503 返回固定文案 + `reason_code`，不回显 URL / path /
+  query / userinfo；`ensure_external_fetch(context)` 对 URL 类上下文做剔除。
+- **socket 覆盖**：新增 `connect_ex`、UDP `sendto`、平台支持时的 `sendmsg`；
+  回环白名单只接受严格 loopback IP，`localhost` 固定映射到 `127.0.0.1`，
+  `localhost.localdomain` / 空 host / `None` 不再豁免；Unix domain socket 保持可用。
+- **统计语义**：`stats().enabled` 返回有效状态（锁定后即使 env 改回 true 也是 false）；
+  新增 `udp_attempts` / `udp_blocked`、`dns_guard=NOT_INTERCEPTED`、`switch_policy`。
+- **未改变**：未合 master、未部署、未重启、未改调度与 `deploy/*`；
+  `OS_EGRESS_DENY_NOT_VERIFIED`、`PRODUCTION_DEPLOYMENT_NOT_AUTHORIZED`、`P13_RELEASE_NO_GO`
+  继续保留。
