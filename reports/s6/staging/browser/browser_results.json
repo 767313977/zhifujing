@@ -1,0 +1,50 @@
+{
+  "commit_sha": "104dfdf489150d97446be3af0fa4a4de14382bbd",
+  "branch": "release/s6-canary-hardening",
+  "generated_at": "2026-11-15T00:40:00+08:00",
+  "environment": "本地隔离 Staging http://127.0.0.1:8010；真实浏览器自动化",
+  "command": "TRAE 浏览器代理 + Chrome headless 截图",
+  "exit_code": 0,
+  "tool_version": "trae-browser-agent/1.0 + Chrome 157.0.8103.79",
+  "result": {
+    "rounds": 2,
+    "final_verdict": "PASS",
+    "round_1": {
+      "verdict": "PASS_WITH_DEFECT",
+      "checks": [
+        {"case": "unauth_redirects_to_login", "ok": true},
+        {"case": "login_via_browser", "ok": true},
+        {"case": "quality_page_loaded", "ok": true},
+        {"case": "console_errors_zero", "ok": true},
+        {"case": "quality_timeline", "ok": false, "detail": "HTTP 400 min() iterable argument is empty"}
+      ],
+      "defect_fixed": "data_quality.timeline 在空交易日历时返回空结构（200）而不是抛异常"
+    },
+    "round_2": {
+      "verdict": "PASS",
+      "checks": [
+        {"case": "data_quality", "ok": true, "detail": "6 来源未采集；timeline 200，无「加载失败」"},
+        {"case": "research_workbench", "ok": true, "detail": "页面正常；空库提示交易日历为空"},
+        {"case": "auction", "ok": true, "detail": "空态 0 只有竞价数据"},
+        {"case": "limit_up", "ok": true, "detail": "空态 0 只涨停"},
+        {"case": "sentiment", "ok": true, "detail": "空态 0 / 0 天"},
+        {"case": "console_errors_zero", "ok": true, "detail": "5 页均为 0；用 console.warn 对照排除假阴性"}
+      ]
+    },
+    "screenshots": [
+      {"file": "login_1280x800.png", "bytes": 15039, "sha256": "048C6BA14B0C858FCFC0BDED3E1B5DEBB8133766E314FB40160CAC34CFD3EF81"},
+      {"file": "login_1920x1080.png", "bytes": 22618, "sha256": "C97611837CD999593B426677C23C7EF3AEBB2540F8C4EF835137548E205A56B6"},
+      {"file": "login_390x844.png", "bytes": 12815, "sha256": "05D947413425DC807E5BB3905C3277921CCFCEC4B1714FB1EEF2B3354B2170C0"}
+    ]
+  },
+  "evidence_files": [
+    "reports/s6/staging/browser/browser_run.md",
+    "reports/s6/staging/smoke-test-results.json",
+    "reports/s6/staging/deployment-record.md"
+  ],
+  "limitations": [
+    "本机 Chrome CDP 端口不可用，登录后页面截图未能落盘；页面证据来自浏览器代理的 DOM/Resource Timing。",
+    "staging smoke 不等于 S5 的 45 项全量浏览器验收。",
+    "空库下只验证状态显示，不验证业务数值。"
+  ]
+}
