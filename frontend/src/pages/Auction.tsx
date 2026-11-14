@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { api, isNoDataError } from '../api/client'
 import type {
   AuctionBoardItem,
@@ -519,6 +520,9 @@ export default function AuctionPage() {
           </button>
         ))}
       </div>
+      <Link to="/data-quality" className="text-[12px] text-accent-ink">
+        查看数据质量
+      </Link>
       <span className="num hidden text-[13px] text-fg-dim lg:inline">
         {/* 带上**实际数据日**（2026-10-28 体检）：「最新」时下拉只写「最新」，
             而库里的最新一天不一定是今天 —— 不写出来就会把昨天 9:25 的竞价当成今天的 */}

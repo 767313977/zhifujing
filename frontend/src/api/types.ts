@@ -1997,6 +1997,46 @@ export interface StockResearchContext {
   notes: string[]
 }
 
+/** S4-B：单个数据源在某交易日的可信度快照 */
+export interface QualitySourceItem {
+  source: string
+  trade_date: string | null
+  /** VERIFIED_SOURCE / PARTIAL / UNVERIFIABLE / NOT_COLLECTED / PENDING / NOT_TRADE_DAY */
+  status: string
+  reason_codes: string[]
+  observed_rows: number
+  expected_rows: number | null
+  observed_sectors: number | null
+  expected_sectors: number | null
+  completion_proof: boolean
+  latest_observation_date: string | null
+  latest_valid_snapshot: string | null
+  latest_attempt: Record<string, unknown> | null
+  note: string | null
+  /** 各来源的附加明细（taxonomies / frames / missing_fields / has_0926 …） */
+  [key: string]: unknown
+}
+
+export interface QualityOverview {
+  database: string | null
+  as_of: string
+  days: number
+  window_start: string | null
+  window_end: string | null
+  sources: string[]
+  items: QualitySourceItem[]
+}
+
+export interface QualityTimeline {
+  database: string | null
+  source: string
+  days: number
+  window_start: string | null
+  window_end: string | null
+  generated_at: string
+  points: QualitySourceItem[]
+}
+
 /**
  * 悟道「阶段判定」——一只票当天处于哪一档（移植自 yangban-desk 的 8 个标签）。
  *

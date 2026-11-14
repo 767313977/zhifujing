@@ -2497,6 +2497,46 @@ class StockResearchEvidence(BaseModel):
     summary: str | None = None
 
 
+class QualitySourceItem(BaseModel):
+    """S4-B：单个数据源在某交易日的可信度快照（只读诊断）。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    source: str
+    trade_date: date | None
+    status: str
+    reason_codes: list[str] = []
+    observed_rows: int = 0
+    expected_rows: int | None = None
+    observed_sectors: int | None = None
+    expected_sectors: int | None = None
+    completion_proof: bool = False
+    latest_observation_date: date | None = None
+    latest_valid_snapshot: date | None = None
+    latest_attempt: dict | None = None
+    note: str | None = None
+
+
+class QualityOverviewOut(BaseModel):
+    database: str | None
+    as_of: date
+    days: int
+    window_start: date | None
+    window_end: date | None
+    sources: list[str]
+    items: list[QualitySourceItem]
+
+
+class QualityTimelineOut(BaseModel):
+    database: str | None
+    source: str
+    days: int
+    window_start: date | None
+    window_end: date | None
+    generated_at: datetime
+    points: list[QualitySourceItem]
+
+
 class StockResearchContextQuality(BaseModel):
     status: str
     reasons: list[str] = []

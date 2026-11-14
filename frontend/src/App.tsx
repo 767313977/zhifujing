@@ -21,6 +21,7 @@ const ConvertiblePage = lazy(() => import('./pages/Convertible'))
 const CbDetailPage = lazy(() => import('./pages/CbDetail'))
 const EtfPage = lazy(() => import('./pages/Etf'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
+const DataQuality = lazy(() => import('./pages/DataQuality'))
 const Funds = lazy(() => import('./pages/Funds'))
 const JournalPage = lazy(() => import('./pages/Journal'))
 const LimitReview = lazy(() => import('./pages/LimitReview'))
@@ -269,6 +270,15 @@ export default function App() {
                   <RequireAdmin>
                     <Settings />
                   </RequireAdmin>
+                }
+              />
+              {/* 盘后数据质量（S4-B）：只读诊断，不补采、不修库 */}
+              <Route
+                path="/data-quality"
+                element={
+                  <RequireAuth>
+                    <DataQuality />
+                  </RequireAuth>
                 }
               />
               <Route

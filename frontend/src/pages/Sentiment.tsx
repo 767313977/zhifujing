@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Breadth, Erp, EtfNetFlow, FearGreed, FuturesBasis, IndexHistory, IndexSeries, IndustryBreadth, MarginTemp, NhNl, Northbound, Obv, RelayTemp, Sentiment, Volatility } from '../api/types'
 import Alert from '../components/Alert'
@@ -369,9 +370,14 @@ export default function SentimentPage() {
   const emotionDates = sentiment.map((item) => item.trade_date)
 
   const toolbar = (
-    <span className="num hidden text-[13px] text-fg-dim lg:inline">
-      {loading ? '加载中…' : `${indexDates.length} / ${emotionDates.length} 天`}
-    </span>
+    <>
+      <Link to="/data-quality" className="text-[12px] text-accent-ink">
+        查看数据质量
+      </Link>
+      <span className="num hidden text-[13px] text-fg-dim lg:inline">
+        {loading ? '加载中…' : `${indexDates.length} / ${emotionDates.length} 天`}
+      </span>
+    </>
   )
 
   return (

@@ -641,6 +641,9 @@ export default function Sectors() {
           ))}
         </div>
       )}
+      <Link to="/data-quality" className="text-[12px] text-accent-ink">
+        查看数据质量
+      </Link>
       <select
         value={date ?? ''}
         onChange={(event) => setDate(event.target.value || null)}

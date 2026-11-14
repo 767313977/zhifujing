@@ -51,6 +51,7 @@ const GROUPS: { key: string; label: string; items: NavItem[] }[] = [
       { to: '/auction', label: '竞价强度' },
       { to: '/funds', label: '资金面' },
       { to: '/valuation', label: '估值分位' },
+      { to: '/data-quality', label: '数据质量' },
     ],
   },
   {

@@ -30,6 +30,7 @@ from app.api import (
     pools,
     positions,
     premarket,
+    quality,
     research,
     risk,
     sector,
@@ -316,6 +317,7 @@ app.include_router(valuation.router)
 app.include_router(cb.router)
 app.include_router(etf.router)
 app.include_router(admin.router)
+app.include_router(quality.router)
 
 
 @app.get("/api/health")

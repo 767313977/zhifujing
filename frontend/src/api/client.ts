@@ -56,6 +56,8 @@ import type {
   Northbound,
   Obv,
   PoolType,
+  QualityOverview,
+  QualityTimeline,
   PatternCount,
   PatternHitsPage,
   PatternMeta,
@@ -392,6 +394,22 @@ export const api = {
     if (options.date) q.set('date', options.date)
     return request<SentimentNextDay>(`/sentiment/next-day?${q.toString()}`)
   },
+
+  /**
+   * S4-B：盘后数据可信度控制台（只读诊断）。
+   * 不补采、不修库；缺口原因见每个 item 的 `reason_codes`。
+   */
+  qualityOverview: (date?: string | null, days = 30) => {
+    const q = new URLSearchParams()
+    q.set('days', String(days))
+    if (date) q.set('date', date)
+    return request<QualityOverview>(`/quality/overview?${q.toString()}`)
+  },
+
+  qualityTimeline: (source: string, days = 120) =>
+    request<QualityTimeline>(
+      `/quality/timeline?source=${encodeURIComponent(source)}&days=${days}`,
+    ),
 
   // 上限 250（后端 le=250）。不传就只有 60 天，日期下拉能往回翻多远全看这个值
   dates: (days = 250) => request<string[]>(`/market/dates?days=${days}`),
