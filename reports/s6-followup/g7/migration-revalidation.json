@@ -1,0 +1,108 @@
+{
+  "copy_sha256_after": "43d1e4ba965940430bf4579e47314533042247e56823122e91265a435051d170",
+  "copy_sha256_before": "43d1e4ba965940430bf4579e47314533042247e56823122e91265a435051d170",
+  "copy_unchanged": true,
+  "expected_empty_tables": [
+    "user_risk_pref",
+    "analysis_snapshot"
+  ],
+  "first_run_diffs": [],
+  "full_target_schema_fingerprint": "27d1e02acbbe4fb78ddbe2709110b5007fe4acdfde4f025e3db11aa9bc657060",
+  "generated_at": "2026-11-15T02:34:42+08:00",
+  "idempotent": true,
+  "isolated_dir": "C:\\Users\\76731\\AppData\\Local\\Temp\\s7-migrate-20261115023442",
+  "recovered": true,
+  "recovery_run_diffs": [],
+  "runs": {
+    "first_exit": 0,
+    "recovery_exit": 0,
+    "second_exit": 0
+  },
+  "schema_fingerprint": "020e0f106d3930fe80e4fc9ba4ccc9f763790de004e031cdc72617231e0d3d41",
+  "second_run_diffs": [],
+  "shared_tables": [
+    "app_user",
+    "invite_code",
+    "user_session",
+    "watchlist",
+    "review_note",
+    "trade_journal",
+    "trade_t",
+    "trade_plan"
+  ],
+  "source": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\fupan.db",
+  "source_integrity": [
+    "ok"
+  ],
+  "source_sha256_after": "b65d59a65aaee286f65b91aee70df75ff9b34e83e6c266e69be4c491996337ee",
+  "source_sha256_before": "b65d59a65aaee286f65b91aee70df75ff9b34e83e6c266e69be4c491996337ee",
+  "source_size": 513519616,
+  "source_unchanged": true,
+  "status": "PASS",
+  "tables": {
+    "analysis_snapshot": {
+      "key_digest": null,
+      "missing": true,
+      "pk_digest": null,
+      "rows": 0
+    },
+    "app_user": {
+      "key_digest": "02fb03d1157ee7ccd86db689b0df4df0c5cb9f69594dd00c75c1a98fe7762ce7",
+      "missing": false,
+      "pk_digest": "6f6f6f2b8644e5047e686d9d195121f269025cf79d43c95d6b51bdcddd39e5b6",
+      "rows": 1
+    },
+    "invite_code": {
+      "key_digest": null,
+      "missing": false,
+      "pk_digest": null,
+      "rows": 0
+    },
+    "review_note": {
+      "key_digest": "7885c5559700323baf863182d505f4c8ae5bc94523fb463023f224a583df6e6d",
+      "missing": false,
+      "pk_digest": "5a021fe834d5348b6913963c574b422e32741d14725b47612edba8eef8ef89bb",
+      "rows": 1
+    },
+    "trade_journal": {
+      "key_digest": null,
+      "missing": false,
+      "pk_digest": null,
+      "rows": 0
+    },
+    "trade_plan": {
+      "key_digest": null,
+      "missing": false,
+      "pk_digest": null,
+      "rows": 0
+    },
+    "trade_t": {
+      "key_digest": null,
+      "missing": false,
+      "pk_digest": null,
+      "rows": 0
+    },
+    "user_risk_pref": {
+      "key_digest": null,
+      "missing": true,
+      "pk_digest": null,
+      "rows": 0
+    },
+    "user_session": {
+      "key_digest": "691add06774143d5515915fe4e42eab11e834ca2b86e79d2468cb41abdcc93ca",
+      "missing": false,
+      "pk_digest": "6fd9a17e4164ac1fc513b6177f3328e3d45a57bb714b674189b1a54bf6b0297f",
+      "rows": 6
+    },
+    "watchlist": {
+      "key_digest": "d1908226c7a0abcb72a5f4bcfefbaf073c574cf1e971468b6e31ac1172a9dd6c",
+      "missing": false,
+      "pk_digest": "0dd035846cd40d40e173265914a07e258f450c6045095706cefa69248634e0e8",
+      "rows": 1
+    }
+  },
+  "target_integrity": [
+    "ok"
+  ],
+  "target_schema_fingerprint": "020e0f106d3930fe80e4fc9ba4ccc9f763790de004e031cdc72617231e0d3d41"
+}

@@ -1,0 +1,51 @@
+table,database_domain,writers,runtime_readers,notes
+app_user,USER_READWRITE,api/auth.py（注册）、api/admin.py（重置密码/停用）,services/auth.py（鉴权）、api/admin.py,只在 User DB 建表/写入；Research DB 不得出现
+auction_snapshot,RESEARCH_READONLY,jobs/collect_auction.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+breadth_daily,RESEARCH_READONLY,jobs/collect_breadth.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+cb_basic,RESEARCH_READONLY,jobs/collect_cb.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+cb_daily,RESEARCH_READONLY,jobs/collect_cb.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+collect_log,RESEARCH_READONLY,jobs/collect_daily.py（各采集器共用）,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+erp_daily,RESEARCH_READONLY,jobs/collect_erp.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+etf_bar,RESEARCH_READONLY,jobs/collect_etf_bar.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+etf_basic,RESEARCH_READONLY,jobs/collect_funds.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+etf_category,RESEARCH_READONLY,jobs/collect_funds.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+etf_share,RESEARCH_READONLY,jobs/collect_funds.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+fear_greed_daily,RESEARCH_READONLY,jobs/collect_fear_greed.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+futures_basis_daily,RESEARCH_READONLY,jobs/collect_futures_basis.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+futures_position,RESEARCH_READONLY,jobs/collect_futures_position.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+hsgt_daily,RESEARCH_READONLY,jobs/collect_board_flow.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+ifind_usage,RESEARCH_READONLY,services/usage.py（sources/ifind.py 调用点记账）,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+index_daily,RESEARCH_READONLY,jobs/collect_daily.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+index_valuation,RESEARCH_READONLY,jobs/collect_valuation.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+lhb,RESEARCH_READONLY,jobs/collect_daily.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+lhb_institution,RESEARCH_READONLY,jobs/collect_daily.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+limit_pool,RESEARCH_READONLY,jobs/collect_daily.py,limit/pools/analysis/anomaly_map/market,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+limit_reason,RESEARCH_READONLY,jobs/collect_daily.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+margin_daily,RESEARCH_READONLY,jobs/collect_breadth.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+market_sentiment,RESEARCH_READONLY,jobs/collect_daily.py,market/sentiment/risk/deps,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+pattern_hit,RESEARCH_READONLY,jobs/scan_patterns.py,patterns/plans/journal/brief,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+rps_daily,RESEARCH_READONLY,jobs/scan_rps.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+sector_basic,RESEARCH_READONLY,jobs/collect_sectors.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+sector_daily,RESEARCH_READONLY,jobs/collect_sectors.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+sector_member,RESEARCH_READONLY,jobs/collect_sectors.py（+ api/sector.py 现取，灰度下 503）,sector/risk/themes,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+stock_basic,RESEARCH_READONLY,jobs/collect_universe.py,watchlist/stock/analysis/journal/plans/risk/premarket,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+stock_concept,RESEARCH_READONLY,jobs/collect_daily.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+stock_daily,RESEARCH_READONLY,jobs/collect_daily.py / jobs/collect_kline.py,market/limit/patterns/pools/sector/stock/journal/positions/plans/risk/premarket,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+stock_dde,RESEARCH_READONLY,jobs/collect_dde.py（+ api/stock.py 现取，灰度下只读缓存）,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+stock_event_cache,RESEARCH_READONLY,services/stock_events.py（采集任务调用）,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+stock_financial,RESEARCH_READONLY,jobs/collect_daily.py（财务数据采集）,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+stock_universe,RESEARCH_READONLY,jobs/collect_universe.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+trade_calendar,RESEARCH_READONLY,jobs/collect_daily.py（日历采集）,deps.resolve_trade_date/journal/plans/positions/usage/collectors,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+volatility_daily,RESEARCH_READONLY,jobs/collect_qvix.py,按需查询,运行时只读；写入只发生在采集任务/CLI（灰度下关闭）
+analysis_snapshot,USER_READWRITE,api/analysis.py（保存/删除查票快照）,api/analysis.py,只在 User DB 建表/写入；Research DB 不得出现
+invite_code,USER_READWRITE,api/admin.py（新增/删除）、api/auth.py（注册时消费）,api/auth.py（注册预检）、api/admin.py,只在 User DB 建表/写入；Research DB 不得出现
+review_note,USER_READWRITE,api/note.py（保存）,api/note.py,只在 User DB 建表/写入；Research DB 不得出现
+trade_journal,USER_READWRITE,api/journal.py、api/positions.py、api/plans.py（计划回填）,api/journal.py、api/positions.py、api/plans.py、api/risk.py,只在 User DB 建表/写入；Research DB 不得出现
+trade_plan,USER_READWRITE,api/plans.py（新增/修改/删除/状态/回填）、api/positions.py（转持仓）,api/plans.py、api/positions.py、jobs/push_brief.py,只在 User DB 建表/写入；Research DB 不得出现
+user_risk_pref,USER_READWRITE,api/risk.py（保存偏好）,api/risk.py,只在 User DB 建表/写入；Research DB 不得出现
+user_session,USER_READWRITE,services/auth.py（每请求解析/滑动续期）、api/auth.py、api/admin.py,services/auth.py,只在 User DB 建表/写入；Research DB 不得出现
+watchlist,USER_READWRITE,api/watchlist.py（新增/改备注/删除）,api/watchlist.py、api/plans.py、api/premarket.py、api/stock.py、services/usage.py、jobs/push_brief.py,只在 User DB 建表/写入；Research DB 不得出现
+trade_t,USER_READWRITE,api/journal.py（新增/修改/删除做 T）,api/journal.py,只在 User DB 建表/写入；Research DB 不得出现
+data_revision_meta,RESEARCH_READONLY,非 ORM；写入 services/data_revision.py（采集/迁移时）,data_revision / 质量工作台,非 ORM 研究库对象；只读运行时不得 DDL
+sector_member_backfill_run,RESEARCH_READONLY,非 ORM；写入 jobs/backfill_pools.py（CLI）,data_revision / 质量工作台,非 ORM 研究库对象；只读运行时不得 DDL
+(24 triggers),RESEARCH_READONLY,非 ORM；由 scripts/migrate_db.py / 数据修订流程安装,data_revision / 质量工作台,非 ORM 研究库对象；只读运行时不得 DDL

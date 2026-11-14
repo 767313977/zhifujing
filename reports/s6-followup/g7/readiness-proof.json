@@ -1,0 +1,41 @@
+{
+  "blocking": [
+    "STARTUP_CONFIG_VALID",
+    "EGRESS_APP_POLICY_LOCKED",
+    "EXTERNAL_FETCH_DISABLED",
+    "EGRESS_OS_POLICY_VERIFIED"
+  ],
+  "checks": {
+    "PATHS_DISTINCT": true,
+    "QUERY_ONLY_ENABLED": true,
+    "READONLY_WRITE_PROBE_BLOCKED": true,
+    "RESEARCH_DB_EXISTS": true,
+    "RESEARCH_ENGINE_READONLY_URI": true,
+    "RESEARCH_FILE_PERMISSION_READONLY": true,
+    "SPLIT_ENABLED": true,
+    "USER_DB_EXISTS": true,
+    "USER_DB_WRITABLE": true
+  },
+  "command": "python scripts/s7_readiness_probe.py",
+  "database_gate": "PASS",
+  "database_reason": null,
+  "gates": {
+    "CANARY_READINESS": "FAIL",
+    "DATABASE_READ_ONLY_VERIFIED": "PASS",
+    "EGRESS_APP_POLICY_LOCKED": "FAIL",
+    "EGRESS_OS_POLICY_VERIFIED": "NOT_VERIFIED",
+    "EXTERNAL_FETCH_DISABLED": "FAIL",
+    "SCHEDULER_DISABLED": "PASS",
+    "STARTUP_CONFIG_VALID": "FAIL"
+  },
+  "generated_at": "2026-11-15T02:35:52+08:00",
+  "isolated_dir": "C:\\Users\\76731\\AppData\\Local\\Temp\\s7-readiness-31te0xxj",
+  "ready": false,
+  "reasons": {
+    "EGRESS_APP_POLICY_LOCKED": "GUARD_NOT_INSTALLED",
+    "EGRESS_OS_POLICY_VERIFIED": "NO_ISOLATED_OS_NETWORK_ACCESS",
+    "EXTERNAL_FETCH_DISABLED": "EXTERNAL_FETCH_ENABLED",
+    "STARTUP_CONFIG_VALID": "STARTUP_NOT_RECORDED"
+  },
+  "research_path_readonly": true
+}

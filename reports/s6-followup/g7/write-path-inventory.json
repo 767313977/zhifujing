@@ -1,0 +1,252 @@
+{
+  "generated_at": "2026-11-15T03:00:00+08:00",
+  "branch": "release/s6-canary-hardening-v3",
+  "scope": "G7 全量写路径盘点：API / Service / 后台任务 / CLI / 子进程",
+  "canary_behavior_legend": {
+    "ALLOWED": "灰度形态下正常执行",
+    "HTTP_503": "灰度形态下由 require_research_writable / research_writable() 明确 503 或只回缓存",
+    "BLOCKED": "灰度形态下研究库只读 + session_scope() 拒绝，任务不会运行（scheduler/CLI 关闭）"
+  },
+  "entries": [
+    {
+      "id": "W01",
+      "kind": "api",
+      "path": "POST /api/auth/register",
+      "domain": "USER_READWRITE",
+      "tables_written": ["app_user", "invite_code", "user_session"],
+      "trigger": "HTTP 请求",
+      "canary_behavior": "ALLOWED",
+      "evidence": "backend/app/api/auth.py:register（Depends(get_user_db)）"
+    },
+    {
+      "id": "W02",
+      "kind": "api",
+      "path": "POST /api/auth/login | logout | PUT /api/auth/password",
+      "domain": "USER_READWRITE",
+      "tables_written": ["user_session", "app_user"],
+      "trigger": "HTTP 请求",
+      "canary_behavior": "ALLOWED",
+      "evidence": "backend/app/api/auth.py（Depends(get_user_db)）"
+    },
+    {
+      "id": "W03",
+      "kind": "service",
+      "path": "services/auth.require_login → resolve_session",
+      "domain": "USER_READWRITE",
+      "tables_written": ["user_session"],
+      "trigger": "每个 /api/* 请求（app 级依赖）",
+      "canary_behavior": "ALLOWED",
+      "evidence": "backend/app/services/auth.py（user_session_scope()）"
+    },
+    {
+      "id": "W04",
+      "kind": "api",
+      "path": "POST/PATCH/DELETE /api/watchlist/*",
+      "domain": "USER_READWRITE",
+      "tables_written": ["watchlist"],
+      "trigger": "HTTP 请求",
+      "canary_behavior": "ALLOWED",
+      "evidence": "backend/app/api/watchlist.py（get_user_db + get_research_db）"
+    },
+    {
+      "id": "W05",
+      "kind": "api",
+      "path": "POST /api/watchlist/sync",
+      "domain": "ADMIN_WRITE",
+      "tables_written": ["stock_daily", "collect_log"],
+      "trigger": "HTTP 请求 → DailyCollector.sync_watchlist",
+      "canary_behavior": "HTTP_503",
+      "evidence": "require_research_writable 依赖（backend/app/api/deps.py）"
+    },
+    {
+      "id": "W06",
+      "kind": "api",
+      "path": "PUT /api/note/{trade_date}",
+      "domain": "USER_READWRITE",
+      "tables_written": ["review_note"],
+      "trigger": "HTTP 请求",
+      "canary_behavior": "ALLOWED",
+      "evidence": "backend/app/api/note.py（get_user_db）"
+    },
+    {
+      "id": "W07",
+      "kind": "api",
+      "path": "POST/PUT/DELETE /api/journal/*（含做 T）",
+      "domain": "USER_READWRITE",
+      "tables_written": ["trade_journal", "trade_t"],
+      "trigger": "HTTP 请求",
+      "canary_behavior": "ALLOWED",
+      "evidence": "backend/app/api/journal.py（get_user_db + get_research_db）"
+    },
+    {
+      "id": "W08",
+      "kind": "api",
+      "path": "POST/PUT/DELETE /api/positions/*",
+      "domain": "USER_READWRITE",
+      "tables_written": ["trade_journal", "trade_plan"],
+      "trigger": "HTTP 请求",
+      "canary_behavior": "ALLOWED",
+      "evidence": "backend/app/api/positions.py（get_user_db + get_research_db）"
+    },
+    {
+      "id": "W09",
+      "kind": "api",
+      "path": "POST/PUT/DELETE /api/plans/*",
+      "domain": "USER_READWRITE",
+      "tables_written": ["trade_plan", "trade_journal"],
+      "trigger": "HTTP 请求",
+      "canary_behavior": "ALLOWED",
+      "evidence": "backend/app/api/plans.py（get_user_db + get_research_db）"
+    },
+    {
+      "id": "W10",
+      "kind": "api",
+      "path": "PUT /api/risk/pref",
+      "domain": "USER_READWRITE",
+      "tables_written": ["user_risk_pref"],
+      "trigger": "HTTP 请求",
+      "canary_behavior": "ALLOWED",
+      "evidence": "backend/app/api/risk.py（get_user_db）"
+    },
+    {
+      "id": "W11",
+      "kind": "api",
+      "path": "POST/DELETE /api/analysis/snapshots",
+      "domain": "USER_READWRITE",
+      "tables_written": ["analysis_snapshot"],
+      "trigger": "HTTP 请求",
+      "canary_behavior": "ALLOWED",
+      "evidence": "backend/app/api/analysis.py（get_user_db）"
+    },
+    {
+      "id": "W12",
+      "kind": "api",
+      "path": "/api/admin/invites | /api/admin/users/*",
+      "domain": "USER_READWRITE",
+      "tables_written": ["invite_code", "app_user", "user_session"],
+      "trigger": "HTTP 请求（管理员）",
+      "canary_behavior": "ALLOWED",
+      "evidence": "backend/app/api/admin.py（get_user_db）"
+    },
+    {
+      "id": "W13",
+      "kind": "api",
+      "path": "POST /api/admin/kline/recent | /api/admin/patterns/scan | /api/admin/backfill",
+      "domain": "ADMIN_WRITE",
+      "tables_written": ["stock_daily", "index_daily", "lhb", "limit_pool", "market_sentiment", "pattern_hit", "collect_log"],
+      "trigger": "HTTP 请求（管理员）→ Collector",
+      "canary_behavior": "HTTP_503",
+      "evidence": "require_research_writable 依赖（backend/app/api/admin.py）"
+    },
+    {
+      "id": "W14",
+      "kind": "api",
+      "path": "GET /api/sector/{code}/members（缓存未命中时的现取）",
+      "domain": "ADMIN_WRITE",
+      "tables_written": ["sector_member"],
+      "trigger": "GET 的隐式补采",
+      "canary_behavior": "HTTP_503",
+      "evidence": "backend/app/api/sector.py:_board_members（research_writable() 判定）"
+    },
+    {
+      "id": "W15",
+      "kind": "api",
+      "path": "POST /api/stock/{code}/sync",
+      "domain": "ADMIN_WRITE",
+      "tables_written": ["stock_daily", "collect_log"],
+      "trigger": "HTTP 请求 → DailyCollector.sync_stock",
+      "canary_behavior": "HTTP_503",
+      "evidence": "require_research_writable 依赖（backend/app/api/stock.py）"
+    },
+    {
+      "id": "W16",
+      "kind": "api",
+      "path": "GET /api/stock/{code}/dde（缓存过期时的现取）",
+      "domain": "ADMIN_WRITE",
+      "tables_written": ["stock_dde"],
+      "trigger": "GET 的隐式补采",
+      "canary_behavior": "HTTP_503",
+      "evidence": "backend/app/api/stock.py:_stock_dde（research_writable() 判定，只回缓存）"
+    },
+    {
+      "id": "W17",
+      "kind": "service",
+      "path": "services/usage.py 配额记账",
+      "domain": "RESEARCH_READONLY",
+      "tables_written": ["ifind_usage"],
+      "trigger": "sources/ifind.py 每次调用",
+      "canary_behavior": "BLOCKED",
+      "evidence": "services/usage.py（session_scope() → ResearchDBReadOnlyError）"
+    },
+    {
+      "id": "W18",
+      "kind": "job",
+      "path": "jobs/*.py 全部采集 / 扫描任务",
+      "domain": "ADMIN_WRITE",
+      "tables_written": ["37 张研究表（按任务区分）"],
+      "trigger": "scheduler / 手动 API / CLI",
+      "canary_behavior": "BLOCKED",
+      "evidence": "jobs/*（session_scope()），灰度下 scheduler 关闭且研究库只读"
+    },
+    {
+      "id": "W19",
+      "kind": "job",
+      "path": "jobs/push_brief.py / jobs/alerts.py",
+      "domain": "ADMIN_WRITE",
+      "tables_written": ["collect_log"],
+      "trigger": "scheduler",
+      "canary_behavior": "BLOCKED",
+      "evidence": "jobs/push_brief.py（session_scope + user_session_scope；灰度下不启动）"
+    },
+    {
+      "id": "W20",
+      "kind": "cli",
+      "path": "scripts/collect_*.py | scan_*.py | backfill_*.py | import_rps_history.py | migrate_db.py",
+      "domain": "ADMIN_WRITE",
+      "tables_written": ["研究表 / schema DDL"],
+      "trigger": "运维命令行",
+      "canary_behavior": "BLOCKED",
+      "evidence": "研究库以 mode=ro 打开 + 文件只读；CLI 不会在灰度环境执行"
+    },
+    {
+      "id": "W21",
+      "kind": "cli",
+      "path": "scripts/s6_migrate_user_db.py --apply",
+      "domain": "USER_READWRITE",
+      "tables_written": ["10 张用户表（仅隔离副本）"],
+      "trigger": "部署/迁移命令",
+      "canary_behavior": "ALLOWED",
+      "evidence": "只接受 --allow-dir 下的隔离副本；源库 mode=ro + backup API"
+    },
+    {
+      "id": "W22",
+      "kind": "service",
+      "path": "main._warm_pattern_cache（启动预热线程）",
+      "domain": "RESEARCH_READONLY",
+      "tables_written": [],
+      "trigger": "服务启动（warmup_pattern_cache=true）",
+      "canary_behavior": "BLOCKED",
+      "evidence": "main.py（只读预热；生产配置 warmup_pattern_cache=false）"
+    },
+    {
+      "id": "W23",
+      "kind": "service",
+      "path": "readiness.database_checks（User DB 可写探针）",
+      "domain": "USER_READWRITE",
+      "tables_written": [],
+      "trigger": "/api/ready 每次请求",
+      "canary_behavior": "ALLOWED",
+      "evidence": "BEGIN IMMEDIATE + CREATE TABLE 探针后 ROLLBACK，无持久化写入"
+    },
+    {
+      "id": "W24",
+      "kind": "subprocess",
+      "path": "lark-cli / 飞书推送子进程",
+      "domain": "ADMIN_WRITE",
+      "tables_written": [],
+      "trigger": "jobs/push_brief.py",
+      "canary_behavior": "BLOCKED",
+      "evidence": "灰度不启用飞书/lark-cli；scheduler 关闭"
+    }
+  ]
+}
