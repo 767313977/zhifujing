@@ -1,0 +1,48 @@
+table,model,domain,current_db,target_db
+analysis_snapshot,AnalysisSnapshot,user,fupan.db,user.db
+app_user,AppUser,user,fupan.db,user.db
+auction_snapshot,AuctionSnapshot,research,fupan.db,research.db (read-only)
+breadth_daily,BreadthDaily,research,fupan.db,research.db (read-only)
+cb_basic,CbBasic,research,fupan.db,research.db (read-only)
+cb_daily,CbDaily,research,fupan.db,research.db (read-only)
+collect_log,CollectLog,research,fupan.db,research.db (read-only)
+erp_daily,ErpDaily,research,fupan.db,research.db (read-only)
+etf_bar,EtfBar,research,fupan.db,research.db (read-only)
+etf_basic,EtfBasic,research,fupan.db,research.db (read-only)
+etf_category,EtfCategory,research,fupan.db,research.db (read-only)
+etf_share,EtfShare,research,fupan.db,research.db (read-only)
+fear_greed_daily,FearGreedDaily,research,fupan.db,research.db (read-only)
+futures_basis_daily,FuturesBasisDaily,research,fupan.db,research.db (read-only)
+futures_position,FuturesPosition,research,fupan.db,research.db (read-only)
+hsgt_daily,HsgtDaily,research,fupan.db,research.db (read-only)
+ifind_usage,IfindUsage,research,fupan.db,research.db (read-only)
+index_daily,IndexDaily,research,fupan.db,research.db (read-only)
+index_valuation,IndexValuation,research,fupan.db,research.db (read-only)
+invite_code,InviteCode,user,fupan.db,user.db
+lhb,Lhb,research,fupan.db,research.db (read-only)
+lhb_institution,LhbInstitution,research,fupan.db,research.db (read-only)
+limit_pool,LimitPool,research,fupan.db,research.db (read-only)
+limit_reason,LimitReason,research,fupan.db,research.db (read-only)
+margin_daily,MarginDaily,research,fupan.db,research.db (read-only)
+market_sentiment,MarketSentiment,research,fupan.db,research.db (read-only)
+pattern_hit,PatternHit,research,fupan.db,research.db (read-only)
+review_note,ReviewNote,user,fupan.db,user.db
+rps_daily,RpsDaily,research,fupan.db,research.db (read-only)
+sector_basic,SectorBasic,research,fupan.db,research.db (read-only)
+sector_daily,SectorDaily,research,fupan.db,research.db (read-only)
+sector_member,SectorMember,research,fupan.db,research.db (read-only)
+stock_basic,StockBasic,research,fupan.db,research.db (read-only)
+stock_concept,StockConcept,research,fupan.db,research.db (read-only)
+stock_daily,StockDaily,research,fupan.db,research.db (read-only)
+stock_dde,StockDde,research,fupan.db,research.db (read-only)
+stock_event_cache,StockEventCache,research,fupan.db,research.db (read-only)
+stock_financial,StockFinancial,research,fupan.db,research.db (read-only)
+stock_universe,StockUniverse,research,fupan.db,research.db (read-only)
+trade_calendar,TradeCalendar,research,fupan.db,research.db (read-only)
+trade_journal,TradeJournal,user,fupan.db,user.db
+trade_plan,TradePlan,user,fupan.db,user.db
+trade_t,TradeT,user,fupan.db,user.db
+user_risk_pref,UserRiskPref,user,fupan.db,user.db
+user_session,UserSession,user,fupan.db,user.db
+volatility_daily,VolatilityDaily,research,fupan.db,research.db (read-only)
+watchlist,Watchlist,user,fupan.db,user.db

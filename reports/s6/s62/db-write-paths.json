@@ -1,0 +1,50 @@
+{
+  "commit_sha": "c6db475b9848fc37e703be0bd3f186c9d20d053e",
+  "generated_at": "2026-11-15T01:40:00+08:00",
+  "method": "全仓库只读检索 + ORM 模型/路由逐条核对",
+  "connection_entries": [
+    {"id": "C1", "file": "backend/app/db.py", "line": 48, "kind": "engine", "note": "应用唯一主 engine（拆分关闭）；拆分打开后指向只读 Research DB"},
+    {"id": "C2", "file": "backend/app/db.py", "line": 74, "kind": "sessionmaker", "note": "SessionLocal；S6.2 新增 ResearchSessionLocal/UserSessionLocal"},
+    {"id": "C3", "file": "backend/app/services/auth.py", "line": 341, "kind": "session_scope", "note": "每个已登录请求都会开 session，可能写 user_session"},
+    {"id": "C4", "file": "backend/app/api/sector.py", "line": 1372, "kind": "session_scope", "note": "板块成员现取后再读"},
+    {"id": "C5", "file": "backend/app/api/stock.py", "line": 809, "kind": "session_scope", "note": "个股 DDE 现取"},
+    {"id": "C6", "file": "backend/app/api/anomaly_map.py", "line": 410, "kind": "SessionLocal", "note": "session=None 时自建"},
+    {"id": "C7", "file": "backend/app/jobs/backup.py", "line": 41, "kind": "sqlite3", "note": "备份用独立连接（同库）"},
+    {"id": "C8", "file": "backend/app/readiness.py", "line": 83, "kind": "sqlite3", "note": "只读探针 mode=ro&immutable=1"}
+  ],
+  "write_paths": [
+    {"module": "auth", "file": "backend/app/api/auth.py", "lines": [180, 184, 192, 211, 262, 317], "tables": ["app_user", "user_session", "invite_code"], "domain": "user", "transaction": "请求内 commit"},
+    {"module": "journal", "file": "backend/app/api/journal.py", "lines": [274, 289, 302, 320, 340, 353], "tables": ["trade_journal", "trade_t"], "domain": "user", "transaction": "请求内 commit，读 trade_calendar/stock_daily"},
+    {"module": "positions", "file": "backend/app/api/positions.py", "lines": [113, 147, 158], "tables": ["trade_journal"], "domain": "user", "transaction": "服务内 commit"},
+    {"module": "watchlist", "file": "backend/app/api/watchlist.py", "lines": [212, 247, 261, 319], "tables": ["watchlist", "stock_daily", "stock_basic"], "domain": "mixed", "transaction": "用户写入 + 研究采集写"},
+    {"module": "plans", "file": "backend/app/api/plans.py", "lines": [281, 336, 422, 467, 486], "tables": ["trade_plan", "trade_journal"], "domain": "user", "transaction": "请求内 commit，读研究表"},
+    {"module": "note", "file": "backend/app/api/note.py", "lines": [154, 157, 168], "tables": ["review_note"], "domain": "user"},
+    {"module": "risk", "file": "backend/app/services/risk.py", "lines": [54, 60], "tables": ["user_risk_pref"], "domain": "user"},
+    {"module": "analysis", "file": "backend/app/api/analysis.py", "lines": [244, 276], "tables": ["analysis_snapshot"], "domain": "user"},
+    {"module": "admin-users", "file": "backend/app/api/admin.py", "lines": [312, 337, 382, 404], "tables": ["invite_code", "app_user", "user_session"], "domain": "user"},
+    {"module": "admin-collect", "file": "backend/app/api/admin.py", "lines": [176, 195, 213], "tables": ["stock_daily", "pattern_hit", "collect_log"], "domain": "research", "note": "触发采集；灰度禁用"},
+    {"module": "sector-live", "file": "backend/app/api/sector.py", "lines": [1228, 1247, 1419], "tables": ["sector_member", "sector_basic"], "domain": "research", "note": "GET 内现取写研究表；外部取数关闭时不发生"},
+    {"module": "stock-dde", "file": "backend/app/api/stock.py", "lines": [824, 843, 865], "tables": ["stock_dde"], "domain": "research"},
+    {"module": "stock-sync", "file": "backend/app/api/stock.py", "lines": [1352, 1385], "tables": ["stock_daily", "stock_basic"], "domain": "research"},
+    {"module": "scheduler-session-clean", "file": "backend/app/jobs/scheduler.py", "lines": [653, 667], "tables": ["user_session"], "domain": "user", "note": "研究调度器写用户表"},
+    {"module": "collectors", "file": "backend/app/jobs/*.py", "lines": [], "tables": ["stock_daily", "limit_pool", "sector_*", "market_sentiment", "auction_snapshot", "collect_log"], "domain": "research"},
+    {"module": "usage", "file": "backend/app/services/usage.py", "lines": [184, 200], "tables": ["ifind_usage"], "domain": "research"}
+  ],
+  "cross_domain_reads": [
+    {"file": "backend/app/api/stock.py", "line": 442, "user_tables": ["watchlist"], "research_tables": ["stock_daily", "stock_basic", "limit_pool"]},
+    {"file": "backend/app/api/watchlist.py", "line": 128, "user_tables": ["watchlist"], "research_tables": ["stock_daily"]},
+    {"file": "backend/app/services/premarket.py", "line": 307, "user_tables": ["watchlist"], "research_tables": ["auction_snapshot", "stock_daily", "limit_pool", "pattern_hit"]},
+    {"file": "backend/app/services/trade_plan.py", "line": 645, "user_tables": ["watchlist"], "research_tables": ["pattern_hit", "stock_daily"]},
+    {"file": "backend/app/services/trade_journal.py", "line": 571, "user_tables": ["trade_journal", "trade_t"], "research_tables": ["stock_daily", "limit_pool", "market_sentiment", "trade_calendar"]},
+    {"file": "backend/app/services/positions.py", "line": 70, "user_tables": ["trade_journal"], "research_tables": ["stock_daily", "cb_daily", "etf_bar"]},
+    {"file": "backend/app/services/risk.py", "line": 163, "user_tables": ["trade_journal"], "research_tables": ["market_sentiment", "fear_greed_daily"]},
+    {"file": "backend/app/services/usage.py", "line": 287, "user_tables": ["watchlist"], "research_tables": ["ifind_usage"]}
+  ],
+  "summary": {
+    "orm_tables": 47,
+    "research_tables": 37,
+    "user_tables": 10,
+    "non_orm_research_tables": ["data_revision", "data_revision_meta", "sector_member_backfill", "sector_member_backfill_run"],
+    "blocking_gap": "路由层尚未切换到 get_research_db/get_user_db；拆分默认关闭"
+  }
+}

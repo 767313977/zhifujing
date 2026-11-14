@@ -15,45 +15,83 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
-engine = create_engine(
-    f"sqlite:///{settings.db_path}",
-    # FastAPI 请求线程与采集线程共用 engine
-    #
-    # `timeout=15`：SQLite 的**写锁等待**上限（Python `sqlite3` 的默认只有 5 秒）。
-    # 尾部那几趟采集会在一个事务里连写几千行，这期间别的**写**请求（登录建会话、
-    # 存笔记、加自选）拿不到写锁 —— 5 秒会直接抛 `database is locked` 变成 500，
-    # 15 秒足够骑过那几波写。⚠️ **读请求不受影响**：WAL 下读不会被写阻塞，
-    # 所以这里影响的只是少数写路径。不给更大是因为「等太久」比「快点报错」更难排查：
-    # 上限要留着（2026-10-10 加）。
-    connect_args={"check_same_thread": False, "timeout": 15},
-    # 连接池要和线程池匹配：FastAPI 的同步执行器默认 40 个工作线程，
-    # 而默认池只有 5 + 10 溢出 = 15 条连接，高峰时剩下 25 个请求在池上排队，
-    # 等满 30 秒（默认 pool_timeout）直接抛 TimeoutError → 500。
-    # 这里把池放大到 20 + 20 = 40，并把排队上限压到 10 秒：
-    # 排不到连接说明确实过载，宁可快点报错，也不要让请求卡 30 秒（2026-11-01 修）。
-    pool_size=20,
-    max_overflow=20,
-    pool_timeout=10,
-    future=True,
-)
+
+def sqlite_readonly_url(path) -> str:
+    """S6.2：只读 SQLite URL（`mode=ro` + SQLAlchemy `uri=true`）。"""
+    from pathlib import Path
+
+    return f"sqlite:///file:{Path(path).as_posix()}?mode=ro&uri=true"
+
+
+def _engine_kwargs() -> dict:
+    """请求线程与采集线程共用；写锁等待与连接池参数见下方注释。"""
+    return {
+        # `timeout=15`：SQLite 的**写锁等待**上限（Python `sqlite3` 的默认只有 5 秒）。
+        # 尾部那几趟采集会在一个事务里连写几千行，这期间别的**写**请求（登录建会话、
+        # 存笔记、加自选）拿不到写锁 —— 5 秒会直接抛 `database is locked` 变成 500，
+        # 15 秒足够骑过那几波写。⚠️ **读请求不受影响**：WAL 下读不会被写阻塞，
+        # 所以这里影响的只是少数写路径。不给更大是因为「等太久」比「快点报错」更难排查：
+        # 上限要留着（2026-10-10 加）。
+        "connect_args": {"check_same_thread": False, "timeout": 15},
+        # 连接池要和线程池匹配：FastAPI 的同步执行器默认 40 个工作线程，
+        # 而默认池只有 5 + 10 溢出 = 15 条连接，高峰时剩下 25 个请求在池上排队，
+        # 等满 30 秒（默认 pool_timeout）直接抛 TimeoutError → 500。
+        # 这里把池放大到 20 + 20 = 40，并把排队上限压到 10 秒：
+        # 排不到连接说明确实过载，宁可快点报错，也不要让请求卡 30 秒（2026-11-01 修）。
+        "pool_size": 20,
+        "max_overflow": 20,
+        "pool_timeout": 10,
+        "future": True,
+    }
+
+
+#: S6.2：拆分关闭时仍是单库单 engine；打开后 `engine` 指向**只读 Research DB**。
+if settings.db_split_enabled:
+    engine = create_engine(sqlite_readonly_url(settings.db_path), **_engine_kwargs())
+else:
+    engine = create_engine(f"sqlite:///{settings.db_path}", **_engine_kwargs())
 
 
 @event.listens_for(engine, "connect")
 def _enable_sqlite_pragmas(dbapi_conn, _record) -> None:
     """开启 WAL：采集在写的同时接口仍可读，避免 database is locked。"""
     cursor = dbapi_conn.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA synchronous=NORMAL")
-    cursor.execute("PRAGMA foreign_keys=ON")
-    # WAL 文件默认不回收（journal_size_limit=-1）：赶上一轮几万行的大批量写入，
-    # 它只会一直涨（线上实测 124MB ≈ 主库 15%）。设 64MB 上限 —— checkpoint 之后
-    # SQLite 会把 WAL 截回到这个尺寸以内，既留足高峰余量、又不会无限膨胀。
-    # ⚠️ 这个 PRAGMA 只影响 checkpoint 时的截断，不改写入行为；老库在下次连接时生效。
-    cursor.execute("PRAGMA journal_size_limit=67108864")
+    if settings.db_split_enabled:
+        # 只读连接：SQLite 层面再加一道 query_only（应用/ORM/原生 SQL 都绕不过）
+        cursor.execute("PRAGMA query_only=ON")
+    else:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        # WAL 文件默认不回收（journal_size_limit=-1）：赶上一轮几万行的大批量写入，
+        # 它只会一直涨（线上实测 124MB ≈ 主库 15%）。设 64MB 上限 —— checkpoint 之后
+        # SQLite 会把 WAL 截回到这个尺寸以内，既留足高峰余量、又不会无限膨胀。
+        # ⚠️ 这个 PRAGMA 只影响 checkpoint 时的截断，不改写入行为；老库在下次连接时生效。
+        cursor.execute("PRAGMA journal_size_limit=67108864")
     cursor.close()
 
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+#: 兼容别名：Research 会话（拆分关闭时与 SessionLocal 相同）
+ResearchSessionLocal = SessionLocal
+
+# --- S6.2 用户库连接（拆分关闭时复用同一 engine，行为不变） ---
+user_engine = engine
+UserSessionLocal = SessionLocal
+if settings.db_split_enabled:
+    user_engine = create_engine(f"sqlite:///{settings.user_db_path}", **_engine_kwargs())
+
+    @event.listens_for(user_engine, "connect")
+    def _enable_user_pragmas(dbapi_conn, _record) -> None:
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_size_limit=67108864")
+        cursor.close()
+
+    UserSessionLocal = sessionmaker(bind=user_engine, autoflush=False, expire_on_commit=False)
 
 
 def init_db(*, allow_migrate: bool | None = None) -> None:
@@ -362,12 +400,100 @@ def session_scope() -> Generator[Session, None, None]:
 
 
 def get_db() -> Generator[Session, None, None]:
-    """FastAPI 依赖注入使用。"""
+    """FastAPI 依赖注入使用（兼容入口：拆分关闭时即研究/用户同库）。
+
+    S6.2 起新增 `get_research_db` / `get_user_db`；新代码应显式选择，
+    不要再依赖这个混合入口。
+    """
     session = SessionLocal()
     try:
         yield session
     finally:
         session.close()
+
+
+def get_research_db() -> Generator[Session, None, None]:
+    """只读 Research DB 会话（拆分关闭时与 `get_db` 相同）。"""
+    session = ResearchSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@contextmanager
+def user_session_scope() -> Generator[Session, None, None]:
+    """User DB 写操作：自动提交，异常回滚。"""
+    session = UserSessionLocal()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def get_user_db() -> Generator[Session, None, None]:
+    """User DB 会话（可写）；拆分关闭时与 `get_db` 相同。"""
+    session = UserSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+def init_user_db() -> dict:
+    """**显式**初始化 User DB（只建 10 张用户表）。
+
+    规则：
+    - 只有显式调用（部署步骤/测试）才建表，启动流程不得自动调用；
+    - Research DB 永远不会经由本函数建表；
+    - 返回用户表清单，供部署日志与证据使用。
+    """
+    from sqlalchemy import inspect
+
+    from app import models  # noqa: F401  触发模型注册
+    from app.db_roles import USER_MODEL_NAMES, user_table_objects
+
+    tables = user_table_objects()
+    models.Base.metadata.create_all(bind=user_engine, tables=tables)
+    existing = set(inspect(user_engine).get_table_names())
+    missing = [name for name in USER_MODEL_NAMES if getattr(models, name).__tablename__ not in existing]
+    if missing:
+        raise RuntimeError(f"User DB 初始化后仍缺表：{missing}")
+    return {
+        "engine": str(user_engine.url),
+        "tables": [table.name for table in tables],
+    }
+
+
+def user_schema_report() -> dict:
+    """User DB 只读检查（不建表）：返回表是否存在与行数。"""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(user_engine)
+    existing = set(inspector.get_table_names())
+    from app.db_roles import USER_MODEL_NAMES
+    from app import models
+
+    expected = [getattr(models, name).__tablename__ for name in USER_MODEL_NAMES]
+    missing = [name for name in expected if name not in existing]
+    counts: dict[str, int] = {}
+    if not missing:
+        with user_engine.connect() as connection:
+            for name in expected:
+                counts[name] = int(
+                    connection.execute(text(f'SELECT COUNT(*) FROM "{name}"')).scalar() or 0
+                )
+    return {
+        "ok": not missing,
+        "missing": missing,
+        "tables": expected,
+        "row_counts": counts,
+        "url": str(user_engine.url),
+    }
 
 
 def upsert(session: Session, model, rows: list[dict]) -> int:

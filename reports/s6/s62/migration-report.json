@@ -1,0 +1,115 @@
+{
+  "mode": "apply",
+  "source": "C:\\Users\\76731\\AppData\\Local\\Temp\\pytest-of-76731\\pytest-293\\test_migration_dry_run_apply_a0\\isolated\\legacy-copy.db",
+  "target": "C:\\Users\\76731\\AppData\\Local\\Temp\\pytest-of-76731\\pytest-293\\test_migration_dry_run_apply_a0\\isolated\\user.db",
+  "allow_dir": "C:\\Users\\76731\\AppData\\Local\\Temp\\pytest-of-76731\\pytest-293\\test_migration_dry_run_apply_a0\\isolated",
+  "source_sha256_before": "c5790cdb418c9e30659ef5e1e159e90903a7a9bf05b15eb9793fb289421ce1ae",
+  "source_sha256_after": "c5790cdb418c9e30659ef5e1e159e90903a7a9bf05b15eb9793fb289421ce1ae",
+  "target_sha256_before": "c79a25ac7c530eda1264051ca151c13ead540bfebd124712b1da1809ebb012fc",
+  "target_sha256_after": "06dbfe6c140d41016e95a3a57f57be1631ad192d3735192f2f5170d9e0cfd558",
+  "created_tables": [],
+  "source_missing_tables": [],
+  "copied_rows": {
+    "app_user": 1,
+    "invite_code": 0,
+    "user_session": 0,
+    "watchlist": 1,
+    "review_note": 0,
+    "user_risk_pref": 0,
+    "trade_journal": 0,
+    "trade_t": 0,
+    "trade_plan": 0,
+    "analysis_snapshot": 0
+  },
+  "target_state": {
+    "app_user": {
+      "rows": 1,
+      "digest": "e8cbac838dbd3f7873af8fe18e2f26a3b0c53f570b9df0ad5fd09936ff68d3be"
+    },
+    "invite_code": {
+      "rows": 0,
+      "digest": null
+    },
+    "user_session": {
+      "rows": 0,
+      "digest": null
+    },
+    "watchlist": {
+      "rows": 1,
+      "digest": "2a92df304e4345ee84260a56246411e400df4d1cc90bf01228f7c80dfa058c88"
+    },
+    "review_note": {
+      "rows": 0,
+      "digest": null
+    },
+    "user_risk_pref": {
+      "rows": 0,
+      "digest": null
+    },
+    "trade_journal": {
+      "rows": 0,
+      "digest": null
+    },
+    "trade_t": {
+      "rows": 0,
+      "digest": null
+    },
+    "trade_plan": {
+      "rows": 0,
+      "digest": null
+    },
+    "analysis_snapshot": {
+      "rows": 0,
+      "digest": null
+    }
+  },
+  "source_state": {
+    "app_user": {
+      "rows": 1,
+      "digest": "e8cbac838dbd3f7873af8fe18e2f26a3b0c53f570b9df0ad5fd09936ff68d3be"
+    },
+    "invite_code": {
+      "rows": 0,
+      "digest": null
+    },
+    "user_session": {
+      "rows": 0,
+      "digest": null
+    },
+    "watchlist": {
+      "rows": 1,
+      "digest": "2a92df304e4345ee84260a56246411e400df4d1cc90bf01228f7c80dfa058c88"
+    },
+    "review_note": {
+      "rows": 0,
+      "digest": null
+    },
+    "user_risk_pref": {
+      "rows": 0,
+      "digest": null
+    },
+    "trade_journal": {
+      "rows": 0,
+      "digest": null
+    },
+    "trade_t": {
+      "rows": 0,
+      "digest": null
+    },
+    "trade_plan": {
+      "rows": 0,
+      "digest": null
+    },
+    "analysis_snapshot": {
+      "rows": 0,
+      "digest": null
+    }
+  },
+  "mismatches": [],
+  "foreign_key_errors": 0,
+  "integrity_check": "ok",
+  "source_unchanged": true,
+  "applied": true,
+  "generated_at": "2026-11-15T01:32:59+08:00",
+  "verdict": "PASS"
+}

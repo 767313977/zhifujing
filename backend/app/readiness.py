@@ -130,18 +130,24 @@ def _egress_app_gate() -> tuple[str, str | None]:
 
 
 def _database_gate() -> tuple[str, str | None]:
-    """灰度要求应用使用的是**只读**数据库连接。
+    """灰度要求应用使用的是**只读** Research DB + 独立 User DB。
 
-    当前引擎是 `sqlite:///<path>`（读写）。只有 URL 里显式带 `mode=ro` 才算通过；
-    仅「文件能被只读打开」不等于应用不会写。
+    仅「文件能被只读打开」不等于应用不会写；必须同时满足：
+    1. `FUPAN_DB_SPLIT_ENABLED=true`（连接层拆分已启用）；
+    2. `FUPAN_RESEARCH_DB_READONLY=true`（运维显式确认研究库只读形态）；
+    3. Research 引擎 URL 含 `mode=ro`；
+    4. 只读探针通过。
     """
+    settings = get_settings()
+    if not settings.db_split_enabled or not settings.research_db_readonly:
+        return FAIL, "DB_SPLIT_NOT_ACTIVE"
     try:
         from app.db import engine
 
         url = str(engine.url)
     except Exception as exc:  # noqa: BLE001
         return FAIL, f"ENGINE_UNAVAILABLE:{type(exc).__name__}"
-    probe, reason = probe_readonly_sqlite(get_settings().db_path)
+    probe, reason = probe_readonly_sqlite(settings.db_path)
     if probe != PASS:
         return FAIL, f"READONLY_PROBE_{reason}"
     if "mode=ro" not in url:

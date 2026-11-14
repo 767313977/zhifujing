@@ -1,0 +1,28 @@
+{
+  "dry_run_exit": 0,
+  "apply_exit": 0,
+  "rerun_exit": 0,
+  "source_copy_sha_before": "43d1e4ba965940430bf4579e47314533042247e56823122e91265a435051d170",
+  "source_copy_sha_after": "43d1e4ba965940430bf4579e47314533042247e56823122e91265a435051d170",
+  "source_copy_unchanged": true,
+  "source_copy_size": 513519616,
+  "user_tables_copied": {
+    "app_user": 1,
+    "invite_code": 0,
+    "user_session": 6,
+    "watchlist": 1,
+    "review_note": 1,
+    "user_risk_pref": 0,
+    "trade_journal": 0,
+    "trade_t": 0,
+    "trade_plan": 0,
+    "analysis_snapshot": 0
+  },
+  "user_tables_total_rows": 9,
+  "target_user_db_size": 102400,
+  "verdict": "PASS",
+  "mismatches": [],
+  "foreign_key_errors": 0,
+  "integrity_check": "ok",
+  "rerun_idempotent_verdict": "PASS"
+}

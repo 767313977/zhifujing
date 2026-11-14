@@ -1,0 +1,56 @@
+{
+  "mode": "dry-run",
+  "source": "C:\\Users\\76731\\AppData\\Local\\Temp\\s6-s62-9wrjw4mk\\legacy-copy.db",
+  "target": "C:\\Users\\76731\\AppData\\Local\\Temp\\s6-s62-9wrjw4mk\\user.db",
+  "allow_dir": "C:\\Users\\76731\\AppData\\Local\\Temp\\s6-s62-9wrjw4mk",
+  "source_sha256_before": "43d1e4ba965940430bf4579e47314533042247e56823122e91265a435051d170",
+  "source_sha256_after": "43d1e4ba965940430bf4579e47314533042247e56823122e91265a435051d170",
+  "target_sha256_before": null,
+  "tables": {
+    "app_user": {
+      "rows": 1,
+      "digest": "6f6f6f2b8644e5047e686d9d195121f269025cf79d43c95d6b51bdcddd39e5b6"
+    },
+    "invite_code": {
+      "rows": 0,
+      "digest": null
+    },
+    "user_session": {
+      "rows": 6,
+      "digest": "6fd9a17e4164ac1fc513b6177f3328e3d45a57bb714b674189b1a54bf6b0297f"
+    },
+    "watchlist": {
+      "rows": 1,
+      "digest": "0dd035846cd40d40e173265914a07e258f450c6045095706cefa69248634e0e8"
+    },
+    "review_note": {
+      "rows": 1,
+      "digest": "5a021fe834d5348b6913963c574b422e32741d14725b47612edba8eef8ef89bb"
+    },
+    "trade_journal": {
+      "rows": 0,
+      "digest": null
+    },
+    "trade_t": {
+      "rows": 0,
+      "digest": null
+    },
+    "trade_plan": {
+      "rows": 0,
+      "digest": null
+    }
+  },
+  "would_create": [
+    "app_user",
+    "invite_code",
+    "user_session",
+    "watchlist",
+    "review_note",
+    "user_risk_pref",
+    "trade_journal",
+    "trade_t",
+    "trade_plan",
+    "analysis_snapshot"
+  ],
+  "applied": false
+}
