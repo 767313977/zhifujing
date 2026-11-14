@@ -1,0 +1,131 @@
+{
+  "results": [
+    {
+      "name": "theme_partial_observed",
+      "ok": true,
+      "detail": "has2of2=True has3of10=True pit=True"
+    },
+    {
+      "name": "theme_missing_sector_unverifiable",
+      "ok": true,
+      "detail": "A01+A04 -> UNVERIFIABLE"
+    },
+    {
+      "name": "cross_taxonomy_never_verified",
+      "ok": true,
+      "detail": "has20of20=True not_verified=True"
+    },
+    {
+      "name": "sentiment_aggregation",
+      "ok": true,
+      "detail": "pooled + day-equal + version"
+    },
+    {
+      "name": "sentiment_failed_120",
+      "ok": true,
+      "detail": "failed group 120d hint"
+    },
+    {
+      "name": "research_evidence_tab",
+      "ok": true,
+      "detail": "tab=True has_known=True has_unknown=True has_forward=True"
+    },
+    {
+      "name": "research_evidence_pit",
+      "ok": true,
+      "detail": "later=True forward=True"
+    },
+    {
+      "name": "drawer_escape",
+      "ok": true,
+      "detail": "Escape closes"
+    },
+    {
+      "name": "drawer_restore_asof",
+      "ok": true,
+      "detail": "?stock + ?as_of restore"
+    },
+    {
+      "name": "drawer_refresh_asof",
+      "ok": true,
+      "detail": "refresh keeps as_of"
+    },
+    {
+      "name": "drawer_history",
+      "ok": true,
+      "detail": "back_closed=True forward_open=True"
+    },
+    {
+      "name": "narrow_layout",
+      "ok": true,
+      "detail": "390x844 screenshot captured"
+    },
+    {
+      "name": "account_switch_clears_drawer",
+      "ok": true,
+      "detail": "user_b=True no_drawer=True"
+    },
+    {
+      "name": "limit_page",
+      "ok": true,
+      "detail": "/limit-up?date=2026-09-24 has StockLink"
+    },
+    {
+      "name": "auction_page",
+      "ok": true,
+      "detail": "/auction"
+    },
+    {
+      "name": "console_errors",
+      "ok": true,
+      "detail": "0 errors"
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "theme_partial_1280x800.png",
+      "sha256": "a1948838f3d7982e91cc16ce4e241ddb33739297a97695c9501b86ad289198f8",
+      "bytes": 140268
+    },
+    {
+      "file": "theme_unverifiable_1280x800.png",
+      "sha256": "8b3c2a2184bbe1b38549ef9a0c5d4b8701f175d2df7861e8c9df717f34fc0474",
+      "bytes": 138116
+    },
+    {
+      "file": "theme_cross_taxonomy_1280x800.png",
+      "sha256": "992734dd026e2605041258e98c6205e81a53fc68fcf172ee4920d4a79dee5c39",
+      "bytes": 68716
+    },
+    {
+      "file": "sentiment_1280x800.png",
+      "sha256": "83faddc9b00e1ceeb5e4019c540cc2b98518e59e32abbdb7aea7d682e99ac874",
+      "bytes": 97653
+    },
+    {
+      "file": "sentiment_1920x1080.png",
+      "sha256": "8a4feebb18eb2bd1d82693dbb75f557f795d68fb8cafc71cae8f304161a00beb",
+      "bytes": 211522
+    },
+    {
+      "file": "sentiment_3840x2160.png",
+      "sha256": "c031d848d0cb42ad046cf8571b08b7b0cc40f1cf1b3b1d143eb96b4c475ec1f4",
+      "bytes": 666991
+    },
+    {
+      "file": "research_evidence_1280x800.png",
+      "sha256": "910fa1b4753685bfc0f1f93b90e352367d8fa0c6d783efbf48de2f5e9857e648",
+      "bytes": 161909
+    },
+    {
+      "file": "research_evidence_390x844.png",
+      "sha256": "3ca3a87e0647487305c56c0e1dfeb261ed3547df6bf1a0587ed909dbe3a0cd9c",
+      "bytes": 64079
+    },
+    {
+      "file": "limit_page_1280x800.png",
+      "sha256": "bcfd207d7a7618bcdecb26698f32f32f70db2892a61a86927a53c9cd90e7a0ed",
+      "bytes": 80305
+    }
+  ]
+}

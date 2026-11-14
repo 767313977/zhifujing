@@ -211,7 +211,11 @@ test('AND without coverage never shows a fake empty intersection', async () => {
       total: 0,
       shown: 0,
       items: [],
-      quality: { status: 'UNVERIFIABLE', reasons: ['AND_UNVERIFIABLE'] },
+      quality: {
+        status: 'UNVERIFIABLE',
+        version: 'theme-quality-v2',
+        reasons: ['AND_UNVERIFIABLE'],
+      },
       warnings: ['SELECTED_SECTOR_NOT_COVERED', 'AND_UNVERIFIABLE'],
       selected_sectors: [
         { code: '801001', name: '芯片', taxonomy: 'kph_selected', member_count: 1130, has_data: true },
@@ -235,7 +239,11 @@ test('not collected shows an explicit state', async () => {
       total: 0,
       shown: 0,
       items: [],
-      quality: { status: 'NOT_COLLECTED', reasons: ['NO_SNAPSHOT_FOR_SELECTED_SECTORS'] },
+      quality: {
+        status: 'NOT_COLLECTED',
+        version: 'theme-quality-v2',
+        reasons: ['NO_SNAPSHOT_FOR_SELECTED_SECTORS'],
+      },
     }),
   )
   renderPanel()
