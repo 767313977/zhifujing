@@ -2422,8 +2422,36 @@ class StockResearchDaily(BaseModel):
     known_by: str = "CLOSE"
 
 
+class StockResearchCutoffKnown(BaseModel):
+    """S4-A：有充分时间证明在 cutoff 已知、且质量满足来源规则的字段。"""
+
+    previous_close_date: date | None
+    #: UP / BROKEN / DOWN / NOT_IN_POOL / POOL_CONFLICT / UNKNOWN
+    pool_status: str
+    board_height: int | None
+    observed_pool_membership: list[str]
+    pool_quality: dict[str, str]
+    daily: StockResearchDaily | None
+    #: 只含 PRIOR_DAY（观察日之前已取到）的题材
+    themes: list[StockResearchTheme]
+    #: 当前数据源无法证明盘后发布时间 → 恒为空，保留字段便于未来升级
+    concepts: list[StockResearchTheme]
+    sentiment: dict[str, int | float | None] | None
+
+
+class StockResearchUnknownOrLater(BaseModel):
+    """S4-A：`LATER / SAME_DAY_UNKNOWN / POST_CLOSE_UNKNOWN / UNKNOWN` 集合。"""
+
+    themes: list[StockResearchTheme]
+    concepts: list[StockResearchTheme]
+    reasons: list[str] = []
+
+
 class StockResearchAsKnown(BaseModel):
-    """严格截至观察日**收盘**已知的信息。"""
+    """**兼容字段**：已知子集（不含 LATER / 同日未知 / 盘后未知）。
+
+    S4 起不再承载 `LATER` 题材；新代码请读 `at_cutoff_known`。
+    """
 
     previous_close_date: date | None
     limit_status: str
@@ -2434,6 +2462,8 @@ class StockResearchAsKnown(BaseModel):
     themes: list[StockResearchTheme]
     concepts: list[StockResearchTheme]
     sentiment: dict[str, int | float | None] | None
+    schema_version: str = "research-evidence-v2"
+    subset_of: str | None = "at_cutoff_known"
 
 
 class StockResearchOutcome(BaseModel):
@@ -2452,11 +2482,18 @@ class StockResearchEvidence(BaseModel):
     claim: str
     source_table: str
     source_trade_date: date | None
+    #: 本站写入时间（不等于上游发布时间）
     fetched_at: datetime | None
+    #: 上游首次发布时间；无法证实时为 null，不虚构
+    source_published_at: datetime | None = None
+    #: 本站观察到这条证据的时间（有则填，无则 null）
+    observed_at: datetime | None = None
     known_by: str
     quality: str
     reason_code: str | None
     is_forward_known: bool
+    #: AT_CUTOFF_KNOWN / UNKNOWN_OR_LATER / FORWARD_OUTCOME，三桶互斥
+    time_bucket: str
     summary: str | None = None
 
 
@@ -2471,12 +2508,22 @@ class StockResearchContextOut(BaseModel):
     requested_as_of: date | None
     resolved_trade_date: date
     data_as_of: date | None
+    #: S4-A 时点协议版本
+    evidence_version: str = "research-evidence-v2"
+    observation_date: date | None = None
+    #: 当前只支持 CLOSE
+    cutoff: str = "CLOSE"
     #: 本轮只读展示，不进入任何策略/信号
     historical_signal_eligible: bool
     quality: StockResearchContextQuality
+    at_cutoff_known: StockResearchCutoffKnown
+    unknown_or_later: StockResearchUnknownOrLater
+    #: 兼容字段：已知子集（不含 LATER/同日未知/盘后未知）
     as_known_on_day: StockResearchAsKnown
     later_outcome: StockResearchOutcome
     evidence: list[StockResearchEvidence]
+    #: 三桶计数（机器可断言）
+    evidence_counts: dict[str, int] = {}
     notes: list[str] = []
 
 

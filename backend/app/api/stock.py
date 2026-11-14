@@ -1296,6 +1296,7 @@ def stock_lhb(
 def stock_research_context_view(
     code: str,
     as_of: date | None = Query(None, description="观察日；不传则用最近交易日"),
+    cutoff: str = Query("CLOSE", description="时点；当前只支持 CLOSE"),
     session: Session = Depends(get_db),
     _user: AppUser = Depends(current_user),
 ) -> StockResearchContextOut:
@@ -1307,7 +1308,9 @@ def stock_research_context_view(
     - D+1 结果只供复盘，`is_forward_known=true`，不反写 D 日依据。
     """
     try:
-        data = stock_research_context.build(session, code=_code(code), as_of=as_of)
+        data = stock_research_context.build(
+            session, code=_code(code), as_of=as_of, cutoff=cutoff
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return StockResearchContextOut(**data)

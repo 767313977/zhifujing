@@ -69,14 +69,22 @@ function contextPayload(
     resolved_trade_date: '2026-09-24',
     data_as_of: '2026-09-28',
     historical_signal_eligible: false,
+    evidence_version: 'research-evidence-v2',
+    observation_date: '2026-09-24',
+    cutoff: 'CLOSE',
     quality: { status: 'PARTIAL', reasons: ['THEME_PIT_UNKNOWN'] },
-    as_known_on_day: {
+    at_cutoff_known: {
       previous_close_date: '2026-09-23',
-      limit_status: 'UP',
+      pool_status: 'UP',
       board_height: 2,
       observed_pool_membership: ['up'],
       pool_quality: { up: 'VERIFIED', broken: 'VERIFIED', down: 'VERIFIED' },
       daily: { trade_date: '2026-09-24', close: 10, pct_chg: 10, known_by: 'CLOSE' },
+      themes: [],
+      concepts: [],
+      sentiment: { limit_up_count: 50, broken_rate: 20, max_consecutive: 2, up_count: 3000, down_count: 2000 },
+    },
+    unknown_or_later: {
       themes: [
         {
           name: '芯片',
@@ -95,6 +103,18 @@ function contextPayload(
           known_by: 'POST_CLOSE_UNKNOWN',
         },
       ],
+      reasons: ['THEME_PIT_UNKNOWN', 'CONCEPT_POST_CLOSE_UNKNOWN'],
+    },
+    as_known_on_day: {
+      previous_close_date: '2026-09-23',
+      limit_status: 'UP',
+      board_height: 2,
+      observed_pool_membership: ['up'],
+      pool_quality: { up: 'VERIFIED', broken: 'VERIFIED', down: 'VERIFIED' },
+      daily: { trade_date: '2026-09-24', close: 10, pct_chg: 10, known_by: 'CLOSE' },
+      // 兼容子集：S4 起不得再承载 LATER / 同日未知题材
+      themes: [],
+      concepts: [],
       sentiment: { limit_up_count: 50, broken_rate: 20, max_consecutive: 2, up_count: 3000, down_count: 2000 },
     },
     later_outcome: {
@@ -116,6 +136,7 @@ function contextPayload(
         quality: 'VERIFIED',
         reason_code: null,
         is_forward_known: false,
+        time_bucket: 'AT_CUTOFF_KNOWN',
         summary: '当日观察到 up',
       },
       {
@@ -127,6 +148,7 @@ function contextPayload(
         quality: 'PARTIAL',
         reason_code: 'THEME_PIT_UNKNOWN',
         is_forward_known: false,
+        time_bucket: 'UNKNOWN_OR_LATER',
         summary: '芯片(kph_selected)',
       },
       {
@@ -138,6 +160,7 @@ function contextPayload(
         quality: 'VERIFIED',
         reason_code: null,
         is_forward_known: true,
+        time_bucket: 'FORWARD_OUTCOME',
         summary: 'D+1 涨跌幅 -5',
       },
     ],
@@ -184,7 +207,7 @@ beforeEach(() => {
 test('evidence tab separates as-known, unknown-source and forward outcome', async () => {
   renderDrawer()
   await waitFor(() => expect(screen.getByText('观察日已知（截至收盘）')).toBeTruthy())
-  expect(screen.getByText('盘后才知道 / 来源时间未知')).toBeTruthy()
+  expect(screen.getByText('不知道 / 观察日之后才取到')).toBeTruthy()
   expect(screen.getByText('D+1 后验（只供复盘）')).toBeTruthy()
 
   expect(screen.getAllByText(/同日取到，无法证明盘前/).length).toBeGreaterThan(0)
@@ -193,14 +216,32 @@ test('evidence tab separates as-known, unknown-source and forward outcome', asyn
   expect(screen.getByText(/D\+1 后验结果/)).toBeTruthy()
   // 后验行以后验时点展示
   expect(screen.getAllByText('D+1 后验').length).toBeGreaterThan(0)
+  // 时间桶列可见
+  expect(screen.getByText('时间桶')).toBeTruthy()
+  expect(screen.getByText('后得/未知')).toBeTruthy()
+
+  // 同一个题材不能既出现在「已知」又出现在「后得/未知」：
+  // 这里只有 unknown 区的 1 条题材 + 1 条涨停天梯，合计 2 次
+  expect(screen.getAllByText('芯片').length).toBe(2)
 })
 
 test('prior-day theme is labelled as known', async () => {
   const payload = contextPayload()
-  payload.as_known_on_day.themes[0].known_by = 'PRIOR_DAY'
+  const theme = {
+    name: '芯片',
+    sector_code: '801001',
+    taxonomy: 'kph_selected',
+    fetched_at: '2026-09-22T22:00:00',
+    known_by: 'PRIOR_DAY',
+  }
+  payload.at_cutoff_known = { ...payload.at_cutoff_known!, themes: [theme] }
+  payload.unknown_or_later = { themes: [], concepts: [], reasons: [] }
+  payload.as_known_on_day = { ...payload.as_known_on_day, themes: [theme] }
   mocks.stockResearchContext.mockResolvedValue(payload)
   renderDrawer()
   await waitFor(() => expect(screen.getByText('前一日已取到')).toBeTruthy())
+  // 已知区只有这一条，后得区为空 → 题材名只出现 1 次
+  expect(screen.getAllByText('芯片').length).toBe(1)
 })
 
 test('selected observation date is passed to the read-only endpoint', async () => {

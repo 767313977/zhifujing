@@ -1,15 +1,20 @@
-"""个股「观察日研究依据」只读解释链（S3-C）。
+"""个股「观察日研究依据」只读解释链（S3-C → S4-A 时点证据 v2）。
 
-目标：回答三个严格分开的问题：
+目标：把三件事**结构化且互斥**地拆开，而不是只靠文案区分：
 
-1. **观察日当天收盘时已知什么**（`as_known_on_day`）；
-2. **哪些资料是盘后才拿到 / 来源时间未知**（evidence 的 `known_by`）；
-3. **D+1 后验结果**（`later_outcome`，只供复盘，绝不反写 D 日依据）。
+1. `at_cutoff_known`：有充分时间证明、在选定 cutoff（当前只支持 `CLOSE`）已知，
+   且采集质量满足该来源规则的字段；
+2. `unknown_or_later`：`LATER / SAME_DAY_UNKNOWN / POST_CLOSE_UNKNOWN / UNKNOWN`
+   等无法证明「观察日已知」的字段；
+3. `later_outcome`：D+1 或更晚的后验结果，只供复盘，绝不反写 D 日依据。
 
 边界：
 - 只读本地库（limit_pool / stock_daily / market_sentiment / sector_member /
   stock_concept / collect_log / trade_calendar / stock_basic）；
 - 不调用 `syncStock`、不抓公告/题材/龙虎榜/外部行情，不写库；
+- `SectorMember.fetched_at` 是本系统写入时间，只能证明「我们何时取到」；
+  同日取到一律 `SAME_DAY_UNKNOWN`，不猜盘前已知；
+- `StockConcept` 没有可审计的上游发布时间，永远进 `unknown_or_later`；
 - 历史时点不能证明「当时已知」时一律 `UNKNOWN`，不猜 true；
 - 观察日不存在 / 非交易日 → `ValueError`，由 API 转 400，不悄悄滚到别的日期。
 """
@@ -38,6 +43,9 @@ from app.timeutil import today_cn
 
 CODE_PATTERN = re.compile(r"^\d{6}$")
 
+#: 时点协议版本。字段语义变化必须升版本，避免旧前端把兼容子集当成完整证据。
+EVIDENCE_VERSION = "research-evidence-v2"
+
 STATUS_VERIFIED = "VERIFIED"
 STATUS_PARTIAL = "PARTIAL"
 STATUS_PENDING = "PENDING"
@@ -50,10 +58,37 @@ KNOWN_SAME_DAY_UNKNOWN = "SAME_DAY_UNKNOWN"
 KNOWN_LATER = "LATER"
 KNOWN_POST_CLOSE = "POST_CLOSE_UNKNOWN"
 KNOWN_FORWARD = "FORWARD"
+KNOWN_UNKNOWN = "UNKNOWN"
+
+BUCKET_KNOWN = "AT_CUTOFF_KNOWN"
+BUCKET_UNKNOWN = "UNKNOWN_OR_LATER"
+BUCKET_FORWARD = "FORWARD_OUTCOME"
+TIME_BUCKETS = (BUCKET_KNOWN, BUCKET_UNKNOWN, BUCKET_FORWARD)
+
+#: 每个桶允许的 `known_by`。三桶互斥且并集覆盖全部证据。
+BUCKET_ALLOWED_KNOWN_BY: dict[str, frozenset[str]] = {
+    BUCKET_KNOWN: frozenset({KNOWN_CLOSE, KNOWN_PRIOR_DAY}),
+    BUCKET_UNKNOWN: frozenset(
+        {KNOWN_SAME_DAY_UNKNOWN, KNOWN_LATER, KNOWN_POST_CLOSE, KNOWN_UNKNOWN}
+    ),
+    BUCKET_FORWARD: frozenset({KNOWN_FORWARD}),
+}
+
+CUTOFF_CLOSE = "CLOSE"
+#: 本批次只正式支持收盘时点。09:25 竞价时点证据不足，拒绝而不是假装同口径。
+SUPPORTED_CUTOFFS = (CUTOFF_CLOSE,)
+
+POOL_STATUS_UP = "UP"
+POOL_STATUS_BROKEN = "BROKEN"
+POOL_STATUS_DOWN = "DOWN"
+POOL_STATUS_NOT_IN_POOL = "NOT_IN_POOL"
+POOL_STATUS_CONFLICT = "POOL_CONFLICT"
+POOL_STATUS_UNKNOWN = "UNKNOWN"
 
 NOTES = [
-    "「观察日已知」按收盘时点解释；09:25 竞价时点只会更严格，不会更宽松。",
-    "题材快照的 fetched_at 是本系统写入时间，不能证明上游盘前已发布。",
+    "「观察日已知」按收盘时点解释；09:25 竞价时点证据不足，本接口不提供。",
+    "题材快照的 fetched_at 是本系统写入时间，只能证明「本站何时取到」，不能证明上游盘前已发布。",
+    "涨停天梯（stock_concept）没有可审计的上游发布时间，一律归入「不知道 / 观察日之后才取到」。",
     "D+1 结果只供复盘，不反写 D 日依据，也不进入 C0 或任何正式信号。",
 ]
 
@@ -80,15 +115,85 @@ def _pool_quality(
 
 def _theme_known_by(fetched_at, observation: date) -> str:
     if fetched_at is None:
-        return "UNKNOWN"
+        return KNOWN_UNKNOWN
     day = fetched_at.date() if hasattr(fetched_at, "date") else None
     if day is None:
-        return "UNKNOWN"
+        return KNOWN_UNKNOWN
     if day < observation:
         return KNOWN_PRIOR_DAY
     if day > observation:
         return KNOWN_LATER
     return KNOWN_SAME_DAY_UNKNOWN
+
+
+def _log_known_by(log: CollectLog | None, observation: date) -> str:
+    """采集日志只能证明本站何时记录，不等于上游发布时间。
+
+    日志在观察日当天（含收盘后）→ 按收盘时点可获知；
+    日志在观察日之后 → LATER；没有日志 → UNKNOWN（不猜）。
+    """
+    if log is None or log.created_at is None:
+        return KNOWN_UNKNOWN
+    return KNOWN_CLOSE if log.created_at.date() <= observation else KNOWN_LATER
+
+
+def classify_evidence_time(known_by: str) -> str:
+    """把 `known_by` 归入唯一的时间桶。未知取值直接报错，不静默塞进已知。"""
+    if known_by in BUCKET_ALLOWED_KNOWN_BY[BUCKET_KNOWN]:
+        return BUCKET_KNOWN
+    if known_by in BUCKET_ALLOWED_KNOWN_BY[BUCKET_UNKNOWN]:
+        return BUCKET_UNKNOWN
+    if known_by in BUCKET_ALLOWED_KNOWN_BY[BUCKET_FORWARD]:
+        return BUCKET_FORWARD
+    raise ValueError(f"未知的 known_by：{known_by!r}")
+
+
+def build_time_buckets(evidence: list[dict[str, Any]]) -> dict[str, Any]:
+    """按 `time_bucket` 分组，返回三桶与计数（纯函数）。"""
+    buckets: dict[str, list[dict[str, Any]]] = {name: [] for name in TIME_BUCKETS}
+    for item in evidence:
+        bucket = item.get("time_bucket")
+        if bucket not in buckets:
+            raise ValueError(f"证据缺少合法 time_bucket：{bucket!r}")
+        buckets[bucket].append(item)
+    return {
+        "buckets": buckets,
+        "counts": {name: len(buckets[name]) for name in TIME_BUCKETS},
+        "total": len(evidence),
+    }
+
+
+def validate_time_bucket_invariants(
+    evidence: list[dict[str, Any]], *, observation_date: date | None = None
+) -> dict[str, int]:
+    """机器可断言的不变量：三桶互斥、并集守恒、`is_forward_known` 与桶一致。"""
+    grouped = build_time_buckets(evidence)
+    seen: set[int] = set()
+    for bucket, items in grouped["buckets"].items():
+        allowed = BUCKET_ALLOWED_KNOWN_BY[bucket]
+        for item in items:
+            marker = id(item)
+            if marker in seen:
+                raise RuntimeError("同一条证据被归入多个时间桶")
+            seen.add(marker)
+            if item.get("known_by") not in allowed:
+                raise RuntimeError(
+                    f"时间桶 {bucket} 出现不允许的 known_by={item.get('known_by')!r}"
+                )
+            if bool(item.get("is_forward_known")) != (bucket == BUCKET_FORWARD):
+                raise RuntimeError("is_forward_known 与 time_bucket 不一致")
+            source_day = item.get("source_trade_date")
+            if bucket == BUCKET_FORWARD and observation_date is not None and source_day:
+                if source_day <= observation_date:
+                    raise RuntimeError("后验桶里出现了不晚于观察日的来源日期")
+            if bucket == BUCKET_KNOWN and observation_date is not None and source_day:
+                if source_day > observation_date:
+                    raise RuntimeError("已知桶里出现了观察日之后的来源日期")
+    if grouped["counts"][BUCKET_KNOWN] + grouped["counts"][BUCKET_UNKNOWN] + grouped["counts"][
+        BUCKET_FORWARD
+    ] != len(evidence):
+        raise RuntimeError("三桶计数不守恒")
+    return grouped["counts"]
 
 
 def _latest_logs(
@@ -109,11 +214,18 @@ def _latest_logs(
 
 
 def build(
-    session: Session, *, code: str, as_of: date | None = None
+    session: Session,
+    *,
+    code: str,
+    as_of: date | None = None,
+    cutoff: str = CUTOFF_CLOSE,
 ) -> dict[str, Any]:
-    """构建一只股票在观察日的已知 / 未知 / 后验三段式依据。"""
+    """构建一只股票在观察日的「已知 / 不知道或后得 / 后验」三段式依据。"""
     if not CODE_PATTERN.match(code or ""):
         raise ValueError("股票代码必须是 6 位数字")
+    cutoff = (cutoff or CUTOFF_CLOSE).upper()
+    if cutoff not in SUPPORTED_CUTOFFS:
+        raise ValueError(f"暂不支持的 cutoff：{cutoff}（当前只支持 CLOSE）")
     basic = session.get(StockBasic, code)
     if basic is None:
         raise ValueError(f"查不到这个代码「{code}」，请确认后重试")
@@ -191,18 +303,26 @@ def build(
         .order_by(StockConcept.concept)
     ).all()
 
-    # ---------------- 观察日收盘时已知
-    limit_status = "UNKNOWN"
+    # ---------------- 池状态：冲突优先，不使用 if/elif 优先级掩盖冲突
+    pool_types = sorted(membership)
+    pool_conflict = len(pool_types) > 1
+    up_pit = _log_known_by(up_log, resolved) in BUCKET_ALLOWED_KNOWN_BY[BUCKET_KNOWN]
+    broken_pit = _log_known_by(broken_log, resolved) in BUCKET_ALLOWED_KNOWN_BY[BUCKET_KNOWN]
+    down_pit = _log_known_by(down_log, resolved) in BUCKET_ALLOWED_KNOWN_BY[BUCKET_KNOWN]
+
+    limit_status = POOL_STATUS_UNKNOWN
     board_height = None
-    if "up" in membership and up_trusted:
-        limit_status = "UP"
+    if pool_conflict:
+        limit_status = POOL_STATUS_CONFLICT
+    elif "up" in membership and up_trusted and up_pit:
+        limit_status = POOL_STATUS_UP
         board_height = membership["up"].consecutive
-    elif "broken" in membership and broken_trusted:
-        limit_status = "BROKEN"
-    elif "down" in membership and down_trusted:
-        limit_status = "DOWN"
-    elif up_trusted and broken_trusted and down_trusted:
-        limit_status = "NOT_IN_POOL"
+    elif "broken" in membership and broken_trusted and broken_pit:
+        limit_status = POOL_STATUS_BROKEN
+    elif "down" in membership and down_trusted and down_pit:
+        limit_status = POOL_STATUS_DOWN
+    elif up_trusted and broken_trusted and down_trusted and up_pit and broken_pit and down_pit:
+        limit_status = POOL_STATUS_NOT_IN_POOL
 
     themes = [
         {
@@ -225,11 +345,15 @@ def build(
         }
         for row in concept_rows
     ]
-    as_known = {
+
+    known_themes = [item for item in themes if item["known_by"] == KNOWN_PRIOR_DAY]
+    unknown_themes = [item for item in themes if item["known_by"] != KNOWN_PRIOR_DAY]
+
+    at_cutoff_known = {
         "previous_close_date": previous,
-        "limit_status": limit_status,
+        "pool_status": limit_status,
         "board_height": board_height,
-        "observed_pool_membership": sorted(membership),
+        "observed_pool_membership": pool_types,
         "pool_quality": {
             "up": up_quality,
             "broken": broken_quality,
@@ -245,8 +369,10 @@ def build(
             if daily is not None
             else None
         ),
-        "themes": themes,
-        "concepts": concepts,
+        # 只有「观察日之前已取到」的题材能进已知；同日/次日取到一律不进
+        "themes": known_themes,
+        # stock_concept 没有可审计的发布时间 → 已知集合里永远为空
+        "concepts": [],
         "sentiment": (
             {
                 "limit_up_count": sentiment.limit_up_count,
@@ -258,6 +384,17 @@ def build(
             if sentiment is not None
             else None
         ),
+    }
+
+    unknown_reasons: list[str] = []
+    if unknown_themes:
+        unknown_reasons.append("THEME_PIT_UNKNOWN")
+    if concepts:
+        unknown_reasons.append("CONCEPT_POST_CLOSE_UNKNOWN")
+    unknown_or_later = {
+        "themes": unknown_themes,
+        "concepts": concepts,
+        "reasons": unknown_reasons,
     }
 
     # ---------------- D+1 后验（只读，不反写）
@@ -302,9 +439,11 @@ def build(
     reasons: list[str] = []
     if up_quality != STATUS_VERIFIED:
         reasons.append(up_reason or "POOL_UP_UNVERIFIED")
-    if not themes:
+    if pool_conflict:
+        reasons.append("POOL_CONFLICT")
+    if not themes and not concepts:
         reasons.append("NO_THEME_SNAPSHOT")
-    if any(item["known_by"] != KNOWN_PRIOR_DAY for item in themes):
+    if unknown_themes:
         reasons.append("THEME_PIT_UNKNOWN")
     if concepts:
         reasons.append("CONCEPT_POST_CLOSE_UNKNOWN")
@@ -318,7 +457,7 @@ def build(
     else:
         status = STATUS_PARTIAL
 
-    # ---------------- 证据链
+    # ---------------- 证据链（每条只进一个桶）
     evidence: list[dict[str, Any]] = []
 
     def add(
@@ -329,35 +468,47 @@ def build(
         known_by: str,
         quality: str,
         reason: str | None,
-        forward: bool,
         summary: str,
+        *,
+        observed_at=None,
     ) -> None:
+        bucket = classify_evidence_time(known_by)
         evidence.append(
             {
                 "claim": claim,
                 "source_table": table,
                 "source_trade_date": source_day,
                 "fetched_at": fetched_at,
+                # 上游首次发布时间：当前数据源拿不到，一律 null，不虚构
+                "source_published_at": None,
+                "observed_at": observed_at,
                 "known_by": known_by,
                 "quality": quality,
                 "reason_code": reason,
-                "is_forward_known": forward,
+                "is_forward_known": bucket == BUCKET_FORWARD,
+                "time_bucket": bucket,
                 "summary": summary,
             }
         )
 
+    pool_known_by = _log_known_by(up_log, resolved)
     if membership:
-        labels = "、".join(sorted(membership))
+        labels = "、".join(pool_types)
+        summary = (
+            f"当日观察到 {labels}；判定 {limit_status}；涨停池质量 {up_quality}"
+            if not pool_conflict
+            else f"同一股票同时出现在 {labels} 池，不能按优先级择一"
+        )
         add(
             "观察日池记录",
             "limit_pool",
             resolved,
             up_log.created_at if up_log else None,
-            KNOWN_CLOSE,
+            pool_known_by,
             up_quality,
-            up_reason,
-            False,
-            f"当日观察到 {labels}；涨停池质量 {up_quality}",
+            "POOL_CONFLICT" if pool_conflict else up_reason,
+            summary,
+            observed_at=up_log.created_at if up_log else None,
         )
     else:
         add(
@@ -365,12 +516,13 @@ def build(
             "limit_pool",
             resolved,
             up_log.created_at if up_log else None,
-            KNOWN_CLOSE,
+            pool_known_by,
             up_quality,
             up_reason,
-            False,
             "当日没有该股的涨停/炸板/跌停记录",
+            observed_at=up_log.created_at if up_log else None,
         )
+
     if daily is not None:
         add(
             "观察日日线",
@@ -380,7 +532,6 @@ def build(
             KNOWN_CLOSE,
             STATUS_VERIFIED,
             None,
-            False,
             f"收盘 {daily.close}，涨跌幅 {daily.pct_chg}",
         )
     else:
@@ -389,12 +540,12 @@ def build(
             "stock_daily",
             resolved,
             None,
-            KNOWN_CLOSE,
+            KNOWN_UNKNOWN,
             STATUS_NOT_COLLECTED,
             "DAILY_MISSING",
-            False,
-            "观察日没有本地日线",
+            "观察日没有本地日线，无法证明收盘价",
         )
+
     if sentiment is not None:
         add(
             "观察日市场情绪",
@@ -404,22 +555,23 @@ def build(
             KNOWN_CLOSE,
             STATUS_VERIFIED,
             None,
-            False,
             f"涨停 {sentiment.limit_up_count} 家，最高 {sentiment.max_consecutive} 板",
         )
-    if themes:
+
+    # 题材逐条入证据：同日取到与次日取到不会被合并成一条
+    for item in themes:
         add(
             "题材归属快照",
             "sector_member",
             resolved,
-            max((item["fetched_at"] for item in themes if item["fetched_at"]), default=None),
-            themes[0]["known_by"],
+            item["fetched_at"],
+            item["known_by"],
             STATUS_PARTIAL,
             "THEME_PIT_UNKNOWN",
-            False,
-            "；".join(f"{item['name']}({item['taxonomy']})" for item in themes),
+            f"{item['name']}（{item['taxonomy']}）",
+            observed_at=item["fetched_at"],
         )
-    if concepts:
+    for item in concepts:
         add(
             "涨停天梯题材",
             "stock_concept",
@@ -428,9 +580,9 @@ def build(
             KNOWN_POST_CLOSE,
             STATUS_PARTIAL,
             "CONCEPT_POST_CLOSE_UNKNOWN",
-            False,
-            "、".join(item["name"] for item in concepts),
+            item["name"],
         )
+
     if following is not None:
         add(
             "D+1 后验结果",
@@ -440,7 +592,6 @@ def build(
             KNOWN_FORWARD,
             outcome_status,
             outcome_reason,
-            True,
             (
                 f"D+1 涨跌幅 {outcome_pct}，收盘 {outcome_close}"
                 if outcome_pct is not None
@@ -448,17 +599,35 @@ def build(
             ),
         )
 
+    counts = validate_time_bucket_invariants(evidence, observation_date=resolved)
+
+    # 旧字段兼容：只保留已知子集，不再承载 LATER 题材（S4 迁移说明见模块顶部）
+    as_known = {
+        **at_cutoff_known,
+        "limit_status": at_cutoff_known["pool_status"],
+        "schema_version": EVIDENCE_VERSION,
+        "subset_of": "at_cutoff_known",
+    }
+    as_known.pop("pool_status", None)
+
     return {
         "code": code,
         "name": basic.name,
         "requested_as_of": as_of,
         "resolved_trade_date": resolved,
+        "observation_date": resolved,
+        "cutoff": cutoff,
+        "evidence_version": EVIDENCE_VERSION,
         "data_as_of": data_as_of,
         "historical_signal_eligible": False,
         "quality": {"status": status, "reasons": _dedupe(reasons)},
-        "as_known_on_day": as_known,
+        "at_cutoff_known": at_cutoff_known,
+        "unknown_or_later": unknown_or_later,
         "later_outcome": later_outcome,
         "evidence": evidence,
+        "evidence_counts": counts,
+        # 兼容旧消费者：已知子集，不含 LATER / 同日未知 / 盘后未知
+        "as_known_on_day": as_known,
         "notes": NOTES,
     }
 

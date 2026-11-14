@@ -387,6 +387,12 @@ const KNOWN_BY_LABEL: Record<string, string> = {
   UNKNOWN: '来源时间未知',
 }
 
+const BUCKET_LABEL: Record<string, string> = {
+  AT_CUTOFF_KNOWN: '已知',
+  UNKNOWN_OR_LATER: '后得/未知',
+  FORWARD_OUTCOME: '后验',
+}
+
 const CONTEXT_STATUS_LABEL: Record<string, string> = {
   VERIFIED: '可验证',
   PARTIAL: '部分可信',
@@ -437,11 +443,31 @@ function EvidenceTab({
   if (error) return <LoadState error={error} className="px-4 py-10" />
   if (!data) return <LoadState emptyText="暂无观察日研究依据" className="px-4 py-10" />
 
-  const known = data.as_known_on_day
+  const legacy = data.as_known_on_day
+  // 新后端返回三桶；旧后端没有 at_cutoff_known 时回落到兼容子集（且仍剔除 LATER）
+  const known = data.at_cutoff_known ?? {
+    previous_close_date: legacy.previous_close_date,
+    pool_status: legacy.limit_status,
+    board_height: legacy.board_height,
+    observed_pool_membership: legacy.observed_pool_membership,
+    pool_quality: legacy.pool_quality,
+    daily: legacy.daily,
+    themes: legacy.themes.filter((item) => item.known_by === 'PRIOR_DAY'),
+    concepts: [],
+    sentiment: legacy.sentiment,
+  }
+  const unknown = data.unknown_or_later ?? {
+    themes: legacy.themes.filter((item) => item.known_by !== 'PRIOR_DAY'),
+    concepts: legacy.concepts,
+    reasons: [],
+  }
   const outcome = data.later_outcome
-  const forward = data.evidence.filter((item) => item.is_forward_known)
-  const backward = data.evidence.filter((item) => !item.is_forward_known)
-  const unknownThemes = known.themes.filter((item) => item.known_by !== 'PRIOR_DAY')
+  const forward = data.evidence.filter((item) =>
+    item.time_bucket ? item.time_bucket === 'FORWARD_OUTCOME' : item.is_forward_known,
+  )
+  const backward = data.evidence.filter((item) =>
+    item.time_bucket ? item.time_bucket !== 'FORWARD_OUTCOME' : !item.is_forward_known,
+  )
 
   return (
     <div className="pb-4">
@@ -449,6 +475,7 @@ function EvidenceTab({
         <div className="num text-fg-dim">
           观察日 {data.resolved_trade_date}
           {data.requested_as_of ? `（请求 ${data.requested_as_of}）` : '（最新交易日）'}
+          {' · '}时点 {data.cutoff ?? 'CLOSE'}
           {' · '}数据截至 {data.data_as_of ?? '—'}
         </div>
         <div className="mt-0.5">
@@ -469,29 +496,32 @@ function EvidenceTab({
         <Row
           label="涨跌状态"
           value={
-            known.limit_status === 'UP'
+            known.pool_status === 'UP'
               ? `涨停${known.board_height ? ` · ${known.board_height} 板` : ''}`
-              : known.limit_status
+              : known.pool_status
           }
         />
         <Row label="观察到的池" value={known.observed_pool_membership.join('、') || '—'} />
         <Row label="当日日线" value={known.daily ? `${known.daily.close} / ${fmtPct(known.daily.pct_chg)}` : '—'} />
-        <div className="mt-2 text-[12px] text-fg-dim">题材（来源时点）</div>
+        <div className="mt-2 text-[12px] text-fg-dim">题材（观察日之前已取到）</div>
         <ThemeList items={known.themes} />
         <div className="mt-2 text-[12px] text-fg-dim">涨停天梯题材</div>
         <ThemeList items={known.concepts} />
       </Section>
 
-      <Section title="盘后才知道 / 来源时间未知">
-        {unknownThemes.length === 0 && known.concepts.length === 0 ? (
-          <div className="text-[13px] text-fg-muted">没有盘后来源记录</div>
+      <Section title="不知道 / 观察日之后才取到">
+        {unknown.themes.length === 0 && unknown.concepts.length === 0 ? (
+          <div className="text-[13px] text-fg-muted">没有无法校准的来源记录</div>
         ) : (
           <>
             <div className="mb-1 text-[12px] leading-relaxed text-warn">
-              以下资料不能证明在观察日盘前已知，不可作为当时交易信号。
+              以下资料不能证明在观察日已知，不可作为当时交易信号。
             </div>
-            <ThemeList items={unknownThemes} />
-            <ThemeList items={known.concepts} />
+            <ThemeList items={unknown.themes} />
+            <ThemeList items={unknown.concepts} />
+            {unknown.reasons.length ? (
+              <div className="mt-2 text-[11px] text-fg-dim">{unknown.reasons.join(' · ')}</div>
+            ) : null}
           </>
         )}
       </Section>
@@ -515,19 +545,23 @@ function EvidenceTab({
                 <th>断言</th>
                 <th>来源</th>
                 <th>日期</th>
+                <th>时间桶</th>
                 <th>时点</th>
                 <th>质量</th>
               </tr>
             </thead>
             <tbody>
               {[...backward, ...forward].map((item) => (
-                <tr key={`${item.claim}-${item.source_table}-${item.source_trade_date}`}>
+                <tr key={`${item.claim}-${item.source_table}-${item.source_trade_date}-${item.known_by}`}>
                   <td className="!text-left">
                     <div>{item.claim}</div>
                     <div className="text-[11px] text-fg-muted">{item.summary ?? '—'}</div>
                   </td>
                   <td>{item.source_table}</td>
                   <td className="num">{item.source_trade_date ?? '—'}</td>
+                  <td className="text-[11px] text-fg-muted">
+                    {BUCKET_LABEL[item.time_bucket ?? ''] ?? '—'}
+                  </td>
                   <td className={`text-[11px] ${knownTone(item.known_by)}`}>
                     {KNOWN_BY_LABEL[item.known_by] ?? item.known_by}
                   </td>

@@ -47,9 +47,15 @@ def _day(db, day, up, broken, daily=True):
         db.add(LimitPool(trade_date=day, code=code, pool_type="up", name=code, consecutive=2))
     for code in broken:
         db.add(LimitPool(trade_date=day, code=code, pool_type="broken", name=code))
-    db.add(CollectLog(trade_date=day, task="pool_up", status="ok", rows=len(up)))
-    db.add(CollectLog(trade_date=day, task="pool_broken", status="ok", rows=len(broken)))
-    db.add(CollectLog(trade_date=day, task="pool_down", status="ok", rows=0))
+    # S4-A：池信息要证明「D 收盘后可获知」，日志时间必须落在观察日当天
+    stamp = datetime(day.year, day.month, day.day, 16, 0)
+    db.add(CollectLog(trade_date=day, task="pool_up", status="ok", rows=len(up), created_at=stamp))
+    db.add(
+        CollectLog(
+            trade_date=day, task="pool_broken", status="ok", rows=len(broken), created_at=stamp
+        )
+    )
+    db.add(CollectLog(trade_date=day, task="pool_down", status="ok", rows=0, created_at=stamp))
     if daily:
         for code in set(up) | set(broken):
             db.add(StockDaily(trade_date=day, code=code, open=10, close=10, pct_chg=1.0))
@@ -200,8 +206,17 @@ def test_pit_leakage_dataset_marks_theme_as_unknown_or_later():
         assert themes["historical_signal_eligible"] is False
 
         context = ctx.build(db, code="600000", as_of=D2)
-        known = {item["name"]: item["known_by"] for item in context["as_known_on_day"]["themes"]}
-        assert known["题材一"] == ctx.KNOWN_LATER
-        assert known["题材二"] == ctx.KNOWN_PRIOR_DAY
+        # S4-A：LATER 题材不得再出现在已知集合里
+        known = {
+            item["name"]: item["known_by"]
+            for item in context["at_cutoff_known"]["themes"]
+        }
+        assert known == {"题材二": ctx.KNOWN_PRIOR_DAY}
+        later = {
+            item["name"]: item["known_by"]
+            for item in context["unknown_or_later"]["themes"]
+        }
+        assert later == {"题材一": ctx.KNOWN_LATER}
+        assert context["as_known_on_day"]["themes"] == context["at_cutoff_known"]["themes"]
     finally:
         db.close()

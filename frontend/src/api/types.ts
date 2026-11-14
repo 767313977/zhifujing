@@ -1909,6 +1909,30 @@ export interface StockResearchDaily {
   known_by: string
 }
 
+/** S4-A：有充分时间证明在 cutoff 已知、且质量满足来源规则的内容 */
+export interface StockResearchCutoffKnown {
+  previous_close_date: string | null
+  /** UP / BROKEN / DOWN / NOT_IN_POOL / POOL_CONFLICT / UNKNOWN */
+  pool_status: string
+  board_height: number | null
+  observed_pool_membership: string[]
+  pool_quality: Record<string, string>
+  daily: StockResearchDaily | null
+  /** 只含 PRIOR_DAY（观察日之前已取到）的题材 */
+  themes: StockResearchTheme[]
+  /** 当前数据源无法证明盘后发布时间 → 恒为空 */
+  concepts: StockResearchTheme[]
+  sentiment: Record<string, number | null> | null
+}
+
+/** S4-A：LATER / SAME_DAY_UNKNOWN / POST_CLOSE_UNKNOWN / UNKNOWN */
+export interface StockResearchUnknownOrLater {
+  themes: StockResearchTheme[]
+  concepts: StockResearchTheme[]
+  reasons: string[]
+}
+
+/** 兼容字段：已知子集（S4 起不再承载 LATER 题材） */
 export interface StockResearchAsKnown {
   previous_close_date: string | null
   limit_status: string
@@ -1919,6 +1943,8 @@ export interface StockResearchAsKnown {
   themes: StockResearchTheme[]
   concepts: StockResearchTheme[]
   sentiment: Record<string, number | null> | null
+  schema_version?: string
+  subset_of?: string | null
 }
 
 export interface StockResearchOutcome {
@@ -1936,10 +1962,16 @@ export interface StockResearchEvidence {
   source_table: string
   source_trade_date: string | null
   fetched_at: string | null
+  /** 上游首次发布时间；无法证实时为 null（不虚构） */
+  source_published_at?: string | null
+  /** 本站观察到这条证据的时间 */
+  observed_at?: string | null
   known_by: string
   quality: string
   reason_code: string | null
   is_forward_known: boolean
+  /** AT_CUTOFF_KNOWN / UNKNOWN_OR_LATER / FORWARD_OUTCOME，三桶互斥 */
+  time_bucket?: string
   summary: string | null
 }
 
@@ -1949,8 +1981,16 @@ export interface StockResearchContext {
   requested_as_of: string | null
   resolved_trade_date: string
   data_as_of: string | null
+  evidence_version?: string
+  observation_date?: string | null
+  cutoff?: string
   historical_signal_eligible: boolean
   quality: { status: string; reasons: string[] }
+  /** S4-A：三桶互斥。旧后端没有该字段，前端回落到兼容子集。 */
+  at_cutoff_known?: StockResearchCutoffKnown
+  unknown_or_later?: StockResearchUnknownOrLater
+  evidence_counts?: Record<string, number>
+  /** 兼容字段：已知子集（不含 LATER / 同日未知 / 盘后未知） */
   as_known_on_day: StockResearchAsKnown
   later_outcome: StockResearchOutcome
   evidence: StockResearchEvidence[]
