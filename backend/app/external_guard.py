@@ -8,10 +8,10 @@
 
 1. `ensure_external_fetch(context)`：在每个外部来源**发网之前**调用。开关关闭时
    直接抛 `ExternalFetchBlocked`，并累计 `attempts / blocked`；
-2. `install_network_deny()`：在 `requests.Session.request` 与 `socket.create_connection`
-   / `socket.socket.connect` 上兜底。任何漏网的 HTTP 客户端（urllib / httpx /
-   aiohttp 同步路径等）最终都要建 socket，因此在建连前失败；**允许回环**，
-   浏览器验收仍能访问 `127.0.0.1` 的后端；
+2. `install_network_deny()`：在 `requests.Session.request`、socket 建连/发送、
+   `ssl.SSLSocket.send / sendall / sendfile` 与 `socket.socket.sendfile` 上兜底。
+   任何漏网的 HTTP 客户端（urllib / httpx / aiohttp 同步路径等）最终都要建 socket 或写
+   stream，因此在建连/发送前失败；**允许回环**，浏览器验收仍能访问 `127.0.0.1` 的后端；
 3. **进程启动锁定**：一旦首次读到 `EXTERNAL_DATA_FETCH_ENABLED=false`，本进程
    生命周期内不可再切回 true（`locked_offline=true`），防止运行时改环境变量绕过。
 
@@ -110,9 +110,13 @@ _stats: dict[str, Any] = {
     "udp_blocked": 0,
     "stream_attempts": 0,
     "stream_blocked": 0,
+    "sendfile_attempts": 0,
+    "sendfile_blocked": 0,
     "installed": False,
     "socket_guarded": False,
 }
+#: 实际安装成功的写路径能力集合（stats 原样暴露，不能只报一个总布尔值）
+_guard_capabilities: dict[str, bool] = {}
 _original_request = None
 _original_create_connection = None
 _original_socket_connect = None
@@ -121,6 +125,12 @@ _original_socket_sendto = None
 _original_socket_sendmsg = None
 _original_socket_send = None
 _original_socket_sendall = None
+_original_socket_sendfile = None
+_original_ssl_send = None
+_original_ssl_sendall = None
+_original_ssl_sendfile = None
+#: TLS `sendall` / `sendfile` 内部会回调 `self.send()`；用线程局部深度避免重复计数与重复判定
+_tls_call_state = threading.local()
 _install_lock = threading.Lock()
 
 
@@ -353,30 +363,88 @@ def _guarded_sendmsg(self, buffers, *args):  # noqa: ANN001
     return _original_socket_sendmsg(self, buffers, *args)
 
 
-def _guard_stream_send(sock: Any, method: str) -> None:
-    """离线时校验已连接 socket 的对端是否严格回环；不是则阻断。"""
-    if enabled() or _is_unix_socket(sock):
+def _assert_stream_peer_allowed(
+    sock: Any, method: str, *, counter: str = "stream"
+) -> None:
+    """所有「已连接 socket 写」共用的 fail-closed 判定入口。
+
+    - Unix domain socket 放行（本机 IPC，不出网）；
+    - 在线模式透明放行；
+    - 离线时按 `getpeername()` 判定：拿不到对端 → fail closed；非严格回环 → 阻断；
+    - 已连接 socket 在切换 offline 后每次发送都会重新判定，不依赖建连时的状态。
+    """
+    if _is_unix_socket(sock):
+        return
+    if enabled():
         return
     target = _peer_host(sock)
-    if target is None or not _strict_loopback_ip(target):
+    if target is None:
         with _lock:
-            _stats["stream_blocked"] += 1
-        logger.warning("离线验收：拦截已连接 socket 发送 %s → %s", method, _safe_host(target))
-        raise ExternalFetchBlocked("NETWORK_STREAM_SEND_BLOCKED", source=target)
+            _stats[f"{counter}_blocked"] += 1
+        logger.warning("离线验收：拦截无对端地址的 %s 发送", method)
+        raise ExternalFetchBlocked("NETWORK_SEND_TARGET_UNKNOWN")
+    if not _strict_loopback_ip(target):
+        with _lock:
+            _stats[f"{counter}_blocked"] += 1
+        logger.warning("离线验收：拦截已连接 socket %s → %s", method, _safe_host(target))
+        raise ExternalFetchBlocked(
+            "NETWORK_SENDFILE_BLOCKED" if counter == "sendfile" else "NETWORK_STREAM_SEND_BLOCKED",
+            source=target,
+        )
 
 
 def _guarded_send(self, data, flags=0):  # noqa: ANN001
     with _lock:
         _stats["stream_attempts"] += 1
-    _guard_stream_send(self, "send")
+    _assert_stream_peer_allowed(self, "send")
     return _original_socket_send(self, data, flags)
 
 
 def _guarded_sendall(self, data, flags=0):  # noqa: ANN001
     with _lock:
         _stats["stream_attempts"] += 1
-    _guard_stream_send(self, "sendall")
+    _assert_stream_peer_allowed(self, "sendall")
     return _original_socket_sendall(self, data, flags)
+
+
+def _guarded_sendfile(self, file, offset=0, count=None):  # noqa: ANN001
+    with _lock:
+        _stats["sendfile_attempts"] += 1
+    _assert_stream_peer_allowed(self, "sendfile", counter="sendfile")
+    return _original_socket_sendfile(self, file, offset, count)
+
+
+def _guarded_ssl_send(self, data, flags=0):  # noqa: ANN001
+    # `SSLSocket.sendall()` / `sendfile()` 内部会回调本方法：外层已完成计数与判定，
+    # 嵌套调用直接交给原实现，避免重复计数造成统计失真。
+    if getattr(_tls_call_state, "nested", 0):
+        return _original_ssl_send(self, data, flags)
+    with _lock:
+        _stats["stream_attempts"] += 1
+    _assert_stream_peer_allowed(self, "ssl.send")
+    return _original_ssl_send(self, data, flags)
+
+
+def _guarded_ssl_sendall(self, data, flags=0):  # noqa: ANN001
+    with _lock:
+        _stats["stream_attempts"] += 1
+    _assert_stream_peer_allowed(self, "ssl.sendall")
+    _tls_call_state.nested = getattr(_tls_call_state, "nested", 0) + 1
+    try:
+        return _original_ssl_sendall(self, data, flags)
+    finally:
+        _tls_call_state.nested -= 1
+
+
+def _guarded_ssl_sendfile(self, file, offset=0, count=None):  # noqa: ANN001
+    with _lock:
+        _stats["sendfile_attempts"] += 1
+    _assert_stream_peer_allowed(self, "ssl.sendfile", counter="sendfile")
+    _tls_call_state.nested = getattr(_tls_call_state, "nested", 0) + 1
+    try:
+        return _original_ssl_sendfile(self, file, offset, count)
+    finally:
+        _tls_call_state.nested -= 1
 
 
 def _install_wrappers() -> bool:
@@ -390,10 +458,12 @@ def _install_wrappers() -> bool:
     """
     global _original_request, _original_create_connection, _original_socket_connect
     global _original_socket_connect_ex, _original_socket_sendto, _original_socket_sendmsg
-    global _original_socket_send, _original_socket_sendall
+    global _original_socket_send, _original_socket_sendall, _original_socket_sendfile
+    global _original_ssl_send, _original_ssl_sendall, _original_ssl_sendfile
     with _install_lock:
         if _stats["installed"]:
             return True
+        import ssl as ssl_module
         import requests.sessions as sessions
 
         _original_request = sessions.Session.request
@@ -404,6 +474,10 @@ def _install_wrappers() -> bool:
         _original_socket_sendmsg = getattr(socket.socket, "sendmsg", None)
         _original_socket_send = socket.socket.send
         _original_socket_sendall = socket.socket.sendall
+        _original_socket_sendfile = getattr(socket.socket, "sendfile", None)
+        _original_ssl_send = getattr(ssl_module.SSLSocket, "send", None)
+        _original_ssl_sendall = getattr(ssl_module.SSLSocket, "sendall", None)
+        _original_ssl_sendfile = getattr(ssl_module.SSLSocket, "sendfile", None)
 
         sessions.Session.request = _guarded_request
         socket.create_connection = _guarded_create_connection
@@ -416,11 +490,36 @@ def _install_wrappers() -> bool:
             socket.socket.sendmsg = _guarded_sendmsg
         socket.socket.send = _guarded_send
         socket.socket.sendall = _guarded_sendall
+        # 普通 socket 的 sendfile：POSIX 走 os.sendfile，Windows 走 send() fallback；
+        # 两种情况都必须在进入原实现前完成 peer 判定。
+        if _original_socket_sendfile is not None:
+            socket.socket.sendfile = _guarded_sendfile
+        # TLS 子类自己实现 send/sendall/sendfile，必须单独 patch，不能依赖基类。
+        if _original_ssl_send is not None:
+            ssl_module.SSLSocket.send = _guarded_ssl_send
+        if _original_ssl_sendall is not None:
+            ssl_module.SSLSocket.sendall = _guarded_ssl_sendall
+        if _original_ssl_sendfile is not None:
+            ssl_module.SSLSocket.sendfile = _guarded_ssl_sendfile
+
+        _guard_capabilities.clear()
+        _guard_capabilities.update(
+            {
+                "requests": True,
+                "socket_connect": True,
+                "socket_stream": True,
+                "socket_sendmsg": _original_socket_sendmsg is not None,
+                "socket_sendfile": _original_socket_sendfile is not None,
+                "ssl_stream": _original_ssl_send is not None
+                and _original_ssl_sendall is not None,
+                "ssl_sendfile": _original_ssl_sendfile is not None,
+            }
+        )
         with _lock:
             _stats["installed"] = True
             _stats["socket_guarded"] = True
     logger.warning(
-        "已安装离线网络闸门 wrapper（%s）：在线透明放行，离线仅严格回环放行",
+        "已安装离线网络闸门 wrapper（%s）：在线透明放行，离线仅严格回环放行（含 TLS/sendfile）",
         ENV,
     )
     return True
@@ -437,10 +536,12 @@ def install_network_deny() -> bool:
 
 
 def uninstall_network_deny() -> None:
-    """测试用：恢复 `requests` 与 socket 原始方法（不清除 locked_offline）。"""
+    """测试用：恢复 `requests`、socket 与 TLS/sendfile 原始方法（不清除 locked_offline）。"""
     global _original_request, _original_create_connection, _original_socket_connect
     global _original_socket_connect_ex, _original_socket_sendto, _original_socket_sendmsg
-    global _original_socket_send, _original_socket_sendall
+    global _original_socket_send, _original_socket_sendall, _original_socket_sendfile
+    global _original_ssl_send, _original_ssl_sendall, _original_ssl_sendfile
+    import ssl as ssl_module
     import requests.sessions as sessions
 
     if _original_request is not None:
@@ -467,6 +568,19 @@ def uninstall_network_deny() -> None:
     if _original_socket_sendall is not None:
         socket.socket.sendall = _original_socket_sendall
         _original_socket_sendall = None
+    if _original_socket_sendfile is not None:
+        socket.socket.sendfile = _original_socket_sendfile
+        _original_socket_sendfile = None
+    if _original_ssl_send is not None:
+        ssl_module.SSLSocket.send = _original_ssl_send
+        _original_ssl_send = None
+    if _original_ssl_sendall is not None:
+        ssl_module.SSLSocket.sendall = _original_ssl_sendall
+        _original_ssl_sendall = None
+    if _original_ssl_sendfile is not None:
+        ssl_module.SSLSocket.sendfile = _original_ssl_sendfile
+        _original_ssl_sendfile = None
+    _guard_capabilities.clear()
     with _lock:
         _stats["installed"] = False
         _stats["socket_guarded"] = False
@@ -485,6 +599,8 @@ def reset_stats() -> None:
             "udp_blocked",
             "stream_attempts",
             "stream_blocked",
+            "sendfile_attempts",
+            "sendfile_blocked",
         ):
             _stats[key] = 0
 
@@ -509,8 +625,11 @@ def stats() -> dict[str, Any]:
       （`create_connection` / `connect` / `connect_ex`，回环也算尝试）；
     - `udp_attempts` / `udp_blocked`：UDP `sendto` / `sendmsg`；
     - `stream_attempts` / `stream_blocked`：已连接 socket 的 `send` / `sendall`
-      （以及 TCP `sendmsg`）；
+      （含 `ssl.SSLSocket.send` / `sendall`，以及 TCP `sendmsg`）；
+    - `sendfile_attempts` / `sendfile_blocked`：`socket.socket.sendfile` 与
+      `ssl.SSLSocket.sendfile`（TLS 内部回调 `send()` 不重复计数）；
     - `installed` / `socket_guarded`：wrapper 是否真实安装（在线也应为 true）；
+    - `guards`：实际安装成功的写路径能力集合（requests / socket / TLS / sendfile）；
     - `dns_guard=NOT_INTERCEPTED`：DNS 查询未在进程内拦截；
     - 这些都不是「全宿主网络调用总数」，OS 级隔离是否生效需另测。
     """
@@ -525,6 +644,7 @@ def stats() -> dict[str, Any]:
                 "offline→online 不支持（需重启进程）"
             ),
             "dns_guard": "NOT_INTERCEPTED",
+            "guards": dict(_guard_capabilities),
             **_stats,
         }
 

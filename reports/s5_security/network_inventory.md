@@ -2,7 +2,8 @@
 
 - 生成日期：2026-11-14（Asia/Shanghai）
 - 范围：`backend/app/**`、`scripts/**`、`jobs/**`（只读静态审查，不发起请求）
-- 结论先行：进程内已覆盖 `requests` 与 `socket` 两层；子进程 / 原生库 / 宿主网络策略**未做 OS 级验证** → `OS_EGRESS_DENY_NOT_VERIFIED`。
+- 结论先行：进程内已覆盖 `requests`、`socket` 建连/发送、TLS `send/sendall/sendfile` 与
+  `sendfile`；子进程 / 原生库 / 宿主网络策略**未做 OS 级验证** → `OS_EGRESS_DENY_NOT_VERIFIED`。
 
 ## 1. 依赖与直接 HTTP 客户端
 
@@ -49,11 +50,16 @@
    - UDP `socket.socket.sendto`
    - `socket.socket.sendmsg`（显式 address 或已连接 peer；两者都没有时**阻断**）
    - 已连接 socket 的 `socket.socket.send` / `sendall`
+   - `socket.socket.sendfile`（POSIX `os.sendfile` 与 Windows send fallback 都在原实现前判定）
+   - `ssl.SSLSocket.send` / `sendall` / `sendfile`（TLS 子类单独 patch；`sendall` / `sendfile`
+     内部回调 `send()` 时用线程局部深度避免重复计数）
    回环只允许**严格 loopback IP**（`127.0.0.0/8`、`::1` 等）；`localhost` 固定映射到
    `127.0.0.1`（`ip6-localhost` → `::1`），**不交给 OS hosts/DNS 解析**；
    `localhost.localdomain`、空 host、`None`、普通主机名一律拦截。
-   已连接但 peer 不是回环的 socket：不关闭连接，但 `send` / `sendall` / `sendmsg`
-   在发送前阻断（`NETWORK_STREAM_SEND_BLOCKED`）。
+   已连接但 peer 不是回环的 socket：不关闭连接，但 `send` / `sendall` / `sendmsg` /
+   `sendfile`（含 TLS）在发送前阻断；拿不到 peer 时 fail closed
+   （`NETWORK_SEND_TARGET_UNKNOWN`）。`sendfile` 非回环阻断 reason 为
+   `NETWORK_SENDFILE_BLOCKED`。
    Unix domain socket（`AF_UNIX`）不经过网络判定，保持可用。
    安装失败直接抛出，启动流程 fail closed，不会出现 `enabled=false` 却未安装拦截器的状态。
 3. **进程启动锁定**：首次读到 `EXTERNAL_DATA_FETCH_ENABLED=false` 即 `locked_offline=true`，
@@ -67,8 +73,13 @@
   （`create_connection` / `connect` / `connect_ex`，回环也计尝试）；
 - `udp_attempts` / `udp_blocked`：UDP `sendto` / `sendmsg`；
 - `stream_attempts` / `stream_blocked`：已连接 socket 的 `send` / `sendall`
-  （以及 TCP `sendmsg`）；
+  （含 TLS `send` / `sendall`，以及 TCP `sendmsg`）；
+- `sendfile_attempts` / `sendfile_blocked`：`socket.socket.sendfile` 与
+  `ssl.SSLSocket.sendfile`（TLS 内部回调 `send()` 不重复计数）；
 - `installed` / `socket_guarded`：wrapper 是否真实安装（在线也应为 true）；
+- `guards`：实际安装成功的写路径能力集合
+  （`requests` / `socket_connect` / `socket_stream` / `socket_sendmsg` /
+  `socket_sendfile` / `ssl_stream` / `ssl_sendfile`），不只报一个总布尔值；
 - `dns_guard=NOT_INTERCEPTED`：DNS 查询未在进程内拦截；
 - 上述都**不是**全宿主网络调用总数。来源入口被提前拦截时，不会计入 socket 层拦截。
 
@@ -80,7 +91,8 @@
 - **原生库**：未发现，但未做穷尽证明；
 - **DNS**：`socket.getaddrinfo` 未拦截（只拦截实际建连），DNS 查询本身可能出网；
   若要求 DNS 零出网，必须配合 OS 防火墙 / 隔离网络，并另做实测；
-- **平台差异**：当前 Windows 环境没有 `socket.sendmsg` 与 `AF_UNIX`；闸门按能力安装，
-  测试显式断言「能力缺失时不假装覆盖」，Unix socket 只有在平台支持时才实测；
+- **平台差异**：本机 Windows 没有 `socket.socket.sendmsg`；`AF_UNIX` 与 `socket.sendfile` /
+  `ssl.SSLSocket.sendfile` 存在。闸门按能力安装并在 `stats().guards` 中如实列出；
+  能力缺失时测试显式断言「不假装覆盖」，Unix socket 只有在平台支持时才实测；
 - 因此本报告**不宣称**「全面防出网已验证」，只宣称「本进程 Python 网络栈（requests +
-  TCP/UDP socket 路径）+ 来源入口在离线模式下被拦截，且有实测证据」。
+  TCP/UDP socket + TLS 写 + sendfile）+ 来源入口在离线模式下被拦截，且有实测证据」。

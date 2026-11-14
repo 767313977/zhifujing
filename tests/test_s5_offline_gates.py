@@ -590,3 +590,208 @@ def test_concurrent_switch_has_no_allow_window(monkeypatch):
     with pytest.raises(eg.ExternalFetchBlocked):
         socket.create_connection(("93.184.216.34", 80), timeout=1)
 
+
+# ------------------------------------------------ R3-P1-01 TLS / sendfile 写路径
+
+
+def _public_peer():
+    return _FakeSock(("93.184.216.34", 443))
+
+
+def test_wrappers_are_really_installed_on_ssl_and_sendfile(monkeypatch):
+    """真实分发测试：patch 必须落在类方法上，而不只是 helper 可被直接调用。"""
+    import ssl
+
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    assert ssl.SSLSocket.send is eg._guarded_ssl_send
+    assert ssl.SSLSocket.sendall is eg._guarded_ssl_sendall
+    assert ssl.SSLSocket.sendfile is eg._guarded_ssl_sendfile
+    assert socket.socket.sendfile is eg._guarded_sendfile
+    guards = eg.stats()["guards"]
+    assert guards["ssl_stream"] is True
+    assert guards["ssl_sendfile"] is True
+    assert guards["socket_sendfile"] is True
+
+
+def test_ssl_send_and_sendall_blocked_after_offline_switch(monkeypatch):
+    """在线建立的连接在切换离线后必须重新判定 peer，不能沿用建连时的状态。"""
+    import ssl
+
+    monkeypatch.delenv(eg.ENV, raising=False)
+    eg.install_network_deny()
+    assert eg.enabled() is True
+    monkeypatch.setenv(eg.ENV, "false")
+    assert eg.enabled() is False
+    fake = _public_peer()
+    with pytest.raises(eg.ExternalFetchBlocked) as excinfo:
+        ssl.SSLSocket.send(fake, b"payload")
+    assert excinfo.value.reason_code == "NETWORK_STREAM_SEND_BLOCKED"
+    with pytest.raises(eg.ExternalFetchBlocked):
+        ssl.SSLSocket.sendall(fake, b"payload")
+    stats = eg.stats()
+    assert stats["stream_blocked"] == 2
+    assert stats["sendfile_blocked"] == 0
+    assert stats["os_network_blocked"] == 0
+
+
+def test_ssl_send_and_sendall_fail_closed_when_peer_unknown(monkeypatch):
+    import ssl
+
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    unknown = _FakeSock(None)
+    for call in (
+        lambda: ssl.SSLSocket.send(unknown, b"x"),
+        lambda: ssl.SSLSocket.sendall(unknown, b"x"),
+        lambda: ssl.SSLSocket.sendfile(unknown, object()),
+    ):
+        with pytest.raises(eg.ExternalFetchBlocked) as excinfo:
+            call()
+        assert excinfo.value.reason_code == "NETWORK_SEND_TARGET_UNKNOWN"
+    assert eg.stats()["stream_blocked"] == 2
+    assert eg.stats()["sendfile_blocked"] == 1
+
+
+def test_socket_sendfile_blocks_before_original_implementation(monkeypatch):
+    """POSIX os.sendfile 与 Windows fallback 都必须在进入原实现前被拦。"""
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    calls: list[str] = []
+
+    def _original(sock, file, offset=0, count=None):
+        calls.append("original-sendfile")
+        return 1
+
+    monkeypatch.setattr(eg, "_original_socket_sendfile", _original)
+    with pytest.raises(eg.ExternalFetchBlocked) as excinfo:
+        socket.socket.sendfile(_public_peer(), object())
+    assert excinfo.value.reason_code == "NETWORK_SENDFILE_BLOCKED"
+    assert calls == []
+    assert eg.stats()["sendfile_blocked"] == 1
+    assert eg.stats()["sendfile_attempts"] == 1
+
+
+def test_ssl_sendfile_blocked_before_original_implementation(monkeypatch):
+    import ssl
+
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    calls: list[str] = []
+
+    def _original(sock, file, offset=0, count=None):
+        calls.append("original-ssl-sendfile")
+        return 1
+
+    monkeypatch.setattr(eg, "_original_ssl_sendfile", _original)
+    with pytest.raises(eg.ExternalFetchBlocked):
+        ssl.SSLSocket.sendfile(_public_peer(), object())
+    assert calls == []
+    assert eg.stats()["sendfile_blocked"] == 1
+
+
+def test_loopback_sendfile_works_for_plain_and_tls(monkeypatch):
+    """严格回环 peer 必须放行；sendfile 参数与返回值语义保持不变。"""
+    import ssl
+
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    monkeypatch.setattr(
+        eg, "_original_socket_sendfile", lambda sock, file, offset=0, count=None: 7
+    )
+    monkeypatch.setattr(
+        eg, "_original_ssl_sendfile", lambda sock, file, offset=0, count=None: 9
+    )
+    loopback = _FakeSock(("127.0.0.1", 8443))
+    assert socket.socket.sendfile(loopback, object(), 0, 10) == 7
+    assert ssl.SSLSocket.sendfile(loopback, object(), 0, 10) == 9
+    stats = eg.stats()
+    assert stats["sendfile_blocked"] == 0
+    assert stats["sendfile_attempts"] == 2
+
+
+def test_tls_sendall_does_not_double_count_nested_send(monkeypatch):
+    """SSLSocket.sendall 内部回调 self.send：只能计一次尝试、一次判定。"""
+    import ssl
+
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    monkeypatch.setattr(
+        eg, "_original_ssl_send", lambda sock, data, flags=0: len(data)
+    )
+    monkeypatch.setattr(
+        eg,
+        "_original_ssl_sendall",
+        lambda sock, data, flags=0: ssl.SSLSocket.send(sock, data, flags),
+    )
+    loopback = _FakeSock(("127.0.0.1", 8443))
+    assert ssl.SSLSocket.sendall(loopback, b"hello") == 5
+    assert eg.stats()["stream_attempts"] == 1
+    assert eg.stats()["stream_blocked"] == 0
+
+
+def test_unix_socket_sendall_and_sendfile_are_not_blocked(monkeypatch):
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    _allow_original_sends(monkeypatch)
+    monkeypatch.setattr(
+        eg, "_original_socket_sendfile", lambda sock, file, offset=0, count=None: 1
+    )
+    if not hasattr(socket, "AF_UNIX"):
+        return
+    fake = _FakeSock("/tmp/guard.sock", family=socket.AF_UNIX)
+    assert eg._guarded_sendall(fake, b"x") is None
+    assert eg._guarded_sendfile(fake, object()) == 1
+    assert eg.stats()["stream_blocked"] == 0
+    assert eg.stats()["sendfile_blocked"] == 0
+
+
+def test_uninstall_restores_ssl_and_sendfile_methods(monkeypatch):
+    import ssl
+
+    originals = {
+        "ssl_send": ssl.SSLSocket.send,
+        "ssl_sendall": ssl.SSLSocket.sendall,
+        "ssl_sendfile": ssl.SSLSocket.sendfile,
+        "socket_sendfile": socket.socket.sendfile,
+    }
+    _offline(monkeypatch)
+    eg.install_network_deny()
+    assert ssl.SSLSocket.send is eg._guarded_ssl_send
+    eg.uninstall_network_deny()
+    assert ssl.SSLSocket.send is originals["ssl_send"]
+    assert ssl.SSLSocket.sendall is originals["ssl_sendall"]
+    assert ssl.SSLSocket.sendfile is originals["ssl_sendfile"]
+    assert socket.socket.sendfile is originals["socket_sendfile"]
+    assert eg.stats()["guards"] == {}
+    assert eg.stats()["installed"] is False
+
+
+def test_concurrent_offline_switch_blocks_all_tls_writes(monkeypatch):
+    """并发切换时，任何线程的 TLS 发送都必须看到离线状态（无放行窗口）。"""
+    import ssl
+
+    monkeypatch.delenv(eg.ENV, raising=False)
+    eg.install_network_deny()
+    monkeypatch.setenv(eg.ENV, "false")
+    blocked: list[str] = []
+    lock = threading.Lock()
+
+    def worker():
+        try:
+            ssl.SSLSocket.send(_public_peer(), b"x")
+        except eg.ExternalFetchBlocked:
+            with lock:
+                blocked.append("blocked")
+        except Exception as exc:  # noqa: BLE001 - 非闸门异常必须暴露
+            with lock:
+                blocked.append(f"unexpected:{type(exc).__name__}")
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+    assert blocked == ["blocked"] * 8
+    assert eg.stats()["stream_blocked"] == 8
+

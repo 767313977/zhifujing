@@ -79,7 +79,8 @@ git revert --no-commit <D 提交>   # 离线闸门
 
 ## 6. 离线隔离结论
 
-- 进程内：`requests` + `socket` 双层闸门、来源入口闸门、启动锁定，均已实测（`reports/s5_security/*`）；
+- 进程内：`requests` + socket（建连 / UDP / stream 写）+ TLS `send/sendall/sendfile` +
+  `socket.sendfile` 闸门、来源入口闸门、启动锁定，均已实测（`reports/s5_security/*`）；
 - 宿主 / 容器 / 防火墙：**未实测** → 保留 `OS_EGRESS_DENY_NOT_VERIFIED`；
 - `network_attempts` 仅代表 requests 层，不代表全宿主网络调用总数。
 
@@ -101,3 +102,23 @@ git revert --no-commit <D 提交>   # 离线闸门
 - **未改变**：未合 master、未部署、未重启、未改调度与 `deploy/*`；
   `OS_EGRESS_DENY_NOT_VERIFIED`、`PRODUCTION_DEPLOYMENT_NOT_AUTHORIZED`、`P13_RELEASE_NO_GO`
   继续保留。
+
+## 8. S5 第三轮审查整改补充（2026-11-14，未部署）
+
+- **TLS 写路径（R3-P1-01）**：新增 `ssl.SSLSocket.send` / `sendall` / `sendfile` 的独立 wrapper。
+  CPython 的 `SSLSocket` 自己实现这些方法，只 patch `socket.socket.send/sendall` 拦不住；
+  现在在线建立的 TLS 连接切换到 offline 后，每次发送都会重新按 peer 判定，非回环一律阻断。
+- **sendfile（R3-P1-01）**：新增 `socket.socket.sendfile` wrapper，POSIX `os.sendfile` 与
+  Windows send fallback 都在进入原实现前判定；`ssl.SSLSocket.sendfile` 单独 patch，
+  不假定继承基类。
+- **统一 peer 判定**：普通 socket、TLS、sendfile 共用同一 fail-closed 判定：
+  Unix socket 放行；在线放行；离线时 `getpeername()` 拿不到对端 → `NETWORK_SEND_TARGET_UNKNOWN`；
+  非严格回环 → `NETWORK_STREAM_SEND_BLOCKED` / `NETWORK_SENDFILE_BLOCKED`。
+- **统计**：新增 `sendfile_attempts` / `sendfile_blocked`；`stream_attempts` / `stream_blocked`
+  覆盖普通与 TLS `send` / `sendall`；TLS `sendall` / `sendfile` 内部回调 `send()` 不重复计数。
+- **能力集合**：`stats().guards` 逐项列出实际安装的方法
+  （`requests` / `socket_connect` / `socket_stream` / `socket_sendmsg` / `socket_sendfile` /
+  `ssl_stream` / `ssl_sendfile`），不再只报一个总布尔值；`uninstall_network_deny()` 恢复全部原始引用。
+- **仍然保留**：`OS_EGRESS_DENY_NOT_VERIFIED`、`dns_guard=NOT_INTERCEPTED`、
+  子进程 / 原生库 / Windows 防火墙 / 容器 / 网络命名空间未验证。
+  本包通过**不能**宣称 OS 级零出网。
