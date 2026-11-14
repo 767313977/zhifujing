@@ -17,6 +17,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ResonanceRow, ResonanceStats, Workbench, WorkbenchLevel } from '../api/types'
 import LoadState from '../components/LoadState'
+import Layout from '../components/Layout'
 import Panel from '../components/Panel'
 import QuickResearch from '../components/QuickResearch'
 import StockLink from '../components/StockLink'
@@ -258,8 +259,9 @@ export default function PostMarketWorkbench() {
   const show = (key: string) => view === 'overview' || view === key
 
   return (
-    <div className="mx-auto grid max-w-[1500px] gap-4 px-4 py-4">
-      <Panel
+    <Layout>
+      <div className="grid gap-4">
+        <Panel
         title="盘后主线研究工作台"
         meta={data ? `观察日 ${data.as_of} · 数据截至 ${data.data_as_of ?? '—'} · ${data.quality_version}` : undefined}
       >
@@ -523,6 +525,7 @@ export default function PostMarketWorkbench() {
           </div>
         </Panel>
       ) : null}
-    </div>
+      </div>
+    </Layout>
   )
 }

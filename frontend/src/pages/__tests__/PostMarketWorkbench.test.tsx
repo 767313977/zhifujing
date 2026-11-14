@@ -17,6 +17,10 @@ vi.mock('../../lib/watchlistContext', () => ({
   useWatchlist: () => ({ isWatched: () => false }),
 }))
 
+vi.mock('../../lib/authContext', () => ({
+  useAuth: () => ({ me: { id: 1, username: 's5a', is_admin: true }, checking: false }),
+}))
+
 vi.mock('../../lib/stockResearchContext', () => ({
   useStockResearch: () => ({ openStockResearch: mocks.openStockResearch }),
 }))
