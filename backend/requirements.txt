@@ -11,4 +11,9 @@ SQLAlchemy==2.0.54
 # 依赖 `request.scope`（旧版曾用可被 Host 头影响的 URL 重建，见 CVE-2026-48710）。
 # 线上已是 1.6.0，这里给个下限，防止哪天被解析回旧版本。
 starlette>=1.0.1
+# S7 漏洞扫描补钉：certifi 旧包携带已泄露私钥的 eMudhra 中间 CA 链（PYSEC-2026-4320）；
+# soupsieve 2.9.x 存在 4 个 CVE（CVE-2026-126190~126193）。两者都是间接依赖，
+# 这里显式抬下限，避免下次重建环境时被解析回有漏洞的版本。
+certifi>=2026.10.19
+soupsieve>=4.0.0
 uvicorn[standard]==0.53.0

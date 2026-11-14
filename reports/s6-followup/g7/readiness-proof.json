@@ -28,8 +28,8 @@
     "SCHEDULER_DISABLED": "PASS",
     "STARTUP_CONFIG_VALID": "FAIL"
   },
-  "generated_at": "2026-11-15T02:35:52+08:00",
-  "isolated_dir": "C:\\Users\\76731\\AppData\\Local\\Temp\\s7-readiness-31te0xxj",
+  "generated_at": "2026-11-15T02:39:28+08:00",
+  "isolated_dir": "C:\\Users\\76731\\AppData\\Local\\Temp\\s7-readiness-i7f1vmug",
   "ready": false,
   "reasons": {
     "EGRESS_APP_POLICY_LOCKED": "GUARD_NOT_INSTALLED",
@@ -37,5 +37,13 @@
     "EXTERNAL_FETCH_DISABLED": "EXTERNAL_FETCH_ENABLED",
     "STARTUP_CONFIG_VALID": "STARTUP_NOT_RECORDED"
   },
-  "research_path_readonly": true
+  "research_path_readonly": true,
+  "schema": {
+    "missing_columns": [],
+    "missing_indexes": [],
+    "missing_tables": [],
+    "mode": "verify",
+    "ok": true,
+    "table_count": 37
+  }
 }

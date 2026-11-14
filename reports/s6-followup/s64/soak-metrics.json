@@ -1,0 +1,148 @@
+{
+  "branch": "release/s6-canary-hardening-v3",
+  "commit_sha": "71742f4d718e8caa85809a7d9ab5914d24861b49",
+  "duration_minutes": 3.0,
+  "environment": "本地隔离拆分 Staging（Research 只读 + User 可写）",
+  "faults": [
+    {
+      "exit_code": 1,
+      "name": "SIGTERM",
+      "status": "PASS"
+    },
+    {
+      "health": true,
+      "name": "SIGKILL_RESTART",
+      "status": "PASS",
+      "user_db_integrity": "ok"
+    },
+    {
+      "http_status": 503,
+      "name": "USER_DB_READONLY_READINESS",
+      "reason": "USER_DB_NOT_WRITABLE",
+      "status": "PASS"
+    },
+    {
+      "exit_code": 3,
+      "name": "RESEARCH_DB_MISSING_STARTUP_FAIL_CLOSED",
+      "process_exited": true,
+      "ready_status": 0,
+      "status": "PASS"
+    },
+    {
+      "bounded_lt_20000ms": true,
+      "elapsed_ms": 16513.38,
+      "http_status": 500,
+      "name": "USER_DB_LOCK_CONTENTION",
+      "status": "PASS"
+    }
+  ],
+  "generated_at": "2026-11-15T02:59:31+08:00",
+  "limitations": [
+    "不是 24 小时 soak；S6_STAGING_SOAK_PASSED 仍为 NOT_RUN。",
+    "本机无 OS 级网络隔离，Egress 拒绝只验证了应用层 503。",
+    "未采集 CPU/RSS/文件描述符（未安装 psutil）。"
+  ],
+  "metrics": {
+    "by_path": {
+      "/api/health": {
+        "count": 512,
+        "p95_ms": 26.95,
+        "statuses": {
+          "200": 512
+        }
+      },
+      "/api/limit/promotion?days=15": {
+        "count": 512,
+        "p95_ms": 29.69,
+        "statuses": {
+          "200": 512
+        }
+      },
+      "/api/market/overview": {
+        "count": 512,
+        "p95_ms": 30.23,
+        "statuses": {
+          "200": 512
+        }
+      },
+      "/api/ready": {
+        "count": 512,
+        "p95_ms": 27.76,
+        "statuses": {
+          "503": 512
+        }
+      },
+      "/api/research/workbench?mode=AND&market=all&view=overview&limit=50&offset=0": {
+        "count": 512,
+        "p95_ms": 35.32,
+        "statuses": {
+          "200": 512
+        }
+      },
+      "/api/risk/pref": {
+        "count": 512,
+        "p95_ms": 26.84,
+        "statuses": {
+          "200": 512
+        }
+      },
+      "/api/sentiment/next-day?days=60&group=first_board&metric=limit_up_count&include_pending=true": {
+        "count": 512,
+        "p95_ms": 27.33,
+        "statuses": {
+          "200": 512
+        }
+      },
+      "/api/stock/000001/sync": {
+        "count": 512,
+        "p95_ms": 26.66,
+        "statuses": {
+          "503": 512
+        }
+      },
+      "/api/watchlist": {
+        "count": 512,
+        "p95_ms": 28.52,
+        "statuses": {
+          "200": 512
+        }
+      },
+      "/api/watchlist/000001": {
+        "count": 512,
+        "p95_ms": 29.41,
+        "statuses": {
+          "200": 512
+        }
+      },
+      "/api/watchlist/sync": {
+        "count": 512,
+        "p95_ms": 26.92,
+        "statuses": {
+          "503": 512
+        }
+      }
+    },
+    "errors_5xx": 0,
+    "expected_503_research_write": 1024,
+    "latency_ms": {
+      "max": 152.13,
+      "p50": 14.6,
+      "p95": 29.35,
+      "p99": 33.31
+    },
+    "readiness_failures": 512,
+    "ready_503": 512,
+    "research_read": 3072,
+    "research_write_denied_503": 1024,
+    "total_requests": 5632,
+    "transport_errors": 0,
+    "user_write_fail": 0,
+    "user_write_ok": 1536
+  },
+  "ready_status_after": 0,
+  "requested_24h": false,
+  "research_db_integrity": "ok",
+  "split_mode": true,
+  "status": "SOAK_NOT_24H",
+  "user_db_integrity_after": "ok"
+}

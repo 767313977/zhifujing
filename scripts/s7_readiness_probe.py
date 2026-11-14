@@ -32,11 +32,14 @@ CN_TZ = timezone(timedelta(hours=8))
 CHILD = r"""
 import json
 from app import readiness
+from app.db import ensure_schema
 
+schema = ensure_schema("verify")
 checks = readiness.database_checks()
 gate, reason = readiness._database_gate(checks)
 snapshot = readiness.readiness_snapshot()
 print(json.dumps({
+    "schema": schema,
     "checks": checks,
     "database_gate": gate,
     "database_reason": reason,
@@ -51,30 +54,38 @@ print(json.dumps({
 def _make_dbs(directory: Path) -> tuple[Path, Path]:
     from sqlalchemy import create_engine, text
 
+    from app.db_roles import user_table_objects
     from app.models import Base
 
     research = directory / "research.db"
     user = directory / "user.db"
-    for path in (research, user):
-        engine = create_engine(f"sqlite:///{path}", future=True)
-        Base.metadata.create_all(engine)
-        if path == research:
-            with engine.begin() as connection:
-                connection.execute(
-                    text(
-                        "INSERT INTO stock_daily(code, trade_date, close) "
-                        "VALUES ('000001', '2026-09-24', 10.0)"
-                    )
-                )
-        else:
-            with engine.begin() as connection:
-                connection.execute(
-                    text(
-                        "INSERT INTO app_user(username, password_hash, is_admin, created_at) "
-                        "VALUES ('probe', 'x', 0, '2026-11-15 00:00:00')"
-                    )
-                )
-        engine.dispose()
+
+    user_names = {table.name for table in user_table_objects()}
+    research_tables = [
+        table for table in Base.metadata.sorted_tables if table.name not in user_names
+    ]
+
+    engine = create_engine(f"sqlite:///{research}", future=True)
+    Base.metadata.create_all(engine, tables=research_tables)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO stock_daily(code, trade_date, close) "
+                "VALUES ('000001', '2026-09-24', 10.0)"
+            )
+        )
+    engine.dispose()
+
+    engine = create_engine(f"sqlite:///{user}", future=True)
+    Base.metadata.create_all(engine, tables=user_table_objects())
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO app_user(username, password_hash, is_admin, created_at) "
+                "VALUES ('probe', 'x', 0, '2026-11-15 00:00:00')"
+            )
+        )
+    engine.dispose()
     return research, user
 
 

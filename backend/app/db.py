@@ -94,6 +94,24 @@ if settings.db_split_enabled:
     UserSessionLocal = sessionmaker(bind=user_engine, autoflush=False, expire_on_commit=False)
 
 
+def _user_table_names() -> set[str]:
+    """10 张用户表的表名（拆分时 Research DB 不应包含它们）。"""
+    from app import models
+    from app.db_roles import USER_MODEL_NAMES
+
+    return {getattr(models, name).__tablename__ for name in USER_MODEL_NAMES}
+
+
+def _research_tables(models_module):
+    """Research DB 应建的表（拆分时排除用户表）。"""
+    if not settings.db_split_enabled:
+        return None
+    skip = _user_table_names()
+    return [
+        table for table in models_module.Base.metadata.sorted_tables if table.name not in skip
+    ]
+
+
 def init_db(*, allow_migrate: bool | None = None) -> None:
     """**显式初始化**入口（脚本 / 测试）；应用启动走 `ensure_schema()`。
 
@@ -124,9 +142,19 @@ def init_db(*, allow_migrate: bool | None = None) -> None:
         )
         logger.error(message)
         raise RuntimeError(message)
-    Base.metadata.create_all(engine)
-    columns = _add_missing_columns(Base)
-    indexes = _add_missing_indexes(Base)
+    Base.metadata.create_all(engine, tables=_research_tables(models))
+    skip = _user_table_names() if settings.db_split_enabled else frozenset()
+    columns = _add_missing_columns(Base, skip_tables=skip)
+    indexes = _add_missing_indexes(Base, skip_tables=skip)
+    if settings.db_split_enabled:
+        user_report = user_schema_report()
+        if not user_report["ok"]:
+            raise RuntimeError(
+                "User DB 未初始化（缺表 "
+                + "、".join(user_report["missing"][:8])
+                + "）。请显式执行 `python scripts/s6_init_user_db.py`，"
+                "应用启动不会自动创建用户库。"
+            )
     logger.info(
         "初始化/迁移完成：新建表 %d（fresh=%s）、补列 %d、补索引 %d",
         len(report["missing_tables"]) if fresh else 0,
@@ -156,9 +184,22 @@ def schema_mode() -> str:
 
 
 def migrate_schema(target_engine=None) -> dict:
-    """建表 + 补列 + 补索引，返回本次补上的列/索引（幂等）。"""
+    """建表 + 补列 + 补索引，返回本次补上的列/索引（幂等）。
+
+    拆分形态（无显式 `target_engine`）下：Research 引擎只建研究表，
+    用户表只建在 User 引擎 —— 不会把用户表混进研究库，也不会往只读库写。
+    """
     from app import models  # noqa: F401  触发模型注册
     from app.models import Base
+    from app.db_roles import user_table_objects
+
+    if settings.db_split_enabled and target_engine is None:
+        Base.metadata.create_all(engine, tables=_research_tables(models))
+        skip = _user_table_names()
+        columns = _add_missing_columns(Base, skip_tables=skip)
+        indexes = _add_missing_indexes(Base, skip_tables=skip)
+        Base.metadata.create_all(bind=user_engine, tables=user_table_objects())
+        return {"columns": columns, "indexes": indexes}
 
     engine_ = target_engine or engine
     Base.metadata.create_all(engine_)
@@ -167,11 +208,14 @@ def migrate_schema(target_engine=None) -> dict:
     return {"columns": columns, "indexes": indexes}
 
 
-def schema_report(target_engine=None) -> dict:
+def schema_report(target_engine=None, *, include_user_models: bool = True) -> dict:
     """**只读**对比「模型要求」与「库里实际有什么」（P0.9-08）。
 
     不建表、不补列、不补索引、不装触发器 —— 只用 `PRAGMA table_info` 一类的
     读查询。用于启动前的兼容性检查，也可在只读数据库上安全执行。
+
+    `include_user_models=False` 用于拆分形态下的 Research DB：用户表在独立的
+    User DB 里，不应该要求研究库包含它们。
     """
     from sqlalchemy import inspect
 
@@ -181,6 +225,7 @@ def schema_report(target_engine=None) -> dict:
     engine_ = target_engine or engine
     inspector = inspect(engine_)
     existing_tables = set(inspector.get_table_names())
+    skip = set() if include_user_models else _user_table_names()
 
     missing_tables: list[str] = []
     missing_columns: list[str] = []
@@ -195,6 +240,8 @@ def schema_report(target_engine=None) -> dict:
             )
         }
     for table in Base.metadata.sorted_tables:
+        if table.name in skip:
+            continue
         if table.name not in existing_tables:
             missing_tables.append(table.name)
             continue
@@ -237,7 +284,19 @@ def ensure_schema(mode: str | None = None, target_engine=None) -> dict:
         )
         return {"mode": "migrate", **changed}
 
-    report = schema_report(target_engine)
+    report = schema_report(target_engine, include_user_models=not settings.db_split_enabled)
+    if settings.db_split_enabled:
+        # User DB 只做**只读**检查：缺表 → fail closed，绝不在启动时自动建库
+        user_report = user_schema_report()
+        if not user_report["ok"]:
+            message = (
+                "User DB 未初始化或缺少用户表（"
+                + "、".join(user_report["missing"][:8])
+                + "）。请显式执行 `python scripts/s6_init_user_db.py`；"
+                "应用启动不会自动创建用户库。"
+            )
+            logger.error(message)
+            raise RuntimeError(message)
     if not report["ok"]:
         detail = []
         if report["missing_tables"]:
@@ -259,7 +318,7 @@ def ensure_schema(mode: str | None = None, target_engine=None) -> dict:
     return {"mode": "verify", **report}
 
 
-def _add_missing_columns(base, target_engine=None) -> list[str]:
+def _add_missing_columns(base, target_engine=None, skip_tables=frozenset()) -> list[str]:
     """给**已存在**的表补上模型里新增的列。
 
     `create_all` 只建缺的表，**不会给已有的表加列**：模型里新加一个字段
@@ -279,6 +338,8 @@ def _add_missing_columns(base, target_engine=None) -> list[str]:
     inspector = inspect(engine_)
     with engine_.begin() as connection:
         for table in base.metadata.sorted_tables:
+            if table.name in skip_tables:
+                continue
             if not inspector.has_table(table.name):
                 continue  # create_all 刚建的（或这张表还没建），列肯定是全的
             existing = {column["name"] for column in inspector.get_columns(table.name)}
@@ -346,7 +407,7 @@ def _column_default_sql(column) -> str | None:
     return None
 
 
-def _add_missing_indexes(base, target_engine=None) -> list[str]:
+def _add_missing_indexes(base, target_engine=None, skip_tables=frozenset()) -> list[str]:
     """给**已存在**的表补上模型里新增的索引。
 
     ⚠️ 为什么需要它：`create_all` 只给「还没有的表」建索引，已存在的表**连索引一起
@@ -372,6 +433,8 @@ def _add_missing_indexes(base, target_engine=None) -> list[str]:
             )
         }
         for table in base.metadata.sorted_tables:
+            if table.name in skip_tables:
+                continue
             if not inspector.has_table(table.name):
                 continue  # create_all 刚建的（或这张表还没建），索引肯定已随之建好
             for index in table.indexes:
