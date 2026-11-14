@@ -81,6 +81,8 @@ _track_lock = threading.Lock()
 #: single-flight：同一键并发请求的 Event（key → Event）。首个计算完 set，等待者醒。
 _inflight: dict[tuple, threading.Event] = {}
 _inflight_lock = threading.Lock()
+#: 每个键最多允许一次 leader 异常后的补算（防止被唤醒的 follower 反复重建 leader）
+_retry_attempted: dict[tuple, bool] = {}
 
 #: 缓存未命中的哨兵（缓存值本身可能是 None，不能用 None 表示 miss）
 _MISS = object()
@@ -120,18 +122,30 @@ def _store_cache(final_key: tuple, value) -> None:
             _track_cache.pop(oldest, None)
 
 
-def _register_or_join(final_key: tuple) -> tuple[threading.Event, bool]:
+def _register_or_join(
+    final_key: tuple, *, retry: bool = False
+) -> tuple[threading.Event | None, bool]:
     """抢占同键 leader；已有 leader 则返回它的 Event。
 
     返回 `(event, is_leader)`。`is_leader=True` 时调用方负责计算与清理。
+
+    R3-P2-03：leader 异常退出后的「补算」每键最多一次。否则多个被唤醒的
+    follower 可能在不同时点分别成为新 leader，把一次失败放大成多次重复计算。
     """
-    event = threading.Event()
     with _inflight_lock:
         existing = _inflight.get(final_key)
-        if existing is None:
-            _inflight[final_key] = event
-            return event, True
-        return existing, False
+        if existing is not None:
+            return existing, False
+        if retry:
+            if _retry_attempted.get(final_key):
+                return None, False
+            _retry_attempted[final_key] = True
+        else:
+            # 新的一轮请求重置补算预算
+            _retry_attempted.pop(final_key, None)
+        event = threading.Event()
+        _inflight[final_key] = event
+        return event, True
 
 
 def _busy() -> HTTPException:
@@ -156,6 +170,9 @@ def _run_leader(final_key: tuple, event: threading.Event, build):
         raise
     else:
         _store_cache(final_key, value)
+        with _inflight_lock:
+            # 成功后缓存已就绪，补算预算不再需要
+            _retry_attempted.pop(final_key, None)
         return value
     finally:
         with _inflight_lock:
@@ -184,6 +201,8 @@ def _cached(raw_key: tuple, build, session: Session):
     # ---- 先查缓存 ----
     hit = _read_cache(final_key)
     if hit is not _MISS:
+        with _inflight_lock:
+            _retry_attempted.pop(final_key, None)
         return hit
 
     # ---- single-flight：同键去重 ----
@@ -212,7 +231,7 @@ def _cached(raw_key: tuple, build, session: Session):
 
     # leader 异常退出：允许一个 follower 补算，其余继续 503，避免风暴
     logger.info("leader 已退出但缓存为空，尝试补算，key=%s", final_key[:4])
-    retry_event, retry_is_leader = _register_or_join(final_key)
+    retry_event, retry_is_leader = _register_or_join(final_key, retry=True)
     if retry_is_leader:
         return _run_leader(final_key, retry_event, build)
     raise _busy()

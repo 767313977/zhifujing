@@ -27,6 +27,7 @@ def reset_cache_globals(monkeypatch):
     # 清空模块级全局缓存
     pools_api._track_cache.clear()
     pools_api._inflight.clear()
+    pools_api._retry_attempted.clear()
     # 默认让 data_revision.status() 返回 ready
     ready_state = dr.CacheState(
         state="ready",
@@ -95,6 +96,20 @@ def test_concurrent_same_key_single_build(session, fake_board):
 
 
 # ---- 3.2 Leader 抛异常 --------------------------------------------------------
+
+def test_retry_budget_allows_at_most_one_rebuild():
+    """R3-P2-03：leader 失败后的补算预算每键只有一次，迟到的 waiter 不得再建 leader。"""
+    key = ("retry-budget",)
+    event, leader = pools_api._register_or_join(key, retry=True)
+    assert leader is True and event is not None
+    pools_api._inflight.pop(key, None)
+    event2, leader2 = pools_api._register_or_join(key, retry=True)
+    assert leader2 is False and event2 is None
+    # 新的一轮请求（非 retry）重置预算
+    event3, leader3 = pools_api._register_or_join(key)
+    assert leader3 is True and event3 is not None
+    pools_api._inflight.pop(key, None)
+
 
 def test_leader_exception_all_waiters_wake(session, fake_board):
     """leader 抛异常 → inflight 清空、所有 waiter 被唤醒且无人永久阻塞。
