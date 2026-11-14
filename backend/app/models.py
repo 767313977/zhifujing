@@ -17,19 +17,27 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from app.timeutil import now_cn
+
 
 class Base(DeclarativeBase):
     pass
 
 
 def _now() -> datetime:
-    """本地时间（Asia/Shanghai），替代 SQLAlchemy 的 `func.now()`。
+    """写入时间：**确定性的北京墙上时间**（naive，字段本身不带时区）。
 
-    后者在 SQLite 里是 `CURRENT_TIMESTAMP`（UTC），而代码别处用 `datetime.now()`
-    （本地 CST），两种口径混进同一批表会让时间戳差 8 小时 —— 采集日志、自选股
-    加入时间等展示出来全偏 8 小时。统一成 Python 侧的本地时间，别再用 `func.now()`。
+    历史问题（S5 独立审查 P1-02）：原来直接用 `datetime.now()`，取的是**进程本地
+    时区**的墙上时间。机器时区配错（容器 UTC、换机、精简镜像）就会把 8 小时偏移
+    写进 `collect_log.created_at` / `sector_member.fetched_at`，而 PIT 判定要靠这些
+    时间证明「15:00 前是否已知」，偏 8 小时会直接把盘后数据算成盘中已知。
+
+    现在固定用 `timeutil.now_cn()`（+08:00）生成，再去掉 tzinfo 写进 naive 列：
+    写法与旧数据一致（SQLite `DateTime` 仍是 naive），但生成过程不再依赖 OS 时区。
+    历史上已写入的 naive 行是否可按 +08:00 解释，由
+    `settings.research_naive_timestamps_trusted` 显式声明，不在这里默认假定。
     """
-    return datetime.now()
+    return now_cn().replace(tzinfo=None)
 
 
 # 「资金通道 / 国家队持股」这类**口径标签**：融资融券与沪深股通天然是全市场口径，

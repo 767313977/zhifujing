@@ -479,12 +479,14 @@ function EvidenceTab({
     pool_status: legacy.limit_status,
     board_height: legacy.board_height,
     observed_pool_membership: legacy.observed_pool_membership,
-    pool_quality: legacy.pool_quality,
+    pool_scope_complete: legacy.pool_scope_complete ?? true,
+    unconfirmed_pool_sources: legacy.unconfirmed_pool_sources ?? [],
     daily: legacy.daily,
     themes: legacy.themes.filter((item) => item.known_by === 'PRIOR_DAY'),
     concepts: [],
     sentiment: legacy.sentiment,
   }
+  const incompletePoolSources = known.unconfirmed_pool_sources ?? []
   const unknown = data.unknown_or_later ?? {
     themes: legacy.themes.filter((item) => item.known_by !== 'PRIOR_DAY'),
     concepts: legacy.concepts,
@@ -508,6 +510,12 @@ function EvidenceTab({
           {' · '}截止 {data.cutoff_at ?? '—'}
           {' · '}数据截至 {data.data_as_of ?? '—'}
         </div>
+        {data.time_policy ? (
+          <div className="num mt-0.5 text-[11px] text-fg-dim">
+            时区策略 {data.time_policy.naive_timestamp_policy}
+            （历史 naive 时间{data.time_policy.naive_timezone_trusted ? '按 +08:00 解释' : '不信任，降级未知'}）
+          </div>
+        ) : null}
         <div className="mt-0.5">
           <span className={data.quality.status === 'PARTIAL' ? 'text-warn' : 'text-fg'}>
             {CONTEXT_STATUS_LABEL[data.quality.status] ?? data.quality.status}
@@ -532,6 +540,11 @@ function EvidenceTab({
           }
         />
         <Row label="观察到的池" value={known.observed_pool_membership.join('、') || '—'} />
+        {incompletePoolSources.length ? (
+          <div className="mt-1 text-[11px] leading-relaxed text-warn">
+            以下池来源未能在 15:00 前证明：{incompletePoolSources.join('、')}；不能据此推断该股不在其余池，也不代表无冲突。
+          </div>
+        ) : null}
         <div className="mt-2 text-[12px] text-fg-dim">题材（观察日之前已取到）</div>
         <ThemeList items={known.themes} />
         <div className="mt-2 text-[12px] text-fg-dim">涨停天梯题材</div>
@@ -541,6 +554,13 @@ function EvidenceTab({
       <EndOfDayFactSection fact={data.end_of_day_fact} />
 
       <Section title="不知道 / 观察日之后才取到">
+        {unknown.pool ? (
+          <div className="mb-2 text-[12px] leading-relaxed text-warn">
+            池成员/冲突未能在 15:00 前证明：
+            {unknown.pool.observed_pool_membership.join('、') || '（无成员记录）'}
+            {` · ${unknown.pool.status} · ${unknown.pool.reason_code}`}
+          </div>
+        ) : null}
         {unknown.themes.length === 0 && unknown.concepts.length === 0 ? (
           <div className="text-[13px] text-fg-muted">没有无法校准的来源记录</div>
         ) : (

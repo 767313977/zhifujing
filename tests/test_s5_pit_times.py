@@ -35,6 +35,8 @@ CST = timezone(timedelta(hours=8))
 
 
 def evaluate(moment, **kwargs):
+    # 纯函数层：显式声明信任本项目的 CST naive 约定；服务层另有用例覆盖不信任路径
+    kwargs.setdefault("naive_timezone_trusted", True)
     return ctx.evaluate_known_time(observed_at=moment, cutoff_at=CUTOFF, **kwargs)
 
 
@@ -153,6 +155,7 @@ def test_naive_cutoff_is_rejected():
         ctx.evaluate_known_time(
             observed_at=datetime(2026, 11, 11, 10, 0),
             cutoff_at=datetime(2026, 11, 11, 15, 0),
+            naive_timezone_trusted=True,
         )
 
 
@@ -211,11 +214,15 @@ def _log(day, task, rows, moment, status="ok"):
 
 
 def _build(db, code="600000"):
-    return ctx.build(db, code=code, as_of=D2)
+    # 服务级显式策略：这些用例验证「信任 CST naive」时的边界；
+    # 不信任路径与服务默认值见 test_service_default_untrusted_naive_demotes_pool
+    return ctx.build(db, code=code, as_of=D2, naive_timezone_trusted=True)
 
 
 def _pool_evidence(data):
-    return [item for item in data["evidence"] if item["claim"] == "观察日池记录"][0]
+    return [
+        item for item in data["evidence"] if item["claim"].startswith("观察日池记录")
+    ]
 
 
 @pytest.mark.parametrize(
@@ -245,12 +252,23 @@ def test_pool_log_time_boundaries_drive_bucket(moment, known_by, bucket):
         db.commit()
         data = _build(db)
         evidence = _pool_evidence(data)
-        assert evidence["known_by"] == known_by
-        assert evidence["time_bucket"] == bucket
-        assert evidence["cutoff_at"] == "2026-11-11T15:00:00+08:00"
-        expected_status = ctx.POOL_STATUS_UP if bucket == ctx.BUCKET_KNOWN else ctx.POOL_STATUS_UNKNOWN
+        assert evidence, "池证据不应缺失"
+        expected_status = (
+            ctx.POOL_STATUS_UP if bucket == ctx.BUCKET_KNOWN else ctx.POOL_STATUS_UNKNOWN
+        )
         assert data["at_cutoff_known"]["pool_status"] == expected_status
-        if bucket != ctx.BUCKET_KNOWN:
+        if bucket == ctx.BUCKET_KNOWN:
+            assert len(evidence) == 1
+            assert evidence[0]["known_by"] == known_by
+            assert evidence[0]["time_bucket"] == bucket
+            assert evidence[0]["cutoff_at"] == "2026-11-11T15:00:00+08:00"
+            assert data["at_cutoff_known"]["observed_pool_membership"] == ["up"]
+        else:
+            assert all(item["time_bucket"] == ctx.BUCKET_UNKNOWN for item in evidence)
+            assert evidence[-1]["known_by"] == known_by
+            assert evidence[-1]["cutoff_at"] == "2026-11-11T15:00:00+08:00"
+            # 已知区不得出现盘后成员关系
+            assert data["at_cutoff_known"]["observed_pool_membership"] == []
             assert "POOL_NOT_KNOWN_AT_CUTOFF" in data["quality"]["reasons"]
     finally:
         db.close()
@@ -277,19 +295,107 @@ def test_broken_failure_does_not_borrow_up_log_time():
         db.close()
 
 
-def test_pool_conflict_survives_time_demotion():
+def _add_conflict_rows(db):
+    """让 600000 同时出现在 up / broken 两个池（模拟数据库当前行）。"""
+    db.add(LimitPool(trade_date=D2, code="600000", pool_type="broken", name="合成银行"))
+
+
+def test_post_cutoff_conflict_never_enters_known_area():
+    """P1-01 反向用例：两个池都在 22:00 采集，已知区不得出现冲突或成员。"""
     db = _session()
     try:
-        db.add(LimitPool(trade_date=D2, code="600000", pool_type="broken", name="合成银行"))
+        _add_conflict_rows(db)
         for task in ("pool_up", "pool_broken", "pool_down"):
             db.add(_log(D2, task, 1, datetime(2026, 11, 11, 22, 0)))
-        for task, rows in (("pool_up", 1), ("pool_broken", 1), ("pool_down", 0)):
-            db.add(_log(D3, task, rows, datetime(2026, 11, 12, 14, 0)))
         db.commit()
         data = _build(db)
-        assert data["at_cutoff_known"]["pool_status"] == ctx.POOL_STATUS_CONFLICT
-        assert _pool_evidence(data)["reason_code"] == "POOL_CONFLICT"
-        assert _pool_evidence(data)["known_by"] == ctx.KNOWN_POST_CLOSE
+        known = data["at_cutoff_known"]
+        assert known["pool_status"] == ctx.POOL_STATUS_UNKNOWN
+        assert known["observed_pool_membership"] == []
+        assert known["pool_scope_complete"] is False
+        assert "POOL_CONFLICT" not in data["quality"]["reasons"]
+        unknown = data["unknown_or_later"]["pool"]
+        assert unknown["status"] == ctx.POOL_STATUS_CONFLICT
+        assert unknown["reason_code"] == "POOL_CONFLICT_POST_CUTOFF"
+        assert unknown["observed_pool_membership"] == ["broken", "up"]
+        assert unknown["known_by"] == ctx.KNOWN_POST_CLOSE
+        # 已知桶里没有任何 conflict 断言
+        known_rows = [
+            item for item in data["evidence"] if item["time_bucket"] == ctx.BUCKET_KNOWN
+        ]
+        assert all(item["reason_code"] != "POOL_CONFLICT" for item in known_rows)
+        assert all(item["source_table"] != "limit_pool" for item in known_rows)
+    finally:
+        db.close()
+
+
+def test_partially_known_conflict_is_not_asserted():
+    """up 14:00、broken 22:00：只能描述已证明的 UP，不得断言无冲突。"""
+    db = _session()
+    try:
+        _add_conflict_rows(db)
+        db.add(_log(D2, "pool_up", 2, datetime(2026, 11, 11, 14, 0)))
+        db.add(_log(D2, "pool_broken", 1, datetime(2026, 11, 11, 22, 0)))
+        db.add(_log(D2, "pool_down", 0, datetime(2026, 11, 11, 14, 0)))
+        db.commit()
+        data = _build(db)
+        known = data["at_cutoff_known"]
+        assert known["pool_status"] == ctx.POOL_STATUS_UP
+        assert known["observed_pool_membership"] == ["up"]
+        assert known["pool_scope_complete"] is False
+        assert known["unconfirmed_pool_sources"] == ["broken"]
+        assert "POOL_CONFLICT" not in data["quality"]["reasons"]
+        assert "POOL_OTHER_SOURCES_UNKNOWN" in data["quality"]["reasons"]
+        assert data["unknown_or_later"]["pool"]["status"] == ctx.POOL_STATUS_CONFLICT
+        # 兼容字段同样只含已知子集
+        assert data["as_known_on_day"]["observed_pool_membership"] == ["up"]
+        assert "POOL_CONFLICT" not in str(data["as_known_on_day"])
+    finally:
+        db.close()
+
+
+def test_missing_broken_log_keeps_uncertainty():
+    """up 14:00、broken 缺日志：保留不确定性，不得说「不在 broken」。"""
+    db = _session()
+    try:
+        _add_conflict_rows(db)
+        db.add(_log(D2, "pool_up", 2, datetime(2026, 11, 11, 14, 0)))
+        db.add(_log(D2, "pool_down", 0, datetime(2026, 11, 11, 14, 0)))
+        db.commit()
+        data = _build(db)
+        known = data["at_cutoff_known"]
+        assert known["pool_status"] == ctx.POOL_STATUS_UP
+        assert known["unconfirmed_pool_sources"] == ["broken"]
+        assert known["pool_scope_complete"] is False
+        unknown = data["unknown_or_later"]["pool"]
+        assert unknown["status"] == ctx.POOL_STATUS_CONFLICT
+        assert unknown["reason_code"] == "POOL_CONFLICT_NOT_PROVABLE"
+    finally:
+        db.close()
+
+
+def test_conflict_with_all_sources_known_before_cutoff_is_visible():
+    """两个来源都在 15:00 前且质量可信：允许显示冲突。"""
+    db = _session()
+    try:
+        _add_conflict_rows(db)
+        db.add(_log(D2, "pool_up", 2, datetime(2026, 11, 11, 14, 0)))
+        db.add(_log(D2, "pool_broken", 1, datetime(2026, 11, 11, 14, 30)))
+        db.add(_log(D2, "pool_down", 0, datetime(2026, 11, 11, 14, 0)))
+        db.commit()
+        data = _build(db)
+        known = data["at_cutoff_known"]
+        assert known["pool_status"] == ctx.POOL_STATUS_CONFLICT
+        assert known["observed_pool_membership"] == ["broken", "up"]
+        assert known["pool_scope_complete"] is True
+        assert "POOL_CONFLICT" in data["quality"]["reasons"]
+        row = [
+            item for item in data["evidence"] if item["claim"] == "观察日池记录"
+        ][0]
+        assert row["time_bucket"] == ctx.BUCKET_KNOWN
+        assert row["reason_code"] == "POOL_CONFLICT"
+        # known_at 取所有相关来源的最晚时刻，且带 +08:00
+        assert row["known_at"].isoformat() == "2026-11-11T14:30:00+08:00"
     finally:
         db.close()
 
@@ -354,3 +460,89 @@ def test_naive_timezone_untrusted_demotes_pool_evidence():
         assert result["reason_code"] == "NAIVE_TIMESTAMP_NO_TRUSTED_TZ"
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------- 服务级 naive 策略
+
+
+def _seed_simple_pools(db, moment):
+    for task, rows in (("pool_up", 2), ("pool_broken", 0), ("pool_down", 0)):
+        db.add(_log(D2, task, rows, moment))
+    db.commit()
+
+
+@pytest.mark.parametrize(
+    ("hour", "minute", "expected_status", "expected_bucket"),
+    [
+        (14, 59, ctx.POOL_STATUS_UP, ctx.BUCKET_KNOWN),
+        (15, 0, ctx.POOL_STATUS_UP, ctx.BUCKET_KNOWN),
+        (15, 1, ctx.POOL_STATUS_UNKNOWN, ctx.BUCKET_UNKNOWN),
+    ],
+)
+def test_service_trusted_naive_boundaries(hour, minute, expected_status, expected_bucket):
+    db = _session()
+    try:
+        _seed_simple_pools(db, datetime(2026, 11, 11, hour, minute))
+        data = ctx.build(db, code="600000", as_of=D2, naive_timezone_trusted=True)
+        assert data["time_policy"]["naive_timestamp_policy"] == ctx.NAIVE_POLICY_CST_ASSUMED
+        assert data["at_cutoff_known"]["pool_status"] == expected_status
+        evidence = _pool_evidence(data)
+        assert evidence[-1]["time_bucket"] == expected_bucket
+    finally:
+        db.close()
+
+
+def test_service_default_untrusted_naive_demotes_pool():
+    """服务默认（配置 false）不信任历史 naive 时间 → 池证据降级 UNKNOWN。"""
+    db = _session()
+    try:
+        _seed_simple_pools(db, datetime(2026, 11, 11, 14, 0))
+        data = ctx.build(db, code="600000", as_of=D2)  # 不传显式策略
+        assert data["time_policy"]["naive_timestamp_policy"] == ctx.NAIVE_POLICY_UNTRUSTED
+        assert data["time_policy"]["naive_timezone_trusted"] is False
+        assert data["at_cutoff_known"]["pool_status"] == ctx.POOL_STATUS_UNKNOWN
+        assert data["at_cutoff_known"]["observed_pool_membership"] == []
+        unknown = data["unknown_or_later"]["pool"]
+        assert unknown["known_by"] == ctx.KNOWN_UNKNOWN
+        assert unknown["reason_code"] == "POOL_MEMBERSHIP_NOT_PROVABLE"
+        # 来源质量与 PIT 分离：质量仍然 VERIFIED，但不等于「15:00 已知」
+        assert data["source_quality"]["pools"]["up"] == ctx.STATUS_VERIFIED
+        assert data["source_quality"]["pool_trusted"]["up"] is True
+        assert data["source_quality"]["pool_known_at"]["up"] is None
+        assert "POOL_NOT_KNOWN_AT_CUTOFF" in data["quality"]["reasons"]
+    finally:
+        db.close()
+
+
+def test_service_known_at_is_aware_cst():
+    db = _session()
+    try:
+        _seed_simple_pools(db, datetime(2026, 11, 11, 14, 30))
+        data = ctx.build(db, code="600000", as_of=D2, naive_timezone_trusted=True)
+        row = _pool_evidence(data)[0]
+        assert row["known_at"].utcoffset() == timedelta(hours=8)
+        assert row["known_at"].isoformat() == "2026-11-11T14:30:00+08:00"
+        assert row["observed_at"] == row["known_at"]
+        assert data["source_quality"]["pool_known_at"]["up"] == "2026-11-11T14:30:00+08:00"
+        assert data["as_known_on_day"]["observed_pool_membership"] == ["up"]
+    finally:
+        db.close()
+
+
+def test_service_theme_time_also_requires_naive_policy():
+    """题材时点同样受 naive 策略约束：不信任时不能靠 naive fetched_at 判 PRIOR_DAY。"""
+    db = _session()
+    try:
+        _seed_simple_pools(db, datetime(2026, 11, 11, 14, 30))
+        db.query(SectorMember).filter(SectorMember.code == "600000").update(
+            {"fetched_at": datetime(2026, 11, 10, 22, 0)}
+        )
+        db.commit()
+        trusted = ctx.build(db, code="600000", as_of=D2, naive_timezone_trusted=True)
+        assert trusted["at_cutoff_known"]["themes"][0]["known_by"] == ctx.KNOWN_PRIOR_DAY
+        untrusted = ctx.build(db, code="600000", as_of=D2, naive_timezone_trusted=False)
+        assert untrusted["at_cutoff_known"]["themes"] == []
+        assert untrusted["unknown_or_later"]["themes"][0]["known_by"] == ctx.KNOWN_UNKNOWN
+    finally:
+        db.close()
+

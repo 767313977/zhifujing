@@ -91,7 +91,7 @@ def session():
 
 
 def build(db, **kwargs):
-    params = {"code": "600000", "as_of": D2}
+    params = {"code": "600000", "as_of": D2, "naive_timezone_trusted": True}
     params.update(kwargs)
     return ctx.build(db, **params)
 
@@ -168,8 +168,19 @@ def test_prior_day_theme_is_known(session):
 def test_null_theme_time_is_unknown_not_known():
     # `sector_member.fetched_at` 是非空列，库里不会出现 null；
     # 这里直接验证归类函数：拿不到时间就必须是 UNKNOWN，不能猜成已知。
-    assert ctx._theme_known_by(None, D2) == ctx.KNOWN_UNKNOWN
-    assert ctx.classify_evidence_time(ctx._theme_known_by(None, D2)) == ctx.BUCKET_UNKNOWN
+    assert (
+        ctx._theme_known_by(None, D2, naive_timezone_trusted=True) == ctx.KNOWN_UNKNOWN
+    )
+    assert ctx.classify_evidence_time(
+        ctx._theme_known_by(None, D2, naive_timezone_trusted=True)
+    ) == ctx.BUCKET_UNKNOWN
+    # naive 时间在策略不信任时也不得判成 PRIOR_DAY
+    assert (
+        ctx._theme_known_by(
+            datetime(2026, 11, 10, 22, 0), D2, naive_timezone_trusted=False
+        )
+        == ctx.KNOWN_UNKNOWN
+    )
 
 
 def test_concept_is_never_known_at_cutoff(session):
@@ -240,11 +251,13 @@ def test_pool_log_written_next_day_is_not_known_at_cutoff(session):
     data = build(session)
     assert data["at_cutoff_known"]["pool_status"] == ctx.POOL_STATUS_UNKNOWN
     pool_evidence = [
-        item for item in data["evidence"] if item["claim"] == "观察日池记录"
-    ][0]
+        item
+        for item in data["evidence"]
+        if item["claim"].startswith("观察日池记录")
+    ][-1]
     assert pool_evidence["known_by"] == ctx.KNOWN_LATER
     assert pool_evidence["time_bucket"] == ctx.BUCKET_UNKNOWN
-    assert pool_evidence["observed_at"] == datetime(2026, 11, 12, 8, 0)
+    assert pool_evidence["observed_at"].isoformat() == "2026-11-12T08:00:00+08:00"
 
 
 def test_missing_pool_is_not_backfilled(session):

@@ -2440,8 +2440,14 @@ class StockResearchCutoffKnown(BaseModel):
     #: UP / BROKEN / DOWN / NOT_IN_POOL / POOL_CONFLICT / UNKNOWN
     pool_status: str
     board_height: int | None
+    #: 只含「来源可信 + 截止前已知」的成员池（不是数据库当前行的直接投影）
     observed_pool_membership: list[str]
-    pool_quality: dict[str, str]
+    #: 三个池来源是否都在截止前可证明；false 时不得推断「不在其余池」
+    pool_scope_complete: bool = True
+    #: 有成员记录但未能在截止前证明的来源（up / broken / down）
+    unconfirmed_pool_sources: list[str] = []
+    #: 已废弃：来源质量不是时点事实，改用顶层 `source_quality`
+    pool_quality: dict[str, str] = {}
     daily: StockResearchDaily | None
     #: 只含 PRIOR_DAY（观察日之前已取到）的题材
     themes: list[StockResearchTheme]
@@ -2456,6 +2462,8 @@ class StockResearchUnknownOrLater(BaseModel):
     themes: list[StockResearchTheme]
     concepts: list[StockResearchTheme]
     reasons: list[str] = []
+    #: 截止前未能证明的池成员/冲突（后得或不可证明），绝不进已知区
+    pool: dict | None = None
 
 
 class StockResearchAsKnown(BaseModel):
@@ -2468,7 +2476,9 @@ class StockResearchAsKnown(BaseModel):
     limit_status: str
     board_height: int | None
     observed_pool_membership: list[str]
-    pool_quality: dict[str, str]
+    pool_scope_complete: bool = True
+    unconfirmed_pool_sources: list[str] = []
+    pool_quality: dict[str, str] = {}
     daily: StockResearchDaily | None
     themes: list[StockResearchTheme]
     concepts: list[StockResearchTheme]
@@ -2624,6 +2634,10 @@ class StockResearchContextOut(BaseModel):
     cutoff_at: str | None = None
     cutoff_label: str | None = None
     timezone: str = "Asia/Shanghai"
+    #: S5 审查整改：naive 时间策略、cutoff 时刻与写入时间来源（可审计）
+    time_policy: dict = {}
+    #: 来源采集质量（当前审查元数据，不是 15:00 时点事实）
+    source_quality: dict = {}
     #: 本轮只读展示，不进入任何策略/信号
     historical_signal_eligible: bool
     quality: StockResearchContextQuality

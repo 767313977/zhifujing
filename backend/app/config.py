@@ -191,6 +191,15 @@ class Settings(BaseSettings):
     #: 与 `scheduler_enabled` 是两件事：后者只关定时任务，关不掉按需路由。
     #: 仅在隔离验收环境显式设为 false；生产默认 true，行为不变。
     external_data_fetch_enabled: bool = True
+    #: S5 审查整改 P1-02：历史 naive 时间戳（`collect_log.created_at` /
+    #: `sector_member.fetched_at` 等）是否**显式**按 Asia/Shanghai 解释。
+    #:
+    #: - 默认 false：不能证明历史写入环境的时区时，服务层把时间证据降级为
+    #:   `UNKNOWN`（`NAIVE_TIMESTAMP_NO_TRUSTED_TZ`），而不是默认当成 +08:00；
+    #: - 只有能证明「这批历史行就是在 CST 机器上写入」的部署才可显式开启；
+    #: - 开启后响应里会带 `time_policy.naive_timestamp_policy=CST_ASSUMED`，
+    #:   便于审计时区分「信任约定」与「真的有时区证据」。
+    research_naive_timestamps_trusted: bool = False
     collect_hour: int = 15
     collect_minute: int = 5
     # 「收盘后才有数据」的那一趟（2026-09-30 新增）：龙虎榜 / 机构席位 / 两融 / 北向成交。

@@ -39,6 +39,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models import (
     CollectLog,
     LimitPool,
@@ -109,6 +110,34 @@ POOL_STATUS_NOT_IN_POOL = "NOT_IN_POOL"
 POOL_STATUS_CONFLICT = "POOL_CONFLICT"
 POOL_STATUS_UNKNOWN = "UNKNOWN"
 
+#: 三池来源的固定顺序（质量、时点、证据都按这个顺序输出）
+POOL_TYPES = ("up", "broken", "down")
+
+#: naive 时间戳策略：显式声明，不依赖函数默认值（S5 审查整改 P1-02）。
+NAIVE_POLICY_CST_ASSUMED = "CST_ASSUMED"
+NAIVE_POLICY_UNTRUSTED = "UNTRUSTED"
+NAIVE_POLICY_NOTES = {
+    NAIVE_POLICY_CST_ASSUMED: (
+        "历史 naive 时间戳按 Asia/Shanghai 解释（显式开启；用于能证明历史写入环境就是 CST 的部署）"
+    ),
+    NAIVE_POLICY_UNTRUSTED: (
+        "历史 naive 时间戳不按任何时区解释：无法证明来源时区时一律降级 UNKNOWN，不猜 +08:00"
+    ),
+}
+#: 新写入时间由 `models._now()` 生成：先取 +08:00，再去 tzinfo 写进 naive 列。
+WRITE_PATH_TIME_SOURCE = "app.models._now() = timeutil.now_cn() 去 tzinfo（确定性 CST naive）"
+
+
+def resolve_naive_timezone_trusted(override: bool | None = None) -> bool:
+    """解析「历史 naive 时间是否按 +08:00 解释」。
+
+    `override` 只给测试/调用方显式指定；否则读配置
+    `research_naive_timestamps_trusted`（默认 false）。**没有隐式默认 true**。
+    """
+    if override is not None:
+        return bool(override)
+    return bool(get_settings().research_naive_timestamps_trusted)
+
 NOTES = [
     "「观察日已知」严格按 cutoff=CLOSE = 15:00 Asia/Shanghai 解释；15:01 及以后才取到的日志进「后得/未知」。",
     "stock_daily / market_sentiment 没有首次入库时间，只列为「日终事实」，不能证明 15:00 当时本站已知。",
@@ -148,7 +177,7 @@ def evaluate_known_time(
     cutoff_at: datetime,
     published_at: datetime | None = None,
     data_ready: bool = True,
-    naive_timezone_trusted: bool = True,
+    naive_timezone_trusted: bool,
 ) -> dict[str, Any]:
     """判定一条证据在 cutoff 时点是否「已取得」（纯函数，不读库）。
 
@@ -218,12 +247,14 @@ def _pool_quality(
     return STATUS_UNVERIFIABLE, False, "POOL_STATUS_UNKNOWN"
 
 
-def _theme_known_by(fetched_at, observation: date) -> str:
-    if fetched_at is None:
+def _theme_known_by(
+    fetched_at, observation: date, *, naive_timezone_trusted: bool
+) -> str:
+    """题材快照只能证明「本站何时取到」，且仍需显式时区策略。"""
+    moment = _to_cn(fetched_at, naive_timezone_trusted=naive_timezone_trusted)
+    if moment is None:
         return KNOWN_UNKNOWN
-    day = fetched_at.date() if hasattr(fetched_at, "date") else None
-    if day is None:
-        return KNOWN_UNKNOWN
+    day = moment.date()
     if day < observation:
         return KNOWN_PRIOR_DAY
     if day > observation:
@@ -237,7 +268,7 @@ def _log_known_by(
     *,
     cutoff: str = CUTOFF_CLOSE,
     data_ready: bool = True,
-    naive_timezone_trusted: bool = True,
+    naive_timezone_trusted: bool,
 ) -> str:
     """采集日志只能证明本站何时记录，不等于上游发布时间。
 
@@ -252,36 +283,113 @@ def _log_known_by(
     )["known_by"]
 
 
-def _membership_pit(
-    membership: list[str],
-    logs: dict[str, CollectLog | None],
+def _resolve_pool_evidence(
+    *,
+    membership: dict[str, Any],
+    quality: dict[str, str],
+    trusted: dict[str, bool],
     pits: dict[str, dict[str, Any]],
-) -> tuple[str, datetime | None, str | None]:
-    """「这只票在哪些池」这一断言的时点。
+) -> dict[str, Any]:
+    """解析「这只票在哪些池」这一断言在截止时点的状态（S5 审查整改 P1-01）。
 
-    该断言依赖**所有**与之相关的池来源：只要有一个池日志缺失/失败/晚于 cutoff，
-    整体就降级，不能拿另一个池的早日志替它作证。
-    - 有 membership → 只看成员池；
-    - 无 membership（NOT_IN_POOL 断言）→ 需要三个池都可证明。
+    判定顺序固定为「先质量、后时间」，两个条件都成立才算截止前已知：
+
+    - 已知区只放 `trusted=True` 且 `time_bucket=AT_CUTOFF_KNOWN` 的成员来源；
+    - `POOL_CONFLICT` 只有在**构成冲突的全部来源**都可信且在截止前已知时才成立；
+    - 一侧已知、一侧未知时，只输出已证明的正向观察（`UP`/`BROKEN`/`DOWN`），
+      同时标记 `scope_complete=false`，不推断「不在另一个池」、也不断言无冲突；
+    - `NOT_IN_POOL` 需要三个来源都可证明；
+    - 未能证明的成员关系单独放进 `unknown`，由调用方写入「后得/未知」桶。
     """
-    relevant = [pool_type for pool_type in ("up", "broken", "down") if pool_type in membership]
-    if not relevant:
-        relevant = ["up", "broken", "down"]
-    observed: datetime | None = None
-    for pool_type in relevant:
-        pit = pits.get(pool_type) or {
-            "known_by": KNOWN_UNKNOWN,
-            "time_bucket": BUCKET_UNKNOWN,
-            "reason_code": "POOL_LOG_MISSING",
+    member_types = [pool_type for pool_type in POOL_TYPES if pool_type in membership]
+    needed = member_types or list(POOL_TYPES)
+    known_sources = sorted(
+        pool_type
+        for pool_type in needed
+        if trusted[pool_type] and pits[pool_type]["time_bucket"] == BUCKET_KNOWN
+    )
+    # 只有「确实在池里」的来源才构成冲突；证明「不在池」的来源不算成员
+    known = [pool_type for pool_type in known_sources if pool_type in membership]
+    pending = [pool_type for pool_type in needed if pool_type not in known_sources]
+    scope_complete = not pending
+
+    if len(known) > 1:
+        status = POOL_STATUS_CONFLICT
+    elif len(known) == 1:
+        status = {
+            "up": POOL_STATUS_UP,
+            "broken": POOL_STATUS_BROKEN,
+            "down": POOL_STATUS_DOWN,
+        }[known[0]]
+    elif scope_complete:
+        status = POOL_STATUS_NOT_IN_POOL
+    else:
+        status = POOL_STATUS_UNKNOWN
+
+    if pending:
+        first = pending[0]
+        unknown_known_by = pits[first]["known_by"]
+        unknown_reason = pits[first].get("reason_code") or "POOL_NOT_KNOWN_AT_CUTOFF"
+        unknown_known_at = pits[first].get("known_at")
+        # 已知部分只取「已证明来源」的最晚时刻；未证明来源的时间不能进已知行
+        known_by = KNOWN_CLOSE
+        reason_code = None
+        known_moments = [pits[pool_type].get("known_at") for pool_type in known_sources]
+        known_at = max(
+            (moment for moment in known_moments if moment is not None), default=None
+        )
+    else:
+        known_by = KNOWN_CLOSE
+        reason_code = None
+        unknown_known_by = None
+        unknown_known_at = None
+        moments = [pits[pool_type].get("known_at") for pool_type in needed]
+        known_at = max((moment for moment in moments if moment is not None), default=None)
+
+    unknown = None
+    if pending:
+        timing_related = any(
+            pits[pool_type]["known_by"] in (KNOWN_POST_CLOSE, KNOWN_LATER)
+            for pool_type in pending
+        )
+        suffix = "POST_CUTOFF" if timing_related else "NOT_PROVABLE"
+        if len(member_types) > 1:
+            unknown_status = POOL_STATUS_CONFLICT
+            unknown_reason = f"POOL_CONFLICT_{suffix}"
+        elif len(member_types) == 1:
+            unknown_status = {
+                "up": POOL_STATUS_UP,
+                "broken": POOL_STATUS_BROKEN,
+                "down": POOL_STATUS_DOWN,
+            }[member_types[0]]
+            unknown_reason = f"POOL_MEMBERSHIP_{suffix}"
+        else:
+            unknown_status = POOL_STATUS_UNKNOWN
+            unknown_reason = "POOL_MEMBERSHIP_NOT_PROVABLE"
+        unknown = {
+            "status": unknown_status,
+            "observed_pool_membership": sorted(member_types),
+            "reason_code": unknown_reason,
+            "known_by": unknown_known_by,
+            "known_at": unknown_known_at,
         }
-        if pit["time_bucket"] != BUCKET_KNOWN:
-            log = logs.get(pool_type)
-            return pit["known_by"], (log.created_at if log is not None else None), pit["reason_code"]
-        log = logs.get(pool_type)
-        moment = log.created_at if log is not None else None
-        if observed is None or (moment is not None and moment > observed):
-            observed = moment
-    return KNOWN_CLOSE, observed, None
+
+    return {
+        "status": status,
+        "known_membership": known,
+        "scope_complete": scope_complete,
+        "pending_sources": pending,
+        "known_by": known_by,
+        "known_at": known_at,
+        "reason_code": reason_code,
+        "unknown": unknown,
+        "board_height": (
+            membership["up"].consecutive
+            if status == POOL_STATUS_UP and "up" in known
+            else None
+        ),
+        "quality": {pool_type: quality[pool_type] for pool_type in POOL_TYPES},
+    }
 
 
 def classify_evidence_time(known_by: str) -> str:
@@ -327,6 +435,23 @@ def validate_time_bucket_invariants(
                 raise RuntimeError(
                     f"时间桶 {bucket} 出现不允许的 known_by={item.get('known_by')!r}"
                 )
+            known_at = item.get("known_at")
+            if known_at is not None:
+                if known_at.tzinfo is None:
+                    raise RuntimeError("known_at 必须带时区（Asia/Shanghai）")
+                cutoff_raw = item.get("cutoff_at")
+                if cutoff_raw:
+                    cutoff_moment = datetime.fromisoformat(str(cutoff_raw))
+                    if cutoff_moment.tzinfo is None:
+                        raise RuntimeError("cutoff_at 必须带时区")
+                    if bucket == BUCKET_KNOWN and known_at > cutoff_moment:
+                        raise RuntimeError("已知桶出现晚于 cutoff 的 known_at")
+                    if (
+                        bucket == BUCKET_UNKNOWN
+                        and item.get("known_by") in (KNOWN_POST_CLOSE, KNOWN_LATER)
+                        and known_at <= cutoff_moment
+                    ):
+                        raise RuntimeError("后得桶出现不晚于 cutoff 的 known_at")
             if bool(item.get("is_forward_known")) != (bucket == BUCKET_FORWARD):
                 raise RuntimeError("is_forward_known 与 time_bucket 不一致")
             source_day = item.get("source_trade_date")
@@ -366,13 +491,23 @@ def build(
     code: str,
     as_of: date | None = None,
     cutoff: str = CUTOFF_CLOSE,
+    naive_timezone_trusted: bool | None = None,
 ) -> dict[str, Any]:
-    """构建一只股票在观察日的「已知 / 不知道或后得 / 后验」三段式依据。"""
+    """构建一只股票在观察日的「已知 / 不知道或后得 / 后验」三段式依据。
+
+    `naive_timezone_trusted` 显式控制「历史 naive 时间戳是否按 +08:00 解释」：
+    不传时读 `settings.research_naive_timestamps_trusted`（默认 false），
+    绝不在服务层默认信任；无法证明时降级 `UNKNOWN`。
+    """
     if not CODE_PATTERN.match(code or ""):
         raise ValueError("股票代码必须是 6 位数字")
     cutoff = (cutoff or CUTOFF_CLOSE).upper()
     if cutoff not in SUPPORTED_CUTOFFS:
         raise ValueError(f"暂不支持的 cutoff：{cutoff}（当前只支持 CLOSE）")
+    naive_trusted = resolve_naive_timezone_trusted(naive_timezone_trusted)
+    naive_policy = (
+        NAIVE_POLICY_CST_ASSUMED if naive_trusted else NAIVE_POLICY_UNTRUSTED
+    )
     basic = session.get(StockBasic, code)
     if basic is None:
         raise ValueError(f"查不到这个代码「{code}」，请确认后重试")
@@ -452,47 +587,42 @@ def build(
         .order_by(StockConcept.concept)
     ).all()
 
-    # ---------------- 池状态：冲突优先，不使用 if/elif 优先级掩盖冲突
-    pool_types = sorted(membership)
-    pool_conflict = len(pool_types) > 1
+    # ---------------- 池状态：先质量、后时间；已知区不放盘后成员/冲突
     pool_logs = {"up": up_log, "broken": broken_log, "down": down_log}
-    pool_pits = {
-        "up": evaluate_known_time(
-            observed_at=(up_log.created_at if up_log else None),
-            cutoff_at=cutoff_at,
-            data_ready=up_trusted,
-        ),
-        "broken": evaluate_known_time(
-            observed_at=(broken_log.created_at if broken_log else None),
-            cutoff_at=cutoff_at,
-            data_ready=broken_trusted,
-        ),
-        "down": evaluate_known_time(
-            observed_at=(down_log.created_at if down_log else None),
-            cutoff_at=cutoff_at,
-            data_ready=down_trusted,
-        ),
+    pool_quality_map = {
+        "up": up_quality,
+        "broken": broken_quality,
+        "down": down_quality,
     }
-    membership_known_by, membership_observed_at, membership_reason = _membership_pit(
-        pool_types, pool_logs, pool_pits
+    pool_trusted = {
+        "up": up_trusted,
+        "broken": broken_trusted,
+        "down": down_trusted,
+    }
+    pool_pits = {
+        pool_type: evaluate_known_time(
+            observed_at=(
+                pool_logs[pool_type].created_at
+                if pool_logs[pool_type] is not None
+                else None
+            ),
+            cutoff_at=cutoff_at,
+            data_ready=pool_trusted[pool_type],
+            naive_timezone_trusted=naive_trusted,
+        )
+        for pool_type in POOL_TYPES
+    }
+    pool_state = _resolve_pool_evidence(
+        membership=membership,
+        quality=pool_quality_map,
+        trusted=pool_trusted,
+        pits=pool_pits,
     )
-    up_pit = pool_pits["up"]["time_bucket"] == BUCKET_KNOWN
-    broken_pit = pool_pits["broken"]["time_bucket"] == BUCKET_KNOWN
-    down_pit = pool_pits["down"]["time_bucket"] == BUCKET_KNOWN
-
-    limit_status = POOL_STATUS_UNKNOWN
-    board_height = None
-    if pool_conflict:
-        limit_status = POOL_STATUS_CONFLICT
-    elif "up" in membership and up_trusted and up_pit:
-        limit_status = POOL_STATUS_UP
-        board_height = membership["up"].consecutive
-    elif "broken" in membership and broken_trusted and broken_pit:
-        limit_status = POOL_STATUS_BROKEN
-    elif "down" in membership and down_trusted and down_pit:
-        limit_status = POOL_STATUS_DOWN
-    elif up_trusted and broken_trusted and down_trusted and up_pit and broken_pit and down_pit:
-        limit_status = POOL_STATUS_NOT_IN_POOL
+    limit_status = pool_state["status"]
+    board_height = pool_state["board_height"]
+    pool_needed = [pool_type for pool_type in POOL_TYPES if pool_type in membership] or list(
+        POOL_TYPES
+    )
 
     themes = [
         {
@@ -500,7 +630,9 @@ def build(
             "sector_code": sector_code,
             "taxonomy": taxonomy,
             "fetched_at": fetched_at,
-            "known_by": _theme_known_by(fetched_at, resolved),
+            "known_by": _theme_known_by(
+                fetched_at, resolved, naive_timezone_trusted=naive_trusted
+            ),
         }
         for sector_code, _member_name, fetched_at, sector_name, taxonomy in theme_rows
     ]
@@ -523,12 +655,10 @@ def build(
         "previous_close_date": previous,
         "pool_status": limit_status,
         "board_height": board_height,
-        "observed_pool_membership": pool_types,
-        "pool_quality": {
-            "up": up_quality,
-            "broken": broken_quality,
-            "down": down_quality,
-        },
+        # 只含「来源可信 + 截止前已知」的成员池，不再是数据库当前行的直接投影
+        "observed_pool_membership": pool_state["known_membership"],
+        "pool_scope_complete": pool_state["scope_complete"],
+        "unconfirmed_pool_sources": pool_state["pending_sources"],
         # stock_daily / market_sentiment 没有首次入库时间 → 不进「已知」，见 end_of_day_fact
         "daily": None,
         # 只有「观察日之前已取到」的题材能进已知；同日/次日取到一律不进
@@ -575,10 +705,14 @@ def build(
         unknown_reasons.append("CONCEPT_POST_CLOSE_UNKNOWN")
     if daily is not None or sentiment is not None:
         unknown_reasons.append("END_OF_DAY_FACT_NOT_AT_CUTOFF")
+    if pool_state["unknown"] is not None:
+        unknown_reasons.append(pool_state["unknown"]["reason_code"])
     unknown_or_later = {
         "themes": unknown_themes,
         "concepts": concepts,
         "reasons": unknown_reasons,
+        # 盘后/无法证明的池成员与冲突只出现在这里，不进已知区
+        "pool": pool_state["unknown"],
     }
 
     # ---------------- D+1 后验（只读，不反写）
@@ -623,10 +757,18 @@ def build(
     reasons: list[str] = []
     if up_quality != STATUS_VERIFIED:
         reasons.append(up_reason or "POOL_UP_UNVERIFIED")
-    if up_quality == STATUS_VERIFIED and not up_pit:
+    if "up" in pool_needed and not (
+        up_trusted and pool_pits["up"]["time_bucket"] == BUCKET_KNOWN
+    ):
         reasons.append("POOL_NOT_KNOWN_AT_CUTOFF")
-    if pool_conflict:
+    if limit_status == POOL_STATUS_CONFLICT:
         reasons.append("POOL_CONFLICT")
+    elif (
+        pool_state["pending_sources"]
+        and limit_status in (POOL_STATUS_UP, POOL_STATUS_BROKEN, POOL_STATUS_DOWN)
+    ):
+        # 有已证明的正向观察，但其他池来源未知 → 不能断言「不在另一个池」
+        reasons.append("POOL_OTHER_SOURCES_UNKNOWN")
     if not themes and not concepts:
         reasons.append("NO_THEME_SNAPSHOT")
     if unknown_themes:
@@ -684,39 +826,58 @@ def build(
             }
         )
 
-    pool_reason = membership_reason
-    if pool_conflict:
-        pool_reason = "POOL_CONFLICT"
-    elif membership_known_by != KNOWN_CLOSE and pool_reason == "SOURCE_NOT_READY":
-        for pool_type in pool_types or ["up", "broken", "down"]:
-            if pool_pits[pool_type]["time_bucket"] != BUCKET_KNOWN:
-                pool_reason = {
-                    "up": up_reason,
-                    "broken": broken_reason,
-                    "down": down_reason,
-                }[pool_type]
-                break
-    if membership:
-        labels = "、".join(pool_types)
-        summary = (
-            f"当日观察到 {labels}；判定 {limit_status}；涨停池质量 {up_quality}"
-            if not pool_conflict
-            else f"同一股票同时出现在 {labels} 池，不能按优先级择一"
+    # 池证据拆成两条：截止前可证明的部分进已知桶，未证明的成员/冲突只能进未知桶
+    if pool_state["known_membership"] or pool_state["scope_complete"]:
+        known_labels = "、".join(pool_state["known_membership"])
+        if limit_status == POOL_STATUS_CONFLICT:
+            pool_reason = "POOL_CONFLICT"
+            pool_summary = (
+                f"同一股票同时出现在 {known_labels} 池（均在截止前可证明），不能按优先级择一"
+            )
+        elif pool_state["known_membership"]:
+            pool_reason = "POOL_OTHER_SOURCES_UNKNOWN" if pool_state["pending_sources"] else None
+            pool_summary = f"截止前可证明观察到 {known_labels}；判定 {limit_status}"
+        else:
+            pool_reason = None
+            pool_summary = "三个池来源都在截止前可证明：该股不在涨停/炸板/跌停池"
+        add(
+            "观察日池记录",
+            "limit_pool",
+            resolved,
+            pool_state["known_at"],
+            KNOWN_CLOSE,
+            up_quality,
+            pool_reason,
+            pool_summary,
+            observed_at=pool_state["known_at"],
+            known_at=pool_state["known_at"],
         )
-    else:
-        summary = "当日没有该股的涨停/炸板/跌停记录"
-    add(
-        "观察日池记录",
-        "limit_pool",
-        resolved,
-        membership_observed_at,
-        membership_known_by,
-        up_quality,
-        pool_reason,
-        summary,
-        observed_at=membership_observed_at,
-        known_at=membership_observed_at,
-    )
+
+    if pool_state["unknown"] is not None:
+        unknown_pool = pool_state["unknown"]
+        unknown_labels = "、".join(unknown_pool["observed_pool_membership"])
+        if unknown_pool["status"] == POOL_STATUS_CONFLICT:
+            unknown_summary = (
+                f"同一股票出现在 {unknown_labels} 池，但该冲突未能在截止前全部证明"
+            )
+        elif unknown_labels:
+            unknown_summary = (
+                f"观察到 {unknown_labels}，但该成员关系未能在 15:00 前证明"
+            )
+        else:
+            unknown_summary = "三个池来源未能全部证明，无法断言该股不在池"
+        add(
+            "观察日池记录（截止前未证明）",
+            "limit_pool",
+            resolved,
+            unknown_pool["known_at"],
+            unknown_pool["known_by"],
+            up_quality,
+            unknown_pool["reason_code"],
+            unknown_summary,
+            observed_at=unknown_pool["known_at"],
+            known_at=unknown_pool["known_at"],
+        )
 
     if daily is not None:
         add(
@@ -819,6 +980,30 @@ def build(
         "pit_version": PIT_VERSION,
         "data_as_of": data_as_of,
         "historical_signal_eligible": False,
+        # 时点策略显式化：审计时能直接看出 naive 历史时间是否被信任
+        "time_policy": {
+            "cutoff": cutoff,
+            "cutoff_at": cutoff_at_iso,
+            "timezone": "Asia/Shanghai",
+            "naive_timestamp_policy": naive_policy,
+            "naive_timezone_trusted": naive_trusted,
+            "write_path_time_source": WRITE_PATH_TIME_SOURCE,
+            "note": NAIVE_POLICY_NOTES[naive_policy],
+        },
+        # 来源质量是「当前审查元数据」，不是 15:00 时点事实（P1-01 第 4 点）
+        "source_quality": {
+            "note": "当前来源采集质量（审查元数据），不等于观察日 15:00 已知事实",
+            "pools": pool_state["quality"],
+            "pool_trusted": pool_trusted,
+            "pool_known_at": {
+                pool_type: (
+                    pool_pits[pool_type]["known_at"].isoformat()
+                    if pool_pits[pool_type]["known_at"] is not None
+                    else None
+                )
+                for pool_type in POOL_TYPES
+            },
+        },
         "quality": {"status": status, "reasons": _dedupe(reasons)},
         "at_cutoff_known": at_cutoff_known,
         "end_of_day_fact": end_of_day_fact,

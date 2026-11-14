@@ -1915,8 +1915,14 @@ export interface StockResearchCutoffKnown {
   /** UP / BROKEN / DOWN / NOT_IN_POOL / POOL_CONFLICT / UNKNOWN */
   pool_status: string
   board_height: number | null
+  /** 只含「来源可信 + 截止前已知」的成员池 */
   observed_pool_membership: string[]
-  pool_quality: Record<string, string>
+  /** 三个池来源是否都在截止前可证明 */
+  pool_scope_complete?: boolean
+  /** 有成员记录但未能在截止前证明的来源 */
+  unconfirmed_pool_sources?: string[]
+  /** @deprecated 来源质量已移到顶层 source_quality */
+  pool_quality?: Record<string, string>
   daily: StockResearchDaily | null
   /** 只含 PRIOR_DAY（观察日之前已取到）的题材 */
   themes: StockResearchTheme[]
@@ -1939,6 +1945,14 @@ export interface StockResearchUnknownOrLater {
   themes: StockResearchTheme[]
   concepts: StockResearchTheme[]
   reasons: string[]
+  /** 截止前未能证明的池成员/冲突（后得或不可证明） */
+  pool?: {
+    status: string
+    observed_pool_membership: string[]
+    reason_code: string
+    known_by: string
+    known_at: string | null
+  } | null
 }
 
 /** 兼容字段：已知子集（S4 起不再承载 LATER 题材） */
@@ -1947,7 +1961,10 @@ export interface StockResearchAsKnown {
   limit_status: string
   board_height: number | null
   observed_pool_membership: string[]
-  pool_quality: Record<string, string>
+  pool_scope_complete?: boolean
+  unconfirmed_pool_sources?: string[]
+  /** @deprecated 来源质量已移到顶层 source_quality */
+  pool_quality?: Record<string, string>
   daily: StockResearchDaily | null
   themes: StockResearchTheme[]
   concepts: StockResearchTheme[]
@@ -2004,6 +2021,23 @@ export interface StockResearchContext {
   cutoff_at?: string | null
   cutoff_label?: string | null
   timezone?: string
+  /** S5 审查整改：naive 时间策略与写入时间来源（可审计） */
+  time_policy?: {
+    cutoff: string
+    cutoff_at: string
+    timezone: string
+    naive_timestamp_policy: string
+    naive_timezone_trusted: boolean
+    write_path_time_source: string
+    note: string
+  }
+  /** 来源采集质量（当前审查元数据，不是 15:00 时点事实） */
+  source_quality?: {
+    note: string
+    pools: Record<string, string>
+    pool_trusted: Record<string, boolean>
+    pool_known_at: Record<string, string | null>
+  }
   historical_signal_eligible: boolean
   quality: { status: string; reasons: string[] }
   /** S4-A：三桶互斥。旧后端没有该字段，前端回落到兼容子集。 */
