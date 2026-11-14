@@ -32,6 +32,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date
 from statistics import median
 from typing import Any
@@ -117,6 +118,11 @@ QUALITY_REASON_TEXT = {
 
 THRESHOLD_VERSION = "sentiment-bands-v1"
 
+#: 多日聚合口径版本（S2 起）。v1 的 `avg_pct` 是「每日均值的等权平均」，
+#: v2 改成逐券 pooled：每个**证券-交易日**算一个观测。旧口径保留在
+#: `day_equal_weight_avg_pct`，两个字段同时返回，谁也不能冒充谁。
+AGGREGATION_VERSION = "next-day-aggregation-v2"
+
 METRICS: dict[str, tuple[tuple[float | None, float | None, str], ...]] = {
     "limit_up_count": (
         (None, 30, "<30 家"),
@@ -157,6 +163,11 @@ NOTES = [
     "分组之间不互斥（全部涨停包含首板/二板/三板+；炸板与断板可能重叠）。",
     "断板集合复用 P0-B 的可信分类：只有昨日涨停且今日既未涨停也未炸板、"
     "且有当日日线的股票才算断板。",
+    "总体均值/中位数为逐券 pooled 口径：每个证券-交易日算一个观测，"
+    "样本多的交易日权重自然更大；`day_equal_weight_avg_pct` 是按交易日等权的"
+    "旧口径，两者都返回、不混用。",
+    "再次涨停只统计「有 D+1 日线且落在 D+1 涨停池」的样本，分母为有效样本数；"
+    "缺日线的样本计入缺失，不进入分子，也不按未涨停处理。",
 ]
 
 
@@ -224,34 +235,52 @@ def _metric_value(sentiment: MarketSentiment | None, metric: str) -> float | Non
     raise ValueError(f"未知情绪指标：{metric}")
 
 
+def _finite(value: Any) -> float | None:
+    """把库里的数值转成有限 float；NaN / Inf / 非数字一律当缺失。"""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 def _stats(
     samples: list[str],
     quotes: dict[str, dict],
     *,
     limit_up_codes: set[str] | None,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, list[float]]]:
     """一组股票在 D+1 的表现。
 
     `limit_up_codes=None` 表示 D+1 涨停池不可信 —— 再次涨停相关字段全部 null，
     计入 `unverifiable_count`，绝不把「没证据」当成「没涨停」。
+
+    分子分母守恒：再次涨停只在 **有 D+1 日线** 的样本里数（`valid_codes`），
+    分母也是 `valid`；缺行情的股票只进 `missing_count`，不会让比例超过 100%。
+
+    第二个返回值是逐券明细（未四舍五入），供跨日 pooled 聚合使用。
     """
+    valid_codes: list[str] = []
     pcts: list[float] = []
     opens: list[float] = []
     close_vs_open: list[float] = []
     missing = 0
     for code in samples:
         quote = quotes.get(code)
-        pct = quote.get("pct_chg") if quote else None
+        pct = _finite(quote.get("pct_chg")) if quote else None
         if pct is None:
             missing += 1
             continue
-        pcts.append(float(pct))
-        open_ = quote.get("open")
-        prev_close = quote.get("prev_close")
-        close = quote.get("close")
-        if open_ and prev_close and prev_close > 0:
+        valid_codes.append(code)
+        pcts.append(pct)
+        open_ = _finite(quote.get("open"))
+        prev_close = _finite(quote.get("prev_close"))
+        close = _finite(quote.get("close"))
+        if open_ is not None and prev_close is not None and prev_close > 0:
             opens.append((open_ / prev_close - 1) * 100)
-        if open_ and close and open_ > 0:
+        if open_ is not None and close is not None and open_ > 0:
             close_vs_open.append((close / open_ - 1) * 100)
 
     valid = len(pcts)
@@ -263,13 +292,13 @@ def _stats(
     not_again = None
     unverifiable = 0
     if limit_up_codes is not None:
-        again = sum(1 for code in samples if code in limit_up_codes)
+        again = sum(1 for code in valid_codes if code in limit_up_codes)
         again_ratio = round(again / valid * 100, 2) if valid else None
         not_again = valid - again
     else:
         unverifiable = valid
 
-    return {
+    stats = {
         "sample_count": len(samples),
         "valid_count": valid,
         "missing_count": missing,
@@ -288,6 +317,12 @@ def _stats(
             round(sum(close_vs_open) / len(close_vs_open), 2) if close_vs_open else None
         ),
     }
+    values = {
+        "pct": pcts,
+        "open_pct": opens,
+        "close_vs_open": close_vs_open,
+    }
+    return stats, values
 
 
 def _day_samples(
@@ -439,6 +474,7 @@ def build_next_day(
     }
 
     series: list[dict[str, Any]] = []
+    values_by_day: dict[date, dict[str, list[float]]] = {}
     pending_days: list[str] = []
     unverified_days: list[str] = []
     for day in window:
@@ -503,7 +539,8 @@ def build_next_day(
             else:
                 reasons.append("OUTCOME_LIMIT_POOL_UNVERIFIED")
 
-        stats = _stats(codes, quotes, limit_up_codes=outcome_limit_up)
+        stats, values = _stats(codes, quotes, limit_up_codes=outcome_limit_up)
+        values_by_day[day] = values
 
         if stats["sample_count"] == 0:
             if any(reason.startswith(("UP_POOL", "BROKEN_POOL", "PREV_UP", "RELAY")) for reason in reasons):
@@ -555,8 +592,8 @@ def build_next_day(
     if not include_pending:
         visible = [row for row in series if row["data_quality_status"] != STATUS_PENDING]
 
-    summary = _summary(visible)
-    bands = _bands(visible, metric)
+    summary = _summary(visible, values_by_day)
+    bands = _bands(visible, metric, values_by_day)
     status_counts: dict[str, int] = {}
     for row in series:
         status = row["data_quality_status"]
@@ -569,6 +606,7 @@ def build_next_day(
         "metric_label": METRIC_LABELS[metric],
         "days": days,
         "threshold_version": THRESHOLD_VERSION,
+        "aggregation_version": AGGREGATION_VERSION,
         "thresholds": [
             {"label": label, "lower": lower, "upper": upper}
             for lower, upper, label in METRICS[metric]
@@ -588,27 +626,50 @@ def build_next_day(
     }
 
 
-def _summary(rows: list[dict]) -> dict[str, Any]:
-    """把逐日结果汇总为总体统计（只统计有有效行情的日期）。"""
+def _pooled(values_by_day: dict[date, dict[str, list[float]]], rows: list[dict], key: str) -> list[float]:
+    """把多天的逐券明细拼成一个池（每个证券-交易日一个观测，不按天去重）。"""
+    pooled: list[float] = []
+    for row in rows:
+        pooled.extend(values_by_day.get(row["sample_date"], {}).get(key, []))
+    return pooled
+
+
+def _summary(
+    rows: list[dict], values_by_day: dict[date, dict[str, list[float]]] | None = None
+) -> dict[str, Any]:
+    """把逐日结果汇总为总体统计（只统计有有效行情的日期）。
+
+    两套均值口径同时返回，绝不是同一个数：
+    - `security_weighted_avg_pct` / `avg_pct`：逐券 pooled（分母为证券-交易日观测数）；
+    - `day_equal_weight_avg_pct`：每个有统计的交易日等权（S1 的旧口径）。
+    `median_pct` 明确为 pooled 中位数，不是「每日中位数的中位数」。
+    """
+    values_by_day = values_by_day or {}
     valid_rows = [row for row in rows if row["valid_count"] > 0]
     sample_count = sum(row["sample_count"] for row in rows if row["data_quality_status"] != STATUS_PENDING)
     valid_count = sum(row["valid_count"] for row in rows)
     missing_count = sum(row["missing_count"] for row in rows if row["data_quality_status"] != STATUS_PENDING)
-    pct_pool = [row["avg_pct"] for row in valid_rows if row["avg_pct"] is not None]
+    day_means = [row["avg_pct"] for row in valid_rows if row["avg_pct"] is not None]
+    pooled_pct = _pooled(values_by_day, valid_rows, "pct")
     up_count = sum(row["outcome_up_count"] for row in valid_rows)
     down_count = sum(row["outcome_down_count"] for row in valid_rows)
     flat_count = sum(row["outcome_flat_count"] for row in valid_rows)
     again_rows = [row for row in valid_rows if row["limit_up_again_count"] is not None]
     again_count = sum(row["limit_up_again_count"] for row in again_rows)
     again_base = sum(row["valid_count"] for row in again_rows)
+    pooled_avg = round(sum(pooled_pct) / len(pooled_pct), 2) if pooled_pct else None
     return {
         "day_count": len(rows),
         "stat_day_count": len(valid_rows),
         "sample_count": sample_count,
         "valid_count": valid_count,
         "missing_count": missing_count,
-        "avg_pct": round(sum(pct_pool) / len(pct_pool), 2) if pct_pool else None,
-        "median_pct": round(median(pct_pool), 2) if pct_pool else None,
+        #: 逐券 pooled 均值（每个证券-交易日一个观测）
+        "security_weighted_avg_pct": pooled_avg,
+        #: 当日等权均值（旧口径，保留兼容与对照）
+        "day_equal_weight_avg_pct": _mean(day_means),
+        "avg_pct": pooled_avg,
+        "median_pct": round(median(pooled_pct), 2) if pooled_pct else None,
         "up_count": up_count,
         "down_count": down_count,
         "flat_count": flat_count,
@@ -619,24 +680,28 @@ def _summary(rows: list[dict]) -> dict[str, Any]:
         ),
         "not_limit_up_count": (again_base - again_count) if again_rows else None,
         "unverifiable_count": sum(row["unverifiable_count"] for row in valid_rows),
-        "avg_open_pct": _mean(
-            [row["avg_open_pct"] for row in valid_rows if row["avg_open_pct"] is not None]
-        ),
-        "avg_close_vs_open": _mean(
-            [
-                row["avg_close_vs_open"]
-                for row in valid_rows
-                if row["avg_close_vs_open"] is not None
-            ]
-        ),
+        "avg_open_pct": _pooled_mean(values_by_day, valid_rows, "open_pct"),
+        "avg_close_vs_open": _pooled_mean(values_by_day, valid_rows, "close_vs_open"),
     }
+
+
+def _pooled_mean(
+    values_by_day: dict[date, dict[str, list[float]]], rows: list[dict], key: str
+) -> float | None:
+    values = _pooled(values_by_day, rows, key)
+    return round(sum(values) / len(values), 2) if values else None
 
 
 def _mean(values: list[float]) -> float | None:
     return round(sum(values) / len(values), 2) if values else None
 
 
-def _bands(rows: list[dict], metric: str) -> list[dict[str, Any]]:
+def _bands(
+    rows: list[dict],
+    metric: str,
+    values_by_day: dict[date, dict[str, list[float]]] | None = None,
+) -> list[dict[str, Any]]:
+    values_by_day = values_by_day or {}
     buckets: dict[str, list[dict]] = {
         label: [] for _lower, _upper, label in METRICS[metric]
     }
@@ -651,7 +716,9 @@ def _bands(rows: list[dict], metric: str) -> list[dict[str, Any]]:
         items = buckets[label]
         valid_rows = [row for row in items if row["valid_count"] > 0]
         valid = sum(row["valid_count"] for row in valid_rows)
-        pct_pool = [row["avg_pct"] for row in valid_rows if row["avg_pct"] is not None]
+        day_means = [row["avg_pct"] for row in valid_rows if row["avg_pct"] is not None]
+        pooled_pct = _pooled(values_by_day, valid_rows, "pct")
+        pooled_avg = round(sum(pooled_pct) / len(pooled_pct), 2) if pooled_pct else None
         up = sum(row["outcome_up_count"] for row in valid_rows)
         again_rows = [row for row in valid_rows if row["limit_up_again_count"] is not None]
         again_base = sum(row["valid_count"] for row in again_rows)
@@ -665,8 +732,10 @@ def _bands(rows: list[dict], metric: str) -> list[dict[str, Any]]:
                 "stat_day_count": len(valid_rows),
                 "sample_count": sum(row["sample_count"] for row in items),
                 "valid_count": valid,
-                "avg_pct": round(sum(pct_pool) / len(pct_pool), 2) if pct_pool else None,
-                "median_pct": round(median(pct_pool), 2) if pct_pool else None,
+                "security_weighted_avg_pct": pooled_avg,
+                "day_equal_weight_avg_pct": _mean(day_means),
+                "avg_pct": pooled_avg,
+                "median_pct": round(median(pooled_pct), 2) if pooled_pct else None,
                 "up_ratio": round(up / valid * 100, 2) if valid else None,
                 "limit_up_again_ratio": (
                     round(again / again_base * 100, 2) if again_base else None
@@ -694,6 +763,7 @@ def _empty(group: str, metric: str, days: int, data_as_of: date | None) -> dict[
         "metric_label": METRIC_LABELS[metric],
         "days": days,
         "threshold_version": THRESHOLD_VERSION,
+        "aggregation_version": AGGREGATION_VERSION,
         "thresholds": [
             {"label": label, "lower": lower, "upper": upper}
             for lower, upper, label in METRICS[metric]

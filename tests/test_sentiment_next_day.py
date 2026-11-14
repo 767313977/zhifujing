@@ -272,3 +272,220 @@ def test_build_is_read_only(session):
         session.scalar(select(func.count()).select_from(CollectLog)),
     )
     assert before == after
+
+
+# ---------------------------------------------------------------- S2-A
+#
+# 下面两组用例先锁住 S2-P1-01 / S2-P1-02 的真实问题：
+# 1) 再涨停分子可以包含「没有 D+1 日线」的候选，分母却只算有效日线 → 比例 >100%；
+# 2) 多日汇总把「每日均值再平均」「每日中位数的中位数」当成全体样本口径。
+
+
+def _make_engine():
+    engine = create_engine("sqlite://", future=True)
+    Base.metadata.create_all(engine)
+    return engine
+
+
+def _add_day(session, day: date, *, up: dict[str, int], broken: list[str] | None = None):
+    for code, consecutive in up.items():
+        session.add(
+            LimitPool(trade_date=day, code=code, pool_type="up", consecutive=consecutive)
+        )
+    for code in broken or []:
+        session.add(LimitPool(trade_date=day, code=code, pool_type="broken", consecutive=1))
+    session.add(CollectLog(trade_date=day, task="pool_up", status="ok", rows=len(up)))
+    session.add(
+        CollectLog(
+            trade_date=day, task="pool_broken", status="ok", rows=len(broken or [])
+        )
+    )
+
+
+def _daily(session, day: date, code: str, pct: float, *, close: float = 10.0):
+    session.add(
+        StockDaily(trade_date=day, code=code, open=close, close=close, pct_chg=pct)
+    )
+
+
+def test_limit_up_again_uses_valid_sample_denominator():
+    """S2-P1-01：缺 D+1 日线但命中 D+1 涨停池的股票不能进入分子。"""
+    engine = _make_engine()
+    with Session(engine) as db:
+        days = [date(2026, 11, 2), date(2026, 11, 3), date(2026, 11, 4)]
+        db.add_all([TradeCalendar(trade_date=day) for day in days])
+        _add_day(db, days[0], up={"A": 1, "B": 1, "C": 1})
+        _add_day(db, days[1], up={"B": 1, "C": 1})
+        _add_day(db, days[2], up={})
+        # D+1 只有 A、B 有日线；C 停牌/缺行，但它在 D+1 涨停池里
+        _daily(db, days[1], "A", 5.0)
+        _daily(db, days[1], "B", 10.0)
+        db.add(
+            MarketSentiment(
+                trade_date=days[0],
+                limit_up_count=50,
+                broken_rate=20.0,
+                max_consecutive=3,
+                up_count=3000,
+                down_count=2000,
+            )
+        )
+        db.commit()
+
+        data = snd.build_next_day(
+            db,
+            days=3,
+            group=snd.GROUP_ALL_LIMIT,
+            metric="limit_up_count",
+            include_pending=True,
+            end_date=days[2],
+        )
+        row = {item["sample_date"]: item for item in data["series"]}[days[0]]
+
+        assert row["sample_count"] == 3
+        assert row["valid_count"] == 2
+        assert row["missing_count"] == 1
+        # 只有 B（有日线且再涨停）进入分子；C 缺行情不能进分子
+        assert row["limit_up_again_count"] == 1
+        assert row["not_limit_up_count"] == 1
+        assert row["limit_up_again_ratio"] == 50.0
+
+
+def test_limit_up_again_extreme_case_never_exceeds_100():
+    """极端场景：候选 2 只、只有 A 有行情，D+1 涨停池含 A、B。"""
+    engine = _make_engine()
+    with Session(engine) as db:
+        days = [date(2026, 11, 2), date(2026, 11, 3), date(2026, 11, 4)]
+        db.add_all([TradeCalendar(trade_date=day) for day in days])
+        _add_day(db, days[0], up={"A": 1, "B": 1})
+        _add_day(db, days[1], up={"A": 1, "B": 1})
+        _add_day(db, days[2], up={})
+        _daily(db, days[1], "A", 10.0)
+        db.commit()
+
+        data = snd.build_next_day(
+            db,
+            days=3,
+            group=snd.GROUP_ALL_LIMIT,
+            metric="limit_up_count",
+            include_pending=True,
+            end_date=days[2],
+        )
+        row = {item["sample_date"]: item for item in data["series"]}[days[0]]
+
+        assert row["valid_count"] == 1
+        assert row["limit_up_again_count"] == 1
+        assert row["not_limit_up_count"] == 0
+        assert row["limit_up_again_ratio"] == 100.0
+
+
+def test_summary_keeps_sample_conservation_for_every_row(session):
+    """不变量：sample = valid + missing，again/not_again 都落在有效样本内。"""
+    for group in (
+        snd.GROUP_ALL_LIMIT,
+        snd.GROUP_FIRST,
+        snd.GROUP_BROKEN,
+    ):
+        data = build(session, group=group)
+        for row in data["series"]:
+            assert row["sample_count"] == row["valid_count"] + row["missing_count"]
+            if row["limit_up_again_count"] is not None:
+                assert 0 <= row["limit_up_again_count"] <= row["valid_count"]
+                assert 0 <= row["not_limit_up_count"] <= row["valid_count"]
+                assert (
+                    row["limit_up_again_count"] + row["not_limit_up_count"]
+                    == row["valid_count"]
+                )
+            if row["limit_up_again_ratio"] is not None:
+                assert 0 <= row["limit_up_again_ratio"] <= 100
+
+
+def test_summary_uses_pooled_security_observations_not_day_averages():
+    """S2-P1-02：D1 一只 +10%、D2 九只各 −10% → 日等权 0%，逐券 pooled −8%。"""
+    engine = _make_engine()
+    with Session(engine) as db:
+        days = [date(2026, 11, 2), date(2026, 11, 3), date(2026, 11, 4)]
+        db.add_all([TradeCalendar(trade_date=day) for day in days])
+        _add_day(db, days[0], up={"S0": 1})
+        second = {f"T{index}": 1 for index in range(9)}
+        _add_day(db, days[1], up=second)
+        _add_day(db, days[2], up={})
+        _daily(db, days[1], "S0", 10.0)
+        for code in second:
+            _daily(db, days[2], code, -10.0)
+        for day, count in ((days[0], 50), (days[1], 20)):
+            db.add(
+                MarketSentiment(
+                    trade_date=day,
+                    limit_up_count=count,
+                    broken_rate=20.0,
+                    max_consecutive=2,
+                    up_count=3000,
+                    down_count=2000,
+                )
+            )
+        db.commit()
+
+        data = snd.build_next_day(
+            db,
+            days=3,
+            group=snd.GROUP_ALL_LIMIT,
+            metric="max_consecutive",
+            include_pending=True,
+            end_date=days[2],
+        )
+        summary = data["summary"]
+
+        assert summary["valid_count"] == 10
+        assert summary["stat_day_count"] == 2
+        assert summary["security_weighted_avg_pct"] == -8.0
+        assert summary["day_equal_weight_avg_pct"] == 0.0
+        # `avg_pct` 的既有语义是「全体有效样本平均」，必须输出 pooled 值
+        assert summary["avg_pct"] == -8.0
+        # 中位数由 10 个观测的集合计算：九个 −10、一个 +10
+        assert summary["median_pct"] == -10.0
+
+        # 两天的 max_consecutive 都是 2 → 落在同一档位，档位表同样用 pooled 口径
+        band = {item["label"]: item for item in data["bands"]}["≤2 板"]
+        assert band["valid_count"] == 10
+        assert band["security_weighted_avg_pct"] == -8.0
+        assert band["day_equal_weight_avg_pct"] == 0.0
+        assert band["avg_pct"] == -8.0
+        assert band["median_pct"] == -10.0
+
+
+def test_non_finite_pct_is_missing_not_zero():
+    """异常涨跌幅（NaN）不能被当成 0% 计入均值与上涨/下跌家数。"""
+    engine = _make_engine()
+    with Session(engine) as db:
+        days = [date(2026, 11, 2), date(2026, 11, 3), date(2026, 11, 4)]
+        db.add_all([TradeCalendar(trade_date=day) for day in days])
+        _add_day(db, days[0], up={"A": 1, "B": 1})
+        _add_day(db, days[1], up={"A": 1})
+        _add_day(db, days[2], up={})
+        _daily(db, days[1], "A", 5.0)
+        db.add(
+            StockDaily(
+                trade_date=days[1],
+                code="B",
+                open=10.0,
+                close=10.0,
+                pct_chg=float("nan"),
+            )
+        )
+        db.commit()
+
+        data = snd.build_next_day(
+            db,
+            days=3,
+            group=snd.GROUP_ALL_LIMIT,
+            metric="limit_up_count",
+            include_pending=True,
+            end_date=days[2],
+        )
+        row = {item["sample_date"]: item for item in data["series"]}[days[0]]
+
+        assert row["valid_count"] == 1
+        assert row["missing_count"] == 1
+        assert row["outcome_flat_count"] == 0
+        assert row["avg_pct"] == 5.0

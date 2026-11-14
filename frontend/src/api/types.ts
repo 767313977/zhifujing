@@ -3732,7 +3732,12 @@ export interface SentimentNextDayBand {
   stat_day_count: number
   sample_count: number
   valid_count: number
+  /** 逐券 pooled 均值（每个证券-交易日一个观测） */
+  security_weighted_avg_pct: number | null
+  /** 交易日等权均值（S1 旧口径，仅供对照） */
+  day_equal_weight_avg_pct: number | null
   avg_pct: number | null
+  /** 全部有效观测的合并中位数 */
   median_pct: number | null
   up_ratio: number | null
   limit_up_again_ratio: number | null
@@ -3744,6 +3749,8 @@ export interface SentimentNextDaySummary {
   sample_count: number
   valid_count: number
   missing_count: number
+  security_weighted_avg_pct: number | null
+  day_equal_weight_avg_pct: number | null
   avg_pct: number | null
   median_pct: number | null
   up_count: number
@@ -3765,6 +3772,7 @@ export interface SentimentNextDay {
   metric_label: string
   days: number
   threshold_version: string
+  aggregation_version: string
   thresholds: { label: string; lower: number | null; upper: number | null }[]
   data_as_of: string | null
   dates: string[]

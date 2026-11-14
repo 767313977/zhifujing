@@ -243,10 +243,25 @@ export default function SentimentNextDay() {
             <span className="num">
               {fmtInt(summary?.valid_count)} / {fmtInt(summary?.missing_count)}
             </span>
-            <span className="text-fg-dim">D+1 平均 / 中位</span>
-            <span className="num">
-              {fmtPct(summary?.avg_pct)} / {fmtPct(summary?.median_pct)}
+            <span
+              className="text-fg-dim"
+              title={`逐券 pooled 均值：每个证券-交易日算一个观测。有效观测 ${fmtInt(summary?.valid_count)} 条，来自 ${fmtInt(summary?.stat_day_count)} 个有统计的交易日。`}
+            >
+              D+1 逐券均值 / 合并中位
             </span>
+            <span
+              className="num"
+              title={`pooled 口径：${fmtInt(summary?.valid_count)} 条证券-交易日观测；合并中位数不是每日中位数的中位数。`}
+            >
+              {fmtPct(summary?.security_weighted_avg_pct)} / {fmtPct(summary?.median_pct)}
+            </span>
+            <span
+              className="text-fg-dim"
+              title={`交易日等权均值：先算每日均值再按天平均（S1 旧口径），共 ${fmtInt(summary?.stat_day_count)} 个有统计的交易日；与逐券均值不一致是正常的。`}
+            >
+              日等权均值
+            </span>
+            <span className="num">{fmtPct(summary?.day_equal_weight_avg_pct)}</span>
             <span className="text-fg-dim">上涨比例</span>
             <span className="num">{fmtNum(summary?.up_ratio, 1, '%')}</span>
             <span className="text-fg-dim">再涨停比例</span>
@@ -271,8 +286,15 @@ export default function SentimentNextDay() {
                   <th>有统计日</th>
                   <th>样本</th>
                   <th>有效</th>
-                  <th>D+1 平均</th>
-                  <th>D+1 中位</th>
+                  <th
+                    title="逐券 pooled 均值：每个证券-交易日算一个观测，样本多的交易日权重更大"
+                  >
+                    D+1 逐券均值
+                  </th>
+                  <th title="交易日等权均值：先算每日均值再按天平均（S1 旧口径）">
+                    日等权
+                  </th>
+                  <th title="全部有效观测（证券-交易日）的合并中位数">D+1 合并中位</th>
                   <th>上涨比例</th>
                   <th>再涨停比例</th>
                 </tr>
@@ -285,7 +307,8 @@ export default function SentimentNextDay() {
                     <td className="num">{fmtInt(band.stat_day_count)}</td>
                     <td className="num">{fmtInt(band.sample_count)}</td>
                     <td className="num">{fmtInt(band.valid_count)}</td>
-                    <td className="num">{fmtPct(band.avg_pct)}</td>
+                    <td className="num">{fmtPct(band.security_weighted_avg_pct)}</td>
+                    <td className="num">{fmtPct(band.day_equal_weight_avg_pct)}</td>
                     <td className="num">{fmtPct(band.median_pct)}</td>
                     <td className="num">{fmtNum(band.up_ratio, 1, '%')}</td>
                     <td className="num">{fmtNum(band.limit_up_again_ratio, 1, '%')}</td>
@@ -353,6 +376,7 @@ export default function SentimentNextDay() {
           <div className="border-t border-line-soft px-3 py-2 text-[12px] leading-relaxed text-fg-dim">
             <div>
               口径：{data.quality.group_note} 阈值版本 <span className="num">{data.threshold_version}</span>
+              ，聚合版本 <span className="num">{data.aggregation_version}</span>
               。PENDING = D+1 行情未到齐（不按 0% 计），UNVERIFIABLE = 源数据不可信。
             </div>
             <ul className="mt-1 space-y-0.5">

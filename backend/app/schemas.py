@@ -106,20 +106,31 @@ class SentimentNextDayBand(BaseModel):
     stat_day_count: int
     sample_count: int
     valid_count: int
+    #: 逐券 pooled 均值：每个证券-交易日一个观测（S2 起 `avg_pct` 同此口径）
+    security_weighted_avg_pct: float | None
+    #: 交易日等权均值：S1 旧口径，保留用于对照
+    day_equal_weight_avg_pct: float | None
     avg_pct: float | None
+    #: 全部有效观测（证券-交易日）的中位数，不是「每日中位数的中位数」
     median_pct: float | None
     up_ratio: float | None
     limit_up_again_ratio: float | None
 
 
 class SentimentNextDaySummary(BaseModel):
-    """总体统计（只聚合有有效行情的日期；PENDING 日不计入样本）。"""
+    """总体统计（只聚合有有效行情的日期；PENDING 日不计入样本）。
+
+    `avg_pct` / `security_weighted_avg_pct` 为逐券 pooled 口径，
+    `day_equal_weight_avg_pct` 为交易日等权（旧口径）；两者可能明显不同。
+    """
 
     day_count: int
     stat_day_count: int
     sample_count: int
     valid_count: int
     missing_count: int
+    security_weighted_avg_pct: float | None
+    day_equal_weight_avg_pct: float | None
     avg_pct: float | None
     median_pct: float | None
     up_count: int
@@ -157,6 +168,8 @@ class SentimentNextDayOut(BaseModel):
     days: int
     #: 情绪分档的固定版本（改动档位必须升版本）
     threshold_version: str
+    #: 多日聚合口径版本；v2 起 `avg_pct` 为逐券 pooled
+    aggregation_version: str
     thresholds: list[SentimentNextDayThreshold]
     #: 本地日线的最后日期：晚于它的 D+1 一律 PENDING
     data_as_of: date | None

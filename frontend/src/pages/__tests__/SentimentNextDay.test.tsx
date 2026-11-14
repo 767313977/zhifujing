@@ -58,6 +58,7 @@ function payload(overrides: Partial<SentimentNextDayData> = {}): SentimentNextDa
     metric_label: '涨停家数',
     days: 60,
     threshold_version: 'sentiment-bands-v1',
+    aggregation_version: 'next-day-aggregation-v2',
     thresholds: [{ label: '30–60 家', lower: 30, upper: 60 }],
     data_as_of: '2026-11-11',
     dates: ['2026-11-10', '2026-11-09', '2026-11-06'],
@@ -93,6 +94,8 @@ function payload(overrides: Partial<SentimentNextDayData> = {}): SentimentNextDa
       sample_count: 10,
       valid_count: 10,
       missing_count: 0,
+      security_weighted_avg_pct: 2.5,
+      day_equal_weight_avg_pct: 0.5,
       avg_pct: 2.5,
       median_pct: 1.8,
       up_count: 7,
@@ -115,6 +118,8 @@ function payload(overrides: Partial<SentimentNextDayData> = {}): SentimentNextDa
         stat_day_count: 1,
         sample_count: 10,
         valid_count: 10,
+        security_weighted_avg_pct: 2.5,
+        day_equal_weight_avg_pct: 0.5,
         avg_pct: 2.5,
         median_pct: 1.8,
         up_ratio: 70,
@@ -207,4 +212,14 @@ test('a slow earlier response cannot override the newest selection', async () =>
 test('renders the caveats from backend', async () => {
   render(<SentimentNextDay />)
   await waitFor(() => expect(screen.getByText(/不构成收益预测/)).toBeTruthy())
+})
+
+test('shows pooled and day-equal averages as separate figures', async () => {
+  render(<SentimentNextDay />)
+  await waitFor(() => expect(screen.getByText('情绪环境 × 次日表现')).toBeTruthy())
+  // 逐券 pooled 均值 2.50% 与日等权 0.50% 同时出现，不做二选一
+  expect(screen.getAllByText('+2.50%').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('+0.50%').length).toBeGreaterThan(0)
+  expect(screen.getByText('日等权均值')).toBeTruthy()
+  expect(screen.getByText('next-day-aggregation-v2')).toBeTruthy()
 })
