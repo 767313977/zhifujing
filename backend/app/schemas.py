@@ -2411,7 +2411,8 @@ class StockResearchTheme(BaseModel):
     sector_code: str | None
     taxonomy: str | None
     fetched_at: datetime | None
-    #: CLOSE / PRIOR_DAY / SAME_DAY_UNKNOWN / LATER / POST_CLOSE_UNKNOWN / UNKNOWN
+    #: CLOSE / PRIOR_DAY / SAME_DAY_UNKNOWN / LATER / POST_CLOSE_UNKNOWN / UNKNOWN /
+    #: END_OF_DAY_FACT
     known_by: str
 
 
@@ -2420,6 +2421,16 @@ class StockResearchDaily(BaseModel):
     close: float | None
     pct_chg: float | None
     known_by: str = "CLOSE"
+
+
+class StockResearchEndOfDayFact(BaseModel):
+    """S5-A：没有首次入库时间的日终事实（只作复盘，不是可交易盘中信号）。"""
+
+    daily: StockResearchDaily | None = None
+    sentiment: dict[str, int | float | None] | None = None
+    known_by: str = "END_OF_DAY_FACT"
+    reason_code: str = "END_OF_DAY_FACT_NOT_AT_CUTOFF"
+    note: str | None = None
 
 
 class StockResearchCutoffKnown(BaseModel):
@@ -2462,7 +2473,7 @@ class StockResearchAsKnown(BaseModel):
     themes: list[StockResearchTheme]
     concepts: list[StockResearchTheme]
     sentiment: dict[str, int | float | None] | None
-    schema_version: str = "research-evidence-v2"
+    schema_version: str = "research-evidence-v3"
     subset_of: str | None = "at_cutoff_known"
 
 
@@ -2488,7 +2499,14 @@ class StockResearchEvidence(BaseModel):
     source_published_at: datetime | None = None
     #: 本站观察到这条证据的时间（有则填，无则 null）
     observed_at: datetime | None = None
+    #: 时点判定的「最早可用时刻」= max(observed_at, published_at)；无法判定时为 null
+    known_at: datetime | None = None
+    #: 该证据对应的观察 cutoff 时刻（Asia/Shanghai，ISO 8601）
+    cutoff_at: str | None = None
     known_by: str
+    #: 来源完成性（与 known_by 的时点语义分开）
+    evidence_quality: str | None = None
+    #: 兼容旧字段，等同 evidence_quality
     quality: str
     reason_code: str | None
     is_forward_known: bool
@@ -2573,17 +2591,24 @@ class StockResearchContextOut(BaseModel):
     requested_as_of: date | None
     resolved_trade_date: date
     data_as_of: date | None
-    #: S4-A 时点协议版本
-    evidence_version: str = "research-evidence-v2"
+    #: S5-A 时点协议版本
+    evidence_version: str = "research-evidence-v3"
+    pit_version: str = "research-evidence-v3"
     observation_date: date | None = None
     #: 当前只支持 CLOSE
     cutoff: str = "CLOSE"
+    #: CLOSE 在系统内的明确时刻（观察日 15:00 Asia/Shanghai，ISO 8601）
+    cutoff_at: str | None = None
+    cutoff_label: str | None = None
+    timezone: str = "Asia/Shanghai"
     #: 本轮只读展示，不进入任何策略/信号
     historical_signal_eligible: bool
     quality: StockResearchContextQuality
     at_cutoff_known: StockResearchCutoffKnown
+    #: 没有首次入库时间的日终事实（只作复盘）
+    end_of_day_fact: StockResearchEndOfDayFact | None = None
     unknown_or_later: StockResearchUnknownOrLater
-    #: 兼容字段：已知子集（不含 LATER/同日未知/盘后未知）
+    #: 兼容字段：已知子集（不含 LATER/同日未知/盘后未知/日终事实）
     as_known_on_day: StockResearchAsKnown
     later_outcome: StockResearchOutcome
     evidence: list[StockResearchEvidence]

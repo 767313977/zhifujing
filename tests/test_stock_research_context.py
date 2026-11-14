@@ -1,8 +1,10 @@
-"""S3-C → S4-A：个股观察日研究依据（三桶互斥的时点证据）。
+"""S3-C → S4-A → S5-A：个股观察日研究依据（三桶互斥的时点证据 v3）。
 
-覆盖 Task S4-A 的硬要求：
+覆盖硬要求：
 - `AT_CUTOFF_KNOWN / UNKNOWN_OR_LATER / FORWARD_OUTCOME` 三桶互斥且并集守恒；
-- `LATER / SAME_DAY_UNKNOWN / POST_CLOSE_UNKNOWN / UNKNOWN` 绝不进入已知桶；
+- `cutoff=CLOSE` 明确对应观察日 15:00 Asia/Shanghai；15:00 之后的日志进「后得」；
+- `LATER / SAME_DAY_UNKNOWN / POST_CLOSE_UNKNOWN / UNKNOWN / END_OF_DAY_FACT`
+  绝不进入已知桶；
 - 池冲突标 `POOL_CONFLICT`，不按 if/elif 优先级择一；
 - `NOT_IN_POOL` 必须三个池都可信且日志时点可证明；
 - `PREMARKET_0925` 明确拒绝，不假装同口径。
@@ -34,12 +36,13 @@ D3 = date(2026, 11, 12)
 
 
 def _log(day: date, task: str, rows: int, *, created: datetime | None = None) -> CollectLog:
+    # 默认 14:50：早于 CLOSE cutoff（15:00），用于「当时已知」场景
     return CollectLog(
         trade_date=day,
         task=task,
         status="ok",
         rows=rows,
-        created_at=created or datetime(day.year, day.month, day.day, 16, 0),
+        created_at=created or datetime(day.year, day.month, day.day, 14, 50),
     )
 
 
@@ -109,8 +112,11 @@ def _set_theme_fetched_at(db, moment: datetime | None):
 
 def test_three_buckets_are_mutually_exclusive_and_exhaustive(session):
     data = build(session)
-    assert data["evidence_version"] == "research-evidence-v2"
+    assert data["evidence_version"] == "research-evidence-v3"
+    assert data["pit_version"] == "research-evidence-v3"
     assert data["cutoff"] == "CLOSE"
+    assert data["cutoff_at"] == "2026-11-11T15:00:00+08:00"
+    assert data["timezone"] == "Asia/Shanghai"
     assert data["observation_date"] == D2
 
     counts = data["evidence_counts"]
@@ -186,7 +192,10 @@ def test_forward_evidence_is_only_in_forward_bucket(session):
     assert ("stock_daily", D3) not in known_tables
     # D+1 结果不会流回已知区域
     assert data["later_outcome"]["pct_chg"] == -5.0
-    assert data["at_cutoff_known"]["daily"]["pct_chg"] == 10.0
+    # stock_daily 没有首次入库时间：只进「日终事实」，不再冒充 15:00 已知
+    assert data["at_cutoff_known"]["daily"] is None
+    assert data["end_of_day_fact"]["daily"]["pct_chg"] == 10.0
+    assert data["end_of_day_fact"]["known_by"] == ctx.KNOWN_END_OF_DAY_FACT
 
 
 # ---------------------------------------------------------------- 池状态与冲突
@@ -336,7 +345,13 @@ def test_invariants_reject_illegal_bucket_mix():
 def test_classify_evidence_time_is_total_and_strict():
     assert ctx.classify_evidence_time(ctx.KNOWN_CLOSE) == ctx.BUCKET_KNOWN
     assert ctx.classify_evidence_time(ctx.KNOWN_PRIOR_DAY) == ctx.BUCKET_KNOWN
-    for value in (ctx.KNOWN_SAME_DAY_UNKNOWN, ctx.KNOWN_LATER, ctx.KNOWN_POST_CLOSE, ctx.KNOWN_UNKNOWN):
+    for value in (
+        ctx.KNOWN_SAME_DAY_UNKNOWN,
+        ctx.KNOWN_LATER,
+        ctx.KNOWN_POST_CLOSE,
+        ctx.KNOWN_UNKNOWN,
+        ctx.KNOWN_END_OF_DAY_FACT,
+    ):
         assert ctx.classify_evidence_time(value) == ctx.BUCKET_UNKNOWN
     assert ctx.classify_evidence_time(ctx.KNOWN_FORWARD) == ctx.BUCKET_FORWARD
     with pytest.raises(ValueError):

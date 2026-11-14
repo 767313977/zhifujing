@@ -1317,6 +1317,8 @@ def stock_research_context_view(
 
     - 不调用 `syncStock`、不抓外部行情/公告/题材，不写库；
     - 观察日必须是交易日；非交易日/未知代码返回 400；
+    - `cutoff=CLOSE` 明确对应观察日 15:00（Asia/Shanghai）；15:00 之后才写入的
+      采集日志进「后得/未知」，不冒充当时已知；
     - 题材快照只能证明「我们何时取到」，不能证明当时盘前已知；
     - D+1 结果只供复盘，`is_forward_known=true`，不反写 D 日依据。
     """

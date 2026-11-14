@@ -1,0 +1,95 @@
+{
+  "pit_version": "research-evidence-v3",
+  "generated_at": "2026-11-14T20:05:00+08:00",
+  "timezone": "Asia/Shanghai",
+  "cutoff": "CLOSE",
+  "cutoff_at": "2026-11-11T15:00:00+08:00",
+  "observation_date": "2026-11-11",
+  "cases": [
+    {
+      "id": "pool_1459",
+      "source": "limit_pool/collect_log",
+      "observed_at": "2026-11-11T14:59:00",
+      "v2": {"known_by": "CLOSE", "time_bucket": "AT_CUTOFF_KNOWN"},
+      "v3": {"known_by": "CLOSE", "time_bucket": "AT_CUTOFF_KNOWN", "reason_code": null}
+    },
+    {
+      "id": "pool_1500_boundary",
+      "source": "limit_pool/collect_log",
+      "observed_at": "2026-11-11T15:00:00",
+      "v2": {"known_by": "CLOSE", "time_bucket": "AT_CUTOFF_KNOWN"},
+      "v3": {"known_by": "CLOSE", "time_bucket": "AT_CUTOFF_KNOWN", "reason_code": null}
+    },
+    {
+      "id": "pool_1501",
+      "source": "limit_pool/collect_log",
+      "observed_at": "2026-11-11T15:01:00",
+      "v2": {"known_by": "CLOSE", "time_bucket": "AT_CUTOFF_KNOWN"},
+      "v3": {"known_by": "POST_CLOSE_UNKNOWN", "time_bucket": "UNKNOWN_OR_LATER", "reason_code": "AFTER_CUTOFF_SAME_DAY"}
+    },
+    {
+      "id": "pool_1505",
+      "source": "limit_pool/collect_log",
+      "observed_at": "2026-11-11T15:05:00",
+      "v2": {"known_by": "CLOSE", "time_bucket": "AT_CUTOFF_KNOWN"},
+      "v3": {"known_by": "POST_CLOSE_UNKNOWN", "time_bucket": "UNKNOWN_OR_LATER", "reason_code": "AFTER_CUTOFF_SAME_DAY"}
+    },
+    {
+      "id": "pool_2200",
+      "source": "limit_pool/collect_log",
+      "observed_at": "2026-11-11T22:00:00",
+      "v2": {"known_by": "CLOSE", "time_bucket": "AT_CUTOFF_KNOWN"},
+      "v3": {"known_by": "POST_CLOSE_UNKNOWN", "time_bucket": "UNKNOWN_OR_LATER", "reason_code": "AFTER_CUTOFF_SAME_DAY"}
+    },
+    {
+      "id": "pool_next_day_0900",
+      "source": "limit_pool/collect_log",
+      "observed_at": "2026-11-12T09:00:00",
+      "v2": {"known_by": "LATER", "time_bucket": "UNKNOWN_OR_LATER"},
+      "v3": {"known_by": "LATER", "time_bucket": "UNKNOWN_OR_LATER", "reason_code": "AFTER_CUTOFF_LATER_DAY"}
+    },
+    {
+      "id": "utc_0659",
+      "source": "limit_pool/collect_log",
+      "observed_at": "2026-11-11T06:59:00+00:00",
+      "v2": {"known_by": "CLOSE", "time_bucket": "AT_CUTOFF_KNOWN"},
+      "v3": {"known_by": "CLOSE", "time_bucket": "AT_CUTOFF_KNOWN", "reason_code": null}
+    },
+    {
+      "id": "utc_0701",
+      "source": "limit_pool/collect_log",
+      "observed_at": "2026-11-11T07:01:00+00:00",
+      "v2": {"known_by": "CLOSE", "time_bucket": "AT_CUTOFF_KNOWN"},
+      "v3": {"known_by": "POST_CLOSE_UNKNOWN", "time_bucket": "UNKNOWN_OR_LATER", "reason_code": "AFTER_CUTOFF_SAME_DAY"}
+    },
+    {
+      "id": "naive_untrusted",
+      "source": "limit_pool/collect_log",
+      "observed_at": "2026-11-11T14:30:00",
+      "naive_timezone_trusted": false,
+      "v2": {"known_by": "CLOSE", "time_bucket": "AT_CUTOFF_KNOWN"},
+      "v3": {"known_by": "UNKNOWN", "time_bucket": "UNKNOWN_OR_LATER", "reason_code": "NAIVE_TIMESTAMP_NO_TRUSTED_TZ"}
+    },
+    {
+      "id": "daily_no_observed_at",
+      "source": "stock_daily",
+      "observed_at": null,
+      "v2": {"known_by": "CLOSE", "time_bucket": "AT_CUTOFF_KNOWN"},
+      "v3": {"known_by": "END_OF_DAY_FACT", "time_bucket": "UNKNOWN_OR_LATER", "reason_code": "END_OF_DAY_FACT_NOT_AT_CUTOFF"}
+    },
+    {
+      "id": "theme_same_day_0900",
+      "source": "sector_member",
+      "observed_at": "2026-11-11T09:00:00",
+      "v2": {"known_by": "SAME_DAY_UNKNOWN", "time_bucket": "UNKNOWN_OR_LATER"},
+      "v3": {"known_by": "SAME_DAY_UNKNOWN", "time_bucket": "UNKNOWN_OR_LATER", "reason_code": "THEME_PIT_UNKNOWN"}
+    },
+    {
+      "id": "theme_prior_day",
+      "source": "sector_member",
+      "observed_at": "2026-11-10T22:00:00",
+      "v2": {"known_by": "PRIOR_DAY", "time_bucket": "AT_CUTOFF_KNOWN"},
+      "v3": {"known_by": "PRIOR_DAY", "time_bucket": "AT_CUTOFF_KNOWN", "reason_code": null}
+    }
+  ]
+}

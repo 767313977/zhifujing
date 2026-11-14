@@ -47,8 +47,8 @@ def _day(db, day, up, broken, daily=True):
         db.add(LimitPool(trade_date=day, code=code, pool_type="up", name=code, consecutive=2))
     for code in broken:
         db.add(LimitPool(trade_date=day, code=code, pool_type="broken", name=code))
-    # S4-A：池信息要证明「D 收盘后可获知」，日志时间必须落在观察日当天
-    stamp = datetime(day.year, day.month, day.day, 16, 0)
+    # S5-A：`cutoff=CLOSE` 明确对应 15:00；日志必须早于该时刻才能算「当时已知」
+    stamp = datetime(day.year, day.month, day.day, 14, 50)
     db.add(CollectLog(trade_date=day, task="pool_up", status="ok", rows=len(up), created_at=stamp))
     db.add(
         CollectLog(

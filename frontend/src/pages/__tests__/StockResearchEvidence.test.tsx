@@ -69,9 +69,13 @@ function contextPayload(
     resolved_trade_date: '2026-09-24',
     data_as_of: '2026-09-28',
     historical_signal_eligible: false,
-    evidence_version: 'research-evidence-v2',
+    evidence_version: 'research-evidence-v3',
+    pit_version: 'research-evidence-v3',
     observation_date: '2026-09-24',
     cutoff: 'CLOSE',
+    cutoff_at: '2026-09-24T15:00:00+08:00',
+    cutoff_label: '收盘截止 15:00 Asia/Shanghai（含 15:00 整）',
+    timezone: 'Asia/Shanghai',
     quality: { status: 'PARTIAL', reasons: ['THEME_PIT_UNKNOWN'] },
     at_cutoff_known: {
       previous_close_date: '2026-09-23',
@@ -79,10 +83,18 @@ function contextPayload(
       board_height: 2,
       observed_pool_membership: ['up'],
       pool_quality: { up: 'VERIFIED', broken: 'VERIFIED', down: 'VERIFIED' },
-      daily: { trade_date: '2026-09-24', close: 10, pct_chg: 10, known_by: 'CLOSE' },
+      // S5-A：日线没有首次入库时间，不再进「已知」
+      daily: null,
       themes: [],
       concepts: [],
+      sentiment: null,
+    },
+    end_of_day_fact: {
+      daily: { trade_date: '2026-09-24', close: 10, pct_chg: 10, known_by: 'END_OF_DAY_FACT' },
       sentiment: { limit_up_count: 50, broken_rate: 20, max_consecutive: 2, up_count: 3000, down_count: 2000 },
+      known_by: 'END_OF_DAY_FACT',
+      reason_code: 'END_OF_DAY_FACT_NOT_AT_CUTOFF',
+      note: 'stock_daily / market_sentiment 没有首次入库时间，只能证明「D 日收盘后的日终事实」。',
     },
     unknown_or_later: {
       themes: [
@@ -111,11 +123,12 @@ function contextPayload(
       board_height: 2,
       observed_pool_membership: ['up'],
       pool_quality: { up: 'VERIFIED', broken: 'VERIFIED', down: 'VERIFIED' },
-      daily: { trade_date: '2026-09-24', close: 10, pct_chg: 10, known_by: 'CLOSE' },
-      // 兼容子集：S4 起不得再承载 LATER / 同日未知题材
+      daily: null,
+      // 兼容子集：S4 起不得再承载 LATER / 同日未知题材；S5 起不含日终事实
       themes: [],
       concepts: [],
-      sentiment: { limit_up_count: 50, broken_rate: 20, max_consecutive: 2, up_count: 3000, down_count: 2000 },
+      sentiment: null,
+      schema_version: 'research-evidence-v3',
     },
     later_outcome: {
       outcome_date: '2026-09-28',
@@ -131,8 +144,12 @@ function contextPayload(
         claim: '观察日池记录',
         source_table: 'limit_pool',
         source_trade_date: '2026-09-24',
-        fetched_at: '2026-09-24T16:00:00',
+        fetched_at: '2026-09-24T14:30:00',
+        observed_at: '2026-09-24T14:30:00',
+        known_at: '2026-09-24T14:30:00',
+        cutoff_at: '2026-09-24T15:00:00+08:00',
         known_by: 'CLOSE',
+        evidence_quality: 'VERIFIED',
         quality: 'VERIFIED',
         reason_code: null,
         is_forward_known: false,
@@ -204,10 +221,11 @@ beforeEach(() => {
   mocks.stockResearchContext.mockResolvedValue(contextPayload())
 })
 
-test('evidence tab separates as-known, unknown-source and forward outcome', async () => {
+test('evidence tab separates as-known, end-of-day fact, unknown-source and forward outcome', async () => {
   renderDrawer()
-  await waitFor(() => expect(screen.getByText('观察日已知（截至收盘）')).toBeTruthy())
+  await waitFor(() => expect(screen.getByText('观察日已知（截至 15:00）')).toBeTruthy())
   expect(screen.getByText('不知道 / 观察日之后才取到')).toBeTruthy()
+  expect(screen.getByText('日终事实（只作复盘）')).toBeTruthy()
   expect(screen.getByText('D+1 后验（只供复盘）')).toBeTruthy()
 
   expect(screen.getAllByText(/同日取到，无法证明盘前/).length).toBeGreaterThan(0)
@@ -219,10 +237,41 @@ test('evidence tab separates as-known, unknown-source and forward outcome', asyn
   // 时间桶列可见
   expect(screen.getByText('时间桶')).toBeTruthy()
   expect(screen.getByText('后得/未知')).toBeTruthy()
+  // 15:00 截止时刻明确展示，日终事实与「已知」分开
+  expect(screen.getByText(/截止 2026-09-24T15:00:00\+08:00/)).toBeTruthy()
+  expect(screen.getByText(/日终事实（只作复盘）/)).toBeTruthy()
 
   // 同一个题材不能既出现在「已知」又出现在「后得/未知」：
   // 这里只有 unknown 区的 1 条题材 + 1 条涨停天梯，合计 2 次
   expect(screen.getAllByText('芯片').length).toBe(2)
+})
+
+test('post-close pool evidence is labelled as after-cutoff, not known', async () => {
+  const payload = contextPayload()
+  payload.at_cutoff_known = {
+    ...payload.at_cutoff_known!,
+    pool_status: 'UNKNOWN',
+    board_height: null,
+  }
+  payload.evidence = payload.evidence.map((item) =>
+    item.claim === '观察日池记录'
+      ? {
+          ...item,
+          known_by: 'POST_CLOSE_UNKNOWN',
+          time_bucket: 'UNKNOWN_OR_LATER',
+          fetched_at: '2026-09-24T22:00:00',
+          observed_at: '2026-09-24T22:00:00',
+          known_at: '2026-09-24T22:00:00',
+          reason_code: 'AFTER_CUTOFF_SAME_DAY',
+          is_forward_known: false,
+        }
+      : item,
+  )
+  mocks.stockResearchContext.mockResolvedValue(payload)
+  renderDrawer()
+  await waitFor(() => expect(screen.getAllByText(/收盘后才取到（>15:00）/).length).toBeGreaterThan(0))
+  // 池状态不得再显示「涨停」，而是 UNKNOWN
+  expect(screen.getByText('UNKNOWN')).toBeTruthy()
 })
 
 test('prior-day theme is labelled as known', async () => {

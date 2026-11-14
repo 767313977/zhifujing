@@ -1925,6 +1925,15 @@ export interface StockResearchCutoffKnown {
   sentiment: Record<string, number | null> | null
 }
 
+/** S5-A：没有首次入库时间的日终事实（只作复盘，不是可交易盘中信号） */
+export interface StockResearchEndOfDayFact {
+  daily: StockResearchDaily | null
+  sentiment: Record<string, number | null> | null
+  known_by: string
+  reason_code: string
+  note?: string | null
+}
+
 /** S4-A：LATER / SAME_DAY_UNKNOWN / POST_CLOSE_UNKNOWN / UNKNOWN */
 export interface StockResearchUnknownOrLater {
   themes: StockResearchTheme[]
@@ -1966,7 +1975,13 @@ export interface StockResearchEvidence {
   source_published_at?: string | null
   /** 本站观察到这条证据的时间 */
   observed_at?: string | null
+  /** 最早可用时刻 = max(observed_at, published_at) */
+  known_at?: string | null
+  /** 该证据对应的观察 cutoff 时刻（Asia/Shanghai，ISO 8601） */
+  cutoff_at?: string | null
   known_by: string
+  /** 来源完成性（与 known_by 的时点语义分开） */
+  evidence_quality?: string | null
   quality: string
   reason_code: string | null
   is_forward_known: boolean
@@ -1982,15 +1997,22 @@ export interface StockResearchContext {
   resolved_trade_date: string
   data_as_of: string | null
   evidence_version?: string
+  pit_version?: string
   observation_date?: string | null
   cutoff?: string
+  /** CLOSE 对应的明确时刻（观察日 15:00 Asia/Shanghai） */
+  cutoff_at?: string | null
+  cutoff_label?: string | null
+  timezone?: string
   historical_signal_eligible: boolean
   quality: { status: string; reasons: string[] }
   /** S4-A：三桶互斥。旧后端没有该字段，前端回落到兼容子集。 */
   at_cutoff_known?: StockResearchCutoffKnown
+  /** S5-A：无首次入库时间的日终事实 */
+  end_of_day_fact?: StockResearchEndOfDayFact | null
   unknown_or_later?: StockResearchUnknownOrLater
   evidence_counts?: Record<string, number>
-  /** 兼容字段：已知子集（不含 LATER / 同日未知 / 盘后未知） */
+  /** 兼容字段：已知子集（不含 LATER / 同日未知 / 盘后未知 / 日终事实） */
   as_known_on_day: StockResearchAsKnown
   later_outcome: StockResearchOutcome
   evidence: StockResearchEvidence[]

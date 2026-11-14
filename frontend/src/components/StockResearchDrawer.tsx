@@ -19,6 +19,7 @@ import type {
   StockLimitRecord,
   StockProfile,
   StockResearchContext,
+  StockResearchEndOfDayFact,
   StockResearchTheme,
   StockThemes,
 } from '../api/types'
@@ -378,11 +379,12 @@ function LhbTab({ code, cacheBase }: { code: string; cacheBase: string }) {
 }
 
 const KNOWN_BY_LABEL: Record<string, string> = {
-  CLOSE: '收盘可知',
+  CLOSE: '收盘前已取到（≤15:00）',
   PRIOR_DAY: '前一日已取到',
   SAME_DAY_UNKNOWN: '同日取到，无法证明盘前',
   LATER: '观察日之后才取到',
-  POST_CLOSE_UNKNOWN: '盘后来源，无法证明当时已知',
+  POST_CLOSE_UNKNOWN: '收盘后才取到（>15:00）',
+  END_OF_DAY_FACT: '日终事实（只作复盘）',
   FORWARD: 'D+1 后验',
   UNKNOWN: '来源时间未知',
 }
@@ -405,6 +407,32 @@ function knownTone(knownBy: string): string {
   if (knownBy === 'PRIOR_DAY' || knownBy === 'CLOSE') return 'text-up'
   if (knownBy === 'FORWARD') return 'text-fg-muted'
   return 'text-warn'
+}
+
+/** 日终事实没有首次入库时间，只能用于复盘，不能算「当时已知」 */
+function EndOfDayFactSection({ fact }: { fact?: StockResearchEndOfDayFact | null }) {
+  if (!fact) return null
+  return (
+    <Section title="日终事实（只作复盘）">
+      <div className="mb-1 text-[12px] leading-relaxed text-fg-muted">
+        {fact.note ?? '无首次入库时间，不能证明 15:00 当时已知。'}
+      </div>
+      <Row
+        label="当日日线"
+        value={fact.daily ? `${fmtNum(fact.daily.close)} / ${fmtPct(fact.daily.pct_chg)}` : '—'}
+      />
+      <Row
+        label="市场情绪"
+        value={
+          fact.sentiment
+            ? `涨停 ${fmtNum(fact.sentiment.limit_up_count ?? null)} 家 · 最高 ${fmtNum(
+                fact.sentiment.max_consecutive ?? null,
+              )} 板`
+            : '—'
+        }
+      />
+    </Section>
+  )
 }
 
 function ThemeList({ items }: { items: StockResearchTheme[] }) {
@@ -436,7 +464,8 @@ function EvidenceTab({
   selectedAsOfDate: string | null
 }) {
   const { data, loading, error } = useCached<StockResearchContext>(
-    `${cacheBase}|evidence`,
+    // 缓存键带时点协议版本与 cutoff：口径升级或切换 cutoff 时不会命中旧响应
+    `${cacheBase}|evidence|research-evidence-v3|CLOSE`,
     () => api.stockResearchContext(code, selectedAsOfDate),
   )
   if (loading) return <LoadState loading className="px-4 py-10" />
@@ -476,6 +505,7 @@ function EvidenceTab({
           观察日 {data.resolved_trade_date}
           {data.requested_as_of ? `（请求 ${data.requested_as_of}）` : '（最新交易日）'}
           {' · '}时点 {data.cutoff ?? 'CLOSE'}
+          {' · '}截止 {data.cutoff_at ?? '—'}
           {' · '}数据截至 {data.data_as_of ?? '—'}
         </div>
         <div className="mt-0.5">
@@ -491,7 +521,7 @@ function EvidenceTab({
         ) : null}
       </div>
 
-      <Section title="观察日已知（截至收盘）">
+      <Section title="观察日已知（截至 15:00）">
         <Row label="上一交易日" value={known.previous_close_date ?? '—'} />
         <Row
           label="涨跌状态"
@@ -502,12 +532,13 @@ function EvidenceTab({
           }
         />
         <Row label="观察到的池" value={known.observed_pool_membership.join('、') || '—'} />
-        <Row label="当日日线" value={known.daily ? `${known.daily.close} / ${fmtPct(known.daily.pct_chg)}` : '—'} />
         <div className="mt-2 text-[12px] text-fg-dim">题材（观察日之前已取到）</div>
         <ThemeList items={known.themes} />
         <div className="mt-2 text-[12px] text-fg-dim">涨停天梯题材</div>
         <ThemeList items={known.concepts} />
       </Section>
+
+      <EndOfDayFactSection fact={data.end_of_day_fact} />
 
       <Section title="不知道 / 观察日之后才取到">
         {unknown.themes.length === 0 && unknown.concepts.length === 0 ? (
