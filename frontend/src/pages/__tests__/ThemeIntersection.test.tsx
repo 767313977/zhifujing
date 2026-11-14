@@ -49,6 +49,10 @@ function payload(overrides: Partial<ThemeSearch> = {}): ThemeSearch {
     source_snapshot_date: '2026-09-24',
     fetched_at: '2026-09-24T22:00:00',
     is_exact_date: true,
+    known_by_observation_time: null,
+    historical_signal_eligible: false,
+    snapshot_age_days: 0,
+    quality_version: 'theme-quality-v2',
     taxonomy: 'kph_selected',
     selected_sectors: [
       { code: '801001', name: '芯片', taxonomy: 'kph_selected', member_count: 1130, has_data: true },
@@ -62,15 +66,31 @@ function payload(overrides: Partial<ThemeSearch> = {}): ThemeSearch {
     offset: 0,
     limit: 50,
     coverage: {
-      sample_rows: 2168,
-      distinct_stocks: 5869,
+      observed_sector_count: 260,
+      expected_sector_count: 270,
       sector_count: 260,
       expected_sectors: 270,
+      sample_rows: 2168,
+      distinct_stocks: 5869,
+      coverage_taxonomies: ['kph_selected'],
+      selected_sector_count: 2,
+      selected_sector_observed: 2,
+      has_completion_proof: false,
       has_completeness_evidence: false,
-      note: null,
+      coverage_status: 'PARTIAL_OBSERVED_COUNT',
+      coverage_unknown: false,
+      note: '已观测 260/270 个同 taxonomy 板块；成员级完成日志缺失，不能证明成员完整。',
     },
-    quality: { status: 'PARTIAL', reasons: ['NO_MEMBERS_COMPLETION_LOG'] },
-    warnings: ['NO_MEMBERS_COMPLETION_LOG', 'SNAPSHOT_SECTOR_COVERAGE_LOW'],
+    quality: {
+      status: 'PARTIAL',
+      version: 'theme-quality-v2',
+      reasons: ['NO_MEMBERS_COMPLETION_LOG', 'OBSERVED_INTERSECTION_ONLY'],
+    },
+    warnings: [
+      'NO_MEMBERS_COMPLETION_LOG',
+      'SNAPSHOT_SECTOR_COVERAGE_LOW',
+      'OBSERVED_INTERSECTION_ONLY',
+    ],
     items: [
       {
         code: '000032',
@@ -131,11 +151,34 @@ test('selecting two boards requests AND and renders provenance', async () => {
   await waitFor(() => expect(screen.getByText('深桑达Ａ')).toBeTruthy())
   expect(screen.getByText('部分覆盖')).toBeTruthy()
   expect(screen.getByText(/无成员级完成日志/)).toBeTruthy()
-  expect(screen.getByText(/当日快照 2168 行/)).toBeTruthy()
+  expect(screen.getByText(/样本 2168 行 \/ 5869 只/)).toBeTruthy()
+  expect(screen.getByText('已观测命中')).toBeTruthy()
+  expect(screen.getByText('所选板块快照覆盖')).toBeTruthy()
+  expect(screen.getByText('2/2')).toBeTruthy()
+  expect(screen.getByText('260/270')).toBeTruthy()
+  expect(screen.getByText(/无法证明盘前已知/)).toBeTruthy()
+  expect(screen.getByText(/仅已观测交集，非全量/)).toBeTruthy()
   expect(screen.getByText('2 板')).toBeTruthy()
   // 原有 StockLink 跳转保留
   expect(screen.getByRole('link', { name: '深桑达Ａ' }).getAttribute('href')).toBe('/stock/000032')
   expect(screen.getByRole('button', { name: '快速研究 000032' })).toBeTruthy()
+})
+
+test('point-in-time flags are shown without pretending prior knowledge', async () => {
+  mocks.themeSearch.mockResolvedValue(
+    payload({ known_by_observation_time: true, snapshot_age_days: 1 }),
+  )
+  renderPanel()
+  fireEvent.click(screen.getByRole('button', { name: '芯片' }))
+  await waitFor(() => expect(screen.getByText(/可证明观察日前已知/)).toBeTruthy())
+  expect(screen.getByText(/历史信号资格：否/)).toBeTruthy()
+  expect(screen.getByText(/快照滞后 1 天/)).toBeTruthy()
+
+  mocks.themeSearch.mockResolvedValue(
+    payload({ known_by_observation_time: false, snapshot_age_days: 2 }),
+  )
+  fireEvent.click(screen.getByRole('button', { name: '算力' }))
+  await waitFor(() => expect(screen.getByText(/快照晚于观察日，仅可复盘/)).toBeTruthy())
 })
 
 test('switching to OR refetches with the new mode', async () => {

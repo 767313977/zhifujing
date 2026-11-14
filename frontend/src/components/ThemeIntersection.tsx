@@ -36,6 +36,8 @@ const WARNING_LABEL: Record<string, string> = {
   TAXONOMY_MIXED: '所选板块跨口径',
   MARKET_FILTER_APPLIED: '已按市场过滤',
   STOCK_CONCEPT_NOT_USED: '涨停天梯不参与全市场交集',
+  OBSERVED_INTERSECTION_ONLY: '仅已观测交集，非全量',
+  THEME_PIT_UNKNOWN: '无法证明盘前已知',
 }
 
 const MODE_ITEMS = [
@@ -170,8 +172,16 @@ export default function ThemeIntersection({
 
   const coverage = data?.coverage
   const meta = data?.resolved_as_of
-    ? `快照 ${data.resolved_as_of}${data.is_exact_date ? '' : '（回落到最近可核验日）'}`
+    ? `快照 ${data.resolved_as_of}${data.is_exact_date ? '' : '（回落到最近可核验日）'} · ${data.quality_version}`
     : '只读本地成员快照 · 非实时'
+
+  const pitText =
+    data?.known_by_observation_time === true
+      ? '可证明观察日前已知'
+      : data?.known_by_observation_time === false
+        ? '快照晚于观察日，仅可复盘'
+        : '无法证明盘前已知'
+  const fetchedText = data?.fetched_at ? data.fetched_at.slice(0, 16).replace('T', ' ') : '—'
 
   return (
     <Panel title="题材交叉" meta={<span className="num">{meta}</span>} delay={220}>
@@ -258,22 +268,39 @@ export default function ThemeIntersection({
             <span className={`num ${statusTone(data.quality.status)}`}>
               {STATUS_LABEL[data.quality.status] ?? data.quality.status}
             </span>
-            <span className="text-fg-dim">命中</span>
+            <span className="text-fg-dim">已观测命中</span>
             <span className="num">{fmtInt(data.total)} 只</span>
+            {coverage ? (
+              <>
+                <span className="text-fg-dim">所选板块快照覆盖</span>
+                <span className="num">
+                  {fmtInt(coverage.selected_sector_observed)}/{fmtInt(coverage.selected_sector_count)}
+                </span>
+                <span className="text-fg-dim">全市场基础板块覆盖</span>
+                <span className="num">
+                  {fmtInt(coverage.observed_sector_count)}/{fmtInt(coverage.expected_sector_count)}
+                </span>
+                <span className="text-fg-dim">
+                  样本 {fmtInt(coverage.sample_rows)} 行 / {fmtInt(coverage.distinct_stocks)} 只
+                </span>
+              </>
+            ) : null}
             <span className="text-fg-dim">
               口径 {data.taxonomy === 'mixed' ? '混合（不同 taxonomy）' : data.taxonomy}
             </span>
-            {coverage ? (
-              <span className="text-fg-dim" title={coverage.note ?? undefined}>
-                当日快照 {fmtInt(coverage.sample_rows)} 行 / {fmtInt(coverage.distinct_stocks)} 只 /{' '}
-                {fmtInt(coverage.sector_count)} 板块（基础 {fmtInt(coverage.expected_sectors)}）
-              </span>
-            ) : null}
+            <span className="text-fg-dim">取数 {fetchedText}</span>
             {data.warnings.map((code) => (
               <span key={code} className="text-warn" title={code}>
                 {WARNING_LABEL[code] ?? code}
               </span>
             ))}
+          </div>
+
+          <div className="border-b border-line-soft px-3 py-1.5 text-[12px] leading-relaxed text-fg-muted">
+            <span className="text-warn">{pitText}</span>
+            {' · 历史信号资格：否（本轮只读展示）'}
+            {data.snapshot_age_days != null ? ` · 快照滞后 ${data.snapshot_age_days} 天` : ''}
+            {coverage?.note ? ` · ${coverage.note}` : ''}
           </div>
 
           {data.quality.status === 'NOT_COLLECTED' ? (

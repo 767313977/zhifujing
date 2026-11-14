@@ -1225,11 +1225,24 @@ export interface ThemeSearchStock {
 }
 
 export interface ThemeSearchCoverage {
+  /** 同 taxonomy、按 (taxonomy, sector_code) 去重的观察覆盖 */
+  observed_sector_count: number
+  expected_sector_count: number
+  /** 旧字段：与 observed_sector_count 同义 */
+  sector_count: number
+  /** 旧字段：与 expected_sector_count 同义 */
+  expected_sectors: number
   sample_rows: number
   distinct_stocks: number
-  sector_count: number
-  expected_sectors: number
+  coverage_taxonomies: string[]
+  selected_sector_count: number
+  selected_sector_observed: number
+  /** 当前数据源恒为 false：数量达标不等于成员完整 */
+  has_completion_proof: boolean
+  /** 旧字段：S3 起严格映射为完成证明 */
   has_completeness_evidence: boolean
+  coverage_status: string
+  coverage_unknown: boolean
   note: string | null
 }
 
@@ -1239,6 +1252,10 @@ export interface ThemeSearch {
   source_snapshot_date: string | null
   fetched_at: string | null
   is_exact_date: boolean
+  known_by_observation_time: boolean | null
+  historical_signal_eligible: boolean
+  snapshot_age_days: number | null
+  quality_version: string
   taxonomy: string
   selected_sectors: ThemeSearchSector[]
   mode: 'AND' | 'OR'
@@ -1249,7 +1266,7 @@ export interface ThemeSearch {
   offset: number
   limit: number
   coverage: ThemeSearchCoverage
-  quality: { status: string; reasons: string[] }
+  quality: { status: string; version: string; reasons: string[] }
   warnings: string[]
   items: ThemeSearchStock[]
 }

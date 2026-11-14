@@ -4,7 +4,7 @@
 `stock_concept` 不冒充全市场、分页、参数校验、只读与查询次数。
 """
 
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from sqlalchemy import create_engine, func, select
@@ -91,7 +91,11 @@ def test_and_returns_intersection_with_provenance(session):
     assert data["resolved_as_of"] == D1
     assert data["is_exact_date"] is True
     assert data["taxonomy"] == "kph_selected"
-    assert data["quality"]["status"] == ti.STATUS_VERIFIED
+    # S3：没有成员级完成日志时，即使所选板块全部有行也不能标 VERIFIED
+    assert data["quality"]["status"] == ti.STATUS_PARTIAL
+    assert data["quality"]["version"] == ti.QUALITY_VERSION
+    assert "NO_MEMBERS_COMPLETION_LOG" in data["quality"]["reasons"]
+    assert data["coverage"]["has_completion_proof"] is False
     assert data["total"] == 2
     assert [item["code"] for item in data["items"]] == ["000001", "300750"]
 
@@ -278,3 +282,193 @@ def test_route_requires_login():
     )
     calls = {dep.call for dep in route.dependant.dependencies}
     assert current_user in calls
+
+
+# ---------------------------------------------------------------- S3-A：覆盖证据
+
+
+def _coverage_db(*, tax_a_observed: int, tax_b_observed: int, rows_per_a: int = 1):
+    """taxonomy A 10 个基础板块、taxonomy B 20 个；只给部分板块写成员行。"""
+    engine = create_engine("sqlite://", future=True)
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    for index in range(1, 11):
+        db.add(SectorBasic(code=f"TA{index:02d}", name=f"A板块{index}", taxonomy="tax_a"))
+    for index in range(1, 21):
+        db.add(SectorBasic(code=f"TB{index:02d}", name=f"B板块{index}", taxonomy="tax_b"))
+    stock = 600000
+    for index in range(1, tax_a_observed + 1):
+        # 同一组股票出现在每个 A 板块里，便于验证 AND 交集
+        for offset in range(rows_per_a):
+            db.add(
+                SectorMember(
+                    trade_date=D1,
+                    sector_code=f"TA{index:02d}",
+                    code=str(stock + offset),
+                    name=f"合成股票{stock + offset}",
+                    fetched_at=datetime(2026, 11, 10, 22, 0),
+                )
+            )
+    stock = 610000
+    for index in range(1, tax_b_observed + 1):
+        db.add(
+            SectorMember(
+                trade_date=D1,
+                sector_code=f"TB{index:02d}",
+                code=str(stock),
+                name=f"合成股票{stock}",
+                fetched_at=datetime(2026, 11, 10, 22, 0),
+            )
+        )
+        stock += 1
+    db.commit()
+    return db
+
+
+def test_other_taxonomy_cannot_mask_partial_coverage():
+    """taxonomy B 有 20 个板块，不能把 taxonomy A 的 1/10 说成完整。"""
+    db = _coverage_db(tax_a_observed=1, tax_b_observed=20)
+    try:
+        data = ti.search(
+            db,
+            sector_codes=["TA01"],
+            mode="AND",
+            market="all",
+            as_of=D1,
+            limit=10,
+            offset=0,
+        )
+        coverage = data["coverage"]
+        assert coverage["coverage_taxonomies"] == ["tax_a"]
+        assert coverage["expected_sector_count"] == 10
+        assert coverage["observed_sector_count"] == 1
+        assert coverage["selected_sector_observed"] == 1
+        assert coverage["has_completion_proof"] is False
+        assert coverage["coverage_status"] == "PARTIAL_OBSERVED_COUNT"
+        assert data["quality"]["status"] == ti.STATUS_PARTIAL
+        assert "NO_MEMBERS_COMPLETION_LOG" in data["quality"]["reasons"]
+    finally:
+        db.close()
+
+
+def test_all_boards_one_row_each_is_not_completion_proof():
+    """10/10 板块都有 1 行，只能说明「观察到的板块数达到期望」，不是成员完整。"""
+    db = _coverage_db(tax_a_observed=10, tax_b_observed=20, rows_per_a=1)
+    try:
+        data = ti.search(
+            db,
+            sector_codes=["TA01", "TA02"],
+            mode="AND",
+            market="all",
+            as_of=D1,
+            limit=10,
+            offset=0,
+        )
+        coverage = data["coverage"]
+        assert coverage["observed_sector_count"] == 10
+        assert coverage["expected_sector_count"] == 10
+        assert coverage["coverage_status"] == "COMPLETE_OBSERVED_COUNT"
+        # 数量达标 ≠ 完成证明
+        assert coverage["has_completion_proof"] is False
+        assert coverage["has_completeness_evidence"] is False
+        assert data["quality"]["status"] == ti.STATUS_PARTIAL
+        assert "OBSERVED_INTERSECTION_ONLY" in data["quality"]["reasons"]
+    finally:
+        db.close()
+
+
+def test_partial_members_are_labelled_as_observed_intersection_only():
+    db = _coverage_db(tax_a_observed=2, tax_b_observed=20, rows_per_a=3)
+    try:
+        data = ti.search(
+            db,
+            sector_codes=["TA01", "TA02"],
+            mode="AND",
+            market="all",
+            as_of=D1,
+            limit=10,
+            offset=0,
+        )
+        assert data["total"] == 3
+        assert data["quality"]["status"] == ti.STATUS_PARTIAL
+        assert "OBSERVED_INTERSECTION_ONLY" in data["quality"]["reasons"]
+        assert data["coverage"]["has_completion_proof"] is False
+        assert "已观测" in (data["coverage"]["note"] or "")
+    finally:
+        db.close()
+
+
+def test_pit_prior_day_fetch_is_known_same_day_is_unknown_later_is_false():
+    db = _coverage_db(tax_a_observed=1, tax_b_observed=20)
+    try:
+        def run(fetched_at: datetime):
+            db.query(SectorMember).filter(SectorMember.sector_code == "TA01").update(
+                {"fetched_at": fetched_at}
+            )
+            db.commit()
+            return ti.search(
+                db,
+                sector_codes=["TA01"],
+                mode="AND",
+                market="all",
+                as_of=D1,
+                limit=5,
+                offset=0,
+            )
+
+        prior = run(datetime(2026, 11, 9, 22, 0))
+        assert prior["known_by_observation_time"] is True
+        # 本轮只读展示，不进入策略
+        assert prior["historical_signal_eligible"] is False
+
+        same_day = run(datetime(2026, 11, 10, 22, 0))
+        assert same_day["known_by_observation_time"] is None
+
+        later = run(datetime(2026, 11, 11, 9, 0))
+        assert later["known_by_observation_time"] is False
+    finally:
+        db.close()
+
+
+def test_latest_view_has_no_pit_claim():
+    db = _coverage_db(tax_a_observed=1, tax_b_observed=20)
+    try:
+        data = ti.search(
+            db,
+            sector_codes=["TA01"],
+            mode="AND",
+            market="all",
+            as_of=None,
+            limit=5,
+            offset=0,
+        )
+        assert data["requested_as_of"] is None
+        assert data["known_by_observation_time"] is None
+        assert data["historical_signal_eligible"] is False
+    finally:
+        db.close()
+
+
+def test_pagination_invariants_and_offset_beyond_total(session):
+    data = search(session, mode="OR", limit=2, offset=99)
+    assert data["total"] == 4
+    assert data["shown"] == 0
+    assert data["has_more"] is False
+    # offset 越过总数：返回 0 行，不反向压 total
+    assert data["offset"] > data["total"]
+    assert data["shown"] <= data["limit"]
+
+    normal = search(session, mode="OR", limit=2, offset=2)
+    assert normal["offset"] + normal["shown"] <= normal["total"]
+    assert normal["shown"] <= normal["limit"]
+
+
+def test_theme_search_never_calls_external_member_fetch(session, monkeypatch):
+    """服务层不允许调用 `_board_members` / 采集器。"""
+    def boom(*_args, **_kwargs):
+        raise AssertionError("theme-intersection must not fetch members")
+
+    monkeypatch.setattr(sector_api, "_board_members", boom)
+    data = search(session, mode="OR")
+    assert data["items"]
+

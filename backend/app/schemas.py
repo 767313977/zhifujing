@@ -1111,19 +1111,36 @@ class ThemeSearchStock(BaseModel):
 
 
 class ThemeSearchCoverage(BaseModel):
-    """当日快照覆盖。`sector_count/expected_sectors` 是全市场口径，不是所选板块。"""
+    """当日快照覆盖。
 
-    sample_rows: int
-    distinct_stocks: int
+    S3 起明确区分：
+    - `observed_sector_count` / `expected_sector_count`：**同 taxonomy**、按
+      `(taxonomy, sector_code)` 去重的观察覆盖；
+    - `has_completion_proof`：是否有成员级完成证据。当前数据源恒为 false，
+      数量达标不等于成员完整。
+    `sector_count` / `expected_sectors` / `has_completeness_evidence` 为旧字段，
+    S3 起分别映射到观察覆盖与**严格完成证明**，语义见 `quality_version`。
+    """
+
+    observed_sector_count: int
+    expected_sector_count: int
     sector_count: int
     expected_sectors: int
-    #: 是否存在「成员级采集完成」证据；当前数据源没有，恒为 false
+    sample_rows: int
+    distinct_stocks: int
+    coverage_taxonomies: list[str]
+    selected_sector_count: int
+    selected_sector_observed: int
+    has_completion_proof: bool
     has_completeness_evidence: bool
+    coverage_status: str
+    coverage_unknown: bool
     note: str | None = None
 
 
 class ThemeSearchQuality(BaseModel):
     status: str
+    version: str
     reasons: list[str] = []
 
 
@@ -1135,6 +1152,13 @@ class ThemeSearchOut(BaseModel):
     source_snapshot_date: date | None
     fetched_at: datetime | None
     is_exact_date: bool
+    #: 能否证明「观察日盘前已知」；证据不足为 null，不猜 true
+    known_by_observation_time: bool | None
+    #: 本轮只读展示，不进入任何策略/信号
+    historical_signal_eligible: bool
+    #: 所选观察日与快照日的天数差（最新视图为 null）
+    snapshot_age_days: int | None
+    quality_version: str
     taxonomy: str
     selected_sectors: list[ThemeSearchSector]
     mode: str
