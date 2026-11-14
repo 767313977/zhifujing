@@ -22,7 +22,7 @@ from datetime import date, timedelta
 from sqlalchemy import func, select, update
 
 from app.config import Settings, get_settings
-from app.db import session_scope, upsert, upsert_fill
+from app.db import session_scope, upsert, upsert_fill, user_session_scope
 from app.models import (
     CollectLog,
     IndexDaily,
@@ -896,8 +896,9 @@ class DailyCollector:
         代码口径见 `services/watch_scope`。
         """
         if codes is None:
-            with session_scope() as session:
-                codes = stock_watch_codes(session)
+            # S6.2：自选在 User DB、股票基础表在 Research DB，两个连接域显式分开
+            with session_scope() as session, user_session_scope() as user_db:
+                codes = stock_watch_codes(user_db, session)
         else:
             with session_scope() as session:
                 codes = filter_stock_codes(session, codes)

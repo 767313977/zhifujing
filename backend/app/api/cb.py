@@ -11,7 +11,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_research_db
 from app.schemas import (
     CbDetailOut,
     CbRadarOut,
@@ -47,7 +47,7 @@ def screen(
     sort: str | None = Query(None, description="score / double_low / premium / ytm / revise …"),
     limit: int = Query(200, ge=1, le=MAX_LIMIT),
     trade_date: date | None = Query(None, alias="date", description="缺省 = 最近一次快照"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> CbScreenOut:
     """按预设 + 覆盖条件筛一遍。不传日期 = 最近一次快照。"""
     if preset not in convertible.PRESETS:
@@ -83,7 +83,7 @@ def screen(
 @router.get("/radar", response_model=CbRadarOut)
 def radar(
     trade_date: date | None = Query(None, alias="date", description="缺省 = 最近一次快照"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> CbRadarOut:
     """强赎雷达：已公告的（按最后交易日升序）+ 临近的 + 承诺不强赎的。
 
@@ -96,7 +96,7 @@ def radar(
 @router.get("/by-stock/{stock_code}", response_model=list[CbStockBondOut])
 def by_stock(
     stock_code: str,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> list[CbStockBondOut]:
     """某只正股**存续**的转债（个股详情页的小卡片）。
 
@@ -118,7 +118,7 @@ def detail(
     bond_code: str,
     days: int = Query(250, ge=5, le=1000, description="走势取多少个交易日"),
     trade_date: date | None = Query(None, alias="date", description="缺省 = 该券最近一份快照"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> CbDetailOut:
     """单券详情：条款摘要 + 最近一份快照 + 走势序列。纯读库，不联网。"""
     code = normalize_code(bond_code)

@@ -758,19 +758,25 @@ def _t_metrics(
 
 
 def load_enriched(
-    session: Session, user_id: int, trade_id: int | None = None
+    user_session: Session,
+    research_session: Session,
+    user_id: int,
+    trade_id: int | None = None,
 ) -> list[dict]:
     """该用户的交易（含现算指标），按买入日倒序。
 
     `trade_id` 只给「刚保存完、要把这一笔回给前端」的路径用（2026-10-22 体检）：
     以前新增 / 编辑 / 改 T 之后都重算**全部**交易 —— 而每一笔都要拉日线、做 T 明细、
     板块快照，笔数一多写一次就要几百毫秒。现在按 id 只算当前这一笔。
+
+    S6.2（G7）：交易 / 做 T 读 **User DB**（`user_session`），日线、交易日历、
+    情绪档位、板块归属读 **Research DB**（`research_session`）。
     """
     statement = select(TradeJournal).where(TradeJournal.user_id == user_id)
     if trade_id is not None:
         statement = statement.where(TradeJournal.id == trade_id)
     trades = list(
-        session.scalars(
+        user_session.scalars(
             statement.order_by(TradeJournal.entry_date.desc(), TradeJournal.id.desc())
         )
     )
@@ -779,17 +785,17 @@ def load_enriched(
 
     codes = {trade.code for trade in trades}
     start = min(trade.entry_date for trade in trades)
-    bars = _bars(session, codes, start)
-    calendar_pos = _calendar_position(session)
-    data_end = session.scalar(select(func.max(StockDaily.trade_date)))
-    levels = _sentiment_levels(session)
-    sectors = _sectors(session, codes)
+    bars = _bars(research_session, codes, start)
+    calendar_pos = _calendar_position(research_session)
+    data_end = research_session.scalar(select(func.max(StockDaily.trade_date)))
+    levels = _sentiment_levels(research_session)
+    sectors = _sectors(research_session, codes)
 
     # 做 T 明细一次取全：按底仓分组，顺便收齐要查 [low, high] 的日期
     t_statement = select(TradeT).where(TradeT.user_id == user_id)
     if trade_id is not None:
         t_statement = t_statement.where(TradeT.trade_id == trade_id)
-    t_rows = list(session.scalars(t_statement.order_by(TradeT.trade_date, TradeT.id)))
+    t_rows = list(user_session.scalars(t_statement.order_by(TradeT.trade_date, TradeT.id)))
     t_by_trade: dict[int, list[TradeT]] = defaultdict(list)
     t_days: set[date] = set()
     for row in t_rows:
@@ -797,7 +803,7 @@ def load_enriched(
         t_days.add(row.trade_date)
         if row.leg2_date is not None:
             t_days.add(row.leg2_date)
-    ranges = _day_ranges(session, codes, t_days)
+    ranges = _day_ranges(research_session, codes, t_days)
 
     result: list[dict] = []
     for trade in trades:
@@ -940,13 +946,13 @@ def _t_stats(rows: list[dict]) -> dict:
     }
 
 
-def stats(session: Session, user_id: int) -> dict:
+def stats(user_session: Session, research_session: Session, user_id: int) -> dict:
     """按理由 / 情绪档位 / 板块分组看自己的胜率与平均收益。
 
     **只统计已平仓**：未平仓的浮动盈亏会把「这类票到底赚不赚钱」搅浑；
     它们的笔数单独放在 `open` 里。
     """
-    rows = load_enriched(session, user_id)
+    rows = load_enriched(user_session, research_session, user_id)
 
     def group(key) -> list[dict]:
         buckets: dict[str, list[dict]] = defaultdict(list)

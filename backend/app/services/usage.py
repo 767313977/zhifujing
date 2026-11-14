@@ -22,7 +22,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.config import Settings, get_settings
-from app.db import session_scope
+from app.db import research_session_scope, session_scope, user_session_scope
 from app.models import IfindUsage, TradeCalendar
 from app.services.watch_scope import stock_watch_count
 from app.timeutil import today_cn
@@ -283,8 +283,9 @@ def _watchlist_extra_calls() -> int:
     查询失败时返回 0（按基线算）—— 配额守卫不能因为一次读库失败把整轮采集带崩。
     """
     try:
-        with session_scope() as session:
-            count = stock_watch_count(session)
+        # S6.2：自选在 User DB、股票基础表在 Research DB，两个连接域显式分开
+        with user_session_scope() as user_db, research_session_scope() as research:
+            count = stock_watch_count(user_db, research)
     except Exception:  # noqa: BLE001 - 见 docstring
         logger.warning("读取自选股只数失败，日耗模型按基线 %d 只算", WATCHLIST_BASELINE)
         return 0

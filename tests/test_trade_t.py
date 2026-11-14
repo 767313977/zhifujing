@@ -318,7 +318,7 @@ def test_cannot_change_code_when_t_exists(session):
         reason_type="other",
     )
     with pytest.raises(HTTPException) as exc:
-        _apply(session, trade, payload)
+        _apply(session, session, trade, payload)
     assert exc.value.status_code == 400
     assert "先删掉再改代码" in exc.value.detail
 

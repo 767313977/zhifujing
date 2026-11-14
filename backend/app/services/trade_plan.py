@@ -288,27 +288,40 @@ def evaluate(
     return result
 
 
-def load(session: Session, user_id: int, plan_date: date | None = None) -> list[dict]:
+def load(
+    user_session: Session,
+    research_session: Session,
+    user_id: int,
+    plan_date: date | None = None,
+) -> list[dict]:
     """该用户的计划 + 现算验证，按计划日倒序。
 
     读取时顺手把「计划状态」同步回库（手动改过的除外，见 `_sync_status`）——
     任务书要求自动核对结果与落库状态一致，不要只在页面上现算。
+
+    S6.2（G7）：计划与关联日志读 **User DB**，交易日历 / 日线读 **Research DB**。
     """
     statement = select(TradePlan).where(TradePlan.user_id == user_id)
     if plan_date is not None:
         statement = statement.where(TradePlan.plan_date == plan_date)
     plans = list(
-        session.scalars(statement.order_by(TradePlan.plan_date.desc(), TradePlan.id.desc()))
+        user_session.scalars(
+            statement.order_by(TradePlan.plan_date.desc(), TradePlan.id.desc())
+        )
     )
     if not plans:
         return []
 
-    _sync_status(session, plans)
+    _sync_status(user_session, plans)
 
-    calendar, pos = _calendar(session)
-    data_end = session.scalar(select(func.max(StockDaily.trade_date)))
-    bars = _bars(session, {plan.code for plan in plans}, min(plan.plan_date for plan in plans))
-    journals = _journal_map(session, user_id, [plan.id for plan in plans])
+    calendar, pos = _calendar(research_session)
+    data_end = research_session.scalar(select(func.max(StockDaily.trade_date)))
+    bars = _bars(
+        research_session,
+        {plan.code for plan in plans},
+        min(plan.plan_date for plan in plans),
+    )
+    journals = _journal_map(user_session, user_id, [plan.id for plan in plans])
     return [
         {
             "id": plan.id,
@@ -368,7 +381,8 @@ def _journal_map(
 
 
 def create_from_signal(
-    session: Session,
+    user_session: Session,
+    research_session: Session,
     user_id: int,
     code: str,
     pattern: str,
@@ -388,7 +402,7 @@ def create_from_signal(
     digits = "".join(char for char in str(code or "").strip() if char.isdigit())[:6]
     if len(digits) != 6:
         raise ValueError("股票代码需要 6 位数字")
-    basic = session.get(StockBasic, digits)
+    basic = research_session.get(StockBasic, digits)
     if basic is None:
         raise ValueError(f"查不到这个代码「{digits}」")
 
@@ -397,15 +411,17 @@ def create_from_signal(
     )
     if signal_date is not None:
         statement = statement.where(PatternHit.trade_date == signal_date)
-    hit = session.scalar(statement.order_by(PatternHit.trade_date.desc()).limit(1))
+    hit = research_session.scalar(
+        statement.order_by(PatternHit.trade_date.desc()).limit(1)
+    )
     if hit is None:
         raise LookupError("这条形态命中不存在（可能还没扫描到那一天）")
 
-    target = plan_date or next_trade_day(hit.trade_date, session)
+    target = plan_date or next_trade_day(hit.trade_date, research_session)
     if target is None:
         raise ValueError("交易日历里没有下一个交易日，先补日历再生成计划")
 
-    existing = session.scalar(
+    existing = user_session.scalar(
         select(TradePlan).where(
             TradePlan.user_id == user_id,
             TradePlan.code == digits,
@@ -413,7 +429,7 @@ def create_from_signal(
         )
     )
     if existing is not None and not overwrite:
-        rows = load(session, user_id, target)
+        rows = load(user_session, research_session, user_id, target)
         for row in rows:
             if row["id"] == existing.id:
                 return row, False
@@ -438,7 +454,7 @@ def create_from_signal(
     }
 
     def _reload(plan_id: int) -> dict:
-        rows = load(session, user_id, target)
+        rows = load(user_session, research_session, user_id, target)
         for item in rows:
             if item["id"] == plan_id:
                 return item
@@ -454,8 +470,8 @@ def create_from_signal(
         if not overwrite:
             return _reload(existing.id), False
         _overwrite(existing)
-        session.commit()
-        session.refresh(existing)
+        user_session.commit()
+        user_session.refresh(existing)
         return _reload(existing.id), False
 
     # 上限与插入在服务层做成一个原子操作（2026-11-08 第二轮复审 P2-NEW-04）：
@@ -466,17 +482,17 @@ def create_from_signal(
         else None
     )
     try:
-        plan = insert_plan(session, user_id, {**values, "note": note})
-        session.commit()
+        plan = insert_plan(user_session, user_id, {**values, "note": note})
+        user_session.commit()
     except (PlanLimitExceeded, IntegrityError) as exc:
         # 两个并发请求都没看到对方：后者可能撞唯一索引，或在「额度最后一位」
         # 被前者先插走而拿到 0 行。**只有**这两种已识别的业务情况才允许回滚后
         # 重查同一业务键；其它 IntegrityError 原样抛出（2026-11-08 第三轮 P2-D）。
         if isinstance(exc, IntegrityError) and not _is_same_plan_unique_violation(exc):
-            session.rollback()
+            user_session.rollback()
             raise
-        session.rollback()
-        existing = session.scalar(
+        user_session.rollback()
+        existing = user_session.scalar(
             select(TradePlan).where(
                 TradePlan.user_id == user_id,
                 TradePlan.code == digits,
@@ -489,15 +505,21 @@ def create_from_signal(
         if not overwrite:
             return _reload(existing.id), False
         _overwrite(existing)
-        session.commit()
-        session.refresh(existing)
+        user_session.commit()
+        user_session.refresh(existing)
         return _reload(existing.id), False
 
-    session.refresh(plan)
+    user_session.refresh(plan)
     return _reload(plan.id), True
 
 
-def stats(session: Session, user_id: int, start: date, end: date) -> dict:
+def stats(
+    user_session: Session,
+    research_session: Session,
+    user_id: int,
+    start: date,
+    end: date,
+) -> dict:
     """周度 / 区间执行质量（FEAT-PLAN-LOOP D）。
 
     只统计**区间内计划日**的计划；执行率 = 已执行 ÷（总数 − 仅观察 − 待执行）。
@@ -510,7 +532,7 @@ def stats(session: Session, user_id: int, start: date, end: date) -> dict:
     不拿 0 顶。做 T 收益不并入（日志页也是分开列）。
     """
     plans = list(
-        session.scalars(
+        user_session.scalars(
             select(TradePlan).where(
                 TradePlan.user_id == user_id,
                 TradePlan.plan_date >= start,
@@ -518,7 +540,7 @@ def stats(session: Session, user_id: int, start: date, end: date) -> dict:
             )
         )
     )
-    _sync_status(session, plans)
+    _sync_status(user_session, plans)
 
     counts = {key: 0 for key in PLAN_STATUSES}
     for plan in plans:
@@ -528,7 +550,7 @@ def stats(session: Session, user_id: int, start: date, end: date) -> dict:
     followed = sum(1 for plan in plans if plan.actual_price is not None and plan.followed_plan)
 
     journals = list(
-        session.scalars(
+        user_session.scalars(
             select(TradeJournal).where(
                 TradeJournal.user_id == user_id,
                 TradeJournal.plan_id.in_([plan.id for plan in plans] or [-1]),
@@ -541,7 +563,7 @@ def stats(session: Session, user_id: int, start: date, end: date) -> dict:
         if journal.entry_price and journal.exit_price
     ]
     # 盈亏走交易日志同一套口径（买入日复利），除权后两个页面不会对不上
-    metrics = metrics_for(session, closed)
+    metrics = metrics_for(research_session, closed)
     returns = [
         item["return_pct"]
         for item in metrics.values()
@@ -588,9 +610,9 @@ def stats(session: Session, user_id: int, start: date, end: date) -> dict:
     }
 
 
-def admin_user_id(session: Session) -> int | None:
+def admin_user_id(user_session: Session) -> int | None:
     """简报只取管理员的计划（全局推送不能带其他会员的计划）。"""
-    return session.scalar(
+    return user_session.scalar(
         select(AppUser.id)
         .where(AppUser.is_admin.is_(True))
         .order_by(AppUser.id)
@@ -598,11 +620,13 @@ def admin_user_id(session: Session) -> int | None:
     )
 
 
-def brief_rows(session: Session, trade_date: date) -> list[dict]:
-    user_id = admin_user_id(session)
+def brief_rows(
+    user_session: Session, research_session: Session, trade_date: date
+) -> list[dict]:
+    user_id = admin_user_id(user_session)
     if user_id is None:
         return []
-    return load(session, user_id, plan_date=trade_date)
+    return load(user_session, research_session, user_id, plan_date=trade_date)
 
 
 def _levels(key_levels: dict | None) -> tuple[float | None, float | None]:
@@ -616,16 +640,20 @@ def _levels(key_levels: dict | None) -> tuple[float | None, float | None]:
     )
 
 
-def suggestions(session: Session, user_id: int) -> list[dict]:
+def suggestions(
+    research_session: Session, user_session: Session, user_id: int
+) -> list[dict]:
     """次日计划的候选：自选股 + 当日评分最高的形态命中（带出 key_levels）。
 
     自选股即使今天没有命中也会出现（价格留空，用户自己填）；形态命中只取前 10 只
     不在自选里的，避免把 50 只全部铺出来。
+
+    S6.2（G7）：形态/名称/板块读 **Research DB**，自选读 **User DB**。
     """
-    latest = session.scalar(select(func.max(PatternHit.trade_date)))
+    latest = research_session.scalar(select(func.max(PatternHit.trade_date)))
     hits = []
     if latest is not None:
-        hits = session.execute(
+        hits = research_session.execute(
             select(
                 PatternHit.code,
                 PatternHit.name,
@@ -642,13 +670,13 @@ def suggestions(session: Session, user_id: int) -> list[dict]:
         best.setdefault(row[0], row)
 
     # 只算股票：自选里可能混着可转债代码（可转债-5），给它们排计划没有意义
-    watch = set(stock_watch_codes(session, user_id))
+    watch = set(stock_watch_codes(user_session, research_session, user_id))
     # 单日命中的票可能上千只，按 900 分批（与 api/patterns、stock_phase 同一约定），
     # 不依赖 SQLite 版本对单条 SQL 变量数的上限
     names: dict[str, str | None] = {}
     for batch in chunked(sorted(watch | set(best)), 900):
         names.update(
-            session.execute(
+            research_session.execute(
                 select(StockBasic.code, StockBasic.name).where(
                     StockBasic.code.in_(batch)
                 )
@@ -696,8 +724,8 @@ def suggestions(session: Session, user_id: int) -> list[dict]:
     # 做过什么题材」，只给形态名不够。按最终名单查一次，不按候选池查（后者会白查
     # 被 `added >= 10` 截掉的票）。
     codes = {row["code"] for row in result}
-    sectors = sectors_of(session, codes)
-    industries = industries_of(session, codes)
+    sectors = sectors_of(research_session, codes)
+    industries = industries_of(research_session, codes)
     for row in result:
         row["sectors"] = sectors.get(row["code"], [])
         row["industry"] = industries.get(row["code"])

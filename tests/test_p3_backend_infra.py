@@ -70,6 +70,7 @@ def test_create_position_rejects_other_users_plan():
     with pytest.raises(ValueError):
         positions_service.create(
             session,
+            session,
             1,
             code="600519",
             entry_date=date(2026, 10, 30),
@@ -80,6 +81,7 @@ def test_create_position_rejects_other_users_plan():
     with pytest.raises(ValueError):
         positions_service.create(
             session,
+            session,
             1,
             code="600519",
             entry_date=date(2026, 10, 30),
@@ -88,6 +90,7 @@ def test_create_position_rejects_other_users_plan():
         )
     # 自己的计划可以通过，且 plan_id 落库
     journal = positions_service.create(
+        session,
         session,
         2,
         code="600519",

@@ -97,6 +97,7 @@ def db(tmp_path):
 def test_from_signal_uses_levels_and_next_trade_day(db):
     session, user_id, _ = db
     row, created = trade_plan.create_from_signal(
+        session,
         session, user_id, "300001", "wudao_start", signal_date=SIGNAL
     )
     assert created is True
@@ -111,6 +112,7 @@ def test_from_signal_uses_levels_and_next_trade_day(db):
 def test_from_signal_falls_back_stop_and_does_not_overwrite(db):
     session, user_id, _ = db
     row, created = trade_plan.create_from_signal(
+        session,
         session, user_id, "300002", "wudao_sample", signal_date=SIGNAL
     )
     assert created is True
@@ -124,6 +126,7 @@ def test_from_signal_falls_back_stop_and_does_not_overwrite(db):
     session.commit()
 
     again, created_again = trade_plan.create_from_signal(
+        session,
         session, user_id, "300002", "wudao_sample", signal_date=SIGNAL
     )
     assert created_again is False
@@ -150,14 +153,14 @@ def test_status_sync_and_manual_priority(db):
     session.add_all([past, future])
     session.commit()
 
-    rows = {row["code"]: row for row in trade_plan.load(session, user_id)}
+    rows = {row["code"]: row for row in trade_plan.load(session, session, user_id)}
     assert rows["300001"]["plan_status"] == "expired"
     assert rows["300002"]["plan_status"] == "observe"
 
     past.status = "cancelled"
     past.status_source = "manual"
     session.commit()
-    rows = {row["code"]: row for row in trade_plan.load(session, user_id)}
+    rows = {row["code"]: row for row in trade_plan.load(session, session, user_id)}
     assert rows["300001"]["plan_status"] == "cancelled"  # 手动优先，不被改回 expired
 
 
@@ -184,6 +187,7 @@ def test_execute_creates_one_linked_journal(db):
         plan.id,
         PlanExecuteIn(actual_price=10.2, followed_plan=True, deviation=None),
         session,
+        session,
         user,
     )
     second = plans_api.execute_plan(
@@ -191,6 +195,7 @@ def test_execute_creates_one_linked_journal(db):
         PlanExecuteIn(
             actual_price=10.3, followed_plan=False, deviation="追高"
         ),
+        session,
         session,
         user,
     )
@@ -263,6 +268,7 @@ def test_stats_excludes_observe_and_reports_rates(db):
     session.commit()
 
     data = trade_plan.stats(
+        session,
         session, user_id, today - timedelta(days=10), today
     )
     assert data["plans"] == 2
@@ -314,7 +320,7 @@ def test_stats_return_follows_adjusted_basis(db):
     )
     session.commit()
 
-    data = trade_plan.stats(session, user_id, TODAY - timedelta(days=10), TODAY)
+    data = trade_plan.stats(session, session, user_id, TODAY - timedelta(days=10), TODAY)
     assert data["avg_return_pct"] == 0.0
     assert data["win_rate"] == 0.0
 
@@ -332,7 +338,7 @@ def test_stats_without_closed_journal_gives_null_not_zero(db):
         )
     )
     session.commit()
-    data = trade_plan.stats(session, user_id, today, today)
+    data = trade_plan.stats(session, session, user_id, today, today)
     # 计划日就是今天、还没回填 → 待执行，不进分母；没有任何可观察计划时分母为 0
     assert data["pending"] == 1
     assert data["observable"] == 0

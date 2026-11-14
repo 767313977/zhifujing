@@ -18,7 +18,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db import get_db, session_scope
+from app.api.deps import require_research_writable
+from app.db import get_research_db, get_user_db, research_session_scope, research_writable
 from app.services import stock_research_context
 from app.jobs.collect_daily import (
     STOCK_FULL_DAYS,
@@ -342,7 +343,7 @@ def _market_fields(session: Session, code: str, latest: StockDaily | None) -> di
 def risk_badges(
     codes: str = Query(..., description="逗号分隔的 6 位代码，最多 50 个"),
     user: AppUser = Depends(current_user),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> StockRiskBadgesOut:
     """批量风险角标（FEAT-RISK-BADGES）：**只读缓存，不打任何外部接口**。
 
@@ -435,11 +436,13 @@ def risk_badges(
 def profile(
     code: str,
     user: AppUser = Depends(current_user),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
+    user_session: Session = Depends(get_user_db),
 ) -> StockProfile:
+    """S6.2：行情读 Research DB；「在不在自选里」读 User DB。"""
     code = _code(code)
     # 「在不在自选里」问的是**当前用户自己的**自选 —— 复合主键 (user_id, code)
-    item = session.get(Watchlist, (user.id, code))
+    item = user_session.get(Watchlist, (user.id, code))
     # 取 6 根：第 1 根当 latest，第 6 根用来算「五日涨跌幅」（见 _pct_chg_5d）。
     # ⚠️ 必须滤掉停牌残行（只有收盘价、`pct_chg` 为空）：iFinD 给停牌日会写这种行，
     # 不滤的话 latest 会变成「停牌日 + 旧收盘」，而同一响应的 `load_phase` 用
@@ -531,7 +534,7 @@ def daily(
         "day",
         description="day=日K week=周K month=月K。周/月由本地日线重采样得到，不额外取数",
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> list[StockDailyRow]:
     target = _code(code)
     if period not in PERIODS:
@@ -806,7 +809,7 @@ def _stock_dde(code: str, days: int, user_id: int) -> tuple[list[StockDde], str 
     `user_id` 只用于**现取的限流**（见 `DDE_FETCH_LIMIT`）：限流键取用户而不是 IP，
     因为这里花的是「账号的配额」，跟请求从哪个 IP 来无关。
     """
-    with session_scope() as reader:
+    with research_session_scope() as reader:
         cached = _read_dde(reader, code, days)
         latest = _expected_latest(reader)
 
@@ -836,6 +839,10 @@ def _stock_dde(code: str, days: int, user_id: int) -> tuple[list[StockDde], str 
         )
     _dde_fetch_limiter.fail(key)
 
+    if not research_writable():
+        # S6.2（G7）：灰度形态研究库只读 —— 研究 GET 不得隐式补采
+        return cached, "灰度形态：研究库只读，已关闭 DDE 实时补采，仅显示本地缓存"
+
     try:
         # 与每日采集串行：`collect_stock_dde` 用的是 scan_dde 那套共享限流桶，
         # 采集线程另有一套 4 req/s —— 两边并发会把 iFinD 的实际 QPS 叠到超限
@@ -849,7 +856,7 @@ def _stock_dde(code: str, days: int, user_id: int) -> tuple[list[StockDde], str 
         logger.warning("个股 %s 的 DDE 取数失败：%s", code, exc)
         return cached, "iFinD 取数失败，请稍后再试"
 
-    with session_scope() as reader:
+    with research_session_scope() as reader:
         rows = _read_dde(reader, code, days)
     if rows:
         # 被来源截断时如实说明：图里的窗口比参数要的短，不说明就成了静默少数据
@@ -872,7 +879,7 @@ def dde(
         True,
         description="False = 只读本地库，不触发按需现取（全局研究侧栏用；默认行为不变）",
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> StockDdeOut:
     """个股的 **DDE 与主力净流入**（iFinD 口径，日频）。
@@ -917,7 +924,7 @@ def dde(
 def chips(
     code: str,
     days: int = Query(250, ge=60, le=500, description="回看的交易日数"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> ChipDistributionOut:
     """筹码分布（CYQ）：获利比例 / 平均成本 / 70% 与 90% 成本区间 / 筹码峰。
@@ -980,7 +987,7 @@ def trap_check(
         max_length=80,
         description="用户补充背景（如「朋友推荐」「群里说的」「老师带单」），命中触发词时上调等级",
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> TrapCheckOut:
     """杀猪盘体检：10 个信号，**结构化证据优先、新闻只作辅助**。
@@ -1047,7 +1054,7 @@ def trap_check(
 def news(
     code: str,
     limit: int = Query(20, ge=1, le=50, description="返回最近 N 条"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> StockNewsOut:
     """个股新闻（**东财口径**，按发布时间倒序，只留讲这只票的那几条）。
@@ -1111,7 +1118,7 @@ def news(
 def notices(
     code: str,
     limit: int = Query(10, ge=1, le=30, description="返回最近 N 条"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> StockNoticesOut:
     """个股公告（东财数据中心，最近 180 天，按日期倒序）。
@@ -1143,7 +1150,7 @@ def notices(
 def reports(
     code: str,
     limit: int = Query(10, ge=1, le=20, description="返回最近 N 篇"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> StockReportsOut:
     """个股研报（东财数据中心，按报告日期倒序，缓存 1 天）。
@@ -1172,7 +1179,7 @@ def reports(
 def unlock(
     code: str,
     limit: int = Query(10, ge=1, le=20, description="返回最近 N 笔"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> StockUnlocksOut:
     """未来的限售解禁（东财数据中心，按解禁日升序，缓存 1 天）。
@@ -1198,7 +1205,7 @@ def unlock(
 
 
 @router.get("/{code}/themes", response_model=StockThemes)
-def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
+def themes(code: str, session: Session = Depends(get_research_db)) -> StockThemes:
     """该股所属的开盘红精选板块，附带板块最近一个交易日的涨跌幅。
 
     **数据来源（2026-10-21 修）**：优先读 `sector_member` —— 每晚 22:00 预取的
@@ -1268,7 +1275,7 @@ def themes(code: str, session: Session = Depends(get_db)) -> StockThemes:
 def limit_history(
     code: str,
     limit: int = Query(60, ge=1, le=250, description="最多返回多少条涨停/炸板记录"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> list[StockLimitRecord]:
     """个股最近的涨停 / 炸板记录（只读本地 `limit_pool`，不补数）。"""
     code = _code(code)
@@ -1290,7 +1297,7 @@ def limit_history(
 def stock_lhb(
     code: str,
     limit: int = Query(60, ge=1, le=250, description="最多返回多少条龙虎榜记录"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> list[LhbOut]:
     """个股最近的龙虎榜记录（只读本地 `lhb`，按日期倒序）。"""
     code = _code(code)
@@ -1310,7 +1317,7 @@ def stock_research_context_view(
     code: str,
     as_of: date | None = Query(None, description="观察日；不传则用最近交易日"),
     cutoff: str = Query("CLOSE", description="时点；当前只支持 CLOSE"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     _user: AppUser = Depends(current_user),
 ) -> StockResearchContextOut:
     """个股在观察日的「已知 / 未知 / D+1 后验」三段式依据（**只读本地库**）。
@@ -1353,8 +1360,9 @@ def _guard_quota() -> None:
 def sync(
     code: str,
     days: int = Query(STOCK_FULL_DAYS, ge=5, le=SYNC_MAX_DAYS, description="回看的交易日数"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
+    _writable: None = Depends(require_research_writable),
 ) -> dict:
     """同步该股日线到本地缓存。首次打开个股页时调用。
 
@@ -1362,6 +1370,7 @@ def sync(
     就是 iFinD 调用，一次 sync 真发十几次请求，不挡连点 / 脚本刷就会白烧配额。
     冷却**只在真去取过数时**才记账（成功或 `IfindError`）—— `CollectionBusy`（采集
     正忙）根本没发起取数，不占冷却，前端可立刻重试（与自选同步同一口径，2026-10-11 统一）。
+    ⚠️ S6.2：这是**研究库写入**接口，灰度形态下由 `require_research_writable` 直接 503。
     """
     digits = _code(code)
     # 代码必须真在库里（2026-11-01 审计 P2-3）：`_code()` 只保证 6 位数字，999999

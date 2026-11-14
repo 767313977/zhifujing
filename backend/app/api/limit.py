@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
-from app.db import get_db
+from app.db import get_research_db
 from app.models import (
     Lhb,
     LimitPool,
@@ -243,7 +243,7 @@ def _build_ladder(
 def limit_pool(
     pool_type: str = Query("up", alias="type", description="up=涨停 down=跌停 broken=炸板"),
     trade_date: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> LimitPoolOut:
     if pool_type not in POOL_TYPES:
         raise HTTPException(
@@ -287,7 +287,7 @@ def limit_pool(
 @router.get("/limit/ladder-board", response_model=LadderBoardOut)
 def ladder_board(
     trade_date: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> LadderBoardOut:
     """涨停股票池：按**昨日连板档**分组，标出今日「晋级 / 炸板 / 未晋级」。
 
@@ -455,7 +455,7 @@ def ladder_board(
 @router.get("/lhb", response_model=list[LhbOut])
 def lhb_list(
     trade_date: date | None = Query(None, alias="date"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> list[LhbOut]:
     """龙虎榜：**缺省回落到「最近有龙虎榜的那一天」**，而不是 `resolve_trade_date`。
 
@@ -486,7 +486,7 @@ def lhb_list(
 @router.get("/limit/themes", response_model=LimitThemes)
 def limit_themes(
     trade_date: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> LimitThemes:
     """涨停股的题材归属：哪些题材聚了最多涨停股，以及每只票挂的题材。
 
@@ -511,7 +511,7 @@ def limit_themes(
 @router.get("/limit/promotion", response_model=PromotionSeries)
 def promotion(
     days: int = Query(15, ge=2, le=60, description="返回最近 N 个交易日的晋级率"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> PromotionSeries:
     """连板晋级率：昨日 N 板股今日晋级到 (N+1) 板的比例。
 
@@ -615,7 +615,7 @@ def _parse_funnel_levels(raw: str) -> list[int]:
 @router.get("/limit/promotion-funnel/dates", response_model=PromotionFunnelDatesOut)
 def promotion_funnel_dates(
     days: int = Query(255, ge=1, le=300, description="返回最近 N 个有涨停池的交易日"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> PromotionFunnelDatesOut:
     """漏斗可用日期：只返回家数与采集状态摘要，不携带逐券行。"""
     return PromotionFunnelDatesOut(dates=list_funnel_dates(session, days))
@@ -626,7 +626,7 @@ def promotion_funnel(
     trade_date: date = Depends(resolve_trade_date),
     levels: str = Query("1,2,3,4", description="连板档位，逗号分隔，如 1,2,3,4"),
     include_stocks: bool = Query(True, description="是否返回逐券明细"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> PromotionFunnelOut:
     """按昨日连板档拆出「晋级 / 炸板 / 失败 / 不可验证」。
 

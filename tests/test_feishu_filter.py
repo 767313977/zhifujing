@@ -38,6 +38,7 @@ def db(tmp_path, monkeypatch):
             session.close()
 
     monkeypatch.setattr(push_brief, "session_scope", scope)
+    monkeypatch.setattr(push_brief, "user_session_scope", scope)
     # 简报里的配额节会去读真实库，测试里没必要
     monkeypatch.setattr(push_brief, "_quota_block", lambda: "")
 

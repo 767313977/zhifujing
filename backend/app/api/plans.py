@@ -12,7 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_research_db, get_user_db
 from app.models import AppUser, StockBasic, TradeJournal, TradePlan
 from app.schemas import (
     PlanExecuteIn,
@@ -109,7 +109,8 @@ def _normalize_code(code: str) -> str:
     return digits
 
 
-def _validate(session: Session, payload: TradePlanIn) -> tuple[str, str | None]:
+def _validate(research: Session, payload: TradePlanIn) -> tuple[str, str | None]:
+    """S6.2：代码存在性与交易日校验都在 Research DB（`stock_basic` / 交易日历）。"""
     if payload.buy_price <= 0 or payload.stop_price <= 0:
         raise HTTPException(status_code=400, detail="买点与放弃位都必须大于 0")
     if payload.stop_price >= payload.buy_price:
@@ -120,12 +121,12 @@ def _validate(session: Session, payload: TradePlanIn) -> tuple[str, str | None]:
     # 代码必须真在 `stock_basic` 里（2026-10-23 体检修，文案与
     # `api/watchlist.add_watchlist` 对齐）：`_normalize_code` 只校验"6 位数字"，
     # 手误的 999999 也能落一条永远「无日线」的计划行，用户还以为存上了。
-    basic = session.get(StockBasic, code)
+    basic = research.get(StockBasic, code)
     if basic is None:
         raise HTTPException(
             status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
         )
-    if not is_trade_day(payload.plan_date, session):
+    if not is_trade_day(payload.plan_date, research):
         raise HTTPException(status_code=400, detail=f"{payload.plan_date} 不是交易日")
     name = (payload.name or "").strip() or None
     if name is None:
@@ -136,29 +137,32 @@ def _validate(session: Session, payload: TradePlanIn) -> tuple[str, str | None]:
 @router.get("", response_model=TradePlanOut)
 def list_plans(
     plan_date: date | None = Query(None, alias="date"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> TradePlanOut:
     """该用户的计划（不传日期就是全部），含是否触发 / 触发后走势。"""
-    rows = trade_plan.load(session, user.id, plan_date)
+    rows = trade_plan.load(session, research, user.id, plan_date)
     return TradePlanOut(rows=[TradePlanRow.model_validate(row) for row in rows])
 
 
 @router.get("/suggestions", response_model=TradePlanSuggestionsOut)
 def suggestions(
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> TradePlanSuggestionsOut:
     """次日计划的候选：自选股 + 当日评分最高的形态命中（带出 key_levels）。"""
     return TradePlanSuggestionsOut.model_validate(
-        {"rows": trade_plan.suggestions(session, user.id)}
+        {"rows": trade_plan.suggestions(research, session, user.id)}
     )
 
 
 @router.post("/from-signal", response_model=PlanFromSignalOut)
 def create_from_signal(
     payload: PlanFromSignalIn,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> PlanFromSignalOut:
     """从形态 / 悟道名单一键生成计划（FEAT-PLAN-LOOP A）。
@@ -169,6 +173,7 @@ def create_from_signal(
     try:
         row, created = trade_plan.create_from_signal(
             session,
+            research,
             user.id,
             payload.code,
             payload.pattern,
@@ -189,7 +194,8 @@ def create_from_signal(
 def plan_stats(
     date_from: date | None = Query(None, alias="from", description="起始计划日（含）"),
     date_to: date | None = Query(None, alias="to", description="结束计划日（含）"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> PlanStatsOut:
     """区间执行质量：计划数 / 执行率 / 按计划执行率 / 关联日志盈亏（有则算）。"""
@@ -197,7 +203,7 @@ def plan_stats(
     start = date_from or (end - timedelta(days=30))
     if start > end:
         raise HTTPException(status_code=400, detail="起始日期不能晚于结束日期")
-    return PlanStatsOut(**trade_plan.stats(session, user.id, start, end))
+    return PlanStatsOut(**trade_plan.stats(session, research, user.id, start, end))
 
 
 def _fill(plan: TradePlan, name: str | None, payload: TradePlanIn) -> None:
@@ -256,10 +262,11 @@ def _plan_values(plan: TradePlan) -> dict:
 @router.post("", response_model=TradePlanRow)
 def create_plan(
     payload: TradePlanIn,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> TradePlanRow:
-    code, name = _validate(session, payload)
+    code, name = _validate(research, payload)
     plan = session.scalar(
         select(TradePlan).where(
             TradePlan.user_id == user.id,
@@ -301,17 +308,18 @@ def create_plan(
         _fill(plan, name, payload)
         session.commit()
     session.refresh(plan)
-    return _row(session, user, plan.id, plan.plan_date)
+    return _row(session, research, user, plan.id, plan.plan_date)
 
 
 @router.put("/{plan_id}", response_model=TradePlanRow)
 def update_plan(
     plan_id: int,
     payload: TradePlanIn,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> TradePlanRow:
-    code, name = _validate(session, payload)
+    code, name = _validate(research, payload)
     plan = session.get(TradePlan, plan_id)
     if plan is None or plan.user_id != user.id:
         raise HTTPException(status_code=404, detail="这条计划不存在")
@@ -342,14 +350,15 @@ def update_plan(
         raise HTTPException(
             status_code=400, detail="该票当天已有一条计划，请直接编辑那一条"
         ) from None
-    return _row(session, user, plan.id, plan.plan_date)
+    return _row(session, research, user, plan.id, plan.plan_date)
 
 
 @router.post("/{plan_id}/execute", response_model=PlanExecuteOut)
 def execute_plan(
     plan_id: int,
     payload: PlanExecuteIn,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> PlanExecuteOut:
     """回填实际买入价 + 是否按计划，并写一笔关联交易日志（FEAT-PLAN-LOOP C）。
@@ -365,7 +374,7 @@ def execute_plan(
     # 非交易日、股数 ≤ 0、仓位越界都能落库，与日志页口径对不上
     try:
         trade_journal.validate_entry(
-            session,
+            research,
             entry_date=entry_date,
             entry_price=float(payload.actual_price),
             shares=payload.shares,
@@ -444,7 +453,8 @@ def execute_plan(
         raise
     session.refresh(journal)
     return PlanExecuteOut(
-        row=_row(session, user, plan.id, plan.plan_date), journal_id=journal.id
+        row=_row(session, research, user, plan.id, plan.plan_date),
+        journal_id=journal.id,
     )
 
 
@@ -452,7 +462,8 @@ def execute_plan(
 def set_plan_status(
     plan_id: int,
     payload: PlanStatusIn,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> TradePlanRow:
     """手动改计划状态；传 `status=null` 交回自动同步（FEAT-PLAN-LOOP B）。"""
@@ -465,13 +476,13 @@ def set_plan_status(
     plan.status = status
     plan.status_source = "manual" if status is not None else None
     session.commit()
-    return _row(session, user, plan.id, plan.plan_date)
+    return _row(session, research, user, plan.id, plan.plan_date)
 
 
 @router.delete("/{plan_id}")
 def delete_plan(
     plan_id: int,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
     user: AppUser = Depends(current_user),
 ) -> dict:
     """删除计划，并把关联日志的 `plan_id` 置空（2026-11-08 第二轮复审 P2-NEW-05）。
@@ -494,7 +505,7 @@ def delete_plan(
 
 
 def _row(
-    session: Session, user: AppUser, plan_id: int, plan_date: date
+    session: Session, research: Session, user: AppUser, plan_id: int, plan_date: date
 ) -> TradePlanRow:
     """保存后回一行。
 
@@ -503,7 +514,7 @@ def _row(
     出刚保存的那一条 —— 计划攒到几十条时，每次点保存都要多等几百毫秒。计划日相同的
     计划通常只有几条，口径与列表页完全一致（同一个 `load`）。
     """
-    rows = trade_plan.load(session, user.id, plan_date)
+    rows = trade_plan.load(session, research, user.id, plan_date)
     for row in rows:
         if row["id"] == plan_id:
             return TradePlanRow.model_validate(row)

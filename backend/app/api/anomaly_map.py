@@ -40,7 +40,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db import SessionLocal, get_db
+from app.db import get_research_db
 from app.models import LimitPool, LimitReason, StockBasic, StockDaily, StockUniverse
 from app.schemas import AnomalyMapOut, IndustryStocksOut
 from app.services.patterns import is_st
@@ -400,14 +400,14 @@ def _cached_start_days(db: Session, end: date) -> dict[str, date]:
     return starts
 
 
-def build_anomaly_map(session: Session | None = None, days: int = 22) -> dict:
+def build_anomaly_map(session: Session, days: int = 22) -> dict:
     """取数主逻辑（**不依赖 FastAPI**，便于单测 / 脚本直接调用）。
 
-    传 `session` 就用它；不传就自己开一个（用完关掉）。返回可直接喂给
-    `AnomalyMapOut.model_validate` 的 dict。
+    S6.2（G7）：**必须显式传入 Session**，不再在内部兜底 `SessionLocal()` ——
+    那种隐含默认连接会绕过「研究域只读 / 用户域可写」的归属约束。
+    返回可直接喂给 `AnomalyMapOut.model_validate` 的 dict。
     """
-    owns_session = session is None
-    db = session or SessionLocal()
+    db = session
     try:
         # ---- 窗口：limit_pool 涨停池里最近 `days` 个交易日 ----
         # 用涨停池的交易日而不是 `trade_calendar`：没有异动的日子在这张图上就是空行，
@@ -654,8 +654,8 @@ def build_anomaly_map(session: Session | None = None, days: int = 22) -> dict:
             "rows": rows,
         }
     finally:
-        if owns_session:
-            db.close()
+        # Session 由调用方（FastAPI 依赖 / 脚本）负责关闭，这里不代管
+        pass
 
 
 def _make_row(
@@ -710,7 +710,7 @@ def _empty() -> dict:
 @router.get("/anomaly-map", response_model=AnomalyMapOut)
 def anomaly_map(
     days: int = Query(22, ge=5, le=60, description="回看多少个交易日"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> AnomalyMapOut:
     """个股异动图谱。口径与取数细节见模块说明与 `build_anomaly_map`。"""
     return AnomalyMapOut.model_validate(cached_anomaly_map(session, days))
@@ -804,7 +804,7 @@ def industry_stocks(
         description="板块名＝同花顺行业路径末段（已去 Ⅰ/Ⅱ/Ⅲ 级别记号），如「其他通用设备」",
     ),
     day: date | None = Query(None, alias="date", description="交易日，默认库里最新一天"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> IndustryStocksOut:
     """点「板块」后看到的该板块全部个股（异动页的下钻）。"""
     return IndustryStocksOut.model_validate(

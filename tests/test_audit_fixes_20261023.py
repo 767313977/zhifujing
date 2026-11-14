@@ -123,7 +123,7 @@ def test_plans_accepts_known_code_and_fills_name(db):
 
 def test_profile_unknown_code_404(db):
     with pytest.raises(HTTPException) as exc:
-        stock_api.profile("999999", user=_user(), session=db)
+        stock_api.profile("999999", user=_user(), session=db, user_session=db)
     assert exc.value.status_code == 404
 
 
@@ -152,7 +152,7 @@ def test_profile_with_daily_but_no_basic_still_200(db, monkeypatch):
         )
     )
     db.commit()
-    result = stock_api.profile("000001", user=_user(), session=db)
+    result = stock_api.profile("000001", user=_user(), session=db, user_session=db)
     assert result.code == "000001"
     assert result.day_count == 1
 

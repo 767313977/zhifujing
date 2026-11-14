@@ -385,9 +385,33 @@ def _add_missing_indexes(base, target_engine=None) -> list[str]:
     return added
 
 
+class ResearchDBReadOnlyError(RuntimeError):
+    """S6.2：Research DB 处于只读形态（`FUPAN_DB_SPLIT_ENABLED=true`）时仍尝试写。
+
+    这是**应用层 fail closed**：采集/CLI/子进程在灰度形态下不得写研究库，
+    即便绕过也只会在 SQLite 层被 `mode=ro` + `PRAGMA query_only` 拦住。
+    """
+
+
+def research_writable() -> bool:
+    """Research DB 当前是否允许写入（仅拆分关闭时允许）。"""
+    return not settings.db_split_enabled
+
+
 @contextmanager
 def session_scope() -> Generator[Session, None, None]:
-    """写操作使用：自动提交，异常回滚。"""
+    """**Research DB 写**操作使用：自动提交，异常回滚。
+
+    ⚠️ S6.2 起该入口只用于采集/CLI/后台任务等**研究库写**路径；查询请用
+    `research_session_scope()`，用户域写请用 `user_session_scope()`。
+    拆分打开（灰度）时直接拒绝 —— 研究库已经只读，写路径必须在更早的
+    配置/OS 层就被关闭，不能在这里静默失败。
+    """
+    if not research_writable():
+        raise ResearchDBReadOnlyError(
+            "RESEARCH_DB_READONLY: 研究库已按只读形态运行，拒绝写操作"
+            "（采集/CLI 必须在灰度形态下关闭）"
+        )
     session = SessionLocal()
     try:
         yield session
@@ -399,11 +423,29 @@ def session_scope() -> Generator[Session, None, None]:
         session.close()
 
 
-def get_db() -> Generator[Session, None, None]:
-    """FastAPI 依赖注入使用（兼容入口：拆分关闭时即研究/用户同库）。
+@contextmanager
+def research_session_scope() -> Generator[Session, None, None]:
+    """**Research DB 只读**查询使用：不提交、异常回滚、结束关闭。
 
-    S6.2 起新增 `get_research_db` / `get_user_db`；新代码应显式选择，
-    不要再依赖这个混合入口。
+    用于 API 里需要「查询期间另开一个连接」的场景（例如按需现取后重新读取）。
+    拆分关闭时与 `session_scope()` 行为一致（提交是空事务）。
+    """
+    session = ResearchSessionLocal()
+    try:
+        yield session
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def get_db() -> Generator[Session, None, None]:
+    """**兼容入口**：拆分关闭时研究/用户同库。
+
+    S6.2 起新增 `get_research_db` / `get_user_db`，路由必须显式选择其一；
+    本函数保留只为极少数「确实无法归类」的内部调用，新增路由禁止使用
+    （由 `tests/test_s7_route_ownership.py` 静态检查兜住）。
     """
     session = SessionLocal()
     try:

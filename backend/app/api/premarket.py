@@ -9,7 +9,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_research_db, get_user_db
 from app.models import AppUser
 from app.schemas import PremarketSummaryOut
 from app.services import premarket
@@ -22,16 +22,19 @@ router = APIRouter(prefix="/api/premarket", tags=["盘前"])
 def summary(
     trade_date: date | None = Query(None, alias="date", description="缺省 = 今天（北京日期）"),
     user: AppUser = Depends(current_user),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
+    user_session: Session = Depends(get_user_db),
 ) -> PremarketSummaryOut:
     """盘前聚合：昨日涨停今开、悟道名单开盘位置、自选摘要、竞价新鲜度。
 
     - 非交易日照常返回（`is_trade_day=false` + 说明文案），不 404；
     - 竞价没采到照常返回（`auction_available=false`，竞价字段全 null）；
     - 只有「未来日期」返回 404 —— 与其它按日接口的语义一致。
+
+    S6.2：行情/竞价读 Research DB，自选摘要读 User DB。
     """
     try:
-        data = premarket.summary(session, trade_date, user.id)
+        data = premarket.summary(session, user_session, trade_date, user.id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return PremarketSummaryOut(**data)

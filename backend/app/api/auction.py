@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_research_db
 from app.models import (
     SAMPLE_ASK1_PRICE,
     SAMPLE_ASK1_VOLUME,
@@ -466,7 +466,7 @@ def auction_list(
         None, description="只看该同花顺行业（**末级名**，如「出版」）—— 板块面板点进来时用"
     ),
     limit: int = Query(200, ge=1, le=1000),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> AuctionListOut:
     """竞价强度主表。
 
@@ -641,7 +641,7 @@ def auction_anomaly_view(
     ),
     order: str = Query("desc", description="desc/asc"),
     limit: int = Query(300, ge=1, le=1000),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> AuctionAnomalyOut:
     """竞价异动：昨日涨停 / 炸板 / 断板与全部竞价记录的 9:25→9:31 表现。
 
@@ -669,7 +669,7 @@ def auction_boards(
     trade_date: date | None = Query(None, alias="date"),
     min_count: int = Query(3, ge=1, description="板块内至少几只才进榜"),
     limit: int = Query(20, ge=1, le=100),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> AuctionBoardsOut:
     """板块竞价强度：按**同花顺行业（最后一级）**聚合当日的竞价数据。
 

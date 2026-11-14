@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_user_db
 from app.models import AppUser, ReviewNote
 from app.schemas import NoteIn, NoteOut, NoteSummaryOut, NoteTagCount
 from app.services.auth import current_user
@@ -72,7 +72,7 @@ def _fill(row: ReviewNote, payload: NoteIn) -> None:
 def note_summary(
     month: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="YYYY-MM"),
     user: AppUser = Depends(current_user),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
 ) -> NoteSummaryOut:
     """某月的笔记标签统计（FEAT-JOURNAL-STRUCT）：主线 / 做错 / 做对各出现多少次。
 
@@ -128,7 +128,7 @@ def note_summary(
 def get_note(
     trade_date: date,
     user: AppUser = Depends(current_user),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
 ) -> NoteOut:
     """取某天的笔记。没写过就返回空模板，前端不必区分「没写过」与「写空了」。"""
     _check_date(trade_date)
@@ -145,7 +145,7 @@ def save_note(
     trade_date: date,
     payload: NoteIn,
     user: AppUser = Depends(current_user),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
 ) -> NoteOut:
     _check_date(trade_date)
     row = session.get(ReviewNote, (user.id, trade_date))

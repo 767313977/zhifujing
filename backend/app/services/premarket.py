@@ -297,13 +297,16 @@ def _names(session: Session, codes: list[str]) -> dict[str, str | None]:
 
 
 def _watch_rows(
-    session: Session, user_id: int | None, day: date
+    research_session: Session, user_session: Session, user_id: int | None, day: date
 ) -> list[dict[str, Any]]:
-    """自选盘前摘要：最新本地收盘 + 今日竞价（有则）。"""
+    """自选盘前摘要：最新本地收盘 + 今日竞价（有则）。
+
+    S6.2：自选读 User DB，收盘/竞价读 Research DB。
+    """
     if user_id is None:
         return []
     items = list(
-        session.scalars(
+        user_session.scalars(
             select(Watchlist)
             .where(Watchlist.user_id == user_id)
             .order_by(Watchlist.added_at.desc())
@@ -312,9 +315,9 @@ def _watch_rows(
     if not items:
         return []
     codes = [item.code for item in items]
-    quotes = latest_quotes(session, codes)
-    auctions = _auction_map(session, day, codes)
-    names = _names(session, [item.code for item in items if not item.name])
+    quotes = latest_quotes(research_session, codes)
+    auctions = _auction_map(research_session, day, codes)
+    names = _names(research_session, [item.code for item in items if not item.name])
 
     rows: list[dict[str, Any]] = []
     for item in items:
@@ -335,16 +338,24 @@ def _watch_rows(
     return rows
 
 
-def summary(session: Session, trade_date: date | None = None, user_id: int | None = None) -> dict[str, Any]:
-    """盘前聚合。`trade_date` 缺省 = 今天（北京日期）。"""
+def summary(
+    research_session: Session,
+    user_session: Session,
+    trade_date: date | None = None,
+    user_id: int | None = None,
+) -> dict[str, Any]:
+    """盘前聚合。`trade_date` 缺省 = 今天（北京日期）。
+
+    S6.2（G7）：行情/竞价/涨停读 **Research DB**，自选摘要读 **User DB**。
+    """
     day = trade_date or today_cn()
     today = today_cn()
     if day > today:
         raise ValueError(f"{day} 还没到")
 
-    trading = is_trade_day(day, session)
-    prev = previous_trade_day(day, session)
-    meta = _auction_meta(session, day)
+    trading = is_trade_day(day, research_session)
+    prev = previous_trade_day(day, research_session)
+    meta = _auction_meta(research_session, day)
 
     if not trading:
         note = "今天不是交易日，竞价不会更新；下面是上一交易日的盘后数据。"
@@ -359,7 +370,7 @@ def summary(session: Session, trade_date: date | None = None, user_id: int | Non
         "prev_trade_date": prev,
         **meta,
         "note": note,
-        "limit_up": _limit_rows(session, prev, day),
-        "wudao": _wudao_rows(session, prev, day),
-        "watchlist": _watch_rows(session, user_id, day),
+        "limit_up": _limit_rows(research_session, prev, day),
+        "wudao": _wudao_rows(research_session, prev, day),
+        "watchlist": _watch_rows(research_session, user_session, user_id, day),
     }

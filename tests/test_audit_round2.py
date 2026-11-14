@@ -121,12 +121,13 @@ def test_closed_journal_backfill_is_rejected_without_history_change(db):
     """已平仓后再回填：409，且买入日 / 成本 / 收益原样不动。"""
     session, user, plan, engine = db
     journal = _journal(session, user.id, entry=D3, exit_day=D5, plan_id=plan.id)
-    before = trade_journal.load_enriched(session, user.id, journal.id)[0]
+    before = trade_journal.load_enriched(session, session, user.id, journal.id)[0]
 
     with pytest.raises(HTTPException) as info:
         plans_api.execute_plan(
             plan.id,
             PlanExecuteIn(actual_price=99.0, entry_date=D4),
+            session,
             session,
             user,
         )
@@ -142,7 +143,7 @@ def test_closed_journal_backfill_is_rejected_without_history_change(db):
         plan_row = fresh.get(TradePlan, plan.id)
         assert plan_row.status != "executed"
         assert plan_row.actual_price is None
-        after = trade_journal.load_enriched(fresh, user.id, journal.id)[0]
+        after = trade_journal.load_enriched(fresh, fresh, user.id, journal.id)[0]
     assert after["return_pct"] == before["return_pct"]
 
 
@@ -155,6 +156,7 @@ def test_backfill_entry_date_cannot_pass_existing_exit(db):
         plans_api.execute_plan(
             plan.id,
             PlanExecuteIn(actual_price=10.5, entry_date=D5),
+            session,
             session,
             user,
         )
@@ -188,6 +190,7 @@ def test_backfill_must_respect_existing_t_bounds(db):
             plan.id,
             PlanExecuteIn(actual_price=10.5, entry_date=D3),
             session,
+            session,
             user,
         )
     assert info.value.status_code == 400
@@ -220,6 +223,7 @@ def test_backfill_with_unchanged_entry_date_still_works(db):
         plan.id,
         PlanExecuteIn(actual_price=10.5, entry_date=D1),
         session,
+        session,
         user,
     )
     assert out.journal_id == journal.id
@@ -242,6 +246,7 @@ def test_backfill_failure_rolls_back_plan_and_journal(db, monkeypatch):
         plans_api.execute_plan(
             plan.id,
             PlanExecuteIn(actual_price=10.9, entry_date=D4),
+            session,
             session,
             user,
         )
@@ -266,7 +271,7 @@ def test_from_plan_returns_409_for_closed_journal_and_keeps_data(db):
     plan_snapshot = (plan.status, plan.actual_price, plan.followed_plan)
 
     with pytest.raises(HTTPException) as info:
-        positions_api.create_from_plan(plan.id, session, user)
+        positions_api.create_from_plan(plan.id, session, session, user)
     assert info.value.status_code == 409
     session.rollback()
 
@@ -290,6 +295,7 @@ def test_manual_position_with_closed_plan_journal_returns_409(db):
                 code="300001", entry_date=D5, entry_price=10.5, plan_id=plan.id
             ),
             session,
+            session,
             user,
         )
     assert info.value.status_code == 409
@@ -310,7 +316,7 @@ def test_two_sessions_execute_same_plan_keeps_single_journal(tmp_path):
             barrier.wait()
             try:
                 out = plans_api.execute_plan(
-                    plan_id, PlanExecuteIn(actual_price=10.2), session, user
+                    plan_id, PlanExecuteIn(actual_price=10.2), session, session, user
                 )
                 results.append(("ok", out.journal_id))
             except BaseException as exc:  # noqa: BLE001 - 测试要看到所有形态
@@ -401,10 +407,14 @@ def test_repeat_existing_journal_does_not_consume_limit(db, monkeypatch):
     monkeypatch.setattr(trade_journal, "MAX_ENTRIES", 1)
 
     out = plans_api.execute_plan(
-        plan.id, PlanExecuteIn(actual_price=10.6, entry_date=D4), session, user
+        plan.id,
+        PlanExecuteIn(actual_price=10.6, entry_date=D4),
+        session,
+        session,
+        user,
     )
     assert out.journal_id == journal.id
-    again = positions_api.create_from_plan(plan.id, session, user)
+    again = positions_api.create_from_plan(plan.id, session, session, user)
     assert again.id == journal.id
 
 
@@ -438,6 +448,7 @@ def test_create_plan_still_works_through_atomic_insert(db):
             note="新增",
         ),
         session,
+        session,
         user,
     )
     assert row.plan_date == D4
@@ -458,6 +469,7 @@ def test_create_plan_over_limit_returns_400(db, monkeypatch):
                 buy_price=10.2,
                 stop_price=9.2,
             ),
+            session,
             session,
             user,
         )

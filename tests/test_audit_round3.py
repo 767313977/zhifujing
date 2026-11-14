@@ -212,7 +212,7 @@ def test_execute_plan_last_slot_returns_same_journal(tmp_path):
             barrier.wait()
             try:
                 out = plans_api.execute_plan(
-                    plan_id, PlanExecuteIn(actual_price=10.2), session, user
+                    plan_id, PlanExecuteIn(actual_price=10.2), session, session, user
                 )
                 results.append(("ok", out.journal_id))
             except BaseException as exc:  # noqa: BLE001 - 测试要看到所有形态
@@ -269,7 +269,7 @@ def test_from_plan_last_slot_returns_same_position(tmp_path):
             user = session.get(AppUser, user_id)
             barrier.wait()
             try:
-                row = positions_api.create_from_plan(plan_id, session, user)
+                row = positions_api.create_from_plan(plan_id, session, session, user)
                 results.append(("ok", row.id))
             except BaseException as exc:  # noqa: BLE001
                 results.append(("err", exc))
@@ -374,6 +374,7 @@ def _run_concurrent_from_signal(engine, user_id: int, signal: date, overwrite: b
             try:
                 row, created = trade_plan.create_from_signal(
                     session,
+                    session,
                     user_id,
                     "300001",
                     "volume_surge",
@@ -450,6 +451,7 @@ def test_from_signal_overwrite_false_keeps_manual_edit(tmp_path):
     user_id, signal, target = _seed_signal(engine)
     with Session(engine) as session:
         plan, created = trade_plan.create_from_signal(
+            session,
             session, user_id, "300001", "volume_surge", signal_date=signal
         )
         assert created is True
@@ -458,6 +460,7 @@ def test_from_signal_overwrite_false_keeps_manual_edit(tmp_path):
         session.commit()
 
         again, created_again = trade_plan.create_from_signal(
+            session,
             session, user_id, "300001", "volume_surge", signal_date=signal
         )
         assert created_again is False
@@ -470,6 +473,7 @@ def test_from_signal_overwrite_true_uses_existing_row(tmp_path):
     user_id, signal, target = _seed_signal(engine)
     with Session(engine) as session:
         plan, _ = trade_plan.create_from_signal(
+            session,
             session, user_id, "300001", "volume_surge", signal_date=signal
         )
         row = session.get(TradePlan, plan["id"])
@@ -477,6 +481,7 @@ def test_from_signal_overwrite_true_uses_existing_row(tmp_path):
         session.commit()
 
         again, created = trade_plan.create_from_signal(
+            session,
             session,
             user_id,
             "300001",
@@ -508,5 +513,6 @@ def test_from_signal_limit_full_different_key_rejected(tmp_path):
     with Session(engine) as session:
         with pytest.raises(ValueError, match="交易计划最多"):
             trade_plan.create_from_signal(
+                session,
                 session, user_id, "300001", "volume_surge", signal_date=signal
             )

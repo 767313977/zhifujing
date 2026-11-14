@@ -55,9 +55,10 @@ def db(tmp_path):
 def test_create_and_load_pnl(db):
     session, user, _ = db
     journal = positions.create(
+        session,
         session, user.id, code="300001", entry_date=DAY, entry_price=10.0, shares=1000
     )
-    rows = positions.load(session, user.id)
+    rows = positions.load(session, session, user.id)
     assert len(rows) == 1
     row = rows[0]
     assert row["id"] == journal.id
@@ -65,7 +66,7 @@ def test_create_and_load_pnl(db):
     assert row["pnl"] == 1000.0
     assert row["pnl_pct"] == 10.0
     # 别人的未平仓记录不出现
-    assert all(item["id"] != journal.id for item in positions.load(session, 999))
+    assert all(item["id"] != journal.id for item in positions.load(session, session, 999))
 
 
 def test_pnl_uses_buy_day_basis_after_split():
@@ -90,13 +91,14 @@ def test_pnl_uses_buy_day_basis_after_split():
         user = session.scalar(select(AppUser))
         journal = positions.create(
             session,
+            session,
             user.id,
             code="300001",
             entry_date=entry,
             entry_price=10.0,
             shares=1000,
         )
-        row = {item["id"]: item for item in positions.load(session, user.id)}[journal.id]
+        row = {item["id"]: item for item in positions.load(session, session, user.id)}[journal.id]
         assert row["latest_close"] == 5.0  # 行情口径仍是不复权价
         assert row["pnl_pct"] == 0.0
         assert row["pnl"] == 0.0
@@ -118,7 +120,7 @@ def test_from_plan_marks_executed(db):
     session.add(plan)
     session.commit()
 
-    row = positions_api.create_from_plan(plan.id, session, user)
+    row = positions_api.create_from_plan(plan.id, session, session, user)
     assert row.entry_price == 10.5
     assert row.plan_id == plan.id
     refreshed = session.get(TradePlan, plan.id)
@@ -130,6 +132,7 @@ def test_update_and_delete_only_open(db):
     session, user, _ = db
     row = positions_api.create_position(
         PositionIn(code="300001", entry_date=DAY, entry_price=10.0, shares=100),
+        session,
         session,
         user,
     )
@@ -144,6 +147,7 @@ def test_update_and_delete_only_open(db):
             note="加仓",
         ),
         session,
+        session,
         user,
     )
     assert updated.entry_price == 12.0
@@ -155,9 +159,10 @@ def test_update_and_delete_only_open(db):
         row.id,
         PositionIn(code="300001", entry_date=DAY, entry_price=12.0, shares=200),
         session,
+        session,
         user,
     )
     assert cleared.position_pct is None
     assert cleared.note is None
     assert positions_api.delete_position(row.id, session, user)["ok"] is True
-    assert positions.load(session, user.id) == []
+    assert positions.load(session, session, user.id) == []

@@ -27,7 +27,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.db import session_scope
+from app.db import session_scope, user_session_scope
 from app.models import (
     CollectLog,
     FuturesPosition,
@@ -123,12 +123,14 @@ def _pattern_mode(settings: Settings) -> str:
 
 
 def _pattern_filters(
-    session: Session, settings: Settings
+    user_db: Session, session: Session, settings: Settings
 ) -> tuple[str, int | None, set[str] | None]:
     """按订阅维度算出形态过滤条件，返回 `(mode, min_score, only_codes)`。
 
     `watchlist` 取的是**管理员**的自选：简报与形态推送都是全局单播（只认一个收件人），
     与其他依赖「当前用户」的页面不同，这里没有请求上下文可用。
+
+    S6.2：管理员账号/自选读 User DB（`user_db`），形态数据读 Research DB（`session`）。
     """
     from app.services.watch_scope import stock_watch_codes
 
@@ -138,8 +140,8 @@ def _pattern_filters(
     min_score = settings.feishu_pattern_min_score if mode == "high" else None
     only_codes = None
     if mode == "watchlist":
-        uid = trade_plan.admin_user_id(session)
-        only_codes = set(stock_watch_codes(session, uid))
+        uid = trade_plan.admin_user_id(user_db)
+        only_codes = set(stock_watch_codes(user_db, session, uid))
     return mode, min_score, only_codes
 
 
@@ -472,13 +474,14 @@ def latest_trade_date() -> date | None:
         return session.scalar(select(func.max(MarketSentiment.trade_date)))
 
 
-def _plan_block(session, trade_date: date) -> str:
+def _plan_block(user_db, session, trade_date: date) -> str:
     """「明日计划核对」：管理员的计划在当天是否触发、触发后怎么走。
 
     只取**管理员**的计划（简报是全局推送，不能带其他会员的）；没有计划时整节省略，
     不给每天加一块空标题。结果全部用日线现算（`services/trade_plan.py`），零配额。
+    S6.2：管理员账号/计划读 User DB，日线读 Research DB。
     """
-    rows = trade_plan.brief_rows(session, trade_date)
+    rows = trade_plan.brief_rows(user_db, session, trade_date)
     if not rows:
         return ""
     lines = ["**明日计划核对**"]
@@ -507,7 +510,7 @@ def _plan_block(session, trade_date: date) -> str:
     return "\n".join(lines)
 
 
-def _watchlist_block(session, trade_date: date) -> str:
+def _watchlist_block(user_db, session, trade_date: date) -> str:
     """「自选股异动」：命中的形态 / 关键位 / 放量 / 公告 / 硬证据高风险。
 
     没有异动的自选股**不列**（自选页本身能看全量）；整节没有内容时也不出现。
@@ -516,7 +519,7 @@ def _watchlist_block(session, trade_date: date) -> str:
     """
     from app.services import brief_watchlist
 
-    return brief_watchlist.block(session, trade_date)
+    return brief_watchlist.block(user_db, session, trade_date)
 
 
 def build_brief(trade_date: date, settings: Settings | None = None) -> str:
@@ -527,10 +530,10 @@ def build_brief(trade_date: date, settings: Settings | None = None) -> str:
     `settings` 用来读「自选股异动」开关（FEAT-FEISHU-FILTER）。
     """
     settings = settings or get_settings()
-    with session_scope() as session:
+    with session_scope() as session, user_session_scope() as user_db:
         # 形态命中按订阅维度过滤（FEAT-FEISHU-FILTER）：off 时整节不出现，
         # high / watchlist 时只保留对应的命中。
-        mode, min_score, only_codes = _pattern_filters(session, settings)
+        mode, min_score, only_codes = _pattern_filters(user_db, session, settings)
         blocks = [
             f"**收盘复盘 · {trade_date.isoformat()}（{_WEEKDAY[trade_date.weekday()]}）**",
             # 配额告警放最前：它是「这份简报本身可能不完整」的前提说明
@@ -552,8 +555,8 @@ def build_brief(trade_date: date, settings: Settings | None = None) -> str:
             _pattern_block(session, trade_date, min_score, only_codes)
             if mode != "off"
             else "",
-            _plan_block(session, trade_date),
-            _watchlist_block(session, trade_date)
+            _plan_block(user_db, session, trade_date),
+            _watchlist_block(user_db, session, trade_date)
             if settings.feishu_watchlist_alerts_enabled
             else "",
             # 转债强赎提醒**不在这里**：简报 15:05 就推，而转债快照 17:30 才采，
@@ -787,8 +790,8 @@ def push_pattern_brief(
     if target_date is None:
         return {"status": "skipped", "reason": "库里还没有任何交易日数据"}
 
-    with session_scope() as session:
-        _mode, min_score, only_codes = _pattern_filters(session, settings)
+    with session_scope() as session, user_session_scope() as user_db:
+        _mode, min_score, only_codes = _pattern_filters(user_db, session, settings)
     markdown = build_pattern_brief(
         target_date, pattern, min_score=min_score, only_codes=only_codes
     )
@@ -871,8 +874,8 @@ def push_cb_redeem(
     if target_date is None:
         return {"status": "skipped", "reason": "库里还没有任何交易日数据"}
 
-    with session_scope() as session:
-        alerts = brief_watchlist.redeem_alerts(session, target_date)
+    with session_scope() as session, user_session_scope() as user_db:
+        alerts = brief_watchlist.redeem_alerts(user_db, session, target_date)
     if not alerts:
         return {"status": "skipped", "reason": "自选里没有已公告强赎的转债"}
     try:

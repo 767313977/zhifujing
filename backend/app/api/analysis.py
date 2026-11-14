@@ -34,7 +34,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_research_db, get_user_db
 from app.models import (
     AnalysisSnapshot,
     AppUser,
@@ -69,7 +69,7 @@ def resolve(
         max_length=32,
         description="股票名称 / 拼音首字母 / 6 位代码（如 贵州茅台 / gzmt / 600519）",
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> StockResolveOut:
     """名称 → 代码（**只查 `stock_basic`，不算任何行情**）。
 
@@ -93,7 +93,7 @@ def lookup(
         max_length=32,
         description="6 位代码 / 股票名称 / 拼音首字母（如 300654 / 世纪天鸿 / sjth）",
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> StockAnalysis:
     """解析输入并给出当天结论。
 
@@ -202,7 +202,7 @@ MAX_SNAPSHOT_PAYLOAD_BYTES = 64 * 1024
 @router.post("/snapshots", response_model=AnalysisSnapshotOut, status_code=201)
 def create_snapshot(
     body: AnalysisSnapshotIn,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
     user: AppUser = Depends(current_user),
 ) -> AnalysisSnapshotOut:
     """保存一条查票结论。**只存不重算** —— 结论以调用方传上来的为准。"""
@@ -249,7 +249,7 @@ def create_snapshot(
 def list_snapshots(
     code: str | None = Query(default=None, max_length=16),
     limit: int = Query(default=50, ge=1, le=200),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
     user: AppUser = Depends(current_user),
 ) -> AnalysisSnapshotListOut:
     """我的历史结论（新的在前）。`code` 可选，用来只看某只票。"""
@@ -267,7 +267,7 @@ def list_snapshots(
 @router.delete("/snapshots/{snap_id}", status_code=204)
 def delete_snapshot(
     snap_id: int,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
     user: AppUser = Depends(current_user),
 ) -> None:
     """删掉自己的一条快照。别人的 id 一律 404（不确认「存在但无权」）。"""

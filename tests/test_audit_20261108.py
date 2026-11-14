@@ -66,8 +66,8 @@ def db(tmp_path):
 
 def test_from_plan_is_idempotent(db):
     session, user, plan = db
-    first = positions_api.create_from_plan(plan_id=plan.id, session=session, user=user)
-    second = positions_api.create_from_plan(plan_id=plan.id, session=session, user=user)
+    first = positions_api.create_from_plan(plan_id=plan.id, session=session, research=session, user=user)
+    second = positions_api.create_from_plan(plan_id=plan.id, session=session, research=session, user=user)
 
     assert first.id == second.id
     journals = list(
@@ -114,10 +114,11 @@ def test_position_hides_pnl_when_quote_is_before_entry(db):
     session.add(StockDaily(trade_date=PREV, code="300001", close=11.0, pct_chg=10.0))
     session.commit()
     journal = positions.create(
+        session,
         session, user.id, code="300001", entry_date=DAY, entry_price=10.0, shares=1000
     )
 
-    row = {item["id"]: item for item in positions.load(session, user.id)}[journal.id]
+    row = {item["id"]: item for item in positions.load(session, session, user.id)}[journal.id]
     assert row["latest_date"] == PREV
     assert row["latest_close"] is None
     assert row["pnl"] is None
@@ -183,6 +184,7 @@ def test_journal_limit_applies_to_positions(db, monkeypatch):
     monkeypatch.setattr(trade_journal, "MAX_ENTRIES", 0)
     with pytest.raises(ValueError, match="交易日志最多"):
         positions.create(
+            session,
             session, user.id, code="300001", entry_date=DAY, entry_price=10.0
         )
 
@@ -208,6 +210,7 @@ def test_plan_limit_applies_to_from_signal(db, monkeypatch):
 
     with pytest.raises(ValueError, match="交易计划最多"):
         trade_plan.create_from_signal(
+            session,
             session, user.id, "300001", "volume_surge", signal_date=DAY
         )
 
@@ -232,6 +235,7 @@ def test_plan_limit_does_not_block_existing_plan(db, monkeypatch):
 
     monkeypatch.setattr(trade_plan, "MAX_PLANS", 10)
     first, created = trade_plan.create_from_signal(
+        session,
         session, user.id, "300001", "volume_surge", signal_date=DAY
     )
     assert created is True
@@ -239,6 +243,7 @@ def test_plan_limit_does_not_block_existing_plan(db, monkeypatch):
     # 库里现在 2 条（夹具 1 + 刚生成 1），上限正好卡在 2：再新增会拒，但重复生成是更新
     monkeypatch.setattr(trade_plan, "MAX_PLANS", 2)
     again, created_again = trade_plan.create_from_signal(
+        session,
         session, user.id, "300001", "volume_surge", signal_date=DAY
     )
     assert created_again is False

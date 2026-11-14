@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_research_db, get_user_db
 from app.models import (
     AppUser,
     PatternHit,
@@ -77,14 +77,23 @@ def _check_t_conflicts(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _apply(session: Session, trade: TradeJournal, payload: TradeJournalIn) -> None:
-    """校验并入参 → 写回模型。新增与修改共用。"""
+def _apply(
+    session: Session,
+    research: Session,
+    trade: TradeJournal,
+    payload: TradeJournalIn,
+) -> None:
+    """校验并入参 → 写回模型。新增与修改共用。
+
+    S6.2：`session` 是 User Session（TradeT 等用户表），`research` 是 Research
+    Session（交易日历、`stock_basic`）。
+    """
     code = _normalize_code(payload.code)
     # 建仓入参（买入价 / 股数 / 仓位 / 买入日）走三处共用的那份校验 ——
     # 持仓、计划执行与这里同一个口径（2026-11-04）
     try:
         trade_journal.validate_entry(
-            session,
+            research,
             entry_date=payload.entry_date,
             entry_price=payload.entry_price,
             shares=payload.shares,
@@ -107,7 +116,7 @@ def _apply(session: Session, trade: TradeJournal, payload: TradeJournalIn) -> No
 
     # 买入日已在上面 `validate_entry` 校验过（含交易日）
     if payload.exit_date is not None:
-        _require_trade_day(session, payload.exit_date, "卖出日")
+        _require_trade_day(research, payload.exit_date, "卖出日")
 
     # 改底仓日期前先看已有的做 T 会不会越界（新增时 trade.id 还是 None，跳过）
     if trade.id is not None:
@@ -129,7 +138,7 @@ def _apply(session: Session, trade: TradeJournal, payload: TradeJournalIn) -> No
 
     name = (payload.name or "").strip() or None
     if name is None:
-        basic = session.get(StockBasic, code)
+        basic = research.get(StockBasic, code)
         name = basic.name if basic is not None else None
 
     trade.code = code
@@ -148,12 +157,15 @@ def _apply(session: Session, trade: TradeJournal, payload: TradeJournalIn) -> No
 
 
 def _apply_t(
-    session: Session,
+    research: Session,
     trade: TradeJournal,
     row: TradeT,
     payload: TradeTIn,
 ) -> None:
-    """校验并入参 → 写回一条做 T。新增与修改共用（做 T 记录需求 §2）。"""
+    """校验并入参 → 写回一条做 T。新增与修改共用（做 T 记录需求 §2）。
+
+    `research` 是 Research Session：只用来查交易日历。
+    """
     if payload.direction not in trade_journal.T_DIRECTIONS:
         raise HTTPException(status_code=400, detail="方向不合法（正T / 倒T）")
     if payload.trigger not in trade_journal.T_TRIGGERS:
@@ -167,7 +179,7 @@ def _apply_t(
             raise HTTPException(status_code=400, detail="买卖价必须大于 0")
 
     # #3 做 T 用的是昨日及以前的底仓：买入当天的底仓 T+1 才能卖
-    _require_trade_day(session, payload.trade_date, "做 T 日期")
+    _require_trade_day(research, payload.trade_date, "做 T 日期")
     if payload.trade_date <= trade.entry_date:
         raise HTTPException(
             status_code=400, detail="做 T 要用昨日底仓：买入当天的底仓 T+1 才能卖"
@@ -188,7 +200,7 @@ def _apply_t(
             status_code=400, detail="第二腿价格与日期要同时填（没做就都留空）"
         )
     if payload.leg2_date is not None:
-        _require_trade_day(session, payload.leg2_date, "第二腿日期")
+        _require_trade_day(research, payload.leg2_date, "第二腿日期")
         if payload.leg2_date < payload.trade_date:
             raise HTTPException(
                 status_code=400, detail="第二腿日期不能早于第一腿日期"
@@ -221,9 +233,13 @@ def _apply_t(
     row.note = (payload.note or "").strip() or None
 
 
-def _row(session: Session, user: AppUser, trade_id: int) -> TradeJournalRow:
+def _row(
+    session: Session, research: Session, user: AppUser, trade_id: int
+) -> TradeJournalRow:
     # 只算当前这一笔（2026-10-22 体检）：全量重算在笔数多时是写接口的主要开销
-    rows = trade_journal.load_enriched(session, user.id, trade_id=trade_id)
+    rows = trade_journal.load_enriched(
+        session, research, user.id, trade_id=trade_id
+    )
     for row in rows:
         if row["id"] == trade_id:
             return TradeJournalRow.model_validate(row)
@@ -232,24 +248,26 @@ def _row(session: Session, user: AppUser, trade_id: int) -> TradeJournalRow:
 
 @router.get("", response_model=TradeJournalOut)
 def list_trades(
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> TradeJournalOut:
     """该用户的全部交易（含现算收益 / 回撤 / 持有天数 / 止损执行），按买入日倒序。"""
-    rows = trade_journal.load_enriched(session, user.id)
+    rows = trade_journal.load_enriched(session, research, user.id)
     return TradeJournalOut(rows=[TradeJournalRow.model_validate(row) for row in rows])
 
 
 @router.post("", response_model=TradeJournalRow)
 def create_trade(
     payload: TradeJournalIn,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> TradeJournalRow:
     # 上限与插入必须是同一个原子操作（2026-11-08 第二轮复审 P2-NEW-04）：
     # 先查一次行数再 add/commit 的写法在并发下会一起穿过 500 条。
     trade = TradeJournal(user_id=user.id)
-    _apply(session, trade, payload)
+    _apply(session, research, trade, payload)
     try:
         trade = trade_journal.insert_trade(
             session,
@@ -272,28 +290,29 @@ def create_trade(
         session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     session.commit()
-    return _row(session, user, trade.id)
+    return _row(session, research, user, trade.id)
 
 
 @router.put("/{trade_id}", response_model=TradeJournalRow)
 def update_trade(
     trade_id: int,
     payload: TradeJournalIn,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> TradeJournalRow:
     trade = session.get(TradeJournal, trade_id)
     if trade is None or trade.user_id != user.id:
         raise HTTPException(status_code=404, detail="这笔交易不存在")
-    _apply(session, trade, payload)
+    _apply(session, research, trade, payload)
     session.commit()
-    return _row(session, user, trade.id)
+    return _row(session, research, user, trade.id)
 
 
 @router.delete("/{trade_id}")
 def delete_trade(
     trade_id: int,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
     user: AppUser = Depends(current_user),
 ) -> dict:
     trade = session.get(TradeJournal, trade_id)
@@ -308,7 +327,8 @@ def delete_trade(
 def create_t(
     trade_id: int,
     payload: TradeTIn,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> TradeJournalRow:
     """给一笔底仓记一次做 T，返回更新后的整行（2026-10-21 做 T 记录需求）。"""
@@ -316,17 +336,18 @@ def create_t(
     if trade is None or trade.user_id != user.id:
         raise HTTPException(status_code=404, detail="这笔交易不存在")
     row = TradeT()
-    _apply_t(session, trade, row, payload)
+    _apply_t(research, trade, row, payload)
     session.add(row)
     session.commit()
-    return _row(session, user, trade.id)
+    return _row(session, research, user, trade.id)
 
 
 @router.put("/t/{t_id}", response_model=TradeJournalRow)
 def update_t(
     t_id: int,
     payload: TradeTIn,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> TradeJournalRow:
     """修改一次做 T（补第二腿、改价格），返回更新后的整行。"""
@@ -336,15 +357,15 @@ def update_t(
     trade = session.get(TradeJournal, row.trade_id)
     if trade is None:
         raise HTTPException(status_code=404, detail="这笔交易不存在")
-    _apply_t(session, trade, row, payload)
+    _apply_t(research, trade, row, payload)
     session.commit()
-    return _row(session, user, trade.id)
+    return _row(session, research, user, trade.id)
 
 
 @router.delete("/t/{t_id}")
 def delete_t(
     t_id: int,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
     user: AppUser = Depends(current_user),
 ) -> dict:
     row = session.get(TradeT, t_id)
@@ -357,18 +378,21 @@ def delete_t(
 
 @router.get("/stats", response_model=TradeStatsOut)
 def trade_stats(
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> TradeStatsOut:
     """按理由 / 情绪档位 / 板块分组看自己的胜率与平均收益（只统计已平仓）。"""
-    return TradeStatsOut.model_validate(trade_journal.stats(session, user.id))
+    return TradeStatsOut.model_validate(
+        trade_journal.stats(session, research, user.id)
+    )
 
 
 @router.get("/suggest", response_model=JournalReasonSuggestion)
 def suggest_reason(
     code: str = Query(..., min_length=1, max_length=16, description="6 位股票代码"),
     date: date = Query(..., description="买入日"),
-    session: Session = Depends(get_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> JournalReasonSuggestion:
     """按「代码 + 买入日」回溯当天命中的形态与所属题材，供交易日志填理由。
@@ -382,14 +406,14 @@ def suggest_reason(
     """
     target = _normalize_code(code)
     names = {pattern.key: pattern.name for pattern in PATTERNS}
-    hits = session.execute(
+    hits = research.execute(
         select(PatternHit.pattern, PatternHit.score)
         .where(PatternHit.code == target, PatternHit.trade_date == date)
         .order_by(PatternHit.score.desc())
     ).all()
     # 做 T 表单用来决定触发类型是否默认「超跌」；`load_oversold` 只返回达到阈值的，
     # 没超跌时这里就是 None（前端据此保留「其他」）
-    oversold_dev = load_oversold(session, [target]).get(target)
+    oversold_dev = load_oversold(research, [target]).get(target)
     return JournalReasonSuggestion(
         code=target,
         trade_date=date,
@@ -400,7 +424,7 @@ def suggest_reason(
             if key in names
         ],
         themes=sorted(
-            session.scalars(
+            research.scalars(
                 select(StockConcept.concept).where(
                     StockConcept.code == target, StockConcept.trade_date == date
                 )
@@ -413,7 +437,7 @@ def suggest_reason(
         # 标成今天）。前端用它判断 T 的日期是不是「今天或以后」——盘中记 T 时
         # 库里最新日线还是昨天，但那份乖离正是做 T 的依据（复查 P2-1）
         oversold_date=(
-            session.scalar(
+            research.scalar(
                 select(func.max(StockDaily.trade_date)).where(
                     StockDaily.code == target
                 )

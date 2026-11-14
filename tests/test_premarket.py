@@ -93,7 +93,7 @@ def db(tmp_path):
 
 def test_non_trading_day_degrades(db):
     session, user_id, _ = db
-    data = premarket.summary(session, date(2026, 10, 31), user_id)  # 周六
+    data = premarket.summary(session, session, date(2026, 10, 31), user_id)  # 周六
     assert data["is_trade_day"] is False
     assert data["auction_available"] is False
     assert "不是交易日" in (data["note"] or "")
@@ -102,7 +102,7 @@ def test_non_trading_day_degrades(db):
 
 def test_missing_auction_keeps_rows_but_nulls(db):
     session, user_id, _ = db
-    data = premarket.summary(session, DAY, user_id)
+    data = premarket.summary(session, session, DAY, user_id)
     assert data["is_trade_day"] is True
     assert data["prev_trade_date"] == PREV
     assert data["auction_available"] is False
@@ -145,7 +145,7 @@ def test_with_auction_computes_status_and_key_distance(db):
         ]
     )
     session.commit()
-    data = premarket.summary(session, DAY, user_id)
+    data = premarket.summary(session, session, DAY, user_id)
     rows = {row["code"]: row for row in data["limit_up"]}
     assert rows["300001"]["status"] == "高开"
     assert rows["300001"]["auction_pct"] == 5.5
@@ -161,8 +161,8 @@ def test_with_auction_computes_status_and_key_distance(db):
 
 def test_watchlist_is_per_user(db):
     session, user_id, other_id = db
-    mine = premarket.summary(session, DAY, user_id)
-    theirs = premarket.summary(session, DAY, other_id)
+    mine = premarket.summary(session, session, DAY, user_id)
+    theirs = premarket.summary(session, session, DAY, other_id)
     assert [row["code"] for row in mine["watchlist"]] == ["300001"]
     assert [row["code"] for row in theirs["watchlist"]] == ["600000"]
     assert mine["watchlist"][0]["close"] == 10.0
@@ -171,4 +171,4 @@ def test_watchlist_is_per_user(db):
 def test_future_date_raises(db):
     session, user_id, _ = db
     with pytest.raises(ValueError):
-        premarket.summary(session, date(2099, 1, 1), user_id)
+        premarket.summary(session, session, date(2099, 1, 1), user_id)

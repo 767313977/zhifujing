@@ -29,7 +29,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_user_db
 from app.models import AppUser, InviteCode
 from app.schemas import LoginIn, MeOut, PasswordIn, RegisterIn
 from app.services import auth
@@ -144,7 +144,7 @@ def register(
     payload: RegisterIn,
     request: Request,
     response: Response,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_user_db),
 ) -> MeOut:
     """用邀请码注册。成功即登录（不让刚注册的人再去登一次）。"""
     _require_secure_transport(request)
@@ -220,7 +220,7 @@ def login(
     payload: LoginIn,
     request: Request,
     response: Response,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_user_db),
 ) -> MeOut:
     _require_secure_transport(request)
     ip = auth.client_ip(request)
@@ -268,7 +268,7 @@ def login(
 
 @router.post("/logout")
 def logout(
-    request: Request, response: Response, db: Session = Depends(get_db)
+    request: Request, response: Response, db: Session = Depends(get_user_db)
 ) -> dict:
     """删掉这个会话并清 cookie。重复调用无害。
 
@@ -291,7 +291,7 @@ def change_password(
     payload: PasswordIn,
     request: Request,
     user: AppUser = Depends(auth.current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_user_db),
 ) -> MeOut:
     """改密码，并把**其它**设备踢下线。
 

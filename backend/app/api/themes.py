@@ -9,7 +9,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_research_db
 from app.schemas import ThemeBoardOut
 from app.services import theme_board
 from app.timeutil import today_cn
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/themes", tags=["主线"])
 @router.get("/board", response_model=ThemeBoardOut)
 def board(
     trade_date: date | None = Query(None, alias="date", description="缺省 = 最近有涨停数据的一天"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> ThemeBoardOut:
     """今日主线 Top N + 龙头/中军/跟风 + 新晋/延续/退潮。
 

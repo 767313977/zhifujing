@@ -83,12 +83,12 @@ def test_list_only_returns_own_rows(db):
     session, admin, owner, other = db
     mine = _trade(session, owner.id)
 
-    assert [row.id for row in list_trades(session=session, user=owner).rows] == [
+    assert [row.id for row in list_trades(session=session, research=session, user=owner).rows] == [
         mine.id
     ]
-    assert list_trades(session=session, user=other).rows == []
+    assert list_trades(session=session, research=session, user=other).rows == []
     # 管理员也一样：他名下没有记录，就一条都看不到
-    assert list_trades(session=session, user=admin).rows == []
+    assert list_trades(session=session, research=session, user=admin).rows == []
 
 
 def test_other_user_and_admin_cannot_edit_or_delete(db):

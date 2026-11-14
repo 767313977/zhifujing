@@ -136,7 +136,7 @@ def test_watchlist_accepts_bond_code_and_reads_cb_daily(db):
     user = db.scalars(select(AppUser)).one()
 
     row = watchlist_api.add_watchlist(
-        payload=WatchlistIn(code="113042"), user=user, session=db
+        payload=WatchlistIn(code="113042"), user=user, session=db, research=db
     )
 
     assert row.code == "113042"
@@ -151,7 +151,7 @@ def test_watchlist_still_rejects_unknown_code(db):
     user = db.scalars(select(AppUser)).one()
     with pytest.raises(HTTPException):
         watchlist_api.add_watchlist(
-            payload=WatchlistIn(code="999999"), user=user, session=db
+            payload=WatchlistIn(code="999999"), user=user, session=db, research=db
         )
 
 
@@ -164,7 +164,7 @@ def test_redeem_alerts_only_announced_bonds(db):
     add_daily(db, DAY, "110001", redeem_status="已满足强赎条件")
     db.commit()
 
-    alerts = brief_watchlist.redeem_alerts(db, DAY)
+    alerts = brief_watchlist.redeem_alerts(db, db, DAY)
 
     assert [alert.bond_code for alert in alerts] == ["113042"]
     line = alerts[0].line()
@@ -180,7 +180,7 @@ def test_redeem_alerts_follows_watched_stock(db):
     db.add(Watchlist(user_id=user.id, code="601229", name="上海银行"))
     db.commit()
 
-    alerts = brief_watchlist.redeem_alerts(db, DAY)
+    alerts = brief_watchlist.redeem_alerts(db, db, DAY)
 
     assert [alert.bond_code for alert in alerts] == ["113042"]
 
@@ -192,7 +192,7 @@ def test_redeem_alerts_skip_when_snapshot_missing(db):
     db.commit()
 
     # 下一个交易日还没采到快照：不能拿昨天的状态冒充「今天的提醒」
-    assert brief_watchlist.redeem_alerts(db, date(2026, 11, 2)) == []
+    assert brief_watchlist.redeem_alerts(db, db, date(2026, 11, 2)) == []
 
 
 def _seed_push(engine) -> None:
@@ -228,6 +228,7 @@ def test_push_cb_redeem_sends_once_per_bond(engine, monkeypatch):
 
     sent: list[str] = []
     monkeypatch.setattr(push_brief, "session_scope", lambda: _scope_for(engine))
+    monkeypatch.setattr(push_brief, "user_session_scope", lambda: _scope_for(engine))
     monkeypatch.setattr(
         push_brief, "send_markdown", lambda markdown, settings: sent.append(markdown) or {"ok": True}
     )
@@ -256,6 +257,7 @@ def test_push_cb_redeem_sends_once_per_bond(engine, monkeypatch):
 def test_push_cb_redeem_skips_without_snapshot(engine, monkeypatch):
     _seed_push(engine)
     monkeypatch.setattr(push_brief, "session_scope", lambda: _scope_for(engine))
+    monkeypatch.setattr(push_brief, "user_session_scope", lambda: _scope_for(engine))
     sent: list[str] = []
     monkeypatch.setattr(
         push_brief, "send_markdown", lambda markdown, settings: sent.append(markdown) or {"ok": True}
@@ -284,9 +286,9 @@ def test_stock_watch_codes_drop_bonds(db):
     db.add(StockBasic(code="601229", name="上海银行"))
     db.commit()
 
-    assert watch_scope.stock_watch_codes(db) == ["601229"]
-    assert watch_scope.stock_watch_codes(db, user.id) == ["601229"]
-    assert watch_scope.stock_watch_count(db) == 1
+    assert watch_scope.stock_watch_codes(db, db) == ["601229"]
+    assert watch_scope.stock_watch_codes(db, db, user.id) == ["601229"]
+    assert watch_scope.stock_watch_count(db, db) == 1
     assert watch_scope.filter_stock_codes(db, ["113042", "601229"]) == ["601229"]
 
 
@@ -318,6 +320,7 @@ def test_sync_watchlist_never_asks_ifind_for_bonds(engine, monkeypatch):
 
     calls: list[str] = []
     monkeypatch.setattr(collect_daily, "session_scope", lambda: _scope_for(engine))
+    monkeypatch.setattr(collect_daily, "user_session_scope", lambda: _scope_for(engine))
 
     written = collect_daily.DailyCollector.sync_watchlist(_WatchStub(calls))
 

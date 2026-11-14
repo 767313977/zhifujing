@@ -83,7 +83,7 @@ def _fear_score(session: Session) -> tuple[float | None, Any]:
 
 
 def _concentrations(
-    session: Session, user_id: int, pref: dict[str, Any]
+    user_session: Session, research_session: Session, user_id: int, pref: dict[str, Any]
 ) -> tuple[list[dict], int]:
     """`(触发的集中度项, 查不到题材归属的持仓笔数)`。
 
@@ -91,9 +91,12 @@ def _concentrations(
     本来就不进分母，另有单独的提示。题材取 `services.themes.attribute`，与个股页
     同一个口径（原来只读 `stock_concept`，那张表只记涨停股，没涨停的持仓一律查不到
     题材，集中度会静默跳过）。
+
+    S6.2：持仓（`trade_journal`）在 User DB，题材归属在 Research DB，两个 Session
+    显式分开。
     """
     journals = list(
-        session.scalars(
+        user_session.scalars(
             select(TradeJournal).where(
                 TradeJournal.user_id == user_id,
                 TradeJournal.exit_date.is_(None),
@@ -130,7 +133,7 @@ def _concentrations(
     theme_limit = pref.get("max_theme_pct")
     if theme_limit is None:
         return items, 0
-    attributions = themes.attribute(session, by_code)
+    attributions = themes.attribute(research_session, by_code)
     by_theme: dict[str, float] = defaultdict(float)
     missing = 0
     for code, pct in by_code.items():
@@ -155,11 +158,12 @@ def _concentrations(
     return items, missing
 
 
-def status(session: Session, user_id: int) -> dict[str, Any]:
-    pref = get_pref(session, user_id)
+def status(user_session: Session, research_session: Session, user_id: int) -> dict[str, Any]:
+    """用户偏好/持仓读 User DB，情绪与恐贪、题材归属读 Research DB。"""
+    pref = get_pref(user_session, user_id)
     triggers: list[str] = []
 
-    sentiment = session.scalar(
+    sentiment = research_session.scalar(
         select(MarketSentiment).order_by(MarketSentiment.trade_date.desc()).limit(1)
     )
     if (
@@ -172,7 +176,7 @@ def status(session: Session, user_id: int) -> dict[str, Any]:
             f"连板高度 {sentiment.max_consecutive} ≥ {pref['heat_consecutive']}"
         )
 
-    fear_value, fear_date = _fear_score(session)
+    fear_value, fear_date = _fear_score(research_session)
     if (
         fear_value is not None
         and pref["heat_temperature"] is not None
@@ -183,14 +187,16 @@ def status(session: Session, user_id: int) -> dict[str, Any]:
             + (f"（{fear_date}）" if fear_date else "")
         )
 
-    concentrations, missing_theme = _concentrations(session, user_id, pref)
+    concentrations, missing_theme = _concentrations(
+        user_session, research_session, user_id, pref
+    )
     overheat = bool(triggers)
     parts = triggers + [item["text"] for item in concentrations]
 
     # 未填仓位比例的持仓**不参与集中度计算**（见模块说明）。必须写出来 ——
     # 否则用户会以为「没告警 = 持仓不集中」，而实际是「这几笔根本没算」。
     missing_pct = (
-        session.scalar(
+        user_session.scalar(
             select(func.count())
             .select_from(TradeJournal)
             .where(

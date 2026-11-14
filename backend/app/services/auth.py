@@ -24,7 +24,7 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy import delete, or_
 from sqlalchemy.orm import Session
 
-from app.db import get_db, session_scope
+from app.db import get_user_db, user_session_scope
 from app.models import AppUser, UserSession
 
 logger = logging.getLogger(__name__)
@@ -300,7 +300,7 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def current_user(request: Request, db: Session = Depends(get_db)) -> AppUser:
+def current_user(request: Request, db: Session = Depends(get_user_db)) -> AppUser:
     """**业务接口的当前用户**。由 app 级依赖 `require_login` 保证已登录。"""
     user = getattr(request.state, "user", None)
     if user is None:
@@ -338,7 +338,7 @@ def require_login(request: Request) -> None:
         return
     if path in PUBLIC_PATHS:
         return
-    with session_scope() as db:
+    with user_session_scope() as db:
         user = resolve_session(db, request.cookies.get(COOKIE_NAME))
         if user is None:
             raise HTTPException(status_code=401, detail="请先登录")

@@ -33,7 +33,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_research_db
 from app.models import LimitPool, RpsDaily, SectorDaily, SectorMember
 from app.schemas import (
     FirstBoardOut,
@@ -258,7 +258,7 @@ def rps(
         pattern="^(strength|factor)$",
         description="排序：strength = 按档位原口径；factor = 在这批里按量价因子分重排",
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> RpsOut:
     """RPS 榜（默认按 RPS250 排；`dual` 只在近一年有效，见函数说明）。"""
     latest = session.scalar(select(func.max(RpsDaily.trade_date)))
@@ -322,7 +322,7 @@ def first_board(
         description="排序：board = 题材/封单/首封综合分；factor = 量价因子分（不改变入选集合）",
     ),
     limit: int = Query(50, ge=1, le=200),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> FirstBoardOut:
     """首板一进二候选（盘后）。"""
     if min_float_mv > max_float_mv:
@@ -370,7 +370,7 @@ def first_board_track(
         le=500,
         description="只统计排序后的前 N 只；0 = 全部候选（全量时顺序不影响汇总）",
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> FirstBoardTrackOut:
     """近 `days` 天按当前条件选出的首板，次日的晋级 / 开盘溢价 / 收盘收益。
 
@@ -430,7 +430,7 @@ def sector_rps(
         description="精选板块 / 行业，两个口径不可混比",
     ),
     limit: int = Query(30, ge=1, le=200),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> SectorRpsOut:
     """板块强度榜：按 20 日板块涨幅的横截面分位降序。
 
@@ -453,7 +453,7 @@ def sector_rps(
 def sector_rps_members(
     code: str = Query(..., description="板块代码，取自 `/sector-rps` 每行的 `code`"),
     trade_date: date | None = Query(None, alias="date", description="缺省 = 该板块最近一次快照日"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> SectorMembersOut:
     """板块成分股：点开 RPS 榜里的板块名时看「这个板块里都有谁」。
 
@@ -519,7 +519,7 @@ def sector_rps_track(
         pattern="^(kph_selected|kph_industry)$",
         description="精选板块 / 行业",
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> SectorTrackOut:
     """板块动量的延续性：最强 `top` 个板块在之后 5 / 20 日的表现与超额。
 
@@ -568,7 +568,7 @@ def sector_stock(
     ),
     sectors: int = Query(3, ge=1, le=10, description="取几个板块"),
     per_sector: int = Query(3, ge=1, le=10, description="每个板块取几只"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> SectorStockOut:
     """板块强度 → 个股候选（研究视图）。
 
@@ -608,7 +608,7 @@ def sector_stock_track(
     order: str = Query("gain", pattern="^(gain|factor)$"),
     sectors: int = Query(3, ge=1, le=10),
     per_sector: int = Query(3, ge=1, le=10),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> SectorStockTrackOut:
     """近 `days` 日「板块 → 个股」候选的次日表现（与形态跟踪同一份等权基准）。"""
     latest = session.scalar(select(func.max(SectorMember.trade_date)))
@@ -654,7 +654,7 @@ def rps_track(
         pattern="^(strength|factor)$",
         description="排序：strength = 档位原口径；factor = 按量价因子分重排（会改变取前 N 只的结果）",
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> RpsTrackOut:
     """RPS 榜前 `top` 只的 1 / 5 日表现与超额（只统计真跑过 RPS 的日子）。"""
     latest = session.scalar(select(func.max(RpsDaily.trade_date)))

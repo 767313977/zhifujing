@@ -12,7 +12,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_research_db
 from app.external_guard import stats as egress_stats
 from app.models import AppUser
 from app.schemas import QualityOverviewOut, QualityTimelineOut
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/quality", tags=["数据质量"])
 def overview(
     date: date | None = Query(None, description="观察日；不传用今天"),
     days: int = Query(30, ge=data_quality.MIN_DAYS, le=data_quality.MAX_DAYS),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     _user: AppUser = Depends(current_user),
 ) -> QualityOverviewOut:
     """某个交易日、六个本地来源的覆盖 / 可信度 / 缺口原因。"""
@@ -51,7 +51,7 @@ def egress(_user: AppUser = Depends(current_user)) -> dict:
 def timeline(
     source: str = Query(..., description="来源名，见 /overview 的 sources"),
     days: int = Query(120, ge=data_quality.MIN_DAYS, le=data_quality.MAX_DAYS),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     _user: AppUser = Depends(current_user),
 ) -> QualityTimelineOut:
     """单个来源的逐日状态（只读），用于判断缺口是偶发还是持续。"""

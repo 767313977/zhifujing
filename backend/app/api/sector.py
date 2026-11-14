@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
 from app.config import get_settings
-from app.db import get_db, session_scope
+from app.db import get_research_db, research_session_scope, research_writable
 from app.external_guard import enabled as external_fetch_enabled
 from app.jobs.collect_sectors import SectorCollector
 from app.models import (
@@ -406,7 +406,7 @@ def ranking(
         description="kph_selected=精选板块 kph_industry=行业板块",
     ),
     trade_date: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> SectorRanking:
     """某交易日的板块排行。
 
@@ -473,7 +473,7 @@ def series(
     code: str = Query(..., description="板块代码"),
     days: int = Query(30, ge=5, le=CURVE_MAX_DAYS, description="返回最近 N 个交易日，按日期升序"),
     trade_date: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> SectorSeries:
     """单个板块的日线序列，供板块详情走势图使用。
 
@@ -510,7 +510,7 @@ def series(
 @router.get("/heat", response_model=SectorHeat)
 def heat(
     trade_date: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> SectorHeat:
     """首页「板块热力」：精选与行业各取最热/最冷几个板块。
 
@@ -641,7 +641,7 @@ def rotation(
         description="strength=强度（开盘啦口径） pct_chg=涨幅 amount=成交额",
     ),
     trade_date: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> SectorRotation:
     """板块轮动矩阵：每列一个交易日、每行是当天的第 N 名。
 
@@ -741,7 +741,7 @@ def rotation_leaders(
     code: str = Query(..., description="板块代码（矩阵格子里那个）"),
     days: int = Query(20, ge=5, le=ROTATION_MAX_DAYS, description="跟着矩阵的窗口"),
     trade_date: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> list[RotationLeaderDay]:
     """某板块在最近 N 个交易日的**涨停股**（矩阵「领涨」行的数据）。
 
@@ -845,7 +845,7 @@ def fund_flow(
         TAXONOMY_SELECTED, description="kph_selected=精选板块 kph_industry=行业板块"
     ),
     trade_date: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> SectorFundFlowOut:
     """板块资金流（**开盘啦口径**，与站内其它板块页同一套名字）。
 
@@ -935,7 +935,7 @@ def fund_flow_history(
         FUND_FLOW_TOP, ge=3, le=FUND_FLOW_TOP_MAX, description="画几条，按累计净额的绝对值取前几名"
     ),
     trade_date: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> FundFlowHistoryOut:
     """各板块的**近 N 日累计净流入**曲线（开盘啦口径，与 `/fund-flow` 同源）。
 
@@ -1053,7 +1053,7 @@ def fund_flow_matrix(
         FUND_FLOW_MATRIX_TOP, ge=3, le=FUND_FLOW_MATRIX_TOP_MAX, description="每天取前几名"
     ),
     trade_date: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> FundFlowMatrixOut:
     """资金流多日矩阵：**列是交易日（从新到旧）、行是当日的净流入第 N 名**。
 
@@ -1147,7 +1147,7 @@ def compare(
     codes: str = Query(..., description="板块代码，逗号分隔"),
     days: int = Query(30, ge=5, le=CURVE_MAX_DAYS, description="对比窗口（交易日）"),
     trade_date: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> SectorCompare:
     """多板块走势对比。
 
@@ -1229,7 +1229,7 @@ def compare(
 def members(
     code: str = Query(..., description="板块代码"),
     trade_date: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> SectorMembers:
     """板块成分股，按当日涨跌幅降序。
@@ -1280,7 +1280,7 @@ def theme_search(
     as_of: date | None = Query(None, description="快照日；只向过去解析，不用未来快照"),
     limit: int = Query(100, ge=1, le=theme_intersection.MAX_LIMIT),
     offset: int = Query(0, ge=0, le=1_000_000),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     _user: AppUser = Depends(current_user),
 ) -> ThemeSearchOut:
     """题材 AND / OR 交叉检索（**只读本地 `sector_member` 快照**）。
@@ -1315,7 +1315,7 @@ def resonance(
     date: date | None = Query(None, description="观察交易日；不传用最近交易日"),
     limit: int = Query(100, ge=1, le=theme_intersection.MAX_LIMIT),
     offset: int = Query(0, ge=0, le=1_000_000),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     _user: AppUser = Depends(current_user),
 ) -> SectorResonanceOut:
     """板块主线共振（**只读本地库**）：成员 × 涨停梯队 × D+1 描述统计。
@@ -1369,7 +1369,7 @@ def _board_members(
     ④ 按用户滑动窗口限流（`_members_fetch_limiter`），挡枚举式抓取；
     ⑤ 复用进程内唯一的采集器（见 `_sector_collector`），令牌桶才有意义。
     """
-    with session_scope() as reader:
+    with research_session_scope() as reader:
         cached = _read_members(reader, code, trade_date)
         # 只有要现取时才去查「最近 N 个交易日」的窗口，命中缓存就不必多查一次
         oldest_fetchable = None if cached else _recent_fetch_window(reader)
@@ -1397,6 +1397,13 @@ def _board_members(
     if not external_fetch_enabled():
         # 离线验收模式：不发外呼、不占限流额度，明确回落到本地名单
         return _fallback_members(code, trade_date, None, offline=True)
+    if not research_writable():
+        # S6.2（G7）：灰度形态研究库只读 —— 研究 GET **不得隐式补采**。
+        # 明确 503，不静默回落成「当日没有名单」（那会被误读成数据源没发布）。
+        raise HTTPException(
+            status_code=503,
+            detail="灰度形态：研究库只读，已关闭板块成分股实时补采",
+        )
 
     # 真要发外部请求了，先过按用户限流（只此路径计数）。记一笔放在**取数之前**：
     # 无论取成功还是源端报错，这次外部请求都已经发出去了 —— 与 DDE 现取同口径。
@@ -1426,7 +1433,7 @@ def _board_members(
         logger.warning("板块 %s %s 成分股取数失败：%s", code, trade_date, exc)
         failed = exc
 
-    with session_scope() as reader:
+    with research_session_scope() as reader:
         rows = _read_members(reader, code, trade_date)
     if rows:
         return rows, None
@@ -1457,7 +1464,7 @@ def _fallback_members(
     ⚠️ 返回的是**未入库的 ORM 对象**（只是内存里换掉行情字段）—— 不写库、不污染缓存：
     开盘红那份发布之后，下一次打开就会读到当天真正的名单与行情。
     """
-    with session_scope() as session:
+    with research_session_scope() as session:
         fallback_day = session.scalar(
             select(func.max(SectorMember.trade_date)).where(
                 SectorMember.sector_code == code,

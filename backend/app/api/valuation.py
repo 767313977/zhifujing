@@ -9,7 +9,7 @@ from dataclasses import asdict
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_research_db
 from app.schemas import (
     IndexValuationItem,
     ValuationPointOut,
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/valuation", tags=["估值"])
 
 
 @router.get("", response_model=ValuationSummaryOut)
-def summary(session: Session = Depends(get_db)) -> ValuationSummaryOut:
+def summary(session: Session = Depends(get_research_db)) -> ValuationSummaryOut:
     """全部核心指数的当前估值 + 分位 + A 股估值温度。"""
     data = valuation.summary(session)
     return ValuationSummaryOut(
@@ -35,7 +35,7 @@ def summary(session: Session = Depends(get_db)) -> ValuationSummaryOut:
 
 
 @router.get("/{code}", response_model=ValuationSeriesOut)
-def one(code: str, session: Session = Depends(get_db)) -> ValuationSeriesOut:
+def one(code: str, session: Session = Depends(get_research_db)) -> ValuationSeriesOut:
     """单个指数的近 10 年 PE/PB 序列（给详情曲线用）。
 
     不认识的代码返回 404 —— 不要把「清单里没有」当成「这个指数没有数据」，

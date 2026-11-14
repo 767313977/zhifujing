@@ -8,7 +8,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
-from app.db import get_db
+from app.db import get_research_db
 from app.jobs.collect_qvix import CONTRACTS as VOLATILITY_CONTRACTS
 from app.models import (
     BreadthDaily,
@@ -285,7 +285,7 @@ def _benchmark_series(session: Session, dates: list[date]) -> FearGreedBenchmark
 @router.get("/overview", response_model=MarketOverview)
 def overview(
     trade_date: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> MarketOverview:
     """今日复盘首页数据：指数卡片（含技术位）+ 情绪指标 + 背离判断。
 
@@ -398,7 +398,7 @@ def overview(
 @router.get("/sentiment", response_model=list[SentimentOut])
 def sentiment_series(
     days: int = Query(60, ge=1, le=250, description="返回最近 N 个交易日，按日期升序"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> list[SentimentOut]:
     """情绪周期曲线数据。"""
     rows = list(
@@ -424,7 +424,7 @@ def sentiment_next_day_view(
     ),
     include_pending: bool = Query(True, description="是否返回 D+1 尚未到齐的日期（标 PENDING）"),
     trade_date: date | None = Query(None, alias="date", description="窗口结束日（含）"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> SentimentNextDayOut:
     """情绪环境 × 次日表现：D 日分组 → D+1 实际日线表现。
 
@@ -459,7 +459,7 @@ def fear_greed(
     days: int = Query(
         FEAR_GREED_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> FearGreedOut:
     """A 股恐惧贪婪指数（0-100，越高越贪婪）的曲线 + 最新一天的分项明细。
 
@@ -494,7 +494,7 @@ def breadth(
     days: int = Query(
         BREADTH_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> BreadthOut:
     """市场宽度温度计：站上 MA20/60/250 的个股占比 + 创 60/250 日新高新低家数。
 
@@ -537,7 +537,7 @@ def relay_temperature(
     days: int = Query(
         RELAY_TEMP_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> RelayTempOut:
     """短线接力温度（0-100，越高越热）：六项打板生态指标的固定阈值合成。
 
@@ -591,7 +591,7 @@ def futures_basis(
     days: int = Query(
         FUTURES_BASIS_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> FuturesBasisOut:
     """期指年化基差：IF / IH / IC / IM 主力连续相对现货指数的年化基差（%）。
 
@@ -657,7 +657,7 @@ def erp(
     days: int = Query(
         ERP_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> ErpOut:
     """ERP 股债性价比：沪深300 盈利收益率（100/PE-TTM）− 10Y 国债收益率（百分点）。
 
@@ -706,7 +706,7 @@ def nh_nl(
     days: int = Query(
         NHNL_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> NhNlOut:
     """NH-NL 新高新低扩散：创 60/250 日新高家数 − 新低家数，及差值的累计净值。
 
@@ -756,7 +756,7 @@ def volume_obv(
     days: int = Query(
         OBV_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> ObvOut:
     """量能潮 OBV：上涨日累加成交额、下跌日扣减的累计净额（上证指数口径）。
 
@@ -818,7 +818,7 @@ def etf_net_subscription(
     days: int = Query(
         ETF_FLOW_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> EtfFlowOut:
     """ETF 净申赎：Σ(份额变化 × 当日收盘价)，及窗口内的累计净额。
 
@@ -871,7 +871,7 @@ def margin_leverage_temp(
     days: int = Query(
         MARGIN_TEMP_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> MarginTempOut:
     """两融杠杆温度：沪深合计两融余额、20 日变化率与分位温度。
 
@@ -949,7 +949,7 @@ def margin_leverage_temp(
 
 
 @router.get("/industry-breadth", response_model=IndustryBreadthOut)
-def industry_breadth_api(session: Session = Depends(get_db)) -> IndustryBreadthOut:
+def industry_breadth_api(session: Session = Depends(get_research_db)) -> IndustryBreadthOut:
     """行业宽度（**当日横截面**）：各一级行业里「站上 MA20」的个股占比。
 
     原始值读 `stock_daily` × `stock_basic.industry`，占比**读取时现算**
@@ -1043,7 +1043,7 @@ def northbound_activity(
     days: int = Query(
         NORTHBOUND_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> NorthboundOut:
     """北向活跃度（外资参与度）：沪深股通成交额 ÷ 两市成交额（%）。
 
@@ -1118,7 +1118,7 @@ def volatility_index(
     days: int = Query(
         VOLATILITY_DAYS, ge=20, le=500, description="返回最近 N 个交易日，按日期升序"
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> VolatilityOut:
     """中国波指（QVIX）：50ETF / 300ETF 期权隐含波动率（%）。
 
@@ -1195,7 +1195,7 @@ def volatility_index(
 @router.get("/dates", response_model=list[date])
 def available_dates(
     days: int = Query(60, ge=1, le=250),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> list[date]:
     """库中已有数据的交易日，供前端日期切换。"""
     rows = list(
@@ -1211,7 +1211,7 @@ def available_dates(
 @router.get("/index-history", response_model=IndexHistory)
 def index_history(
     days: int = Query(120, ge=5, le=500, description="返回最近 N 个有指数数据的交易日"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> IndexHistory:
     """指数历史序列，按日期升序对齐。
 
@@ -1291,7 +1291,7 @@ AD_BUCKETS: tuple[tuple[str, float | None, float | None], ...] = (
 @router.get("/advance-decline", response_model=AdvanceDeclineOut)
 def advance_decline(
     trade_date: date | None = Query(None, description="缺省 = 库里最新的个股日线日"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> AdvanceDeclineOut:
     """全 A 涨跌分布：各区间家数 + 平均/中位数涨跌幅。
 

@@ -11,7 +11,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.api.deps import require_research_writable
+from app.db import get_research_db, get_user_db
 from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
 from app.models import (
     AppUser,
@@ -97,6 +98,7 @@ def _row(
     quote: StockDaily | None,
     names: dict[str, str | None] | None = None,
 ) -> WatchlistRow:
+    """`session` 是 **Research Session**：这里只查 `stock_basic` 补名字，不写库。"""
     # 兜底：老数据里 `name` 可能是空的（2026-09-27 之前加自选时不落名字）。
     # 这里只补到内存对象上供本次响应使用，**不写库** —— 读路径不做写操作
     #
@@ -121,8 +123,11 @@ def _row(
 
 @router.get("", response_model=list[WatchlistRow])
 def list_watchlist(
-    user: AppUser = Depends(current_user), session: Session = Depends(get_db)
+    user: AppUser = Depends(current_user),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
 ) -> list[WatchlistRow]:
+    """S6.2：自选读 User DB，行情/名称补全读 Research DB。"""
     items = list(
         session.scalars(
             select(Watchlist)
@@ -130,40 +135,41 @@ def list_watchlist(
             .order_by(Watchlist.added_at.desc())
         )
     )
-    quotes = _latest_quotes(session, [item.code for item in items])
+    quotes = _latest_quotes(research, [item.code for item in items])
     # 缺名字的老数据一次查完（见 `_row` 的说明），别在循环里逐只 `session.get`
     missing = [item.code for item in items if not item.name]
     names: dict[str, str | None] = {}
     if missing:
         names = dict(
-            session.execute(
+            research.execute(
                 select(StockBasic.code, StockBasic.name).where(
                     StockBasic.code.in_(missing)
                 )
             ).all()
         )
         # 转债代码在 `stock_basic` 里查不到，补一次 `cb_basic`（可转债-5）
-        for code, name in session.execute(
+        for code, name in research.execute(
             select(CbBasic.bond_code, CbBasic.bond_name).where(
                 CbBasic.bond_code.in_([item for item in missing if item not in names])
             )
         ).all():
             names[code] = name
         # ETF 再补一次 `etf_basic`（ETF-5）
-        for code, name in session.execute(
+        for code, name in research.execute(
             select(EtfBasic.code, EtfBasic.name).where(
                 EtfBasic.code.in_([item for item in missing if item not in names])
             )
         ).all():
             names[code] = name
-    return [_row(session, item, quotes.get(item.code), names) for item in items]
+    return [_row(research, item, quotes.get(item.code), names) for item in items]
 
 
 @router.post("", response_model=WatchlistRow)
 def add_watchlist(
     payload: WatchlistIn,
     user: AppUser = Depends(current_user),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
 ) -> WatchlistRow:
     """加入自选。`code` 字段收代码、股票名称或拼音首字母（见 `_resolve`）。"""
     code = _resolve(payload.code)
@@ -171,16 +177,16 @@ def add_watchlist(
     existing = session.get(Watchlist, (user.id, code))
     if existing is not None:
         # 重复加入当成功处理，前端连点不会报错
-        return _row(session, existing, _latest_quotes(session, [code]).get(code))
+        return _row(research, existing, _latest_quotes(research, [code]).get(code))
 
     # 代码必须真在 `stock_basic`（或 `cb_basic` / `etf_basic`）里。`resolve_code` 对 6 位
     # 数字是**不查库直接放行**的（它是通用解析器，改名/别处都要用，不该在这里收紧），
     # 所以「库里有没有这只票」只能在这一层兜住：不查的话，加一个 999999 之类的假代码
     # 进去，随后的同步就会拿它去问 iFinD —— 全是白花的配额（2026-10-11 加）。
     if (
-        session.get(StockBasic, code) is None
-        and session.get(CbBasic, code) is None
-        and session.get(EtfBasic, code) is None
+        research.get(StockBasic, code) is None
+        and research.get(CbBasic, code) is None
+        and research.get(EtfBasic, code) is None
     ):
         raise HTTPException(
             status_code=400, detail=f"查不到这个代码「{code}」，请确认后重试"
@@ -205,7 +211,7 @@ def add_watchlist(
         code=code,
         # 名字在**加入时**就落库（没传就用本地的简称）：只存代码的话，
         # 之后每次读自选都要回查 `stock_basic` 才显示得出名字
-        name=payload.name or _known_name(session, code),
+        name=payload.name or _known_name(research, code),
         note=payload.note,
     )
 
@@ -222,11 +228,11 @@ def add_watchlist(
         if existing is None:
             # 理论上不会走到：唯一约束只可能被同一把主键挡下
             raise
-        return _row(session, existing, _latest_quotes(session, [code]).get(code))
+        return _row(research, existing, _latest_quotes(research, [code]).get(code))
     session.refresh(row)
     # 与「重复加入」「改备注」两个分支保持一致：带上最新行情。以前这里硬传 None，
     # 结果刚加进去的那只票前端看不到现价（2026-10-12 修）。
-    return _row(session, row, _latest_quotes(session, [row.code]).get(row.code))
+    return _row(research, row, _latest_quotes(research, [row.code]).get(row.code))
 
 
 @router.patch("/{code}", response_model=WatchlistRow)
@@ -234,7 +240,8 @@ def update_watchlist(
     code: str,
     payload: WatchlistPatchIn,
     user: AppUser = Depends(current_user),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
 ) -> WatchlistRow:
     """更新备注或名称。只能改自己的 —— 别人的票在这里取不到，直接 404。"""
     row = session.get(Watchlist, (user.id, _normalize_code(code)))
@@ -246,14 +253,14 @@ def update_watchlist(
         row.name = payload.name
     session.commit()
     session.refresh(row)
-    return _row(session, row, _latest_quotes(session, [row.code]).get(row.code))
+    return _row(research, row, _latest_quotes(research, [row.code]).get(row.code))
 
 
 @router.delete("/{code}")
 def remove_watchlist(
     code: str,
     user: AppUser = Depends(current_user),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
 ) -> dict:
     row = session.get(Watchlist, (user.id, _normalize_code(code)))
     if row is None:
@@ -281,7 +288,9 @@ def _guard_quota() -> None:
 @router.post("/sync")
 def sync_watchlist(
     user: AppUser = Depends(current_user),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
+    _writable: None = Depends(require_research_writable),
     days: int = Query(250, ge=5, le=250, description="回看的交易日数"),
 ) -> dict:
     """同步**自己**自选股的日线到本地缓存。
@@ -290,6 +299,7 @@ def sync_watchlist(
 
     ⚠️ 只同步自己的票、不跑全表：会员点一下就让服务器去同步全市场是没道理的，
     那也正是「谁的请求谁付账」这条最简单的分寸。全表的同步由每日采集负责。
+    ⚠️ S6.2：这是**研究库写入**接口，灰度形态下由 `require_research_writable` 直接 503。
     """
     _guard_quota()
 
@@ -308,7 +318,7 @@ def sync_watchlist(
         # 它们的日线分别由每日采集写 `cb_daily` / `etf_bar`，拿它们去问 iFinD 股票
         # 日线接口只会白花配额、还报错。
         codes = list(
-            session.scalars(select(StockBasic.code).where(StockBasic.code.in_(codes)))
+            research.scalars(select(StockBasic.code).where(StockBasic.code.in_(codes)))
         )
     if not codes:
         return {"rows": 0}

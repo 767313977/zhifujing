@@ -156,7 +156,7 @@ def test_positions_reject_invalid_entry(db, over):
     session, user = db
     with pytest.raises(Exception) as info:  # noqa: PT011 - 统一断言 400
         positions_api.create_position(
-            payload=PositionIn(**_base(**over)), session=session, user=user
+            payload=PositionIn(**_base(**over)), session=session, research=session, user=user
         )
     assert info.value.status_code == 400
 
@@ -166,7 +166,7 @@ def test_journal_reject_invalid_entry(db, over):
     session, user = db
     with pytest.raises(Exception) as info:  # noqa: PT011
         journal_api.create_trade(
-            payload=TradeJournalIn(**_base(**over)), session=session, user=user
+            payload=TradeJournalIn(**_base(**over)), session=session, research=session, user=user
         )
     assert info.value.status_code == 400
 
@@ -181,7 +181,7 @@ def test_plan_execute_rejects_invalid_entry(db, over):
     data.pop("code", None)
     with pytest.raises(Exception) as info:  # noqa: PT011
         plans_api.execute_plan(
-            plan_id=plan.id, payload=PlanExecuteIn(**data), session=session, user=user
+            plan_id=plan.id, payload=PlanExecuteIn(**data), session=session, research=session, user=user
         )
     assert info.value.status_code == 400
 
@@ -245,6 +245,6 @@ def test_watchlist_patch_does_not_need_code(db):
     session.add(Watchlist(user_id=user.id, code="300001", name="测试A"))
     session.commit()
     row = watchlist_api.update_watchlist(
-        code="300001", payload=WatchlistPatchIn(note="新备注"), user=user, session=session
+        code="300001", payload=WatchlistPatchIn(note="新备注"), user=user, session=session, research=session
     )
     assert row.note == "新备注"

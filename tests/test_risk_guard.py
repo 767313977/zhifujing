@@ -67,7 +67,7 @@ def test_defaults_and_overheat(db):
     pref = risk.get_pref(session, user.id)
     assert pref["heat_consecutive"] == 6
 
-    data = risk.status(session, user.id)
+    data = risk.status(session, session, user.id)
     assert data["overheat"] is True
     assert any("连板高度" in item for item in data["triggers"])
 
@@ -97,7 +97,7 @@ def test_theme_concentration_reads_sector_member(db):
     )
     session.commit()
 
-    data = risk.status(session, user.id)
+    data = risk.status(session, session, user.id)
     kinds = {(item["kind"], item["name"]) for item in data["concentration"]}
     assert ("theme", "白酒") in kinds
 
@@ -119,7 +119,7 @@ def test_missing_theme_is_disclosed(db):
         },
     )
 
-    data = risk.status(session, user.id)
+    data = risk.status(session, session, user.id)
     assert data["concentration"] == []
     assert "3 笔持仓查不到题材归属" in data["message"]
 
@@ -138,7 +138,7 @@ def test_missing_position_pct_is_disclosed(db):
     )
     session.commit()
 
-    data = risk.status(session, user.id)
+    data = risk.status(session, session, user.id)
     assert "1 笔持仓未填仓位比例" in data["message"]
     assert "不参与集中度计算" in data["message"]
     # 只提示、不阻断：过热仍然只看连板 / 恐贪
@@ -170,7 +170,7 @@ def test_missing_position_pct_note_when_no_trigger(db):
     )
     session.commit()
 
-    data = risk.status(session, user.id)
+    data = risk.status(session, session, user.id)
     assert data["concentration"] == []
     assert data["message"].startswith("当前没有触发风控提醒")
     assert "1 笔持仓未填仓位比例" in data["message"]
@@ -189,7 +189,7 @@ def test_pref_change_reflects_status(db):
             "strict_mode": True,
         },
     )
-    data = risk.status(session, user.id)
+    data = risk.status(session, session, user.id)
     assert data["overheat"] is False
     assert data["concentration"] == []
     assert data["strict_mode"] is True

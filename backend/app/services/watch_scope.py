@@ -39,19 +39,30 @@ def is_etf_code(code: str) -> bool:
     return bool(code) and code.startswith(ETF_PREFIXES)
 
 
-def stock_watch_codes(session: Session, user_id: int | None = None) -> list[str]:
+def stock_watch_codes(
+    user_session: Session,
+    research_session: Session,
+    user_id: int | None = None,
+) -> list[str]:
     """自选里的**股票**代码（去重）。`user_id` 为空时取全站并集。
 
     转债 / ETF 不在 `stock_basic` 里，天然被这一层挡掉（2026-10-30 / 10-31）。
+
+    S6.2（G7）：`watchlist` 在 User DB、`stock_basic` 在 Research DB，两库不能
+    JOIN，改为「先读自选代码 → 再用研究库的 `stock_basic` 过滤」两步。
     """
-    statement = (
-        select(Watchlist.code)
-        .distinct()
-        .where(Watchlist.code.in_(select(StockBasic.code)))
-    )
+    statement = select(Watchlist.code).distinct()
     if user_id is not None:
         statement = statement.where(Watchlist.user_id == user_id)
-    return list(session.scalars(statement))
+    codes = list(user_session.scalars(statement))
+    if not codes:
+        return []
+    known = set(
+        research_session.scalars(
+            select(StockBasic.code).where(StockBasic.code.in_(codes))
+        )
+    )
+    return [code for code in codes if code in known]
 
 
 def filter_stock_codes(session: Session, codes: list[str]) -> list[str]:
@@ -62,16 +73,22 @@ def filter_stock_codes(session: Session, codes: list[str]) -> list[str]:
     return [code for code in codes if code in known]
 
 
-def stock_watch_count(session: Session) -> int:
-    """自选里的股票只数（去重，与 `sync_watchlist` 的并集口径一致）。"""
-    return int(
-        session.scalar(
-            select(func.count(func.distinct(Watchlist.code))).where(
-                Watchlist.code.in_(select(StockBasic.code))
-            )
-        )
-        or 0
+def stock_watch_count(user_session: Session, research_session: Session) -> int:
+    """自选里的股票只数（去重，与 `sync_watchlist` 的并集口径一致）。
+
+    S6.2：两步走（User DB 读代码 → Research DB 过滤股票），不能跨库 JOIN。
+    """
+    codes = list(
+        user_session.scalars(select(Watchlist.code).distinct())
     )
+    if not codes:
+        return 0
+    known = set(
+        research_session.scalars(
+            select(StockBasic.code).where(StockBasic.code.in_(codes))
+        )
+    )
+    return len({code for code in codes if code in known})
 
 
 def latest_quotes(

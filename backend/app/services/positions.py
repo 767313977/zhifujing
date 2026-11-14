@@ -63,10 +63,14 @@ def _row(journal: TradeJournal, quote, basis: float | None) -> dict:
     }
 
 
-def load(session: Session, user_id: int) -> list[dict]:
-    """当前用户的未平仓记录（= 持仓），按建仓日倒序。"""
+def load(user_session: Session, research_session: Session, user_id: int) -> list[dict]:
+    """当前用户的未平仓记录（= 持仓），按建仓日倒序。
+
+    S6.2：交易/计划读 **User DB**，现价与买入日口径读 **Research DB**，
+    两个 Session 显式分开，不在同一 Session 里混用两库。
+    """
     journals = list(
-        session.scalars(
+        user_session.scalars(
             select(TradeJournal)
             .where(TradeJournal.user_id == user_id, TradeJournal.exit_date.is_(None))
             .order_by(TradeJournal.entry_date.desc(), TradeJournal.id.desc())
@@ -74,8 +78,8 @@ def load(session: Session, user_id: int) -> list[dict]:
     )
     if not journals:
         return []
-    quotes = latest_quotes(session, [journal.code for journal in journals])
-    bases = trade_journal.open_basis(session, journals)
+    quotes = latest_quotes(research_session, [journal.code for journal in journals])
+    bases = trade_journal.open_basis(research_session, journals)
     return [
         _row(journal, quotes.get(journal.code), bases.get(journal.id))
         for journal in journals
@@ -101,7 +105,8 @@ class PlanJournalClosed(Exception):
 
 
 def create(
-    session: Session,
+    user_session: Session,
+    research_session: Session,
     user_id: int,
     *,
     code: str,
@@ -124,10 +129,10 @@ def create(
     `commit=False` 给「要和别的写同一事务」的调用方用（如 `from-plan` 要同时改
     计划状态，见 P2-06）。插入本身已在该事务里执行，由调用方统一提交。
     """
-    digits = validate_code(session, code)
+    digits = validate_code(research_session, code)
     # 与交易日志 / 计划执行共用同一份校验：交易日、不晚于今天、股数 > 0、仓位 0-100
     trade_journal.validate_entry(
-        session,
+        research_session,
         entry_date=entry_date,
         entry_price=float(entry_price),
         shares=shares,
@@ -136,20 +141,20 @@ def create(
     if plan_id is not None:
         # 归属校验：手工建仓也能带 plan_id，不校验就能把持仓挂到别人的计划 id 上，
         # 计划页的「已执行 / 跟随情况」统计会被污染（无数据泄露，但口径全错）。
-        plan = session.get(TradePlan, plan_id)
+        plan = user_session.get(TradePlan, plan_id)
         if plan is None or plan.user_id != user_id:
             raise ValueError("关联的计划不存在")
-        existing = _journal_of_plan(session, user_id, plan_id)
+        existing = _journal_of_plan(user_session, user_id, plan_id)
         if existing is not None:
             if existing.exit_date is not None:
                 raise PlanJournalClosed(
                     "这条计划关联的交易已经平仓，不能再转为持仓；如需重新建仓，请新建一笔交易"
                 )
             return existing
-    basic = session.get(StockBasic, digits)
+    basic = research_session.get(StockBasic, digits)
     try:
         journal = trade_journal.insert_trade(
-            session,
+            user_session,
             user_id,
             code=digits,
             name=(name or "").strip() or (basic.name if basic else None),
@@ -162,15 +167,15 @@ def create(
             note=(note or "").strip() or None,
         )
         if commit:
-            session.commit()
+            user_session.commit()
     except trade_journal.JournalLimitExceeded:
         # 499→500 的最后一位被**同一计划**的并发请求先占走：原子插入拿到 0 行，
         # 但目标记录其实已经存在。按业务唯一键重查，返回同一笔（2026-11-08
         # 第三轮复审 P2-C）；plan_id 为空时没有业务键可查，原样抛上限错误。
         if plan_id is None:
             raise
-        session.rollback()
-        existing = _journal_of_plan(session, user_id, plan_id)
+        user_session.rollback()
+        existing = _journal_of_plan(user_session, user_id, plan_id)
         if existing is None:
             raise
         if existing.exit_date is not None:
@@ -181,9 +186,9 @@ def create(
     except IntegrityError:
         # 并发下另一个请求已经给这条计划建了日志 —— 回滚后把那一笔查出来返回。
         # 走到这里说明前面的 get-or-create 没看到它（两个请求同时 SELECT 到空）。
-        session.rollback()
+        user_session.rollback()
         existing = (
-            _journal_of_plan(session, user_id, plan_id) if plan_id is not None else None
+            _journal_of_plan(user_session, user_id, plan_id) if plan_id is not None else None
         )
         if existing is None:
             raise

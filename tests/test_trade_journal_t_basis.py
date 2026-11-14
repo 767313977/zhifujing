@@ -79,7 +79,7 @@ def test_t_leg_after_window_without_entry_bar_does_not_crash():
     """买入日缺日线 + T 记在窗口之后：不能抛 IndexError，换算不了就置 None。"""
     _, session = _engine_with_trade()
     try:
-        rows = load_enriched(session, 1)
+        rows = load_enriched(session, session, 1)
         assert len(rows) == 1
         t_ops = rows[0]["t_ops"]
         assert len(t_ops) == 1
@@ -95,7 +95,7 @@ def test_t_leg_within_window_with_empty_adjusted_returns_none():
     try:
         session.query(TradeT).update({TradeT.trade_date: BAR_DAY})
         session.commit()
-        rows = load_enriched(session, 1)
+        rows = load_enriched(session, session, 1)
         assert rows[0]["t_ops"][0]["spread_pct"] is None
     finally:
         session.close()

@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
-from app.db import get_db
+from app.db import get_research_db
 from app.jobs.collect_futures_position import VARIETIES as FUTURES_VARIETIES
 from app.models import (
     EtfCategory,
@@ -121,7 +121,7 @@ def _latest_complete_margin_day(session: Session, target: date) -> date | None:
 @router.get("/overview", response_model=FundFlowOverview)
 def overview(
     target: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> FundFlowOverview:
     """资金面总览：当日两融、北向成交额、ETF 净申赎、机构席位。"""
     prev = previous_trade_day(target, session)
@@ -344,7 +344,7 @@ def _etf_net_inflow(session: Session, target: date, prev: date | None) -> float 
 def series(
     days: int = Query(SERIES_DEFAULT_DAYS, ge=5, le=SERIES_MAX_DAYS),
     end: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> FundsSeries:
     """两融余额 / 融资买入额 / 北向成交额的走势。"""
     dates = _recent_trade_dates(session, end, days)
@@ -422,7 +422,7 @@ def series(
 def futures_series(
     days: int = Query(SERIES_DEFAULT_DAYS, ge=5, le=SERIES_MAX_DAYS),
     end: date = Depends(resolve_trade_date),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> FuturesSeries:
     """期指前 20 净空的走势（手）：IF / IC / IH / IM 各一条 + 四品种合计。
 
@@ -560,7 +560,7 @@ def etf_flows(
     target: date = Depends(resolve_trade_date),
     limit: int = Query(30, ge=5, le=200),
     order: str = Query("inflow", pattern="^(inflow|outflow|amount)$"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> EtfFlowBoard:
     """ETF 申赎排行（按单只）。份额变化 = 净申购，是真金白银的资金进出。
 
@@ -584,7 +584,7 @@ def etf_industry(
     target: date = Depends(resolve_trade_date),
     limit: int = Query(30, ge=5, le=200),
     order: str = Query("inflow", pattern="^(inflow|outflow|amount)$"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> EtfIndustryBoard:
     """ETF 申赎按行业 / 主题汇总。
 
@@ -646,7 +646,7 @@ def institutions(
     target: date = Depends(resolve_trade_date),
     limit: int = Query(30, ge=5, le=200),
     order: str = Query("net", pattern="^(net|buy|sell)$"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> InstitutionBoard:
     """龙虎榜机构席位排行（只含机构专用席位）。
 
@@ -707,7 +707,7 @@ def dde_board(
     target: date = Depends(resolve_trade_date),
     limit: int = Query(30, ge=5, le=DDE_LIMIT_MAX),
     order: str = Query("inflow", pattern="^(inflow|outflow)$"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> DdeBoard:
     """个股 5日DDE 排名。**零额外配额** —— 数据来自每天采集链末尾的全市场扫描。
 

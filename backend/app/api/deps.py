@@ -6,10 +6,24 @@ from fastapi import Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_research_db, research_writable
 from app.models import MarketSentiment
 from app.services.trading_days import is_trade_day
 from app.timeutil import today_cn
+
+
+def require_research_writable() -> None:
+    """S6.2（G7）：灰度形态下**禁止**研究库写入型接口。
+
+    研究库在灰度里是 `mode=ro` + 文件只读；任何「实时补采 / 同步」接口都必须
+    明确 503，而不是等到 SQLite 抛 `attempt to write a readonly database` 再 500。
+    拆分关闭（日常开发/采集模式）时该依赖是空操作，行为不变。
+    """
+    if not research_writable():
+        raise HTTPException(
+            status_code=503,
+            detail="灰度形态：研究库只读，已关闭实时采集/同步接口",
+        )
 
 
 def resolve_trade_date(
@@ -18,7 +32,7 @@ def resolve_trade_date(
         alias="date",
         description="交易日，缺省取库中最新有情绪数据的一天",
     ),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> date:
     """解析要查询的交易日。
 

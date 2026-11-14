@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_research_db
 from app.models import EtfBar, EtfShare, StockBasic
 from app.schemas import (
     EtfCategoryOut,
@@ -73,7 +73,7 @@ def screen(
     sort: str | None = Query(None, description="rps60 / ret60 / amount / flow20_ratio / volatility …"),
     limit: int = Query(200, ge=1, le=MAX_LIMIT),
     trade_date: str | None = Query(None, alias="date", description="缺省 = 最近一份日线"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> EtfScreenOut:
     """按预设 + 覆盖条件筛一遍。不传日期 = 最近一份 ETF 日线。"""
     if preset not in etf_screen.PRESETS:
@@ -111,7 +111,7 @@ def screen(
 @router.get("/categories", response_model=list[EtfCategoryOut])
 def categories(
     trade_date: str | None = Query(None, alias="date", description="缺省 = 最近一份日线"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> list[EtfCategoryOut]:
     """行业强弱一览：每类的代表 ETF 的 RPS60 中位数 + 20 日净申赎合计。"""
     from datetime import date as _date
@@ -131,7 +131,7 @@ def track(
     top: int = Query(5, ge=1, le=etf_track.MAX_TOP, description="每天取前几只"),
     hold: int = Query(5, ge=1, le=60, description="持有几个交易日（次日收盘起算）"),
     days: int = Query(etf_track.DEFAULT_DAYS, ge=20, le=etf_track.MAX_DAYS),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> EtfTrackOut:
     """次日验证：近 `days` 天每天按当前预设选前 `top` 只，次日收盘起持有 `hold` 天。
 
@@ -198,7 +198,7 @@ def related(
     code: str | None = Query(None, description="股票代码：按它的同花顺行业归类"),
     text: str | None = Query(None, description="行业 / 板块名（按 ETF 名称词典归类）"),
     limit: int = Query(5, ge=1, le=20),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> EtfRelatedOut:
     """个股 / 板块 → 相关 ETF 的代表只（ETF-5）。
 
@@ -248,7 +248,7 @@ def related(
 def detail(
     code: str,
     trade_date: str | None = Query(None, alias="date", description="缺省 = 最近一份日线"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
 ) -> EtfDetailOut:
     """单只 ETF：最新一行指标 + 250 日走势（价格 + 份额）+ 同类列表。"""
     from datetime import date as _date

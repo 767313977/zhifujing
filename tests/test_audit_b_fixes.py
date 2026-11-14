@@ -101,7 +101,7 @@ def test_create_plan_race_returns_existing_row(engine, monkeypatch):
             stop_price=95.0,
             note="并发保存",
         )
-        row = plans_api.create_plan(payload, session=session, user=user)
+        row = plans_api.create_plan(payload, session=session, research=session, user=user)
         assert row.buy_price == 100.0
         assert row.stop_price == 95.0
         stored = session.scalars(select(TradePlan)).all()
@@ -201,7 +201,9 @@ def test_profile_latest_quote_skips_residual_row(engine, monkeypatch):
     monkeypatch.setattr(stock_api, "load_phase", lambda session, code: None)
     with Session(engine) as db:
         _add_residual_rows(db)
-        out = stock_api.profile("600519", user=db.get(AppUser, 1), session=db)
+        out = stock_api.profile(
+            "600519", user=db.get(AppUser, 1), session=db, user_session=db
+        )
         assert out.latest is not None
         assert out.latest.trade_date == date(2026, 8, 3)
         assert out.latest.pct_chg == 1.0

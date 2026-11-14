@@ -10,7 +10,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_research_db
 from app.models import AppUser
 from app.schemas import WorkbenchOut
 from app.services import data_revision, post_market_workbench, research_screen
@@ -29,7 +29,7 @@ def workbench(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0, le=1_000_000),
     stock: str | None = Query(None, description="可选：只加载这一只票的时点研究依据"),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_research_db),
     _user: AppUser = Depends(current_user),
 ) -> WorkbenchOut:
     """盘后主线研究工作台：情绪 + 晋级漏斗 + 题材共振 + 数据质量（**只读**）。
@@ -58,7 +58,7 @@ def workbench(
 
 
 @router.get("/meta")
-def meta(user: AppUser = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+def meta(user: AppUser = Depends(current_user), db: Session = Depends(get_research_db)) -> dict:
     """研究策略版本与验证状态，前端用来显示“研究指标 ≠ 已验证策略”。
 
     `cache` 只返回给管理员：普通用户不需要、也不应该看到库身份/修订号等内部诊断。
@@ -95,7 +95,7 @@ def trend(
     limit: int = Query(100, ge=1, le=200),
     exclude_st: bool = Query(True),
     exclude_bse: bool = Query(True),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_research_db),
 ) -> dict:
     try:
         return research_screen.trend_rows(
@@ -121,7 +121,7 @@ def low_start(
     max_vol_contraction: float = Query(0.9, ge=0.1, le=3),
     exclude_st: bool = Query(True),
     exclude_bse: bool = Query(True),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_research_db),
 ) -> dict:
     try:
         return research_screen.low_start_rows(
@@ -154,7 +154,7 @@ def sector_state(
         True,
         description="所选日期没有板块日线时，是否允许回退到最近可用交易日（P0.9-03）",
     ),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_research_db),
 ) -> dict:
     try:
         return research_screen.sector_states(

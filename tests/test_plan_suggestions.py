@@ -63,7 +63,7 @@ def _seed(db: Session) -> None:
 def test_suggestions_carry_sector_and_industry(db):
     _seed(db)
 
-    rows = {row["code"]: row for row in suggestions(db, user_id=1)}
+    rows = {row["code"]: row for row in suggestions(db, db, user_id=1)}
 
     assert rows["300461"]["sectors"] == ["工业母机"]
     assert rows["300461"]["industry"] == "机械设备-自动化设备-其他自动化设备"
@@ -87,7 +87,7 @@ def test_missing_sector_is_empty_not_invented(db):
     )
     db.commit()
 
-    rows = {row["code"]: row for row in suggestions(db, user_id=1)}
+    rows = {row["code"]: row for row in suggestions(db, db, user_id=1)}
 
     assert rows["000001"]["sectors"] == []
     assert rows["000001"]["industry"] is None

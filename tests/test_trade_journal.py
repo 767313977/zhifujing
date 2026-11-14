@@ -187,18 +187,18 @@ def _payload(**overrides) -> TradeJournalIn:
 def test_entry_amount_from_shares(db):
     """买入金额 = 买入价 × 股数，由后端现算（不落库）。"""
     trade = TradeJournal(user_id=1)
-    _apply(db, trade, _payload(shares=1200))
+    _apply(db, db, trade, _payload(shares=1200))
     db.add(trade)
     db.commit()
 
-    row = load_enriched(db, 1)[0]
+    row = load_enriched(db, db, 1)[0]
     assert row["shares"] == 1200
     assert row["entry_amount"] == pytest.approx(12000.0)
 
 
 def test_shares_must_be_positive(db):
     with pytest.raises(HTTPException) as exc:
-        _apply(db, TradeJournal(user_id=1), _payload(shares=0))
+        _apply(db, db, TradeJournal(user_id=1), _payload(shares=0))
     assert exc.value.status_code == 400
     assert "股数" in exc.value.detail
 
@@ -217,7 +217,7 @@ def test_suggest_oversold_date_uses_own_last_bar(db, monkeypatch):
         "app.api.journal.load_oversold", lambda session, codes: {"600519": -18.0}
     )
 
-    out = suggest_reason("600519", date(2026, 8, 3), session=db, user=None)
+    out = suggest_reason("600519", date(2026, 8, 3), research=db, user=None)
     assert out.oversold_dev == -18.0
     assert out.oversold_date == date(2026, 8, 3)
 

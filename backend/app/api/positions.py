@@ -2,12 +2,16 @@
 
 持仓 = `trade_journal` 里 `exit_date` 为空的记录，**不新建表**。
 这里只做增删改查与「从计划转入」；平仓仍走交易日志页。
+
+S6.2（G7）：本模块全部是**混合域** —— 交易/计划读 User DB，现价、交易日历与
+股票基础信息读 Research DB。两个 Session 都显式注入，Service 层分别使用，
+不在同一个 Session 里混用两库。
 """
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_research_db, get_user_db
 from app.models import AppUser, TradeJournal, TradePlan
 from app.schemas import PositionIn, PositionOut, PositionRow
 from app.services import positions, trade_journal
@@ -23,8 +27,10 @@ def _get_open(session: Session, user: AppUser, position_id: int) -> TradeJournal
     return journal
 
 
-def _row(session: Session, user: AppUser, journal: TradeJournal) -> PositionRow:
-    rows = {row["id"]: row for row in positions.load(session, user.id)}
+def _row(
+    session: Session, research: Session, user: AppUser, journal: TradeJournal
+) -> PositionRow:
+    rows = {row["id"]: row for row in positions.load(session, research, user.id)}
     data = rows.get(journal.id)
     if data is None:
         raise HTTPException(status_code=404, detail="这条持仓不存在")
@@ -33,25 +39,31 @@ def _row(session: Session, user: AppUser, journal: TradeJournal) -> PositionRow:
 
 @router.get("", response_model=PositionOut)
 def list_positions(
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> PositionOut:
     """我的持仓：未平仓记录 + 本地最新收盘与浮盈。纯读库，不联网。"""
     return PositionOut(
-        rows=[PositionRow.model_validate(row) for row in positions.load(session, user.id)]
+        rows=[
+            PositionRow.model_validate(row)
+            for row in positions.load(session, research, user.id)
+        ]
     )
 
 
 @router.post("", response_model=PositionRow)
 def create_position(
     payload: PositionIn,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> PositionRow:
     """手工建一笔持仓。"""
     try:
         journal = positions.create(
             session,
+            research,
             user.id,
             code=payload.code,
             entry_date=payload.entry_date,
@@ -67,13 +79,14 @@ def create_position(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _row(session, user, journal)
+    return _row(session, research, user, journal)
 
 
 @router.post("/from-plan/{plan_id}", response_model=PositionRow)
 def create_from_plan(
     plan_id: int,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> PositionRow:
     """把一条计划转成持仓：成本取回填的实际价，没回填就用计划买点。
@@ -89,6 +102,7 @@ def create_from_plan(
     try:
         journal = positions.create(
             session,
+            research,
             user.id,
             code=plan.code,
             entry_date=plan.plan_date,
@@ -111,25 +125,26 @@ def create_from_plan(
         plan.actual_price = plan.buy_price
         plan.followed_plan = True
     session.commit()
-    return _row(session, user, journal)
+    return _row(session, research, user, journal)
 
 
 @router.put("/{position_id}", response_model=PositionRow)
 def update_position(
     position_id: int,
     payload: PositionIn,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
+    research: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
 ) -> PositionRow:
     journal = _get_open(session, user, position_id)
     try:
-        code = positions.validate_code(session, payload.code)
+        code = positions.validate_code(research, payload.code)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     # 与新建 / 交易日志 / 计划执行同一份校验（交易日、不晚于今天、股数、仓位）
     try:
         trade_journal.validate_entry(
-            session,
+            research,
             entry_date=payload.entry_date,
             entry_price=float(payload.entry_price),
             shares=payload.shares,
@@ -145,13 +160,13 @@ def update_position(
     journal.position_pct = payload.position_pct
     journal.note = (payload.note or "").strip() or None
     session.commit()
-    return _row(session, user, journal)
+    return _row(session, research, user, journal)
 
 
 @router.delete("/{position_id}")
 def delete_position(
     position_id: int,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
     user: AppUser = Depends(current_user),
 ) -> dict:
     journal = _get_open(session, user, position_id)

@@ -20,7 +20,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.db import get_db
+from app.db import get_research_db
 from app.models import (
     PatternHit,
     RpsDaily,
@@ -266,7 +266,7 @@ def _intersection_codes(
 
 @router.get("/preview", response_model=list[PatternCount])
 def preview(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_research_db),
     trade_date: date | None = Query(None, alias="date"),
     min_score: float = Query(0.0, ge=0.0, le=100.0),
     pattern: list[str] | None = Query(
@@ -783,7 +783,7 @@ def _trend_templates(
 
 @router.get("/hits", response_model=PatternHitsOut)
 def hits(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_research_db),
     trade_date: date | None = Query(None, alias="date"),
     min_score: float = Query(0.0, ge=0.0, le=100.0),
     pattern: list[str] | None = Query(
@@ -1149,7 +1149,7 @@ def hits(
 
 @router.get("/track", response_model=PatternTrackOut)
 def track(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_research_db),
     cohorts: int = Query(pattern_track.DEFAULT_COHORTS, ge=1, le=120),
     top: int = Query(pattern_track.DEFAULT_TOP, ge=1, le=200),
     track_days: int = Query(pattern_track.DEFAULT_TRACK_DAYS, ge=1, le=120),
@@ -1190,7 +1190,7 @@ def track(
 
 @router.get("/standing", response_model=PoolStandingOut)
 def standing(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_research_db),
     cohorts: int = Query(pattern_track.DEFAULT_COHORTS, ge=1, le=120),
     track_days: int = Query(max(pattern_track.HORIZONS), ge=1, le=60),
     line_days: int = Query(5, ge=1, le=30),
@@ -1231,7 +1231,7 @@ def standing(
 
 @router.get("/scorecard", response_model=PatternScorecardOut)
 def scorecard(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_research_db),
     cohorts: int = Query(pattern_track.DEFAULT_COHORTS, ge=1, le=120),
     track_days: int = Query(max(pattern_track.HORIZONS), ge=1, le=60),
     line_days: int = Query(5, ge=1, le=30),
@@ -1283,7 +1283,7 @@ def scorecard(
 
 @router.get("/action-summary", response_model=PatternActionSummaryOut)
 def action_summary(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_research_db),
     cohorts: int = Query(pattern_track.DEFAULT_COHORTS, ge=1, le=120),
     track_days: int = Query(max(pattern_track.HORIZONS), ge=1, le=60),
     line_days: int = Query(5, ge=1, le=30),
@@ -1307,7 +1307,7 @@ def action_summary(
 
 @router.get("/track/detail", response_model=PatternTrackDetail)
 def track_detail(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_research_db),
     trade_date: date = Query(..., alias="date", description="哪一天的循环"),
     top: int = Query(pattern_track.DEFAULT_TOP, ge=1, le=200),
     track_days: int = Query(pattern_track.DEFAULT_TRACK_DAYS, ge=1, le=120),
@@ -1328,7 +1328,7 @@ def track_detail(
 
 @router.get("/summary", response_model=PatternSummary)
 def summary(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_research_db),
     trade_date: date | None = Query(None, alias="date"),
 ) -> PatternSummary:
     """各形态的命中家数，给筛选条的徽标、首页面板与飞书简报用。"""

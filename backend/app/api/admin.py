@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.api.deps import require_research_writable
+from app.db import get_research_db, get_user_db
 from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
 from app.jobs.scheduler import get_scheduler
 from app.models import (
@@ -118,8 +119,8 @@ def _invalidate_coverage_cache() -> None:
 
 
 @router.get("/status", response_model=AdminStatus)
-def status(session: Session = Depends(get_db)) -> AdminStatus:
-    """采集状态：各表覆盖、定时任务、最近采集日志。"""
+def status(session: Session = Depends(get_research_db)) -> AdminStatus:
+    """采集状态：各表覆盖、定时任务、最近采集日志（全部读 Research DB）。"""
     logs = list(
         session.scalars(select(CollectLog).order_by(CollectLog.id.desc()).limit(30))
     )
@@ -177,8 +178,12 @@ def status(session: Session = Depends(get_db)) -> AdminStatus:
 def kline_recent(
     days: int = Query(60, ge=20, le=120, description="补最近多少个交易日"),
     trade_date: date | None = Query(None, alias="date"),
+    _writable: None = Depends(require_research_writable),
 ) -> dict:
-    """补齐最近 N 个交易日的全市场日线（辉宾/形态需要连续近端 K 线）。"""
+    """补齐最近 N 个交易日的全市场日线（辉宾/形态需要连续近端 K 线）。
+
+    S6.2：研究库写入型管理接口，灰度形态下直接 503。
+    """
     from app.jobs.collect_kline import KlineCollector
 
     try:
@@ -195,8 +200,12 @@ def kline_recent(
 @router.post("/patterns/scan")
 def patterns_scan(
     trade_date: date | None = Query(None, alias="date"),
+    _writable: None = Depends(require_research_writable),
 ) -> dict:
-    """手动跑一遍形态扫描（含辉宾「明天盯 / 明天预案」）。"""
+    """手动跑一遍形态扫描（含辉宾「明天盯 / 明天预案」）。
+
+    S6.2：研究库写入型管理接口，灰度形态下直接 503。
+    """
     from app.jobs.scan_patterns import scan
 
     try:
@@ -214,11 +223,13 @@ def patterns_scan(
 def backfill(
     start: date = Query(..., description="起始日期"),
     end: date | None = Query(None, description="结束日期，缺省取最近交易日"),
+    _writable: None = Depends(require_research_writable),
 ) -> dict:
     """历史回补：指数行情 + 涨停三池 + 龙虎榜 + 情绪指标。
 
     指数走 iFinD 日频接口按日期回补；三池受数据源窗口限制只能覆盖最近
     15 个交易日，更早的日期对应指标记 null。详见设计文档 4.1。
+    S6.2：研究库写入型管理接口，灰度形态下直接 503。
     """
     # 一次最多回补 60 天：回补是逐日调 iFinD 的计费接口，参数手误写成
     # `start=2000-01-01` 会一口气烧掉整月配额，而且全程占着采集锁
@@ -291,7 +302,7 @@ def _invite_out(row: InviteCode, names: dict[int, str]) -> InviteOut:
 
 
 @router.get("/invites", response_model=list[InviteOut])
-def list_invites(session: Session = Depends(get_db)) -> list[InviteOut]:
+def list_invites(session: Session = Depends(get_user_db)) -> list[InviteOut]:
     """所有邀请码，新的在前。"""
     rows = list(
         session.scalars(select(InviteCode).order_by(InviteCode.created_at.desc()))
@@ -302,7 +313,7 @@ def list_invites(session: Session = Depends(get_db)) -> list[InviteOut]:
 
 @router.post("/invites", response_model=list[InviteOut])
 def create_invites(
-    payload: InviteIn, session: Session = Depends(get_db)
+    payload: InviteIn, session: Session = Depends(get_user_db)
 ) -> list[InviteOut]:
     """生成邀请码。`count` 可以一次多生成几个（最多 20）。"""
     count = payload.count
@@ -319,7 +330,7 @@ def create_invites(
 
 
 @router.delete("/invites/{code}")
-def delete_invite(code: str, session: Session = Depends(get_db)) -> dict:
+def delete_invite(code: str, session: Session = Depends(get_user_db)) -> dict:
     """删掉一个**没用过**的邀请码。
 
     ⚠️ 用过的拒绝删除：删了就断了「这个账号是拿哪个码进来的」这条记录，
@@ -340,7 +351,7 @@ def delete_invite(code: str, session: Session = Depends(get_db)) -> dict:
 
 
 @router.get("/users", response_model=list[MemberOut])
-def list_users(session: Session = Depends(get_db)) -> list[MemberOut]:
+def list_users(session: Session = Depends(get_user_db)) -> list[MemberOut]:
     """所有会员。`invite_code` 是他注册时用的那个码（可追来源）。"""
     users = list(session.scalars(select(AppUser).order_by(AppUser.created_at)))
     invites = {
@@ -367,7 +378,7 @@ def reset_password(
     user_id: int,
     payload: ResetPasswordIn,
     me: AppUser = Depends(require_admin),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
 ) -> dict:
     """管理员替会员重置密码，并**踢掉他所有会话**。
 
@@ -390,7 +401,7 @@ def set_disabled(
     user_id: int,
     payload: DisabledIn,
     me: AppUser = Depends(require_admin),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_user_db),
 ) -> dict:
     """停用 / 恢复会员。停用即踢掉他所有会话。"""
     # 不拦的话可以一键把自己锁在门外 —— 而这时唯一能救你的账号就是你自己

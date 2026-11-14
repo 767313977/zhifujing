@@ -112,7 +112,7 @@ def test_watchlist_accepts_etf_code(db):
     db.commit()
     user = db.scalars(select(AppUser)).one()
 
-    row = watchlist_api.add_watchlist(WatchlistIn(code="510300"), user=user, session=db)
+    row = watchlist_api.add_watchlist(WatchlistIn(code="510300"), user=user, session=db, research=db)
 
     assert row.code == "510300"
     assert row.name == "沪深300ETF"
@@ -136,6 +136,7 @@ def test_sync_watchlist_never_asks_ifind_for_etf(engine, monkeypatch):
 
     calls: list[str] = []
     monkeypatch.setattr(collect_daily, "session_scope", lambda: _scope_for(engine))
+    monkeypatch.setattr(collect_daily, "user_session_scope", lambda: _scope_for(engine))
 
     written = collect_daily.DailyCollector.sync_watchlist(_WatchStub(calls))
 
@@ -160,7 +161,7 @@ def test_brief_warns_on_etf_share_drop(db, monkeypatch):
     db.commit()
     monkeypatch.setattr(etf_flow, "usable_days", lambda session: days)
 
-    text = brief_watchlist.block(db, DAY)
+    text = brief_watchlist.block(db, db, DAY)
 
     assert "自选 ETF 份额异动" in text
     assert "510300" in text and "近 5 日份额减少" in text

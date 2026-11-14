@@ -140,17 +140,18 @@ def _recent_notice(code: str, trade_date: date) -> str | None:
     return None
 
 
-def block(session: Session, trade_date: date) -> str:
-    user_id = trade_plan.admin_user_id(session)
+def block(user_session: Session, research_session: Session, trade_date: date) -> str:
+    """S6.2：管理员自选/账号读 User DB，行情/公告/形态读 Research DB。"""
+    user_id = trade_plan.admin_user_id(user_session)
     if user_id is None:
         return ""
     # 只算股票：转债 / ETF 代码在 `stock_daily` 里没有行，拿它们查公告/形态纯属白花调用
-    codes = stock_watch_codes(session, user_id)
+    codes = stock_watch_codes(user_session, research_session, user_id)
     if not codes:
-        return _etf_block(session, user_id)
+        return _etf_block(research_session, user_id)
 
     # 当天命中的最高分形态（一只票多个形态时取分最高的那个）
-    hit_rows = session.execute(
+    hit_rows = research_session.execute(
         select(
             PatternHit.code,
             PatternHit.name,
@@ -170,14 +171,14 @@ def block(session: Session, trade_date: date) -> str:
         best_hit.setdefault(row[0], row)
 
     names = dict(
-        session.execute(
+        research_session.execute(
             select(StockBasic.code, StockBasic.name).where(StockBasic.code.in_(codes))
         ).all()
     )
 
     bars = {
         row[0]: row[1:]
-        for row in session.execute(
+        for row in research_session.execute(
             select(
                 StockDaily.code,
                 StockDaily.close,
@@ -192,7 +193,7 @@ def block(session: Session, trade_date: date) -> str:
 
     # 20 日均额：只取今天之前 45 个自然日，按日排序后取最近 20 个有值的
     history: dict[str, list[float]] = defaultdict(list)
-    for code, amount in session.execute(
+    for code, amount in research_session.execute(
         select(StockDaily.code, StockDaily.amount)
         .where(
             StockDaily.code.in_(codes),
@@ -248,7 +249,7 @@ def block(session: Session, trade_date: date) -> str:
     if notice_cut:
         lines.append("- （公告取数超出时间预算，部分自选的公告未覆盖）")
     stock_text = "**自选股异动**\n" + "\n".join(lines) if lines else ""
-    etf_text = _etf_block(session, user_id)
+    etf_text = _etf_block(research_session, user_id)
     return "\n\n".join(part for part in (stock_text, etf_text) if part)
 
 
@@ -285,7 +286,9 @@ class RedeemAlert:
         return text + "；没转股会按约 100 元赎回"
 
 
-def redeem_alerts(session: Session, trade_date: date) -> list[RedeemAlert]:
+def redeem_alerts(
+    user_session: Session, research_session: Session, trade_date: date
+) -> list[RedeemAlert]:
     """自选（或其正股）里**当前处于「已公告强赎」**的转债。
 
     为什么值得单独推一条：公告之后转债按约 100 元被赎回，没转股的持仓几天里就亏掉
@@ -296,22 +299,26 @@ def redeem_alerts(session: Session, trade_date: date) -> list[RedeemAlert]:
 
     「已公告强赎」用 `redeem_kind` 判，别用字符串包含判断 —— 「已满足强赎条件」里
     也有「强赎」两个字。
+
+    S6.2：自选/账号读 User DB，转债快照读 Research DB。
     """
-    user_id = trade_plan.admin_user_id(session)
+    user_id = trade_plan.admin_user_id(user_session)
     if user_id is None:
         return []
-    day = session.scalar(select(func.max(CbDaily.trade_date)))
+    day = research_session.scalar(select(func.max(CbDaily.trade_date)))
     if day is None or day < trade_date:
         # 当天的转债快照还没采到：拿昨天的状态冒充「今天的提醒」比不提醒更糟
         return []
     codes = list(
-        session.scalars(select(Watchlist.code).where(Watchlist.user_id == user_id))
+        user_session.scalars(
+            select(Watchlist.code).where(Watchlist.user_id == user_id)
+        )
     )
     if not codes:
         return []
     # 自选里可能直接放转债代码（可转债-5），也可能放的是正股 —— 两种都要
     basics = list(
-        session.scalars(
+        research_session.scalars(
             select(CbBasic).where(
                 or_(CbBasic.bond_code.in_(codes), CbBasic.stock_code.in_(codes))
             )
@@ -321,7 +328,7 @@ def redeem_alerts(session: Session, trade_date: date) -> list[RedeemAlert]:
         return []
     dailies = {
         row.bond_code: row
-        for row in session.scalars(
+        for row in research_session.scalars(
             select(CbDaily).where(
                 CbDaily.trade_date == day,
                 CbDaily.bond_code.in_([row.bond_code for row in basics]),
