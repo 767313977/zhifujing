@@ -79,6 +79,7 @@ class Position:
     entry_index: int = 0
     hold_days: int = 0
     last_price: float = 0.0
+    entry_fee: float = 0.0
 
 
 @dataclass
@@ -93,6 +94,8 @@ class Trade:
     return_pct: float
     reason: str
     hold_days: int
+    #: 买入佣金（pnl 已扣除双边费用）
+    entry_fee: float = 0.0
 
 
 @dataclass
@@ -100,7 +103,11 @@ class SimResult:
     equity: list[tuple[date, float]] = field(default_factory=list)
     #: 每日「持仓市值 / 总权益」（0~1），用于计算平均暴露
     exposure: list[float] = field(default_factory=list)
+    #: 逐日账本：交易日、现金、持仓市值、总权益
+    ledger: list[tuple[date, float, float, float]] = field(default_factory=list)
     trades: list[Trade] = field(default_factory=list)
+    #: 回测结束仍未平仓的持仓（用于账本恒等式核对）
+    open_positions: list[dict] = field(default_factory=list)
     metrics: dict = field(default_factory=dict)
     skipped: dict = field(default_factory=dict)
 
@@ -254,7 +261,7 @@ def simulate(
             cash += gross - fee
             cost = position.entry_price * position.shares
             receive = gross - fee
-            pnl = receive - cost
+            pnl = receive - cost - position.entry_fee
             result.trades.append(
                 Trade(
                     code=code,
@@ -264,9 +271,10 @@ def simulate(
                     exit_price=price,
                     shares=position.shares,
                     pnl=round(pnl, 2),
-                    return_pct=round(pnl / cost * 100, 2) if cost else 0.0,
+                    return_pct=round(pnl / (cost + position.entry_fee) * 100, 2) if cost else 0.0,
                     reason=pending_sells.pop(code),
                     hold_days=position.hold_days,
+                    entry_fee=round(position.entry_fee, 2),
                 )
             )
             positions.pop(code, None)
@@ -326,6 +334,7 @@ def simulate(
                     peak_close=bar.close,
                     entry_index=day_index.get(today, 0),
                     last_price=bar.close,
+                    entry_fee=fee,
                 )
                 buy_delay.pop(code, None)
                 slots -= 1
@@ -350,6 +359,7 @@ def simulate(
         position_value = _positions_value(positions, series, today)
         equity = cash + position_value
         result.equity.append((today, round(equity, 2)))
+        result.ledger.append((today, round(cash, 2), round(position_value, 2), round(equity, 2)))
         result.exposure.append(round(position_value / equity, 4) if equity > 0 else 0.0)
 
         # 5) 当日收盘信号 → 下一交易日开盘执行
@@ -358,6 +368,24 @@ def simulate(
                 pending_buys.append(signal)
 
     result.skipped = skipped
+    result.open_positions = [
+        {
+            "code": position.code,
+            "shares": position.shares,
+            "entry_date": position.entry_date,
+            "entry_price": position.entry_price,
+            "entry_fee": round(position.entry_fee, 2),
+            "last_price": position.last_price,
+            "market_value": round(position.shares * position.last_price, 2),
+            "unrealized_pnl": round(
+                position.shares * position.last_price
+                - position.shares * position.entry_price
+                - position.entry_fee,
+                2,
+            ),
+        }
+        for position in positions.values()
+    ]
     result.metrics = _metrics(result, config)
     return result
 

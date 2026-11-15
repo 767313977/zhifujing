@@ -165,3 +165,55 @@ def test_ma_exit_reason() -> None:
     )
     # 只有 10 根 K 线，MA20 不可用 → 不应误触发 ma_break
     assert all(trade.reason != "ma_break" for trade in result.trades)
+
+
+def test_daily_ledger_identity_holds() -> None:
+    bars = {"600001": flat_series(), "600002": flat_series(price=20.0)}
+    result = simulate(
+        bars_by_code=bars,
+        calendar=DAYS,
+        signals=[Signal("600001", DAYS[0], 1.0), Signal("600002", DAYS[0], 0.5)],
+        config=SimConfig(horizon=3, max_positions=2, position_pct=0.5),
+    )
+    assert result.ledger
+    for day, cash, value, equity in result.ledger:
+        assert cash >= -1e-6, day
+        assert abs(cash + value - equity) < 0.02
+    assert result.ledger[0][0] == DAYS[0]
+
+
+def test_trade_pnl_includes_both_side_fees() -> None:
+    bars = {"600001": flat_series()}
+    config = SimConfig(
+        horizon=2, slippage_bps=0, commission_bps=3, stamp_bps=10, min_commission=0
+    )
+    result = simulate(
+        bars_by_code=bars,
+        calendar=DAYS,
+        signals=[Signal("600001", DAYS[0], 1.0)],
+        config=config,
+    )
+    trade = result.trades[0]
+    buy_fee = 10.0 * trade.shares * 3 / 10000
+    sell_fee = 10.0 * trade.shares * (3 + 10) / 10000
+    assert trade.pnl == pytest.approx(-(buy_fee + sell_fee), abs=0.05)
+    assert trade.entry_fee == pytest.approx(buy_fee, abs=0.05)
+    # 无未平仓时，累计净盈亏应等于权益变化
+    final_equity = result.equity[-1][1]
+    assert final_equity - config.initial_cash == pytest.approx(
+        sum(item.pnl for item in result.trades), abs=0.05
+    )
+
+
+def test_trade_dates_respect_t_plus_one() -> None:
+    bars = {"600001": flat_series()}
+    result = simulate(
+        bars_by_code=bars,
+        calendar=DAYS,
+        signals=[Signal("600001", DAYS[2], 1.0)],
+        config=SimConfig(horizon=1),
+    )
+    trade = result.trades[0]
+    assert trade.entry_date > DAYS[2]
+    assert trade.exit_date > trade.entry_date
+    assert trade.shares % 100 == 0

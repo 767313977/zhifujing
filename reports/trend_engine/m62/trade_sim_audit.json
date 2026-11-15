@@ -1,0 +1,457 @@
+{
+  "generated_at": "2026-11-15T14:34:23.960782+00:00",
+  "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+  "selections": {
+    "A": "A2",
+    "B": "B2"
+  },
+  "price_basis": "stock_daily 原始收盘价（未复权）；与 trade_sim 文档要求的『前复权』不一致，见审计报告",
+  "runs": {
+    "A": {
+      "A_fixed": {
+        "metrics": {
+          "days": 240,
+          "total_return_pct": -19.87,
+          "annualized_pct": -20.75,
+          "max_drawdown_pct": -25.57,
+          "max_drawdown_days": 175,
+          "trades": 80,
+          "win_pct": 37.5,
+          "profit_factor": 0.6,
+          "turnover": 15.94,
+          "avg_hold_days": 20.0,
+          "final_equity": 801282.05,
+          "exposure": 0.7098,
+          "skipped": {
+            "limit_up": 1,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 0,
+            "slots": 997
+          }
+        },
+        "checks": {
+          "ledger_identity_max_gap": 0.0,
+          "negative_cash_days": 0,
+          "lot_violations": 0,
+          "date_order_violations": 0,
+          "trades_missing_entry_fee": 0,
+          "closed_pnl_sum": -153677.07,
+          "open_positions": 6,
+          "unrealized_pnl": -45040.91,
+          "equity_change": -198717.95,
+          "final_market_value": 454656.0,
+          "accounting_gap": 0.03,
+          "invariants_ok": true
+        },
+        "decomposition": {
+          "trades": 80,
+          "avg_exposure": 0.7098,
+          "zero_position_days": 50,
+          "total_days": 240,
+          "avg_hold_days": 20.0,
+          "turnover": 15.94,
+          "top5_pnl": 123669.58,
+          "top5_share_of_positive": 0.5375,
+          "top5_share_of_abs_total": 0.8047,
+          "skipped": {
+            "limit_up": 1,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 0,
+            "slots": 997
+          },
+          "final_equity": 801282.05
+        }
+      },
+      "E_combo": {
+        "metrics": {
+          "days": 240,
+          "total_return_pct": -19.03,
+          "annualized_pct": -19.89,
+          "max_drawdown_pct": -22.45,
+          "max_drawdown_days": 163,
+          "trades": 131,
+          "win_pct": 27.5,
+          "profit_factor": 0.62,
+          "turnover": 31.1,
+          "avg_hold_days": 7.4,
+          "final_equity": 809650.87,
+          "exposure": 0.5721,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 0,
+            "slots": 931
+          }
+        },
+        "checks": {
+          "ledger_identity_max_gap": 0.0,
+          "negative_cash_days": 0,
+          "lot_violations": 0,
+          "date_order_violations": 0,
+          "trades_missing_entry_fee": 0,
+          "closed_pnl_sum": -197153.49,
+          "open_positions": 2,
+          "unrealized_pnl": 6804.31,
+          "equity_change": -190349.13,
+          "final_market_value": 212942.0,
+          "accounting_gap": 0.05,
+          "invariants_ok": true
+        },
+        "decomposition": {
+          "trades": 131,
+          "avg_exposure": 0.5721,
+          "zero_position_days": 51,
+          "total_days": 240,
+          "avg_hold_days": 7.4,
+          "turnover": 31.1,
+          "top5_pnl": 128091.17,
+          "top5_share_of_positive": 0.4059,
+          "top5_share_of_abs_total": 0.6497,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 0,
+            "slots": 931
+          },
+          "final_equity": 809650.87
+        }
+      }
+    },
+    "B": {
+      "A_fixed": {
+        "metrics": {
+          "days": 240,
+          "total_return_pct": -3.61,
+          "annualized_pct": -3.78,
+          "max_drawdown_pct": -22.47,
+          "max_drawdown_days": 149,
+          "trades": 95,
+          "win_pct": 45.3,
+          "profit_factor": 1.01,
+          "turnover": 18.63,
+          "avg_hold_days": 20.0,
+          "final_equity": 963947.83,
+          "exposure": 0.8708,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 0,
+            "slots": 1585
+          }
+        },
+        "checks": {
+          "ledger_identity_max_gap": 0.0,
+          "negative_cash_days": 0,
+          "lot_violations": 0,
+          "date_order_violations": 0,
+          "trades_missing_entry_fee": 0,
+          "closed_pnl_sum": 3185.17,
+          "open_positions": 10,
+          "unrealized_pnl": -39237.3,
+          "equity_change": -36052.17,
+          "final_market_value": 940496.0,
+          "accounting_gap": -0.04,
+          "invariants_ok": true
+        },
+        "decomposition": {
+          "trades": 95,
+          "avg_exposure": 0.8708,
+          "zero_position_days": 1,
+          "total_days": 240,
+          "avg_hold_days": 20.0,
+          "turnover": 18.63,
+          "top5_pnl": 236528.35,
+          "top5_share_of_positive": 0.4145,
+          "top5_share_of_abs_total": 74.2593,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 0,
+            "slots": 1585
+          },
+          "final_equity": 963947.83
+        }
+      },
+      "E_combo": {
+        "metrics": {
+          "days": 240,
+          "total_return_pct": -0.15,
+          "annualized_pct": -0.15,
+          "max_drawdown_pct": -24.5,
+          "max_drawdown_days": 148,
+          "trades": 179,
+          "win_pct": 25.7,
+          "profit_factor": 0.96,
+          "turnover": 41.95,
+          "avg_hold_days": 6.6,
+          "final_equity": 998544.21,
+          "exposure": 0.7287,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 4,
+            "slots": 1240
+          }
+        },
+        "checks": {
+          "ledger_identity_max_gap": 0.0,
+          "negative_cash_days": 0,
+          "lot_violations": 0,
+          "date_order_violations": 0,
+          "trades_missing_entry_fee": 0,
+          "closed_pnl_sum": -26942.19,
+          "open_positions": 8,
+          "unrealized_pnl": 25486.45,
+          "equity_change": -1455.79,
+          "final_market_value": 977692.0,
+          "accounting_gap": -0.05,
+          "invariants_ok": true
+        },
+        "decomposition": {
+          "trades": 179,
+          "avg_exposure": 0.7287,
+          "zero_position_days": 13,
+          "total_days": 240,
+          "avg_hold_days": 6.6,
+          "turnover": 41.95,
+          "top5_pnl": 254831.29,
+          "top5_share_of_positive": 0.3603,
+          "top5_share_of_abs_total": 9.4584,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 4,
+            "slots": 1240
+          },
+          "final_equity": 998544.21
+        }
+      }
+    },
+    "A+B": {
+      "A_fixed": {
+        "metrics": {
+          "days": 240,
+          "total_return_pct": -12.34,
+          "annualized_pct": -12.92,
+          "max_drawdown_pct": -24.67,
+          "max_drawdown_days": 105,
+          "trades": 101,
+          "win_pct": 52.5,
+          "profit_factor": 0.82,
+          "turnover": 19.98,
+          "avg_hold_days": 20.0,
+          "final_equity": 876597.66,
+          "exposure": 0.9215,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 1,
+            "slots": 2093
+          }
+        },
+        "checks": {
+          "ledger_identity_max_gap": 0.0,
+          "negative_cash_days": 0,
+          "lot_violations": 0,
+          "date_order_violations": 0,
+          "trades_missing_entry_fee": 0,
+          "closed_pnl_sum": -85818.47,
+          "open_positions": 10,
+          "unrealized_pnl": -37583.84,
+          "equity_change": -123402.34,
+          "final_market_value": 846323.0,
+          "accounting_gap": -0.03,
+          "invariants_ok": true
+        },
+        "decomposition": {
+          "trades": 101,
+          "avg_exposure": 0.9215,
+          "zero_position_days": 1,
+          "total_days": 240,
+          "avg_hold_days": 20.0,
+          "turnover": 19.98,
+          "top5_pnl": 176620.59,
+          "top5_share_of_positive": 0.4511,
+          "top5_share_of_abs_total": 2.0581,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 1,
+            "slots": 2093
+          },
+          "final_equity": 876597.66
+        }
+      },
+      "E_combo": {
+        "metrics": {
+          "days": 240,
+          "total_return_pct": 0.34,
+          "annualized_pct": 0.36,
+          "max_drawdown_pct": -14.96,
+          "max_drawdown_days": 68,
+          "trades": 196,
+          "win_pct": 30.6,
+          "profit_factor": 0.97,
+          "turnover": 45.75,
+          "avg_hold_days": 7.0,
+          "final_equity": 1003396.35,
+          "exposure": 0.841,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 6,
+            "slots": 1831
+          }
+        },
+        "checks": {
+          "ledger_identity_max_gap": 0.0,
+          "negative_cash_days": 0,
+          "lot_violations": 0,
+          "date_order_violations": 0,
+          "trades_missing_entry_fee": 0,
+          "closed_pnl_sum": -19560.87,
+          "open_positions": 8,
+          "unrealized_pnl": 22957.23,
+          "equity_change": 3396.35,
+          "final_market_value": 994574.0,
+          "accounting_gap": -0.01,
+          "invariants_ok": true
+        },
+        "decomposition": {
+          "trades": 196,
+          "avg_exposure": 0.841,
+          "zero_position_days": 1,
+          "total_days": 240,
+          "avg_hold_days": 7.0,
+          "turnover": 45.75,
+          "top5_pnl": 259234.86,
+          "top5_share_of_positive": 0.3685,
+          "top5_share_of_abs_total": 13.2527,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 6,
+            "slots": 1831
+          },
+          "final_equity": 1003396.35
+        }
+      }
+    }
+  },
+  "reconciliation": {
+    "A:A_fixed": {
+      "reported": {
+        "total_return_pct": -19.87,
+        "max_drawdown_pct": -25.57,
+        "trades": 80,
+        "win_pct": 37.5
+      },
+      "reproduced": {
+        "total_return_pct": -19.87,
+        "max_drawdown_pct": -25.57,
+        "trades": 80,
+        "win_pct": 37.5
+      },
+      "return_match": true,
+      "drawdown_match": true
+    },
+    "A:E_combo": {
+      "reported": {
+        "total_return_pct": -19.03,
+        "max_drawdown_pct": -22.45,
+        "trades": 131,
+        "win_pct": 27.5
+      },
+      "reproduced": {
+        "total_return_pct": -19.03,
+        "max_drawdown_pct": -22.45,
+        "trades": 131,
+        "win_pct": 27.5
+      },
+      "return_match": true,
+      "drawdown_match": true
+    },
+    "B:A_fixed": {
+      "reported": {
+        "total_return_pct": -3.61,
+        "max_drawdown_pct": -22.47,
+        "trades": 95,
+        "win_pct": 45.3
+      },
+      "reproduced": {
+        "total_return_pct": -3.61,
+        "max_drawdown_pct": -22.47,
+        "trades": 95,
+        "win_pct": 45.3
+      },
+      "return_match": true,
+      "drawdown_match": true
+    },
+    "B:E_combo": {
+      "reported": {
+        "total_return_pct": -0.15,
+        "max_drawdown_pct": -24.5,
+        "trades": 179,
+        "win_pct": 25.7
+      },
+      "reproduced": {
+        "total_return_pct": -0.15,
+        "max_drawdown_pct": -24.5,
+        "trades": 179,
+        "win_pct": 25.7
+      },
+      "return_match": true,
+      "drawdown_match": true
+    },
+    "A+B:A_fixed": {
+      "reported": {
+        "total_return_pct": -12.34,
+        "max_drawdown_pct": -24.67,
+        "trades": 101,
+        "win_pct": 52.5
+      },
+      "reproduced": {
+        "total_return_pct": -12.34,
+        "max_drawdown_pct": -24.67,
+        "trades": 101,
+        "win_pct": 52.5
+      },
+      "return_match": true,
+      "drawdown_match": true
+    },
+    "A+B:E_combo": {
+      "reported": {
+        "total_return_pct": 0.34,
+        "max_drawdown_pct": -14.96,
+        "trades": 196,
+        "win_pct": 30.6
+      },
+      "reproduced": {
+        "total_return_pct": 0.34,
+        "max_drawdown_pct": -14.96,
+        "trades": 196,
+        "win_pct": 30.6
+      },
+      "return_match": true,
+      "drawdown_match": true
+    }
+  },
+  "price_basis_warning": "HIGH：未复权价格会在除权日造成虚假跳空，所有交易级结果标记 PENDING_REVIEW",
+  "summary": {
+    "all_invariants_ok": true,
+    "max_ledger_gap": 0.0,
+    "all_reported_returns_match": true
+  }
+}

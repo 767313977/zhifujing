@@ -15,6 +15,9 @@ if str(SCRIPTS) not in sys.path:
 import m62_catalog_data as catalog  # noqa: E402
 import m62_market_data_audit as market  # noqa: E402
 import m62_reconcile_m61_evidence as recon  # noqa: E402
+import m62_trade_sim_audit as sim_audit  # noqa: E402
+
+from app.services.trend_engine import trade_sim  # noqa: E402
 
 
 def _catalog_db(path: Path) -> None:
@@ -82,6 +85,31 @@ def test_breadth_aggregate_counts_and_denominators() -> None:
     assert stats["low20"] == 0
     assert stats["limit_up_approx"] == 1
     assert stats["limit_down_approx"] == 0
+
+
+def test_sim_audit_check_accepts_balanced_ledger() -> None:
+    days = [date(2025, 1, 2).toordinal() + index for index in range(10)]
+    days = [date.fromordinal(value) for value in days]
+    bars = {
+        "600001": {
+            day: trade_sim.DailyBar(
+                open=10.0, high=10.1, low=9.9, close=10.0, pct=0.0, amount=1e8, volume=1e6
+            )
+            for day in days
+        }
+    }
+    config = trade_sim.SimConfig(horizon=2, min_commission=0, commission_bps=3)
+    result = trade_sim.simulate(
+        bars_by_code=bars,
+        calendar=days,
+        signals=[trade_sim.Signal("600001", days[0], 1.0)],
+        config=config,
+    )
+    checks = sim_audit.check(result, config)
+    assert checks["ledger_identity_max_gap"] == 0
+    assert checks["invariants_ok"] is True
+    assert checks["open_positions"] == 0
+    assert abs(checks["accounting_gap"]) <= 0.05
 
 
 def test_purged_blocks_generates_three_test_blocks() -> None:
