@@ -1,0 +1,13 @@
+﻿table,row_count,min_date,max_date,distinct_dates,median_rows_per_day,max_rows_per_day,duplicate_key_groups,missing_trade_days,coverage_vs_stock,lag_vs_stock_days,pit_status,source
+stock_daily,5820960,2021-09-14,2026-10-19,1230,4869,5094,0,0,1.0,0,CLOSE_ONLY,iFinD / 腾讯（按采集路径）
+index_daily,0,,,0,,,,,,,NO_DATA,UNKNOWN
+sector_daily,0,,,0,,,,,,,NO_DATA,UNKNOWN
+sector_member,0,,,0,,,,,,,NO_DATA,UNKNOWN
+rps_daily,0,,,0,,,,,,,NO_DATA,UNKNOWN
+breadth_daily,0,,,0,,,,,,,NO_DATA,UNKNOWN
+market_sentiment,0,,,0,,,,,,,NO_DATA,UNKNOWN
+fear_greed_daily,0,,,0,,,,,,,NO_DATA,UNKNOWN
+limit_pool,0,,,0,,,,,,,NO_DATA,UNKNOWN
+trade_calendar,0,,,0,,,,,,,NO_DATA,UNKNOWN
+stock_basic,0,,,0,,,,,,,NO_DATA,UNKNOWN
+pattern_hit,0,,,0,,,,,,,NO_DATA,UNKNOWN

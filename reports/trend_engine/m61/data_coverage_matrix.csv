@@ -1,0 +1,13 @@
+﻿table,row_count,min_date,max_date,distinct_dates,median_rows_per_day,max_rows_per_day,duplicate_key_groups,missing_trade_days,coverage_vs_stock,lag_vs_stock_days,pit_status,source
+stock_daily,2547042,2024-09-02,2026-10-09,506,5025,5283,0,0,1.0,0,CLOSE_ONLY,iFinD / 腾讯（按采集路径）
+index_daily,1530,2025-09-08,2026-09-24,255,6,6,0,0,0.0012,5,CLOSE_ONLY_LAG,iFinD / 开盘红
+sector_daily,94771,2025-09-08,2026-09-24,255,372,377,0,0,0.073,5,CLOSE_ONLY_LAG,开盘红
+sector_member,3646796,2026-07-03,2026-09-24,60,60562,64073,0,0,11.7072,5,SNAPSHOT_ONLY,开盘红
+rps_daily,1274587,2025-09-22,2026-10-21,251,5067,5270,0,0,0.9962,0,DERIVED_AFTER_CLOSE,scan_rps（本地计算）
+breadth_daily,0,,,0,,,0,0,,,DERIVED_AFTER_CLOSE,collect_breadth（本地计算）
+market_sentiment,255,2025-09-08,2026-09-24,255,1,1,0,0,0.0002,5,CLOSE_ONLY,开盘红 / akshare
+fear_greed_daily,254,2025-09-09,2026-09-24,254,1,1,0,0,0.0002,5,CLOSE_ONLY,本地计算 + akshare
+limit_pool,28225,2025-09-08,2026-09-24,255,103,301,0,0,0.0217,5,UNKNOWN,UNKNOWN
+trade_calendar,8797,1990-12-19,2026-12-31,8797,1,1,0,0,0.0002,0,FUTURE_PRELOADED,akshare
+stock_basic,5572,,,0,,,0,,,,CURRENT_SNAPSHOT,iFinD 建池（7 天一次）
+pattern_hit,20637,2026-05-14,2026-10-09,26,493,4812,0,74,0.1511,0,CLOSE_ONLY,本地扫描
