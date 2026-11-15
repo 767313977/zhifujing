@@ -1,0 +1,107 @@
+{
+  "generated_at": "2026-11-15T17:23:21+08:00",
+  "source": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\fupan.db",
+  "source_size": 513519616,
+  "environment": "isolated copy; source opened mode=ro; production untouched",
+  "before_columns": [
+    "trade_date",
+    "code",
+    "ret120",
+    "ret250",
+    "rps120",
+    "rps250",
+    "ret50",
+    "rps50"
+  ],
+  "after_columns": [
+    "trade_date",
+    "code",
+    "ret120",
+    "ret250",
+    "rps120",
+    "rps250",
+    "ret50",
+    "rps50",
+    "ret20",
+    "ret60",
+    "rps20",
+    "rps60"
+  ],
+  "interrupted_columns": [
+    "trade_date",
+    "code",
+    "ret120",
+    "ret250",
+    "rps120",
+    "rps250",
+    "ret50",
+    "rps50",
+    "ret20",
+    "ret60",
+    "rps60"
+  ],
+  "recovered_columns": [
+    "trade_date",
+    "code",
+    "ret120",
+    "ret250",
+    "rps120",
+    "rps250",
+    "ret50",
+    "rps50",
+    "ret20",
+    "ret60",
+    "rps60",
+    "rps20"
+  ],
+  "source_integrity": "ok",
+  "before_rows": 10206,
+  "before_digest": "00c6f5d72c6f8aa00244f61b9b15fb082a3772c85669d2fa230b26233ef0a715",
+  "after_digest": "00c6f5d72c6f8aa00244f61b9b15fb082a3772c85669d2fa230b26233ef0a715",
+  "backup_sha256": "43d1e4ba965940430bf4579e47314533042247e56823122e91265a435051d170",
+  "timings": {},
+  "migration_runs": {
+    "first": {
+      "returncode": 0,
+      "stdout": "库：C:\\Users\\76731\\AppData\\Local\\Temp\\s6_12-rps-o0h4236i\\fupan-copy.db\n迁移前列：['trade_date', 'code', 'ret120', 'ret250', 'rps120', 'rps250', 'ret50', 'rps50']\n已添加：ret20\n已添加：ret60\n已添加：rps20\n已添加：rps60\n迁移后列：['trade_date', 'code', 'ret120', 'ret250', 'rps120', 'rps250', 'ret50', 'rps50', 'ret20', 'ret60', 'rps20', 'rps60']",
+      "stderr": ""
+    },
+    "second": {
+      "returncode": 0,
+      "stdout": "库：C:\\Users\\76731\\AppData\\Local\\Temp\\s6_12-rps-o0h4236i\\fupan-copy.db\n迁移前列：['trade_date', 'code', 'ret120', 'ret250', 'rps120', 'rps250', 'ret50', 'rps50', 'ret20', 'ret60', 'rps20', 'rps60']\n已存在，跳过：ret20\n已存在，跳过：ret60\n已存在，跳过：rps20\n已存在，跳过：rps60\n迁移后列：['trade_date', 'code', 'ret120', 'ret250', 'rps120', 'rps250', 'ret50', 'rps50', 'ret20', 'ret60', 'rps20', 'rps60']",
+      "stderr": ""
+    },
+    "recovered": {
+      "returncode": 0,
+      "stdout": "库：C:\\Users\\76731\\AppData\\Local\\Temp\\s6_12-rps-o0h4236i\\fupan-copy.db\n迁移前列：['trade_date', 'code', 'ret120', 'ret250', 'rps120', 'rps250', 'ret50', 'rps50', 'ret20', 'ret60', 'rps60']\n已存在，跳过：ret20\n已存在，跳过：ret60\n已添加：rps20\n已存在，跳过：rps60\n迁移后列：['trade_date', 'code', 'ret120', 'ret250', 'rps120', 'rps250', 'ret50', 'rps50', 'ret20', 'ret60', 'rps60', 'rps20']",
+      "stderr": ""
+    }
+  },
+  "new_version_schema_verify": {
+    "ok": true,
+    "table_count": 46,
+    "missing_tables": [],
+    "missing_columns": [],
+    "missing_indexes": []
+  },
+  "checks": {
+    "source_opened_read_only": true,
+    "backup_integrity": true,
+    "backup_old_data_matches": true,
+    "migration_first_exit0": true,
+    "new_columns_added": true,
+    "old_columns_kept": true,
+    "migration_second_exit0": true,
+    "idempotent_columns": true,
+    "data_unchanged": true,
+    "integrity_after": true,
+    "interruption_detected": true,
+    "recovery_exit0": true,
+    "recovery_columns": true,
+    "recovery_data_unchanged": true,
+    "recovery_integrity": true,
+    "legacy_columns_query_ok": true,
+    "new_version_schema_verify_ok": true
+  },
+  "verdict": "PASS"
+}

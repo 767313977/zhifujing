@@ -1,0 +1,293 @@
+﻿# configuration file /etc/nginx/nginx.conf:
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+error_log /var/log/nginx/error.log;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+	worker_connections 768;
+	# multi_accept on;
+}
+
+http {
+
+	##
+	# Basic Settings
+	##
+
+	sendfile on;
+	tcp_nopush on;
+	types_hash_max_size 2048;
+	server_tokens off;
+
+	# server_names_hash_bucket_size 64;
+	# server_name_in_redirect off;
+
+	include /etc/nginx/mime.types;
+	default_type application/octet-stream;
+
+	##
+	# SSL Settings
+	##
+
+	ssl_protocols TLSv1.2 TLSv1.3; # Dropping SSLv3, ref: POODLE
+	ssl_prefer_server_ciphers on;
+
+	##
+	# Logging Settings
+	##
+
+	access_log /var/log/nginx/access.log;
+    log_format fupan_main '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" rt=$request_time urt=$upstream_response_time';
+
+
+	##
+	# Gzip Settings
+	##
+
+	gzip on;
+
+	# gzip_vary on;
+	# gzip_proxied any;
+	# gzip_comp_level 6;
+	# gzip_buffers 16 8k;
+	# gzip_http_version 1.1;
+	# gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+	##
+	# Virtual Host Configs
+	##
+
+	include /etc/nginx/conf.d/*.conf;
+	include /etc/nginx/sites-enabled/*;
+}
+
+
+#mail {
+#	# See sample authentication script at:
+#	# http://wiki.nginx.org/ImapAuthenticateWithApachePhpScript
+#
+#	# auth_http localhost/auth.php;
+#	# pop3_capabilities "TOP" "USER";
+#	# imap_capabilities "IMAP4rev1" "UIDPLUS";
+#
+#	server {
+#		listen     localhost:110;
+#		protocol   pop3;
+#		proxy      on;
+#	}
+#
+#	server {
+#		listen     localhost:143;
+#		protocol   imap;
+#		proxy      on;
+#	}
+#}
+
+# configuration file /etc/nginx/mime.types:
+
+types {
+    text/html                                        html htm shtml;
+    text/css                                         css;
+    text/xml                                         xml;
+    image/gif                                        gif;
+    image/jpeg                                       jpeg jpg;
+    application/javascript                           js;
+    application/atom+xml                             atom;
+    application/rss+xml                              rss;
+
+    text/mathml                                      mml;
+    text/plain                                       txt;
+    text/vnd.sun.j2me.app-descriptor                 jad;
+    text/vnd.wap.wml                                 wml;
+    text/x-component                                 htc;
+
+    image/avif                                       avif;
+    image/png                                        png;
+    image/svg+xml                                    svg svgz;
+    image/tiff                                       tif tiff;
+    image/vnd.wap.wbmp                               wbmp;
+    image/webp                                       webp;
+    image/x-icon                                     ico;
+    image/x-jng                                      jng;
+    image/x-ms-bmp                                   bmp;
+
+    font/woff                                        woff;
+    font/woff2                                       woff2;
+
+    application/java-archive                         jar war ear;
+    application/json                                 json;
+    application/mac-binhex40                         hqx;
+    application/msword                               doc;
+    application/pdf                                  pdf;
+    application/postscript                           ps eps ai;
+    application/rtf                                  rtf;
+    application/vnd.apple.mpegurl                    m3u8;
+    application/vnd.google-earth.kml+xml             kml;
+    application/vnd.google-earth.kmz                 kmz;
+    application/vnd.ms-excel                         xls;
+    application/vnd.ms-fontobject                    eot;
+    application/vnd.ms-powerpoint                    ppt;
+    application/vnd.oasis.opendocument.graphics      odg;
+    application/vnd.oasis.opendocument.presentation  odp;
+    application/vnd.oasis.opendocument.spreadsheet   ods;
+    application/vnd.oasis.opendocument.text          odt;
+    application/vnd.openxmlformats-officedocument.presentationml.presentation
+                                                     pptx;
+    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+                                                     xlsx;
+    application/vnd.openxmlformats-officedocument.wordprocessingml.document
+                                                     docx;
+    application/vnd.wap.wmlc                         wmlc;
+    application/wasm                                 wasm;
+    application/x-7z-compressed                      7z;
+    application/x-cocoa                              cco;
+    application/x-java-archive-diff                  jardiff;
+    application/x-java-jnlp-file                     jnlp;
+    application/x-makeself                           run;
+    application/x-perl                               pl pm;
+    application/x-pilot                              prc pdb;
+    application/x-rar-compressed                     rar;
+    application/x-redhat-package-manager             rpm;
+    application/x-sea                                sea;
+    application/x-shockwave-flash                    swf;
+    application/x-stuffit                            sit;
+    application/x-tcl                                tcl tk;
+    application/x-x509-ca-cert                       der pem crt;
+    application/x-xpinstall                          xpi;
+    application/xhtml+xml                            xhtml;
+    application/xspf+xml                             xspf;
+    application/zip                                  zip;
+
+    application/octet-stream                         bin exe dll;
+    application/octet-stream                         deb;
+    application/octet-stream                         dmg;
+    application/octet-stream                         iso img;
+    application/octet-stream                         msi msp msm;
+
+    audio/midi                                       mid midi kar;
+    audio/mpeg                                       mp3;
+    audio/ogg                                        ogg;
+    audio/x-m4a                                      m4a;
+    audio/x-realaudio                                ra;
+
+    video/3gpp                                       3gpp 3gp;
+    video/mp2t                                       ts;
+    video/mp4                                        mp4;
+    video/mpeg                                       mpeg mpg;
+    video/ogg                                        ogv;
+    video/quicktime                                  mov;
+    video/webm                                       webm;
+    video/x-flv                                      flv;
+    video/x-m4v                                      m4v;
+    video/x-matroska                                 mkv;
+    video/x-mng                                      mng;
+    video/x-ms-asf                                   asx asf;
+    video/x-ms-wmv                                   wmv;
+    video/x-msvideo                                  avi;
+}
+
+# configuration file /etc/nginx/sites-enabled/fupan:
+# 80：只做两件事 —— 给 ACME 校验放行、其余全部 301 到 https
+server {
+    listen 80;
+    server_name zhifujing.top www.zhifujing.top;
+
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+# 80 默认块：非本站 Host 直接关连接（2026-10-10 加固）。
+# 为什么要单列一块：80 上原来只有一个块、还是 default_server，等于任何 Host（直接拿
+# IP 访问、或伪造 Host）都会被 301 引到 https 再落到本站后端 —— 加这块后非本站 Host
+# 在 80 上就直接 444（nginx 关连接，不给任何响应体/状态行）。
+server {
+    listen 80 default_server;
+    server_name _;
+
+    # ⚠️ ACME 校验必须照常放行：签发/续期时 Host 就是本站域名、正常会落到上面那块，
+    # 这里再留一份是兜底，别让校验路径被 444 挡死。
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    # 其余路径：444（关连接）
+    location / { return 444; }
+}
+
+# 443 默认块：SNI/域名对不上本站的，在 TLS 握手阶段就拒绝，连证书都不返回。
+# ssl_reject_handshake 需要 nginx >= 1.19.4（线上 1.24 可用）；更老的版本要退回
+# `return 444;`（那样得先给它配一张证书）。
+server {
+    listen 443 ssl http2 default_server;
+    server_name _;
+    ssl_reject_handshake on;
+}
+
+# 443：正式入口
+server {
+    # **开 HTTP/2**（2026-10-10 加）：一次页面加载要发十几个 `/api/*` 请求，而
+    # HTTP/1.1 下浏览器对同一个域名最多只开 6 条连接、且不能多路复用 —— 弱网时请求
+    # 排队 / 连接被重置，前端就报 `Failed to fetch`（用户 2026-10-10 报的正是这个）。
+    # ⚠️ 写法随 nginx 版本：`listen ... http2` 是 1.24 及更早的写法，线上就是 1.24；
+    # nginx ≥ 1.25.1 把它拆成了 `listen 443 ssl;` + `http2 on;`，升级后要改回来。
+    listen 443 ssl http2;
+    server_name zhifujing.top www.zhifujing.top;
+
+    access_log /var/log/nginx/fupan.access.log fupan_main;
+    ssl_certificate     /etc/letsencrypt/live/zhifujing.top/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/zhifujing.top/privkey.pem;
+    # 老 nginx 的默认值还允许 TLSv1 / 1.1，显式收窄到 1.2+
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    # 文本压缩（2026-10-23 加）。全局 nginx.conf 里 `gzip on` 是有的，但
+    # `gzip_types` 被注释掉（默认只压 text/html）、`gzip_proxied` 默认 off ——
+    # 站点产物是反代回来的，于是 JS/CSS 一直原样传输（实测 278 KB / 38 KB）。
+    # ⚠️ text/javascript 必须显式列：Vite 产物就是这个 Content-Type。
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/javascript application/javascript application/json application/xml image/svg+xml;
+
+    location / { include /etc/nginx/snippets/fupan-proxy.conf; }
+}
+
+# configuration file /etc/nginx/snippets/fupan-proxy.conf:
+# ⚠️ 这一层**没设密码**（AUTH=off，2026-09-28 起按用户要求取消 nginx Basic Auth）。
+# 注意措辞：**不是「全站没有鉴权」** —— 后端自己有登录体系（/api/* 一律要登录，
+# 见 app/api/auth.py），自选股 / 复盘笔记要登录才看得到，POST /api/admin/collect
+# 也一样；这里取消的只是 nginx 那道额外的 Basic Auth。
+# 想加回来：重跑一次带 `AUTH=on` 的 setup_nginx.sh，或把下面两行补在这里：
+#     auth_basic "fupan";
+#     auth_basic_user_file /etc/nginx/.htpasswd;
+proxy_pass http://127.0.0.1:8000;
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+# ⚠️ 必须有这一行：后端靠**实际协议**决定会话 cookie 要不要带 `Secure`
+# （见 app/api/auth.py 的 _set_cookie）。少了它，uvicorn 只看到 127.0.0.1 上的
+# 明文 http，云端也会被判成 http —— cookie 少一个 Secure，静默降级。
+# 后端认得它是因为 uvicorn 默认开了 proxy-headers，且信任来自 127.0.0.1 的代理。
+proxy_set_header X-Forwarded-Proto $scheme;
+
+# 一次采集要跑几分钟（板块那步是逐个拉 400 多个板块，实测约 8 分钟）。
+# 默认的 60s 会让 nginx 提前断开，页面上显示成「采集失败」——
+# 而后台其实还在采，这种「假失败」最难排查。
+proxy_read_timeout 600s;
+proxy_send_timeout 600s;
+
+# 安全响应头（2026-10-10 外部审查）。⚠️ 必须与 proxy_pass **同层**（都在 location
+# 里）：nginx 里 add_header 是「当前层有就**整体覆盖**父层」的规则，放在外层父块
+# 会被这一层的其它 add_header 顶掉 —— 只有放进片段、跟 proxy_pass 在一起才真正下发。
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()" always;
+# CSP 取保守值，别把 SPA 打坏：
+#   - style-src 带 'unsafe-inline' 是**因为前端有内联 style**（不是偷懒）；要收紧得先改前端。
+#   - img-src / font-src 放 data: —— 图标、字体可能是内联 data URL。
+#   - connect-src 'self' —— 页面只打本站 /api。
+#   - ECharts 画的是 canvas，不需要额外的 script / worker 源。
+add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:; frame-ancestors 'self'; base-uri 'self'; object-src 'none'" always;
+

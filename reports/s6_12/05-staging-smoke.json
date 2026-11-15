@@ -1,0 +1,70 @@
+{
+  "generated_at": "2026-11-15T17:43:02+08:00",
+  "environment": "isolated temp DB; external fetch/scheduler off; no production access",
+  "results": {
+    "health": 200,
+    "login": 200,
+    "market_overview": 200,
+    "stock_profile": 200,
+    "sector_members": 200,
+    "sector_members_body": "{\"trade_date\":\"2026-11-13\",\"sector_code\":\"S612\",\"sector_name\":\"测试板块\",\"taxonomy\":\"test\",\"member_count\":null,\"truncated\":false,\"note\":\"离线验收模式：禁止外部现取，本地没有该板块的成员快照（历史日期不受影响）\",\"members\":[]}",
+    "watchlist_sync": 409,
+    "stock_sync": 409,
+    "ready": 503
+  },
+  "checks": {
+    "health_200": true,
+    "login_200": true,
+    "market_200": true,
+    "stock_200": true,
+    "sector_members_200": true,
+    "watchlist_sync_409": true,
+    "stock_sync_409": true,
+    "research_tables_unchanged": true
+  },
+  "before": {
+    "stock_daily": {
+      "rows": 1,
+      "sha256": "e7899c846f8cd10ff7b132bef3e01add6e42b30b5f85774b4855a29cd246a9b8"
+    },
+    "sector_member": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "ifind_usage": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "stock_event_cache": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "stock_financial": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  },
+  "after": {
+    "stock_daily": {
+      "rows": 1,
+      "sha256": "e7899c846f8cd10ff7b132bef3e01add6e42b30b5f85774b4855a29cd246a9b8"
+    },
+    "sector_member": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "ifind_usage": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "stock_event_cache": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "stock_financial": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  },
+  "verdict": "PASS"
+}

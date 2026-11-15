@@ -1,0 +1,32 @@
+{
+  "assets_same": {
+    "c0_scripts": true,
+    "frozen_signals": true,
+    "git_head_contains_3060e82": true
+  },
+  "databases": {
+    "backend/data/b1_research.db": {
+      "integrity_final": "ok",
+      "size_same": true,
+      "mtime_same": true
+    },
+    "backend/data/forward_research.db": {
+      "integrity_final": "ok",
+      "size_same": true,
+      "mtime_same": true
+    },
+    "backend/data/fupan.db": {
+      "integrity_final": "ok",
+      "size_same": true,
+      "mtime_same": true
+    },
+    "backend/data/history.db": {
+      "integrity_final": "ok",
+      "size_same": true,
+      "mtime_same": true
+    }
+  },
+  "missing_final": [],
+  "integrity_failed_final": [],
+  "all_ok": true
+}

@@ -1,0 +1,86 @@
+﻿# /etc/systemd/system/fupan.service
+[Unit]
+Description=A股复盘站点（采集 + 飞书推送）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fupan
+Group=fupan
+WorkingDirectory=/opt/fupan/backend
+Environment=PYTHONUNBUFFERED=1
+# 时区也钉在**服务进程**上（2026-10-10 加）：代码判「今天是不是交易日」「过没过采集
+# 时刻」用的是进程本地时间（date.today / datetime.now）。上面那段 timedatectl 只在
+# 系统带 systemd-timedated 时才跑（脚本里套了 command -v）—— 万一哪台机器没有它，
+# 启动补采会把北京时间当 UTC 判、差 8 小时直接跳过。这里钉死之后，无论系统时钟怎么配，
+# date.today() 都是北京日期。
+Environment=TZ=Asia/Shanghai
+# 云端**永远**是采集机。2026-10-22 起部署包不再带 .env（服务器那份手工维护），
+# 但这条仍保留：systemd 环境变量优先级高于 .env，万一手工拷配置时写成 false，
+# 也不会把云端的定时采集静悄悄关掉。
+Environment=SCHEDULER_ENABLED=true
+# iFinD 的 TLS 证书校验（2026-10-12 加）。**放这里比只写 .env 稳**：.env 是手工
+# 维护的，换机器 / 重装容易漏；systemd 里钉死之后不会再漂。路径用系统 CA 包：
+# iFinD 那张证书是 DigiCert 签发的公共证书，用系统信任库即可校验。
+Environment=IFIND_CA_FILE=/etc/ssl/certs/ca-certificates.crt
+# 生产不开放开发源的 CORS（2026-10-23 体检后加）：main.py 只在
+# settings.enable_dev_cors 为真时才把 http://localhost:5173 加进 allow_origins。
+# 放 systemd 而不是 .env：.env 是手工维护的、换机器容易漏，而这是**生产语义**。
+Environment=ENABLE_DEV_CORS=false
+ExecStart=/opt/fupan/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=10
+# 采集是长任务，停服务时给 APScheduler 收尾的时间
+TimeoutStopSec=30
+
+# 只绑 127.0.0.1：这台机器不需要对外暴露任何端口，采集与推送全是出站请求。
+# 以后要在外网看网页，另配反向代理（deploy/setup_nginx.sh 那套），**不要**把这行改成 0.0.0.0。
+# 注意 .env 里的 HOST=0.0.0.0 是给本机用的（让同一 WiFi 下的手机能打开）——
+# 这条命令显式指定了 --host，所以不受它影响；但**也别把它改成 python -m app.main**，
+# 那样会去读 .env，等于把这个服务直接挂到公网上 —— 后端 2026-09-28 起有登录体系，
+# 但公网 IP + 明文 http 那条路会让密码明文过网（api/auth.py 的 _require_secure_transport
+# 会直接拒登录，页面开着也进不去）。
+#
+# （写注释时注意：这个 heredoc 故意没加引号，变量要展开；所以注释里**不能出现反引号**，
+#   反引号在 bash 里是命令替换，会被真的执行一次 —— 踩过。）
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+# ---- 以下加固 2026-10-23 体检后加（当时 systemd-analyze exposure = 8.5）----
+# LimitNOFILE：默认软上限只有 1024，采集并发 + 全市场日线查询容易碰到 fd 上限。
+LimitNOFILE=65535
+UMask=0027
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
+
+# /etc/systemd/system/fupan.service.d/hardening.conf
+# 2026-10-23 体检后加固（Lead 手工添加；install.sh 里有同一份模板）
+[Service]
+LimitNOFILE=65535
+UMask=0027
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# 2026-10-23：生产不开放开发源 CORS（main.py 的 settings.enable_dev_cors）
+Environment=ENABLE_DEV_CORS=false
+Environment=WARMUP_PATTERN_CACHE=true
