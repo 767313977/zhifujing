@@ -14,3 +14,11 @@
 - 本文件单独提交后再推送；最终 HEAD 以 `git rev-parse HEAD` 与远端同名为准
 - PR 入口：`https://github.com/767313977/zhifujing/pull/new/work/s6-8-s6-9-gate-closure`
 - 未 amend、未 force push、未合并 master、未部署生产
+
+## 2026-11-15 追加：Hyper-V 主机预检与 VM 工具
+
+- `a24a3a6` feat(s6.8): add Hyper-V host preflight and VM isolation tooling
+- `bf430e0` test(s6.8): record Hyper-V host preflight and script static checks
+- 推送：`git push` 成功，`origin/work/s6-8-s6-9-gate-closure` = `bf430e023b6d014e6f9b9a47ba6d259fefb177b7`
+- 状态：Hyper-V 管理面 PASS；VM 创建/N01–N24 仍 `NOT_RUN`（缺 Ubuntu ISO）
+- 本轮未创建 VM、未创建 vSwitch/NAT、未修改宿主防火墙
