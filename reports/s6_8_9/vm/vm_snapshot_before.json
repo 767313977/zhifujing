@@ -1,32 +1,34 @@
 {
-  "generated_at": "2026-11-15T13:40:00+08:00",
+  "generated_at": "2026-11-15T14:15:00+08:00",
   "status": "S61_VM_UNAVAILABLE",
+  "reason": "Hyper-V management is ready, but no Ubuntu 24.04 ISO/VHDX is present; VM creation not started.",
   "vm_type": null,
   "vm_id": null,
   "snapshot_id": null,
   "snapshot_created": false,
-  "snapshot_reason": "无可用独立 Linux VM（固件虚拟化未启用、Hyper-V 未启用、无第三方虚拟化）",
   "host": {
     "windows": "Windows 11 专业版 Insider Preview 10.0.26320",
     "cpu": "Intel(R) Core(TM) Ultra 5 225H",
+    "ram_gb": 31.43,
+    "logical_processors": 14,
     "virtualization_firmware_enabled": false,
+    "virtualization_firmware_note": "HypervisorPresent=True; WMI fields are not a standalone BIOS indicator",
     "slat": false,
-    "hyperv_all": "Disabled",
-    "virtual_machine_platform": "Enabled",
-    "hypervisor_platform": "Enabled",
-    "vm_cli": {
-      "Get-VM": "not_installed",
-      "VBoxManage": "not_installed",
-      "vmrun": "not_installed",
-      "qemu-system-x86_64": "not_installed",
-      "virsh": "not_installed"
-    },
+    "hypervisor_present": true,
+    "hypervisor_launch_type": "Auto",
+    "hyperv_all": "Enabled",
+    "vmms": "Running/Automatic",
+    "vmcompute": "Running/Manual",
+    "get_vmhost": "PASS",
+    "existing_vms": 0,
+    "existing_switches": [
+      {"name": "Default Switch", "type": "Internal", "host_ipv4": "172.26.112.1/24"}
+    ],
+    "existing_nats": 0,
     "wsl": {
       "distribution": "Ubuntu-24.04",
       "version": 2,
-      "state": "Stopped",
-      "usable_for_os_acceptance": false,
-      "reason": "共享宿主内核/网络命名空间，无法证明独立网卡/快照/规则作用域"
+      "usable_for_os_acceptance": false
     }
   },
   "isolation": {
@@ -36,7 +38,25 @@
     "shared_clipboard_disabled": false,
     "host_dirs_mounted": false
   },
+  "planned": {
+    "vm_name": "s6-egress-vm",
+    "vm_root": "D:\\s6-vm",
+    "switch": "s6-egress",
+    "switch_type": "Internal",
+    "subnet": "172.31.240.0/24",
+    "gateway": "172.31.240.1",
+    "nat": "s6-egress-nat",
+    "guest_ip": "172.31.240.10/24",
+    "vcpu": 4,
+    "startup_memory_gb": 6,
+    "disk_gb": 64
+  },
+  "blockers": [
+    "Ubuntu Server 24.04 LTS ISO missing",
+    "ISO SHA256 not verified"
+  ],
   "gates": {
+    "hyperv_management": "PASS",
     "S61_VM_UNAVAILABLE": true,
     "G3": "NOT_VERIFIED",
     "G4": "NOT_VERIFIED"

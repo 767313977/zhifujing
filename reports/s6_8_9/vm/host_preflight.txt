@@ -1,0 +1,122 @@
+﻿
+========== A. OS / BUILD ==========
+
+
+Caption        : Microsoft Windows 11 专业版 Insider Preview
+Version        : 10.0.26320
+BuildNumber    : 26320
+OSArchitecture : 64-bit
+
+
+
+
+========== B. PHYSICAL MEMORY ==========
+
+
+TotalRAM_GB       : 31.43
+LogicalProcessors : 14
+
+
+
+
+========== C. VOLUMES ==========
+
+DriveLetter FileSystemLabel FileSystem SizeGB FreeGB
+----------- --------------- ---------- ------ ------
+          D D               NTFS       950.55 478.83
+          C Windows         NTFS        952.4 228.52
+
+
+
+========== D. NETWORK ADAPTERS ==========
+
+Name                       InterfaceDescription                     Status       LinkSpeed MacAddress        Virtual
+----                       --------------------                     ------       --------- ----------        -------
+蓝牙网络连接                     Bluetooth Device (Personal Area Network) Disconnected 3 Mbps    C4-FF-99-76-A4-CA    True
+vEthernet (Default Switch) Hyper-V Virtual Ethernet Adapter         Up           10 Gbps   00-15-5D-14-11-4C    True
+WLAN                       Intel(R) Wi-Fi 6 AX203                   Up           961 Mbps  C4-FF-99-76-A4-C6   False
+
+
+
+========== E. IP CONFIGURATION ==========
+
+
+InterfaceAlias     : vEthernet (Default Switch)
+InterfaceIndex     : 26
+IPv4Address        : {172.26.112.1}
+IPv4DefaultGateway : 
+DNSServer          : {MSFT_DNSClientServerAddress (Name = "26", CreationClassName = "", SystemCreationClassName = "", S
+                     ystemName = "23"), MSFT_DNSClientServerAddress (Name = "26", CreationClassName = "", SystemCreatio
+                     nClassName = "", SystemName = "2")}
+
+InterfaceAlias     : WLAN
+InterfaceIndex     : 7
+IPv4Address        : {192.168.31.45}
+IPv4DefaultGateway : {MSFT_NetRoute (InstanceID = ":8:8:8:9:55A55;C?8;@B8?;8;55;")}
+DNSServer          : {MSFT_DNSClientServerAddress (Name = "7", CreationClassName = "", SystemCreationClassName = "", Sy
+                     stemName = "23"), MSFT_DNSClientServerAddress (Name = "7", CreationClassName = "", SystemCreationC
+                     lassName = "", SystemName = "2")}
+
+InterfaceAlias     : 蓝牙网络连接
+InterfaceIndex     : 11
+IPv4Address        : {169.254.250.38}
+IPv4DefaultGateway : 
+DNSServer          : {MSFT_DNSClientServerAddress (Name = "11", CreationClassName = "", SystemCreationClassName = "", S
+                     ystemName = "23"), MSFT_DNSClientServerAddress (Name = "11", CreationClassName = "", SystemCreatio
+                     nClassName = "", SystemName = "2")}
+
+
+
+
+========== F. EXISTING VIRTUAL SWITCHES ==========
+
+
+Name                           : Default Switch
+SwitchType                     : Internal
+NetAdapterInterfaceDescription : 
+AllowManagementOS              : True
+
+
+
+
+========== G. HYPER-V HOST SETTINGS ==========
+
+
+ComputerName          : HAN-LAPTOP
+VirtualMachinePath    : C:\ProgramData\Microsoft\Windows\Hyper-V
+VirtualHardDiskPath   : C:\ProgramData\Microsoft\Windows\Virtual Hard Disks
+LogicalProcessorCount : 14
+MemoryCapacity        : 33752997888
+MemoryAvailable       : 
+
+
+
+
+========== H. SUPPORTED VM CONFIGURATION ==========
+
+Name                                                  Version
+----                                                  -------
+Microsoft Windows 10 Anniversary Update/Server 2016   8.0    
+Microsoft Windows 10 Creators Update                  8.1    
+Microsoft Windows 10 Fall Creators Update/Server 1709 8.2    
+Microsoft Windows 10 April 2018 Update/Server 1803    8.3    
+Microsoft Windows 10 October 2018 Update/Server 2019  9.0    
+Microsoft Windows 10 May 2019 Update/Server 1903      9.1    
+Microsoft Windows 10 May 2020 Update/Server 2004      9.2    
+Microsoft Windows 10 (Manganese)                      9.3    
+Microsoft Windows Server 2022                         10.0   
+Microsoft Host OS (Cobalt+)                           10.5   
+Microsoft Windows 11 (22H2)                           11.0   
+Microsoft Windows 11 (Copper)                         11.1   
+Microsoft Windows 11 (Zinc)                           11.2   
+Microsoft Windows Server 2025                         12.0   
+
+
+
+========== I. HYPERVISOR BOOT CONFIG ==========
+
+
+========== PREFLIGHT COMPLETE ==========
+hypervisorlaunchtype    Auto
+
+

@@ -52,18 +52,33 @@
 - 证据：`staging/version_switch.json`、`versioned-rollback-report.md`、`build-record.json`、
   `manifest-old/new.json`、`logs/build-*.log`、`login-*.json`。
 
-## 4. C 包：专用 Linux VM（BLOCKED）
+## 4. C 包：Hyper-V 管理面 PASS；VM 创建 NOT_RUN
+
+> 2026-11-15 追加：用户提供了新的主机预检结果，Hyper-V 管理面已启用。
+> 本节以 `vm/host-preflight.md` 为准；旧的 `vm_inventory.md` 是上一时刻快照。
 
 | 项 | 结果 |
 | --- | --- |
-| CPU 虚拟化固件位 | `VirtualizationFirmwareEnabled=False`、SLAT=False |
-| Hyper-V | Disabled；`Get-VM` 不可用 |
-| VirtualBox/VMware/KVM | 均未安装 |
-| 现有专用 VM | 无 |
-| WSL2 | Ubuntu-24.04 停止态；禁止作为 OS 验收环境 |
-| 结论 | **`S61_VM_UNAVAILABLE`**；未改 BIOS、未重启宿主、未动宿主/WSL 防火墙 |
+| Hyper-V 组件 / 服务 | **Enabled；vmms Running/Automatic、vmcompute Running** |
+| `Get-VMHost` | PASS（HAN-LAPTOP） |
+| HypervisorPresent | True；`hypervisorlaunchtype=Auto` |
+| 已有 VM | 0 |
+| 现有 vSwitch | 仅 `Default Switch`（Internal，172.26.112.1/24） |
+| 现有 NAT | 无 |
+| CPU WMI 三个 False | 不能单独解释为 BIOS 未开启；Hypervisor 已接管，Intel 规格支持 VT-x/EPT |
+| 主机资源 | 31.43 GB RAM / 14 LP；D: 剩余 478.83 GB |
+| Ubuntu ISO | **未找到**（仅找到一个非 Ubuntu ISO） |
+| VM 创建/启动 | **NOT_RUN**（按任务书 ISO 来源+SHA256 停止条件） |
+| N01–N24 | **NOT_RUN** |
+| 结论 | **VM 尚未创建；G3/G4 仍 `NOT_VERIFIED`** |
 
-证据：`vm/vm_inventory.md`、`vm/vm_network_topology.md`、`vm/vm_snapshot_before.json`。
+已生成（未执行创建）：`deploy/s6/vm/create-ubuntu-vm.ps1`、
+`verify-vm-isolation.ps1`、`invoke-guest-egress-acceptance.ps1`、
+`guest/ubuntu-bootstrap.sh`、`guest/run-egress-acceptance.sh`、`host-dns-probe.py`。
+静态检查：`vm/scripts_static_check.md`。
+
+证据：`vm/host-preflight.md`、`vm/host_preflight.txt`、`vm/host-preflight.json`、
+`vm/vm_snapshot_before.json`。
 
 ## 5. D 包：OS Egress 与 N01–N24（NOT_VERIFIED）
 
@@ -149,8 +164,10 @@ continuous_hours = 0
 
 ## 12. 解除条件（按顺序）
 
-1. 用户在 BIOS 启用 VT-x/SLAT，并授权启用 Hyper-V + 重启；
-2. 创建独立 Ubuntu VM（独立 vSwitch、关闭共享剪贴板/目录）；
-3. VM 内快照 → apply → verify → N01–N24 全量采集 OS 证据；
-4. G3/G4 改判后，才启动 24h Soak + 12 项故障注入；
-5. 全部通过后仅形成灰度申请材料，不自动部署。
+1. 提供 Ubuntu Server 24.04 LTS ISO 与官方 SHA256（Hyper-V 管理面已 PASS，无需再改 BIOS）；
+2. 执行 `deploy/s6/vm/create-ubuntu-vm.ps1 ... -Apply -StartVm` 创建独立 VM
+   （`s6-egress` Internal vSwitch + `s6-egress-nat` + 172.31.240.0/24）；
+3. Guest 安装后执行 `ubuntu-bootstrap.sh`，再跑 `verify-vm-isolation.ps1`；
+4. 用 `invoke-guest-egress-acceptance.ps1` 在 Guest 内执行 N01–N24（apply / post-reboot 两阶段）；
+5. G3/G4 改判后，才启动 24h Soak + 12 项故障注入；
+6. 全部通过后仅形成灰度申请材料，不自动部署。

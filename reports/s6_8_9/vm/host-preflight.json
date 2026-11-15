@@ -1,0 +1,59 @@
+{
+  "generated_at": "2026-11-15T14:10:00+08:00",
+  "host": "HAN-LAPTOP",
+  "os": "Windows 11 Pro Insider Preview 10.0.26320 x64",
+  "ram_gb": 31.43,
+  "logical_processors": 14,
+  "volumes": {
+    "C:": {"size_gb": 952.4, "free_gb": 228.52},
+    "D:": {"size_gb": 950.55, "free_gb": 478.83}
+  },
+  "hypervisor": {
+    "present": true,
+    "vmms": "Running/Automatic",
+    "vmcompute": "Running/Manual",
+    "hypervisorlaunchtype": "Auto",
+    "get_vmhost": "PASS",
+    "get_vm_host_supported_version_count": 14
+  },
+  "existing": {
+    "vms": 0,
+    "switches": [
+      {"name": "Default Switch", "type": "Internal", "host_ipv4": "172.26.112.1/24"}
+    ],
+    "nats": 0
+  },
+  "physical_network": {
+    "WLAN": "192.168.31.45",
+    "bluetooth": "Disconnected"
+  },
+  "planned": {
+    "vm_name": "s6-egress-vm",
+    "vm_root": "D:\\s6-vm",
+    "switch": "s6-egress",
+    "switch_type": "Internal",
+    "subnet": "172.31.240.0/24",
+    "gateway": "172.31.240.1",
+    "nat": "s6-egress-nat",
+    "guest_ip": "172.31.240.10/24",
+    "vcpu": 4,
+    "startup_memory_gb": 6,
+    "dynamic_memory": false,
+    "disk_gb": 64,
+    "generation": 2
+  },
+  "blockers": [
+    "Ubuntu Server 24.04 LTS ISO not found on host",
+    "ISO SHA256 not yet verified"
+  ],
+  "host_firewall_modified": false,
+  "vm_created": false,
+  "gates": {
+    "hyperv_management": "PASS",
+    "vm_create_boot": "NOT_RUN",
+    "dedicated_switch_nat": "NOT_RUN",
+    "n01_n24": "NOT_RUN",
+    "G3": "NOT_VERIFIED",
+    "G4": "NOT_VERIFIED"
+  }
+}
