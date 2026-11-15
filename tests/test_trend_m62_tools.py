@@ -98,7 +98,7 @@ def test_sim_audit_check_accepts_balanced_ledger() -> None:
             for day in days
         }
     }
-    config = trade_sim.SimConfig(horizon=2, min_commission=0, commission_bps=3)
+    config = trade_sim.SimConfig(horizon=2, min_commission=0, commission_bps=3, signal_price_mode="RAW_APPROX")
     result = trade_sim.simulate(
         bars_by_code=bars,
         calendar=days,

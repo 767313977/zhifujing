@@ -9,8 +9,12 @@
 - 佣金（双边）、印花税（卖出）、滑点（双边）全部计入；
 - 组合约束：最大持仓数、单股目标仓位、现金不足按比例分配、100 股整手。
 
-本模块不查库，输入是 `bars_by_code`（每只票按日期升序的 OHLCV）与信号列表，
-便于单元测试与离线复现。所有价格必须是**前复权**序列。
+本模块不查库，输入是：
+- `bars_by_code`：**执行价域**（raw，真实成交价）；
+- `signal_bars`（可选）：**信号价域**（复权价，用于 MA/ATR/结构）。
+
+执行价域必须显式声明 `SimConfig.signal_price_mode`：
+`RAW_APPROX` 表示信号指标用 raw 近似（结果 `PENDING_REVIEW`），`ADJUSTED` 需提供 signal_bars。
 """
 
 from __future__ import annotations
@@ -18,10 +22,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
 import numpy as np
 
 from app.services import limit_rules
+from app.services.trend_engine.pricing import PriceDomainError
+
+SignalPriceMode = Literal["INVALID", "RAW_APPROX", "ADJUSTED"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +48,7 @@ class Signal:
     code: str
     day: date
     score: float = 0.0
+    model_version: str = "unknown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +75,9 @@ class SimConfig:
     use_stagnation_exit: bool = False
     max_entry_delay: int = 5
     max_exit_delay: int = 10
+    #: 信号价域。INVALID 时直接拒绝运行；RAW_APPROX 是显式的历史近似（结果 PENDING_REVIEW）；
+    #: ADJUSTED 需要同时提供 signal_bars。
+    signal_price_mode: SignalPriceMode = "INVALID"
 
 
 @dataclass
@@ -80,6 +92,11 @@ class Position:
     hold_days: int = 0
     last_price: float = 0.0
     entry_fee: float = 0.0
+    signal_date: date | None = None
+    model_version: str = "unknown"
+    exit_trigger_date: date | None = None
+    #: OPEN / EXIT_PENDING / SUSPENDED / UNVALUABLE
+    status: str = "OPEN"
 
 
 @dataclass
@@ -96,6 +113,13 @@ class Trade:
     hold_days: int
     #: 买入佣金（pnl 已扣除双边费用）
     entry_fee: float = 0.0
+    signal_date: date | None = None
+    exit_trigger_date: date | None = None
+    exit_fill_date: date | None = None
+    holding_trading_days: int = 0
+    model_version: str = "unknown"
+    #: 未四舍五入的净盈亏，用于账本恒等式（展示仍用 pnl）
+    pnl_exact: float = 0.0
 
 
 @dataclass
@@ -108,6 +132,12 @@ class SimResult:
     trades: list[Trade] = field(default_factory=list)
     #: 回测结束仍未平仓的持仓（用于账本恒等式核对）
     open_positions: list[dict] = field(default_factory=list)
+    #: 无法估值 / 无法卖出的持仓
+    unvaluable: list[dict] = field(default_factory=list)
+    #: 运行级告警（如 UNVALUABLE_POSITION、DUPLICATE_SIGNAL）
+    warnings: list[str] = field(default_factory=list)
+    #: 信号价域质量：RAW_APPROX / ADJUSTED
+    price_domain_quality: str = "INVALID"
     metrics: dict = field(default_factory=dict)
     skipped: dict = field(default_factory=dict)
 
@@ -209,14 +239,42 @@ def simulate(
     signals: list[Signal],
     config: SimConfig | None = None,
     names: dict[str, str | None] | None = None,
+    signal_bars: dict[str, dict[date, DailyBar]] | None = None,
 ) -> SimResult:
+    """交易级模拟。
+
+    `bars_by_code` 是**执行价域**（raw）；`signal_bars` 是**信号价域**（复权）。
+    - `signal_price_mode="INVALID"`：拒绝运行；
+    - `"RAW_APPROX"`：显式承认信号指标用 raw 近似，结果标 `PENDING_REVIEW`；
+    - `"ADJUSTED"`：必须提供 `signal_bars`，否则拒绝。
+    """
     config = config or SimConfig()
+    if config.signal_price_mode == "INVALID":
+        raise PriceDomainError("未声明信号价域：请提供 signal_bars 并设 ADJUSTED，或显式选择 RAW_APPROX")
+    if config.signal_price_mode == "ADJUSTED" and not signal_bars:
+        raise PriceDomainError("signal_price_mode=ADJUSTED 时必须提供 signal_bars（复权价域）")
     names = names or {}
-    series = {code: Series(code, bars) for code, bars in bars_by_code.items()}
+    execution_series = {code: Series(code, bars) for code, bars in bars_by_code.items()}
+    series = (
+        {code: Series(code, bars) for code, bars in signal_bars.items()}
+        if signal_bars
+        else execution_series
+    )
+    if set(series) != set(execution_series):
+        raise PriceDomainError("signal_bars 与 bars_by_code 的代码集合不一致")
+
     signals_by_day: dict[date, list[Signal]] = {}
+    seen: set[tuple[str, date, str]] = set()
+    duplicates = 0
     for signal in signals:
-        if signal.code in series:
-            signals_by_day.setdefault(signal.day, []).append(signal)
+        if signal.code not in execution_series:
+            continue
+        key = (signal.code, signal.day, signal.model_version)
+        if key in seen:
+            duplicates += 1
+            continue
+        seen.add(key)
+        signals_by_day.setdefault(signal.day, []).append(signal)
 
     cash = config.initial_cash
     positions: dict[str, Position] = {}
@@ -225,8 +283,19 @@ def simulate(
     buy_delay: dict[str, int] = {}
     sell_delay: dict[str, int] = {}
     result = SimResult()
-    skipped = {"limit_up": 0, "limit_down": 0, "suspended": 0, "cash": 0, "slots": 0}
+    result.price_domain_quality = "ADJUSTED" if signal_bars else "RAW_APPROX"
+    if duplicates:
+        result.warnings.append(f"DUPLICATE_SIGNAL_DROPPED:{duplicates}")
+    skipped = {
+        "limit_up": 0,
+        "limit_down": 0,
+        "suspended": 0,
+        "cash": 0,
+        "slots": 0,
+        "duplicate": duplicates,
+    }
     day_index = {day: index for index, day in enumerate(calendar)}
+    previous_equity = config.initial_cash
 
     for today in calendar:
         # 1) 先卖（释放现金与仓位）
@@ -235,13 +304,25 @@ def simulate(
             if position is None:
                 pending_sells.pop(code, None)
                 continue
-            item = series[code]
+            item = execution_series[code]
             pos = item.pos(today)
             if pos is None:
                 skipped["suspended"] += 1
                 sell_delay[code] = sell_delay.get(code, 0) + 1
+                position.status = "SUSPENDED"
                 if sell_delay[code] > config.max_exit_delay:
                     pending_sells.pop(code, None)
+                    position.status = "UNVALUABLE"
+                    result.unvaluable.append(
+                        {
+                            "code": code,
+                            "shares": position.shares,
+                            "last_price": position.last_price,
+                            "reason": "SUSPENDED_EXCEEDED_MAX_EXIT_DELAY",
+                            "entry_date": str(position.entry_date),
+                        }
+                    )
+                    result.warnings.append(f"UNVALUABLE_POSITION:{code}")
                 continue
             bar = item.bars[today]
             prev = _prev_close(bar)
@@ -252,6 +333,17 @@ def simulate(
                     sell_delay[code] = sell_delay.get(code, 0) + 1
                     if sell_delay[code] > config.max_exit_delay:
                         pending_sells.pop(code, None)
+                        position.status = "UNVALUABLE"
+                        result.unvaluable.append(
+                            {
+                                "code": code,
+                                "shares": position.shares,
+                                "last_price": position.last_price,
+                                "reason": "LIMIT_DOWN_EXCEEDED_MAX_EXIT_DELAY",
+                                "entry_date": str(position.entry_date),
+                            }
+                        )
+                        result.warnings.append(f"UNVALUABLE_POSITION:{code}")
                     continue
             price = bar.open * (1 - config.slippage_bps / 10000)
             gross = price * position.shares
@@ -275,8 +367,15 @@ def simulate(
                     reason=pending_sells.pop(code),
                     hold_days=position.hold_days,
                     entry_fee=round(position.entry_fee, 2),
+                    signal_date=position.signal_date,
+                    exit_trigger_date=position.exit_trigger_date,
+                    exit_fill_date=today,
+                    holding_trading_days=day_index.get(today, 0) - position.entry_index,
+                    model_version=position.model_version,
+                    pnl_exact=pnl,
                 )
             )
+            position.status = "SETTLED"
             positions.pop(code, None)
             sell_delay.pop(code, None)
 
@@ -292,7 +391,7 @@ def simulate(
                 code = signal.code
                 if code in positions:
                     continue
-                item = series[code]
+                item = execution_series[code]
                 pos = item.pos(today)
                 if pos is None:
                     skipped["suspended"] += 1
@@ -307,8 +406,8 @@ def simulate(
                     if bar.open >= up - 0.005:
                         skipped["limit_up"] += 1
                         continue
-                equity = cash + _positions_value(positions, series, today)
-                target = equity * config.position_pct
+                # 只用下单时点已知的信息：上一交易日收盘权益
+                target = previous_equity * config.position_pct
                 budget = min(target, cash)
                 price = bar.open * (1 + config.slippage_bps / 10000)
                 shares = int(budget / price / 100) * 100
@@ -321,7 +420,9 @@ def simulate(
                     skipped["cash"] += 1
                     continue
                 cash -= gross + fee
-                atr_value = item.atr_value(pos)
+                signal_item = series[code]
+                signal_pos = signal_item.pos(today)
+                atr_value = signal_item.atr_value(signal_pos) if signal_pos is not None else None
                 stop = None
                 if config.use_atr_stop and atr_value:
                     stop = price - config.atr_stop_multiple * atr_value
@@ -335,6 +436,9 @@ def simulate(
                     entry_index=day_index.get(today, 0),
                     last_price=bar.close,
                     entry_fee=fee,
+                    signal_date=signal.day,
+                    model_version=signal.model_version,
+                    status="OPEN",
                 )
                 buy_delay.pop(code, None)
                 slots -= 1
@@ -345,8 +449,10 @@ def simulate(
             pos = item.pos(today)
             if pos is None:
                 continue
+            exec_bar = execution_series[code].bars.get(today)
+            if exec_bar is not None:
+                position.last_price = exec_bar.close
             bar = item.bars[today]
-            position.last_price = bar.close
             position.hold_days = day_index.get(today, position.entry_index) - position.entry_index
             position.peak_close = max(position.peak_close, bar.close)
             if code in pending_sells:
@@ -354,13 +460,16 @@ def simulate(
             reason = _exit_reason(item, pos, position, bar, config)
             if reason:
                 pending_sells[code] = reason
+                position.exit_trigger_date = today
+                position.status = "EXIT_PENDING"
 
-        # 4) 记录当日权益
-        position_value = _positions_value(positions, series, today)
+        # 4) 记录当日权益（市值必须用执行价域）
+        position_value = _positions_value(positions, execution_series, today)
         equity = cash + position_value
         result.equity.append((today, round(equity, 2)))
         result.ledger.append((today, round(cash, 2), round(position_value, 2), round(equity, 2)))
         result.exposure.append(round(position_value / equity, 4) if equity > 0 else 0.0)
+        previous_equity = equity
 
         # 5) 当日收盘信号 → 下一交易日开盘执行
         for signal in signals_by_day.get(today, []):
@@ -383,10 +492,24 @@ def simulate(
                 - position.entry_fee,
                 2,
             ),
+            "unrealized_pnl_exact": position.shares * position.last_price
+            - position.shares * position.entry_price
+            - position.entry_fee,
+            "status": position.status,
+            "signal_date": str(position.signal_date) if position.signal_date else None,
+            "model_version": position.model_version,
         }
         for position in positions.values()
     ]
     result.metrics = _metrics(result, config)
+    result.metrics["signal_price_mode"] = config.signal_price_mode
+    result.metrics["price_domain_quality"] = result.price_domain_quality
+    result.metrics["warnings"] = result.warnings
+    result.metrics["unvaluable_positions"] = len(result.unvaluable)
+    if result.unvaluable or result.price_domain_quality != "ADJUSTED":
+        result.metrics["status"] = "PENDING_REVIEW"
+    else:
+        result.metrics.setdefault("status", "OK")
     return result
 
 

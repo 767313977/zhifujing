@@ -1,0 +1,7 @@
+﻿model,rule,events_in_window,cash_dividend_entries,share_change_entries,status,note
+A,A_fixed,0,0,0,MISSING_CORPORATE_ACTION_DATA,无分红/送转/配股/退市事件数据，账本不生成任何虚拟现金流或股份变化
+A,E_combo,0,0,0,MISSING_CORPORATE_ACTION_DATA,无分红/送转/配股/退市事件数据，账本不生成任何虚拟现金流或股份变化
+B,A_fixed,0,0,0,MISSING_CORPORATE_ACTION_DATA,无分红/送转/配股/退市事件数据，账本不生成任何虚拟现金流或股份变化
+B,E_combo,0,0,0,MISSING_CORPORATE_ACTION_DATA,无分红/送转/配股/退市事件数据，账本不生成任何虚拟现金流或股份变化
+A+B,A_fixed,0,0,0,MISSING_CORPORATE_ACTION_DATA,无分红/送转/配股/退市事件数据，账本不生成任何虚拟现金流或股份变化
+A+B,E_combo,0,0,0,MISSING_CORPORATE_ACTION_DATA,无分红/送转/配股/退市事件数据，账本不生成任何虚拟现金流或股份变化

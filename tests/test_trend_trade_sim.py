@@ -12,6 +12,11 @@ START = date(2025, 1, 2)
 DAYS = [START + timedelta(days=index) for index in range(12)]
 
 
+def cfg(**kwargs) -> SimConfig:
+    """测试统一走 RAW_APPROX（本仓库无复权因子数据）。"""
+    return SimConfig(signal_price_mode="RAW_APPROX", **kwargs)
+
+
 def bar(open_: float, close: float, *, pct: float | None = None, amount: float = 1e8) -> DailyBar:
     if pct is None:
         pct = 0.0
@@ -37,7 +42,7 @@ def test_buy_executes_next_open_not_signal_close() -> None:
         bars_by_code=bars,
         calendar=DAYS,
         signals=[Signal("600001", DAYS[2], 1.0)],
-        config=SimConfig(horizon=2, slippage_bps=0, commission_bps=0, min_commission=0),
+        config=cfg(horizon=2, slippage_bps=0, commission_bps=0, min_commission=0),
     )
     assert result.trades
     trade = result.trades[0]
@@ -51,7 +56,7 @@ def test_horizon_exit_is_next_open() -> None:
         bars_by_code=bars,
         calendar=DAYS,
         signals=[Signal("600001", DAYS[0], 1.0)],
-        config=SimConfig(horizon=2, slippage_bps=0, commission_bps=0, min_commission=0),
+        config=cfg(horizon=2, slippage_bps=0, commission_bps=0, min_commission=0),
     )
     trade = result.trades[0]
     assert trade.entry_date == DAYS[1]
@@ -70,7 +75,7 @@ def test_limit_up_blocks_buy() -> None:
         bars_by_code=bars,
         calendar=days,
         signals=[Signal("600001", days[2], 1.0)],
-        config=SimConfig(horizon=3),
+        config=cfg(horizon=3),
     )
     assert result.trades == []
     assert result.skipped["limit_up"] >= 1
@@ -83,7 +88,7 @@ def test_suspension_delays_entry() -> None:
         bars_by_code=bars,
         calendar=days,
         signals=[Signal("600001", days[2], 1.0)],
-        config=SimConfig(horizon=1),
+        config=cfg(horizon=1),
     )
     assert result.skipped["suspended"] >= 1
     assert result.trades
@@ -96,7 +101,7 @@ def test_costs_reduce_pnl() -> None:
         bars_by_code=bars,
         calendar=DAYS,
         signals=[Signal("600001", DAYS[0], 1.0)],
-        config=SimConfig(horizon=2, slippage_bps=10, commission_bps=3, stamp_bps=10),
+        config=cfg(horizon=2, slippage_bps=10, commission_bps=3, stamp_bps=10),
     )
     trade = result.trades[0]
     assert trade.pnl < 0  # 平价买卖也应因成本亏损
@@ -109,7 +114,7 @@ def test_max_positions_and_cash_allocation() -> None:
         bars_by_code=bars,
         calendar=DAYS,
         signals=[Signal(code, DAYS[0], 1.0) for code in codes],
-        config=SimConfig(max_positions=2, position_pct=0.5, horizon=2),
+        config=cfg(max_positions=2, position_pct=0.5, horizon=2),
     )
     assert len(result.trades) <= 2
     assert result.skipped["slots"] >= 1
@@ -128,7 +133,7 @@ def test_atr_stop_exits_after_close_break() -> None:
         bars_by_code=bars,
         calendar=days,
         signals=[Signal("600001", days[20], 1.0)],
-        config=SimConfig(horizon=10, use_atr_stop=True, atr_stop_multiple=0.5),
+        config=cfg(horizon=10, use_atr_stop=True, atr_stop_multiple=0.5),
     )
     assert result.trades
     assert result.trades[0].reason == "atr_stop"
@@ -141,7 +146,7 @@ def test_suspended_position_keeps_last_price() -> None:
         bars_by_code=bars,
         calendar=days,
         signals=[Signal("600001", days[0], 1.0)],
-        config=SimConfig(horizon=20),
+        config=cfg(horizon=20),
     )
     values = dict(result.equity)
     # 停牌日不能把持仓市值算成 0（否则权益会突然塌陷）
@@ -161,7 +166,7 @@ def test_ma_exit_reason() -> None:
         bars_by_code=bars,
         calendar=days,
         signals=[Signal("600001", days[0], 1.0)],
-        config=SimConfig(horizon=20, use_ma_exit=True, ma_exit_window=20),
+        config=cfg(horizon=20, use_ma_exit=True, ma_exit_window=20),
     )
     # 只有 10 根 K 线，MA20 不可用 → 不应误触发 ma_break
     assert all(trade.reason != "ma_break" for trade in result.trades)
@@ -173,7 +178,7 @@ def test_daily_ledger_identity_holds() -> None:
         bars_by_code=bars,
         calendar=DAYS,
         signals=[Signal("600001", DAYS[0], 1.0), Signal("600002", DAYS[0], 0.5)],
-        config=SimConfig(horizon=3, max_positions=2, position_pct=0.5),
+        config=cfg(horizon=3, max_positions=2, position_pct=0.5),
     )
     assert result.ledger
     for day, cash, value, equity in result.ledger:
@@ -184,7 +189,7 @@ def test_daily_ledger_identity_holds() -> None:
 
 def test_trade_pnl_includes_both_side_fees() -> None:
     bars = {"600001": flat_series()}
-    config = SimConfig(
+    config = cfg(
         horizon=2, slippage_bps=0, commission_bps=3, stamp_bps=10, min_commission=0
     )
     result = simulate(
@@ -211,7 +216,7 @@ def test_trade_dates_respect_t_plus_one() -> None:
         bars_by_code=bars,
         calendar=DAYS,
         signals=[Signal("600001", DAYS[2], 1.0)],
-        config=SimConfig(horizon=1),
+        config=cfg(horizon=1),
     )
     trade = result.trades[0]
     assert trade.entry_date > DAYS[2]

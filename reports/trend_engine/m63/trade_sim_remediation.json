@@ -1,0 +1,518 @@
+{
+  "generated_at": "2026-11-15T14:59:21.660392+00:00",
+  "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+  "selections": {
+    "A": "A2",
+    "B": "B2"
+  },
+  "price_mode": "RAW_APPROX",
+  "note": "库内无复权因子与公司行为数据；信号价域为 raw 近似，全部结果 PENDING_REVIEW；本文件不构成策略有效性结论。",
+  "runs": {
+    "A": {
+      "A_fixed": {
+        "metrics": {
+          "days": 240,
+          "total_return_pct": -19.88,
+          "annualized_pct": -20.76,
+          "max_drawdown_pct": -25.54,
+          "max_drawdown_days": 175,
+          "trades": 80,
+          "win_pct": 37.5,
+          "profit_factor": 0.6,
+          "turnover": 15.92,
+          "avg_hold_days": 20.0,
+          "final_equity": 801240.0,
+          "exposure": 0.7092,
+          "skipped": {
+            "limit_up": 1,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 0,
+            "slots": 997,
+            "duplicate": 0
+          },
+          "signal_price_mode": "RAW_APPROX",
+          "price_domain_quality": "RAW_APPROX",
+          "warnings": [],
+          "unvaluable_positions": 0,
+          "status": "PENDING_REVIEW"
+        },
+        "checks": {
+          "ledger_identity_max_gap": 0.0,
+          "negative_cash_days": 0,
+          "lot_violations": 0,
+          "date_order_violations": 0,
+          "trades_missing_entry_fee": 0,
+          "closed_pnl_sum": -154133.535048,
+          "open_positions": 6,
+          "unrealized_pnl": -44626.461049,
+          "equity_change": -198760.0,
+          "final_market_value": 453183.0,
+          "accounting_gap": -0.0,
+          "invariants_ok": true
+        },
+        "decomposition": {
+          "trades": 80,
+          "avg_exposure": 0.7092,
+          "zero_position_days": 50,
+          "total_days": 240,
+          "avg_hold_days": 20.0,
+          "turnover": 15.92,
+          "top5_pnl": 122794.43,
+          "top5_share_of_positive": 0.535,
+          "top5_share_of_abs_total": 0.7967,
+          "skipped": {
+            "limit_up": 1,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 0,
+            "slots": 997,
+            "duplicate": 0
+          },
+          "final_equity": 801240.0
+        },
+        "warnings": [],
+        "status": "PENDING_REVIEW"
+      },
+      "E_combo": {
+        "metrics": {
+          "days": 240,
+          "total_return_pct": -19.02,
+          "annualized_pct": -19.87,
+          "max_drawdown_pct": -22.42,
+          "max_drawdown_days": 163,
+          "trades": 131,
+          "win_pct": 27.5,
+          "profit_factor": 0.62,
+          "turnover": 31.12,
+          "avg_hold_days": 7.4,
+          "final_equity": 809820.75,
+          "exposure": 0.5721,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 0,
+            "slots": 931,
+            "duplicate": 0
+          },
+          "signal_price_mode": "RAW_APPROX",
+          "price_domain_quality": "RAW_APPROX",
+          "warnings": [],
+          "unvaluable_positions": 0,
+          "status": "PENDING_REVIEW"
+        },
+        "checks": {
+          "ledger_identity_max_gap": 0.0,
+          "negative_cash_days": 0,
+          "lot_violations": 0,
+          "date_order_violations": 0,
+          "trades_missing_entry_fee": 0,
+          "closed_pnl_sum": -196983.555306,
+          "open_positions": 2,
+          "unrealized_pnl": 6804.307239,
+          "equity_change": -190179.25,
+          "final_market_value": 212942.0,
+          "accounting_gap": -0.0,
+          "invariants_ok": true
+        },
+        "decomposition": {
+          "trades": 131,
+          "avg_exposure": 0.5721,
+          "zero_position_days": 51,
+          "total_days": 240,
+          "avg_hold_days": 7.4,
+          "turnover": 31.12,
+          "top5_pnl": 128482.96,
+          "top5_share_of_positive": 0.4063,
+          "top5_share_of_abs_total": 0.6523,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 0,
+            "slots": 931,
+            "duplicate": 0
+          },
+          "final_equity": 809820.75
+        },
+        "warnings": [],
+        "status": "PENDING_REVIEW"
+      }
+    },
+    "B": {
+      "A_fixed": {
+        "metrics": {
+          "days": 240,
+          "total_return_pct": -4.82,
+          "annualized_pct": -5.06,
+          "max_drawdown_pct": -23.02,
+          "max_drawdown_days": 149,
+          "trades": 95,
+          "win_pct": 45.3,
+          "profit_factor": 0.99,
+          "turnover": 18.72,
+          "avg_hold_days": 20.0,
+          "final_equity": 951761.15,
+          "exposure": 0.874,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 1,
+            "slots": 1585,
+            "duplicate": 0
+          },
+          "signal_price_mode": "RAW_APPROX",
+          "price_domain_quality": "RAW_APPROX",
+          "warnings": [],
+          "unvaluable_positions": 0,
+          "status": "PENDING_REVIEW"
+        },
+        "checks": {
+          "ledger_identity_max_gap": 0.0,
+          "negative_cash_days": 0,
+          "lot_violations": 0,
+          "date_order_violations": 0,
+          "trades_missing_entry_fee": 0,
+          "closed_pnl_sum": -4176.150607,
+          "open_positions": 10,
+          "unrealized_pnl": -44062.696763,
+          "equity_change": -48238.85,
+          "final_market_value": 926741.0,
+          "accounting_gap": -0.0,
+          "invariants_ok": true
+        },
+        "decomposition": {
+          "trades": 95,
+          "avg_exposure": 0.874,
+          "zero_position_days": 1,
+          "total_days": 240,
+          "avg_hold_days": 20.0,
+          "turnover": 18.72,
+          "top5_pnl": 233458.3,
+          "top5_share_of_positive": 0.4118,
+          "top5_share_of_abs_total": 55.9026,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 1,
+            "slots": 1585,
+            "duplicate": 0
+          },
+          "final_equity": 951761.15
+        },
+        "warnings": [],
+        "status": "PENDING_REVIEW"
+      },
+      "E_combo": {
+        "metrics": {
+          "days": 240,
+          "total_return_pct": -0.01,
+          "annualized_pct": -0.01,
+          "max_drawdown_pct": -24.38,
+          "max_drawdown_days": 148,
+          "trades": 179,
+          "win_pct": 25.7,
+          "profit_factor": 0.96,
+          "turnover": 42.01,
+          "avg_hold_days": 6.6,
+          "final_equity": 999878.6,
+          "exposure": 0.7286,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 4,
+            "slots": 1240,
+            "duplicate": 0
+          },
+          "signal_price_mode": "RAW_APPROX",
+          "price_domain_quality": "RAW_APPROX",
+          "warnings": [],
+          "unvaluable_positions": 0,
+          "status": "PENDING_REVIEW"
+        },
+        "checks": {
+          "ledger_identity_max_gap": 0.0,
+          "negative_cash_days": 0,
+          "lot_violations": 0,
+          "date_order_violations": 0,
+          "trades_missing_entry_fee": 0,
+          "closed_pnl_sum": -25654.487845,
+          "open_positions": 8,
+          "unrealized_pnl": 25533.092572,
+          "equity_change": -121.4,
+          "final_market_value": 981868.0,
+          "accounting_gap": -0.0,
+          "invariants_ok": true
+        },
+        "decomposition": {
+          "trades": 179,
+          "avg_exposure": 0.7286,
+          "zero_position_days": 13,
+          "total_days": 240,
+          "avg_hold_days": 6.6,
+          "turnover": 42.01,
+          "top5_pnl": 253664.83,
+          "top5_share_of_positive": 0.3587,
+          "top5_share_of_abs_total": 9.8877,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 4,
+            "slots": 1240,
+            "duplicate": 0
+          },
+          "final_equity": 999878.6
+        },
+        "warnings": [],
+        "status": "PENDING_REVIEW"
+      }
+    },
+    "A+B": {
+      "A_fixed": {
+        "metrics": {
+          "days": 240,
+          "total_return_pct": -12.23,
+          "annualized_pct": -12.81,
+          "max_drawdown_pct": -24.55,
+          "max_drawdown_days": 105,
+          "trades": 101,
+          "win_pct": 52.5,
+          "profit_factor": 0.82,
+          "turnover": 19.98,
+          "avg_hold_days": 20.0,
+          "final_equity": 877657.93,
+          "exposure": 0.9219,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 0,
+            "slots": 2095,
+            "duplicate": 0
+          },
+          "signal_price_mode": "RAW_APPROX",
+          "price_domain_quality": "RAW_APPROX",
+          "warnings": [],
+          "unvaluable_positions": 0,
+          "status": "PENDING_REVIEW"
+        },
+        "checks": {
+          "ledger_identity_max_gap": 0.0,
+          "negative_cash_days": 0,
+          "lot_violations": 0,
+          "date_order_violations": 0,
+          "trades_missing_entry_fee": 0,
+          "closed_pnl_sum": -85927.52378,
+          "open_positions": 10,
+          "unrealized_pnl": -36414.54171,
+          "equity_change": -122342.07,
+          "final_market_value": 851104.0,
+          "accounting_gap": -0.0,
+          "invariants_ok": true
+        },
+        "decomposition": {
+          "trades": 101,
+          "avg_exposure": 0.9219,
+          "zero_position_days": 1,
+          "total_days": 240,
+          "avg_hold_days": 20.0,
+          "turnover": 19.98,
+          "top5_pnl": 177332.86,
+          "top5_share_of_positive": 0.4552,
+          "top5_share_of_abs_total": 2.0637,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 0,
+            "slots": 2095,
+            "duplicate": 0
+          },
+          "final_equity": 877657.93
+        },
+        "warnings": [],
+        "status": "PENDING_REVIEW"
+      },
+      "E_combo": {
+        "metrics": {
+          "days": 240,
+          "total_return_pct": -3.69,
+          "annualized_pct": -3.87,
+          "max_drawdown_pct": -14.95,
+          "max_drawdown_days": 76,
+          "trades": 195,
+          "win_pct": 29.7,
+          "profit_factor": 0.92,
+          "turnover": 45.59,
+          "avg_hold_days": 7.0,
+          "final_equity": 963100.69,
+          "exposure": 0.8386,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 5,
+            "slots": 1836,
+            "duplicate": 0
+          },
+          "signal_price_mode": "RAW_APPROX",
+          "price_domain_quality": "RAW_APPROX",
+          "warnings": [],
+          "unvaluable_positions": 0,
+          "status": "PENDING_REVIEW"
+        },
+        "checks": {
+          "ledger_identity_max_gap": 0.0,
+          "negative_cash_days": 0,
+          "lot_violations": 0,
+          "date_order_violations": 0,
+          "trades_missing_entry_fee": 0,
+          "closed_pnl_sum": -58906.272657,
+          "open_positions": 8,
+          "unrealized_pnl": 22006.957863,
+          "equity_change": -36899.31,
+          "final_market_value": 955344.0,
+          "accounting_gap": 0.0,
+          "invariants_ok": true
+        },
+        "decomposition": {
+          "trades": 195,
+          "avg_exposure": 0.8386,
+          "zero_position_days": 1,
+          "total_days": 240,
+          "avg_hold_days": 7.0,
+          "turnover": 45.59,
+          "top5_pnl": 250419.47,
+          "top5_share_of_positive": 0.3822,
+          "top5_share_of_abs_total": 4.2512,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 5,
+            "slots": 1836,
+            "duplicate": 0
+          },
+          "final_equity": 963100.69
+        },
+        "warnings": [],
+        "status": "PENDING_REVIEW"
+      }
+    }
+  },
+  "comparison_to_m61": {
+    "A:A_fixed": {
+      "m61": {
+        "total_return_pct": -19.87,
+        "max_drawdown_pct": -25.57,
+        "trades": 80,
+        "win_pct": 37.5
+      },
+      "m63_fixed": {
+        "total_return_pct": -19.88,
+        "max_drawdown_pct": -25.54,
+        "trades": 80
+      },
+      "delta_return_pp": -0.01,
+      "delta_drawdown_pp": 0.03,
+      "delta_trades": 0,
+      "cause": "F4 仓位改为上一交易日权益（不再使用当日收盘权益）"
+    },
+    "A:E_combo": {
+      "m61": {
+        "total_return_pct": -19.03,
+        "max_drawdown_pct": -22.45,
+        "trades": 131,
+        "win_pct": 27.5
+      },
+      "m63_fixed": {
+        "total_return_pct": -19.02,
+        "max_drawdown_pct": -22.42,
+        "trades": 131
+      },
+      "delta_return_pp": 0.01,
+      "delta_drawdown_pp": 0.03,
+      "delta_trades": 0,
+      "cause": "F4 仓位改为上一交易日权益（不再使用当日收盘权益）"
+    },
+    "B:A_fixed": {
+      "m61": {
+        "total_return_pct": -3.61,
+        "max_drawdown_pct": -22.47,
+        "trades": 95,
+        "win_pct": 45.3
+      },
+      "m63_fixed": {
+        "total_return_pct": -4.82,
+        "max_drawdown_pct": -23.02,
+        "trades": 95
+      },
+      "delta_return_pp": -1.21,
+      "delta_drawdown_pp": -0.55,
+      "delta_trades": 0,
+      "cause": "F4 仓位改为上一交易日权益（不再使用当日收盘权益）"
+    },
+    "B:E_combo": {
+      "m61": {
+        "total_return_pct": -0.15,
+        "max_drawdown_pct": -24.5,
+        "trades": 179,
+        "win_pct": 25.7
+      },
+      "m63_fixed": {
+        "total_return_pct": -0.01,
+        "max_drawdown_pct": -24.38,
+        "trades": 179
+      },
+      "delta_return_pp": 0.14,
+      "delta_drawdown_pp": 0.12,
+      "delta_trades": 0,
+      "cause": "F4 仓位改为上一交易日权益（不再使用当日收盘权益）"
+    },
+    "A+B:A_fixed": {
+      "m61": {
+        "total_return_pct": -12.34,
+        "max_drawdown_pct": -24.67,
+        "trades": 101,
+        "win_pct": 52.5
+      },
+      "m63_fixed": {
+        "total_return_pct": -12.23,
+        "max_drawdown_pct": -24.55,
+        "trades": 101
+      },
+      "delta_return_pp": 0.11,
+      "delta_drawdown_pp": 0.12,
+      "delta_trades": 0,
+      "cause": "F4 仓位改为上一交易日权益（不再使用当日收盘权益）"
+    },
+    "A+B:E_combo": {
+      "m61": {
+        "total_return_pct": 0.34,
+        "max_drawdown_pct": -14.96,
+        "trades": 196,
+        "win_pct": 30.6
+      },
+      "m63_fixed": {
+        "total_return_pct": -3.69,
+        "max_drawdown_pct": -14.95,
+        "trades": 195
+      },
+      "delta_return_pp": -4.03,
+      "delta_drawdown_pp": 0.01,
+      "delta_trades": -1,
+      "cause": "F4 仓位改为上一交易日权益（不再使用当日收盘权益）"
+    }
+  },
+  "summary": {
+    "all_invariants_ok": true,
+    "max_ledger_gap": 0.0,
+    "unvaluable_runs": 0,
+    "all_pending_review": true
+  }
+}

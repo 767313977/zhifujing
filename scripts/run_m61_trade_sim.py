@@ -82,20 +82,26 @@ def load_bars_safe(session, codes: list[str], start: date, end: date) -> dict[st
 
 
 CONFIGS = {
-    "A_fixed": trade_sim.SimConfig(horizon=20, max_positions=10, position_pct=0.10),
+    "A_fixed": trade_sim.SimConfig(
+        horizon=20, max_positions=10, position_pct=0.10, signal_price_mode="RAW_APPROX"
+    ),
     "B_atr": trade_sim.SimConfig(
-        horizon=60, max_positions=10, position_pct=0.10, use_atr_stop=True, atr_stop_multiple=2.0
+        horizon=60, max_positions=10, position_pct=0.10, use_atr_stop=True, atr_stop_multiple=2.0,
+        signal_price_mode="RAW_APPROX",
     ),
     "C_trend": trade_sim.SimConfig(
         horizon=60, max_positions=10, position_pct=0.10,
         use_ma_exit=True, ma_exit_window=20, use_structure_exit=True, structure_days=40,
+        signal_price_mode="RAW_APPROX",
     ),
-    "D_portfolio": trade_sim.SimConfig(horizon=20, max_positions=5, position_pct=0.15),
+    "D_portfolio": trade_sim.SimConfig(
+        horizon=20, max_positions=5, position_pct=0.15, signal_price_mode="RAW_APPROX"
+    ),
     "E_combo": trade_sim.SimConfig(
         horizon=60, max_positions=8, position_pct=0.12,
         use_atr_stop=True, atr_stop_multiple=2.0, use_trailing=True, trailing_multiple=3.0,
         use_ma_exit=True, ma_exit_window=20, use_structure_exit=True, structure_days=40,
-        use_stagnation_exit=True,
+        use_stagnation_exit=True, signal_price_mode="RAW_APPROX",
     ),
 }
 

@@ -73,8 +73,14 @@ def check(result: trade_sim.SimResult, config: trade_sim.SimConfig) -> dict:
     bad_lot = sum(1 for trade in result.trades if trade.shares % 100 != 0)
     bad_order = sum(1 for trade in result.trades if trade.exit_date <= trade.entry_date)
     missing_fee = sum(1 for trade in result.trades if config.commission_bps > 0 and trade.entry_fee <= 0)
-    pnl_sum = round(sum(trade.pnl for trade in result.trades), 2)
-    unrealized = round(sum(item["unrealized_pnl"] for item in result.open_positions), 2)
+    pnl_sum = round(sum(getattr(trade, "pnl_exact", trade.pnl) for trade in result.trades), 6)
+    unrealized = round(
+        sum(
+            item.get("unrealized_pnl_exact", item["unrealized_pnl"])
+            for item in result.open_positions
+        ),
+        6,
+    )
     equity_change = round(result.ledger[-1][3] - config.initial_cash, 2) if result.ledger else 0.0
     final_value = result.ledger[-1][2] if result.ledger else 0.0
     accounting = round(equity_change - pnl_sum - unrealized, 2)
