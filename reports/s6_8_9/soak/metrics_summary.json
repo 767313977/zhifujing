@@ -1,0 +1,17 @@
+{
+  "status": "SOAK_24H_NOT_RUN",
+  "generated_at": "2026-11-15T13:45:00+08:00",
+  "continuous_hours": 0,
+  "requests": null,
+  "unexpected_5xx": null,
+  "latency_ms": {"p50": null, "p95": null, "p99": null},
+  "resources": null,
+  "db_integrity": null,
+  "egress_violations": null,
+  "blocking_reasons": [
+    "D 包 OS Egress N01-N24 全部 NOT_RUN（无专用 Linux VM）",
+    "24h 连续环境无法在本机保持",
+    "前置条件要求 A/B/D/G7/G0 全部通过，其中 D 未通过"
+  ],
+  "note": "不启动正式计时；不把 S6.4 的 3 分钟短窗拼成 24h。"
+}

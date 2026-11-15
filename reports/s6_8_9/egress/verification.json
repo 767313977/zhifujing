@@ -1,0 +1,54 @@
+{
+  "generated_at": "2026-11-15T13:42:00+08:00",
+  "environment": "NO_ISOLATED_VM",
+  "status": "S61_VM_UNAVAILABLE",
+  "applied_any_firewall_rule": false,
+  "host_rules_modified": false,
+  "wsl_used_as_acceptance_environment": false,
+  "firewall_before": "NOT_COLLECTED (no VM)",
+  "firewall_after": "NOT_COLLECTED (no VM)",
+  "checks": {
+    "N01_dns_udp": "NOT_RUN",
+    "N02_dns_tcp": "NOT_RUN",
+    "N03_ipv4_tcp": "NOT_RUN",
+    "N04_ipv4_udp": "NOT_RUN",
+    "N05_ipv6_tcp": "NOT_RUN",
+    "N06_ipv6_udp": "NOT_RUN",
+    "N07_http_proxy": "NOT_RUN",
+    "N08_https_proxy": "NOT_RUN",
+    "N09_all_proxy": "NOT_RUN",
+    "N10_localhost_proxy_forward": "NOT_RUN",
+    "N11_python_direct_socket": "NOT_RUN",
+    "N12_c_native_socket": "NOT_RUN",
+    "N13_tls_ssl_send": "NOT_RUN",
+    "N14_sendfile": "NOT_RUN",
+    "N15_connected_socket_send": "NOT_RUN",
+    "N16_curl_subprocess": "NOT_RUN",
+    "N17_python_subprocess": "NOT_RUN",
+    "N18_native_network_tool": "NOT_RUN",
+    "N19_allowlist_success": "NOT_RUN",
+    "N20_policy_missing_fail_closed": "NOT_RUN",
+    "N21_apply_idempotent": "NOT_RUN",
+    "N22_rollback_exact": "NOT_RUN",
+    "N23_persist_after_reboot": "NOT_RUN",
+    "N24_os_counter_proof": "NOT_RUN"
+  },
+  "static_checks": {
+    "bash_syntax_apply": "PASS",
+    "bash_syntax_verify": "PASS",
+    "bash_syntax_rollback": "PASS",
+    "bash_syntax_snapshot": "PASS",
+    "script_review": "reports/s6_8_9/egress/script_review.md"
+  },
+  "gates": {
+    "S61_OS_EGRESS_VERIFIED": "NOT_VERIFIED",
+    "G3": "NOT_VERIFIED",
+    "G4": "NOT_VERIFIED"
+  },
+  "next_steps": [
+    "在 BIOS 启用 VT-x/SLAT，启用 Hyper-V 并重启宿主（需用户授权）",
+    "按 deploy/s6/vm/README.md 建独立 Ubuntu VM",
+    "VM 内先快照、再 apply、再 verify、按 N01–N24 采集 OS 证据",
+    "回填 verification.json 与 n01_n24_results.json 后才可改判 G3/G4"
+  ]
+}

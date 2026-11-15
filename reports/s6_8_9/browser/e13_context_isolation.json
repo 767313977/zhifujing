@@ -1,0 +1,106 @@
+{
+  "scenario": "E13 双 Browser Context",
+  "contexts": {
+    "A": {
+      "login": "s7staging",
+      "state": {
+        "href": "http://127.0.0.1:8021/",
+        "path": "/",
+        "rootChildren": 1,
+        "rootHtmlLength": 22037,
+        "bodyLen": 843,
+        "textHead": "致富经\n最新\n2026-11-14\ns7staging\n·\n账号\n·\n退出\n结论\n涨停 40 家 · 最高 4 板\n三大指数暂无涨跌幅\n涨/跌\n—\n成交额\n—\n恐贪\n—\n2026-11-14 无指数数据\n所选日期没有涨跌家数（该数据源只提供当日值），无法判断指数与个股是否背离。\n市场情绪\n2026-11-14 收盘\n涨",
+        "scrollWidth": 758,
+        "innerWidth": 758,
+        "innerHeight": 482,
+        "hasLoginForm": false,
+        "visibleLinks": 5,
+        "hasMenuButton": false,
+        "hasExitButton": true,
+        "hasFallback": false,
+        "hasExpiredNotice": false
+      },
+      "me": {
+        "id": 1,
+        "username": "s7staging",
+        "is_admin": true
+      }
+    },
+    "B": {
+      "login": "s7userb",
+      "state": {
+        "href": "http://127.0.0.1:8021/",
+        "path": "/",
+        "rootChildren": 1,
+        "rootHtmlLength": 21581,
+        "bodyLen": 841,
+        "textHead": "致富经\n最新\n2026-11-14\ns7userb\n·\n账号\n·\n退出\n结论\n涨停 40 家 · 最高 4 板\n三大指数暂无涨跌幅\n涨/跌\n—\n成交额\n—\n恐贪\n—\n2026-11-14 无指数数据\n所选日期没有涨跌家数（该数据源只提供当日值），无法判断指数与个股是否背离。\n市场情绪\n2026-11-14 收盘\n涨停\n",
+        "scrollWidth": 758,
+        "innerWidth": 758,
+        "innerHeight": 482,
+        "hasLoginForm": false,
+        "visibleLinks": 5,
+        "hasMenuButton": false,
+        "hasExitButton": true,
+        "hasFallback": false,
+        "hasExpiredNotice": false
+      },
+      "me": {
+        "id": 2,
+        "username": "s7userb",
+        "is_admin": false
+      }
+    }
+  },
+  "logout_isolation": {
+    "b_still_authenticated": true,
+    "b_state_after_a_logout": {
+      "href": "http://127.0.0.1:8021/",
+      "path": "/",
+      "rootChildren": 1,
+      "rootHtmlLength": 21581,
+      "bodyLen": 841,
+      "textHead": "致富经\n最新\n2026-11-14\ns7userb\n·\n账号\n·\n退出\n结论\n涨停 40 家 · 最高 4 板\n三大指数暂无涨跌幅\n涨/跌\n—\n成交额\n—\n恐贪\n—\n2026-11-14 无指数数据\n所选日期没有涨跌家数（该数据源只提供当日值），无法判断指数与个股是否背离。\n市场情绪\n2026-11-14 收盘\n涨停\n",
+      "scrollWidth": 758,
+      "innerWidth": 758,
+      "innerHeight": 482,
+      "hasLoginForm": false,
+      "visibleLinks": 5,
+      "hasMenuButton": false,
+      "hasExitButton": true,
+      "hasFallback": false,
+      "hasExpiredNotice": false
+    }
+  },
+  "account_switch": {
+    "watchlist_status": 200,
+    "watchlist_empty": true,
+    "state": {
+      "href": "http://127.0.0.1:8021/watchlist",
+      "path": "/watchlist",
+      "rootChildren": 1,
+      "rootHtmlLength": 6952,
+      "bodyLen": 299,
+      "textHead": "致富经\n同步行情\ns7userb\n·\n账号\n·\n退出\n加入自选\n支持 600519 / 贵州茅台 / gzmt · 也可直接加转债代码\n加入\n自选池\n0 只\n自选池是空的。可以在上方按代码、名称或拼音首字母加入\n说明\n行情口径\n· 列表中的价格来自本地缓存的日线， 页面打开即读、不联网。实时性由每交易日收盘后的自动采集",
+      "scrollWidth": 758,
+      "innerWidth": 758,
+      "innerHeight": 482,
+      "hasLoginForm": false,
+      "visibleLinks": 2,
+      "hasMenuButton": false,
+      "hasExitButton": true,
+      "hasFallback": false,
+      "hasExpiredNotice": false
+    }
+  },
+  "parallel_reload": {
+    "a": "s7staging",
+    "b": "s7userb",
+    "isolated": true
+  },
+  "errors": {
+    "a": [],
+    "b": []
+  },
+  "pass": true
+}

@@ -1,0 +1,48 @@
+{
+  "scenario": "E16 React 渲染异常",
+  "pass": true,
+  "fallback": {
+    "href": "http://localhost:8030/__e2e/render-error",
+    "path": "/__e2e/render-error",
+    "rootChildren": 1,
+    "rootHtmlLength": 594,
+    "bodyLen": 102,
+    "textHead": "页面加载失败\n多半是版本刚更新、浏览器还拿着旧的页面代码块（也可能是网络断了）。 点下面的按钮重新加载即可；如果反复出现，清一下浏览器缓存再试。\nE2E_RENDER_ERROR_FIXTURE\n重新加载",
+    "scrollWidth": 758,
+    "innerWidth": 758,
+    "innerHeight": 482,
+    "hasLoginForm": false,
+    "visibleLinks": 0,
+    "hasMenuButton": false,
+    "hasExitButton": false,
+    "hasFallback": true,
+    "hasExpiredNotice": false
+  },
+  "other_route": {
+    "href": "http://localhost:8030/login",
+    "path": "/login",
+    "rootChildren": 1,
+    "rootHtmlLength": 1930,
+    "bodyLen": 74,
+    "textHead": "致富经\nZHIFUJING\n登录\n注册\n用户名\n密码\n登录\n\n只有受邀的人才能注册 —— 需要邀请码就找站长要。\n\n陕ICP备2026027279号",
+    "scrollWidth": 758,
+    "innerWidth": 758,
+    "innerHeight": 482,
+    "hasLoginForm": true,
+    "visibleLinks": 1,
+    "hasMenuButton": false,
+    "hasExitButton": false,
+    "hasFallback": false,
+    "hasExpiredNotice": false
+  },
+  "errors": [
+    {
+      "kind": "console.error",
+      "text": "%o\n\n%s\n\n%s\n Error: E2E_RENDER_ERROR_FIXTURE\n    at RenderErrorFixture (http://localhost:8030/src/e2e/RenderErrorFixture.tsx:9:8)\n    at Object.react_stack_bottom_frame (http://localhost:8030/node_modules/.vite/deps/react-dom_client.js?v=83bd14f0:14140:12)\n    at renderWithHooks (http://localhost:803"
+    },
+    {
+      "kind": "console.error",
+      "text": "页面渲染失败： Error: E2E_RENDER_ERROR_FIXTURE\n    at RenderErrorFixture (http://localhost:8030/src/e2e/RenderErrorFixture.tsx:9:8)\n    at Object.react_stack_bottom_frame (http://localhost:8030/node_modules/.vite/deps/react-dom_client.js?v=83bd14f0:14140:12)\n    at renderWithHooks (http://localhost:8030/no"
+    }
+  ]
+}

@@ -1,0 +1,556 @@
+{
+  "generated_at": "2026-11-15T13:24:56+0800",
+  "db": "backend/data/b1_research.db",
+  "as_of": "2026-09-24",
+  "sectors": [
+    "801572",
+    "801366",
+    "803024",
+    "801085",
+    "801033"
+  ],
+  "total_sql": 53,
+  "unique_fingerprints": 40,
+  "total_ms": 218.8,
+  "sql_elapsed_ms_median": 0.423,
+  "by_classification": {
+    "fixed": 34,
+    "per_sector": 19,
+    "cache": 0,
+    "permission": 0
+  },
+  "budget": 25,
+  "status": "PERF_SQL_BUDGET_NOT_MET",
+  "result_bytes": 21393,
+  "profiles": [
+    {
+      "fingerprint": "cbbef80692371983",
+      "count": 4,
+      "elapsed_ms": 1.67,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:184:_stock_daily_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items",
+        "data_quality.py:885:overview",
+        "post_market_workbench.py:198:_resonance_block",
+        "post_market_workbench.py:260:build",
+        "post_market_workbench.py:261:build",
+        "post_market_workbench.py:263:build",
+        "post_market_workbench.py:67:_sentiment_block",
+        "sector_resonance.py:453:build",
+        "sentiment_next_day.py:430:build_next_day"
+      ],
+      "sample_sql": "SELECT max(stock_daily.trade_date) AS max_1 FROM stock_daily"
+    },
+    {
+      "fingerprint": "49959a85cee6afeb",
+      "count": 3,
+      "elapsed_ms": 10.508,
+      "classification": "per_sector",
+      "stacks": [
+        "post_market_workbench.py:198:_resonance_block",
+        "post_market_workbench.py:259:build",
+        "post_market_workbench.py:261:build",
+        "post_market_workbench.py:263:build",
+        "post_market_workbench.py:52:_resolve_day",
+        "post_market_workbench.py:67:_sentiment_block",
+        "sector_resonance.py:220:build",
+        "sentiment_next_day.py:408:_calendar",
+        "sentiment_next_day.py:429:build_next_day"
+      ],
+      "sample_sql": "SELECT trade_calendar.trade_date FROM trade_calendar ORDER BY trade_calendar.trade_date"
+    },
+    {
+      "fingerprint": "8946a84e809170e6",
+      "count": 3,
+      "elapsed_ms": 1.913,
+      "classification": "fixed",
+      "stacks": [
+        "limit_funnel.py:469:_pool_rows",
+        "limit_funnel.py:481:load_funnel_inputs",
+        "limit_funnel.py:482:load_funnel_inputs",
+        "limit_funnel.py:483:load_funnel_inputs",
+        "post_market_workbench.py:113:_promotion_block",
+        "post_market_workbench.py:262:build"
+      ],
+      "sample_sql": "SELECT limit_pool.trade_date, limit_pool.code, limit_pool.pool_type, limit_pool.name, limit_pool.pct_chg, limit_pool.price, limit_pool.amount, limit_pool.float_mv, limit_pool.total_mv, limit_pool.turnover, limit_pool.seal_amount, limit_pool"
+    },
+    {
+      "fingerprint": "6b787c596736d789",
+      "count": 3,
+      "elapsed_ms": 1.327,
+      "classification": "per_sector",
+      "stacks": [
+        "post_market_workbench.py:198:_resonance_block",
+        "sector_resonance.py:112:_latest_log",
+        "sector_resonance.py:123:_pool_trust",
+        "sector_resonance.py:374:build",
+        "sector_resonance.py:377:build",
+        "sector_resonance.py:459:build"
+      ],
+      "sample_sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date = ? AND collect_log.t"
+    },
+    {
+      "fingerprint": "137c2fe097b93ca0",
+      "count": 3,
+      "elapsed_ms": 0.67,
+      "classification": "per_sector",
+      "stacks": [
+        "post_market_workbench.py:198:_resonance_block",
+        "post_market_workbench.py:263:build",
+        "sector_resonance.py:124:_pool_trust",
+        "sector_resonance.py:374:build",
+        "sector_resonance.py:377:build",
+        "sector_resonance.py:459:build"
+      ],
+      "sample_sql": "SELECT count(*) AS count_1 FROM limit_pool WHERE limit_pool.trade_date = ? AND limit_pool.pool_type = ?"
+    },
+    {
+      "fingerprint": "34ec7260f08f97e4",
+      "count": 2,
+      "elapsed_ms": 0.978,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:308:_latest_ok_day",
+        "data_quality.py:371:_limit_pool_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items"
+      ],
+      "sample_sql": "SELECT collect_log.trade_date FROM collect_log WHERE collect_log.task = ? AND collect_log.trade_date IS NOT NULL AND collect_log.trade_date <= ? AND lower(collect_log.status) = ? ORDER BY collect_log.trade_date DESC, collect_log.id DESC LIM"
+    },
+    {
+      "fingerprint": "d1880b2d513769f7",
+      "count": 2,
+      "elapsed_ms": 0.703,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:537:_market_sentiment_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items",
+        "data_quality.py:885:overview",
+        "post_market_workbench.py:261:build",
+        "post_market_workbench.py:67:_sentiment_block",
+        "sentiment_next_day.py:484:build_next_day"
+      ],
+      "sample_sql": "SELECT market_sentiment.trade_date, market_sentiment.limit_up_count, market_sentiment.limit_down_count, market_sentiment.broken_count, market_sentiment.seal_rate, market_sentiment.broken_rate, market_sentiment.max_consecutive, market_sentim"
+    },
+    {
+      "fingerprint": "32bf396808d22793",
+      "count": 1,
+      "elapsed_ms": 22.679,
+      "classification": "per_sector",
+      "stacks": [
+        "data_quality.py:477:_sector_member_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items",
+        "data_quality.py:885:overview"
+      ],
+      "sample_sql": "SELECT sector_member.trade_date, sector_basic.taxonomy, count(*) AS count_1, count(distinct(sector_member.sector_code)) AS count_2 FROM sector_member JOIN sector_basic ON sector_basic.code = sector_member.sector_code WHERE sector_member.tra"
+    },
+    {
+      "fingerprint": "dcfba6623519c4c6",
+      "count": 1,
+      "elapsed_ms": 3.071,
+      "classification": "per_sector",
+      "stacks": [
+        "post_market_workbench.py:198:_resonance_block",
+        "post_market_workbench.py:263:build",
+        "sector_resonance.py:401:build"
+      ],
+      "sample_sql": "SELECT limit_pool.trade_date, limit_pool.code, limit_pool.pool_type, limit_pool.name, limit_pool.pct_chg, limit_pool.price, limit_pool.amount, limit_pool.float_mv, limit_pool.total_mv, limit_pool.turnover, limit_pool.seal_amount, limit_pool"
+    },
+    {
+      "fingerprint": "6f5d72d73abf2d14",
+      "count": 1,
+      "elapsed_ms": 2.466,
+      "classification": "per_sector",
+      "stacks": [
+        "post_market_workbench.py:198:_resonance_block",
+        "post_market_workbench.py:263:build",
+        "sector_resonance.py:142:_quotes",
+        "sector_resonance.py:446:build"
+      ],
+      "sample_sql": "SELECT stock_daily.code, stock_daily.pct_chg, stock_daily.open, stock_daily.close FROM stock_daily WHERE stock_daily.trade_date = ? AND stock_daily.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+    },
+    {
+      "fingerprint": "30d3f667b1c419e9",
+      "count": 1,
+      "elapsed_ms": 2.186,
+      "classification": "fixed",
+      "stacks": [
+        "auction_anomaly.py:205:frame_logs_by_day",
+        "data_quality.py:599:_auction_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items"
+      ],
+      "sample_sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date IN (?) AND collect_lo"
+    },
+    {
+      "fingerprint": "2caaabacad855213",
+      "count": 1,
+      "elapsed_ms": 1.954,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:185:_stock_daily_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items",
+        "data_quality.py:885:overview"
+      ],
+      "sample_sql": "SELECT stock_daily.trade_date, count(*) AS count_1, count(stock_daily.close) AS count_2, count(stock_daily.pct_chg) AS count_3 FROM stock_daily WHERE stock_daily.trade_date IN (?) GROUP BY stock_daily.trade_date"
+    },
+    {
+      "fingerprint": "65f1890711ed92b3",
+      "count": 1,
+      "elapsed_ms": 1.473,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:105:_trade_days",
+        "data_quality.py:833:overview",
+        "post_market_workbench.py:138:_quality_block",
+        "post_market_workbench.py:272:build"
+      ],
+      "sample_sql": "SELECT trade_calendar.trade_date FROM trade_calendar WHERE trade_calendar.trade_date <= ? ORDER BY trade_calendar.trade_date DESC LIMIT ? OFFSET ?"
+    },
+    {
+      "fingerprint": "c950bdd9dce2c5f0",
+      "count": 1,
+      "elapsed_ms": 1.331,
+      "classification": "per_sector",
+      "stacks": [
+        "post_market_workbench.py:198:_resonance_block",
+        "post_market_workbench.py:263:build",
+        "sector_resonance.py:536:build"
+      ],
+      "sample_sql": "SELECT market_sentiment.trade_date AS market_sentiment_trade_date, market_sentiment.limit_up_count AS market_sentiment_limit_up_count, market_sentiment.limit_down_count AS market_sentiment_limit_down_count, market_sentiment.broken_count AS "
+    },
+    {
+      "fingerprint": "d5330b00a2ff82d4",
+      "count": 1,
+      "elapsed_ms": 1.269,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:308:_latest_ok_day",
+        "data_quality.py:371:_limit_pool_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items"
+      ],
+      "sample_sql": "SELECT collect_log.trade_date FROM collect_log WHERE collect_log.task = ? AND collect_log.trade_date IS NOT NULL AND collect_log.trade_date <= ? AND lower(collect_log.status) = ? AND (EXISTS (SELECT limit_pool.code FROM limit_pool WHERE lim"
+    },
+    {
+      "fingerprint": "25ed8c0d1c684670",
+      "count": 1,
+      "elapsed_ms": 1.251,
+      "classification": "fixed",
+      "stacks": [
+        "post_market_workbench.py:105:_promotion_block",
+        "post_market_workbench.py:262:build",
+        "trading_days.py:112:recent_trade_days",
+        "trading_days.py:127:previous_trade_day"
+      ],
+      "sample_sql": "SELECT trade_calendar.trade_date FROM trade_calendar WHERE trade_calendar.trade_date < ? ORDER BY trade_calendar.trade_date DESC LIMIT ? OFFSET ?"
+    },
+    {
+      "fingerprint": "c1ede1a3c5297ee5",
+      "count": 1,
+      "elapsed_ms": 0.811,
+      "classification": "fixed",
+      "stacks": [
+        "post_market_workbench.py:261:build",
+        "post_market_workbench.py:67:_sentiment_block",
+        "sentiment_next_day.py:454:build_next_day"
+      ],
+      "sample_sql": "SELECT limit_pool.trade_date, limit_pool.code, limit_pool.pool_type, limit_pool.consecutive FROM limit_pool WHERE limit_pool.trade_date IN (?, ?, ?)"
+    },
+    {
+      "fingerprint": "cc9da87779e0f158",
+      "count": 1,
+      "elapsed_ms": 0.787,
+      "classification": "per_sector",
+      "stacks": [
+        "post_market_workbench.py:198:_resonance_block",
+        "post_market_workbench.py:263:build",
+        "sector_resonance.py:213:build"
+      ],
+      "sample_sql": "SELECT sector_basic.code, sector_basic.name, sector_basic.taxonomy, sector_basic.updated_at FROM sector_basic WHERE sector_basic.code IN (?, ?, ?, ?, ?)"
+    },
+    {
+      "fingerprint": "bfd1c11b92cf2e8e",
+      "count": 1,
+      "elapsed_ms": 0.744,
+      "classification": "fixed",
+      "stacks": [
+        "limit_funnel.py:547:load_funnel_inputs",
+        "post_market_workbench.py:113:_promotion_block",
+        "post_market_workbench.py:262:build"
+      ],
+      "sample_sql": "SELECT stock_concept.code, stock_concept.concept FROM stock_concept WHERE stock_concept.trade_date = ? AND stock_concept.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+    },
+    {
+      "fingerprint": "d1a61f7efc67e332",
+      "count": 1,
+      "elapsed_ms": 0.597,
+      "classification": "per_sector",
+      "stacks": [
+        "post_market_workbench.py:198:_resonance_block",
+        "post_market_workbench.py:263:build",
+        "sector_resonance.py:313:build"
+      ],
+      "sample_sql": "SELECT sector_member.code, sector_member.name, sector_member.sector_code, sector_member.fetched_at FROM sector_member WHERE sector_member.trade_date = ? AND sector_member.sector_code IN (?, ?, ?, ?, ?)"
+    },
+    {
+      "fingerprint": "76fb1e35690e13a9",
+      "count": 1,
+      "elapsed_ms": 0.563,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:534:_market_sentiment_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items",
+        "data_quality.py:885:overview"
+      ],
+      "sample_sql": "SELECT max(market_sentiment.trade_date) AS max_1 FROM market_sentiment"
+    },
+    {
+      "fingerprint": "da0bbe64b8d518fd",
+      "count": 1,
+      "elapsed_ms": 0.555,
+      "classification": "per_sector",
+      "stacks": [
+        "post_market_workbench.py:198:_resonance_block",
+        "post_market_workbench.py:263:build",
+        "sector_resonance.py:252:build"
+      ],
+      "sample_sql": "SELECT max(sector_member.trade_date) AS max_1 FROM sector_member WHERE sector_member.sector_code IN (?, ?, ?, ?, ?) AND sector_member.trade_date <= ?"
+    },
+    {
+      "fingerprint": "67c84d20384440be",
+      "count": 1,
+      "elapsed_ms": 0.435,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:585:_auction_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items",
+        "data_quality.py:885:overview"
+      ],
+      "sample_sql": "SELECT auction_snapshot.trade_date, count(*) AS count_1, count(auction_snapshot.post_open_price) AS count_2, sum(CASE WHEN (CAST(auction_snapshot.samples AS VARCHAR) LIKE ?) THEN ? ELSE ? END) AS sum_1 FROM auction_snapshot WHERE auction_sn"
+    },
+    {
+      "fingerprint": "c10252396f932631",
+      "count": 1,
+      "elapsed_ms": 0.423,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:583:_auction_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items",
+        "data_quality.py:885:overview"
+      ],
+      "sample_sql": "SELECT max(auction_snapshot.trade_date) AS max_1 FROM auction_snapshot"
+    },
+    {
+      "fingerprint": "8e76890ca70dd0d8",
+      "count": 1,
+      "elapsed_ms": 0.368,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:604:_auction_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items",
+        "data_quality.py:885:overview"
+      ],
+      "sample_sql": "SELECT trade_calendar.trade_date FROM trade_calendar WHERE trade_calendar.trade_date IN (?)"
+    },
+    {
+      "fingerprint": "c70fb226826546b4",
+      "count": 1,
+      "elapsed_ms": 0.367,
+      "classification": "per_sector",
+      "stacks": [
+        "data_quality.py:473:_sector_member_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items",
+        "data_quality.py:885:overview"
+      ],
+      "sample_sql": "SELECT sector_basic.taxonomy, count(*) AS count_1 FROM sector_basic GROUP BY sector_basic.taxonomy"
+    },
+    {
+      "fingerprint": "02eea46aecf0e490",
+      "count": 1,
+      "elapsed_ms": 0.338,
+      "classification": "per_sector",
+      "stacks": [
+        "data_quality.py:470:_sector_member_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items",
+        "data_quality.py:885:overview"
+      ],
+      "sample_sql": "SELECT max(sector_member.trade_date) AS max_1 FROM sector_member"
+    },
+    {
+      "fingerprint": "00fe0009fb790c5f",
+      "count": 1,
+      "elapsed_ms": 0.317,
+      "classification": "fixed",
+      "stacks": [
+        "post_market_workbench.py:261:build",
+        "post_market_workbench.py:67:_sentiment_block",
+        "sentiment_next_day.py:194:_latest_logs",
+        "sentiment_next_day.py:470:build_next_day"
+      ],
+      "sample_sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date IN (?, ?, ?) AND coll"
+    },
+    {
+      "fingerprint": "0290f0cfd9bb2ae6",
+      "count": 1,
+      "elapsed_ms": 0.314,
+      "classification": "fixed",
+      "stacks": [
+        "post_market_workbench.py:261:build",
+        "post_market_workbench.py:67:_sentiment_block",
+        "sentiment_next_day.py:533:build_next_day"
+      ],
+      "sample_sql": "SELECT stock_daily.code, stock_daily.trade_date, stock_daily.open, stock_daily.close, stock_daily.pct_chg FROM stock_daily WHERE stock_daily.trade_date IN (?, ?) AND stock_daily.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+    },
+    {
+      "fingerprint": "9d546a9300e2b45d",
+      "count": 1,
+      "elapsed_ms": 0.309,
+      "classification": "fixed",
+      "stacks": [
+        "limit_funnel.py:535:load_funnel_inputs",
+        "post_market_workbench.py:113:_promotion_block",
+        "post_market_workbench.py:262:build"
+      ],
+      "sample_sql": "SELECT stock_basic.code, stock_basic.name, stock_basic.industry FROM stock_basic WHERE stock_basic.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+    },
+    {
+      "fingerprint": "e706608b76e27ba0",
+      "count": 1,
+      "elapsed_ms": 0.309,
+      "classification": "fixed",
+      "stacks": [
+        "limit_funnel.py:557:load_funnel_inputs",
+        "post_market_workbench.py:113:_promotion_block",
+        "post_market_workbench.py:262:build"
+      ],
+      "sample_sql": "SELECT limit_reason.code, limit_reason.reason FROM limit_reason WHERE limit_reason.trade_date = ? AND limit_reason.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+    },
+    {
+      "fingerprint": "b2939c1624face49",
+      "count": 1,
+      "elapsed_ms": 0.302,
+      "classification": "per_sector",
+      "stacks": [
+        "post_market_workbench.py:198:_resonance_block",
+        "post_market_workbench.py:263:build",
+        "sector_resonance.py:389:build"
+      ],
+      "sample_sql": "SELECT limit_pool.trade_date, limit_pool.code, limit_pool.pool_type, limit_pool.name, limit_pool.pct_chg, limit_pool.price, limit_pool.amount, limit_pool.float_mv, limit_pool.total_mv, limit_pool.turnover, limit_pool.seal_amount, limit_pool"
+    },
+    {
+      "fingerprint": "c277e9bc1cc5593e",
+      "count": 1,
+      "elapsed_ms": 0.302,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:739:_calendar_item",
+        "data_quality.py:897:overview",
+        "post_market_workbench.py:138:_quality_block",
+        "post_market_workbench.py:272:build"
+      ],
+      "sample_sql": "SELECT count(*) AS count_1 FROM trade_calendar"
+    },
+    {
+      "fingerprint": "3cdc5ea42c3bd8f5",
+      "count": 1,
+      "elapsed_ms": 0.298,
+      "classification": "fixed",
+      "stacks": [
+        "limit_funnel.py:525:load_funnel_inputs",
+        "post_market_workbench.py:113:_promotion_block",
+        "post_market_workbench.py:262:build"
+      ],
+      "sample_sql": "SELECT stock_daily.code, stock_daily.close, stock_daily.pct_chg FROM stock_daily WHERE stock_daily.trade_date = ? AND stock_daily.code IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+    },
+    {
+      "fingerprint": "e60398e91c5b58ce",
+      "count": 1,
+      "elapsed_ms": 0.27,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:327:_limit_pool_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items",
+        "data_quality.py:885:overview"
+      ],
+      "sample_sql": "SELECT max(limit_pool.trade_date) AS max_1 FROM limit_pool"
+    },
+    {
+      "fingerprint": "5bc2be49ee76b9e3",
+      "count": 1,
+      "elapsed_ms": 0.243,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:328:_limit_pool_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items",
+        "data_quality.py:885:overview"
+      ],
+      "sample_sql": "SELECT limit_pool.trade_date, limit_pool.pool_type, count(*) AS count_1 FROM limit_pool WHERE limit_pool.trade_date IN (?) GROUP BY limit_pool.trade_date, limit_pool.pool_type"
+    },
+    {
+      "fingerprint": "ab027dddca10738f",
+      "count": 1,
+      "elapsed_ms": 0.239,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:337:_limit_pool_items",
+        "data_quality.py:783:_safe_source",
+        "data_quality.py:820:_source_items",
+        "data_quality.py:885:overview"
+      ],
+      "sample_sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date IN (?) AND collect_lo"
+    },
+    {
+      "fingerprint": "fb279272a356e3a2",
+      "count": 1,
+      "elapsed_ms": 0.233,
+      "classification": "fixed",
+      "stacks": [
+        "limit_funnel.py:452:_latest_logs",
+        "limit_funnel.py:565:load_funnel_inputs",
+        "post_market_workbench.py:113:_promotion_block",
+        "post_market_workbench.py:262:build"
+      ],
+      "sample_sql": "SELECT collect_log.id, collect_log.trade_date, collect_log.task, collect_log.status, collect_log.rows, collect_log.message, collect_log.cost_seconds, collect_log.created_at FROM collect_log WHERE collect_log.trade_date IN (?, ?) AND collect"
+    },
+    {
+      "fingerprint": "e0dcf912455f0328",
+      "count": 1,
+      "elapsed_ms": 0.233,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:748:_calendar_item",
+        "data_quality.py:897:overview",
+        "post_market_workbench.py:138:_quality_block",
+        "post_market_workbench.py:272:build"
+      ],
+      "sample_sql": "SELECT trade_calendar.trade_date AS trade_calendar_trade_date FROM trade_calendar WHERE trade_calendar.trade_date = ?"
+    },
+    {
+      "fingerprint": "be43147a4c2991f0",
+      "count": 1,
+      "elapsed_ms": 0.224,
+      "classification": "fixed",
+      "stacks": [
+        "data_quality.py:738:_calendar_item",
+        "data_quality.py:897:overview",
+        "post_market_workbench.py:138:_quality_block",
+        "post_market_workbench.py:272:build"
+      ],
+      "sample_sql": "SELECT max(trade_calendar.trade_date) AS max_1 FROM trade_calendar"
+    }
+  ]
+}

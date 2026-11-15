@@ -1,0 +1,19 @@
+{
+  "base": "http://127.0.0.1:8012",
+  "expect": "blank",
+  "steps": [
+    {
+      "step": "login",
+      "state": {
+        "path": "/login",
+        "rootChildren": 0,
+        "bodyLen": 0,
+        "hasLoginForm": false,
+        "hasExit": false,
+        "textHead": ""
+      }
+    }
+  ],
+  "pass": true,
+  "exit_code": 0
+}

@@ -28,8 +28,8 @@
     "SCHEDULER_DISABLED": "PASS",
     "STARTUP_CONFIG_VALID": "FAIL"
   },
-  "generated_at": "2026-11-15T12:51:26+08:00",
-  "isolated_dir": "C:\\Users\\76731\\AppData\\Local\\Temp\\s7-readiness-n296cat6",
+  "generated_at": "2026-11-15T13:32:40+08:00",
+  "isolated_dir": "C:\\Users\\76731\\AppData\\Local\\Temp\\s7-readiness-ebne64by",
   "ready": false,
   "reasons": {
     "EGRESS_APP_POLICY_LOCKED": "GUARD_NOT_INSTALLED",

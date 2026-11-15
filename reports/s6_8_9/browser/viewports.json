@@ -1,0 +1,302 @@
+{
+  "scenario": "三视口",
+  "sizes": {
+    "1280x800": {
+      "requested": {
+        "width": 1280,
+        "height": 800
+      },
+      "actual": {
+        "width": 1280,
+        "height": 800
+      },
+      "login": {
+        "href": "http://127.0.0.1:8021/login",
+        "path": "/login",
+        "rootChildren": 1,
+        "rootHtmlLength": 1930,
+        "bodyLen": 74,
+        "textHead": "致富经\nZHIFUJING\n登录\n注册\n用户名\n密码\n登录\n\n只有受邀的人才能注册 —— 需要邀请码就找站长要。\n\n陕ICP备2026027279号",
+        "scrollWidth": 1280,
+        "innerWidth": 1280,
+        "innerHeight": 800,
+        "hasLoginForm": true,
+        "visibleLinks": 1,
+        "hasMenuButton": false,
+        "hasExitButton": false,
+        "hasFallback": false,
+        "hasExpiredNotice": false
+      },
+      "home": {
+        "href": "http://127.0.0.1:8021/",
+        "path": "/",
+        "rootChildren": 1,
+        "rootHtmlLength": 22037,
+        "bodyLen": 923,
+        "textHead": "致富经\n今日复盘\n盘前\n涨停复盘\n板块题材\n形态选股\n悟道\n自选股\n复盘\n▾\n选股\n▾\n交易\n▾\n个股\n▾\n系统\n▾\n1 个交易日\n最新\n2026-11-14\ns7staging\n·\n账号\n·\n退出\n结论\n涨停 40 家 · 最高 4 板\n三大指数暂无涨跌幅\n涨/跌\n—\n成交额\n—\n恐贪\n—\n2026-11-14 无指",
+        "scrollWidth": 1280,
+        "innerWidth": 1280,
+        "innerHeight": 800,
+        "hasLoginForm": false,
+        "visibleLinks": 12,
+        "hasMenuButton": false,
+        "hasExitButton": true,
+        "hasFallback": false,
+        "hasExpiredNotice": false
+      },
+      "nav": {
+        "menu_clicked": false,
+        "visible_links": 12
+      },
+      "logout": {
+        "method": "button",
+        "state": {
+          "href": "http://127.0.0.1:8021/login",
+          "path": "/login",
+          "rootChildren": 1,
+          "rootHtmlLength": 1930,
+          "bodyLen": 74,
+          "textHead": "致富经\nZHIFUJING\n登录\n注册\n用户名\n密码\n登录\n\n只有受邀的人才能注册 —— 需要邀请码就找站长要。\n\n陕ICP备2026027279号",
+          "scrollWidth": 1280,
+          "innerWidth": 1280,
+          "innerHeight": 800,
+          "hasLoginForm": true,
+          "visibleLinks": 1,
+          "hasMenuButton": false,
+          "hasExitButton": false,
+          "hasFallback": false,
+          "hasExpiredNotice": false
+        }
+      },
+      "fallback": {
+        "href": "http://localhost:8030/__e2e/render-error",
+        "path": "/__e2e/render-error",
+        "rootChildren": 1,
+        "rootHtmlLength": 594,
+        "bodyLen": 102,
+        "textHead": "页面加载失败\n多半是版本刚更新、浏览器还拿着旧的页面代码块（也可能是网络断了）。 点下面的按钮重新加载即可；如果反复出现，清一下浏览器缓存再试。\nE2E_RENDER_ERROR_FIXTURE\n重新加载",
+        "scrollWidth": 1280,
+        "innerWidth": 1280,
+        "innerHeight": 800,
+        "hasLoginForm": false,
+        "visibleLinks": 0,
+        "hasMenuButton": false,
+        "hasExitButton": false,
+        "hasFallback": true,
+        "hasExpiredNotice": false
+      },
+      "overflow": {
+        "login": false,
+        "home": false,
+        "fallback": false
+      }
+    },
+    "1920x1080": {
+      "requested": {
+        "width": 1920,
+        "height": 1080
+      },
+      "actual": {
+        "width": 1920,
+        "height": 1080
+      },
+      "login": {
+        "href": "http://127.0.0.1:8021/login",
+        "path": "/login",
+        "rootChildren": 1,
+        "rootHtmlLength": 1930,
+        "bodyLen": 74,
+        "textHead": "致富经\nZHIFUJING\n登录\n注册\n用户名\n密码\n登录\n\n只有受邀的人才能注册 —— 需要邀请码就找站长要。\n\n陕ICP备2026027279号",
+        "scrollWidth": 1920,
+        "innerWidth": 1920,
+        "innerHeight": 1080,
+        "hasLoginForm": true,
+        "visibleLinks": 1,
+        "hasMenuButton": false,
+        "hasExitButton": false,
+        "hasFallback": false,
+        "hasExpiredNotice": false
+      },
+      "home": {
+        "href": "http://127.0.0.1:8021/",
+        "path": "/",
+        "rootChildren": 1,
+        "rootHtmlLength": 22037,
+        "bodyLen": 933,
+        "textHead": "致富经\nZHIFUJING\n今日复盘\n盘前\n涨停复盘\n板块题材\n形态选股\n悟道\n自选股\n复盘\n▾\n选股\n▾\n交易\n▾\n个股\n▾\n系统\n▾\n1 个交易日\n最新\n2026-11-14\ns7staging\n·\n账号\n·\n退出\n结论\n涨停 40 家 · 最高 4 板\n三大指数暂无涨跌幅\n涨/跌\n—\n成交额\n—\n恐贪\n—\n202",
+        "scrollWidth": 1920,
+        "innerWidth": 1920,
+        "innerHeight": 1080,
+        "hasLoginForm": false,
+        "visibleLinks": 12,
+        "hasMenuButton": false,
+        "hasExitButton": true,
+        "hasFallback": false,
+        "hasExpiredNotice": false
+      },
+      "nav": {
+        "menu_clicked": false,
+        "visible_links": 12
+      },
+      "logout": {
+        "method": "button",
+        "state": {
+          "href": "http://127.0.0.1:8021/login",
+          "path": "/login",
+          "rootChildren": 1,
+          "rootHtmlLength": 1930,
+          "bodyLen": 74,
+          "textHead": "致富经\nZHIFUJING\n登录\n注册\n用户名\n密码\n登录\n\n只有受邀的人才能注册 —— 需要邀请码就找站长要。\n\n陕ICP备2026027279号",
+          "scrollWidth": 1920,
+          "innerWidth": 1920,
+          "innerHeight": 1080,
+          "hasLoginForm": true,
+          "visibleLinks": 1,
+          "hasMenuButton": false,
+          "hasExitButton": false,
+          "hasFallback": false,
+          "hasExpiredNotice": false
+        }
+      },
+      "fallback": {
+        "href": "http://localhost:8030/__e2e/render-error",
+        "path": "/__e2e/render-error",
+        "rootChildren": 1,
+        "rootHtmlLength": 594,
+        "bodyLen": 102,
+        "textHead": "页面加载失败\n多半是版本刚更新、浏览器还拿着旧的页面代码块（也可能是网络断了）。 点下面的按钮重新加载即可；如果反复出现，清一下浏览器缓存再试。\nE2E_RENDER_ERROR_FIXTURE\n重新加载",
+        "scrollWidth": 1920,
+        "innerWidth": 1920,
+        "innerHeight": 1080,
+        "hasLoginForm": false,
+        "visibleLinks": 0,
+        "hasMenuButton": false,
+        "hasExitButton": false,
+        "hasFallback": true,
+        "hasExpiredNotice": false
+      },
+      "overflow": {
+        "login": false,
+        "home": false,
+        "fallback": false
+      }
+    },
+    "390x844": {
+      "requested": {
+        "width": 390,
+        "height": 844
+      },
+      "actual": {
+        "width": 390,
+        "height": 844
+      },
+      "login": {
+        "href": "http://127.0.0.1:8021/login",
+        "path": "/login",
+        "rootChildren": 1,
+        "rootHtmlLength": 1930,
+        "bodyLen": 74,
+        "textHead": "致富经\nZHIFUJING\n登录\n注册\n用户名\n密码\n登录\n\n只有受邀的人才能注册 —— 需要邀请码就找站长要。\n\n陕ICP备2026027279号",
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "innerHeight": 844,
+        "hasLoginForm": true,
+        "visibleLinks": 1,
+        "hasMenuButton": false,
+        "hasExitButton": false,
+        "hasFallback": false,
+        "hasExpiredNotice": false
+      },
+      "home": {
+        "href": "http://127.0.0.1:8021/",
+        "path": "/",
+        "rootChildren": 1,
+        "rootHtmlLength": 22037,
+        "bodyLen": 843,
+        "textHead": "致富经\n最新\n2026-11-14\ns7staging\n·\n账号\n·\n退出\n结论\n涨停 40 家 · 最高 4 板\n三大指数暂无涨跌幅\n涨/跌\n—\n成交额\n—\n恐贪\n—\n2026-11-14 无指数数据\n所选日期没有涨跌家数（该数据源只提供当日值），无法判断指数与个股是否背离。\n市场情绪\n2026-11-14 收盘\n涨",
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "innerHeight": 844,
+        "hasLoginForm": false,
+        "visibleLinks": 5,
+        "hasMenuButton": false,
+        "hasExitButton": true,
+        "hasFallback": false,
+        "hasExpiredNotice": false
+      },
+      "nav": {
+        "menu_clicked": false,
+        "visible_links": 5
+      },
+      "logout": {
+        "method": "button",
+        "state": {
+          "href": "http://127.0.0.1:8021/login",
+          "path": "/login",
+          "rootChildren": 1,
+          "rootHtmlLength": 1930,
+          "bodyLen": 74,
+          "textHead": "致富经\nZHIFUJING\n登录\n注册\n用户名\n密码\n登录\n\n只有受邀的人才能注册 —— 需要邀请码就找站长要。\n\n陕ICP备2026027279号",
+          "scrollWidth": 390,
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "hasLoginForm": true,
+          "visibleLinks": 1,
+          "hasMenuButton": false,
+          "hasExitButton": false,
+          "hasFallback": false,
+          "hasExpiredNotice": false
+        }
+      },
+      "fallback": {
+        "href": "http://localhost:8030/__e2e/render-error",
+        "path": "/__e2e/render-error",
+        "rootChildren": 1,
+        "rootHtmlLength": 594,
+        "bodyLen": 102,
+        "textHead": "页面加载失败\n多半是版本刚更新、浏览器还拿着旧的页面代码块（也可能是网络断了）。 点下面的按钮重新加载即可；如果反复出现，清一下浏览器缓存再试。\nE2E_RENDER_ERROR_FIXTURE\n重新加载",
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "innerHeight": 844,
+        "hasLoginForm": false,
+        "visibleLinks": 0,
+        "hasMenuButton": false,
+        "hasExitButton": false,
+        "hasFallback": true,
+        "hasExpiredNotice": false
+      },
+      "overflow": {
+        "login": false,
+        "home": false,
+        "fallback": false
+      }
+    }
+  },
+  "pass": true,
+  "errors": [
+    {
+      "kind": "console.error",
+      "text": "%o\n\n%s\n\n%s\n Error: E2E_RENDER_ERROR_FIXTURE\n    at RenderErrorFixture (http://localhost:8030/src/e2e/RenderErrorFixture.tsx:9:8)\n    at Object.react_stack_bottom_frame (http://localhost:8030/node_modules/.vite/deps/react-dom_client.js?v=83bd14f0:14140:12)\n    at renderWithHooks (http://localhost:803"
+    },
+    {
+      "kind": "console.error",
+      "text": "页面渲染失败： Error: E2E_RENDER_ERROR_FIXTURE\n    at RenderErrorFixture (http://localhost:8030/src/e2e/RenderErrorFixture.tsx:9:8)\n    at Object.react_stack_bottom_frame (http://localhost:8030/node_modules/.vite/deps/react-dom_client.js?v=83bd14f0:14140:12)\n    at renderWithHooks (http://localhost:8030/no"
+    },
+    {
+      "kind": "console.error",
+      "text": "%o\n\n%s\n\n%s\n Error: E2E_RENDER_ERROR_FIXTURE\n    at RenderErrorFixture (http://localhost:8030/src/e2e/RenderErrorFixture.tsx:9:8)\n    at Object.react_stack_bottom_frame (http://localhost:8030/node_modules/.vite/deps/react-dom_client.js?v=83bd14f0:14140:12)\n    at renderWithHooks (http://localhost:803"
+    },
+    {
+      "kind": "console.error",
+      "text": "页面渲染失败： Error: E2E_RENDER_ERROR_FIXTURE\n    at RenderErrorFixture (http://localhost:8030/src/e2e/RenderErrorFixture.tsx:9:8)\n    at Object.react_stack_bottom_frame (http://localhost:8030/node_modules/.vite/deps/react-dom_client.js?v=83bd14f0:14140:12)\n    at renderWithHooks (http://localhost:8030/no"
+    },
+    {
+      "kind": "console.error",
+      "text": "%o\n\n%s\n\n%s\n Error: E2E_RENDER_ERROR_FIXTURE\n    at RenderErrorFixture (http://localhost:8030/src/e2e/RenderErrorFixture.tsx:9:8)\n    at Object.react_stack_bottom_frame (http://localhost:8030/node_modules/.vite/deps/react-dom_client.js?v=83bd14f0:14140:12)\n    at renderWithHooks (http://localhost:803"
+    },
+    {
+      "kind": "console.error",
+      "text": "页面渲染失败： Error: E2E_RENDER_ERROR_FIXTURE\n    at RenderErrorFixture (http://localhost:8030/src/e2e/RenderErrorFixture.tsx:9:8)\n    at Object.react_stack_bottom_frame (http://localhost:8030/node_modules/.vite/deps/react-dom_client.js?v=83bd14f0:14140:12)\n    at renderWithHooks (http://localhost:8030/no"
+    }
+  ]
+}

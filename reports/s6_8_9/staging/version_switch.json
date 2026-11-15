@@ -1,0 +1,280 @@
+{
+  "generated_at": "2026-11-15T13:23:20+08:00",
+  "environment": "本地隔离 Staging（单端口 127.0.0.1，独立临时库）",
+  "port": 8012,
+  "old_root": "C:\\Users\\76731\\AppData\\Local\\Temp\\s6_8_versions\\old",
+  "new_root": "C:\\Users\\76731\\AppData\\Local\\Temp\\s6_8_versions\\new",
+  "old_head": "9838a068a766f2fee4f46c6d7ebc6dfed4d80f0c",
+  "new_head": "a6e9dbda939051b38b822571db0ba003addf40d0",
+  "manifests": {
+    "old": "b74306ce53c38148d5690a0adfd9e8913aef17eea2378131411e5d18e1072d6c",
+    "new": "8eb65c3c9976b6b1531499b7b6f0a9d4b2b6b87b8785edcf6bceb867e8a1cb26",
+    "different": true,
+    "old_entry_sha256": "5aacf7a72e59861e48e95a6adff0be80f8441e1891d49edfe4c07df1bf339fdf",
+    "new_entry_sha256": "2c72e60b87cc4e9148fdef57bc630adcf48d1f8b180db6e089f5e51cc6f1950c"
+  },
+  "db": {
+    "initial": {
+      "sha256": "b52ea01c4cdecf3ce5cc6f0879b6fe6100c235ea77fede2f4e0d32f6552aea32",
+      "size": 475136
+    },
+    "backup": {
+      "sha256": "b52ea01c4cdecf3ce5cc6f0879b6fe6100c235ea77fede2f4e0d32f6552aea32",
+      "size": 475136
+    },
+    "after": {
+      "sha256": "b52ea01c4cdecf3ce5cc6f0879b6fe6100c235ea77fede2f4e0d32f6552aea32",
+      "size": 475136
+    }
+  },
+  "steps": [
+    {
+      "step": "01-old",
+      "version_root": "C:\\Users\\76731\\AppData\\Local\\Temp\\s6_8_versions\\old",
+      "expected": "blank",
+      "started_at": "2026-11-15T13:22:20+08:00",
+      "health_status": 200,
+      "ready_status": 503,
+      "serving": {
+        "index_status": 200,
+        "index_sha256": "35c7a78bcbf8834566c5100ccc23ed728e8b4d327c5b19cced36a98c70751894",
+        "assets": {
+          "/assets/index-g0A96LyR.css": {
+            "status": 200,
+            "sha256": "f3bdbf144218527d956501a76aa7fa1eb0806bcebde95f8295ff7734042758f0"
+          },
+          "/assets/index-icdFEUK--r2.js": {
+            "status": 200,
+            "sha256": "5aacf7a72e59861e48e95a6adff0be80f8441e1891d49edfe4c07df1bf339fdf"
+          }
+        },
+        "asset_count": 2
+      },
+      "login": {
+        "base": "http://127.0.0.1:8012",
+        "expect": "blank",
+        "steps": [
+          {
+            "step": "login",
+            "state": {
+              "path": "/login",
+              "rootChildren": 0,
+              "bodyLen": 0,
+              "hasLoginForm": false,
+              "hasExit": false,
+              "textHead": ""
+            }
+          }
+        ],
+        "pass": true,
+        "exit_code": 0
+      }
+    },
+    {
+      "step": "02-new",
+      "version_root": "C:\\Users\\76731\\AppData\\Local\\Temp\\s6_8_versions\\new",
+      "expected": "success",
+      "started_at": "2026-11-15T13:22:32+08:00",
+      "health_status": 200,
+      "ready_status": 503,
+      "serving": {
+        "index_status": 200,
+        "index_sha256": "cd7c34ac12653f5571d11133895fb10a870e0dbe64b6ac01b610f739093edcda",
+        "assets": {
+          "/assets/index-BXF4JrkU.css": {
+            "status": 200,
+            "sha256": "fbea7bdb31791941db3ca5fb1cb44d129af6648ff36d8a6602304806c5ff725f"
+          },
+          "/assets/index-DnphHmJw-r2.js": {
+            "status": 200,
+            "sha256": "2c72e60b87cc4e9148fdef57bc630adcf48d1f8b180db6e089f5e51cc6f1950c"
+          }
+        },
+        "asset_count": 2
+      },
+      "login": {
+        "base": "http://127.0.0.1:8012",
+        "expect": "success",
+        "steps": [
+          {
+            "step": "login",
+            "state": {
+              "path": "/",
+              "rootChildren": 1,
+              "bodyLen": 445,
+              "hasLoginForm": false,
+              "hasExit": true,
+              "textHead": "致富经\n今日复盘\n盘前\n涨停复盘\n板块题材\n形态选股\n悟道\n自选股\n复盘\n▾\n选股\n▾\n交易\n▾\n个股\n▾\n系统\n▾\n0 个交易日\n最新\ns7staging\n·\n账号\n·\n退出\n还没有可展示的复盘数据 —— 采集在每个交易日收盘后自动跑，跑"
+            }
+          },
+          {
+            "step": "refresh",
+            "state": {
+              "path": "/",
+              "rootChildren": 1,
+              "bodyLen": 445,
+              "hasLoginForm": false,
+              "hasExit": true,
+              "textHead": "致富经\n今日复盘\n盘前\n涨停复盘\n板块题材\n形态选股\n悟道\n自选股\n复盘\n▾\n选股\n▾\n交易\n▾\n个股\n▾\n系统\n▾\n0 个交易日\n最新\ns7staging\n·\n账号\n·\n退出\n还没有可展示的复盘数据 —— 采集在每个交易日收盘后自动跑，跑"
+            }
+          },
+          {
+            "step": "deep_link",
+            "state": {
+              "path": "/limit-up",
+              "rootChildren": 1,
+              "bodyLen": 368,
+              "hasLoginForm": false,
+              "hasExit": true,
+              "textHead": "致富经\n今日复盘\n盘前\n涨停复盘\n板块题材\n形态选股\n悟道\n自选股\n复盘\n▾\n选股\n▾\n交易\n▾\n个股\n▾\n系统\n▾\n涨停复盘\n晋级漏斗\n0 只涨停\n最新\ns7staging\n·\n账号\n·\n退出\n结论\n当日涨停数据未入库\n主线 —\n首板\n—"
+            }
+          },
+          {
+            "step": "logout",
+            "state": {
+              "path": "/login",
+              "rootChildren": 1,
+              "bodyLen": 74,
+              "hasLoginForm": true,
+              "hasExit": false,
+              "textHead": "致富经\nZHIFUJING\n登录\n注册\n用户名\n密码\n登录\n\n只有受邀的人才能注册 —— 需要邀请码就找站长要。\n\n陕ICP备2026027279号"
+            }
+          }
+        ],
+        "pass": true,
+        "exit_code": 0
+      }
+    },
+    {
+      "step": "03-rollback-old",
+      "version_root": "C:\\Users\\76731\\AppData\\Local\\Temp\\s6_8_versions\\old",
+      "expected": "blank",
+      "started_at": "2026-11-15T13:22:50+08:00",
+      "health_status": 200,
+      "ready_status": 503,
+      "serving": {
+        "index_status": 200,
+        "index_sha256": "35c7a78bcbf8834566c5100ccc23ed728e8b4d327c5b19cced36a98c70751894",
+        "assets": {
+          "/assets/index-g0A96LyR.css": {
+            "status": 200,
+            "sha256": "f3bdbf144218527d956501a76aa7fa1eb0806bcebde95f8295ff7734042758f0"
+          },
+          "/assets/index-icdFEUK--r2.js": {
+            "status": 200,
+            "sha256": "5aacf7a72e59861e48e95a6adff0be80f8441e1891d49edfe4c07df1bf339fdf"
+          }
+        },
+        "asset_count": 2
+      },
+      "login": {
+        "base": "http://127.0.0.1:8012",
+        "expect": "blank",
+        "steps": [
+          {
+            "step": "login",
+            "state": {
+              "path": "/login",
+              "rootChildren": 0,
+              "bodyLen": 0,
+              "hasLoginForm": false,
+              "hasExit": false,
+              "textHead": ""
+            }
+          }
+        ],
+        "pass": true,
+        "exit_code": 0
+      }
+    },
+    {
+      "step": "04-redeploy-new",
+      "version_root": "C:\\Users\\76731\\AppData\\Local\\Temp\\s6_8_versions\\new",
+      "expected": "success",
+      "started_at": "2026-11-15T13:23:02+08:00",
+      "health_status": 200,
+      "ready_status": 503,
+      "serving": {
+        "index_status": 200,
+        "index_sha256": "cd7c34ac12653f5571d11133895fb10a870e0dbe64b6ac01b610f739093edcda",
+        "assets": {
+          "/assets/index-BXF4JrkU.css": {
+            "status": 200,
+            "sha256": "fbea7bdb31791941db3ca5fb1cb44d129af6648ff36d8a6602304806c5ff725f"
+          },
+          "/assets/index-DnphHmJw-r2.js": {
+            "status": 200,
+            "sha256": "2c72e60b87cc4e9148fdef57bc630adcf48d1f8b180db6e089f5e51cc6f1950c"
+          }
+        },
+        "asset_count": 2
+      },
+      "login": {
+        "base": "http://127.0.0.1:8012",
+        "expect": "success",
+        "steps": [
+          {
+            "step": "login",
+            "state": {
+              "path": "/",
+              "rootChildren": 1,
+              "bodyLen": 445,
+              "hasLoginForm": false,
+              "hasExit": true,
+              "textHead": "致富经\n今日复盘\n盘前\n涨停复盘\n板块题材\n形态选股\n悟道\n自选股\n复盘\n▾\n选股\n▾\n交易\n▾\n个股\n▾\n系统\n▾\n0 个交易日\n最新\ns7staging\n·\n账号\n·\n退出\n还没有可展示的复盘数据 —— 采集在每个交易日收盘后自动跑，跑"
+            }
+          },
+          {
+            "step": "refresh",
+            "state": {
+              "path": "/",
+              "rootChildren": 1,
+              "bodyLen": 445,
+              "hasLoginForm": false,
+              "hasExit": true,
+              "textHead": "致富经\n今日复盘\n盘前\n涨停复盘\n板块题材\n形态选股\n悟道\n自选股\n复盘\n▾\n选股\n▾\n交易\n▾\n个股\n▾\n系统\n▾\n0 个交易日\n最新\ns7staging\n·\n账号\n·\n退出\n还没有可展示的复盘数据 —— 采集在每个交易日收盘后自动跑，跑"
+            }
+          },
+          {
+            "step": "deep_link",
+            "state": {
+              "path": "/limit-up",
+              "rootChildren": 1,
+              "bodyLen": 368,
+              "hasLoginForm": false,
+              "hasExit": true,
+              "textHead": "致富经\n今日复盘\n盘前\n涨停复盘\n板块题材\n形态选股\n悟道\n自选股\n复盘\n▾\n选股\n▾\n交易\n▾\n个股\n▾\n系统\n▾\n涨停复盘\n晋级漏斗\n0 只涨停\n最新\ns7staging\n·\n账号\n·\n退出\n结论\n当日涨停数据未入库\n主线 —\n首板\n—"
+            }
+          },
+          {
+            "step": "logout",
+            "state": {
+              "path": "/login",
+              "rootChildren": 1,
+              "bodyLen": 74,
+              "hasLoginForm": true,
+              "hasExit": false,
+              "textHead": "致富经\nZHIFUJING\n登录\n注册\n用户名\n密码\n登录\n\n只有受邀的人才能注册 —— 需要邀请码就找站长要。\n\n陕ICP备2026027279号"
+            }
+          }
+        ],
+        "pass": true,
+        "exit_code": 0
+      }
+    }
+  ],
+  "verdict": {
+    "version_manifest_different": true,
+    "serving_switches_old_new": true,
+    "old_known_blank_reproduced": true,
+    "new_login_smoke_pass": true,
+    "rollback_serving_old": true,
+    "redeploy_serving_new": true,
+    "all_pass": true
+  },
+  "limitations": [
+    "单端口顺序切换，不是负载均衡/流量切换。",
+    "旧版登录白屏是已知缺陷，作为版本确实切换的对照，不是回归失败。",
+    "Windows 上 terminate 非 systemd 优雅停机；OS egress 未验证。"
+  ]
+}

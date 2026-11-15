@@ -1,0 +1,53 @@
+{
+  "scenario": "E15 Chunk 404",
+  "pass": true,
+  "chunk": "Research-mNIyYi5C-r2.js",
+  "chunk_url": "http://127.0.0.1:8021/assets/Research-mNIyYi5C-r2.js",
+  "failed_requests": 2,
+  "reload_navigations": 2,
+  "after_failure": {
+    "href": "http://127.0.0.1:8021/research",
+    "path": "/research",
+    "rootChildren": 1,
+    "rootHtmlLength": 625,
+    "bodyLen": 133,
+    "textHead": "页面加载失败\n多半是版本刚更新、浏览器还拿着旧的页面代码块（也可能是网络断了）。 点下面的按钮重新加载即可；如果反复出现，清一下浏览器缓存再试。\nCannot read properties of undefined (reading 'default')\n重新加载",
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "innerHeight": 800,
+    "hasLoginForm": false,
+    "visibleLinks": 0,
+    "hasMenuButton": false,
+    "hasExitButton": false,
+    "hasFallback": true,
+    "hasExpiredNotice": false
+  },
+  "reload_clicked": true,
+  "recovered": {
+    "href": "http://127.0.0.1:8021/research",
+    "path": "/research",
+    "rootChildren": 1,
+    "rootHtmlLength": 1676,
+    "bodyLen": 205,
+    "textHead": "盘后研究\n2026-11-14 · 候选 0\n趋势研究\n低位启动\n板块状态\n交易日\n搜索\n研究指标，不是买入信号；样本与覆盖见下方说明\n研究假设：统计稳定性不足，未通过正式策略有效性验证；版本 p0.2-2026-11-09。\n当日个股日线已入库，但没有 RPS 记录（RPS 未采集）（当日日线 1 行 · RPS 0",
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "innerHeight": 800,
+    "hasLoginForm": false,
+    "visibleLinks": 0,
+    "hasMenuButton": false,
+    "hasExitButton": false,
+    "hasFallback": false,
+    "hasExpiredNotice": false
+  },
+  "errors": [
+    {
+      "kind": "console.error",
+      "text": "TypeError: Cannot read properties of undefined (reading 'default')\n    at de (http://127.0.0.1:8021/assets/index-Bl-B-gup-r2.js:2:5177)\n    at ro (http://127.0.0.1:8021/assets/index-Bl-B-gup-r2.js:9:38744)\n    at _ (http://127.0.0.1:8021/assets/index-Bl-B-gup-r2.js:9:43745)\n    at http://127.0.0.1:8"
+    },
+    {
+      "kind": "console.error",
+      "text": "页面渲染失败： TypeError: Cannot read properties of undefined (reading 'default')\n    at de (http://127.0.0.1:8021/assets/index-Bl-B-gup-r2.js:2:5177)\n    at ro (http://127.0.0.1:8021/assets/index-Bl-B-gup-r2.js:9:38744)\n    at _ (http://127.0.0.1:8021/assets/index-Bl-B-gup-r2.js:9:43745)\n    at http://127"
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+NOT_COLLECTED: S61_VM_UNAVAILABLE
+原因：未应用任何防火墙规则（无 VM，且禁止宿主/WSL 变更）。

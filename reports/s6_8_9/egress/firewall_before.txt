@@ -1,0 +1,3 @@
+NOT_COLLECTED: S61_VM_UNAVAILABLE
+原因：无专用 Linux VM；未在 Windows 宿主或 WSL 修改/读取防火墙规则。
+禁止把宿主规则或应用层结果当作 VM 内 OS Egress 证据。
