@@ -110,6 +110,8 @@ class Sample:
     gross: float | None = None
     net: float | None = None
     mae: float | None = None
+    #: 持有期内**收盘累计收益**的最大值（MFE）。与 MAE 同为日线近似，不含盘中极值
+    mfe: float | None = None
     benchmark: float | None = None
     excess: float | None = None
     entry_delay: int = 0
@@ -606,6 +608,7 @@ def _sample_for(
     gross = (factor - 1) * 100
     net = ((1 + gross / 100) * (1 - cost_bps / 10000) - 1) * 100
     mae = min(cumulative) * 100 if cumulative else None
+    mfe = max(cumulative) * 100 if cumulative else None
     status = "ok"
     exit_limit = _exit_limit_down(
         signal.code,
@@ -631,6 +634,7 @@ def _sample_for(
         gross=gross,
         net=net,
         mae=mae,
+        mfe=mfe,
         benchmark=bench,
         excess=None if bench is None else gross - bench,
         entry_delay=entry_delay,

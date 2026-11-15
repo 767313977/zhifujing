@@ -256,6 +256,49 @@ def slice_bars(bars, index: int):
 # ---------------------------------------------------------------- 扫描
 
 
+def _features(result, rps_values, sector_score) -> dict:
+    """把模型结果压成归因用特征（只存数值/短标签，不存对象）。"""
+    structure = getattr(result, "structure", None)
+    mom = getattr(result, "momentum", None)
+    volume = getattr(result, "volume", None)
+    pullback = getattr(result, "pullback", None)
+    ret = (mom.ret if mom else {}) or {}
+    rps = (mom.rps if mom else {}) or {}
+    ma = (structure.ma if structure else {}) or {}
+    slope = (structure.slope if structure else {}) or {}
+    return {
+        "ret5": ret.get(5),
+        "ret10": ret.get(10),
+        "ret20": ret.get(20),
+        "ret60": ret.get(60),
+        "rps20": rps.get("rps20"),
+        "rps60": rps.get("rps60"),
+        "rps120": rps.get("rps120"),
+        "rps250": rps.get("rps250"),
+        "ma20": ma.get(20),
+        "ma60": ma.get(60),
+        "ma120": ma.get(120),
+        "slope20": slope.get(20),
+        "slope60": slope.get(60),
+        "distance_ma20": getattr(structure, "distance_ma20_pct", None),
+        "trend_days": getattr(structure, "trend_days", None),
+        "convergence": getattr(structure, "convergence_pct", None),
+        "alignment": getattr(structure, "alignment", None),
+        "amount_ratio20": getattr(volume, "amount_ratio20", None),
+        "vol_ratio5": getattr(volume, "vol_ratio5", None),
+        "up_down_vol": getattr(volume, "up_down_volume_ratio20", None),
+        "close_position": getattr(volume, "close_position", None),
+        "divergence": getattr(volume, "divergence", None),
+        "sector_score": sector_score,
+        "platform_width": getattr(result, "platform_width_pct", None),
+        "breakout_pct": getattr(result, "breakout_pct", None),
+        "pullback_depth": getattr(pullback, "depth_pct", None),
+        "pullback_atr": getattr(pullback, "atr_multiple", None),
+        "pullback_shrink": getattr(pullback, "volume_shrink_ratio", None),
+        "trend_strength": getattr(result, "trend_strength", None),
+    }
+
+
 def scan(
     session: Session,
     matrix: rb.BarMatrix,
@@ -267,6 +310,7 @@ def scan(
     config_a: te_config.ModelAConfig | None = None,
     config_b: te_config.ModelBConfig | None = None,
     collect_risk: bool = False,
+    collect_features: bool = False,
 ) -> dict[str, list[dict]]:
     """逐票逐日判定，返回 `{model: [{day, code, parts, risk_state}]}`。
 
@@ -323,6 +367,8 @@ def scan(
                         record["risk_state"] = risk_engine.evaluate(
                             sliced, model="A", include_since=False
                         ).state
+                    if collect_features:
+                        record["features"] = _features(result, rps_values, sector_score)
                     results["A"].append(record)
 
             # ---- Model B 前置条件 ----
@@ -357,6 +403,8 @@ def scan(
                         record["risk_state"] = risk_engine.evaluate(
                             sliced, model="B", include_since=False
                         ).state
+                    if collect_features:
+                        record["features"] = _features(result, rps_values, sector_score)
                     results["B"].append(record)
     return results
 

@@ -1,0 +1,2964 @@
+{
+  "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+  "sha256": "A93BC080EB9E366D08025C0A247E9AF525674A0294EC4D6012B7DBFD8941C56B",
+  "scan_start": "2025-10-14",
+  "scan_end": "2026-10-09",
+  "days": 240,
+  "counts": {
+    "A": 5928,
+    "B": 14061
+  },
+  "models": {
+    "A": {
+      "signals": 4794,
+      "overall": {
+        "5": {
+          "samples": 4675,
+          "mean": -0.11,
+          "median": -0.72,
+          "win_pct": 43.6,
+          "excess_mean": -0.34,
+          "excess_median": -1.02,
+          "excess_t_p": 0.000483,
+          "profit_factor": 0.95,
+          "max_drawdown_points": -2503.98,
+          "max_consecutive_losses": 31,
+          "mfe_mean": 2.98,
+          "mae_mean": -2.76,
+          "mfe_mae_ratio": 1.08,
+          "skew": 1.67,
+          "p10": -7.02,
+          "p90": 6.76,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -1.09,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "10": {
+          "samples": 4600,
+          "mean": 0.15,
+          "median": -0.87,
+          "win_pct": 43.9,
+          "excess_mean": -0.21,
+          "excess_median": -1.47,
+          "excess_t_p": 0.153933,
+          "profit_factor": 1.05,
+          "max_drawdown_points": -3054.35,
+          "max_consecutive_losses": 25,
+          "mfe_mean": 5.33,
+          "mae_mean": -4.64,
+          "mfe_mae_ratio": 1.15,
+          "skew": 2.43,
+          "p10": -9.44,
+          "p90": 9.91,
+          "tail_top5_share": 9.817,
+          "mean_excluding_top5pct": -1.37,
+          "top1_contribution": 3.503,
+          "top5_contribution": 9.817,
+          "top10_contribution": 14.069
+        },
+        "20": {
+          "samples": 4439,
+          "mean": -0.25,
+          "median": -2.39,
+          "win_pct": 39.4,
+          "excess_mean": -0.62,
+          "excess_median": -3.04,
+          "excess_t_p": 0.005115,
+          "profit_factor": 0.95,
+          "max_drawdown_points": -6811.32,
+          "max_consecutive_losses": 25,
+          "mfe_mean": 8.91,
+          "mae_mean": -7.27,
+          "mfe_mae_ratio": 1.23,
+          "skew": 3.26,
+          "p10": -13.99,
+          "p90": 14.01,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -2.59,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "40": {
+          "samples": 4191,
+          "mean": -0.1,
+          "median": -3.94,
+          "win_pct": 37.7,
+          "excess_mean": -1.05,
+          "excess_median": -5.46,
+          "excess_t_p": 0.002432,
+          "profit_factor": 0.98,
+          "max_drawdown_points": -8084.49,
+          "max_consecutive_losses": 49,
+          "mfe_mean": 13.88,
+          "mae_mean": -10.74,
+          "mfe_mae_ratio": 1.29,
+          "skew": 5.14,
+          "p10": -19.01,
+          "p90": 20.48,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.67,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "60": {
+          "samples": 3950,
+          "mean": -0.18,
+          "median": -4.88,
+          "win_pct": 37.7,
+          "excess_mean": -1.43,
+          "excess_median": -6.8,
+          "excess_t_p": 0.003234,
+          "profit_factor": 0.98,
+          "max_drawdown_points": -12569.18,
+          "max_consecutive_losses": 33,
+          "mfe_mean": 18.56,
+          "mae_mean": -13.9,
+          "mfe_mae_ratio": 1.33,
+          "skew": 7.44,
+          "p10": -22.36,
+          "p90": 22.82,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -4.74,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        }
+      },
+      "buckets": {
+        "regime": {
+          "BEAR": {
+            "samples": 609,
+            "mean": -0.5,
+            "excess_mean": -5.57,
+            "win_pct": 35.0
+          },
+          "SIDEWAYS": {
+            "samples": 1241,
+            "mean": 1.05,
+            "excess_mean": -0.72,
+            "win_pct": 45.4
+          },
+          "BULL": {
+            "samples": 1479,
+            "mean": -0.51,
+            "excess_mean": 1.86,
+            "win_pct": 40.2
+          },
+          "UNKNOWN": {
+            "samples": 1110,
+            "mean": -1.19,
+            "excess_mean": -1.09,
+            "win_pct": 34.1
+          }
+        },
+        "industry": {
+          "医药生物": {
+            "samples": 398,
+            "mean": -2.59,
+            "excess_mean": -3.32,
+            "win_pct": 29.4
+          },
+          "机械设备": {
+            "samples": 367,
+            "mean": -1.04,
+            "excess_mean": -1.97,
+            "win_pct": 36.5
+          },
+          "基础化工": {
+            "samples": 345,
+            "mean": 1.47,
+            "excess_mean": 1.88,
+            "win_pct": 44.3
+          },
+          "公用事业": {
+            "samples": 334,
+            "mean": 2.22,
+            "excess_mean": 3.74,
+            "win_pct": 44.0
+          },
+          "电子": {
+            "samples": 330,
+            "mean": 2.53,
+            "excess_mean": 2.44,
+            "win_pct": 51.5
+          },
+          "电力设备": {
+            "samples": 248,
+            "mean": -1.47,
+            "excess_mean": -0.93,
+            "win_pct": 37.9
+          },
+          "汽车": {
+            "samples": 193,
+            "mean": -2.04,
+            "excess_mean": -3.06,
+            "win_pct": 36.3
+          },
+          "交通运输": {
+            "samples": 191,
+            "mean": -1.33,
+            "excess_mean": -1.95,
+            "win_pct": 38.7
+          },
+          "计算机": {
+            "samples": 174,
+            "mean": -4.82,
+            "excess_mean": -5.19,
+            "win_pct": 22.4
+          },
+          "食品饮料": {
+            "samples": 154,
+            "mean": -3.39,
+            "excess_mean": -4.85,
+            "win_pct": 27.3
+          },
+          "国防军工": {
+            "samples": 150,
+            "mean": 5.55,
+            "excess_mean": 3.65,
+            "win_pct": 56.7
+          },
+          "银行": {
+            "samples": 118,
+            "mean": -1.15,
+            "excess_mean": -3.55,
+            "win_pct": 35.6
+          },
+          "非银金融": {
+            "samples": 116,
+            "mean": -2.94,
+            "excess_mean": -2.85,
+            "win_pct": 30.2
+          },
+          "环保": {
+            "samples": 115,
+            "mean": -0.65,
+            "excess_mean": 0.15,
+            "win_pct": 34.8
+          },
+          "农林牧渔": {
+            "samples": 113,
+            "mean": -0.05,
+            "excess_mean": 0.92,
+            "win_pct": 42.5
+          }
+        },
+        "market_cap": {
+          ">1000亿": {
+            "samples": 271,
+            "mean": 0.83,
+            "excess_mean": -0.84,
+            "win_pct": 41.3
+          },
+          "300-1000亿": {
+            "samples": 459,
+            "mean": 1.77,
+            "excess_mean": 1.06,
+            "win_pct": 45.3
+          },
+          "50-100亿": {
+            "samples": 1264,
+            "mean": -0.52,
+            "excess_mean": -0.6,
+            "win_pct": 38.8
+          },
+          "<50亿": {
+            "samples": 1167,
+            "mean": -3.12,
+            "excess_mean": -2.89,
+            "win_pct": 33.4
+          },
+          "100-300亿": {
+            "samples": 1278,
+            "mean": 1.7,
+            "excess_mean": 0.89,
+            "win_pct": 43.0
+          }
+        },
+        "trend_phase": {
+          "6-20日": {
+            "samples": 2499,
+            "mean": 0.04,
+            "excess_mean": -0.61,
+            "win_pct": 41.2
+          },
+          "0-5日": {
+            "samples": 1757,
+            "mean": -1.0,
+            "excess_mean": -1.04,
+            "win_pct": 36.6
+          },
+          "21-60日": {
+            "samples": 182,
+            "mean": 3.15,
+            "excess_mean": 3.37,
+            "win_pct": 42.3
+          },
+          ">60日": {
+            "samples": 1,
+            "mean": 8.78,
+            "excess_mean": 3.52,
+            "win_pct": 100.0
+          }
+        }
+      },
+      "factors": {
+        "rps20": {
+          "samples": 4439,
+          "rank_ic": -0.166,
+          "monotonicity": -0.82,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 443,
+              "mean_excess": 0.81,
+              "mean_gross": 0.28,
+              "win_pct": 46.3
+            },
+            {
+              "bucket": 2,
+              "n": 444,
+              "mean_excess": -0.03,
+              "mean_gross": -1.58,
+              "win_pct": 37.6
+            },
+            {
+              "bucket": 3,
+              "n": 444,
+              "mean_excess": 0.89,
+              "mean_gross": -0.83,
+              "win_pct": 34.0
+            },
+            {
+              "bucket": 4,
+              "n": 444,
+              "mean_excess": 0.37,
+              "mean_gross": -0.93,
+              "win_pct": 36.3
+            },
+            {
+              "bucket": 5,
+              "n": 444,
+              "mean_excess": 0.33,
+              "mean_gross": -0.6,
+              "win_pct": 35.8
+            },
+            {
+              "bucket": 6,
+              "n": 444,
+              "mean_excess": -0.26,
+              "mean_gross": -0.74,
+              "win_pct": 39.6
+            },
+            {
+              "bucket": 7,
+              "n": 444,
+              "mean_excess": -0.88,
+              "mean_gross": -0.61,
+              "win_pct": 39.0
+            },
+            {
+              "bucket": 8,
+              "n": 444,
+              "mean_excess": -1.02,
+              "mean_gross": 0.4,
+              "win_pct": 46.2
+            },
+            {
+              "bucket": 9,
+              "n": 444,
+              "mean_excess": -1.57,
+              "mean_gross": 1.49,
+              "win_pct": 40.8
+            },
+            {
+              "bucket": 10,
+              "n": 444,
+              "mean_excess": -4.81,
+              "mean_gross": 0.67,
+              "win_pct": 38.7
+            }
+          ]
+        },
+        "rps60": {
+          "samples": 4435,
+          "rank_ic": -0.086,
+          "monotonicity": -0.45,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 443,
+              "mean_excess": -2.19,
+              "mean_gross": -1.76,
+              "win_pct": 38.6
+            },
+            {
+              "bucket": 2,
+              "n": 444,
+              "mean_excess": -0.31,
+              "mean_gross": -1.02,
+              "win_pct": 41.0
+            },
+            {
+              "bucket": 3,
+              "n": 443,
+              "mean_excess": 1.48,
+              "mean_gross": 0.68,
+              "win_pct": 40.2
+            },
+            {
+              "bucket": 4,
+              "n": 444,
+              "mean_excess": 0.82,
+              "mean_gross": -0.09,
+              "win_pct": 40.3
+            },
+            {
+              "bucket": 5,
+              "n": 443,
+              "mean_excess": 0.77,
+              "mean_gross": 0.43,
+              "win_pct": 39.5
+            },
+            {
+              "bucket": 6,
+              "n": 444,
+              "mean_excess": -0.37,
+              "mean_gross": -0.6,
+              "win_pct": 40.8
+            },
+            {
+              "bucket": 7,
+              "n": 443,
+              "mean_excess": 0.38,
+              "mean_gross": -0.07,
+              "win_pct": 38.1
+            },
+            {
+              "bucket": 8,
+              "n": 444,
+              "mean_excess": -0.92,
+              "mean_gross": -0.36,
+              "win_pct": 38.5
+            },
+            {
+              "bucket": 9,
+              "n": 443,
+              "mean_excess": -2.95,
+              "mean_gross": -0.97,
+              "win_pct": 36.6
+            },
+            {
+              "bucket": 10,
+              "n": 444,
+              "mean_excess": -2.89,
+              "mean_gross": 1.31,
+              "win_pct": 40.5
+            }
+          ]
+        },
+        "rps120": {
+          "samples": 4438,
+          "rank_ic": -0.093,
+          "monotonicity": -0.64,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 443,
+              "mean_excess": -1.53,
+              "mean_gross": -1.73,
+              "win_pct": 36.1
+            },
+            {
+              "bucket": 2,
+              "n": 444,
+              "mean_excess": 0.66,
+              "mean_gross": 0.37,
+              "win_pct": 39.9
+            },
+            {
+              "bucket": 3,
+              "n": 444,
+              "mean_excess": 0.85,
+              "mean_gross": 0.29,
+              "win_pct": 40.3
+            },
+            {
+              "bucket": 4,
+              "n": 444,
+              "mean_excess": 1.36,
+              "mean_gross": 0.99,
+              "win_pct": 42.3
+            },
+            {
+              "bucket": 5,
+              "n": 444,
+              "mean_excess": 0.02,
+              "mean_gross": -0.24,
+              "win_pct": 40.1
+            },
+            {
+              "bucket": 6,
+              "n": 443,
+              "mean_excess": -0.13,
+              "mean_gross": -0.71,
+              "win_pct": 37.2
+            },
+            {
+              "bucket": 7,
+              "n": 444,
+              "mean_excess": -1.1,
+              "mean_gross": -1.28,
+              "win_pct": 36.5
+            },
+            {
+              "bucket": 8,
+              "n": 444,
+              "mean_excess": -2.22,
+              "mean_gross": -1.54,
+              "win_pct": 36.3
+            },
+            {
+              "bucket": 9,
+              "n": 444,
+              "mean_excess": -2.07,
+              "mean_gross": -0.53,
+              "win_pct": 39.4
+            },
+            {
+              "bucket": 10,
+              "n": 444,
+              "mean_excess": -2.01,
+              "mean_gross": 1.94,
+              "win_pct": 46.2
+            }
+          ]
+        },
+        "ret20": {
+          "samples": 4439,
+          "rank_ic": -0.052,
+          "monotonicity": -0.34,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 443,
+              "mean_excess": -0.28,
+              "mean_gross": -0.49,
+              "win_pct": 37.9
+            },
+            {
+              "bucket": 2,
+              "n": 444,
+              "mean_excess": -0.35,
+              "mean_gross": -0.26,
+              "win_pct": 37.4
+            },
+            {
+              "bucket": 3,
+              "n": 444,
+              "mean_excess": -0.34,
+              "mean_gross": 0.11,
+              "win_pct": 41.2
+            },
+            {
+              "bucket": 4,
+              "n": 444,
+              "mean_excess": 0.04,
+              "mean_gross": -0.03,
+              "win_pct": 40.8
+            },
+            {
+              "bucket": 5,
+              "n": 444,
+              "mean_excess": -1.0,
+              "mean_gross": -0.77,
+              "win_pct": 39.6
+            },
+            {
+              "bucket": 6,
+              "n": 444,
+              "mean_excess": -0.63,
+              "mean_gross": 0.18,
+              "win_pct": 41.2
+            },
+            {
+              "bucket": 7,
+              "n": 444,
+              "mean_excess": -1.33,
+              "mean_gross": -0.5,
+              "win_pct": 35.8
+            },
+            {
+              "bucket": 8,
+              "n": 444,
+              "mean_excess": -0.22,
+              "mean_gross": 0.09,
+              "win_pct": 41.9
+            },
+            {
+              "bucket": 9,
+              "n": 444,
+              "mean_excess": -2.08,
+              "mean_gross": -1.03,
+              "win_pct": 39.9
+            },
+            {
+              "bucket": 10,
+              "n": 444,
+              "mean_excess": 0.02,
+              "mean_gross": 0.25,
+              "win_pct": 38.5
+            }
+          ]
+        },
+        "ret60": {
+          "samples": 4439,
+          "rank_ic": 0.079,
+          "monotonicity": 0.75,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 443,
+              "mean_excess": -4.1,
+              "mean_gross": -2.94,
+              "win_pct": 35.7
+            },
+            {
+              "bucket": 2,
+              "n": 444,
+              "mean_excess": -2.07,
+              "mean_gross": -1.83,
+              "win_pct": 34.0
+            },
+            {
+              "bucket": 3,
+              "n": 444,
+              "mean_excess": -0.66,
+              "mean_gross": -0.36,
+              "win_pct": 42.3
+            },
+            {
+              "bucket": 4,
+              "n": 444,
+              "mean_excess": -1.38,
+              "mean_gross": -0.88,
+              "win_pct": 37.6
+            },
+            {
+              "bucket": 5,
+              "n": 444,
+              "mean_excess": 0.15,
+              "mean_gross": 0.6,
+              "win_pct": 41.2
+            },
+            {
+              "bucket": 6,
+              "n": 444,
+              "mean_excess": -0.22,
+              "mean_gross": 0.19,
+              "win_pct": 43.9
+            },
+            {
+              "bucket": 7,
+              "n": 444,
+              "mean_excess": 0.75,
+              "mean_gross": 1.0,
+              "win_pct": 38.3
+            },
+            {
+              "bucket": 8,
+              "n": 444,
+              "mean_excess": 1.06,
+              "mean_gross": 1.49,
+              "win_pct": 42.8
+            },
+            {
+              "bucket": 9,
+              "n": 444,
+              "mean_excess": 1.13,
+              "mean_gross": 1.02,
+              "win_pct": 39.2
+            },
+            {
+              "bucket": 10,
+              "n": 444,
+              "mean_excess": -0.86,
+              "mean_gross": -0.74,
+              "win_pct": 39.2
+            }
+          ]
+        },
+        "slope20": {
+          "samples": 4439,
+          "rank_ic": 0.01,
+          "monotonicity": 0.31,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 443,
+              "mean_excess": -1.82,
+              "mean_gross": -1.39,
+              "win_pct": 37.7
+            },
+            {
+              "bucket": 2,
+              "n": 444,
+              "mean_excess": -0.45,
+              "mean_gross": -0.18,
+              "win_pct": 40.5
+            },
+            {
+              "bucket": 3,
+              "n": 444,
+              "mean_excess": -1.18,
+              "mean_gross": -0.63,
+              "win_pct": 39.6
+            },
+            {
+              "bucket": 4,
+              "n": 444,
+              "mean_excess": 0.46,
+              "mean_gross": 0.63,
+              "win_pct": 40.8
+            },
+            {
+              "bucket": 5,
+              "n": 444,
+              "mean_excess": -1.21,
+              "mean_gross": -0.71,
+              "win_pct": 36.3
+            },
+            {
+              "bucket": 6,
+              "n": 444,
+              "mean_excess": 0.55,
+              "mean_gross": 0.61,
+              "win_pct": 39.4
+            },
+            {
+              "bucket": 7,
+              "n": 444,
+              "mean_excess": -0.6,
+              "mean_gross": -0.23,
+              "win_pct": 38.3
+            },
+            {
+              "bucket": 8,
+              "n": 444,
+              "mean_excess": -1.12,
+              "mean_gross": -0.44,
+              "win_pct": 40.8
+            },
+            {
+              "bucket": 9,
+              "n": 444,
+              "mean_excess": -0.88,
+              "mean_gross": -0.33,
+              "win_pct": 41.0
+            },
+            {
+              "bucket": 10,
+              "n": 444,
+              "mean_excess": 0.1,
+              "mean_gross": 0.21,
+              "win_pct": 39.9
+            }
+          ]
+        },
+        "distance_ma20": {
+          "samples": 4439,
+          "rank_ic": -0.106,
+          "monotonicity": -0.84,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 443,
+              "mean_excess": 0.61,
+              "mean_gross": 0.04,
+              "win_pct": 39.1
+            },
+            {
+              "bucket": 2,
+              "n": 444,
+              "mean_excess": 0.14,
+              "mean_gross": 0.12,
+              "win_pct": 40.8
+            },
+            {
+              "bucket": 3,
+              "n": 444,
+              "mean_excess": -0.08,
+              "mean_gross": -0.02,
+              "win_pct": 41.9
+            },
+            {
+              "bucket": 4,
+              "n": 444,
+              "mean_excess": 0.06,
+              "mean_gross": 0.05,
+              "win_pct": 39.4
+            },
+            {
+              "bucket": 5,
+              "n": 444,
+              "mean_excess": -0.82,
+              "mean_gross": -0.62,
+              "win_pct": 39.6
+            },
+            {
+              "bucket": 6,
+              "n": 444,
+              "mean_excess": -1.78,
+              "mean_gross": -1.27,
+              "win_pct": 38.7
+            },
+            {
+              "bucket": 7,
+              "n": 444,
+              "mean_excess": -0.47,
+              "mean_gross": 0.67,
+              "win_pct": 41.9
+            },
+            {
+              "bucket": 8,
+              "n": 444,
+              "mean_excess": -0.89,
+              "mean_gross": -0.17,
+              "win_pct": 38.5
+            },
+            {
+              "bucket": 9,
+              "n": 444,
+              "mean_excess": -1.31,
+              "mean_gross": -0.49,
+              "win_pct": 37.2
+            },
+            {
+              "bucket": 10,
+              "n": 444,
+              "mean_excess": -1.63,
+              "mean_gross": -0.76,
+              "win_pct": 37.2
+            }
+          ]
+        },
+        "amount_ratio20": {
+          "samples": 4439,
+          "rank_ic": -0.081,
+          "monotonicity": -0.68,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 443,
+              "mean_excess": 0.14,
+              "mean_gross": 0.23,
+              "win_pct": 37.5
+            },
+            {
+              "bucket": 2,
+              "n": 444,
+              "mean_excess": -0.31,
+              "mean_gross": 0.22,
+              "win_pct": 41.2
+            },
+            {
+              "bucket": 3,
+              "n": 444,
+              "mean_excess": -0.11,
+              "mean_gross": 0.05,
+              "win_pct": 43.0
+            },
+            {
+              "bucket": 4,
+              "n": 444,
+              "mean_excess": -0.06,
+              "mean_gross": 0.04,
+              "win_pct": 41.7
+            },
+            {
+              "bucket": 5,
+              "n": 444,
+              "mean_excess": -0.53,
+              "mean_gross": -0.56,
+              "win_pct": 38.7
+            },
+            {
+              "bucket": 6,
+              "n": 444,
+              "mean_excess": -0.33,
+              "mean_gross": 0.02,
+              "win_pct": 38.1
+            },
+            {
+              "bucket": 7,
+              "n": 444,
+              "mean_excess": 0.66,
+              "mean_gross": 1.36,
+              "win_pct": 41.9
+            },
+            {
+              "bucket": 8,
+              "n": 444,
+              "mean_excess": -2.22,
+              "mean_gross": -2.22,
+              "win_pct": 37.2
+            },
+            {
+              "bucket": 9,
+              "n": 444,
+              "mean_excess": -1.48,
+              "mean_gross": -0.67,
+              "win_pct": 40.1
+            },
+            {
+              "bucket": 10,
+              "n": 444,
+              "mean_excess": -1.94,
+              "mean_gross": -0.92,
+              "win_pct": 34.9
+            }
+          ]
+        },
+        "convergence": {
+          "samples": 4439,
+          "rank_ic": -0.052,
+          "monotonicity": -0.11,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 443,
+              "mean_excess": -1.53,
+              "mean_gross": -1.3,
+              "win_pct": 38.1
+            },
+            {
+              "bucket": 2,
+              "n": 444,
+              "mean_excess": -0.52,
+              "mean_gross": 0.3,
+              "win_pct": 39.2
+            },
+            {
+              "bucket": 3,
+              "n": 444,
+              "mean_excess": -0.44,
+              "mean_gross": -0.03,
+              "win_pct": 43.7
+            },
+            {
+              "bucket": 4,
+              "n": 444,
+              "mean_excess": -0.37,
+              "mean_gross": 0.23,
+              "win_pct": 43.2
+            },
+            {
+              "bucket": 5,
+              "n": 444,
+              "mean_excess": -0.33,
+              "mean_gross": 0.2,
+              "win_pct": 41.9
+            },
+            {
+              "bucket": 6,
+              "n": 444,
+              "mean_excess": 0.17,
+              "mean_gross": 0.97,
+              "win_pct": 41.2
+            },
+            {
+              "bucket": 7,
+              "n": 444,
+              "mean_excess": 0.36,
+              "mean_gross": 1.22,
+              "win_pct": 43.0
+            },
+            {
+              "bucket": 8,
+              "n": 444,
+              "mean_excess": -0.57,
+              "mean_gross": -0.13,
+              "win_pct": 36.7
+            },
+            {
+              "bucket": 9,
+              "n": 444,
+              "mean_excess": -1.39,
+              "mean_gross": -1.13,
+              "win_pct": 34.2
+            },
+            {
+              "bucket": 10,
+              "n": 444,
+              "mean_excess": -1.54,
+              "mean_gross": -2.77,
+              "win_pct": 32.9
+            }
+          ]
+        },
+        "trend_days": {
+          "samples": 4439,
+          "rank_ic": 0.072,
+          "monotonicity": 0.72,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 443,
+              "mean_excess": -2.14,
+              "mean_gross": -2.49,
+              "win_pct": 33.9
+            },
+            {
+              "bucket": 2,
+              "n": 444,
+              "mean_excess": -0.91,
+              "mean_gross": -1.03,
+              "win_pct": 38.1
+            },
+            {
+              "bucket": 3,
+              "n": 444,
+              "mean_excess": -0.0,
+              "mean_gross": 0.52,
+              "win_pct": 40.5
+            },
+            {
+              "bucket": 4,
+              "n": 444,
+              "mean_excess": -1.24,
+              "mean_gross": -1.17,
+              "win_pct": 33.1
+            },
+            {
+              "bucket": 5,
+              "n": 444,
+              "mean_excess": -1.19,
+              "mean_gross": -0.9,
+              "win_pct": 38.1
+            },
+            {
+              "bucket": 6,
+              "n": 444,
+              "mean_excess": -1.03,
+              "mean_gross": -0.49,
+              "win_pct": 39.9
+            },
+            {
+              "bucket": 7,
+              "n": 444,
+              "mean_excess": -0.25,
+              "mean_gross": 0.78,
+              "win_pct": 44.1
+            },
+            {
+              "bucket": 8,
+              "n": 444,
+              "mean_excess": -0.66,
+              "mean_gross": 0.21,
+              "win_pct": 38.7
+            },
+            {
+              "bucket": 9,
+              "n": 444,
+              "mean_excess": -0.11,
+              "mean_gross": 0.94,
+              "win_pct": 43.5
+            },
+            {
+              "bucket": 10,
+              "n": 444,
+              "mean_excess": 1.36,
+              "mean_gross": 1.16,
+              "win_pct": 44.4
+            }
+          ]
+        },
+        "sector_score": {
+          "samples": 509,
+          "rank_ic": -0.234,
+          "monotonicity": -0.84,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 50,
+              "mean_excess": -3.49,
+              "mean_gross": -2.17,
+              "win_pct": 30.0
+            },
+            {
+              "bucket": 2,
+              "n": 51,
+              "mean_excess": -1.21,
+              "mean_gross": -1.3,
+              "win_pct": 37.3
+            },
+            {
+              "bucket": 3,
+              "n": 51,
+              "mean_excess": -3.71,
+              "mean_gross": -2.5,
+              "win_pct": 27.5
+            },
+            {
+              "bucket": 4,
+              "n": 51,
+              "mean_excess": -2.04,
+              "mean_gross": -0.13,
+              "win_pct": 43.1
+            },
+            {
+              "bucket": 5,
+              "n": 51,
+              "mean_excess": -3.39,
+              "mean_gross": 0.81,
+              "win_pct": 43.1
+            },
+            {
+              "bucket": 6,
+              "n": 51,
+              "mean_excess": -4.94,
+              "mean_gross": -2.17,
+              "win_pct": 33.3
+            },
+            {
+              "bucket": 7,
+              "n": 51,
+              "mean_excess": -3.72,
+              "mean_gross": -2.35,
+              "win_pct": 19.6
+            },
+            {
+              "bucket": 8,
+              "n": 51,
+              "mean_excess": -7.53,
+              "mean_gross": -0.5,
+              "win_pct": 37.3
+            },
+            {
+              "bucket": 9,
+              "n": 51,
+              "mean_excess": -6.45,
+              "mean_gross": -1.13,
+              "win_pct": 31.4
+            },
+            {
+              "bucket": 10,
+              "n": 51,
+              "mean_excess": -8.4,
+              "mean_gross": -0.91,
+              "win_pct": 35.3
+            }
+          ]
+        }
+      },
+      "ablations": {
+        "drop_structure": {
+          "signals": 3199,
+          "samples": 2907,
+          "mean": -0.19,
+          "median": -2.23,
+          "win_pct": 39.9,
+          "excess_mean": -0.76,
+          "excess_median": -2.94,
+          "excess_t_p": 0.005274,
+          "profit_factor": 0.96,
+          "max_drawdown_points": -4914.8,
+          "max_consecutive_losses": 30,
+          "mfe_mean": 8.51,
+          "mae_mean": -7.08,
+          "mfe_mae_ratio": 1.2,
+          "skew": 3.22,
+          "p10": -13.88,
+          "p90": 13.69,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -2.54,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "drop_breakout": {
+          "signals": 3199,
+          "samples": 2904,
+          "mean": 0.03,
+          "median": -2.33,
+          "win_pct": 39.8,
+          "excess_mean": -0.54,
+          "excess_median": -3.01,
+          "excess_t_p": 0.061256,
+          "profit_factor": 1.01,
+          "max_drawdown_points": -4563.58,
+          "max_consecutive_losses": 23,
+          "mfe_mean": 9.14,
+          "mae_mean": -7.34,
+          "mfe_mae_ratio": 1.24,
+          "skew": 3.31,
+          "p10": -14.14,
+          "p90": 15.04,
+          "tail_top5_share": 67.538,
+          "mean_excluding_top5pct": -2.45,
+          "top1_contribution": 25.612,
+          "top5_contribution": 67.538,
+          "top10_contribution": 95.754
+        },
+        "drop_volume": {
+          "signals": 3199,
+          "samples": 2903,
+          "mean": -0.2,
+          "median": -2.19,
+          "win_pct": 40.0,
+          "excess_mean": -0.76,
+          "excess_median": -3.01,
+          "excess_t_p": 0.00557,
+          "profit_factor": 0.96,
+          "max_drawdown_points": -4622.08,
+          "max_consecutive_losses": 28,
+          "mfe_mean": 8.7,
+          "mae_mean": -7.24,
+          "mfe_mae_ratio": 1.2,
+          "skew": 3.23,
+          "p10": -14.07,
+          "p90": 14.15,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -2.59,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "drop_rps": {
+          "signals": 3199,
+          "samples": 2906,
+          "mean": -0.04,
+          "median": -2.19,
+          "win_pct": 39.8,
+          "excess_mean": -0.61,
+          "excess_median": -2.93,
+          "excess_t_p": 0.029035,
+          "profit_factor": 0.99,
+          "max_drawdown_points": -4614.18,
+          "max_consecutive_losses": 21,
+          "mfe_mean": 8.81,
+          "mae_mean": -7.14,
+          "mfe_mae_ratio": 1.23,
+          "skew": 3.41,
+          "p10": -13.88,
+          "p90": 14.56,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -2.46,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        }
+      },
+      "single_factor": {
+        "rps20": {
+          "signals": 3199,
+          "samples": 2890,
+          "mean": -0.52,
+          "median": -2.75,
+          "win_pct": 38.5,
+          "excess_mean": -1.09,
+          "excess_median": -3.7,
+          "excess_t_p": 0.000132,
+          "profit_factor": 0.9,
+          "max_drawdown_points": -4742.22,
+          "max_consecutive_losses": 37,
+          "mfe_mean": 9.25,
+          "mae_mean": -7.91,
+          "mfe_mae_ratio": 1.17,
+          "skew": 3.01,
+          "p10": -15.23,
+          "p90": 15.01,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -2.98,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "rps60": {
+          "signals": 3199,
+          "samples": 2894,
+          "mean": -0.54,
+          "median": -2.66,
+          "win_pct": 38.4,
+          "excess_mean": -1.11,
+          "excess_median": -3.63,
+          "excess_t_p": 3.5e-05,
+          "profit_factor": 0.9,
+          "max_drawdown_points": -5279.82,
+          "max_consecutive_losses": 28,
+          "mfe_mean": 9.16,
+          "mae_mean": -7.76,
+          "mfe_mae_ratio": 1.18,
+          "skew": 2.53,
+          "p10": -14.89,
+          "p90": 14.95,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -2.88,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "ret20": {
+          "signals": 3199,
+          "samples": 2890,
+          "mean": -0.53,
+          "median": -2.75,
+          "win_pct": 38.5,
+          "excess_mean": -1.1,
+          "excess_median": -3.7,
+          "excess_t_p": 0.000104,
+          "profit_factor": 0.9,
+          "max_drawdown_points": -4742.22,
+          "max_consecutive_losses": 37,
+          "mfe_mean": 9.23,
+          "mae_mean": -7.91,
+          "mfe_mae_ratio": 1.17,
+          "skew": 3.02,
+          "p10": -15.23,
+          "p90": 14.99,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -2.99,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "slope20": {
+          "signals": 3199,
+          "samples": 2897,
+          "mean": -0.51,
+          "median": -2.61,
+          "win_pct": 38.6,
+          "excess_mean": -1.08,
+          "excess_median": -3.41,
+          "excess_t_p": 0.000143,
+          "profit_factor": 0.9,
+          "max_drawdown_points": -4929.17,
+          "max_consecutive_losses": 31,
+          "mfe_mean": 9.14,
+          "mae_mean": -7.73,
+          "mfe_mae_ratio": 1.18,
+          "skew": 3.48,
+          "p10": -14.85,
+          "p90": 14.6,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -2.9,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "amount_ratio20": {
+          "signals": 3199,
+          "samples": 2893,
+          "mean": -0.82,
+          "median": -2.79,
+          "win_pct": 38.1,
+          "excess_mean": -1.39,
+          "excess_median": -3.81,
+          "excess_t_p": 0.0,
+          "profit_factor": 0.85,
+          "max_drawdown_points": -4880.06,
+          "max_consecutive_losses": 33,
+          "mfe_mean": 8.85,
+          "mae_mean": -7.88,
+          "mfe_mae_ratio": 1.12,
+          "skew": 3.03,
+          "p10": -14.97,
+          "p90": 13.64,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.19,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "trend_days": {
+          "signals": 3199,
+          "samples": 2898,
+          "mean": -0.45,
+          "median": -2.46,
+          "win_pct": 39.2,
+          "excess_mean": -1.02,
+          "excess_median": -3.22,
+          "excess_t_p": 0.000208,
+          "profit_factor": 0.91,
+          "max_drawdown_points": -4709.71,
+          "max_consecutive_losses": 29,
+          "mfe_mean": 8.78,
+          "mae_mean": -7.41,
+          "mfe_mae_ratio": 1.18,
+          "skew": 3.41,
+          "p10": -14.61,
+          "p90": 14.12,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -2.8,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        }
+      },
+      "worst_vs_best": {
+        "quartile_size": 1109,
+        "features": [
+          {
+            "factor": "trend_days",
+            "bottom_mean": 7.514,
+            "top_mean": 8.75,
+            "standardized_diff": 0.2
+          },
+          {
+            "factor": "convergence",
+            "bottom_mean": 4.875,
+            "top_mean": 4.47,
+            "standardized_diff": -0.18
+          },
+          {
+            "factor": "platform_width",
+            "bottom_mean": 13.675,
+            "top_mean": 13.113,
+            "standardized_diff": -0.18
+          },
+          {
+            "factor": "amount_ratio20",
+            "bottom_mean": 2.869,
+            "top_mean": 2.657,
+            "standardized_diff": -0.17
+          },
+          {
+            "factor": "breakout_pct",
+            "bottom_mean": 2.152,
+            "top_mean": 1.872,
+            "standardized_diff": -0.17
+          },
+          {
+            "factor": "sector_score",
+            "bottom_mean": 87.697,
+            "top_mean": 89.168,
+            "standardized_diff": 0.15
+          },
+          {
+            "factor": "distance_ma20",
+            "bottom_mean": 7.859,
+            "top_mean": 7.488,
+            "standardized_diff": -0.14
+          },
+          {
+            "factor": "ret20",
+            "bottom_mean": 10.069,
+            "top_mean": 9.765,
+            "standardized_diff": -0.08
+          },
+          {
+            "factor": "ret60",
+            "bottom_mean": 5.665,
+            "top_mean": 6.489,
+            "standardized_diff": 0.07
+          },
+          {
+            "factor": "rps120",
+            "bottom_mean": 52.17,
+            "top_mean": 53.094,
+            "standardized_diff": 0.05
+          },
+          {
+            "factor": "rps60",
+            "bottom_mean": 58.691,
+            "top_mean": 59.578,
+            "standardized_diff": 0.04
+          },
+          {
+            "factor": "rps20",
+            "bottom_mean": 76.177,
+            "top_mean": 75.781,
+            "standardized_diff": -0.03
+          },
+          {
+            "factor": "slope20",
+            "bottom_mean": 1.268,
+            "top_mean": 1.287,
+            "standardized_diff": 0.03
+          }
+        ],
+        "bottom_mean_gross": -14.02,
+        "top_mean_gross": 17.48
+      }
+    },
+    "B": {
+      "signals": 7385,
+      "overall": {
+        "5": {
+          "samples": 7211,
+          "mean": 0.26,
+          "median": -0.73,
+          "win_pct": 45.3,
+          "excess_mean": 0.08,
+          "excess_median": -0.99,
+          "excess_t_p": 0.433212,
+          "profit_factor": 1.09,
+          "max_drawdown_points": -3644.45,
+          "max_consecutive_losses": 49,
+          "mfe_mean": 3.99,
+          "mae_mean": -3.51,
+          "mfe_mae_ratio": 1.14,
+          "skew": 1.26,
+          "p10": -8.85,
+          "p90": 10.4,
+          "tail_top5_share": 4.536,
+          "mean_excluding_top5pct": -0.98,
+          "top1_contribution": 1.431,
+          "top5_contribution": 4.536,
+          "top10_contribution": 6.996
+        },
+        "10": {
+          "samples": 7034,
+          "mean": 0.08,
+          "median": -1.65,
+          "win_pct": 41.1,
+          "excess_mean": -0.08,
+          "excess_median": -1.85,
+          "excess_t_p": 0.549712,
+          "profit_factor": 1.02,
+          "max_drawdown_points": -6546.08,
+          "max_consecutive_losses": 48,
+          "mfe_mean": 6.81,
+          "mae_mean": -5.87,
+          "mfe_mae_ratio": 1.16,
+          "skew": 1.87,
+          "p10": -12.07,
+          "p90": 13.81,
+          "tail_top5_share": 20.919,
+          "mean_excluding_top5pct": -1.77,
+          "top1_contribution": 7.256,
+          "top5_contribution": 20.919,
+          "top10_contribution": 31.099
+        },
+        "20": {
+          "samples": 6652,
+          "mean": -0.55,
+          "median": -2.56,
+          "win_pct": 40.6,
+          "excess_mean": -0.67,
+          "excess_median": -2.95,
+          "excess_t_p": 0.000518,
+          "profit_factor": 0.91,
+          "max_drawdown_points": -10628.74,
+          "max_consecutive_losses": 203,
+          "mfe_mean": 10.95,
+          "mae_mean": -9.08,
+          "mfe_mae_ratio": 1.21,
+          "skew": 1.93,
+          "p10": -17.03,
+          "p90": 17.55,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.06,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "40": {
+          "samples": 6340,
+          "mean": 0.82,
+          "median": -3.36,
+          "win_pct": 40.9,
+          "excess_mean": -0.62,
+          "excess_median": -4.85,
+          "excess_t_p": 0.049047,
+          "profit_factor": 1.11,
+          "max_drawdown_points": -11017.16,
+          "max_consecutive_losses": 55,
+          "mfe_mean": 16.98,
+          "mae_mean": -13.18,
+          "mfe_mae_ratio": 1.29,
+          "skew": 4.12,
+          "p10": -21.27,
+          "p90": 24.35,
+          "tail_top5_share": 4.625,
+          "mean_excluding_top5pct": -3.13,
+          "top1_contribution": 1.975,
+          "top5_contribution": 4.625,
+          "top10_contribution": 6.468
+        },
+        "60": {
+          "samples": 6194,
+          "mean": 3.58,
+          "median": -3.08,
+          "win_pct": 44.0,
+          "excess_mean": 1.0,
+          "excess_median": -6.39,
+          "excess_t_p": 0.015558,
+          "profit_factor": 1.41,
+          "max_drawdown_points": -13462.6,
+          "max_consecutive_losses": 41,
+          "mfe_mean": 23.75,
+          "mae_mean": -16.08,
+          "mfe_mae_ratio": 1.48,
+          "skew": 3.11,
+          "p10": -25.27,
+          "p90": 36.47,
+          "tail_top5_share": 1.511,
+          "mean_excluding_top5pct": -1.93,
+          "top1_contribution": 0.57,
+          "top5_contribution": 1.511,
+          "top10_contribution": 2.135
+        }
+      },
+      "buckets": {
+        "regime": {
+          "BEAR": {
+            "samples": 796,
+            "mean": 3.35,
+            "excess_mean": -0.55,
+            "win_pct": 48.6
+          },
+          "UNKNOWN": {
+            "samples": 1902,
+            "mean": 0.23,
+            "excess_mean": -0.26,
+            "win_pct": 38.3
+          },
+          "SIDEWAYS": {
+            "samples": 2348,
+            "mean": -1.77,
+            "excess_mean": -2.02,
+            "win_pct": 39.7
+          },
+          "BULL": {
+            "samples": 1606,
+            "mean": -1.63,
+            "excess_mean": 0.75,
+            "win_pct": 40.7
+          }
+        },
+        "industry": {
+          "机械设备": {
+            "samples": 644,
+            "mean": 1.72,
+            "excess_mean": 1.39,
+            "win_pct": 50.8
+          },
+          "基础化工": {
+            "samples": 575,
+            "mean": 0.22,
+            "excess_mean": 0.4,
+            "win_pct": 47.7
+          },
+          "电力设备": {
+            "samples": 555,
+            "mean": 4.09,
+            "excess_mean": 4.95,
+            "win_pct": 44.7
+          },
+          "电子": {
+            "samples": 546,
+            "mean": -1.42,
+            "excess_mean": 0.81,
+            "win_pct": 41.4
+          },
+          "公用事业": {
+            "samples": 359,
+            "mean": -1.88,
+            "excess_mean": -3.6,
+            "win_pct": 36.8
+          },
+          "交通运输": {
+            "samples": 323,
+            "mean": -1.34,
+            "excess_mean": -1.34,
+            "win_pct": 37.8
+          },
+          "医药生物": {
+            "samples": 319,
+            "mean": -4.15,
+            "excess_mean": -5.2,
+            "win_pct": 29.5
+          },
+          "汽车": {
+            "samples": 295,
+            "mean": -5.71,
+            "excess_mean": -5.66,
+            "win_pct": 29.2
+          },
+          "有色金属": {
+            "samples": 295,
+            "mean": 1.65,
+            "excess_mean": 0.71,
+            "win_pct": 48.5
+          },
+          "轻工制造": {
+            "samples": 217,
+            "mean": 0.03,
+            "excess_mean": -1.08,
+            "win_pct": 40.1
+          },
+          "家用电器": {
+            "samples": 193,
+            "mean": -4.24,
+            "excess_mean": -3.97,
+            "win_pct": 34.7
+          },
+          "国防军工": {
+            "samples": 188,
+            "mean": 3.94,
+            "excess_mean": 0.85,
+            "win_pct": 54.8
+          },
+          "建筑材料": {
+            "samples": 164,
+            "mean": 1.57,
+            "excess_mean": 3.11,
+            "win_pct": 48.2
+          },
+          "银行": {
+            "samples": 159,
+            "mean": -1.31,
+            "excess_mean": -3.97,
+            "win_pct": 35.8
+          },
+          "计算机": {
+            "samples": 150,
+            "mean": -8.23,
+            "excess_mean": -7.93,
+            "win_pct": 20.7
+          }
+        },
+        "market_cap": {
+          ">1000亿": {
+            "samples": 689,
+            "mean": -0.75,
+            "excess_mean": -1.2,
+            "win_pct": 40.5
+          },
+          "<50亿": {
+            "samples": 1557,
+            "mean": -3.17,
+            "excess_mean": -3.28,
+            "win_pct": 32.4
+          },
+          "50-100亿": {
+            "samples": 1484,
+            "mean": 0.14,
+            "excess_mean": 0.0,
+            "win_pct": 42.7
+          },
+          "100-300亿": {
+            "samples": 1941,
+            "mean": 0.88,
+            "excess_mean": 0.97,
+            "win_pct": 42.9
+          },
+          "300-1000亿": {
+            "samples": 981,
+            "mean": -0.13,
+            "excess_mean": -0.43,
+            "win_pct": 46.2
+          }
+        },
+        "trend_phase": {
+          "6-20日": {
+            "samples": 474,
+            "mean": -0.12,
+            "excess_mean": -1.41,
+            "win_pct": 42.4
+          },
+          "21-60日": {
+            "samples": 6027,
+            "mean": -0.48,
+            "excess_mean": -0.51,
+            "win_pct": 40.6
+          },
+          ">60日": {
+            "samples": 151,
+            "mean": -4.71,
+            "excess_mean": -4.87,
+            "win_pct": 36.4
+          }
+        }
+      },
+      "factors": {
+        "rps20": {
+          "samples": 6622,
+          "rank_ic": -0.098,
+          "monotonicity": -0.03,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 662,
+              "mean_excess": 1.14,
+              "mean_gross": 0.31,
+              "win_pct": 45.2
+            },
+            {
+              "bucket": 2,
+              "n": 662,
+              "mean_excess": -0.27,
+              "mean_gross": 0.01,
+              "win_pct": 43.8
+            },
+            {
+              "bucket": 3,
+              "n": 662,
+              "mean_excess": -0.38,
+              "mean_gross": -0.46,
+              "win_pct": 42.6
+            },
+            {
+              "bucket": 4,
+              "n": 662,
+              "mean_excess": -1.0,
+              "mean_gross": -1.13,
+              "win_pct": 40.5
+            },
+            {
+              "bucket": 5,
+              "n": 663,
+              "mean_excess": -1.89,
+              "mean_gross": -1.63,
+              "win_pct": 37.6
+            },
+            {
+              "bucket": 6,
+              "n": 662,
+              "mean_excess": -1.79,
+              "mean_gross": -1.85,
+              "win_pct": 37.2
+            },
+            {
+              "bucket": 7,
+              "n": 662,
+              "mean_excess": -2.04,
+              "mean_gross": -2.24,
+              "win_pct": 36.9
+            },
+            {
+              "bucket": 8,
+              "n": 662,
+              "mean_excess": -1.61,
+              "mean_gross": -1.7,
+              "win_pct": 38.8
+            },
+            {
+              "bucket": 9,
+              "n": 662,
+              "mean_excess": -1.41,
+              "mean_gross": -1.16,
+              "win_pct": 39.1
+            },
+            {
+              "bucket": 10,
+              "n": 663,
+              "mean_excess": 2.76,
+              "mean_gross": 4.45,
+              "win_pct": 45.9
+            }
+          ]
+        },
+        "rps60": {
+          "samples": 6622,
+          "rank_ic": -0.056,
+          "monotonicity": 0.17,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 662,
+              "mean_excess": -0.07,
+              "mean_gross": 0.17,
+              "win_pct": 39.4
+            },
+            {
+              "bucket": 2,
+              "n": 662,
+              "mean_excess": -0.7,
+              "mean_gross": -0.53,
+              "win_pct": 37.2
+            },
+            {
+              "bucket": 3,
+              "n": 662,
+              "mean_excess": 0.08,
+              "mean_gross": 0.01,
+              "win_pct": 40.5
+            },
+            {
+              "bucket": 4,
+              "n": 662,
+              "mean_excess": -1.67,
+              "mean_gross": -1.86,
+              "win_pct": 39.0
+            },
+            {
+              "bucket": 5,
+              "n": 663,
+              "mean_excess": -1.23,
+              "mean_gross": -0.88,
+              "win_pct": 44.8
+            },
+            {
+              "bucket": 6,
+              "n": 662,
+              "mean_excess": -1.17,
+              "mean_gross": -1.27,
+              "win_pct": 40.3
+            },
+            {
+              "bucket": 7,
+              "n": 662,
+              "mean_excess": -1.23,
+              "mean_gross": -1.32,
+              "win_pct": 42.6
+            },
+            {
+              "bucket": 8,
+              "n": 662,
+              "mean_excess": -4.45,
+              "mean_gross": -4.47,
+              "win_pct": 34.7
+            },
+            {
+              "bucket": 9,
+              "n": 662,
+              "mean_excess": -0.28,
+              "mean_gross": -0.1,
+              "win_pct": 40.2
+            },
+            {
+              "bucket": 10,
+              "n": 663,
+              "mean_excess": 4.2,
+              "mean_gross": 4.83,
+              "win_pct": 48.7
+            }
+          ]
+        },
+        "rps120": {
+          "samples": 6636,
+          "rank_ic": -0.03,
+          "monotonicity": 0.55,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 663,
+              "mean_excess": -0.61,
+              "mean_gross": 0.17,
+              "win_pct": 35.9
+            },
+            {
+              "bucket": 2,
+              "n": 664,
+              "mean_excess": -0.28,
+              "mean_gross": 0.09,
+              "win_pct": 40.7
+            },
+            {
+              "bucket": 3,
+              "n": 663,
+              "mean_excess": -1.82,
+              "mean_gross": -1.33,
+              "win_pct": 38.8
+            },
+            {
+              "bucket": 4,
+              "n": 664,
+              "mean_excess": -1.76,
+              "mean_gross": -1.73,
+              "win_pct": 36.3
+            },
+            {
+              "bucket": 5,
+              "n": 664,
+              "mean_excess": -1.98,
+              "mean_gross": -2.24,
+              "win_pct": 36.3
+            },
+            {
+              "bucket": 6,
+              "n": 663,
+              "mean_excess": -0.8,
+              "mean_gross": -0.11,
+              "win_pct": 47.2
+            },
+            {
+              "bucket": 7,
+              "n": 664,
+              "mean_excess": -0.38,
+              "mean_gross": 0.11,
+              "win_pct": 47.6
+            },
+            {
+              "bucket": 8,
+              "n": 663,
+              "mean_excess": 0.42,
+              "mean_gross": -0.14,
+              "win_pct": 40.7
+            },
+            {
+              "bucket": 9,
+              "n": 664,
+              "mean_excess": 0.74,
+              "mean_gross": 0.28,
+              "win_pct": 44.0
+            },
+            {
+              "bucket": 10,
+              "n": 664,
+              "mean_excess": -0.07,
+              "mean_gross": -0.56,
+              "win_pct": 39.5
+            }
+          ]
+        },
+        "ret20": {
+          "samples": 6652,
+          "rank_ic": -0.028,
+          "monotonicity": 0.68,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 665,
+              "mean_excess": -1.28,
+              "mean_gross": 0.71,
+              "win_pct": 47.8
+            },
+            {
+              "bucket": 2,
+              "n": 665,
+              "mean_excess": -0.78,
+              "mean_gross": 0.14,
+              "win_pct": 40.6
+            },
+            {
+              "bucket": 3,
+              "n": 665,
+              "mean_excess": -1.23,
+              "mean_gross": -0.38,
+              "win_pct": 38.5
+            },
+            {
+              "bucket": 4,
+              "n": 665,
+              "mean_excess": -2.01,
+              "mean_gross": -1.36,
+              "win_pct": 39.8
+            },
+            {
+              "bucket": 5,
+              "n": 666,
+              "mean_excess": -0.56,
+              "mean_gross": -0.61,
+              "win_pct": 37.7
+            },
+            {
+              "bucket": 6,
+              "n": 665,
+              "mean_excess": -1.15,
+              "mean_gross": -1.41,
+              "win_pct": 39.8
+            },
+            {
+              "bucket": 7,
+              "n": 665,
+              "mean_excess": 0.31,
+              "mean_gross": -0.44,
+              "win_pct": 39.4
+            },
+            {
+              "bucket": 8,
+              "n": 665,
+              "mean_excess": -0.24,
+              "mean_gross": -0.76,
+              "win_pct": 40.8
+            },
+            {
+              "bucket": 9,
+              "n": 665,
+              "mean_excess": -0.76,
+              "mean_gross": -1.6,
+              "win_pct": 38.8
+            },
+            {
+              "bucket": 10,
+              "n": 666,
+              "mean_excess": 0.99,
+              "mean_gross": 0.22,
+              "win_pct": 42.9
+            }
+          ]
+        },
+        "ret60": {
+          "samples": 6652,
+          "rank_ic": -0.051,
+          "monotonicity": 0.4,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 665,
+              "mean_excess": -2.11,
+              "mean_gross": 0.31,
+              "win_pct": 41.2
+            },
+            {
+              "bucket": 2,
+              "n": 665,
+              "mean_excess": -1.5,
+              "mean_gross": -0.46,
+              "win_pct": 37.6
+            },
+            {
+              "bucket": 3,
+              "n": 665,
+              "mean_excess": -0.36,
+              "mean_gross": 0.4,
+              "win_pct": 40.3
+            },
+            {
+              "bucket": 4,
+              "n": 665,
+              "mean_excess": -0.3,
+              "mean_gross": 0.49,
+              "win_pct": 44.5
+            },
+            {
+              "bucket": 5,
+              "n": 666,
+              "mean_excess": 0.25,
+              "mean_gross": 0.21,
+              "win_pct": 43.7
+            },
+            {
+              "bucket": 6,
+              "n": 665,
+              "mean_excess": 0.38,
+              "mean_gross": 0.34,
+              "win_pct": 46.6
+            },
+            {
+              "bucket": 7,
+              "n": 665,
+              "mean_excess": -1.91,
+              "mean_gross": -2.58,
+              "win_pct": 36.7
+            },
+            {
+              "bucket": 8,
+              "n": 665,
+              "mean_excess": -0.39,
+              "mean_gross": -0.66,
+              "win_pct": 40.2
+            },
+            {
+              "bucket": 9,
+              "n": 665,
+              "mean_excess": -0.54,
+              "mean_gross": -0.72,
+              "win_pct": 38.2
+            },
+            {
+              "bucket": 10,
+              "n": 666,
+              "mean_excess": -0.23,
+              "mean_gross": -2.84,
+              "win_pct": 37.2
+            }
+          ]
+        },
+        "slope20": {
+          "samples": 6652,
+          "rank_ic": -0.027,
+          "monotonicity": 0.78,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 665,
+              "mean_excess": -1.37,
+              "mean_gross": 0.14,
+              "win_pct": 42.0
+            },
+            {
+              "bucket": 2,
+              "n": 665,
+              "mean_excess": -1.61,
+              "mean_gross": -0.44,
+              "win_pct": 42.1
+            },
+            {
+              "bucket": 3,
+              "n": 665,
+              "mean_excess": -1.24,
+              "mean_gross": -0.36,
+              "win_pct": 40.6
+            },
+            {
+              "bucket": 4,
+              "n": 665,
+              "mean_excess": -0.39,
+              "mean_gross": 0.24,
+              "win_pct": 41.2
+            },
+            {
+              "bucket": 5,
+              "n": 666,
+              "mean_excess": -1.01,
+              "mean_gross": -0.89,
+              "win_pct": 37.8
+            },
+            {
+              "bucket": 6,
+              "n": 665,
+              "mean_excess": -1.66,
+              "mean_gross": -2.25,
+              "win_pct": 36.8
+            },
+            {
+              "bucket": 7,
+              "n": 665,
+              "mean_excess": -0.3,
+              "mean_gross": -0.94,
+              "win_pct": 42.0
+            },
+            {
+              "bucket": 8,
+              "n": 665,
+              "mean_excess": -0.68,
+              "mean_gross": -1.51,
+              "win_pct": 38.0
+            },
+            {
+              "bucket": 9,
+              "n": 665,
+              "mean_excess": 0.24,
+              "mean_gross": -0.07,
+              "win_pct": 41.7
+            },
+            {
+              "bucket": 10,
+              "n": 666,
+              "mean_excess": 1.3,
+              "mean_gross": 0.58,
+              "win_pct": 44.0
+            }
+          ]
+        },
+        "distance_ma20": {
+          "samples": 6652,
+          "rank_ic": -0.025,
+          "monotonicity": 0.17,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 665,
+              "mean_excess": -0.76,
+              "mean_gross": 0.78,
+              "win_pct": 44.1
+            },
+            {
+              "bucket": 2,
+              "n": 665,
+              "mean_excess": -1.05,
+              "mean_gross": 0.18,
+              "win_pct": 44.5
+            },
+            {
+              "bucket": 3,
+              "n": 665,
+              "mean_excess": -1.5,
+              "mean_gross": -0.33,
+              "win_pct": 41.7
+            },
+            {
+              "bucket": 4,
+              "n": 665,
+              "mean_excess": -0.62,
+              "mean_gross": -0.37,
+              "win_pct": 39.7
+            },
+            {
+              "bucket": 5,
+              "n": 666,
+              "mean_excess": -0.8,
+              "mean_gross": -0.8,
+              "win_pct": 37.7
+            },
+            {
+              "bucket": 6,
+              "n": 665,
+              "mean_excess": -0.03,
+              "mean_gross": -0.22,
+              "win_pct": 40.3
+            },
+            {
+              "bucket": 7,
+              "n": 665,
+              "mean_excess": 0.66,
+              "mean_gross": 0.61,
+              "win_pct": 41.2
+            },
+            {
+              "bucket": 8,
+              "n": 665,
+              "mean_excess": -0.09,
+              "mean_gross": -0.86,
+              "win_pct": 42.7
+            },
+            {
+              "bucket": 9,
+              "n": 665,
+              "mean_excess": -1.74,
+              "mean_gross": -2.57,
+              "win_pct": 36.4
+            },
+            {
+              "bucket": 10,
+              "n": 666,
+              "mean_excess": -0.78,
+              "mean_gross": -1.9,
+              "win_pct": 38.0
+            }
+          ]
+        },
+        "amount_ratio20": {
+          "samples": 6652,
+          "rank_ic": -0.006,
+          "monotonicity": -0.17,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 665,
+              "mean_excess": -1.52,
+              "mean_gross": -0.5,
+              "win_pct": 42.1
+            },
+            {
+              "bucket": 2,
+              "n": 665,
+              "mean_excess": -0.18,
+              "mean_gross": 0.06,
+              "win_pct": 42.3
+            },
+            {
+              "bucket": 3,
+              "n": 665,
+              "mean_excess": 0.51,
+              "mean_gross": 0.51,
+              "win_pct": 44.5
+            },
+            {
+              "bucket": 4,
+              "n": 665,
+              "mean_excess": -1.4,
+              "mean_gross": -1.61,
+              "win_pct": 39.1
+            },
+            {
+              "bucket": 5,
+              "n": 666,
+              "mean_excess": -0.37,
+              "mean_gross": -0.86,
+              "win_pct": 38.6
+            },
+            {
+              "bucket": 6,
+              "n": 665,
+              "mean_excess": -0.76,
+              "mean_gross": -0.59,
+              "win_pct": 40.5
+            },
+            {
+              "bucket": 7,
+              "n": 665,
+              "mean_excess": -0.12,
+              "mean_gross": 0.03,
+              "win_pct": 42.4
+            },
+            {
+              "bucket": 8,
+              "n": 665,
+              "mean_excess": -0.66,
+              "mean_gross": -0.88,
+              "win_pct": 37.7
+            },
+            {
+              "bucket": 9,
+              "n": 665,
+              "mean_excess": -0.46,
+              "mean_gross": -0.18,
+              "win_pct": 42.4
+            },
+            {
+              "bucket": 10,
+              "n": 666,
+              "mean_excess": -1.75,
+              "mean_gross": -1.46,
+              "win_pct": 36.6
+            }
+          ]
+        },
+        "convergence": {
+          "samples": 6652,
+          "rank_ic": -0.039,
+          "monotonicity": 0.64,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 665,
+              "mean_excess": -1.86,
+              "mean_gross": 0.4,
+              "win_pct": 43.3
+            },
+            {
+              "bucket": 2,
+              "n": 665,
+              "mean_excess": -1.78,
+              "mean_gross": -0.39,
+              "win_pct": 38.6
+            },
+            {
+              "bucket": 3,
+              "n": 665,
+              "mean_excess": -1.32,
+              "mean_gross": -0.29,
+              "win_pct": 37.9
+            },
+            {
+              "bucket": 4,
+              "n": 665,
+              "mean_excess": 0.39,
+              "mean_gross": 1.47,
+              "win_pct": 45.3
+            },
+            {
+              "bucket": 5,
+              "n": 666,
+              "mean_excess": -0.18,
+              "mean_gross": -0.43,
+              "win_pct": 44.1
+            },
+            {
+              "bucket": 6,
+              "n": 665,
+              "mean_excess": -0.31,
+              "mean_gross": -1.22,
+              "win_pct": 40.9
+            },
+            {
+              "bucket": 7,
+              "n": 665,
+              "mean_excess": -1.63,
+              "mean_gross": -2.47,
+              "win_pct": 37.0
+            },
+            {
+              "bucket": 8,
+              "n": 665,
+              "mean_excess": -0.58,
+              "mean_gross": -1.01,
+              "win_pct": 38.8
+            },
+            {
+              "bucket": 9,
+              "n": 665,
+              "mean_excess": 0.24,
+              "mean_gross": 0.03,
+              "win_pct": 41.2
+            },
+            {
+              "bucket": 10,
+              "n": 666,
+              "mean_excess": 0.32,
+              "mean_gross": -1.59,
+              "win_pct": 39.0
+            }
+          ]
+        },
+        "trend_days": {
+          "samples": 6652,
+          "rank_ic": -0.05,
+          "monotonicity": -0.36,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 665,
+              "mean_excess": -0.97,
+              "mean_gross": 0.36,
+              "win_pct": 44.5
+            },
+            {
+              "bucket": 2,
+              "n": 665,
+              "mean_excess": -1.3,
+              "mean_gross": 0.27,
+              "win_pct": 42.7
+            },
+            {
+              "bucket": 3,
+              "n": 665,
+              "mean_excess": -0.26,
+              "mean_gross": 0.91,
+              "win_pct": 39.2
+            },
+            {
+              "bucket": 4,
+              "n": 665,
+              "mean_excess": -0.25,
+              "mean_gross": 0.25,
+              "win_pct": 40.5
+            },
+            {
+              "bucket": 5,
+              "n": 666,
+              "mean_excess": 1.03,
+              "mean_gross": 1.37,
+              "win_pct": 47.7
+            },
+            {
+              "bucket": 6,
+              "n": 665,
+              "mean_excess": 1.13,
+              "mean_gross": 1.03,
+              "win_pct": 43.3
+            },
+            {
+              "bucket": 7,
+              "n": 665,
+              "mean_excess": -0.22,
+              "mean_gross": -0.25,
+              "win_pct": 40.9
+            },
+            {
+              "bucket": 8,
+              "n": 665,
+              "mean_excess": -0.66,
+              "mean_gross": -1.29,
+              "win_pct": 37.6
+            },
+            {
+              "bucket": 9,
+              "n": 665,
+              "mean_excess": -1.1,
+              "mean_gross": -2.48,
+              "win_pct": 36.4
+            },
+            {
+              "bucket": 10,
+              "n": 666,
+              "mean_excess": -4.12,
+              "mean_gross": -5.67,
+              "win_pct": 33.3
+            }
+          ]
+        },
+        "sector_score": {
+          "samples": 521,
+          "rank_ic": -0.383,
+          "monotonicity": -0.88,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 52,
+              "mean_excess": 2.29,
+              "mean_gross": 3.51,
+              "win_pct": 57.7
+            },
+            {
+              "bucket": 2,
+              "n": 52,
+              "mean_excess": -0.68,
+              "mean_gross": -0.87,
+              "win_pct": 36.5
+            },
+            {
+              "bucket": 3,
+              "n": 52,
+              "mean_excess": 2.59,
+              "mean_gross": 1.87,
+              "win_pct": 50.0
+            },
+            {
+              "bucket": 4,
+              "n": 52,
+              "mean_excess": 0.41,
+              "mean_gross": 0.23,
+              "win_pct": 44.2
+            },
+            {
+              "bucket": 5,
+              "n": 52,
+              "mean_excess": 1.28,
+              "mean_gross": 1.31,
+              "win_pct": 51.9
+            },
+            {
+              "bucket": 6,
+              "n": 52,
+              "mean_excess": 0.16,
+              "mean_gross": 0.94,
+              "win_pct": 42.3
+            },
+            {
+              "bucket": 7,
+              "n": 52,
+              "mean_excess": -3.96,
+              "mean_gross": -1.92,
+              "win_pct": 38.5
+            },
+            {
+              "bucket": 8,
+              "n": 52,
+              "mean_excess": -8.88,
+              "mean_gross": -9.35,
+              "win_pct": 26.9
+            },
+            {
+              "bucket": 9,
+              "n": 52,
+              "mean_excess": -8.38,
+              "mean_gross": -5.22,
+              "win_pct": 25.0
+            },
+            {
+              "bucket": 10,
+              "n": 53,
+              "mean_excess": -8.3,
+              "mean_gross": -4.0,
+              "win_pct": 22.6
+            }
+          ]
+        }
+      },
+      "ablations": {
+        "drop_structure": {
+          "signals": 4070,
+          "samples": 3637,
+          "mean": -0.53,
+          "median": -2.48,
+          "win_pct": 41.0,
+          "excess_mean": -0.8,
+          "excess_median": -3.1,
+          "excess_t_p": 0.004161,
+          "profit_factor": 0.92,
+          "max_drawdown_points": -6756.59,
+          "max_consecutive_losses": 198,
+          "mfe_mean": 11.56,
+          "mae_mean": -9.6,
+          "mfe_mae_ratio": 1.2,
+          "skew": 1.8,
+          "p10": -17.94,
+          "p90": 19.24,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.19,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "drop_volume": {
+          "signals": 4070,
+          "samples": 3635,
+          "mean": -0.53,
+          "median": -2.42,
+          "win_pct": 41.9,
+          "excess_mean": -0.81,
+          "excess_median": -3.18,
+          "excess_t_p": 0.006545,
+          "profit_factor": 0.92,
+          "max_drawdown_points": -7033.04,
+          "max_consecutive_losses": 197,
+          "mfe_mean": 11.59,
+          "mae_mean": -10.05,
+          "mfe_mae_ratio": 1.15,
+          "skew": 2.01,
+          "p10": -19.21,
+          "p90": 19.03,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.42,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "drop_pullback": {
+          "signals": 4070,
+          "samples": 3635,
+          "mean": -0.57,
+          "median": -2.47,
+          "win_pct": 41.3,
+          "excess_mean": -0.84,
+          "excess_median": -3.29,
+          "excess_t_p": 0.0025,
+          "profit_factor": 0.91,
+          "max_drawdown_points": -6509.17,
+          "max_consecutive_losses": 196,
+          "mfe_mean": 11.47,
+          "mae_mean": -9.62,
+          "mfe_mae_ratio": 1.19,
+          "skew": 1.65,
+          "p10": -18.45,
+          "p90": 19.14,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.21,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "drop_rps": {
+          "signals": 4070,
+          "samples": 3637,
+          "mean": -0.47,
+          "median": -2.3,
+          "win_pct": 41.9,
+          "excess_mean": -0.74,
+          "excess_median": -3.0,
+          "excess_t_p": 0.008781,
+          "profit_factor": 0.93,
+          "max_drawdown_points": -6733.78,
+          "max_consecutive_losses": 198,
+          "mfe_mean": 11.52,
+          "mae_mean": -9.71,
+          "mfe_mae_ratio": 1.19,
+          "skew": 1.78,
+          "p10": -18.52,
+          "p90": 19.36,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.18,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        }
+      },
+      "single_factor": {
+        "rps20": {
+          "signals": 4070,
+          "samples": 3643,
+          "mean": -0.2,
+          "median": -2.74,
+          "win_pct": 41.1,
+          "excess_mean": -0.48,
+          "excess_median": -3.46,
+          "excess_t_p": 0.121147,
+          "profit_factor": 0.97,
+          "max_drawdown_points": -7070.37,
+          "max_consecutive_losses": 197,
+          "mfe_mean": 12.17,
+          "mae_mean": -10.3,
+          "mfe_mae_ratio": 1.18,
+          "skew": 1.88,
+          "p10": -19.35,
+          "p90": 21.4,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.16,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "rps60": {
+          "signals": 4070,
+          "samples": 3638,
+          "mean": -0.41,
+          "median": -2.71,
+          "win_pct": 41.7,
+          "excess_mean": -0.69,
+          "excess_median": -3.47,
+          "excess_t_p": 0.023312,
+          "profit_factor": 0.94,
+          "max_drawdown_points": -6892.69,
+          "max_consecutive_losses": 198,
+          "mfe_mean": 11.91,
+          "mae_mean": -10.51,
+          "mfe_mae_ratio": 1.13,
+          "skew": 1.85,
+          "p10": -19.9,
+          "p90": 20.38,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.35,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "ret20": {
+          "signals": 4070,
+          "samples": 3643,
+          "mean": -0.24,
+          "median": -2.76,
+          "win_pct": 40.9,
+          "excess_mean": -0.51,
+          "excess_median": -3.48,
+          "excess_t_p": 0.094281,
+          "profit_factor": 0.97,
+          "max_drawdown_points": -7070.37,
+          "max_consecutive_losses": 197,
+          "mfe_mean": 12.12,
+          "mae_mean": -10.32,
+          "mfe_mae_ratio": 1.17,
+          "skew": 1.88,
+          "p10": -19.4,
+          "p90": 21.34,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.19,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "slope20": {
+          "signals": 4070,
+          "samples": 3648,
+          "mean": 0.05,
+          "median": -2.39,
+          "win_pct": 42.1,
+          "excess_mean": -0.23,
+          "excess_median": -3.22,
+          "excess_t_p": 0.453401,
+          "profit_factor": 1.01,
+          "max_drawdown_points": -7069.35,
+          "max_consecutive_losses": 198,
+          "mfe_mean": 12.33,
+          "mae_mean": -10.21,
+          "mfe_mae_ratio": 1.21,
+          "skew": 1.79,
+          "p10": -19.52,
+          "p90": 21.93,
+          "tail_top5_share": 62.205,
+          "mean_excluding_top5pct": -2.91,
+          "top1_contribution": 21.472,
+          "top5_contribution": 62.205,
+          "top10_contribution": 93.071
+        },
+        "amount_ratio20": {
+          "signals": 4070,
+          "samples": 3635,
+          "mean": -0.49,
+          "median": -2.59,
+          "win_pct": 39.7,
+          "excess_mean": -0.76,
+          "excess_median": -3.41,
+          "excess_t_p": 0.008225,
+          "profit_factor": 0.92,
+          "max_drawdown_points": -6508.61,
+          "max_consecutive_losses": 196,
+          "mfe_mean": 11.35,
+          "mae_mean": -9.26,
+          "mfe_mae_ratio": 1.23,
+          "skew": 2.18,
+          "p10": -17.11,
+          "p90": 18.5,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.25,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "trend_days": {
+          "signals": 4070,
+          "samples": 3644,
+          "mean": -0.83,
+          "median": -2.58,
+          "win_pct": 41.0,
+          "excess_mean": -1.09,
+          "excess_median": -3.57,
+          "excess_t_p": 0.00014,
+          "profit_factor": 0.88,
+          "max_drawdown_points": -7815.53,
+          "max_consecutive_losses": 194,
+          "mfe_mean": 11.08,
+          "mae_mean": -9.87,
+          "mfe_mae_ratio": 1.12,
+          "skew": 1.86,
+          "p10": -19.71,
+          "p90": 19.05,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.59,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        }
+      },
+      "worst_vs_best": {
+        "quartile_size": 1663,
+        "features": [
+          {
+            "factor": "sector_score",
+            "bottom_mean": 93.03,
+            "top_mean": 80.66,
+            "standardized_diff": -0.98
+          },
+          {
+            "factor": "pullback_atr",
+            "bottom_mean": 1.754,
+            "top_mean": 1.994,
+            "standardized_diff": 0.36
+          },
+          {
+            "factor": "trend_days",
+            "bottom_mean": 35.239,
+            "top_mean": 31.236,
+            "standardized_diff": -0.34
+          },
+          {
+            "factor": "convergence",
+            "bottom_mean": 20.824,
+            "top_mean": 18.367,
+            "standardized_diff": -0.28
+          },
+          {
+            "factor": "ret60",
+            "bottom_mean": 49.771,
+            "top_mean": 40.228,
+            "standardized_diff": -0.27
+          },
+          {
+            "factor": "distance_ma20",
+            "bottom_mean": 7.592,
+            "top_mean": 6.806,
+            "standardized_diff": -0.2
+          },
+          {
+            "factor": "rps20",
+            "bottom_mean": 89.802,
+            "top_mean": 87.936,
+            "standardized_diff": -0.18
+          },
+          {
+            "factor": "ret20",
+            "bottom_mean": 21.245,
+            "top_mean": 19.408,
+            "standardized_diff": -0.17
+          },
+          {
+            "factor": "slope20",
+            "bottom_mean": 5.161,
+            "top_mean": 4.784,
+            "standardized_diff": -0.16
+          },
+          {
+            "factor": "rps60",
+            "bottom_mean": 89.48,
+            "top_mean": 88.243,
+            "standardized_diff": -0.14
+          },
+          {
+            "factor": "rps120",
+            "bottom_mean": 82.036,
+            "top_mean": 80.312,
+            "standardized_diff": -0.12
+          },
+          {
+            "factor": "amount_ratio20",
+            "bottom_mean": 1.105,
+            "top_mean": 1.092,
+            "standardized_diff": -0.03
+          },
+          {
+            "factor": "pullback_depth",
+            "bottom_mean": 9.418,
+            "top_mean": 9.394,
+            "standardized_diff": -0.01
+          }
+        ],
+        "bottom_mean_gross": -17.46,
+        "top_mean_gross": 20.11
+      }
+    }
+  },
+  "multiple_testing": {
+    "variants_tested": 20,
+    "bonferroni_alpha": 0.0025,
+    "note": "所有变体的 20 日超额 t 检验 p 值需低于该阈值才算显著；本报告不据此调参"
+  }
+}

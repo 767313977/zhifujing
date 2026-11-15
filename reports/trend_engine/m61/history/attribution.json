@@ -1,0 +1,2074 @@
+{
+  "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\history.db",
+  "sha256": "9267652175594871B49456253BB0437CD5738F0D19257AB8CCA961BA5F921A6A",
+  "scan_start": "2025-10-22",
+  "scan_end": "2026-10-19",
+  "days": 240,
+  "counts": {
+    "A": 5878,
+    "B": 13480
+  },
+  "models": {
+    "A": {
+      "signals": 4734,
+      "overall": {
+        "5": {
+          "samples": 4629,
+          "mean": -0.16,
+          "median": -0.71,
+          "win_pct": 43.6,
+          "excess_mean": -0.25,
+          "excess_median": -0.95,
+          "excess_t_p": 0.011737,
+          "profit_factor": 0.93,
+          "max_drawdown_points": -2688.69,
+          "max_consecutive_losses": 33,
+          "mfe_mean": 2.98,
+          "mae_mean": -2.79,
+          "mfe_mae_ratio": 1.07,
+          "skew": 1.63,
+          "p10": -7.14,
+          "p90": 6.69,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -1.14,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "10": {
+          "samples": 4528,
+          "mean": 0.03,
+          "median": -0.96,
+          "win_pct": 43.5,
+          "excess_mean": -0.16,
+          "excess_median": -1.41,
+          "excess_t_p": 0.29392,
+          "profit_factor": 1.01,
+          "max_drawdown_points": -3589.48,
+          "max_consecutive_losses": 24,
+          "mfe_mean": 5.34,
+          "mae_mean": -4.77,
+          "mfe_mae_ratio": 1.12,
+          "skew": 2.37,
+          "p10": -9.82,
+          "p90": 10.02,
+          "tail_top5_share": 42.306,
+          "mean_excluding_top5pct": -1.5,
+          "top1_contribution": 15.018,
+          "top5_contribution": 42.306,
+          "top10_contribution": 60.764
+        },
+        "20": {
+          "samples": 4412,
+          "mean": -0.56,
+          "median": -2.67,
+          "win_pct": 37.9,
+          "excess_mean": -0.64,
+          "excess_median": -3.05,
+          "excess_t_p": 0.003979,
+          "profit_factor": 0.89,
+          "max_drawdown_points": -7584.6,
+          "max_consecutive_losses": 27,
+          "mfe_mean": 8.78,
+          "mae_mean": -7.44,
+          "mfe_mae_ratio": 1.18,
+          "skew": 3.3,
+          "p10": -14.21,
+          "p90": 13.71,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -2.91,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "40": {
+          "samples": 4080,
+          "mean": -0.08,
+          "median": -3.89,
+          "win_pct": 37.8,
+          "excess_mean": -1.01,
+          "excess_median": -5.39,
+          "excess_t_p": 0.004561,
+          "profit_factor": 0.99,
+          "max_drawdown_points": -8212.76,
+          "max_consecutive_losses": 49,
+          "mfe_mean": 14.01,
+          "mae_mean": -10.84,
+          "mfe_mae_ratio": 1.29,
+          "skew": 5.2,
+          "p10": -19.11,
+          "p90": 20.82,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.65,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "60": {
+          "samples": 3868,
+          "mean": -0.39,
+          "median": -5.0,
+          "win_pct": 37.3,
+          "excess_mean": -1.25,
+          "excess_median": -6.37,
+          "excess_t_p": 0.009756,
+          "profit_factor": 0.95,
+          "max_drawdown_points": -12670.12,
+          "max_consecutive_losses": 33,
+          "mfe_mean": 18.53,
+          "mae_mean": -14.03,
+          "mfe_mae_ratio": 1.32,
+          "skew": 7.47,
+          "p10": -22.68,
+          "p90": 22.83,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -4.88,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        }
+      },
+      "buckets": {
+        "regime": {
+          "UNKNOWN": {
+            "samples": 4412,
+            "mean": -0.56,
+            "excess_mean": -0.64,
+            "win_pct": 37.9
+          }
+        },
+        "industry": {
+          "UNKNOWN": {
+            "samples": 4412,
+            "mean": -0.56,
+            "excess_mean": -0.64,
+            "win_pct": 37.9
+          }
+        },
+        "market_cap": {
+          "UNKNOWN": {
+            "samples": 4412,
+            "mean": -0.56,
+            "excess_mean": -0.64,
+            "win_pct": 37.9
+          }
+        },
+        "trend_phase": {
+          "6-20日": {
+            "samples": 2489,
+            "mean": -0.22,
+            "excess_mean": -0.57,
+            "win_pct": 39.6
+          },
+          "0-5日": {
+            "samples": 1742,
+            "mean": -1.38,
+            "excess_mean": -1.14,
+            "win_pct": 35.4
+          },
+          "21-60日": {
+            "samples": 181,
+            "mean": 2.81,
+            "excess_mean": 3.29,
+            "win_pct": 39.8
+          }
+        }
+      },
+      "factors": {
+        "rps20": {
+          "samples": 0,
+          "status": "UNKNOWN"
+        },
+        "rps60": {
+          "samples": 0,
+          "status": "UNKNOWN"
+        },
+        "rps120": {
+          "samples": 0,
+          "status": "UNKNOWN"
+        },
+        "ret20": {
+          "samples": 4412,
+          "rank_ic": -0.058,
+          "monotonicity": -0.37,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 441,
+              "mean_excess": -0.12,
+              "mean_gross": -0.52,
+              "win_pct": 37.9
+            },
+            {
+              "bucket": 2,
+              "n": 441,
+              "mean_excess": -0.21,
+              "mean_gross": -0.58,
+              "win_pct": 36.3
+            },
+            {
+              "bucket": 3,
+              "n": 441,
+              "mean_excess": -0.25,
+              "mean_gross": -0.13,
+              "win_pct": 39.2
+            },
+            {
+              "bucket": 4,
+              "n": 441,
+              "mean_excess": -0.13,
+              "mean_gross": -0.49,
+              "win_pct": 38.1
+            },
+            {
+              "bucket": 5,
+              "n": 442,
+              "mean_excess": -1.07,
+              "mean_gross": -1.37,
+              "win_pct": 36.9
+            },
+            {
+              "bucket": 6,
+              "n": 441,
+              "mean_excess": -0.59,
+              "mean_gross": 0.14,
+              "win_pct": 40.4
+            },
+            {
+              "bucket": 7,
+              "n": 441,
+              "mean_excess": -1.34,
+              "mean_gross": -1.05,
+              "win_pct": 35.1
+            },
+            {
+              "bucket": 8,
+              "n": 441,
+              "mean_excess": 0.04,
+              "mean_gross": 0.24,
+              "win_pct": 40.6
+            },
+            {
+              "bucket": 9,
+              "n": 441,
+              "mean_excess": -2.77,
+              "mean_gross": -1.88,
+              "win_pct": 37.2
+            },
+            {
+              "bucket": 10,
+              "n": 442,
+              "mean_excess": 0.07,
+              "mean_gross": 0.06,
+              "win_pct": 37.8
+            }
+          ]
+        },
+        "ret60": {
+          "samples": 4412,
+          "rank_ic": 0.077,
+          "monotonicity": 0.73,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 441,
+              "mean_excess": -4.33,
+              "mean_gross": -3.32,
+              "win_pct": 34.9
+            },
+            {
+              "bucket": 2,
+              "n": 441,
+              "mean_excess": -1.76,
+              "mean_gross": -1.7,
+              "win_pct": 33.6
+            },
+            {
+              "bucket": 3,
+              "n": 441,
+              "mean_excess": -0.47,
+              "mean_gross": -0.13,
+              "win_pct": 41.7
+            },
+            {
+              "bucket": 4,
+              "n": 441,
+              "mean_excess": -1.59,
+              "mean_gross": -1.33,
+              "win_pct": 37.9
+            },
+            {
+              "bucket": 5,
+              "n": 442,
+              "mean_excess": 0.04,
+              "mean_gross": 0.23,
+              "win_pct": 40.0
+            },
+            {
+              "bucket": 6,
+              "n": 441,
+              "mean_excess": -0.44,
+              "mean_gross": -0.3,
+              "win_pct": 40.1
+            },
+            {
+              "bucket": 7,
+              "n": 441,
+              "mean_excess": 1.37,
+              "mean_gross": 1.0,
+              "win_pct": 38.8
+            },
+            {
+              "bucket": 8,
+              "n": 441,
+              "mean_excess": 0.45,
+              "mean_gross": 0.42,
+              "win_pct": 37.6
+            },
+            {
+              "bucket": 9,
+              "n": 441,
+              "mean_excess": 1.09,
+              "mean_gross": 0.62,
+              "win_pct": 37.2
+            },
+            {
+              "bucket": 10,
+              "n": 442,
+              "mean_excess": -0.71,
+              "mean_gross": -1.06,
+              "win_pct": 37.6
+            }
+          ]
+        },
+        "slope20": {
+          "samples": 4412,
+          "rank_ic": 0.003,
+          "monotonicity": 0.21,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 441,
+              "mean_excess": -1.82,
+              "mean_gross": -1.66,
+              "win_pct": 37.0
+            },
+            {
+              "bucket": 2,
+              "n": 441,
+              "mean_excess": -0.26,
+              "mean_gross": -0.46,
+              "win_pct": 39.5
+            },
+            {
+              "bucket": 3,
+              "n": 441,
+              "mean_excess": -1.39,
+              "mean_gross": -1.19,
+              "win_pct": 38.8
+            },
+            {
+              "bucket": 4,
+              "n": 441,
+              "mean_excess": 0.63,
+              "mean_gross": 0.56,
+              "win_pct": 39.7
+            },
+            {
+              "bucket": 5,
+              "n": 442,
+              "mean_excess": -1.43,
+              "mean_gross": -1.35,
+              "win_pct": 33.9
+            },
+            {
+              "bucket": 6,
+              "n": 441,
+              "mean_excess": 0.84,
+              "mean_gross": 0.64,
+              "win_pct": 37.6
+            },
+            {
+              "bucket": 7,
+              "n": 441,
+              "mean_excess": -0.78,
+              "mean_gross": -0.74,
+              "win_pct": 36.5
+            },
+            {
+              "bucket": 8,
+              "n": 441,
+              "mean_excess": -1.15,
+              "mean_gross": -0.83,
+              "win_pct": 38.3
+            },
+            {
+              "bucket": 9,
+              "n": 441,
+              "mean_excess": -0.76,
+              "mean_gross": -0.41,
+              "win_pct": 40.8
+            },
+            {
+              "bucket": 10,
+              "n": 442,
+              "mean_excess": -0.23,
+              "mean_gross": -0.13,
+              "win_pct": 37.3
+            }
+          ]
+        },
+        "distance_ma20": {
+          "samples": 4412,
+          "rank_ic": -0.108,
+          "monotonicity": -0.8,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 441,
+              "mean_excess": 0.77,
+              "mean_gross": 0.06,
+              "win_pct": 39.7
+            },
+            {
+              "bucket": 2,
+              "n": 441,
+              "mean_excess": 0.4,
+              "mean_gross": 0.08,
+              "win_pct": 38.8
+            },
+            {
+              "bucket": 3,
+              "n": 441,
+              "mean_excess": -0.31,
+              "mean_gross": -0.6,
+              "win_pct": 40.1
+            },
+            {
+              "bucket": 4,
+              "n": 441,
+              "mean_excess": -0.09,
+              "mean_gross": -0.4,
+              "win_pct": 38.3
+            },
+            {
+              "bucket": 5,
+              "n": 442,
+              "mean_excess": -0.52,
+              "mean_gross": -0.44,
+              "win_pct": 38.7
+            },
+            {
+              "bucket": 6,
+              "n": 441,
+              "mean_excess": -2.17,
+              "mean_gross": -1.92,
+              "win_pct": 35.4
+            },
+            {
+              "bucket": 7,
+              "n": 441,
+              "mean_excess": -0.59,
+              "mean_gross": 0.33,
+              "win_pct": 39.0
+            },
+            {
+              "bucket": 8,
+              "n": 441,
+              "mean_excess": -0.58,
+              "mean_gross": -0.4,
+              "win_pct": 38.3
+            },
+            {
+              "bucket": 9,
+              "n": 441,
+              "mean_excess": -1.6,
+              "mean_gross": -1.05,
+              "win_pct": 35.4
+            },
+            {
+              "bucket": 10,
+              "n": 442,
+              "mean_excess": -1.66,
+              "mean_gross": -1.24,
+              "win_pct": 35.7
+            }
+          ]
+        },
+        "amount_ratio20": {
+          "samples": 4412,
+          "rank_ic": -0.083,
+          "monotonicity": -0.69,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 441,
+              "mean_excess": -0.0,
+              "mean_gross": -0.14,
+              "win_pct": 34.7
+            },
+            {
+              "bucket": 2,
+              "n": 441,
+              "mean_excess": -0.17,
+              "mean_gross": 0.3,
+              "win_pct": 42.0
+            },
+            {
+              "bucket": 3,
+              "n": 441,
+              "mean_excess": -0.16,
+              "mean_gross": -0.46,
+              "win_pct": 40.8
+            },
+            {
+              "bucket": 4,
+              "n": 441,
+              "mean_excess": -0.18,
+              "mean_gross": -0.12,
+              "win_pct": 41.0
+            },
+            {
+              "bucket": 5,
+              "n": 442,
+              "mean_excess": -0.44,
+              "mean_gross": -0.75,
+              "win_pct": 36.9
+            },
+            {
+              "bucket": 6,
+              "n": 441,
+              "mean_excess": -0.1,
+              "mean_gross": -0.04,
+              "win_pct": 37.9
+            },
+            {
+              "bucket": 7,
+              "n": 441,
+              "mean_excess": 0.7,
+              "mean_gross": 1.0,
+              "win_pct": 39.2
+            },
+            {
+              "bucket": 8,
+              "n": 441,
+              "mean_excess": -2.05,
+              "mean_gross": -2.42,
+              "win_pct": 36.1
+            },
+            {
+              "bucket": 9,
+              "n": 441,
+              "mean_excess": -1.89,
+              "mean_gross": -1.58,
+              "win_pct": 37.9
+            },
+            {
+              "bucket": 10,
+              "n": 442,
+              "mean_excess": -2.08,
+              "mean_gross": -1.37,
+              "win_pct": 33.0
+            }
+          ]
+        },
+        "convergence": {
+          "samples": 4412,
+          "rank_ic": -0.05,
+          "monotonicity": -0.12,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 441,
+              "mean_excess": -1.56,
+              "mean_gross": -1.49,
+              "win_pct": 37.4
+            },
+            {
+              "bucket": 2,
+              "n": 441,
+              "mean_excess": -0.33,
+              "mean_gross": 0.16,
+              "win_pct": 40.4
+            },
+            {
+              "bucket": 3,
+              "n": 441,
+              "mean_excess": -0.61,
+              "mean_gross": -0.38,
+              "win_pct": 41.3
+            },
+            {
+              "bucket": 4,
+              "n": 441,
+              "mean_excess": -0.37,
+              "mean_gross": 0.0,
+              "win_pct": 41.7
+            },
+            {
+              "bucket": 5,
+              "n": 442,
+              "mean_excess": -0.56,
+              "mean_gross": -0.19,
+              "win_pct": 41.0
+            },
+            {
+              "bucket": 6,
+              "n": 441,
+              "mean_excess": 0.47,
+              "mean_gross": 1.06,
+              "win_pct": 39.7
+            },
+            {
+              "bucket": 7,
+              "n": 441,
+              "mean_excess": 0.47,
+              "mean_gross": 0.88,
+              "win_pct": 40.1
+            },
+            {
+              "bucket": 8,
+              "n": 441,
+              "mean_excess": -1.18,
+              "mean_gross": -1.04,
+              "win_pct": 34.0
+            },
+            {
+              "bucket": 9,
+              "n": 441,
+              "mean_excess": -1.27,
+              "mean_gross": -1.47,
+              "win_pct": 32.7
+            },
+            {
+              "bucket": 10,
+              "n": 442,
+              "mean_excess": -1.43,
+              "mean_gross": -3.1,
+              "win_pct": 31.2
+            }
+          ]
+        },
+        "trend_days": {
+          "samples": 4412,
+          "rank_ic": 0.073,
+          "monotonicity": 0.74,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 441,
+              "mean_excess": -2.16,
+              "mean_gross": -2.63,
+              "win_pct": 33.6
+            },
+            {
+              "bucket": 2,
+              "n": 441,
+              "mean_excess": -0.98,
+              "mean_gross": -1.46,
+              "win_pct": 37.2
+            },
+            {
+              "bucket": 3,
+              "n": 441,
+              "mean_excess": -0.37,
+              "mean_gross": -0.09,
+              "win_pct": 38.5
+            },
+            {
+              "bucket": 4,
+              "n": 441,
+              "mean_excess": -1.21,
+              "mean_gross": -1.53,
+              "win_pct": 31.3
+            },
+            {
+              "bucket": 5,
+              "n": 442,
+              "mean_excess": -1.11,
+              "mean_gross": -1.2,
+              "win_pct": 35.1
+            },
+            {
+              "bucket": 6,
+              "n": 441,
+              "mean_excess": -0.66,
+              "mean_gross": -0.6,
+              "win_pct": 38.5
+            },
+            {
+              "bucket": 7,
+              "n": 441,
+              "mean_excess": 0.13,
+              "mean_gross": 0.71,
+              "win_pct": 42.6
+            },
+            {
+              "bucket": 8,
+              "n": 441,
+              "mean_excess": -1.08,
+              "mean_gross": -0.58,
+              "win_pct": 36.5
+            },
+            {
+              "bucket": 9,
+              "n": 441,
+              "mean_excess": -0.16,
+              "mean_gross": 0.91,
+              "win_pct": 43.3
+            },
+            {
+              "bucket": 10,
+              "n": 442,
+              "mean_excess": 1.23,
+              "mean_gross": 0.88,
+              "win_pct": 42.8
+            }
+          ]
+        },
+        "sector_score": {
+          "samples": 0,
+          "status": "UNKNOWN"
+        }
+      },
+      "ablations": {
+        "drop_structure": {
+          "signals": 3170,
+          "samples": 2905,
+          "mean": -0.65,
+          "median": -2.67,
+          "win_pct": 37.7,
+          "excess_mean": -0.89,
+          "excess_median": -3.06,
+          "excess_t_p": 0.001085,
+          "profit_factor": 0.87,
+          "max_drawdown_points": -5759.46,
+          "max_consecutive_losses": 30,
+          "mfe_mean": 8.28,
+          "mae_mean": -7.33,
+          "mfe_mae_ratio": 1.13,
+          "skew": 3.32,
+          "p10": -14.2,
+          "p90": 13.17,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.01,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "drop_breakout": {
+          "signals": 3170,
+          "samples": 2901,
+          "mean": -0.34,
+          "median": -2.67,
+          "win_pct": 37.8,
+          "excess_mean": -0.58,
+          "excess_median": -3.04,
+          "excess_t_p": 0.043812,
+          "profit_factor": 0.93,
+          "max_drawdown_points": -5247.89,
+          "max_consecutive_losses": 29,
+          "mfe_mean": 8.91,
+          "mae_mean": -7.53,
+          "mfe_mae_ratio": 1.18,
+          "skew": 3.4,
+          "p10": -14.31,
+          "p90": 14.69,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -2.84,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "drop_volume": {
+          "signals": 3170,
+          "samples": 2899,
+          "mean": -0.62,
+          "median": -2.59,
+          "win_pct": 37.8,
+          "excess_mean": -0.85,
+          "excess_median": -3.04,
+          "excess_t_p": 0.001897,
+          "profit_factor": 0.88,
+          "max_drawdown_points": -5356.52,
+          "max_consecutive_losses": 35,
+          "mfe_mean": 8.53,
+          "mae_mean": -7.44,
+          "mfe_mae_ratio": 1.15,
+          "skew": 3.29,
+          "p10": -14.27,
+          "p90": 13.72,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -2.99,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "drop_rps": {
+          "signals": 3170,
+          "samples": 2903,
+          "mean": -0.45,
+          "median": -2.64,
+          "win_pct": 37.4,
+          "excess_mean": -0.69,
+          "excess_median": -3.0,
+          "excess_t_p": 0.01385,
+          "profit_factor": 0.91,
+          "max_drawdown_points": -5333.71,
+          "max_consecutive_losses": 29,
+          "mfe_mean": 8.61,
+          "mae_mean": -7.39,
+          "mfe_mae_ratio": 1.17,
+          "skew": 3.49,
+          "p10": -14.17,
+          "p90": 13.88,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -2.89,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        }
+      },
+      "single_factor": {
+        "rps20": {
+          "signals": 3170,
+          "samples": 2893,
+          "mean": -0.96,
+          "median": -2.8,
+          "win_pct": 37.7,
+          "excess_mean": -1.2,
+          "excess_median": -3.47,
+          "excess_t_p": 6e-06,
+          "profit_factor": 0.82,
+          "max_drawdown_points": -5632.3,
+          "max_consecutive_losses": 21,
+          "mfe_mean": 8.67,
+          "mae_mean": -7.73,
+          "mfe_mae_ratio": 1.12,
+          "skew": 2.8,
+          "p10": -14.9,
+          "p90": 13.23,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.22,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "rps60": {
+          "signals": 3170,
+          "samples": 2893,
+          "mean": -0.96,
+          "median": -2.8,
+          "win_pct": 37.7,
+          "excess_mean": -1.2,
+          "excess_median": -3.47,
+          "excess_t_p": 6e-06,
+          "profit_factor": 0.82,
+          "max_drawdown_points": -5632.3,
+          "max_consecutive_losses": 21,
+          "mfe_mean": 8.67,
+          "mae_mean": -7.73,
+          "mfe_mae_ratio": 1.12,
+          "skew": 2.8,
+          "p10": -14.9,
+          "p90": 13.23,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.22,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "ret20": {
+          "signals": 3170,
+          "samples": 2887,
+          "mean": -0.89,
+          "median": -3.16,
+          "win_pct": 36.7,
+          "excess_mean": -1.13,
+          "excess_median": -3.73,
+          "excess_t_p": 7.1e-05,
+          "profit_factor": 0.84,
+          "max_drawdown_points": -5261.12,
+          "max_consecutive_losses": 35,
+          "mfe_mean": 9.02,
+          "mae_mean": -8.08,
+          "mfe_mae_ratio": 1.12,
+          "skew": 3.1,
+          "p10": -15.29,
+          "p90": 14.71,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.36,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "slope20": {
+          "signals": 3170,
+          "samples": 2894,
+          "mean": -0.9,
+          "median": -2.94,
+          "win_pct": 36.6,
+          "excess_mean": -1.14,
+          "excess_median": -3.55,
+          "excess_t_p": 6.1e-05,
+          "profit_factor": 0.83,
+          "max_drawdown_points": -5519.62,
+          "max_consecutive_losses": 32,
+          "mfe_mean": 8.89,
+          "mae_mean": -7.93,
+          "mfe_mae_ratio": 1.12,
+          "skew": 3.56,
+          "p10": -15.08,
+          "p90": 13.73,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.33,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "amount_ratio20": {
+          "signals": 3170,
+          "samples": 2892,
+          "mean": -1.18,
+          "median": -3.1,
+          "win_pct": 36.4,
+          "excess_mean": -1.42,
+          "excess_median": -3.86,
+          "excess_t_p": 0.0,
+          "profit_factor": 0.79,
+          "max_drawdown_points": -5591.32,
+          "max_consecutive_losses": 33,
+          "mfe_mean": 8.7,
+          "mae_mean": -8.05,
+          "mfe_mae_ratio": 1.08,
+          "skew": 3.11,
+          "p10": -15.21,
+          "p90": 13.28,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.56,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "trend_days": {
+          "signals": 3170,
+          "samples": 2895,
+          "mean": -0.81,
+          "median": -2.83,
+          "win_pct": 37.2,
+          "excess_mean": -1.05,
+          "excess_median": -3.33,
+          "excess_t_p": 0.000163,
+          "profit_factor": 0.85,
+          "max_drawdown_points": -5356.23,
+          "max_consecutive_losses": 27,
+          "mfe_mean": 8.65,
+          "mae_mean": -7.64,
+          "mfe_mae_ratio": 1.13,
+          "skew": 3.45,
+          "p10": -14.83,
+          "p90": 13.83,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.2,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        }
+      },
+      "worst_vs_best": {
+        "quartile_size": 1103,
+        "features": [
+          {
+            "factor": "convergence",
+            "bottom_mean": 4.943,
+            "top_mean": 4.46,
+            "standardized_diff": -0.22
+          },
+          {
+            "factor": "trend_days",
+            "bottom_mean": 7.504,
+            "top_mean": 8.773,
+            "standardized_diff": 0.21
+          },
+          {
+            "factor": "platform_width",
+            "bottom_mean": 13.728,
+            "top_mean": 13.093,
+            "standardized_diff": -0.2
+          },
+          {
+            "factor": "breakout_pct",
+            "bottom_mean": 2.166,
+            "top_mean": 1.836,
+            "standardized_diff": -0.2
+          },
+          {
+            "factor": "distance_ma20",
+            "bottom_mean": 7.896,
+            "top_mean": 7.409,
+            "standardized_diff": -0.19
+          },
+          {
+            "factor": "amount_ratio20",
+            "bottom_mean": 2.888,
+            "top_mean": 2.645,
+            "standardized_diff": -0.19
+          },
+          {
+            "factor": "ret20",
+            "bottom_mean": 10.054,
+            "top_mean": 9.702,
+            "standardized_diff": -0.09
+          },
+          {
+            "factor": "ret60",
+            "bottom_mean": 5.401,
+            "top_mean": 5.944,
+            "standardized_diff": 0.05
+          },
+          {
+            "factor": "slope20",
+            "bottom_mean": 1.26,
+            "top_mean": 1.275,
+            "standardized_diff": 0.02
+          }
+        ],
+        "bottom_mean_gross": -14.26,
+        "top_mean_gross": 17.15
+      }
+    },
+    "B": {
+      "signals": 7152,
+      "overall": {
+        "5": {
+          "samples": 7014,
+          "mean": 0.26,
+          "median": -0.7,
+          "win_pct": 45.5,
+          "excess_mean": 0.19,
+          "excess_median": -0.81,
+          "excess_t_p": 0.053681,
+          "profit_factor": 1.09,
+          "max_drawdown_points": -3624.78,
+          "max_consecutive_losses": 47,
+          "mfe_mean": 4.0,
+          "mae_mean": -3.48,
+          "mfe_mae_ratio": 1.15,
+          "skew": 1.25,
+          "p10": -8.91,
+          "p90": 10.34,
+          "tail_top5_share": 4.657,
+          "mean_excluding_top5pct": -0.99,
+          "top1_contribution": 1.463,
+          "top5_contribution": 4.657,
+          "top10_contribution": 7.175
+        },
+        "10": {
+          "samples": 6880,
+          "mean": 0.0,
+          "median": -1.69,
+          "win_pct": 41.0,
+          "excess_mean": 0.08,
+          "excess_median": -1.61,
+          "excess_t_p": 0.564947,
+          "profit_factor": 1.0,
+          "max_drawdown_points": -6532.93,
+          "max_consecutive_losses": 48,
+          "mfe_mean": 6.78,
+          "mae_mean": -5.83,
+          "mfe_mae_ratio": 1.16,
+          "skew": 1.9,
+          "p10": -12.07,
+          "p90": 13.56,
+          "tail_top5_share": 1641.461,
+          "mean_excluding_top5pct": -1.86,
+          "top1_contribution": 569.335,
+          "top5_contribution": 1641.461,
+          "top10_contribution": 2426.919
+        },
+        "20": {
+          "samples": 6590,
+          "mean": -0.91,
+          "median": -2.83,
+          "win_pct": 39.2,
+          "excess_mean": -0.6,
+          "excess_median": -2.65,
+          "excess_t_p": 0.001684,
+          "profit_factor": 0.85,
+          "max_drawdown_points": -11354.64,
+          "max_consecutive_losses": 201,
+          "mfe_mean": 10.58,
+          "mae_mean": -9.11,
+          "mfe_mae_ratio": 1.16,
+          "skew": 1.96,
+          "p10": -17.13,
+          "p90": 16.82,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.37,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "40": {
+          "samples": 6058,
+          "mean": 0.68,
+          "median": -3.42,
+          "win_pct": 40.9,
+          "excess_mean": -0.76,
+          "excess_median": -5.04,
+          "excess_t_p": 0.017243,
+          "profit_factor": 1.09,
+          "max_drawdown_points": -10982.16,
+          "max_consecutive_losses": 55,
+          "mfe_mean": 16.89,
+          "mae_mean": -13.31,
+          "mfe_mae_ratio": 1.27,
+          "skew": 4.14,
+          "p10": -21.38,
+          "p90": 23.83,
+          "tail_top5_share": 5.61,
+          "mean_excluding_top5pct": -3.31,
+          "top1_contribution": 2.39,
+          "top5_contribution": 5.61,
+          "top10_contribution": 7.804
+        },
+        "60": {
+          "samples": 5875,
+          "mean": 2.71,
+          "median": -3.94,
+          "win_pct": 42.5,
+          "excess_mean": 0.45,
+          "excess_median": -6.94,
+          "excess_t_p": 0.280395,
+          "profit_factor": 1.3,
+          "max_drawdown_points": -13719.31,
+          "max_consecutive_losses": 40,
+          "mfe_mean": 23.44,
+          "mae_mean": -16.39,
+          "mfe_mae_ratio": 1.43,
+          "skew": 3.13,
+          "p10": -25.67,
+          "p90": 35.17,
+          "tail_top5_share": 1.966,
+          "mean_excluding_top5pct": -2.76,
+          "top1_contribution": 0.739,
+          "top5_contribution": 1.966,
+          "top10_contribution": 2.771
+        }
+      },
+      "buckets": {
+        "regime": {
+          "UNKNOWN": {
+            "samples": 6590,
+            "mean": -0.91,
+            "excess_mean": -0.6,
+            "win_pct": 39.2
+          }
+        },
+        "industry": {
+          "UNKNOWN": {
+            "samples": 6590,
+            "mean": -0.91,
+            "excess_mean": -0.6,
+            "win_pct": 39.2
+          }
+        },
+        "market_cap": {
+          "UNKNOWN": {
+            "samples": 6590,
+            "mean": -0.91,
+            "excess_mean": -0.6,
+            "win_pct": 39.2
+          }
+        },
+        "trend_phase": {
+          "6-20日": {
+            "samples": 475,
+            "mean": -0.22,
+            "excess_mean": -1.25,
+            "win_pct": 42.5
+          },
+          "21-60日": {
+            "samples": 5984,
+            "mean": -0.85,
+            "excess_mean": -0.43,
+            "win_pct": 39.1
+          },
+          ">60日": {
+            "samples": 131,
+            "mean": -6.11,
+            "excess_mean": -5.71,
+            "win_pct": 31.3
+          }
+        }
+      },
+      "factors": {
+        "rps20": {
+          "samples": 0,
+          "status": "UNKNOWN"
+        },
+        "rps60": {
+          "samples": 0,
+          "status": "UNKNOWN"
+        },
+        "rps120": {
+          "samples": 0,
+          "status": "UNKNOWN"
+        },
+        "ret20": {
+          "samples": 6590,
+          "rank_ic": -0.04,
+          "monotonicity": 0.67,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 659,
+              "mean_excess": -0.83,
+              "mean_gross": 0.06,
+              "win_pct": 43.9
+            },
+            {
+              "bucket": 2,
+              "n": 659,
+              "mean_excess": -1.06,
+              "mean_gross": -0.56,
+              "win_pct": 37.8
+            },
+            {
+              "bucket": 3,
+              "n": 659,
+              "mean_excess": -0.55,
+              "mean_gross": -0.31,
+              "win_pct": 37.5
+            },
+            {
+              "bucket": 4,
+              "n": 659,
+              "mean_excess": -1.4,
+              "mean_gross": -1.33,
+              "win_pct": 37.3
+            },
+            {
+              "bucket": 5,
+              "n": 659,
+              "mean_excess": -0.88,
+              "mean_gross": -0.96,
+              "win_pct": 38.1
+            },
+            {
+              "bucket": 6,
+              "n": 659,
+              "mean_excess": -1.34,
+              "mean_gross": -2.04,
+              "win_pct": 38.4
+            },
+            {
+              "bucket": 7,
+              "n": 659,
+              "mean_excess": -0.02,
+              "mean_gross": -0.98,
+              "win_pct": 38.5
+            },
+            {
+              "bucket": 8,
+              "n": 659,
+              "mean_excess": -0.47,
+              "mean_gross": -1.34,
+              "win_pct": 39.0
+            },
+            {
+              "bucket": 9,
+              "n": 659,
+              "mean_excess": -0.32,
+              "mean_gross": -1.52,
+              "win_pct": 39.2
+            },
+            {
+              "bucket": 10,
+              "n": 659,
+              "mean_excess": 0.89,
+              "mean_gross": -0.06,
+              "win_pct": 42.2
+            }
+          ]
+        },
+        "ret60": {
+          "samples": 6590,
+          "rank_ic": -0.057,
+          "monotonicity": 0.4,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 659,
+              "mean_excess": -1.82,
+              "mean_gross": 0.01,
+              "win_pct": 41.4
+            },
+            {
+              "bucket": 2,
+              "n": 659,
+              "mean_excess": -1.28,
+              "mean_gross": -0.8,
+              "win_pct": 34.0
+            },
+            {
+              "bucket": 3,
+              "n": 659,
+              "mean_excess": -0.01,
+              "mean_gross": 0.11,
+              "win_pct": 39.3
+            },
+            {
+              "bucket": 4,
+              "n": 659,
+              "mean_excess": -0.81,
+              "mean_gross": -0.59,
+              "win_pct": 37.9
+            },
+            {
+              "bucket": 5,
+              "n": 659,
+              "mean_excess": 0.41,
+              "mean_gross": 0.23,
+              "win_pct": 43.4
+            },
+            {
+              "bucket": 6,
+              "n": 659,
+              "mean_excess": -0.3,
+              "mean_gross": -0.93,
+              "win_pct": 42.6
+            },
+            {
+              "bucket": 7,
+              "n": 659,
+              "mean_excess": -0.23,
+              "mean_gross": -0.91,
+              "win_pct": 40.5
+            },
+            {
+              "bucket": 8,
+              "n": 659,
+              "mean_excess": -0.86,
+              "mean_gross": -1.43,
+              "win_pct": 38.4
+            },
+            {
+              "bucket": 9,
+              "n": 659,
+              "mean_excess": -0.73,
+              "mean_gross": -1.54,
+              "win_pct": 37.2
+            },
+            {
+              "bucket": 10,
+              "n": 659,
+              "mean_excess": -0.34,
+              "mean_gross": -3.21,
+              "win_pct": 37.0
+            }
+          ]
+        },
+        "slope20": {
+          "samples": 6590,
+          "rank_ic": -0.04,
+          "monotonicity": 0.85,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 659,
+              "mean_excess": -0.91,
+              "mean_gross": -0.39,
+              "win_pct": 39.6
+            },
+            {
+              "bucket": 2,
+              "n": 659,
+              "mean_excess": -1.3,
+              "mean_gross": -0.95,
+              "win_pct": 38.4
+            },
+            {
+              "bucket": 3,
+              "n": 659,
+              "mean_excess": -1.37,
+              "mean_gross": -0.86,
+              "win_pct": 38.5
+            },
+            {
+              "bucket": 4,
+              "n": 659,
+              "mean_excess": -0.85,
+              "mean_gross": -0.63,
+              "win_pct": 37.9
+            },
+            {
+              "bucket": 5,
+              "n": 659,
+              "mean_excess": -0.7,
+              "mean_gross": -0.85,
+              "win_pct": 37.8
+            },
+            {
+              "bucket": 6,
+              "n": 659,
+              "mean_excess": -0.99,
+              "mean_gross": -1.84,
+              "win_pct": 35.4
+            },
+            {
+              "bucket": 7,
+              "n": 659,
+              "mean_excess": -0.5,
+              "mean_gross": -1.3,
+              "win_pct": 42.9
+            },
+            {
+              "bucket": 8,
+              "n": 659,
+              "mean_excess": -0.43,
+              "mean_gross": -1.49,
+              "win_pct": 38.5
+            },
+            {
+              "bucket": 9,
+              "n": 659,
+              "mean_excess": 0.19,
+              "mean_gross": -0.55,
+              "win_pct": 39.9
+            },
+            {
+              "bucket": 10,
+              "n": 659,
+              "mean_excess": 0.9,
+              "mean_gross": -0.2,
+              "win_pct": 42.8
+            }
+          ]
+        },
+        "distance_ma20": {
+          "samples": 6590,
+          "rank_ic": -0.032,
+          "monotonicity": 0.08,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 659,
+              "mean_excess": -0.59,
+              "mean_gross": 0.44,
+              "win_pct": 42.0
+            },
+            {
+              "bucket": 2,
+              "n": 659,
+              "mean_excess": -0.95,
+              "mean_gross": -0.34,
+              "win_pct": 42.5
+            },
+            {
+              "bucket": 3,
+              "n": 659,
+              "mean_excess": -1.5,
+              "mean_gross": -0.83,
+              "win_pct": 39.3
+            },
+            {
+              "bucket": 4,
+              "n": 659,
+              "mean_excess": -0.53,
+              "mean_gross": -0.63,
+              "win_pct": 39.2
+            },
+            {
+              "bucket": 5,
+              "n": 659,
+              "mean_excess": -0.31,
+              "mean_gross": -0.65,
+              "win_pct": 36.6
+            },
+            {
+              "bucket": 6,
+              "n": 659,
+              "mean_excess": -0.28,
+              "mean_gross": -1.09,
+              "win_pct": 36.1
+            },
+            {
+              "bucket": 7,
+              "n": 659,
+              "mean_excess": 0.74,
+              "mean_gross": 0.14,
+              "win_pct": 40.7
+            },
+            {
+              "bucket": 8,
+              "n": 659,
+              "mean_excess": 0.1,
+              "mean_gross": -0.79,
+              "win_pct": 42.6
+            },
+            {
+              "bucket": 9,
+              "n": 659,
+              "mean_excess": -1.66,
+              "mean_gross": -2.94,
+              "win_pct": 35.8
+            },
+            {
+              "bucket": 10,
+              "n": 659,
+              "mean_excess": -0.99,
+              "mean_gross": -2.36,
+              "win_pct": 37.0
+            }
+          ]
+        },
+        "amount_ratio20": {
+          "samples": 6590,
+          "rank_ic": -0.01,
+          "monotonicity": -0.11,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 659,
+              "mean_excess": -1.55,
+              "mean_gross": -0.94,
+              "win_pct": 39.6
+            },
+            {
+              "bucket": 2,
+              "n": 659,
+              "mean_excess": -0.43,
+              "mean_gross": -0.68,
+              "win_pct": 38.7
+            },
+            {
+              "bucket": 3,
+              "n": 659,
+              "mean_excess": 0.78,
+              "mean_gross": 0.22,
+              "win_pct": 43.7
+            },
+            {
+              "bucket": 4,
+              "n": 659,
+              "mean_excess": -1.11,
+              "mean_gross": -1.64,
+              "win_pct": 38.5
+            },
+            {
+              "bucket": 5,
+              "n": 659,
+              "mean_excess": -0.3,
+              "mean_gross": -1.35,
+              "win_pct": 37.6
+            },
+            {
+              "bucket": 6,
+              "n": 659,
+              "mean_excess": -0.81,
+              "mean_gross": -0.98,
+              "win_pct": 39.3
+            },
+            {
+              "bucket": 7,
+              "n": 659,
+              "mean_excess": 0.17,
+              "mean_gross": -0.18,
+              "win_pct": 41.1
+            },
+            {
+              "bucket": 8,
+              "n": 659,
+              "mean_excess": -0.8,
+              "mean_gross": -1.28,
+              "win_pct": 36.9
+            },
+            {
+              "bucket": 9,
+              "n": 659,
+              "mean_excess": -0.27,
+              "mean_gross": -0.37,
+              "win_pct": 41.3
+            },
+            {
+              "bucket": 10,
+              "n": 659,
+              "mean_excess": -1.66,
+              "mean_gross": -1.86,
+              "win_pct": 35.1
+            }
+          ]
+        },
+        "convergence": {
+          "samples": 6590,
+          "rank_ic": -0.046,
+          "monotonicity": 0.57,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 659,
+              "mean_excess": -1.67,
+              "mean_gross": 0.21,
+              "win_pct": 42.9
+            },
+            {
+              "bucket": 2,
+              "n": 659,
+              "mean_excess": -1.15,
+              "mean_gross": -0.65,
+              "win_pct": 36.3
+            },
+            {
+              "bucket": 3,
+              "n": 659,
+              "mean_excess": -1.29,
+              "mean_gross": -0.81,
+              "win_pct": 36.9
+            },
+            {
+              "bucket": 4,
+              "n": 659,
+              "mean_excess": -0.39,
+              "mean_gross": 0.13,
+              "win_pct": 38.1
+            },
+            {
+              "bucket": 5,
+              "n": 659,
+              "mean_excess": -0.12,
+              "mean_gross": -0.45,
+              "win_pct": 42.8
+            },
+            {
+              "bucket": 6,
+              "n": 659,
+              "mean_excess": 0.29,
+              "mean_gross": -0.98,
+              "win_pct": 40.5
+            },
+            {
+              "bucket": 7,
+              "n": 659,
+              "mean_excess": -1.66,
+              "mean_gross": -2.7,
+              "win_pct": 37.2
+            },
+            {
+              "bucket": 8,
+              "n": 659,
+              "mean_excess": -0.99,
+              "mean_gross": -1.87,
+              "win_pct": 37.8
+            },
+            {
+              "bucket": 9,
+              "n": 659,
+              "mean_excess": 1.04,
+              "mean_gross": 0.42,
+              "win_pct": 41.1
+            },
+            {
+              "bucket": 10,
+              "n": 659,
+              "mean_excess": -0.04,
+              "mean_gross": -2.37,
+              "win_pct": 38.2
+            }
+          ]
+        },
+        "trend_days": {
+          "samples": 6590,
+          "rank_ic": -0.055,
+          "monotonicity": -0.43,
+          "deciles": [
+            {
+              "bucket": 1,
+              "n": 659,
+              "mean_excess": -0.66,
+              "mean_gross": 0.43,
+              "win_pct": 45.1
+            },
+            {
+              "bucket": 2,
+              "n": 659,
+              "mean_excess": -1.15,
+              "mean_gross": 0.11,
+              "win_pct": 41.7
+            },
+            {
+              "bucket": 3,
+              "n": 659,
+              "mean_excess": -0.22,
+              "mean_gross": 0.63,
+              "win_pct": 39.3
+            },
+            {
+              "bucket": 4,
+              "n": 659,
+              "mean_excess": 0.11,
+              "mean_gross": 0.31,
+              "win_pct": 40.7
+            },
+            {
+              "bucket": 5,
+              "n": 659,
+              "mean_excess": 0.98,
+              "mean_gross": 1.09,
+              "win_pct": 45.5
+            },
+            {
+              "bucket": 6,
+              "n": 659,
+              "mean_excess": 1.19,
+              "mean_gross": 0.58,
+              "win_pct": 40.4
+            },
+            {
+              "bucket": 7,
+              "n": 659,
+              "mean_excess": 0.05,
+              "mean_gross": -0.63,
+              "win_pct": 37.5
+            },
+            {
+              "bucket": 8,
+              "n": 659,
+              "mean_excess": -1.04,
+              "mean_gross": -2.16,
+              "win_pct": 35.7
+            },
+            {
+              "bucket": 9,
+              "n": 659,
+              "mean_excess": -1.11,
+              "mean_gross": -3.32,
+              "win_pct": 34.6
+            },
+            {
+              "bucket": 10,
+              "n": 659,
+              "mean_excess": -4.13,
+              "mean_gross": -6.1,
+              "win_pct": 31.4
+            }
+          ]
+        },
+        "sector_score": {
+          "samples": 0,
+          "status": "UNKNOWN"
+        }
+      },
+      "ablations": {
+        "drop_structure": {
+          "signals": 4028,
+          "samples": 3612,
+          "mean": -0.79,
+          "median": -2.85,
+          "win_pct": 39.6,
+          "excess_mean": -0.75,
+          "excess_median": -2.95,
+          "excess_t_p": 0.007606,
+          "profit_factor": 0.88,
+          "max_drawdown_points": -6832.47,
+          "max_consecutive_losses": 195,
+          "mfe_mean": 11.25,
+          "mae_mean": -9.61,
+          "mfe_mae_ratio": 1.17,
+          "skew": 1.88,
+          "p10": -17.69,
+          "p90": 18.75,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.48,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "drop_volume": {
+          "signals": 4028,
+          "samples": 3613,
+          "mean": -0.95,
+          "median": -2.82,
+          "win_pct": 40.0,
+          "excess_mean": -0.91,
+          "excess_median": -3.1,
+          "excess_t_p": 0.002012,
+          "profit_factor": 0.86,
+          "max_drawdown_points": -7195.49,
+          "max_consecutive_losses": 195,
+          "mfe_mean": 11.17,
+          "mae_mean": -10.1,
+          "mfe_mae_ratio": 1.11,
+          "skew": 2.08,
+          "p10": -19.19,
+          "p90": 18.39,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.8,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "drop_pullback": {
+          "signals": 4028,
+          "samples": 3609,
+          "mean": -0.69,
+          "median": -2.6,
+          "win_pct": 40.7,
+          "excess_mean": -0.64,
+          "excess_median": -2.89,
+          "excess_t_p": 0.020108,
+          "profit_factor": 0.89,
+          "max_drawdown_points": -6618.75,
+          "max_consecutive_losses": 194,
+          "mfe_mean": 11.24,
+          "mae_mean": -9.54,
+          "mfe_mae_ratio": 1.18,
+          "skew": 1.67,
+          "p10": -18.28,
+          "p90": 18.86,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.33,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "drop_rps": {
+          "signals": 4028,
+          "samples": 3611,
+          "mean": -0.7,
+          "median": -2.73,
+          "win_pct": 40.7,
+          "excess_mean": -0.65,
+          "excess_median": -2.95,
+          "excess_t_p": 0.022471,
+          "profit_factor": 0.89,
+          "max_drawdown_points": -6808.16,
+          "max_consecutive_losses": 196,
+          "mfe_mean": 11.36,
+          "mae_mean": -9.81,
+          "mfe_mae_ratio": 1.16,
+          "skew": 1.86,
+          "p10": -18.54,
+          "p90": 19.06,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.47,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        }
+      },
+      "single_factor": {
+        "rps20": {
+          "signals": 4028,
+          "samples": 3606,
+          "mean": -0.71,
+          "median": -2.47,
+          "win_pct": 40.1,
+          "excess_mean": -0.67,
+          "excess_median": -2.8,
+          "excess_t_p": 0.010732,
+          "profit_factor": 0.88,
+          "max_drawdown_points": -6838.6,
+          "max_consecutive_losses": 194,
+          "mfe_mean": 10.3,
+          "mae_mean": -9.03,
+          "mfe_mae_ratio": 1.14,
+          "skew": 1.75,
+          "p10": -16.83,
+          "p90": 17.87,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.21,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "rps60": {
+          "signals": 4028,
+          "samples": 3606,
+          "mean": -0.71,
+          "median": -2.47,
+          "win_pct": 40.1,
+          "excess_mean": -0.67,
+          "excess_median": -2.8,
+          "excess_t_p": 0.010732,
+          "profit_factor": 0.88,
+          "max_drawdown_points": -6838.6,
+          "max_consecutive_losses": 194,
+          "mfe_mean": 10.3,
+          "mae_mean": -9.03,
+          "mfe_mae_ratio": 1.14,
+          "skew": 1.75,
+          "p10": -16.83,
+          "p90": 17.87,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.21,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "ret20": {
+          "signals": 4028,
+          "samples": 3614,
+          "mean": -0.4,
+          "median": -2.92,
+          "win_pct": 40.3,
+          "excess_mean": -0.36,
+          "excess_median": -3.39,
+          "excess_t_p": 0.245399,
+          "profit_factor": 0.94,
+          "max_drawdown_points": -7039.58,
+          "max_consecutive_losses": 195,
+          "mfe_mean": 11.98,
+          "mae_mean": -10.34,
+          "mfe_mae_ratio": 1.16,
+          "skew": 1.91,
+          "p10": -19.48,
+          "p90": 21.26,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.37,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "slope20": {
+          "signals": 4028,
+          "samples": 3619,
+          "mean": -0.11,
+          "median": -2.59,
+          "win_pct": 41.7,
+          "excess_mean": -0.06,
+          "excess_median": -3.02,
+          "excess_t_p": 0.843102,
+          "profit_factor": 0.98,
+          "max_drawdown_points": -7027.21,
+          "max_consecutive_losses": 196,
+          "mfe_mean": 12.17,
+          "mae_mean": -10.23,
+          "mfe_mae_ratio": 1.19,
+          "skew": 1.8,
+          "p10": -19.59,
+          "p90": 21.87,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.05,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "amount_ratio20": {
+          "signals": 4028,
+          "samples": 3609,
+          "mean": -0.78,
+          "median": -2.86,
+          "win_pct": 38.6,
+          "excess_mean": -0.74,
+          "excess_median": -3.27,
+          "excess_t_p": 0.010056,
+          "profit_factor": 0.88,
+          "max_drawdown_points": -6833.53,
+          "max_consecutive_losses": 194,
+          "mfe_mean": 11.11,
+          "mae_mean": -9.36,
+          "mfe_mae_ratio": 1.19,
+          "skew": 2.21,
+          "p10": -17.21,
+          "p90": 18.28,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.53,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        },
+        "trend_days": {
+          "signals": 4028,
+          "samples": 3620,
+          "mean": -1.09,
+          "median": -2.79,
+          "win_pct": 40.1,
+          "excess_mean": -1.03,
+          "excess_median": -3.37,
+          "excess_t_p": 0.000332,
+          "profit_factor": 0.84,
+          "max_drawdown_points": -7728.91,
+          "max_consecutive_losses": 192,
+          "mfe_mean": 10.8,
+          "mae_mean": -9.94,
+          "mfe_mae_ratio": 1.09,
+          "skew": 1.95,
+          "p10": -19.78,
+          "p90": 18.56,
+          "tail_top5_share": null,
+          "mean_excluding_top5pct": -3.86,
+          "top1_contribution": null,
+          "top5_contribution": null,
+          "top10_contribution": null
+        }
+      },
+      "worst_vs_best": {
+        "quartile_size": 1647,
+        "features": [
+          {
+            "factor": "trend_days",
+            "bottom_mean": 35.192,
+            "top_mean": 30.7,
+            "standardized_diff": -0.39
+          },
+          {
+            "factor": "pullback_atr",
+            "bottom_mean": 1.792,
+            "top_mean": 2.053,
+            "standardized_diff": 0.37
+          },
+          {
+            "factor": "convergence",
+            "bottom_mean": 20.478,
+            "top_mean": 17.9,
+            "standardized_diff": -0.29
+          },
+          {
+            "factor": "ret60",
+            "bottom_mean": 48.736,
+            "top_mean": 39.018,
+            "standardized_diff": -0.27
+          },
+          {
+            "factor": "distance_ma20",
+            "bottom_mean": 7.531,
+            "top_mean": 6.715,
+            "standardized_diff": -0.21
+          },
+          {
+            "factor": "ret20",
+            "bottom_mean": 20.919,
+            "top_mean": 19.131,
+            "standardized_diff": -0.17
+          },
+          {
+            "factor": "slope20",
+            "bottom_mean": 5.075,
+            "top_mean": 4.682,
+            "standardized_diff": -0.17
+          },
+          {
+            "factor": "amount_ratio20",
+            "bottom_mean": 1.116,
+            "top_mean": 1.101,
+            "standardized_diff": -0.03
+          },
+          {
+            "factor": "pullback_depth",
+            "bottom_mean": 9.418,
+            "top_mean": 9.409,
+            "standardized_diff": -0.0
+          }
+        ],
+        "bottom_mean_gross": -17.48,
+        "top_mean_gross": 19.31
+      }
+    }
+  },
+  "multiple_testing": {
+    "variants_tested": 20,
+    "bonferroni_alpha": 0.0025,
+    "note": "所有变体的 20 日超额 t 检验 p 值需低于该阈值才算显著；本报告不据此调参"
+  }
+}
