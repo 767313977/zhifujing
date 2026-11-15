@@ -33,7 +33,7 @@
 | 4 | RPS v2 版本化与 sandbox 重算 | `4fb3c87` |
 | 5 | breadth 离线物化 | `5f0c1a9` |
 | 6 | 独立验证与回归（缓存身份、随机化账本） | `6df586a` |
-| 7 | 重启闸门复检与本报告 | 见第 9 节 |
+| 7 | 重启闸门复检与本报告 | `26e560b` |
 
 ---
 
@@ -176,6 +176,6 @@
 | `4fb3c87` | Batch 4 RPS v2 |
 | `5f0c1a9` | Batch 5 breadth 物化 |
 | `6df586a` | Batch 6 独立验证与回归 |
-| 待填 | Batch 7 闸门复检与总验收 |
+| `26e560b` | Batch 7 闸门复检与总验收 |
 
 分支：`feat/trend-engine-m63-core-data-fix`（从 `abb70f8` 切出）。
