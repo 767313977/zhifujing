@@ -1,0 +1,9 @@
+2026-11-15 13:22:35,135 INFO app.db: Schema 检查通过（FUPAN_SCHEMA_MODE=verify，未执行任何 DDL）
+2026-11-15 13:22:35,135 INFO app.main: 数据库就绪: C:\Users\76731\AppData\Local\Temp\s6_8_staging_6yagjtwr\staging.db（schema=verify）
+2026-11-15 13:22:35,135 WARNING app.main: 未配置 IFIND_AUTH_TOKEN，iFinD 相关采集将失败
+2026-11-15 13:22:35,135 INFO app.main: iFinD 配额配置：token 已配置=否，月度上限=5452，周期起点日=17，本周期=2026-10-17 ~ 2026-11-16
+2026-11-15 13:22:35,136 WARNING app.external_guard: 已安装离线网络闸门 wrapper（EXTERNAL_DATA_FETCH_ENABLED）：在线按允许名单放行，离线仅严格回环放行（含 DNS / TLS / sendfile）
+2026-11-15 13:22:35,136 INFO app.main: 启动门禁：EXTERNAL_DATA_FETCH_ENABLED=False（offline_locked=True）· SCHEDULER_ENABLED=False · WARMUP_PATTERN_CACHE=False · FUPAN_SCHEMA_MODE=verify
+2026-11-15 13:22:35,136 WARNING app.main: 外部数据现取已被禁用（EXTERNAL_DATA_FETCH_ENABLED=false）
+2026-11-15 13:22:35,137 INFO app.main: 出站策略：loaded=True version=1 entries=17 loopback_any_port=True error=None
+2026-11-15 13:22:35,137 INFO app.jobs.scheduler: 定时采集已关闭（scheduler_enabled=false）

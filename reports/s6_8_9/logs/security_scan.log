@@ -1,0 +1,8 @@
+﻿.venv\Scripts\python.exe : No known vulnerabilities found
+所在位置 行:15 字符: 4820
++ ... M = 'dumb'; .venv\Scripts\python.exe -m pip_audit -r backend\requirem ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (No known vulnerabilities found:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+found 0 vulnerabilities

@@ -1,0 +1,68 @@
+﻿
+> frontend@0.0.0 build
+> tsc -b && vite build
+
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
+transforming...
+✓ 721 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                   0.52 kB │ gzip:   0.34 kB
+dist/assets/index-g0A96LyR.css                   43.50 kB │ gzip:   8.60 kB
+dist/assets/bondCode-DECVrQek-r2.js               0.19 kB │ gzip:   0.15 kB
+dist/assets/phase-BRFDcSGx-r2.js                  0.23 kB │ gzip:   0.15 kB
+dist/assets/clipboard-DYsl6j7j-r2.js              0.26 kB │ gzip:   0.19 kB
+dist/assets/ContactQr-DHvJoex7-r2.js              0.34 kB │ gzip:   0.31 kB
+dist/assets/Footer-C6SiTrzq-r2.js                 0.36 kB │ gzip:   0.30 kB
+dist/assets/StockLink-DhsQvY3J-r2.js              0.40 kB │ gzip:   0.31 kB
+dist/assets/Panel-CWxen0Bd-r2.js                  0.49 kB │ gzip:   0.30 kB
+dist/assets/Segmented-BZidGM9t-r2.js              0.49 kB │ gzip:   0.35 kB
+dist/assets/Alert-BGhbcx6K-r2.js                  0.56 kB │ gzip:   0.38 kB
+dist/assets/QuickResearch-B44fHbEi-r2.js          0.62 kB │ gzip:   0.48 kB
+dist/assets/LoadState-DN9NJLFZ-r2.js              0.68 kB │ gzip:   0.40 kB
+dist/assets/NotFound-CCuQlG_Q-r2.js               0.70 kB │ gzip:   0.50 kB
+dist/assets/riskBadges-CLhwf2Fu-r2.js             0.88 kB │ gzip:   0.56 kB
+dist/assets/ConclusionBar-CHFK8wVe-r2.js          1.10 kB │ gzip:   0.44 kB
+dist/assets/chart-CgaoE3j0-r2.js                  1.13 kB │ gzip:   0.67 kB
+dist/assets/sort-CdDNeRpx-r2.js                   1.35 kB │ gzip:   0.75 kB
+dist/assets/format-BDjUdh0R-r2.js                 1.50 kB │ gzip:   0.71 kB
+dist/assets/PhasePanel-C0Wj0TpO-r2.js             2.07 kB │ gzip:   0.75 kB
+dist/assets/klinePeriod-DnF1puDJ-r2.js            2.24 kB │ gzip:   1.35 kB
+dist/assets/FearGreedBrief-C5QD4DvI-r2.js         2.58 kB │ gzip:   1.33 kB
+dist/assets/Account-oeywQeyQ-r2.js                3.55 kB │ gzip:   1.67 kB
+dist/assets/klineBars-CVVDfTxh-r2.js              4.10 kB │ gzip:   1.95 kB
+dist/assets/RiskGuard-BwISLLgZ-r2.js              4.11 kB │ gzip:   1.52 kB
+dist/assets/LimitTable-B4J8DmYa-r2.js             5.29 kB │ gzip:   1.87 kB
+dist/assets/Login-CEvCOD1d-r2.js                  5.78 kB │ gzip:   2.61 kB
+dist/assets/Valuation-Cg--HniZ-r2.js              6.67 kB │ gzip:   2.85 kB
+dist/assets/Premarket-DDPjdshT-r2.js              8.58 kB │ gzip:   2.59 kB
+dist/assets/Layout-DgfMq7vI-r2.js                 8.92 kB │ gzip:   3.24 kB
+dist/assets/Watchlist-CcVg9D0z-r2.js              9.07 kB │ gzip:   3.42 kB
+dist/assets/Positions-DEwdsmi0-r2.js              9.25 kB │ gzip:   3.15 kB
+dist/assets/StockAnalysis-DqVoRyxr-r2.js          9.61 kB │ gzip:   3.61 kB
+dist/assets/DataQuality-DuV1_x0J-r2.js            9.96 kB │ gzip:   3.48 kB
+dist/assets/CbDetail-CZ92k75j-r2.js              10.15 kB │ gzip:   3.97 kB
+dist/assets/Wudao-BYi0dvxZ-r2.js                 11.18 kB │ gzip:   4.77 kB
+dist/assets/Anomaly-67dxmfbQ-r2.js               12.10 kB │ gzip:   3.84 kB
+dist/assets/PatternTrack-KDBHmqDO-r2.js          13.32 kB │ gzip:   4.57 kB
+dist/assets/Research--YLsiA11-r2.js              14.10 kB │ gzip:   4.31 kB
+dist/assets/PostMarketWorkbench-DbQsknFm-r2.js   14.29 kB │ gzip:   4.40 kB
+dist/assets/Convertible-BIS5WmLN-r2.js           14.64 kB │ gzip:   4.87 kB
+dist/assets/Etf-DAu8V2K_-r2.js                   16.00 kB │ gzip:   5.18 kB
+dist/assets/StockResearchDrawer-jmaJTVLo-r2.js   20.52 kB │ gzip:   6.50 kB
+dist/assets/Plans-Dhhp9Anx-r2.js                 22.10 kB │ gzip:   6.46 kB
+dist/assets/Funds-Chsa-5zM-r2.js                 27.65 kB │ gzip:   6.90 kB
+dist/assets/LimitReview-B-oMO9C3-r2.js           29.63 kB │ gzip:   8.85 kB
+dist/assets/StockDetail-DYeWBw1m-r2.js           29.84 kB │ gzip:   9.44 kB
+dist/assets/Settings-BrkmynSk-r2.js              29.91 kB │ gzip:   8.80 kB
+dist/assets/Auction-COyBPmcw-r2.js               30.96 kB │ gzip:  10.16 kB
+dist/assets/Pools-D6nqxqqJ-r2.js                 32.90 kB │ gzip:   8.00 kB
+dist/assets/Journal-v3Mn8fJT-r2.js               33.10 kB │ gzip:   9.19 kB
+dist/assets/Patterns-C39gujgc-r2.js              34.07 kB │ gzip:  12.40 kB
+dist/assets/Dashboard-DJ7N3Q6G-r2.js             43.06 kB │ gzip:  12.71 kB
+dist/assets/Sectors-B-zJLHaW-r2.js               61.72 kB │ gzip:  16.83 kB
+dist/assets/Sentiment-DKsXoXpE-r2.js             78.65 kB │ gzip:  18.23 kB
+dist/assets/index-icdFEUK--r2.js                298.46 kB │ gzip:  94.29 kB
+dist/assets/EChart-Dirwg_gn-r2.js               640.26 kB │ gzip: 213.62 kB
+
+[32m✓ built in 470ms[39m

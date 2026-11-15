@@ -1,0 +1,30 @@
+# S6.8/S6.9 敏感信息扫描
+
+- 时间：2026-11-15（Asia/Shanghai）
+- 范围：`git diff a6e9dbd..HEAD` + `reports/s6_8_9/` 全部证据
+
+## 扫描模式
+
+```text
+staging-password / password=
+Bearer <token> / Authorization:
+BEGIN RSA/EC PRIVATE KEY
+IFIND_AUTH_TOKEN=
+Set-Cookie
+password_hash
+HAR 原文 / Cookie 原文
+```
+
+## 结果
+
+| 范围 | 命中 |
+| --- | --- |
+| Git diff | 0 |
+| reports/s6_8_9/ | 0 |
+
+## 说明
+
+- 浏览器 E2E 只落盘状态码、DOM 读数、截图（页面内容）；
+- 未记录 Cookie / Token / 密码 / 私钥；
+- 测试账号口令只在隔离环境与脚本默认值中使用，不写入报告；
+- 未提交 HAR 原文或个人敏感信息。

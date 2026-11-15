@@ -1,0 +1,93 @@
+﻿
+> frontend@0.0.0 test
+> vitest run
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.1.0 [39m[90mC:/Users/76731/Documents/trae_projects/fupan/frontend[39m
+
+ [32m✓[39m src/pages/__tests__/StockResearchEvidence.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 314[2mms[22m[39m
+ [32m✓[39m src/pages/__tests__/ThemeIntersection.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 504[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/PromotionFunnel.test.tsx [2m([22m[2m15 tests[22m[2m)[22m[33m 510[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/authContext.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 259[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/SectorResonance.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 479[2mms[22m[39m
+ [32m✓[39m src/pages/__tests__/LimitReviewFunnel.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 330[2mms[22m[39m
+ [32m✓[39m src/pages/__tests__/StockResearchDrawer.test.tsx [2m([22m[2m16 tests[22m[2m)[22m[33m 656[2mms[22m[39m
+ [32m✓[39m src/pages/__tests__/DataQuality.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 453[2mms[22m[39m
+ [32m✓[39m src/pages/__tests__/SentimentNextDay.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 614[2mms[22m[39m
+ [32m✓[39m src/pages/__tests__/PostMarketWorkbench.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 802[2mms[22m[39m
+node.exe : [90mstderr[2m | src/pages/__tests__/StockResearch.test.tsx[2m > [22m[2mmulti-window sync broadcasts onl
+y minimal payloads and never loops
+所在位置 行:1 字符: 1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([90mstderr[2m...and never loops:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[22m[39mAn update to StockResearchProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/w
+rap-tests-with-act
+An update to MemoryRouter inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/w
+rap-tests-with-act
+
+[90mstderr[2m | src/pages/__tests__/StockResearch.test.tsx[2m > [22m[2mmulti-window sync broadcasts only minimal p
+ayloads and never loops
+[22m[39mAn update to StockResearchProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/w
+rap-tests-with-act
+An update to MemoryRouter inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/w
+rap-tests-with-act
+
+ [32m✓[39m src/pages/__tests__/StockResearch.test.tsx [2m([22m[2m19 tests[22m[2m)[22m[33m 674[2mms[22m[39m
+ [32m✓[39m src/pages/__tests__/AuctionAnomaly.test.tsx [2m([22m[2m13 tests[22m[2m)[22m[33m 959[2mms[22m[39m
+ [32m✓[39m src/pages/__tests__/Research.test.tsx [2m([22m[2m22 tests[22m[2m)[22m[33m 1182[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/chunkReload.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/loginTransition.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 200[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/authProvider.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 141[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/ErrorBoundary.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 74[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/routeGuards.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 50[2mms[22m[39m
+ [32m✓[39m src/pages/__tests__/Login.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 141[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/AdvanceDeclinePanel.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 44[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m20 passed[39m[22m[90m (20)[39m
+[2m      Tests [22m [1m[32m168 passed[39m[22m[90m (168)[39m
+[2m   Start at [22m 13:25:44
+[2m   Duration [22m 5.33s[2m (environment 59%, tests 18%, setup 17%, import 4%, transform 2%)[22m
+
+[2mEnvironment [22m [33mjsdom was created 20 times[39m[2m · 27.77s total, 59% of tracked time[22m
+[2m            [22m [2mcreate it once per worker with [22m[33mpool: 'vmThreads'[39m[2m (keeps per-file isolation) or [22m[33misolate: false[39m[2m (shares it across files)[22m
+[2m            [22m [2mlearn more: https://vitest.dev/guide/improving-performance#test-environments[22m
+

@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-11-15T13:20:00+08:00",
+  "command": "node scripts/s6_8_cdp_e2e.mjs --base http://127.0.0.1:8021 --dev-base http://localhost:8030 --dist frontend/dist --out reports/s6_8_9/browser",
+  "statuses": {
+    "e13": true,
+    "e15": true,
+    "e16": true,
+    "viewports": true
+  },
+  "files": [
+    "e13_context_isolation.json",
+    "e15_chunk_404.json",
+    "e16_render_error.json",
+    "viewports.json",
+    "summary.json",
+    "build_manifest.json",
+    "screenshots/"
+  ],
+  "framework": "Node 24 WebSocket + Chrome DevTools Protocol (真实 Chrome)",
+  "note": "未引入 Playwright/Cypress/Selenium；不修改 package.json / lockfile。"
+}
