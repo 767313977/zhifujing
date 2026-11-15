@@ -31,3 +31,12 @@
 - ISO SHA256 本地重算一致；VM Gen2 / 4 vCPU / 6 GB / 64 GB Dynamic / Internal `s6-egress` / NAT 172.31.240.0/24
 - 宿主防火墙规则 769→769、无 `s6*` 规则；WLAN IP 未变
 - 当前暂停，等待 vmconnect 手动安装 Guest；未执行 bootstrap/N01–N24
+
+## 2026-11-15 追加：平衡方案（C）收尾
+
+- `a3ff686` fix(security): block private and metadata addresses in egress guard
+- `8a0fb81` test(s6.9): add backup restore drill, resource monitor and soak timeline
+- `6a45ce7` test(s6.8/s6.9): record balanced gates, short smoke and backup restore
+- 推送：`git push` 成功，`origin/work/s6-8-s6-9-gate-closure` = `6a45ce79e96adac6ff294aa5b5e89b9892bf3d2b`
+- 状态：S6.8 PARTIAL / S6.9 PARTIAL（短 Smoke PASS；24h NOT_RUN）；OS Egress DEFERRED
+- VM 仍 Running、Guest 未安装；未删除/未强停任何 Hyper-V 资源
