@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-11-15T12:30:00+08:00",
+  "build": "pre-fix (commit 9838a06, assets index-icdFEUK--r2.js)",
+  "environment": "local isolated split staging 127.0.0.1:8021",
+  "scenario": "anonymous /login -> login s7staging -> 8s observation",
+  "events": [
+    {"t": 0, "state": "ANONYMOUS", "detail": "GET /api/auth/me 401（silent401），Login 表单渲染"},
+    {"t": 1, "state": "LOGIN_SUBMITTING", "detail": "POST /api/auth/login 200"},
+    {"t": 2, "state": "AUTH_RESPONSE_RECEIVED", "detail": "GET /api/auth/me 200；GET /api/watchlist 200"},
+    {"t": 3, "state": "SESSION_ESTABLISHED", "detail": "setUser；localStorage fupan.auth.event={type:login}"},
+    {"t": 4, "state": "ROUTE_RESOLVING", "detail": "history.replaceState('/') ×2（Login.navigate + Login.<Navigate>）"},
+    {"t": 5, "state": "ROUTE_RESOLVING_CONFLICT", "detail": "StockResearchProvider 账号变化 effect -> writeUrl(null) -> setSearchParams -> history.pushState('/login')"},
+    {"t": 6, "state": "ROUTE_BOUNCED", "detail": "URL=/login，history.state.usr=null（from 丢失）"},
+    {"t": 7, "state": "BLANK", "detail": "Login 渲染 <Navigate>（DOM=null）；effect 依赖未变不重跑；#root.childElementCount=0，body.innerText.length=0"},
+    {"t": 8, "state": "BLANK", "detail": "8s 内无异常、无 console.error、无 pageerror、无失败请求"},
+    {"t": 9, "state": "RECOVERY_BY_RELOAD", "detail": "手动刷新 '/'：authMe 200 -> 仪表盘可见；仅为验证性恢复，不是自动恢复"}
+  ],
+  "history_calls": [
+    {"fn": "replaceState", "url": "/", "caller": "Login.navigate(from,{replace:true})"},
+    {"fn": "replaceState", "url": "/", "caller": "Login <Navigate to={from} replace />"},
+    {"fn": "pushState", "url": "/login", "caller": "StockResearchProvider writeUrl(null) -> setSearchParamsRef.current"}
+  ],
+  "page": {
+    "pathname": "/login",
+    "root_child_count": 0,
+    "root_inner_html_length": 0,
+    "body_inner_text_length": 0,
+    "visible_nav": 0,
+    "console_errors": [],
+    "pageerrors": [],
+    "failed_requests": []
+  },
+  "reproduction": {
+    "status": "REPRODUCED",
+    "rounds": 2,
+    "prior_evidence_rounds": 3,
+    "total": 5
+  }
+}
