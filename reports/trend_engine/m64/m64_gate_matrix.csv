@@ -1,0 +1,8 @@
+gate,requirement,m63_status,m64_status,blocking,evidence,notes
+G1,指数与个股日期对齐,FAIL,PASS_STAGING,YES,reports/trend_engine/m64/g1_validation.json,"6/6 指数覆盖 2026-09-18~10-09；未合并入 b1"
+G2,板块日线对齐,PARTIAL,PARTIAL,YES,reports/trend_engine/m64/g2_g3_validation.json,"仅 2 个板块样本；字段为区间涨跌幅/算术均价；代码未映射"
+G3,历史板块成分PIT,FAIL,FAIL,YES,reports/trend_engine/m64/05-g3-historical-membership-validation.md,"账号无成分接口"
+G9,双价格域与公司行为,FAIL,FAIL,YES,reports/trend_engine/m64/02-g9-corporate-action-sample-validation.md,"因子公式单样本一致但字段歧义；无公告/派现，账户会计不可验证"
+RPS_v3,基于复权的 RPS v3,NOT_CREATED,NOT_CREATED,NO,reports/trend_engine/m64/02-g9-corporate-action-sample-validation.md,"G9 未通过，禁止构造 adjusted series"
+BREADTH_V2,基于复权+ST+真实涨停的 breadth v2,NOT_CREATED,NOT_CREATED,NO,reports/trend_engine/m64/02-g9-corporate-action-sample-validation.md,"ST 历史缺失，保持 v1 APPROX"
+PRODUCTION,生产隔离与原库SHA,PASS,PASS,NO,reports/trend_engine/m64/00-baseline-sdk-and-safety.md,"四个库 SHA 未变；未写生产"

@@ -1,0 +1,27 @@
+tool,field,meaning,type,observed_values,quality,notes
+get_stock_performance,日期,trade date,YYYYMMDD,20250718,etl_normalized,"含周末空行"
+get_stock_performance,证券代码,security code,with suffix,600519.SH,ok,
+get_stock_performance,收盘价,close,float,"1437(未复权) / 10539.4583(复权)",ambiguous,"前/后复权使用同一列名，无方向字段"
+get_stock_performance,复权因子,cumulative adjustment factor,float,"8.676 → 8.8814 @2026-06-26",partial,"除权日变化；官方字段定义未取得"
+get_stock_performance,开盘价（单位：元）,open,float,1420,ok,"非交易日为空"
+get_stock_performance,最高价（单位：元）,high,float,1437.81,ok,
+get_stock_performance,最低价（单位：元）,low,float,1416.38,ok,
+get_stock_performance,成交量,volume,string with 万,418.2341万,ok,"需换算"
+get_stock_performance,成交额（单位：元）,amount,string with 亿,59.8495亿,ok,"需换算"
+get_stock_performance,涨跌幅（单位：%）,pct_chg,float,1.458,ok,"建议用 raw close 复核"
+get_stock_events,股权登记日,record date,YYYYMMDD,20260625,ok,
+get_stock_events,除权除息日,ex date,YYYYMMDD,20260626,ok,
+get_stock_events,派息日,pay date,YYYYMMDD,20260626,ok,
+get_stock_events,分红方案进度,plan status,text,实施方案,ok,
+get_stock_events,每股红股,bonus shares,empty,,missing,"无法验证"
+get_stock_events,每股转增股本,capitalization,empty,,missing,"无法验证"
+get_stock_events,向老股东配售股权登记日,rights record date,empty,,missing,"无法验证配股"
+index_data,开盘价（单位：元）,open,float,3804.0896,ok,
+index_data,最高价（单位：元）,high,float,4258.8631,ok,
+index_data,最低价（单位：元）,low,float,3754.1353,ok,
+index_data,收盘价（单位：元）,close,float,3813.7913,ok,
+index_data,涨跌幅（单位：%）,pct_chg,float,0.0495,ok,
+index_data,成交金额（单位：元）,amount,string with 亿,8885.612亿,ok,"需换算"
+sector_data,日期,date,YYYYMMDD,20261009,ok,
+sector_data,成份区间涨跌幅(流通市值加权平均)（单位：%）,interval return,float,-9.2465,partial,"区间值，不是单日涨跌幅"
+sector_data,收盘价(算术平均)（单位：元）,equal-weight close,float,113.1698,partial,"算术平均，不是板块指数点位"

@@ -1,0 +1,11 @@
+{
+  "batch_id": "batch_20261115T152701Z",
+  "sdk": "NOT_INSTALLED",
+  "probe_calls": 5,
+  "sample_calls": 12,
+  "cells_estimated": 1970,
+  "budget_cells": 50000,
+  "budget_used_pct": 3.94,
+  "usage_stats": "USAGE_UNVERIFIED",
+  "note": "无 SDK，未能调用官方用量统计；以本地调用次数与单元格估算为准"
+}

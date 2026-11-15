@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-11-15T15:29:37.637556+00:00",
+  "batch_id": "batch_20261115T152701Z",
+  "staging_db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\m64_staging\\batch_20261115T152701Z\\m64_ifind_staging.db",
+  "staging_sha256": "AE998D2C43B48F1BA27615349DA4651CB98063E72584F9A2BE306CFCA6A4465D",
+  "source_db_sha256_before": "A93BC080EB9E366D08025C0A247E9AF525674A0294EC4D6012B7DBFD8941C56B",
+  "source_db_sha256_after": "A93BC080EB9E366D08025C0A247E9AF525674A0294EC4D6012B7DBFD8941C56B",
+  "source_db_unchanged": true,
+  "counts": {
+    "index_daily": 132,
+    "sector_daily_raw": 46,
+    "price_factor": 0,
+    "corporate_action": 3,
+    "ingestion_error": 4
+  },
+  "calls": 17,
+  "cells": 1970,
+  "budget_cells": 50000,
+  "budget_used_pct": 3.94,
+  "status": "PARTIAL"
+}

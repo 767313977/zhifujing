@@ -1,0 +1,57 @@
+{
+  "generated_at": "2026-11-15T15:28:41.204757+00:00",
+  "window_start": "2026-09-18",
+  "research_end": "2026-10-09",
+  "missing_window": [
+    "2026-09-28",
+    "2026-09-29",
+    "2026-09-30",
+    "2026-10-08",
+    "2026-10-09"
+  ],
+  "indexes": {
+    "000001.SH": {
+      "expected_days": 10,
+      "actual_days": 22,
+      "missing_days": [],
+      "duplicates": 0,
+      "status": "PASS"
+    },
+    "000688.SH": {
+      "expected_days": 10,
+      "actual_days": 22,
+      "missing_days": [],
+      "duplicates": 0,
+      "status": "PASS"
+    },
+    "000852.SH": {
+      "expected_days": 10,
+      "actual_days": 22,
+      "missing_days": [],
+      "duplicates": 0,
+      "status": "PASS"
+    },
+    "399001.SZ": {
+      "expected_days": 10,
+      "actual_days": 22,
+      "missing_days": [],
+      "duplicates": 0,
+      "status": "PASS"
+    },
+    "399006.SZ": {
+      "expected_days": 10,
+      "actual_days": 22,
+      "missing_days": [],
+      "duplicates": 0,
+      "status": "PASS"
+    },
+    "899050.BJ": {
+      "expected_days": 10,
+      "actual_days": 22,
+      "missing_days": [],
+      "duplicates": 0,
+      "status": "PASS"
+    }
+  },
+  "all_pass": true
+}

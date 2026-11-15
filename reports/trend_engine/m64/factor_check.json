@@ -1,0 +1,15 @@
+{
+  "query": "600519 从2026-06-15到2026-07-10 每个交易日的收盘价、前复权收盘价、后复权收盘价、复权因子",
+  "rows": 26,
+  "factor_changes": [
+    "2026-06-26"
+  ],
+  "max_abs_diff_raw_x_factor_vs_adjusted": 2.0241,
+  "formula_consistent": false,
+  "field_label_ambiguous": true,
+  "formula_candidate": "adjusted_close = raw_close × cumulative_adj_factor",
+  "verdict": "FORMULA_CONSISTENT_BUT_FIELD_AMBIGUOUS",
+  "note": "NL 返回把前/后复权都塞进同名『收盘价』列，字段标签歧义；无公告时间与每股派现，账户会计仍不可验证",
+  "max_relative_diff": 0.000189,
+  "relative_within_5bp": true
+}

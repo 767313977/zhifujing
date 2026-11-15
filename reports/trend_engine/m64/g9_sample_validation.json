@@ -1,0 +1,55 @@
+{
+  "generated_at": "2026-11-15T15:28:41.204680+00:00",
+  "factor_query_rows": 60,
+  "factor_columns": [
+    "复权因子",
+    "收盘价",
+    "日期",
+    "证券代码",
+    "证券简称"
+  ],
+  "factor_available": true,
+  "events": {
+    "600519": {
+      "rows": 1,
+      "columns": [
+        "分红方案进度",
+        "派息日",
+        "股权登记日",
+        "证券代码",
+        "证券简称",
+        "除权除息日"
+      ]
+    },
+    "002594": {
+      "rows": 2,
+      "columns": [
+        "实收资本(或股本)（单位：元）",
+        "日期",
+        "每股红股（单位：股）",
+        "每股转增股本（单位：股）",
+        "股权登记日",
+        "证券代码",
+        "证券简称",
+        "除权除息日"
+      ]
+    },
+    "300750": {
+      "rows": 1,
+      "columns": [
+        "向老股东配售股权登记日",
+        "股权登记日",
+        "证券代码",
+        "证券简称",
+        "除权除息日"
+      ]
+    }
+  },
+  "announcement_time_available": false,
+  "cash_per_share_available": true,
+  "verdict": "FAIL",
+  "reason": "因子列存在但字段方向/累计口径无官方说明且与前/后复权同名列冲突；无公告时间、无每股派现/送转，账户会计与 PIT 均不可验证",
+  "price_adjustment_verdict": "FORMULA_CONSISTENT_BUT_AMBIGUOUS",
+  "account_ledger_verdict": "FAIL",
+  "pit_verdict": "FAIL"
+}
