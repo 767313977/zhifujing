@@ -1,0 +1,180 @@
+﻿== 时间 ==
+2026-11-15T16:43:35+08:00
+
+== 内存 ==
+               total        used        free      shared  buff/cache   available
+Mem:            3723         851        1191           2        1973        2872
+Swap:           1987          45        1942
+
+== CPU ==
+2
+
+== cgroup / systemd ==
+MainPID=3300601
+MemoryCurrent=336343040
+TasksCurrent=9
+MemoryMax=infinity
+Restart=always
+ExecStart={ path=/opt/fupan/.venv/bin/python ; argv[]=/opt/fupan/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 ; ignore_errors=no ; start_time=[Sun 2026-11-15 06:08:42 CST] ; stop_time=[n/a] ; pid=3300601 ; code=(null) ; status=0/0 }
+FragmentPath=/etc/systemd/system/fupan.service
+
+== 服务配置（会包含环境变量，回传前请打码）==
+# /etc/systemd/system/fupan.service
+[Unit]
+Description=A股复盘站点（采集 + 飞书推送）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fupan
+Group=fupan
+WorkingDirectory=/opt/fupan/backend
+Environment=PYTHONUNBUFFERED=1
+# 时区也钉在**服务进程**上（2026-10-10 加）：代码判「今天是不是交易日」「过没过采集
+# 时刻」用的是进程本地时间（date.today / datetime.now）。上面那段 timedatectl 只在
+# 系统带 systemd-timedated 时才跑（脚本里套了 command -v）—— 万一哪台机器没有它，
+# 启动补采会把北京时间当 UTC 判、差 8 小时直接跳过。这里钉死之后，无论系统时钟怎么配，
+# date.today() 都是北京日期。
+Environment=TZ=Asia/Shanghai
+# 云端**永远**是采集机。2026-10-22 起部署包不再带 .env（服务器那份手工维护），
+# 但这条仍保留：systemd 环境变量优先级高于 .env，万一手工拷配置时写成 false，
+# 也不会把云端的定时采集静悄悄关掉。
+Environment=SCHEDULER_ENABLED=true
+# iFinD 的 TLS 证书校验（2026-10-12 加）。**放这里比只写 .env 稳**：.env 是手工
+# 维护的，换机器 / 重装容易漏；systemd 里钉死之后不会再漂。路径用系统 CA 包：
+# iFinD 那张证书是 DigiCert 签发的公共证书，用系统信任库即可校验。
+Environment=IFIND_CA_FILE=/etc/ssl/certs/ca-certificates.crt
+# 生产不开放开发源的 CORS（2026-10-23 体检后加）：main.py 只在
+# settings.enable_dev_cors 为真时才把 http://localhost:5173 加进 allow_origins。
+# 放 systemd 而不是 .env：.env 是手工维护的、换机器容易漏，而这是**生产语义**。
+Environment=ENABLE_DEV_CORS=false
+ExecStart=/opt/fupan/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=10
+# 采集是长任务，停服务时给 APScheduler 收尾的时间
+TimeoutStopSec=30
+
+# 只绑 127.0.0.1：这台机器不需要对外暴露任何端口，采集与推送全是出站请求。
+# 以后要在外网看网页，另配反向代理（deploy/setup_nginx.sh 那套），**不要**把这行改成 0.0.0.0。
+# 注意 .env 里的 HOST=0.0.0.0 是给本机用的（让同一 WiFi 下的手机能打开）——
+# 这条命令显式指定了 --host，所以不受它影响；但**也别把它改成 python -m app.main**，
+# 那样会去读 .env，等于把这个服务直接挂到公网上 —— 后端 2026-09-28 起有登录体系，
+# 但公网 IP + 明文 http 那条路会让密码明文过网（api/auth.py 的 _require_secure_transport
+# 会直接拒登录，页面开着也进不去）。
+#
+# （写注释时注意：这个 heredoc 故意没加引号，变量要展开；所以注释里**不能出现反引号**，
+#   反引号在 bash 里是命令替换，会被真的执行一次 —— 踩过。）
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+# ---- 以下加固 2026-10-23 体检后加（当时 systemd-analyze exposure = 8.5）----
+# LimitNOFILE：默认软上限只有 1024，采集并发 + 全市场日线查询容易碰到 fd 上限。
+LimitNOFILE=65535
+UMask=0027
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
+
+# /etc/systemd/system/fupan.service.d/hardening.conf
+# 2026-10-23 体检后加固（Lead 手工添加；install.sh 里有同一份模板）
+[Service]
+LimitNOFILE=65535
+UMask=0027
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# 2026-10-23：生产不开放开发源 CORS（main.py 的 settings.enable_dev_cors）
+Environment=ENABLE_DEV_CORS=false
+Environment=WARMUP_PATTERN_CACHE=true
+
+== 进程 ==
+    PID    PPID   RSS     ELAPSED CMD
+3300601       1 301412   10:34:52 /opt/fupan/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+ 168377       1 72080  9-21:01:57 /usr/local/qcloud/YunJing/YDEyes/YDService
+3300648       1 45624    10:34:52 /usr/libexec/fwupd/fwupd
+3300621       1 43980    10:34:52 /usr/bin/python3 /usr/bin/fail2ban-server -xf start
+3300564       1 32276    10:34:53 /usr/lib/systemd/systemd-journald
+3300561       1 27168    10:34:53 /sbin/multipathd -d -s
+   5413    5405 17376 22-17:04:30 barad_agent
+      1       0 13628 22-17:05:17 /usr/lib/systemd/systemd --system --deserialize=76 showopts
+3300650       1 13576    10:34:52 /usr/libexec/udisks2/udisksd
+3300683       1 13216    10:34:52 /usr/sbin/ModemManager
+3300628       1 12996    10:34:52 /usr/lib/systemd/systemd-resolved
+   4558       1 12040 22-17:05:07 /usr/bin/python3 /usr/bin/networkd-dispatcher --run-startup-triggers
+   5412    5405 11540 22-17:04:30 barad_agent
+3449861       1 11420       00:06 /usr/lib/systemd/systemd --user
+3449947 3300617 10648       00:00 sshd: ubuntu [priv]
+3300664       1  9788    10:34:52 /usr/lib/systemd/systemd-networkd
+   4662       1  9408 22-17:05:07 /usr/bin/python3 /usr/share/unattended-upgrades/unattended-upgrade-shutdown --wait-for-signal
+3300696 3300692  9344    10:34:51 nginx: worker process
+3300697 3300692  9124    10:34:51 nginx: worker process
+3300615       1  9088    10:34:52 /usr/libexec/upowerd
+ 168433       1  8320  9-21:01:53 /usr/local/qcloud/YunJing/YDLive/YDLive
+3300617       1  8300    10:34:52 sshd: /usr/sbin/sshd -D [listener] 0 of 10-100 startups
+3300662       1  8248    10:34:52 /usr/lib/polkit-1/polkitd --no-debug
+   4581       1  8084 22-17:05:07 /usr/lib/systemd/systemd-logind
+
+== 磁盘 ==
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs           373M  1.3M  372M   1% /run
+/dev/vda2        59G   21G   36G  37% /
+tmpfs           1.9G   24K  1.9G   1% /dev/shm
+tmpfs           5.0M     0  5.0M   0% /run/lock
+tmpfs           373M   12K  373M   1% /run/user/1000
+
+== 数据库文件与所在盘 ==
+未从 ExecStart 解析到 .db 路径，请手工填写
+
+== nginx 超时 ==
+/etc/nginx/snippets/fupan-proxy.conf:21:proxy_read_timeout 600s;
+/etc/nginx/snippets/fupan-proxy.conf:22:proxy_send_timeout 600s;
+
+== 最近 7 天 OOM / 重启 ==
+Nov 08 22:13:58 VM-0-9-ubuntu systemd[1]: Stopped fupan.service - A股复盘站点（采集 + 飞书推送）.
+Nov 08 22:13:58 VM-0-9-ubuntu systemd[1]: fupan.service: Consumed 45.602s CPU time, 274.9M memory peak, 0B memory swap peak.
+Nov 08 22:13:58 VM-0-9-ubuntu systemd[1]: Started fupan.service - A股复盘站点（采集 + 飞书推送）.
+Nov 08 22:14:03 VM-0-9-ubuntu python[1202978]: INFO:     Started server process [1202978]
+Nov 08 22:14:03 VM-0-9-ubuntu python[1202978]: 2026-11-08 22:14:03,367 INFO apscheduler.scheduler: Scheduler started
+Nov 13 20:24:26 VM-0-9-ubuntu python[1202978]: INFO:     20.219.139.13:0 - "GET /room.php HTTP/1.0" 404 Not Found
+Nov 14 00:49:14 VM-0-9-ubuntu python[1202978]: INFO:     20.87.218.237:0 - "GET /joomla-templates.php HTTP/1.0" 404 Not Found
+Nov 14 00:54:05 VM-0-9-ubuntu python[1202978]: INFO:     180.101.245.251:0 - "GET /joomla-templates.php HTTP/1.0" 404 Not Found
+Nov 14 18:32:07 VM-0-9-ubuntu python[1202978]: INFO:     20.219.139.13:0 - "GET /wp-content/plugins/dzs-zoomsounds/error_log_1210678535.php HTTP/1.0" 404 Not Found
+Nov 14 22:31:32 VM-0-9-ubuntu python[1202978]: INFO:     8.234.156.4:0 - "GET /joomla/.env HTTP/1.0" 404 Not Found
+Nov 15 06:08:52 VM-0-9-ubuntu python[3300601]: INFO:     Started server process [3300601]
+Nov 15 06:08:52 VM-0-9-ubuntu python[3300601]: 2026-11-15 06:08:52,144 INFO apscheduler.scheduler: Scheduler started
+
+== 采集期 RSS 峰值（前台采样 120 秒；请在盘后采集期间运行）==
+峰值 RSS: 294.3 MB
+
+== 说明 ==
+1) 本脚本不访问数据库；数据库覆盖审计请在【一致性备份副本】上运行：
+   python scripts/prod_readonly_audit.py --db /path/to/prod_copy.db --json audit.json
+2) Schema 差异（同样是副本）：
+   python scripts/schema_inventory.py --db /path/to/prod_copy.db --compare /path/to/release.db --json schema.json
+3) 回传前请删除/打码：token、密码、Environment 行、内网域名与主机名。
+ssh : bash: line 78: $'\r': command not found
+所在位置 行:15 字符: 4858
++ ... e.sh -Raw | ssh -i "$env:USERPROFILE\.ssh\fupan_deploy" -o BatchMode= ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (bash: line 78: $'\r': command not found:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

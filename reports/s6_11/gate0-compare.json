@@ -1,0 +1,44 @@
+{
+  "assets_same": {
+    "c0_scripts": true,
+    "frozen_signals": true,
+    "git_head_contains_3060e82": true
+  },
+  "databases": {
+    "backend/data/b1_research.db": {
+      "integrity_before": "ok",
+      "integrity_final": "ok",
+      "size_same": true,
+      "mtime_same": true,
+      "sha256_before": null,
+      "sha256_final": null
+    },
+    "backend/data/forward_research.db": {
+      "integrity_before": "ok",
+      "integrity_final": "ok",
+      "size_same": true,
+      "mtime_same": true,
+      "sha256_before": "c464b3bc751fc05361293a1e3537bcdba2ec5ffbe5a26105b737ea24f6ec536b",
+      "sha256_final": "c464b3bc751fc05361293a1e3537bcdba2ec5ffbe5a26105b737ea24f6ec536b"
+    },
+    "backend/data/fupan.db": {
+      "integrity_before": "ok",
+      "integrity_final": "ok",
+      "size_same": true,
+      "mtime_same": true,
+      "sha256_before": null,
+      "sha256_final": null
+    },
+    "backend/data/history.db": {
+      "integrity_before": "ok",
+      "integrity_final": "ok",
+      "size_same": true,
+      "mtime_same": true,
+      "sha256_before": null,
+      "sha256_final": null
+    }
+  },
+  "missing_final": [],
+  "integrity_failed_final": [],
+  "all_ok": true
+}

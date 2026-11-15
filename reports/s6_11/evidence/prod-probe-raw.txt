@@ -1,0 +1,118 @@
+﻿== time ==
+2026-11-15T16:55:12+08:00
+== os ==
+PRETTY_NAME=Ubuntu 24.04.5 LTS
+6.8.0-147-generic
+up 3 weeks, 1 day, 17 hours, 16 minutes
+== resources ==
+2
+               total        used        free      shared  buff/cache   available
+Mem:            3723         814         145           2        3057        2909
+Swap:           1987          45        1942
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda2        59G   21G   36G  37% /
+/dev/vda2      3932160 169680 3762480    5% /
+== cgroup ==
+Restart=always
+MainPID=3300601
+ExecStart={ path=/opt/fupan/.venv/bin/python ; argv[]=/opt/fupan/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 ; ignore_errors=no ; start_time=[Sun 2026-11-15 06:08:42 CST] ; stop_time=[n/a] ; pid=3300601 ; code=(null) ; status=0/0 }
+MemoryCurrent=336351232
+TasksCurrent=9
+== deploy_dir ==
+drwxr-xr-x 8 fupan fupan 4096 Oct 23 23:34 /opt/fupan
+drwxr-xr-x 4 fupan fupan 4096 Nov  8 22:13 /opt/fupan/backend
+drwx------ 2 fupan fupan 4096 Nov 13 23:10 /opt/fupan/backend/data
+-rw-r--r-- 1 fupan fupan  31848 2026-11-08 16:57 /opt/fupan/backend/app/config.py
+-rw-r--r-- 1 fupan fupan 117350 2026-11-08 13:15 /opt/fupan/backend/app/jobs/scheduler.py
+-rw-r--r-- 1 fupan fupan  23281 2026-11-08 16:57 /opt/fupan/backend/app/main.py
+GIT_SHA=NOT_AVAILABLE_no_git
+MAIN_SHA256=04cb2afa6d7e29f0cec20ce9cd1ee7913d28c2f8274aeb3492e24f4248a1a220
+auction_switch_in_config=0
+0
+== env_names ==
+PYTHONUNBUFFERED=1 TZ=Asia/Shanghai SCHEDULER_ENABLED=true IFIND_CA_FILE=/etc/ssl/certs/ca-certificates.crt ENABLE_DEV_CORS=false WARMUP_PATTERN_CACHE=true
+== dotenv_keys ==
+BACKUP_KEEP
+FEISHU_TARGET
+FEISHU_WEBHOOK_URL
+HOST
+IFIND_AUTH_TOKEN
+OPENAI_API_KEY
+OPENAI_BASE_URL
+OPENAI_MODEL
+SCHEDULER_ENABLED
+== runtime_env ==
+ENABLE_DEV_CORS=false
+SCHEDULER_ENABLED=true
+WARMUP_PATTERN_CACHE=true
+== security_files ==
+NO_APP_EGRESS_GUARD_FILES
+== db_files ==
+fupan.db	1834102784	2026-11-13 15:08:46.7799070370	600
+fupan.db-shm	32768	2026-11-15 06:08:52.1125847650	600
+fupan.db-wal	49571872	2026-11-15 03:30:00.0058964310	600
+== db_probe ==
+uri mode=ro&immutable=1 journal_mode= delete
+uri mode=ro journal_mode= wal
+integrity ok
+tables 49
+latest [('stock_daily', '2026-11-13'), ('market_sentiment', '2026-11-13'), ('limit_pool', '2026-11-13'), ('sector_daily', '2026-11-13'), ('index_daily', '2026-11-13')]
+backup_rows [('2026-11-13', 'ok', 'fupan.db-bak-20261113-231000-001069（1835 MB），保留 5 份，清理 1 份，未配置异地同步（备份与主库同盘）'), ('2026-11-12', 'ok', 'fupan.db-bak-20261112-231000-001047（1812 MB），保留 5 份，清理 1 份，未配置异地同步（备份与主库同盘）'), ('2026-11-11', 'ok', 'fupan.db-bak-20261111-231000-000947（1789 MB），保留 5 份，清理 1 份，未配置异地同步（备份与主库同盘）'), ('2026-11-10', 'ok', 'fupan.db-bak-20261110-231000-000990（1765 MB），保留 5 份，清理 1 份，未配置异地同步（备份与主库同盘）'), ('2026-11-09', 'ok', 'fupan.db-bak-20261109-231000-003065（1742 MB），保留 5 份，清理 3 份，未配置异地同步（备份与主库同盘）')]
+auction [(139485, '2026-11-13')]
+recent_nonok [('activity', 'skipped', 3), ('etf', 'skipped', 10), ('lhb', 'partial', 5), ('lhb_institution', 'partial', 5), ('members', 'empty', 10), ('sentiment', 'partial', 1)]
+== backups ==
+-rw-r----- 1 fupan fupan 1742069760 2026-11-09 23:10 /opt/fupan/backend/data/fupan.db-bak-20261109-231000-003065
+-rw-r----- 1 fupan fupan 1765412864 2026-11-10 23:10 /opt/fupan/backend/data/fupan.db-bak-20261110-231000-000990
+-rw-r----- 1 fupan fupan 1788878848 2026-11-11 23:10 /opt/fupan/backend/data/fupan.db-bak-20261111-231000-000947
+-rw-r----- 1 fupan fupan 1811865600 2026-11-12 23:10 /opt/fupan/backend/data/fupan.db-bak-20261112-231000-001047
+-rw-r----- 1 fupan fupan 1834606592 2026-11-13 23:10 /opt/fupan/backend/data/fupan.db-bak-20261113-231000-001069
+c96b29b27b93912b455d9bda1b1e7c0d9a4cc4da8dd3b2564f733f20d2b6efd3  /opt/fupan/backend/data/fupan.db-bak-20261113-231000-001069
+== tls_nginx ==
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    listen 443 ssl http2;
+    listen 443 ssl http2 default_server;
+    listen 80;
+    listen 80 default_server;
+    server_name _;
+    server_name zhifujing.top www.zhifujing.top;
+    ssl_certificate     /etc/letsencrypt/live/zhifujing.top/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/zhifujing.top/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+	ssl_protocols TLSv1.2 TLSv1.3; # Dropping SSLv3, ref: POODLE
+issuer=C = US, O = Let's Encrypt, CN = YE1
+notBefore=Sep 28 01:36:40 2026 GMT
+notAfter=Dec 27 01:36:39 2026 GMT
+active
+active
+== local_http ==
+health=200
+ready=401
+public_health=200
+== scheduler ==
+Nov 13 09:26:08 VM-0-9-ubuntu python[1202978]: 2026-11-13 09:26:08,882 INFO apscheduler.executors.default: Job "集合竞价采样 (trigger: cron[day_of_week='mon-fri', hour='9', minute='15-26,31'], next run at: 2026-11-13 09:31:00 CST)" executed successfully
+Nov 13 09:31:00 VM-0-9-ubuntu python[1202978]: 2026-11-13 09:31:00,000 INFO apscheduler.executors.default: Running job "集合竞价采样 (trigger: cron[day_of_week='mon-fri', hour='9', minute='15-26,31'], next run at: 2026-11-16 09:15:00 CST)" (scheduled at 2026-11-13 09:31:00+08:00)
+Nov 13 09:31:06 VM-0-9-ubuntu python[1202978]: 2026-11-13 09:31:06,974 INFO apscheduler.executors.default: Job "集合竞价采样 (trigger: cron[day_of_week='mon-fri', hour='9', minute='15-26,31'], next run at: 2026-11-16 09:15:00 CST)" executed successfully
+Nov 15 06:08:52 VM-0-9-ubuntu python[3300601]: 2026-11-15 06:08:52,144 INFO apscheduler.scheduler: Added job "集合竞价采样" to job store "default"
+Nov 15 06:08:52 VM-0-9-ubuntu python[3300601]: 2026-11-15 06:08:52,144 INFO apscheduler.scheduler: Scheduler started
+Nov 15 06:08:52 VM-0-9-ubuntu python[3300601]: 2026-11-15 06:08:52,146 INFO app.jobs.scheduler: 定时采集已启动：交易日 15:05（收盘后补采 17:30 / 兜底 19:30 / 终局 22:35，成分股预取 22:00 / 兜底 22:30 / 次日 08:30；集合竞价 09:15–09:26 每分钟 + 09:31 补量比；告警 20:00；盘中B1 14:50；备份 23:10）
+== firewall ==
+Status: active
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW       Anywhere                  
+80/tcp                     ALLOW       Anywhere                  
+443/tcp                    ALLOW       Anywhere                  
+22/tcp (v6)                ALLOW       Anywhere (v6)             
+-P OUTPUT ACCEPT
+-A OUTPUT -j ufw-before-logging-output
+-A OUTPUT -j ufw-before-output
+-A OUTPUT -j ufw-after-output
+-A OUTPUT -j ufw-after-logging-output
+-A OUTPUT -j ufw-reject-output
+-A OUTPUT -j ufw-track-output
+== monitoring_cron ==
+nginx
+== disk_logs ==
+11G	/opt/fupan/backend/data
+Archived and active journals take up 472.4M in the file system.

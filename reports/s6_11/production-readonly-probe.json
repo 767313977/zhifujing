@@ -1,0 +1,201 @@
+{
+  "generated_at": "2026-11-15T16:55:12+08:00",
+  "host": "<production-host> (zhifujing.top) - IP redacted",
+  "access": "ubuntu + ~/.ssh/fupan_deploy, sudo -n NOPASSWD",
+  "mode": "read-only",
+  "probe_commands": [
+    "sudo bash deploy/prod_probe.sh (piped, RSS sampling 120s)",
+    "consolidated read-only probe via base64 -> sudo bash (exit 0)"
+  ],
+  "evidence_files": [
+    "evidence/prod-probe-raw.txt",
+    "evidence/prod-probe-with-rss-raw.txt"
+  ],
+  "items": {
+    "os_kernel_cpu_mem_disk": {
+      "status": "OBSERVED",
+      "os": "Ubuntu 24.04.5 LTS",
+      "kernel": "6.8.0-147-generic",
+      "uptime": "3 weeks 1 day 17 hours",
+      "cpu": 2,
+      "memory_total_mb": 3723,
+      "memory_available_mb": 2909,
+      "swap_total_mb": 1987,
+      "disk_root_size": "59G",
+      "disk_root_used": "21G",
+      "disk_root_avail": "36G",
+      "disk_use_pct": 37,
+      "inode_use_pct": 5
+    },
+    "current_git_sha": {
+      "status": "NOT_AVAILABLE",
+      "reason": "production /opt/fupan has no .git",
+      "main_py_sha256": "04cb2afa6d7e29f0cec20ce9cd1ee7913d28c2f8274aeb3492e24f4248a1a220",
+      "app_version": "0.3.0",
+      "deployed_at": "2026-11-08 16:57 (main.py/config.py mtime)",
+      "commit_match_by_blob_hash": "NO_MATCH (checked 50 commits touching main.py)"
+    },
+    "deploy_dir": {
+      "status": "OBSERVED",
+      "path": "/opt/fupan",
+      "owner": "fupan:fupan",
+      "backend_mtime": "2026-11-08 22:13",
+      "frontend_dist_mtime": "2026-09-18 23:47",
+      "mode": "755"
+    },
+    "service_process": {
+      "status": "OBSERVED",
+      "unit": "fupan.service",
+      "pid": 3300601,
+      "started_at": "2026-11-15 06:08:42 CST",
+      "cmd": "/opt/fupan/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000",
+      "workers": 1,
+      "threads": 9,
+      "rss_mb": 301.4,
+      "memory_current_mb": 320.8,
+      "restart": "always",
+      "rss_peak_mb_during_120s_sample": 294.3,
+      "nginx_5xx_last_log": 0,
+      "nginx_requests_last_log": 306,
+      "nginx_avg_rt_s": 0.118,
+      "nginx_max_rt_s": 19.115
+    },
+    "env_names_and_config": {
+      "status": "OBSERVED",
+      "systemd_environment": "PYTHONUNBUFFERED=1 TZ=Asia/Shanghai SCHEDULER_ENABLED=true IFIND_CA_FILE=/etc/ssl/certs/ca-certificates.crt ENABLE_DEV_CORS=false WARMUP_PATTERN_CACHE=true",
+      "dotenv_keys": ["BACKUP_KEEP", "FEISHU_TARGET", "FEISHU_WEBHOOK_URL", "HOST", "IFIND_AUTH_TOKEN", "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL", "SCHEDULER_ENABLED"],
+      "runtime_env_seen": ["ENABLE_DEV_CORS=false", "SCHEDULER_ENABLED=true", "WARMUP_PATTERN_CACHE=true"],
+      "db_split_env_present": false,
+      "auction_collect_env_present": false,
+      "fupan_env": "not set (development default)",
+      "values_redacted": true
+    },
+    "db_path_count_size_permissions": {
+      "status": "OBSERVED",
+      "database_count": 1,
+      "path": "/opt/fupan/backend/data/fupan.db",
+      "size_bytes": 1834102784,
+      "wal_size_bytes": 49571872,
+      "shm_size_bytes": 32768,
+      "file_mode": "600",
+      "owner": "fupan:fupan",
+      "dir_mode": "700",
+      "data_dir_total_size": "11G"
+    },
+    "schema_and_migration_version": {
+      "status": "OBSERVED",
+      "table_count": 49,
+      "pragma_user_version": 0,
+      "release_tables_required": 47,
+      "missing_tables_vs_release": [],
+      "extra_tables_vs_release": ["etf_share_orphan_backup_20261016", "sector_fund_flow"],
+      "missing_columns_vs_release": {
+        "rps_daily": ["ret20", "ret60", "rps20", "rps60"]
+      },
+      "migration_required_before_target_deploy": true
+    },
+    "research_user_db_mode": {
+      "status": "OBSERVED",
+      "split_enabled": false,
+      "files": ["fupan.db"],
+      "mode": "single writable database (WAL)",
+      "journal_mode": "wal",
+      "research_readonly_uri": false,
+      "user_db_separate": false
+    },
+    "db_integrity": {
+      "status": "OBSERVED",
+      "integrity_check": "ok"
+    },
+    "latest_backup": {
+      "status": "OBSERVED",
+      "latest_file": "fupan.db-bak-20261113-231000-001069",
+      "latest_mtime": "2026-11-13 23:10",
+      "latest_size_bytes": 1834606592,
+      "latest_sha256": "c96b29b27b93912b455d9bda1b1e7c0d9a4cc4da8dd3b2564f733f20d2b6efd3",
+      "retained_backups": 5,
+      "backup_schedule": "mon-fri 23:10",
+      "last_5_status": "ok",
+      "offsite_sync": false,
+      "offsite_note": "未配置异地同步（备份与主库同盘）"
+    },
+    "https_tls_reverse_proxy": {
+      "status": "OBSERVED",
+      "nginx": "active",
+      "server_names": ["zhifujing.top", "www.zhifujing.top"],
+      "tls_protocols": ["TLSv1.2", "TLSv1.3"],
+      "certificate_issuer": "Let's Encrypt CN=YE1",
+      "certificate_not_before": "2026-09-28T01:36:40Z",
+      "certificate_not_after": "2026-12-27T01:36:39Z",
+      "certbot_timer": "active",
+      "hsts": "max-age=31536000; includeSubDomains",
+      "proxy_pass": "http://127.0.0.1:8000",
+      "auth_basic": "off (commented)",
+      "security_headers_public_health": ["strict-transport-security", "x-content-type-options", "x-frame-options", "referrer-policy", "permissions-policy", "content-security-policy"]
+    },
+    "scheduler": {
+      "status": "OBSERVED",
+      "scheduler_started": true,
+      "jobs_observed_in_log": "15:05 close collect; 17:30/19:30 late; 22:35 final; members 22:00/22:30/08:30; auction 09:15-09:26 + 09:31; alert 20:00; B1 14:50; backup 23:10",
+      "auction_job_registered": true,
+      "auction_rows": 139485,
+      "auction_latest_date": "2026-11-13",
+      "auction_switch_supported": false
+    },
+    "firewall_egress": {
+      "status": "OBSERVED",
+      "ufw": "active",
+      "inbound_allowed": ["22/tcp", "80/tcp", "443/tcp"],
+      "iptables_output_policy": "ACCEPT",
+      "host_egress_restriction": "none observed",
+      "app_egress_guard_files_present": false,
+      "app_allowlist_present": false,
+      "note": "目标版本 external_guard/egress-policy 未部署到生产"
+    },
+    "external_providers": {
+      "status": "OBSERVED",
+      "hardcoded_endpoints": [
+        "api-mcp.51ifind.com",
+        "push2his.eastmoney.com / finance.eastmoney.com",
+        "qt.gtimg.cn",
+        "data.10jqka.com.cn",
+        "danjuanfunds.com",
+        "query.sse.com.cn",
+        "fund.szse.cn",
+        "apphwshhq.kaipanhong.com",
+        "apphis.kaipanhong.com",
+        "www.tdx.com.cn",
+        "feishu webhook (FEISHU_WEBHOOK_URL)"
+      ],
+      "loopback_service": "127.0.0.1:5000 (KPH local, optional)",
+      "user_controlled_url": "none found"
+    },
+    "logs_disk": {
+      "status": "OBSERVED",
+      "journal_disk_usage": "472.4M",
+      "var_log_size": "515M",
+      "data_dir_size": "11G",
+      "logrotate_fupan": false,
+      "logrotate_nginx": true
+    }
+  },
+  "health_checks": {
+    "local_health": {"status_code": 200, "body": "{\"status\":\"ok\"}"},
+    "local_ready": {"status_code": 401, "note": "production build has no /api/ready route; 401 from auth layer"},
+    "public_health": {"status_code": 200}
+  },
+  "monitoring": {
+    "status": "NOT_AVAILABLE",
+    "monitor_services": [],
+    "alert_channel": "PENDING",
+    "note": "仅应用内 20:00 飞书收盘告警；无 5xx/延迟/资源监控代理"
+  },
+  "not_verified": [
+    "生产用户登录后的 readiness 内容（无凭据，未尝试）",
+    "生产真实写入路径行为（未写库；仅静态代码审查）",
+    "告警实际送达（无指定渠道，未发送）",
+    "生产出站策略绕过测试（只读约束下未执行）"
+  ],
+  "failed": [],
+  "probe_exit_code": 0
+}
