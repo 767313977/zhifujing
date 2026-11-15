@@ -1,0 +1,191 @@
+{
+  "generated_at": "2026-11-15T14:36:34.587309+00:00",
+  "environment": {
+    "python": "3.13.13",
+    "sqlite": "3.50.4",
+    "platform": "Windows-11-10.0.26320-SP0"
+  },
+  "identity": {
+    "db": {
+      "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+      "sha256": "A93BC080EB9E366D08025C0A247E9AF525674A0294EC4D6012B7DBFD8941C56B"
+    },
+    "cache": {
+      "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\m61_cache\\attribution.json",
+      "sha256": "58AFF611439F21A848CB65743D5281FE449C25E65369A1CCC8C1ED87655123AB"
+    },
+    "experiment_results": {
+      "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\reports\\trend_engine\\m61\\experiment_results.json",
+      "sha256": "8C9193A3CF25A77B52EA3D01EDC19A0431DECD648A2D37BE20DA30FEA82703FD"
+    },
+    "trade_sim_source": {
+      "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\app\\services\\trend_engine\\trade_sim.py",
+      "sha256": "0DBDFA9E6764E0F8772D9A04468963154C6E00FE76E01DD2CDF98B3B555B3D64"
+    },
+    "reproduce_script": {
+      "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\scripts\\m62_reproduce.py",
+      "sha256": "45EBC6F4A122F70DA2DD8C6D461698F6E9C8D35F0C40A7FFEAD430CFA0099A89"
+    }
+  },
+  "config": {
+    "variant": "A2",
+    "horizon": 20,
+    "entry_mode": "next_open",
+    "cost_bps": 15.0,
+    "bootstrap_iterations": 500,
+    "bootstrap_seed": 42,
+    "trade_rule": "A_fixed"
+  },
+  "sample": {
+    "train": [
+      "2025-10-14",
+      "2026-05-19"
+    ],
+    "validation": [
+      "2026-05-20",
+      "2026-07-27"
+    ],
+    "test": [
+      "2026-07-28",
+      "2026-10-09"
+    ],
+    "test_signals": 60
+  },
+  "results": {
+    "first": {
+      "bootstrap_a2_test": {
+        "days": 3,
+        "iterations": 500,
+        "mean": 0.554,
+        "ci_low": 0.332,
+        "ci_high": 0.67
+      },
+      "bootstrap_seed7": {
+        "days": 3,
+        "iterations": 500,
+        "mean": 0.55,
+        "ci_low": 0.332,
+        "ci_high": 0.662
+      },
+      "bootstrap_samples_digest": "869b1cf9131e2902051c217d56192d47298280b0384cec0e3133f9c6aa9b6267",
+      "trade_sim": {
+        "metrics": {
+          "days": 240,
+          "total_return_pct": -7.43,
+          "annualized_pct": -7.78,
+          "max_drawdown_pct": -15.04,
+          "max_drawdown_days": 16,
+          "trades": 10,
+          "win_pct": 30.0,
+          "profit_factor": 0.23,
+          "turnover": 1.98,
+          "avg_hold_days": 20.0,
+          "final_equity": 925737.2,
+          "exposure": 0.1041,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 0,
+            "slots": 42
+          }
+        },
+        "equity_digest": "e857576f7408fd5a38e84a390a6148dce5da0027a0451dd8182954ad67edc1c5",
+        "ledger_digest": "e7936cd47f96b5466a0804bbdd37a19a28c28fa1d05ebe3ec19dfe3dda842b5d",
+        "trades_digest": "58228582cc1b6cdd1720f107de5870b9193190b19fd431555ca269f6f58d9e9a",
+        "trade_count": 10,
+        "final_equity": 925737.2
+      }
+    },
+    "second": {
+      "bootstrap_a2_test": {
+        "days": 3,
+        "iterations": 500,
+        "mean": 0.554,
+        "ci_low": 0.332,
+        "ci_high": 0.67
+      },
+      "bootstrap_seed7": {
+        "days": 3,
+        "iterations": 500,
+        "mean": 0.55,
+        "ci_low": 0.332,
+        "ci_high": 0.662
+      },
+      "bootstrap_samples_digest": "869b1cf9131e2902051c217d56192d47298280b0384cec0e3133f9c6aa9b6267",
+      "trade_sim": {
+        "metrics": {
+          "days": 240,
+          "total_return_pct": -7.43,
+          "annualized_pct": -7.78,
+          "max_drawdown_pct": -15.04,
+          "max_drawdown_days": 16,
+          "trades": 10,
+          "win_pct": 30.0,
+          "profit_factor": 0.23,
+          "turnover": 1.98,
+          "avg_hold_days": 20.0,
+          "final_equity": 925737.2,
+          "exposure": 0.1041,
+          "skipped": {
+            "limit_up": 0,
+            "limit_down": 0,
+            "suspended": 0,
+            "cash": 0,
+            "slots": 42
+          }
+        },
+        "equity_digest": "e857576f7408fd5a38e84a390a6148dce5da0027a0451dd8182954ad67edc1c5",
+        "ledger_digest": "e7936cd47f96b5466a0804bbdd37a19a28c28fa1d05ebe3ec19dfe3dda842b5d",
+        "trades_digest": "58228582cc1b6cdd1720f107de5870b9193190b19fd431555ca269f6f58d9e9a",
+        "trade_count": 10,
+        "final_equity": 925737.2
+      }
+    }
+  },
+  "deterministic": true,
+  "seed_sensitivity": {
+    "seed42": {
+      "days": 3,
+      "iterations": 500,
+      "mean": 0.554,
+      "ci_low": 0.332,
+      "ci_high": 0.67
+    },
+    "seed7": {
+      "days": 3,
+      "iterations": 500,
+      "mean": 0.55,
+      "ci_low": 0.332,
+      "ci_high": 0.662
+    },
+    "stable": false
+  },
+  "schema": {
+    "bootstrap_reproduction.json": {
+      "status": "OK",
+      "missing": [],
+      "nested_missing": {}
+    },
+    "walk_forward_reproduction.json": {
+      "status": "OK",
+      "missing": [],
+      "nested_missing": {}
+    },
+    "trade_sim_audit.json": {
+      "status": "OK",
+      "missing": [],
+      "nested_missing": {}
+    },
+    "market_data_audit.json": {
+      "status": "OK",
+      "missing": [],
+      "nested_missing": {}
+    },
+    "history_independence.json": {
+      "status": "OK",
+      "missing": [],
+      "nested_missing": {}
+    }
+  }
+}

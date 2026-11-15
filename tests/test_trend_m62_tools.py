@@ -112,6 +112,38 @@ def test_sim_audit_check_accepts_balanced_ledger() -> None:
     assert abs(checks["accounting_gap"]) <= 0.05
 
 
+def test_bootstrap_returns_unknown_for_empty_sample() -> None:
+    result = recon.bt._bootstrap([], 20, 100, 42)
+    assert result["days"] == 0
+    assert result["mean"] is None
+    assert "有效日期不足" in result["note"]
+
+
+def test_describe_days_handles_empty_sample() -> None:
+    stats = recon.describe_days([])
+    assert stats == {
+        "samples": 0,
+        "distinct_days": 0,
+        "dates": [],
+        "per_day_counts": {},
+        "max_per_day": 0,
+        "duplicate_signal_pairs": 0,
+    }
+
+
+def test_breadth_aggregate_handles_empty_rows() -> None:
+    stats = market.aggregate([])
+    assert stats["universe"] == 0
+    assert stats["up"] == 0
+    assert stats["ma20_denominator"] == 0
+    assert stats["limit_up_approx"] == 0
+
+
+def test_prev_close_rejects_invalid_pct() -> None:
+    bar = trade_sim.DailyBar(open=1.0, high=1.0, low=1.0, close=1.0, pct=-100.0, amount=1.0, volume=1.0)
+    assert trade_sim._prev_close(bar) is None
+
+
 def test_purged_blocks_generates_three_test_blocks() -> None:
     days = [date(2026, 1, 1).toordinal() + index for index in range(100)]
     days = [date.fromordinal(value) for value in days]
