@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import resolve_trade_date
 from app.config import get_settings
 from app.db import get_research_db, research_session_scope, research_writable  # noqa: F401 - S6.12: GET 纯读
-from app.external_guard import enabled as external_fetch_enabled  # noqa: F401 - S6.12: GET 纯读
+from app.external_guard import enabled as external_fetch_enabled
 from app.jobs.collect_sectors import SectorCollector
 from app.models import (
     AppUser,
@@ -1368,6 +1368,8 @@ def _board_members(
         cached = _read_members(reader, code, trade_date)
     if cached:
         return cached, None
+    if not external_fetch_enabled():
+        return _fallback_members(code, trade_date, None, offline=True)
     return _fallback_members(code, trade_date, None)
 
 

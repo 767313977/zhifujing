@@ -25,8 +25,8 @@ def test_sync_rejects_unknown_code():
     assert "查不到这个代码" in str(exc.value.detail)
 
 
-def test_sync_known_code_passes_existence_check(monkeypatch):
-    """已知代码能过存在性关卡：把采集器换成假的，确认它确实被调用。"""
+def test_sync_known_code_is_rejected_without_collector(monkeypatch):
+    """S6.12：已知代码也不再触发采集（普通请求不得写研究数据）。"""
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
     called: list[tuple[str, int]] = []
@@ -44,18 +44,11 @@ def test_sync_known_code_passes_existence_check(monkeypatch):
         SimpleNamespace(touch=lambda key: None, remaining=lambda key: None),
     )
 
-    from contextlib import contextmanager
-
-    @contextmanager
-    def _guard(reason: str):
-        yield
-
-    monkeypatch.setattr(stock_api, "collect_guard", _guard)
-
     with Session(engine) as session:
         session.add(StockBasic(code="600000", name="浦发银行"))
         session.commit()
-        result = stock_api.sync("600000", 120, session=session, user=SimpleNamespace(id=1))
+        with pytest.raises(HTTPException) as exc:
+            stock_api.sync("600000", 120, session=session, user=SimpleNamespace(id=1))
 
-    assert result == {"rows": 3}
-    assert called == [("600000", 120)]
+    assert exc.value.status_code == 409
+    assert called == []
