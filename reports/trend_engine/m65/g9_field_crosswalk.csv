@@ -1,0 +1,26 @@
+canonical_field,definition,unit,pit_precision,ifind_field,tushare_field,lixinger_field,cnopendata_field,choice_field,notes
+raw_open,不复权开盘价,元,date,「开盘价」（是否复权随请求参数变化，未确认）,daily.open,未在公开文档提供行情字段,开盘价,UNKNOWN,iFinD 方向不明是本项核心风险
+raw_high,不复权最高价,元,date,「最高价」,daily.high,未提供,最高价,UNKNOWN,
+raw_low,不复权最低价,元,date,「最低价」,daily.low,未提供,最低价,UNKNOWN,
+raw_close,不复权收盘价,元,date,「收盘价」（前/后复权同名列）,daily.close,未提供,收盘价,UNKNOWN,不得用供应商复权价顶替
+forward_adjusted_close,前复权收盘价,元,date,无法从字段区分,pro_bar(adj='qfq')（通用行情接口）,未提供,需用 复权因子 自行计算,UNKNOWN,Tushare 前复权由通用行情接口生成，需单独核对
+backward_adjusted_close,后复权收盘价,元,date,无法从字段区分,pro_bar(adj='hfq'),未提供,需用 复权因子 自行计算,UNKNOWN,
+single_event_factor,单次除权事件因子,倍,date,UNKNOWN,未单独提供,未提供,未单独提供（仅复权因子）,UNKNOWN,四家均未见单次因子单列
+cumulative_factor,累计（后）复权因子,倍,date,「复权因子」（方向与基准日未确认）,adj_factor.adj_factor,无复权因子接口,复权因子,UNKNOWN,Tushare 官方文档未明示累计方向，第三方解读称累计后复权
+cash_per_share_pretax,每股派现（税前）,元/股,date,无（金额缺失）,dividend.cash_div_tax,dividend（口径未标注税前/税后，需向供应商确认）,每股分红（税前）,UNKNOWN,理杏仁 dividend 字段口径必须先确认
+cash_per_share_posttax,每股派现（税后）,元/股,date,无,dividend.cash_div,dividend,每股分红（税后）,UNKNOWN,
+stock_dividend_ratio,每股送股比例,股/股,date,无,dividend.stk_bo_rate（合计看 stk_div）,bonusSharesFromProfit,每股送股比例,UNKNOWN,
+transfer_ratio,每股转增比例,股/股,date,无,dividend.stk_co_rate,bonusSharesFromCapitalReserve,每股转增比例,UNKNOWN,
+rights_ratio,配股比例,股/股,date,无（仅股权登记日）,,allotment.allotmentRatio,未提供,UNKNOWN,Tushare 无配股接口
+rights_price,配股价格,元/股,date,无,,allotment.allotmentPrice,未提供,UNKNOWN,
+rights_shares,实际配股数量,股,date,无,,allotment.allotmentShares,未提供,UNKNOWN,
+announcement_date,公告日期,date,date,无,dividend.ann_date（预案/决案）与 imp_ann_date（实施）,dividend.date / allotment.date,预案公告日 / 实施公告日,UNKNOWN,只能做 date-level PIT
+announcement_timestamp,精确公告时间,timestamp,timestamp,无,无,无（示例 T00:00:00+08:00 为日期填充，不是发布时刻）,无,UNKNOWN,四家均未提供时分秒
+record_date,股权登记日,date,date,「股权登记日」,dividend.record_date,registerDate,股权登记日,UNKNOWN,
+ex_date,除权除息日,date,date,「除权除息日」,dividend.ex_date,exDate / allotment.exDate,除权除息日,UNKNOWN,
+pay_date,派息/到账日,date,date,「派息日」,dividend.pay_date,paymentDate,派息日,UNKNOWN,
+share_listing_date,红股上市日,date,date,无,dividend.div_listdate,无（可用股本变动 date 近似，不可等同）,红股上市日,UNKNOWN,近似值必须标记 derived
+plan_status,方案状态,枚举,date,「进度」,dividend.div_proc,无状态机（仅有 content 文本）,实施进度,UNKNOWN,理杏仁缺状态机是 G9 会计的风险点
+revision_flag,是否发生修订,布尔,date,UNKNOWN,UNKNOWN,UNKNOWN,是否变更过（1/0）,UNKNOWN,无供应商提供完整版本链
+available_at,数据可得时间,datetime,datetime,UNKNOWN,按更新批次时间（盘前/每日20~21点）,UNKNOWN,UNKNOWN,UNKNOWN,不得用交易日或 ingested_at 代替
+payload_hash,原始返回哈希（本系统生成）,hex,ingested,由适配器计算,由适配器计算,由适配器计算,由适配器计算,由适配器计算,用于来源追溯与去重
