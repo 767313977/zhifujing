@@ -168,7 +168,10 @@ Purged Walk-forward（4 块、20 日 embargo）：
 
 | 提交 | 内容 |
 | --- | --- |
-| 见文末提交记录 | Batch 0-1 审计与计划 |
-| 见文末提交记录 | Batch 2 失效归因 |
-| 见文末提交记录 | Batch 3-4 重设计与严格验证 |
-| 见文末提交记录 | Batch 5-6 交易级模拟、组合与总验收 |
+| `6b84341` | Batch 0-1 基线审计、数据质量治理、审计脚本 |
+| `98bb217` | Batch 2 失效归因、MFE 支持、特征缓存脚本 |
+| `7ed3ae6` | Batch 3-4 重设计、预注册变体、Purged WF / Bootstrap |
+| `21f92b8` | Batch 5-6 交易级风险退出、组合研究与总验收 |
+
+分支：`feat/trend-engine-m61`（远端已同步）。工作区仅保留既有的
+`reports/s6/s62/migration-report.json` 改动（非本批次产生，未触碰）。
