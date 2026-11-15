@@ -1,0 +1,284 @@
+{
+  "generated_at": "2026-11-15T16:21:03.822154+00:00",
+  "git": {
+    "root": "C:\\Users\\76731\\Documents\\trae_projects\\fupan",
+    "branch": "feat/trend-engine-m66-provider-validation",
+    "head": "7b7889d17f0aff87e2de2ccde86f54b78f481e13",
+    "upstream": "",
+    "upstream_head": "",
+    "status_short": [
+      "M reports/s6/s62/migration-report.json",
+      "?? scripts/m66_freeze_baseline.py"
+    ],
+    "log8": [
+      "7b7889d (HEAD -> feat/trend-engine-m66-provider-validation, origin/feat/trend-engine-m65-multisource-data, feat/trend-engine-m65-multisource-data) docs(m65): publish approval matrix and final acceptance",
+      "656b3bb docs(m65): verify G1 staging preservation with read-only recheck",
+      "32c6c81 feat(m65): add multi-provider contracts and isolated staging guards",
+      "8362284 docs(m65): plan G3 historical membership samples and mapping candidates",
+      "ecfb860 docs(m65): design G9 cross-provider sample validation plan",
+      "03468e6 docs(m65): document multi-source capability matrix from public docs only",
+      "f8a0cb6 docs(m65): draft iFinD vendor clarification questions for G9/G3 blockers",
+      "53a5a22 feat(m65): freeze M6.4 baseline and start multi-source qualification"
+    ],
+    "worktrees": [
+      "C:/Users/76731/Documents/trae_projects/fupan        7b7889d [feat/trend-engine-m66-provider-validation]",
+      "C:/Users/76731/AppData/Local/Temp/s6_8_versions/new a6e9dbd (detached HEAD)",
+      "C:/Users/76731/AppData/Local/Temp/s6_8_versions/old 9838a06 (detached HEAD)"
+    ]
+  },
+  "protected_dbs": {
+    "b1_research": {
+      "path": "backend\\data\\b1_research.db",
+      "sha256": "A93BC080EB9E366D08025C0A247E9AF525674A0294EC4D6012B7DBFD8941C56B",
+      "bytes": 1441378304
+    },
+    "history": {
+      "path": "backend\\data\\history.db",
+      "sha256": "9267652175594871B49456253BB0437CD5738F0D19257AB8CCA961BA5F921A6A",
+      "bytes": 869801984
+    },
+    "b2_final_snapshot": {
+      "path": "backend\\data\\b2_final_snapshot.db",
+      "sha256": "371512BC81F00A604788B02AF7D4BE9467C75F28CDFB984F0187DD81001520D3",
+      "bytes": 1441378304
+    },
+    "fupan": {
+      "path": "backend\\data\\fupan.db",
+      "sha256": "B65D59A65AAEE286F65B91AEE70DF75FF9B34E83E6C266E69BE4C491996337EE",
+      "bytes": 513519616
+    }
+  },
+  "m64_staging": {
+    "g1_index_rows.json": {
+      "sha256": "6D56393B30A7E85A01A051CA0DA13557DEA117EE618CC0CE621F2D26BA470566",
+      "bytes": 27151
+    },
+    "g2_sector_rows.json": {
+      "sha256": "C938156BAE74414BFF42B2F1C511E8A7504D903C1B9162B7916E3DD8BA3A6630",
+      "bytes": 11419
+    },
+    "g9_events.json": {
+      "sha256": "59E6527DFD36C73DD89530821F066EC42AB2AF7AD799F67C204F7A258620A5B8",
+      "bytes": 958
+    },
+    "g9_factor_cross_exdate.json": {
+      "sha256": "0E8036FDE8427982F79809F983C5585861F1316FF056167038E3B72549294C7B",
+      "bytes": 10787
+    },
+    "g9_factor_rows.json": {
+      "sha256": "2D98A38A526D7BD6316109CDB90171BD75D505BC31CC5EE6EC1674B5A34B55FE",
+      "bytes": 8359
+    },
+    "g9_sample_validation.json": {
+      "sha256": "B3FC38B6A6C5A41F8033C8A0E0082CCA5E087EA94438AB4BF5ECBAF18FF3B0B2",
+      "bytes": 1227
+    },
+    "index_000001SH_20260925_20261009.json": {
+      "sha256": "7249AE715A507E6A07FA558D2958D2FC72E0FC93E9B51071B0759FBFDF526192",
+      "bytes": 6081
+    },
+    "m64_ifind_staging.db": {
+      "sha256": "AE998D2C43B48F1BA27615349DA4651CB98063E72584F9A2BE306CFCA6A4465D",
+      "bytes": 131072
+    },
+    "m64_ifind_staging.db-shm": {
+      "sha256": "FD4C9FDA9CD3F9AE7C962B0DDF37232294D55580E1AA165AA06129B8549389EB",
+      "bytes": 32768
+    },
+    "m64_ifind_staging.db-wal": {
+      "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "bytes": 0
+    },
+    "probe_ledger.json": {
+      "sha256": "42D0CA068DCDC89693A4756067B7CF63238DD9415F02B5D0E161CA37EB4A8421",
+      "bytes": 2796
+    },
+    "sample_call_ledger.json": {
+      "sha256": "58CC535708AB6ABE5B4F154D44063A9B7E48F88038DACC73B5A36DBFAB12F780",
+      "bytes": 2598
+    },
+    "sector_daily_staging.csv": {
+      "sha256": "044E341C78DEBBCC87D723F3A932AEE8A3D887B409231DB622A4958C3D7BDE78",
+      "bytes": 5113
+    },
+    "stock_events_600519_2025.json": {
+      "sha256": "E2D0BEF623FB20A4F339AE84B5B7C10B227C0FF51F7F000A090FBBF1E1F60912",
+      "bytes": 296
+    },
+    "stock_history_600519_20250701_20250720.json": {
+      "sha256": "F4BE49EEEAE44A16691743C73370A0B913700E759912882B15BB402441CF7343",
+      "bytes": 8250
+    },
+    "tools_list.json": {
+      "sha256": "B2E24FD950B6D287BEC8B1E87E9217ED0A11D4C2CEC3BA6131914AF8AD0CBB71",
+      "bytes": 6550
+    }
+  },
+  "m65_core_files": {
+    "backend/app/services/trend_engine/multisource.py": {
+      "sha256": "85E40AD349DC974AE740989EECA7E57ECC970D7CBEB4E6F0020C4E130B212BFC",
+      "bytes": 23494
+    },
+    "scripts/m65_freeze_baseline.py": {
+      "sha256": "3388106753CA1862B3FB2192A9E51EF369E42A1B873C80C9A1AFEAD607BD98D3",
+      "bytes": 3865
+    },
+    "scripts/m65_g1_preservation.py": {
+      "sha256": "D4D72DD386355BEC06C93DADBE89635D64837247AA9AEC498925FC819B1CA735",
+      "bytes": 8476
+    },
+    "scripts/m65_write_schema_draft.py": {
+      "sha256": "19C98D9FE38FDE672FD65706AE86E6B9B4A5BE9373BA27042DEA2B78067BF711",
+      "bytes": 1181
+    },
+    "tests/test_trend_m65_guard.py": {
+      "sha256": "6BAB43F4EA3F788E0148064B0C1A42D40AED0BE11F27DDCDE0F89D93FBFADA36",
+      "bytes": 3489
+    },
+    "tests/test_trend_m65_provider.py": {
+      "sha256": "54F708BCA9774D51F6474F6B73790F248722B97C88D7EA506DDA52D810ADE6E5",
+      "bytes": 3634
+    },
+    "tests/test_trend_m65_staging.py": {
+      "sha256": "B8EE262864BE45F42F3F9C7C15B04773B0C70FF78D0C69F83FD845D0A2A2F409",
+      "bytes": 6338
+    },
+    "reports\\trend_engine\\m65\\00-baseline-and-m64-freeze.md": {
+      "sha256": "74D60B7851DB684281C3CE52CA592830FD5765FFAB28B6FA67AFAE0A91172C23",
+      "bytes": 5537
+    },
+    "reports\\trend_engine\\m65\\01-ifind-vendor-questions.md": {
+      "sha256": "CD4887412574EB32DA643FCB94BB16979603E1544F34B1D113779FF6EC538F9A",
+      "bytes": 6981
+    },
+    "reports\\trend_engine\\m65\\02-multisource-capability-matrix.csv": {
+      "sha256": "C5BAC774FF5FB5BD4DD7B754555EC35EDDF87D2C1494E9DA0B98C779EBF33A80",
+      "bytes": 9328
+    },
+    "reports\\trend_engine\\m65\\02-multisource-capability-matrix.md": {
+      "sha256": "BC409722914C4CA48220BC2F09BEBBEE62BBCE53E724517FFAA2273284669DFA",
+      "bytes": 15403
+    },
+    "reports\\trend_engine\\m65\\03-g9-cross-provider-validation-plan.md": {
+      "sha256": "B183DA4C790622425C3765066532D2DCD6FEF079A56027EF561098C3625A1E54",
+      "bytes": 9021
+    },
+    "reports\\trend_engine\\m65\\04-g3-membership-sample-plan.md": {
+      "sha256": "54EB9B0A175F5B2A7C82FB9AEB1F78D8DEB1D869FBE5B661A0E6A8FEE890CE71",
+      "bytes": 6583
+    },
+    "reports\\trend_engine\\m65\\05-multisource-adapter-and-staging-design.md": {
+      "sha256": "E2C183CDF99E55C32D31AE880E59C87C4916E7C8FCB2B086934C286B114D8EAB",
+      "bytes": 7983
+    },
+    "reports\\trend_engine\\m65\\06-g1-staging-preservation-and-readonly-recheck.md": {
+      "sha256": "BF7E9247724565799726C721147BF9D29B5927854003985502DE9F4218692479",
+      "bytes": 4256
+    },
+    "reports\\trend_engine\\m65\\07-m65-final-acceptance.md": {
+      "sha256": "BF44142E5ABEF8FC619D48E1901D1C0698731880B74AB85D773FB7BAE65EEF44",
+      "bytes": 11182
+    },
+    "reports\\trend_engine\\m65\\baseline_freeze.json": {
+      "sha256": "282CA14F608D98065AD8445B005629C57606D8F177BD4B4B14F2B3E2DFA1798E",
+      "bytes": 6952
+    },
+    "reports\\trend_engine\\m65\\g1_history_coverage.csv": {
+      "sha256": "005B6BB1602A3343D9CCC1F98C09D25CD784C630A9DE676CC42BFAE97681303E",
+      "bytes": 866
+    },
+    "reports\\trend_engine\\m65\\g1_overlap_readonly_check.csv": {
+      "sha256": "C09B13F155E6991B2E82C049FA7F586A05F34197032DDD152093D21BA7619CD6",
+      "bytes": 2875
+    },
+    "reports\\trend_engine\\m65\\g1_staging_manifest.json": {
+      "sha256": "8662B4B4849265810360541359484B95A7BA3F94F52FAEAD02D8F26CB6EA8DE0",
+      "bytes": 5108
+    },
+    "reports\\trend_engine\\m65\\g3_sample_manifest.csv": {
+      "sha256": "E4D26C21ED6DC65B8FE17B1B0C661BB1E71E049A06D0930737F23495C2845200",
+      "bytes": 3164
+    },
+    "reports\\trend_engine\\m65\\g9_field_crosswalk.csv": {
+      "sha256": "4BD807B54FEAAF4F181B03946BAD2491F21444ACF0290191CC34ED994F4E71EF",
+      "bytes": 4022
+    },
+    "reports\\trend_engine\\m65\\g9_sample_manifest.csv": {
+      "sha256": "2C5BA03C24A9BEBDA303D281914630443A04D4DF5B0957490957AE7CA2880683",
+      "bytes": 4105
+    },
+    "reports\\trend_engine\\m65\\ifind_vendor_question_matrix.csv": {
+      "sha256": "070302BD4B64F7C6316039BCF0AEE648F89CDC473BAA1D504C4D37064DA2FDB5",
+      "bytes": 5586
+    },
+    "reports\\trend_engine\\m65\\m65_approval_matrix.csv": {
+      "sha256": "11A75B9F5A15964F34BBB371D0D5DE293D4FE2C27C10D1B46304105A0424C81A",
+      "bytes": 3717
+    },
+    "reports\\trend_engine\\m65\\m65_staging_schema.sql": {
+      "sha256": "31951461BD5CC234655C5B73D062DB4C2535C6E97A6033A35551E21EDC18C505",
+      "bytes": 3683
+    },
+    "reports\\trend_engine\\m65\\sector_id_crosswalk_candidates.csv": {
+      "sha256": "0B7E8002FFE9C898B26081B46A741919A1FC26A6F586E14E0EA681891C096C09",
+      "bytes": 3110
+    }
+  },
+  "audit": {
+    "multisource": {
+      "file": "backend\\app\\services\\trend_engine\\multisource.py",
+      "sha256": "85E40AD349DC974AE740989EECA7E57ECC970D7CBEB4E6F0020C4E130B212BFC",
+      "lines": 600,
+      "network_like_lines": [],
+      "has_sqlite3_connect": true,
+      "mentions_protected_db_names": [
+        "b1_research",
+        "history",
+        "b2_final_snapshot",
+        "fupan"
+      ],
+      "mentions_write_sql": []
+    },
+    "m65_scripts": [
+      {
+        "file": "scripts\\m65_freeze_baseline.py",
+        "sha256": "3388106753CA1862B3FB2192A9E51EF369E42A1B873C80C9A1AFEAD607BD98D3",
+        "lines": 114,
+        "network_like_lines": [],
+        "has_sqlite3_connect": false,
+        "mentions_protected_db_names": [
+          "b1_research",
+          "history",
+          "b2_final_snapshot",
+          "fupan"
+        ],
+        "mentions_write_sql": []
+      },
+      {
+        "file": "scripts\\m65_g1_preservation.py",
+        "sha256": "D4D72DD386355BEC06C93DADBE89635D64837247AA9AEC498925FC819B1CA735",
+        "lines": 225,
+        "network_like_lines": [],
+        "has_sqlite3_connect": true,
+        "mentions_protected_db_names": [
+          "b1_research"
+        ],
+        "mentions_write_sql": []
+      },
+      {
+        "file": "scripts\\m65_write_schema_draft.py",
+        "sha256": "19C98D9FE38FDE672FD65706AE86E6B9B4A5BE9373BA27042DEA2B78067BF711",
+        "lines": 39,
+        "network_like_lines": [],
+        "has_sqlite3_connect": false,
+        "mentions_protected_db_names": [],
+        "mentions_write_sql": []
+      }
+    ],
+    "network_entrypoints": {
+      "multisource_module": "无网络调用（纯内存 + 本地 SQLite）",
+      "existing_ifind_client": "backend/app/sources/ifind.py（M6.4 既有，本轮不调用）",
+      "m66_scripts": "本轮新增脚本均为只读/离线，不发起网络请求"
+    }
+  }
+}
