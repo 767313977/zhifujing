@@ -238,23 +238,48 @@ def _soak(opener, base: str, minutes: float) -> dict:
     user_writes_fail = 0
     denied_expected = 0
     readiness_failures = 0
-    deadline = time.time() + minutes * 60
+    started_at = time.time()
+    deadline = started_at + minutes * 60
     while time.time() < deadline:
         for path in RESEARCH_READS:
             status, elapsed = _call(opener, f"{base}{path}")
-            records.append({"kind": "research_read", "path": path, "status": status, "ms": round(elapsed, 2)})
+            records.append(
+                {
+                    "kind": "research_read",
+                    "path": path,
+                    "status": status,
+                    "ms": round(elapsed, 2),
+                    "t": round(time.time() - started_at, 2),
+                }
+            )
             if path == "/api/ready" and status == 503:
                 readiness_failures += 1
         for method, path, payload in USER_WRITES:
             status, elapsed = _call(opener, f"{base}{path}", method, payload)
-            records.append({"kind": "user_write", "path": path, "status": status, "ms": round(elapsed, 2)})
+            records.append(
+                {
+                    "kind": "user_write",
+                    "path": path,
+                    "status": status,
+                    "ms": round(elapsed, 2),
+                    "t": round(time.time() - started_at, 2),
+                }
+            )
             if 200 <= status < 300:
                 user_writes_ok += 1
             else:
                 user_writes_fail += 1
         for path in RESEARCH_WRITE_PATHS:
             status, elapsed = _call(opener, f"{base}{path}", "POST")
-            records.append({"kind": "research_write_denied", "path": path, "status": status, "ms": round(elapsed, 2)})
+            records.append(
+                {
+                    "kind": "research_write_denied",
+                    "path": path,
+                    "status": status,
+                    "ms": round(elapsed, 2),
+                    "t": round(time.time() - started_at, 2),
+                }
+            )
             if status == 503:
                 denied_expected += 1
         time.sleep(0.2)
@@ -302,7 +327,40 @@ def _soak(opener, base: str, minutes: float) -> dict:
             for path, bucket in by_path.items()
         },
         "expected_503_research_write": expected_503,
+        "timeline": _timeline(records),
     }
+
+
+def _timeline(records: list[dict]) -> list[dict]:
+    """按分钟聚合，供短时 smoke 的 `short_smoke_timeline.jsonl` 使用。"""
+    buckets: dict[int, list[dict]] = {}
+    for record in records:
+        minute = int(record.get("t", 0) // 60)
+        buckets.setdefault(minute, []).append(record)
+    timeline = []
+    for minute in sorted(buckets):
+        rows = buckets[minute]
+        times = [row["ms"] for row in rows]
+        unexpected_5xx = sum(
+            1
+            for row in rows
+            if row["status"] >= 500
+            and not (row["path"] == "/api/ready" and row["status"] == 503)
+            and not (row["kind"] == "research_write_denied" and row["status"] == 503)
+        )
+        timeline.append(
+            {
+                "minute": minute,
+                "requests": len(rows),
+                "statuses": {
+                    str(code): sum(1 for row in rows if row["status"] == code)
+                    for code in sorted({row["status"] for row in rows})
+                },
+                "unexpected_5xx": unexpected_5xx,
+                "p95_ms": _percentile(times, 0.95),
+            }
+        )
+    return timeline
 
 
 def _stop(process: subprocess.Popen, timeout: float = 20) -> int | None:
