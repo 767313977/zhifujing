@@ -1,0 +1,53 @@
+﻿dataset,trade_date,metric,sql_value,python_value,match,note
+breadth,2025-12-31,universe,5055,5055,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,up,2291,2291,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,down,2566,2566,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,flat,198,198,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,above_ma20,2689,2689,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,ma20_denominator,5040,5040,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,above_ma60,2025,2025,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,ma60_denominator,4944,4944,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,high20,564,564,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,low20,467,467,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,high60,250,250,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,low60,260,260,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,high20_denominator,5040,5040,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,high60_denominator,4944,4944,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,limit_up_approx,57,57,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2025-12-31,limit_down_approx,8,8,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,universe,5096,5096,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,up,2862,2862,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,down,2156,2156,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,flat,78,78,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,above_ma20,1421,1421,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,ma20_denominator,5087,5087,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,above_ma60,1137,1137,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,ma60_denominator,5019,5019,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,high20,454,454,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,low20,1255,1255,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,high60,279,279,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,low60,1156,1156,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,high20_denominator,5087,5087,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,high60_denominator,5019,5019,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,limit_up_approx,143,143,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-06-30,limit_down_approx,10,10,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,universe,5282,5282,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,up,1071,1071,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,down,4092,4092,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,flat,119,119,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,above_ma20,2111,2111,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,ma20_denominator,5264,5264,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,above_ma60,2706,2706,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,ma60_denominator,5052,5052,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,high20,267,267,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,low20,969,969,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,high60,140,140,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,low60,260,260,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,high20_denominator,5264,5264,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,high60_denominator,5052,5052,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,limit_up_approx,54,54,True,SQL 窗口 vs 纯 Python 双实现
+breadth,2026-09-24,limit_down_approx,18,18,True,SQL 窗口 vs 纯 Python 双实现
+sector_return,2026-07-15,sector_vs_member_equal_weight,269,269,True,max_abs_diff=0.151 median=0.0
+sector_return,2026-08-14,sector_vs_member_equal_weight,272,272,True,max_abs_diff=0.022 median=0.0
+sector_return,2026-09-24,sector_vs_member_equal_weight,260,256,False,max_abs_diff=12.378 median=0.0
+rps,2026-09-30,ret20_recompute_corr,0.9951,0.00275,True,common=5207 universe=5219 unit=percent corr=0.9951

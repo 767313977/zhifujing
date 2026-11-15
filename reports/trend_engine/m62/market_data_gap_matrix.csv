@@ -1,0 +1,12 @@
+dataset,expected_days,actual_days,first_date,last_date,missing_days,orphan_days,duplicates,lag_trade_days,coverage_pct,notes,pit_status,gate
+stock_daily,506,506,2024-09-02,2026-10-09,0,0,0,0,100.0,"5303 代码；无退市股；无 available_at",NOT_PIT,"可作为事实值，不能声称 PIT"
+index_daily,255,255,2025-09-08,2026-09-24,0,0,0,5,100.0,"区间内 6 个指数均无断档；相对个股滞后 5 个交易日",NOT_PIT,"最近 5 个交易日基准/环境为 UNKNOWN"
+sector_daily,255,255,2025-09-08,2026-09-24,0,0,0,5,100.0,"每日板块数 363~377，板块池漂移；2026-09-24 有 3~4 个板块与成分等权差异 >0.5pp",NOT_PIT,"最近 5 日 UNKNOWN；异常日 SUSPECT"
+sector_member,255,60,2026-07-03,2026-09-24,195,0,0,5,23.5,"每日 58617~64073 行；更早区间无成分快照",PARTIAL,"2026-07-03 之前板块特征 UNKNOWN"
+rps_daily,250,251,2025-09-22,2026-10-21,0,1,0,0,100.0,"孤儿日 2026-10-21（ret20/60 全空）；2026-10-09 RPS 比个股多 21 个代码",SUSPECT,"孤儿日/混版本日拒绝读取"
+breadth_daily,506,0,,,506,0,0,0,0.0,"空表",MISSING,"市场环境只能 UNKNOWN"
+trade_calendar,NA,8797,1990-12-19,2026-12-31,0,0,0,0,NA,"预置未来日期；仅作日期轴",NON_PIT_OK,"可用"
+market_sentiment,255,255,2025-09-08,2026-09-24,0,0,0,5,100.0,"涨停/封板统计，口径未记录",NOT_PIT,"最近 5 日 UNKNOWN"
+fear_greed_daily,255,254,2025-09-09,2026-09-24,1,0,0,5,99.6,"缺 1 个交易日；breadth 字段与 breadth_daily 不同源",NOT_PIT,"仅辅助；不得替代 breadth"
+limit_pool,255,255,2025-09-08,2026-09-24,0,0,0,5,100.0,"pool_type=up/down/broken",NOT_PIT,"与近似涨停口径交叉核对"
+pattern_hit,26,26,2026-05-14,2026-10-09,0,0,0,0,100.0,"仅 26 个交易日，覆盖不足",NOT_PIT,"不得用于历史回测"

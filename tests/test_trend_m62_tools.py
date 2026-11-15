@@ -13,6 +13,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import m62_catalog_data as catalog  # noqa: E402
+import m62_market_data_audit as market  # noqa: E402
 import m62_reconcile_m61_evidence as recon  # noqa: E402
 
 
@@ -53,6 +54,34 @@ def test_database_profile_lists_tables_and_indexes(tmp_path: Path) -> None:
     stock = [item for item in profile["tables"] if item["table"] == "stock_daily"][0]
     assert stock["date_range"]["distinct"] == 2
     assert stock["has_ingest_time"] is False
+
+
+def test_limit_threshold_by_board() -> None:
+    assert market.limit_threshold("300001") == 19.8
+    assert market.limit_threshold("688001") == 19.8
+    assert market.limit_threshold("830001") == 29.8
+    assert market.limit_threshold("600000") == 9.8
+
+
+def test_breadth_aggregate_counts_and_denominators() -> None:
+    rows = [
+        # code, close, pct_chg, amount, ma20, ma60, high20, low20, high60, low60, n20, n60
+        ("300001", 11.0, 19.9, 1e9, 10.0, 9.0, 11.0, 8.0, 12.0, 7.0, 20, 60),
+        ("600000", 9.0, -0.5, 5e8, 10.0, 9.5, 12.0, 8.9, 13.0, 8.5, 20, 60),
+        ("000001", 10.0, 0.0, 1e8, 10.0, 10.0, 10.5, 9.0, 11.0, 8.0, 10, 30),
+        ("000002", 5.0, 1.0, 0.0, None, None, 5.5, 4.0, 6.0, 3.0, 20, 60),
+    ]
+    stats = market.aggregate(rows)
+    assert stats["universe"] == 3
+    assert stats["up"] == 1
+    assert stats["down"] == 1
+    assert stats["flat"] == 1
+    assert stats["ma20_denominator"] == 2
+    assert stats["above_ma20"] == 1
+    assert stats["high20"] == 1
+    assert stats["low20"] == 0
+    assert stats["limit_up_approx"] == 1
+    assert stats["limit_down_approx"] == 0
 
 
 def test_purged_blocks_generates_three_test_blocks() -> None:

@@ -1,0 +1,1809 @@
+{
+  "generated_at": "2026-11-15T14:30:16.109220+00:00",
+  "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+  "stock_trading_days": 506,
+  "stock_last_date": "2026-10-09",
+  "index": {
+    "codes": [
+      {
+        "code": "000001.SH",
+        "name": "上证指数",
+        "rows": 255,
+        "first": "2025-09-08",
+        "last": "2026-09-24"
+      },
+      {
+        "code": "000688.SH",
+        "name": "科创50",
+        "rows": 255,
+        "first": "2025-09-08",
+        "last": "2026-09-24"
+      },
+      {
+        "code": "000852.SH",
+        "name": "中证1000",
+        "rows": 255,
+        "first": "2025-09-08",
+        "last": "2026-09-24"
+      },
+      {
+        "code": "399001.SZ",
+        "name": "深证成指",
+        "rows": 255,
+        "first": "2025-09-08",
+        "last": "2026-09-24"
+      },
+      {
+        "code": "399006.SZ",
+        "name": "创业板指",
+        "rows": 255,
+        "first": "2025-09-08",
+        "last": "2026-09-24"
+      },
+      {
+        "code": "899050.BJ",
+        "name": "北证50",
+        "rows": 255,
+        "first": "2025-09-08",
+        "last": "2026-09-24"
+      }
+    ],
+    "duplicates": 0,
+    "last_date": "2026-09-24",
+    "lag_trading_days_vs_stock": 5,
+    "missing_by_code": [
+      {
+        "code": "000001.SH",
+        "gaps": 0,
+        "first_gaps": []
+      },
+      {
+        "code": "000688.SH",
+        "gaps": 0,
+        "first_gaps": []
+      },
+      {
+        "code": "000852.SH",
+        "gaps": 0,
+        "first_gaps": []
+      },
+      {
+        "code": "399001.SZ",
+        "gaps": 0,
+        "first_gaps": []
+      },
+      {
+        "code": "399006.SZ",
+        "gaps": 0,
+        "first_gaps": []
+      },
+      {
+        "code": "899050.BJ",
+        "gaps": 0,
+        "first_gaps": []
+      }
+    ]
+  },
+  "sector": {
+    "taxonomy": [
+      {
+        "taxonomy": "kph_industry",
+        "sectors": 104
+      },
+      {
+        "taxonomy": "kph_selected",
+        "sectors": 279
+      }
+    ],
+    "duplicates": 0,
+    "days": 255,
+    "latest_days": [
+      {
+        "trade_date": "2026-09-24",
+        "rows": 363
+      },
+      {
+        "trade_date": "2026-09-23",
+        "rows": 363
+      },
+      {
+        "trade_date": "2026-09-22",
+        "rows": 372
+      }
+    ],
+    "member_days": 60,
+    "member_range": [
+      "2026-07-03",
+      "2026-09-24"
+    ],
+    "return_consistency": [
+      {
+        "trade_date": "2026-07-15",
+        "sectors": 269,
+        "within_0_5pp": 269,
+        "within_1pp": 269,
+        "max_abs_diff": 0.151,
+        "median_abs_diff": 0.0
+      },
+      {
+        "trade_date": "2026-08-14",
+        "sectors": 272,
+        "within_0_5pp": 272,
+        "within_1pp": 272,
+        "max_abs_diff": 0.022,
+        "median_abs_diff": 0.0
+      },
+      {
+        "trade_date": "2026-09-24",
+        "sectors": 260,
+        "within_0_5pp": 256,
+        "within_1pp": 257,
+        "max_abs_diff": 12.378,
+        "median_abs_diff": 0.0
+      }
+    ]
+  },
+  "rps": {
+    "days": 251,
+    "duplicates": 0,
+    "days_with_null_returns": [
+      {
+        "trade_date": "2025-09-22",
+        "rows": 4994,
+        "ret20_null": 13,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2025-09-23",
+        "rows": 4998,
+        "ret20_null": 13,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2025-09-24",
+        "rows": 4996,
+        "ret20_null": 10,
+        "ret60_null": 28
+      },
+      {
+        "trade_date": "2025-09-25",
+        "rows": 4997,
+        "ret20_null": 10,
+        "ret60_null": 26
+      },
+      {
+        "trade_date": "2025-09-26",
+        "rows": 4996,
+        "ret20_null": 8,
+        "ret60_null": 24
+      },
+      {
+        "trade_date": "2025-09-29",
+        "rows": 4991,
+        "ret20_null": 11,
+        "ret60_null": 26
+      },
+      {
+        "trade_date": "2025-09-30",
+        "rows": 4992,
+        "ret20_null": 11,
+        "ret60_null": 26
+      },
+      {
+        "trade_date": "2025-10-09",
+        "rows": 5014,
+        "ret20_null": 10,
+        "ret60_null": 51
+      },
+      {
+        "trade_date": "2025-10-10",
+        "rows": 5015,
+        "ret20_null": 9,
+        "ret60_null": 50
+      },
+      {
+        "trade_date": "2025-10-13",
+        "rows": 5018,
+        "ret20_null": 11,
+        "ret60_null": 51
+      },
+      {
+        "trade_date": "2025-10-14",
+        "rows": 5021,
+        "ret20_null": 13,
+        "ret60_null": 53
+      },
+      {
+        "trade_date": "2025-10-15",
+        "rows": 5021,
+        "ret20_null": 12,
+        "ret60_null": 51
+      },
+      {
+        "trade_date": "2025-10-16",
+        "rows": 5026,
+        "ret20_null": 15,
+        "ret60_null": 53
+      },
+      {
+        "trade_date": "2025-10-17",
+        "rows": 5028,
+        "ret20_null": 16,
+        "ret60_null": 55
+      },
+      {
+        "trade_date": "2025-10-20",
+        "rows": 5026,
+        "ret20_null": 17,
+        "ret60_null": 54
+      },
+      {
+        "trade_date": "2025-10-21",
+        "rows": 5025,
+        "ret20_null": 18,
+        "ret60_null": 55
+      },
+      {
+        "trade_date": "2025-10-22",
+        "rows": 5024,
+        "ret20_null": 18,
+        "ret60_null": 54
+      },
+      {
+        "trade_date": "2025-10-23",
+        "rows": 5026,
+        "ret20_null": 18,
+        "ret60_null": 55
+      },
+      {
+        "trade_date": "2025-10-24",
+        "rows": 5026,
+        "ret20_null": 18,
+        "ret60_null": 55
+      },
+      {
+        "trade_date": "2025-10-27",
+        "rows": 5026,
+        "ret20_null": 21,
+        "ret60_null": 57
+      },
+      {
+        "trade_date": "2025-10-28",
+        "rows": 5023,
+        "ret20_null": 21,
+        "ret60_null": 57
+      },
+      {
+        "trade_date": "2025-10-29",
+        "rows": 5025,
+        "ret20_null": 19,
+        "ret60_null": 57
+      },
+      {
+        "trade_date": "2025-10-30",
+        "rows": 5025,
+        "ret20_null": 17,
+        "ret60_null": 59
+      },
+      {
+        "trade_date": "2025-10-31",
+        "rows": 5027,
+        "ret20_null": 16,
+        "ret60_null": 59
+      },
+      {
+        "trade_date": "2025-11-03",
+        "rows": 5028,
+        "ret20_null": 19,
+        "ret60_null": 60
+      },
+      {
+        "trade_date": "2025-11-04",
+        "rows": 5028,
+        "ret20_null": 19,
+        "ret60_null": 56
+      },
+      {
+        "trade_date": "2025-11-05",
+        "rows": 5027,
+        "ret20_null": 18,
+        "ret60_null": 56
+      },
+      {
+        "trade_date": "2025-11-06",
+        "rows": 5026,
+        "ret20_null": 15,
+        "ret60_null": 56
+      },
+      {
+        "trade_date": "2025-11-07",
+        "rows": 5026,
+        "ret20_null": 16,
+        "ret60_null": 55
+      },
+      {
+        "trade_date": "2025-11-10",
+        "rows": 5030,
+        "ret20_null": 18,
+        "ret60_null": 57
+      },
+      {
+        "trade_date": "2025-11-11",
+        "rows": 5031,
+        "ret20_null": 18,
+        "ret60_null": 59
+      },
+      {
+        "trade_date": "2025-11-12",
+        "rows": 5034,
+        "ret20_null": 19,
+        "ret60_null": 60
+      },
+      {
+        "trade_date": "2025-11-13",
+        "rows": 5033,
+        "ret20_null": 18,
+        "ret60_null": 60
+      },
+      {
+        "trade_date": "2025-11-14",
+        "rows": 5031,
+        "ret20_null": 18,
+        "ret60_null": 59
+      },
+      {
+        "trade_date": "2025-11-17",
+        "rows": 5031,
+        "ret20_null": 18,
+        "ret60_null": 59
+      },
+      {
+        "trade_date": "2025-11-18",
+        "rows": 5032,
+        "ret20_null": 20,
+        "ret60_null": 61
+      },
+      {
+        "trade_date": "2025-11-19",
+        "rows": 5034,
+        "ret20_null": 21,
+        "ret60_null": 61
+      },
+      {
+        "trade_date": "2025-11-20",
+        "rows": 5035,
+        "ret20_null": 21,
+        "ret60_null": 63
+      },
+      {
+        "trade_date": "2025-11-21",
+        "rows": 5038,
+        "ret20_null": 23,
+        "ret60_null": 63
+      },
+      {
+        "trade_date": "2025-11-24",
+        "rows": 5034,
+        "ret20_null": 23,
+        "ret60_null": 63
+      },
+      {
+        "trade_date": "2025-11-25",
+        "rows": 5031,
+        "ret20_null": 23,
+        "ret60_null": 62
+      },
+      {
+        "trade_date": "2025-11-26",
+        "rows": 5029,
+        "ret20_null": 19,
+        "ret60_null": 62
+      },
+      {
+        "trade_date": "2025-11-27",
+        "rows": 5028,
+        "ret20_null": 18,
+        "ret60_null": 62
+      },
+      {
+        "trade_date": "2025-11-28",
+        "rows": 5027,
+        "ret20_null": 18,
+        "ret60_null": 36
+      },
+      {
+        "trade_date": "2025-12-01",
+        "rows": 5029,
+        "ret20_null": 22,
+        "ret60_null": 37
+      },
+      {
+        "trade_date": "2025-12-02",
+        "rows": 5031,
+        "ret20_null": 23,
+        "ret60_null": 38
+      },
+      {
+        "trade_date": "2025-12-03",
+        "rows": 5035,
+        "ret20_null": 23,
+        "ret60_null": 38
+      },
+      {
+        "trade_date": "2025-12-04",
+        "rows": 5033,
+        "ret20_null": 21,
+        "ret60_null": 37
+      },
+      {
+        "trade_date": "2025-12-05",
+        "rows": 5030,
+        "ret20_null": 20,
+        "ret60_null": 35
+      },
+      {
+        "trade_date": "2025-12-08",
+        "rows": 5032,
+        "ret20_null": 23,
+        "ret60_null": 36
+      },
+      {
+        "trade_date": "2025-12-09",
+        "rows": 5032,
+        "ret20_null": 25,
+        "ret60_null": 37
+      },
+      {
+        "trade_date": "2025-12-10",
+        "rows": 5028,
+        "ret20_null": 25,
+        "ret60_null": 38
+      },
+      {
+        "trade_date": "2025-12-11",
+        "rows": 5033,
+        "ret20_null": 23,
+        "ret60_null": 40
+      },
+      {
+        "trade_date": "2025-12-12",
+        "rows": 5035,
+        "ret20_null": 20,
+        "ret60_null": 39
+      },
+      {
+        "trade_date": "2025-12-15",
+        "rows": 5034,
+        "ret20_null": 21,
+        "ret60_null": 40
+      },
+      {
+        "trade_date": "2025-12-16",
+        "rows": 5035,
+        "ret20_null": 20,
+        "ret60_null": 39
+      },
+      {
+        "trade_date": "2025-12-17",
+        "rows": 5035,
+        "ret20_null": 21,
+        "ret60_null": 39
+      },
+      {
+        "trade_date": "2025-12-18",
+        "rows": 5037,
+        "ret20_null": 26,
+        "ret60_null": 42
+      },
+      {
+        "trade_date": "2025-12-19",
+        "rows": 5036,
+        "ret20_null": 27,
+        "ret60_null": 40
+      },
+      {
+        "trade_date": "2025-12-22",
+        "rows": 5034,
+        "ret20_null": 30,
+        "ret60_null": 39
+      },
+      {
+        "trade_date": "2025-12-23",
+        "rows": 5035,
+        "ret20_null": 31,
+        "ret60_null": 39
+      },
+      {
+        "trade_date": "2025-12-24",
+        "rows": 5036,
+        "ret20_null": 28,
+        "ret60_null": 40
+      },
+      {
+        "trade_date": "2025-12-25",
+        "rows": 5038,
+        "ret20_null": 28,
+        "ret60_null": 40
+      },
+      {
+        "trade_date": "2025-12-26",
+        "rows": 5040,
+        "ret20_null": 27,
+        "ret60_null": 43
+      },
+      {
+        "trade_date": "2025-12-29",
+        "rows": 5042,
+        "ret20_null": 29,
+        "ret60_null": 43
+      },
+      {
+        "trade_date": "2025-12-30",
+        "rows": 5041,
+        "ret20_null": 28,
+        "ret60_null": 44
+      },
+      {
+        "trade_date": "2025-12-31",
+        "rows": 5041,
+        "ret20_null": 27,
+        "ret60_null": 42
+      },
+      {
+        "trade_date": "2026-01-05",
+        "rows": 5043,
+        "ret20_null": 28,
+        "ret60_null": 42
+      },
+      {
+        "trade_date": "2026-01-06",
+        "rows": 5044,
+        "ret20_null": 28,
+        "ret60_null": 43
+      },
+      {
+        "trade_date": "2026-01-07",
+        "rows": 5045,
+        "ret20_null": 30,
+        "ret60_null": 44
+      },
+      {
+        "trade_date": "2026-01-08",
+        "rows": 5044,
+        "ret20_null": 29,
+        "ret60_null": 42
+      },
+      {
+        "trade_date": "2026-01-09",
+        "rows": 5043,
+        "ret20_null": 28,
+        "ret60_null": 41
+      },
+      {
+        "trade_date": "2026-01-12",
+        "rows": 5043,
+        "ret20_null": 29,
+        "ret60_null": 42
+      },
+      {
+        "trade_date": "2026-01-13",
+        "rows": 5037,
+        "ret20_null": 29,
+        "ret60_null": 41
+      },
+      {
+        "trade_date": "2026-01-14",
+        "rows": 5038,
+        "ret20_null": 23,
+        "ret60_null": 40
+      },
+      {
+        "trade_date": "2026-01-15",
+        "rows": 5042,
+        "ret20_null": 26,
+        "ret60_null": 44
+      },
+      {
+        "trade_date": "2026-01-16",
+        "rows": 5044,
+        "ret20_null": 26,
+        "ret60_null": 44
+      },
+      {
+        "trade_date": "2026-01-19",
+        "rows": 5046,
+        "ret20_null": 30,
+        "ret60_null": 44
+      },
+      {
+        "trade_date": "2026-01-20",
+        "rows": 5054,
+        "ret20_null": 33,
+        "ret60_null": 48
+      },
+      {
+        "trade_date": "2026-01-21",
+        "rows": 5054,
+        "ret20_null": 33,
+        "ret60_null": 49
+      },
+      {
+        "trade_date": "2026-01-22",
+        "rows": 5054,
+        "ret20_null": 31,
+        "ret60_null": 48
+      },
+      {
+        "trade_date": "2026-01-23",
+        "rows": 5055,
+        "ret20_null": 29,
+        "ret60_null": 48
+      },
+      {
+        "trade_date": "2026-01-26",
+        "rows": 5054,
+        "ret20_null": 28,
+        "ret60_null": 46
+      },
+      {
+        "trade_date": "2026-01-27",
+        "rows": 5058,
+        "ret20_null": 26,
+        "ret60_null": 48
+      },
+      {
+        "trade_date": "2026-01-28",
+        "rows": 5057,
+        "ret20_null": 23,
+        "ret60_null": 48
+      },
+      {
+        "trade_date": "2026-01-29",
+        "rows": 5058,
+        "ret20_null": 23,
+        "ret60_null": 50
+      },
+      {
+        "trade_date": "2026-01-30",
+        "rows": 5056,
+        "ret20_null": 20,
+        "ret60_null": 50
+      },
+      {
+        "trade_date": "2026-02-02",
+        "rows": 5058,
+        "ret20_null": 23,
+        "ret60_null": 53
+      },
+      {
+        "trade_date": "2026-02-03",
+        "rows": 5058,
+        "ret20_null": 22,
+        "ret60_null": 50
+      },
+      {
+        "trade_date": "2026-02-04",
+        "rows": 5061,
+        "ret20_null": 24,
+        "ret60_null": 51
+      },
+      {
+        "trade_date": "2026-02-05",
+        "rows": 5060,
+        "ret20_null": 24,
+        "ret60_null": 51
+      },
+      {
+        "trade_date": "2026-02-06",
+        "rows": 5060,
+        "ret20_null": 26,
+        "ret60_null": 51
+      },
+      {
+        "trade_date": "2026-02-09",
+        "rows": 5059,
+        "ret20_null": 23,
+        "ret60_null": 51
+      },
+      {
+        "trade_date": "2026-02-10",
+        "rows": 5061,
+        "ret20_null": 22,
+        "ret60_null": 54
+      },
+      {
+        "trade_date": "2026-02-11",
+        "rows": 5060,
+        "ret20_null": 19,
+        "ret60_null": 53
+      },
+      {
+        "trade_date": "2026-02-12",
+        "rows": 5063,
+        "ret20_null": 16,
+        "ret60_null": 53
+      },
+      {
+        "trade_date": "2026-02-13",
+        "rows": 5061,
+        "ret20_null": 15,
+        "ret60_null": 53
+      },
+      {
+        "trade_date": "2026-02-24",
+        "rows": 5062,
+        "ret20_null": 17,
+        "ret60_null": 52
+      },
+      {
+        "trade_date": "2026-02-25",
+        "rows": 5060,
+        "ret20_null": 16,
+        "ret60_null": 52
+      },
+      {
+        "trade_date": "2026-02-26",
+        "rows": 5058,
+        "ret20_null": 16,
+        "ret60_null": 50
+      },
+      {
+        "trade_date": "2026-02-27",
+        "rows": 5058,
+        "ret20_null": 17,
+        "ret60_null": 51
+      },
+      {
+        "trade_date": "2026-03-02",
+        "rows": 5058,
+        "ret20_null": 17,
+        "ret60_null": 51
+      },
+      {
+        "trade_date": "2026-03-03",
+        "rows": 5059,
+        "ret20_null": 17,
+        "ret60_null": 50
+      },
+      {
+        "trade_date": "2026-03-04",
+        "rows": 5061,
+        "ret20_null": 18,
+        "ret60_null": 50
+      },
+      {
+        "trade_date": "2026-03-05",
+        "rows": 5062,
+        "ret20_null": 16,
+        "ret60_null": 48
+      },
+      {
+        "trade_date": "2026-03-06",
+        "rows": 5062,
+        "ret20_null": 16,
+        "ret60_null": 48
+      },
+      {
+        "trade_date": "2026-03-09",
+        "rows": 5066,
+        "ret20_null": 16,
+        "ret60_null": 52
+      },
+      {
+        "trade_date": "2026-03-10",
+        "rows": 5064,
+        "ret20_null": 16,
+        "ret60_null": 51
+      },
+      {
+        "trade_date": "2026-03-11",
+        "rows": 5068,
+        "ret20_null": 15,
+        "ret60_null": 52
+      },
+      {
+        "trade_date": "2026-03-12",
+        "rows": 5068,
+        "ret20_null": 14,
+        "ret60_null": 50
+      },
+      {
+        "trade_date": "2026-03-13",
+        "rows": 5068,
+        "ret20_null": 11,
+        "ret60_null": 46
+      },
+      {
+        "trade_date": "2026-03-16",
+        "rows": 5069,
+        "ret20_null": 12,
+        "ret60_null": 46
+      },
+      {
+        "trade_date": "2026-03-17",
+        "rows": 5067,
+        "ret20_null": 12,
+        "ret60_null": 46
+      },
+      {
+        "trade_date": "2026-03-18",
+        "rows": 5067,
+        "ret20_null": 12,
+        "ret60_null": 46
+      },
+      {
+        "trade_date": "2026-03-19",
+        "rows": 5067,
+        "ret20_null": 10,
+        "ret60_null": 42
+      },
+      {
+        "trade_date": "2026-03-20",
+        "rows": 5068,
+        "ret20_null": 11,
+        "ret60_null": 42
+      },
+      {
+        "trade_date": "2026-03-23",
+        "rows": 5069,
+        "ret20_null": 11,
+        "ret60_null": 41
+      },
+      {
+        "trade_date": "2026-03-24",
+        "rows": 5067,
+        "ret20_null": 10,
+        "ret60_null": 41
+      },
+      {
+        "trade_date": "2026-03-25",
+        "rows": 5066,
+        "ret20_null": 10,
+        "ret60_null": 40
+      },
+      {
+        "trade_date": "2026-03-26",
+        "rows": 5066,
+        "ret20_null": 9,
+        "ret60_null": 35
+      },
+      {
+        "trade_date": "2026-03-27",
+        "rows": 5061,
+        "ret20_null": 9,
+        "ret60_null": 33
+      },
+      {
+        "trade_date": "2026-03-30",
+        "rows": 5059,
+        "ret20_null": 9,
+        "ret60_null": 33
+      },
+      {
+        "trade_date": "2026-03-31",
+        "rows": 5061,
+        "ret20_null": 11,
+        "ret60_null": 34
+      },
+      {
+        "trade_date": "2026-04-01",
+        "rows": 5063,
+        "ret20_null": 8,
+        "ret60_null": 34
+      },
+      {
+        "trade_date": "2026-04-02",
+        "rows": 5063,
+        "ret20_null": 10,
+        "ret60_null": 34
+      },
+      {
+        "trade_date": "2026-04-03",
+        "rows": 5064,
+        "ret20_null": 11,
+        "ret60_null": 34
+      },
+      {
+        "trade_date": "2026-04-07",
+        "rows": 5064,
+        "ret20_null": 12,
+        "ret60_null": 34
+      },
+      {
+        "trade_date": "2026-04-08",
+        "rows": 5067,
+        "ret20_null": 15,
+        "ret60_null": 36
+      },
+      {
+        "trade_date": "2026-04-09",
+        "rows": 5068,
+        "ret20_null": 15,
+        "ret60_null": 34
+      },
+      {
+        "trade_date": "2026-04-10",
+        "rows": 5069,
+        "ret20_null": 15,
+        "ret60_null": 34
+      },
+      {
+        "trade_date": "2026-04-13",
+        "rows": 5068,
+        "ret20_null": 16,
+        "ret60_null": 33
+      },
+      {
+        "trade_date": "2026-04-14",
+        "rows": 5071,
+        "ret20_null": 17,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-04-15",
+        "rows": 5069,
+        "ret20_null": 16,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-04-16",
+        "rows": 5070,
+        "ret20_null": 16,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-04-17",
+        "rows": 5069,
+        "ret20_null": 16,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-04-20",
+        "rows": 5065,
+        "ret20_null": 16,
+        "ret60_null": 31
+      },
+      {
+        "trade_date": "2026-04-21",
+        "rows": 5071,
+        "ret20_null": 18,
+        "ret60_null": 34
+      },
+      {
+        "trade_date": "2026-04-22",
+        "rows": 5069,
+        "ret20_null": 18,
+        "ret60_null": 33
+      },
+      {
+        "trade_date": "2026-04-23",
+        "rows": 5068,
+        "ret20_null": 17,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-04-24",
+        "rows": 5069,
+        "ret20_null": 15,
+        "ret60_null": 33
+      },
+      {
+        "trade_date": "2026-04-27",
+        "rows": 5068,
+        "ret20_null": 16,
+        "ret60_null": 33
+      },
+      {
+        "trade_date": "2026-04-28",
+        "rows": 5064,
+        "ret20_null": 15,
+        "ret60_null": 34
+      },
+      {
+        "trade_date": "2026-04-29",
+        "rows": 5044,
+        "ret20_null": 14,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-04-30",
+        "rows": 5048,
+        "ret20_null": 13,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-05-06",
+        "rows": 5074,
+        "ret20_null": 10,
+        "ret60_null": 31
+      },
+      {
+        "trade_date": "2026-05-07",
+        "rows": 5076,
+        "ret20_null": 11,
+        "ret60_null": 33
+      },
+      {
+        "trade_date": "2026-05-08",
+        "rows": 5076,
+        "ret20_null": 11,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-05-11",
+        "rows": 5075,
+        "ret20_null": 9,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-05-12",
+        "rows": 5073,
+        "ret20_null": 10,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-05-13",
+        "rows": 5077,
+        "ret20_null": 12,
+        "ret60_null": 33
+      },
+      {
+        "trade_date": "2026-05-14",
+        "rows": 5078,
+        "ret20_null": 12,
+        "ret60_null": 34
+      },
+      {
+        "trade_date": "2026-05-15",
+        "rows": 5079,
+        "ret20_null": 12,
+        "ret60_null": 35
+      },
+      {
+        "trade_date": "2026-05-18",
+        "rows": 5082,
+        "ret20_null": 13,
+        "ret60_null": 35
+      },
+      {
+        "trade_date": "2026-05-19",
+        "rows": 5078,
+        "ret20_null": 11,
+        "ret60_null": 34
+      },
+      {
+        "trade_date": "2026-05-20",
+        "rows": 5082,
+        "ret20_null": 12,
+        "ret60_null": 36
+      },
+      {
+        "trade_date": "2026-05-21",
+        "rows": 5085,
+        "ret20_null": 13,
+        "ret60_null": 35
+      },
+      {
+        "trade_date": "2026-05-22",
+        "rows": 5086,
+        "ret20_null": 13,
+        "ret60_null": 37
+      },
+      {
+        "trade_date": "2026-05-25",
+        "rows": 5087,
+        "ret20_null": 12,
+        "ret60_null": 38
+      },
+      {
+        "trade_date": "2026-05-26",
+        "rows": 5087,
+        "ret20_null": 12,
+        "ret60_null": 38
+      },
+      {
+        "trade_date": "2026-05-27",
+        "rows": 5087,
+        "ret20_null": 11,
+        "ret60_null": 36
+      },
+      {
+        "trade_date": "2026-05-28",
+        "rows": 5088,
+        "ret20_null": 11,
+        "ret60_null": 37
+      },
+      {
+        "trade_date": "2026-05-29",
+        "rows": 5087,
+        "ret20_null": 11,
+        "ret60_null": 35
+      },
+      {
+        "trade_date": "2026-06-01",
+        "rows": 5085,
+        "ret20_null": 9,
+        "ret60_null": 35
+      },
+      {
+        "trade_date": "2026-06-02",
+        "rows": 5084,
+        "ret20_null": 9,
+        "ret60_null": 35
+      },
+      {
+        "trade_date": "2026-06-03",
+        "rows": 5090,
+        "ret20_null": 9,
+        "ret60_null": 36
+      },
+      {
+        "trade_date": "2026-06-04",
+        "rows": 5090,
+        "ret20_null": 9,
+        "ret60_null": 35
+      },
+      {
+        "trade_date": "2026-06-05",
+        "rows": 5092,
+        "ret20_null": 9,
+        "ret60_null": 35
+      },
+      {
+        "trade_date": "2026-06-08",
+        "rows": 5090,
+        "ret20_null": 9,
+        "ret60_null": 35
+      },
+      {
+        "trade_date": "2026-06-09",
+        "rows": 5091,
+        "ret20_null": 8,
+        "ret60_null": 36
+      },
+      {
+        "trade_date": "2026-06-10",
+        "rows": 5091,
+        "ret20_null": 7,
+        "ret60_null": 38
+      },
+      {
+        "trade_date": "2026-06-11",
+        "rows": 5088,
+        "ret20_null": 7,
+        "ret60_null": 38
+      },
+      {
+        "trade_date": "2026-06-12",
+        "rows": 5089,
+        "ret20_null": 6,
+        "ret60_null": 37
+      },
+      {
+        "trade_date": "2026-06-15",
+        "rows": 5084,
+        "ret20_null": 5,
+        "ret60_null": 36
+      },
+      {
+        "trade_date": "2026-06-16",
+        "rows": 5091,
+        "ret20_null": 6,
+        "ret60_null": 38
+      },
+      {
+        "trade_date": "2026-06-17",
+        "rows": 5088,
+        "ret20_null": 6,
+        "ret60_null": 38
+      },
+      {
+        "trade_date": "2026-06-18",
+        "rows": 5085,
+        "ret20_null": 6,
+        "ret60_null": 35
+      },
+      {
+        "trade_date": "2026-06-22",
+        "rows": 5089,
+        "ret20_null": 6,
+        "ret60_null": 36
+      },
+      {
+        "trade_date": "2026-06-23",
+        "rows": 5093,
+        "ret20_null": 10,
+        "ret60_null": 36
+      },
+      {
+        "trade_date": "2026-06-24",
+        "rows": 5092,
+        "ret20_null": 10,
+        "ret60_null": 36
+      },
+      {
+        "trade_date": "2026-06-25",
+        "rows": 5091,
+        "ret20_null": 11,
+        "ret60_null": 36
+      },
+      {
+        "trade_date": "2026-06-26",
+        "rows": 5091,
+        "ret20_null": 11,
+        "ret60_null": 33
+      },
+      {
+        "trade_date": "2026-06-29",
+        "rows": 5086,
+        "ret20_null": 12,
+        "ret60_null": 34
+      },
+      {
+        "trade_date": "2026-06-30",
+        "rows": 5086,
+        "ret20_null": 13,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-07-01",
+        "rows": 5088,
+        "ret20_null": 13,
+        "ret60_null": 31
+      },
+      {
+        "trade_date": "2026-07-02",
+        "rows": 5093,
+        "ret20_null": 14,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-07-03",
+        "rows": 5093,
+        "ret20_null": 14,
+        "ret60_null": 33
+      },
+      {
+        "trade_date": "2026-07-06",
+        "rows": 5094,
+        "ret20_null": 16,
+        "ret60_null": 33
+      },
+      {
+        "trade_date": "2026-07-07",
+        "rows": 5093,
+        "ret20_null": 16,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-07-08",
+        "rows": 5093,
+        "ret20_null": 17,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-07-09",
+        "rows": 5094,
+        "ret20_null": 18,
+        "ret60_null": 30
+      },
+      {
+        "trade_date": "2026-07-10",
+        "rows": 5094,
+        "ret20_null": 18,
+        "ret60_null": 29
+      },
+      {
+        "trade_date": "2026-07-13",
+        "rows": 5097,
+        "ret20_null": 22,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-07-14",
+        "rows": 5102,
+        "ret20_null": 23,
+        "ret60_null": 33
+      },
+      {
+        "trade_date": "2026-07-15",
+        "rows": 5103,
+        "ret20_null": 23,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-07-16",
+        "rows": 5102,
+        "ret20_null": 20,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-07-17",
+        "rows": 5102,
+        "ret20_null": 21,
+        "ret60_null": 31
+      },
+      {
+        "trade_date": "2026-07-20",
+        "rows": 5104,
+        "ret20_null": 19,
+        "ret60_null": 30
+      },
+      {
+        "trade_date": "2026-07-21",
+        "rows": 5105,
+        "ret20_null": 18,
+        "ret60_null": 31
+      },
+      {
+        "trade_date": "2026-07-22",
+        "rows": 5106,
+        "ret20_null": 18,
+        "ret60_null": 31
+      },
+      {
+        "trade_date": "2026-07-23",
+        "rows": 5106,
+        "ret20_null": 18,
+        "ret60_null": 30
+      },
+      {
+        "trade_date": "2026-07-24",
+        "rows": 5105,
+        "ret20_null": 16,
+        "ret60_null": 28
+      },
+      {
+        "trade_date": "2026-07-27",
+        "rows": 5102,
+        "ret20_null": 15,
+        "ret60_null": 29
+      },
+      {
+        "trade_date": "2026-07-28",
+        "rows": 5102,
+        "ret20_null": 15,
+        "ret60_null": 28
+      },
+      {
+        "trade_date": "2026-07-29",
+        "rows": 5101,
+        "ret20_null": 13,
+        "ret60_null": 28
+      },
+      {
+        "trade_date": "2026-07-30",
+        "rows": 5104,
+        "ret20_null": 17,
+        "ret60_null": 28
+      },
+      {
+        "trade_date": "2026-07-31",
+        "rows": 5107,
+        "ret20_null": 17,
+        "ret60_null": 27
+      },
+      {
+        "trade_date": "2026-08-03",
+        "rows": 5106,
+        "ret20_null": 18,
+        "ret60_null": 27
+      },
+      {
+        "trade_date": "2026-08-04",
+        "rows": 5105,
+        "ret20_null": 17,
+        "ret60_null": 27
+      },
+      {
+        "trade_date": "2026-08-05",
+        "rows": 5107,
+        "ret20_null": 13,
+        "ret60_null": 27
+      },
+      {
+        "trade_date": "2026-08-06",
+        "rows": 5107,
+        "ret20_null": 12,
+        "ret60_null": 26
+      },
+      {
+        "trade_date": "2026-08-07",
+        "rows": 5108,
+        "ret20_null": 12,
+        "ret60_null": 25
+      },
+      {
+        "trade_date": "2026-08-10",
+        "rows": 5111,
+        "ret20_null": 14,
+        "ret60_null": 25
+      },
+      {
+        "trade_date": "2026-08-11",
+        "rows": 5109,
+        "ret20_null": 12,
+        "ret60_null": 24
+      },
+      {
+        "trade_date": "2026-08-12",
+        "rows": 5108,
+        "ret20_null": 12,
+        "ret60_null": 24
+      },
+      {
+        "trade_date": "2026-08-13",
+        "rows": 5109,
+        "ret20_null": 13,
+        "ret60_null": 25
+      },
+      {
+        "trade_date": "2026-08-14",
+        "rows": 5110,
+        "ret20_null": 12,
+        "ret60_null": 26
+      },
+      {
+        "trade_date": "2026-08-17",
+        "rows": 5108,
+        "ret20_null": 11,
+        "ret60_null": 26
+      },
+      {
+        "trade_date": "2026-08-18",
+        "rows": 5109,
+        "ret20_null": 12,
+        "ret60_null": 28
+      },
+      {
+        "trade_date": "2026-08-19",
+        "rows": 5110,
+        "ret20_null": 11,
+        "ret60_null": 29
+      },
+      {
+        "trade_date": "2026-08-20",
+        "rows": 5109,
+        "ret20_null": 11,
+        "ret60_null": 29
+      },
+      {
+        "trade_date": "2026-08-21",
+        "rows": 5110,
+        "ret20_null": 12,
+        "ret60_null": 28
+      },
+      {
+        "trade_date": "2026-08-24",
+        "rows": 5113,
+        "ret20_null": 12,
+        "ret60_null": 29
+      },
+      {
+        "trade_date": "2026-08-25",
+        "rows": 5113,
+        "ret20_null": 12,
+        "ret60_null": 30
+      },
+      {
+        "trade_date": "2026-08-26",
+        "rows": 5114,
+        "ret20_null": 10,
+        "ret60_null": 29
+      },
+      {
+        "trade_date": "2026-08-27",
+        "rows": 5115,
+        "ret20_null": 11,
+        "ret60_null": 30
+      },
+      {
+        "trade_date": "2026-08-28",
+        "rows": 5115,
+        "ret20_null": 12,
+        "ret60_null": 30
+      },
+      {
+        "trade_date": "2026-08-31",
+        "rows": 5113,
+        "ret20_null": 12,
+        "ret60_null": 30
+      },
+      {
+        "trade_date": "2026-09-01",
+        "rows": 5115,
+        "ret20_null": 12,
+        "ret60_null": 32
+      },
+      {
+        "trade_date": "2026-09-02",
+        "rows": 5115,
+        "ret20_null": 11,
+        "ret60_null": 29
+      },
+      {
+        "trade_date": "2026-09-03",
+        "rows": 5118,
+        "ret20_null": 11,
+        "ret60_null": 31
+      },
+      {
+        "trade_date": "2026-09-04",
+        "rows": 5117,
+        "ret20_null": 10,
+        "ret60_null": 31
+      },
+      {
+        "trade_date": "2026-09-07",
+        "rows": 5116,
+        "ret20_null": 10,
+        "ret60_null": 30
+      },
+      {
+        "trade_date": "2026-09-08",
+        "rows": 5258,
+        "ret20_null": 10,
+        "ret60_null": 172
+      },
+      {
+        "trade_date": "2026-09-09",
+        "rows": 5258,
+        "ret20_null": 10,
+        "ret60_null": 172
+      },
+      {
+        "trade_date": "2026-09-10",
+        "rows": 5257,
+        "ret20_null": 9,
+        "ret60_null": 171
+      },
+      {
+        "trade_date": "2026-09-11",
+        "rows": 5260,
+        "ret20_null": 10,
+        "ret60_null": 173
+      },
+      {
+        "trade_date": "2026-09-14",
+        "rows": 5261,
+        "ret20_null": 13,
+        "ret60_null": 175
+      },
+      {
+        "trade_date": "2026-09-15",
+        "rows": 5260,
+        "ret20_null": 14,
+        "ret60_null": 176
+      },
+      {
+        "trade_date": "2026-09-16",
+        "rows": 5260,
+        "ret20_null": 10,
+        "ret60_null": 176
+      },
+      {
+        "trade_date": "2026-09-17",
+        "rows": 5263,
+        "ret20_null": 11,
+        "ret60_null": 177
+      },
+      {
+        "trade_date": "2026-09-18",
+        "rows": 5263,
+        "ret20_null": 11,
+        "ret60_null": 177
+      },
+      {
+        "trade_date": "2026-09-21",
+        "rows": 5263,
+        "ret20_null": 12,
+        "ret60_null": 176
+      },
+      {
+        "trade_date": "2026-09-22",
+        "rows": 5263,
+        "ret20_null": 12,
+        "ret60_null": 176
+      },
+      {
+        "trade_date": "2026-09-23",
+        "rows": 5264,
+        "ret20_null": 13,
+        "ret60_null": 175
+      },
+      {
+        "trade_date": "2026-09-24",
+        "rows": 5266,
+        "ret20_null": 14,
+        "ret60_null": 174
+      },
+      {
+        "trade_date": "2026-09-28",
+        "rows": 5268,
+        "ret20_null": 13,
+        "ret60_null": 175
+      },
+      {
+        "trade_date": "2026-09-29",
+        "rows": 5228,
+        "ret20_null": 15,
+        "ret60_null": 169
+      },
+      {
+        "trade_date": "2026-09-30",
+        "rows": 5228,
+        "ret20_null": 17,
+        "ret60_null": 172
+      },
+      {
+        "trade_date": "2026-10-08",
+        "rows": 5226,
+        "ret20_null": 16,
+        "ret60_null": 174
+      },
+      {
+        "trade_date": "2026-10-09",
+        "rows": 5270,
+        "ret20_null": 59,
+        "ret60_null": 217
+      },
+      {
+        "trade_date": "2026-10-21",
+        "rows": 5091,
+        "ret20_null": 5091,
+        "ret60_null": 5091
+      }
+    ],
+    "recompute_probe": {
+      "status": "OK",
+      "day": "2026-09-30",
+      "common_codes": 5207,
+      "pearson_corr": 0.9951,
+      "unit": "percent",
+      "median_abs_diff": 0.00275,
+      "median_abs_diff_other_unit": 5.9103,
+      "computed_universe": 5219,
+      "stored_universe": 5211
+    }
+  },
+  "breadth_samples": [
+    {
+      "trade_date": "2025-12-31",
+      "sql": {
+        "universe": 5055,
+        "up": 2291,
+        "down": 2566,
+        "flat": 198,
+        "above_ma20": 2689,
+        "ma20_denominator": 5040,
+        "above_ma60": 2025,
+        "ma60_denominator": 4944,
+        "high20": 564,
+        "low20": 467,
+        "high60": 250,
+        "low60": 260,
+        "high20_denominator": 5040,
+        "high60_denominator": 4944,
+        "limit_up_approx": 57,
+        "limit_down_approx": 8
+      },
+      "python": {
+        "universe": 5055,
+        "up": 2291,
+        "down": 2566,
+        "flat": 198,
+        "above_ma20": 2689,
+        "ma20_denominator": 5040,
+        "above_ma60": 2025,
+        "ma60_denominator": 4944,
+        "high20": 564,
+        "low20": 467,
+        "high60": 250,
+        "low60": 260,
+        "high20_denominator": 5040,
+        "high60_denominator": 4944,
+        "limit_up_approx": 57,
+        "limit_down_approx": 8
+      },
+      "limit_pool_counts": {
+        "broken": 19,
+        "down": 6,
+        "up": 59
+      },
+      "match": true,
+      "mismatch": {}
+    },
+    {
+      "trade_date": "2026-06-30",
+      "sql": {
+        "universe": 5096,
+        "up": 2862,
+        "down": 2156,
+        "flat": 78,
+        "above_ma20": 1421,
+        "ma20_denominator": 5087,
+        "above_ma60": 1137,
+        "ma60_denominator": 5019,
+        "high20": 454,
+        "low20": 1255,
+        "high60": 279,
+        "low60": 1156,
+        "high20_denominator": 5087,
+        "high60_denominator": 5019,
+        "limit_up_approx": 143,
+        "limit_down_approx": 10
+      },
+      "python": {
+        "universe": 5096,
+        "up": 2862,
+        "down": 2156,
+        "flat": 78,
+        "above_ma20": 1421,
+        "ma20_denominator": 5087,
+        "above_ma60": 1137,
+        "ma60_denominator": 5019,
+        "high20": 454,
+        "low20": 1255,
+        "high60": 279,
+        "low60": 1156,
+        "high20_denominator": 5087,
+        "high60_denominator": 5019,
+        "limit_up_approx": 143,
+        "limit_down_approx": 10
+      },
+      "limit_pool_counts": {
+        "broken": 20,
+        "down": 6,
+        "up": 142
+      },
+      "match": true,
+      "mismatch": {}
+    },
+    {
+      "trade_date": "2026-09-24",
+      "sql": {
+        "universe": 5282,
+        "up": 1071,
+        "down": 4092,
+        "flat": 119,
+        "above_ma20": 2111,
+        "ma20_denominator": 5264,
+        "above_ma60": 2706,
+        "ma60_denominator": 5052,
+        "high20": 267,
+        "low20": 969,
+        "high60": 140,
+        "low60": 260,
+        "high20_denominator": 5264,
+        "high60_denominator": 5052,
+        "limit_up_approx": 54,
+        "limit_down_approx": 18
+      },
+      "python": {
+        "universe": 5282,
+        "up": 1071,
+        "down": 4092,
+        "flat": 119,
+        "above_ma20": 2111,
+        "ma20_denominator": 5264,
+        "above_ma60": 2706,
+        "ma60_denominator": 5052,
+        "high20": 267,
+        "low20": 969,
+        "high60": 140,
+        "low60": 260,
+        "high20_denominator": 5264,
+        "high60_denominator": 5052,
+        "limit_up_approx": 54,
+        "limit_down_approx": 18
+      },
+      "limit_pool_counts": {
+        "broken": 10,
+        "down": 13,
+        "up": 52
+      },
+      "match": true,
+      "mismatch": {}
+    }
+  ]
+}
