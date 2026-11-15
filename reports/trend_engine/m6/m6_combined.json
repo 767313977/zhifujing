@@ -1,0 +1,394 @@
+{
+  "strategy": "Combined-full",
+  "params": {
+    "top": 20,
+    "min_score": 60.0
+  },
+  "start": "2025-10-14",
+  "end": "2026-10-09",
+  "entry_mode": "next_open",
+  "cost_bps": 15.0,
+  "signals": 4471,
+  "data_coverage": {
+    "calendar_days": 380,
+    "codes": 5303,
+    "signal_count": 4471,
+    "data_end": "2026-10-09"
+  },
+  "warnings": [
+    "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+    "没有退市股名单；结果应标注为「现存股票样本研究」",
+    "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+  ],
+  "horizons": {
+    "5": {
+      "observation_samples": 4357,
+      "execution_samples": 4336,
+      "counts": {
+        "ok": 4336,
+        "exit_limit_down": 21,
+        "unbuyable": 13,
+        "no_quote": 0,
+        "suspended": 2,
+        "no_exit": 0,
+        "pending": 99,
+        "price_invalid": 0
+      },
+      "mean": -0.19,
+      "median": -0.86,
+      "pos_pct": 42.8,
+      "excess_mean": -0.41,
+      "excess_median": -1.09,
+      "beat_pct": 41.3,
+      "net_mean": -0.34,
+      "mae_mean": -3.41,
+      "distribution": {
+        "<=-10": 299,
+        "-10~-5": 631,
+        "-5~0": 1551,
+        "0~5": 1095,
+        "5~10": 399,
+        ">10": 361
+      },
+      "profit_factor": 0.93,
+      "max_drawdown_points": -2411.98,
+      "max_consecutive_losses": 30,
+      "holding_days_mean": 6.0,
+      "tail": {
+        "top5_count": 216,
+        "top5_share": null,
+        "total_gross": -843.53,
+        "mean_excluding_top5pct": -1.32
+      }
+    },
+    "10": {
+      "observation_samples": 4257,
+      "execution_samples": 4226,
+      "counts": {
+        "ok": 4226,
+        "exit_limit_down": 31,
+        "unbuyable": 13,
+        "no_quote": 0,
+        "suspended": 2,
+        "no_exit": 1,
+        "pending": 198,
+        "price_invalid": 0
+      },
+      "mean": -0.11,
+      "median": -1.09,
+      "pos_pct": 43.4,
+      "excess_mean": -0.42,
+      "excess_median": -1.6,
+      "beat_pct": 41.7,
+      "net_mean": -0.26,
+      "mae_mean": -5.66,
+      "distribution": {
+        "<=-10": 565,
+        "-10~-5": 684,
+        "-5~0": 1142,
+        "0~5": 885,
+        "5~10": 435,
+        ">10": 515
+      },
+      "profit_factor": 0.97,
+      "max_drawdown_points": -4168.18,
+      "max_consecutive_losses": 29,
+      "holding_days_mean": 13.5,
+      "tail": {
+        "top5_count": 211,
+        "top5_share": null,
+        "total_gross": -457.67,
+        "mean_excluding_top5pct": -1.82
+      }
+    },
+    "20": {
+      "observation_samples": 4057,
+      "execution_samples": 4029,
+      "counts": {
+        "ok": 4029,
+        "exit_limit_down": 28,
+        "unbuyable": 13,
+        "no_quote": 0,
+        "suspended": 2,
+        "no_exit": 1,
+        "pending": 398,
+        "price_invalid": 0
+      },
+      "mean": -0.49,
+      "median": -2.23,
+      "pos_pct": 41.0,
+      "excess_mean": -0.98,
+      "excess_median": -3.2,
+      "beat_pct": 37.9,
+      "net_mean": -0.64,
+      "mae_mean": -8.94,
+      "distribution": {
+        "<=-10": 957,
+        "-10~-5": 598,
+        "-5~0": 824,
+        "0~5": 596,
+        "5~10": 365,
+        ">10": 689
+      },
+      "profit_factor": 0.92,
+      "max_drawdown_points": -7993.72,
+      "max_consecutive_losses": 55,
+      "holding_days_mean": 28.4,
+      "tail": {
+        "top5_count": 201,
+        "top5_share": null,
+        "total_gross": -1972.62,
+        "mean_excluding_top5pct": -3.18
+      }
+    },
+    "40": {
+      "observation_samples": 3708,
+      "execution_samples": 3695,
+      "counts": {
+        "ok": 3695,
+        "exit_limit_down": 13,
+        "unbuyable": 13,
+        "no_quote": 0,
+        "suspended": 2,
+        "no_exit": 0,
+        "pending": 748,
+        "price_invalid": 0
+      },
+      "mean": -0.53,
+      "median": -4.33,
+      "pos_pct": 38.1,
+      "excess_mean": -1.43,
+      "excess_median": -5.8,
+      "beat_pct": 35.1,
+      "net_mean": -0.68,
+      "mae_mean": -13.42,
+      "distribution": {
+        "<=-10": 1236,
+        "-10~-5": 519,
+        "-5~0": 534,
+        "0~5": 397,
+        "5~10": 308,
+        ">10": 701
+      },
+      "profit_factor": 0.94,
+      "max_drawdown_points": -11905.99,
+      "max_consecutive_losses": 32,
+      "holding_days_mean": 58.5,
+      "tail": {
+        "top5_count": 184,
+        "top5_share": null,
+        "total_gross": -1946.74,
+        "mean_excluding_top5pct": -4.8
+      }
+    },
+    "60": {
+      "observation_samples": 3448,
+      "execution_samples": 3431,
+      "counts": {
+        "ok": 3431,
+        "exit_limit_down": 17,
+        "unbuyable": 13,
+        "no_quote": 0,
+        "suspended": 2,
+        "no_exit": 0,
+        "pending": 1008,
+        "price_invalid": 0
+      },
+      "mean": 0.31,
+      "median": -5.96,
+      "pos_pct": 37.3,
+      "excess_mean": -0.37,
+      "excess_median": -7.27,
+      "beat_pct": 35.9,
+      "net_mean": 0.16,
+      "mae_mean": -16.98,
+      "distribution": {
+        "<=-10": 1382,
+        "-10~-5": 396,
+        "-5~0": 372,
+        "0~5": 299,
+        "5~10": 233,
+        ">10": 749
+      },
+      "profit_factor": 1.03,
+      "max_drawdown_points": -14259.16,
+      "max_consecutive_losses": 55,
+      "holding_days_mean": 88.8,
+      "tail": {
+        "top5_count": 171,
+        "top5_share": 17.465,
+        "total_gross": 1080.37,
+        "mean_excluding_top5pct": -5.46
+      }
+    }
+  },
+  "regimes": {
+    "5": {
+      "UNKNOWN": {
+        "samples": 777,
+        "mean": 0.54,
+        "excess_mean": 0.2,
+        "pos_pct": 47.4
+      },
+      "SIDEWAYS": {
+        "samples": 1569,
+        "mean": -0.52,
+        "excess_mean": -0.58,
+        "pos_pct": 42.9
+      },
+      "BEAR": {
+        "samples": 1218,
+        "mean": -0.25,
+        "excess_mean": -1.23,
+        "pos_pct": 39.5
+      },
+      "BULL": {
+        "samples": 772,
+        "mean": -0.19,
+        "excess_mean": 0.61,
+        "pos_pct": 43.1
+      }
+    },
+    "10": {
+      "UNKNOWN": {
+        "samples": 774,
+        "mean": 0.6,
+        "excess_mean": 0.33,
+        "pos_pct": 44.8
+      },
+      "SIDEWAYS": {
+        "samples": 1541,
+        "mean": -1.42,
+        "excess_mean": -1.36,
+        "pos_pct": 41.6
+      },
+      "BEAR": {
+        "samples": 1177,
+        "mean": 0.99,
+        "excess_mean": -0.87,
+        "pos_pct": 44.6
+      },
+      "BULL": {
+        "samples": 734,
+        "mean": 0.14,
+        "excess_mean": 1.46,
+        "pos_pct": 43.9
+      }
+    },
+    "20": {
+      "UNKNOWN": {
+        "samples": 776,
+        "mean": 1.16,
+        "excess_mean": 0.61,
+        "pos_pct": 40.3
+      },
+      "SIDEWAYS": {
+        "samples": 1520,
+        "mean": -3.11,
+        "excess_mean": -2.79,
+        "pos_pct": 37.6
+      },
+      "BEAR": {
+        "samples": 998,
+        "mean": 1.85,
+        "excess_mean": -2.43,
+        "pos_pct": 44.9
+      },
+      "BULL": {
+        "samples": 735,
+        "mean": 0.0,
+        "excess_mean": 3.06,
+        "pos_pct": 43.3
+      }
+    },
+    "40": {
+      "UNKNOWN": {
+        "samples": 777,
+        "mean": 6.18,
+        "excess_mean": 0.72,
+        "pos_pct": 47.2
+      },
+      "SIDEWAYS": {
+        "samples": 1472,
+        "mean": -2.25,
+        "excess_mean": -3.04,
+        "pos_pct": 35.5
+      },
+      "BEAR": {
+        "samples": 710,
+        "mean": -2.39,
+        "excess_mean": -5.15,
+        "pos_pct": 36.8
+      },
+      "BULL": {
+        "samples": 736,
+        "mean": -2.37,
+        "excess_mean": 3.1,
+        "pos_pct": 34.6
+      }
+    },
+    "60": {
+      "UNKNOWN": {
+        "samples": 778,
+        "mean": 14.07,
+        "excess_mean": 3.05,
+        "pos_pct": 56.2
+      },
+      "SIDEWAYS": {
+        "samples": 1460,
+        "mean": -3.93,
+        "excess_mean": -1.98,
+        "pos_pct": 31.4
+      },
+      "BEAR": {
+        "samples": 458,
+        "mean": -5.03,
+        "excess_mean": -4.15,
+        "pos_pct": 29.0
+      },
+      "BULL": {
+        "samples": 735,
+        "mean": -2.48,
+        "excess_mean": 1.55,
+        "pos_pct": 34.4
+      }
+    }
+  },
+  "bootstrap": {
+    "5": {
+      "days": 235,
+      "iterations": 1000,
+      "mean": -0.423,
+      "ci_low": -0.801,
+      "ci_high": -0.059
+    },
+    "10": {
+      "days": 230,
+      "iterations": 1000,
+      "mean": -0.43,
+      "ci_low": -0.906,
+      "ci_high": 0.053
+    },
+    "20": {
+      "days": 219,
+      "iterations": 1000,
+      "mean": -0.997,
+      "ci_low": -1.74,
+      "ci_high": -0.255
+    },
+    "40": {
+      "days": 200,
+      "iterations": 1000,
+      "mean": -1.453,
+      "ci_low": -2.471,
+      "ci_high": -0.442
+    },
+    "60": {
+      "days": 180,
+      "iterations": 1000,
+      "mean": -0.398,
+      "ci_low": -1.654,
+      "ci_high": 0.926
+    }
+  }
+}

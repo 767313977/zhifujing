@@ -1,0 +1,267 @@
+{
+  "A": {
+    "5": {
+      "UNKNOWN": {
+        "samples": 703,
+        "mean": -0.16,
+        "excess_mean": -0.43,
+        "pos_pct": 44.4
+      },
+      "SIDEWAYS": {
+        "samples": 963,
+        "mean": 0.21,
+        "excess_mean": -0.21,
+        "pos_pct": 46.2
+      },
+      "BEAR": {
+        "samples": 680,
+        "mean": -1.2,
+        "excess_mean": -1.84,
+        "pos_pct": 33.5
+      },
+      "BULL": {
+        "samples": 732,
+        "mean": -0.33,
+        "excess_mean": 0.33,
+        "pos_pct": 43.7
+      }
+    },
+    "10": {
+      "UNKNOWN": {
+        "samples": 702,
+        "mean": -0.52,
+        "excess_mean": -0.7,
+        "pos_pct": 42.2
+      },
+      "SIDEWAYS": {
+        "samples": 944,
+        "mean": 0.94,
+        "excess_mean": 0.19,
+        "pos_pct": 50.3
+      },
+      "BEAR": {
+        "samples": 656,
+        "mean": -0.96,
+        "excess_mean": -2.72,
+        "pos_pct": 38.4
+      },
+      "BULL": {
+        "samples": 713,
+        "mean": 0.1,
+        "excess_mean": 1.28,
+        "pos_pct": 45.0
+      }
+    },
+    "20": {
+      "UNKNOWN": {
+        "samples": 701,
+        "mean": -0.78,
+        "excess_mean": -1.03,
+        "pos_pct": 35.7
+      },
+      "SIDEWAYS": {
+        "samples": 922,
+        "mean": 1.03,
+        "excess_mean": -0.09,
+        "pos_pct": 45.3
+      },
+      "BEAR": {
+        "samples": 541,
+        "mean": -0.75,
+        "excess_mean": -5.42,
+        "pos_pct": 34.8
+      },
+      "BULL": {
+        "samples": 713,
+        "mean": -0.19,
+        "excess_mean": 2.71,
+        "pos_pct": 40.3
+      }
+    },
+    "40": {
+      "UNKNOWN": {
+        "samples": 702,
+        "mean": 2.39,
+        "excess_mean": -2.49,
+        "pos_pct": 40.9
+      },
+      "SIDEWAYS": {
+        "samples": 871,
+        "mean": 1.79,
+        "excess_mean": -0.26,
+        "pos_pct": 42.4
+      },
+      "BEAR": {
+        "samples": 381,
+        "mean": -2.4,
+        "excess_mean": -7.26,
+        "pos_pct": 35.4
+      },
+      "BULL": {
+        "samples": 712,
+        "mean": -2.51,
+        "excess_mean": 2.64,
+        "pos_pct": 32.7
+      }
+    },
+    "60": {
+      "UNKNOWN": {
+        "samples": 703,
+        "mean": 6.47,
+        "excess_mean": -4.26,
+        "pos_pct": 51.9
+      },
+      "SIDEWAYS": {
+        "samples": 868,
+        "mean": -3.0,
+        "excess_mean": -1.03,
+        "pos_pct": 32.8
+      },
+      "BEAR": {
+        "samples": 190,
+        "mean": -8.23,
+        "excess_mean": -8.71,
+        "pos_pct": 27.9
+      },
+      "BULL": {
+        "samples": 713,
+        "mean": -0.65,
+        "excess_mean": 3.17,
+        "pos_pct": 33.4
+      }
+    }
+  },
+  "B": {
+    "5": {
+      "UNKNOWN": {
+        "samples": 777,
+        "mean": 0.84,
+        "excess_mean": 0.5,
+        "pos_pct": 47.4
+      },
+      "SIDEWAYS": {
+        "samples": 1444,
+        "mean": -0.22,
+        "excess_mean": -0.37,
+        "pos_pct": 45.4
+      },
+      "BEAR": {
+        "samples": 926,
+        "mean": 0.32,
+        "excess_mean": -0.87,
+        "pos_pct": 43.5
+      },
+      "BULL": {
+        "samples": 769,
+        "mean": -0.22,
+        "excess_mean": 0.57,
+        "pos_pct": 42.7
+      }
+    },
+    "10": {
+      "UNKNOWN": {
+        "samples": 775,
+        "mean": 1.27,
+        "excess_mean": 1.01,
+        "pos_pct": 45.0
+      },
+      "SIDEWAYS": {
+        "samples": 1417,
+        "mean": -1.08,
+        "excess_mean": -1.11,
+        "pos_pct": 39.0
+      },
+      "BEAR": {
+        "samples": 886,
+        "mean": 1.83,
+        "excess_mean": -0.1,
+        "pos_pct": 46.2
+      },
+      "BULL": {
+        "samples": 727,
+        "mean": -0.59,
+        "excess_mean": 0.71,
+        "pos_pct": 39.6
+      }
+    },
+    "20": {
+      "UNKNOWN": {
+        "samples": 777,
+        "mean": 1.51,
+        "excess_mean": 0.96,
+        "pos_pct": 43.1
+      },
+      "SIDEWAYS": {
+        "samples": 1398,
+        "mean": -2.79,
+        "excess_mean": -2.63,
+        "pos_pct": 37.9
+      },
+      "BEAR": {
+        "samples": 707,
+        "mean": 3.73,
+        "excess_mean": -0.45,
+        "pos_pct": 51.1
+      },
+      "BULL": {
+        "samples": 730,
+        "mean": -1.94,
+        "excess_mean": 1.09,
+        "pos_pct": 40.3
+      }
+    },
+    "40": {
+      "UNKNOWN": {
+        "samples": 777,
+        "mean": 8.77,
+        "excess_mean": 3.3,
+        "pos_pct": 55.7
+      },
+      "SIDEWAYS": {
+        "samples": 1361,
+        "mean": -0.95,
+        "excess_mean": -2.03,
+        "pos_pct": 37.9
+      },
+      "BEAR": {
+        "samples": 495,
+        "mean": -1.99,
+        "excess_mean": -4.21,
+        "pos_pct": 38.6
+      },
+      "BULL": {
+        "samples": 734,
+        "mean": -5.0,
+        "excess_mean": 0.43,
+        "pos_pct": 31.1
+      }
+    },
+    "60": {
+      "UNKNOWN": {
+        "samples": 778,
+        "mean": 17.93,
+        "excess_mean": 6.9,
+        "pos_pct": 60.3
+      },
+      "SIDEWAYS": {
+        "samples": 1350,
+        "mean": -2.02,
+        "excess_mean": -0.4,
+        "pos_pct": 33.3
+      },
+      "BEAR": {
+        "samples": 367,
+        "mean": -3.24,
+        "excess_mean": -2.91,
+        "pos_pct": 31.6
+      },
+      "BULL": {
+        "samples": 734,
+        "mean": -4.19,
+        "excess_mean": -0.17,
+        "pos_pct": 33.7
+      }
+    }
+  },
+  "combined": {}
+}

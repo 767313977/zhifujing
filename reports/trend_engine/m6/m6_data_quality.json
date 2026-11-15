@@ -1,0 +1,14 @@
+{
+  "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+  "stock_daily_end": "2026-10-09",
+  "rps_days": 251,
+  "rps_end": "2026-10-21",
+  "index_end": "2026-09-24",
+  "sector_end": "2026-09-24",
+  "breadth_rows": 0,
+  "notes": [
+    "所有样本来自现存股票池，history.db 无退市股 → 幸存者偏差",
+    "RPS 历史混版本风险：跨日研究以当前版本重算结果为准",
+    "breadth 为空时市场环境仅按指数判定，报告中标注为指数口径"
+  ]
+}

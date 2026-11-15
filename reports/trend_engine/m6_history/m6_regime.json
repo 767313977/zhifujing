@@ -1,0 +1,87 @@
+{
+  "A": {
+    "5": {
+      "UNKNOWN": {
+        "samples": 3037,
+        "mean": -0.37,
+        "excess_mean": -0.38,
+        "pos_pct": 42.2
+      }
+    },
+    "10": {
+      "UNKNOWN": {
+        "samples": 2959,
+        "mean": -0.21,
+        "excess_mean": -0.37,
+        "pos_pct": 43.4
+      }
+    },
+    "20": {
+      "UNKNOWN": {
+        "samples": 2852,
+        "mean": -0.37,
+        "excess_mean": -0.61,
+        "pos_pct": 37.6
+      }
+    },
+    "40": {
+      "UNKNOWN": {
+        "samples": 2586,
+        "mean": 0.26,
+        "excess_mean": -0.96,
+        "pos_pct": 38.4
+      }
+    },
+    "60": {
+      "UNKNOWN": {
+        "samples": 2410,
+        "mean": -0.27,
+        "excess_mean": -1.18,
+        "pos_pct": 37.6
+      }
+    }
+  },
+  "B": {
+    "5": {
+      "UNKNOWN": {
+        "samples": 3867,
+        "mean": 0.11,
+        "excess_mean": 0.02,
+        "pos_pct": 45.1
+      }
+    },
+    "10": {
+      "UNKNOWN": {
+        "samples": 3759,
+        "mean": 0.05,
+        "excess_mean": 0.05,
+        "pos_pct": 41.8
+      }
+    },
+    "20": {
+      "UNKNOWN": {
+        "samples": 3567,
+        "mean": -0.67,
+        "excess_mean": -0.58,
+        "pos_pct": 40.8
+      }
+    },
+    "40": {
+      "UNKNOWN": {
+        "samples": 3255,
+        "mean": 0.13,
+        "excess_mean": -0.69,
+        "pos_pct": 39.8
+      }
+    },
+    "60": {
+      "UNKNOWN": {
+        "samples": 3104,
+        "mean": 1.32,
+        "excess_mean": 0.57,
+        "pos_pct": 38.3
+      }
+    }
+  },
+  "combined": {}
+}

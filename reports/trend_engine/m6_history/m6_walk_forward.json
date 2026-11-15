@@ -1,0 +1,226 @@
+{
+  "A": [
+    {
+      "train_block": [
+        "2025-10-22",
+        "2026-05-27"
+      ],
+      "test_block": [
+        "2026-05-28",
+        "2026-08-04"
+      ],
+      "selected": {
+        "top": 20,
+        "min_score": 70.0,
+        "train_excess_20d": 0.57
+      },
+      "test": {
+        "observation_samples": 271,
+        "execution_samples": 271,
+        "counts": {
+          "ok": 271,
+          "exit_limit_down": 0,
+          "unbuyable": 1,
+          "no_quote": 0,
+          "suspended": 0,
+          "no_exit": 0,
+          "pending": 0,
+          "price_invalid": 0
+        },
+        "mean": -3.57,
+        "median": -2.35,
+        "pos_pct": 30.3,
+        "excess_mean": -5.38,
+        "excess_median": -6.46,
+        "beat_pct": 25.1,
+        "net_mean": -3.71,
+        "mae_mean": -7.54,
+        "distribution": {
+          "<=-10": 48,
+          "-10~-5": 40,
+          "-5~0": 101,
+          "0~5": 54,
+          "5~10": 15,
+          ">10": 13
+        },
+        "profit_factor": 0.32,
+        "max_drawdown_points": -962.13,
+        "max_consecutive_losses": 20,
+        "holding_days_mean": 27.1,
+        "tail": {
+          "top5_count": 13,
+          "top5_share": null,
+          "total_gross": -966.17,
+          "mean_excluding_top5pct": -4.7
+        }
+      }
+    },
+    {
+      "train_block": [
+        "2026-05-28",
+        "2026-08-04"
+      ],
+      "test_block": [
+        "2026-08-05",
+        "2026-10-19"
+      ],
+      "selected": {
+        "top": 10,
+        "min_score": 60.0,
+        "train_excess_20d": -3.45
+      },
+      "test": {
+        "observation_samples": 222,
+        "execution_samples": 220,
+        "counts": {
+          "ok": 220,
+          "exit_limit_down": 2,
+          "unbuyable": 4,
+          "no_quote": 0,
+          "suspended": 0,
+          "no_exit": 1,
+          "pending": 169,
+          "price_invalid": 0
+        },
+        "mean": -2.08,
+        "median": -2.89,
+        "pos_pct": 30.9,
+        "excess_mean": -0.8,
+        "excess_median": -1.6,
+        "beat_pct": 40.0,
+        "net_mean": -2.22,
+        "mae_mean": -6.18,
+        "distribution": {
+          "<=-10": 27,
+          "-10~-5": 56,
+          "-5~0": 69,
+          "0~5": 39,
+          "5~10": 18,
+          ">10": 11
+        },
+        "profit_factor": 0.51,
+        "max_drawdown_points": -685.04,
+        "max_consecutive_losses": 25,
+        "holding_days_mean": 29.8,
+        "tail": {
+          "top5_count": 11,
+          "top5_share": null,
+          "total_gross": -456.85,
+          "mean_excluding_top5pct": -3.43
+        }
+      }
+    }
+  ],
+  "B": [
+    {
+      "train_block": [
+        "2025-10-22",
+        "2026-05-27"
+      ],
+      "test_block": [
+        "2026-05-28",
+        "2026-08-04"
+      ],
+      "selected": {
+        "top": 20,
+        "min_score": 70.0,
+        "train_excess_20d": 0.72
+      },
+      "test": {
+        "observation_samples": 404,
+        "execution_samples": 393,
+        "counts": {
+          "ok": 393,
+          "exit_limit_down": 11,
+          "unbuyable": 1,
+          "no_quote": 0,
+          "suspended": 0,
+          "no_exit": 0,
+          "pending": 0,
+          "price_invalid": 0
+        },
+        "mean": -14.81,
+        "median": -15.94,
+        "pos_pct": 19.1,
+        "excess_mean": -10.04,
+        "excess_median": -11.8,
+        "beat_pct": 21.4,
+        "net_mean": -14.94,
+        "mae_mean": -21.37,
+        "distribution": {
+          "<=-10": 240,
+          "-10~-5": 32,
+          "-5~0": 46,
+          "0~5": 32,
+          "5~10": 9,
+          ">10": 34
+        },
+        "profit_factor": 0.14,
+        "max_drawdown_points": -5825.32,
+        "max_consecutive_losses": 183,
+        "holding_days_mean": 27.1,
+        "tail": {
+          "top5_count": 19,
+          "top5_share": null,
+          "total_gross": -5820.97,
+          "mean_excluding_top5pct": -17.19
+        }
+      }
+    },
+    {
+      "train_block": [
+        "2026-05-28",
+        "2026-08-04"
+      ],
+      "test_block": [
+        "2026-08-05",
+        "2026-10-19"
+      ],
+      "selected": {
+        "top": 10,
+        "min_score": 60.0,
+        "train_excess_20d": -8.89
+      },
+      "test": {
+        "observation_samples": 255,
+        "execution_samples": 253,
+        "counts": {
+          "ok": 253,
+          "exit_limit_down": 2,
+          "unbuyable": 0,
+          "no_quote": 0,
+          "suspended": 0,
+          "no_exit": 0,
+          "pending": 200,
+          "price_invalid": 0
+        },
+        "mean": 0.78,
+        "median": -1.19,
+        "pos_pct": 43.1,
+        "excess_mean": 1.65,
+        "excess_median": -0.92,
+        "beat_pct": 45.5,
+        "net_mean": 0.63,
+        "mae_mean": -6.05,
+        "distribution": {
+          "<=-10": 21,
+          "-10~-5": 45,
+          "-5~0": 78,
+          "0~5": 56,
+          "5~10": 24,
+          ">10": 29
+        },
+        "profit_factor": 1.25,
+        "max_drawdown_points": -180.69,
+        "max_consecutive_losses": 9,
+        "holding_days_mean": 29.5,
+        "tail": {
+          "top5_count": 12,
+          "top5_share": 2.204,
+          "total_gross": 196.7,
+          "mean_excluding_top5pct": -0.98
+        }
+      }
+    }
+  ]
+}

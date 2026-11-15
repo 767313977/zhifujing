@@ -1,0 +1,36 @@
+{
+  "A": {},
+  "B": {},
+  "combined": {
+    "5": {
+      "top5_count": 215,
+      "top5_share": null,
+      "total_gross": -1030.17,
+      "mean_excluding_top5pct": -1.37
+    },
+    "10": {
+      "top5_count": 210,
+      "top5_share": null,
+      "total_gross": -1237.91,
+      "mean_excluding_top5pct": -2.03
+    },
+    "20": {
+      "top5_count": 200,
+      "top5_share": null,
+      "total_gross": -3093.34,
+      "mean_excluding_top5pct": -3.49
+    },
+    "40": {
+      "top5_count": 181,
+      "top5_share": null,
+      "total_gross": -3021.88,
+      "mean_excluding_top5pct": -5.02
+    },
+    "60": {
+      "top5_count": 168,
+      "top5_share": null,
+      "total_gross": -2040.41,
+      "mean_excluding_top5pct": -6.15
+    }
+  }
+}

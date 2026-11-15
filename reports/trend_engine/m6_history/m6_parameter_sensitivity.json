@@ -1,0 +1,3686 @@
+{
+  "A": {
+    "rps_0": {
+      "strategy": "A-rps0",
+      "params": {
+        "top": 20,
+        "min_score": 60.0,
+        "rps_points": 0.0,
+        "sector_points": 0.0
+      },
+      "start": "2025-10-22",
+      "end": "2026-10-19",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 3134,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5108,
+        "signal_count": 3134,
+        "data_end": "2026-10-19"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 3063,
+          "execution_samples": 3059,
+          "counts": {
+            "ok": 3059,
+            "exit_limit_down": 4,
+            "unbuyable": 15,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 56,
+            "price_invalid": 0
+          },
+          "mean": -0.39,
+          "median": -0.85,
+          "pos_pct": 42.0,
+          "excess_mean": -0.41,
+          "excess_median": -1.0,
+          "beat_pct": 41.7,
+          "net_mean": -0.54,
+          "mae_mean": -2.84,
+          "distribution": {
+            "<=-10": 123,
+            "-10~-5": 442,
+            "-5~0": 1208,
+            "0~5": 876,
+            "5~10": 254,
+            ">10": 156
+          },
+          "profit_factor": 0.84,
+          "max_drawdown_points": -2250.67,
+          "max_consecutive_losses": 20,
+          "holding_days_mean": 6.0,
+          "tail": {
+            "top5_count": 152,
+            "top5_share": null,
+            "total_gross": -1187.96,
+            "mean_excluding_top5pct": -1.31
+          }
+        },
+        "10": {
+          "observation_samples": 2985,
+          "execution_samples": 2982,
+          "counts": {
+            "ok": 2982,
+            "exit_limit_down": 3,
+            "unbuyable": 15,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 133,
+            "price_invalid": 0
+          },
+          "mean": -0.26,
+          "median": -1.0,
+          "pos_pct": 43.3,
+          "excess_mean": -0.42,
+          "excess_median": -1.53,
+          "beat_pct": 41.5,
+          "net_mean": -0.41,
+          "mae_mean": -4.85,
+          "distribution": {
+            "<=-10": 312,
+            "-10~-5": 523,
+            "-5~0": 855,
+            "0~5": 716,
+            "5~10": 300,
+            ">10": 276
+          },
+          "profit_factor": 0.92,
+          "max_drawdown_points": -3147.79,
+          "max_consecutive_losses": 25,
+          "holding_days_mean": 13.6,
+          "tail": {
+            "top5_count": 149,
+            "top5_share": null,
+            "total_gross": -770.63,
+            "mean_excluding_top5pct": -1.74
+          }
+        },
+        "20": {
+          "observation_samples": 2875,
+          "execution_samples": 2871,
+          "counts": {
+            "ok": 2871,
+            "exit_limit_down": 4,
+            "unbuyable": 15,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 3,
+            "pending": 241,
+            "price_invalid": 0
+          },
+          "mean": -0.42,
+          "median": -2.64,
+          "pos_pct": 37.4,
+          "excess_mean": -0.66,
+          "excess_median": -2.99,
+          "beat_pct": 36.5,
+          "net_mean": -0.57,
+          "mae_mean": -7.36,
+          "distribution": {
+            "<=-10": 569,
+            "-10~-5": 545,
+            "-5~0": 684,
+            "0~5": 435,
+            "5~10": 237,
+            ">10": 401
+          },
+          "profit_factor": 0.92,
+          "max_drawdown_points": -5262.04,
+          "max_consecutive_losses": 29,
+          "holding_days_mean": 28.6,
+          "tail": {
+            "top5_count": 143,
+            "top5_share": null,
+            "total_gross": -1206.38,
+            "mean_excluding_top5pct": -2.86
+          }
+        },
+        "40": {
+          "observation_samples": 2608,
+          "execution_samples": 2603,
+          "counts": {
+            "ok": 2603,
+            "exit_limit_down": 5,
+            "unbuyable": 15,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 510,
+            "price_invalid": 0
+          },
+          "mean": 0.15,
+          "median": -3.61,
+          "pos_pct": 38.1,
+          "excess_mean": -1.05,
+          "excess_median": -5.6,
+          "beat_pct": 34.2,
+          "net_mean": -0.0,
+          "mae_mean": -10.67,
+          "distribution": {
+            "<=-10": 727,
+            "-10~-5": 457,
+            "-5~0": 427,
+            "0~5": 309,
+            "5~10": 199,
+            ">10": 484
+          },
+          "profit_factor": 1.02,
+          "max_drawdown_points": -6201.33,
+          "max_consecutive_losses": 56,
+          "holding_days_mean": 59.0,
+          "tail": {
+            "top5_count": 130,
+            "top5_share": 24.11,
+            "total_gross": 383.7,
+            "mean_excluding_top5pct": -3.59
+          }
+        },
+        "60": {
+          "observation_samples": 2430,
+          "execution_samples": 2425,
+          "counts": {
+            "ok": 2425,
+            "exit_limit_down": 5,
+            "unbuyable": 15,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 688,
+            "price_invalid": 0
+          },
+          "mean": -0.39,
+          "median": -4.51,
+          "pos_pct": 37.3,
+          "excess_mean": -1.25,
+          "excess_median": -6.32,
+          "beat_pct": 34.9,
+          "net_mean": -0.54,
+          "mae_mean": -13.77,
+          "distribution": {
+            "<=-10": 857,
+            "-10~-5": 328,
+            "-5~0": 336,
+            "0~5": 257,
+            "5~10": 193,
+            ">10": 454
+          },
+          "profit_factor": 0.95,
+          "max_drawdown_points": -8774.27,
+          "max_consecutive_losses": 31,
+          "holding_days_mean": 89.4,
+          "tail": {
+            "top5_count": 121,
+            "top5_share": null,
+            "total_gross": -937.52,
+            "mean_excluding_top5pct": -4.93
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "UNKNOWN": {
+            "samples": 3059,
+            "mean": -0.39,
+            "excess_mean": -0.41,
+            "pos_pct": 42.0
+          }
+        },
+        "10": {
+          "UNKNOWN": {
+            "samples": 2982,
+            "mean": -0.26,
+            "excess_mean": -0.42,
+            "pos_pct": 43.3
+          }
+        },
+        "20": {
+          "UNKNOWN": {
+            "samples": 2871,
+            "mean": -0.42,
+            "excess_mean": -0.66,
+            "pos_pct": 37.4
+          }
+        },
+        "40": {
+          "UNKNOWN": {
+            "samples": 2603,
+            "mean": 0.15,
+            "excess_mean": -1.05,
+            "pos_pct": 38.1
+          }
+        },
+        "60": {
+          "UNKNOWN": {
+            "samples": 2425,
+            "mean": -0.39,
+            "excess_mean": -1.25,
+            "pos_pct": 37.3
+          }
+        }
+      },
+      "bootstrap": {
+        "5": {
+          "days": 232,
+          "iterations": 500,
+          "mean": -0.406,
+          "ci_low": -0.81,
+          "ci_high": 0.024
+        },
+        "10": {
+          "days": 227,
+          "iterations": 500,
+          "mean": -0.431,
+          "ci_low": -1.144,
+          "ci_high": 0.204
+        },
+        "20": {
+          "days": 217,
+          "iterations": 500,
+          "mean": -0.706,
+          "ci_low": -1.641,
+          "ci_high": 0.269
+        },
+        "40": {
+          "days": 197,
+          "iterations": 500,
+          "mean": -1.075,
+          "ci_low": -2.473,
+          "ci_high": 0.298
+        },
+        "60": {
+          "days": 178,
+          "iterations": 500,
+          "mean": -1.266,
+          "ci_low": -2.984,
+          "ci_high": 0.517
+        }
+      }
+    },
+    "rps_5": {
+      "strategy": "A-rps5",
+      "params": {
+        "top": 20,
+        "min_score": 60.0,
+        "rps_points": 5.0,
+        "sector_points": 0.0
+      },
+      "start": "2025-10-22",
+      "end": "2026-10-19",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 3091,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5108,
+        "signal_count": 3091,
+        "data_end": "2026-10-19"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 3020,
+          "execution_samples": 3017,
+          "counts": {
+            "ok": 3017,
+            "exit_limit_down": 3,
+            "unbuyable": 15,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 56,
+            "price_invalid": 0
+          },
+          "mean": -0.36,
+          "median": -0.82,
+          "pos_pct": 42.4,
+          "excess_mean": -0.36,
+          "excess_median": -0.96,
+          "beat_pct": 42.0,
+          "net_mean": -0.51,
+          "mae_mean": -2.82,
+          "distribution": {
+            "<=-10": 118,
+            "-10~-5": 439,
+            "-5~0": 1182,
+            "0~5": 871,
+            "5~10": 252,
+            ">10": 155
+          },
+          "profit_factor": 0.85,
+          "max_drawdown_points": -2159.47,
+          "max_consecutive_losses": 20,
+          "holding_days_mean": 6.0,
+          "tail": {
+            "top5_count": 150,
+            "top5_share": null,
+            "total_gross": -1074.56,
+            "mean_excluding_top5pct": -1.28
+          }
+        },
+        "10": {
+          "observation_samples": 2943,
+          "execution_samples": 2940,
+          "counts": {
+            "ok": 2940,
+            "exit_limit_down": 3,
+            "unbuyable": 15,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 132,
+            "price_invalid": 0
+          },
+          "mean": -0.2,
+          "median": -0.97,
+          "pos_pct": 43.4,
+          "excess_mean": -0.36,
+          "excess_median": -1.5,
+          "beat_pct": 41.8,
+          "net_mean": -0.35,
+          "mae_mean": -4.8,
+          "distribution": {
+            "<=-10": 302,
+            "-10~-5": 511,
+            "-5~0": 850,
+            "0~5": 706,
+            "5~10": 297,
+            ">10": 274
+          },
+          "profit_factor": 0.94,
+          "max_drawdown_points": -2994.72,
+          "max_consecutive_losses": 25,
+          "holding_days_mean": 13.5,
+          "tail": {
+            "top5_count": 147,
+            "top5_share": null,
+            "total_gross": -577.7,
+            "mean_excluding_top5pct": -1.68
+          }
+        },
+        "20": {
+          "observation_samples": 2838,
+          "execution_samples": 2834,
+          "counts": {
+            "ok": 2834,
+            "exit_limit_down": 4,
+            "unbuyable": 15,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 3,
+            "pending": 235,
+            "price_invalid": 0
+          },
+          "mean": -0.37,
+          "median": -2.59,
+          "pos_pct": 37.6,
+          "excess_mean": -0.61,
+          "excess_median": -2.96,
+          "beat_pct": 36.8,
+          "net_mean": -0.52,
+          "mae_mean": -7.31,
+          "distribution": {
+            "<=-10": 557,
+            "-10~-5": 536,
+            "-5~0": 675,
+            "0~5": 432,
+            "5~10": 236,
+            ">10": 398
+          },
+          "profit_factor": 0.93,
+          "max_drawdown_points": -5114.8,
+          "max_consecutive_losses": 29,
+          "holding_days_mean": 28.6,
+          "tail": {
+            "top5_count": 141,
+            "top5_share": null,
+            "total_gross": -1037.44,
+            "mean_excluding_top5pct": -2.79
+          }
+        },
+        "40": {
+          "observation_samples": 2575,
+          "execution_samples": 2570,
+          "counts": {
+            "ok": 2570,
+            "exit_limit_down": 5,
+            "unbuyable": 15,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 500,
+            "price_invalid": 0
+          },
+          "mean": 0.24,
+          "median": -3.54,
+          "pos_pct": 38.3,
+          "excess_mean": -0.98,
+          "excess_median": -5.51,
+          "beat_pct": 34.4,
+          "net_mean": 0.09,
+          "mae_mean": -10.58,
+          "distribution": {
+            "<=-10": 711,
+            "-10~-5": 452,
+            "-5~0": 422,
+            "0~5": 307,
+            "5~10": 197,
+            ">10": 481
+          },
+          "profit_factor": 1.04,
+          "max_drawdown_points": -5883.55,
+          "max_consecutive_losses": 55,
+          "holding_days_mean": 59.0,
+          "tail": {
+            "top5_count": 128,
+            "top5_share": 14.869,
+            "total_gross": 610.11,
+            "mean_excluding_top5pct": -3.46
+          }
+        },
+        "60": {
+          "observation_samples": 2401,
+          "execution_samples": 2396,
+          "counts": {
+            "ok": 2396,
+            "exit_limit_down": 5,
+            "unbuyable": 15,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 674,
+            "price_invalid": 0
+          },
+          "mean": -0.26,
+          "median": -4.48,
+          "pos_pct": 37.5,
+          "excess_mean": -1.19,
+          "excess_median": -6.32,
+          "beat_pct": 35.0,
+          "net_mean": -0.4,
+          "mae_mean": -13.67,
+          "distribution": {
+            "<=-10": 842,
+            "-10~-5": 325,
+            "-5~0": 331,
+            "0~5": 254,
+            "5~10": 192,
+            ">10": 452
+          },
+          "profit_factor": 0.97,
+          "max_drawdown_points": -8416.25,
+          "max_consecutive_losses": 30,
+          "holding_days_mean": 89.4,
+          "tail": {
+            "top5_count": 119,
+            "top5_share": null,
+            "total_gross": -611.11,
+            "mean_excluding_top5pct": -4.81
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "UNKNOWN": {
+            "samples": 3017,
+            "mean": -0.36,
+            "excess_mean": -0.36,
+            "pos_pct": 42.4
+          }
+        },
+        "10": {
+          "UNKNOWN": {
+            "samples": 2940,
+            "mean": -0.2,
+            "excess_mean": -0.36,
+            "pos_pct": 43.4
+          }
+        },
+        "20": {
+          "UNKNOWN": {
+            "samples": 2834,
+            "mean": -0.37,
+            "excess_mean": -0.61,
+            "pos_pct": 37.6
+          }
+        },
+        "40": {
+          "UNKNOWN": {
+            "samples": 2570,
+            "mean": 0.24,
+            "excess_mean": -0.98,
+            "pos_pct": 38.3
+          }
+        },
+        "60": {
+          "UNKNOWN": {
+            "samples": 2396,
+            "mean": -0.26,
+            "excess_mean": -1.19,
+            "pos_pct": 37.5
+          }
+        }
+      },
+      "bootstrap": {
+        "5": {
+          "days": 232,
+          "iterations": 500,
+          "mean": -0.362,
+          "ci_low": -0.778,
+          "ci_high": 0.074
+        },
+        "10": {
+          "days": 227,
+          "iterations": 500,
+          "mean": -0.364,
+          "ci_low": -1.055,
+          "ci_high": 0.269
+        },
+        "20": {
+          "days": 217,
+          "iterations": 500,
+          "mean": -0.65,
+          "ci_low": -1.59,
+          "ci_high": 0.311
+        },
+        "40": {
+          "days": 197,
+          "iterations": 500,
+          "mean": -1.012,
+          "ci_low": -2.451,
+          "ci_high": 0.398
+        },
+        "60": {
+          "days": 178,
+          "iterations": 500,
+          "mean": -1.202,
+          "ci_low": -2.933,
+          "ci_high": 0.56
+        }
+      }
+    },
+    "top10": {
+      "strategy": "A-top10",
+      "params": {
+        "top": 10,
+        "min_score": 60.0,
+        "rps_points": 3.0,
+        "sector_points": 0.0
+      },
+      "start": "2025-10-22",
+      "end": "2026-10-19",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 1923,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5108,
+        "signal_count": 1923,
+        "data_end": "2026-10-19"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 1876,
+          "execution_samples": 1876,
+          "counts": {
+            "ok": 1876,
+            "exit_limit_down": 0,
+            "unbuyable": 11,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 36,
+            "price_invalid": 0
+          },
+          "mean": -0.42,
+          "median": -0.8,
+          "pos_pct": 41.6,
+          "excess_mean": -0.4,
+          "excess_median": -0.84,
+          "beat_pct": 42.5,
+          "net_mean": -0.57,
+          "mae_mean": -2.82,
+          "distribution": {
+            "<=-10": 74,
+            "-10~-5": 263,
+            "-5~0": 759,
+            "0~5": 533,
+            "5~10": 162,
+            ">10": 85
+          },
+          "profit_factor": 0.82,
+          "max_drawdown_points": -1370.02,
+          "max_consecutive_losses": 22,
+          "holding_days_mean": 6.1,
+          "tail": {
+            "top5_count": 93,
+            "top5_share": null,
+            "total_gross": -795.56,
+            "mean_excluding_top5pct": -1.34
+          }
+        },
+        "10": {
+          "observation_samples": 1828,
+          "execution_samples": 1826,
+          "counts": {
+            "ok": 1826,
+            "exit_limit_down": 2,
+            "unbuyable": 11,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 83,
+            "price_invalid": 0
+          },
+          "mean": -0.27,
+          "median": -0.89,
+          "pos_pct": 43.9,
+          "excess_mean": -0.41,
+          "excess_median": -1.49,
+          "beat_pct": 41.8,
+          "net_mean": -0.42,
+          "mae_mean": -4.77,
+          "distribution": {
+            "<=-10": 188,
+            "-10~-5": 304,
+            "-5~0": 533,
+            "0~5": 458,
+            "5~10": 194,
+            ">10": 149
+          },
+          "profit_factor": 0.92,
+          "max_drawdown_points": -1765.85,
+          "max_consecutive_losses": 17,
+          "holding_days_mean": 13.7,
+          "tail": {
+            "top5_count": 91,
+            "top5_share": null,
+            "total_gross": -499.7,
+            "mean_excluding_top5pct": -1.77
+          }
+        },
+        "20": {
+          "observation_samples": 1741,
+          "execution_samples": 1738,
+          "counts": {
+            "ok": 1738,
+            "exit_limit_down": 3,
+            "unbuyable": 11,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 2,
+            "pending": 169,
+            "price_invalid": 0
+          },
+          "mean": -0.03,
+          "median": -2.11,
+          "pos_pct": 39.8,
+          "excess_mean": -0.39,
+          "excess_median": -2.77,
+          "beat_pct": 37.9,
+          "net_mean": -0.18,
+          "mae_mean": -7.06,
+          "distribution": {
+            "<=-10": 325,
+            "-10~-5": 314,
+            "-5~0": 408,
+            "0~5": 288,
+            "5~10": 157,
+            ">10": 246
+          },
+          "profit_factor": 0.99,
+          "max_drawdown_points": -2802.6,
+          "max_consecutive_losses": 25,
+          "holding_days_mean": 28.7,
+          "tail": {
+            "top5_count": 86,
+            "top5_share": null,
+            "total_gross": -50.55,
+            "mean_excluding_top5pct": -2.55
+          }
+        },
+        "40": {
+          "observation_samples": 1564,
+          "execution_samples": 1561,
+          "counts": {
+            "ok": 1561,
+            "exit_limit_down": 3,
+            "unbuyable": 11,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 347,
+            "price_invalid": 0
+          },
+          "mean": -0.35,
+          "median": -3.4,
+          "pos_pct": 38.3,
+          "excess_mean": -1.38,
+          "excess_median": -5.43,
+          "beat_pct": 34.5,
+          "net_mean": -0.5,
+          "mae_mean": -10.51,
+          "distribution": {
+            "<=-10": 421,
+            "-10~-5": 272,
+            "-5~0": 270,
+            "0~5": 207,
+            "5~10": 123,
+            ">10": 268
+          },
+          "profit_factor": 0.95,
+          "max_drawdown_points": -4048.17,
+          "max_consecutive_losses": 36,
+          "holding_days_mean": 58.9,
+          "tail": {
+            "top5_count": 78,
+            "top5_share": null,
+            "total_gross": -542.67,
+            "mean_excluding_top5pct": -3.85
+          }
+        },
+        "60": {
+          "observation_samples": 1447,
+          "execution_samples": 1442,
+          "counts": {
+            "ok": 1442,
+            "exit_limit_down": 5,
+            "unbuyable": 11,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 464,
+            "price_invalid": 0
+          },
+          "mean": -0.99,
+          "median": -4.24,
+          "pos_pct": 37.9,
+          "excess_mean": -1.52,
+          "excess_median": -5.95,
+          "beat_pct": 35.9,
+          "net_mean": -1.14,
+          "mae_mean": -13.55,
+          "distribution": {
+            "<=-10": 507,
+            "-10~-5": 186,
+            "-5~0": 203,
+            "0~5": 171,
+            "5~10": 124,
+            ">10": 251
+          },
+          "profit_factor": 0.88,
+          "max_drawdown_points": -5699.63,
+          "max_consecutive_losses": 23,
+          "holding_days_mean": 89.3,
+          "tail": {
+            "top5_count": 72,
+            "top5_share": null,
+            "total_gross": -1424.11,
+            "mean_excluding_top5pct": -5.28
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "UNKNOWN": {
+            "samples": 1876,
+            "mean": -0.42,
+            "excess_mean": -0.4,
+            "pos_pct": 41.6
+          }
+        },
+        "10": {
+          "UNKNOWN": {
+            "samples": 1826,
+            "mean": -0.27,
+            "excess_mean": -0.41,
+            "pos_pct": 43.9
+          }
+        },
+        "20": {
+          "UNKNOWN": {
+            "samples": 1738,
+            "mean": -0.03,
+            "excess_mean": -0.39,
+            "pos_pct": 39.8
+          }
+        },
+        "40": {
+          "UNKNOWN": {
+            "samples": 1561,
+            "mean": -0.35,
+            "excess_mean": -1.38,
+            "pos_pct": 38.3
+          }
+        },
+        "60": {
+          "UNKNOWN": {
+            "samples": 1442,
+            "mean": -0.99,
+            "excess_mean": -1.52,
+            "pos_pct": 37.9
+          }
+        }
+      },
+      "bootstrap": {
+        "5": {
+          "days": 232,
+          "iterations": 500,
+          "mean": -0.398,
+          "ci_low": -0.828,
+          "ci_high": 0.038
+        },
+        "10": {
+          "days": 227,
+          "iterations": 500,
+          "mean": -0.417,
+          "ci_low": -1.118,
+          "ci_high": 0.277
+        },
+        "20": {
+          "days": 217,
+          "iterations": 500,
+          "mean": -0.422,
+          "ci_low": -1.516,
+          "ci_high": 0.626
+        },
+        "40": {
+          "days": 197,
+          "iterations": 500,
+          "mean": -1.376,
+          "ci_low": -2.875,
+          "ci_high": 0.198
+        },
+        "60": {
+          "days": 178,
+          "iterations": 500,
+          "mean": -1.515,
+          "ci_low": -3.608,
+          "ci_high": 0.718
+        }
+      }
+    },
+    "top30": {
+      "strategy": "A-top30",
+      "params": {
+        "top": 30,
+        "min_score": 60.0,
+        "rps_points": 3.0,
+        "sector_points": 0.0
+      },
+      "start": "2025-10-22",
+      "end": "2026-10-19",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 3831,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5108,
+        "signal_count": 3831,
+        "data_end": "2026-10-19"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 3746,
+          "execution_samples": 3742,
+          "counts": {
+            "ok": 3742,
+            "exit_limit_down": 4,
+            "unbuyable": 18,
+            "no_quote": 0,
+            "suspended": 1,
+            "no_exit": 0,
+            "pending": 66,
+            "price_invalid": 0
+          },
+          "mean": -0.25,
+          "median": -0.73,
+          "pos_pct": 43.3,
+          "excess_mean": -0.27,
+          "excess_median": -0.92,
+          "beat_pct": 42.3,
+          "net_mean": -0.4,
+          "mae_mean": -2.78,
+          "distribution": {
+            "<=-10": 148,
+            "-10~-5": 533,
+            "-5~0": 1441,
+            "0~5": 1102,
+            "5~10": 321,
+            ">10": 197
+          },
+          "profit_factor": 0.9,
+          "max_drawdown_points": -2488.99,
+          "max_consecutive_losses": 26,
+          "holding_days_mean": 6.0,
+          "tail": {
+            "top5_count": 187,
+            "top5_share": null,
+            "total_gross": -920.5,
+            "mean_excluding_top5pct": -1.19
+          }
+        },
+        "10": {
+          "observation_samples": 3651,
+          "execution_samples": 3645,
+          "counts": {
+            "ok": 3645,
+            "exit_limit_down": 6,
+            "unbuyable": 18,
+            "no_quote": 0,
+            "suspended": 1,
+            "no_exit": 1,
+            "pending": 160,
+            "price_invalid": 0
+          },
+          "mean": -0.06,
+          "median": -0.96,
+          "pos_pct": 43.7,
+          "excess_mean": -0.26,
+          "excess_median": -1.44,
+          "beat_pct": 41.8,
+          "net_mean": -0.21,
+          "mae_mean": -4.75,
+          "distribution": {
+            "<=-10": 357,
+            "-10~-5": 633,
+            "-5~0": 1062,
+            "0~5": 875,
+            "5~10": 370,
+            ">10": 348
+          },
+          "profit_factor": 0.98,
+          "max_drawdown_points": -3418.06,
+          "max_consecutive_losses": 26,
+          "holding_days_mean": 13.5,
+          "tail": {
+            "top5_count": 182,
+            "top5_share": null,
+            "total_gross": -217.45,
+            "mean_excluding_top5pct": -1.57
+          }
+        },
+        "20": {
+          "observation_samples": 3538,
+          "execution_samples": 3534,
+          "counts": {
+            "ok": 3534,
+            "exit_limit_down": 4,
+            "unbuyable": 18,
+            "no_quote": 0,
+            "suspended": 1,
+            "no_exit": 4,
+            "pending": 270,
+            "price_invalid": 0
+          },
+          "mean": -0.3,
+          "median": -2.52,
+          "pos_pct": 38.3,
+          "excess_mean": -0.49,
+          "excess_median": -2.97,
+          "beat_pct": 37.1,
+          "net_mean": -0.45,
+          "mae_mean": -7.31,
+          "distribution": {
+            "<=-10": 700,
+            "-10~-5": 646,
+            "-5~0": 836,
+            "0~5": 547,
+            "5~10": 301,
+            ">10": 504
+          },
+          "profit_factor": 0.94,
+          "max_drawdown_points": -6108.11,
+          "max_consecutive_losses": 25,
+          "holding_days_mean": 28.6,
+          "tail": {
+            "top5_count": 176,
+            "top5_share": null,
+            "total_gross": -1047.27,
+            "mean_excluding_top5pct": -2.71
+          }
+        },
+        "40": {
+          "observation_samples": 3240,
+          "execution_samples": 3233,
+          "counts": {
+            "ok": 3233,
+            "exit_limit_down": 7,
+            "unbuyable": 18,
+            "no_quote": 0,
+            "suspended": 1,
+            "no_exit": 1,
+            "pending": 571,
+            "price_invalid": 0
+          },
+          "mean": 0.38,
+          "median": -3.49,
+          "pos_pct": 38.9,
+          "excess_mean": -0.81,
+          "excess_median": -5.38,
+          "beat_pct": 35.3,
+          "net_mean": 0.23,
+          "mae_mean": -10.54,
+          "distribution": {
+            "<=-10": 865,
+            "-10~-5": 590,
+            "-5~0": 519,
+            "0~5": 383,
+            "5~10": 256,
+            ">10": 620
+          },
+          "profit_factor": 1.06,
+          "max_drawdown_points": -6760.81,
+          "max_consecutive_losses": 46,
+          "holding_days_mean": 59.1,
+          "tail": {
+            "top5_count": 161,
+            "top5_share": 9.125,
+            "total_gross": 1225.57,
+            "mean_excluding_top5pct": -3.24
+          }
+        },
+        "60": {
+          "observation_samples": 3043,
+          "execution_samples": 3038,
+          "counts": {
+            "ok": 3038,
+            "exit_limit_down": 5,
+            "unbuyable": 18,
+            "no_quote": 0,
+            "suspended": 1,
+            "no_exit": 1,
+            "pending": 768,
+            "price_invalid": 0
+          },
+          "mean": 0.01,
+          "median": -4.46,
+          "pos_pct": 37.9,
+          "excess_mean": -1.05,
+          "excess_median": -6.17,
+          "beat_pct": 34.7,
+          "net_mean": -0.14,
+          "mae_mean": -13.6,
+          "distribution": {
+            "<=-10": 1040,
+            "-10~-5": 438,
+            "-5~0": 410,
+            "0~5": 321,
+            "5~10": 241,
+            ">10": 588
+          },
+          "profit_factor": 1.0,
+          "max_drawdown_points": -9959.18,
+          "max_consecutive_losses": 29,
+          "holding_days_mean": 89.5,
+          "tail": {
+            "top5_count": 151,
+            "top5_share": 597.923,
+            "total_gross": 21.76,
+            "mean_excluding_top5pct": -4.5
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "UNKNOWN": {
+            "samples": 3742,
+            "mean": -0.25,
+            "excess_mean": -0.27,
+            "pos_pct": 43.3
+          }
+        },
+        "10": {
+          "UNKNOWN": {
+            "samples": 3645,
+            "mean": -0.06,
+            "excess_mean": -0.26,
+            "pos_pct": 43.7
+          }
+        },
+        "20": {
+          "UNKNOWN": {
+            "samples": 3534,
+            "mean": -0.3,
+            "excess_mean": -0.49,
+            "pos_pct": 38.3
+          }
+        },
+        "40": {
+          "UNKNOWN": {
+            "samples": 3233,
+            "mean": 0.38,
+            "excess_mean": -0.81,
+            "pos_pct": 38.9
+          }
+        },
+        "60": {
+          "UNKNOWN": {
+            "samples": 3038,
+            "mean": 0.01,
+            "excess_mean": -1.05,
+            "pos_pct": 37.9
+          }
+        }
+      },
+      "bootstrap": {
+        "5": {
+          "days": 232,
+          "iterations": 500,
+          "mean": -0.271,
+          "ci_low": -0.679,
+          "ci_high": 0.146
+        },
+        "10": {
+          "days": 227,
+          "iterations": 500,
+          "mean": -0.266,
+          "ci_low": -0.911,
+          "ci_high": 0.371
+        },
+        "20": {
+          "days": 217,
+          "iterations": 500,
+          "mean": -0.543,
+          "ci_low": -1.431,
+          "ci_high": 0.438
+        },
+        "40": {
+          "days": 197,
+          "iterations": 500,
+          "mean": -0.846,
+          "ci_low": -2.185,
+          "ci_high": 0.459
+        },
+        "60": {
+          "days": 178,
+          "iterations": 500,
+          "mean": -1.059,
+          "ci_low": -2.651,
+          "ci_high": 0.58
+        }
+      }
+    },
+    "score50": {
+      "strategy": "A-score50",
+      "params": {
+        "top": 20,
+        "min_score": 50.0,
+        "rps_points": 3.0,
+        "sector_points": 0.0
+      },
+      "start": "2025-10-22",
+      "end": "2026-10-19",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 3167,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5108,
+        "signal_count": 3167,
+        "data_end": "2026-10-19"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 3094,
+          "execution_samples": 3090,
+          "counts": {
+            "ok": 3090,
+            "exit_limit_down": 4,
+            "unbuyable": 16,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 57,
+            "price_invalid": 0
+          },
+          "mean": -0.39,
+          "median": -0.83,
+          "pos_pct": 42.1,
+          "excess_mean": -0.41,
+          "excess_median": -1.01,
+          "beat_pct": 41.6,
+          "net_mean": -0.54,
+          "mae_mean": -2.84,
+          "distribution": {
+            "<=-10": 126,
+            "-10~-5": 447,
+            "-5~0": 1217,
+            "0~5": 885,
+            "5~10": 258,
+            ">10": 157
+          },
+          "profit_factor": 0.84,
+          "max_drawdown_points": -2297.83,
+          "max_consecutive_losses": 21,
+          "holding_days_mean": 6.0,
+          "tail": {
+            "top5_count": 154,
+            "top5_share": null,
+            "total_gross": -1196.98,
+            "mean_excluding_top5pct": -1.31
+          }
+        },
+        "10": {
+          "observation_samples": 3015,
+          "execution_samples": 3012,
+          "counts": {
+            "ok": 3012,
+            "exit_limit_down": 3,
+            "unbuyable": 16,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 135,
+            "price_invalid": 0
+          },
+          "mean": -0.27,
+          "median": -1.0,
+          "pos_pct": 43.3,
+          "excess_mean": -0.44,
+          "excess_median": -1.53,
+          "beat_pct": 41.5,
+          "net_mean": -0.42,
+          "mae_mean": -4.86,
+          "distribution": {
+            "<=-10": 319,
+            "-10~-5": 530,
+            "-5~0": 859,
+            "0~5": 717,
+            "5~10": 305,
+            ">10": 282
+          },
+          "profit_factor": 0.92,
+          "max_drawdown_points": -3228.54,
+          "max_consecutive_losses": 25,
+          "holding_days_mean": 13.6,
+          "tail": {
+            "top5_count": 150,
+            "top5_share": null,
+            "total_gross": -821.42,
+            "mean_excluding_top5pct": -1.75
+          }
+        },
+        "20": {
+          "observation_samples": 2904,
+          "execution_samples": 2900,
+          "counts": {
+            "ok": 2900,
+            "exit_limit_down": 4,
+            "unbuyable": 16,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 3,
+            "pending": 244,
+            "price_invalid": 0
+          },
+          "mean": -0.45,
+          "median": -2.64,
+          "pos_pct": 37.5,
+          "excess_mean": -0.69,
+          "excess_median": -3.0,
+          "beat_pct": 36.5,
+          "net_mean": -0.6,
+          "mae_mean": -7.38,
+          "distribution": {
+            "<=-10": 578,
+            "-10~-5": 548,
+            "-5~0": 687,
+            "0~5": 443,
+            "5~10": 241,
+            ">10": 403
+          },
+          "profit_factor": 0.91,
+          "max_drawdown_points": -5325.74,
+          "max_consecutive_losses": 29,
+          "holding_days_mean": 28.6,
+          "tail": {
+            "top5_count": 145,
+            "top5_share": null,
+            "total_gross": -1308.75,
+            "mean_excluding_top5pct": -2.89
+          }
+        },
+        "40": {
+          "observation_samples": 2636,
+          "execution_samples": 2631,
+          "counts": {
+            "ok": 2631,
+            "exit_limit_down": 5,
+            "unbuyable": 16,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 514,
+            "price_invalid": 0
+          },
+          "mean": 0.18,
+          "median": -3.62,
+          "pos_pct": 38.1,
+          "excess_mean": -1.01,
+          "excess_median": -5.6,
+          "beat_pct": 34.2,
+          "net_mean": 0.03,
+          "mae_mean": -10.7,
+          "distribution": {
+            "<=-10": 736,
+            "-10~-5": 463,
+            "-5~0": 429,
+            "0~5": 310,
+            "5~10": 201,
+            ">10": 492
+          },
+          "profit_factor": 1.03,
+          "max_drawdown_points": -6413.08,
+          "max_consecutive_losses": 59,
+          "holding_days_mean": 59.0,
+          "tail": {
+            "top5_count": 131,
+            "top5_share": 20.24,
+            "total_gross": 464.48,
+            "mean_excluding_top5pct": -3.57
+          }
+        },
+        "60": {
+          "observation_samples": 2458,
+          "execution_samples": 2453,
+          "counts": {
+            "ok": 2453,
+            "exit_limit_down": 5,
+            "unbuyable": 16,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 692,
+            "price_invalid": 0
+          },
+          "mean": -0.33,
+          "median": -4.51,
+          "pos_pct": 37.3,
+          "excess_mean": -1.17,
+          "excess_median": -6.32,
+          "beat_pct": 35.0,
+          "net_mean": -0.48,
+          "mae_mean": -13.8,
+          "distribution": {
+            "<=-10": 870,
+            "-10~-5": 329,
+            "-5~0": 339,
+            "0~5": 258,
+            "5~10": 197,
+            ">10": 460
+          },
+          "profit_factor": 0.96,
+          "max_drawdown_points": -9006.71,
+          "max_consecutive_losses": 33,
+          "holding_days_mean": 89.4,
+          "tail": {
+            "top5_count": 122,
+            "top5_share": null,
+            "total_gross": -820.64,
+            "mean_excluding_top5pct": -4.91
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "UNKNOWN": {
+            "samples": 3090,
+            "mean": -0.39,
+            "excess_mean": -0.41,
+            "pos_pct": 42.1
+          }
+        },
+        "10": {
+          "UNKNOWN": {
+            "samples": 3012,
+            "mean": -0.27,
+            "excess_mean": -0.44,
+            "pos_pct": 43.3
+          }
+        },
+        "20": {
+          "UNKNOWN": {
+            "samples": 2900,
+            "mean": -0.45,
+            "excess_mean": -0.69,
+            "pos_pct": 37.5
+          }
+        },
+        "40": {
+          "UNKNOWN": {
+            "samples": 2631,
+            "mean": 0.18,
+            "excess_mean": -1.01,
+            "pos_pct": 38.1
+          }
+        },
+        "60": {
+          "UNKNOWN": {
+            "samples": 2453,
+            "mean": -0.33,
+            "excess_mean": -1.17,
+            "pos_pct": 37.3
+          }
+        }
+      },
+      "bootstrap": {
+        "5": {
+          "days": 232,
+          "iterations": 500,
+          "mean": -0.411,
+          "ci_low": -0.829,
+          "ci_high": 0.016
+        },
+        "10": {
+          "days": 227,
+          "iterations": 500,
+          "mean": -0.446,
+          "ci_low": -1.135,
+          "ci_high": 0.186
+        },
+        "20": {
+          "days": 217,
+          "iterations": 500,
+          "mean": -0.734,
+          "ci_low": -1.651,
+          "ci_high": 0.231
+        },
+        "40": {
+          "days": 197,
+          "iterations": 500,
+          "mean": -1.033,
+          "ci_low": -2.456,
+          "ci_high": 0.308
+        },
+        "60": {
+          "days": 178,
+          "iterations": 500,
+          "mean": -1.176,
+          "ci_low": -2.887,
+          "ci_high": 0.62
+        }
+      }
+    },
+    "score70": {
+      "strategy": "A-score70",
+      "params": {
+        "top": 20,
+        "min_score": 70.0,
+        "rps_points": 3.0,
+        "sector_points": 0.0
+      },
+      "start": "2025-10-22",
+      "end": "2026-10-19",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 2773,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5108,
+        "signal_count": 2773,
+        "data_end": "2026-10-19"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 2709,
+          "execution_samples": 2706,
+          "counts": {
+            "ok": 2706,
+            "exit_limit_down": 3,
+            "unbuyable": 11,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 53,
+            "price_invalid": 0
+          },
+          "mean": -0.36,
+          "median": -0.8,
+          "pos_pct": 42.2,
+          "excess_mean": -0.31,
+          "excess_median": -0.83,
+          "beat_pct": 42.6,
+          "net_mean": -0.5,
+          "mae_mean": -2.8,
+          "distribution": {
+            "<=-10": 101,
+            "-10~-5": 386,
+            "-5~0": 1077,
+            "0~5": 783,
+            "5~10": 223,
+            ">10": 136
+          },
+          "profit_factor": 0.85,
+          "max_drawdown_points": -2018.21,
+          "max_consecutive_losses": 21,
+          "holding_days_mean": 6.0,
+          "tail": {
+            "top5_count": 135,
+            "top5_share": null,
+            "total_gross": -961.25,
+            "mean_excluding_top5pct": -1.26
+          }
+        },
+        "10": {
+          "observation_samples": 2632,
+          "execution_samples": 2629,
+          "counts": {
+            "ok": 2629,
+            "exit_limit_down": 3,
+            "unbuyable": 11,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 129,
+            "price_invalid": 0
+          },
+          "mean": -0.12,
+          "median": -0.89,
+          "pos_pct": 44.0,
+          "excess_mean": -0.26,
+          "excess_median": -1.35,
+          "beat_pct": 42.6,
+          "net_mean": -0.26,
+          "mae_mean": -4.68,
+          "distribution": {
+            "<=-10": 250,
+            "-10~-5": 451,
+            "-5~0": 770,
+            "0~5": 649,
+            "5~10": 267,
+            ">10": 242
+          },
+          "profit_factor": 0.96,
+          "max_drawdown_points": -2635.51,
+          "max_consecutive_losses": 25,
+          "holding_days_mean": 13.5,
+          "tail": {
+            "top5_count": 131,
+            "top5_share": null,
+            "total_gross": -302.77,
+            "mean_excluding_top5pct": -1.56
+          }
+        },
+        "20": {
+          "observation_samples": 2545,
+          "execution_samples": 2541,
+          "counts": {
+            "ok": 2541,
+            "exit_limit_down": 4,
+            "unbuyable": 11,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 3,
+            "pending": 214,
+            "price_invalid": 0
+          },
+          "mean": -0.07,
+          "median": -2.32,
+          "pos_pct": 38.5,
+          "excess_mean": -0.3,
+          "excess_median": -2.78,
+          "beat_pct": 37.4,
+          "net_mean": -0.22,
+          "mae_mean": -7.04,
+          "distribution": {
+            "<=-10": 462,
+            "-10~-5": 479,
+            "-5~0": 622,
+            "0~5": 407,
+            "5~10": 217,
+            ">10": 354
+          },
+          "profit_factor": 0.98,
+          "max_drawdown_points": -4273.52,
+          "max_consecutive_losses": 29,
+          "holding_days_mean": 28.7,
+          "tail": {
+            "top5_count": 127,
+            "top5_share": null,
+            "total_gross": -186.88,
+            "mean_excluding_top5pct": -2.52
+          }
+        },
+        "40": {
+          "observation_samples": 2315,
+          "execution_samples": 2310,
+          "counts": {
+            "ok": 2310,
+            "exit_limit_down": 5,
+            "unbuyable": 11,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 446,
+            "price_invalid": 0
+          },
+          "mean": 0.64,
+          "median": -3.24,
+          "pos_pct": 39.1,
+          "excess_mean": -0.67,
+          "excess_median": -5.04,
+          "beat_pct": 35.0,
+          "net_mean": 0.49,
+          "mae_mean": -10.15,
+          "distribution": {
+            "<=-10": 598,
+            "-10~-5": 414,
+            "-5~0": 395,
+            "0~5": 287,
+            "5~10": 185,
+            ">10": 431
+          },
+          "profit_factor": 1.1,
+          "max_drawdown_points": -4642.88,
+          "max_consecutive_losses": 43,
+          "holding_days_mean": 59.1,
+          "tail": {
+            "top5_count": 115,
+            "top5_share": 5.618,
+            "total_gross": 1469.38,
+            "mean_excluding_top5pct": -3.09
+          }
+        },
+        "60": {
+          "observation_samples": 2171,
+          "execution_samples": 2167,
+          "counts": {
+            "ok": 2167,
+            "exit_limit_down": 4,
+            "unbuyable": 11,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 590,
+            "price_invalid": 0
+          },
+          "mean": 0.31,
+          "median": -4.14,
+          "pos_pct": 38.5,
+          "excess_mean": -0.91,
+          "excess_median": -6.06,
+          "beat_pct": 35.3,
+          "net_mean": 0.16,
+          "mae_mean": -13.15,
+          "distribution": {
+            "<=-10": 727,
+            "-10~-5": 296,
+            "-5~0": 310,
+            "0~5": 242,
+            "5~10": 179,
+            ">10": 413
+          },
+          "profit_factor": 1.04,
+          "max_drawdown_points": -6739.32,
+          "max_consecutive_losses": 31,
+          "holding_days_mean": 89.5,
+          "tail": {
+            "top5_count": 108,
+            "top5_share": 14.456,
+            "total_gross": 667.32,
+            "mean_excluding_top5pct": -4.36
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "UNKNOWN": {
+            "samples": 2706,
+            "mean": -0.36,
+            "excess_mean": -0.31,
+            "pos_pct": 42.2
+          }
+        },
+        "10": {
+          "UNKNOWN": {
+            "samples": 2629,
+            "mean": -0.12,
+            "excess_mean": -0.26,
+            "pos_pct": 44.0
+          }
+        },
+        "20": {
+          "UNKNOWN": {
+            "samples": 2541,
+            "mean": -0.07,
+            "excess_mean": -0.3,
+            "pos_pct": 38.5
+          }
+        },
+        "40": {
+          "UNKNOWN": {
+            "samples": 2310,
+            "mean": 0.64,
+            "excess_mean": -0.67,
+            "pos_pct": 39.1
+          }
+        },
+        "60": {
+          "UNKNOWN": {
+            "samples": 2167,
+            "mean": 0.31,
+            "excess_mean": -0.91,
+            "pos_pct": 38.5
+          }
+        }
+      },
+      "bootstrap": {
+        "5": {
+          "days": 229,
+          "iterations": 500,
+          "mean": -0.311,
+          "ci_low": -0.737,
+          "ci_high": 0.121
+        },
+        "10": {
+          "days": 224,
+          "iterations": 500,
+          "mean": -0.268,
+          "ci_low": -0.974,
+          "ci_high": 0.507
+        },
+        "20": {
+          "days": 214,
+          "iterations": 500,
+          "mean": -0.336,
+          "ci_low": -1.287,
+          "ci_high": 0.751
+        },
+        "40": {
+          "days": 194,
+          "iterations": 500,
+          "mean": -0.696,
+          "ci_low": -2.146,
+          "ci_high": 0.634
+        },
+        "60": {
+          "days": 175,
+          "iterations": 500,
+          "mean": -0.925,
+          "ci_low": -2.692,
+          "ci_high": 1.072
+        }
+      }
+    },
+    "sector_5": {
+      "status": "UNKNOWN",
+      "reason": "未采集板块映射（--collect-sector 未开启）"
+    }
+  },
+  "B": {
+    "rps_0": {
+      "strategy": "B-rps0",
+      "params": {
+        "top": 20,
+        "min_score": 60.0,
+        "rps_points": 0.0,
+        "sector_points": 0.0
+      },
+      "start": "2025-10-22",
+      "end": "2026-10-19",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 4004,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5108,
+        "signal_count": 4004,
+        "data_end": "2026-10-19"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 3906,
+          "execution_samples": 3887,
+          "counts": {
+            "ok": 3887,
+            "exit_limit_down": 19,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 3,
+            "pending": 90,
+            "price_invalid": 0
+          },
+          "mean": 0.11,
+          "median": -0.71,
+          "pos_pct": 45.1,
+          "excess_mean": 0.01,
+          "excess_median": -0.97,
+          "beat_pct": 44.1,
+          "net_mean": -0.04,
+          "mae_mean": -3.71,
+          "distribution": {
+            "<=-10": 347,
+            "-10~-5": 600,
+            "-5~0": 1187,
+            "0~5": 934,
+            "5~10": 393,
+            ">10": 426
+          },
+          "profit_factor": 1.04,
+          "max_drawdown_points": -1928.88,
+          "max_consecutive_losses": 32,
+          "holding_days_mean": 6.1,
+          "tail": {
+            "top5_count": 194,
+            "top5_share": 10.837,
+            "total_gross": 428.45,
+            "mean_excluding_top5pct": -1.14
+          }
+        },
+        "10": {
+          "observation_samples": 3806,
+          "execution_samples": 3779,
+          "counts": {
+            "ok": 3779,
+            "exit_limit_down": 27,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 1,
+            "pending": 192,
+            "price_invalid": 0
+          },
+          "mean": 0.04,
+          "median": -1.66,
+          "pos_pct": 41.8,
+          "excess_mean": 0.04,
+          "excess_median": -1.59,
+          "beat_pct": 42.0,
+          "net_mean": -0.11,
+          "mae_mean": -6.2,
+          "distribution": {
+            "<=-10": 623,
+            "-10~-5": 652,
+            "-5~0": 925,
+            "0~5": 632,
+            "5~10": 381,
+            ">10": 566
+          },
+          "profit_factor": 1.01,
+          "max_drawdown_points": -3698.35,
+          "max_consecutive_losses": 48,
+          "holding_days_mean": 13.8,
+          "tail": {
+            "top5_count": 188,
+            "top5_share": 44.011,
+            "total_gross": 159.8,
+            "mean_excluding_top5pct": -1.91
+          }
+        },
+        "20": {
+          "observation_samples": 3611,
+          "execution_samples": 3587,
+          "counts": {
+            "ok": 3587,
+            "exit_limit_down": 24,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 0,
+            "pending": 388,
+            "price_invalid": 0
+          },
+          "mean": -0.71,
+          "median": -2.73,
+          "pos_pct": 40.7,
+          "excess_mean": -0.64,
+          "excess_median": -2.93,
+          "beat_pct": 39.5,
+          "net_mean": -0.86,
+          "mae_mean": -9.86,
+          "distribution": {
+            "<=-10": 978,
+            "-10~-5": 533,
+            "-5~0": 615,
+            "0~5": 501,
+            "5~10": 305,
+            ">10": 655
+          },
+          "profit_factor": 0.89,
+          "max_drawdown_points": -6832.68,
+          "max_consecutive_losses": 196,
+          "holding_days_mean": 28.7,
+          "tail": {
+            "top5_count": 179,
+            "top5_share": null,
+            "total_gross": -2534.33,
+            "mean_excluding_top5pct": -3.49
+          }
+        },
+        "40": {
+          "observation_samples": 3278,
+          "execution_samples": 3268,
+          "counts": {
+            "ok": 3268,
+            "exit_limit_down": 10,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 2,
+            "pending": 719,
+            "price_invalid": 0
+          },
+          "mean": 0.08,
+          "median": -4.42,
+          "pos_pct": 39.8,
+          "excess_mean": -0.73,
+          "excess_median": -5.43,
+          "beat_pct": 37.0,
+          "net_mean": -0.07,
+          "mae_mean": -14.57,
+          "distribution": {
+            "<=-10": 1179,
+            "-10~-5": 399,
+            "-5~0": 390,
+            "0~5": 311,
+            "5~10": 283,
+            ">10": 706
+          },
+          "profit_factor": 1.01,
+          "max_drawdown_points": -10401.72,
+          "max_consecutive_losses": 54,
+          "holding_days_mean": 58.9,
+          "tail": {
+            "top5_count": 163,
+            "top5_share": 53.252,
+            "total_gross": 267.68,
+            "mean_excluding_top5pct": -4.5
+          }
+        },
+        "60": {
+          "observation_samples": 3123,
+          "execution_samples": 3109,
+          "counts": {
+            "ok": 3109,
+            "exit_limit_down": 14,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 1,
+            "pending": 875,
+            "price_invalid": 0
+          },
+          "mean": 1.23,
+          "median": -6.67,
+          "pos_pct": 38.2,
+          "excess_mean": 0.49,
+          "excess_median": -7.44,
+          "beat_pct": 37.3,
+          "net_mean": 1.08,
+          "mae_mean": -18.19,
+          "distribution": {
+            "<=-10": 1320,
+            "-10~-5": 325,
+            "-5~0": 276,
+            "0~5": 216,
+            "5~10": 194,
+            ">10": 778
+          },
+          "profit_factor": 1.12,
+          "max_drawdown_points": -12549.24,
+          "max_consecutive_losses": 40,
+          "holding_days_mean": 89.1,
+          "tail": {
+            "top5_count": 155,
+            "top5_share": 4.697,
+            "total_gross": 3822.36,
+            "mean_excluding_top5pct": -4.78
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "UNKNOWN": {
+            "samples": 3887,
+            "mean": 0.11,
+            "excess_mean": 0.01,
+            "pos_pct": 45.1
+          }
+        },
+        "10": {
+          "UNKNOWN": {
+            "samples": 3779,
+            "mean": 0.04,
+            "excess_mean": 0.04,
+            "pos_pct": 41.8
+          }
+        },
+        "20": {
+          "UNKNOWN": {
+            "samples": 3587,
+            "mean": -0.71,
+            "excess_mean": -0.64,
+            "pos_pct": 40.7
+          }
+        },
+        "40": {
+          "UNKNOWN": {
+            "samples": 3268,
+            "mean": 0.08,
+            "excess_mean": -0.73,
+            "pos_pct": 39.8
+          }
+        },
+        "60": {
+          "UNKNOWN": {
+            "samples": 3109,
+            "mean": 1.23,
+            "excess_mean": 0.49,
+            "pos_pct": 38.2
+          }
+        }
+      },
+      "bootstrap": {
+        "5": {
+          "days": 234,
+          "iterations": 500,
+          "mean": 0.001,
+          "ci_low": -0.414,
+          "ci_high": 0.424
+        },
+        "10": {
+          "days": 230,
+          "iterations": 500,
+          "mean": 0.027,
+          "ci_low": -0.549,
+          "ci_high": 0.597
+        },
+        "20": {
+          "days": 219,
+          "iterations": 500,
+          "mean": -0.661,
+          "ci_low": -1.612,
+          "ci_high": 0.118
+        },
+        "40": {
+          "days": 200,
+          "iterations": 500,
+          "mean": -0.76,
+          "ci_low": -1.929,
+          "ci_high": 0.424
+        },
+        "60": {
+          "days": 180,
+          "iterations": 500,
+          "mean": 0.466,
+          "ci_low": -0.944,
+          "ci_high": 1.76
+        }
+      }
+    },
+    "rps_5": {
+      "strategy": "B-rps5",
+      "params": {
+        "top": 20,
+        "min_score": 60.0,
+        "rps_points": 5.0,
+        "sector_points": 0.0
+      },
+      "start": "2025-10-22",
+      "end": "2026-10-19",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 3964,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5108,
+        "signal_count": 3964,
+        "data_end": "2026-10-19"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 3866,
+          "execution_samples": 3847,
+          "counts": {
+            "ok": 3847,
+            "exit_limit_down": 19,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 3,
+            "pending": 90,
+            "price_invalid": 0
+          },
+          "mean": 0.11,
+          "median": -0.73,
+          "pos_pct": 45.0,
+          "excess_mean": 0.01,
+          "excess_median": -0.93,
+          "beat_pct": 44.2,
+          "net_mean": -0.04,
+          "mae_mean": -3.73,
+          "distribution": {
+            "<=-10": 346,
+            "-10~-5": 601,
+            "-5~0": 1167,
+            "0~5": 916,
+            "5~10": 394,
+            ">10": 423
+          },
+          "profit_factor": 1.03,
+          "max_drawdown_points": -1948.76,
+          "max_consecutive_losses": 32,
+          "holding_days_mean": 6.1,
+          "tail": {
+            "top5_count": 192,
+            "top5_share": 11.384,
+            "total_gross": 404.85,
+            "mean_excluding_top5pct": -1.15
+          }
+        },
+        "10": {
+          "observation_samples": 3767,
+          "execution_samples": 3740,
+          "counts": {
+            "ok": 3740,
+            "exit_limit_down": 27,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 1,
+            "pending": 191,
+            "price_invalid": 0
+          },
+          "mean": 0.04,
+          "median": -1.7,
+          "pos_pct": 41.7,
+          "excess_mean": 0.05,
+          "excess_median": -1.65,
+          "beat_pct": 41.9,
+          "net_mean": -0.11,
+          "mae_mean": -6.24,
+          "distribution": {
+            "<=-10": 621,
+            "-10~-5": 651,
+            "-5~0": 908,
+            "0~5": 618,
+            "5~10": 380,
+            ">10": 562
+          },
+          "profit_factor": 1.01,
+          "max_drawdown_points": -3745.47,
+          "max_consecutive_losses": 48,
+          "holding_days_mean": 13.8,
+          "tail": {
+            "top5_count": 187,
+            "top5_share": 43.855,
+            "total_gross": 160.26,
+            "mean_excluding_top5pct": -1.93
+          }
+        },
+        "20": {
+          "observation_samples": 3572,
+          "execution_samples": 3548,
+          "counts": {
+            "ok": 3548,
+            "exit_limit_down": 24,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 0,
+            "pending": 387,
+            "price_invalid": 0
+          },
+          "mean": -0.69,
+          "median": -2.77,
+          "pos_pct": 40.6,
+          "excess_mean": -0.59,
+          "excess_median": -2.94,
+          "beat_pct": 39.6,
+          "net_mean": -0.84,
+          "mae_mean": -9.92,
+          "distribution": {
+            "<=-10": 978,
+            "-10~-5": 524,
+            "-5~0": 605,
+            "0~5": 489,
+            "5~10": 299,
+            ">10": 653
+          },
+          "profit_factor": 0.9,
+          "max_drawdown_points": -6934.68,
+          "max_consecutive_losses": 196,
+          "holding_days_mean": 28.7,
+          "tail": {
+            "top5_count": 177,
+            "top5_share": null,
+            "total_gross": -2443.69,
+            "mean_excluding_top5pct": -3.5
+          }
+        },
+        "40": {
+          "observation_samples": 3251,
+          "execution_samples": 3241,
+          "counts": {
+            "ok": 3241,
+            "exit_limit_down": 10,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 2,
+            "pending": 706,
+            "price_invalid": 0
+          },
+          "mean": 0.13,
+          "median": -4.53,
+          "pos_pct": 39.8,
+          "excess_mean": -0.71,
+          "excess_median": -5.48,
+          "beat_pct": 36.8,
+          "net_mean": -0.02,
+          "mae_mean": -14.63,
+          "distribution": {
+            "<=-10": 1178,
+            "-10~-5": 394,
+            "-5~0": 380,
+            "0~5": 306,
+            "5~10": 280,
+            ">10": 703
+          },
+          "profit_factor": 1.02,
+          "max_drawdown_points": -10392.36,
+          "max_consecutive_losses": 54,
+          "holding_days_mean": 58.9,
+          "tail": {
+            "top5_count": 162,
+            "top5_share": 32.809,
+            "total_gross": 437.27,
+            "mean_excluding_top5pct": -4.52
+          }
+        },
+        "60": {
+          "observation_samples": 3111,
+          "execution_samples": 3097,
+          "counts": {
+            "ok": 3097,
+            "exit_limit_down": 14,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 1,
+            "pending": 847,
+            "price_invalid": 0
+          },
+          "mean": 1.35,
+          "median": -6.65,
+          "pos_pct": 38.3,
+          "excess_mean": 0.58,
+          "excess_median": -7.46,
+          "beat_pct": 37.3,
+          "net_mean": 1.2,
+          "mae_mean": -18.2,
+          "distribution": {
+            "<=-10": 1312,
+            "-10~-5": 325,
+            "-5~0": 273,
+            "0~5": 215,
+            "5~10": 193,
+            ">10": 779
+          },
+          "profit_factor": 1.13,
+          "max_drawdown_points": -12474.94,
+          "max_consecutive_losses": 40,
+          "holding_days_mean": 89.1,
+          "tail": {
+            "top5_count": 154,
+            "top5_share": 4.339,
+            "total_gross": 4175.95,
+            "mean_excluding_top5pct": -4.74
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "UNKNOWN": {
+            "samples": 3847,
+            "mean": 0.11,
+            "excess_mean": 0.01,
+            "pos_pct": 45.0
+          }
+        },
+        "10": {
+          "UNKNOWN": {
+            "samples": 3740,
+            "mean": 0.04,
+            "excess_mean": 0.05,
+            "pos_pct": 41.7
+          }
+        },
+        "20": {
+          "UNKNOWN": {
+            "samples": 3548,
+            "mean": -0.69,
+            "excess_mean": -0.59,
+            "pos_pct": 40.6
+          }
+        },
+        "40": {
+          "UNKNOWN": {
+            "samples": 3241,
+            "mean": 0.13,
+            "excess_mean": -0.71,
+            "pos_pct": 39.8
+          }
+        },
+        "60": {
+          "UNKNOWN": {
+            "samples": 3097,
+            "mean": 1.35,
+            "excess_mean": 0.58,
+            "pos_pct": 38.3
+          }
+        }
+      },
+      "bootstrap": {
+        "5": {
+          "days": 233,
+          "iterations": 500,
+          "mean": 0.001,
+          "ci_low": -0.449,
+          "ci_high": 0.395
+        },
+        "10": {
+          "days": 229,
+          "iterations": 500,
+          "mean": 0.038,
+          "ci_low": -0.538,
+          "ci_high": 0.646
+        },
+        "20": {
+          "days": 218,
+          "iterations": 500,
+          "mean": -0.612,
+          "ci_low": -1.585,
+          "ci_high": 0.146
+        },
+        "40": {
+          "days": 199,
+          "iterations": 500,
+          "mean": -0.729,
+          "ci_low": -1.9,
+          "ci_high": 0.482
+        },
+        "60": {
+          "days": 180,
+          "iterations": 500,
+          "mean": 0.569,
+          "ci_low": -0.932,
+          "ci_high": 1.905
+        }
+      }
+    },
+    "top10": {
+      "strategy": "B-top10",
+      "params": {
+        "top": 10,
+        "min_score": 60.0,
+        "rps_points": 3.0,
+        "sector_points": 0.0
+      },
+      "start": "2025-10-22",
+      "end": "2026-10-19",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 2248,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5108,
+        "signal_count": 2248,
+        "data_end": "2026-10-19"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 2193,
+          "execution_samples": 2184,
+          "counts": {
+            "ok": 2184,
+            "exit_limit_down": 9,
+            "unbuyable": 2,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 1,
+            "pending": 50,
+            "price_invalid": 0
+          },
+          "mean": 0.07,
+          "median": -0.81,
+          "pos_pct": 45.0,
+          "excess_mean": -0.04,
+          "excess_median": -0.97,
+          "beat_pct": 43.9,
+          "net_mean": -0.08,
+          "mae_mean": -3.82,
+          "distribution": {
+            "<=-10": 209,
+            "-10~-5": 337,
+            "-5~0": 655,
+            "0~5": 516,
+            "5~10": 222,
+            ">10": 245
+          },
+          "profit_factor": 1.02,
+          "max_drawdown_points": -1086.36,
+          "max_consecutive_losses": 25,
+          "holding_days_mean": 6.1,
+          "tail": {
+            "top5_count": 109,
+            "top5_share": 18.31,
+            "total_gross": 144.24,
+            "mean_excluding_top5pct": -1.2
+          }
+        },
+        "10": {
+          "observation_samples": 2143,
+          "execution_samples": 2121,
+          "counts": {
+            "ok": 2121,
+            "exit_limit_down": 22,
+            "unbuyable": 2,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 0,
+            "pending": 101,
+            "price_invalid": 0
+          },
+          "mean": -0.13,
+          "median": -1.51,
+          "pos_pct": 42.4,
+          "excess_mean": -0.16,
+          "excess_median": -1.72,
+          "beat_pct": 42.4,
+          "net_mean": -0.28,
+          "mae_mean": -6.4,
+          "distribution": {
+            "<=-10": 369,
+            "-10~-5": 365,
+            "-5~0": 488,
+            "0~5": 367,
+            "5~10": 223,
+            ">10": 309
+          },
+          "profit_factor": 0.97,
+          "max_drawdown_points": -2348.69,
+          "max_consecutive_losses": 70,
+          "holding_days_mean": 13.7,
+          "tail": {
+            "top5_count": 106,
+            "top5_share": null,
+            "total_gross": -270.78,
+            "mean_excluding_top5pct": -2.14
+          }
+        },
+        "20": {
+          "observation_samples": 2044,
+          "execution_samples": 2023,
+          "counts": {
+            "ok": 2023,
+            "exit_limit_down": 21,
+            "unbuyable": 2,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 0,
+            "pending": 200,
+            "price_invalid": 0
+          },
+          "mean": -0.94,
+          "median": -2.7,
+          "pos_pct": 40.3,
+          "excess_mean": -0.98,
+          "excess_median": -3.17,
+          "beat_pct": 38.6,
+          "net_mean": -1.09,
+          "mae_mean": -10.31,
+          "distribution": {
+            "<=-10": 577,
+            "-10~-5": 271,
+            "-5~0": 359,
+            "0~5": 278,
+            "5~10": 173,
+            ">10": 365
+          },
+          "profit_factor": 0.86,
+          "max_drawdown_points": -4517.53,
+          "max_consecutive_losses": 125,
+          "holding_days_mean": 28.6,
+          "tail": {
+            "top5_count": 101,
+            "top5_share": null,
+            "total_gross": -1894.52,
+            "mean_excluding_top5pct": -3.75
+          }
+        },
+        "40": {
+          "observation_samples": 1848,
+          "execution_samples": 1843,
+          "counts": {
+            "ok": 1843,
+            "exit_limit_down": 5,
+            "unbuyable": 2,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 2,
+            "pending": 394,
+            "price_invalid": 0
+          },
+          "mean": -1.45,
+          "median": -5.01,
+          "pos_pct": 38.3,
+          "excess_mean": -1.98,
+          "excess_median": -5.96,
+          "beat_pct": 35.5,
+          "net_mean": -1.6,
+          "mae_mean": -15.71,
+          "distribution": {
+            "<=-10": 711,
+            "-10~-5": 212,
+            "-5~0": 215,
+            "0~5": 186,
+            "5~10": 166,
+            ">10": 353
+          },
+          "profit_factor": 0.84,
+          "max_drawdown_points": -6972.82,
+          "max_consecutive_losses": 32,
+          "holding_days_mean": 58.7,
+          "tail": {
+            "top5_count": 92,
+            "top5_share": null,
+            "total_gross": -2678.14,
+            "mean_excluding_top5pct": -5.9
+          }
+        },
+        "60": {
+          "observation_samples": 1738,
+          "execution_samples": 1729,
+          "counts": {
+            "ok": 1729,
+            "exit_limit_down": 9,
+            "unbuyable": 2,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 0,
+            "pending": 506,
+            "price_invalid": 0
+          },
+          "mean": -0.93,
+          "median": -8.12,
+          "pos_pct": 35.3,
+          "excess_mean": -1.21,
+          "excess_median": -8.8,
+          "beat_pct": 34.7,
+          "net_mean": -1.08,
+          "mae_mean": -19.66,
+          "distribution": {
+            "<=-10": 787,
+            "-10~-5": 179,
+            "-5~0": 152,
+            "0~5": 104,
+            "5~10": 107,
+            ">10": 400
+          },
+          "profit_factor": 0.92,
+          "max_drawdown_points": -8944.09,
+          "max_consecutive_losses": 42,
+          "holding_days_mean": 88.8,
+          "tail": {
+            "top5_count": 86,
+            "top5_share": null,
+            "total_gross": -1610.72,
+            "mean_excluding_top5pct": -6.87
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "UNKNOWN": {
+            "samples": 2184,
+            "mean": 0.07,
+            "excess_mean": -0.04,
+            "pos_pct": 45.0
+          }
+        },
+        "10": {
+          "UNKNOWN": {
+            "samples": 2121,
+            "mean": -0.13,
+            "excess_mean": -0.16,
+            "pos_pct": 42.4
+          }
+        },
+        "20": {
+          "UNKNOWN": {
+            "samples": 2023,
+            "mean": -0.94,
+            "excess_mean": -0.98,
+            "pos_pct": 40.3
+          }
+        },
+        "40": {
+          "UNKNOWN": {
+            "samples": 1843,
+            "mean": -1.45,
+            "excess_mean": -1.98,
+            "pos_pct": 38.3
+          }
+        },
+        "60": {
+          "UNKNOWN": {
+            "samples": 1729,
+            "mean": -0.93,
+            "excess_mean": -1.21,
+            "pos_pct": 35.3
+          }
+        }
+      },
+      "bootstrap": {
+        "5": {
+          "days": 233,
+          "iterations": 500,
+          "mean": -0.051,
+          "ci_low": -0.552,
+          "ci_high": 0.445
+        },
+        "10": {
+          "days": 229,
+          "iterations": 500,
+          "mean": -0.16,
+          "ci_low": -0.876,
+          "ci_high": 0.469
+        },
+        "20": {
+          "days": 218,
+          "iterations": 500,
+          "mean": -1.005,
+          "ci_low": -2.184,
+          "ci_high": 0.063
+        },
+        "40": {
+          "days": 199,
+          "iterations": 500,
+          "mean": -2.002,
+          "ci_low": -3.488,
+          "ci_high": -0.505
+        },
+        "60": {
+          "days": 180,
+          "iterations": 500,
+          "mean": -1.234,
+          "ci_low": -3.001,
+          "ci_high": 0.639
+        }
+      }
+    },
+    "top30": {
+      "strategy": "B-top30",
+      "params": {
+        "top": 30,
+        "min_score": 60.0,
+        "rps_points": 3.0,
+        "sector_points": 0.0
+      },
+      "start": "2025-10-22",
+      "end": "2026-10-19",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 5228,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5108,
+        "signal_count": 5228,
+        "data_end": "2026-10-19"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 5122,
+          "execution_samples": 5102,
+          "counts": {
+            "ok": 5102,
+            "exit_limit_down": 20,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 4,
+            "pending": 97,
+            "price_invalid": 0
+          },
+          "mean": 0.19,
+          "median": -0.68,
+          "pos_pct": 45.4,
+          "excess_mean": 0.13,
+          "excess_median": -0.83,
+          "beat_pct": 44.6,
+          "net_mean": 0.04,
+          "mae_mean": -3.61,
+          "distribution": {
+            "<=-10": 440,
+            "-10~-5": 775,
+            "-5~0": 1572,
+            "0~5": 1259,
+            "5~10": 508,
+            ">10": 548
+          },
+          "profit_factor": 1.06,
+          "max_drawdown_points": -2664.97,
+          "max_consecutive_losses": 33,
+          "holding_days_mean": 6.1,
+          "tail": {
+            "top5_count": 255,
+            "top5_share": 6.522,
+            "total_gross": 951.75,
+            "mean_excluding_top5pct": -1.08
+          }
+        },
+        "10": {
+          "observation_samples": 5006,
+          "execution_samples": 4973,
+          "counts": {
+            "ok": 4973,
+            "exit_limit_down": 33,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 2,
+            "pending": 215,
+            "price_invalid": 0
+          },
+          "mean": -0.04,
+          "median": -1.7,
+          "pos_pct": 41.5,
+          "excess_mean": 0.03,
+          "excess_median": -1.59,
+          "beat_pct": 41.8,
+          "net_mean": -0.19,
+          "mae_mean": -6.04,
+          "distribution": {
+            "<=-10": 766,
+            "-10~-5": 906,
+            "-5~0": 1239,
+            "0~5": 871,
+            "5~10": 486,
+            ">10": 705
+          },
+          "profit_factor": 0.99,
+          "max_drawdown_points": -4966.29,
+          "max_consecutive_losses": 48,
+          "holding_days_mean": 13.8,
+          "tail": {
+            "top5_count": 248,
+            "top5_share": null,
+            "total_gross": -200.87,
+            "mean_excluding_top5pct": -1.96
+          }
+        },
+        "20": {
+          "observation_samples": 4740,
+          "execution_samples": 4714,
+          "counts": {
+            "ok": 4714,
+            "exit_limit_down": 26,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 0,
+            "pending": 483,
+            "price_invalid": 0
+          },
+          "mean": -0.8,
+          "median": -2.83,
+          "pos_pct": 39.7,
+          "excess_mean": -0.59,
+          "excess_median": -2.76,
+          "beat_pct": 39.8,
+          "net_mean": -0.95,
+          "mae_mean": -9.54,
+          "distribution": {
+            "<=-10": 1239,
+            "-10~-5": 732,
+            "-5~0": 871,
+            "0~5": 644,
+            "5~10": 402,
+            ">10": 826
+          },
+          "profit_factor": 0.87,
+          "max_drawdown_points": -8698.5,
+          "max_consecutive_losses": 201,
+          "holding_days_mean": 28.8,
+          "tail": {
+            "top5_count": 235,
+            "top5_share": null,
+            "total_gross": -3782.96,
+            "mean_excluding_top5pct": -3.47
+          }
+        },
+        "40": {
+          "observation_samples": 4322,
+          "execution_samples": 4311,
+          "counts": {
+            "ok": 4311,
+            "exit_limit_down": 11,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 2,
+            "pending": 899,
+            "price_invalid": 0
+          },
+          "mean": 0.45,
+          "median": -3.99,
+          "pos_pct": 40.3,
+          "excess_mean": -0.66,
+          "excess_median": -5.27,
+          "beat_pct": 37.5,
+          "net_mean": 0.3,
+          "mae_mean": -14.03,
+          "distribution": {
+            "<=-10": 1486,
+            "-10~-5": 544,
+            "-5~0": 542,
+            "0~5": 417,
+            "5~10": 355,
+            ">10": 967
+          },
+          "profit_factor": 1.06,
+          "max_drawdown_points": -10807.36,
+          "max_consecutive_losses": 55,
+          "holding_days_mean": 59.0,
+          "tail": {
+            "top5_count": 215,
+            "top5_share": 9.245,
+            "total_gross": 1936.06,
+            "mean_excluding_top5pct": -3.9
+          }
+        },
+        "60": {
+          "observation_samples": 4172,
+          "execution_samples": 4156,
+          "counts": {
+            "ok": 4156,
+            "exit_limit_down": 16,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 1,
+            "pending": 1050,
+            "price_invalid": 0
+          },
+          "mean": 1.95,
+          "median": -5.22,
+          "pos_pct": 40.3,
+          "excess_mean": 0.55,
+          "excess_median": -6.92,
+          "beat_pct": 37.7,
+          "net_mean": 1.79,
+          "mae_mean": -17.45,
+          "distribution": {
+            "<=-10": 1691,
+            "-10~-5": 410,
+            "-5~0": 381,
+            "0~5": 311,
+            "5~10": 271,
+            ">10": 1092
+          },
+          "profit_factor": 1.2,
+          "max_drawdown_points": -13514.31,
+          "max_consecutive_losses": 40,
+          "holding_days_mean": 89.3,
+          "tail": {
+            "top5_count": 207,
+            "top5_share": 2.897,
+            "total_gross": 8091.35,
+            "mean_excluding_top5pct": -3.89
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "UNKNOWN": {
+            "samples": 5102,
+            "mean": 0.19,
+            "excess_mean": 0.13,
+            "pos_pct": 45.4
+          }
+        },
+        "10": {
+          "UNKNOWN": {
+            "samples": 4973,
+            "mean": -0.04,
+            "excess_mean": 0.03,
+            "pos_pct": 41.5
+          }
+        },
+        "20": {
+          "UNKNOWN": {
+            "samples": 4714,
+            "mean": -0.8,
+            "excess_mean": -0.59,
+            "pos_pct": 39.7
+          }
+        },
+        "40": {
+          "UNKNOWN": {
+            "samples": 4311,
+            "mean": 0.45,
+            "excess_mean": -0.66,
+            "pos_pct": 40.3
+          }
+        },
+        "60": {
+          "UNKNOWN": {
+            "samples": 4156,
+            "mean": 1.95,
+            "excess_mean": 0.55,
+            "pos_pct": 40.3
+          }
+        }
+      },
+      "bootstrap": {
+        "5": {
+          "days": 233,
+          "iterations": 500,
+          "mean": 0.121,
+          "ci_low": -0.285,
+          "ci_high": 0.528
+        },
+        "10": {
+          "days": 229,
+          "iterations": 500,
+          "mean": 0.011,
+          "ci_low": -0.521,
+          "ci_high": 0.54
+        },
+        "20": {
+          "days": 218,
+          "iterations": 500,
+          "mean": -0.615,
+          "ci_low": -1.426,
+          "ci_high": 0.003
+        },
+        "40": {
+          "days": 199,
+          "iterations": 500,
+          "mean": -0.68,
+          "ci_low": -1.762,
+          "ci_high": 0.284
+        },
+        "60": {
+          "days": 180,
+          "iterations": 500,
+          "mean": 0.539,
+          "ci_low": -0.704,
+          "ci_high": 1.605
+        }
+      }
+    },
+    "score50": {
+      "strategy": "B-score50",
+      "params": {
+        "top": 20,
+        "min_score": 50.0,
+        "rps_points": 3.0,
+        "sector_points": 0.0
+      },
+      "start": "2025-10-22",
+      "end": "2026-10-19",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 4027,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5108,
+        "signal_count": 4027,
+        "data_end": "2026-10-19"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 3929,
+          "execution_samples": 3910,
+          "counts": {
+            "ok": 3910,
+            "exit_limit_down": 19,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 3,
+            "pending": 90,
+            "price_invalid": 0
+          },
+          "mean": 0.12,
+          "median": -0.71,
+          "pos_pct": 45.1,
+          "excess_mean": 0.02,
+          "excess_median": -0.96,
+          "beat_pct": 44.1,
+          "net_mean": -0.03,
+          "mae_mean": -3.69,
+          "distribution": {
+            "<=-10": 345,
+            "-10~-5": 602,
+            "-5~0": 1200,
+            "0~5": 938,
+            "5~10": 397,
+            ">10": 428
+          },
+          "profit_factor": 1.04,
+          "max_drawdown_points": -1919.44,
+          "max_consecutive_losses": 32,
+          "holding_days_mean": 6.1,
+          "tail": {
+            "top5_count": 195,
+            "top5_share": 10.066,
+            "total_gross": 462.84,
+            "mean_excluding_top5pct": -1.13
+          }
+        },
+        "10": {
+          "observation_samples": 3829,
+          "execution_samples": 3802,
+          "counts": {
+            "ok": 3802,
+            "exit_limit_down": 27,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 1,
+            "pending": 192,
+            "price_invalid": 0
+          },
+          "mean": 0.07,
+          "median": -1.63,
+          "pos_pct": 41.8,
+          "excess_mean": 0.06,
+          "excess_median": -1.59,
+          "beat_pct": 42.0,
+          "net_mean": -0.08,
+          "mae_mean": -6.17,
+          "distribution": {
+            "<=-10": 620,
+            "-10~-5": 654,
+            "-5~0": 938,
+            "0~5": 634,
+            "5~10": 384,
+            ">10": 572
+          },
+          "profit_factor": 1.02,
+          "max_drawdown_points": -3602.5,
+          "max_consecutive_losses": 48,
+          "holding_days_mean": 13.7,
+          "tail": {
+            "top5_count": 190,
+            "top5_share": 25.689,
+            "total_gross": 275.6,
+            "mean_excluding_top5pct": -1.88
+          }
+        },
+        "20": {
+          "observation_samples": 3634,
+          "execution_samples": 3610,
+          "counts": {
+            "ok": 3610,
+            "exit_limit_down": 24,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 0,
+            "pending": 388,
+            "price_invalid": 0
+          },
+          "mean": -0.65,
+          "median": -2.7,
+          "pos_pct": 40.8,
+          "excess_mean": -0.6,
+          "excess_median": -2.93,
+          "beat_pct": 39.6,
+          "net_mean": -0.8,
+          "mae_mean": -9.81,
+          "distribution": {
+            "<=-10": 979,
+            "-10~-5": 530,
+            "-5~0": 627,
+            "0~5": 505,
+            "5~10": 311,
+            ">10": 658
+          },
+          "profit_factor": 0.9,
+          "max_drawdown_points": -6804.16,
+          "max_consecutive_losses": 196,
+          "holding_days_mean": 28.7,
+          "tail": {
+            "top5_count": 180,
+            "top5_share": null,
+            "total_gross": -2357.05,
+            "mean_excluding_top5pct": -3.45
+          }
+        },
+        "40": {
+          "observation_samples": 3301,
+          "execution_samples": 3291,
+          "counts": {
+            "ok": 3291,
+            "exit_limit_down": 10,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 2,
+            "pending": 719,
+            "price_invalid": 0
+          },
+          "mean": 0.15,
+          "median": -4.34,
+          "pos_pct": 39.9,
+          "excess_mean": -0.64,
+          "excess_median": -5.35,
+          "beat_pct": 37.2,
+          "net_mean": -0.0,
+          "mae_mean": -14.5,
+          "distribution": {
+            "<=-10": 1181,
+            "-10~-5": 399,
+            "-5~0": 398,
+            "0~5": 320,
+            "5~10": 283,
+            ">10": 710
+          },
+          "profit_factor": 1.02,
+          "max_drawdown_points": -10421.27,
+          "max_consecutive_losses": 54,
+          "holding_days_mean": 58.9,
+          "tail": {
+            "top5_count": 164,
+            "top5_share": 30.116,
+            "total_gross": 478.94,
+            "mean_excluding_top5pct": -4.46
+          }
+        },
+        "60": {
+          "observation_samples": 3131,
+          "execution_samples": 3117,
+          "counts": {
+            "ok": 3117,
+            "exit_limit_down": 14,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 1,
+            "pending": 890,
+            "price_invalid": 0
+          },
+          "mean": 1.26,
+          "median": -6.72,
+          "pos_pct": 38.1,
+          "excess_mean": 0.54,
+          "excess_median": -7.44,
+          "beat_pct": 37.2,
+          "net_mean": 1.11,
+          "mae_mean": -18.18,
+          "distribution": {
+            "<=-10": 1327,
+            "-10~-5": 327,
+            "-5~0": 274,
+            "0~5": 218,
+            "5~10": 194,
+            ">10": 777
+          },
+          "profit_factor": 1.12,
+          "max_drawdown_points": -12616.82,
+          "max_consecutive_losses": 40,
+          "holding_days_mean": 89.1,
+          "tail": {
+            "top5_count": 155,
+            "top5_share": 4.61,
+            "total_gross": 3942.32,
+            "mean_excluding_top5pct": -4.8
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "UNKNOWN": {
+            "samples": 3910,
+            "mean": 0.12,
+            "excess_mean": 0.02,
+            "pos_pct": 45.1
+          }
+        },
+        "10": {
+          "UNKNOWN": {
+            "samples": 3802,
+            "mean": 0.07,
+            "excess_mean": 0.06,
+            "pos_pct": 41.8
+          }
+        },
+        "20": {
+          "UNKNOWN": {
+            "samples": 3610,
+            "mean": -0.65,
+            "excess_mean": -0.6,
+            "pos_pct": 40.8
+          }
+        },
+        "40": {
+          "UNKNOWN": {
+            "samples": 3291,
+            "mean": 0.15,
+            "excess_mean": -0.64,
+            "pos_pct": 39.9
+          }
+        },
+        "60": {
+          "UNKNOWN": {
+            "samples": 3117,
+            "mean": 1.26,
+            "excess_mean": 0.54,
+            "pos_pct": 38.1
+          }
+        }
+      },
+      "bootstrap": {
+        "5": {
+          "days": 234,
+          "iterations": 500,
+          "mean": 0.006,
+          "ci_low": -0.399,
+          "ci_high": 0.442
+        },
+        "10": {
+          "days": 230,
+          "iterations": 500,
+          "mean": 0.052,
+          "ci_low": -0.524,
+          "ci_high": 0.615
+        },
+        "20": {
+          "days": 219,
+          "iterations": 500,
+          "mean": -0.623,
+          "ci_low": -1.589,
+          "ci_high": 0.144
+        },
+        "40": {
+          "days": 200,
+          "iterations": 500,
+          "mean": -0.665,
+          "ci_low": -1.832,
+          "ci_high": 0.52
+        },
+        "60": {
+          "days": 180,
+          "iterations": 500,
+          "mean": 0.527,
+          "ci_low": -0.948,
+          "ci_high": 1.852
+        }
+      }
+    },
+    "score70": {
+      "strategy": "B-score70",
+      "params": {
+        "top": 20,
+        "min_score": 70.0,
+        "rps_points": 3.0,
+        "sector_points": 0.0
+      },
+      "start": "2025-10-22",
+      "end": "2026-10-19",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 3626,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5108,
+        "signal_count": 3626,
+        "data_end": "2026-10-19"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 3536,
+          "execution_samples": 3517,
+          "counts": {
+            "ok": 3517,
+            "exit_limit_down": 19,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 3,
+            "pending": 82,
+            "price_invalid": 0
+          },
+          "mean": 0.1,
+          "median": -0.7,
+          "pos_pct": 45.4,
+          "excess_mean": 0.08,
+          "excess_median": -0.86,
+          "beat_pct": 44.6,
+          "net_mean": -0.05,
+          "mae_mean": -3.86,
+          "distribution": {
+            "<=-10": 336,
+            "-10~-5": 571,
+            "-5~0": 1014,
+            "0~5": 826,
+            "5~10": 369,
+            ">10": 401
+          },
+          "profit_factor": 1.03,
+          "max_drawdown_points": -1845.77,
+          "max_consecutive_losses": 33,
+          "holding_days_mean": 6.1,
+          "tail": {
+            "top5_count": 175,
+            "top5_share": 11.815,
+            "total_gross": 363.07,
+            "mean_excluding_top5pct": -1.17
+          }
+        },
+        "10": {
+          "observation_samples": 3453,
+          "execution_samples": 3426,
+          "counts": {
+            "ok": 3426,
+            "exit_limit_down": 27,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 1,
+            "pending": 167,
+            "price_invalid": 0
+          },
+          "mean": 0.01,
+          "median": -1.84,
+          "pos_pct": 41.7,
+          "excess_mean": 0.08,
+          "excess_median": -1.71,
+          "beat_pct": 42.1,
+          "net_mean": -0.14,
+          "mae_mean": -6.44,
+          "distribution": {
+            "<=-10": 601,
+            "-10~-5": 613,
+            "-5~0": 784,
+            "0~5": 542,
+            "5~10": 356,
+            ">10": 530
+          },
+          "profit_factor": 1.0,
+          "max_drawdown_points": -3652.86,
+          "max_consecutive_losses": 41,
+          "holding_days_mean": 13.8,
+          "tail": {
+            "top5_count": 171,
+            "top5_share": 176.856,
+            "total_gross": 36.96,
+            "mean_excluding_top5pct": -2.0
+          }
+        },
+        "20": {
+          "observation_samples": 3287,
+          "execution_samples": 3264,
+          "counts": {
+            "ok": 3264,
+            "exit_limit_down": 23,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 0,
+            "pending": 334,
+            "price_invalid": 0
+          },
+          "mean": -0.84,
+          "median": -3.2,
+          "pos_pct": 39.7,
+          "excess_mean": -0.55,
+          "excess_median": -3.0,
+          "beat_pct": 39.6,
+          "net_mean": -0.99,
+          "mae_mean": -10.3,
+          "distribution": {
+            "<=-10": 949,
+            "-10~-5": 486,
+            "-5~0": 534,
+            "0~5": 410,
+            "5~10": 265,
+            ">10": 620
+          },
+          "profit_factor": 0.88,
+          "max_drawdown_points": -6933.29,
+          "max_consecutive_losses": 183,
+          "holding_days_mean": 28.8,
+          "tail": {
+            "top5_count": 163,
+            "top5_share": null,
+            "total_gross": -2748.4,
+            "mean_excluding_top5pct": -3.73
+          }
+        },
+        "40": {
+          "observation_samples": 3042,
+          "execution_samples": 3032,
+          "counts": {
+            "ok": 3032,
+            "exit_limit_down": 10,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 2,
+            "pending": 577,
+            "price_invalid": 0
+          },
+          "mean": 0.24,
+          "median": -4.65,
+          "pos_pct": 39.6,
+          "excess_mean": -0.64,
+          "excess_median": -5.83,
+          "beat_pct": 36.6,
+          "net_mean": 0.08,
+          "mae_mean": -14.99,
+          "distribution": {
+            "<=-10": 1129,
+            "-10~-5": 359,
+            "-5~0": 344,
+            "0~5": 289,
+            "5~10": 237,
+            ">10": 674
+          },
+          "profit_factor": 1.03,
+          "max_drawdown_points": -9790.76,
+          "max_consecutive_losses": 52,
+          "holding_days_mean": 58.9,
+          "tail": {
+            "top5_count": 151,
+            "top5_share": 19.464,
+            "total_gross": 713.04,
+            "mean_excluding_top5pct": -4.57
+          }
+        },
+        "60": {
+          "observation_samples": 2978,
+          "execution_samples": 2965,
+          "counts": {
+            "ok": 2965,
+            "exit_limit_down": 13,
+            "unbuyable": 3,
+            "no_quote": 0,
+            "suspended": 2,
+            "no_exit": 0,
+            "pending": 643,
+            "price_invalid": 0
+          },
+          "mean": 1.58,
+          "median": -6.55,
+          "pos_pct": 38.2,
+          "excess_mean": 0.59,
+          "excess_median": -7.8,
+          "beat_pct": 36.9,
+          "net_mean": 1.42,
+          "mae_mean": -18.39,
+          "distribution": {
+            "<=-10": 1260,
+            "-10~-5": 305,
+            "-5~0": 266,
+            "0~5": 196,
+            "5~10": 183,
+            ">10": 755
+          },
+          "profit_factor": 1.15,
+          "max_drawdown_points": -11988.14,
+          "max_consecutive_losses": 56,
+          "holding_days_mean": 89.2,
+          "tail": {
+            "top5_count": 148,
+            "top5_share": 3.793,
+            "total_gross": 4674.48,
+            "mean_excluding_top5pct": -4.64
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "UNKNOWN": {
+            "samples": 3517,
+            "mean": 0.1,
+            "excess_mean": 0.08,
+            "pos_pct": 45.4
+          }
+        },
+        "10": {
+          "UNKNOWN": {
+            "samples": 3426,
+            "mean": 0.01,
+            "excess_mean": 0.08,
+            "pos_pct": 41.7
+          }
+        },
+        "20": {
+          "UNKNOWN": {
+            "samples": 3264,
+            "mean": -0.84,
+            "excess_mean": -0.55,
+            "pos_pct": 39.7
+          }
+        },
+        "40": {
+          "UNKNOWN": {
+            "samples": 3032,
+            "mean": 0.24,
+            "excess_mean": -0.64,
+            "pos_pct": 39.6
+          }
+        },
+        "60": {
+          "UNKNOWN": {
+            "samples": 2965,
+            "mean": 1.58,
+            "excess_mean": 0.59,
+            "pos_pct": 38.2
+          }
+        }
+      },
+      "bootstrap": {
+        "5": {
+          "days": 231,
+          "iterations": 500,
+          "mean": 0.076,
+          "ci_low": -0.344,
+          "ci_high": 0.482
+        },
+        "10": {
+          "days": 227,
+          "iterations": 500,
+          "mean": 0.075,
+          "ci_low": -0.561,
+          "ci_high": 0.648
+        },
+        "20": {
+          "days": 216,
+          "iterations": 500,
+          "mean": -0.565,
+          "ci_low": -1.496,
+          "ci_high": 0.283
+        },
+        "40": {
+          "days": 197,
+          "iterations": 500,
+          "mean": -0.665,
+          "ci_low": -1.89,
+          "ci_high": 0.551
+        },
+        "60": {
+          "days": 180,
+          "iterations": 500,
+          "mean": 0.578,
+          "ci_low": -0.934,
+          "ci_high": 2.03
+        }
+      }
+    },
+    "sector_5": {
+      "status": "UNKNOWN",
+      "reason": "未采集板块映射（--collect-sector 未开启）"
+    }
+  }
+}

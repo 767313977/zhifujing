@@ -1,0 +1,1483 @@
+{
+  "full": {
+    "strategy": "ModelA-full",
+    "params": {
+      "top": 20,
+      "min_score": 60.0,
+      "rps_points": 3.0,
+      "sector_points": 0.0
+    },
+    "start": "2025-10-14",
+    "end": "2026-10-09",
+    "entry_mode": "next_open",
+    "cost_bps": 15.0,
+    "signals": 3167,
+    "data_coverage": {
+      "calendar_days": 380,
+      "codes": 5303,
+      "signal_count": 3167,
+      "data_end": "2026-10-09"
+    },
+    "warnings": [
+      "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+      "没有退市股名单；结果应标注为「现存股票样本研究」",
+      "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+    ],
+    "horizons": {
+      "5": {
+        "observation_samples": 3084,
+        "execution_samples": 3078,
+        "counts": {
+          "ok": 3078,
+          "exit_limit_down": 6,
+          "unbuyable": 16,
+          "no_quote": 0,
+          "suspended": 0,
+          "no_exit": 0,
+          "pending": 67,
+          "price_invalid": 0
+        },
+        "mean": -0.31,
+        "median": -0.81,
+        "pos_pct": 42.4,
+        "excess_mean": -0.49,
+        "excess_median": -1.04,
+        "beat_pct": 40.7,
+        "net_mean": -0.46,
+        "mae_mean": -2.8,
+        "distribution": {
+          "<=-10": 124,
+          "-10~-5": 426,
+          "-5~0": 1223,
+          "0~5": 883,
+          "5~10": 266,
+          ">10": 156
+        },
+        "profit_factor": 0.87,
+        "max_drawdown_points": -2154.79,
+        "max_consecutive_losses": 20,
+        "holding_days_mean": 6.0,
+        "tail": {
+          "top5_count": 153,
+          "top5_share": null,
+          "total_gross": -962.19,
+          "mean_excluding_top5pct": -1.24
+        }
+      },
+      "10": {
+        "observation_samples": 3020,
+        "execution_samples": 3015,
+        "counts": {
+          "ok": 3015,
+          "exit_limit_down": 5,
+          "unbuyable": 16,
+          "no_quote": 0,
+          "suspended": 0,
+          "no_exit": 1,
+          "pending": 130,
+          "price_invalid": 0
+        },
+        "mean": -0.01,
+        "median": -0.81,
+        "pos_pct": 44.6,
+        "excess_mean": -0.39,
+        "excess_median": -1.52,
+        "beat_pct": 41.4,
+        "net_mean": -0.16,
+        "mae_mean": -4.65,
+        "distribution": {
+          "<=-10": 281,
+          "-10~-5": 522,
+          "-5~0": 868,
+          "0~5": 748,
+          "5~10": 315,
+          ">10": 281
+        },
+        "profit_factor": 1.0,
+        "max_drawdown_points": -2572.97,
+        "max_consecutive_losses": 23,
+        "holding_days_mean": 13.4,
+        "tail": {
+          "top5_count": 150,
+          "top5_share": null,
+          "total_gross": -35.12,
+          "mean_excluding_top5pct": -1.49
+        }
+      },
+      "20": {
+        "observation_samples": 2884,
+        "execution_samples": 2877,
+        "counts": {
+          "ok": 2877,
+          "exit_limit_down": 7,
+          "unbuyable": 16,
+          "no_quote": 0,
+          "suspended": 0,
+          "no_exit": 2,
+          "pending": 265,
+          "price_invalid": 0
+        },
+        "mean": -0.05,
+        "median": -2.19,
+        "pos_pct": 39.7,
+        "excess_mean": -0.63,
+        "excess_median": -2.94,
+        "beat_pct": 36.8,
+        "net_mean": -0.2,
+        "mae_mean": -7.13,
+        "distribution": {
+          "<=-10": 535,
+          "-10~-5": 521,
+          "-5~0": 678,
+          "0~5": 470,
+          "5~10": 258,
+          ">10": 415
+        },
+        "profit_factor": 0.99,
+        "max_drawdown_points": -4595.12,
+        "max_consecutive_losses": 21,
+        "holding_days_mean": 28.4,
+        "tail": {
+          "top5_count": 143,
+          "top5_share": null,
+          "total_gross": -135.75,
+          "mean_excluding_top5pct": -2.45
+        }
+      },
+      "40": {
+        "observation_samples": 2672,
+        "execution_samples": 2666,
+        "counts": {
+          "ok": 2666,
+          "exit_limit_down": 6,
+          "unbuyable": 16,
+          "no_quote": 0,
+          "suspended": 0,
+          "no_exit": 0,
+          "pending": 479,
+          "price_invalid": 0
+        },
+        "mean": 0.2,
+        "median": -3.56,
+        "pos_pct": 38.4,
+        "excess_mean": -1.07,
+        "excess_median": -5.71,
+        "beat_pct": 33.6,
+        "net_mean": 0.05,
+        "mae_mean": -10.52,
+        "distribution": {
+          "<=-10": 739,
+          "-10~-5": 463,
+          "-5~0": 440,
+          "0~5": 321,
+          "5~10": 203,
+          ">10": 500
+        },
+        "profit_factor": 1.03,
+        "max_drawdown_points": -6083.03,
+        "max_consecutive_losses": 56,
+        "holding_days_mean": 58.8,
+        "tail": {
+          "top5_count": 133,
+          "top5_share": 17.794,
+          "total_gross": 529.59,
+          "mean_excluding_top5pct": -3.51
+        }
+      },
+      "60": {
+        "observation_samples": 2479,
+        "execution_samples": 2474,
+        "counts": {
+          "ok": 2474,
+          "exit_limit_down": 5,
+          "unbuyable": 16,
+          "no_quote": 0,
+          "suspended": 0,
+          "no_exit": 0,
+          "pending": 672,
+          "price_invalid": 0
+        },
+        "mean": -0.03,
+        "median": -4.35,
+        "pos_pct": 38.0,
+        "excess_mean": -1.33,
+        "excess_median": -6.72,
+        "beat_pct": 34.0,
+        "net_mean": -0.18,
+        "mae_mean": -13.62,
+        "distribution": {
+          "<=-10": 859,
+          "-10~-5": 332,
+          "-5~0": 342,
+          "0~5": 275,
+          "5~10": 197,
+          ">10": 469
+        },
+        "profit_factor": 1.0,
+        "max_drawdown_points": -8736.81,
+        "max_consecutive_losses": 30,
+        "holding_days_mean": 89.2,
+        "tail": {
+          "top5_count": 123,
+          "top5_share": null,
+          "total_gross": -80.32,
+          "mean_excluding_top5pct": -4.68
+        }
+      }
+    },
+    "regimes": {
+      "5": {
+        "UNKNOWN": {
+          "samples": 703,
+          "mean": -0.16,
+          "excess_mean": -0.43,
+          "pos_pct": 44.4
+        },
+        "SIDEWAYS": {
+          "samples": 963,
+          "mean": 0.21,
+          "excess_mean": -0.21,
+          "pos_pct": 46.2
+        },
+        "BEAR": {
+          "samples": 680,
+          "mean": -1.2,
+          "excess_mean": -1.84,
+          "pos_pct": 33.5
+        },
+        "BULL": {
+          "samples": 732,
+          "mean": -0.33,
+          "excess_mean": 0.33,
+          "pos_pct": 43.7
+        }
+      },
+      "10": {
+        "UNKNOWN": {
+          "samples": 702,
+          "mean": -0.52,
+          "excess_mean": -0.7,
+          "pos_pct": 42.2
+        },
+        "SIDEWAYS": {
+          "samples": 944,
+          "mean": 0.94,
+          "excess_mean": 0.19,
+          "pos_pct": 50.3
+        },
+        "BEAR": {
+          "samples": 656,
+          "mean": -0.96,
+          "excess_mean": -2.72,
+          "pos_pct": 38.4
+        },
+        "BULL": {
+          "samples": 713,
+          "mean": 0.1,
+          "excess_mean": 1.28,
+          "pos_pct": 45.0
+        }
+      },
+      "20": {
+        "UNKNOWN": {
+          "samples": 701,
+          "mean": -0.78,
+          "excess_mean": -1.03,
+          "pos_pct": 35.7
+        },
+        "SIDEWAYS": {
+          "samples": 922,
+          "mean": 1.03,
+          "excess_mean": -0.09,
+          "pos_pct": 45.3
+        },
+        "BEAR": {
+          "samples": 541,
+          "mean": -0.75,
+          "excess_mean": -5.42,
+          "pos_pct": 34.8
+        },
+        "BULL": {
+          "samples": 713,
+          "mean": -0.19,
+          "excess_mean": 2.71,
+          "pos_pct": 40.3
+        }
+      },
+      "40": {
+        "UNKNOWN": {
+          "samples": 702,
+          "mean": 2.39,
+          "excess_mean": -2.49,
+          "pos_pct": 40.9
+        },
+        "SIDEWAYS": {
+          "samples": 871,
+          "mean": 1.79,
+          "excess_mean": -0.26,
+          "pos_pct": 42.4
+        },
+        "BEAR": {
+          "samples": 381,
+          "mean": -2.4,
+          "excess_mean": -7.26,
+          "pos_pct": 35.4
+        },
+        "BULL": {
+          "samples": 712,
+          "mean": -2.51,
+          "excess_mean": 2.64,
+          "pos_pct": 32.7
+        }
+      },
+      "60": {
+        "UNKNOWN": {
+          "samples": 703,
+          "mean": 6.47,
+          "excess_mean": -4.26,
+          "pos_pct": 51.9
+        },
+        "SIDEWAYS": {
+          "samples": 868,
+          "mean": -3.0,
+          "excess_mean": -1.03,
+          "pos_pct": 32.8
+        },
+        "BEAR": {
+          "samples": 190,
+          "mean": -8.23,
+          "excess_mean": -8.71,
+          "pos_pct": 27.9
+        },
+        "BULL": {
+          "samples": 713,
+          "mean": -0.65,
+          "excess_mean": 3.17,
+          "pos_pct": 33.4
+        }
+      }
+    },
+    "bootstrap": {
+      "5": {
+        "days": 232,
+        "iterations": 1000,
+        "mean": -0.493,
+        "ci_low": -0.925,
+        "ci_high": -0.091
+      },
+      "10": {
+        "days": 227,
+        "iterations": 1000,
+        "mean": -0.397,
+        "ci_low": -0.98,
+        "ci_high": 0.217
+      },
+      "20": {
+        "days": 217,
+        "iterations": 1000,
+        "mean": -0.644,
+        "ci_low": -1.53,
+        "ci_high": 0.301
+      },
+      "40": {
+        "days": 197,
+        "iterations": 1000,
+        "mean": -1.107,
+        "ci_low": -2.398,
+        "ci_high": 0.23
+      },
+      "60": {
+        "days": 178,
+        "iterations": 1000,
+        "mean": -1.381,
+        "ci_low": -2.935,
+        "ci_high": 0.396
+      }
+    }
+  },
+  "splits": {
+    "train": {
+      "strategy": "ModelA-train",
+      "params": {
+        "top": 20,
+        "min_score": 60.0,
+        "rps_points": 3.0,
+        "sector_points": 0.0
+      },
+      "start": "2025-10-14",
+      "end": "2026-10-09",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 2287,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5303,
+        "signal_count": 2287,
+        "data_end": "2026-10-09"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 2277,
+          "execution_samples": 2273,
+          "counts": {
+            "ok": 2273,
+            "exit_limit_down": 4,
+            "unbuyable": 10,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 0,
+            "price_invalid": 0
+          },
+          "mean": 0.26,
+          "median": -0.43,
+          "pos_pct": 46.3,
+          "excess_mean": -0.18,
+          "excess_median": -0.94,
+          "beat_pct": 41.8,
+          "net_mean": 0.11,
+          "mae_mean": -2.51,
+          "distribution": {
+            "<=-10": 76,
+            "-10~-5": 287,
+            "-5~0": 858,
+            "0~5": 694,
+            "5~10": 218,
+            ">10": 140
+          },
+          "profit_factor": 1.12,
+          "max_drawdown_points": -618.19,
+          "max_consecutive_losses": 20,
+          "holding_days_mean": 6.0,
+          "tail": {
+            "top5_count": 113,
+            "top5_share": 3.741,
+            "total_gross": 582.59,
+            "mean_excluding_top5pct": -0.74
+          }
+        },
+        "10": {
+          "observation_samples": 2277,
+          "execution_samples": 2272,
+          "counts": {
+            "ok": 2272,
+            "exit_limit_down": 5,
+            "unbuyable": 10,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 0,
+            "price_invalid": 0
+          },
+          "mean": 0.73,
+          "median": -0.36,
+          "pos_pct": 47.7,
+          "excess_mean": 0.11,
+          "excess_median": -1.38,
+          "beat_pct": 42.2,
+          "net_mean": 0.58,
+          "mae_mean": -4.35,
+          "distribution": {
+            "<=-10": 197,
+            "-10~-5": 366,
+            "-5~0": 626,
+            "0~5": 572,
+            "5~10": 264,
+            ">10": 247
+          },
+          "profit_factor": 1.25,
+          "max_drawdown_points": -1062.86,
+          "max_consecutive_losses": 21,
+          "holding_days_mean": 13.5,
+          "tail": {
+            "top5_count": 113,
+            "top5_share": 2.091,
+            "total_gross": 1664.81,
+            "mean_excluding_top5pct": -0.84
+          }
+        },
+        "20": {
+          "observation_samples": 2275,
+          "execution_samples": 2273,
+          "counts": {
+            "ok": 2273,
+            "exit_limit_down": 2,
+            "unbuyable": 10,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 2,
+            "pending": 0,
+            "price_invalid": 0
+          },
+          "mean": 0.87,
+          "median": -1.79,
+          "pos_pct": 42.3,
+          "excess_mean": 0.2,
+          "excess_median": -2.67,
+          "beat_pct": 38.5,
+          "net_mean": 0.72,
+          "mae_mean": -6.86,
+          "distribution": {
+            "<=-10": 413,
+            "-10~-5": 416,
+            "-5~0": 482,
+            "0~5": 367,
+            "5~10": 218,
+            ">10": 377
+          },
+          "profit_factor": 1.19,
+          "max_drawdown_points": -2479.33,
+          "max_consecutive_losses": 19,
+          "holding_days_mean": 28.6,
+          "tail": {
+            "top5_count": 113,
+            "top5_share": 2.838,
+            "total_gross": 1980.03,
+            "mean_excluding_top5pct": -1.69
+          }
+        },
+        "40": {
+          "observation_samples": 2277,
+          "execution_samples": 2273,
+          "counts": {
+            "ok": 2273,
+            "exit_limit_down": 4,
+            "unbuyable": 10,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 0,
+            "price_invalid": 0
+          },
+          "mean": 1.33,
+          "median": -3.27,
+          "pos_pct": 39.7,
+          "excess_mean": -0.51,
+          "excess_median": -5.54,
+          "beat_pct": 34.6,
+          "net_mean": 1.17,
+          "mae_mean": -10.09,
+          "distribution": {
+            "<=-10": 605,
+            "-10~-5": 399,
+            "-5~0": 366,
+            "0~5": 265,
+            "5~10": 171,
+            ">10": 467
+          },
+          "profit_factor": 1.21,
+          "max_drawdown_points": -3359.08,
+          "max_consecutive_losses": 56,
+          "holding_days_mean": 59.3,
+          "tail": {
+            "top5_count": 113,
+            "top5_share": 2.848,
+            "total_gross": 3014.44,
+            "mean_excluding_top5pct": -2.58
+          }
+        },
+        "60": {
+          "observation_samples": 2277,
+          "execution_samples": 2273,
+          "counts": {
+            "ok": 2273,
+            "exit_limit_down": 4,
+            "unbuyable": 10,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 0,
+            "price_invalid": 0
+          },
+          "mean": 0.8,
+          "median": -3.99,
+          "pos_pct": 39.0,
+          "excess_mean": -1.19,
+          "excess_median": -6.91,
+          "beat_pct": 33.7,
+          "net_mean": 0.64,
+          "mae_mean": -13.04,
+          "distribution": {
+            "<=-10": 758,
+            "-10~-5": 309,
+            "-5~0": 320,
+            "0~5": 248,
+            "5~10": 181,
+            ">10": 457
+          },
+          "profit_factor": 1.1,
+          "max_drawdown_points": -6758.31,
+          "max_consecutive_losses": 30,
+          "holding_days_mean": 89.6,
+          "tail": {
+            "top5_count": 113,
+            "top5_share": 5.784,
+            "total_gross": 1808.58,
+            "mean_excluding_top5pct": -4.01
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "UNKNOWN": {
+            "samples": 703,
+            "mean": -0.16,
+            "excess_mean": -0.43,
+            "pos_pct": 44.4
+          },
+          "SIDEWAYS": {
+            "samples": 733,
+            "mean": 1.11,
+            "excess_mean": -0.14,
+            "pos_pct": 51.4
+          },
+          "BEAR": {
+            "samples": 149,
+            "mean": -0.66,
+            "excess_mean": -1.95,
+            "pos_pct": 37.6
+          },
+          "BULL": {
+            "samples": 688,
+            "mean": -0.04,
+            "excess_mean": 0.43,
+            "pos_pct": 44.6
+          }
+        },
+        "10": {
+          "UNKNOWN": {
+            "samples": 702,
+            "mean": -0.52,
+            "excess_mean": -0.7,
+            "pos_pct": 42.2
+          },
+          "SIDEWAYS": {
+            "samples": 734,
+            "mean": 2.13,
+            "excess_mean": 0.14,
+            "pos_pct": 54.1
+          },
+          "BEAR": {
+            "samples": 148,
+            "mean": 0.83,
+            "excess_mean": -2.47,
+            "pos_pct": 48.0
+          },
+          "BULL": {
+            "samples": 688,
+            "mean": 0.5,
+            "excess_mean": 1.46,
+            "pos_pct": 46.4
+          }
+        },
+        "20": {
+          "UNKNOWN": {
+            "samples": 701,
+            "mean": -0.78,
+            "excess_mean": -1.03,
+            "pos_pct": 35.7
+          },
+          "SIDEWAYS": {
+            "samples": 735,
+            "mean": 2.88,
+            "excess_mean": 0.14,
+            "pos_pct": 49.7
+          },
+          "BEAR": {
+            "samples": 149,
+            "mean": 2.26,
+            "excess_mean": -6.06,
+            "pos_pct": 44.3
+          },
+          "BULL": {
+            "samples": 688,
+            "mean": 0.11,
+            "excess_mean": 2.9,
+            "pos_pct": 40.8
+          }
+        },
+        "40": {
+          "UNKNOWN": {
+            "samples": 702,
+            "mean": 2.39,
+            "excess_mean": -2.49,
+            "pos_pct": 40.9
+          },
+          "SIDEWAYS": {
+            "samples": 735,
+            "mean": 4.29,
+            "excess_mean": -0.01,
+            "pos_pct": 45.6
+          },
+          "BEAR": {
+            "samples": 148,
+            "mean": -3.52,
+            "excess_mean": -9.31,
+            "pos_pct": 33.8
+          },
+          "BULL": {
+            "samples": 688,
+            "mean": -1.88,
+            "excess_mean": 2.87,
+            "pos_pct": 33.6
+          }
+        },
+        "60": {
+          "UNKNOWN": {
+            "samples": 703,
+            "mean": 6.47,
+            "excess_mean": -4.26,
+            "pos_pct": 51.9
+          },
+          "SIDEWAYS": {
+            "samples": 734,
+            "mean": -1.74,
+            "excess_mean": -0.58,
+            "pos_pct": 34.3
+          },
+          "BEAR": {
+            "samples": 148,
+            "mean": -9.05,
+            "excess_mean": -10.94,
+            "pos_pct": 23.0
+          },
+          "BULL": {
+            "samples": 688,
+            "mean": -0.19,
+            "excess_mean": 3.4,
+            "pos_pct": 34.2
+          }
+        }
+      },
+      "bootstrap": {
+        "5": {
+          "days": 144,
+          "iterations": 1000,
+          "mean": -0.173,
+          "ci_low": -0.614,
+          "ci_high": 0.257
+        },
+        "10": {
+          "days": 144,
+          "iterations": 1000,
+          "mean": 0.099,
+          "ci_low": -0.552,
+          "ci_high": 0.762
+        },
+        "20": {
+          "days": 144,
+          "iterations": 1000,
+          "mean": 0.17,
+          "ci_low": -0.753,
+          "ci_high": 1.149
+        },
+        "40": {
+          "days": 144,
+          "iterations": 1000,
+          "mean": -0.557,
+          "ci_low": -1.891,
+          "ci_high": 0.89
+        },
+        "60": {
+          "days": 144,
+          "iterations": 1000,
+          "mean": -1.235,
+          "ci_low": -2.906,
+          "ci_high": 0.659
+        }
+      }
+    },
+    "validation": {
+      "strategy": "ModelA-validation",
+      "params": {
+        "top": 20,
+        "min_score": 60.0,
+        "rps_points": 3.0,
+        "sector_points": 0.0
+      },
+      "start": "2026-05-20",
+      "end": "2026-10-09",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 302,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5303,
+        "signal_count": 302,
+        "data_end": "2026-10-09"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 300,
+          "execution_samples": 299,
+          "counts": {
+            "ok": 299,
+            "exit_limit_down": 1,
+            "unbuyable": 2,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 0,
+            "price_invalid": 0
+          },
+          "mean": -2.53,
+          "median": -2.0,
+          "pos_pct": 29.4,
+          "excess_mean": 0.1,
+          "excess_median": 0.64,
+          "beat_pct": 53.5,
+          "net_mean": -2.68,
+          "mae_mean": -4.31,
+          "distribution": {
+            "<=-10": 35,
+            "-10~-5": 47,
+            "-5~0": 129,
+            "0~5": 65,
+            "5~10": 16,
+            ">10": 7
+          },
+          "profit_factor": 0.33,
+          "max_drawdown_points": -792.38,
+          "max_consecutive_losses": 17,
+          "holding_days_mean": 5.7,
+          "tail": {
+            "top5_count": 14,
+            "top5_share": null,
+            "total_gross": -756.37,
+            "mean_excluding_top5pct": -3.24
+          }
+        },
+        "10": {
+          "observation_samples": 300,
+          "execution_samples": 300,
+          "counts": {
+            "ok": 300,
+            "exit_limit_down": 0,
+            "unbuyable": 2,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 0,
+            "price_invalid": 0
+          },
+          "mean": -3.11,
+          "median": -1.76,
+          "pos_pct": 38.7,
+          "excess_mean": 0.15,
+          "excess_median": 0.26,
+          "beat_pct": 51.0,
+          "net_mean": -3.25,
+          "mae_mean": -7.04,
+          "distribution": {
+            "<=-10": 65,
+            "-10~-5": 44,
+            "-5~0": 75,
+            "0~5": 77,
+            "5~10": 25,
+            ">10": 14
+          },
+          "profit_factor": 0.39,
+          "max_drawdown_points": -1084.04,
+          "max_consecutive_losses": 17,
+          "holding_days_mean": 12.8,
+          "tail": {
+            "top5_count": 15,
+            "top5_share": null,
+            "total_gross": -932.85,
+            "mean_excluding_top5pct": -4.24
+          }
+        },
+        "20": {
+          "observation_samples": 300,
+          "execution_samples": 297,
+          "counts": {
+            "ok": 297,
+            "exit_limit_down": 3,
+            "unbuyable": 2,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 0,
+            "price_invalid": 0
+          },
+          "mean": -5.32,
+          "median": -3.47,
+          "pos_pct": 29.6,
+          "excess_mean": -3.61,
+          "excess_median": -5.41,
+          "beat_pct": 31.6,
+          "net_mean": -5.46,
+          "mae_mean": -10.29,
+          "distribution": {
+            "<=-10": 94,
+            "-10~-5": 35,
+            "-5~0": 80,
+            "0~5": 47,
+            "5~10": 18,
+            ">10": 23
+          },
+          "profit_factor": 0.3,
+          "max_drawdown_points": -1649.91,
+          "max_consecutive_losses": 21,
+          "holding_days_mean": 27.3,
+          "tail": {
+            "top5_count": 14,
+            "top5_share": null,
+            "total_gross": -1579.04,
+            "mean_excluding_top5pct": -6.8
+          }
+        },
+        "40": {
+          "observation_samples": 300,
+          "execution_samples": 298,
+          "counts": {
+            "ok": 298,
+            "exit_limit_down": 2,
+            "unbuyable": 2,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 0,
+            "price_invalid": 0
+          },
+          "mean": -8.42,
+          "median": -6.0,
+          "pos_pct": 28.9,
+          "excess_mean": -3.4,
+          "excess_median": -5.19,
+          "beat_pct": 29.9,
+          "net_mean": -8.55,
+          "mae_mean": -14.83,
+          "distribution": {
+            "<=-10": 119,
+            "-10~-5": 42,
+            "-5~0": 51,
+            "0~5": 39,
+            "5~10": 24,
+            ">10": 23
+          },
+          "profit_factor": 0.21,
+          "max_drawdown_points": -2537.57,
+          "max_consecutive_losses": 37,
+          "holding_days_mean": 55.4,
+          "tail": {
+            "top5_count": 14,
+            "top5_share": null,
+            "total_gross": -2508.06,
+            "mean_excluding_top5pct": -9.93
+          }
+        },
+        "60": {
+          "observation_samples": 202,
+          "execution_samples": 201,
+          "counts": {
+            "ok": 201,
+            "exit_limit_down": 1,
+            "unbuyable": 2,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 98,
+            "price_invalid": 0
+          },
+          "mean": -9.4,
+          "median": -10.24,
+          "pos_pct": 27.4,
+          "excess_mean": -2.94,
+          "excess_median": -5.05,
+          "beat_pct": 37.3,
+          "net_mean": -9.53,
+          "mae_mean": -20.21,
+          "distribution": {
+            "<=-10": 101,
+            "-10~-5": 23,
+            "-5~0": 22,
+            "0~5": 27,
+            "5~10": 16,
+            ">10": 12
+          },
+          "profit_factor": 0.22,
+          "max_drawdown_points": -1986.12,
+          "max_consecutive_losses": 24,
+          "holding_days_mean": 84.0,
+          "tail": {
+            "top5_count": 10,
+            "top5_share": null,
+            "total_gross": -1888.9,
+            "mean_excluding_top5pct": -11.68
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "BULL": {
+            "samples": 25,
+            "mean": -5.06,
+            "excess_mean": -1.24,
+            "pos_pct": 28.0
+          },
+          "SIDEWAYS": {
+            "samples": 136,
+            "mean": -3.3,
+            "excess_mean": -0.44,
+            "pos_pct": 28.7
+          },
+          "BEAR": {
+            "samples": 138,
+            "mean": -1.32,
+            "excess_mean": 0.89,
+            "pos_pct": 30.4
+          }
+        },
+        "10": {
+          "BULL": {
+            "samples": 25,
+            "mean": -10.88,
+            "excess_mean": -3.74,
+            "pos_pct": 8.0
+          },
+          "SIDEWAYS": {
+            "samples": 137,
+            "mean": -4.11,
+            "excess_mean": 0.78,
+            "pos_pct": 35.8
+          },
+          "BEAR": {
+            "samples": 138,
+            "mean": -0.71,
+            "excess_mean": 0.23,
+            "pos_pct": 47.1
+          }
+        },
+        "20": {
+          "BULL": {
+            "samples": 25,
+            "mean": -8.42,
+            "excess_mean": -2.45,
+            "pos_pct": 24.0
+          },
+          "SIDEWAYS": {
+            "samples": 135,
+            "mean": -7.58,
+            "excess_mean": -1.22,
+            "pos_pct": 28.1
+          },
+          "BEAR": {
+            "samples": 137,
+            "mean": -2.52,
+            "excess_mean": -6.19,
+            "pos_pct": 32.1
+          }
+        },
+        "40": {
+          "BULL": {
+            "samples": 24,
+            "mean": -20.7,
+            "excess_mean": -3.96,
+            "pos_pct": 8.3
+          },
+          "SIDEWAYS": {
+            "samples": 136,
+            "mean": -11.73,
+            "excess_mean": -1.57,
+            "pos_pct": 25.0
+          },
+          "BEAR": {
+            "samples": 138,
+            "mean": -3.01,
+            "excess_mean": -5.09,
+            "pos_pct": 36.2
+          }
+        },
+        "60": {
+          "BULL": {
+            "samples": 25,
+            "mean": -13.48,
+            "excess_mean": -3.31,
+            "pos_pct": 12.0
+          },
+          "SIDEWAYS": {
+            "samples": 134,
+            "mean": -9.91,
+            "excess_mean": -3.53,
+            "pos_pct": 24.6
+          },
+          "BEAR": {
+            "samples": 42,
+            "mean": -5.34,
+            "excess_mean": -0.85,
+            "pos_pct": 45.2
+          }
+        }
+      },
+      "bootstrap": {
+        "5": {
+          "days": 45,
+          "iterations": 1000,
+          "mean": 0.14,
+          "ci_low": -1.272,
+          "ci_high": 1.669
+        },
+        "10": {
+          "days": 45,
+          "iterations": 1000,
+          "mean": 0.182,
+          "ci_low": -1.574,
+          "ci_high": 2.072
+        },
+        "20": {
+          "days": 45,
+          "iterations": 1000,
+          "mean": -3.534,
+          "ci_low": -6.418,
+          "ci_high": -0.544
+        },
+        "40": {
+          "days": 45,
+          "iterations": 1000,
+          "mean": -3.355,
+          "ci_low": -5.904,
+          "ci_high": -0.662
+        },
+        "60": {
+          "days": 34,
+          "iterations": 1000,
+          "mean": -2.918,
+          "ci_low": -5.994,
+          "ci_high": 0.064
+        }
+      }
+    },
+    "test": {
+      "strategy": "ModelA-test",
+      "params": {
+        "top": 20,
+        "min_score": 60.0,
+        "rps_points": 3.0,
+        "sector_points": 0.0
+      },
+      "start": "2026-07-28",
+      "end": "2026-10-09",
+      "entry_mode": "next_open",
+      "cost_bps": 15.0,
+      "signals": 578,
+      "data_coverage": {
+        "calendar_days": 380,
+        "codes": 5303,
+        "signal_count": 578,
+        "data_end": "2026-10-09"
+      },
+      "warnings": [
+        "MAE 是持有期内收盘累计收益的最小值，日线无法还原盘中最大回撤",
+        "没有退市股名单；结果应标注为「现存股票样本研究」",
+        "基准剔除入场涨停与退出跌停，但未剔除 ST / 次新"
+      ],
+      "horizons": {
+        "5": {
+          "observation_samples": 507,
+          "execution_samples": 506,
+          "counts": {
+            "ok": 506,
+            "exit_limit_down": 1,
+            "unbuyable": 4,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 67,
+            "price_invalid": 0
+          },
+          "mean": -1.56,
+          "median": -1.97,
+          "pos_pct": 32.6,
+          "excess_mean": -2.28,
+          "excess_median": -2.34,
+          "beat_pct": 28.3,
+          "net_mean": -1.71,
+          "mae_mean": -3.18,
+          "distribution": {
+            "<=-10": 13,
+            "-10~-5": 92,
+            "-5~0": 236,
+            "0~5": 124,
+            "5~10": 32,
+            ">10": 9
+          },
+          "profit_factor": 0.43,
+          "max_drawdown_points": -805.49,
+          "max_consecutive_losses": 20,
+          "holding_days_mean": 6.0,
+          "tail": {
+            "top5_count": 25,
+            "top5_share": null,
+            "total_gross": -788.4,
+            "mean_excluding_top5pct": -2.17
+          }
+        },
+        "10": {
+          "observation_samples": 443,
+          "execution_samples": 443,
+          "counts": {
+            "ok": 443,
+            "exit_limit_down": 0,
+            "unbuyable": 4,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 1,
+            "pending": 130,
+            "price_invalid": 0
+          },
+          "mean": -1.73,
+          "median": -2.67,
+          "pos_pct": 32.7,
+          "excess_mean": -3.33,
+          "excess_median": -3.48,
+          "beat_pct": 30.7,
+          "net_mean": -1.88,
+          "mae_mean": -4.59,
+          "distribution": {
+            "<=-10": 19,
+            "-10~-5": 112,
+            "-5~0": 167,
+            "0~5": 99,
+            "5~10": 26,
+            ">10": 20
+          },
+          "profit_factor": 0.47,
+          "max_drawdown_points": -810.33,
+          "max_consecutive_losses": 23,
+          "holding_days_mean": 13.1,
+          "tail": {
+            "top5_count": 22,
+            "top5_share": null,
+            "total_gross": -767.09,
+            "mean_excluding_top5pct": -2.67
+          }
+        },
+        "20": {
+          "observation_samples": 309,
+          "execution_samples": 307,
+          "counts": {
+            "ok": 307,
+            "exit_limit_down": 2,
+            "unbuyable": 4,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 265,
+            "price_invalid": 0
+          },
+          "mean": -1.75,
+          "median": -2.64,
+          "pos_pct": 30.3,
+          "excess_mean": -3.9,
+          "excess_median": -4.6,
+          "beat_pct": 29.6,
+          "net_mean": -1.9,
+          "mae_mean": -6.08,
+          "distribution": {
+            "<=-10": 28,
+            "-10~-5": 70,
+            "-5~0": 116,
+            "0~5": 56,
+            "5~10": 22,
+            ">10": 15
+          },
+          "profit_factor": 0.53,
+          "max_drawdown_points": -597.49,
+          "max_consecutive_losses": 20,
+          "holding_days_mean": 27.6,
+          "tail": {
+            "top5_count": 15,
+            "top5_share": null,
+            "total_gross": -536.75,
+            "mean_excluding_top5pct": -2.98
+          }
+        },
+        "40": {
+          "observation_samples": 95,
+          "execution_samples": 95,
+          "counts": {
+            "ok": 95,
+            "exit_limit_down": 0,
+            "unbuyable": 4,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 479,
+            "price_invalid": 0
+          },
+          "mean": 0.24,
+          "median": -3.13,
+          "pos_pct": 36.8,
+          "excess_mean": -7.22,
+          "excess_median": -10.9,
+          "beat_pct": 20.0,
+          "net_mean": 0.09,
+          "mae_mean": -7.15,
+          "distribution": {
+            "<=-10": 15,
+            "-10~-5": 22,
+            "-5~0": 23,
+            "0~5": 17,
+            "5~10": 8,
+            ">10": 10
+          },
+          "profit_factor": 1.06,
+          "max_drawdown_points": -234.74,
+          "max_consecutive_losses": 6,
+          "holding_days_mean": 56.5,
+          "tail": {
+            "top5_count": 4,
+            "top5_share": 9.986,
+            "total_gross": 23.21,
+            "mean_excluding_top5pct": -2.29
+          }
+        },
+        "60": {
+          "observation_samples": 0,
+          "execution_samples": 0,
+          "counts": {
+            "ok": 0,
+            "exit_limit_down": 0,
+            "unbuyable": 4,
+            "no_quote": 0,
+            "suspended": 0,
+            "no_exit": 0,
+            "pending": 574,
+            "price_invalid": 0
+          },
+          "mean": null,
+          "median": null,
+          "pos_pct": null,
+          "excess_mean": null,
+          "excess_median": null,
+          "beat_pct": null,
+          "net_mean": null,
+          "mae_mean": null,
+          "distribution": {
+            "<=-10": 0,
+            "-10~-5": 0,
+            "-5~0": 0,
+            "0~5": 0,
+            "5~10": 0,
+            ">10": 0
+          },
+          "profit_factor": null,
+          "max_drawdown_points": null,
+          "max_consecutive_losses": 0,
+          "holding_days_mean": null,
+          "tail": {
+            "top5_share": null,
+            "mean_excluding_top5pct": null
+          }
+        }
+      },
+      "regimes": {
+        "5": {
+          "BEAR": {
+            "samples": 393,
+            "mean": -1.36,
+            "excess_mean": -2.76,
+            "pos_pct": 33.1
+          },
+          "SIDEWAYS": {
+            "samples": 94,
+            "mean": -1.75,
+            "excess_mean": -0.48,
+            "pos_pct": 30.9
+          },
+          "BULL": {
+            "samples": 19,
+            "mean": -4.68,
+            "excess_mean": -1.18,
+            "pos_pct": 31.6
+          }
+        },
+        "10": {
+          "BEAR": {
+            "samples": 370,
+            "mean": -1.77,
+            "excess_mean": -3.91,
+            "pos_pct": 31.4
+          },
+          "SIDEWAYS": {
+            "samples": 73,
+            "mean": -1.51,
+            "excess_mean": -0.39,
+            "pos_pct": 39.7
+          }
+        },
+        "20": {
+          "BEAR": {
+            "samples": 255,
+            "mean": -1.56,
+            "excess_mean": -4.63,
+            "pos_pct": 30.6
+          },
+          "SIDEWAYS": {
+            "samples": 52,
+            "mean": -2.69,
+            "excess_mean": -0.31,
+            "pos_pct": 28.8
+          }
+        },
+        "40": {
+          "BEAR": {
+            "samples": 95,
+            "mean": 0.24,
+            "excess_mean": -7.22,
+            "pos_pct": 36.8
+          }
+        },
+        "60": {}
+      },
+      "bootstrap": {
+        "5": {
+          "days": 43,
+          "iterations": 1000,
+          "mean": -2.257,
+          "ci_low": -3.381,
+          "ci_high": -1.244
+        },
+        "10": {
+          "days": 38,
+          "iterations": 1000,
+          "mean": -3.266,
+          "ci_low": -5.026,
+          "ci_high": -1.437
+        },
+        "20": {
+          "days": 28,
+          "iterations": 1000,
+          "mean": -3.939,
+          "ci_low": -6.428,
+          "ci_high": -1.51
+        },
+        "40": {
+          "days": 8,
+          "iterations": 1000,
+          "mean": -6.797,
+          "ci_low": -11.647,
+          "ci_high": 2.595
+        },
+        "60": {
+          "days": 0,
+          "mean": null,
+          "ci_low": null,
+          "ci_high": null,
+          "note": "UNKNOWN: 有效日期不足"
+        }
+      }
+    }
+  }
+}

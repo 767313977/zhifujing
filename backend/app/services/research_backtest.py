@@ -175,6 +175,8 @@ class BarMatrix:
         self.close = np.full(shape, np.nan)
         self.pct = np.full(shape, np.nan)
         self.amount = np.full(shape, np.nan)
+        # 成交量：趋势引擎的量价分项要用（与 `amount` 同源，单位：股/手按库内口径）
+        self.volume = np.full(shape, np.nan)
         self.present = np.zeros(shape, dtype=bool)
         self.name = np.full(shape, None, dtype=object)
         self.first_date: dict[str, date] = {}
@@ -260,6 +262,7 @@ def load_matrix(
             StockDaily.close,
             StockDaily.pct_chg,
             StockDaily.amount,
+            StockDaily.volume,
             StockDaily.name,
         )
         .where(
@@ -269,7 +272,7 @@ def load_matrix(
         )
         .execution_options(yield_per=20000)
     )
-    for when, code, open_, high, low, close, pct, amount, name in rows:
+    for when, code, open_, high, low, close, pct, amount, volume, name in rows:
         i = matrix.date_pos.get(when)
         j = matrix.code_pos.get(code)
         if i is None or j is None:
@@ -287,6 +290,8 @@ def load_matrix(
             matrix.pct[i, j] = float(pct)
         if amount is not None:
             matrix.amount[i, j] = float(amount)
+        if volume is not None:
+            matrix.volume[i, j] = float(volume)
         matrix.name[i, j] = name
 
     # 首次出现日（判次新）。只查一次，不能从矩阵里推（矩阵起点会截掉更早历史）
