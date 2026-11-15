@@ -269,3 +269,40 @@ def test_unvaluable_position_is_flagged_not_silently_closed() -> None:
     assert result.metrics["status"] == "PENDING_REVIEW"
     assert result.metrics["unvaluable_positions"] == 1
     assert any("UNVALUABLE_POSITION" in item for item in result.warnings)
+
+
+def test_randomized_ledger_invariants_with_fixed_seed() -> None:
+    import random
+
+    for seed in range(8):
+        rng = random.Random(seed)
+        days = DAYS[:40]
+        codes = [f"60000{index}" for index in range(5)]
+        bars: dict[str, dict[date, DailyBar]] = {}
+        for code in codes:
+            series = {}
+            price = 10.0 + rng.random() * 5
+            for day in days:
+                previous = price
+                price = max(1.0, previous * (1 + rng.uniform(-0.05, 0.05)))
+                series[day] = bar(previous, price, pct=(price / previous - 1) * 100, amount=1e8 * (0.5 + rng.random()))
+            bars[code] = series
+        signals = [
+            Signal(rng.choice(codes), rng.choice(days[:20]), rng.random(), "m1")
+            for _ in range(30)
+        ]
+        result = simulate(
+            bars_by_code=bars,
+            calendar=days,
+            signals=signals,
+            config=config(horizon=5, max_positions=3, position_pct=0.25),
+        )
+        for _day, cash, value, equity in result.ledger:
+            assert cash >= -1e-6
+            assert abs(cash + value - equity) < 0.02
+        assert all(trade.shares % 100 == 0 for trade in result.trades)
+        assert all(trade.exit_date > trade.entry_date for trade in result.trades)
+        pnl = sum(trade.pnl_exact for trade in result.trades)
+        unrealized = sum(item["unrealized_pnl_exact"] for item in result.open_positions)
+        equity_change = result.ledger[-1][3] - 1_000_000.0
+        assert abs(equity_change - pnl - unrealized) < 0.05
