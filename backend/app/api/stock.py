@@ -18,13 +18,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_research_writable
+from app.api.deps import require_research_writable  # noqa: F401 - S6.12: 手动同步已停用
 from app.db import get_research_db, get_user_db, research_session_scope, research_writable
 from app.services import stock_research_context
 from app.jobs.collect_daily import (
     STOCK_FULL_DAYS,
     CollectionBusy,
-    DailyCollector,
+    DailyCollector,  # noqa: F401 - S6.12: 手动同步已停用
     collect_guard,
 )
 from app.jobs.collect_dde import CLOSE_READY, collect_stock_dde
@@ -1362,43 +1362,19 @@ def sync(
     days: int = Query(STOCK_FULL_DAYS, ge=5, le=SYNC_MAX_DAYS, description="回看的交易日数"),
     session: Session = Depends(get_research_db),
     user: AppUser = Depends(current_user),
-    _writable: None = Depends(require_research_writable),
 ) -> dict:
-    """同步该股日线到本地缓存。首次打开个股页时调用。
+    """S6.12：个股手动补历史已停用，普通请求不得写研究数据。
 
-    ⚠️ **按用户冷却 `SYNC_COOLDOWN_SEC` 秒**（见模块顶部的说明）：本站唯一的成本
-    就是 iFinD 调用，一次 sync 真发十几次请求，不挡连点 / 脚本刷就会白烧配额。
-    冷却**只在真去取过数时**才记账（成功或 `IfindError`）—— `CollectionBusy`（采集
-    正忙）根本没发起取数，不占冷却，前端可立刻重试（与自选同步同一口径，2026-10-11 统一）。
-    ⚠️ S6.2：这是**研究库写入**接口，灰度形态下由 `require_research_writable` 直接 503。
+    行情由每日后台采集统一写入 `stock_daily`。这里明确 409，避免把“没写”
+    伪装成成功；前端的自动补历史把它当软失败处理，不会污染图表。
     """
     digits = _code(code)
-    # 代码必须真在库里（2026-11-01 审计 P2-3）：`_code()` 只保证 6 位数字，999999
-    # 也能过 —— 不挡的话任意假代码都会按缺块发 iFinD 请求（days=500 约 11 次），
-    # 循环打就能把共享配额烧掉。文案与 `_stock_dde` / 自选同一套。
     if session.get(StockBasic, digits) is None:
         raise HTTPException(
             status_code=400, detail=f"查不到这个代码「{digits}」，请确认后重试"
         )
-    _guard_quota()
-
-    wait = _sync_cooldown.remaining(f"user:{user.id}")
-    if wait is not None:
-        raise HTTPException(
-            status_code=429,
-            detail=f"刚同步过，请 {int(wait) + 1} 秒后再试",
-            headers={"Retry-After": str(int(wait) + 1)},
-        )
-    try:
-        with collect_guard("个股同步"):
-            written = DailyCollector().sync_stock(digits, days=days)
-    except CollectionBusy as exc:
-        # 采集正忙：没发起取数，不占冷却
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except IfindError as exc:
-        # 真去取过数了（配额已经花掉）→ 占用冷却；对外只说人话，细节进日志
-        logger.warning("个股 %s 同步失败（用户 %s）：%s", code, user.id, exc)
-        _sync_cooldown.touch(f"user:{user.id}")
-        raise HTTPException(status_code=400, detail="同步失败，请稍后再试") from exc
-    _sync_cooldown.touch(f"user:{user.id}")
-    return {"rows": written}
+    logger.info("个股手动同步已停用（用户 %s，代码 %s）", user.id, digits)
+    raise HTTPException(
+        status_code=409,
+        detail="手动补历史已停用：日线由每日后台采集统一更新，请稍后刷新查看",
+    )

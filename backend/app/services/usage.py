@@ -24,6 +24,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from app.config import Settings, get_settings
 from app.db import research_session_scope, session_scope, user_session_scope
 from app.models import IfindUsage, TradeCalendar
+from app.runtime_context import user_research_write_blocked
 from app.services.watch_scope import stock_watch_count
 from app.timeutil import today_cn
 
@@ -178,6 +179,10 @@ def record_call(server: str, tool: str, day: date | None = None) -> None:
     低估恰恰是危险的那个方向。
     """
     target = day or today_cn()
+    if user_research_write_blocked():
+        # S6.12：普通请求不写研究数据；请求内本就不应触发 iFinD，计数直接跳过
+        logger.info("请求内跳过 iFinD 用量写入（%s.%s）", server, tool)
+        return
     try:
         with session_scope() as session:
             session.execute(

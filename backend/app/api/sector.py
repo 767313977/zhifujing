@@ -24,8 +24,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import resolve_trade_date
 from app.config import get_settings
-from app.db import get_research_db, research_session_scope, research_writable
-from app.external_guard import enabled as external_fetch_enabled
+from app.db import get_research_db, research_session_scope, research_writable  # noqa: F401 - S6.12: GET 纯读
+from app.external_guard import enabled as external_fetch_enabled  # noqa: F401 - S6.12: GET 纯读
 from app.jobs.collect_sectors import SectorCollector
 from app.models import (
     AppUser,
@@ -1358,89 +1358,17 @@ def _read_members(session: Session, code: str, trade_date: date) -> list[SectorM
 def _board_members(
     code: str, trade_date: date, user_id: int
 ) -> tuple[list[SectorMember], str | None]:
-    """读库；库里没有就现取一次再读；还没有就**用最近一天的名单 + 当日本地行情**顶上。
+    """S6.12：**纯读取**。GET 请求不现取、不落库、不产生任何写入。
 
-    现取与读库各开一个新的 session：现取那次是**另一个事务**写的，
-    用请求自带的 session 接着读看不到（SQLite 在 WAL 下的读事务是一个快照）。
-
-    ⚠️ 现取有五道闸（2026-10-11 加）：① 交易日历为空（新空库）时保守拒绝，
-    窗口算不出来就不放任任意历史日期打外部源；② 只查最近 `MEMBERS_LOOKBACK_DAYS`
-    个交易日；③ 空结果短时记忆（`_EMPTY_FETCH_TTL`），盘间连点不再反复打源；
-    ④ 按用户滑动窗口限流（`_members_fetch_limiter`），挡枚举式抓取；
-    ⑤ 复用进程内唯一的采集器（见 `_sector_collector`），令牌桶才有意义。
+    有当日缓存就用当日；没有就用最近一天的名单 + 当日本地行情回落，
+    并在 `note` 里说明“当日成分股尚未采集”。
     """
+    del user_id  # 保留签名兼容调用方；纯读不再需要按用户限流
     with research_session_scope() as reader:
         cached = _read_members(reader, code, trade_date)
-        # 只有要现取时才去查「最近 N 个交易日」的窗口，命中缓存就不必多查一次
-        oldest_fetchable = None if cached else _recent_fetch_window(reader)
     if cached:
         return cached, None
-
-    key = (code, trade_date)
-    if oldest_fetchable is None:
-        # 交易日历为空 / 还没采到：无法确定「最近 N 个交易日」窗口。
-        # 以前这里静默放行（下面的 `< oldest_fetchable` 判断整条失效），任意历史
-        # 日期都会去打开盘红 —— 新空库时等于把外部源当任意日期爬虫。保守拒绝，
-        # 与「日期超窗」同一返回风格；等日历采集跑完自然恢复。
-        raise HTTPException(status_code=400, detail="交易日历尚未就绪，稍后再试")
-    if trade_date < oldest_fetchable:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"板块成分股只支持查最近 {MEMBERS_LOOKBACK_DAYS} 个交易日，"
-                "更早的日期不再现取（缓存里已有的仍可查看）"
-            ),
-        )
-    if _recently_empty(key):
-        # 刚取过、没结果：短时内直接走回落，别再打一次外部源
-        return _fallback_members(code, trade_date, None)
-    if not external_fetch_enabled():
-        # 离线验收模式：不发外呼、不占限流额度，明确回落到本地名单
-        return _fallback_members(code, trade_date, None, offline=True)
-    if not research_writable():
-        # S6.2（G7）：灰度形态研究库只读 —— 研究 GET **不得隐式补采**。
-        # 明确 503，不静默回落成「当日没有名单」（那会被误读成数据源没发布）。
-        raise HTTPException(
-            status_code=503,
-            detail="灰度形态：研究库只读，已关闭板块成分股实时补采",
-        )
-
-    # 真要发外部请求了，先过按用户限流（只此路径计数）。记一笔放在**取数之前**：
-    # 无论取成功还是源端报错，这次外部请求都已经发出去了 —— 与 DDE 现取同口径。
-    limiter_key = f"members:{user_id}"
-    wait = _members_fetch_limiter.retry_after(limiter_key)
-    if wait is not None:
-        logger.warning(
-            "板块 %s %s 成分股现取被限流（用户 %s 还要等 %.0f 秒）",
-            code,
-            trade_date,
-            user_id,
-            wait,
-        )
-        # 不报错、不打源：直接走「最近一天名单 + 本地行情」的回落，页面不空
-        return _fallback_members(code, trade_date, None)
-    _members_fetch_limiter.fail(limiter_key)
-
-    failed: Exception | None = None
-    try:
-        _sector_collector().collect_members(trade_date, code)
-    except (TypeError, AttributeError, NameError):
-        # 这三类基本只可能是**代码写错了**（字段名拼错、None 当对象用），不是数据源
-        # 的问题。一起吞掉的话页面只会显示「当日没取到」，真 bug 查不出来 ——
-        # 所以让它们照常冒到 500（2026-09-27 修）
-        raise
-    except Exception as exc:  # noqa: BLE001 - 取不到不该让板块页整个 500
-        logger.warning("板块 %s %s 成分股取数失败：%s", code, trade_date, exc)
-        failed = exc
-
-    with research_session_scope() as reader:
-        rows = _read_members(reader, code, trade_date)
-    if rows:
-        return rows, None
-
-    # 当天这份还没发布（开盘红要到晚上）→ 记一笔「刚取过没结果」，回落最近一天的名单
-    _mark_empty(key)
-    return _fallback_members(code, trade_date, failed)
+    return _fallback_members(code, trade_date, None)
 
 
 def _fallback_members(

@@ -42,6 +42,7 @@ from app.api import (
 from app import readiness
 from app.config import ROOT, get_settings
 from app.db import ensure_schema
+from app.runtime_context import http_request_scope
 from app.external_guard import (
     ExternalFetchBlocked,
     enabled,
@@ -315,6 +316,17 @@ async def external_fetch_blocked_handler(
             "source": getattr(exc, "source", None),
         },
     )
+
+
+@app.middleware("http")
+async def research_write_boundary(request: Request, call_next):
+    """S6.12 P0-1：普通请求不得写研究数据；管理员路径保留显式写权限。
+
+    后台采集/调度不经过这里，因此研究数据写入不受影响。
+    """
+    allow_write = request.url.path.startswith("/api/admin/")
+    with http_request_scope(allow_research_write=allow_write):
+        return await call_next(request)
 
 
 @app.middleware("http")

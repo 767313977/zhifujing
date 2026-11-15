@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.db import session_scope
 from app.external_guard import enabled as external_fetch_enabled
 from app.models import StockEventCache
+from app.runtime_context import user_research_write_blocked
 from app.sources import em_events
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,10 @@ def _read(
 
 
 def _write(code: str, kind: str, rows: list[dict]) -> None:
+    if user_research_write_blocked():
+        # S6.12：普通 HTTP 请求不写研究数据；本次取到的数据照常返回，只是不落缓存
+        logger.info("请求内跳过事件缓存写入：%s/%s", code, kind)
+        return
     with session_scope() as session:
         row = session.get(StockEventCache, (code, kind))
         if row is None:

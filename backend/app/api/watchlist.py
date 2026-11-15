@@ -11,9 +11,9 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_research_writable
+from app.api.deps import require_research_writable  # noqa: F401 - S6.12: 不再使用
 from app.db import get_research_db, get_user_db
-from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard
+from app.jobs.collect_daily import CollectionBusy, DailyCollector, collect_guard  # noqa: F401
 from app.models import (
     AppUser,
     CbBasic,
@@ -23,12 +23,12 @@ from app.models import (
     Watchlist,
 )
 from app.schemas import WatchlistIn, WatchlistPatchIn, WatchlistRow
-from app.services import auth
+from app.services import auth  # noqa: F401 - S6.12: 同步冷却已移除
 from app.services.auth import current_user
 from app.services.stock_lookup import LookupError, resolve_code
-from app.services.usage import QuotaLevel, level_label, quota_level
+from app.services.usage import QuotaLevel, level_label, quota_level  # noqa: F401 - S6.12
 from app.services.watch_scope import latest_quotes
-from app.sources.ifind import IfindError, normalize_code
+from app.sources.ifind import normalize_code
 
 logger = logging.getLogger(__name__)
 
@@ -288,52 +288,16 @@ def _guard_quota() -> None:
 @router.post("/sync")
 def sync_watchlist(
     user: AppUser = Depends(current_user),
-    session: Session = Depends(get_user_db),
-    research: Session = Depends(get_research_db),
-    _writable: None = Depends(require_research_writable),
     days: int = Query(250, ge=5, le=250, description="回看的交易日数"),
 ) -> dict:
-    """同步**自己**自选股的日线到本地缓存。
+    """S6.12：手动同步已停用，禁止普通请求写研究数据。
 
-    首次加入自选时本地没有行情，需要跑一次；之后每交易日会自动刷新。
-
-    ⚠️ 只同步自己的票、不跑全表：会员点一下就让服务器去同步全市场是没道理的，
-    那也正是「谁的请求谁付账」这条最简单的分寸。全表的同步由每日采集负责。
-    ⚠️ S6.2：这是**研究库写入**接口，灰度形态下由 `require_research_writable` 直接 503。
+    自选股本身（`watchlist`）仍可由用户增删改；行情由每日采集统一写入
+    `stock_daily`。这里明确返回 409，而不是假装成功（rows=0 会被误读成
+    “已同步但没有数据”）。
     """
-    _guard_quota()
-
-    wait = _sync_cooldown.remaining(f"user:{user.id}")
-    if wait is not None:
-        raise HTTPException(
-            status_code=429,
-            detail=f"刚同步过，请 {int(wait) + 1} 秒后再试",
-            headers={"Retry-After": str(int(wait) + 1)},
-        )
-    codes = list(
-        session.scalars(select(Watchlist.code).where(Watchlist.user_id == user.id))
+    logger.info("自选股手动同步已停用（用户 %s）", user.id)
+    raise HTTPException(
+        status_code=409,
+        detail="手动同步已停用：行情由每日后台采集统一更新，请稍后刷新查看",
     )
-    if codes:
-        # 只同步**股票**：自选里可能混着可转债 / ETF 代码（可转债-5 / ETF-5），
-        # 它们的日线分别由每日采集写 `cb_daily` / `etf_bar`，拿它们去问 iFinD 股票
-        # 日线接口只会白花配额、还报错。
-        codes = list(
-            research.scalars(select(StockBasic.code).where(StockBasic.code.in_(codes)))
-        )
-    if not codes:
-        return {"rows": 0}
-
-    try:
-        with collect_guard("自选股同步"):
-            collector = DailyCollector()
-            written = collector.sync_watchlist(days=days, codes=codes)
-    except CollectionBusy as exc:
-        # 采集正忙：这一步**根本没发起取数**，所以不占冷却 —— 否则白白要人等 10 分钟
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except IfindError as exc:
-        # 真去取过数了（配额已经花掉）→ 占用冷却；对外只说人话，细节进日志
-        logger.warning("自选股同步失败（用户 %s）：%s", user.id, exc)
-        _sync_cooldown.touch(f"user:{user.id}")
-        raise HTTPException(status_code=400, detail="同步失败，请稍后再试") from exc
-    _sync_cooldown.touch(f"user:{user.id}")
-    return {"rows": written}

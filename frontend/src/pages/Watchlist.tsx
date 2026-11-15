@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../api/client'
+import { api, ApiError } from '../api/client'
 import type { WatchlistRow } from '../api/types'
 import Alert from '../components/Alert'
 import RiskMark from '../components/RiskBadges'
@@ -116,8 +116,14 @@ export default function WatchlistPage() {
       setNotice(`同步完成，写入 ${result.rows} 行日线`)
       await reload()
     } catch (err) {
-      setError((err as Error).message)
-      setNotice(null)
+      // S6.12：手动同步已停用（409）不是故障，用提示条说明即可
+      if (err instanceof ApiError && (err.status === 409 || err.status === 503)) {
+        setNotice(err.message)
+        setError(null)
+      } else {
+        setError((err as Error).message)
+        setNotice(null)
+      }
     } finally {
       setSyncing(false)
     }

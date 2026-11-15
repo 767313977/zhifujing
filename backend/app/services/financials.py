@@ -14,6 +14,7 @@ from datetime import date, datetime
 
 from app.db import session_scope, upsert
 from app.models import StockFinancial
+from app.runtime_context import user_research_write_blocked
 from app.sources.akshare_source import AkshareSource
 from app.sources.markdown_table import to_float
 
@@ -134,6 +135,10 @@ def latest(code: str, *, allow_fetch: bool = True) -> Snapshot | None:
         return cached
 
     row = {"code": code, **parsed, "fetched_at": datetime.now()}
-    with session_scope() as session:
-        upsert(session, StockFinancial, [row])
+    if user_research_write_blocked():
+        # S6.12：普通请求不写研究数据；本次结果照常返回，不落缓存
+        logger.info("请求内跳过财务摘要缓存写入：%s", code)
+    else:
+        with session_scope() as session:
+            upsert(session, StockFinancial, [row])
     return Snapshot(code=code, fetched_at=row["fetched_at"], **parsed)
