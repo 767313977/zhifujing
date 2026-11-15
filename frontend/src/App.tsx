@@ -44,6 +44,16 @@ const ValuationPage = lazy(() => import('./pages/Valuation'))
 const WatchlistPage = lazy(() => import('./pages/Watchlist'))
 const Wudao = lazy(() => import('./pages/Wudao'))
 
+/**
+ * E2E 专用：只在 DEV 构建里挂载的「渲染期抛错」fixture（2026-11-15 S6.8 E16）。
+ *
+ * 生产构建里 `import.meta.env.DEV` 为 false，Rollup 会剔除该分支与动态 import，
+ * 因此不会留下可远程触发的故障路由；它只用于在真实浏览器里验证根级 ErrorBoundary。
+ */
+const DevRenderError = import.meta.env.DEV
+  ? lazy(() => import('./e2e/RenderErrorFixture'))
+  : null
+
 /** 页面代码块还没下完时的占位（切页很快，通常一闪而过） */
 function PageFallback() {
   return (
@@ -73,6 +83,10 @@ export default function App() {
             <Suspense fallback={<PageFallback />}>
               <Routes>
               <Route path="/login" element={<Login />} />
+              {/* E2E fixture：仅 DEV 构建存在，生产路由表里没有这一条 */}
+              {DevRenderError !== null && (
+                <Route path="/__e2e/render-error" element={<DevRenderError />} />
+              )}
               <Route
                 path="/"
                 element={
