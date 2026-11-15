@@ -1,0 +1,52 @@
+{
+  "assets_same": {
+    "c0_scripts": true,
+    "frozen_signals": true,
+    "git_head_contains_3060e82": true
+  },
+  "databases": {
+    "backend/data/b1_research.db": {
+      "integrity_before": "ok",
+      "integrity_final": "ok",
+      "sha256_before": null,
+      "sha256_final": null,
+      "size_same": true,
+      "mtime_before": "2026-11-09T12:23:12+08:00",
+      "mtime_final": "2026-11-09T12:23:12+08:00",
+      "mtime_same": true
+    },
+    "backend/data/forward_research.db": {
+      "integrity_before": "ok",
+      "integrity_final": "ok",
+      "sha256_before": "c464b3bc751fc05361293a1e3537bcdba2ec5ffbe5a26105b737ea24f6ec536b",
+      "sha256_final": "c464b3bc751fc05361293a1e3537bcdba2ec5ffbe5a26105b737ea24f6ec536b",
+      "size_same": true,
+      "mtime_before": "2026-11-11T17:17:58+08:00",
+      "mtime_final": "2026-11-11T17:17:58+08:00",
+      "mtime_same": true
+    },
+    "backend/data/fupan.db": {
+      "integrity_before": "ok",
+      "integrity_final": "ok",
+      "sha256_before": null,
+      "sha256_final": null,
+      "size_same": true,
+      "mtime_before": "2026-10-31T22:26:44+08:00",
+      "mtime_final": "2026-10-31T22:26:44+08:00",
+      "mtime_same": true
+    },
+    "backend/data/history.db": {
+      "integrity_before": "ok",
+      "integrity_final": "ok",
+      "sha256_before": null,
+      "sha256_final": null,
+      "size_same": true,
+      "mtime_before": "2026-10-20T14:14:38+08:00",
+      "mtime_final": "2026-10-20T14:14:38+08:00",
+      "mtime_same": true
+    }
+  },
+  "missing_final": [],
+  "integrity_failed_final": [],
+  "all_ok": true
+}

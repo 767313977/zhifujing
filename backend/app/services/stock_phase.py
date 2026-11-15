@@ -18,7 +18,7 @@ from datetime import date
 from sqlalchemy import Row, func, select
 from sqlalchemy.orm import Session
 
-from app.db import session_scope
+from app.db import research_session_scope
 from app.models import StockDaily, TradeCalendar
 from app.services.patterns import (
     Bars,
@@ -104,7 +104,9 @@ def _trade_day_index(refresh: bool = False) -> dict[date, int]:
     global _TRADE_DAY_INDEX
     if _TRADE_DAY_INDEX is not None and not refresh:
         return _TRADE_DAY_INDEX
-    with session_scope() as session:
+    # 只读查询必须走研究库只读会话：拆分/灰度形态下 `session_scope()` 会抛
+    # ResearchDBReadOnlyError，导致个股页 500（S6.10 核心业务验收发现）。
+    with research_session_scope() as session:
         days = list(session.scalars(select(TradeCalendar.trade_date)))
     index = {day: i for i, day in enumerate(sorted(days))}
     if index:

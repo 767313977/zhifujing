@@ -301,6 +301,18 @@ def _host_for_label(address: Any) -> Any:
     return host if isinstance(host, str) else None
 
 
+def _loopback_policy_allows(host: Any, port: int | None) -> bool:
+    """Loopback is not a free pass: only policy-listed local ports may connect."""
+    try:
+        return egress_policy.host_allowed(host, port)
+    except Exception:  # noqa: BLE001 - policy errors must fail closed
+        return False
+
+
+def _block_loopback(method: str, host: Any, port: int | None) -> None:
+    _block_policy(method, host, port, "LOOPBACK_PORT_DENIED")
+
+
 def _guard_outbound(method: str, address: Any) -> Any:
     """统一判定并返回**可交给原函数**的地址。
 
@@ -313,9 +325,13 @@ def _guard_outbound(method: str, address: Any) -> Any:
     """
     host = _address_host(address)
     if _strict_loopback_ip(host):
+        if enabled() and not _loopback_policy_allows(host, _port_of(address)):
+            _block_loopback(method, host, _port_of(address))
         return address
     mapped = _mapped_localhost(host)
     if mapped is not None:
+        if enabled() and not _loopback_policy_allows(host, _port_of(address)):
+            _block_loopback(method, host, _port_of(address))
         return _rewrite_localhost(address, mapped)
     if enabled():
         port = _port_of(address)
@@ -560,6 +576,9 @@ def _guarded_request(self, method, url, *args, **kwargs):  # noqa: ANN001 - 透�
         except ValueError:
             port = None
         if _strict_loopback_ip(host) or _mapped_localhost(host) is not None:
+            # 回环不是免费通行证：只允许策略列出的本机端口（默认 5000 KPH 代理）。
+            if not _loopback_policy_allows(host, port):
+                _block_loopback("requests", host, port)
             # 回环请求**强制直连**：不允许被系统代理劫持到本机代理再出公网
             kwargs["proxies"] = {"http": None, "https": None, "all": None}
         elif _is_ip_text(host):
@@ -703,6 +722,9 @@ def _assert_stream_peer_allowed(
         # 拿不到对端时不在这里阻断（未连接 socket 的 send 本身会抛 OSError），
         # 建连层的策略判定已经生效。
         if target is None or _strict_loopback_ip(target):
+            # 回环端口在建连/请求入口已判定；此处无法区分「客户端 socket 的
+            # 服务端端口」与「服务端 socket 的客户端临时端口」，再按端口拒绝
+            # 会误伤本机 HTTP 服务。已连接 socket 只校验是否公网授权。
             return
         if _ip_authorized(target) and _is_public_ip(target):
             return

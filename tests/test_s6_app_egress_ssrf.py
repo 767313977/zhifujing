@@ -94,3 +94,30 @@ def test_connected_stream_allows_public_peer(monkeypatch):
     monkeypatch.setattr(eg, "enabled", lambda: True)
     eg._record_authorized_ip(("8.8.8.8", 443))
     eg._assert_stream_peer_allowed(_FakeSock(("8.8.8.8", 443)), "sendall")
+
+
+def test_default_policy_allows_only_kph_loopback_port():
+    from app import egress_policy
+
+    egress_policy.reset_policy_cache()
+    assert egress_policy.host_allowed("127.0.0.1", 5000) is True
+    assert egress_policy.host_allowed("127.0.0.1", 8000) is False
+    assert egress_policy.host_allowed("localhost", 5000) is True
+    assert egress_policy.host_allowed("localhost", 8000) is False
+    assert egress_policy.host_allowed("::1", 5000) is True
+    assert egress_policy.host_allowed("::1", 8000) is False
+
+
+def test_guard_outbound_denies_unlisted_loopback_port(monkeypatch):
+    monkeypatch.setattr(eg, "enabled", lambda: True)
+    with pytest.raises(eg.ExternalFetchBlocked) as exc:
+        eg._guard_outbound("connect", ("127.0.0.1", 8000))
+    assert exc.value.reason_code == "EGRESS_DESTINATION_DENIED"
+    assert eg._guard_outbound("connect", ("127.0.0.1", 5000)) == ("127.0.0.1", 5000)
+
+
+def test_connected_stream_allows_loopback_send(monkeypatch):
+    # 端口策略在 connect/request 入口判定；已连接 socket 无法区分客户端临时端口
+    # 与服务端端口，这里只要求回环不被误伤。
+    monkeypatch.setattr(eg, "enabled", lambda: True)
+    eg._assert_stream_peer_allowed(_FakeSock(("127.0.0.1", 8000)), "sendall")

@@ -16,11 +16,13 @@ import logging
 import socket
 import ssl
 import threading
+import time
 import urllib.request
 from pathlib import Path
 
 import pytest
 
+from app import egress_policy
 from app import external_guard as eg
 
 
@@ -867,6 +869,10 @@ def _start_online_tls(monkeypatch) -> tuple[_TlsServer, ssl.SSLSocket]:
     monkeypatch.delenv(eg.ENV, raising=False)
     eg.install_network_deny()
     server = _TlsServer()
+    # 生产策略只允许 KPH 5000；测试用随机端口，显式覆盖策略端口。
+    base = egress_policy.load_policy()
+    policy = {**base, "loopback": {"allow": True, "allow_any_port": False, "ports": [server.port]}}
+    monkeypatch.setattr(egress_policy, "load_policy", lambda *args, **kwargs: policy)
     client = _tls_client(server.port)
     return server, client
 
@@ -920,6 +926,13 @@ def test_real_loopback_tls_send_sendall_write_sendfile(monkeypatch, tmp_path):
             # offset/count 与文件指针语义保持原实现
             assert handle.tell() == 8
     finally:
+        # 服务端读线程与 sendfile 完成有毫秒级竞态；全量跑时 CPU 抖动会放大。
+        # 必须在关连接**之前**等接收完成：先 close 会让 TLS 层以 EOF/RST 结束，
+        # 内核里还没被读走的记录会被丢弃，断言就会看到截断的数据。
+        # 这是等待异步接收完成，不是放宽内容断言。
+        deadline = time.time() + 2
+        while len(server.received) < len(b"AAABBBCCC234567") and time.time() < deadline:
+            time.sleep(0.02)
         _shutdown(server, client)
     assert bytes(server.received) == b"AAABBBCCC234567"
     stats = eg.stats()

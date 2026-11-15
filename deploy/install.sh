@@ -148,6 +148,8 @@ Environment=TZ=Asia/Shanghai
 # 但这条仍保留：systemd 环境变量优先级高于 .env，万一手工拷配置时写成 false，
 # 也不会把云端的定时采集静悄悄关掉。
 Environment=SCHEDULER_ENABLED=true
+# S6.10：真实竞价数据未验收前不自动采集（9:15–9:26 定时器不注册）。
+Environment=AUCTION_COLLECT_ENABLED=false
 # iFinD 的 TLS 证书校验（2026-10-12 加）。**放这里比只写 .env 稳**：.env 是手工
 # 维护的，换机器 / 重装容易漏；systemd 里钉死之后不会再漂。路径用系统 CA 包：
 # iFinD 那张证书是 DigiCert 签发的公共证书，用系统信任库即可校验。

@@ -45,12 +45,155 @@ def snapshot(conn: sqlite3.Connection, tables: list[str]) -> dict:
     }
 
 
+def _bounded_digest(conn: sqlite3.Connection, table: str, limit: int = 200) -> dict:
+    """大表用「行数 + rowid 合计 + 前 N 行内容摘要」作对照，避免整表读进内存。"""
+    count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    rowid_sum = conn.execute(f"SELECT COALESCE(SUM(rowid), 0) FROM {table}").fetchone()[0]
+    rows = conn.execute(f"SELECT * FROM {table} ORDER BY rowid LIMIT {limit}").fetchall()
+    payload = json.dumps(rows, ensure_ascii=False, default=str).encode("utf-8")
+    return {
+        "rows": count,
+        "rowid_sum": rowid_sum,
+        "head_sha256": hashlib.sha256(payload).hexdigest(),
+    }
+
+
+def _snapshot_copy(conn: sqlite3.Connection, tables: list[str]) -> dict:
+    return {
+        "integrity": conn.execute("PRAGMA integrity_check").fetchone()[0],
+        "tables": {table: _bounded_digest(conn, table) for table in tables},
+    }
+
+
+def _run_source_copy_drill(source: Path, out: Path) -> int:
+    """S6.10：真实库（只读）→ 临时副本 → 备份 → 人为丢行 → 恢复 → 摘要对照。"""
+    if not source.is_file():
+        raise SystemExit(f"source DB missing: {source}")
+    stage = Path(tempfile.mkdtemp(prefix="s6_10-backup-"))
+    working = stage / f"{source.stem}-copy.db"
+    backup_path = stage / f"{source.stem}.backup.db"
+    tables = [
+        "app_user",
+        "watchlist",
+        "review_note",
+        "user_session",
+        "collect_log",
+        "limit_pool",
+        "sector_daily",
+        "stock_daily",
+    ]
+    timings: dict[str, float] = {}
+
+    # 1) 源库只读打开，用在线备份 API 生成临时工作副本（不直接 copy 主文件）
+    started = time.perf_counter()
+    src = sqlite3.connect(f"file:{source.as_posix()}?mode=ro&uri=true", uri=True)
+    try:
+        dst = sqlite3.connect(working)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+    timings["copy_ms"] = round((time.perf_counter() - started) * 1000, 2)
+
+    with sqlite3.connect(working) as conn:
+        before = _snapshot_copy(conn, tables)
+
+    # 2) 生产同款备份：工作副本 → 备份文件
+    started = time.perf_counter()
+    with sqlite3.connect(working) as src_conn, sqlite3.connect(backup_path) as backup_conn:
+        src_conn.backup(backup_conn)
+    timings["backup_ms"] = round((time.perf_counter() - started) * 1000, 2)
+    backup_sha = sha256_file(backup_path)
+    backup_size = backup_path.stat().st_size
+    with sqlite3.connect(backup_path) as conn:
+        backup_snapshot = _snapshot_copy(conn, tables)
+
+    # 3) 人为丢数据（只动临时副本）
+    with sqlite3.connect(working) as conn:
+        deleted = conn.execute(
+            "DELETE FROM collect_log WHERE rowid IN "
+            "(SELECT rowid FROM collect_log ORDER BY rowid DESC LIMIT 3)"
+        ).rowcount
+        conn.execute(
+            "DELETE FROM watchlist WHERE rowid IN "
+            "(SELECT rowid FROM watchlist ORDER BY rowid DESC LIMIT 1)"
+        )
+        conn.commit()
+        damaged = _snapshot_copy(conn, tables)
+
+    # 4) 从备份恢复
+    started = time.perf_counter()
+    with sqlite3.connect(backup_path) as src_conn, sqlite3.connect(working) as dst_conn:
+        src_conn.backup(dst_conn)
+    timings["restore_ms"] = round((time.perf_counter() - started) * 1000, 2)
+    with sqlite3.connect(working) as conn:
+        restored = _snapshot_copy(conn, tables)
+
+    backup_sha_after = sha256_file(backup_path)
+    checks = {
+        "source_read_only_opened": True,
+        "copy_integrity": before["integrity"] == "ok",
+        "backup_integrity": backup_snapshot["integrity"] == "ok",
+        "backup_matches_source": backup_snapshot["tables"] == before["tables"],
+        "loss_detected": damaged["tables"] != before["tables"],
+        "restore_digest_equal": restored["tables"] == before["tables"],
+        "restore_integrity": restored["integrity"] == "ok",
+        "backup_file_not_overwritten": backup_sha_after == backup_sha,
+    }
+    result = {
+        "generated_at": datetime.now(CN_TZ).isoformat(timespec="seconds"),
+        "environment": "isolated temp copy of the real DB; production untouched",
+        "source_db": str(source),
+        "source_size": source.stat().st_size,
+        "working_copy": str(working),
+        "backup_size": backup_size,
+        "backup_sha256": backup_sha,
+        "deleted_rows": deleted,
+        "timings": timings,
+        "before": before,
+        "backup": backup_snapshot,
+        "after_simulated_loss": damaged,
+        "after_restore": restored,
+        "checks": checks,
+    }
+    result["verdict"] = "PASS" if all(checks.values()) else "FAIL"
+    (out / "backup-restore-realcopy.json").write_text(
+        json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    md = [
+        "# S6.10 真实库副本备份 / 恢复演练",
+        "",
+        f"- 时间：{result['generated_at']}",
+        f"- 源库：`{source}`（以 `mode=ro` 打开；大小 {source.stat().st_size:,} 字节）",
+        "- 环境：临时工作副本 + 临时备份文件；未写入源库",
+        f"- 备份：online backup API（{timings['backup_ms']} ms，{backup_size / 1e6:.0f} MB）",
+        f"- 恢复：backup → 覆盖工作副本（{timings['restore_ms']} ms）",
+        "",
+        "| 检查 | 结果 |",
+        "| --- | --- |",
+    ]
+    for name, ok in checks.items():
+        md.append(f"| {name} | {'PASS' if ok else 'FAIL'} |")
+    md.extend(["", f"**结论：{result['verdict']}**", ""])
+    (out / "backup-restore-realcopy.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+    print(json.dumps({"verdict": result["verdict"], "checks": checks, "timings": timings}, ensure_ascii=False))
+    shutil.rmtree(stage, ignore_errors=True)
+    return 0 if result["verdict"] == "PASS" else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default=str(ROOT / "reports" / "s6_8_9" / "security"))
+    #: S6.10：在**真实库的临时副本**上演练（源库只以 mode=ro 打开，不会被写入）
+    parser.add_argument("--source-db", default="")
     args = parser.parse_args()
     out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
+
+    if args.source_db:
+        return _run_source_copy_drill(Path(args.source_db).resolve(), out)
 
     stage = Path(tempfile.mkdtemp(prefix="s6_8-backup-"))
     db_path = stage / "staging.db"

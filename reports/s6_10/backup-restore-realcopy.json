@@ -1,0 +1,206 @@
+{
+  "generated_at": "2026-11-15T16:18:13+08:00",
+  "environment": "isolated temp copy of the real DB; production untouched",
+  "source_db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\fupan.db",
+  "source_size": 513519616,
+  "working_copy": "C:\\Users\\76731\\AppData\\Local\\Temp\\s6_10-backup-9j_cyg1f\\fupan-copy.db",
+  "backup_size": 513519616,
+  "backup_sha256": "43d1e4ba965940430bf4579e47314533042247e56823122e91265a435051d170",
+  "deleted_rows": 3,
+  "timings": {
+    "copy_ms": 1243.87,
+    "backup_ms": 999.15,
+    "restore_ms": 1635.64
+  },
+  "before": {
+    "integrity": "ok",
+    "tables": {
+      "app_user": {
+        "rows": 1,
+        "rowid_sum": 1,
+        "head_sha256": "878f0eccb21553ff68b0052eb6737acf0bd63a8c50be0c4f3db0087fc18c511b"
+      },
+      "watchlist": {
+        "rows": 1,
+        "rowid_sum": 1,
+        "head_sha256": "fb35357e89b7fbb83fdf8b4e7b196b57de9e839b9572696bff28b10d57eabe72"
+      },
+      "review_note": {
+        "rows": 1,
+        "rowid_sum": 1,
+        "head_sha256": "ced61599d6faa9b7c38a6fe88180ab32c7fab0204d3a25282a056076e3ab1deb"
+      },
+      "user_session": {
+        "rows": 6,
+        "rowid_sum": 21,
+        "head_sha256": "3db64200ef7705082353dac9ff39933162710300f3ebcf0493d25833f7f1e005"
+      },
+      "collect_log": {
+        "rows": 3139,
+        "rowid_sum": 4928315,
+        "head_sha256": "043fd040b6479e3fedb5465e4a76be19fab7895aaeec05934e2348b3c290cb8c"
+      },
+      "limit_pool": {
+        "rows": 28225,
+        "rowid_sum": 398339425,
+        "head_sha256": "ac306e779d86649dfbb57dd7427dd5981d302997de12cb22881d59e8106768f8"
+      },
+      "sector_daily": {
+        "rows": 94771,
+        "rowid_sum": 13368697796,
+        "head_sha256": "7e1639b5792db9b9f7ba0c879279006aa10679a7d165c171234dd4d6035a8d78"
+      },
+      "stock_daily": {
+        "rows": 2547042,
+        "rowid_sum": 3246515212708,
+        "head_sha256": "09385e1f1a770429f7a2c8bb605648c548c5c1e212088791eb8c245e4cab3ab5"
+      }
+    }
+  },
+  "backup": {
+    "integrity": "ok",
+    "tables": {
+      "app_user": {
+        "rows": 1,
+        "rowid_sum": 1,
+        "head_sha256": "878f0eccb21553ff68b0052eb6737acf0bd63a8c50be0c4f3db0087fc18c511b"
+      },
+      "watchlist": {
+        "rows": 1,
+        "rowid_sum": 1,
+        "head_sha256": "fb35357e89b7fbb83fdf8b4e7b196b57de9e839b9572696bff28b10d57eabe72"
+      },
+      "review_note": {
+        "rows": 1,
+        "rowid_sum": 1,
+        "head_sha256": "ced61599d6faa9b7c38a6fe88180ab32c7fab0204d3a25282a056076e3ab1deb"
+      },
+      "user_session": {
+        "rows": 6,
+        "rowid_sum": 21,
+        "head_sha256": "3db64200ef7705082353dac9ff39933162710300f3ebcf0493d25833f7f1e005"
+      },
+      "collect_log": {
+        "rows": 3139,
+        "rowid_sum": 4928315,
+        "head_sha256": "043fd040b6479e3fedb5465e4a76be19fab7895aaeec05934e2348b3c290cb8c"
+      },
+      "limit_pool": {
+        "rows": 28225,
+        "rowid_sum": 398339425,
+        "head_sha256": "ac306e779d86649dfbb57dd7427dd5981d302997de12cb22881d59e8106768f8"
+      },
+      "sector_daily": {
+        "rows": 94771,
+        "rowid_sum": 13368697796,
+        "head_sha256": "7e1639b5792db9b9f7ba0c879279006aa10679a7d165c171234dd4d6035a8d78"
+      },
+      "stock_daily": {
+        "rows": 2547042,
+        "rowid_sum": 3246515212708,
+        "head_sha256": "09385e1f1a770429f7a2c8bb605648c548c5c1e212088791eb8c245e4cab3ab5"
+      }
+    }
+  },
+  "after_simulated_loss": {
+    "integrity": "ok",
+    "tables": {
+      "app_user": {
+        "rows": 1,
+        "rowid_sum": 1,
+        "head_sha256": "878f0eccb21553ff68b0052eb6737acf0bd63a8c50be0c4f3db0087fc18c511b"
+      },
+      "watchlist": {
+        "rows": 0,
+        "rowid_sum": 0,
+        "head_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "review_note": {
+        "rows": 1,
+        "rowid_sum": 1,
+        "head_sha256": "ced61599d6faa9b7c38a6fe88180ab32c7fab0204d3a25282a056076e3ab1deb"
+      },
+      "user_session": {
+        "rows": 6,
+        "rowid_sum": 21,
+        "head_sha256": "3db64200ef7705082353dac9ff39933162710300f3ebcf0493d25833f7f1e005"
+      },
+      "collect_log": {
+        "rows": 3136,
+        "rowid_sum": 4918898,
+        "head_sha256": "043fd040b6479e3fedb5465e4a76be19fab7895aaeec05934e2348b3c290cb8c"
+      },
+      "limit_pool": {
+        "rows": 28225,
+        "rowid_sum": 398339425,
+        "head_sha256": "ac306e779d86649dfbb57dd7427dd5981d302997de12cb22881d59e8106768f8"
+      },
+      "sector_daily": {
+        "rows": 94771,
+        "rowid_sum": 13368697796,
+        "head_sha256": "7e1639b5792db9b9f7ba0c879279006aa10679a7d165c171234dd4d6035a8d78"
+      },
+      "stock_daily": {
+        "rows": 2547042,
+        "rowid_sum": 3246515212708,
+        "head_sha256": "09385e1f1a770429f7a2c8bb605648c548c5c1e212088791eb8c245e4cab3ab5"
+      }
+    }
+  },
+  "after_restore": {
+    "integrity": "ok",
+    "tables": {
+      "app_user": {
+        "rows": 1,
+        "rowid_sum": 1,
+        "head_sha256": "878f0eccb21553ff68b0052eb6737acf0bd63a8c50be0c4f3db0087fc18c511b"
+      },
+      "watchlist": {
+        "rows": 1,
+        "rowid_sum": 1,
+        "head_sha256": "fb35357e89b7fbb83fdf8b4e7b196b57de9e839b9572696bff28b10d57eabe72"
+      },
+      "review_note": {
+        "rows": 1,
+        "rowid_sum": 1,
+        "head_sha256": "ced61599d6faa9b7c38a6fe88180ab32c7fab0204d3a25282a056076e3ab1deb"
+      },
+      "user_session": {
+        "rows": 6,
+        "rowid_sum": 21,
+        "head_sha256": "3db64200ef7705082353dac9ff39933162710300f3ebcf0493d25833f7f1e005"
+      },
+      "collect_log": {
+        "rows": 3139,
+        "rowid_sum": 4928315,
+        "head_sha256": "043fd040b6479e3fedb5465e4a76be19fab7895aaeec05934e2348b3c290cb8c"
+      },
+      "limit_pool": {
+        "rows": 28225,
+        "rowid_sum": 398339425,
+        "head_sha256": "ac306e779d86649dfbb57dd7427dd5981d302997de12cb22881d59e8106768f8"
+      },
+      "sector_daily": {
+        "rows": 94771,
+        "rowid_sum": 13368697796,
+        "head_sha256": "7e1639b5792db9b9f7ba0c879279006aa10679a7d165c171234dd4d6035a8d78"
+      },
+      "stock_daily": {
+        "rows": 2547042,
+        "rowid_sum": 3246515212708,
+        "head_sha256": "09385e1f1a770429f7a2c8bb605648c548c5c1e212088791eb8c245e4cab3ab5"
+      }
+    }
+  },
+  "checks": {
+    "source_read_only_opened": true,
+    "copy_integrity": true,
+    "backup_integrity": true,
+    "backup_matches_source": true,
+    "loss_detected": true,
+    "restore_digest_equal": true,
+    "restore_integrity": true,
+    "backup_file_not_overwritten": true
+  },
+  "verdict": "PASS"
+}

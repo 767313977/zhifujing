@@ -53,6 +53,14 @@ def _offline(monkeypatch):
     assert eg.enabled() is False
 
 
+def _allow_loopback_port(monkeypatch, port: int):
+    """Test-only: allow the random local test-server port, keep everything else."""
+    base = egress_policy.load_policy()
+    policy = {**base, "loopback": {"allow": True, "allow_any_port": False, "ports": [port]}}
+    monkeypatch.setattr(egress_policy, "load_policy", lambda *args, **kwargs: policy)
+    return policy
+
+
 class _LocalHTTPServer:
     """本地 HTTP 服务（只监听 127.0.0.1），可返回 302 到外部域名。"""
 
@@ -282,14 +290,36 @@ def test_E19_ip_literal_cannot_bypass_domain_rule(monkeypatch):
 
 def test_E20_redirect_to_unauthorized_domain_denied(monkeypatch):
     _online(monkeypatch)
-    eg.install_network_deny()
     server = _LocalHTTPServer(status=302, location="http://example.com/after")
+    _allow_loopback_port(monkeypatch, server.port)
+    eg.install_network_deny()
     try:
         with pytest.raises((eg.ExternalFetchBlocked, requests.RequestException)):
             requests.get(f"http://127.0.0.1:{server.port}/start", timeout=2)
     finally:
         server.close()
     assert eg.stats()["policy_denied"] >= 1
+
+
+def test_E20b_redirect_to_unlisted_loopback_denied(monkeypatch):
+    _online(monkeypatch)
+    server = _LocalHTTPServer(status=302, location="http://127.0.0.1:8000/after")
+    _allow_loopback_port(monkeypatch, server.port)
+    eg.install_network_deny()
+    try:
+        with pytest.raises(eg.ExternalFetchBlocked) as excinfo:
+            requests.get(f"http://127.0.0.1:{server.port}/start", timeout=2)
+        assert excinfo.value.reason_code == "EGRESS_DESTINATION_DENIED"
+    finally:
+        server.close()
+
+
+def test_E20c_direct_unlisted_loopback_port_denied(monkeypatch):
+    _online(monkeypatch)
+    eg.install_network_deny()
+    with pytest.raises(eg.ExternalFetchBlocked) as excinfo:
+        requests.get("http://127.0.0.1:8000/", timeout=1)
+    assert excinfo.value.reason_code == "EGRESS_DESTINATION_DENIED"
 
 
 def test_E21_non_standard_port_denied(monkeypatch):
@@ -381,8 +411,9 @@ def test_E25_os_firewall_missing_blocks_readiness():
 
 def test_E27_loopback_legit_access_allowed(monkeypatch):
     _online(monkeypatch)
-    eg.install_network_deny()
     server = _LocalHTTPServer(status=200)
+    _allow_loopback_port(monkeypatch, server.port)
+    eg.install_network_deny()
     try:
         response = requests.get(f"http://127.0.0.1:{server.port}/ok", timeout=2)
         assert response.status_code == 200

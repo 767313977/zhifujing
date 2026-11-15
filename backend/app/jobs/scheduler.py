@@ -432,20 +432,23 @@ class DailyScheduler:
         )
         # 集合竞价采样：交易日 9:15–9:26 每分钟一次 + 9:31 补一帧量比（见 jobs/collect_auction.py）。
         # 固定在开盘前，与收盘后那几趟互不影响；单分钟失败只告警，下一分钟还会再跑。
-        scheduler.add_job(
-            self._run_auction,
-            CronTrigger(
-                day_of_week="mon-fri", hour=9, minute="15-26,31", timezone=TIMEZONE
-            ),
-            id=AUCTION_JOB_ID,
-            name="集合竞价采样",
-            replace_existing=True,
-            # 晚到超过 90 秒就跳过这一分钟（下一分钟马上又来），别积压。
-            # ⚠️ 90 秒内迟到并不等于可以直接写上一帧：采集器还必须用
-            # `source_quote_time` 证明源报价仍在计划分钟，否则整帧跳过（P0-A-01）。
-            misfire_grace_time=90,
-            coalesce=True,
-        )
+        # S6.10：真实竞价数据未验收前默认不注册该 job；生产需显式
+        # `AUCTION_COLLECT_ENABLED=true` 才开启。
+        if self.settings.auction_collect_enabled:
+            scheduler.add_job(
+                self._run_auction,
+                CronTrigger(
+                    day_of_week="mon-fri", hour=9, minute="15-26,31", timezone=TIMEZONE
+                ),
+                id=AUCTION_JOB_ID,
+                name="集合竞价采样",
+                replace_existing=True,
+                # 晚到超过 90 秒就跳过这一分钟（下一分钟马上又来），别积压。
+                # ⚠️ 90 秒内迟到并不等于可以直接写上一帧：采集器还必须用
+                # `source_quote_time` 证明源报价仍在计划分钟，否则整帧跳过（P0-A-01）。
+                misfire_grace_time=90,
+                coalesce=True,
+            )
         # 开盘红本地服务补采（2026-11-08 加）：只补 `market_sentiment` 里 iFinD 没采到的
         # 空值（`upsert_fill`），跑在 15:30、晚于主链。默认关闭 —— 那个服务在内网，
         # 云端访问不到；本机跑站点时把 `KPH_LOCAL_ENABLED=true` 打开即可。

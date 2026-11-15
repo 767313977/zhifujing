@@ -203,6 +203,10 @@ class Settings(BaseSettings):
     #: 与 `scheduler_enabled` 是两件事：后者只关定时任务，关不掉按需路由。
     #: 仅在隔离验收环境显式设为 false；生产默认 true，行为不变。
     external_data_fetch_enabled: bool = True
+    #: S6.10 Go-Live：集合竞价真实采集开关。
+    #: 默认 **false** —— `REAL_AUCTION_DATA_NOT_VERIFIED` 未关闭前，生产定时器
+    #: 不得在 9:15–9:26 自动抓取真实竞价。验证完成并由发布审查显式开启后才置 true。
+    auction_collect_enabled: bool = False
     #: S5 审查整改 P1-02：历史 naive 时间戳（`collect_log.created_at` /
     #: `sector_member.fetched_at` 等）是否**显式**按 Asia/Shanghai 解释。
     #:

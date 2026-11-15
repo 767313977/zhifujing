@@ -46,6 +46,8 @@ function parseArgs() {
     devBase: out['dev-base'] ?? 'http://127.0.0.1:8030',
     dist: resolve(out.dist ?? 'frontend/dist'),
     out: resolve(out.out ?? 'reports/s6_8_9/browser'),
+    // 只跑某个场景（S6.10 复用：`--only history` 只需要 --base，不依赖 dev-base/dist）
+    only: out.only ?? '',
   }
 }
 
@@ -627,6 +629,135 @@ async function runViewports(cdp, base, devBase, outDir) {
   return result
 }
 
+async function runHistory(cdp, base) {
+  // S6.10：深层链接 + 刷新 + 浏览器前进/后退。只依赖 --base（生产构建由后端直接托管）。
+  const browserContextId = (await cdp.send('Target.createBrowserContext')).browserContextId
+  const page = await openPage(cdp, browserContextId)
+  const sessionId = page.sessionId
+  const result = { scenario: '深层链接 / 刷新 / 前进后退', pass: false, steps: {} }
+  try {
+    await cdp.send(
+      'Emulation.setDeviceMetricsOverride',
+      { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false },
+      sessionId,
+    )
+    await uiLogin(cdp, sessionId, base, USER_A)
+    await waitUntil(cdp, sessionId, `document.querySelectorAll('a').length >= 5`, 15000, '首页导航渲染')
+    result.steps.home = await pageState(cdp, sessionId)
+
+    // 1) 深层链接：未经首页中转，直接打开 /research
+    await goto(cdp, sessionId, `${base}/research`)
+    await waitUntil(
+      cdp,
+      sessionId,
+      `location.pathname === '/research' && document.querySelector('#root').childElementCount > 0 && !document.body.innerText.includes('页面加载失败') && !document.body.innerText.includes('加载中')`,
+      25000,
+      '深层链接 /research 渲染完成',
+    )
+    result.steps.deep_link = await pageState(cdp, sessionId)
+
+    // 2) 刷新：同一路由重载后仍可渲染（不是靠内存里的 SPA 状态）
+    await cdp.send('Page.reload', { ignoreCache: false }, sessionId)
+    await sleep(800)
+    await waitUntil(
+      cdp,
+      sessionId,
+      `document.readyState === 'complete' && location.pathname === '/research' && document.body.innerText.length > 200 && !document.body.innerText.includes('页面加载失败') && !document.body.innerText.includes('加载中')`,
+      25000,
+      '刷新 /research',
+    )
+    result.steps.refresh = await pageState(cdp, sessionId)
+
+    // 3) 站内导航到 /watchlist（优先真实链接点击；导航里没有该 <a> 时退回 pushState）
+    const navInfo = await evaluate(
+      cdp,
+      sessionId,
+      `(() => {
+        const anchors = Array.from(document.querySelectorAll('a'))
+        const hrefs = anchors.map((a) => a.getAttribute('href')).filter(Boolean)
+        const link = anchors.find((a) => {
+          const href = a.getAttribute('href') || ''
+          return href === '/watchlist' || href === '/watchlist/'
+        })
+        if (link) {
+          link.click()
+          return { clicked: true, anchors: hrefs.slice(0, 40) }
+        }
+        return { clicked: false, anchors: hrefs.slice(0, 40) }
+      })()`,
+    )
+    result.nav_link_clicked = navInfo.clicked
+    result.available_links = navInfo.anchors
+    if (!navInfo.clicked) {
+      // 真实链接不存在时用 pushState + popstate 走同一套 SPA 路由，
+      // 仍然产生真实 history entry，供后面的 back/forward 使用。
+      await evaluate(
+        cdp,
+        sessionId,
+        `(() => {
+          history.pushState({}, '', '/watchlist')
+          window.dispatchEvent(new PopStateEvent('popstate', { state: {} }))
+          return true
+        })()`,
+      )
+    }
+    await waitUntil(
+      cdp,
+      sessionId,
+      `location.pathname === '/watchlist' && document.body.innerText.includes('自选池')`,
+      15000,
+      '站内导航 /watchlist',
+    )
+    result.steps.nav_watchlist = await pageState(cdp, sessionId)
+
+    // 4) 浏览器后退 → 回到 /research
+    await evaluate(cdp, sessionId, 'history.back()')
+    await waitUntil(
+      cdp,
+      sessionId,
+      `location.pathname === '/research' && document.body.innerText.includes('研究假设')`,
+      15000,
+      'history.back → /research',
+    )
+    result.steps.back = await pageState(cdp, sessionId)
+
+    // 5) 浏览器前进 → 回到 /watchlist
+    await evaluate(cdp, sessionId, 'history.forward()')
+    await waitUntil(
+      cdp,
+      sessionId,
+      `location.pathname === '/watchlist' && document.body.innerText.includes('自选池')`,
+      15000,
+      'history.forward → /watchlist',
+    )
+    result.steps.forward = await pageState(cdp, sessionId)
+
+    result.pass =
+      result.steps.home.bodyLen > 200 &&
+      result.steps.deep_link.path === '/research' &&
+      result.steps.deep_link.bodyLen > 200 &&
+      result.steps.refresh.path === '/research' &&
+      result.steps.refresh.bodyLen > 200 &&
+      result.steps.nav_watchlist.path === '/watchlist' &&
+      result.steps.nav_watchlist.bodyLen > 50 &&
+      result.steps.back.path === '/research' &&
+      result.steps.back.bodyLen > 200 &&
+      result.steps.forward.path === '/watchlist' &&
+      result.steps.forward.bodyLen > 50 &&
+      !result.steps.deep_link.hasFallback &&
+      !result.steps.refresh.hasFallback &&
+      !result.steps.back.hasFallback &&
+      !result.steps.forward.hasFallback
+    result.errors = page.errors
+  } catch (error) {
+    result.error = String(error)
+    result.pass = false
+  } finally {
+    await closeContext(cdp, browserContextId)
+  }
+  return result
+}
+
 async function main() {
   const args = parseArgs()
   mkdirSync(join(args.out, 'screenshots'), { recursive: true })
@@ -657,10 +788,14 @@ async function main() {
     results: {},
   }
   try {
-    summary.results.e13 = await runE13(cdp, args.base, args.out)
-    summary.results.e15 = await runE15(cdp, args.base, args.dist, args.out)
-    summary.results.e16 = await runE16(cdp, args.devBase, args.out)
-    summary.results.viewports = await runViewports(cdp, args.base, args.devBase, args.out)
+    if (args.only === 'history') {
+      summary.results.history = await runHistory(cdp, args.base)
+    } else {
+      summary.results.e13 = await runE13(cdp, args.base, args.out)
+      summary.results.e15 = await runE15(cdp, args.base, args.dist, args.out)
+      summary.results.e16 = await runE16(cdp, args.devBase, args.out)
+      summary.results.viewports = await runViewports(cdp, args.base, args.devBase, args.out)
+    }
   } finally {
     cdp.close()
     chrome.kill()
@@ -671,12 +806,15 @@ async function main() {
     }
   }
 
-  const files = {
-    'e13_context_isolation.json': summary.results.e13,
-    'e15_chunk_404.json': summary.results.e15,
-    'e16_render_error.json': summary.results.e16,
-    'viewports.json': summary.results.viewports,
-  }
+  const files =
+    args.only === 'history'
+      ? { 'history_navigation.json': summary.results.history }
+      : {
+          'e13_context_isolation.json': summary.results.e13,
+          'e15_chunk_404.json': summary.results.e15,
+          'e16_render_error.json': summary.results.e16,
+          'viewports.json': summary.results.viewports,
+        }
   for (const [name, payload] of Object.entries(files)) {
     writeFileSync(join(args.out, name), JSON.stringify(payload, null, 2), 'utf-8')
   }

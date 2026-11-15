@@ -1,0 +1,234 @@
+{
+  "generated_at": "2026-11-15T16:23:48+08:00",
+  "environment": "isolated split server; research DB mode=ro; temp user DB; external/scheduler off",
+  "research_db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+  "research_sha256_before": "a93bc080eb9e366d08025c0a247e9af525674a0294ec4d6012b7dbfd8941c56b",
+  "research_sha256_after": "a93bc080eb9e366d08025c0a247e9af525674a0294ec4d6012b7dbfd8941c56b",
+  "research_unchanged": true,
+  "endpoints": [
+    {
+      "name": "market_dates",
+      "path": "/api/market/dates?days=10",
+      "status": 200,
+      "bytes": 131,
+      "elapsed_ms": 31.44,
+      "signals": {
+        "kind": "list",
+        "rows": 10
+      },
+      "error": null
+    },
+    {
+      "name": "market_overview",
+      "path": "/api/market/overview",
+      "status": 200,
+      "bytes": 3637,
+      "elapsed_ms": 20.77,
+      "signals": {
+        "trade_date": "2026-09-24"
+      },
+      "error": null
+    },
+    {
+      "name": "limit_up_pool",
+      "path": "/api/limit/pool?type=up",
+      "status": 200,
+      "bytes": 44785,
+      "elapsed_ms": 31.5,
+      "signals": {
+        "trade_date": "2026-09-24"
+      },
+      "error": null
+    },
+    {
+      "name": "limit_down_pool",
+      "path": "/api/limit/pool?type=down",
+      "status": 200,
+      "bytes": 4967,
+      "elapsed_ms": 24.9,
+      "signals": {
+        "trade_date": "2026-09-24"
+      },
+      "error": null
+    },
+    {
+      "name": "limit_broken_pool",
+      "path": "/api/limit/pool?type=broken",
+      "status": 200,
+      "bytes": 3836,
+      "elapsed_ms": 4.16,
+      "signals": {
+        "trade_date": "2026-09-24"
+      },
+      "error": null
+    },
+    {
+      "name": "promotion",
+      "path": "/api/limit/promotion?days=15",
+      "status": 200,
+      "bytes": 1241,
+      "elapsed_ms": 7.61,
+      "signals": {
+        "dates": 15
+      },
+      "error": null
+    },
+    {
+      "name": "sector_heat",
+      "path": "/api/sectors/heat",
+      "status": 200,
+      "bytes": 3409,
+      "elapsed_ms": 11.13,
+      "signals": {
+        "trade_date": "2026-09-24"
+      },
+      "error": null
+    },
+    {
+      "name": "sector_rotation",
+      "path": "/api/sectors/rotation?taxonomy=kph_industry&days=10&top=10&metric=pct_chg",
+      "status": 200,
+      "bytes": 7463,
+      "elapsed_ms": 10.46,
+      "signals": {},
+      "error": null
+    },
+    {
+      "name": "sentiment_next_day",
+      "path": "/api/sentiment/next-day?days=60&group=first_board&metric=limit_up_count&include_pending=true",
+      "status": 200,
+      "bytes": 43694,
+      "elapsed_ms": 72.77,
+      "signals": {
+        "dates": 60,
+        "series": 60
+      },
+      "error": null
+    },
+    {
+      "name": "quality_overview",
+      "path": "/api/quality/overview?days=30",
+      "status": 200,
+      "bytes": 4505,
+      "elapsed_ms": 32.15,
+      "signals": {
+        "items": 6,
+        "as_of": "2026-11-15"
+      },
+      "error": null
+    },
+    {
+      "name": "workbench",
+      "path": "/api/research/workbench?mode=OR&market=all&view=overview&limit=50&offset=0",
+      "status": 200,
+      "bytes": 3428,
+      "elapsed_ms": 43.87,
+      "signals": {
+        "rows": 0,
+        "as_of": "2026-11-13"
+      },
+      "error": null
+    },
+    {
+      "name": "research_meta",
+      "path": "/api/research/meta",
+      "status": 200,
+      "bytes": 843,
+      "elapsed_ms": 167.93,
+      "signals": {},
+      "error": null
+    },
+    {
+      "name": "research_trend",
+      "path": "/api/research/trend?date=2026-09-24&limit=50",
+      "status": 200,
+      "bytes": 41290,
+      "elapsed_ms": 626.01,
+      "signals": {
+        "rows": 50,
+        "trade_date": "2026-09-24"
+      },
+      "error": null
+    },
+    {
+      "name": "research_low_start",
+      "path": "/api/research/low-start?date=2026-09-24&limit=50",
+      "status": 200,
+      "bytes": 29069,
+      "elapsed_ms": 6067.69,
+      "signals": {
+        "rows": 50,
+        "trade_date": "2026-09-24"
+      },
+      "error": null
+    },
+    {
+      "name": "research_sector_state",
+      "path": "/api/research/sector-state?date=2026-09-24&taxonomy=kph_industry&limit=50",
+      "status": 200,
+      "bytes": 24342,
+      "elapsed_ms": 266.21,
+      "signals": {
+        "rows": 50,
+        "trade_date": "2026-09-24"
+      },
+      "error": null
+    },
+    {
+      "name": "stock_profile",
+      "path": "/api/stock/000001",
+      "status": 200,
+      "bytes": 1514,
+      "elapsed_ms": 27.29,
+      "signals": {},
+      "error": null
+    },
+    {
+      "name": "stock_context",
+      "path": "/api/stock/000001/research-context",
+      "status": 200,
+      "bytes": 4832,
+      "elapsed_ms": 32.17,
+      "signals": {},
+      "error": null
+    },
+    {
+      "name": "stock_daily",
+      "path": "/api/stock/000001/daily?days=30&period=day&fq=qfq",
+      "status": 200,
+      "bytes": 7626,
+      "elapsed_ms": 31.13,
+      "signals": {
+        "kind": "list",
+        "rows": 30
+      },
+      "error": null
+    },
+    {
+      "name": "watchlist_admin",
+      "path": "/api/watchlist",
+      "status": 200,
+      "bytes": 2,
+      "elapsed_ms": 29.52,
+      "signals": {
+        "kind": "list",
+        "rows": 0
+      },
+      "error": null
+    },
+    {
+      "name": "auth_boundaries",
+      "status": 200,
+      "me": 200,
+      "watchlist_add": 200,
+      "admin_watchlist": 1,
+      "user_watchlist": [],
+      "non_admin_status": 403,
+      "after_logout_me": 401,
+      "expired_session_status": {
+        "expired": 401,
+        "over_absolute": 401
+      }
+    }
+  ]
+}

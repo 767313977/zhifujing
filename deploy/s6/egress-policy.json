@@ -7,9 +7,9 @@
   "proxies": [],
   "loopback": {
     "allow": true,
-    "allow_any_port": true,
-    "ports": [],
-    "note": "回环用于同机后端(8000)/Vite(5173)/本机 KPH 代理(5000)与本地测试服务器；端口为动态分配，故允许任意端口。OS 层仍需阻止本机代理成为公网出口，见 os-policy-verification.md。"
+    "allow_any_port": false,
+    "ports": [5000],
+    "note": "生产服务端只允许本机 KPH 代理 5000。后端 8000/Vite 5173 是浏览器访问的入口，不由服务端出站调用；测试环境可在测试内覆盖策略。OS 层仍需阻止本机代理成为公网出口，见 os-policy-verification.md。"
   },
   "entries": [
     {
