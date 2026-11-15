@@ -22,3 +22,12 @@
 - 推送：`git push` 成功，`origin/work/s6-8-s6-9-gate-closure` = `bf430e023b6d014e6f9b9a47ba6d259fefb177b7`
 - 状态：Hyper-V 管理面 PASS；VM 创建/N01–N24 仍 `NOT_RUN`（缺 Ubuntu ISO）
 - 本轮未创建 VM、未创建 vSwitch/NAT、未修改宿主防火墙
+
+## 2026-11-15 追加：VM 创建（s6-egress-vm）
+
+- `95fb6a8` fix(s6.8): bound VM heartbeat wait for installer phase
+- `5bf2ee2` test(s6.8): create isolated Hyper-V VM and record isolation evidence
+- 推送：`git push` 成功，`origin/work/s6-8-s6-9-gate-closure` = `5bf2ee2212a57f0ae2a35d810c028c6d0c53fecc`
+- ISO SHA256 本地重算一致；VM Gen2 / 4 vCPU / 6 GB / 64 GB Dynamic / Internal `s6-egress` / NAT 172.31.240.0/24
+- 宿主防火墙规则 769→769、无 `s6*` 规则；WLAN IP 未变
+- 当前暂停，等待 vmconnect 手动安装 Guest；未执行 bootstrap/N01–N24
