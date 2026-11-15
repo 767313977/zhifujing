@@ -25,14 +25,17 @@ ISO 哈希校验、RAM/磁盘、子网/NAT 冲突、VM 名冲突全部通过，�
 - dry-run 未创建 vSwitch、NAT、VHDX 或 VM；
 - 计划文件写在临时目录，未进入证据链。
 
-## 3. 未执行
+## 3. 执行进展（2026-11-15 15:09 更新）
 
-| 动作 | 状态 | 原因 |
+| 动作 | 状态 | 说明 |
 | --- | --- | --- |
-| `-Apply` 创建 VM | NOT_RUN | 无 Ubuntu 24.04 ISO / 官方 SHA256 |
-| `verify-vm-isolation.ps1` | NOT_RUN | 依赖 VM 存在 |
-| `invoke-guest-egress-acceptance.ps1` | NOT_RUN | 依赖 Guest 安装与 SSH |
+| `create-ubuntu-vm.ps1 -Apply -StartVm` | **PASS** | ISO SHA256 校验通过；VM 创建并启动，退出码 0 |
+| 自动检查点纠正 | **PASS** | 关闭自动检查点、删除自动检查点、探针验证后删除；磁盘回到 64 GB Dynamic |
+| `verify-vm-isolation.ps1` | **PASS** | 17 项检查全 PASS，退出码 0 |
+| `invoke-guest-egress-acceptance.ps1` | NOT_RUN | 等待 vmconnect 手动安装 Guest |
 | N01–N24 | NOT_RUN | 同上 |
+
+详见 `vm_create_report.md`。
 
 ## 4. 安全边界
 

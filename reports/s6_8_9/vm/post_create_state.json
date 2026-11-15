@@ -1,0 +1,118 @@
+﻿{
+    "generated_at":  "2026-11-15T15:11:36.9799432+08:00",
+    "vm":  {
+               "name":  "s6-egress-vm",
+               "state":  "Running",
+               "generation":  2,
+               "vcpu":  4,
+               "memory_startup":  6442450944,
+               "dynamic_memory":  false,
+               "automatic_checkpoints":  false,
+               "automatic_start":  2,
+               "checkpoint_type":  5,
+               "uptime":  "00:01:34.8970000"
+           },
+    "snapshots":  [
+
+                  ],
+    "vhd":  {
+                "path":  "D:\\s6-vm\\s6-egress-vm-os.vhdx",
+                "type":  "Dynamic",
+                "size_gb":  64,
+                "file_size_gb":  0.004,
+                "attached":  true
+            },
+    "dvd":  [
+                {
+                    "Path":  "D:\\ISO\\ubuntu-24.04.5-live-server-amd64.iso",
+                    "ControllerNumber":  0,
+                    "ControllerLocation":  1
+                }
+            ],
+    "firmware":  {
+                     "SecureBoot":  0,
+                     "SecureBootTemplate":  "MicrosoftUEFICertificateAuthority",
+                     "BootOrder":  null
+                 },
+    "adapters":  [
+                     {
+                         "Name":  "Network Adapter",
+                         "SwitchName":  "s6-egress",
+                         "Status":  [
+                                        2
+                                    ],
+                         "MacAddress":  "00155D1F2D01",
+                         "IPAddresses":  [
+
+                                         ]
+                     }
+                 ],
+    "integration":  [
+                        {
+                            "Name":  "Guest Service Interface",
+                            "Enabled":  false,
+                            "PrimaryStatusDescription":  "OK"
+                        },
+                        {
+                            "Name":  "Heartbeat",
+                            "Enabled":  true,
+                            "PrimaryStatusDescription":  "OK"
+                        },
+                        {
+                            "Name":  "Key-Value Pair Exchange",
+                            "Enabled":  true,
+                            "PrimaryStatusDescription":  "No Contact"
+                        },
+                        {
+                            "Name":  "Shutdown",
+                            "Enabled":  true,
+                            "PrimaryStatusDescription":  "OK"
+                        },
+                        {
+                            "Name":  "Time Synchronization",
+                            "Enabled":  true,
+                            "PrimaryStatusDescription":  "OK"
+                        },
+                        {
+                            "Name":  "VSS",
+                            "Enabled":  true,
+                            "PrimaryStatusDescription":  "OK"
+                        }
+                    ],
+    "switch":  {
+                   "Name":  "s6-egress",
+                   "SwitchType":  1,
+                   "NetAdapterInterfaceDescription":  null,
+                   "AllowManagementOS":  true
+               },
+    "nat":  {
+                "Name":  "s6-egress-nat",
+                "InternalIPInterfaceAddressPrefix":  "172.31.240.0/24"
+            },
+    "gateway":  [
+                    {
+                        "IPAddress":  "172.31.240.1",
+                        "PrefixLength":  24,
+                        "InterfaceAlias":  "vEthernet (s6-egress)"
+                    }
+                ],
+    "firewall":  {
+                     "profiles":  [
+                                      {
+                                          "Name":  "Domain",
+                                          "Enabled":  1
+                                      },
+                                      {
+                                          "Name":  "Private",
+                                          "Enabled":  1
+                                      },
+                                      {
+                                          "Name":  "Public",
+                                          "Enabled":  1
+                                      }
+                                  ],
+                     "rule_count":  769,
+                     "s6_rule_count":  0
+                 },
+    "wsl":  " \u0000 \u0000N\u0000A\u0000M\u0000E\u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000S\u0000T\u0000A\u0000T\u0000E\u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000V\u0000E\u0000R\u0000S\u0000I\u0000O\u0000N\u0000\r\n\u0000\r\n\u0000*\u0000 \u0000U\u0000b\u0000u\u0000n\u0000t\u0000u\u0000-\u00002\u00004\u0000.\u00000\u00004\u0000 \u0000 \u0000 \u0000 \u0000S\u0000t\u0000o\u0000p\u0000p\u0000e\u0000d\u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u00002\u0000\r\n\u0000\r\n\u0000\r\n"
+}

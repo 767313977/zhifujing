@@ -1,0 +1,109 @@
+﻿{
+    "generated_at":  "2026-11-15T15:11:34.9150081+08:00",
+    "vm_name":  "s6-egress-vm",
+    "host":  "HAN-LAPTOP",
+    "checks":  [
+                   {
+                       "name":  "vm_exists",
+                       "pass":  true,
+                       "detail":  2
+                   },
+                   {
+                       "name":  "vm_generation_2",
+                       "pass":  true,
+                       "detail":  2
+                   },
+                   {
+                       "name":  "vm_vcpu",
+                       "pass":  true,
+                       "detail":  4
+                   },
+                   {
+                       "name":  "vm_memory_startup",
+                       "pass":  true,
+                       "detail":  6442450944
+                   },
+                   {
+                       "name":  "vm_dynamic_memory_off",
+                       "pass":  true,
+                       "detail":  false
+                   },
+                   {
+                       "name":  "vm_automatic_start_nothing",
+                       "pass":  true,
+                       "detail":  2
+                   },
+                   {
+                       "name":  "vm_disk_dynamic",
+                       "pass":  true,
+                       "detail":  3
+                   },
+                   {
+                       "name":  "vm_disk_size_gb",
+                       "pass":  true,
+                       "detail":  64
+                   },
+                   {
+                       "name":  "guest_service_interface_disabled",
+                       "pass":  true,
+                       "detail":  false
+                   },
+                   {
+                       "name":  "switch_exists",
+                       "pass":  true,
+                       "detail":  1
+                   },
+                   {
+                       "name":  "switch_internal",
+                       "pass":  true,
+                       "detail":  1
+                   },
+                   {
+                       "name":  "switch_not_physical",
+                       "pass":  true,
+                       "detail":  null
+                   },
+                   {
+                       "name":  "nat_exists",
+                       "pass":  true,
+                       "detail":  "172.31.240.0/24"
+                   },
+                   {
+                       "name":  "nat_prefix",
+                       "pass":  true,
+                       "detail":  "172.31.240.0/24"
+                   },
+                   {
+                       "name":  "host_gateway_ip",
+                       "pass":  true,
+                       "detail":  "vEthernet (s6-egress)"
+                   },
+                   {
+                       "name":  "host_firewall_no_s6_rules",
+                       "pass":  true,
+                       "detail":  0
+                   },
+                   {
+                       "name":  "host_firewall_profiles_recorded",
+                       "pass":  true,
+                       "detail":  [
+                                      {
+                                          "Name":  "Domain",
+                                          "Enabled":  1
+                                      },
+                                      {
+                                          "Name":  "Private",
+                                          "Enabled":  1
+                                      },
+                                      {
+                                          "Name":  "Public",
+                                          "Enabled":  1
+                                      }
+                                  ]
+                   }
+               ],
+    "failed":  [
+
+               ],
+    "verdict":  "PASS"
+}

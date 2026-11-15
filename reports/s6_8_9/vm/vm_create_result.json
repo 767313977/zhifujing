@@ -1,0 +1,51 @@
+﻿{
+    "generated_at":  "2026-11-15T15:09:42.7409754+08:00",
+    "apply":  true,
+    "host":  "HAN-LAPTOP",
+    "vm_name":  "s6-egress-vm",
+    "vm_root":  "D:\\s6-vm",
+    "iso":  {
+                "path":  "D:\\ISO\\ubuntu-24.04.5-live-server-amd64.iso",
+                "sha256":  "97f3d7ffb032c3eb3b23d2c8be9cc76e60c2c1f2c0146ba5ba9fe01cafae0fd8"
+            },
+    "resources":  {
+                      "ram_gb":  31.43,
+                      "logical_processors":  14,
+                      "vm_root":  "D:\\s6-vm",
+                      "drive":  "D:",
+                      "free_gb":  475.02
+                  },
+    "network":  {
+                    "switch_exists":  false,
+                    "nat_exists":  false,
+                    "subnet":  "172.31.240.0/24",
+                    "gateway":  "172.31.240.1"
+                },
+    "config":  {
+                   "generation":  2,
+                   "vcpu":  4,
+                   "startup_memory_gb":  6,
+                   "dynamic_memory":  false,
+                   "disk_gb":  64,
+                   "secure_boot_template":  "MicrosoftUEFICertificateAuthority",
+                   "guest_service_interface":  "disabled",
+                   "shared_folders":  "none",
+                   "enhanced_session_transport":  "VMBus"
+               },
+    "actions":  [
+                    "switch/NAT/gateway ensured",
+                    "VM created with VHDX D:\\s6-vm\\s6-egress-vm-os.vhdx",
+                    "VM started"
+                ],
+    "heartbeat_ok":  true,
+    "after":  {
+                  "state":  2,
+                  "generation":  2,
+                  "processor_count":  4,
+                  "memory_startup":  6442450944,
+                  "dynamic_memory":  false,
+                  "switch":  1,
+                  "nat":  "172.31.240.0/24",
+                  "checkpoints":  1
+              }
+}

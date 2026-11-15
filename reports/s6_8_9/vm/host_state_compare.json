@@ -1,0 +1,123 @@
+﻿{
+    "generated_at":  "2026-11-15T15:11:53.8894996+08:00",
+    "firewall":  {
+                     "profiles_before":  [
+                                             {
+                                                 "Name":  "Domain",
+                                                 "Enabled":  1
+                                             },
+                                             {
+                                                 "Name":  "Private",
+                                                 "Enabled":  1
+                                             },
+                                             {
+                                                 "Name":  "Public",
+                                                 "Enabled":  1
+                                             }
+                                         ],
+                     "profiles_after":  [
+                                            {
+                                                "Name":  "Domain",
+                                                "Enabled":  1
+                                            },
+                                            {
+                                                "Name":  "Private",
+                                                "Enabled":  1
+                                            },
+                                            {
+                                                "Name":  "Public",
+                                                "Enabled":  1
+                                            }
+                                        ],
+                     "rule_count_before":  769,
+                     "rule_count_after":  769,
+                     "rule_delta":  0,
+                     "s6_rules_before":  0,
+                     "s6_rules_after":  0
+                 },
+    "switches":  {
+                     "before":  [
+                                    {
+                                        "Name":  "Default Switch",
+                                        "SwitchType":  1,
+                                        "NetAdapterInterfaceDescription":  null,
+                                        "AllowManagementOS":  true
+                                    },
+                                    {
+                                        "Name":  "WSL (Hyper-V firewall)",
+                                        "SwitchType":  1,
+                                        "NetAdapterInterfaceDescription":  null,
+                                        "AllowManagementOS":  true
+                                    }
+                                ],
+                     "after":  [
+                                   {
+                                       "Name":  "Default Switch",
+                                       "SwitchType":  1,
+                                       "NetAdapterInterfaceDescription":  null
+                                   },
+                                   {
+                                       "Name":  "WSL (Hyper-V firewall)",
+                                       "SwitchType":  1,
+                                       "NetAdapterInterfaceDescription":  null
+                                   },
+                                   {
+                                       "Name":  "s6-egress",
+                                       "SwitchType":  1,
+                                       "NetAdapterInterfaceDescription":  null
+                                   }
+                               ]
+                 },
+    "nats":  {
+                 "before":  [
+
+                            ],
+                 "after":  [
+                               {
+                                   "Name":  "s6-egress-nat",
+                                   "InternalIPInterfaceAddressPrefix":  "172.31.240.0/24"
+                               }
+                           ]
+             },
+    "ipv4":  {
+                 "wlan_before":  [
+                                     {
+                                         "IPAddress":  "192.168.31.45",
+                                         "PrefixLength":  24,
+                                         "InterfaceAlias":  "WLAN"
+                                     }
+                                 ],
+                 "wlan_after":  [
+                                    {
+                                        "IPAddress":  "192.168.31.45",
+                                        "PrefixLength":  24,
+                                        "InterfaceAlias":  "WLAN"
+                                    }
+                                ],
+                 "s6_gateway_after":  [
+                                          {
+                                              "IPAddress":  "172.31.240.1",
+                                              "PrefixLength":  24,
+                                              "InterfaceAlias":  "vEthernet (s6-egress)"
+                                          }
+                                      ]
+             },
+    "wsl":  " \u0000 \u0000N\u0000A\u0000M\u0000E\u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000S\u0000T\u0000A\u0000T\u0000E\u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000V\u0000E\u0000R\u0000S\u0000I\u0000O\u0000N\u0000\r\n\u0000\r\n\u0000*\u0000 \u0000U\u0000b\u0000u\u0000n\u0000t\u0000u\u0000-\u00002\u00004\u0000.\u00000\u00004\u0000 \u0000 \u0000 \u0000 \u0000S\u0000t\u0000o\u0000p\u0000p\u0000e\u0000d\u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u0000 \u00002\u0000\r\n\u0000\r\n\u0000\r\n",
+    "boot_order":  [
+                       {
+                           "BootType":  "Drive",
+                           "Device":  "DVD Drive on SCSI controller number 0 at location 1",
+                           "DeviceType":  "DvdDrive"
+                       },
+                       {
+                           "BootType":  "Drive",
+                           "Device":  "Hard Drive on SCSI controller number 0 at location 0",
+                           "DeviceType":  "HardDiskDrive"
+                       },
+                       {
+                           "BootType":  "Network",
+                           "Device":  "Network Adapter",
+                           "DeviceType":  "VMNetworkAdapter"
+                       }
+                   ]
+}

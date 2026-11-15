@@ -1,0 +1,86 @@
+﻿{
+    "generated_at":  "2026-11-15T15:09:24.6706177+08:00",
+    "git_head":  "95fb6a867c9e8b67805e5d132b5eb81abae0f35e",
+    "vms":  [
+
+            ],
+    "switches":  [
+                     {
+                         "Name":  "Default Switch",
+                         "SwitchType":  1,
+                         "NetAdapterInterfaceDescription":  null,
+                         "AllowManagementOS":  true
+                     },
+                     {
+                         "Name":  "WSL (Hyper-V firewall)",
+                         "SwitchType":  1,
+                         "NetAdapterInterfaceDescription":  null,
+                         "AllowManagementOS":  true
+                     }
+                 ],
+    "nats":  [
+
+             ],
+    "ipv4":  [
+                 {
+                     "IPAddress":  "172.28.32.1",
+                     "PrefixLength":  20,
+                     "InterfaceAlias":  "vEthernet (WSL (Hyper-V firewall))"
+                 },
+                 {
+                     "IPAddress":  "172.26.112.1",
+                     "PrefixLength":  20,
+                     "InterfaceAlias":  "vEthernet (Default Switch)"
+                 },
+                 {
+                     "IPAddress":  "169.254.152.235",
+                     "PrefixLength":  16,
+                     "InterfaceAlias":  "本地连接* 2"
+                 },
+                 {
+                     "IPAddress":  "169.254.250.38",
+                     "PrefixLength":  16,
+                     "InterfaceAlias":  "蓝牙网络连接"
+                 },
+                 {
+                     "IPAddress":  "169.254.79.249",
+                     "PrefixLength":  16,
+                     "InterfaceAlias":  "本地连接* 1"
+                 },
+                 {
+                     "IPAddress":  "192.168.31.45",
+                     "PrefixLength":  24,
+                     "InterfaceAlias":  "WLAN"
+                 },
+                 {
+                     "IPAddress":  "127.0.0.1",
+                     "PrefixLength":  8,
+                     "InterfaceAlias":  "Loopback Pseudo-Interface 1"
+                 }
+             ],
+    "firewall_profiles":  [
+                              {
+                                  "Name":  "Domain",
+                                  "Enabled":  1
+                              },
+                              {
+                                  "Name":  "Private",
+                                  "Enabled":  1
+                              },
+                              {
+                                  "Name":  "Public",
+                                  "Enabled":  1
+                              }
+                          ],
+    "firewall_rule_count":  769,
+    "firewall_s6_rule_count":  0,
+    "conflicts":  {
+                      "vm_exists":  false,
+                      "vhdx_exists":  false,
+                      "switch_exists":  false,
+                      "nat_exists":  false,
+                      "subnet_ips":  [
+
+                                     ]
+                  }
+}

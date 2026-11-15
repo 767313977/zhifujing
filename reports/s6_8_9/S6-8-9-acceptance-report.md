@@ -67,12 +67,13 @@
 | 现有 NAT | 无 |
 | CPU WMI 三个 False | 不能单独解释为 BIOS 未开启；Hypervisor 已接管，Intel 规格支持 VT-x/EPT |
 | 主机资源 | 31.43 GB RAM / 14 LP；D: 剩余 478.83 GB |
-| Ubuntu ISO | **未找到**（仅找到一个非 Ubuntu ISO） |
-| VM 创建/启动 | **NOT_RUN**（按任务书 ISO 来源+SHA256 停止条件） |
-| N01–N24 | **NOT_RUN** |
-| 结论 | **VM 尚未创建；G3/G4 仍 `NOT_VERIFIED`** |
+| Ubuntu ISO | **已就绪**：`D:\ISO\ubuntu-24.04.5-live-server-amd64.iso`，SHA256 本地重算一致 |
+| VM 创建/启动 | **PASS**：`s6-egress-vm` Running / Gen2 / 4 vCPU / 6 GB / 64 GB Dynamic |
+| 隔离 | **PASS**：`s6-egress` Internal、`s6-egress-nat` 172.31.240.0/24、宿主防火墙 769→769、无 `s6*` 规则 |
+| N01–N24 | **NOT_RUN**（等待 vmconnect 手动安装 Guest） |
+| 结论 | **VM 已创建；OS Egress 待 Guest 安装后执行；G3/G4 仍 `NOT_VERIFIED`** |
 
-已生成（未执行创建）：`deploy/s6/vm/create-ubuntu-vm.ps1`、
+已生成并执行创建（VM 已启动，等待 Guest 安装）：`deploy/s6/vm/create-ubuntu-vm.ps1`、
 `verify-vm-isolation.ps1`、`invoke-guest-egress-acceptance.ps1`、
 `guest/ubuntu-bootstrap.sh`、`guest/run-egress-acceptance.sh`、`host-dns-probe.py`。
 静态检查：`vm/scripts_static_check.md`。

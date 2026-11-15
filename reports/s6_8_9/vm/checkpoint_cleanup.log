@@ -1,0 +1,33 @@
+﻿=== disable automatic checkpoints ===
+=== remove auto checkpoint ===
+
+
+Name         : Automatic Checkpoint - s6-egress-vm - (2026/11/15 - 15:09:53)
+SnapshotType : Standard
+CreationTime : 2026/11/15 15:09:53
+
+
+
+
+=== create/remove manual probe ===
+
+
+Name         : s6-snapshot-capability-probe
+SnapshotType : Standard
+
+
+
+
+=== final disk/snapshot state ===
+
+
+Path            : D:\s6-vm\s6-egress-vm-os.vhdx
+VhdType         : Dynamic
+SizeGB          : 64
+FileSizeGB      : 0.004
+Snapshots       : 0
+AutoCheckpoints : False
+
+
+
+

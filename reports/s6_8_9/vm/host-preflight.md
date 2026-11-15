@@ -5,7 +5,12 @@
 - 原始输出：[host_preflight.txt](./host_preflight.txt)
 - 脚本：[deploy/s6/vm/host-preflight.ps1](../../../deploy/s6/vm/host-preflight.ps1)
 - 结论：**Hyper-V 管理层 PASS；VM 创建/启动/隔离 NOT_RUN；OS Egress 仍 NOT_VERIFIED**
-- 本轮**未创建 VM、未创建虚拟交换机、未修改 Windows 防火墙或网络配置**
+- 本预检执行时**未创建 VM、未创建虚拟交换机、未修改 Windows 防火墙或网络配置**
+
+> **2026-11-15 15:09 更新**：Ubuntu 24.04.5 ISO 已提供并通过 SHA256 校验，
+> `s6-egress-vm` 已创建并启动（4 vCPU / 6 GB / 64 GB Dynamic / Internal `s6-egress`）。
+> 当前等待 vmconnect 手动安装 Guest；N01–N24 仍未执行。
+> 详见 [vm_create_report.md](./vm_create_report.md)。
 
 ## 1. 主机实测
 
@@ -49,20 +54,18 @@ Hypervisor 接管后不能单独作为 BIOS 判据。本报告不再重复修改
 | 共享目录/剪贴板 | 不配置 | 隔离要求 |
 | 基线检查点 | OS 安装 + 依赖就绪后创建 | 不在安装前创建 |
 
-## 3. 阻断项：Ubuntu ISO 未就绪
+## 3. ISO 已就绪（2026-11-15 更新）
 
-- 已搜索 `Downloads`、`Desktop`、`C:\vm`、`C:\s6-vm`、`D:\vm`、`D:\iso`、`D:\`；
-  仅发现一个 Windows Nano ISO，**没有 Ubuntu 24.04 ISO/VHDX**；
-- 无 `oscdimg`（ADK 未安装），本轮不自动生成 cloud-init seed ISO；
-- 因此按任务书「ISO 来源与 SHA256 已核验」停止条件，**不执行 VM 创建**。
+- 路径：`D:\ISO\ubuntu-24.04.5-live-server-amd64.iso`（4,080,486,400 bytes）；
+- 本地重算 SHA256：`97f3d7ffb032c3eb3b23d2c8be9cc76e60c2c1f2c0146ba5ba9fe01cafae0fd8`，
+  与用户提供值一致；
+- 已按 `create-ubuntu-vm.ps1 -Apply -StartVm` 创建并启动 VM；
+- 当前停在 Ubuntu 安装器，等待 vmconnect 手动安装。
 
-需要用户提供：
+创建前搜索记录：`Downloads`、`Desktop`、`C:\vm`、`C:\s6-vm`、`D:\vm`、`D:\iso`、`D:\`
+仅有一个非 Ubuntu ISO，因此当时未创建；现已由用户补齐官方 ISO。
 
-1. Ubuntu Server 24.04 LTS x86_64 ISO（官方 `releases.ubuntu.com`）；
-2. 官方 SHA256（或允许脚本从官方 `SHA256SUMS` 读取并校验）；
-3. 确认允许在 `D:\s6-vm` 写入 64 GB 动态 VHDX。
-
-## 4. 已生成的脚本（本轮交付，未执行创建）
+## 4. 已生成的脚本（创建已执行，见 `vm_create_report.md`）
 
 | 脚本 | 作用 | 状态 |
 | --- | --- | --- |
