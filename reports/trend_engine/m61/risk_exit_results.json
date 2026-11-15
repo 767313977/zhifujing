@@ -1,0 +1,337 @@
+{
+  "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+  "selections": {
+    "A": "A2",
+    "B": "B2"
+  },
+  "scan_start": "2025-10-14",
+  "scan_end": "2026-10-09",
+  "models": {
+    "A": {
+      "A_fixed": {
+        "days": 240,
+        "total_return_pct": -19.87,
+        "annualized_pct": -20.75,
+        "max_drawdown_pct": -25.57,
+        "max_drawdown_days": 175,
+        "trades": 80,
+        "win_pct": 37.5,
+        "profit_factor": 0.6,
+        "turnover": 15.94,
+        "avg_hold_days": 20.0,
+        "final_equity": 801282.05,
+        "exposure": 0.7098,
+        "skipped": {
+          "limit_up": 1,
+          "limit_down": 0,
+          "suspended": 0,
+          "cash": 0,
+          "slots": 997
+        }
+      },
+      "B_atr": {
+        "days": 240,
+        "total_return_pct": -31.6,
+        "annualized_pct": -32.89,
+        "max_drawdown_pct": -34.72,
+        "max_drawdown_days": 145,
+        "trades": 64,
+        "win_pct": 9.4,
+        "profit_factor": 0.26,
+        "turnover": 12.23,
+        "avg_hold_days": 23.0,
+        "final_equity": 684009.42,
+        "exposure": 0.7499,
+        "skipped": {
+          "limit_up": 0,
+          "limit_down": 0,
+          "suspended": 0,
+          "cash": 0,
+          "slots": 1012
+        }
+      },
+      "C_trend": {
+        "days": 240,
+        "total_return_pct": -11.56,
+        "annualized_pct": -12.1,
+        "max_drawdown_pct": -27.84,
+        "max_drawdown_days": 125,
+        "trades": 123,
+        "win_pct": 24.4,
+        "profit_factor": 0.76,
+        "turnover": 23.61,
+        "avg_hold_days": 10.7,
+        "final_equity": 884371.1,
+        "exposure": 0.6179,
+        "skipped": {
+          "limit_up": 0,
+          "limit_down": 1,
+          "suspended": 0,
+          "cash": 0,
+          "slots": 936
+        }
+      },
+      "D_portfolio": {
+        "days": 240,
+        "total_return_pct": -30.35,
+        "annualized_pct": -31.6,
+        "max_drawdown_pct": -32.12,
+        "max_drawdown_days": 167,
+        "trades": 40,
+        "win_pct": 32.5,
+        "profit_factor": 0.3,
+        "turnover": 11.93,
+        "avg_hold_days": 20.0,
+        "final_equity": 696512.06,
+        "exposure": 0.538,
+        "skipped": {
+          "limit_up": 0,
+          "limit_down": 0,
+          "suspended": 0,
+          "cash": 0,
+          "slots": 1047
+        }
+      },
+      "E_combo": {
+        "days": 240,
+        "total_return_pct": -19.03,
+        "annualized_pct": -19.89,
+        "max_drawdown_pct": -22.45,
+        "max_drawdown_days": 163,
+        "trades": 131,
+        "win_pct": 27.5,
+        "profit_factor": 0.62,
+        "turnover": 31.1,
+        "avg_hold_days": 7.4,
+        "final_equity": 809650.87,
+        "exposure": 0.5721,
+        "skipped": {
+          "limit_up": 0,
+          "limit_down": 0,
+          "suspended": 0,
+          "cash": 0,
+          "slots": 931
+        }
+      }
+    },
+    "B": {
+      "A_fixed": {
+        "days": 240,
+        "total_return_pct": -3.61,
+        "annualized_pct": -3.78,
+        "max_drawdown_pct": -22.47,
+        "max_drawdown_days": 149,
+        "trades": 95,
+        "win_pct": 45.3,
+        "profit_factor": 1.01,
+        "turnover": 18.63,
+        "avg_hold_days": 20.0,
+        "final_equity": 963947.83,
+        "exposure": 0.8708,
+        "skipped": {
+          "limit_up": 0,
+          "limit_down": 0,
+          "suspended": 0,
+          "cash": 0,
+          "slots": 1585
+        }
+      },
+      "B_atr": {
+        "days": 240,
+        "total_return_pct": -15.93,
+        "annualized_pct": -16.66,
+        "max_drawdown_pct": -29.41,
+        "max_drawdown_days": 165,
+        "trades": 63,
+        "win_pct": 19.0,
+        "profit_factor": 0.61,
+        "turnover": 11.44,
+        "avg_hold_days": 27.7,
+        "final_equity": 840667.92,
+        "exposure": 0.8783,
+        "skipped": {
+          "limit_up": 0,
+          "limit_down": 0,
+          "suspended": 0,
+          "cash": 0,
+          "slots": 1676
+        }
+      },
+      "C_trend": {
+        "days": 240,
+        "total_return_pct": -8.41,
+        "annualized_pct": -8.81,
+        "max_drawdown_pct": -23.11,
+        "max_drawdown_days": 148,
+        "trades": 201,
+        "win_pct": 23.4,
+        "profit_factor": 0.84,
+        "turnover": 37.7,
+        "avg_hold_days": 7.0,
+        "final_equity": 915899.87,
+        "exposure": 0.7157,
+        "skipped": {
+          "limit_up": 0,
+          "limit_down": 0,
+          "suspended": 0,
+          "cash": 6,
+          "slots": 1154
+        }
+      },
+      "D_portfolio": {
+        "days": 240,
+        "total_return_pct": -19.59,
+        "annualized_pct": -20.46,
+        "max_drawdown_pct": -28.11,
+        "max_drawdown_days": 139,
+        "trades": 51,
+        "win_pct": 43.1,
+        "profit_factor": 0.54,
+        "turnover": 15.19,
+        "avg_hold_days": 20.0,
+        "final_equity": 804104.52,
+        "exposure": 0.6832,
+        "skipped": {
+          "limit_up": 0,
+          "limit_down": 0,
+          "suspended": 0,
+          "cash": 0,
+          "slots": 1776
+        }
+      },
+      "E_combo": {
+        "days": 240,
+        "total_return_pct": -0.15,
+        "annualized_pct": -0.15,
+        "max_drawdown_pct": -24.5,
+        "max_drawdown_days": 148,
+        "trades": 179,
+        "win_pct": 25.7,
+        "profit_factor": 0.97,
+        "turnover": 41.95,
+        "avg_hold_days": 6.6,
+        "final_equity": 998544.21,
+        "exposure": 0.7287,
+        "skipped": {
+          "limit_up": 0,
+          "limit_down": 0,
+          "suspended": 0,
+          "cash": 4,
+          "slots": 1240
+        }
+      }
+    },
+    "A+B": {
+      "A_fixed": {
+        "days": 240,
+        "total_return_pct": -12.34,
+        "annualized_pct": -12.92,
+        "max_drawdown_pct": -24.67,
+        "max_drawdown_days": 105,
+        "trades": 101,
+        "win_pct": 52.5,
+        "profit_factor": 0.83,
+        "turnover": 19.98,
+        "avg_hold_days": 20.0,
+        "final_equity": 876597.66,
+        "exposure": 0.9215,
+        "skipped": {
+          "limit_up": 0,
+          "limit_down": 0,
+          "suspended": 0,
+          "cash": 1,
+          "slots": 2093
+        }
+      },
+      "B_atr": {
+        "days": 240,
+        "total_return_pct": -16.03,
+        "annualized_pct": -16.76,
+        "max_drawdown_pct": -26.36,
+        "max_drawdown_days": 149,
+        "trades": 72,
+        "win_pct": 18.1,
+        "profit_factor": 0.66,
+        "turnover": 13.14,
+        "avg_hold_days": 27.0,
+        "final_equity": 839696.36,
+        "exposure": 0.9436,
+        "skipped": {
+          "limit_up": 0,
+          "limit_down": 0,
+          "suspended": 0,
+          "cash": 0,
+          "slots": 2206
+        }
+      },
+      "C_trend": {
+        "days": 240,
+        "total_return_pct": -19.4,
+        "annualized_pct": -20.27,
+        "max_drawdown_pct": -26.32,
+        "max_drawdown_days": 215,
+        "trades": 213,
+        "win_pct": 24.4,
+        "profit_factor": 0.67,
+        "turnover": 39.93,
+        "avg_hold_days": 8.0,
+        "final_equity": 805960.35,
+        "exposure": 0.8386,
+        "skipped": {
+          "limit_up": 0,
+          "limit_down": 1,
+          "suspended": 0,
+          "cash": 7,
+          "slots": 1777
+        }
+      },
+      "D_portfolio": {
+        "days": 240,
+        "total_return_pct": -23.28,
+        "annualized_pct": -24.29,
+        "max_drawdown_pct": -28.29,
+        "max_drawdown_days": 221,
+        "trades": 54,
+        "win_pct": 50.0,
+        "profit_factor": 0.39,
+        "turnover": 16.11,
+        "avg_hold_days": 20.0,
+        "final_equity": 767187.7,
+        "exposure": 0.7229,
+        "skipped": {
+          "limit_up": 0,
+          "limit_down": 0,
+          "suspended": 0,
+          "cash": 0,
+          "slots": 2262
+        }
+      },
+      "E_combo": {
+        "days": 240,
+        "total_return_pct": 0.34,
+        "annualized_pct": 0.36,
+        "max_drawdown_pct": -14.96,
+        "max_drawdown_days": 68,
+        "trades": 196,
+        "win_pct": 30.6,
+        "profit_factor": 0.98,
+        "turnover": 45.75,
+        "avg_hold_days": 7.0,
+        "final_equity": 1003396.35,
+        "exposure": 0.841,
+        "skipped": {
+          "limit_up": 0,
+          "limit_down": 0,
+          "suspended": 0,
+          "cash": 6,
+          "slots": 1831
+        }
+      }
+    }
+  },
+  "note": "交易级模拟：T 日收盘信号 → T+1 开盘买入；卖出决策收盘后、次日开盘执行；含涨跌停/停牌/成本/整手/仓位上限",
+  "correlation": {
+    "A:A_fixed vs B:A_fixed": 0.476,
+    "A:E_combo vs B:E_combo": 0.189
+  }
+}
