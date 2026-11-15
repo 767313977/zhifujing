@@ -1,0 +1,46 @@
+{
+  "generated_at": "2026-11-15T15:00:20.947728+00:00",
+  "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+  "research_end": "2026-10-09",
+  "stock_trading_days": 506,
+  "index": {
+    "codes": 6,
+    "misaligned": [
+      "000001.SH",
+      "000688.SH",
+      "000852.SH",
+      "399001.SZ",
+      "399006.SZ",
+      "899050.BJ"
+    ],
+    "missing_days_max": 5,
+    "duplicates": 0,
+    "gate": "FAIL"
+  },
+  "sector": {
+    "codes": 383,
+    "misaligned": 383,
+    "missing_days_max": 243,
+    "duplicates": 0,
+    "gate": "FAIL"
+  },
+  "sector_membership": {
+    "first": "2026-07-03",
+    "last": "2026-09-24",
+    "days": 60,
+    "expected_days": 65,
+    "missing_days": 5,
+    "missing_dates": [
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30",
+      "2026-10-08",
+      "2026-10-09"
+    ],
+    "gate": "FAIL"
+  },
+  "backfill": {
+    "attempted": false,
+    "reason": "无已授权的历史指数/板块补采数据源；本轮禁止写原库，sandbox 补采需先取得数据授权"
+  }
+}
