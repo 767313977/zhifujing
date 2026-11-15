@@ -1,0 +1,13 @@
+﻿.venv\Scripts\python.exe : C:\Users\76731\Documents\trae_projects\fupan\scripts\s6_staging_drill.py:63: DeprecationWarn
+ing: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the fil
+ter argument to control this behavior.
+所在位置 行:15 字符: 4820
++ ... M = 'dumb'; .venv\Scripts\python.exe scripts\s6_staging_drill.py --sn ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\76731\... this behavior.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  archive.extractall(target)
+verdict={'new_health': True, 'new_ready_503': True, 'unauth_401': True, 'register_ok': True, 'login_ok': True, 'quality_ok': True, 'restart_ok': True, 'rollback_health': True, 'rollback_ready_consistent': True, 'redeploy_ok': True, 'redeploy_ready_503': True}
+smoke={'health': 200, 'ready': 503, 'unauth_quality': 401, 'register': 200, 'login': 200, 'quality_authed': 200, 'timeline_authed': 200, 'health_detail': 200}
+kept running pid=29556 port=8010

@@ -1,0 +1,39 @@
+# Staging 回滚演练记录（S6.7）
+
+- 命令：`.venv\Scripts\python.exe scripts/s6_staging_drill.py --snapshot 26a6621 --out-dir reports/s6_7_login/staging --keep-running`
+- 退出码：0
+- 结果：部署 / 重启 / 回滚 / 再部署全部通过
+
+## 关键读数（smoke-test-results.json）
+
+| 阶段 | 检查 | 状态码 |
+| --- | --- | --- |
+| new | health / ready / unauth_quality | 200 / 503 / 401 |
+| new | register / login / quality_authed | 200 / 200 / 200 |
+| restart | health / ready | 200 / 503 |
+| rollback | health / ready | 200 / 503 |
+| rollback | quality_status（登录后） | 200 |
+| redeploy | health / ready | 200 / 503 |
+
+`verdict` 11 项全部 true；数据库 SHA256 在登录前后一致（`db_written_by_login=false`）。
+
+## 回滚后的登录验证
+
+- 演练把**当前 `frontend/dist`** 同时复制到「旧版」和「新版」两个代码目录
+  （`s6_staging_drill.py` 的既有行为，前后端产物不分快照版本）。
+- 因此 8011 上的「旧版」实际仍加载修复后的前端 bundle
+  （`index-DnphHmJw-r2.js`），无法作为「旧前端复现白屏」的对照。
+- 这一点如实记录为演练限制：**回滚验证覆盖后端代码/配置/数据库副本，
+  不等于前端旧产物回滚**。
+
+## 再部署后关键登录（浏览器，8010）
+
+- 两次登录（首次 + 登出后重登）均落在 `/`，`#root=1`、`bodyLen=393`；
+- 页面显示账号、导航与各区块空态（Staging 未采集数据），非白屏；
+- `console messages: none`、无 pageerror。
+
+## 限制
+
+- 不是生产 Staging：无服务管理器、无独立网络命名空间、无流量切换；
+- Windows `terminate` 非 systemd 优雅停机；
+- OS egress 未验证。
