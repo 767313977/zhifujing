@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-11-15T16:22:19.629790+00:00",
+  "source": "reports\\trend_engine\\m65\\ifind_vendor_question_matrix.csv",
+  "questions": 28,
+  "sections": [
+    "A复权",
+    "B公司行为",
+    "C板块",
+    "D许可"
+  ],
+  "status": "DRAFT_READY_NOT_SENT",
+  "contains_credentials": false,
+  "contains_personal_data": false
+}

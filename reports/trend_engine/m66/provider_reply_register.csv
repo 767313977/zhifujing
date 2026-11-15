@@ -1,0 +1,1 @@
+reply_id,supplier,ticket_id,received_at,source_channel,original_filename,stored_path,raw_sha256,redacted_sha256,redaction_status,reviewed_by,review_status
