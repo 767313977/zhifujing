@@ -23,8 +23,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import RpsDaily, SectorDaily, SectorMember, StockBasic, StockDaily, StockUniverse, TradeCalendar
-from app.services import data_revision, limit_rules, trend
+from app.services import data_revision, limit_rules, rps as rps_calc, trend
 from app.services.patterns import build_bars, usable_bar
+from app.services.trend_engine import indicators as te_indicators
 
 TREND_STRATEGY = {
     "id": "trend_template",
@@ -482,7 +483,7 @@ def _trend_rows(
         s60 = _slope(close, 60)
         s120 = _slope(close, 120)
         trend_days = _trend_days(bars)
-        off_high = round(float((close[-1] / np.max(bars.high[-60:]) - 1) * 100), 2)
+        off_high = te_indicators.off_high_high_pct(bars.high, bars.close, 60)
         amount_ratio = _amount_ratio(bars)
         reasons = []
         unmet = []
@@ -920,6 +921,38 @@ def _fallback_info(session: Session, requested: date, actual: date) -> dict:
     }
 
 
+#: 板块区间收益的覆盖率闸门（F5）。窗口内有效 `pct_chg` 占比低于它 → 该档记 None。
+#: 与个股 RPS 的 `rps.MIN_COVERAGE` 同一数值；板块缺日同样不能拿半截窗口冒充 N 日涨幅。
+SECTOR_MIN_COVERAGE = 0.9
+
+
+def _compound_return(values: list[float | None], window: int) -> float | None:
+    """窗口复利收益（%）。`values` 是按日期升序的板块日涨跌幅（可含 None）。
+
+    必须同时满足两条：① 至少 `window` 行；② 有效值占比 ≥ `SECTOR_MIN_COVERAGE`。
+    缺日静默跳过会把「只采到 12 天」算成 20 日涨幅 —— 这是 F5 的根因。
+    """
+    chunk = values[-window:]
+    if len(chunk) < window:
+        return None
+    valid = [value for value in chunk if value is not None]
+    if len(valid) < window * SECTOR_MIN_COVERAGE:
+        return None
+    factor = 1.0
+    for value in valid:
+        factor *= 1 + float(value) / 100
+    return round((factor - 1) * 100, 4)
+
+
+def _mid_rank_map(values: dict[str, float]) -> dict[str, float]:
+    """与 `sector_rps.board` / `rps.mid_rank` 完全同一套中位秩分位（F4）。
+
+    并列值必须同分；旧实现用 `(index + 0.5) / n`，并列会按输入顺序拿到不同分位。
+    """
+    ordered = sorted(values.values())
+    return {code: rps_calc.mid_rank(ordered, value) for code, value in values.items()}
+
+
 def sector_states(
     session: Session,
     *,
@@ -1035,35 +1068,26 @@ def _sector_states(
     ret20_day: dict[date, dict[str, float]] = {}
     for board, series in by_board.items():
         ordered = sorted(series)
+        values = [series[when][0] for when in ordered]
         for index, when in enumerate(ordered):
             if index < 19:
                 continue
-            value = 1.0
-            for item in ordered[index - 19 : index + 1]:
-                pct = series[item][0]
-                if pct is not None:
-                    value *= 1 + pct / 100
-            ret20_day.setdefault(when, {})[board] = (value - 1) * 100
+            value = _compound_return(values[: index + 1], 20)
+            if value is not None:
+                ret20_day.setdefault(when, {})[board] = value
     rps20_by_day: dict[date, dict[str, float]] = {}
     for when, values in ret20_day.items():
         if len(values) < 5:
             continue
-        ordered = sorted(values.items(), key=lambda item: item[1])
-        rps20_by_day[when] = {
-            board: (index + 0.5) / len(ordered) * 100 for index, (board, _) in enumerate(ordered)
-        }
+        rps20_by_day[when] = _mid_rank_map(values)
     ret: dict[int, dict[str, float]] = {5: {}, 10: {}, 20: {}, 60: {}}
     for board, series in by_board.items():
         ordered = sorted(series)
+        values = [series[when][0] for when in ordered]
         for window in (5, 10, 20, 60):
-            if len(ordered) < window:
-                continue
-            value = 1.0
-            for when in ordered[-window:]:
-                pct = series[when][0]
-                if pct is not None:
-                    value *= 1 + pct / 100
-            ret[window][board] = (value - 1) * 100
+            value = _compound_return(values, window)
+            if value is not None:
+                ret[window][board] = value
     rps20 = rps20_by_day.get(day, {})
     member_counts = dict(
         session.execute(
@@ -1139,7 +1163,7 @@ def _sector_states(
         elif r20 >= 60:
             state_daily = (
                 "强势整理"
-                if abs(ret[5].get(board, 0)) <= 3 and (amount_ratio or 1) < 1
+                if abs(ret[5].get(board) or 0) <= 3 and (amount_ratio or 1) < 1
                 else "强度回落"
             )
         elif r20 <= 20:

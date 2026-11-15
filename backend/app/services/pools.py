@@ -40,6 +40,7 @@ from app.services import (
 )
 from app.services.patterns import PATTERNS, Bars, build_bars, is_st, usable_bar
 from app.services.trading_days import recent_trade_days
+from app.services.trend_engine import indicators as te_indicators
 from app.sources.base import chunked
 
 logger = logging.getLogger(__name__)
@@ -628,9 +629,10 @@ def _off_high_pct(session: Session, day: date, codes: list[str]) -> dict[str, fl
         equity = [1.0]
         for pct in values:
             equity.append(equity[-1] * (1 + pct / 100))
-        peak = max(equity)
-        if peak > 0:
-            out[code] = round((equity[-1] / peak - 1) * 100, 2)
+        # 统一口径（F3）：净值曲线上的「距最高收盘」，与 trend_engine.indicators 共用一份实现
+        value = te_indicators.off_high_close_pct(equity, 250)
+        if value is not None:
+            out[code] = value
     return out
 
 
