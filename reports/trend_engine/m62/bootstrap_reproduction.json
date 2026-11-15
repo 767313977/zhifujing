@@ -1,0 +1,233 @@
+{
+  "generated_at": "2026-11-15T14:19:45.337359+00:00",
+  "db": {
+    "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+    "sha256": "A93BC080EB9E366D08025C0A247E9AF525674A0294EC4D6012B7DBFD8941C56B"
+  },
+  "cache": {
+    "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\m61_cache\\attribution.json",
+    "sha256": "58AFF611439F21A848CB65743D5281FE449C25E65369A1CCC8C1ED87655123AB"
+  },
+  "m61_experiment_results": {
+    "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\reports\\trend_engine\\m61\\experiment_results.json",
+    "sha256": "8C9193A3CF25A77B52EA3D01EDC19A0431DECD648A2D37BE20DA30FEA82703FD"
+  },
+  "m6_summary": {
+    "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\reports\\trend_engine\\m6\\m6_summary.json",
+    "sha256": "C21AD8F8C69CC5F3507B0BE5F6A8DB5936C703784B2C9E6699422BA104270D78"
+  },
+  "git": {
+    "head": "782a5f301bb9c7aeef62ed77408c8777c13593cc",
+    "m61_experiments_blob": "a5780447e78c6b1464421dc07f1e222c7d6f012b"
+  },
+  "statistical_contract": {
+    "resampling_unit": "signal_date（同日多只股票为一个簇）",
+    "ci_method": "percentile：排序后取 2.5% / 97.5% 分位",
+    "iterations": 500,
+    "seed": 42,
+    "horizon_days": 20,
+    "rounding": 3,
+    "entry_mode": "next_open",
+    "cost_bps": 15.0
+  },
+  "m61_frozen_test": {
+    "A": {
+      "variant": "A2",
+      "slice": {
+        "start": "2026-07-28",
+        "end": "2026-10-09",
+        "days": 48
+      },
+      "expected": {
+        "days": 3,
+        "iterations": 500,
+        "mean": 0.554,
+        "ci_low": 0.332,
+        "ci_high": 0.67
+      },
+      "reproduced": {
+        "days": 3,
+        "iterations": 500,
+        "mean": 0.554,
+        "ci_low": 0.332,
+        "ci_high": 0.67
+      },
+      "comparison": {
+        "match": true,
+        "differences": {}
+      },
+      "stats": {
+        "samples": 33,
+        "distinct_days": 3,
+        "dates": [
+          "2026-08-18",
+          "2026-08-31",
+          "2026-09-01"
+        ],
+        "per_day_counts": {
+          "2026-08-18": 5,
+          "2026-08-31": 8,
+          "2026-09-01": 20
+        },
+        "max_per_day": 20,
+        "duplicate_signal_pairs": 0
+      },
+      "horizon20": {
+        "samples": 33,
+        "mean": -1.66,
+        "median": -0.88,
+        "win_pct": 33.3,
+        "excess_mean": 0.58,
+        "excess_t_p": 0.406273,
+        "profit_factor": 0.34,
+        "max_drawdown_points": -49.7,
+        "tail_top5_share": null,
+        "mean_excluding_top5pct": -1.94
+      },
+      "frozen_test_passed_flag": false
+    },
+    "B": {
+      "variant": "B2",
+      "slice": {
+        "start": "2026-07-28",
+        "end": "2026-10-09",
+        "days": 48
+      },
+      "expected": {
+        "days": 27,
+        "iterations": 500,
+        "mean": -0.981,
+        "ci_low": -2.638,
+        "ci_high": 0.508
+      },
+      "reproduced": {
+        "days": 27,
+        "iterations": 500,
+        "mean": -0.981,
+        "ci_low": -2.638,
+        "ci_high": 0.508
+      },
+      "comparison": {
+        "match": true,
+        "differences": {}
+      },
+      "stats": {
+        "samples": 114,
+        "distinct_days": 27,
+        "dates": [
+          "2026-07-29",
+          "2026-07-30",
+          "2026-07-31",
+          "2026-08-03",
+          "2026-08-04",
+          "2026-08-05",
+          "2026-08-06",
+          "2026-08-07",
+          "2026-08-10",
+          "2026-08-11",
+          "2026-08-12",
+          "2026-08-13",
+          "2026-08-14",
+          "2026-08-17",
+          "2026-08-18",
+          "2026-08-19",
+          "2026-08-20",
+          "2026-08-21",
+          "2026-08-24",
+          "2026-08-25",
+          "2026-08-26",
+          "2026-08-27",
+          "2026-08-28",
+          "2026-08-31",
+          "2026-09-01",
+          "2026-09-02",
+          "2026-09-03"
+        ],
+        "per_day_counts": {
+          "2026-07-29": 2,
+          "2026-07-30": 3,
+          "2026-07-31": 4,
+          "2026-08-03": 3,
+          "2026-08-04": 5,
+          "2026-08-05": 3,
+          "2026-08-06": 2,
+          "2026-08-07": 1,
+          "2026-08-10": 5,
+          "2026-08-11": 6,
+          "2026-08-12": 4,
+          "2026-08-13": 3,
+          "2026-08-14": 4,
+          "2026-08-17": 2,
+          "2026-08-18": 3,
+          "2026-08-19": 3,
+          "2026-08-20": 2,
+          "2026-08-21": 1,
+          "2026-08-24": 3,
+          "2026-08-25": 3,
+          "2026-08-26": 4,
+          "2026-08-27": 6,
+          "2026-08-28": 7,
+          "2026-08-31": 7,
+          "2026-09-01": 8,
+          "2026-09-02": 11,
+          "2026-09-03": 9
+        },
+        "max_per_day": 11,
+        "duplicate_signal_pairs": 0
+      },
+      "horizon20": {
+        "samples": 114,
+        "mean": 0.01,
+        "median": -0.25,
+        "win_pct": 49.1,
+        "excess_mean": -0.94,
+        "excess_t_p": 0.125238,
+        "profit_factor": 1.01,
+        "max_drawdown_points": -105.98,
+        "tail_top5_share": 63.367,
+        "mean_excluding_top5pct": -0.7
+      },
+      "frozen_test_passed_flag": false
+    }
+  },
+  "m6_full_sample": {
+    "A": {
+      "report_value": "[-1.53, 0.30]",
+      "json_path": "m6_summary.json#/models/A/full/bootstrap/20",
+      "json_value": {
+        "days": 217,
+        "iterations": 1000,
+        "mean": -0.644,
+        "ci_low": -1.53,
+        "ci_high": 0.301
+      },
+      "source_table": "reports/trend_engine/stages/06-m6.md#2.4",
+      "data_slice": "M6 全样本 2025-10-14~2026-10-09（217 个有效信号日，1000 次迭代）",
+      "status": "TRACED_NOT_REEXECUTED",
+      "reason": "M6 未落盘逐样本记录，无法离线重算；数值与 JSON 在三位小数舍入后一致，因此不是计算错误，而是被误标为 M6.1 结果。"
+    },
+    "B": {
+      "report_value": "[-1.61, 0.14]",
+      "json_path": "m6_summary.json#/models/B/full/bootstrap/20",
+      "json_value": {
+        "days": 219,
+        "iterations": 1000,
+        "mean": -0.687,
+        "ci_low": -1.609,
+        "ci_high": 0.14
+      },
+      "source_table": "reports/trend_engine/stages/06-m6.md#2.4",
+      "data_slice": "M6 全样本 2025-10-14~2026-10-09（219 个有效信号日，1000 次迭代）",
+      "status": "TRACED_NOT_REEXECUTED",
+      "reason": "M6 未落盘逐样本记录，无法离线重算；数值与 JSON 在三位小数舍入后一致，因此不是计算错误，而是被误标为 M6.1 结果。"
+    }
+  },
+  "verdict": {
+    "m61_bootstrap_reproduced": true,
+    "m61_bootstrap_source": "M6.1 冻结测试集（A2/B2），非 M6 全样本",
+    "acceptance_report_values_source": "M6 全样本 /models/*/full/bootstrap/20，被 09 号验收报告误当作 M6.1 bootstrap 引用",
+    "a_test_days": 3,
+    "b_test_days": 27,
+    "wf_blocks_actual": 3
+  }
+}

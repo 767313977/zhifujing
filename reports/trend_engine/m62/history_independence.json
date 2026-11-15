@@ -1,0 +1,160 @@
+{
+  "generated_at": "2026-11-15T14:22:55.443401+00:00",
+  "sources": {
+    "b1": {
+      "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+      "tables": [
+        "app_user",
+        "auction_snapshot",
+        "breadth_daily",
+        "cb_basic",
+        "cb_daily",
+        "collect_log",
+        "erp_daily",
+        "etf_bar",
+        "etf_basic",
+        "etf_category",
+        "etf_share",
+        "fear_greed_daily",
+        "futures_basis_daily",
+        "futures_position",
+        "hsgt_daily",
+        "ifind_usage",
+        "index_daily",
+        "index_valuation",
+        "invite_code",
+        "lhb",
+        "lhb_institution",
+        "limit_pool",
+        "limit_reason",
+        "margin_daily",
+        "market_sentiment",
+        "pattern_hit",
+        "review_note",
+        "rps_daily",
+        "sector_basic",
+        "sector_daily",
+        "sector_fund_flow",
+        "sector_member",
+        "sector_member_backfill",
+        "sector_member_backfill_run",
+        "stock_basic",
+        "stock_concept",
+        "stock_daily",
+        "stock_dde",
+        "stock_event_cache",
+        "stock_financial",
+        "stock_universe",
+        "trade_calendar",
+        "trade_journal",
+        "trade_plan",
+        "trade_t",
+        "user_session",
+        "volatility_daily",
+        "watchlist"
+      ],
+      "has_stock_basic": true,
+      "has_index_daily": true,
+      "has_sector_daily": true,
+      "has_rps_daily": true,
+      "has_trade_calendar": true,
+      "stock_daily_rows": 2547042,
+      "first_date": "2024-09-02",
+      "last_date": "2026-10-09",
+      "distinct_codes": 5303,
+      "stale_codes_30d": 0,
+      "trading_days": 506,
+      "last_30_trading_days_from": "2026-08-20"
+    },
+    "history": {
+      "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\history.db",
+      "tables": [
+        "stock_daily"
+      ],
+      "has_stock_basic": false,
+      "has_index_daily": false,
+      "has_sector_daily": false,
+      "has_rps_daily": false,
+      "has_trade_calendar": false,
+      "stock_daily_rows": 5820960,
+      "first_date": "2021-09-14",
+      "last_date": "2026-10-19",
+      "distinct_codes": 5108,
+      "stale_codes_30d": 0,
+      "trading_days": 1230,
+      "last_30_trading_days_from": "2026-08-28"
+    }
+  },
+  "code_overlap": {
+    "b1_codes": 5303,
+    "history_codes": 5108,
+    "intersection": 5108,
+    "history_only": 0,
+    "b1_only": 195,
+    "share_of_history_in_b1": 1.0
+  },
+  "history_experiment": {
+    "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\reports\\trend_engine\\m61\\history\\experiment_results.json",
+    "scan": [
+      "2025-10-22",
+      "2026-10-19"
+    ],
+    "splits": {
+      "train": [
+        "2025-10-22",
+        "2026-05-27"
+      ],
+      "validation": [
+        "2026-05-28",
+        "2026-08-04"
+      ],
+      "test": [
+        "2026-08-05",
+        "2026-10-19"
+      ]
+    },
+    "selected_variants": {
+      "A": "A3",
+      "B": "B0"
+    },
+    "b1_selected_variants": {
+      "A": "A2",
+      "B": "B2"
+    },
+    "frozen_test": {
+      "A": {
+        "samples": 43,
+        "excess_mean": 0.54,
+        "bootstrap": {
+          "days": 15,
+          "iterations": 500,
+          "mean": 0.433,
+          "ci_low": -1.819,
+          "ci_high": 1.974
+        },
+        "passed_validation": false,
+        "passed": false
+      },
+      "B": {
+        "samples": 419,
+        "excess_mean": 0.99,
+        "bootstrap": {
+          "days": 28,
+          "iterations": 500,
+          "mean": 1.03,
+          "ci_low": 0.339,
+          "ci_high": 1.899
+        },
+        "passed_validation": false,
+        "passed": false
+      }
+    }
+  },
+  "verdict": {
+    "independent_database": true,
+    "independent_universe": false,
+    "same_frozen_variant": false,
+    "pristine_out_of_sample": false,
+    "conclusion": "history.db 是独立数据库、独立日期区间上的复现，但证券池由当前代码集合回补，不含退市股；且按 history 自身训练集重新选参（A3/B0），未复用 b1 冻结的 A2/B2。因此只能称为『独立数据库复现』，不能称为『独立样本外验证』。"
+  }
+}
