@@ -50,6 +50,7 @@ param(
     [int]$Vcpu = 4,
     [int]$StartupMemoryGB = 6,
     [int]$DiskGB = 64,
+    [int]$HeartbeatTimeoutSeconds = 180,
     [string]$OutDir = ""
 )
 
@@ -177,8 +178,10 @@ function New-IsolatedVm {
     return $vhdPath
 }
 
-function Wait-Heartbeat {
-    $deadline = (Get-Date).AddMinutes(10)
+function Wait-Heartbeat([int]$TimeoutSeconds) {
+    # The Ubuntu installer has no Hyper-V heartbeat service until the guest
+    # integration packages are installed; keep this bounded and non-fatal.
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
         $vm = Get-VM -Name $VmName
         $hb = Get-VMIntegrationService -VMName $VmName -Name "Heartbeat" -ErrorAction SilentlyContinue
@@ -239,10 +242,10 @@ $plan.actions += "VM created with VHDX $vhd"
 if ($StartVm) {
     Start-VM -Name $VmName
     $plan.actions += "VM started"
-    $ok = Wait-Heartbeat
+    $ok = Wait-Heartbeat -TimeoutSeconds $HeartbeatTimeoutSeconds
     $plan.heartbeat_ok = $ok
     if (-not $ok) {
-        Write-Warning "Heartbeat not OK within 10 minutes; complete Ubuntu install in vmconnect."
+        Write-Warning "Heartbeat not OK within $HeartbeatTimeoutSeconds seconds (expected before guest integration services); complete Ubuntu install in vmconnect."
     }
 }
 if ($CreateBaselineCheckpoint) {
