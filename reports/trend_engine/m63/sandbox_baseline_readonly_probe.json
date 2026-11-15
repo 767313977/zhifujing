@@ -1,0 +1,264 @@
+{
+  "generated_at": "2026-11-15T14:53:11.264577+00:00",
+  "python": "3.13.13",
+  "sqlite": "3.50.4",
+  "results": [
+    {
+      "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+      "uri": "file:C:/Users/76731/Documents/trae_projects/fupan/backend/data/b1_research.db?mode=ro",
+      "before": {
+        "bytes": 1441378304,
+        "mtime_ns": 1794198192226134100
+      },
+      "before_sha256": "A93BC080EB9E366D08025C0A247E9AF525674A0294EC4D6012B7DBFD8941C56B",
+      "opened": true,
+      "query_only": 1,
+      "attempts": [
+        {
+          "statement": "create",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "insert",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "update",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "delete",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "drop",
+          "blocked": true,
+          "effect": "noop",
+          "error": null
+        },
+        {
+          "statement": "vacuum",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "reindex",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        }
+      ],
+      "after": {
+        "bytes": 1441378304,
+        "mtime_ns": 1794198192226134100
+      },
+      "after_sha256": "A93BC080EB9E366D08025C0A247E9AF525674A0294EC4D6012B7DBFD8941C56B",
+      "unchanged": true,
+      "status": "READONLY_PROVEN",
+      "query_only_before": 0,
+      "journal_mode": "wal"
+    },
+    {
+      "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\history.db",
+      "uri": "file:C:/Users/76731/Documents/trae_projects/fupan/backend/data/history.db?mode=ro",
+      "before": {
+        "bytes": 869801984,
+        "mtime_ns": 1792476878989484000
+      },
+      "before_sha256": "9267652175594871B49456253BB0437CD5738F0D19257AB8CCA961BA5F921A6A",
+      "opened": true,
+      "query_only": 1,
+      "attempts": [
+        {
+          "statement": "create",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "insert",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "update",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "delete",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "drop",
+          "blocked": true,
+          "effect": "noop",
+          "error": null
+        },
+        {
+          "statement": "vacuum",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "reindex",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        }
+      ],
+      "after": {
+        "bytes": 869801984,
+        "mtime_ns": 1792476878989484000
+      },
+      "after_sha256": "9267652175594871B49456253BB0437CD5738F0D19257AB8CCA961BA5F921A6A",
+      "unchanged": true,
+      "status": "READONLY_PROVEN",
+      "query_only_before": 0,
+      "journal_mode": "delete"
+    },
+    {
+      "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b2_final_snapshot.db",
+      "uri": "file:C:/Users/76731/Documents/trae_projects/fupan/backend/data/b2_final_snapshot.db?mode=ro",
+      "before": {
+        "bytes": 1441378304,
+        "mtime_ns": 1794198382219379900
+      },
+      "before_sha256": "371512BC81F00A604788B02AF7D4BE9467C75F28CDFB984F0187DD81001520D3",
+      "opened": true,
+      "query_only": 1,
+      "attempts": [
+        {
+          "statement": "create",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "insert",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "update",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "delete",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "drop",
+          "blocked": true,
+          "effect": "noop",
+          "error": null
+        },
+        {
+          "statement": "vacuum",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "reindex",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        }
+      ],
+      "after": {
+        "bytes": 1441378304,
+        "mtime_ns": 1794198382219379900
+      },
+      "after_sha256": "371512BC81F00A604788B02AF7D4BE9467C75F28CDFB984F0187DD81001520D3",
+      "unchanged": true,
+      "status": "READONLY_PROVEN",
+      "query_only_before": 0,
+      "journal_mode": "wal"
+    },
+    {
+      "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\fupan.db",
+      "uri": "file:C:/Users/76731/Documents/trae_projects/fupan/backend/data/fupan.db?mode=ro",
+      "before": {
+        "bytes": 513519616,
+        "mtime_ns": 1793456804862944700
+      },
+      "before_sha256": "B65D59A65AAEE286F65B91AEE70DF75FF9B34E83E6C266E69BE4C491996337EE",
+      "opened": true,
+      "query_only": 1,
+      "attempts": [
+        {
+          "statement": "create",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "insert",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "update",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "delete",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "drop",
+          "blocked": true,
+          "effect": "noop",
+          "error": null
+        },
+        {
+          "statement": "vacuum",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        },
+        {
+          "statement": "reindex",
+          "blocked": true,
+          "effect": "blocked",
+          "error": "OperationalError: attempt to write a readonly database"
+        }
+      ],
+      "after": {
+        "bytes": 513519616,
+        "mtime_ns": 1793456804862944700
+      },
+      "after_sha256": "B65D59A65AAEE286F65B91AEE70DF75FF9B34E83E6C266E69BE4C491996337EE",
+      "unchanged": true,
+      "status": "READONLY_PROVEN",
+      "query_only_before": 0,
+      "journal_mode": "wal"
+    }
+  ],
+  "all_proven": true
+}
