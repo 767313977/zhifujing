@@ -1,0 +1,17 @@
+dataset,table,effective_date,available_at,ingested_at,source,source_version,revision_id,is_final,supersedes_id,quality_status,payload_hash,coverage,pit_verdict,gate_blocking
+equity_bar,stock_daily,Y,NULL,NULL,Y,N,N,N,N,N,N,"2024-09-02~2026-10-09, 506 天, 5303 代码",NOT_PIT,Y
+index_bar,index_daily,Y,NULL,NULL,N,N,N,N,N,N,N,"2025-09-08~2026-09-24, 255 天, 滞后 5 日",NOT_PIT,Y
+sector_bar,sector_daily,Y,NULL,NULL,P,N,N,N,N,N,N,"2025-09-08~2026-09-24, 255 天, 滞后 5 日",NOT_PIT,Y
+sector_member,sector_member,Y,NULL,P,N,N,N,N,N,N,N,"2026-07-03~2026-09-24, 60 天, 3.6M 行",PARTIAL,Y
+rps,rps_daily,Y,NULL,NULL,N,N,N,N,N,N,N,"251 天, 混版本日 2026-10-21",SUSPECT,Y
+breadth,breadth_daily,N,N,N,N,N,N,N,N,N,N,"0 行",MISSING,Y
+calendar,trade_calendar,Y,NA,N,N,N,N,N,N,N,OK,"8797 行, 至 2026-12-31",NON_PIT_OK,N
+security_status,stock_daily.name,Y,NULL,NULL,Y,N,N,N,N,N,N,"140 代码 / 67909 行含 ST",NOT_PIT,Y
+security_master,None,N,N,N,N,N,N,N,N,N,N,"无表",MISSING,Y
+industry_history,None,N,N,N,N,N,N,N,N,N,N,"仅当前快照",MISSING,Y
+market_cap_history,None,N,N,N,N,N,N,N,N,N,N,"仅当前快照",MISSING,Y
+delisting,None,N,N,N,N,N,N,N,N,N,N,"0 只退市股",MISSING,Y
+sentiment,market_sentiment,Y,NULL,NULL,N,N,N,N,N,N,N,"2025-09-08~2026-09-24, 255 天",NOT_PIT,N
+fear_greed,fear_greed_daily,Y,NULL,NULL,N,N,N,N,N,N,N,"2025-09-09~2026-09-24, 254 天",NOT_PIT,N
+limit_pool,limit_pool,Y,NULL,NULL,N,N,N,N,N,N,N,"255 天, 28225 行",NOT_PIT,N
+collect_log,collect_log,NA,Y,Y,Y,N,N,N,N,PARTIAL,N,"3139 行, 2025-09-08~2026-10-18",PARTIAL,N

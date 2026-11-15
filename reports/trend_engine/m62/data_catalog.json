@@ -1,0 +1,6940 @@
+{
+  "generated_at": "2026-11-15T14:25:12.943720+00:00",
+  "databases": {
+    "b1": {
+      "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+      "tables": [
+        {
+          "table": "app_user",
+          "rows": 1,
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "username",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "password_hash",
+              "type": "VARCHAR(256)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "is_admin",
+              "type": "BOOLEAN",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "last_login_at",
+              "type": "DATETIME",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "disabled_at",
+              "type": "DATETIME",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "created_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "auction_snapshot",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pre_close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "open",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "volume",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "turnover",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "volume_ratio",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "float_mv",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "total_mv",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "limit_up",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "limit_down",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "samples",
+              "type": "JSON",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "post_open_price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": null,
+            "max": null,
+            "distinct": 0
+          },
+          "distinct_dates": 0,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "breadth_daily",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "above_ma20",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "above_ma60",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "above_ma250",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "high60",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "low60",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "high250",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "low250",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "universe_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": null,
+            "max": null,
+            "distinct": 0
+          },
+          "distinct_dates": 0,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "cb_basic",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "bond_code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "bond_name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "stock_code",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "stock_name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "list_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "maturity_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "convert_start_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "issue_size",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "rating",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "maturity_call_price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "coupon_text",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "redeem_trigger_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "resale_trigger_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "revise_trigger_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "delist_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "terms_tried_at",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "cb_daily",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "bond_code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "prev_close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "high",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "low",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amplitude",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "turnover",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "stock_close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "stock_pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "conv_price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "conv_value",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "premium_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "ytm_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "remain_size",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "redeem_status",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "redeem_days",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "redeem_days_required",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "last_trade_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "source",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": null,
+            "max": null,
+            "distinct": 0
+          },
+          "distinct_dates": 0,
+          "pit_columns": [
+            "source"
+          ],
+          "has_ingest_time": false
+        },
+        {
+          "table": "collect_log",
+          "rows": 3139,
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "task",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "status",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "rows",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "message",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "cost_seconds",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-10-18",
+            "distinct": 259
+          },
+          "distinct_dates": 259,
+          "pit_columns": [
+            "created_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "erp_daily",
+          "rows": 15,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "index_code",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "index_name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pe_ttm",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "bond_yield",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "erp",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-09-04",
+            "max": "2026-09-24",
+            "distinct": 15
+          },
+          "distinct_dates": 15,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "etf_bar",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "open",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "high",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "low",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "prev_close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "volume",
+              "type": "BIGINT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "source",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": null,
+            "max": null,
+            "distinct": 0
+          },
+          "distinct_dates": 0,
+          "pit_columns": [
+            "source"
+          ],
+          "has_ingest_time": false
+        },
+        {
+          "table": "etf_basic",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "norm_name",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "track_index",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "fund_type",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "t0",
+              "type": "BOOLEAN",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "first_bar_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "delist_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "etf_category",
+          "rows": 1728,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "category",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "etf_share",
+          "rows": 8322,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "shares",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-09-18",
+            "max": "2026-10-16",
+            "distinct": 5
+          },
+          "distinct_dates": 5,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "fear_greed_daily",
+          "rows": 254,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "volatility",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "rsi14",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "turnover_ratio",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "margin_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "breadth",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "limit_strength",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "margin_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-09",
+            "max": "2026-09-24",
+            "distinct": 254
+          },
+          "distinct_dates": 254,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "futures_basis_daily",
+          "rows": 92,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(8)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "future_close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "spot_close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "basis_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "annual_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "days_to_expiry",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-08-25",
+            "max": "2026-09-24",
+            "distinct": 23
+          },
+          "distinct_dates": 23,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "futures_position",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "variety",
+              "type": "VARCHAR(4)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "top_net_short",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "top_change",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "citic_net_short",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "citic_change",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": null,
+            "max": null,
+            "distinct": 0
+          },
+          "distinct_dates": 0,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "hsgt_daily",
+          "rows": 494,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "channel",
+              "type": "VARCHAR(8)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "turnover",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-23",
+            "distinct": 247
+          },
+          "distinct_dates": 247,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "ifind_usage",
+          "rows": 48,
+          "columns": [
+            {
+              "name": "usage_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "server",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "tool",
+              "type": "VARCHAR(64)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "calls",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "index_daily",
+          "rows": 1530,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "up_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "down_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "limit_up_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "limit_down_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-24",
+            "distinct": 255
+          },
+          "distinct_dates": 255,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "index_valuation",
+          "rows": 4039,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "index_code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pe_ttm",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pb",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "source",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2016-10-24",
+            "max": "2026-10-30",
+            "distinct": 529
+          },
+          "distinct_dates": 529,
+          "pit_columns": [
+            "source"
+          ],
+          "has_ingest_time": false
+        },
+        {
+          "table": "invite_code",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "note",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "used_by",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "used_at",
+              "type": "DATETIME",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "disabled_at",
+              "type": "DATETIME",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "created_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "lhb",
+          "rows": 21236,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "reason",
+              "type": "VARCHAR(128)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "net_buy",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "buy_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "sell_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "interpretation",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-24",
+            "distinct": 255
+          },
+          "distinct_dates": 255,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "lhb_institution",
+          "rows": 12607,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "reason",
+              "type": "VARCHAR(128)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "buy_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "sell_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "buy_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "sell_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "net_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-24",
+            "distinct": 255
+          },
+          "distinct_dates": 255,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "limit_pool",
+          "rows": 28225,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "pool_type",
+              "type": "VARCHAR(8)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "float_mv",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "total_mv",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "turnover",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "seal_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "first_seal_time",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "last_seal_time",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "open_times",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "consecutive",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "industry",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-24",
+            "distinct": 255
+          },
+          "distinct_dates": 255,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "limit_reason",
+          "rows": 16930,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "reason",
+              "type": "VARCHAR(128)",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-17",
+            "max": "2026-09-24",
+            "distinct": 248
+          },
+          "distinct_dates": 248,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "margin_daily",
+          "rows": 508,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "market",
+              "type": "VARCHAR(8)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "financing_balance",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "financing_buy",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "securities_balance",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-23",
+            "distinct": 254
+          },
+          "distinct_dates": 254,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "market_sentiment",
+          "rows": 255,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "limit_up_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "limit_down_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "broken_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "seal_rate",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "broken_rate",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "max_consecutive",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "up_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "down_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "total_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "yesterday_limit_today_avg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "up5_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "down5_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-24",
+            "distinct": 255
+          },
+          "distinct_dates": 255,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "pattern_hit",
+          "rows": 20637,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "pattern",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "score",
+              "type": "FLOAT",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "key_levels",
+              "type": "JSON",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "detail",
+              "type": "JSON",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-05-14",
+            "max": "2026-10-09",
+            "distinct": 26
+          },
+          "distinct_dates": 26,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "review_note",
+          "rows": 1,
+          "columns": [
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "market_view",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "next_plan",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-09-17",
+            "max": "2026-09-17",
+            "distinct": 1
+          },
+          "distinct_dates": 1,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "rps_daily",
+          "rows": 1274587,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "ret120",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "ret250",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "rps120",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "rps250",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "ret50",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "rps50",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "ret20",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "ret60",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "rps20",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "rps60",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-22",
+            "max": "2026-10-21",
+            "distinct": 251
+          },
+          "distinct_dates": 251,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "sector_basic",
+          "rows": 374,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(64)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "taxonomy",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "sector_daily",
+          "rows": 94771,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "sector_code",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "taxonomy",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "volume",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "net_inflow",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "up_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "down_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "member_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "leader_name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "leader_pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "source",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "strength",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-24",
+            "distinct": 255
+          },
+          "distinct_dates": 255,
+          "pit_columns": [
+            "source"
+          ],
+          "has_ingest_time": false
+        },
+        {
+          "table": "sector_fund_flow",
+          "rows": 953,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "taxonomy",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "in_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "out_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "net_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "member_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "leader_name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "leader_pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-09-22",
+            "max": "2026-09-23",
+            "distinct": 2
+          },
+          "distinct_dates": 2,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "sector_member",
+          "rows": 3646796,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "sector_code",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "turnover",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "fetched_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-07-03",
+            "max": "2026-09-24",
+            "distinct": 60
+          },
+          "distinct_dates": 60,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "sector_member_backfill",
+          "rows": 16190,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "TEXT",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "sector_code",
+              "type": "TEXT",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "board_name",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "taxonomy",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "status",
+              "type": "TEXT",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "reported",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "unique_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "written",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "attempts",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "last_error",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "TEXT",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-07-03",
+            "max": "2026-09-24",
+            "distinct": 60
+          },
+          "distinct_dates": 60,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "sector_member_backfill_run",
+          "rows": 21,
+          "columns": [
+            {
+              "name": "run_id",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": true
+            },
+            {
+              "name": "started_at",
+              "type": "TEXT",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "finished_at",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "db_path",
+              "type": "TEXT",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "args_json",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "summary_json",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "stock_basic",
+          "rows": 5572,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "industry",
+              "type": "VARCHAR(128)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "total_mv",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "float_mv",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "free_float_shares",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pe_forecast",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "asof",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "stock_concept",
+          "rows": 25382,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "concept",
+              "type": "VARCHAR(64)",
+              "notnull": true,
+              "pk": true
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-03-05",
+            "max": "2026-09-28",
+            "distinct": 384
+          },
+          "distinct_dates": 384,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "stock_daily",
+          "rows": 2547042,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "open",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "high",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "low",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "volume",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "turnover",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2024-09-02",
+            "max": "2026-10-09",
+            "distinct": 506
+          },
+          "distinct_dates": 506,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "stock_dde",
+          "rows": 58137,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "net_inflow",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "dde",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-06-11",
+            "max": "2026-09-24",
+            "distinct": 75
+          },
+          "distinct_dates": 75,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "stock_event_cache",
+          "rows": 4,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "kind",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "fetched_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "payload",
+              "type": "JSON",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "stock_financial",
+          "rows": 4,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "report_period",
+              "type": "DATE",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "revenue",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "revenue_yoy",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "net_profit",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "net_profit_yoy",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "roe",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "gross_margin",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "debt_ratio",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "fetched_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "deducted_net_profit",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "deducted_net_profit_yoy",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "eps",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "ocf_per_share",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "stock_universe",
+          "rows": 5261,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "avg_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "total_mv",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "trade_calendar",
+          "rows": 8797,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "1990-12-19",
+            "max": "2026-12-31",
+            "distinct": 8797
+          },
+          "distinct_dates": 8797,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "trade_journal",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "entry_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "entry_price",
+              "type": "FLOAT",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "exit_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "exit_price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "position_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "reason_type",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "reason_key",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "reason_text",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "plan_stop",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "note",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "shares",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "created_at",
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "trade_plan",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "plan_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "buy_price",
+              "type": "FLOAT",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "stop_price",
+              "type": "FLOAT",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "note",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "created_at",
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "trade_t",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "trade_id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "leg2_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "direction",
+              "type": "VARCHAR(8)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "buy_price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "sell_price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "ratio_pct",
+              "type": "FLOAT",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "trigger",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "note",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": null,
+            "max": null,
+            "distinct": 0
+          },
+          "distinct_dates": 0,
+          "pit_columns": [
+            "created_at",
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "user_session",
+          "rows": 6,
+          "columns": [
+            {
+              "name": "token_hash",
+              "type": "VARCHAR(64)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "expires_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "user_agent",
+              "type": "VARCHAR(200)",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "created_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "volatility_daily",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "open",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "high",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "low",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": null,
+            "max": null,
+            "distinct": 0
+          },
+          "distinct_dates": 0,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "watchlist",
+          "rows": 1,
+          "columns": [
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "tags",
+              "type": "JSON",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "note",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "added_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [],
+          "has_ingest_time": false
+        }
+      ],
+      "indexes": [
+        {
+          "table": "app_user",
+          "name": "sqlite_autoindex_app_user_1",
+          "sql": null
+        },
+        {
+          "table": "auction_snapshot",
+          "name": "sqlite_autoindex_auction_snapshot_1",
+          "sql": null
+        },
+        {
+          "table": "breadth_daily",
+          "name": "sqlite_autoindex_breadth_daily_1",
+          "sql": null
+        },
+        {
+          "table": "cb_basic",
+          "name": "sqlite_autoindex_cb_basic_1",
+          "sql": null
+        },
+        {
+          "table": "cb_daily",
+          "name": "sqlite_autoindex_cb_daily_1",
+          "sql": null
+        },
+        {
+          "table": "erp_daily",
+          "name": "sqlite_autoindex_erp_daily_1",
+          "sql": null
+        },
+        {
+          "table": "etf_bar",
+          "name": "sqlite_autoindex_etf_bar_1",
+          "sql": null
+        },
+        {
+          "table": "etf_basic",
+          "name": "sqlite_autoindex_etf_basic_1",
+          "sql": null
+        },
+        {
+          "table": "etf_category",
+          "name": "sqlite_autoindex_etf_category_1",
+          "sql": null
+        },
+        {
+          "table": "etf_share",
+          "name": "sqlite_autoindex_etf_share_1",
+          "sql": null
+        },
+        {
+          "table": "fear_greed_daily",
+          "name": "sqlite_autoindex_fear_greed_daily_1",
+          "sql": null
+        },
+        {
+          "table": "futures_basis_daily",
+          "name": "sqlite_autoindex_futures_basis_daily_1",
+          "sql": null
+        },
+        {
+          "table": "futures_position",
+          "name": "sqlite_autoindex_futures_position_1",
+          "sql": null
+        },
+        {
+          "table": "hsgt_daily",
+          "name": "sqlite_autoindex_hsgt_daily_1",
+          "sql": null
+        },
+        {
+          "table": "ifind_usage",
+          "name": "sqlite_autoindex_ifind_usage_1",
+          "sql": null
+        },
+        {
+          "table": "index_daily",
+          "name": "ix_index_daily_code_date",
+          "sql": "CREATE INDEX ix_index_daily_code_date ON index_daily (code, trade_date)"
+        },
+        {
+          "table": "index_daily",
+          "name": "sqlite_autoindex_index_daily_1",
+          "sql": null
+        },
+        {
+          "table": "index_valuation",
+          "name": "sqlite_autoindex_index_valuation_1",
+          "sql": null
+        },
+        {
+          "table": "invite_code",
+          "name": "sqlite_autoindex_invite_code_1",
+          "sql": null
+        },
+        {
+          "table": "lhb",
+          "name": "ix_lhb_code",
+          "sql": "CREATE INDEX ix_lhb_code ON lhb (code)"
+        },
+        {
+          "table": "lhb",
+          "name": "sqlite_autoindex_lhb_1",
+          "sql": null
+        },
+        {
+          "table": "lhb_institution",
+          "name": "sqlite_autoindex_lhb_institution_1",
+          "sql": null
+        },
+        {
+          "table": "limit_pool",
+          "name": "ix_limit_pool_code_date",
+          "sql": "CREATE INDEX ix_limit_pool_code_date ON limit_pool (code, trade_date)"
+        },
+        {
+          "table": "limit_pool",
+          "name": "ix_limit_pool_pooltype_date",
+          "sql": "CREATE INDEX ix_limit_pool_pooltype_date ON limit_pool (pool_type, trade_date)"
+        },
+        {
+          "table": "limit_pool",
+          "name": "ix_limit_pool_type",
+          "sql": "CREATE INDEX ix_limit_pool_type ON limit_pool (trade_date, pool_type)"
+        },
+        {
+          "table": "limit_pool",
+          "name": "sqlite_autoindex_limit_pool_1",
+          "sql": null
+        },
+        {
+          "table": "limit_reason",
+          "name": "sqlite_autoindex_limit_reason_1",
+          "sql": null
+        },
+        {
+          "table": "margin_daily",
+          "name": "sqlite_autoindex_margin_daily_1",
+          "sql": null
+        },
+        {
+          "table": "market_sentiment",
+          "name": "sqlite_autoindex_market_sentiment_1",
+          "sql": null
+        },
+        {
+          "table": "pattern_hit",
+          "name": "ix_pattern_hit_date",
+          "sql": "CREATE INDEX ix_pattern_hit_date ON pattern_hit (trade_date, pattern, score)"
+        },
+        {
+          "table": "pattern_hit",
+          "name": "sqlite_autoindex_pattern_hit_1",
+          "sql": null
+        },
+        {
+          "table": "review_note",
+          "name": "sqlite_autoindex_review_note_1",
+          "sql": null
+        },
+        {
+          "table": "rps_daily",
+          "name": "sqlite_autoindex_rps_daily_1",
+          "sql": null
+        },
+        {
+          "table": "sector_basic",
+          "name": "sqlite_autoindex_sector_basic_1",
+          "sql": null
+        },
+        {
+          "table": "sector_daily",
+          "name": "ix_sector_daily_code_date",
+          "sql": "CREATE INDEX ix_sector_daily_code_date ON sector_daily (sector_code, trade_date)"
+        },
+        {
+          "table": "sector_daily",
+          "name": "sqlite_autoindex_sector_daily_1",
+          "sql": null
+        },
+        {
+          "table": "sector_fund_flow",
+          "name": "sqlite_autoindex_sector_fund_flow_1",
+          "sql": null
+        },
+        {
+          "table": "sector_member",
+          "name": "ix_sector_member_code_date",
+          "sql": "CREATE INDEX ix_sector_member_code_date ON sector_member (code, trade_date)"
+        },
+        {
+          "table": "sector_member",
+          "name": "ix_sector_member_sector_date",
+          "sql": "CREATE INDEX ix_sector_member_sector_date ON sector_member (sector_code, trade_date)"
+        },
+        {
+          "table": "sector_member",
+          "name": "sqlite_autoindex_sector_member_1",
+          "sql": null
+        },
+        {
+          "table": "sector_member_backfill",
+          "name": "sqlite_autoindex_sector_member_backfill_1",
+          "sql": null
+        },
+        {
+          "table": "sector_member_backfill_run",
+          "name": "sqlite_autoindex_sector_member_backfill_run_1",
+          "sql": null
+        },
+        {
+          "table": "stock_basic",
+          "name": "sqlite_autoindex_stock_basic_1",
+          "sql": null
+        },
+        {
+          "table": "stock_concept",
+          "name": "ix_stock_concept_code_date",
+          "sql": "CREATE INDEX ix_stock_concept_code_date ON stock_concept (code, trade_date)"
+        },
+        {
+          "table": "stock_concept",
+          "name": "sqlite_autoindex_stock_concept_1",
+          "sql": null
+        },
+        {
+          "table": "stock_daily",
+          "name": "ix_stock_daily_code",
+          "sql": "CREATE INDEX ix_stock_daily_code ON stock_daily (code)"
+        },
+        {
+          "table": "stock_daily",
+          "name": "ix_stock_daily_code_date",
+          "sql": "CREATE INDEX ix_stock_daily_code_date ON stock_daily (code, trade_date)"
+        },
+        {
+          "table": "stock_daily",
+          "name": "sqlite_autoindex_stock_daily_1",
+          "sql": null
+        },
+        {
+          "table": "stock_dde",
+          "name": "ix_stock_dde_code_date",
+          "sql": "CREATE INDEX ix_stock_dde_code_date ON stock_dde (code, trade_date)"
+        },
+        {
+          "table": "stock_dde",
+          "name": "sqlite_autoindex_stock_dde_1",
+          "sql": null
+        },
+        {
+          "table": "stock_event_cache",
+          "name": "sqlite_autoindex_stock_event_cache_1",
+          "sql": null
+        },
+        {
+          "table": "stock_financial",
+          "name": "sqlite_autoindex_stock_financial_1",
+          "sql": null
+        },
+        {
+          "table": "stock_universe",
+          "name": "sqlite_autoindex_stock_universe_1",
+          "sql": null
+        },
+        {
+          "table": "trade_calendar",
+          "name": "sqlite_autoindex_trade_calendar_1",
+          "sql": null
+        },
+        {
+          "table": "trade_journal",
+          "name": "ix_trade_journal_user_entry",
+          "sql": "CREATE INDEX ix_trade_journal_user_entry ON trade_journal (user_id, entry_date)"
+        },
+        {
+          "table": "trade_plan",
+          "name": "ix_trade_plan_user_date",
+          "sql": "CREATE INDEX ix_trade_plan_user_date ON trade_plan (user_id, plan_date)"
+        },
+        {
+          "table": "trade_plan",
+          "name": "ux_trade_plan_user_code_date",
+          "sql": "CREATE UNIQUE INDEX ux_trade_plan_user_code_date ON trade_plan (user_id, code, plan_date)"
+        },
+        {
+          "table": "trade_t",
+          "name": "ix_trade_t_trade",
+          "sql": "CREATE INDEX ix_trade_t_trade ON trade_t (trade_id, trade_date)"
+        },
+        {
+          "table": "trade_t",
+          "name": "ix_trade_t_user_date",
+          "sql": "CREATE INDEX ix_trade_t_user_date ON trade_t (user_id, trade_date)"
+        },
+        {
+          "table": "user_session",
+          "name": "sqlite_autoindex_user_session_1",
+          "sql": null
+        },
+        {
+          "table": "volatility_daily",
+          "name": "sqlite_autoindex_volatility_daily_1",
+          "sql": null
+        },
+        {
+          "table": "watchlist",
+          "name": "sqlite_autoindex_watchlist_1",
+          "sql": null
+        }
+      ]
+    },
+    "history": {
+      "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\history.db",
+      "tables": [
+        {
+          "table": "stock_daily",
+          "rows": 5820960,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "open",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "high",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "low",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "volume",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "turnover",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2021-09-14",
+            "max": "2026-10-19",
+            "distinct": 1230
+          },
+          "distinct_dates": 1230,
+          "pit_columns": [],
+          "has_ingest_time": false
+        }
+      ],
+      "indexes": [
+        {
+          "table": "stock_daily",
+          "name": "ix_stock_daily_code",
+          "sql": "CREATE INDEX ix_stock_daily_code ON stock_daily (code)"
+        },
+        {
+          "table": "stock_daily",
+          "name": "sqlite_autoindex_stock_daily_1",
+          "sql": null
+        }
+      ]
+    },
+    "fupan": {
+      "path": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\fupan.db",
+      "tables": [
+        {
+          "table": "app_user",
+          "rows": 1,
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "username",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "password_hash",
+              "type": "VARCHAR(256)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "is_admin",
+              "type": "BOOLEAN",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "last_login_at",
+              "type": "DATETIME",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "disabled_at",
+              "type": "DATETIME",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "created_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "auction_snapshot",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pre_close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "open",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "volume",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "turnover",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "volume_ratio",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "float_mv",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "total_mv",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "limit_up",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "limit_down",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "samples",
+              "type": "JSON",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "post_open_price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": null,
+            "max": null,
+            "distinct": 0
+          },
+          "distinct_dates": 0,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "breadth_daily",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "above_ma20",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "above_ma60",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "above_ma250",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "high60",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "low60",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "high250",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "low250",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "universe_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": null,
+            "max": null,
+            "distinct": 0
+          },
+          "distinct_dates": 0,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "cb_basic",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "bond_code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "bond_name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "stock_code",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "stock_name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "list_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "maturity_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "convert_start_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "issue_size",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "rating",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "maturity_call_price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "coupon_text",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "redeem_trigger_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "resale_trigger_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "revise_trigger_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "delist_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "terms_tried_at",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "cb_daily",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "bond_code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "prev_close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "high",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "low",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amplitude",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "turnover",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "stock_close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "stock_pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "conv_price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "conv_value",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "premium_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "ytm_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "remain_size",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "redeem_status",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "redeem_days",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "redeem_days_required",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "last_trade_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "source",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": null,
+            "max": null,
+            "distinct": 0
+          },
+          "distinct_dates": 0,
+          "pit_columns": [
+            "source"
+          ],
+          "has_ingest_time": false
+        },
+        {
+          "table": "collect_log",
+          "rows": 3139,
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "task",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "status",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "rows",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "message",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "cost_seconds",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-10-18",
+            "distinct": 259
+          },
+          "distinct_dates": 259,
+          "pit_columns": [
+            "created_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "erp_daily",
+          "rows": 15,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "index_code",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "index_name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pe_ttm",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "bond_yield",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "erp",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-09-04",
+            "max": "2026-09-24",
+            "distinct": 15
+          },
+          "distinct_dates": 15,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "etf_bar",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "open",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "high",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "low",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "prev_close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "volume",
+              "type": "BIGINT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "source",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": null,
+            "max": null,
+            "distinct": 0
+          },
+          "distinct_dates": 0,
+          "pit_columns": [
+            "source"
+          ],
+          "has_ingest_time": false
+        },
+        {
+          "table": "etf_basic",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "norm_name",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "track_index",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "fund_type",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "t0",
+              "type": "BOOLEAN",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "first_bar_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "delist_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "etf_category",
+          "rows": 1728,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "category",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "etf_share",
+          "rows": 8322,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "shares",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-09-18",
+            "max": "2026-10-16",
+            "distinct": 5
+          },
+          "distinct_dates": 5,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "fear_greed_daily",
+          "rows": 254,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "volatility",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "rsi14",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "turnover_ratio",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "margin_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "breadth",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "limit_strength",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "margin_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-09",
+            "max": "2026-09-24",
+            "distinct": 254
+          },
+          "distinct_dates": 254,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "futures_basis_daily",
+          "rows": 92,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(8)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "future_close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "spot_close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "basis_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "annual_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "days_to_expiry",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-08-25",
+            "max": "2026-09-24",
+            "distinct": 23
+          },
+          "distinct_dates": 23,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "futures_position",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "variety",
+              "type": "VARCHAR(4)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "top_net_short",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "top_change",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "citic_net_short",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "citic_change",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": null,
+            "max": null,
+            "distinct": 0
+          },
+          "distinct_dates": 0,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "hsgt_daily",
+          "rows": 494,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "channel",
+              "type": "VARCHAR(8)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "turnover",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-23",
+            "distinct": 247
+          },
+          "distinct_dates": 247,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "ifind_usage",
+          "rows": 48,
+          "columns": [
+            {
+              "name": "usage_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "server",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "tool",
+              "type": "VARCHAR(64)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "calls",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "index_daily",
+          "rows": 1530,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "up_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "down_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "limit_up_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "limit_down_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-24",
+            "distinct": 255
+          },
+          "distinct_dates": 255,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "index_valuation",
+          "rows": 4039,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "index_code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pe_ttm",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pb",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "source",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2016-10-24",
+            "max": "2026-10-30",
+            "distinct": 529
+          },
+          "distinct_dates": 529,
+          "pit_columns": [
+            "source"
+          ],
+          "has_ingest_time": false
+        },
+        {
+          "table": "invite_code",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "note",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "used_by",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "used_at",
+              "type": "DATETIME",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "disabled_at",
+              "type": "DATETIME",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "created_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "lhb",
+          "rows": 21236,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "reason",
+              "type": "VARCHAR(128)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "net_buy",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "buy_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "sell_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "interpretation",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-24",
+            "distinct": 255
+          },
+          "distinct_dates": 255,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "lhb_institution",
+          "rows": 12607,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "reason",
+              "type": "VARCHAR(128)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "buy_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "sell_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "buy_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "sell_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "net_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-24",
+            "distinct": 255
+          },
+          "distinct_dates": 255,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "limit_pool",
+          "rows": 28225,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "pool_type",
+              "type": "VARCHAR(8)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "float_mv",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "total_mv",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "turnover",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "seal_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "first_seal_time",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "last_seal_time",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "open_times",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "consecutive",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "industry",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-24",
+            "distinct": 255
+          },
+          "distinct_dates": 255,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "limit_reason",
+          "rows": 16930,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "reason",
+              "type": "VARCHAR(128)",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-17",
+            "max": "2026-09-24",
+            "distinct": 248
+          },
+          "distinct_dates": 248,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "margin_daily",
+          "rows": 508,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "market",
+              "type": "VARCHAR(8)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "financing_balance",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "financing_buy",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "securities_balance",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-23",
+            "distinct": 254
+          },
+          "distinct_dates": 254,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "market_sentiment",
+          "rows": 255,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "limit_up_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "limit_down_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "broken_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "seal_rate",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "broken_rate",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "max_consecutive",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "up_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "down_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "total_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "yesterday_limit_today_avg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "up5_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "down5_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-24",
+            "distinct": 255
+          },
+          "distinct_dates": 255,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "pattern_hit",
+          "rows": 20637,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "pattern",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "score",
+              "type": "FLOAT",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "key_levels",
+              "type": "JSON",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "detail",
+              "type": "JSON",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-05-14",
+            "max": "2026-10-09",
+            "distinct": 26
+          },
+          "distinct_dates": 26,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "review_note",
+          "rows": 1,
+          "columns": [
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "market_view",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "next_plan",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-09-17",
+            "max": "2026-09-17",
+            "distinct": 1
+          },
+          "distinct_dates": 1,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "rps_daily",
+          "rows": 10206,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "ret120",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "ret250",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "rps120",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "rps250",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "ret50",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "rps50",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-10-09",
+            "max": "2026-10-21",
+            "distinct": 2
+          },
+          "distinct_dates": 2,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "sector_basic",
+          "rows": 374,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(64)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "taxonomy",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "sector_daily",
+          "rows": 94771,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "sector_code",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "taxonomy",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "volume",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "net_inflow",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "up_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "down_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "member_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "leader_name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "leader_pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "source",
+              "type": "VARCHAR(16)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "strength",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-09-08",
+            "max": "2026-09-24",
+            "distinct": 255
+          },
+          "distinct_dates": 255,
+          "pit_columns": [
+            "source"
+          ],
+          "has_ingest_time": false
+        },
+        {
+          "table": "sector_fund_flow",
+          "rows": 953,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "taxonomy",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "in_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "out_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "net_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "member_count",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "leader_name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "leader_pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-09-22",
+            "max": "2026-09-23",
+            "distinct": 2
+          },
+          "distinct_dates": 2,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "sector_member",
+          "rows": 14707,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "sector_code",
+              "type": "VARCHAR(32)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "turnover",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "fetched_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-09-18",
+            "max": "2026-09-24",
+            "distinct": 5
+          },
+          "distinct_dates": 5,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "stock_basic",
+          "rows": 5572,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "industry",
+              "type": "VARCHAR(128)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "total_mv",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "float_mv",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "free_float_shares",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pe_forecast",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "asof",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "stock_concept",
+          "rows": 25382,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "concept",
+              "type": "VARCHAR(64)",
+              "notnull": true,
+              "pk": true
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2025-03-05",
+            "max": "2026-09-28",
+            "distinct": 384
+          },
+          "distinct_dates": 384,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "stock_daily",
+          "rows": 2547042,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "open",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "high",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "low",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "pct_chg",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "volume",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "turnover",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2024-09-02",
+            "max": "2026-10-09",
+            "distinct": 506
+          },
+          "distinct_dates": 506,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "stock_dde",
+          "rows": 58137,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "net_inflow",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "dde",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "2026-06-11",
+            "max": "2026-09-24",
+            "distinct": 75
+          },
+          "distinct_dates": 75,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "stock_event_cache",
+          "rows": 4,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "kind",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "fetched_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "payload",
+              "type": "JSON",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "stock_financial",
+          "rows": 4,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "report_period",
+              "type": "DATE",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "revenue",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "revenue_yoy",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "net_profit",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "net_profit_yoy",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "roe",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "gross_margin",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "debt_ratio",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "fetched_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "deducted_net_profit",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "deducted_net_profit_yoy",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "eps",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "ocf_per_share",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "stock_universe",
+          "rows": 5261,
+          "columns": [
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "avg_amount",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "total_mv",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "trade_calendar",
+          "rows": 8797,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": "1990-12-19",
+            "max": "2026-12-31",
+            "distinct": 8797
+          },
+          "distinct_dates": 8797,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "trade_journal",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "entry_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "entry_price",
+              "type": "FLOAT",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "exit_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "exit_price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "position_pct",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "reason_type",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "reason_key",
+              "type": "VARCHAR(64)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "reason_text",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "plan_stop",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "note",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "shares",
+              "type": "INTEGER",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "created_at",
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "trade_plan",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "plan_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "buy_price",
+              "type": "FLOAT",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "stop_price",
+              "type": "FLOAT",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "note",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "created_at",
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "trade_t",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "trade_id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "leg2_date",
+              "type": "DATE",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "direction",
+              "type": "VARCHAR(8)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "buy_price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "sell_price",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "ratio_pct",
+              "type": "FLOAT",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "trigger",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "note",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": null,
+            "max": null,
+            "distinct": 0
+          },
+          "distinct_dates": 0,
+          "pit_columns": [
+            "created_at",
+            "updated_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "user_session",
+          "rows": 6,
+          "columns": [
+            {
+              "name": "token_hash",
+              "type": "VARCHAR(64)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "expires_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            },
+            {
+              "name": "user_agent",
+              "type": "VARCHAR(200)",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [
+            "created_at"
+          ],
+          "has_ingest_time": true
+        },
+        {
+          "table": "volatility_daily",
+          "rows": 0,
+          "columns": [
+            {
+              "name": "trade_date",
+              "type": "DATE",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "open",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "high",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "low",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "close",
+              "type": "FLOAT",
+              "notnull": false,
+              "pk": false
+            }
+          ],
+          "date_range": {
+            "column": "trade_date",
+            "min": null,
+            "max": null,
+            "distinct": 0
+          },
+          "distinct_dates": 0,
+          "pit_columns": [],
+          "has_ingest_time": false
+        },
+        {
+          "table": "watchlist",
+          "rows": 1,
+          "columns": [
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "code",
+              "type": "VARCHAR(16)",
+              "notnull": true,
+              "pk": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(32)",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "tags",
+              "type": "JSON",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "note",
+              "type": "TEXT",
+              "notnull": false,
+              "pk": false
+            },
+            {
+              "name": "added_at",
+              "type": "DATETIME",
+              "notnull": true,
+              "pk": false
+            }
+          ],
+          "date_range": null,
+          "distinct_dates": null,
+          "pit_columns": [],
+          "has_ingest_time": false
+        }
+      ],
+      "indexes": [
+        {
+          "table": "app_user",
+          "name": "sqlite_autoindex_app_user_1",
+          "sql": null
+        },
+        {
+          "table": "auction_snapshot",
+          "name": "sqlite_autoindex_auction_snapshot_1",
+          "sql": null
+        },
+        {
+          "table": "breadth_daily",
+          "name": "sqlite_autoindex_breadth_daily_1",
+          "sql": null
+        },
+        {
+          "table": "cb_basic",
+          "name": "sqlite_autoindex_cb_basic_1",
+          "sql": null
+        },
+        {
+          "table": "cb_daily",
+          "name": "sqlite_autoindex_cb_daily_1",
+          "sql": null
+        },
+        {
+          "table": "erp_daily",
+          "name": "sqlite_autoindex_erp_daily_1",
+          "sql": null
+        },
+        {
+          "table": "etf_bar",
+          "name": "sqlite_autoindex_etf_bar_1",
+          "sql": null
+        },
+        {
+          "table": "etf_basic",
+          "name": "sqlite_autoindex_etf_basic_1",
+          "sql": null
+        },
+        {
+          "table": "etf_category",
+          "name": "sqlite_autoindex_etf_category_1",
+          "sql": null
+        },
+        {
+          "table": "etf_share",
+          "name": "sqlite_autoindex_etf_share_1",
+          "sql": null
+        },
+        {
+          "table": "fear_greed_daily",
+          "name": "sqlite_autoindex_fear_greed_daily_1",
+          "sql": null
+        },
+        {
+          "table": "futures_basis_daily",
+          "name": "sqlite_autoindex_futures_basis_daily_1",
+          "sql": null
+        },
+        {
+          "table": "futures_position",
+          "name": "sqlite_autoindex_futures_position_1",
+          "sql": null
+        },
+        {
+          "table": "hsgt_daily",
+          "name": "sqlite_autoindex_hsgt_daily_1",
+          "sql": null
+        },
+        {
+          "table": "ifind_usage",
+          "name": "sqlite_autoindex_ifind_usage_1",
+          "sql": null
+        },
+        {
+          "table": "index_daily",
+          "name": "ix_index_daily_code_date",
+          "sql": "CREATE INDEX ix_index_daily_code_date ON index_daily (code, trade_date)"
+        },
+        {
+          "table": "index_daily",
+          "name": "sqlite_autoindex_index_daily_1",
+          "sql": null
+        },
+        {
+          "table": "index_valuation",
+          "name": "sqlite_autoindex_index_valuation_1",
+          "sql": null
+        },
+        {
+          "table": "invite_code",
+          "name": "sqlite_autoindex_invite_code_1",
+          "sql": null
+        },
+        {
+          "table": "lhb",
+          "name": "ix_lhb_code",
+          "sql": "CREATE INDEX ix_lhb_code ON lhb (code)"
+        },
+        {
+          "table": "lhb",
+          "name": "sqlite_autoindex_lhb_1",
+          "sql": null
+        },
+        {
+          "table": "lhb_institution",
+          "name": "sqlite_autoindex_lhb_institution_1",
+          "sql": null
+        },
+        {
+          "table": "limit_pool",
+          "name": "ix_limit_pool_code_date",
+          "sql": "CREATE INDEX ix_limit_pool_code_date ON limit_pool (code, trade_date)"
+        },
+        {
+          "table": "limit_pool",
+          "name": "ix_limit_pool_pooltype_date",
+          "sql": "CREATE INDEX ix_limit_pool_pooltype_date ON limit_pool (pool_type, trade_date)"
+        },
+        {
+          "table": "limit_pool",
+          "name": "ix_limit_pool_type",
+          "sql": "CREATE INDEX ix_limit_pool_type ON limit_pool (trade_date, pool_type)"
+        },
+        {
+          "table": "limit_pool",
+          "name": "sqlite_autoindex_limit_pool_1",
+          "sql": null
+        },
+        {
+          "table": "limit_reason",
+          "name": "sqlite_autoindex_limit_reason_1",
+          "sql": null
+        },
+        {
+          "table": "margin_daily",
+          "name": "sqlite_autoindex_margin_daily_1",
+          "sql": null
+        },
+        {
+          "table": "market_sentiment",
+          "name": "sqlite_autoindex_market_sentiment_1",
+          "sql": null
+        },
+        {
+          "table": "pattern_hit",
+          "name": "ix_pattern_hit_date",
+          "sql": "CREATE INDEX ix_pattern_hit_date ON pattern_hit (trade_date, pattern, score)"
+        },
+        {
+          "table": "pattern_hit",
+          "name": "sqlite_autoindex_pattern_hit_1",
+          "sql": null
+        },
+        {
+          "table": "review_note",
+          "name": "sqlite_autoindex_review_note_1",
+          "sql": null
+        },
+        {
+          "table": "rps_daily",
+          "name": "sqlite_autoindex_rps_daily_1",
+          "sql": null
+        },
+        {
+          "table": "sector_basic",
+          "name": "sqlite_autoindex_sector_basic_1",
+          "sql": null
+        },
+        {
+          "table": "sector_daily",
+          "name": "ix_sector_daily_code_date",
+          "sql": "CREATE INDEX ix_sector_daily_code_date ON sector_daily (sector_code, trade_date)"
+        },
+        {
+          "table": "sector_daily",
+          "name": "sqlite_autoindex_sector_daily_1",
+          "sql": null
+        },
+        {
+          "table": "sector_fund_flow",
+          "name": "sqlite_autoindex_sector_fund_flow_1",
+          "sql": null
+        },
+        {
+          "table": "sector_member",
+          "name": "ix_sector_member_code_date",
+          "sql": "CREATE INDEX ix_sector_member_code_date ON sector_member (code, trade_date)"
+        },
+        {
+          "table": "sector_member",
+          "name": "ix_sector_member_sector_date",
+          "sql": "CREATE INDEX ix_sector_member_sector_date ON sector_member (sector_code, trade_date)"
+        },
+        {
+          "table": "sector_member",
+          "name": "sqlite_autoindex_sector_member_1",
+          "sql": null
+        },
+        {
+          "table": "stock_basic",
+          "name": "sqlite_autoindex_stock_basic_1",
+          "sql": null
+        },
+        {
+          "table": "stock_concept",
+          "name": "ix_stock_concept_code_date",
+          "sql": "CREATE INDEX ix_stock_concept_code_date ON stock_concept (code, trade_date)"
+        },
+        {
+          "table": "stock_concept",
+          "name": "sqlite_autoindex_stock_concept_1",
+          "sql": null
+        },
+        {
+          "table": "stock_daily",
+          "name": "ix_stock_daily_code",
+          "sql": "CREATE INDEX ix_stock_daily_code ON stock_daily (code)"
+        },
+        {
+          "table": "stock_daily",
+          "name": "ix_stock_daily_code_date",
+          "sql": "CREATE INDEX ix_stock_daily_code_date ON stock_daily (code, trade_date)"
+        },
+        {
+          "table": "stock_daily",
+          "name": "sqlite_autoindex_stock_daily_1",
+          "sql": null
+        },
+        {
+          "table": "stock_dde",
+          "name": "ix_stock_dde_code_date",
+          "sql": "CREATE INDEX ix_stock_dde_code_date ON stock_dde (code, trade_date)"
+        },
+        {
+          "table": "stock_dde",
+          "name": "sqlite_autoindex_stock_dde_1",
+          "sql": null
+        },
+        {
+          "table": "stock_event_cache",
+          "name": "sqlite_autoindex_stock_event_cache_1",
+          "sql": null
+        },
+        {
+          "table": "stock_financial",
+          "name": "sqlite_autoindex_stock_financial_1",
+          "sql": null
+        },
+        {
+          "table": "stock_universe",
+          "name": "sqlite_autoindex_stock_universe_1",
+          "sql": null
+        },
+        {
+          "table": "trade_calendar",
+          "name": "sqlite_autoindex_trade_calendar_1",
+          "sql": null
+        },
+        {
+          "table": "trade_journal",
+          "name": "ix_trade_journal_user_entry",
+          "sql": "CREATE INDEX ix_trade_journal_user_entry ON trade_journal (user_id, entry_date)"
+        },
+        {
+          "table": "trade_plan",
+          "name": "ix_trade_plan_user_date",
+          "sql": "CREATE INDEX ix_trade_plan_user_date ON trade_plan (user_id, plan_date)"
+        },
+        {
+          "table": "trade_plan",
+          "name": "ux_trade_plan_user_code_date",
+          "sql": "CREATE UNIQUE INDEX ux_trade_plan_user_code_date ON trade_plan (user_id, code, plan_date)"
+        },
+        {
+          "table": "trade_t",
+          "name": "ix_trade_t_trade",
+          "sql": "CREATE INDEX ix_trade_t_trade ON trade_t (trade_id, trade_date)"
+        },
+        {
+          "table": "trade_t",
+          "name": "ix_trade_t_user_date",
+          "sql": "CREATE INDEX ix_trade_t_user_date ON trade_t (user_id, trade_date)"
+        },
+        {
+          "table": "user_session",
+          "name": "sqlite_autoindex_user_session_1",
+          "sql": null
+        },
+        {
+          "table": "volatility_daily",
+          "name": "sqlite_autoindex_volatility_daily_1",
+          "sql": null
+        },
+        {
+          "table": "watchlist",
+          "name": "sqlite_autoindex_watchlist_1",
+          "sql": null
+        }
+      ]
+    }
+  }
+}

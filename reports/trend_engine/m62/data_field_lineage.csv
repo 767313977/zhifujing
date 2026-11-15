@@ -1,0 +1,24 @@
+dataset,field,current_table,current_column,current_source,effective_semantics,available_semantics,ingested_known,revision_supported,pit_status,used_in_research,notes
+equity_bar,open/high/low/close/volume/amount,stock_daily,open/high/low/close/volume/amount,unknown_collector,交易日收盘事实,无（只能推断为收盘后）,否,否,NOT_PIT,是（价格类特征）,"仅有事实值，无 available_at/ingested_at"
+equity_bar,pct_chg,stock_daily,pct_chg,computed_by_vendor,交易日涨跌幅,无,否,否,NOT_PIT,是,依赖不复权或复权口径未记录
+equity_bar,name,stock_daily,name,unknown_collector,抓取当日名称,无（无公告时间）,否,否（可能被刷新覆盖）,NOT_PIT,否,无公告时间，无法证明当时可见
+security_status,ST/*ST,stock_daily,name,unknown_collector,名称含 ST 视为当日 ST,无,否,否,NOT_PIT,是（排除规则）,用名称反推；140 个代码、67909 行
+security_master,list_date/delist_date,none,—,none,—,—,—,—,MISSING,否,无退市股；池内末日最早 2026-09-03
+security_master,rename_history,stock_daily,name,unknown_collector,逐日名称变化,无,否,否,NOT_PIT,否,"仅 7 个代码有名称变化，且 4 个涉及 ST"
+index_bar,close/pct_chg,index_daily,close/pct_chg,unknown_collector,交易日收盘,无,否,否,NOT_PIT,是（基准/环境）,"止于 2026-09-24，滞后 5 个交易日"
+index_bar,up_count/down_count,index_daily,up_count/down_count,unknown_collector,交易日统计,无,否,否,NOT_PIT,否,与逐股计算口径未核对
+sector_bar,pct_chg/amount/volume,sector_daily,pct_chg/amount/volume,source 列,交易日收盘,无,否,否,NOT_PIT,是（板块特征）,止于 2026-09-24
+sector_bar,up_count/down_count/member_count,sector_daily,up_count/down_count/member_count,source 列,交易日统计,无,否,否,NOT_PIT,是,"分母口径未记录"
+sector_member,constituents,sector_member,code,unknown_collector,抓取当日成分,仅 fetched_at（抓取时刻）,部分（fetched_at）,否,PARTIAL,是（板块强度）,只有 60 个交易日
+rps,ret20/60/120/250,rps_daily,ret*,internal_compute,交易日计算值,无（计算完成时间未记录）,否,否,NOT_PIT,是,RPS 作为正向因子在 A 上 IC 为负
+rps,rps20/60/120/250,rps_daily,rps*,internal_compute,交易日横截面排名,无,否,否,NOT_PIT,是,"2026-10-21 为混版本日（ret20/60 全空）"
+breadth,up/down/flat/above_ma/high_low,breadth_daily,—,none,—,—,—,—,MISSING,否,空表
+calendar,trade_date,trade_calendar,trade_date,unknown,交易日,不适用,否,否,NON_PIT_OK,是（日期轴）,预置至 2026-12-31
+industry,industry,stock_basic,industry,unknown_snapshot,当前行业,无,是（updated_at）,否,NOT_PIT,是（分层）,单快照回填历史
+market_cap,total_mv/float_mv,stock_basic,"total_mv,float_mv",unknown_snapshot,当前快照,无,是（updated_at/asof）,否,NOT_PIT,是（分层）,单快照回填历史
+universe,pool,stock_universe,code,unknown_snapshot,当前证券池,无,是（updated_at）,否,NOT_PIT,是（股票池）,5261 行单快照
+sentiment,limit_up/down/seal_rate,market_sentiment,*,unknown_collector,交易日统计,无,否,否,NOT_PIT,是（环境）,止于 2026-09-24
+fear_greed,volatility/rsi14/breadth,fear_greed_daily,*,internal_compute,交易日计算,无,否,否,NOT_PIT,否,其 breadth 字段与 breadth_daily 不同源
+limit_pool,涨停/跌停名单,limit_pool,*,unknown_collector,交易日名单,无（first_seal_time 为盘中时间）,否,否,NOT_PIT,否,仅作情绪辅助
+pattern_hit,形态命中,pattern_hit,pattern,internal_compute,交易日命中,无,否,否,NOT_PIT,否,仅 26 个交易日
+collect_log,采集时间,collect_log,created_at,collector,采集作业时间,即入库时间,是,否,PARTIAL,否,"3139 行，无法与逐条行情对齐"

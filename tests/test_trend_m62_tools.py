@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import sys
 from datetime import date
 from pathlib import Path
@@ -11,7 +12,47 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
+import m62_catalog_data as catalog  # noqa: E402
 import m62_reconcile_m61_evidence as recon  # noqa: E402
+
+
+def _catalog_db(path: Path) -> None:
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("CREATE TABLE stock_daily (code TEXT, trade_date TEXT, close REAL)")
+        connection.execute("CREATE TABLE rps_daily (code TEXT, trade_date TEXT, ret20 REAL, updated_at TEXT)")
+        connection.execute("INSERT INTO stock_daily VALUES ('000001', '2026-01-05', 10.0)")
+        connection.execute("INSERT INTO stock_daily VALUES ('000001', '2026-01-06', 10.5)")
+        connection.execute("CREATE INDEX idx_stock_daily_date ON stock_daily (trade_date)")
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_table_profile_reports_range_and_pit_columns(tmp_path: Path) -> None:
+    db = tmp_path / "sample.db"
+    _catalog_db(db)
+    connection = catalog.open_ro(db)
+    try:
+        profile = catalog.table_profile(connection, "rps_daily")
+    finally:
+        connection.close()
+    assert profile["rows"] == 0
+    assert profile["date_range"] == {"column": "trade_date", "min": None, "max": None, "distinct": 0}
+    assert profile["pit_columns"] == ["updated_at"]
+    assert profile["has_ingest_time"] is True
+
+
+def test_database_profile_lists_tables_and_indexes(tmp_path: Path) -> None:
+    db = tmp_path / "sample.db"
+    _catalog_db(db)
+    profile = catalog.database_profile(db)
+    tables = {item["table"] for item in profile["tables"]}
+    assert tables == {"stock_daily", "rps_daily"}
+    assert any(index["name"] == "idx_stock_daily_date" for index in profile["indexes"])
+    stock = [item for item in profile["tables"] if item["table"] == "stock_daily"][0]
+    assert stock["date_range"]["distinct"] == 2
+    assert stock["has_ingest_time"] is False
 
 
 def test_purged_blocks_generates_three_test_blocks() -> None:

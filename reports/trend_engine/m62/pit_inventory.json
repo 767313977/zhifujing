@@ -1,0 +1,1080 @@
+{
+  "generated_at": "2026-11-15T14:26:10.516622+00:00",
+  "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+  "stock_daily": {
+    "latest_date": "2026-10-09",
+    "st_rows": 67909,
+    "st_codes": 140,
+    "codes_with_name_change": 7,
+    "earliest_last_date": "2026-09-03",
+    "latest_last_date": "2026-10-09",
+    "codes_stale_more_than_30_trading_days": 0
+  },
+  "stock_basic": {
+    "asof_min": "2026-09-30",
+    "asof_max": "2026-09-30",
+    "rows": 5572
+  },
+  "stock_universe": {
+    "updated_at_min": "2026-09-30 11:26:13.005458",
+    "updated_at_max": "2026-09-30 11:26:13.007153",
+    "rows": 5261
+  },
+  "rps_daily": {
+    "days": 251,
+    "first": "2025-09-22",
+    "last": "2026-10-21",
+    "days_with_null_ret": [
+      {
+        "trade_date": "2025-09-22",
+        "rows": 39
+      },
+      {
+        "trade_date": "2025-09-23",
+        "rows": 39
+      },
+      {
+        "trade_date": "2025-09-24",
+        "rows": 34
+      },
+      {
+        "trade_date": "2025-09-25",
+        "rows": 32
+      },
+      {
+        "trade_date": "2025-09-26",
+        "rows": 29
+      },
+      {
+        "trade_date": "2025-09-29",
+        "rows": 32
+      },
+      {
+        "trade_date": "2025-09-30",
+        "rows": 31
+      },
+      {
+        "trade_date": "2025-10-09",
+        "rows": 55
+      },
+      {
+        "trade_date": "2025-10-10",
+        "rows": 54
+      },
+      {
+        "trade_date": "2025-10-13",
+        "rows": 56
+      },
+      {
+        "trade_date": "2025-10-14",
+        "rows": 60
+      },
+      {
+        "trade_date": "2025-10-15",
+        "rows": 58
+      },
+      {
+        "trade_date": "2025-10-16",
+        "rows": 62
+      },
+      {
+        "trade_date": "2025-10-17",
+        "rows": 63
+      },
+      {
+        "trade_date": "2025-10-20",
+        "rows": 62
+      },
+      {
+        "trade_date": "2025-10-21",
+        "rows": 63
+      },
+      {
+        "trade_date": "2025-10-22",
+        "rows": 62
+      },
+      {
+        "trade_date": "2025-10-23",
+        "rows": 63
+      },
+      {
+        "trade_date": "2025-10-24",
+        "rows": 63
+      },
+      {
+        "trade_date": "2025-10-27",
+        "rows": 67
+      },
+      {
+        "trade_date": "2025-10-28",
+        "rows": 67
+      },
+      {
+        "trade_date": "2025-10-29",
+        "rows": 66
+      },
+      {
+        "trade_date": "2025-10-30",
+        "rows": 67
+      },
+      {
+        "trade_date": "2025-10-31",
+        "rows": 67
+      },
+      {
+        "trade_date": "2025-11-03",
+        "rows": 70
+      },
+      {
+        "trade_date": "2025-11-04",
+        "rows": 67
+      },
+      {
+        "trade_date": "2025-11-05",
+        "rows": 66
+      },
+      {
+        "trade_date": "2025-11-06",
+        "rows": 63
+      },
+      {
+        "trade_date": "2025-11-07",
+        "rows": 63
+      },
+      {
+        "trade_date": "2025-11-10",
+        "rows": 66
+      },
+      {
+        "trade_date": "2025-11-11",
+        "rows": 68
+      },
+      {
+        "trade_date": "2025-11-12",
+        "rows": 70
+      },
+      {
+        "trade_date": "2025-11-13",
+        "rows": 70
+      },
+      {
+        "trade_date": "2025-11-14",
+        "rows": 69
+      },
+      {
+        "trade_date": "2025-11-17",
+        "rows": 70
+      },
+      {
+        "trade_date": "2025-11-18",
+        "rows": 73
+      },
+      {
+        "trade_date": "2025-11-19",
+        "rows": 74
+      },
+      {
+        "trade_date": "2025-11-20",
+        "rows": 76
+      },
+      {
+        "trade_date": "2025-11-21",
+        "rows": 78
+      },
+      {
+        "trade_date": "2025-11-24",
+        "rows": 78
+      },
+      {
+        "trade_date": "2025-11-25",
+        "rows": 77
+      },
+      {
+        "trade_date": "2025-11-26",
+        "rows": 75
+      },
+      {
+        "trade_date": "2025-11-27",
+        "rows": 74
+      },
+      {
+        "trade_date": "2025-11-28",
+        "rows": 48
+      },
+      {
+        "trade_date": "2025-12-01",
+        "rows": 52
+      },
+      {
+        "trade_date": "2025-12-02",
+        "rows": 54
+      },
+      {
+        "trade_date": "2025-12-03",
+        "rows": 54
+      },
+      {
+        "trade_date": "2025-12-04",
+        "rows": 53
+      },
+      {
+        "trade_date": "2025-12-05",
+        "rows": 50
+      },
+      {
+        "trade_date": "2025-12-08",
+        "rows": 53
+      },
+      {
+        "trade_date": "2025-12-09",
+        "rows": 55
+      },
+      {
+        "trade_date": "2025-12-10",
+        "rows": 55
+      },
+      {
+        "trade_date": "2025-12-11",
+        "rows": 56
+      },
+      {
+        "trade_date": "2025-12-12",
+        "rows": 54
+      },
+      {
+        "trade_date": "2025-12-15",
+        "rows": 55
+      },
+      {
+        "trade_date": "2025-12-16",
+        "rows": 53
+      },
+      {
+        "trade_date": "2025-12-17",
+        "rows": 54
+      },
+      {
+        "trade_date": "2025-12-18",
+        "rows": 57
+      },
+      {
+        "trade_date": "2025-12-19",
+        "rows": 56
+      },
+      {
+        "trade_date": "2025-12-22",
+        "rows": 57
+      },
+      {
+        "trade_date": "2025-12-23",
+        "rows": 57
+      },
+      {
+        "trade_date": "2025-12-24",
+        "rows": 55
+      },
+      {
+        "trade_date": "2025-12-25",
+        "rows": 55
+      },
+      {
+        "trade_date": "2025-12-26",
+        "rows": 57
+      },
+      {
+        "trade_date": "2025-12-29",
+        "rows": 60
+      },
+      {
+        "trade_date": "2025-12-30",
+        "rows": 60
+      },
+      {
+        "trade_date": "2025-12-31",
+        "rows": 57
+      },
+      {
+        "trade_date": "2026-01-05",
+        "rows": 57
+      },
+      {
+        "trade_date": "2026-01-06",
+        "rows": 58
+      },
+      {
+        "trade_date": "2026-01-07",
+        "rows": 60
+      },
+      {
+        "trade_date": "2026-01-08",
+        "rows": 57
+      },
+      {
+        "trade_date": "2026-01-09",
+        "rows": 56
+      },
+      {
+        "trade_date": "2026-01-12",
+        "rows": 57
+      },
+      {
+        "trade_date": "2026-01-13",
+        "rows": 56
+      },
+      {
+        "trade_date": "2026-01-14",
+        "rows": 54
+      },
+      {
+        "trade_date": "2026-01-15",
+        "rows": 59
+      },
+      {
+        "trade_date": "2026-01-16",
+        "rows": 60
+      },
+      {
+        "trade_date": "2026-01-19",
+        "rows": 62
+      },
+      {
+        "trade_date": "2026-01-20",
+        "rows": 69
+      },
+      {
+        "trade_date": "2026-01-21",
+        "rows": 70
+      },
+      {
+        "trade_date": "2026-01-22",
+        "rows": 68
+      },
+      {
+        "trade_date": "2026-01-23",
+        "rows": 65
+      },
+      {
+        "trade_date": "2026-01-26",
+        "rows": 63
+      },
+      {
+        "trade_date": "2026-01-27",
+        "rows": 64
+      },
+      {
+        "trade_date": "2026-01-28",
+        "rows": 63
+      },
+      {
+        "trade_date": "2026-01-29",
+        "rows": 65
+      },
+      {
+        "trade_date": "2026-01-30",
+        "rows": 63
+      },
+      {
+        "trade_date": "2026-02-02",
+        "rows": 66
+      },
+      {
+        "trade_date": "2026-02-03",
+        "rows": 62
+      },
+      {
+        "trade_date": "2026-02-04",
+        "rows": 63
+      },
+      {
+        "trade_date": "2026-02-05",
+        "rows": 63
+      },
+      {
+        "trade_date": "2026-02-06",
+        "rows": 65
+      },
+      {
+        "trade_date": "2026-02-09",
+        "rows": 64
+      },
+      {
+        "trade_date": "2026-02-10",
+        "rows": 64
+      },
+      {
+        "trade_date": "2026-02-11",
+        "rows": 61
+      },
+      {
+        "trade_date": "2026-02-12",
+        "rows": 59
+      },
+      {
+        "trade_date": "2026-02-13",
+        "rows": 58
+      },
+      {
+        "trade_date": "2026-02-24",
+        "rows": 59
+      },
+      {
+        "trade_date": "2026-02-25",
+        "rows": 59
+      },
+      {
+        "trade_date": "2026-02-26",
+        "rows": 57
+      },
+      {
+        "trade_date": "2026-02-27",
+        "rows": 58
+      },
+      {
+        "trade_date": "2026-03-02",
+        "rows": 58
+      },
+      {
+        "trade_date": "2026-03-03",
+        "rows": 58
+      },
+      {
+        "trade_date": "2026-03-04",
+        "rows": 59
+      },
+      {
+        "trade_date": "2026-03-05",
+        "rows": 58
+      },
+      {
+        "trade_date": "2026-03-06",
+        "rows": 58
+      },
+      {
+        "trade_date": "2026-03-09",
+        "rows": 61
+      },
+      {
+        "trade_date": "2026-03-10",
+        "rows": 60
+      },
+      {
+        "trade_date": "2026-03-11",
+        "rows": 59
+      },
+      {
+        "trade_date": "2026-03-12",
+        "rows": 56
+      },
+      {
+        "trade_date": "2026-03-13",
+        "rows": 51
+      },
+      {
+        "trade_date": "2026-03-16",
+        "rows": 51
+      },
+      {
+        "trade_date": "2026-03-17",
+        "rows": 50
+      },
+      {
+        "trade_date": "2026-03-18",
+        "rows": 50
+      },
+      {
+        "trade_date": "2026-03-19",
+        "rows": 44
+      },
+      {
+        "trade_date": "2026-03-20",
+        "rows": 44
+      },
+      {
+        "trade_date": "2026-03-23",
+        "rows": 44
+      },
+      {
+        "trade_date": "2026-03-24",
+        "rows": 44
+      },
+      {
+        "trade_date": "2026-03-25",
+        "rows": 43
+      },
+      {
+        "trade_date": "2026-03-26",
+        "rows": 37
+      },
+      {
+        "trade_date": "2026-03-27",
+        "rows": 35
+      },
+      {
+        "trade_date": "2026-03-30",
+        "rows": 34
+      },
+      {
+        "trade_date": "2026-03-31",
+        "rows": 36
+      },
+      {
+        "trade_date": "2026-04-01",
+        "rows": 36
+      },
+      {
+        "trade_date": "2026-04-02",
+        "rows": 38
+      },
+      {
+        "trade_date": "2026-04-03",
+        "rows": 40
+      },
+      {
+        "trade_date": "2026-04-07",
+        "rows": 41
+      },
+      {
+        "trade_date": "2026-04-08",
+        "rows": 44
+      },
+      {
+        "trade_date": "2026-04-09",
+        "rows": 43
+      },
+      {
+        "trade_date": "2026-04-10",
+        "rows": 43
+      },
+      {
+        "trade_date": "2026-04-13",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-04-14",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-04-15",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-04-16",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-04-17",
+        "rows": 41
+      },
+      {
+        "trade_date": "2026-04-20",
+        "rows": 40
+      },
+      {
+        "trade_date": "2026-04-21",
+        "rows": 43
+      },
+      {
+        "trade_date": "2026-04-22",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-04-23",
+        "rows": 41
+      },
+      {
+        "trade_date": "2026-04-24",
+        "rows": 41
+      },
+      {
+        "trade_date": "2026-04-27",
+        "rows": 41
+      },
+      {
+        "trade_date": "2026-04-28",
+        "rows": 41
+      },
+      {
+        "trade_date": "2026-04-29",
+        "rows": 37
+      },
+      {
+        "trade_date": "2026-04-30",
+        "rows": 36
+      },
+      {
+        "trade_date": "2026-05-06",
+        "rows": 35
+      },
+      {
+        "trade_date": "2026-05-07",
+        "rows": 36
+      },
+      {
+        "trade_date": "2026-05-08",
+        "rows": 35
+      },
+      {
+        "trade_date": "2026-05-11",
+        "rows": 34
+      },
+      {
+        "trade_date": "2026-05-12",
+        "rows": 35
+      },
+      {
+        "trade_date": "2026-05-13",
+        "rows": 37
+      },
+      {
+        "trade_date": "2026-05-14",
+        "rows": 38
+      },
+      {
+        "trade_date": "2026-05-15",
+        "rows": 40
+      },
+      {
+        "trade_date": "2026-05-18",
+        "rows": 41
+      },
+      {
+        "trade_date": "2026-05-19",
+        "rows": 40
+      },
+      {
+        "trade_date": "2026-05-20",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-05-21",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-05-22",
+        "rows": 44
+      },
+      {
+        "trade_date": "2026-05-25",
+        "rows": 44
+      },
+      {
+        "trade_date": "2026-05-26",
+        "rows": 43
+      },
+      {
+        "trade_date": "2026-05-27",
+        "rows": 41
+      },
+      {
+        "trade_date": "2026-05-28",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-05-29",
+        "rows": 40
+      },
+      {
+        "trade_date": "2026-06-01",
+        "rows": 40
+      },
+      {
+        "trade_date": "2026-06-02",
+        "rows": 41
+      },
+      {
+        "trade_date": "2026-06-03",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-06-04",
+        "rows": 41
+      },
+      {
+        "trade_date": "2026-06-05",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-06-08",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-06-09",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-06-10",
+        "rows": 43
+      },
+      {
+        "trade_date": "2026-06-11",
+        "rows": 43
+      },
+      {
+        "trade_date": "2026-06-12",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-06-15",
+        "rows": 40
+      },
+      {
+        "trade_date": "2026-06-16",
+        "rows": 43
+      },
+      {
+        "trade_date": "2026-06-17",
+        "rows": 43
+      },
+      {
+        "trade_date": "2026-06-18",
+        "rows": 41
+      },
+      {
+        "trade_date": "2026-06-22",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-06-23",
+        "rows": 45
+      },
+      {
+        "trade_date": "2026-06-24",
+        "rows": 45
+      },
+      {
+        "trade_date": "2026-06-25",
+        "rows": 46
+      },
+      {
+        "trade_date": "2026-06-26",
+        "rows": 43
+      },
+      {
+        "trade_date": "2026-06-29",
+        "rows": 44
+      },
+      {
+        "trade_date": "2026-06-30",
+        "rows": 43
+      },
+      {
+        "trade_date": "2026-07-01",
+        "rows": 41
+      },
+      {
+        "trade_date": "2026-07-02",
+        "rows": 43
+      },
+      {
+        "trade_date": "2026-07-03",
+        "rows": 44
+      },
+      {
+        "trade_date": "2026-07-06",
+        "rows": 46
+      },
+      {
+        "trade_date": "2026-07-07",
+        "rows": 45
+      },
+      {
+        "trade_date": "2026-07-08",
+        "rows": 45
+      },
+      {
+        "trade_date": "2026-07-09",
+        "rows": 43
+      },
+      {
+        "trade_date": "2026-07-10",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-07-13",
+        "rows": 46
+      },
+      {
+        "trade_date": "2026-07-14",
+        "rows": 48
+      },
+      {
+        "trade_date": "2026-07-15",
+        "rows": 47
+      },
+      {
+        "trade_date": "2026-07-16",
+        "rows": 45
+      },
+      {
+        "trade_date": "2026-07-17",
+        "rows": 45
+      },
+      {
+        "trade_date": "2026-07-20",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-07-21",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-07-22",
+        "rows": 42
+      },
+      {
+        "trade_date": "2026-07-23",
+        "rows": 41
+      },
+      {
+        "trade_date": "2026-07-24",
+        "rows": 38
+      },
+      {
+        "trade_date": "2026-07-27",
+        "rows": 38
+      },
+      {
+        "trade_date": "2026-07-28",
+        "rows": 37
+      },
+      {
+        "trade_date": "2026-07-29",
+        "rows": 35
+      },
+      {
+        "trade_date": "2026-07-30",
+        "rows": 38
+      },
+      {
+        "trade_date": "2026-07-31",
+        "rows": 38
+      },
+      {
+        "trade_date": "2026-08-03",
+        "rows": 40
+      },
+      {
+        "trade_date": "2026-08-04",
+        "rows": 39
+      },
+      {
+        "trade_date": "2026-08-05",
+        "rows": 38
+      },
+      {
+        "trade_date": "2026-08-06",
+        "rows": 36
+      },
+      {
+        "trade_date": "2026-08-07",
+        "rows": 35
+      },
+      {
+        "trade_date": "2026-08-10",
+        "rows": 36
+      },
+      {
+        "trade_date": "2026-08-11",
+        "rows": 33
+      },
+      {
+        "trade_date": "2026-08-12",
+        "rows": 33
+      },
+      {
+        "trade_date": "2026-08-13",
+        "rows": 34
+      },
+      {
+        "trade_date": "2026-08-14",
+        "rows": 35
+      },
+      {
+        "trade_date": "2026-08-17",
+        "rows": 34
+      },
+      {
+        "trade_date": "2026-08-18",
+        "rows": 36
+      },
+      {
+        "trade_date": "2026-08-19",
+        "rows": 37
+      },
+      {
+        "trade_date": "2026-08-20",
+        "rows": 37
+      },
+      {
+        "trade_date": "2026-08-21",
+        "rows": 37
+      },
+      {
+        "trade_date": "2026-08-24",
+        "rows": 38
+      },
+      {
+        "trade_date": "2026-08-25",
+        "rows": 38
+      },
+      {
+        "trade_date": "2026-08-26",
+        "rows": 35
+      },
+      {
+        "trade_date": "2026-08-27",
+        "rows": 37
+      },
+      {
+        "trade_date": "2026-08-28",
+        "rows": 38
+      },
+      {
+        "trade_date": "2026-08-31",
+        "rows": 38
+      },
+      {
+        "trade_date": "2026-09-01",
+        "rows": 40
+      },
+      {
+        "trade_date": "2026-09-02",
+        "rows": 36
+      },
+      {
+        "trade_date": "2026-09-03",
+        "rows": 38
+      },
+      {
+        "trade_date": "2026-09-04",
+        "rows": 37
+      },
+      {
+        "trade_date": "2026-09-07",
+        "rows": 37
+      },
+      {
+        "trade_date": "2026-09-08",
+        "rows": 179
+      },
+      {
+        "trade_date": "2026-09-09",
+        "rows": 179
+      },
+      {
+        "trade_date": "2026-09-10",
+        "rows": 178
+      },
+      {
+        "trade_date": "2026-09-11",
+        "rows": 181
+      },
+      {
+        "trade_date": "2026-09-14",
+        "rows": 184
+      },
+      {
+        "trade_date": "2026-09-15",
+        "rows": 185
+      },
+      {
+        "trade_date": "2026-09-16",
+        "rows": 182
+      },
+      {
+        "trade_date": "2026-09-17",
+        "rows": 185
+      },
+      {
+        "trade_date": "2026-09-18",
+        "rows": 185
+      },
+      {
+        "trade_date": "2026-09-21",
+        "rows": 184
+      },
+      {
+        "trade_date": "2026-09-22",
+        "rows": 184
+      },
+      {
+        "trade_date": "2026-09-23",
+        "rows": 184
+      },
+      {
+        "trade_date": "2026-09-24",
+        "rows": 184
+      },
+      {
+        "trade_date": "2026-09-28",
+        "rows": 184
+      },
+      {
+        "trade_date": "2026-09-29",
+        "rows": 178
+      },
+      {
+        "trade_date": "2026-09-30",
+        "rows": 181
+      },
+      {
+        "trade_date": "2026-10-08",
+        "rows": 182
+      },
+      {
+        "trade_date": "2026-10-09",
+        "rows": 225
+      },
+      {
+        "trade_date": "2026-10-21",
+        "rows": 5091
+      }
+    ],
+    "tail": [
+      {
+        "trade_date": "2026-10-21",
+        "rows": 5091,
+        "ret20_null": 5091
+      },
+      {
+        "trade_date": "2026-10-09",
+        "rows": 5270,
+        "ret20_null": 59
+      },
+      {
+        "trade_date": "2026-10-08",
+        "rows": 5226,
+        "ret20_null": 16
+      },
+      {
+        "trade_date": "2026-09-30",
+        "rows": 5228,
+        "ret20_null": 17
+      },
+      {
+        "trade_date": "2026-09-29",
+        "rows": 5228,
+        "ret20_null": 15
+      }
+    ]
+  },
+  "sector_daily": {
+    "first": "2025-09-08",
+    "last": "2026-09-24",
+    "days": 255
+  },
+  "index_daily": {
+    "first": "2025-09-08",
+    "last": "2026-09-24",
+    "days": 255
+  },
+  "sector_member": {
+    "first": "2026-07-03",
+    "last": "2026-09-24",
+    "days": 60
+  },
+  "trade_calendar": {
+    "last": "2026-12-31",
+    "rows": 8797
+  }
+}
