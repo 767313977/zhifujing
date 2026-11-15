@@ -1,0 +1,146 @@
+{
+  "generated_at": "2026-11-15T14:54:59.979577+00:00",
+  "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+  "schema": {
+    "tables_total": 48,
+    "tables_with_factor_hint": [],
+    "price_table_columns": {
+      "stock_daily": [
+        "trade_date",
+        "code",
+        "name",
+        "open",
+        "high",
+        "low",
+        "close",
+        "pct_chg",
+        "volume",
+        "amount",
+        "turnover"
+      ],
+      "index_daily": [
+        "trade_date",
+        "code",
+        "name",
+        "close",
+        "pct_chg",
+        "amount",
+        "up_count",
+        "down_count",
+        "limit_up_count",
+        "limit_down_count"
+      ],
+      "sector_daily": [
+        "trade_date",
+        "sector_code",
+        "name",
+        "taxonomy",
+        "pct_chg",
+        "amount",
+        "volume",
+        "net_inflow",
+        "up_count",
+        "down_count",
+        "member_count",
+        "leader_name",
+        "leader_pct_chg",
+        "source",
+        "strength"
+      ],
+      "limit_pool": [
+        "trade_date",
+        "code",
+        "pool_type",
+        "name",
+        "pct_chg",
+        "price",
+        "amount",
+        "float_mv",
+        "total_mv",
+        "turnover",
+        "seal_amount",
+        "first_seal_time",
+        "last_seal_time",
+        "open_times",
+        "consecutive",
+        "industry"
+      ]
+    },
+    "factor_columns_found": {},
+    "has_adjustment_factor": false
+  },
+  "price_gaps": {
+    "mismatch_threshold_pp": 0.03,
+    "evaluated_rows": 2546772,
+    "rows": 304188,
+    "share_pct": 11.94,
+    "bands": {
+      "gt_0_03": 304188,
+      "gt_0_2": 35345,
+      "gt_0_5": 10652,
+      "gt_1": 5060,
+      "gt_5": 815,
+      "gt_20": 609
+    },
+    "codes": 3881,
+    "by_year": {
+      "2024": 64116,
+      "2025": 202577,
+      "2026": 37495
+    },
+    "top_codes": [
+      [
+        "300176",
+        435
+      ],
+      [
+        "603165",
+        427
+      ],
+      [
+        "601339",
+        409
+      ],
+      [
+        "600329",
+        386
+      ],
+      [
+        "002441",
+        385
+      ],
+      [
+        "603111",
+        382
+      ],
+      [
+        "002293",
+        381
+      ],
+      [
+        "002563",
+        378
+      ],
+      [
+        "300406",
+        373
+      ],
+      [
+        "603558",
+        369
+      ]
+    ]
+  },
+  "verdict": {
+    "adjustment_factor_available": false,
+    "corporate_action_table_available": false,
+    "real_factor_verification_possible": false,
+    "price_gap_detection_possible": true,
+    "pct_chg_consistent_with_raw_close": false,
+    "pct_raw_mismatch_rows": 304188,
+    "pct_raw_mismatch_share_pct": 11.94,
+    "signal_price_domain_status": "UNKNOWN",
+    "execution_price_domain_status": "RAW_AVAILABLE",
+    "blocking_reason": "库内无复权因子/公司行为表；且 pct_chg 与 raw close 在大样本上不一致（疑似供应商按复权基准计算涨跌幅），说明现表已混用价格域。iFinD 客户端存在但未验证历史复权因子接口，且未获批量取数授权"
+  }
+}
