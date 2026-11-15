@@ -1,0 +1,58 @@
+{
+  "generated_at": "2026-11-15T15:08:41.028053+00:00",
+  "db": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\b1_research.db",
+  "sandbox": "C:\\Users\\76731\\Documents\\trae_projects\\fupan\\backend\\data\\m63_sandbox\\m63_derived.db",
+  "rows": 506,
+  "stored_rows": 506,
+  "stock_trading_days": 506,
+  "missing_days": [],
+  "first_date": "2024-09-02",
+  "last_date": "2026-10-09",
+  "coverage_pct": 100.0,
+  "universe_min": 4938,
+  "universe_max": 5283,
+  "zero_universe_days": [],
+  "sum_check_violations": [],
+  "double_implementation": [
+    {
+      "trade_date": "2025-12-31",
+      "match": true,
+      "mismatch": {}
+    },
+    {
+      "trade_date": "2026-06-30",
+      "match": true,
+      "mismatch": {}
+    },
+    {
+      "trade_date": "2026-09-24",
+      "match": true,
+      "mismatch": {}
+    }
+  ],
+  "limit_pool_cross_check": [
+    {
+      "trade_date": "2025-12-31",
+      "approx_up": 57,
+      "pool_up": 59,
+      "approx_down": 8,
+      "pool_down": 6
+    },
+    {
+      "trade_date": "2026-06-30",
+      "approx_up": 143,
+      "pool_up": 142,
+      "approx_down": 10,
+      "pool_down": 6
+    },
+    {
+      "trade_date": "2026-09-24",
+      "approx_up": 54,
+      "pool_up": 52,
+      "approx_down": 18,
+      "pool_down": 13
+    }
+  ],
+  "rules_version": "m62_breadth_spec_v1",
+  "write_scope": "sandbox only; b1_research.db untouched"
+}
