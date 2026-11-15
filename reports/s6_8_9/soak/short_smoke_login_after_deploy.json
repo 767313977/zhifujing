@@ -1,0 +1,51 @@
+﻿{
+  "base": "http://127.0.0.1:8021",
+  "expect": "success",
+  "steps": [
+    {
+      "step": "login",
+      "state": {
+        "path": "/",
+        "rootChildren": 1,
+        "bodyLen": 923,
+        "hasLoginForm": false,
+        "hasExit": true,
+        "textHead": "致富经\n今日复盘\n盘前\n涨停复盘\n板块题材\n形态选股\n悟道\n自选股\n复盘\n▾\n选股\n▾\n交易\n▾\n个股\n▾\n系统\n▾\n1 个交易日\n最新\n2026-11-14\ns7staging\n·\n账号\n·\n退出\n结论\n涨停 40 家 · 最高 4 板\n"
+      }
+    },
+    {
+      "step": "refresh",
+      "state": {
+        "path": "/",
+        "rootChildren": 1,
+        "bodyLen": 923,
+        "hasLoginForm": false,
+        "hasExit": true,
+        "textHead": "致富经\n今日复盘\n盘前\n涨停复盘\n板块题材\n形态选股\n悟道\n自选股\n复盘\n▾\n选股\n▾\n交易\n▾\n个股\n▾\n系统\n▾\n1 个交易日\n最新\n2026-11-14\ns7staging\n·\n账号\n·\n退出\n结论\n涨停 40 家 · 最高 4 板\n"
+      }
+    },
+    {
+      "step": "deep_link",
+      "state": {
+        "path": "/limit-up",
+        "rootChildren": 1,
+        "bodyLen": 593,
+        "hasLoginForm": false,
+        "hasExit": true,
+        "textHead": "致富经\n今日复盘\n盘前\n涨停复盘\n板块题材\n形态选股\n悟道\n自选股\n复盘\n▾\n选股\n▾\n交易\n▾\n个股\n▾\n系统\n▾\n涨停复盘\n晋级漏斗\n1 只涨停\n最新\n2026-11-14\ns7staging\n·\n账号\n·\n退出\n结论\n涨停 1 家 ·"
+      }
+    },
+    {
+      "step": "logout",
+      "state": {
+        "path": "/login",
+        "rootChildren": 1,
+        "bodyLen": 74,
+        "hasLoginForm": true,
+        "hasExit": false,
+        "textHead": "致富经\nZHIFUJING\n登录\n注册\n用户名\n密码\n登录\n\n只有受邀的人才能注册 —— 需要邀请码就找站长要。\n\n陕ICP备2026027279号"
+      }
+    }
+  ],
+  "pass": true
+}

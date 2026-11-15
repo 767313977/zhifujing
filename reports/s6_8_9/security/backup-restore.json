@@ -1,0 +1,86 @@
+{
+  "generated_at": "2026-11-15T15:30:08+08:00",
+  "environment": "isolated temp DB; production untouched",
+  "db_path": "C:\\Users\\76731\\AppData\\Local\\Temp\\s6_8-backup-8ay2mjdb\\staging.db",
+  "backup_path": "C:\\Users\\76731\\AppData\\Local\\Temp\\s6_8-backup-8ay2mjdb\\staging.backup.db",
+  "db_sha256_before": "5c9dec1886cc01f5f2307ee1ea87f9b32a4cef0f8f9a2c68beebc558013bedab",
+  "backup_sha256": "a270ddcf89017ba6b52c4ecf474135548ffee0dd9690e2e2442f254b74ed12fa",
+  "backup_ms": 14.09,
+  "restore_ms": 5.12,
+  "before": {
+    "integrity": "ok",
+    "tables": {
+      "app_user": {
+        "rows": 1,
+        "sha256": "9eb5d2c4b00c226df927eff2e6550e2353d49819876217aa8cd55044c2572f0c"
+      },
+      "watchlist": {
+        "rows": 1,
+        "sha256": "39f8d2f466c5b39a67aaa0f69b23b19eeb8cd27a806e40471976ebacb0f132e7"
+      },
+      "review_note": {
+        "rows": 1,
+        "sha256": "a2224cd754a2b74a6567ad373a1843fc15012ff234f75b8e01d5f6d9843e849e"
+      }
+    }
+  },
+  "backup_readable": {
+    "integrity": "ok",
+    "tables": {
+      "app_user": {
+        "rows": 1,
+        "sha256": "9eb5d2c4b00c226df927eff2e6550e2353d49819876217aa8cd55044c2572f0c"
+      },
+      "watchlist": {
+        "rows": 1,
+        "sha256": "39f8d2f466c5b39a67aaa0f69b23b19eeb8cd27a806e40471976ebacb0f132e7"
+      },
+      "review_note": {
+        "rows": 1,
+        "sha256": "a2224cd754a2b74a6567ad373a1843fc15012ff234f75b8e01d5f6d9843e849e"
+      }
+    }
+  },
+  "after_simulated_loss": {
+    "integrity": "ok",
+    "tables": {
+      "app_user": {
+        "rows": 1,
+        "sha256": "9eb5d2c4b00c226df927eff2e6550e2353d49819876217aa8cd55044c2572f0c"
+      },
+      "watchlist": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "review_note": {
+        "rows": 1,
+        "sha256": "a2224cd754a2b74a6567ad373a1843fc15012ff234f75b8e01d5f6d9843e849e"
+      }
+    }
+  },
+  "after_restore": {
+    "integrity": "ok",
+    "tables": {
+      "app_user": {
+        "rows": 1,
+        "sha256": "9eb5d2c4b00c226df927eff2e6550e2353d49819876217aa8cd55044c2572f0c"
+      },
+      "watchlist": {
+        "rows": 1,
+        "sha256": "39f8d2f466c5b39a67aaa0f69b23b19eeb8cd27a806e40471976ebacb0f132e7"
+      },
+      "review_note": {
+        "rows": 1,
+        "sha256": "a2224cd754a2b74a6567ad373a1843fc15012ff234f75b8e01d5f6d9843e849e"
+      }
+    }
+  },
+  "checks": {
+    "backup_integrity": true,
+    "backup_matches_source": true,
+    "loss_detected": true,
+    "restore_digest_equal": true,
+    "restore_integrity": true
+  },
+  "verdict": "PASS"
+}

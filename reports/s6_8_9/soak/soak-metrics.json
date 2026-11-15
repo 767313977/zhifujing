@@ -1,0 +1,180 @@
+{
+  "branch": "work/s6-8-s6-9-gate-closure",
+  "commit_sha": "fa2a3ac801bbc032b605e1ad86960da03d433490",
+  "duration_minutes": 3.0,
+  "environment": "本地隔离拆分 Staging（Research 只读 + User 可写）",
+  "faults": [
+    {
+      "exit_code": 1,
+      "name": "SIGTERM",
+      "status": "PASS"
+    },
+    {
+      "health": true,
+      "name": "SIGKILL_RESTART",
+      "status": "PASS",
+      "user_db_integrity": "ok"
+    },
+    {
+      "http_status": 503,
+      "name": "USER_DB_READONLY_READINESS",
+      "reason": "USER_DB_NOT_WRITABLE",
+      "status": "PASS"
+    },
+    {
+      "exit_code": 3,
+      "name": "RESEARCH_DB_MISSING_STARTUP_FAIL_CLOSED",
+      "process_exited": true,
+      "ready_status": 0,
+      "status": "PASS"
+    },
+    {
+      "bounded_lt_20000ms": true,
+      "elapsed_ms": 16487.37,
+      "http_status": 500,
+      "name": "USER_DB_LOCK_CONTENTION",
+      "status": "PASS"
+    }
+  ],
+  "generated_at": "2026-11-15T15:34:52+08:00",
+  "limitations": [
+    "不是 24 小时 soak；S6_STAGING_SOAK_PASSED 仍为 NOT_RUN。",
+    "本机无 OS 级网络隔离，Egress 拒绝只验证了应用层 503。",
+    "未采集 CPU/RSS/文件描述符（未安装 psutil）。"
+  ],
+  "metrics": {
+    "by_path": {
+      "/api/health": {
+        "count": 538,
+        "p95_ms": 25.57,
+        "statuses": {
+          "200": 538
+        }
+      },
+      "/api/limit/promotion?days=15": {
+        "count": 538,
+        "p95_ms": 29.89,
+        "statuses": {
+          "200": 538
+        }
+      },
+      "/api/market/overview": {
+        "count": 538,
+        "p95_ms": 30.52,
+        "statuses": {
+          "200": 538
+        }
+      },
+      "/api/ready": {
+        "count": 538,
+        "p95_ms": 29.34,
+        "statuses": {
+          "503": 538
+        }
+      },
+      "/api/research/workbench?mode=AND&market=all&view=overview&limit=50&offset=0": {
+        "count": 538,
+        "p95_ms": 38.05,
+        "statuses": {
+          "200": 538
+        }
+      },
+      "/api/risk/pref": {
+        "count": 538,
+        "p95_ms": 26.92,
+        "statuses": {
+          "200": 538
+        }
+      },
+      "/api/sentiment/next-day?days=60&group=first_board&metric=limit_up_count&include_pending=true": {
+        "count": 538,
+        "p95_ms": 27.49,
+        "statuses": {
+          "200": 538
+        }
+      },
+      "/api/stock/000001/sync": {
+        "count": 538,
+        "p95_ms": 27.01,
+        "statuses": {
+          "503": 538
+        }
+      },
+      "/api/watchlist": {
+        "count": 538,
+        "p95_ms": 29.57,
+        "statuses": {
+          "200": 538
+        }
+      },
+      "/api/watchlist/000001": {
+        "count": 538,
+        "p95_ms": 29.34,
+        "statuses": {
+          "200": 538
+        }
+      },
+      "/api/watchlist/sync": {
+        "count": 538,
+        "p95_ms": 28.92,
+        "statuses": {
+          "503": 538
+        }
+      }
+    },
+    "errors_5xx": 0,
+    "expected_503_research_write": 1076,
+    "latency_ms": {
+      "max": 778.1,
+      "p50": 6.66,
+      "p95": 29.78,
+      "p99": 36.61
+    },
+    "readiness_failures": 538,
+    "ready_503": 538,
+    "research_read": 3228,
+    "research_write_denied_503": 1076,
+    "timeline": [
+      {
+        "minute": 0,
+        "p95_ms": 29.91,
+        "requests": 1975,
+        "statuses": {
+          "200": 1437,
+          "503": 538
+        },
+        "unexpected_5xx": 0
+      },
+      {
+        "minute": 1,
+        "p95_ms": 29.65,
+        "requests": 1974,
+        "statuses": {
+          "200": 1435,
+          "503": 539
+        },
+        "unexpected_5xx": 0
+      },
+      {
+        "minute": 2,
+        "p95_ms": 29.83,
+        "requests": 1969,
+        "statuses": {
+          "200": 1432,
+          "503": 537
+        },
+        "unexpected_5xx": 0
+      }
+    ],
+    "total_requests": 5918,
+    "transport_errors": 0,
+    "user_write_fail": 0,
+    "user_write_ok": 1614
+  },
+  "ready_status_after": 0,
+  "requested_24h": false,
+  "research_db_integrity": "ok",
+  "split_mode": true,
+  "status": "SOAK_NOT_24H",
+  "user_db_integrity_after": "ok"
+}

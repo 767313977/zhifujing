@@ -1,0 +1,53 @@
+{
+  "samples": 110,
+  "process_samples": 186,
+  "pids": [
+    8084,
+    8544,
+    10756,
+    20080,
+    32144,
+    33104,
+    33280,
+    33344,
+    33620,
+    35728,
+    37648,
+    37868
+  ],
+  "rss_mb": {
+    "min": 4.12,
+    "max": 241.74,
+    "last": 211.05
+  },
+  "private_mb": {
+    "min": 0.77,
+    "max": 636.5,
+    "last": 605.22
+  },
+  "handles": {
+    "min": 55,
+    "max": 210,
+    "last": 208
+  },
+  "threads": {
+    "min": 1,
+    "max": 23,
+    "last": 22
+  },
+  "cpu_seconds_total_delta": 1.953,
+  "disk_c_free_gb": {
+    "first": 225.06,
+    "last": 223.71
+  },
+  "disk_d_free_gb": {
+    "first": 470.52,
+    "last": 470.52
+  },
+  "server_log_bytes": {
+    "first": 4673,
+    "last": 4673
+  },
+  "connection_pool": "N/A (SQLite, no bounded pool metrics exposed)",
+  "workers": 1
+}

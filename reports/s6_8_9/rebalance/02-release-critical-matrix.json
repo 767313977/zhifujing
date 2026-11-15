@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-11-15T15:50:00+08:00",
+  "mode": "balanced plan C",
+  "branch": "work/s6-8-s6-9-gate-closure",
+  "head": "fa2a3ac801bbc032b605e1ad86960da03d433490",
+  "release_critical": [
+    {"id": "R1", "item": "G0 protected assets", "status": "PASS", "evidence": ["rebalance/protected-assets-before.json", "rebalance/gate0-after.json"], "detail": "C0/frozen/DB before/final equal; missing=[], integrity_failed=[]"},
+    {"id": "R2", "item": "auth/session", "status": "PASS", "evidence": ["reports/s6_7_login/S6-7-acceptance-report.md", "browser_after E07", "loginTransition tests"], "detail": "login/logout/expiry/refresh/401 covered"},
+    {"id": "R3", "item": "authorization/account isolation", "status": "PASS", "evidence": ["browser/e13_context_isolation.json", "E11", "E14"], "detail": "non-admin 403; two contexts isolated; no cross-account watchlist"},
+    {"id": "R4", "item": "CSRF/input boundary", "status": "PASS", "evidence": ["1742 passed pytest", "test_s6_app_egress_ssrf.py"], "detail": "existing security tests pass; no auth relaxation; SSRF guards added"},
+    {"id": "R5", "item": "G7", "status": "PASS", "evidence": ["logs/g7_regression_rebalance.log"], "detail": "185 routes, readiness 9/9, 36 targeted tests, migration idempotent/recovered"},
+    {"id": "R6", "item": "core browser flows", "status": "PASS", "evidence": ["browser/", "soak/short_smoke_login_after_deploy.json", "short_smoke_login_after_restart.json"], "detail": "login/home/deep link/refresh/back-forward/logout; after deploy+restart"},
+    {"id": "R7", "item": "true OLD/NEW rollback", "status": "PASS", "evidence": ["staging/version_switch.json", "staging/manifest-old.json", "staging/manifest-new.json"], "detail": "manifests differ; serving OLD->NEW->OLD->NEW"},
+    {"id": "R8", "item": "DB integrity/backup restore", "status": "PASS", "evidence": ["security/backup-restore.json", "security/backup-restore.md"], "detail": "isolated backup readable, loss detected, restore digest equal, integrity ok"},
+    {"id": "R9", "item": "backend/frontend regression", "status": "PASS", "evidence": ["logs/backend_test_rebalance.log", "logs/frontend_test_rebalance.log", "logs/frontend_build_rebalance.log"], "detail": "1742 passed/4 skipped; 168 passed; lint/build pass"},
+    {"id": "R10", "item": "dependency/secrets", "status": "PASS", "evidence": ["security/security_scan_rebalance.log"], "detail": "pip-audit 0, npm audit 0, sensitive scan 0"},
+    {"id": "R11", "item": "release rollback plan", "status": "PARTIAL", "evidence": ["rebalance/05-final-release-gates.md"], "detail": "steps/stop conditions auditable; rollback owner and final approval pending user/appointment"},
+    {"id": "R12", "item": "final human approval", "status": "PENDING", "evidence": [], "detail": "independent review required; automation does not authorize production"}
+  ],
+  "confidence": {
+    "E13": "PASS",
+    "E15": "PASS",
+    "E16": "PASS",
+    "viewports": "PASS (1280/1920/390)",
+    "sql": {"count": 53, "budget": 25, "status": "PERF_SQL_BUDGET_NOT_MET"},
+    "not_comparable": 7,
+    "short_smoke": "S6_9_SHORT_SMOKE_PASS",
+    "soak_24h": "NOT_RUN",
+    "fault_matrix": "5/5 PASS (short smoke); 12-item 24h matrix NOT_RUN"
+  },
+  "deferred": {
+    "os_egress": "NOT_VERIFIED",
+    "vm": "DEFERRED_SECURITY_LAB",
+    "n01_n24": "NOT_RUN",
+    "s6_8_dedicated_linux_vm_ready": "DEFERRED",
+    "soak_24h": "NOT_RUN"
+  },
+  "final_gates": {
+    "internal_development_merge": "PASS (non-production; applicable Release Critical)",
+    "limited_canary_application": "BLOCKED (R11 PARTIAL, R12 PENDING, OS egress NOT_VERIFIED disclosed)",
+    "production_release": "NOT_AUTHORIZED",
+    "S6_CANARY_READY": "BLOCKED"
+  }
+}

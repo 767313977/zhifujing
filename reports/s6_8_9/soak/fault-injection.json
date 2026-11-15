@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-11-15T15:34:52+08:00",
+  "environment": "本地隔离拆分 Staging（Research 只读 + User 可写）",
+  "faults": [
+    {
+      "name": "SIGTERM",
+      "exit_code": 1,
+      "status": "PASS"
+    },
+    {
+      "name": "SIGKILL_RESTART",
+      "health": true,
+      "user_db_integrity": "ok",
+      "status": "PASS"
+    },
+    {
+      "name": "USER_DB_READONLY_READINESS",
+      "http_status": 503,
+      "reason": "USER_DB_NOT_WRITABLE",
+      "status": "PASS"
+    },
+    {
+      "name": "RESEARCH_DB_MISSING_STARTUP_FAIL_CLOSED",
+      "process_exited": true,
+      "exit_code": 3,
+      "ready_status": 0,
+      "status": "PASS"
+    },
+    {
+      "name": "USER_DB_LOCK_CONTENTION",
+      "http_status": 500,
+      "elapsed_ms": 16487.37,
+      "bounded_lt_20000ms": true,
+      "status": "PASS"
+    }
+  ],
+  "status": "PASS"
+}

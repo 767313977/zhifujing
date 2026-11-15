@@ -1,0 +1,532 @@
+2026-11-15 15:31:15,554 INFO app.db: Schema 检查通过（FUPAN_SCHEMA_MODE=verify，未执行任何 DDL）
+2026-11-15 15:31:15,554 INFO app.main: 数据库就绪: C:\Users\76731\AppData\Local\Temp\s7-soak-3zf2zdm4\research.db（schema=verify）
+2026-11-15 15:31:15,554 WARNING app.main: 未配置 IFIND_AUTH_TOKEN，iFinD 相关采集将失败
+2026-11-15 15:31:15,554 INFO app.main: iFinD 配额配置：token 已配置=否，月度上限=5452，周期起点日=17，本周期=2026-10-17 ~ 2026-11-16
+2026-11-15 15:31:15,554 WARNING app.external_guard: 已安装离线网络闸门 wrapper（EXTERNAL_DATA_FETCH_ENABLED）：在线按允许名单放行，离线仅严格回环放行（含 DNS / TLS / sendfile）
+2026-11-15 15:31:15,555 INFO app.main: 启动门禁：EXTERNAL_DATA_FETCH_ENABLED=False（offline_locked=True）· SCHEDULER_ENABLED=False · WARMUP_PATTERN_CACHE=False · FUPAN_SCHEMA_MODE=verify
+2026-11-15 15:31:15,555 WARNING app.main: 外部数据现取已被禁用（EXTERNAL_DATA_FETCH_ENABLED=false）
+2026-11-15 15:31:15,556 INFO app.main: 出站策略：loaded=True version=1 entries=17 loopback_any_port=True error=None
+2026-11-15 15:31:15,556 INFO app.jobs.scheduler: 定时采集已关闭（scheduler_enabled=false）
+2026-11-15 15:34:18,668 INFO app.db: Schema 检查通过（FUPAN_SCHEMA_MODE=verify，未执行任何 DDL）
+2026-11-15 15:34:18,669 INFO app.main: 数据库就绪: C:\Users\76731\AppData\Local\Temp\s7-soak-3zf2zdm4\research.db（schema=verify）
+2026-11-15 15:34:18,669 WARNING app.main: 未配置 IFIND_AUTH_TOKEN，iFinD 相关采集将失败
+2026-11-15 15:34:18,669 INFO app.main: iFinD 配额配置：token 已配置=否，月度上限=5452，周期起点日=17，本周期=2026-10-17 ~ 2026-11-16
+2026-11-15 15:34:18,669 WARNING app.external_guard: 已安装离线网络闸门 wrapper（EXTERNAL_DATA_FETCH_ENABLED）：在线按允许名单放行，离线仅严格回环放行（含 DNS / TLS / sendfile）
+2026-11-15 15:34:18,669 INFO app.main: 启动门禁：EXTERNAL_DATA_FETCH_ENABLED=False（offline_locked=True）· SCHEDULER_ENABLED=False · WARMUP_PATTERN_CACHE=False · FUPAN_SCHEMA_MODE=verify
+2026-11-15 15:34:18,669 WARNING app.main: 外部数据现取已被禁用（EXTERNAL_DATA_FETCH_ENABLED=false）
+2026-11-15 15:34:18,670 INFO app.main: 出站策略：loaded=True version=1 entries=17 loopback_any_port=True error=None
+2026-11-15 15:34:18,670 INFO app.jobs.scheduler: 定时采集已关闭（scheduler_enabled=false）
+2026-11-15 15:34:21,090 INFO app.db: Schema 检查通过（FUPAN_SCHEMA_MODE=verify，未执行任何 DDL）
+2026-11-15 15:34:21,090 INFO app.main: 数据库就绪: C:\Users\76731\AppData\Local\Temp\s7-soak-3zf2zdm4\research.db（schema=verify）
+2026-11-15 15:34:21,090 WARNING app.main: 未配置 IFIND_AUTH_TOKEN，iFinD 相关采集将失败
+2026-11-15 15:34:21,090 INFO app.main: iFinD 配额配置：token 已配置=否，月度上限=5452，周期起点日=17，本周期=2026-10-17 ~ 2026-11-16
+2026-11-15 15:34:21,090 WARNING app.external_guard: 已安装离线网络闸门 wrapper（EXTERNAL_DATA_FETCH_ENABLED）：在线按允许名单放行，离线仅严格回环放行（含 DNS / TLS / sendfile）
+2026-11-15 15:34:21,090 INFO app.main: 启动门禁：EXTERNAL_DATA_FETCH_ENABLED=False（offline_locked=True）· SCHEDULER_ENABLED=False · WARMUP_PATTERN_CACHE=False · FUPAN_SCHEMA_MODE=verify
+2026-11-15 15:34:21,090 WARNING app.main: 外部数据现取已被禁用（EXTERNAL_DATA_FETCH_ENABLED=false）
+2026-11-15 15:34:21,091 INFO app.main: 出站策略：loaded=True version=1 entries=17 loopback_any_port=True error=None
+2026-11-15 15:34:21,091 INFO app.jobs.scheduler: 定时采集已关闭（scheduler_enabled=false）
+2026-11-15 15:34:22,892 INFO app.db: Schema 检查通过（FUPAN_SCHEMA_MODE=verify，未执行任何 DDL）
+2026-11-15 15:34:22,892 INFO app.main: 数据库就绪: C:\Users\76731\AppData\Local\Temp\s7-soak-3zf2zdm4\research.db（schema=verify）
+2026-11-15 15:34:22,893 WARNING app.main: 未配置 IFIND_AUTH_TOKEN，iFinD 相关采集将失败
+2026-11-15 15:34:22,893 INFO app.main: iFinD 配额配置：token 已配置=否，月度上限=5452，周期起点日=17，本周期=2026-10-17 ~ 2026-11-16
+2026-11-15 15:34:22,893 WARNING app.external_guard: 已安装离线网络闸门 wrapper（EXTERNAL_DATA_FETCH_ENABLED）：在线按允许名单放行，离线仅严格回环放行（含 DNS / TLS / sendfile）
+2026-11-15 15:34:22,893 INFO app.main: 启动门禁：EXTERNAL_DATA_FETCH_ENABLED=False（offline_locked=True）· SCHEDULER_ENABLED=False · WARMUP_PATTERN_CACHE=False · FUPAN_SCHEMA_MODE=verify
+2026-11-15 15:34:22,893 WARNING app.main: 外部数据现取已被禁用（EXTERNAL_DATA_FETCH_ENABLED=false）
+2026-11-15 15:34:22,893 INFO app.main: 出站策略：loaded=True version=1 entries=17 loopback_any_port=True error=None
+2026-11-15 15:34:22,893 INFO app.jobs.scheduler: 定时采集已关闭（scheduler_enabled=false）
+ERROR:    Traceback (most recent call last):
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 144, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3319, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 448, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1290, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 712, in checkout
+    rec = pool._do_get()
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 178, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 122, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 176, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 389, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 674, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 900, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 122, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 896, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\create.py", line 667, in connect
+    return dialect.connect(*cargs_tup, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 630, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: unable to open database file
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\routing.py", line 648, in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+               ~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\76731\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\backend\app\main.py", line 197, in lifespan
+    schema_result = ensure_schema()
+  File "C:\Users\76731\Documents\trae_projects\fupan\backend\app\db.py", line 287, in ensure_schema
+    report = schema_report(target_engine, include_user_models=not settings.db_split_enabled)
+  File "C:\Users\76731\Documents\trae_projects\fupan\backend\app\db.py", line 226, in schema_report
+    inspector = inspect(engine_)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\inspection.py", line 141, in inspect
+    ret = reg(subject)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\reflection.py", line 314, in _engine_insp
+    return Inspector._construct(Inspector._init_engine, bind)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\reflection.py", line 247, in _construct
+    init(self, bind)
+    ~~~~^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\reflection.py", line 258, in _init_engine
+    engine.connect().close()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3295, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 146, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        err, dialect, engine
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2450, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 144, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3319, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 448, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1290, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 712, in checkout
+    rec = pool._do_get()
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 178, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 122, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 176, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 389, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 674, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 900, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 122, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 896, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\create.py", line 667, in connect
+    return dialect.connect(*cargs_tup, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 630, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) unable to open database file
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+ERROR:    Application startup failed. Exiting.
+2026-11-15 15:34:35,686 INFO app.db: Schema 检查通过（FUPAN_SCHEMA_MODE=verify，未执行任何 DDL）
+2026-11-15 15:34:35,686 INFO app.main: 数据库就绪: C:\Users\76731\AppData\Local\Temp\s7-soak-3zf2zdm4\research.db（schema=verify）
+2026-11-15 15:34:35,686 WARNING app.main: 未配置 IFIND_AUTH_TOKEN，iFinD 相关采集将失败
+2026-11-15 15:34:35,686 INFO app.main: iFinD 配额配置：token 已配置=否，月度上限=5452，周期起点日=17，本周期=2026-10-17 ~ 2026-11-16
+2026-11-15 15:34:35,686 WARNING app.external_guard: 已安装离线网络闸门 wrapper（EXTERNAL_DATA_FETCH_ENABLED）：在线按允许名单放行，离线仅严格回环放行（含 DNS / TLS / sendfile）
+2026-11-15 15:34:35,686 INFO app.main: 启动门禁：EXTERNAL_DATA_FETCH_ENABLED=False（offline_locked=True）· SCHEDULER_ENABLED=False · WARMUP_PATTERN_CACHE=False · FUPAN_SCHEMA_MODE=verify
+2026-11-15 15:34:35,686 WARNING app.main: 外部数据现取已被禁用（EXTERNAL_DATA_FETCH_ENABLED=false）
+2026-11-15 15:34:35,687 INFO app.main: 出站策略：loaded=True version=1 entries=17 loopback_any_port=True error=None
+2026-11-15 15:34:35,687 INFO app.jobs.scheduler: 定时采集已关闭（scheduler_enabled=false）
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: database is locked
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\applications.py", line 96, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\backend\app\main.py", line 339, in cache_headers
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\middleware\cors.py", line 88, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\routing.py", line 670, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\fastapi\routing.py", line 354, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\starlette\concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+  File "C:\Users\76731\Documents\trae_projects\fupan\backend\app\api\watchlist.py", line 220, in add_watchlist
+    session.commit()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2035, in commit
+    trans.commit(_to_root=True)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "<string>", line 2, in commit
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 1316, in commit
+    self._prepare_impl()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "<string>", line 2, in _prepare_impl
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 1290, in _prepare_impl
+    self.session.flush()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4353, in flush
+    self._flush(objects)
+    ~~~~~~~~~~~^^^^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4488, in _flush
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 122, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4449, in _flush
+    flush_context.execute()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py", line 465, in execute
+    rec.execute(self)
+    ~~~~~~~~~~~^^^^^^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py", line 641, in execute
+    util.preloaded.orm_persistence.save_obj(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self.mapper,
+        ^^^^^^^^^^^^
+        uow.states_for_mapper_hierarchy(self.mapper, False, False),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        uow,
+        ^^^^
+    )
+    ^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\orm\persistence.py", line 94, in save_obj
+    _emit_insert_statements(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        base_mapper,
+        ^^^^^^^^^^^^
+    ...<3 lines>...
+        insert,
+        ^^^^^^^
+    )
+    ^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\orm\persistence.py", line 1049, in _emit_insert_statements
+    result = connection.execute(
+        statement, multiparams, execution_options=execution_options
+    )
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1421, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\76731\Documents\trae_projects\fupan\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) database is locked
+[SQL: INSERT INTO watchlist (user_id, code, name, note, added_at) VALUES (?, ?, ?, ?, ?)]
+[parameters: (1, '000001', '平安银行', None, '2026-11-15 15:34:36.368623')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)

@@ -1,0 +1,5 @@
+﻿rows=185 -> C:\Users\76731\Documents\trae_projects\fupan\reports\s6-followup\g7\route-db-ownership.csv
+{"database_gate": "PASS", "database_reason": null, "checks": {"SPLIT_ENABLED": true, "RESEARCH_DB_EXISTS": true, "RESEARCH_ENGINE_READONLY_URI": true, "QUERY_ONLY_ENABLED": true, "READONLY_WRITE_PROBE_BLOCKED": true, "RESEARCH_FILE_PERMISSION_READONLY": true, "USER_DB_EXISTS": true, "USER_DB_WRITABLE": true, "PATHS_DISTINCT": true}}
+....................................                                     [100%]
+36 passed in 20.42s
+{"status": "PASS", "idempotent": true, "recovered": true, "source_unchanged": true}

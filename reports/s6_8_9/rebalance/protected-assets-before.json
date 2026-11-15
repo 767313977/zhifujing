@@ -1,0 +1,126 @@
+{
+  "branch": "work/s6-8-s6-9-gate-closure",
+  "command": "python scripts/s6_gate0_fingerprint.py --stage before --out-dir reports\\s6_8_9\\rebalance",
+  "commit_sha": "fa2a3ac801bbc032b605e1ad86960da03d433490",
+  "environment": {
+    "cwd": "C:\\Users\\76731\\Documents\\trae_projects\\fupan",
+    "os": "nt",
+    "platform": "win32",
+    "python": "3.13.13"
+  },
+  "evidence_files": [
+    "reports\\s6_8_9\\rebalance\\protected-assets-before.json",
+    "reports\\s6_8_9\\rebalance\\protected-assets-before.sha256",
+    "reports\\s6_8_9\\rebalance\\database-integrity-before.txt"
+  ],
+  "exit_code": 0,
+  "generated_at": "2026-11-15T15:24:29+08:00",
+  "limitations": [
+    "数据库以 mode=ro&immutable=1 打开：不读取未 checkpoint 的 WAL 内容，integrity_check 反映主库文件本身；WAL/SHM 存在性与大小单独记录。",
+    "b1_research.db 超过 200MB，不计算整文件 SHA256（按任务书只要求大小/mtime），以 integrity_check 与 size/mtime 作为对照依据。"
+  ],
+  "result": {
+    "all_protected_assets_present": true,
+    "c0_scripts": {
+      "backend/app/services/factor_score.py": {
+        "git_blob": "32b6f2ff18373ece44f278a6e76db988385be80f",
+        "worktree_sha256": "7063bb9dc0db7f88f04a869db097d1d211292ce1e27635ca9c2f0da412d6c88e"
+      },
+      "scripts/forward_collect_tushare.py": {
+        "git_blob": "1408f9e3253f0c353023863821ad70544f0fdf2a",
+        "worktree_sha256": "3aec889004a7f7d3c5e6d09a4c4279ab280bdb45ae90eac30c6b44221465e992"
+      },
+      "scripts/forward_store.py": {
+        "git_blob": "8064d6709a99b07e853c09c297bf26ad938fab5f",
+        "worktree_sha256": "f4b0a8ea4de5eed10cf9029d79b39589929396bea7615d3bce0895d34ffe87e1"
+      },
+      "scripts/forward_track_c0.py": {
+        "git_blob": "6ff3eb0861cb52580c2e20be2be778cf5bfb9abe",
+        "worktree_sha256": "9d20a569bacbb2c620995387d01bc0118a711a3d927d34623fb572d11656d727"
+      },
+      "scripts/forward_universe.py": {
+        "git_blob": "2f8979d299f2537427e3ab3c3031a2cb14d22ca0",
+        "worktree_sha256": "fb07ce84c79f7faaa733d33eb3d011d269b9e72f8a79e399473d00a7ada9dc3f"
+      }
+    },
+    "databases": {
+      "backend/data/b1_research.db": {
+        "exists": true,
+        "integrity_check": "ok",
+        "mtime": "2026-11-09T12:23:12+08:00",
+        "sha256": null,
+        "sha256_skipped_reason": "文件 1441378304 字节 > 209715200，按任务书只记录大小/mtime",
+        "shm": {
+          "exists": true,
+          "size": 32768
+        },
+        "size": 1441378304,
+        "wal": {
+          "exists": true,
+          "size": 0
+        }
+      },
+      "backend/data/forward_research.db": {
+        "exists": true,
+        "integrity_check": "ok",
+        "mtime": "2026-11-11T17:17:58+08:00",
+        "sha256": "c464b3bc751fc05361293a1e3537bcdba2ec5ffbe5a26105b737ea24f6ec536b",
+        "sha256_skipped_reason": null,
+        "shm": {
+          "exists": false,
+          "size": 0
+        },
+        "size": 67055616,
+        "wal": {
+          "exists": false,
+          "size": 0
+        }
+      },
+      "backend/data/fupan.db": {
+        "exists": true,
+        "integrity_check": "ok",
+        "mtime": "2026-10-31T22:26:44+08:00",
+        "sha256": null,
+        "sha256_skipped_reason": "文件 513519616 字节 > 209715200，按任务书只记录大小/mtime",
+        "shm": {
+          "exists": true,
+          "size": 32768
+        },
+        "size": 513519616,
+        "wal": {
+          "exists": true,
+          "size": 0
+        }
+      },
+      "backend/data/history.db": {
+        "exists": true,
+        "integrity_check": "ok",
+        "mtime": "2026-10-20T14:14:38+08:00",
+        "sha256": null,
+        "sha256_skipped_reason": "文件 869801984 字节 > 209715200，按任务书只记录大小/mtime",
+        "shm": {
+          "exists": false,
+          "size": 0
+        },
+        "size": 869801984,
+        "wal": {
+          "exists": false,
+          "size": 0
+        }
+      }
+    },
+    "frozen_signals": {
+      "backend/data/forward_c0/signals_2026-11-11.jsonl": {
+        "sha256": "1f80d1b6785b930fc9a922f027a323a36f5ddcf122d2ec865810f33523f07b37"
+      },
+      "backend/data/forward_c0/signals_2026-11-11.meta.json": {
+        "sha256": "44301eb5e00867e4e19d51c7dea524af0897ced0e7a5002cac2f530e3fa2dd50"
+      }
+    },
+    "git_head_contains_3060e82": true,
+    "git_status": "",
+    "integrity_failed": [],
+    "missing_assets": []
+  },
+  "tool_version": "s6_gate0_fingerprint/1.0"
+}

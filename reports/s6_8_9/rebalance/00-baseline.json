@@ -1,0 +1,67 @@
+{
+  "generated_at": "2026-11-15T15:30:00+08:00",
+  "mode": "S6.8/S6.9 balanced plan C",
+  "git": {
+    "branch": "work/s6-8-s6-9-gate-closure",
+    "head": "fa2a3ac801bbc032b605e1ad86960da03d433490",
+    "upstream": "origin/work/s6-8-s6-9-gate-closure",
+    "ahead": 0,
+    "behind": 0,
+    "worktree_clean": true,
+    "fa2a3ac_is_ancestor": true,
+    "diff_check_exit_code": 0
+  },
+  "g0_before": {
+    "evidence": "rebalance/protected-assets-before.json",
+    "sha256": "3f7c5a0447e13a16c464b403368d01ad015a8b3a014dbb0ddcbd1c5e7078ec17",
+    "all_present": true,
+    "missing": [],
+    "integrity_failed": []
+  },
+  "vm": {
+    "name": "s6-egress-vm",
+    "state": "Running",
+    "generation": 2,
+    "vcpu": 4,
+    "memory_gb": 6,
+    "dynamic_memory": false,
+    "vhd": "D:\\s6-vm\\s6-egress-vm-os.vhdx",
+    "vhd_type": "Dynamic",
+    "vhd_size_gb": 64,
+    "switch": "s6-egress",
+    "switch_type": "Internal",
+    "nat": "s6-egress-nat",
+    "nat_prefix": "172.31.240.0/24",
+    "snapshots": 0,
+    "guest_os_installed": false,
+    "guest_bootstrap": "NOT_RUN",
+    "n01_n24": "NOT_RUN"
+  },
+  "staging_reference": {
+    "browser": "port 8021 split staging (Research read-only + User writable), external fetch/scheduler off",
+    "versioned_rollback": "port 8012 single isolated DB, external fetch/scheduler off",
+    "production_connected": false
+  },
+  "existing_results": {
+    "browser_e13": "PASS",
+    "browser_e15": "PASS",
+    "browser_e16": "PASS",
+    "browser_viewports": "PASS (1280/1920/390)",
+    "versioned_rollback": "PASS (OLD/NEW manifests differ; serving OLD->NEW->OLD->NEW)",
+    "g7": "PASS (185 routes, readiness 9/9, migration idempotent/recovered)",
+    "backend_regression": "1735 passed / 4 skipped",
+    "frontend_regression": "168 passed / 20 files",
+    "security_scan": "pip-audit 0 / npm audit 0 / sensitive scan 0",
+    "sql_count": 53,
+    "sql_budget": 25,
+    "perf_status": "PERF_SQL_BUDGET_NOT_MET",
+    "not_comparable": 7
+  },
+  "deferred": {
+    "S6_8_DEDICATED_LINUX_VM_READY": "DEFERRED",
+    "G3_G4_OS_EGRESS_VERIFIED": "NOT_VERIFIED",
+    "N01_N24": "NOT_RUN",
+    "S6_9_SOAK_24H_PASS": "NOT_RUN"
+  },
+  "conflicts": []
+}

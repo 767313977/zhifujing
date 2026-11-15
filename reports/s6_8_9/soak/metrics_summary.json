@@ -1,17 +1,29 @@
 {
   "status": "SOAK_24H_NOT_RUN",
-  "generated_at": "2026-11-15T13:45:00+08:00",
+  "generated_at": "2026-11-15T15:40:00+08:00",
   "continuous_hours": 0,
+  "short_smoke": {
+    "status": "S6_9_SHORT_SMOKE_PASS",
+    "duration_minutes": 3,
+    "requests": 5918,
+    "unexpected_5xx": 0,
+    "p50_ms": 6.66,
+    "p95_ms": 29.78,
+    "p99_ms": 36.61,
+    "faults_passed": 5,
+    "evidence": "soak/short_smoke_metrics.json"
+  },
   "requests": null,
   "unexpected_5xx": null,
   "latency_ms": {"p50": null, "p95": null, "p99": null},
   "resources": null,
   "db_integrity": null,
   "egress_violations": null,
+  "thresholds": "THRESHOLD_UNDEFINED",
   "blocking_reasons": [
-    "D 包 OS Egress N01-N24 全部 NOT_RUN（无专用 Linux VM）",
-    "24h 连续环境无法在本机保持",
-    "前置条件要求 A/B/D/G7/G0 全部通过，其中 D 未通过"
+    "24h continuous environment and alerting not available on this workstation",
+    "OS Egress N01-N24 deferred / NOT_VERIFIED",
+    "no formal SLO/error-rate thresholds defined"
   ],
-  "note": "不启动正式计时；不把 S6.4 的 3 分钟短窗拼成 24h。"
+  "note": "短时 Smoke 已通过；未把 3 分钟数据拼成 24h。"
 }
