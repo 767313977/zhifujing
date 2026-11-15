@@ -1,0 +1,30 @@
+canonical_field,definition,unit,required_pit_precision,ifind_observed_field,ifind_observation,ifind_status,tushare_documented_field,tushare_status,lixinger_documented_field,lixinger_status
+raw_open,不复权开盘价,元,date,开盘价（单位：元）,2026-06-15~07-10 600519 有值,VERIFIED,daily.open,DOCUMENTED,未提供（仅估值/基本面）,NOT_AVAILABLE
+raw_high,不复权最高价,元,date,最高价（单位：元）,同上,VERIFIED,daily.high,DOCUMENTED,NOT_AVAILABLE
+raw_low,不复权最低价,元,date,最低价（单位：元）,同上,VERIFIED,daily.low,DOCUMENTED,NOT_AVAILABLE
+raw_close,不复权收盘价,元,date,收盘价,有值（同一列也承载复权序列）,PARTIAL,daily.close,DOCUMENTED,NOT_AVAILABLE
+pre_close,前收盘价,元,date,前收盘价（单位：元）,有值（已含除权调整）,PARTIAL,daily.pre_close,DOCUMENTED,NOT_AVAILABLE
+adjust_type,复权类型标识,枚举,date,无,响应中不存在该字段,NOT_AVAILABLE,pro_bar 参数（非返回字段）,PARTIAL,无,NOT_AVAILABLE
+forward_adjusted_close,前复权收盘价,元,date,无专用字段,"只能通过提问措辞取得，列名仍是『收盘价』，无标签",PARTIAL,pro_bar(adj='qfq'),DOCUMENTED,无,NOT_AVAILABLE
+backward_adjusted_close,后复权收盘价,元,date,无专用字段,"同上；同一问题组合返回 52 行（26×2）落在同一列",PARTIAL,pro_bar(adj='hfq'),DOCUMENTED,无,NOT_AVAILABLE
+cumulative_factor,累计复权因子,倍,date,复权因子,2026-06-26 由 8.6760→8.8814；raw×factor 与后复权序列最大偏差 1.8883bp,PARTIAL（方向经实测一致，无官方字段定义）,adj_factor,DOCUMENTED,无,NOT_AVAILABLE
+single_event_factor,单次事件因子,倍,date,无,未提供,NOT_AVAILABLE,未单独提供,NOT_AVAILABLE,无,NOT_AVAILABLE
+factor_base_date,因子基准日,日期,date,无,未提供,NOT_AVAILABLE,未提供,NOT_AVAILABLE,无,NOT_AVAILABLE
+cash_per_share_pretax,每股派现（税前）,元/股,date,每股股利(税前)（单位：元）,列存在但 600519/300750 样本值为空,PARTIAL,dividend.cash_div_tax,DOCUMENTED,dividend.dividend,DOCUMENTED
+cash_per_share_posttax,每股派现（税后）,元/股,date,无,未提供,NOT_AVAILABLE,dividend.cash_div,DOCUMENTED,未标注税前/税后,PARTIAL
+stock_dividend_ratio,每股送股比例,股/股,date,每股红股（单位：股）,列存在但样本值为空,PARTIAL,dividend.stk_bo_rate,DOCUMENTED,dividend.bonusSharesFromProfit,DOCUMENTED
+transfer_ratio,每股转增比例,股/股,date,每股转增股本（单位：股）,列存在但样本值为空,PARTIAL,dividend.stk_co_rate,DOCUMENTED,dividend.bonusSharesFromCapitalReserve,DOCUMENTED
+rights_ratio,配股比例,股/股,date,每股配股数（单位：股）,300176 = 0.4（每 10 股配 4 股）,VERIFIED,无配股接口,NOT_AVAILABLE,dividend？无；allotment.allotmentRatio,DOCUMENTED
+rights_price,配股价格,元/股,date,配股价格（单位：元）,300176 = 3.36,VERIFIED,无,NOT_AVAILABLE,allotment.allotmentPrice,DOCUMENTED
+rights_shares,实际配股数量,股,date,实际配股数（单位：股）,300176 = 1.4417亿,VERIFIED,无,NOT_AVAILABLE,allotment.allotmentShares,DOCUMENTED
+announcement_date,公告日期,date,date,分红实施公告日 / 配股公告日,配股公告日 20260810 有值；分红实施公告日为空,PARTIAL,dividend.ann_date,DOCUMENTED,dividend.date,DOCUMENTED
+announcement_timestamp,精确公告时间,timestamp,timestamp,无,未提供,NOT_AVAILABLE,无,NOT_AVAILABLE,无,NOT_AVAILABLE
+record_date,股权登记日,date,date,股权登记日,列存在但样本值为空（含配股样本）,PARTIAL,dividend.record_date,DOCUMENTED,dividend.registerDate,DOCUMENTED
+ex_date,除权除息日,date,date,除权除息日 / 配股除权日,分红样本为空；配股 20260821 有值,PARTIAL,dividend.ex_date,DOCUMENTED,dividend.exDate,DOCUMENTED
+pay_date,派息日,date,date,派息日,列存在但样本值为空,PARTIAL,dividend.pay_date,DOCUMENTED,dividend.paymentDate,DOCUMENTED
+share_listing_date,红股上市日,date,date,无,未提供,NOT_AVAILABLE,dividend.div_listdate,DOCUMENTED,无,NOT_AVAILABLE
+plan_status,方案状态,枚举,date,无,只有『降级提示』文本，无状态字段,NOT_AVAILABLE,dividend.div_proc,DOCUMENTED,无状态机,NOT_AVAILABLE
+revision_flag,修订/取消标识,布尔,date,无,未提供,NOT_AVAILABLE,无,NOT_AVAILABLE,无,NOT_AVAILABLE
+available_at,数据可得时间,datetime,datetime,无,未提供,NOT_AVAILABLE,按更新批次时间,UNKNOWN,无,NOT_AVAILABLE
+sector_membership_snapshot,板块成分截面,行,date,板块名称/证券代码/证券简称,"返回当前成分；941/418 条在 2025-03-05 与 2026-09-28 两次查询完全相同",CURRENT_SNAPSHOT_ONLY,dc_member（2024-12-20 起）,DOCUMENTED,无成分接口,NOT_AVAILABLE
+sector_in_out_dates,纳入/剔除日期,日期,date,无,未提供,NOT_AVAILABLE,index_member_all 有 in/out（仅申万）,DOCUMENTED,无,NOT_AVAILABLE

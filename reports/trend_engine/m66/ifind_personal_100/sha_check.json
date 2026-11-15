@@ -1,0 +1,80 @@
+{
+  "batch": "ifind_personal_100_20261115T162631Z",
+  "protected_dbs": {
+    "b1_research": {
+      "before": "A93BC080EB9E366D08025C0A247E9AF525674A0294EC4D6012B7DBFD8941C56B",
+      "after": "A93BC080EB9E366D08025C0A247E9AF525674A0294EC4D6012B7DBFD8941C56B",
+      "unchanged": true
+    },
+    "history": {
+      "before": "9267652175594871B49456253BB0437CD5738F0D19257AB8CCA961BA5F921A6A",
+      "after": "9267652175594871B49456253BB0437CD5738F0D19257AB8CCA961BA5F921A6A",
+      "unchanged": true
+    },
+    "b2_final_snapshot": {
+      "before": "371512BC81F00A604788B02AF7D4BE9467C75F28CDFB984F0187DD81001520D3",
+      "after": "371512BC81F00A604788B02AF7D4BE9467C75F28CDFB984F0187DD81001520D3",
+      "unchanged": true
+    },
+    "fupan": {
+      "before": "B65D59A65AAEE286F65B91AEE70DF75FF9B34E83E6C266E69BE4C491996337EE",
+      "after": "B65D59A65AAEE286F65B91AEE70DF75FF9B34E83E6C266E69BE4C491996337EE",
+      "unchanged": true
+    }
+  },
+  "m64_staging": {
+    "g1_index_rows.json": {
+      "unchanged": true
+    },
+    "g2_sector_rows.json": {
+      "unchanged": true
+    },
+    "g9_events.json": {
+      "unchanged": true
+    },
+    "g9_factor_cross_exdate.json": {
+      "unchanged": true
+    },
+    "g9_factor_rows.json": {
+      "unchanged": true
+    },
+    "g9_sample_validation.json": {
+      "unchanged": true
+    },
+    "index_000001SH_20260925_20261009.json": {
+      "unchanged": true
+    },
+    "m64_ifind_staging.db": {
+      "unchanged": true
+    },
+    "m64_ifind_staging.db-shm": {
+      "unchanged": true
+    },
+    "m64_ifind_staging.db-wal": {
+      "unchanged": true
+    },
+    "probe_ledger.json": {
+      "unchanged": true
+    },
+    "sample_call_ledger.json": {
+      "unchanged": true
+    },
+    "sector_daily_staging.csv": {
+      "unchanged": true
+    },
+    "stock_events_600519_2025.json": {
+      "unchanged": true
+    },
+    "stock_history_600519_20250701_20250720.json": {
+      "unchanged": true
+    },
+    "tools_list.json": {
+      "unchanged": true
+    }
+  },
+  "m64_staging_summary": {
+    "unchanged": 16,
+    "total": 16
+  },
+  "all_protected_dbs_unchanged": true
+}
