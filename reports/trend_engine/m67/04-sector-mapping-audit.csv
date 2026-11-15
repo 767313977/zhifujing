@@ -1,0 +1,26 @@
+b1_sector_id,b1_sector_name,provider,classification,note
+801001,芯片,Tushare(dc_member),exact match candidate,名称相同但无 BK 代码，待官方映射
+801001,芯片,Tushare(index_member_all),taxonomy mismatch,申万无「芯片」，最接近为半导体
+801001,芯片,Choice,taxonomy mismatch,Choice 系统板块分类需人工核对
+801001,芯片,iFinD,missing provider mapping,只有名称无代码
+801001,芯片,理杏仁,missing provider mapping,无成分接口
+801159,机器人概念,Tushare(dc_member),alias match,需确认 BK 代码与成员集合
+801159,机器人概念,Tushare(index_member_all),taxonomy mismatch,申万无概念板块
+801159,机器人概念,Choice,ambiguous,同名概念可能口径不同
+801159,机器人概念,iFinD,missing provider mapping,同上
+801159,机器人概念,理杏仁,missing provider mapping,无成分接口
+801807,算力,Tushare(dc_member),alias match,同名概念较新，需核对 BK
+801807,算力,Tushare(index_member_all),taxonomy mismatch,无对应申万分类
+801807,算力,Choice,ambiguous,同上
+801807,算力,iFinD,missing provider mapping,同名无代码
+801807,算力,理杏仁,missing provider mapping,无成分接口
+881120,电力设备,Tushare(dc_member),exact match candidate,东财行业板块
+881120,电力设备,Tushare(index_member_all),exact match candidate,申万一级「电力设备」，需成员集合比对
+881120,电力设备,Choice,exact match candidate,系统板块
+881120,电力设备,iFinD,missing provider mapping,名称有、代码无
+881120,电力设备,理杏仁,missing provider mapping,无成分接口
+881126,汽车零部件,Tushare(dc_member),exact match candidate,东财行业板块
+881126,汽车零部件,Tushare(index_member_all),exact match candidate,申万二级
+881126,汽车零部件,Choice,exact match candidate,系统板块
+881126,汽车零部件,iFinD,missing provider mapping,同上
+881126,汽车零部件,理杏仁,missing provider mapping,无成分接口

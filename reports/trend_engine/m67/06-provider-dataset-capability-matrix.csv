@@ -1,0 +1,17 @@
+provider,dataset,purpose,api_capability,history_range,pit_support,delisted_coverage,field_dictionary,quota_pricing,evidence_url,confidence,unknowns
+iFinD,get_stock_performance,PERSONAL_RESEARCH,YES(实测),账号可见范围,NO,UNKNOWN,部分（无adjust_type）,"按请求计次（额度未核验）",N/A,实测,因子方向/基准日
+iFinD,get_stock_events,PERSONAL_RESEARCH,PARTIAL(实测),账号可见范围,NO,UNKNOWN,部分（分红值空）,同上,N/A,实测,空值原因
+iFinD,sector_data,PERSONAL_RESEARCH,YES(实测),仅当前快照,NO,UNKNOWN,仅名称,同上,N/A,实测,历史参数被忽略
+iFinD,index_data,PERSONAL_RESEARCH,YES(实测),账号可见范围,NO,UNKNOWN,有,同上,N/A,实测,非交易日填充行
+Tushare Pro,adj_factor,PERSONAL_RESEARCH,YES(文档),全历史,部分（按日快照）,UNKNOWN,有,2000积分/200元/年,https://tushare.pro/document/2?doc_id=28,官方文档,因子方向未官方明示
+Tushare Pro,daily,PERSONAL_RESEARCH,YES(文档),全历史,部分,UNKNOWN,有,同上,https://tushare.pro/document/2?doc_id=27,官方文档,—
+Tushare Pro,dividend,PERSONAL_RESEARCH,YES(文档),2000-01-01,部分（日期级）,UNKNOWN,有,同上,https://tushare.pro/document/2?doc_id=103,官方文档,配股缺失
+Tushare Pro,dc_member,PERSONAL_RESEARCH,YES(文档),2024-12-20起,部分,UNKNOWN,有,6000积分,https://tushare.pro/document/2?doc_id=363,官方文档,6000档价格
+Tushare Pro,index_member_all,PERSONAL_RESEARCH,YES(文档),含in/out,部分,含退市示例,有,2000积分,https://tushare.pro/document/2?doc_id=335,官方文档,历史起点
+Choice,em_sector,PERSONAL_RESEARCH,部分（限沪深/期权）,未明确,NO,UNKNOWN,有,套餐未公开,https://quantapi.eastmoney.com/Upload/EMQuantAPI_R.html,官方文档,套餐价格
+Choice,成份变动记录,PERSONAL_RESEARCH,UI_ONLY,默认近一年,NO,UNKNOWN,界面功能,套餐未公开,https://choice.eastmoney.com/School/Help,官方文档,API 能力
+理杏仁,cn/company/dividend,PERSONAL_RESEARCH,YES(文档),区间≤10年,部分（日期级）,UNKNOWN,有,未公开,https://www.lixinger.com/api/open-api/html-doc/cn/company/dividend,官方文档,API 价格
+理杏仁,cn/company/allotment,PERSONAL_RESEARCH,YES(文档),区间≤10年,部分,UNKNOWN,有,未公开,https://www.lixinger.com/api/open-api/html-doc/cn/company/allotment,官方文档,API 价格
+CnOpenData,A股复权行情表,PERSONAL_RESEARCH,NO_API（文件）,1991-2026.07,NO,声称全覆盖,有,询价,https://www.cnopendata.com/data/m/listedcompany-basic/A-market-quotes.html,官方文档,更新为年度
+CnOpenData,A股分红送股表,PERSONAL_RESEARCH,NO_API（文件）,1990-2025.06,NO,UNKNOWN,有,询价,https://www.cnopendata.com/data/m/listedcompany-basic/listedco-dividend.html,官方文档,更新为年度
+JoinQuant,成分接口,PERSONAL_RESEARCH,YES(文档),未明确,部分,UNKNOWN,有,订阅未核价,https://cdn.joinquant.com/help/img/JoinQuantAPI.pdf,官方文档,导出与商用

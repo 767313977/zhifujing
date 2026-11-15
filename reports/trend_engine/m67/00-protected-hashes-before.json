@@ -1,0 +1,193 @@
+{
+  "tag": "before",
+  "generated_at": "2026-11-15T17:04:41.107381+00:00",
+  "git": {
+    "branch": "feat/trend-engine-m67-data-gap-closure",
+    "head": "b310d630dcc13ea0fa46b197f4b67c28d27708d0",
+    "status_short": [
+      "M reports/s6/s62/migration-report.json",
+      "?? reports/trend_engine/m66/08-m66-branch-push-acceptance.md",
+      "?? scripts/m67_freeze_baseline.py"
+    ]
+  },
+  "protected_dbs": {
+    "b1_research": {
+      "path": "backend\\data\\b1_research.db",
+      "sha256_expected": "A93BC080EB9E366D08025C0A247E9AF525674A0294EC4D6012B7DBFD8941C56B",
+      "sha256_now": "A93BC080EB9E366D08025C0A247E9AF525674A0294EC4D6012B7DBFD8941C56B",
+      "unchanged": true
+    },
+    "history": {
+      "path": "backend\\data\\history.db",
+      "sha256_expected": "9267652175594871B49456253BB0437CD5738F0D19257AB8CCA961BA5F921A6A",
+      "sha256_now": "9267652175594871B49456253BB0437CD5738F0D19257AB8CCA961BA5F921A6A",
+      "unchanged": true
+    },
+    "b2_final_snapshot": {
+      "path": "backend\\data\\b2_final_snapshot.db",
+      "sha256_expected": "371512BC81F00A604788B02AF7D4BE9467C75F28CDFB984F0187DD81001520D3",
+      "sha256_now": "371512BC81F00A604788B02AF7D4BE9467C75F28CDFB984F0187DD81001520D3",
+      "unchanged": true
+    },
+    "fupan": {
+      "path": "backend\\data\\fupan.db",
+      "sha256_expected": "B65D59A65AAEE286F65B91AEE70DF75FF9B34E83E6C266E69BE4C491996337EE",
+      "sha256_now": "B65D59A65AAEE286F65B91AEE70DF75FF9B34E83E6C266E69BE4C491996337EE",
+      "unchanged": true
+    }
+  },
+  "m64_staging": {
+    "g1_index_rows.json": {
+      "unchanged": true,
+      "sha256": "6D56393B30A7E85A01A051CA0DA13557DEA117EE618CC0CE621F2D26BA470566"
+    },
+    "g2_sector_rows.json": {
+      "unchanged": true,
+      "sha256": "C938156BAE74414BFF42B2F1C511E8A7504D903C1B9162B7916E3DD8BA3A6630"
+    },
+    "g9_events.json": {
+      "unchanged": true,
+      "sha256": "59E6527DFD36C73DD89530821F066EC42AB2AF7AD799F67C204F7A258620A5B8"
+    },
+    "g9_factor_cross_exdate.json": {
+      "unchanged": true,
+      "sha256": "0E8036FDE8427982F79809F983C5585861F1316FF056167038E3B72549294C7B"
+    },
+    "g9_factor_rows.json": {
+      "unchanged": true,
+      "sha256": "2D98A38A526D7BD6316109CDB90171BD75D505BC31CC5EE6EC1674B5A34B55FE"
+    },
+    "g9_sample_validation.json": {
+      "unchanged": true,
+      "sha256": "B3FC38B6A6C5A41F8033C8A0E0082CCA5E087EA94438AB4BF5ECBAF18FF3B0B2"
+    },
+    "index_000001SH_20260925_20261009.json": {
+      "unchanged": true,
+      "sha256": "7249AE715A507E6A07FA558D2958D2FC72E0FC93E9B51071B0759FBFDF526192"
+    },
+    "m64_ifind_staging.db": {
+      "unchanged": true,
+      "sha256": "AE998D2C43B48F1BA27615349DA4651CB98063E72584F9A2BE306CFCA6A4465D"
+    },
+    "m64_ifind_staging.db-shm": {
+      "unchanged": true,
+      "sha256": "FD4C9FDA9CD3F9AE7C962B0DDF37232294D55580E1AA165AA06129B8549389EB"
+    },
+    "m64_ifind_staging.db-wal": {
+      "unchanged": true,
+      "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    "probe_ledger.json": {
+      "unchanged": true,
+      "sha256": "42D0CA068DCDC89693A4756067B7CF63238DD9415F02B5D0E161CA37EB4A8421"
+    },
+    "sample_call_ledger.json": {
+      "unchanged": true,
+      "sha256": "58CC535708AB6ABE5B4F154D44063A9B7E48F88038DACC73B5A36DBFAB12F780"
+    },
+    "sector_daily_staging.csv": {
+      "unchanged": true,
+      "sha256": "044E341C78DEBBCC87D723F3A932AEE8A3D887B409231DB622A4958C3D7BDE78"
+    },
+    "stock_events_600519_2025.json": {
+      "unchanged": true,
+      "sha256": "E2D0BEF623FB20A4F339AE84B5B7C10B227C0FF51F7F000A090FBBF1E1F60912"
+    },
+    "stock_history_600519_20250701_20250720.json": {
+      "unchanged": true,
+      "sha256": "F4BE49EEEAE44A16691743C73370A0B913700E759912882B15BB402441CF7343"
+    },
+    "tools_list.json": {
+      "unchanged": true,
+      "sha256": "B2E24FD950B6D287BEC8B1E87E9217ED0A11D4C2CEC3BA6131914AF8AD0CBB71"
+    }
+  },
+  "m66_core_files": {
+    "backend/app/services/trend_engine/multisource.py": {
+      "unchanged": true
+    },
+    "scripts/m65_freeze_baseline.py": {
+      "unchanged": true
+    },
+    "scripts/m65_g1_preservation.py": {
+      "unchanged": true
+    },
+    "scripts/m65_write_schema_draft.py": {
+      "unchanged": true
+    },
+    "tests/test_trend_m65_guard.py": {
+      "unchanged": true
+    },
+    "tests/test_trend_m65_provider.py": {
+      "unchanged": true
+    },
+    "tests/test_trend_m65_staging.py": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\00-baseline-and-m64-freeze.md": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\01-ifind-vendor-questions.md": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\02-multisource-capability-matrix.csv": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\02-multisource-capability-matrix.md": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\03-g9-cross-provider-validation-plan.md": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\04-g3-membership-sample-plan.md": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\05-multisource-adapter-and-staging-design.md": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\06-g1-staging-preservation-and-readonly-recheck.md": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\07-m65-final-acceptance.md": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\baseline_freeze.json": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\g1_history_coverage.csv": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\g1_overlap_readonly_check.csv": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\g1_staging_manifest.json": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\g3_sample_manifest.csv": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\g9_field_crosswalk.csv": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\g9_sample_manifest.csv": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\ifind_vendor_question_matrix.csv": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\m65_approval_matrix.csv": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\m65_staging_schema.sql": {
+      "unchanged": true
+    },
+    "reports\\trend_engine\\m65\\sector_id_crosswalk_candidates.csv": {
+      "unchanged": true
+    }
+  },
+  "summary": {
+    "dbs_unchanged": true,
+    "m64_unchanged": 16,
+    "m64_total": 16
+  }
+}

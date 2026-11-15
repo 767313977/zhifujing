@@ -1,0 +1,13 @@
+field_or_dataset,source_table_or_api,read_function,transform_function,downstream_consumers,current_risk
+raw OHLC,stock_daily（b1）,api/stock.py、pools.py、scan_patterns.py、intraday_b1.py、research_screen.py、trend.py、stock_phase.py,patterns.build_bars（patterns.py:1107）,trend_structure / momentum / volume_price / continuation_model / breakout_model / risk_engine,BARS 由 raw + pct_chg 合成前复权，无因子血缘（R-01）
+pct_chg,stock_daily,同上,net[i]=net[i-1]*(1+pct/100)（patterns.py:1121）,全部信号模块,pct_chg 是除权调整后收益；NULL 由调用方 BAR_REQUIRED_FIELDS 过滤（R-03）
+adj factor,m64 staging / 无 b1 表,—,pricing.PriceBar→SignalBar（pricing.py:35/59）,仅 trade_sim 引用 PriceDomainError（trade_sim.py:30）,契约模块未接入生产（R-02）
+sector_daily,sector_daily,sector_strength._sector_days（sector_strength.py:33）,Ret20/60、RPS、排名变化,sector_strength 报告 / API,覆盖 2025-09-08~2026-09-24；板块日线为区间/快照口径（R-05）
+sector_member,sector_member,sector_strength（SectorMember 导入 sector_strength.py:22）,广度 up_ratio / strong_members,板块广度,仅 2026-07-03~2026-09-24（60 交易日、275 板块）；已有 manifest 完整性闸门（R-06）
+stock_concept,stock_concept,api/stock.py themes,直接展示,个股页题材,361 概念、2025-03-05 起（R-07）
+stock_universe,stock_universe,pools.py,证券池构建,扫描/回测,未审计到历史快照版本（R-08）
+ST 状态,stock_basic.name（当前名称）,limit_rules.limit_pct（limit_rules.py:127）,涨跌停档位判定,trade_sim / 形态扫描,只能识别“当前”ST，历史 ST 不可还原（代码注释已声明，R-04）
+执行价,trade_sim.bars_by_code（raw）,trade_sim.run_backtest（trade_sim.py:246）,成交/费用/持仓市值,回测结果,信号价需显式传 signal_bars，否则报错（guard 已存在）
+RPS,RpsDaily,rps_versioning / research_screen,percentile_rank（rps_versioning.py:108）,选股与排序,CALC_VERSION 存在；版本混用依赖调用方（R-09）
+缓存,cache_identity.build_cache_key（cache_identity.py:17）,—,—,特征缓存,模块注释明确“供未来使用，不改变现有缓存”（R-10）
+指数,index_daily,market_regime / breadth,窗口统计,市场状态,仅 6 指数、2025-09-08 起（R-11）

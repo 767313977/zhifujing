@@ -1,0 +1,9 @@
+provider,dataset,local_storage,derived_metrics,website_internal,public_display,redistribution,retention,written_evidence,evidence_url,status
+iFinD,sector_data,UNKNOWN,UNKNOWN,UNKNOWN,NOT_ALLOWED,NOT_ALLOWED,UNKNOWN,NO,N/A,NOT_AUTHORIZED
+Tushare Pro,dc_member,UNKNOWN,UNKNOWN,NOT_ALLOWED,NOT_ALLOWED,NOT_ALLOWED,UNKNOWN,NO,https://tushare.pro/document/1?doc_id=405,NOT_AUTHORIZED
+Tushare Pro,index_member_all,UNKNOWN,UNKNOWN,NOT_ALLOWED,NOT_ALLOWED,NOT_ALLOWED,UNKNOWN,NO,https://tushare.pro/document/1?doc_id=405,NOT_AUTHORIZED
+Choice,em_sector,UNKNOWN,NOT_ALLOWED,UNKNOWN,NOT_ALLOWED,NOT_ALLOWED,UNKNOWN,NO,https://choice.eastmoney.com/html/userprotocol/userprotocol.html,NOT_AUTHORIZED
+Choice,成份变动记录,UNKNOWN,NOT_ALLOWED,UNKNOWN,NOT_ALLOWED,NOT_ALLOWED,UNKNOWN,NO,同上,NOT_AUTHORIZED
+理杏仁,行业接口,UNKNOWN,NOT_ALLOWED,NOT_ALLOWED,NOT_ALLOWED,NOT_ALLOWED,UNKNOWN,NO,https://www.lixinger.com/marketing/user-agreement,NOT_AUTHORIZED
+CnOpenData,板块成分,UNKNOWN,UNKNOWN,UNKNOWN,NOT_ALLOWED,NOT_ALLOWED,UNKNOWN,NO,https://www.cnopendata.com/catalogs/third,NOT_AUTHORIZED
+JoinQuant,成分接口,UNKNOWN,UNKNOWN,NOT_ALLOWED,NOT_ALLOWED,NOT_ALLOWED,UNKNOWN,NO,https://cdn.joinquant.com/help/img/JoinQuantAPI.pdf,NOT_AUTHORIZED

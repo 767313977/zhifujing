@@ -1,0 +1,15 @@
+evidence_id,source_file,location,fact,evidence_level,scope,unknowns,gate_impact
+E-01,reports/trend_engine/m66/ifind_personal_100/04-request-budget-ledger.csv,全表 42 行,"42 次请求 = 能力 6 + G9 30 + G3 6；成功 40、失败 2",真实请求账本,M6.6 iFinD 个人基础版,额度实时余额未核验,预算合规证据
+E-02,reports/trend_engine/m66/ifind_personal_100/04-request-budget-ledger.csv,sequence_no 26/27,endpoint=stock/sector_data 两次失败，error_code=IfindAuthError,真实请求账本,我方路由错误（工具属 index server）,错误码易被误读为权限问题,不影响 Gate，但需在 N1 说明
+E-03,reports/trend_engine/m66/ifind_personal_100/02-g9-real-sample-validation.md,第 2 节,"600519 26 个交易日 raw_close×factor 与后复权序列最大偏差 1.8883bp",真实响应派生指标,仅该窗口样本,因子方向/基准日/累计规则未书面化,G9-PRICE 仅 PARTIAL
+E-04,reports/trend_engine/m66/ifind_personal_100/02-g9-real-sample-validation.md,第 2 节,"同问前+后复权返回 52 行（26×2）且只有『收盘价』一列",真实响应结构,600519 样本,无 adjust_type 字段,G9-PRICE 不能 PASS
+E-05,reports/trend_engine/m66/ifind_personal_100/02-g9-real-sample-validation.md,第 1 节,"分红/送转字段 schema 存在但值为空（600519/002594/001225/688110/688270）",真实响应,5 只证券,空值原因未知,G9-CA FAIL
+E-06,reports/trend_engine/m66/ifind_personal_100/02-g9-real-sample-validation.md,第 1 节,"300176 配股：每股 0.4 股、3.36 元、公告 20260810、除权 20260821、实际 1.4417 亿股；股权登记日为空",真实响应,单一样本,登记日缺失；无第二只配股样本,G9-CA 仅该样本可用
+E-07,reports/trend_engine/m66/ifind_personal_100/02-g9-real-sample-validation.md,第 3 节,300750 事件分类 UNRESOLVED_EVENT_CLASSIFICATION,真实响应,单一样本,需第二供应商裁决,G9-CA 阻塞项
+E-08,reports/trend_engine/m66/ifind_personal_100/03-g3-real-sample-validation.md,第 1 节,"芯片 941 条、电力设备 418 条，2025-03-05 与 2026-09-28 两次查询总数与前 100 行完全一致",真实响应,2 板块 × 2 日期,未验证更多板块,G3 FAIL（CURRENT_SNAPSHOT_ONLY）
+E-09,reports/trend_engine/m66/ifind_personal_100/01-ifind-capability-discovery.md,第 1 节,"stock 10 工具 / index 3 工具，无历史成分工具",真实 tools/list,M6.6 账号,G3 无接口,G3 FAIL
+E-10,reports/trend_engine/m66/provider_approval_ledger.csv,全表 18 行,"13 NOT_AUTHORIZED + 4 AUTHORIZED_LIMITED(iFinD) + 1 REJECTED(iFinD 无接口)",本地台账+公开文档,所有候选供应商,API 价格多项 UNKNOWN,许可 Gate
+E-11,reports/trend_engine/m66/ifind_ticket_package/package_manifest.json,status,工单状态 DRAFT_READY_NOT_SENT,本地文件,28 问,供应商答复未知,G9/G3 澄清渠道
+E-12,reports/trend_engine/m66/ifind_personal_100/sha_check.json,全表,四个原始库与 M6.4 staging 16/16 未变,本地哈希,本轮范围,—,安全门禁
+E-13,reports/trend_engine/m66/ifind_personal_100/07-final-acceptance.md,第 13 节,网站商业许可 WEBSITE_COMMERCIAL_LICENSE=NOT_ESTABLISHED,本地结论,全部供应商,许可条款未取得,G9/G3 网站用途 FAIL
+E-14,reports/trend_engine/m66/ifind_personal_100/00-ifind-100-request-baseline.md,第 3 节,"额度仅来自截图（剩余 2,940），无官方用量 API",用户截图,个人账号,实时余额未知,预算证据等级为 PARTIAL

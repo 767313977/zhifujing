@@ -1,0 +1,9 @@
+dataset,effective_at,announced_at,available_at,ingested_at,retrieved_at,pit_status,note
+iFinD 日行情,交易日,不适用,缺失,有,有,PIT_UNVERIFIED,无官方可得时间
+iFinD 公司行为,除权/派息日,日期级且多为空,缺失,有,有,PIT_UNVERIFIED,无公告时间
+iFinD 板块成分,快照日,不适用,缺失,有,有,PIT_UNVERIFIED,仅当前快照
+Tushare adj_factor,交易日,不适用,盘前入库（文档）,不适用,不适用,DOCUMENTED,未授权
+Tushare dividend,登记/除权/派息日,ann_date 日期级,每日20-21点（文档）,不适用,不适用,DOCUMENTED,未授权
+Tushare dc_member,交易日,不适用,文档未说明,不适用,不适用,UNKNOWN,未授权
+Choice em_sector,截面日,不适用,未说明,不适用,不适用,UNKNOWN,未授权
+理杏仁 dividend,登记/除权/到账日,date 日期级,未说明,不适用,不适用,UNKNOWN,未授权

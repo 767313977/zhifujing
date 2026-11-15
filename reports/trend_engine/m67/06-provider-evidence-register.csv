@@ -1,0 +1,18 @@
+evidence_id,provider,dataset,claim,evidence_type,evidence_url,document_date,checked_on,confidence,notes
+EV-01,iFinD,复权因子,"前/后复权落在同名列，无 adjust_type",REAL_RESPONSE,reports/trend_engine/m66/ifind_personal_100/02-g9-real-sample-validation.md,2026-11-16,2026-11-16,HIGH,实测
+EV-02,iFinD,复权因子,"raw×factor 与后复权最大偏差 1.8883bp（26 日）",REAL_RESPONSE,同上,2026-11-16,2026-11-16,HIGH,有限样本
+EV-03,iFinD,公司行为,"分红/送转字段值为空",REAL_RESPONSE,同上,2026-11-16,2026-11-16,HIGH,5 只证券
+EV-04,iFinD,配股,"300176 比例 0.4/价格 3.36/公告 20260810/除权 20260821",REAL_RESPONSE,同上,2026-11-16,2026-11-16,HIGH,单样本
+EV-05,iFinD,板块成分,"两日期返回相同当前成分",REAL_RESPONSE,reports/trend_engine/m66/ifind_personal_100/03-g3-real-sample-validation.md,2026-11-16,2026-11-16,HIGH,—
+EV-06,Tushare Pro,adj_factor,"接口存在，2000 积分，盘前入库",VENDOR_DOCUMENT,https://tushare.pro/document/2?doc_id=28,未标注,2026-11-16,HIGH,方向未明示
+EV-07,Tushare Pro,dividend,"字段含税率/送转/登记/除权/派息",VENDOR_DOCUMENT,https://tushare.pro/document/2?doc_id=103,未标注,2026-11-16,HIGH,无配股
+EV-08,Tushare Pro,dc_member,"历史起始 2024-12-20，6000 积分",VENDOR_DOCUMENT,https://tushare.pro/document/2?doc_id=363,未标注,2026-11-16,HIGH,—
+EV-09,Tushare Pro,index_member_all,"含 in/out 与退市示例",VENDOR_DOCUMENT,https://tushare.pro/document/2?doc_id=335,未标注,2026-11-16,HIGH,仅申万
+EV-10,Tushare Pro,许可,"个人、非商业、不可转让",VENDOR_DOCUMENT,https://tushare.pro/document/1?doc_id=405,未标注,2026-11-16,HIGH,阻断网站
+EV-11,Choice,em_sector,"历史成分仅沪深股票/上交所期权",VENDOR_DOCUMENT,https://quantapi.eastmoney.com/Upload/EMQuantAPI_R.html,未标注,2026-11-16,MEDIUM,手册
+EV-12,Choice,许可,"未经书面同意禁止复制/镜像/衍生",VENDOR_DOCUMENT,https://choice.eastmoney.com/html/userprotocol/userprotocol.html,未标注,2026-11-16,HIGH,—
+EV-13,理杏仁,分红/配股,"字段最全，公告日期级",VENDOR_DOCUMENT,https://www.lixinger.com/api/open-api/html-doc/cn/company/dividend,未标注,2026-11-16,HIGH,API 价格未知
+EV-14,理杏仁,许可,"仅个人/单一机构内部使用",VENDOR_DOCUMENT,https://www.lixinger.com/marketing/user-agreement,未标注,2026-11-16,HIGH,—
+EV-15,CnOpenData,复权/分红,"年度更新，商业版含商业授权",VENDOR_DOCUMENT,https://www.cnopendata.com/data/m/listedcompany-basic/A-market-quotes.html,未标注,2026-11-16,MEDIUM,价格询价
+EV-16,JoinQuant,成分,"SDK 支持按日期取成分；导出与商用未核",VENDOR_DOCUMENT,https://cdn.joinquant.com/help/img/JoinQuantAPI.pdf,未标注,2026-11-16,LOW,—
+EV-17,全部,许可,"WEBSITE_COMMERCIAL_LICENSE=NOT_ESTABLISHED",LOCAL_CONCLUSION,reports/trend_engine/m66/ifind_personal_100/07-final-acceptance.md,2026-11-16,2026-11-16,HIGH,—

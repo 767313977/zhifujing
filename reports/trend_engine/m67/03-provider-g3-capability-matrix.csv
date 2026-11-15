@@ -1,0 +1,9 @@
+provider,dataset,has_historical_snapshot,has_in_out_dates,security_scope,sector_scope,history_start,update_frequency,field_dictionary,api_permission,evidence_url,confidence,status
+iFinD,sector_data,NO,NO,全部A股（含北交所）,行业/概念（按名称）,当前快照,随查询实时,无板块代码,现有账号,N/A（实测）,实测,CURRENT_SNAPSHOT_ONLY
+Tushare Pro,dc_member,YES(交易日快照),NO,沪深京,概念/行业板块（BK代码）,2024-12-20,每日,有,需6000积分,https://tushare.pro/document/2?doc_id=363,官方文档,DOCUMENTED
+Tushare Pro,index_member_all,YES(区间),YES(in_date/out_date),含退市证券,申万一级/二级/三级,未明确,未明确,有,需2000积分,https://tushare.pro/document/2?doc_id=335,官方文档,DOCUMENTED
+Choice,em_sector(isHistory=1),YES(限沪深股票/上交所期权),NO,沪深股票、上交所期权,系统板块,未明确,未明确,需套餐,需套餐+书面许可,https://quantapi.eastmoney.com/Upload/EMQuantAPI_R.html,官方文档,DOCUMENTED
+Choice,终端成份变动记录,YES(区间),YES(纳入/剔除),未明确,系统板块,默认近一年,未明确,界面功能,需套餐,https://choice.eastmoney.com/School/Help,官方文档,UI_ONLY
+理杏仁,行业接口,NO,NO,沪深,申万/国证分类元数据,不适用,未明确,有,需Token,https://www.lixinger.com/api/open-api/html-doc/cn/industry,官方文档,NO_MEMBERSHIP
+CnOpenData,板块成分,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN,年度,UNKNOWN,文件交付,https://www.cnopendata.com/catalogs/third,官方目录未见,UNKNOWN
+JoinQuant,get_concept_stocks/get_industry_stocks/get_index_stocks,YES(按日期),NO,沪深,行业/概念/指数,未明确,未明确,有,需订阅,https://cdn.joinquant.com/help/img/JoinQuantAPI.pdf,官方文档,DOCUMENTED

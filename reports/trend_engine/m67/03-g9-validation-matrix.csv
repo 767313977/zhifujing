@@ -1,0 +1,16 @@
+test_or_check,rule,code_reference,test_reference,expected
+空值语义,NULL≠0≠不适用,data_contracts.classify_missing_value,tests/test_trend_m67_g9_contract.py::test_null_zero_and_not_applicable_are_distinct,六态区分
+adjusted 无类型,拒绝规范化,data_contracts.validate_price_domain_record,::test_adjusted_price_without_type_is_rejected,ADJUSTED_WITHOUT_TYPE
+RAW 行带 adjusted,拒绝,同上,::test_raw_row_must_not_carry_adjusted_value,RAW_ROW_CARRIES_ADJUSTED
+因子语义不全,禁止构造序列,validate_adjustment_factor_semantics,::test_factor_semantics_missing_blocks_adjusted_series,constructable=False
+现金分红缺金额,不得 VERIFIED,validate_corporate_action_record,::test_cash_dividend_missing_amount_blocks_verified,CASH_AMOUNT_MISSING
+配股三项独立,不得互相推导,同上,::test_rights_issue_fields_are_independent / ::test_rights_issue_missing_shares_not_derived,逐字段状态
+300750 未决,不得自动分类,同上,::test_unresolved_event_never_auto_classified,UNKNOWN
+公告日期补时间戳,标记,同上,::test_date_padded_as_timestamp_is_flagged,DATE_PADDED_AS_TIMESTAMP
+取消事件,保留原行,同上,::test_cancelled_event_is_retained_with_flag,CANCELLED_EVENT_RETAINED
+时间顺序,公告≤登记≤除权≤派息,validate_event_temporal_order,::test_temporal_order_validation,issues 列表
+PIT 缺 available_at,UNVERIFIED,evaluate_pit_eligibility,::test_pit_missing_available_at_is_unverified,PIT_UNVERIFIED
+日期级公告,不得当时间戳,同上,::test_date_only_announcement_is_date_level,DATE_LEVEL_ONLY
+质量状态,不得凭字段存在判 VERIFIED,classify_data_quality,::test_quality_not_verified_from_field_presence_alone,PARTIAL/UNKNOWN
+确定性,同输入同输出,—,::test_contract_is_deterministic,JSON 相等
+血缘完整性,缺项降级,evaluate_data_lineage_completeness,::test_lineage_completeness,PARTIAL

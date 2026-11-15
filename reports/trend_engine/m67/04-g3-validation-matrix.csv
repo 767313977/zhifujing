@@ -1,0 +1,11 @@
+check,rule,code_reference,test_reference,expected
+当前快照不得当历史,is_current_snapshot → CURRENT_SNAPSHOT_ONLY,data_contracts.evaluate_snapshot_historical_eligibility,tests/test_trend_m67_g3_contract.py::test_current_snapshot_is_not_historical,CURRENT_SNAPSHOT_ONLY
+日期参数被忽略,date_param_honored=False → 不合格,同上,::test_date_param_ignored_cannot_be_accepted,DATE_PARAM_NOT_HONORED
+可得时间晚于截面日,标记,同上,::test_available_after_snapshot_date_flagged,AVAILABLE_AFTER_SNAPSHOT_DATE
+真实历史快照,全部条件满足,同上,::test_true_historical_snapshot_is_eligible,HISTORICAL_OK
+SNAPSHOT_ONLY 带 in/out,拒绝,multisource.assert_snapshot_mode,::test_snapshot_only_must_not_carry_in_out,StagingViolation
+当前快照回填历史,拒绝,multisource.assert_snapshot_not_from_current,::test_current_membership_cannot_backfill_history,StagingViolation
+模糊映射,候选,data_contracts.mapping_is_approved,::test_fuzzy_mapping_is_candidate_only,candidate_only=True
+方法官方但未审,候选,同上,::test_label_pending_even_if_method_official,approved=False
+官方映射,通过,同上,::test_official_mapping_approved,approved=True
+同名不同 taxonomy,不得等同,同上,::test_same_name_across_taxonomy_not_auto_equal,不同 taxonomy

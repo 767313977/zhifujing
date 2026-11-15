@@ -1,0 +1,10 @@
+gate,status,evidence,blocking_condition,next_authorization_needed
+G1,PASS_STAGING_ONLY,"00-protected-hashes-before.json / 16/16","不得合并研究库","合并需单独授权"
+G2,PARTIAL,"02-trend-engine-data-flow-audit.md R-05","无标准板块 OHLCV","供应商标准日 K"
+G3,FAIL,"03-g3-historical-membership-contract.md / 04-g3-validation-matrix.csv","无历史截面、无 in/out、映射未审批","Tushare 6000 积分或 Choice"
+G9-PRICE,PARTIAL,"02-g9-price-domain-contract.md","缺 adjust_type 与因子书面定义","供应商字段字典"
+G9-CA,FAIL,"02-g9-corporate-action-contract.md","分红/送转值为空；300750 未决","分红明细 + 第二来源"
+G9-PIT,FAIL,"04-pit-temporal-contract.md","无 available_at","供应商提供可得时间"
+G9-LICENSE,FAIL,"06-provider-dataset-license-matrix.csv","WEBSITE_COMMERCIAL_LICENSE=NOT_ESTABLISHED","书面许可"
+G9,FAIL,"07-m67-final-acceptance.md","关键子项未过","同上"
+M7_ADMISSION,NOT_REQUESTED,"—","Model A/B/A+B 冻结","用户另行批准"

@@ -1,0 +1,8 @@
+dataset,announced_at,available_at,lineage_provider,lineage_source_field,transform_version,pit_status,lineage_status
+iFinD 日行情,不适用,缺失,是,是,未定义,PIT_UNVERIFIED,PARTIAL
+iFinD 公司行为,日期级/空,缺失,是,是,未定义,PIT_UNVERIFIED,PARTIAL
+iFinD 板块成分,不适用,缺失,是,是,未定义,PIT_UNVERIFIED,PARTIAL
+Tushare adj_factor,不适用,盘前（文档）,是,是,未定义,DOCUMENTED,PARTIAL
+Tushare dividend,ann_date,每日20-21点（文档）,是,是,未定义,DOCUMENTED,PARTIAL
+理杏仁 dividend,date,未说明,是,是,未定义,UNKNOWN,PARTIAL
+Choice em_sector,不适用,未说明,是,否,未定义,UNKNOWN,PARTIAL

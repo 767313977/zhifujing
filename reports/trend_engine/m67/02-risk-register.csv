@@ -1,0 +1,12 @@
+risk_id,severity,title,evidence,impact,recommendation,blocks_gate
+R-01,P1,生产“前复权”由 raw+pct_chg 合成，无因子/方向/基准日血缘,backend/app/services/patterns.py:1107-1152,信号价域无法按 G9 标准审计；换供应商或数据修订后不可复现,保留 build_bars 作为 RAW_APPROX 近似；G9 准入必须接入可审计因子序列,是
+R-02,P1,pricing.py 双价格域契约存在但未接入生产,backend/app/services/trend_engine/pricing.py:35-75；仅 trade_sim.py:30 引用 PriceDomainError,契约与实现分叉，文档易被误读为“已落地”,在契约文档中明确“参考实现/未接线”；后续接入需单独评审,否
+R-03,P2,build_bars 使用 `pct_chg or 0.0`、`volume or 0.0`,patterns.py:1148-1150,若调用方绕过 BAR_REQUIRED_FIELDS，NULL 会变成 0,在 build_bars 入口增加 None 断言或返回 UNKNOWN，禁止静默置零,否
+R-04,P1,ST 只能按“当前名称”识别，历史 ST 不可还原,limit_rules.py:127 与模块注释 77-79,历史涨跌停档位可能错误，影响回测成交假设,接入历史 ST 状态表后再用于历史回测；当前标注 UNVERIFIED,是（G9-PIT 相关）
+R-05,P1,板块日线为区间/快照口径而非标准 OHLCV,sector_strength.py:3-8 注释,板块收益可算但不可与个股日 K 对齐,G2 保持 PARTIAL；等待标准板块 OHLCV,是（G2）
+R-06,P2,板块广度依赖成员完整性（已设闸门）,sector_strength.py:7-8,成员不完整时广度返回 None（不会伪造）,保持现状；历史覆盖仅 60 交易日,否
+R-07,P2,概念数据自 2025-03-05 起,stock_concept 计数实测,更早历史题材无法回溯,在报告中标注覆盖起点,否
+R-08,P2,证券池历史快照版本未审计,stock_universe 表存在,—,标记 VERIFY_LATER，不在本阶段改动,否
+R-09,P2,RPS 版本混用依赖调用方,rps_versioning.py:24-73,可能出现跨版本比较,确保调用方传入 version_id；本阶段只审计,否
+R-10,P2,缓存身份模块未接入现有缓存,cache_identity.py:3-4 注释,缓存无法证明对应数据版本,接入前不宣称可复现,否
+R-11,P2,指数历史仅 2025-09-08 起、6 个指数,index_daily 实测,更早市场状态不可用,标注覆盖范围,否

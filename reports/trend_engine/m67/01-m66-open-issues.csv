@@ -1,0 +1,11 @@
+issue_id,severity,title,evidence_ref,impact,next_action,blocked_by
+I-01,P0,iFinD 分红/送转字段返回空值,01-m66-fact-register E-05,G9-CA 无法建立现金/股份账本,发送 28 问工单或改用 Tushare/理杏仁,用户授权发送或采购
+I-02,P0,iFinD 无 adjust_type 字段、前/后复权靠措辞区分,E-04,G9-PRICE 不能正式准入,要求书面字段字典；或采用有显式字段的供应商,供应商书面答复
+I-03,P0,300750 2026-04-22 事件分类未决,E-07,单一样本阻塞,需第二家供应商事件明细,第三方授权
+I-04,P0,iFinD 板块仅当前成分,E-08/G3 FAIL,历史回测证券池不可用,转向 Tushare index_member_all 或 Choice em_sector,第三方授权
+I-05,P0,网站商业许可未建立,E-13,任何对外展示/分发均不可,取得书面许可前保持 NOT_ESTABLISHED,供应商书面许可
+I-06,P1,额度余额无官方 API,E-14,预算证据等级受限,保留截图与本地计数双轨记录,供应商提供用量接口
+I-07,P1,第二只配股样本缺失,E-06,配股规则覆盖不足,规则 R4 回退到 2025 年样本,需第三方或再授权 iFinD 请求
+I-08,P2,失败请求的 error_code 记作 IfindAuthError,E-02,易被误读为权限问题,在报告中并列说明根因（server 路由）,无
+I-09,P1,b1 板块口径 374 vs 383,E-10/M6.5 审计,映射基数不一致,以 sector_basic 为准并单列差异,无
+I-10,P1,G2 无标准板块日 K,E-09,板块强度仍用区间统计,待供应商提供标准 OHLCV,供应商能力

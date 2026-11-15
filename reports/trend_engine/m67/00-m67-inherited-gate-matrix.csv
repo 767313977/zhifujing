@@ -1,0 +1,9 @@
+gate,m66_status,evidence_ref,blocked_by,m67_default_outcome
+G1(指数对齐),PASS_STAGING_ONLY,"reports/trend_engine/m66/ifind_personal_100/06-gate-recheck.md",未授权合并研究库,PASS_STAGING_ONLY
+G2(板块日线),PARTIAL,"reports/trend_engine/m66/ifind_personal_100/01-ifind-capability-discovery.md",无标准板块日K接口,PARTIAL
+G3(历史板块成分),FAIL,"reports/trend_engine/m66/ifind_personal_100/03-g3-real-sample-validation.md",iFinD 仅当前快照；其他供应商未授权,FAIL 或 NOT_TESTED
+G9-PRICE(价格语义),PARTIAL,"reports/trend_engine/m66/ifind_personal_100/02-g9-real-sample-validation.md",缺 adjust_type 与官方因子定义,PARTIAL
+G9-CORPORATE-ACTION(公司行为),FAIL,"reports/trend_engine/m66/ifind_personal_100/02-g9-real-sample-validation.md",分红/送转值为空,FAIL
+G9-PIT(时点语义),FAIL,"reports/trend_engine/m66/ifind_personal_100/02-g9-real-sample-validation.md",只有日期级公告,PIT_UNVERIFIED
+G9-LICENSE(许可),FAIL,"reports/trend_engine/m66/provider_approval_ledger.csv",WEBSITE_COMMERCIAL_LICENSE=NOT_ESTABLISHED,FAIL
+G9(总),FAIL,"reports/trend_engine/m66/ifind_personal_100/06-gate-recheck.md",关键子项未过,FAIL

@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-11-15T17:08:12.947213+00:00",
+  "source": "reports\\trend_engine\\m66\\ifind_ticket_package\\ifind_28_questions.csv",
+  "questions": 28,
+  "status": "DRAFT_NOT_SENT",
+  "contains_credentials": false,
+  "contains_local_absolute_path": false,
+  "reuses_m66_numbering": true,
+  "open_questions": 28
+}
