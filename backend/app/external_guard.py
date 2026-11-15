@@ -320,7 +320,7 @@ def _guard_outbound(method: str, address: Any) -> Any:
     if enabled():
         port = _port_of(address)
         if _is_ip_text(host):
-            if _ip_authorized(host):
+            if _ip_authorized(host) and _is_public_ip(host):
                 with _lock:
                     _stats["policy_allowed"] += 1
                 return address
@@ -358,6 +358,23 @@ def _is_ip_text(value: Any) -> bool:
         return False
 
 
+def _is_public_ip(value: Any) -> bool:
+    """Only globally routable addresses may be pinned as an allowed peer.
+
+    Private / loopback / link-local / CGNAT / reserved / multicast / metadata
+    addresses are rejected.  This is the second half of DNS-rebinding defence:
+    an allowlisted hostname that resolves (or re-resolves) to 10.0.0.5 or
+    169.254.169.254 must not become an authorised outbound peer.
+    """
+    try:
+        address = ipaddress.ip_address(str(value))
+    except ValueError:
+        return False
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        return address.ipv4_mapped.is_global
+    return address.is_global
+
+
 def _record_authorized_ip(sockaddr: Any) -> None:
     host = _address_host(sockaddr)
     if not _is_ip_text(host):
@@ -366,6 +383,10 @@ def _record_authorized_ip(sockaddr: Any) -> None:
         if ipaddress.ip_address(str(host)).is_loopback:
             return
     except ValueError:
+        return
+    if not _is_public_ip(host):
+        # DNS rebinding / compromised vendor DNS must not authorise private,
+        # link-local or metadata addresses (169.254.169.254 included).
         return
     with _lock:
         if len(_authorized_ips) >= _AUTHORIZED_IP_CAP:
@@ -542,7 +563,7 @@ def _guarded_request(self, method, url, *args, **kwargs):  # noqa: ANN001 - 透�
             # 回环请求**强制直连**：不允许被系统代理劫持到本机代理再出公网
             kwargs["proxies"] = {"http": None, "https": None, "all": None}
         elif _is_ip_text(host):
-            if not _ip_authorized(host):
+            if not (_ip_authorized(host) and _is_public_ip(host)):
                 with _lock:
                     _stats["ip_literal_denied"] += 1
                 _block_policy("requests", host, port, "IP_LITERAL_DENIED")
@@ -631,7 +652,9 @@ def _guarded_sendmsg(self, buffers, *args):  # noqa: ANN001
         target = _sendmsg_address(args) or _peer_host(self)
         if target is not None:
             host = _address_host(target)
-            if not (_strict_loopback_ip(host) or _ip_authorized(host)):
+            if not (
+                _strict_loopback_ip(host) or (_ip_authorized(host) and _is_public_ip(host))
+            ):
                 with _lock:
                     _stats["stream_blocked"] += 1
                     _stats["policy_denied"] += 1
@@ -681,7 +704,7 @@ def _assert_stream_peer_allowed(
         # 建连层的策略判定已经生效。
         if target is None or _strict_loopback_ip(target):
             return
-        if _ip_authorized(target):
+        if _ip_authorized(target) and _is_public_ip(target):
             return
         with _lock:
             _stats[f"{counter}_blocked"] += 1
