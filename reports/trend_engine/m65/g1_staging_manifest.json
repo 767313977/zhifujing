@@ -1,0 +1,126 @@
+{
+  "generated_at": "2026-11-15T16:04:17.651606+00:00",
+  "batch": "m65-batch6-g1-preservation",
+  "source_staging_batch": "batch_20261115T152701Z",
+  "preservation": {
+    "g1_index_rows.json": {
+      "frozen_sha256": "6D56393B30A7E85A01A051CA0DA13557DEA117EE618CC0CE621F2D26BA470566",
+      "current_sha256": "6D56393B30A7E85A01A051CA0DA13557DEA117EE618CC0CE621F2D26BA470566",
+      "unchanged": true
+    },
+    "g2_sector_rows.json": {
+      "frozen_sha256": "C938156BAE74414BFF42B2F1C511E8A7504D903C1B9162B7916E3DD8BA3A6630",
+      "current_sha256": "C938156BAE74414BFF42B2F1C511E8A7504D903C1B9162B7916E3DD8BA3A6630",
+      "unchanged": true
+    },
+    "g9_events.json": {
+      "frozen_sha256": "59E6527DFD36C73DD89530821F066EC42AB2AF7AD799F67C204F7A258620A5B8",
+      "current_sha256": "59E6527DFD36C73DD89530821F066EC42AB2AF7AD799F67C204F7A258620A5B8",
+      "unchanged": true
+    },
+    "g9_factor_cross_exdate.json": {
+      "frozen_sha256": "0E8036FDE8427982F79809F983C5585861F1316FF056167038E3B72549294C7B",
+      "current_sha256": "0E8036FDE8427982F79809F983C5585861F1316FF056167038E3B72549294C7B",
+      "unchanged": true
+    },
+    "g9_factor_rows.json": {
+      "frozen_sha256": "2D98A38A526D7BD6316109CDB90171BD75D505BC31CC5EE6EC1674B5A34B55FE",
+      "current_sha256": "2D98A38A526D7BD6316109CDB90171BD75D505BC31CC5EE6EC1674B5A34B55FE",
+      "unchanged": true
+    },
+    "g9_sample_validation.json": {
+      "frozen_sha256": "B3FC38B6A6C5A41F8033C8A0E0082CCA5E087EA94438AB4BF5ECBAF18FF3B0B2",
+      "current_sha256": "B3FC38B6A6C5A41F8033C8A0E0082CCA5E087EA94438AB4BF5ECBAF18FF3B0B2",
+      "unchanged": true
+    },
+    "index_000001SH_20260925_20261009.json": {
+      "frozen_sha256": "7249AE715A507E6A07FA558D2958D2FC72E0FC93E9B51071B0759FBFDF526192",
+      "current_sha256": "7249AE715A507E6A07FA558D2958D2FC72E0FC93E9B51071B0759FBFDF526192",
+      "unchanged": true
+    },
+    "m64_ifind_staging.db": {
+      "frozen_sha256": "AE998D2C43B48F1BA27615349DA4651CB98063E72584F9A2BE306CFCA6A4465D",
+      "current_sha256": "AE998D2C43B48F1BA27615349DA4651CB98063E72584F9A2BE306CFCA6A4465D",
+      "unchanged": true
+    },
+    "probe_ledger.json": {
+      "frozen_sha256": "42D0CA068DCDC89693A4756067B7CF63238DD9415F02B5D0E161CA37EB4A8421",
+      "current_sha256": "42D0CA068DCDC89693A4756067B7CF63238DD9415F02B5D0E161CA37EB4A8421",
+      "unchanged": true
+    },
+    "sample_call_ledger.json": {
+      "frozen_sha256": "58CC535708AB6ABE5B4F154D44063A9B7E48F88038DACC73B5A36DBFAB12F780",
+      "current_sha256": "58CC535708AB6ABE5B4F154D44063A9B7E48F88038DACC73B5A36DBFAB12F780",
+      "unchanged": true
+    },
+    "sector_daily_staging.csv": {
+      "frozen_sha256": "044E341C78DEBBCC87D723F3A932AEE8A3D887B409231DB622A4958C3D7BDE78",
+      "current_sha256": "044E341C78DEBBCC87D723F3A932AEE8A3D887B409231DB622A4958C3D7BDE78",
+      "unchanged": true
+    },
+    "stock_events_600519_2025.json": {
+      "frozen_sha256": "E2D0BEF623FB20A4F339AE84B5B7C10B227C0FF51F7F000A090FBBF1E1F60912",
+      "current_sha256": "E2D0BEF623FB20A4F339AE84B5B7C10B227C0FF51F7F000A090FBBF1E1F60912",
+      "unchanged": true
+    },
+    "stock_history_600519_20250701_20250720.json": {
+      "frozen_sha256": "F4BE49EEEAE44A16691743C73370A0B913700E759912882B15BB402441CF7343",
+      "current_sha256": "F4BE49EEEAE44A16691743C73370A0B913700E759912882B15BB402441CF7343",
+      "unchanged": true
+    },
+    "tools_list.json": {
+      "frozen_sha256": "B2E24FD950B6D287BEC8B1E87E9217ED0A11D4C2CEC3BA6131914AF8AD0CBB71",
+      "current_sha256": "B2E24FD950B6D287BEC8B1E87E9217ED0A11D4C2CEC3BA6131914AF8AD0CBB71",
+      "unchanged": true
+    }
+  },
+  "staging_all_unchanged": true,
+  "csv": {
+    "file": "reports/trend_engine/m64/index_daily_staging.csv",
+    "sha256": "2DFF56B5E4A0A3DDC219B81C1864C6AD47EB013FFCD34BA1032613353A0FF9C6",
+    "rows": 132,
+    "unique_code_date": 132,
+    "codes": [
+      "000001.SH",
+      "000688.SH",
+      "000852.SH",
+      "399001.SZ",
+      "399006.SZ",
+      "899050.BJ"
+    ],
+    "valid_rows_full_ohlc": 60,
+    "artifact_rows_halted_close": 72,
+    "valid_trade_dates": [
+      "2026-09-18",
+      "2026-09-21",
+      "2026-09-22",
+      "2026-09-23",
+      "2026-09-24",
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30",
+      "2026-10-08",
+      "2026-10-09"
+    ]
+  },
+  "staging_db": {
+    "file": "backend\\data\\m64_staging\\batch_20261115T152701Z\\m64_ifind_staging.db",
+    "rows": 132,
+    "matches_csv_keys": true
+  },
+  "b1_readonly": {
+    "sha256_before": "A93BC080EB9E366D08025C0A247E9AF525674A0294EC4D6012B7DBFD8941C56B",
+    "sha256_after": "A93BC080EB9E366D08025C0A247E9AF525674A0294EC4D6012B7DBFD8941C56B",
+    "unchanged": true,
+    "overlap_rows_compared": 30,
+    "overlap_matched_1bp": 30,
+    "overlap_max_abs_diff": 0.0048
+  },
+  "guarantees": {
+    "merge_performed": false,
+    "ddl_executed": false,
+    "dml_executed": false,
+    "merge_script_generated": false,
+    "approval_package_generated": false
+  }
+}
