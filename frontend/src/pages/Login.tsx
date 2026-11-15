@@ -14,6 +14,26 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'register', label: '注册' },
 ]
 
+/**
+ * 只接受站内绝对路径作为登录后的落点（2026-11-15 S6.7）。
+ *
+ * `location.state.from` 可能来自任意人的链接（`<Link state>` 可被构造），
+ * 直接交给 `navigate()` 会让 `//evil.example` 这类协议相对地址变成开放重定向，
+ * React Router 7 对真正的外站地址还会抛 `External navigation is not allowed`，
+ * 把页面打进 ErrorBoundary。因此统一收敛到「以单个 `/` 开头、且不是登录页自身」。
+ *
+ * 返回 `/login` 会造成「登录成功 → 跳登录页 → 又跳目标页」的循环，同样落回首页。
+ */
+function safeReturnPath(raw: unknown): string {
+  if (typeof raw !== 'string' || !raw.startsWith('/') || raw.startsWith('//')) {
+    return '/'
+  }
+  if (raw === '/login' || raw.startsWith('/login?') || raw.startsWith('/login#')) {
+    return '/'
+  }
+  return raw
+}
+
 const INPUT =
   'w-full border border-line bg-ink-850 px-2.5 py-2 text-[14px] text-fg outline-none transition-colors focus:border-fg-dim'
 const LABEL = 'mb-1 block text-[12px] text-fg-dim'
@@ -28,8 +48,13 @@ export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
   // 被 RequireAuth 拦下来时会带上原来要去的地址，登完直接回去
-  const state = location.state as { from?: string; logoutFailed?: boolean } | null
-  const from = state?.from ?? '/'
+  const state = location.state as {
+    from?: string
+    logoutFailed?: boolean
+    sessionExpired?: boolean
+  } | null
+  // 不信任 state.from：构造的链接可以塞任意地址进来（见 safeReturnPath）
+  const from = safeReturnPath(state?.from)
 
   const [tab, setTab] = useState<Tab>('login')
   const [username, setUsername] = useState('')
@@ -39,6 +64,8 @@ export default function Login() {
   // 那意味着**服务端会话可能还活着**。必须如实提示，不能显示成「已安全退出」
   // （2026-11-08 第二轮复审 P1-NEW-02）。
   const [logoutWarning, setLogoutWarning] = useState(Boolean(state?.logoutFailed))
+  // 服务端返回 401 被动失效：说清楚为什么回到登录页（主动退出不会带这个 state）
+  const [expiredNotice, setExpiredNotice] = useState(Boolean(state?.sessionExpired))
   const [retrying, setRetrying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -168,6 +195,12 @@ export default function Login() {
                 </button>
               ))}
             </div>
+
+            {expiredNotice && (
+              <Alert tone="accent" onClose={() => setExpiredNotice(false)}>
+                登录已过期，请重新登录。
+              </Alert>
+            )}
 
             {sessionNotice && (
               <Alert tone="accent" onClose={() => setSessionNotice(null)}>

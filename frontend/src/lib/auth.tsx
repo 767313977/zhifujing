@@ -70,6 +70,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * 刷新后仍然有效。
    */
   const [logoutPending, setLogoutPending] = useState<boolean>(() => hasPendingLogout())
+  /** 被动失效（收到 401 事件）：登录页据此显示「登录已过期」提示。 */
+  const [sessionExpired, setSessionExpired] = useState(false)
 
   /** 让所有在途的身份探测失效，并清掉当前本地登录态。 */
   const invalidateIdentity = useCallback(() => {
@@ -93,6 +95,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 不是「登录成功 = 旧会话已撤销」，而是「服务端确认撤销后才登录成功」。
     clearPendingLogout()
     setLogoutPending(false)
+    // 新身份建立后，上一次的「登录已过期」提示不再成立
+    setSessionExpired(false)
     if (announce) publishAuthEvent('login')
     // 登录成功也让旧的身份探测失效（例如启动时那次 /auth/me 晚到）
     identityEpochRef.current += 1
@@ -211,6 +215,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onUnauthorized = () => {
+      // 401 = 服务端会话已失效（过期 / 被撤销）：与主动退出区分，登录页要提示原因
+      setSessionExpired(true)
       invalidateIdentity()
     }
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
@@ -260,6 +266,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [invalidateIdentity])
 
   const logout = useCallback(async () => {
+    // 主动退出不是「会话过期」，登录页不该显示过期提示
+    setSessionExpired(false)
     // 本地注销开始 = 旧身份探测立即失效（P2-F 要求 2）
     invalidateIdentity()
     // 告诉其它标签页「这个浏览器正在退出」：不能让它们继续展示过期登录态
@@ -281,6 +289,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         me,
         checking,
         setUser,
+        sessionExpired,
         logout,
         logoutPending,
         retryLogout: revokeSession,
@@ -299,7 +308,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * 某个页面、登完却被扔回首页，还得再找一次。
  */
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { me, checking } = useAuth()
+  const { me, checking, sessionExpired } = useAuth()
   const location = useLocation()
 
   if (checking) {
@@ -310,7 +319,13 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     return <div className="min-h-screen" />
   }
   if (me === null) {
-    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: location.pathname + location.search, sessionExpired }}
+      />
+    )
   }
   return <>{children}</>
 }

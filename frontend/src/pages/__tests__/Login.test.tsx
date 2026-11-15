@@ -24,6 +24,7 @@ function makeAuth(overrides: Partial<AuthValue> = {}): AuthValue {
     me: null,
     checking: false,
     setUser: vi.fn(),
+    sessionExpired: false,
     logout: vi.fn().mockResolvedValue(true),
     logoutPending: false,
     retryLogout: vi.fn().mockResolvedValue(true),
@@ -56,6 +57,21 @@ beforeEach(() => {
   vi.mocked(api.login).mockReset()
   vi.mocked(api.register).mockReset()
   vi.mocked(api.authMe).mockReset()
+})
+
+describe('S6.7 会话过期的落地提示', () => {
+  it('被动失效进入登录页时显示「登录已过期」', () => {
+    render(
+      <MemoryRouter
+        initialEntries={[{ pathname: '/login', state: { sessionExpired: true } }]}
+      >
+        <AuthContext.Provider value={makeAuth()}>
+          <Login />
+        </AuthContext.Provider>
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('登录已过期，请重新登录。')).toBeTruthy()
+  })
 })
 
 describe('P1-E 登录前的注销等待结果', () => {

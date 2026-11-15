@@ -211,10 +211,17 @@ export function StockResearchProvider({ children }: { children: ReactNode }) {
     if (previous !== undefined && previous !== current) {
       clearResearchCache()
       setSelection(EMPTY)
-      writeUrl(null)
+      // ⚠️ 只在 URL **真的**带着研究参数时才改 URL（2026-11-15 S6.7）。
+      // `setSearchParams` 即使搜索串没变也会发起一次导航；登录成功的同一时刻，
+      // `Login` 正在跳目标页，这次多余的 `pushState('/login')` 会把路由打回登录页、
+      // 顺带丢掉 `location.state.from`，于是 `Login` 只剩 `<Navigate>`（DOM 为 null），
+      // 表现为 URL 停在 /login、#root 空白的阻断缺陷。
+      if (searchParams.has(STOCK_PARAM) || searchParams.has(AS_OF_PARAM)) {
+        writeUrl(null)
+      }
     }
     lastUserId.current = current
-  }, [checking, userId, writeUrl])
+  }, [checking, userId, writeUrl, searchParams])
 
   // 多窗口同步：只在登录后、开关打开时建立通道
   useEffect(() => {
